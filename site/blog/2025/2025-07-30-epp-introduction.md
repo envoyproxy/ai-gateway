@@ -3,13 +3,13 @@ slug: endpoint-picker-for-inference-routing
 title: Envoy AI Gateway Introduces Endpoint Picker Support
 authors: [missberg, xunzhuo]
 tags: [news, features]
-image: ./images/epp-blog-feature.png
+image: /img/blog/epp-blog-feature.png
 description: Envoy AI Gateway introduces Endpoint Picker Provider support for intelligent inference routing based on real-time AI metrics like KV-cache usage and queue depth—moving beyond traditional load balancing to optimize AI workload performance.
 ---
 
 # Envoy AI Gateway Introduces Endpoint Picker Support: Enabling AI Inference Routing
 
-![Reference Architecture for Envoy AI Gateway](./images/epp-blog-feature.png)
+![Reference Architecture for Envoy AI Gateway](/img/blog/epp-blog-feature.png)
 
 ## Introduction
 
@@ -19,7 +19,7 @@ This feature enables you to leverage intelligent, dynamic routing for AI inferen
 
 When running AI inference at scale, this means your system can automatically select the optimal inference endpoint for each request, thereby optimizing resource utilization.
 
-![An overview of Endpoint Picker together with Envoy AI Gateway](./images/epp-blog-overview.png)
+![An overview of Endpoint Picker together with Envoy AI Gateway](/img/blog/epp-blog-overview.png)
 
 <!-- truncate -->
 
@@ -45,7 +45,7 @@ Without taking these into account when routing, you’ll end up with:
 
 Envoy AI Gateway's new EPP support addresses these challenges by providing users with the option to integrate an Endpoint Picker. The endpoint picker will take these pieces of information into account and inform the gateway of the best upstream target to route the request to.
 
-![An overview of Endpoint Picker together with Envoy AI Gateway](./images/epp-blog-step-by-step.png)
+![An overview of Endpoint Picker together with Envoy AI Gateway](/img/blog/epp-blog-step-by-step.png)
 
 ### 1\. Intelligent Endpoint Selection
 
@@ -76,7 +76,7 @@ Envoy AI Gateway supports EPP integration through two powerful approaches:
 
 For simple inference workloads, you can use the standard Gateway API HTTPRoute with InferencePool. This approach offers basic intelligent routing, automatic load balancing, and straightforward configuration, making it ideal for simple use cases.
 
-![Showing the relationship between HTTPRoute and InferencePool Kubernetes Resources](./images/epp-blog-http-route.png)
+![Showing the relationship between HTTPRoute and InferencePool Kubernetes Resources](/img/blog/epp-blog-http-route.png)
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -115,7 +115,7 @@ This approach provides:
 
 For advanced AI-specific features, use Envoy AI Gateway's custom AIGatewayRoute.
 
-![Showing the relationship between AIGatewayRoute and InferencePool Kubernetes Resources](./images/epp-blog-aigwroute.png)
+![Showing the relationship between AIGatewayRoute and InferencePool Kubernetes Resources](/img/blog/epp-blog-aigwroute.png)
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1

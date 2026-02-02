@@ -47,6 +47,10 @@ helm install phoenix oci://registry-1.docker.io/arizephoenix/phoenix-helm \
   --namespace envoy-ai-gateway-system \
   --set auth.enableAuth=false \
   --set server.port=6006
+
+# Wait for Phoenix to be ready (first run may take a few minutes to pull images)
+kubectl wait --timeout=5m -n envoy-ai-gateway-system \
+  pods -l app.kubernetes.io/name=phoenix --for=condition=Ready
 ```
 
 ### Configure AI Gateway with OpenTelemetry
@@ -58,11 +62,12 @@ Upgrade your AI Gateway installation with [OpenTelemetry configuration][otel-con
     --version v${vars.aigwVersion} \\
     --namespace envoy-ai-gateway-system \\
     --set "extProc.extraEnvVars[0].name=OTEL_EXPORTER_OTLP_ENDPOINT" \\
-    --set "extProc.extraEnvVars[0].value=http://phoenix-svc:6006" \\
+    --set "extProc.extraEnvVars[0].value=http://phoenix-svc.envoy-ai-gateway-system:6006" \\
     --set "extProc.extraEnvVars[1].name=OTEL_METRICS_EXPORTER" \\
     --set "extProc.extraEnvVars[1].value=none"
 # OTEL_SERVICE_NAME defaults to "ai-gateway" if not set
-# OTEL_METRICS_EXPORTER=none because Phoenix only supports traces, not metrics`}
+# OTEL_METRICS_EXPORTER=none because Phoenix only supports traces, not metrics
+# Note: Use fully-qualified service name because ext-proc runs in envoy-gateway-system namespace`}
 </CodeBlock>
 
 Wait for the gateway pod to be ready:
@@ -94,7 +99,7 @@ kubectl logs -n envoy-ai-gateway-system deployment/phoenix | grep "POST /v1/trac
 Port-forward to access the Phoenix dashboard:
 
 ```shell
-kubectl port-forward -n envoy-ai-gateway-system svc/phoenix 6006:6006
+kubectl port-forward -n envoy-ai-gateway-system svc/phoenix-svc 6006:6006
 ```
 
 Then open http://localhost:6006 in your browser to explore the traces.
@@ -152,27 +157,33 @@ There's no standard name for session ID headers, but there is a common attribute
 in OpenTelemetry, [session.id][otel-session], which has special handling in some
 OpenTelemetry platforms such as [Phoenix][phoenix-session].
 
-To bridge this gap, Envoy AI Gateway has two configurations to map HTTP request
-headers to OpenTelemetry attributes, one for spans and one for metrics.
+To bridge this gap, Envoy AI Gateway lets you map HTTP request headers to
+OpenTelemetry attributes. You can define a base mapping shared by metrics,
+spans, and access logs, plus optional per-signal mappings for metrics, spans,
+and access logs.
 
+- `controller.requestHeaderAttributes`
 - `controller.spanRequestHeaderAttributes`
 - `controller.metricsRequestHeaderAttributes`
+- `controller.logRequestHeaderAttributes`
+
+`controller.spanRequestHeaderAttributes` and `controller.logRequestHeaderAttributes` default to `agent-session-id:session.id` when unset (set them to an empty string to disable the default). Metrics never default to `session.id`.
 
 Both of these use the same value format: a comma-separated list of
 `<http-header>:<otel-attribute>` pairs. For example, if your session ID header
-is `x-session-id`, you can map it to the standard OpenTelemetry attribute
-`session.id` like this: `x-session-id:session.id`.
+is `agent-session-id`, you can map it to the standard OpenTelemetry attribute
+`session.id` like this: `agent-session-id:session.id`.
 
 Some metrics systems will be able to do fine-grained aggregation, but not all.
-Here's an example of setting the session ID header for spans, but not metrics:
+Here's an example of keeping the default session mapping for spans/logs while
+only adding a low-cardinality attribute to metrics:
 
 <CodeBlock language="shell">
 {`helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \\
     --version v${vars.aigwVersion} \\
     --namespace envoy-ai-gateway-system \\
     --reuse-values \\
-    --set "controller.metricsRequestHeaderAttributes=x-user-id:user.id" \\
-    --set "controller.spanRequestHeaderAttributes=x-session-id:session.id,x-user-id:user.id"`}
+    --set "controller.metricsRequestHeaderAttributes=x-tenant-id:tenant.id"`}
 </CodeBlock>
 
 ## Cleanup

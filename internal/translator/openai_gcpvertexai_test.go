@@ -1238,6 +1238,28 @@ data: [DONE]
 `),
 			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8), // Does not support Cache Creation.
 		},
+		{
+			name: "stream chunks with thought signature on text part",
+			respHeaders: map[string]string{
+				"content-type": "application/json",
+			},
+			body: `data: {"candidates":[{"content":{"parts":[{"text":"let me think about this.", "thought": true}]}}]}
+
+data: {"candidates":[{"content":{"parts":[{"text":"The answer is 42.", "thoughtSignature": "dGVzdHNpZ25hdHVyZQ=="}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":8,"totalTokenCount":18}}`,
+			stream:        true,
+			endOfStream:   true,
+			wantError:     false,
+			wantHeaderMut: nil,
+			wantBodyMut: []byte(`data: {"choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":{"text":"let me think about this."}}}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"index":0,"delta":{"content":"The answer is 42.","role":"assistant","reasoning_content":{"signature":"dGVzdHNpZ25hdHVyZQ=="}}}],"object":"chat.completion.chunk"}
+
+data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":8,"total_tokens":18,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+
+data: [DONE]
+`),
+			wantTokenUsage: tokenUsageFrom(10, 0, -1, 8, 18),
+		},
 	}
 
 	for _, tc := range tests {
@@ -1607,7 +1629,7 @@ func TestExtractToolCallsFromGeminiPartsStream(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			o := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
-			calls, err := o.extractToolCallsFromGeminiPartsStream(toolCalls, tt.input, json.MarshalForDeterministicTesting)
+			calls, _, err := o.extractToolCallsFromGeminiPartsStream(toolCalls, tt.input, json.MarshalForDeterministicTesting)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -1644,11 +1666,11 @@ func TestExtractToolCallsStreamVsNonStream(t *testing.T) {
 	o := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
 
 	// Get results from both functions
-	streamCalls, err := o.extractToolCallsFromGeminiPartsStream(toolCallsStream, parts, json.MarshalForDeterministicTesting)
+	streamCalls, _, err := o.extractToolCallsFromGeminiPartsStream(toolCallsStream, parts, json.MarshalForDeterministicTesting)
 	require.NoError(t, err)
 	require.Len(t, streamCalls, 1)
 
-	nonStreamCalls, err := extractToolCallsFromGeminiParts(toolCalls, parts, json.MarshalForDeterministicTesting)
+	nonStreamCalls, _, err := extractToolCallsFromGeminiParts(toolCalls, parts, json.MarshalForDeterministicTesting)
 	require.NoError(t, err)
 	require.Len(t, nonStreamCalls, 1)
 
@@ -1708,7 +1730,7 @@ func TestExtractToolCallsStreamIndexing(t *testing.T) {
 	}
 	o := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
 
-	calls, err := o.extractToolCallsFromGeminiPartsStream(toolCalls, parts, json.MarshalForDeterministicTesting)
+	calls, _, err := o.extractToolCallsFromGeminiPartsStream(toolCalls, parts, json.MarshalForDeterministicTesting)
 	require.NoError(t, err)
 	require.Len(t, calls, 3)
 
@@ -1842,6 +1864,60 @@ data: {"candidates": [
 		chunk.Choices[0].Delta.ToolCalls[0].ID = ptr.To("123")
 		require.Equal(t, chunk, expectedChatCompletionChunks[idx])
 	}
+}
+
+// TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingToolCallWithSignature tests that
+// streaming tool calls with thought signatures are correctly translated.
+func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingToolCallWithSignature(t *testing.T) {
+	translator := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
+
+	// GCP streaming response with thinking followed by tool call with signature
+	gcpStreamingChunk := `data: {"candidates":[{"content":{"parts":[{"text":"let me think about this.", "thought": true}]}}]}
+
+data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"get_weather","args":{"location":"Paris"}},"thoughtSignature":"dG9vbGNhbGxzaWduYXR1cmU="}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":15,"candidatesTokenCount":10,"totalTokenCount":25}}`
+
+	headerMut, body, tokenUsage, _, err := translator.handleStreamingResponse(
+		bytes.NewReader([]byte(gcpStreamingChunk)),
+		false,
+		nil,
+	)
+
+	require.Nil(t, headerMut)
+	require.NoError(t, err)
+	require.NotNil(t, body)
+
+	chatCompletionChunks := getChatCompletionResponseChunk(body)
+	// We expect 3 chunks: thinking content, tool call with signature, and usage
+	require.Len(t, chatCompletionChunks, 3)
+
+	// Verify first chunk (thinking content)
+	firstChunk := chatCompletionChunks[0]
+	assert.Equal(t, "assistant", firstChunk.Choices[0].Delta.Role)
+	require.NotNil(t, firstChunk.Choices[0].Delta.ReasoningContent)
+	assert.Equal(t, "let me think about this.", firstChunk.Choices[0].Delta.ReasoningContent.Text)
+
+	// Verify second chunk (tool call with signature)
+	secondChunk := chatCompletionChunks[1]
+	assert.Equal(t, openai.ChatCompletionChoicesFinishReason("tool_calls"), secondChunk.Choices[0].FinishReason)
+	require.Len(t, secondChunk.Choices[0].Delta.ToolCalls, 1)
+	assert.Equal(t, "get_weather", secondChunk.Choices[0].Delta.ToolCalls[0].Function.Name)
+	assert.JSONEq(t, `{"location":"Paris"}`, secondChunk.Choices[0].Delta.ToolCalls[0].Function.Arguments)
+
+	// Verify signature is present in reasoning content
+	require.NotNil(t, secondChunk.Choices[0].Delta.ReasoningContent)
+	assert.Equal(t, "dG9vbGNhbGxzaWduYXR1cmU=", secondChunk.Choices[0].Delta.ReasoningContent.Signature)
+
+	// Third chunk is usage - verify it exists
+	thirdChunk := chatCompletionChunks[2]
+	assert.NotNil(t, thirdChunk.Usage)
+
+	// Verify token usage
+	inputTokens, ok := tokenUsage.InputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(15), inputTokens)
+	outputTokens, ok := tokenUsage.OutputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(10), outputTokens)
 }
 
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingEndOfStream(t *testing.T) {
@@ -2187,6 +2263,32 @@ data: {"candidates":[{"content":{"parts":[{"text":"world"}]}}]}
 	}
 }
 
+// TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody_ReturnsEmptyBodyNotNil
+// verifies that when streaming chunks cannot be parsed (incomplete data is buffered),
+// ResponseBody returns an empty slice []byte{} instead of nil. This prevents Envoy from
+// passing through the original Gemini-format body unchanged in STREAMED mode.
+func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody_ReturnsEmptyBodyNotNil(t *testing.T) {
+	translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{
+		stream:       true,
+		requestModel: "gemini-2.0-flash",
+	}
+
+	// Simulate incomplete/unparseable data that will be buffered (e.g., TCP packet boundary)
+	incompleteChunk := []byte(`data: {"candidates":[{"content":{"parts":[{"text":"Hello`)
+
+	_, newBody, _, _, err := translator.ResponseBody(
+		nil,
+		bytes.NewReader(incompleteChunk),
+		false, // not end of stream
+		nil,   // no span
+	)
+
+	require.NoError(t, err)
+	// newBody must be empty slice, NOT nil - nil causes Envoy to pass through original body
+	require.NotNil(t, newBody, "newBody must not be nil - nil causes Envoy to pass through original body in STREAMED mode")
+	require.Empty(t, newBody, "newBody should be empty when no complete chunks are parsed")
+}
+
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseError(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -2380,4 +2482,160 @@ func TestResponseModel_GCPVertexAI(t *testing.T) {
 	outputTokens, ok := tokenUsage.OutputTokens()
 	require.True(t, ok)
 	require.Equal(t, uint32(5), outputTokens)
+}
+
+func TestGCPVertexAIRedactBody(t *testing.T) {
+	t.Run("redacts message content", func(t *testing.T) {
+		translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{}
+
+		originalContent := "This is sensitive AI-generated content from GCP"
+		resp := &openai.ChatCompletionResponse{
+			ID:     "chatcmpl-gcp-123",
+			Model:  "gemini-1.5-pro",
+			Object: "chat.completion",
+			Choices: []openai.ChatCompletionResponseChoice{
+				{
+					Index: 0,
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role:    "assistant",
+						Content: &originalContent,
+					},
+					FinishReason: "stop",
+				},
+			},
+			Usage: openai.Usage{
+				PromptTokens:     10,
+				CompletionTokens: 5,
+				TotalTokens:      15,
+			},
+		}
+
+		redacted := translator.RedactBody(resp)
+
+		// Verify original is not modified
+		require.Equal(t, "This is sensitive AI-generated content from GCP", *resp.Choices[0].Message.Content)
+
+		// Verify redacted copy has redacted content
+		require.NotNil(t, redacted.Choices[0].Message.Content)
+		require.Contains(t, *redacted.Choices[0].Message.Content, "[REDACTED LENGTH=")
+		require.Contains(t, *redacted.Choices[0].Message.Content, "HASH=")
+		require.NotContains(t, *redacted.Choices[0].Message.Content, "sensitive")
+
+		// Verify non-sensitive fields are preserved
+		require.Equal(t, "chatcmpl-gcp-123", redacted.ID)
+		require.Equal(t, "gemini-1.5-pro", redacted.Model)
+		require.Equal(t, 10, redacted.Usage.PromptTokens)
+		require.Equal(t, 5, redacted.Usage.CompletionTokens)
+	})
+
+	t.Run("redacts tool calls", func(t *testing.T) {
+		translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{}
+
+		resp := &openai.ChatCompletionResponse{
+			ID:    "chatcmpl-gcp-456",
+			Model: "gemini-1.5-pro",
+			Choices: []openai.ChatCompletionResponseChoice{
+				{
+					Index: 0,
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role: "assistant",
+						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+							{
+								ID:   ptr.To("call_gcp_123"),
+								Type: "function",
+								Function: openai.ChatCompletionMessageToolCallFunctionParam{
+									Name:      "search_web",
+									Arguments: `{"query": "GCP Vertex AI pricing"}`,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		redacted := translator.RedactBody(resp)
+
+		// Verify original is not modified
+		require.Equal(t, "search_web", resp.Choices[0].Message.ToolCalls[0].Function.Name)
+		require.Contains(t, resp.Choices[0].Message.ToolCalls[0].Function.Arguments, "GCP Vertex AI")
+
+		// Verify redacted copy has redacted tool calls
+		require.Len(t, redacted.Choices[0].Message.ToolCalls, 1)
+		require.Contains(t, redacted.Choices[0].Message.ToolCalls[0].Function.Name, "[REDACTED")
+		require.Contains(t, redacted.Choices[0].Message.ToolCalls[0].Function.Arguments, "[REDACTED")
+		require.NotContains(t, redacted.Choices[0].Message.ToolCalls[0].Function.Arguments, "GCP Vertex AI")
+	})
+
+	t.Run("redacts reasoning content", func(t *testing.T) {
+		translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{}
+
+		originalContent := "Main response"
+		reasoningContent := "This is extended thinking content from Gemini"
+		resp := &openai.ChatCompletionResponse{
+			ID:    "chatcmpl-gcp-789",
+			Model: "gemini-1.5-pro",
+			Choices: []openai.ChatCompletionResponseChoice{
+				{
+					Index: 0,
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role:    "assistant",
+						Content: &originalContent,
+						ReasoningContent: &openai.ReasoningContentUnion{
+							Value: reasoningContent,
+						},
+					},
+				},
+			},
+		}
+
+		redacted := translator.RedactBody(resp)
+
+		// Verify original is not modified
+		require.Equal(t, "This is extended thinking content from Gemini", resp.Choices[0].Message.ReasoningContent.Value)
+
+		// Verify redacted copy has redacted reasoning content
+		require.NotNil(t, redacted.Choices[0].Message.ReasoningContent)
+		redactedReasoning, ok := redacted.Choices[0].Message.ReasoningContent.Value.(string)
+		require.True(t, ok)
+		require.Contains(t, redactedReasoning, "[REDACTED")
+		require.NotContains(t, redactedReasoning, "extended thinking")
+	})
+
+	t.Run("handles nil response", func(t *testing.T) {
+		translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{}
+
+		redacted := translator.RedactBody(nil)
+
+		require.Nil(t, redacted)
+	})
+
+	t.Run("does not modify original response", func(t *testing.T) {
+		translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{}
+
+		originalContent := "Original GCP content"
+		resp := &openai.ChatCompletionResponse{
+			ID:    "chatcmpl-gcp-999",
+			Model: "gemini-1.5-pro",
+			Choices: []openai.ChatCompletionResponseChoice{
+				{
+					Index: 0,
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role:    "assistant",
+						Content: &originalContent,
+					},
+				},
+			},
+		}
+
+		// Create a copy of the original for comparison
+		originalContentCopy := *resp.Choices[0].Message.Content
+
+		// Redact the response
+		_ = translator.RedactBody(resp)
+
+		// Verify original is completely unchanged
+		require.Equal(t, originalContentCopy, *resp.Choices[0].Message.Content)
+		require.NotContains(t, *resp.Choices[0].Message.Content, "[REDACTED")
+	})
 }

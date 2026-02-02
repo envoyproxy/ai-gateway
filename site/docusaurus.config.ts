@@ -77,6 +77,10 @@ const config: Config = {
 
   themes: ['@docusaurus/theme-mermaid'],
 
+  plugins: [
+    './src/plugins/latestBlogsPlugin.ts',
+  ],
+
   presets: [
     [
       'classic',
@@ -93,6 +97,11 @@ const config: Config = {
               path: '/',
               banner: 'none'
             },
+            '0.5': {
+              label: '0.5',
+              path: '0.5',
+              banner: 'none'
+            },
             '0.4': {
               label: '0.4',
               path: '0.4',
@@ -101,12 +110,12 @@ const config: Config = {
             '0.3': {
               label: '0.3',
               path: '0.3',
-              banner: 'none'
+              banner: 'unmaintained',
             },
             '0.2': {
               label: '0.2',
               path: '0.2',
-              banner: 'none'
+              banner: 'unmaintained',
             },
             '0.1': {
               label: '0.1',

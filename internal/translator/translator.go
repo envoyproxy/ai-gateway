@@ -7,6 +7,7 @@ package translator
 
 import (
 	"io"
+	"log/slog"
 
 	"github.com/tidwall/sjson"
 
@@ -74,6 +75,28 @@ type Translator[ReqT any, SpanT any] interface {
 	)
 }
 
+// ResponseRedactor is an optional interface that translators can implement
+// to support response body redaction for debug logging.
+type ResponseRedactor interface {
+	// SetRedactionConfig configures redaction settings for the translator.
+	SetRedactionConfig(debugLogEnabled, enableRedaction bool, logger *slog.Logger)
+	// RedactBody creates a redacted copy of the response for safe logging.
+	// Returns a new ChatCompletionResponse with sensitive fields redacted.
+	// The original response is never modified.
+	RedactBody(resp *openai.ChatCompletionResponse) *openai.ChatCompletionResponse
+}
+
+// AnthropicResponseRedactor is an optional interface that Anthropic translators
+// can implement to support response body redaction for debug logging.
+type AnthropicResponseRedactor interface {
+	// SetRedactionConfig configures redaction settings for the translator.
+	SetRedactionConfig(debugLogEnabled, enableRedaction bool, logger *slog.Logger)
+	// RedactAnthropicBody creates a redacted copy of the Anthropic response for safe logging.
+	// Returns a new MessagesResponse with sensitive fields redacted.
+	// The original response is never modified.
+	RedactAnthropicBody(resp *anthropicschema.MessagesResponse) *anthropicschema.MessagesResponse
+}
+
 type (
 	// OpenAIChatCompletionTranslator translates the OpenAI's /chat/completions endpoint.
 	OpenAIChatCompletionTranslator = Translator[openai.ChatCompletionRequest, tracingapi.ChatCompletionSpan]
@@ -91,10 +114,18 @@ type (
 	OpenAIResponsesTranslator = Translator[openai.ResponseRequest, tracingapi.ResponsesSpan]
 )
 
-// sjsonOptions are the options used for sjson operations in the translator.
-var sjsonOptions = &sjson.Options{
-	Optimistic: true,
-	// Note: DO NOT set ReplaceInPlace to true since at the translation layer, which might be called multiple times per retry,
-	// it must be ensured that the original body is not modified, i.e. the operation must be idempotent.
-	ReplaceInPlace: false,
-}
+var (
+	// sjsonOptions are the options used for sjson operations in the translator.
+	sjsonOptions = &sjson.Options{
+		Optimistic: true,
+		// Note: DO NOT set ReplaceInPlace to true since at the translation layer, which might be called multiple times per retry,
+		// it must be ensured that the original body is not modified, i.e. the operation must be idempotent.
+		ReplaceInPlace: false,
+	}
+	// sjsonOptionsInPlace are the options used for sjson operations that modify the body in place.
+	// Note: make sure the original body is not modified when using this in the translation layer.
+	sjsonOptionsInPlace = &sjson.Options{
+		Optimistic:     true,
+		ReplaceInPlace: true,
+	}
+)

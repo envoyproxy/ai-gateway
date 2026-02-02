@@ -7,8 +7,9 @@ package metrics
 
 import (
 	"context"
-	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -181,7 +182,6 @@ func (m *mcp) WithRequestAttributes(req *http.Request) MCPMetrics {
 		requestHeaderAttributeMapping: m.requestHeaderAttributeMapping,
 	}
 
-	// Apply header-to-attribute mapping if configured.
 	for headerName, attrName := range m.requestHeaderAttributeMapping {
 		if headerValue := req.Header.Get(headerName); headerValue != "" {
 			withAttrs.defaultAttributes = append(
@@ -329,17 +329,36 @@ func (m *mcp) RecordServerCapabilities(ctx context.Context, serverCapa *mcpsdk.S
 	}
 }
 
-// withDefaultAttributes appends default attributes to the provided attributes.
+// withDefaultAttributes merges defaults, request-mapped, and call-site attrs,
+// preferring later values and emitting a stable key order.
 func (m *mcp) withDefaultAttributes(params mcpsdk.Params, attrs ...attribute.KeyValue) metric.MeasurementOption {
-	all := make([]attribute.KeyValue, 0, len(m.defaultAttributes)+len(m.requestHeaderAttributeMapping)+len(attrs))
-	all = append(all, m.defaultAttributes...)
+	merged := make(map[attribute.Key]attribute.Value, len(m.defaultAttributes)+len(attrs))
+
+	for _, kv := range m.defaultAttributes {
+		merged[kv.Key] = kv.Value
+	}
+
 	if params != nil {
 		for src, target := range m.requestHeaderAttributeMapping {
 			if v := lang.CaseInsensitiveValue(params.GetMeta(), src); v != "" {
-				all = append(all, attribute.String(target, fmt.Sprintf("%v", v)))
+				merged[attribute.Key(target)] = attribute.StringValue(v)
 			}
 		}
 	}
-	all = append(all, attrs...)
+
+	for _, kv := range attrs {
+		merged[kv.Key] = kv.Value
+	}
+
+	all := make([]attribute.KeyValue, 0, len(merged))
+	for key, value := range merged {
+		all = append(all, attribute.KeyValue{Key: key, Value: value})
+	}
+
+	// Sort attributes by key for consistency.
+	slices.SortFunc(all, func(a, b attribute.KeyValue) int {
+		return strings.Compare(string(a.Key), string(b.Key))
+	})
+
 	return metric.WithAttributes(all...)
 }

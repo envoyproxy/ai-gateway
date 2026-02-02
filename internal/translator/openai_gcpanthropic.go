@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/internal/redaction"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
@@ -53,6 +55,10 @@ type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
 	modelNameOverride internalapi.ModelNameOverride
 	streamParser      *anthropicStreamParser
 	requestModel      internalapi.RequestModel
+	// Redaction configuration for debug logging
+	debugLogEnabled bool
+	enableRedaction bool
+	logger          *slog.Logger
 }
 
 func anthropicToOpenAIFinishReason(stopReason anthropic.StopReason) (openai.ChatCompletionChoicesFinishReason, error) {
@@ -395,7 +401,7 @@ func processAssistantContent(content openai.ChatCompletionAssistantMessageParamC
 	case openai.ChatCompletionAssistantMessageParamContentTypeThinking:
 		// thinking can not be cached: https://platform.claude.com/docs/en/build-with-claude/prompt-caching
 		if content.Text != nil && content.Signature != nil {
-			thinkBlock := anthropic.NewThinkingBlock(*content.Text, *content.Signature)
+			thinkBlock := anthropic.NewThinkingBlock(*content.Signature, *content.Text)
 			return &thinkBlock, nil
 		}
 	case openai.ChatCompletionAssistantMessageParamContentTypeRedactedThinking:
@@ -789,6 +795,75 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseError(respHeade
 	return
 }
 
+// SetRedactionConfig implements [ResponseRedactor.SetRedactionConfig].
+func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) SetRedactionConfig(debugLogEnabled, enableRedaction bool, logger *slog.Logger) {
+	o.debugLogEnabled = debugLogEnabled
+	o.enableRedaction = enableRedaction
+	o.logger = logger
+}
+
+// RedactBody implements [ResponseRedactor.RedactBody].
+// Creates a redacted copy of the response for safe logging without modifying the original.
+// Reuses the same redaction logic since GCP Anthropic responses are converted to OpenAI format.
+func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RedactBody(resp *openai.ChatCompletionResponse) *openai.ChatCompletionResponse {
+	if resp == nil {
+		return nil
+	}
+
+	// Create a shallow copy of the response
+	redacted := *resp
+
+	// Redact choices (contains AI-generated content)
+	if len(resp.Choices) > 0 {
+		redacted.Choices = make([]openai.ChatCompletionResponseChoice, len(resp.Choices))
+		for i := range resp.Choices {
+			redactedChoice := resp.Choices[i]
+			redactedChoice.Message = redactGCPAnthropicResponseMessage(&resp.Choices[i].Message)
+			redacted.Choices[i] = redactedChoice
+		}
+	}
+
+	return &redacted
+}
+
+// redactGCPAnthropicResponseMessage redacts sensitive content from a GCP Anthropic response message
+// that has been converted to OpenAI format.
+func redactGCPAnthropicResponseMessage(msg *openai.ChatCompletionResponseChoiceMessage) openai.ChatCompletionResponseChoiceMessage {
+	redactedMsg := *msg
+
+	// Redact message content (AI-generated text)
+	if msg.Content != nil {
+		redactedContent := redaction.RedactString(*msg.Content)
+		redactedMsg.Content = &redactedContent
+	}
+
+	// Redact tool calls (may contain sensitive function arguments)
+	if len(msg.ToolCalls) > 0 {
+		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.ToolCalls))
+		for i, tc := range msg.ToolCalls {
+			redactedToolCall := tc
+			redactedToolCall.Function.Name = redaction.RedactString(tc.Function.Name)
+			redactedToolCall.Function.Arguments = redaction.RedactString(tc.Function.Arguments)
+			redactedMsg.ToolCalls[i] = redactedToolCall
+		}
+	}
+
+	// Redact audio data if present
+	if msg.Audio != nil {
+		redactedAudio := *msg.Audio
+		redactedAudio.Data = redaction.RedactString(msg.Audio.Data)
+		redactedAudio.Transcript = redaction.RedactString(msg.Audio.Transcript)
+		redactedMsg.Audio = &redactedAudio
+	}
+
+	// Redact reasoning content if present (thinking blocks from Anthropic)
+	if msg.ReasoningContent != nil {
+		redactedMsg.ReasoningContent = redactReasoningContent(msg.ReasoningContent)
+	}
+
+	return redactedMsg
+}
+
 // ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders].
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[string]string) (
 	newHeaders []internalapi.Header, err error,
@@ -828,6 +903,15 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
 		Created: openai.JSONUNIXTime(time.Now()),
 	}
+
+	// Redact and log response when enabled
+	if o.debugLogEnabled && o.enableRedaction && o.logger != nil {
+		redactedResp := o.RedactBody(openAIResp)
+		if jsonBody, marshalErr := json.Marshal(redactedResp); marshalErr == nil {
+			o.logger.Debug("response body processing", slog.Any("response", string(jsonBody)))
+		}
+	}
+
 	usage := anthropicResp.Usage
 	tokenUsage = metrics.ExtractTokenUsageFromExplicitCaching(
 		usage.InputTokens,

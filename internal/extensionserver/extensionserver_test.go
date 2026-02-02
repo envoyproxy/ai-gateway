@@ -15,11 +15,15 @@ import (
 
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
+	mutation_rulesv3 "github.com/envoyproxy/go-control-plane/envoy/config/common/mutation_rules/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
+	header_mutationv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/header_mutation/v3"
+	htomv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/header_to_metadata/v3"
+	upstream_codecv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/upstream_codec/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	httpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
@@ -65,29 +69,30 @@ func newFakeClient() client.Client {
 const udsPath = "/tmp/uds/test.sock"
 
 func TestNew(t *testing.T) {
-	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
+	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+	require.NoError(t, err)
 	require.NotNil(t, s)
 }
 
 func TestCheck(t *testing.T) {
-	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
-	_, err := s.Check(t.Context(), nil)
+	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+	require.NoError(t, err)
+	_, err = s.Check(t.Context(), nil)
 	require.NoError(t, err)
 }
 
 func TestWatch(t *testing.T) {
-	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
-	err := s.Watch(nil, nil)
+	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+	require.NoError(t, err)
+	err = s.Watch(nil, nil)
 	require.Error(t, err)
 	require.Equal(t, "rpc error: code = Unimplemented desc = Watch is not implemented", err.Error())
 }
 
 func TestServerPostTranslateModify(t *testing.T) {
 	t.Run("existing", func(t *testing.T) {
-		s := New(newFakeClient(), logr.Discard(), udsPath, false)
+		s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+		require.NoError(t, err)
 		req := &egextension.PostTranslateModifyRequest{Clusters: []*clusterv3.Cluster{{Name: extProcUDSClusterName}}}
 		res, err := s.PostTranslateModify(t.Context(), req)
 		require.Equal(t, &egextension.PostTranslateModifyResponse{
@@ -96,7 +101,8 @@ func TestServerPostTranslateModify(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("not existing", func(t *testing.T) {
-		s := New(newFakeClient(), logr.Discard(), udsPath, false)
+		s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+		require.NoError(t, err)
 		res, err := s.PostTranslateModify(t.Context(), &egextension.PostTranslateModifyRequest{
 			Clusters: []*clusterv3.Cluster{{Name: "foo"}},
 		})
@@ -112,7 +118,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 	c := newFakeClient()
 
 	// Create some fake AIGatewayRoute objects.
-	err := c.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+	require.NoError(t, c.Create(t.Context(), &aigv1a1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "myroute",
 			Namespace: "ns",
@@ -128,8 +134,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 				},
 			},
 		},
-	})
-	require.NoError(t, err)
+	}))
 
 	for _, tc := range []struct {
 		c      *clusterv3.Cluster
@@ -148,49 +153,266 @@ func Test_maybeModifyCluster(t *testing.T) {
 	} {
 		t.Run("error/"+tc.errLog, func(t *testing.T) {
 			var buf bytes.Buffer
-			s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
+			s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
+			require.NoError(t, err)
 			err = s.maybeModifyCluster(tc.c)
 			require.NoError(t, err)
 			t.Logf("buf: %s", buf.String())
 			require.Contains(t, buf.String(), tc.errLog)
 		})
 	}
-	t.Run("ok", func(t *testing.T) {
-		cluster := &clusterv3.Cluster{
-			Name: "httproute/ns/myroute/rule/0",
-			LoadAssignment: &endpointv3.ClusterLoadAssignment{
-				Endpoints: []*endpointv3.LocalityLbEndpoints{
-					{
-						LbEndpoints: []*endpointv3.LbEndpoint{
-							{},
+	for _, tc := range []struct {
+		name        string
+		cluster     *clusterv3.Cluster
+		expectedLog string
+		expected    *clusterv3.Cluster
+	}{
+		{
+			name: "nil LoadAssignment sets cluster metadata",
+			// In standalone mode (aigw run), EDS-managed endpoints have LoadAssignment=nil.
+			// The extension server must set cluster-level metadata so the upstream ext_proc
+			// filter can resolve the backend name via the cluster metadata fallback path.
+			cluster: &clusterv3.Cluster{
+				Name: "httproute/ns/myroute/rule/0",
+			},
+			expectedLog: "msg=\"LoadAssignment is nil, setting cluster-level metadata\" logger=envoy-gateway-extension-server cluster_name=httproute/ns/myroute/rule/0\n",
+			expected: &clusterv3.Cluster{
+				Name: "httproute/ns/myroute/rule/0",
+				Metadata: &corev3.Metadata{
+					FilterMetadata: map[string]*structpb.Struct{
+						internalapi.InternalEndpointMetadataNamespace: {
+							Fields: map[string]*structpb.Value{
+								internalapi.InternalMetadataBackendNameKey: structpb.NewStringValue(
+									internalapi.PerRouteRuleRefBackendName("ns", "aaa", "myroute", 0, 0),
+								),
+							},
 						},
 					},
-					{
-						LbEndpoints: []*endpointv3.LbEndpoint{
-							{},
+				},
+				TypedExtensionProtocolOptions: map[string]*anypb.Any{
+					"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, &httpv3.HttpProtocolOptions{
+						UpstreamProtocolOptions: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_{ExplicitHttpConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig{
+							ProtocolConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{},
+						}},
+						HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
+							{
+								Name: aiGatewayExtProcName,
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &extprocv3.ExternalProcessor{
+										MetadataOptions: &extprocv3.MetadataOptions{
+											ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
+												Untyped: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
+											},
+										},
+										AllowModeOverride: true,
+										RequestAttributes: []string{
+											internalapi.XDSUpstreamHostMetadataBackendNamePath,
+											internalapi.XDSClusterMetadataBackendNamePath,
+										},
+										ProcessingMode: &extprocv3.ProcessingMode{
+											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
+											RequestBodyMode:    extprocv3.ProcessingMode_NONE,
+											ResponseHeaderMode: extprocv3.ProcessingMode_SKIP,
+											ResponseBodyMode:   extprocv3.ProcessingMode_NONE,
+										},
+										MessageTimeout: durationpb.New(10 * time.Second),
+										GrpcService: &corev3.GrpcService{
+											TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
+												EnvoyGrpc: &corev3.GrpcService_EnvoyGrpc{
+													ClusterName: extProcUDSClusterName,
+												},
+											},
+											Timeout: durationpb.New(30 * time.Second),
+										},
+									}),
+								},
+							},
+							{
+								Name: "envoy.filters.http.header_mutation",
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &header_mutationv3.HeaderMutation{
+										Mutations: &header_mutationv3.Mutations{
+											RequestMutations: []*mutation_rulesv3.HeaderMutation{
+												{
+													Action: &mutation_rulesv3.HeaderMutation_Append{
+														Append: &corev3.HeaderValueOption{
+															AppendAction: corev3.HeaderValueOption_ADD_IF_ABSENT,
+															Header: &corev3.HeaderValue{
+																Key:   "content-length",
+																Value: `%DYNAMIC_METADATA(` + aigv1a1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
+															},
+														},
+													},
+												},
+											},
+										},
+									}),
+								},
+							},
+							{
+								Name: "envoy.filters.http.upstream_codec",
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
+								},
+							},
+						},
+					}),
+				},
+			},
+		},
+		{
+			name: "ok with LoadAssignment",
+			cluster: &clusterv3.Cluster{
+				Name: "httproute/ns/myroute/rule/0",
+				LoadAssignment: &endpointv3.ClusterLoadAssignment{
+					Endpoints: []*endpointv3.LocalityLbEndpoints{
+						{
+							LbEndpoints: []*endpointv3.LbEndpoint{
+								{},
+							},
+						},
+						{
+							LbEndpoints: []*endpointv3.LbEndpoint{
+								{},
+							},
 						},
 					},
 				},
 			},
-		}
-		var buf bytes.Buffer
-		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
-		err = s.maybeModifyCluster(cluster)
-		require.NoError(t, err)
-		require.Empty(t, buf.String())
+			expectedLog: "",
+			expected: &clusterv3.Cluster{
+				Name: "httproute/ns/myroute/rule/0",
+				LoadAssignment: &endpointv3.ClusterLoadAssignment{
+					Endpoints: []*endpointv3.LocalityLbEndpoints{
+						{
+							Priority: 0,
+							LbEndpoints: []*endpointv3.LbEndpoint{
+								{
+									Metadata: &corev3.Metadata{
+										FilterMetadata: map[string]*structpb.Struct{
+											internalapi.InternalEndpointMetadataNamespace: {
+												Fields: map[string]*structpb.Value{
+													internalapi.InternalMetadataBackendNameKey: structpb.NewStringValue(
+														internalapi.PerRouteRuleRefBackendName("ns", "aaa", "myroute", 0, 0),
+													),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						{
+							Priority: 1,
+							LbEndpoints: []*endpointv3.LbEndpoint{
+								{
+									Metadata: &corev3.Metadata{
+										FilterMetadata: map[string]*structpb.Struct{
+											internalapi.InternalEndpointMetadataNamespace: {
+												Fields: map[string]*structpb.Value{
+													internalapi.InternalMetadataBackendNameKey: structpb.NewStringValue(
+														internalapi.PerRouteRuleRefBackendName("ns", "bbb", "myroute", 0, 2),
+													),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				TypedExtensionProtocolOptions: map[string]*anypb.Any{
+					"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, &httpv3.HttpProtocolOptions{
+						UpstreamProtocolOptions: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_{ExplicitHttpConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig{
+							ProtocolConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{},
+						}},
+						HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
+							{
+								Name: aiGatewayExtProcName,
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &extprocv3.ExternalProcessor{
+										MetadataOptions: &extprocv3.MetadataOptions{
+											ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
+												Untyped: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
+											},
+										},
+										AllowModeOverride: true,
+										RequestAttributes: []string{
+											internalapi.XDSUpstreamHostMetadataBackendNamePath,
+											internalapi.XDSClusterMetadataBackendNamePath,
+										},
+										ProcessingMode: &extprocv3.ProcessingMode{
+											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
+											RequestBodyMode:    extprocv3.ProcessingMode_NONE,
+											ResponseHeaderMode: extprocv3.ProcessingMode_SKIP,
+											ResponseBodyMode:   extprocv3.ProcessingMode_NONE,
+										},
+										MessageTimeout: durationpb.New(10 * time.Second),
+										GrpcService: &corev3.GrpcService{
+											TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
+												EnvoyGrpc: &corev3.GrpcService_EnvoyGrpc{
+													ClusterName: extProcUDSClusterName,
+												},
+											},
+											Timeout: durationpb.New(30 * time.Second),
+										},
+									}),
+								},
+							},
+							{
+								Name: "envoy.filters.http.header_mutation",
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &header_mutationv3.HeaderMutation{
+										Mutations: &header_mutationv3.Mutations{
+											RequestMutations: []*mutation_rulesv3.HeaderMutation{
+												{
+													Action: &mutation_rulesv3.HeaderMutation_Append{
+														Append: &corev3.HeaderValueOption{
+															AppendAction: corev3.HeaderValueOption_ADD_IF_ABSENT,
+															Header: &corev3.HeaderValue{
+																Key:   "content-length",
+																Value: `%DYNAMIC_METADATA(` + aigv1a1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
+															},
+														},
+													},
+												},
+											},
+										},
+									}),
+								},
+							},
+							{
+								Name: "envoy.filters.http.upstream_codec",
+								ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+									TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
+								},
+							},
+						},
+					}),
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{
+				ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+					if a.Key == slog.TimeKey || a.Key == slog.LevelKey {
+						return slog.Attr{}
+					}
+					return a
+				},
+			})
+			s, err := New(c, logr.FromSlogHandler(handler), udsPath, false, nil, nil)
+			require.NoError(t, err)
+			err = s.maybeModifyCluster(tc.cluster)
+			require.NoError(t, err)
 
-		require.Len(t, cluster.LoadAssignment.Endpoints, 2)
-		require.Len(t, cluster.LoadAssignment.Endpoints[0].LbEndpoints, 1)
-		require.Equal(t, uint32(0), cluster.LoadAssignment.Endpoints[0].Priority)
-		require.Equal(t, uint32(1), cluster.LoadAssignment.Endpoints[1].Priority)
-		md := cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata
-		require.NotNil(t, md)
-		require.Len(t, md.FilterMetadata, 1)
-		mmd, ok := md.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
-		require.True(t, ok)
-		require.Len(t, mmd.Fields, 1)
-		require.Equal(t, "ns/aaa/route/myroute/rule/0/ref/0", mmd.Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue())
-	})
+			require.Equal(t, tc.expectedLog, buf.String())
+			require.Equal(t, tc.expected, tc.cluster)
+		})
+	}
 }
 
 // Helper function to create an InferencePool ExtensionResource.
@@ -246,7 +468,8 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 
 	t.Run("AIGatewayRoute not found", func(t *testing.T) {
 		var buf bytes.Buffer
-		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
+		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
+		require.NoError(t, err)
 		cluster := &clusterv3.Cluster{Name: "httproute/test-ns/nonexistent-route/rule/0", Metadata: &corev3.Metadata{}}
 		err = s.maybeModifyCluster(cluster)
 		require.NoError(t, err)
@@ -255,7 +478,8 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 
 	t.Run("cluster with InferencePool metadata and existing route", func(t *testing.T) {
 		var buf bytes.Buffer
-		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
+		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
+		require.NoError(t, err)
 
 		cluster := &clusterv3.Cluster{
 			Name: "httproute/test-ns/inference-route/rule/0",
@@ -284,7 +508,8 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 	})
 
 	t.Run("cluster with existing HttpProtocolOptions", func(t *testing.T) {
-		s := New(c, logr.Discard(), udsPath, false)
+		s, err := New(c, logr.Discard(), udsPath, false, nil, nil)
+		require.NoError(t, err)
 
 		// Create existing HttpProtocolOptions.
 		existingPO := &httpv3.HttpProtocolOptions{
@@ -332,7 +557,8 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 	})
 
 	t.Run("cluster with existing ext_proc filter", func(t *testing.T) {
-		s := New(c, logr.Discard(), udsPath, false)
+		s, err := New(c, logr.Discard(), udsPath, false, nil, nil)
+		require.NoError(t, err)
 
 		// Create HttpProtocolOptions with existing ext_proc filter.
 		existingPO := &httpv3.HttpProtocolOptions{
@@ -375,7 +601,8 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 	})
 
 	t.Run("cluster with no existing HttpFilters", func(t *testing.T) {
-		s := New(c, logr.Discard(), udsPath, false)
+		s, err := New(c, logr.Discard(), udsPath, false, nil, nil)
+		require.NoError(t, err)
 
 		cluster := &clusterv3.Cluster{
 			Name: "httproute/test-ns/inference-route/rule/0",
@@ -408,7 +635,8 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 
 	t.Run("invalid HttpProtocolOptions unmarshal", func(t *testing.T) {
 		var buf bytes.Buffer
-		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
+		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
+		require.NoError(t, err)
 
 		// Create invalid Any message.
 		invalidAny := &anypb.Any{
@@ -438,7 +666,8 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 
 // TestMaybeModifyListenerAndRoutes tests the maybeModifyListenerAndRoutes function.
 func TestMaybeModifyListenerAndRoutes(t *testing.T) {
-	s := New(newFakeClient(), logr.Discard(), udsPath, false)
+	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+	require.NoError(t, err)
 
 	// Helper function to create a basic listener.
 	createListener := func(name, routeConfigName string) *listenerv3.Listener {
@@ -639,7 +868,8 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 
 // TestPatchListenerWithInferencePoolFilters tests the patchListenerWithInferencePoolFilters function.
 func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
-	s := New(newFakeClient(), logr.Discard(), udsPath, false)
+	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+	require.NoError(t, err)
 
 	// Helper function to create an InferencePool.
 	createInferencePool := func(name, namespace string) *gwaiev1.InferencePool {
@@ -688,7 +918,8 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 
 	t.Run("listener with filter chains but no HCM", func(t *testing.T) {
 		var buf bytes.Buffer
-		server := New(newFakeClient(), logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
+		server, err := New(newFakeClient(), logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
+		require.NoError(t, err)
 
 		listener := &listenerv3.Listener{
 			Name: "test-listener",
@@ -815,7 +1046,8 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 
 	t.Run("error marshaling updated HCM", func(_ *testing.T) {
 		var buf bytes.Buffer
-		server := New(newFakeClient(), logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
+		server, err := New(newFakeClient(), logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
+		require.NoError(t, err)
 
 		// Create a listener with an HCM that will cause marshaling issues.
 		// This is a bit tricky to test, but we can create a scenario where the HCM is modified
@@ -833,7 +1065,8 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 
 // TestPatchVirtualHostWithInferencePool tests the patchVirtualHostWithInferencePool function.
 func TestPatchVirtualHostWithInferencePool(t *testing.T) {
-	s := New(newFakeClient(), logr.Discard(), udsPath, false)
+	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+	require.NoError(t, err)
 
 	// Helper function to create an InferencePool.
 	createInferencePool := func(name, namespace string) *gwaiev1.InferencePool {
@@ -1041,7 +1274,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 // TestPostClusterModify tests the PostClusterModify method.
 func TestPostClusterModify(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
+	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil)
+	require.NoError(t, err)
 
 	t.Run("nil cluster", func(t *testing.T) {
 		req := &egextension.PostClusterModifyRequest{Cluster: nil}
@@ -1080,7 +1314,8 @@ func TestPostClusterModify(t *testing.T) {
 		// Use a logger that captures output for debugging.
 		var buf bytes.Buffer
 		logger := logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{}))
-		s := New(newFakeClient(), logger, udsPath, false)
+		s, err := New(newFakeClient(), logger, udsPath, false, nil, nil)
+		require.NoError(t, err)
 
 		cluster := &clusterv3.Cluster{
 			Name:     "test-cluster",
@@ -1124,7 +1359,8 @@ func TestPostClusterModify(t *testing.T) {
 // TestPostRouteModify tests the PostRouteModify method.
 func TestPostRouteModify(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
+	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil)
+	require.NoError(t, err)
 
 	t.Run("nil route", func(t *testing.T) {
 		req := &egextension.PostRouteModifyRequest{Route: nil}
@@ -1187,7 +1423,8 @@ func TestPostRouteModify(t *testing.T) {
 // TestConstructInferencePoolsFrom tests the constructInferencePoolsFrom method.
 func TestConstructInferencePoolsFrom(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
+	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil)
+	require.NoError(t, err)
 
 	t.Run("empty resources", func(t *testing.T) {
 		result := s.constructInferencePoolsFrom([]*egextension.ExtensionResource{})
@@ -1663,7 +1900,8 @@ func TestBuildClustersForInferencePoolEndpointPickers(t *testing.T) {
 // TestPostTranslateModify tests the PostTranslateModify method.
 func TestPostTranslateModify(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
+	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil)
+	require.NoError(t, err)
 
 	t.Run("empty request", func(t *testing.T) {
 		req := &egextension.PostTranslateModifyRequest{}
@@ -1685,12 +1923,132 @@ func TestPostTranslateModify(t *testing.T) {
 		require.Equal(t, "test-cluster", resp.Clusters[0].Name)
 		require.Equal(t, "ai-gateway-extproc-uds", resp.Clusters[1].Name)
 	})
+
+	t.Run("with log header mapping inserts header_to_metadata filter", func(t *testing.T) {
+		s, err := New(newFakeClient(), logger, udsPath, false, nil, ptr.To("agent-session-id:session.id"))
+		require.NoError(t, err)
+		hcm := &httpconnectionmanagerv3.HttpConnectionManager{
+			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{{Name: wellknown.Router}},
+		}
+		listener := &listenerv3.Listener{
+			Name: "test-listener",
+			DefaultFilterChain: &listenerv3.FilterChain{
+				Filters: []*listenerv3.Filter{
+					{
+						Name:       wellknown.HTTPConnectionManager,
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
+					},
+				},
+			},
+		}
+		req := &egextension.PostTranslateModifyRequest{Listeners: []*listenerv3.Listener{listener}}
+		resp, err := s.PostTranslateModify(context.Background(), req)
+		require.NoError(t, err)
+		require.Len(t, resp.Listeners, 1)
+
+		outHCM := &httpconnectionmanagerv3.HttpConnectionManager{}
+		err = resp.Listeners[0].DefaultFilterChain.Filters[0].GetTypedConfig().UnmarshalTo(outHCM)
+		require.NoError(t, err)
+		require.Len(t, outHCM.HttpFilters, 2)
+		require.Equal(t, headerToMetadataFilterName, outHCM.HttpFilters[0].Name)
+		require.Equal(t, wellknown.Router, outHCM.HttpFilters[1].Name)
+
+		htmCfg := &htomv3.Config{}
+		err = outHCM.HttpFilters[0].GetTypedConfig().UnmarshalTo(htmCfg)
+		require.NoError(t, err)
+		require.Len(t, htmCfg.RequestRules, 1)
+		require.Equal(t, "agent-session-id", htmCfg.RequestRules[0].Header)
+		require.Equal(t, "session.id", htmCfg.RequestRules[0].OnHeaderPresent.GetKey())
+	})
+
+	t.Run("with existing header_to_metadata merges log mapping", func(t *testing.T) {
+		s, err := New(newFakeClient(), logger, udsPath, false, nil, ptr.To("agent-session-id:session.id"))
+		require.NoError(t, err)
+		existingCfg := &htomv3.Config{
+			RequestRules: []*htomv3.Config_Rule{
+				{
+					Header: "x-ai-eg-mcp-backend",
+					OnHeaderPresent: &htomv3.Config_KeyValuePair{
+						MetadataNamespace: aigv1a1.AIGatewayFilterMetadataNamespace,
+						Key:               "mcp_backend",
+						Type:              htomv3.Config_STRING,
+					},
+				},
+			},
+		}
+		existingFilter := &httpconnectionmanagerv3.HttpFilter{
+			Name:       headerToMetadataFilterName,
+			ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: mustToAny(t, existingCfg)},
+		}
+		hcm := &httpconnectionmanagerv3.HttpConnectionManager{
+			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{existingFilter, {Name: wellknown.Router}},
+		}
+		listener := &listenerv3.Listener{
+			Name: "test-listener",
+			DefaultFilterChain: &listenerv3.FilterChain{
+				Filters: []*listenerv3.Filter{
+					{
+						Name:       wellknown.HTTPConnectionManager,
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
+					},
+				},
+			},
+		}
+		req := &egextension.PostTranslateModifyRequest{Listeners: []*listenerv3.Listener{listener}}
+		resp, err := s.PostTranslateModify(context.Background(), req)
+		require.NoError(t, err)
+
+		outHCM := &httpconnectionmanagerv3.HttpConnectionManager{}
+		err = resp.Listeners[0].DefaultFilterChain.Filters[0].GetTypedConfig().UnmarshalTo(outHCM)
+		require.NoError(t, err)
+		require.Len(t, outHCM.HttpFilters, 2)
+		require.Equal(t, headerToMetadataFilterName, outHCM.HttpFilters[0].Name)
+
+		mergedCfg := &htomv3.Config{}
+		err = outHCM.HttpFilters[0].GetTypedConfig().UnmarshalTo(mergedCfg)
+		require.NoError(t, err)
+		var headers []string
+		for _, rule := range mergedCfg.RequestRules {
+			headers = append(headers, rule.Header)
+		}
+		require.ElementsMatch(t, []string{"x-ai-eg-mcp-backend", "agent-session-id"}, headers)
+	})
+
+	t.Run("without log header mapping leaves filters untouched", func(t *testing.T) {
+		s, err := New(newFakeClient(), logger, udsPath, false, nil, ptr.To(""))
+		require.NoError(t, err)
+		hcm := &httpconnectionmanagerv3.HttpConnectionManager{
+			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{{Name: wellknown.Router}},
+		}
+		listener := &listenerv3.Listener{
+			Name: "test-listener",
+			DefaultFilterChain: &listenerv3.FilterChain{
+				Filters: []*listenerv3.Filter{
+					{
+						Name:       wellknown.HTTPConnectionManager,
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
+					},
+				},
+			},
+		}
+		req := &egextension.PostTranslateModifyRequest{Listeners: []*listenerv3.Listener{listener}}
+		resp, err := s.PostTranslateModify(context.Background(), req)
+		require.NoError(t, err)
+		require.Len(t, resp.Listeners, 1)
+
+		outHCM := &httpconnectionmanagerv3.HttpConnectionManager{}
+		err = resp.Listeners[0].DefaultFilterChain.Filters[0].GetTypedConfig().UnmarshalTo(outHCM)
+		require.NoError(t, err)
+		require.Len(t, outHCM.HttpFilters, 1)
+		require.Equal(t, wellknown.Router, outHCM.HttpFilters[0].Name)
+	})
 }
 
 // TestList tests the List method (health check).
 func TestList(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
+	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil)
+	require.NoError(t, err)
 
 	t.Run("list health statuses", func(t *testing.T) {
 		resp, err := s.List(context.Background(), &grpc_health_v1.HealthListRequest{})

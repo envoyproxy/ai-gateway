@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	fake2 "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -24,9 +25,10 @@ import (
 )
 
 func TestSecretController_Reconcile(t *testing.T) {
-	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.BackendSecurityPolicy]()
+	bspCh := internaltesting.NewControllerEventChan[*aigv1a1.BackendSecurityPolicy]()
+	mcpRouteCh := internaltesting.NewControllerEventChan[*aigv1a1.MCPRoute]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	c := NewSecretController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch)
+	c := NewSecretController(fakeClient, fake2.NewClientset(), ctrl.Log, bspCh.Ch, mcpRouteCh.Ch)
 
 	err := fakeClient.Create(t.Context(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "mysecret", Namespace: "default"},
@@ -35,7 +37,7 @@ func TestSecretController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a bsp that references the secret.
-	originals := []*aigv1a1.BackendSecurityPolicy{
+	bsps := []*aigv1a1.BackendSecurityPolicy{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
 			Spec: aigv1a1.BackendSecurityPolicySpec{
@@ -54,22 +56,40 @@ func TestSecretController_Reconcile(t *testing.T) {
 			},
 		},
 	}
-	for _, bsp := range originals {
+	for _, bsp := range bsps {
 		require.NoError(t, fakeClient.Create(t.Context(), bsp))
 	}
+
+	// Create a MCPRoute that references the secret via API Key secret ref.
+	mcp := &aigv1a1.MCPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
+		Spec: aigv1a1.MCPRouteSpec{
+			BackendRefs: []aigv1a1.MCPRouteBackendRef{{
+				SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{APIKey: &aigv1a1.MCPBackendAPIKey{
+					SecretRef: &gwapiv1.SecretObjectReference{Name: "mysecret", Namespace: ptr.To[gwapiv1.Namespace]("default")},
+				}},
+			}},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), mcp))
 
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{
 		Namespace: "default", Name: "mysecret",
 	}})
 	require.NoError(t, err)
-	actual := eventCh.RequireItemsEventually(t, len(originals))
+
+	// Verify that both BSP and MCPRoute events are triggered.
+	actual := bspCh.RequireItemsEventually(t, len(bsps))
 	slices.SortFunc(actual, func(a, b *aigv1a1.BackendSecurityPolicy) int {
 		return cmp.Compare(a.Name, b.Name)
 	})
-	slices.SortFunc(originals, func(a, b *aigv1a1.BackendSecurityPolicy) int {
+	slices.SortFunc(bsps, func(a, b *aigv1a1.BackendSecurityPolicy) int {
 		return cmp.Compare(a.Name, b.Name)
 	})
-	require.Equal(t, originals, actual)
+	require.Equal(t, bsps, actual)
+
+	mcpActual := mcpRouteCh.RequireItemsEventually(t, 1)
+	require.Equal(t, mcp, mcpActual[0])
 
 	// Test the case where the Secret is being deleted.
 	err = fakeClient.Delete(t.Context(), &corev1.Secret{

@@ -23,7 +23,7 @@ func TestAIGWRun_LLM(t *testing.T) {
 
 	internaltesting.RequireEventuallyNoError(t, func() error {
 		t.Logf("model to use: %q", ollamaModel)
-		client := openai.NewClient(option.WithBaseURL("http://localhost:1975/v1/"))
+		client := openai.NewClient(option.WithBaseURL("http://127.0.0.1:1975/v1/"))
 		chatReq := openai.ChatCompletionNewParams{
 			Messages: []openai.ChatCompletionMessageParamUnion{
 				openai.UserMessage("Say this is a test"),

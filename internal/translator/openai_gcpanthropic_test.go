@@ -899,7 +899,7 @@ func TestMessageTranslation(t *testing.T) {
 				{
 					Role: anthropic.MessageParamRoleAssistant,
 					Content: []anthropic.ContentBlockParamUnion{
-						anthropic.NewThinkingBlock("Let me think about this step by step...", "signature-123"),
+						anthropic.NewThinkingBlock("signature-123", "Let me think about this step by step..."),
 					},
 				},
 			},

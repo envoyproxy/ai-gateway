@@ -23,9 +23,9 @@ jobs:
           echo "TAG=${TAG}" >> $GITHUB_ENV
 
       # To include the helm chart in the release artifact, we build and push it here instead of the separate job.
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
       - name: Login into DockerHub
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}

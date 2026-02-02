@@ -26,6 +26,15 @@ static_resources:
                   - name: stdout
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                      log_format:
+                        json_format:
+                          session.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:session.id)%"
+                          mcp.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
+                          mcp.method.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
+                          jsonrpc.request.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
+                          method: "%REQ(:METHOD)%"
+                          request.path: "%REQ(:PATH)%"
+                          x-envoy-origin-path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
                 route_config:
                   virtual_hosts:
                     - name: local_route
@@ -87,6 +96,15 @@ static_resources:
                   - name: stdout
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                      log_format:
+                        json_format:
+                          session.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:session.id)%"
+                          mcp.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
+                          mcp.method.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
+                          jsonrpc.request.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
+                          method: "%REQ(:METHOD)%"
+                          request.path: "%REQ(:PATH)%"
+                          x-envoy-origin-path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
                 route_config:
                   virtual_hosts:
                     - name: local_route
@@ -158,6 +176,33 @@ static_resources:
                             idleTimeout: 3600s
                             timeout: 120s
                 http_filters:
+                  - name: envoy.filters.http.header_to_metadata
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.header_to_metadata.v3.Config
+                      request_rules:
+                        - header: x-ai-eg-mcp-backend
+                          on_header_present:
+                            metadata_namespace: io.envoy.ai_gateway
+                            key: mcp_backend
+                            type: STRING
+                          remove: true
+                        - header: x-ai-eg-mcp-metadata-method
+                          on_header_present:
+                            metadata_namespace: io.envoy.ai_gateway
+                            key: mcp_method
+                            type: STRING
+                          remove: true
+                        - header: x-ai-eg-mcp-metadata-request-id
+                          on_header_present:
+                            metadata_namespace: io.envoy.ai_gateway
+                            key: mcp_request_id
+                            type: STRING
+                          remove: true
+                        - header: agent-session-id
+                          on_header_present:
+                            metadata_namespace: io.envoy.ai_gateway
+                            key: session.id
+                            type: STRING
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router

@@ -38,10 +38,12 @@ type (
 		Run cmdRun `cmd:"" help:"Run the AI Gateway locally for given configuration."`
 		// Healthcheck is the sub-command to check if the aigw server is healthy.
 		Healthcheck cmdHealthcheck `cmd:"" help:"Docker HEALTHCHECK command."`
+		// DownloadEnvoy downloads the Envoy binary used by Envoy Gateway.
+		DownloadEnvoy cmdDownloadEnvoy `cmd:"" help:"Download Envoy binary for the Envoy Gateway default version."`
 	}
 	// cmdRun corresponds to `aigw run` command.
 	cmdRun struct {
-		Debug     bool   `help:"Enable debug logging emitted to stderr."`
+		Debug     bool   `env:"AIGW_DEBUG" help:"Enable debug logging emitted to stderr."`
 		Path      string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Defaults to $AIGW_CONFIG_HOME/config.yaml if exists, otherwise optional when at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY or ANTHROPIC_API_KEY is set." type:"path"`
 		AdminPort int    `help:"HTTP port for the admin server (serves /metrics and /health endpoints)." default:"1064"`
 		McpConfig string `name:"mcp-config" help:"Path to MCP servers configuration file." type:"path"`
@@ -56,6 +58,10 @@ type (
 	}
 	// cmdHealthcheck corresponds to `aigw healthcheck` command.
 	cmdHealthcheck struct{}
+	// cmdDownloadEnvoy corresponds to `aigw download-envoy` command.
+	cmdDownloadEnvoy struct {
+		dataHome string `kong:"-"`
+	}
 )
 
 // BeforeApply is called by Kong before applying defaults to set XDG directory defaults.
@@ -89,6 +95,8 @@ func (c *cmd) BeforeApply(_ *kong.Context) error {
 		StateHome:  c.StateHome,
 		RuntimeDir: c.RuntimeDir,
 	}
+	// Populate DownloadEnvoy dataHome with expanded data directory.
+	c.DownloadEnvoy.dataHome = c.DataHome
 
 	return nil
 }
@@ -153,12 +161,13 @@ func (c *cmdRun) Validate() error {
 }
 
 type (
-	runFn         func(context.Context, *cmdRun, *runOpts, io.Writer, io.Writer) error
-	healthcheckFn func(context.Context, io.Writer, io.Writer) error
+	runFn           func(context.Context, *cmdRun, *runOpts, io.Writer, io.Writer) error
+	healthcheckFn   func(context.Context, io.Writer, io.Writer) error
+	downloadEnvoyFn func(context.Context, *cmdDownloadEnvoy, io.Writer, io.Writer) error
 )
 
 func main() {
-	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, run, healthcheck)
+	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, run, healthcheck, downloadEnvoyCmd)
 }
 
 // doMain is the main entry point for the CLI. It parses the command line arguments and executes the appropriate command.
@@ -171,6 +180,7 @@ func main() {
 func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn func(int),
 	rf runFn,
 	hf healthcheckFn,
+	df downloadEnvoyFn,
 ) {
 	var c cmd
 	parser, err := kong.New(&c,
@@ -197,6 +207,11 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 		err = hf(ctx, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Health check failed: %v", err)
+		}
+	case "download-envoy":
+		err = df(ctx, &c.DownloadEnvoy, stdout, stderr)
+		if err != nil {
+			log.Fatalf("Download Envoy failed: %v", err)
 		}
 	default:
 		panic("unreachable")

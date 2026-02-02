@@ -23,22 +23,39 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/encoding/prototext"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/redaction"
 )
 
 var (
 	sensitiveHeaderRedactedValue = []byte("[REDACTED]")
-	sensitiveHeaderKeys          = []string{"authorization"}
+	sensitiveHeaderKeys          = []string{"authorization", "x-api-key"}
 )
+
+// contextKey is a type for context keys to avoid collisions.
+type contextKey string
+
+// loggerContextKey is the context key for the request-scoped logger.
+const loggerContextKey contextKey = "logger"
+
+// loggerFromContext extracts the request-scoped logger from the context.
+// If no logger is found in the context, it returns nil.
+func loggerFromContext(ctx context.Context) *slog.Logger {
+	if logger, ok := ctx.Value(loggerContextKey).(*slog.Logger); ok {
+		return logger
+	}
+	return nil
+}
 
 // Server implements the external processor server.
 type Server struct {
 	logger                        *slog.Logger
 	debugLogEnabled               bool
+	enableRedaction               bool
 	config                        *filterapi.RuntimeConfig
 	processorFactories            map[string]ProcessorFactory
 	routerProcessorsPerReqID      map[string]Processor
@@ -47,11 +64,12 @@ type Server struct {
 }
 
 // NewServer creates a new external processor server.
-func NewServer(logger *slog.Logger) (*Server, error) {
+func NewServer(logger *slog.Logger, enableRedaction bool) (*Server, error) {
 	debugLogEnabled := logger.Enabled(context.Background(), slog.LevelDebug)
 	srv := &Server{
 		logger:                   logger,
 		debugLogEnabled:          debugLogEnabled,
+		enableRedaction:          enableRedaction,
 		processorFactories:       make(map[string]ProcessorFactory),
 		routerProcessorsPerReqID: make(map[string]Processor),
 		uuidFn:                   uuid.NewString,
@@ -79,7 +97,7 @@ var errNoProcessor = errors.New("no processor registered for the given path")
 
 // processorForPath returns the processor for the given path.
 // Only exact path matching is supported currently.
-func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFilter bool) (Processor, error) {
+func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFilter bool, logger *slog.Logger) (Processor, error) {
 	pathHeader := ":path"
 	if isUpstreamFilter {
 		pathHeader = originalPathHeader
@@ -95,12 +113,12 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", errNoProcessor, path)
 	}
-	return newProcessor(s.config, requestHeaders, s.logger, isUpstreamFilter)
+	return newProcessor(s.config, requestHeaders, logger, isUpstreamFilter, s.enableRedaction)
 }
 
 // originalPathHeader is the header used to pass the original path to the processor.
 // This is used in the upstream filter level to determine the original path of the request on retry.
-const originalPathHeader = internalapi.EnvoyAIGatewayHeaderPrefix + "original-path"
+const originalPathHeader = internalapi.OriginalPathHeader
 
 // internalReqIDHeader is the header used to pass the unique internal request ID to the upstream filter.
 // This ensures that the upstream filter uses the same unique ID as the router filter to avoid race conditions.
@@ -170,7 +188,16 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 				// with duplicate x-request-id values by appending a UUID suffix to the original request ID
 				internalReqID = originalReqID + "-" + s.uuidFn()
 			}
-			p, err = s.processorForPath(headersMap, isUpstreamFilter)
+
+			// Create request-scoped logger with request_id before creating processor
+			// so that the logger passed to translators includes the request_id field.
+			if logger == nil {
+				logger = s.logger.With("request_id", originalReqID, "is_upstream_filter", isUpstreamFilter)
+			}
+			// Add logger to context so processMsg can access it
+			ctx = context.WithValue(ctx, loggerContextKey, logger)
+
+			p, err = s.processorForPath(headersMap, isUpstreamFilter, logger)
 			if err != nil {
 				if errors.Is(err, errNoProcessor) {
 					path := headersMap[":path"]
@@ -200,12 +227,9 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 				s.routerProcessorsPerReqIDMutex.Unlock()
 			}
 		}
-		if logger == nil {
-			logger = s.logger.With("request_id", originalReqID, "is_upstream_filter", isUpstreamFilter)
-		}
 
 		// At this point, p is guaranteed to be a valid processor either from the concrete processor or the passThroughProcessor.
-		resp, err := s.processMsg(ctx, logger, p, req, internalReqID, isUpstreamFilter)
+		resp, err := s.processMsg(ctx, p, req, internalReqID, isUpstreamFilter)
 		if err != nil {
 			s.logger.Error("error processing request message", slog.String("error", err.Error()))
 			return status.Errorf(codes.Unknown, "error processing request message: %v", err)
@@ -217,12 +241,13 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 	}
 }
 
-func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, req *extprocv3.ProcessingRequest, internalReqID string, isUpstreamFilter bool) (*extprocv3.ProcessingResponse, error) {
+func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.ProcessingRequest, internalReqID string, isUpstreamFilter bool) (*extprocv3.ProcessingResponse, error) {
+	l := loggerFromContext(ctx)
 	switch value := req.Request.(type) {
 	case *extprocv3.ProcessingRequest_RequestHeaders:
 		requestHdrs := req.GetRequestHeaders().Headers
 		// If DEBUG log level is enabled, filter sensitive headers before logging.
-		if l.Enabled(ctx, slog.LevelDebug) {
+		if s.debugLogEnabled {
 			filteredHdrs := filterSensitiveHeadersForLogging(requestHdrs, sensitiveHeaderKeys)
 			l.Debug("request headers processing", slog.Any("request_headers", filteredHdrs))
 		}
@@ -259,21 +284,29 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 			}
 		}
 		if s.debugLogEnabled {
-			l.Debug("request headers processed", slog.Any("response", resp))
+			var logContent any
+			if s.enableRedaction {
+				rh := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
+				logContent = redactProcessingResponseRequestHeaders(rh, s.logger, sensitiveHeaderKeys)
+			} else {
+				logContent = resp
+			}
+			l.Debug("request headers processed", slog.Any("response", logContent))
 		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_RequestBody:
-		if s.debugLogEnabled {
+		if s.debugLogEnabled && !s.enableRedaction {
 			l.Debug("request body processing", slog.Any("request", req))
 		}
 		resp, err := p.ProcessRequestBody(ctx, value.RequestBody)
-		// If the DEBUG log level is enabled, filter the sensitive body before logging.
-		if l.Enabled(ctx, slog.LevelDebug) {
-			filteredBody := filterSensitiveRequestBodyForLogging(resp, l, sensitiveHeaderKeys)
-			l.Debug("request body processed", slog.Any("response", filteredBody))
-		}
 		if err != nil {
 			return nil, fmt.Errorf("cannot process request body: %w", err)
+		}
+		// If the DEBUG log level is enabled, filter the sensitive data before logging.
+		if s.debugLogEnabled && resp != nil && resp.Response != nil {
+			rb := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+			logContent := redactRequestBodyResponse(rb, l, sensitiveHeaderKeys, s.enableRedaction)
+			l.Debug("request body processed", slog.Any("response", logContent))
 		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_ResponseHeaders:
@@ -290,16 +323,30 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_ResponseBody:
-		if s.debugLogEnabled {
+		if s.debugLogEnabled && !s.enableRedaction {
 			l.Debug("response body processing", slog.Any("request", req))
 		}
 		resp, err := p.ProcessResponseBody(ctx, value.ResponseBody)
-		if s.debugLogEnabled {
-			l.Debug("response body processed", slog.Any("response", resp))
-		}
 		if err != nil {
 			return nil, fmt.Errorf("cannot process response body: %w", err)
 		}
+
+		// If the DEBUG log level is enabled, filter the sensitive data before logging.
+		if s.debugLogEnabled && resp != nil && resp.Response != nil {
+			var logContent any
+			if s.enableRedaction {
+				switch val := resp.Response.(type) {
+				case *extprocv3.ProcessingResponse_ResponseBody:
+					logContent = redactResponseBodyResponseFull(val, l, sensitiveHeaderKeys)
+				case *extprocv3.ProcessingResponse_ImmediateResponse:
+					logContent = val
+				}
+			} else {
+				logContent = resp
+			}
+			l.Debug("response body processed", slog.Any("response", logContent))
+		}
+
 		return resp, nil
 	default:
 		l.Error("unknown request type", slog.Any("request", value))
@@ -314,47 +361,10 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	if attributes == nil || len(attributes.Fields) == 0 { // coverage-ignore
 		return status.Error(codes.Internal, "missing attributes in request")
 	}
-	// metadataFieldKey is the key for the entire metadata field in the attributes for backward compatibility.
-	// backendNamePath is the path to the backend name in the metadata.
-	var metadataFieldKey, backendNamePath string
-	if isEndpointPicker {
-		metadataFieldKey = internalapi.XDSClusterMetadataKey
-		backendNamePath = internalapi.XDSClusterMetadataBackendNamePath
-	} else {
-		metadataFieldKey = internalapi.XDSUpstreamHostMetadataKey
-		backendNamePath = internalapi.XDSUpstreamHostMetadataBackendNamePath
-	}
 
-	var backendName string
-	if b, ok := attributes.Fields[backendNamePath]; ok {
-		backendName = b.GetStringValue()
-	} else if hostMetadata, ok := attributes.Fields[metadataFieldKey]; ok {
-		// This is the backward compatible path where we read the full host metadata, which
-		// can be fragile due to how unstable proto text format can be. After v0.5 is release,
-		// we can remove this code path.
-
-		// Unmarshal the text into the struct since the metadata is encoded as a proto string.
-		var metadata corev3.Metadata
-		opt := prototext.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
-		err := opt.Unmarshal([]byte(hostMetadata.GetStringValue()), &metadata)
-		if err != nil {
-			return status.Errorf(codes.Internal,
-				"cannot unmarshal host metadata '%s': %v",
-				hostMetadata.GetStringValue(),
-				err)
-		}
-
-		aiGatewayEndpointMetadata, ok := metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
-		if !ok {
-			return status.Errorf(codes.Internal, "missing %s metadata", internalapi.InternalEndpointMetadataNamespace)
-		}
-		b, ok := aiGatewayEndpointMetadata.Fields[internalapi.InternalMetadataBackendNameKey]
-		if !ok {
-			return status.Errorf(codes.Internal, "missing %s in endpoint metadata", internalapi.InternalMetadataBackendNameKey)
-		}
-		backendName = b.GetStringValue()
-	} else {
-		return status.Errorf(codes.Internal, "missing %s in request", metadataFieldKey)
+	backendName, err := resolveBackendName(isEndpointPicker, attributes)
+	if err != nil {
+		return err
 	}
 
 	backend, ok := s.config.Backends[backendName]
@@ -374,6 +384,29 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 		return status.Errorf(codes.Internal, "cannot set backend: %v", err)
 	}
 	return nil
+}
+
+func resolveBackendName(isEndpointPicker bool, attributes *structpb.Struct) (string, error) {
+	var backendNamePath string
+	if isEndpointPicker {
+		backendNamePath = internalapi.XDSClusterMetadataBackendNamePath
+	} else {
+		backendNamePath = internalapi.XDSUpstreamHostMetadataBackendNamePath
+	}
+
+	// Try the direct metadata path first. (e.g. xds.upstream_host_metadata...['per_route_rule_backend_name'])
+	if b, ok := attributes.Fields[backendNamePath]; ok {
+		return b.GetStringValue(), nil
+	}
+
+	// Fallback to cluster metadata when upstream host metadata is unavailable.
+	if !isEndpointPicker {
+		if b, ok := attributes.Fields[internalapi.XDSClusterMetadataBackendNamePath]; ok {
+			return b.GetStringValue(), nil
+		}
+	}
+
+	return "", status.Errorf(codes.Internal, "missing backend name in attributes at path: %s", backendNamePath)
 }
 
 // Check implements [grpc_health_v1.HealthServer].
@@ -416,26 +449,37 @@ func filterSensitiveHeadersForLogging(headers *corev3.HeaderMap, sensitiveKeys [
 	return filteredHeaders
 }
 
-// filterSensitiveRequestBodyForLogging filters out sensitive information from the response body.
-// It creates a copy of the response body to avoid modifying the original body,
-// as the API Key is needed for the request. The function returns a new
-// ProcessingResponse with the filtered body for logging.
-func filterSensitiveRequestBodyForLogging(resp *extprocv3.ProcessingResponse, logger *slog.Logger, sensitiveKeys []string) *extprocv3.ProcessingResponse {
-	if resp == nil {
-		return &extprocv3.ProcessingResponse{}
+// redactProcessingResponseRequestHeaders creates a safe-to-log copy of the request headers processing response.
+// Used exclusively for debug logging without modifying the actual response sent to Envoy.
+// Redacts sensitive header values (API keys, authorization tokens) while preserving header names for debugging.
+func redactProcessingResponseRequestHeaders(resp *extprocv3.ProcessingResponse_RequestHeaders, logger *slog.Logger, sensitiveKeys []string) *extprocv3.ProcessingResponse_RequestHeaders {
+	originalHeaderMutation := resp.RequestHeaders.GetResponse().GetHeaderMutation()
+
+	return &extprocv3.ProcessingResponse_RequestHeaders{
+		RequestHeaders: &extprocv3.HeadersResponse{
+			Response: &extprocv3.CommonResponse{
+				HeaderMutation:  redactHeaderMutation(originalHeaderMutation, logger, sensitiveKeys),
+				BodyMutation:    redactBodyMutation(resp.RequestHeaders.Response.GetBodyMutation()),
+				ClearRouteCache: resp.RequestHeaders.Response.GetClearRouteCache(),
+			},
+		},
 	}
-	original, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
-	if !ok || original.RequestBody == nil {
-		// Meaning this is the immediate response, that doesn't need to be filtered.
-		return resp
-	}
-	originalHeaderMutation := original.RequestBody.Response.GetHeaderMutation()
+}
+
+// redactHeaderMutation creates a copy of header mutations with sensitive header values redacted.
+// This is a helper function used by the redactProcessingResponse* functions.
+//
+// Sensitive headers (matched case-insensitively against sensitiveKeys) have their values
+// replaced with [REDACTED] while preserving the header name. This allows debugging which
+// headers were set without exposing API keys or tokens in logs.
+func redactHeaderMutation(originalHeaderMutation *extprocv3.HeaderMutation, logger *slog.Logger, sensitiveKeys []string) *extprocv3.HeaderMutation {
 	redactedHeaderMutation := &extprocv3.HeaderMutation{
 		RemoveHeaders: originalHeaderMutation.GetRemoveHeaders(),
 		SetHeaders:    make([]*corev3.HeaderValueOption, 0, len(originalHeaderMutation.GetSetHeaders())),
 	}
 	for _, setHeader := range originalHeaderMutation.GetSetHeaders() {
-		// We convert the header key to lowercase to make the comparison case-insensitive, but we don't modify the original header.
+		// Convert header key to lowercase for case-insensitive matching (HTTP headers are case-insensitive)
+		// but preserve the original casing in the redacted output for debugging
 		if slices.Contains(sensitiveKeys, strings.ToLower(setHeader.Header.GetKey())) {
 			logger.Debug("filtering sensitive header", slog.String("header_key", setHeader.Header.Key))
 			redactedHeaderMutation.SetHeaders = append(redactedHeaderMutation.SetHeaders, &corev3.HeaderValueOption{
@@ -448,17 +492,85 @@ func filterSensitiveRequestBodyForLogging(resp *extprocv3.ProcessingResponse, lo
 			redactedHeaderMutation.SetHeaders = append(redactedHeaderMutation.SetHeaders, setHeader)
 		}
 	}
-	return &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_RequestBody{
-			RequestBody: &extprocv3.BodyResponse{
-				Response: &extprocv3.CommonResponse{
-					HeaderMutation:  redactedHeaderMutation,
-					BodyMutation:    original.RequestBody.Response.GetBodyMutation(),
-					ClearRouteCache: original.RequestBody.Response.GetClearRouteCache(),
-				},
+	return redactedHeaderMutation
+}
+
+// redactBodyMutation creates a redacted version of response body content for safe logging.
+// Replaces the actual body with a placeholder containing length and hash information.
+// The hash allows debugging cache hits/misses and correlating requests without exposing sensitive content.
+//
+// Format: [REDACTED LENGTH=n HASH=xxxxxxxx]
+func redactBodyMutation(bodyMutation *extprocv3.BodyMutation) *extprocv3.BodyMutation {
+	if bodyMutation == nil {
+		return nil
+	}
+
+	switch m := bodyMutation.Mutation.(type) {
+	case *extprocv3.BodyMutation_Body:
+		if len(m.Body) == 0 {
+			return bodyMutation
+		}
+		redactedBody := []byte(redaction.RedactString(string(m.Body)))
+		return &extprocv3.BodyMutation{
+			Mutation: &extprocv3.BodyMutation_Body{
+				Body: redactedBody,
+			},
+		}
+	case *extprocv3.BodyMutation_ClearBody:
+		// ClearBody doesn't contain sensitive data, return as-is
+		return bodyMutation
+	default:
+		return bodyMutation
+	}
+}
+
+// redactResponseBodyResponseFull creates a safe-to-log copy with headers AND body redacted.
+// This is used exclusively for debug logging when enableRedaction is true.
+// The original response is never modified to ensure the actual AI provider response flows through unchanged.
+// Both headers (API keys, auth tokens) and body content (AI-generated text, images, etc.) are redacted.
+func redactResponseBodyResponseFull(resp *extprocv3.ProcessingResponse_ResponseBody, logger *slog.Logger, sensitiveKeys []string) *extprocv3.ProcessingResponse_ResponseBody {
+	if resp == nil || resp.ResponseBody == nil || resp.ResponseBody.Response == nil {
+		return &extprocv3.ProcessingResponse_ResponseBody{}
+	}
+
+	originalHeaderMutation := resp.ResponseBody.Response.GetHeaderMutation()
+	originalBodyMutation := resp.ResponseBody.Response.GetBodyMutation()
+
+	return &extprocv3.ProcessingResponse_ResponseBody{
+		ResponseBody: &extprocv3.BodyResponse{
+			Response: &extprocv3.CommonResponse{
+				HeaderMutation:  redactHeaderMutation(originalHeaderMutation, logger, sensitiveKeys),
+				BodyMutation:    redactBodyMutation(originalBodyMutation),
+				ClearRouteCache: resp.ResponseBody.Response.GetClearRouteCache(),
 			},
 		},
-		ModeOverride: resp.ModeOverride,
+	}
+}
+
+// redactRequestBodyResponse creates a safe-to-log copy of the request body response.
+// When redactBody is false, only headers are filtered while body content is logged as-is for debugging.
+// When redactBody is true, both headers (API keys, auth tokens) and body content are redacted for production-safe logging.
+func redactRequestBodyResponse(resp *extprocv3.ProcessingResponse_RequestBody, logger *slog.Logger, sensitiveKeys []string, redactBody bool) *extprocv3.ProcessingResponse_RequestBody {
+	if resp == nil || resp.RequestBody == nil || resp.RequestBody.Response == nil {
+		return &extprocv3.ProcessingResponse_RequestBody{}
+	}
+
+	originalHeaderMutation := resp.RequestBody.Response.GetHeaderMutation()
+	var bodyMutation *extprocv3.BodyMutation
+	if redactBody {
+		bodyMutation = redactBodyMutation(resp.RequestBody.Response.GetBodyMutation())
+	} else {
+		bodyMutation = resp.RequestBody.Response.GetBodyMutation()
+	}
+
+	return &extprocv3.ProcessingResponse_RequestBody{
+		RequestBody: &extprocv3.BodyResponse{
+			Response: &extprocv3.CommonResponse{
+				HeaderMutation:  redactHeaderMutation(originalHeaderMutation, logger, sensitiveKeys),
+				BodyMutation:    bodyMutation,
+				ClearRouteCache: resp.RequestBody.Response.GetClearRouteCache(),
+			},
+		},
 	}
 }
 

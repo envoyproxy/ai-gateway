@@ -19,7 +19,6 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/openai/openai-go/v2"
-	"github.com/openai/openai-go/v2/responses"
 	"github.com/tidwall/gjson"
 	"google.golang.org/genai"
 
@@ -312,14 +311,59 @@ func (c ContentUnion) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.Value)
 }
 
+// EmbeddingContent represents content that can be either a string or an array of strings.
+// This allows embedding inputs to specify multiple texts with a shared task_type.
+type EmbeddingContent struct {
+	Value any // string or []string
+}
+
+func (c *EmbeddingContent) UnmarshalJSON(data []byte) error {
+	// Try string first
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		c.Value = str
+		return nil
+	}
+	// Try array of strings
+	var strs []string
+	if err := json.Unmarshal(data, &strs); err == nil {
+		c.Value = strs
+		return nil
+	}
+	return fmt.Errorf("content must be string or array of strings")
+}
+
+func (c EmbeddingContent) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.Value)
+}
+
+// IsEmpty returns true if the content is empty (no string or empty string, no array or empty array)
+func (c EmbeddingContent) IsEmpty() bool {
+	switch v := c.Value.(type) {
+	case string:
+		return v == ""
+	case []string:
+		return len(v) == 0
+	default:
+		return true
+	}
+}
+
+// EmbeddingInputItem represents a single embedding input with optional metadata
+type EmbeddingInputItem struct {
+	Content  EmbeddingContent  `json:"content"`             // The actual text content (string or []string)
+	TaskType EmbeddingTaskType `json:"task_type,omitempty"` // Optional task type
+	Title    string            `json:"title,omitempty"`     // Optional title
+}
+
 // EmbeddingRequestInput is the EmbeddingRequest.Input type.
 type EmbeddingRequestInput struct {
 	Value any
 }
 
 func (s *EmbeddingRequestInput) UnmarshalJSON(data []byte) (err error) {
-	// reuse the nested union implementation vs creating a new one.
-	s.Value, err = unmarshalJSONNestedUnion("input", data)
+	// Use embedding-specific parser that supports objects with content/task_type/title
+	s.Value, err = unmarshalJSONEmbeddingInput("input", data)
 	if err != nil {
 		return
 	}
@@ -1553,6 +1597,34 @@ type EmbeddingRequest struct {
 	// User: A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
 	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-user
 	User *string `json:"user,omitempty"`
+
+	// GCPVertexAIEmbeddingVendorFields configures the GCP VertexAI specific fields for embedding during schema translation.
+	*GCPVertexAIEmbeddingVendorFields `json:",inline,omitempty"`
+}
+
+type EmbeddingTaskType string
+
+const (
+	EmbeddingTaskTypeRetrievalQuery     EmbeddingTaskType = "RETRIEVAL_QUERY"
+	EmbeddingTaskTypeRetrievalDocument  EmbeddingTaskType = "RETRIEVAL_DOCUMENT"
+	EmbeddingTaskTypeSemanticSimilarity EmbeddingTaskType = "SEMANTIC_SIMILARITY"
+	EmbeddingTaskTypeClassification     EmbeddingTaskType = "CLASSIFICATION"
+	EmbeddingTaskTypeClustering         EmbeddingTaskType = "CLUSTERING"
+	EmbeddingTaskTypeQuestionAnswering  EmbeddingTaskType = "QUESTION_ANSWERING"
+	EmbeddingTaskTypeFactVerification   EmbeddingTaskType = "FACT_VERIFICATION"
+	EmbeddingTaskTypeCodeRetrievalQuery EmbeddingTaskType = "CODE_RETRIEVAL_QUERY"
+)
+
+// GCPVertexAIEmbeddingVendorFields contains GCP Vertex AI (Gemini) vendor-specific fields for embeddings.
+type GCPVertexAIEmbeddingVendorFields struct {
+	// When set to true, input text will be truncated. When set to false, an error is returned if the input text is longer than the maximum length supported by the model. Defaults to true.
+	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings-api#parameter-list
+
+	AutoTruncate bool `json:"auto_truncate,omitempty"`
+
+	// This is global task_type set, which is convenient for users. If left blank, the default used is RETRIEVAL_QUERY.
+	// For more information about task types, see https://docs.cloud.google.com/vertex-ai/generative-ai/docs/embeddings/task-types
+	TaskType EmbeddingTaskType `json:"task_type,omitempty"`
 }
 
 // EmbeddingResponse represents a response from /v1/embeddings.
@@ -1587,6 +1659,10 @@ type Embedding struct {
 
 	// Index: The index of the embedding in the list of embeddings.
 	Index int `json:"index"`
+
+	// If the input text was truncated due to having a length longer than the allowed maximum input.
+	// https://github.com/googleapis/go-genai/blob/cb486e101dc66794d52125dd22ff43ff4c0e76a6/types.go#L2807
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // EmbeddingUnion is a union type that can handle both []float64 and string formats.
@@ -2067,6 +2143,7 @@ type ImageGenerationResponseData struct {
 // ResponseRequest represents a request to the /v1/responses endpoint.
 // The Responses API is a stateful API that combines capabilities from chat completions and assistants.
 // Docs: https://platform.openai.com/docs/api-reference/responses/create
+
 type ResponseRequest struct {
 	// Whether to run the model response in the background.
 	// [Learn more](https://platform.openai.com/docs/guides/background).
@@ -2142,7 +2219,7 @@ type ResponseRequest struct {
 	// prepended to `input_items` for this response request. Input items and output
 	// items from this response are automatically added to this conversation after this
 	// response completes.
-	Conversation responses.ResponseNewParamsConversationUnion `json:"conversation,omitzero"`
+	Conversation ResponseNewParamsConversationUnion `json:"conversation,omitzero"`
 
 	// Specify additional output data to include in the model response. Currently
 	// supported values are:
@@ -2174,7 +2251,7 @@ type ResponseRequest struct {
 
 	// Reference to a prompt template and its variables.
 	// [Learn more](https://platform.openai.com/docs/guides/text?api-mode=responses#reusable-prompts).
-	Prompt responses.ResponsePromptParam `json:"prompt,omitzero"`
+	Prompt ResponsePromptParam `json:"prompt,omitzero"`
 
 	// The retention policy for the prompt cache. Set to `24h` to enable extended
 	// prompt caching, which keeps cached prefixes active for longer, up to a maximum
@@ -2227,7 +2304,7 @@ type ResponseRequest struct {
 	// - [File inputs](https://platform.openai.com/docs/guides/pdf-files)
 	// - [Conversation state](https://platform.openai.com/docs/guides/conversation-state)
 	// - [Function calling](https://platform.openai.com/docs/guides/function-calling)
-	Input responses.ResponseNewParamsInputUnion `json:"input,omitzero"`
+	Input ResponseNewParamsInputUnion `json:"input,omitzero"`
 
 	// Model ID used to generate the response, like `gpt-4o` or `o3`. OpenAI offers a
 	// wide range of models with different capabilities, performance characteristics,
@@ -2253,7 +2330,7 @@ type ResponseRequest struct {
 	// How the model should select which tool (or tools) to use when generating a
 	// response. See the `tools` parameter to see how to specify which tools the model
 	// can call.
-	ToolChoice responses.ResponseNewParamsToolChoiceUnion `json:"tool_choice,omitzero"`
+	ToolChoice ResponseToolChoiceUnion `json:"tool_choice,omitzero"`
 
 	// An array of tools the model may call while generating a response. You can
 	// specify which tool to use by setting the `tool_choice` parameter.
@@ -2274,7 +2351,7 @@ type ResponseRequest struct {
 	//     Learn more about
 	//     [function calling](https://platform.openai.com/docs/guides/function-calling).
 	//     You can also use custom tools to call your own code.
-	Tools []responses.ToolUnionParam `json:"tools,omitzero"`
+	Tools []ResponseToolUnion `json:"tools,omitzero"`
 }
 
 // Configuration options for a text response from the model. Can be plain text or
@@ -2301,7 +2378,94 @@ type ResponseTextConfigParam struct {
 	// Setting to `{ "type": "json_object" }` enables the older JSON mode, which
 	// ensures the message the model generates is valid JSON. Using `json_schema` is
 	// preferred for models that support it.
-	Format responses.ResponseFormatTextConfigUnionParam `json:"format,omitzero"`
+	Format ResponseFormatTextConfigUnionParam `json:"format,omitzero"`
+}
+
+// A union type for different text response format configurations.
+// Only one field can be non-zero.
+type ResponseFormatTextConfigUnionParam struct {
+	OfText       *ResponseFormatTextParam
+	OfJSONSchema *ResponseFormatTextJSONSchemaConfigParam
+	OfJSONObject *ResponseFormatJSONObjectParam
+}
+
+func (r ResponseFormatTextConfigUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfText != nil:
+		return json.Marshal(r.OfText)
+	case r.OfJSONSchema != nil:
+		return json.Marshal(r.OfJSONSchema)
+	case r.OfJSONObject != nil:
+		return json.Marshal(r.OfJSONObject)
+	default:
+		return nil, errors.New("no format to marshal in ResponseFormatTextConfigUnionParam")
+	}
+}
+
+func (r *ResponseFormatTextConfigUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "text":
+		var textParam ResponseFormatTextParam
+		if err := json.Unmarshal(data, &textParam); err != nil {
+			return err
+		}
+		r.OfText = &textParam
+	case "json_schema":
+		var jsonSchemaParam ResponseFormatTextJSONSchemaConfigParam
+		if err := json.Unmarshal(data, &jsonSchemaParam); err != nil {
+			return err
+		}
+		r.OfJSONSchema = &jsonSchemaParam
+	case "json_object":
+		var jsonObjectParam ResponseFormatJSONObjectParam
+		if err := json.Unmarshal(data, &jsonObjectParam); err != nil {
+			return err
+		}
+		r.OfJSONObject = &jsonObjectParam
+	default:
+		return errors.New("invalid format type in response format text config")
+	}
+	return nil
+}
+
+// Default response format. Used to generate text responses.
+type ResponseFormatTextParam struct {
+	// The type of response format being defined. Always `text`.
+	Type string `json:"type"`
+}
+
+// JSON Schema response format. Used to generate structured JSON responses. Learn
+// more about
+// [Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs).
+//
+// The properties Name, Schema, Type are required.
+type ResponseFormatTextJSONSchemaConfigParam struct {
+	// The name of the response format. Must be a-z, A-Z, 0-9, or contain underscores
+	// and dashes, with a maximum length of 64.
+	Name string `json:"name"`
+	// The schema for the response format, described as a JSON Schema object. Learn how
+	// to build JSON schemas [here](https://json-schema.org/).
+	Schema map[string]any `json:"schema,omitzero"`
+	// Whether to enable strict schema adherence when generating the output. If set to
+	// true, the model will always follow the exact schema defined in the `schema`
+	// field. Only a subset of JSON Schema is supported when `strict` is `true`. To
+	// learn more, read the
+	// [Structured Outputs guide](https://platform.openai.com/docs/guides/structured-outputs).
+	Strict *bool `json:"strict,omitempty"`
+	// A description of what the response format is for, used by the model to determine
+	// how to respond in the format.
+	Description string `json:"description,omitzero"`
+	// The type of response format being defined. Always `json_schema`.
+	Type string `json:"type"`
+}
+
+// JSON object response format. An older method of generating JSON responses. Using
+// `json_schema` is recommended for models that support it. Note that the model
+// will not generate JSON without a system or user message instructing it to do so.
+type ResponseFormatJSONObjectParam struct {
+	// The type of response format being defined. Always `json_object`.
+	Type string `json:"type"`
 }
 
 // Reasoning configuration for reasoning models.
@@ -2353,6 +2517,3195 @@ type ResponseStreamOptions struct {
 	IncludeObfuscation bool `json:"include_obfuscation,omitzero"`
 }
 
+// Reference to a prompt template and its variables.
+// [Learn more](https://platform.openai.com/docs/guides/text?api-mode=responses#reusable-prompts).
+//
+// The property ID is required.
+type ResponsePromptParam struct {
+	// The unique identifier of the prompt template to use.
+	ID string `json:"id"`
+	// Optional version of the prompt template.
+	Version string `json:"version,omitzero"`
+	// Optional map of values to substitute in for variables in your prompt. The
+	// substitution values can either be strings, or other Response input types like
+	// images or files.
+	Variables map[string]ResponsePromptVariableUnionParam `json:"variables,omitzero"`
+}
+
+// ResponsePromptVariableUnionParam is a union type for different prompt variable parameters.
+// Only one field can be non-zero.
+type ResponsePromptVariableUnionParam struct {
+	OfString     *string
+	OfInputText  *ResponseInputTextParam
+	OfInputImage *ResponseInputImageParam
+	OfInputFile  *ResponseInputFileParam
+}
+
+func (r ResponsePromptVariableUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfString != nil:
+		return json.Marshal(r.OfString)
+	case r.OfInputText != nil:
+		return json.Marshal(r.OfInputText)
+	case r.OfInputImage != nil:
+		return json.Marshal(r.OfInputImage)
+	case r.OfInputFile != nil:
+		return json.Marshal(r.OfInputFile)
+	default:
+		return nil, errors.New("no prompt variable to marshal in ResponsePromptVariableUnionParam")
+	}
+}
+
+func (r *ResponsePromptVariableUnionParam) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as string first.
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		r.OfString = &str
+		return nil
+	}
+
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "input_text":
+		var it ResponseInputTextParam
+		if err := json.Unmarshal(data, &it); err != nil {
+			return err
+		}
+		r.OfInputText = &it
+	case "input_image":
+		var ii ResponseInputImageParam
+		if err := json.Unmarshal(data, &ii); err != nil {
+			return err
+		}
+		r.OfInputImage = &ii
+	case "input_file":
+		var ifp ResponseInputFileParam
+		if err := json.Unmarshal(data, &ifp); err != nil {
+			return err
+		}
+		r.OfInputFile = &ifp
+	default:
+		return errors.New("unknown type for ResponsePromptVariableUnionParam: " + typ.String())
+	}
+	return nil
+}
+
+// ResponseToolUnion is a union type for different tool parameters.
+// Only one field can be non-zero.
+type ResponseToolUnion struct {
+	OfFunction         *FunctionToolParam
+	OfFileSearch       *FileSearchToolParam
+	OfComputerTool     *ComputerToolParam
+	OfWebSearch        *WebSearchToolParam
+	OfMcp              *ToolMcpParam
+	OfCodeInterpreter  *ToolCodeInterpreterParam
+	OfImageGeneration  *ToolImageGenerationParam
+	OfLocalShell       *ToolLocalShellParam
+	OfShell            *FunctionShellToolParam
+	OfCustom           *CustomToolParam
+	OfWebSearchPreview *WebSearchPreviewToolParam
+	OfApplyPatch       *ApplyPatchToolParam
+}
+
+func (t ResponseToolUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
+	switch {
+	case t.OfFunction != nil:
+		return json.Marshal(t.OfFunction)
+	case t.OfFileSearch != nil:
+		return json.Marshal(t.OfFileSearch)
+	case t.OfComputerTool != nil:
+		return json.Marshal(t.OfComputerTool)
+	case t.OfWebSearch != nil:
+		return json.Marshal(t.OfWebSearch)
+	case t.OfMcp != nil:
+		return json.Marshal(t.OfMcp)
+	case t.OfCodeInterpreter != nil:
+		return json.Marshal(t.OfCodeInterpreter)
+	case t.OfImageGeneration != nil:
+		return json.Marshal(t.OfImageGeneration)
+	case t.OfLocalShell != nil:
+		return json.Marshal(t.OfLocalShell)
+	case t.OfShell != nil:
+		return json.Marshal(t.OfShell)
+	case t.OfCustom != nil:
+		return json.Marshal(t.OfCustom)
+	case t.OfWebSearchPreview != nil:
+		return json.Marshal(t.OfWebSearchPreview)
+	case t.OfApplyPatch != nil:
+		return json.Marshal(t.OfApplyPatch)
+	default:
+		return nil, errors.New("no tool to marshal in ToolUnionParam")
+	}
+}
+
+func (t *ResponseToolUnion) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "function":
+		var f FunctionToolParam
+		if err := json.Unmarshal(data, &f); err != nil {
+			return err
+		}
+		t.OfFunction = &f
+	case "file_search":
+		var fs FileSearchToolParam
+		if err := json.Unmarshal(data, &fs); err != nil {
+			return err
+		}
+		t.OfFileSearch = &fs
+	case "computer_use_preview":
+		var cp ComputerToolParam
+		if err := json.Unmarshal(data, &cp); err != nil {
+			return err
+		}
+		t.OfComputerTool = &cp
+	case "web_search", "web_search_2025_08_26":
+		var ws WebSearchToolParam
+		if err := json.Unmarshal(data, &ws); err != nil {
+			return err
+		}
+		t.OfWebSearch = &ws
+	case "mcp":
+		var mcp ToolMcpParam
+		if err := json.Unmarshal(data, &mcp); err != nil {
+			return err
+		}
+		t.OfMcp = &mcp
+	case "code_interpreter":
+		var ci ToolCodeInterpreterParam
+		if err := json.Unmarshal(data, &ci); err != nil {
+			return err
+		}
+		t.OfCodeInterpreter = &ci
+	case "image_generation":
+		var ig ToolImageGenerationParam
+		if err := json.Unmarshal(data, &ig); err != nil {
+			return err
+		}
+		t.OfImageGeneration = &ig
+	case "custom":
+		var ct CustomToolParam
+		if err := json.Unmarshal(data, &ct); err != nil {
+			return err
+		}
+		t.OfCustom = &ct
+	case "local_shell":
+		var ls ToolLocalShellParam
+		if err := json.Unmarshal(data, &ls); err != nil {
+			return err
+		}
+		t.OfLocalShell = &ls
+	case "shell":
+		var st FunctionShellToolParam
+		if err := json.Unmarshal(data, &st); err != nil {
+			return err
+		}
+		t.OfShell = &st
+	case "web_search_preview", "web_search_preview_2025_03_11":
+		var wsp WebSearchPreviewToolParam
+		if err := json.Unmarshal(data, &wsp); err != nil {
+			return err
+		}
+		t.OfWebSearchPreview = &wsp
+	case "apply_patch":
+		var ap ApplyPatchToolParam
+		if err := json.Unmarshal(data, &ap); err != nil {
+			return err
+		}
+		t.OfApplyPatch = &ap
+	default:
+		return errors.New("unknown tool type")
+	}
+	return nil
+}
+
+// Defines a function in your own code the model can choose to call. Learn more
+// about
+// [function calling](https://platform.openai.com/docs/guides/function-calling).
+//
+// The properties Name, Parameters, Strict, Type are required.
+type FunctionToolParam struct {
+	// Whether to enforce strict parameter validation. Default `true`.
+	Strict *bool `json:"strict,omitempty"`
+	// A JSON schema object describing the parameters of the function.
+	Parameters map[string]any `json:"parameters,omitzero"`
+	// The name of the function to call.
+	Name string `json:"name"`
+	// A description of the function. Used by the model to determine whether or not to
+	// call the function.
+	Description string `json:"description,omitzero"`
+	// The type of the function tool. Always `function`.
+	Type string `json:"type"`
+}
+
+// A tool that searches for relevant content from uploaded files. Learn more about
+// the
+// [file search tool](https://platform.openai.com/docs/guides/tools-file-search).
+//
+// The properties Type, VectorStoreIDs are required.
+type FileSearchToolParam struct {
+	// The IDs of the vector stores to search.
+	VectorStoreIDs []string `json:"vector_store_ids,omitzero"`
+	// The maximum number of results to return. This number should be between 1 and 50
+	// inclusive.
+	MaxNumResults int64 `json:"max_num_results,omitzero"`
+	// A filter to apply.
+	Filters FileSearchToolFiltersUnionParam `json:"filters,omitzero"`
+	// Ranking options for search.
+	RankingOptions FileSearchToolRankingOptionsParam `json:"ranking_options,omitzero"`
+	// The type of the file search tool. Always `file_search`.
+	Type string `json:"type"`
+}
+
+// A union type for different file search tool filters.
+// Only one field can be non-zero.
+type FileSearchToolFiltersUnionParam struct {
+	OfComparisonFilter *ComparisonFilterParam
+	OfCompoundFilter   *CompoundFilterParam
+}
+
+func (f FileSearchToolFiltersUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case f.OfComparisonFilter != nil:
+		return json.Marshal(f.OfComparisonFilter)
+	case f.OfCompoundFilter != nil:
+		return json.Marshal(f.OfCompoundFilter)
+	default:
+		return nil, errors.New("no filesearch filter to marshal")
+	}
+}
+
+func (f *FileSearchToolFiltersUnionParam) UnmarshalJSON(data []byte) error {
+	// Use gjson to efficiently get the type field
+	typeVal := gjson.GetBytes(data, "type")
+	switch typeVal.String() {
+	case "and", "or":
+		// This is a CompoundFilterParam
+		var compdFilter CompoundFilterParam
+		if err := json.Unmarshal(data, &compdFilter); err != nil {
+			return errors.New("cannot unmarshal filesearch tool filters as compound filter")
+		}
+		f.OfCompoundFilter = &compdFilter
+		return nil
+	default:
+		// This is a ComparisonFilterParam with a comparison operator
+		var compFilter ComparisonFilterParam
+		if err := json.Unmarshal(data, &compFilter); err != nil {
+			return errors.New("cannot unmarshal filesearch tool filters as comparison filter")
+		}
+		f.OfComparisonFilter = &compFilter
+		return nil
+	}
+}
+
+// Combine multiple filters using `and` or `or`.
+//
+// The properties Filters, Type are required.
+type CompoundFilterParam struct {
+	// Array of filters to combine. Items can be `ComparisonFilter` or
+	// `CompoundFilter`.
+	Filters []ComparisonFilterParam `json:"filters,omitzero"`
+	// Type of operation: `and` or `or`.
+	//
+	// Any of "and", "or".
+	Type string `json:"type,omitzero"`
+}
+
+// A filter used to compare a specified attribute key to a given value using a
+// defined comparison operation.
+//
+// The properties Key, Type, Value are required.
+type ComparisonFilterParam struct {
+	// The key to compare against the value.
+	Key string `json:"key,omitzero"`
+	// Specifies the comparison operator: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`,
+	// `nin`.
+	//
+	// - `eq`: equals
+	// - `ne`: not equal
+	// - `gt`: greater than
+	// - `gte`: greater than or equal
+	// - `lt`: less than
+	// - `lte`: less than or equal
+	// - `in`: in
+	// - `nin`: not in
+	//
+	// Any of "eq", "ne", "gt", "gte", "lt", "lte".
+	Type string `json:"type,omitzero"`
+	// The value to compare against the attribute key; supports string, number, or
+	// boolean types.
+	Value ComparisonFilterValueUnionParam `json:"value,omitzero"`
+}
+
+// A union type for different comparison filter values.
+// Only one field can be non-zero.
+type ComparisonFilterValueUnionParam struct {
+	OfString                     *string
+	OfFloat                      *float64
+	OfBool                       *bool
+	OfComparisonFilterValueArray []ComparisonFilterValueArrayItemUnionParam
+}
+
+func (c ComparisonFilterValueUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case c.OfString != nil:
+		return json.Marshal(c.OfString)
+	case c.OfFloat != nil:
+		return json.Marshal(c.OfFloat)
+	case c.OfBool != nil:
+		return json.Marshal(c.OfBool)
+	case c.OfComparisonFilterValueArray != nil:
+		return json.Marshal(c.OfComparisonFilterValueArray)
+	default:
+		return nil, errors.New("no value to marshal in comparison filter")
+	}
+}
+
+func (c *ComparisonFilterValueUnionParam) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as string
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		c.OfString = &str
+		return nil
+	}
+
+	// Try to unmarshal as float64
+	var f float64
+	if err := json.Unmarshal(data, &f); err == nil {
+		c.OfFloat = &f
+		return nil
+	}
+
+	// Try to unmarshal as bool
+	var b bool
+	if err := json.Unmarshal(data, &b); err == nil {
+		c.OfBool = &b
+		return nil
+	}
+
+	// Try to unmarshal as array of ComparisonFilterValueArrayItemUnionParam
+	var arr []ComparisonFilterValueArrayItemUnionParam
+	if err := json.Unmarshal(data, &arr); err == nil {
+		c.OfComparisonFilterValueArray = arr
+		return nil
+	}
+	return errors.New("cannot unmarshal comparison filter value")
+}
+
+// A union type for different comparison filter array item values.
+// Only one field can be non-zero.
+type ComparisonFilterValueArrayItemUnionParam struct {
+	OfString *string
+	OfFloat  *float64
+}
+
+func (c ComparisonFilterValueArrayItemUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case c.OfString != nil:
+		return json.Marshal(c.OfString)
+	case c.OfFloat != nil:
+		return json.Marshal(c.OfFloat)
+	default:
+		return nil, errors.New("no value to marshal in comparison filter value array")
+	}
+}
+
+func (c *ComparisonFilterValueArrayItemUnionParam) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as string
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		c.OfString = &str
+		return nil
+	}
+
+	// Try to unmarshal as float64
+	var f float64
+	if err := json.Unmarshal(data, &f); err == nil {
+		c.OfFloat = &f
+		return nil
+	}
+
+	return errors.New("cannot unmarshal comparison filter value array item")
+}
+
+// Ranking options for search.
+type FileSearchToolRankingOptionsParam struct {
+	// The score threshold for the file search, a number between 0 and 1. Numbers
+	// closer to 1 will attempt to return only the most relevant results, but may
+	// return fewer results.
+	ScoreThreshold *float64 `json:"score_threshold,omitempty"`
+	// Weights that control how reciprocal rank fusion balances semantic embedding
+	// matches versus sparse keyword matches when hybrid search is enabled.
+	HybridSearch FileSearchToolRankingOptionsHybridSearchParam `json:"hybrid_search,omitzero"`
+	// The ranker to use for the file search.
+	//
+	// Any of "auto", "default-2024-11-15".
+	Ranker string `json:"ranker,omitzero"`
+}
+
+// Weights that control how reciprocal rank fusion balances semantic embedding
+// matches versus sparse keyword matches when hybrid search is enabled.
+//
+// The properties EmbeddingWeight, TextWeight are required.
+type FileSearchToolRankingOptionsHybridSearchParam struct {
+	// The weight of the embedding in the reciprocal ranking fusion.
+	EmbeddingWeight float64 `json:"embedding_weight"`
+	// The weight of the text in the reciprocal ranking fusion.
+	TextWeight float64 `json:"text_weight"`
+}
+
+// A tool that controls a virtual computer. Learn more about the
+// [computer tool](https://platform.openai.com/docs/guides/tools-computer-use).
+//
+// The properties DisplayHeight, DisplayWidth, Environment, Type are required.
+type ComputerToolParam struct {
+	// The height of the computer display.
+	DisplayHeight int64 `json:"display_height,omitzero"`
+	// The width of the computer display.
+	DisplayWidth int64 `json:"display_width,omitzero"`
+	// The type of computer environment to control.
+	//
+	// Any of "windows", "mac", "linux", "ubuntu", "browser".
+	Environment string `json:"environment,omitzero"`
+	// The type of the computer use tool. Always `computer_use_preview`.
+	Type string `json:"type,omitzero"`
+}
+
+// Search the Internet for sources related to the prompt. Learn more about the
+// [web search tool](https://platform.openai.com/docs/guides/tools-web-search).
+//
+// The property Type is required.
+type WebSearchToolParam struct {
+	// The type of the web search tool. One of `web_search` or `web_search_2025_08_26`.
+	//
+	// Any of "web_search", "web_search_2025_08_26".
+	Type string `json:"type,omitzero"`
+	// Filters for the search.
+	Filters WebSearchToolFiltersParam `json:"filters,omitzero"`
+	// The approximate location of the user.
+	UserLocation WebSearchToolUserLocationParam `json:"user_location,omitzero"`
+	// High level guidance for the amount of context window space to use for the
+	// search. One of `low`, `medium`, or `high`. `medium` is the default.
+	//
+	// Any of "low", "medium", "high".
+	SearchContextSize string `json:"search_context_size,omitzero"`
+}
+
+// Filters for the search.
+type WebSearchToolFiltersParam struct {
+	// Allowed domains for the search. If not provided, all domains are allowed.
+	// Subdomains of the provided domains are allowed as well.
+	//
+	// Example: `["pubmed.ncbi.nlm.nih.gov"]`
+	AllowedDomains []string `json:"allowed_domains,omitzero"`
+}
+
+// The approximate location of the user.
+type WebSearchToolUserLocationParam struct {
+	// Free text input for the city of the user, e.g. `San Francisco`.
+	City string `json:"city,omitzero"`
+	// The two-letter [ISO country code](https://en.wikipedia.org/wiki/ISO_3166-1) of
+	// the user, e.g. `US`.
+	Country string `json:"country,omitzero"`
+	// Free text input for the region of the user, e.g. `California`.
+	Region string `json:"region,omitzero"`
+	// The [IANA timezone](https://timeapi.io/documentation/iana-timezones) of the
+	// user, e.g. `America/Los_Angeles`.
+	Timezone string `json:"timezone,omitzero"`
+	// The type of location approximation. Always `approximate`.
+	Type string `json:"type,omitzero"`
+}
+
+// Give the model access to additional tools via remote Model Context Protocol
+// (MCP) servers.
+// [Learn more about MCP](https://platform.openai.com/docs/guides/tools-remote-mcp).
+//
+// The properties ServerLabel, Type are required.
+type ToolMcpParam struct {
+	// A label for this MCP server, used to identify it in tool calls.
+	ServerLabel string `json:"server_label"`
+	// An OAuth access token that can be used with a remote MCP server, either with a
+	// custom MCP server URL or a service connector. Your application must handle the
+	// OAuth authorization flow and provide the token here.
+	Authorization string `json:"authorization,omitzero"`
+	// Optional description of the MCP server, used to provide more context.
+	ServerDescription string `json:"server_description,omitzero"`
+	// The URL for the MCP server. One of `server_url` or `connector_id` must be
+	// provided.
+	ServerURL string `json:"server_url,omitzero"`
+	// List of allowed tool names or a filter object.
+	AllowedTools ToolMcpAllowedToolsUnionParam `json:"allowed_tools,omitzero"`
+	// Optional HTTP headers to send to the MCP server. Use for authentication or other
+	// purposes.
+	Headers map[string]string `json:"headers,omitzero"`
+	// Specify which of the MCP server's tools require approval.
+	RequireApproval ToolMcpRequireApprovalUnionParam `json:"require_approval,omitzero"`
+	// Identifier for service connectors, like those available in ChatGPT. One of
+	// `server_url` or `connector_id` must be provided. Learn more about service
+	// connectors
+	// [here](https://platform.openai.com/docs/guides/tools-remote-mcp#connectors).
+	//
+	// Currently supported `connector_id` values are:
+	//
+	// - Dropbox: `connector_dropbox`
+	// - Gmail: `connector_gmail`
+	// - Google Calendar: `connector_googlecalendar`
+	// - Google Drive: `connector_googledrive`
+	// - Microsoft Teams: `connector_microsoftteams`
+	// - Outlook Calendar: `connector_outlookcalendar`
+	// - Outlook Email: `connector_outlookemail`
+	// - SharePoint: `connector_sharepoint`
+	//
+	// Any of "connector_dropbox", "connector_gmail", "connector_googlecalendar",
+	// "connector_googledrive", "connector_microsoftteams",
+	// "connector_outlookcalendar", "connector_outlookemail", "connector_sharepoint".
+	ConnectorID string `json:"connector_id,omitzero"`
+	// The type of the MCP tool. Always `mcp`.
+	Type string `json:"type"`
+}
+
+// A union type for specifying allowed MCP server tools.
+// Only one field can be non-zero.
+type ToolMcpAllowedToolsUnionParam struct {
+	OfMcpAllowedTools []string
+	OfMcpToolFilter   *ToolMcpAllowedToolsMcpToolFilterParam
+}
+
+func (t ToolMcpAllowedToolsUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case t.OfMcpAllowedTools != nil:
+		return json.Marshal(t.OfMcpAllowedTools)
+	case t.OfMcpToolFilter != nil:
+		return json.Marshal(t.OfMcpToolFilter)
+	default:
+		return nil, errors.New("no tools to marshal in mcp allowed tools")
+	}
+}
+
+func (t *ToolMcpAllowedToolsUnionParam) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as []string
+	var toolNames []string
+	if err := json.Unmarshal(data, &toolNames); err == nil {
+		t.OfMcpAllowedTools = toolNames
+		return nil
+	}
+
+	// Try to unmarshal as ToolMcpAllowedToolsMcpToolFilterParam
+	var toolFilter ToolMcpAllowedToolsMcpToolFilterParam
+	if err := json.Unmarshal(data, &toolFilter); err == nil {
+		t.OfMcpToolFilter = &toolFilter
+		return nil
+	}
+
+	return errors.New("cannot unmarshal Mcp allowed tools")
+}
+
+// A filter object to specify which tools are allowed.
+type ToolMcpAllowedToolsMcpToolFilterParam struct {
+	// Indicates whether or not a tool modifies data or is read-only. If an MCP server
+	// is
+	// [annotated with `readOnlyHint`](https://modelcontextprotocol.io/specification/2025-06-18/schema#toolannotations-readonlyhint),
+	// it will match this filter.
+	ReadOnly *bool `json:"read_only,omitempty"`
+	// List of allowed tool names.
+	ToolNames []string `json:"tool_names,omitzero"`
+}
+
+// A union type for specifying which MCP server tools require approval.
+// Only one field can be non-zero.
+type ToolMcpRequireApprovalUnionParam struct {
+	OfMcpToolApprovalFilter  *ToolMcpRequireApprovalMcpToolApprovalFilterParam
+	OfMcpToolApprovalSetting *string
+}
+
+func (t ToolMcpRequireApprovalUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case t.OfMcpToolApprovalFilter != nil:
+		return json.Marshal(t.OfMcpToolApprovalFilter)
+	case t.OfMcpToolApprovalSetting != nil:
+		return json.Marshal(t.OfMcpToolApprovalSetting)
+	default:
+		return nil, errors.New("no tool to marshal in mcp require approval")
+	}
+}
+
+func (t *ToolMcpRequireApprovalUnionParam) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as ToolMcpRequireApprovalMcpToolApprovalFilterParam
+	var toolApprovalFilter ToolMcpRequireApprovalMcpToolApprovalFilterParam
+	if err := json.Unmarshal(data, &toolApprovalFilter); err == nil {
+		t.OfMcpToolApprovalFilter = &toolApprovalFilter
+		return nil
+	}
+
+	// Try to unmarshal as string
+	var setting string
+	if err := json.Unmarshal(data, &setting); err == nil {
+		t.OfMcpToolApprovalSetting = &setting
+		return nil
+	}
+
+	return errors.New("cannot unmarshal Mcp require approval")
+}
+
+// Specify which of the MCP server's tools require approval. Can be `always`,
+// `never`, or a filter object associated with tools that require approval.
+type ToolMcpRequireApprovalMcpToolApprovalFilterParam struct {
+	// A filter object to specify which tools are allowed.
+	Always ToolMcpRequireApprovalMcpToolApprovalFilterObjectParam `json:"always,omitzero"`
+	// A filter object to specify which tools are allowed.
+	Never ToolMcpRequireApprovalMcpToolApprovalFilterObjectParam `json:"never,omitzero"`
+}
+
+// A filter object to specify which tools are allowed.
+type ToolMcpRequireApprovalMcpToolApprovalFilterObjectParam struct {
+	// Indicates whether or not a tool modifies data or is read-only. If an MCP server
+	// is
+	// [annotated with `readOnlyHint`](https://modelcontextprotocol.io/specification/2025-06-18/schema#toolannotations-readonlyhint),
+	// it will match this filter.
+	ReadOnly *bool `json:"read_only,omitempty"`
+	// List of allowed tool names.
+	ToolNames []string `json:"tool_names,omitzero"`
+}
+
+// A tool that runs Python code to help generate a response to a prompt.
+//
+// The properties Container, Type are required.
+type ToolCodeInterpreterParam struct {
+	// The code interpreter container. Can be a container ID or an object that
+	// specifies uploaded file IDs to make available to your code, along with an
+	// optional `memory_limit` setting.
+	Container ToolCodeInterpreterContainerUnionParam `json:"container,omitzero"`
+	// The type of the code interpreter tool. Always `code_interpreter`.
+	Type string `json:"type"`
+}
+
+// A union type for different code interpreter container parameters.
+// Only one field can be non-zero.
+type ToolCodeInterpreterContainerUnionParam struct {
+	OfString                  *string
+	OfCodeInterpreterToolAuto *ToolCodeInterpreterContainerCodeInterpreterContainerAutoParam
+}
+
+func (t ToolCodeInterpreterContainerUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case t.OfString != nil:
+		return json.Marshal(t.OfString)
+	case t.OfCodeInterpreterToolAuto != nil:
+		return json.Marshal(t.OfCodeInterpreterToolAuto)
+	default:
+		return nil, errors.New("no container to marshal in code interpreter")
+	}
+}
+
+func (t *ToolCodeInterpreterContainerUnionParam) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as string
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		t.OfString = &str
+		return nil
+	}
+
+	// Try to unmarshal as ToolCodeInterpreterContainerCodeInterpreterContainerAutoParam
+	var autoParam ToolCodeInterpreterContainerCodeInterpreterContainerAutoParam
+	if err := json.Unmarshal(data, &autoParam); err == nil {
+		t.OfCodeInterpreterToolAuto = &autoParam
+		return nil
+	}
+
+	return errors.New("cannot unmarshal code interpreter container")
+}
+
+// Configuration for a code interpreter container. Optionally specify the IDs of
+// the files to run the code on.
+//
+// The property Type is required.
+type ToolCodeInterpreterContainerCodeInterpreterContainerAutoParam struct {
+	// Any of "1g", "4g", "16g", "64g".
+	MemoryLimit string `json:"memory_limit,omitzero"`
+	// An optional list of uploaded files to make available to your code.
+	FileIDs []string `json:"file_ids,omitzero"`
+	// Always `auto`.
+	Type string `json:"type"`
+}
+
+// A tool that generates images using a model like `gpt-image-1`.
+//
+// The property Type is required.
+type ToolImageGenerationParam struct {
+	// Compression level for the output image. Default: 100.
+	OutputCompression *int64 `json:"output_compression,omitempty"`
+	// Number of partial images to generate in streaming mode, from 0 (default value)
+	// to 3.
+	PartialImages *int64 `json:"partial_images,omitempty"`
+	// Control how much effort the model will exert to match the style and features,
+	// especially facial features, of input images. This parameter is only supported
+	// for `gpt-image-1`. Unsupported for `gpt-image-1-mini`. Supports `high` and
+	// `low`. Defaults to `low`.
+	//
+	// Any of "high", "low".
+	InputFidelity string `json:"input_fidelity,omitzero"`
+	// Background type for the generated image. One of `transparent`, `opaque`, or
+	// `auto`. Default: `auto`.
+	//
+	// Any of "transparent", "opaque", "auto".
+	Background string `json:"background,omitzero"`
+	// Optional mask for inpainting. Contains `image_url` (string, optional) and
+	// `file_id` (string, optional).
+	InputImageMask ToolImageGenerationInputImageMaskParam `json:"input_image_mask,omitzero"`
+	// The image generation model to use. Default: `gpt-image-1`.
+	//
+	// Any of "gpt-image-1", "gpt-image-1-mini".
+	Model string `json:"model,omitzero"`
+	// Moderation level for the generated image. Default: `auto`.
+	//
+	// Any of "auto", "low".
+	Moderation string `json:"moderation,omitzero"`
+	// The output format of the generated image. One of `png`, `webp`, or `jpeg`.
+	// Default: `png`.
+	//
+	// Any of "png", "webp", "jpeg".
+	OutputFormat string `json:"output_format,omitzero"`
+	// The quality of the generated image. One of `low`, `medium`, `high`, or `auto`.
+	// Default: `auto`.
+	//
+	// Any of "low", "medium", "high", "auto".
+	Quality string `json:"quality,omitzero"`
+	// The size of the generated image. One of `1024x1024`, `1024x1536`, `1536x1024`,
+	// or `auto`. Default: `auto`.
+	//
+	// Any of "1024x1024", "1024x1536", "1536x1024", "auto".
+	Size string `json:"size,omitzero"`
+	// The type of the image generation tool. Always `image_generation`.
+	Type string `json:"type"`
+}
+
+// Optional mask for inpainting. Contains `image_url` (string, optional) and
+// `file_id` (string, optional).
+type ToolImageGenerationInputImageMaskParam struct {
+	// File ID for the mask image.
+	FileID string `json:"file_id,omitzero"`
+	// Base64-encoded mask image.
+	ImageURL string `json:"image_url,omitzero"`
+}
+
+// A tool that allows the model to execute shell commands in a local environment.
+type ToolLocalShellParam struct {
+	// The type of the local shell tool. Always `local_shell`.
+	Type string `json:"type"`
+}
+
+// A tool that allows the model to execute shell commands.
+type FunctionShellToolParam struct {
+	// The type of the shell tool. Always `shell`.
+	Type string `json:"type"`
+}
+
+// A custom tool that processes input using a specified format. Learn more about
+// [custom tools](https://platform.openai.com/docs/guides/function-calling#custom-tools)
+//
+// The properties Name, Type are required.
+type CustomToolParam struct {
+	// The name of the custom tool, used to identify it in tool calls.
+	Name string `json:"name"`
+	// Optional description of the custom tool, used to provide more context.
+	Description string `json:"description,omitzero"`
+	// The input format for the custom tool. Default is unconstrained text.
+	Format CustomToolInputFormatUnionParam `json:"format,omitzero"`
+	// The type of the custom tool. Always `custom`.
+	Type string `json:"type"`
+}
+
+// A union type for different custom tool input format parameters.
+// Only one field can be non-zero.
+type CustomToolInputFormatUnionParam struct {
+	OfText    *CustomToolInputFormatTextParam
+	OfGrammar *CustomToolInputFormatGrammarParam
+}
+
+func (c CustomToolInputFormatUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case c.OfText != nil:
+		return json.Marshal(c.OfText)
+	case c.OfGrammar != nil:
+		return json.Marshal(c.OfGrammar)
+	default:
+		return nil, errors.New("no format to marshal in CustomToolInputFormatUnionParam")
+	}
+}
+
+func (c *CustomToolInputFormatUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "text":
+		var textParam CustomToolInputFormatTextParam
+		if err := json.Unmarshal(data, &textParam); err != nil {
+			return err
+		}
+		c.OfText = &textParam
+	case "grammar":
+		var grammarParam CustomToolInputFormatGrammarParam
+		if err := json.Unmarshal(data, &grammarParam); err != nil {
+			return err
+		}
+		c.OfGrammar = &grammarParam
+	default:
+		return errors.New("invalid format type in custom tool input format")
+	}
+	return nil
+}
+
+// Unconstrained free-form text.
+type CustomToolInputFormatTextParam struct {
+	// Unconstrained text format. Always `text`.
+	Type string `json:"type"`
+}
+
+// A grammar defined by the user.
+//
+// The properties Definition, Syntax, Type are required.
+type CustomToolInputFormatGrammarParam struct {
+	// The grammar definition.
+	Definition string `json:"definition"`
+	// The syntax of the grammar definition. One of `lark` or `regex`.
+	//
+	// Any of "lark", "regex".
+	Syntax string `json:"syntax,omitzero"`
+	// Grammar format. Always `grammar`.
+	Type string `json:"type"`
+}
+
+// This tool searches the web for relevant results to use in a response. Learn more
+// about the
+// [web search tool](https://platform.openai.com/docs/guides/tools-web-search).
+//
+// The property Type is required.
+type WebSearchPreviewToolParam struct {
+	// The type of the web search tool. One of `web_search_preview` or
+	// `web_search_preview_2025_03_11`.
+	//
+	// Any of "web_search_preview", "web_search_preview_2025_03_11".
+	Type string `json:"type,omitzero"`
+	// The user's location.
+	UserLocation WebSearchPreviewToolUserLocationParam `json:"user_location,omitzero"`
+	// High level guidance for the amount of context window space to use for the
+	// search. One of `low`, `medium`, or `high`. `medium` is the default.
+	//
+	// Any of "low", "medium", "high".
+	SearchContextSize string `json:"search_context_size,omitzero"`
+}
+
+// The user's location.
+//
+// The property Type is required.
+type WebSearchPreviewToolUserLocationParam struct {
+	// Free text input for the city of the user, e.g. `San Francisco`.
+	City string `json:"city,omitzero"`
+	// The two-letter [ISO country code](https://en.wikipedia.org/wiki/ISO_3166-1) of
+	// the user, e.g. `US`.
+	Country string `json:"country,omitzero"`
+	// Free text input for the region of the user, e.g. `California`.
+	Region string `json:"region,omitzero"`
+	// The [IANA timezone](https://timeapi.io/documentation/iana-timezones) of the
+	// user, e.g. `America/Los_Angeles`.
+	Timezone string `json:"timezone,omitzero"`
+	// The type of location approximation. Always `approximate`.
+	Type string `json:"type"`
+}
+
+// Allows the assistant to create, delete, or update files using unified diffs.
+type ApplyPatchToolParam struct {
+	// The type of the tool. Always `apply_patch`.
+	Type string `json:"type"`
+}
+
+// A text input to the model.
+//
+// The properties Text, Type are required.
+type ResponseInputTextParam struct {
+	// The text input to the model.
+	Text string `json:"text"`
+	// The type of the input item. Always `input_text`.
+	Type string `json:"type"`
+}
+
+// An image input to the model. Learn about
+// [image inputs](https://platform.openai.com/docs/guides/vision).
+//
+// The properties Detail, Type are required.
+type ResponseInputImageParam struct {
+	// The detail level of the image to be sent to the model. One of `high`, `low`, or
+	// `auto`. Defaults to `auto`.
+	//
+	// Any of "low", "high", "auto".
+	Detail string `json:"detail,omitzero"`
+	// The ID of the file to be sent to the model.
+	FileID string `json:"file_id,omitzero"`
+	// The URL of the image to be sent to the model. A fully qualified URL or base64
+	// encoded image in a data URL.
+	ImageURL string `json:"image_url,omitzero"`
+	// The type of the input item. Always `input_image`.
+	Type string `json:"type"`
+}
+
+// A file input to the model.
+//
+// The property Type is required.
+type ResponseInputFileParam struct {
+	// The ID of the file to be sent to the model.
+	FileID string `json:"file_id,omitzero"`
+	// The content of the file to be sent to the model.
+	FileData string `json:"file_data,omitzero"`
+	// The URL of the file to be sent to the model.
+	FileURL string `json:"file_url,omitzero"`
+	// The name of the file to be sent to the model.
+	Filename string `json:"filename,omitzero"`
+	// The type of the input item. Always `input_file`.
+	Type string `json:"type"`
+}
+
+// ResponseNewParamsConversationUnion is a union type for different conversation parameters.
+// Only one field can be non-zero.
+type ResponseNewParamsConversationUnion struct {
+	OfString             *string
+	OfConversationObject *ResponseConversationParam
+}
+
+func (r ResponseNewParamsConversationUnion) MarshalJSON() ([]byte, error) {
+	if r.OfString != nil {
+		return json.Marshal(r.OfString)
+	}
+	if r.OfConversationObject != nil {
+		return json.Marshal(r.OfConversationObject)
+	}
+	return nil, errors.New("no conversation parameter to marshal")
+}
+
+func (r *ResponseNewParamsConversationUnion) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as string first.
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		r.OfString = &str
+		return nil
+	}
+
+	// Try to unmarshal as ResponseConversationParam.
+	var conv ResponseConversationParam
+	if err := json.Unmarshal(data, &conv); err == nil {
+		r.OfConversationObject = &conv
+		return nil
+	}
+
+	return errors.New("cannot unmarshal conversation parameter")
+}
+
+// The conversation that this response belongs to.
+//
+// The property ID is required.
+type ResponseConversationParam struct {
+	// The unique ID of the conversation.
+	ID string `json:"id"`
+}
+
+type ResponseNewParamsInputUnion struct {
+	OfString        *string
+	OfInputItemList []ResponseInputItemUnionParam
+}
+
+func (r *ResponseNewParamsInputUnion) UnmarshalJSON(data []byte) error {
+	// Try string
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		r.OfString = &s
+		r.OfInputItemList = nil
+		return nil
+	}
+
+	// Try input item list
+	var items []ResponseInputItemUnionParam
+	if err := json.Unmarshal(data, &items); err == nil {
+		r.OfString = nil
+		r.OfInputItemList = items
+		return nil
+	}
+
+	return errors.New("input must be either a string or an array of input items")
+}
+
+func (r ResponseNewParamsInputUnion) MarshalJSON() ([]byte, error) {
+	if r.OfString != nil {
+		return json.Marshal(r.OfString)
+	}
+	if r.OfInputItemList != nil {
+		return json.Marshal(r.OfInputItemList)
+	}
+	return nil, errors.New("no response input to marshal")
+}
+
+// ResponseInputItemUnionParam is a union type for different input item parameters.
+// Only one field can be non-zero.
+type ResponseInputItemUnionParam struct {
+	OfMessage              *EasyInputMessageParam
+	OfInputMessage         *ResponseInputItemMessageParam
+	OfOutputMessage        *ResponseOutputMessage
+	OfFileSearchCall       *ResponseFileSearchToolCall
+	OfComputerCall         *ResponseComputerToolCall
+	OfComputerCallOutput   *ResponseInputItemComputerCallOutputParam
+	OfWebSearchCall        *ResponseFunctionWebSearch
+	OfFunctionCall         *ResponseFunctionToolCall
+	OfFunctionCallOutput   *ResponseInputItemFunctionCallOutputParam
+	OfReasoning            *ResponseReasoningItem
+	OfCompaction           *ResponseCompactionItemParam
+	OfImageGenerationCall  *ResponseInputItemImageGenerationCallParam
+	OfCodeInterpreterCall  *ResponseCodeInterpreterToolCallParam
+	OfLocalShellCall       *ResponseInputItemLocalShellCallParam
+	OfLocalShellCallOutput *ResponseInputItemLocalShellCallOutputParam
+	OfShellCall            *ResponseInputItemShellCallParam
+	OfShellCallOutput      *ResponseInputItemShellCallOutputParam
+	OfApplyPatchCall       *ResponseInputItemApplyPatchCallParam
+	OfApplyPatchCallOutput *ResponseInputItemApplyPatchCallOutputParam
+	OfMcpListTools         *ResponseMcpListTools
+	OfMcpApprovalRequest   *ResponseMcpApprovalRequest
+	OfMcpApprovalResponse  *ResponseInputItemMcpApprovalResponseParam
+	OfMcpCall              *ResponseMcpCall
+	OfCustomToolCallOutput *ResponseCustomToolCallOutputParam
+	OfCustomToolCall       *ResponseCustomToolCall
+	OfItemReference        *ResponseInputItemItemReferenceParam
+}
+
+func (r ResponseInputItemUnionParam) MarshalJSON() ([]byte, error) { // nolint:gocritic
+	switch {
+	case r.OfMessage != nil:
+		return json.Marshal(r.OfMessage)
+	case r.OfInputMessage != nil:
+		return json.Marshal(r.OfInputMessage)
+	case r.OfOutputMessage != nil:
+		return json.Marshal(r.OfOutputMessage)
+	case r.OfFileSearchCall != nil:
+		return json.Marshal(r.OfFileSearchCall)
+	case r.OfComputerCall != nil:
+		return json.Marshal(r.OfComputerCall)
+	case r.OfComputerCallOutput != nil:
+		return json.Marshal(r.OfComputerCallOutput)
+	case r.OfWebSearchCall != nil:
+		return json.Marshal(r.OfWebSearchCall)
+	case r.OfFunctionCall != nil:
+		return json.Marshal(r.OfFunctionCall)
+	case r.OfFunctionCallOutput != nil:
+		return json.Marshal(r.OfFunctionCallOutput)
+	case r.OfReasoning != nil:
+		return json.Marshal(r.OfReasoning)
+	case r.OfCompaction != nil:
+		return json.Marshal(r.OfCompaction)
+	case r.OfImageGenerationCall != nil:
+		return json.Marshal(r.OfImageGenerationCall)
+	case r.OfCodeInterpreterCall != nil:
+		return json.Marshal(r.OfCodeInterpreterCall)
+	case r.OfLocalShellCall != nil:
+		return json.Marshal(r.OfLocalShellCall)
+	case r.OfLocalShellCallOutput != nil:
+		return json.Marshal(r.OfLocalShellCallOutput)
+	case r.OfShellCall != nil:
+		return json.Marshal(r.OfShellCall)
+	case r.OfShellCallOutput != nil:
+		return json.Marshal(r.OfShellCallOutput)
+	case r.OfApplyPatchCall != nil:
+		return json.Marshal(r.OfApplyPatchCall)
+	case r.OfApplyPatchCallOutput != nil:
+		return json.Marshal(r.OfApplyPatchCallOutput)
+	case r.OfMcpListTools != nil:
+		return json.Marshal(r.OfMcpListTools)
+	case r.OfMcpApprovalRequest != nil:
+		return json.Marshal(r.OfMcpApprovalRequest)
+	case r.OfMcpApprovalResponse != nil:
+		return json.Marshal(r.OfMcpApprovalResponse)
+	case r.OfMcpCall != nil:
+		return json.Marshal(r.OfMcpCall)
+	case r.OfCustomToolCallOutput != nil:
+		return json.Marshal(r.OfCustomToolCallOutput)
+	case r.OfCustomToolCall != nil:
+		return json.Marshal(r.OfCustomToolCall)
+	case r.OfItemReference != nil:
+		return json.Marshal(r.OfItemReference)
+	default:
+		return nil, errors.New("no input item to marshal")
+	}
+}
+
+func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "message":
+		// Check for id field to determine which type to unmarshal into
+		// ResponseOutputMessage has id field (required property)
+		if gjson.GetBytes(data, "id").Exists() {
+			var om ResponseOutputMessage
+			if err := json.Unmarshal(data, &om); err != nil {
+				return err
+			}
+			r.OfOutputMessage = &om
+			return nil
+		}
+
+		// Try ResponseInputItemMessageParam (has status field for tracking)
+		var im ResponseInputItemMessageParam
+		if err := json.Unmarshal(data, &im); err == nil {
+			r.OfInputMessage = &im
+			return nil
+		}
+
+		// Fall back to EasyInputMessageParam
+		var msg EasyInputMessageParam
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return err
+		}
+		r.OfMessage = &msg
+	case "file_search_call":
+		var fsc ResponseFileSearchToolCall
+		if err := json.Unmarshal(data, &fsc); err != nil {
+			return err
+		}
+		r.OfFileSearchCall = &fsc
+	case "computer_call":
+		var cc ResponseComputerToolCall
+		if err := json.Unmarshal(data, &cc); err != nil {
+			return err
+		}
+		r.OfComputerCall = &cc
+	case "computer_call_output":
+		var cco ResponseInputItemComputerCallOutputParam
+		if err := json.Unmarshal(data, &cco); err != nil {
+			return err
+		}
+		r.OfComputerCallOutput = &cco
+	case "web_search_call":
+		var wsc ResponseFunctionWebSearch
+		if err := json.Unmarshal(data, &wsc); err != nil {
+			return err
+		}
+		r.OfWebSearchCall = &wsc
+	case "function_call":
+		var fc ResponseFunctionToolCall
+		if err := json.Unmarshal(data, &fc); err != nil {
+			return err
+		}
+		r.OfFunctionCall = &fc
+	case "function_call_output":
+		var fco ResponseInputItemFunctionCallOutputParam
+		if err := json.Unmarshal(data, &fco); err != nil {
+			return err
+		}
+		r.OfFunctionCallOutput = &fco
+	case "reasoning":
+		var ri ResponseReasoningItem
+		if err := json.Unmarshal(data, &ri); err != nil {
+			return err
+		}
+		r.OfReasoning = &ri
+	case "compaction":
+		var ci ResponseCompactionItemParam
+		if err := json.Unmarshal(data, &ci); err != nil {
+			return err
+		}
+		r.OfCompaction = &ci
+	case "image_generation_call":
+		var igc ResponseInputItemImageGenerationCallParam
+		if err := json.Unmarshal(data, &igc); err != nil {
+			return err
+		}
+		r.OfImageGenerationCall = &igc
+	case "code_interpreter_call":
+		var cic ResponseCodeInterpreterToolCallParam
+		if err := json.Unmarshal(data, &cic); err != nil {
+			return err
+		}
+		r.OfCodeInterpreterCall = &cic
+	case "local_shell_call":
+		var lsc ResponseInputItemLocalShellCallParam
+		if err := json.Unmarshal(data, &lsc); err != nil {
+			return err
+		}
+		r.OfLocalShellCall = &lsc
+	case "local_shell_call_output":
+		var lsco ResponseInputItemLocalShellCallOutputParam
+		if err := json.Unmarshal(data, &lsco); err != nil {
+			return err
+		}
+		r.OfLocalShellCallOutput = &lsco
+	case "shell_call":
+		var sc ResponseInputItemShellCallParam
+		if err := json.Unmarshal(data, &sc); err != nil {
+			return err
+		}
+		r.OfShellCall = &sc
+	case "shell_call_output":
+		var sco ResponseInputItemShellCallOutputParam
+		if err := json.Unmarshal(data, &sco); err != nil {
+			return err
+		}
+		r.OfShellCallOutput = &sco
+	case "apply_patch_call":
+		var apc ResponseInputItemApplyPatchCallParam
+		if err := json.Unmarshal(data, &apc); err != nil {
+			return err
+		}
+		r.OfApplyPatchCall = &apc
+	case "apply_patch_call_output":
+		var apco ResponseInputItemApplyPatchCallOutputParam
+		if err := json.Unmarshal(data, &apco); err != nil {
+			return err
+		}
+		r.OfApplyPatchCallOutput = &apco
+	case "mcp_list_tools":
+		var mlt ResponseMcpListTools
+		if err := json.Unmarshal(data, &mlt); err != nil {
+			return err
+		}
+		r.OfMcpListTools = &mlt
+	case "mcp_approval_request":
+		var mar ResponseMcpApprovalRequest
+		if err := json.Unmarshal(data, &mar); err != nil {
+			return err
+		}
+		r.OfMcpApprovalRequest = &mar
+	case "mcp_approval_response":
+		var mar ResponseInputItemMcpApprovalResponseParam
+		if err := json.Unmarshal(data, &mar); err != nil {
+			return err
+		}
+		r.OfMcpApprovalResponse = &mar
+	case "mcp_call":
+		var mc ResponseMcpCall
+		if err := json.Unmarshal(data, &mc); err != nil {
+			return err
+		}
+		r.OfMcpCall = &mc
+	case "custom_tool_call_output":
+		var ctco ResponseCustomToolCallOutputParam
+		if err := json.Unmarshal(data, &ctco); err != nil {
+			return err
+		}
+		r.OfCustomToolCallOutput = &ctco
+	case "custom_tool_call":
+		var ctc ResponseCustomToolCall
+		if err := json.Unmarshal(data, &ctc); err != nil {
+			return err
+		}
+		r.OfCustomToolCall = &ctc
+	case "item_reference":
+		var ir ResponseInputItemItemReferenceParam
+		if err := json.Unmarshal(data, &ir); err != nil {
+			return err
+		}
+		r.OfItemReference = &ir
+	// Add other cases here for different input item types as needed.
+	default:
+		return errors.New("cannot unmarshal unknown input type: " + typ.String())
+	}
+	return nil
+}
+
+// A message input to the model with a role indicating instruction following
+// hierarchy. Instructions given with the `developer` or `system` role take
+// precedence over instructions given with the `user` role. Messages with the
+// `assistant` role are presumed to have been generated by the model in previous
+// interactions.
+//
+// The properties Content, Role are required.
+type EasyInputMessageParam struct {
+	// Text, image, or audio input to the model, used to generate a response. Can also
+	// contain previous assistant responses.
+	Content EasyInputMessageContentUnionParam `json:"content,omitzero"`
+	// The role of the message input. One of `user`, `assistant`, `system`, or
+	// `developer`.
+	//
+	// Any of "user", "assistant", "system", "developer".
+	Role string `json:"role,omitzero"`
+	// The type of the message input. Always `message`.
+	Type string `json:"type,omitzero"`
+}
+
+// EasyInputMessageContentUnionParam is a union type for different message content parameters.
+// Only one field can be non-zero.
+type EasyInputMessageContentUnionParam struct {
+	OfString               *string
+	OfInputItemContentList []ResponseInputContentUnionParam
+}
+
+func (r *EasyInputMessageContentUnionParam) UnmarshalJSON(data []byte) error {
+	// Try string
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		r.OfString = &s
+		r.OfInputItemContentList = nil
+		return nil
+	}
+
+	// Try input item content list
+	var items []ResponseInputContentUnionParam
+	if err := json.Unmarshal(data, &items); err == nil {
+		r.OfString = nil
+		r.OfInputItemContentList = items
+		return nil
+	}
+
+	return errors.New("content must be either a string or an array of input content items")
+}
+
+func (r EasyInputMessageContentUnionParam) MarshalJSON() ([]byte, error) {
+	if r.OfString != nil {
+		return json.Marshal(r.OfString)
+	}
+	if r.OfInputItemContentList != nil {
+		return json.Marshal(r.OfInputItemContentList)
+	}
+	return nil, errors.New("no message content to marshal")
+}
+
+// ResponseInputContentUnionParam is a union type for different input content parameters.
+// Only one field can be non-zero.
+type ResponseInputContentUnionParam struct {
+	OfInputText  *ResponseInputTextParam
+	OfInputImage *ResponseInputImageParam
+	OfInputFile  *ResponseInputFileParam
+}
+
+func (r ResponseInputContentUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfInputText != nil:
+		return json.Marshal(r.OfInputText)
+	case r.OfInputImage != nil:
+		return json.Marshal(r.OfInputImage)
+	case r.OfInputFile != nil:
+		return json.Marshal(r.OfInputFile)
+	default:
+		return nil, errors.New("no input content to marshal")
+	}
+}
+
+func (r *ResponseInputContentUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "input_text":
+		var it ResponseInputTextParam
+		if err := json.Unmarshal(data, &it); err != nil {
+			return err
+		}
+		r.OfInputText = &it
+	case "input_image":
+		var ii ResponseInputImageParam
+		if err := json.Unmarshal(data, &ii); err != nil {
+			return err
+		}
+		r.OfInputImage = &ii
+	case "input_file":
+		var ifp ResponseInputFileParam
+		if err := json.Unmarshal(data, &ifp); err != nil {
+			return err
+		}
+		r.OfInputFile = &ifp
+	default:
+		return errors.New("unknown type for input content: " + typ.String())
+	}
+	return nil
+}
+
+// A message input to the model with a role indicating instruction following
+// hierarchy. Instructions given with the `developer` or `system` role take
+// precedence over instructions given with the `user` role.
+//
+// The properties Content, Role are required.
+type ResponseInputItemMessageParam struct {
+	// A list of one or many input items to the model, containing different content
+	// types.
+	Content []ResponseInputContentUnionParam `json:"content,omitzero"`
+	// The role of the message input. One of `user`, `system`, or `developer`.
+	//
+	// Any of "user", "system", "developer".
+	Role string `json:"role,omitzero"`
+	// The status of item. One of `in_progress`, `completed`, or `incomplete`.
+	// Populated when items are returned via API.
+	//
+	// Any of "in_progress", "completed", "incomplete".
+	Status string `json:"status,omitzero"`
+	// The type of the message input. Always set to `message`.
+	Type string `json:"type,omitzero"`
+}
+
+// An output message from the model.
+//
+// The properties ID, Content, Role, Status, Type are required.
+type ResponseOutputMessage struct {
+	// The unique ID of the output message.
+	ID string `json:"id,omitzero"`
+	// The content of the output message.
+	Content []ResponseOutputMessageContentUnion `json:"content,omitzero"`
+	// The status of the message input. One of `in_progress`, `completed`, or
+	// `incomplete`. Populated when input items are returned via API.
+	//
+	// Any of "in_progress", "completed", "incomplete".
+	Status string `json:"status,omitzero"`
+	// The role of the output message. Always `assistant`.
+	Role string `json:"role"`
+	// The type of the output message. Always `message`.
+	Type string `json:"type"`
+}
+
+// ResponseOutputMessageContentUnion is a union type for different output message content parameters.
+// Only one field can be non-zero.
+type ResponseOutputMessageContentUnion struct {
+	OfOutputText *ResponseOutputTextParam
+	OfRefusal    *ResponseOutputRefusalParam
+}
+
+func (r ResponseOutputMessageContentUnion) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfOutputText != nil:
+		return json.Marshal(r.OfOutputText)
+	case r.OfRefusal != nil:
+		return json.Marshal(r.OfRefusal)
+	default:
+		return nil, errors.New("no output message content to marshal")
+	}
+}
+
+func (r *ResponseOutputMessageContentUnion) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "output_text":
+		var ot ResponseOutputTextParam
+		if err := json.Unmarshal(data, &ot); err != nil {
+			return err
+		}
+		r.OfOutputText = &ot
+	case "refusal":
+		var rf ResponseOutputRefusalParam
+		if err := json.Unmarshal(data, &rf); err != nil {
+			return err
+		}
+		r.OfRefusal = &rf
+	default:
+		return errors.New("unknown type for output message content: " + typ.String())
+	}
+	return nil
+}
+
+// A text output from the model.
+//
+// The properties Annotations, Text, Type are required.
+type ResponseOutputTextParam struct {
+	// The annotations of the text output.
+	Annotations []ResponseOutputTextAnnotationUnionParam `json:"annotations,omitzero"`
+	// The text output from the model.
+	Text     string                           `json:"text"`
+	Logprobs []ResponseOutputTextLogprobParam `json:"logprobs,omitzero"`
+	// The type of the output text. Always `output_text`.
+	Type string `json:"type"`
+}
+
+// The log probability of a token.
+//
+// The properties Token, Bytes, Logprob, TopLogprobs are required.
+type ResponseOutputTextLogprobParam struct {
+	Token       string                                     `json:"token"`
+	Bytes       []int64                                    `json:"bytes,omitzero"`
+	Logprob     float64                                    `json:"logprob"`
+	TopLogprobs []ResponseOutputTextLogprobTopLogprobParam `json:"top_logprobs,omitzero"`
+}
+
+// The top log probability of a token.
+//
+// The properties Token, Bytes, Logprob are required.
+type ResponseOutputTextLogprobTopLogprobParam struct {
+	Token   string  `json:"token"`
+	Bytes   []int64 `json:"bytes,omitzero"`
+	Logprob float64 `json:"logprob"`
+}
+
+// ResponseOutputTextAnnotationUnionParam is a union type for different text annotation parameters.
+// Only one field can be non-zero.
+type ResponseOutputTextAnnotationUnionParam struct {
+	OfFileCitation          *ResponseOutputTextAnnotationFileCitationParam
+	OfURLCitation           *ResponseOutputTextAnnotationURLCitationParam
+	OfContainerFileCitation *ResponseOutputTextAnnotationContainerFileCitationParam
+	OfFilePath              *ResponseOutputTextAnnotationFilePathParam
+}
+
+func (r ResponseOutputTextAnnotationUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfFileCitation != nil:
+		return json.Marshal(r.OfFileCitation)
+	case r.OfURLCitation != nil:
+		return json.Marshal(r.OfURLCitation)
+	case r.OfContainerFileCitation != nil:
+		return json.Marshal(r.OfContainerFileCitation)
+	case r.OfFilePath != nil:
+		return json.Marshal(r.OfFilePath)
+	default:
+		return nil, errors.New("no text annotation to marshal in output text annotation")
+	}
+}
+
+func (r *ResponseOutputTextAnnotationUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "file_citation":
+		var fc ResponseOutputTextAnnotationFileCitationParam
+		if err := json.Unmarshal(data, &fc); err != nil {
+			return err
+		}
+		r.OfFileCitation = &fc
+	case "url_citation":
+		var uc ResponseOutputTextAnnotationURLCitationParam
+		if err := json.Unmarshal(data, &uc); err != nil {
+			return err
+		}
+		r.OfURLCitation = &uc
+	case "container_file_citation":
+		var cfc ResponseOutputTextAnnotationContainerFileCitationParam
+		if err := json.Unmarshal(data, &cfc); err != nil {
+			return err
+		}
+		r.OfContainerFileCitation = &cfc
+	case "file_path":
+		var fp ResponseOutputTextAnnotationFilePathParam
+		if err := json.Unmarshal(data, &fp); err != nil {
+			return err
+		}
+		r.OfFilePath = &fp
+	default:
+		return errors.New("unknown type for output text annotation: " + typ.String())
+	}
+	return nil
+}
+
+// A citation to a file.
+//
+// The properties FileID, Filename, Index, Type are required.
+type ResponseOutputTextAnnotationFileCitationParam struct {
+	// The ID of the file.
+	FileID string `json:"file_id"`
+	// The filename of the file cited.
+	Filename string `json:"filename"`
+	// The index of the file in the list of files.
+	Index int64 `json:"index"`
+	// The type of the file citation. Always `file_citation`.
+	Type string `json:"type"`
+}
+
+// A citation for a web resource used to generate a model response.
+//
+// The properties EndIndex, StartIndex, Title, Type, URL are required.
+type ResponseOutputTextAnnotationURLCitationParam struct {
+	// The index of the last character of the URL citation in the message.
+	EndIndex int64 `json:"end_index"`
+	// The index of the first character of the URL citation in the message.
+	StartIndex int64 `json:"start_index"`
+	// The title of the web resource.
+	Title string `json:"title"`
+	// The URL of the web resource.
+	URL string `json:"url"`
+	// The type of the URL citation. Always `url_citation`.
+	Type string `json:"type"`
+}
+
+// A citation for a container file used to generate a model response.
+//
+// The properties ContainerID, EndIndex, FileID, Filename, StartIndex, Type are
+// required.
+type ResponseOutputTextAnnotationContainerFileCitationParam struct {
+	// The ID of the container file.
+	ContainerID string `json:"container_id"`
+	// The index of the last character of the container file citation in the message.
+	EndIndex int64 `json:"end_index"`
+	// The ID of the file.
+	FileID string `json:"file_id"`
+	// The filename of the container file cited.
+	Filename string `json:"filename"`
+	// The index of the first character of the container file citation in the message.
+	StartIndex int64 `json:"start_index"`
+	// The type of the container file citation. Always `container_file_citation`.
+	Type string `json:"type"`
+}
+
+// A path to a file.
+//
+// The properties FileID, Index, Type are required.
+type ResponseOutputTextAnnotationFilePathParam struct {
+	// The ID of the file.
+	FileID string `json:"file_id"`
+	// The index of the file in the list of files.
+	Index int64 `json:"index"`
+	// The type of the file path. Always `file_path`.
+	Type string `json:"type"`
+}
+
+// A refusal from the model.
+//
+// The properties Refusal, Type are required.
+type ResponseOutputRefusalParam struct {
+	// The refusal explanation from the model.
+	Refusal string `json:"refusal"`
+	// The type of the refusal. Always `refusal`.
+	Type string `json:"type"`
+}
+
+// The results of a file search tool call. See the
+// [file search guide](https://platform.openai.com/docs/guides/tools-file-search)
+// for more information.
+//
+// The properties ID, Queries, Status, Type are required.
+type ResponseFileSearchToolCall struct {
+	// The unique ID of the file search tool call.
+	ID string `json:"id"`
+	// The queries used to search for files.
+	Queries []string `json:"queries,omitzero"`
+	// The status of the file search tool call. One of `in_progress`, `searching`,
+	// `incomplete` or `failed`,
+	//
+	// Any of "in_progress", "searching", "completed", "incomplete", "failed".
+	Status string `json:"status,omitzero"`
+	// The results of the file search tool call.
+	Results []ResponseFileSearchToolCallResultParam `json:"results,omitzero"`
+	// The type of the file search tool call. Always `file_search_call`.
+	Type string `json:"type"`
+}
+
+type ResponseFileSearchToolCallResultParam struct {
+	// The unique ID of the file.
+	FileID string `json:"file_id,omitzero"`
+	// The name of the file.
+	Filename string `json:"filename,omitzero"`
+	// The relevance score of the file - a value between 0 and 1.
+	Score *float64 `json:"score,omitempty"`
+	// The text that was retrieved from the file.
+	Text string `json:"text,omitzero"`
+	// Set of 16 key-value pairs that can be attached to an object. This can be useful
+	// for storing additional information about the object in a structured format, and
+	// querying for objects via API or the dashboard. Keys are strings with a maximum
+	// length of 64 characters. Values are strings with a maximum length of 512
+	// characters, booleans, or numbers.
+	Attributes map[string]ResponseFileSearchToolCallResultAttributeUnionParam `json:"attributes,omitzero"`
+}
+
+// ResponseFileSearchToolCallResultAttributeUnionParam is a union type for different file search tool call result attribute parameters.
+// Only one field can be non-zero.
+type ResponseFileSearchToolCallResultAttributeUnionParam struct {
+	OfString *string
+	OfFloat  *float64
+	OfBool   *bool
+}
+
+func (r ResponseFileSearchToolCallResultAttributeUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfString != nil:
+		return json.Marshal(r.OfString)
+	case r.OfFloat != nil:
+		return json.Marshal(r.OfFloat)
+	case r.OfBool != nil:
+		return json.Marshal(r.OfBool)
+	default:
+		return nil, errors.New("no attribute to marshal in response file search tool call result")
+	}
+}
+
+func (r *ResponseFileSearchToolCallResultAttributeUnionParam) UnmarshalJSON(data []byte) error {
+	// Try string
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		r.OfString = &s
+		return nil
+	}
+
+	// Try float
+	var f float64
+	if err := json.Unmarshal(data, &f); err == nil {
+		r.OfFloat = &f
+		return nil
+	}
+
+	// Try bool
+	var b bool
+	if err := json.Unmarshal(data, &b); err == nil {
+		r.OfBool = &b
+		return nil
+	}
+
+	return errors.New("unknown attribute type in response file search tool call result")
+}
+
+// A tool call to a computer use tool. See the
+// [computer use guide](https://platform.openai.com/docs/guides/tools-computer-use)
+// for more information.
+//
+// The properties ID, Action, CallID, PendingSafetyChecks, Status, Type are
+// required.
+type ResponseComputerToolCall struct {
+	// The unique ID of the computer call.
+	ID string `json:"id"`
+	// A click action.
+	Action ResponseComputerToolCallActionUnionParam `json:"action,omitzero"`
+	// An identifier used when responding to the tool call with output.
+	CallID string `json:"call_id"`
+	// The pending safety checks for the computer call.
+	PendingSafetyChecks []ResponseComputerToolCallPendingSafetyCheckParam `json:"pending_safety_checks,omitzero"`
+	// The status of the item. One of `in_progress`, `completed`, or `incomplete`.
+	// Populated when items are returned via API.
+	//
+	// Any of "in_progress", "completed", "incomplete".
+	Status string `json:"status,omitzero"`
+	// The type of the computer call. Always `computer_call`.
+	Type string `json:"type,omitzero"`
+}
+
+// ResponseComputerToolCallActionUnionParam is a union type for different computer tool call action parameters.
+// Only one field can be non-zero.
+type ResponseComputerToolCallActionUnionParam struct {
+	OfClick       *ResponseComputerToolCallActionClickParam
+	OfDoubleClick *ResponseComputerToolCallActionDoubleClickParam
+	OfDrag        *ResponseComputerToolCallActionDragParam
+	OfKeypress    *ResponseComputerToolCallActionKeypressParam
+	OfMove        *ResponseComputerToolCallActionMoveParam
+	OfScreenshot  *ResponseComputerToolCallActionScreenshotParam
+	OfScroll      *ResponseComputerToolCallActionScrollParam
+	OfType        *ResponseComputerToolCallActionTypeParam
+	OfWait        *ResponseComputerToolCallActionWaitParam
+}
+
+func (r ResponseComputerToolCallActionUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfClick != nil:
+		return json.Marshal(r.OfClick)
+	case r.OfDoubleClick != nil:
+		return json.Marshal(r.OfDoubleClick)
+	case r.OfDrag != nil:
+		return json.Marshal(r.OfDrag)
+	case r.OfKeypress != nil:
+		return json.Marshal(r.OfKeypress)
+	case r.OfMove != nil:
+		return json.Marshal(r.OfMove)
+	case r.OfScreenshot != nil:
+		return json.Marshal(r.OfScreenshot)
+	case r.OfScroll != nil:
+		return json.Marshal(r.OfScroll)
+	case r.OfType != nil:
+		return json.Marshal(r.OfType)
+	case r.OfWait != nil:
+		return json.Marshal(r.OfWait)
+	default:
+		return nil, errors.New("no computer tool call action to marshal in computer tool call action")
+	}
+}
+
+func (r *ResponseComputerToolCallActionUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "click":
+		var c ResponseComputerToolCallActionClickParam
+		if err := json.Unmarshal(data, &c); err != nil {
+			return err
+		}
+		r.OfClick = &c
+	case "double_click":
+		var dc ResponseComputerToolCallActionDoubleClickParam
+		if err := json.Unmarshal(data, &dc); err != nil {
+			return err
+		}
+		r.OfDoubleClick = &dc
+	case "drag":
+		var d ResponseComputerToolCallActionDragParam
+		if err := json.Unmarshal(data, &d); err != nil {
+			return err
+		}
+		r.OfDrag = &d
+	case "keypress":
+		var k ResponseComputerToolCallActionKeypressParam
+		if err := json.Unmarshal(data, &k); err != nil {
+			return err
+		}
+		r.OfKeypress = &k
+	case "move":
+		var m ResponseComputerToolCallActionMoveParam
+		if err := json.Unmarshal(data, &m); err != nil {
+			return err
+		}
+		r.OfMove = &m
+	case "screenshot":
+		var s ResponseComputerToolCallActionScreenshotParam
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		r.OfScreenshot = &s
+	case "scroll":
+		var s ResponseComputerToolCallActionScrollParam
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		r.OfScroll = &s
+	case "type":
+		var t ResponseComputerToolCallActionTypeParam
+		if err := json.Unmarshal(data, &t); err != nil {
+			return err
+		}
+		r.OfType = &t
+	case "wait":
+		var w ResponseComputerToolCallActionWaitParam
+		if err := json.Unmarshal(data, &w); err != nil {
+			return err
+		}
+		r.OfWait = &w
+	default:
+		return errors.New("unknown type for computer tool call action: " + typ.String())
+	}
+	return nil
+}
+
+// A click action.
+//
+// The properties Button, Type, X, Y are required.
+type ResponseComputerToolCallActionClickParam struct {
+	// Indicates which mouse button was pressed during the click. One of `left`,
+	// `right`, `wheel`, `back`, or `forward`.
+	//
+	// Any of "left", "right", "wheel", "back", "forward".
+	Button string `json:"button,omitzero"`
+	// The x-coordinate where the click occurred.
+	X int64 `json:"x"`
+	// The y-coordinate where the click occurred.
+	Y int64 `json:"y"`
+	// Specifies the event type. For a click action, this property is always `click`.
+	Type string `json:"type"`
+}
+
+// A double click action.
+//
+// The properties Type, X, Y are required.
+type ResponseComputerToolCallActionDoubleClickParam struct {
+	// The x-coordinate where the double click occurred.
+	X int64 `json:"x"`
+	// The y-coordinate where the double click occurred.
+	Y int64 `json:"y"`
+	// Specifies the event type. For a double click action, this property is always set
+	// to `double_click`.
+	Type string `json:"type"`
+}
+
+// A drag action.
+//
+// The properties Path, Type are required.
+type ResponseComputerToolCallActionDragParam struct {
+	// An array of coordinates representing the path of the drag action. Coordinates
+	// will appear as an array of objects, eg
+	//
+	// ```
+	// [
+	//
+	//	{ x: 100, y: 200 },
+	//	{ x: 200, y: 300 }
+	//
+	// ]
+	// ```
+	Path []ResponseComputerToolCallActionDragPathParam `json:"path,omitzero"`
+	// Specifies the event type. For a drag action, this property is always set to
+	// `drag`.
+	Type string `json:"type"`
+}
+
+// An x/y coordinate pair, e.g. `{ x: 100, y: 200 }`.
+//
+// The properties X, Y are required.
+type ResponseComputerToolCallActionDragPathParam struct {
+	// The x-coordinate.
+	X int64 `json:"x"`
+	// The y-coordinate.
+	Y int64 `json:"y"`
+}
+
+// A collection of keypresses the model would like to perform.
+//
+// The properties Keys, Type are required.
+type ResponseComputerToolCallActionKeypressParam struct {
+	// The combination of keys the model is requesting to be pressed. This is an array
+	// of strings, each representing a key.
+	Keys []string `json:"keys,omitzero"`
+	// Specifies the event type. For a keypress action, this property is always set to
+	// `keypress`.
+	Type string `json:"type"`
+}
+
+// A mouse move action.
+//
+// The properties Type, X, Y are required.
+type ResponseComputerToolCallActionMoveParam struct {
+	// The x-coordinate to move to.
+	X int64 `json:"x"`
+	// The y-coordinate to move to.
+	Y int64 `json:"y"`
+	// Specifies the event type. For a move action, this property is always set to
+	// `move`.
+	Type string `json:"type"`
+}
+
+// A screenshot action.
+type ResponseComputerToolCallActionScreenshotParam struct {
+	// Specifies the event type. For a screenshot action, this property is always set
+	// to `screenshot`.
+	Type string `json:"type"`
+}
+
+// A scroll action.
+//
+// The properties ScrollX, ScrollY, Type, X, Y are required.
+type ResponseComputerToolCallActionScrollParam struct {
+	// The horizontal scroll distance.
+	ScrollX int64 `json:"scroll_x"`
+	// The vertical scroll distance.
+	ScrollY int64 `json:"scroll_y"`
+	// The x-coordinate where the scroll occurred.
+	X int64 `json:"x"`
+	// The y-coordinate where the scroll occurred.
+	Y int64 `json:"y"`
+	// Specifies the event type. For a scroll action, this property is always set to
+	// `scroll`.
+	Type string `json:"type"`
+}
+
+// An action to type in text.
+//
+// The properties Text, Type are required.
+type ResponseComputerToolCallActionTypeParam struct {
+	// The text to type.
+	Text string `json:"text"`
+	// Specifies the event type. For a type action, this property is always set to
+	// `type`.
+	Type string `json:"type"`
+}
+
+// A wait action.
+//
+// This struct has a constant value, construct it with
+// [NewResponseComputerToolCallActionWaitParam].
+type ResponseComputerToolCallActionWaitParam struct {
+	// Specifies the event type. For a wait action, this property is always set to
+	// `wait`.
+	Type string `json:"type"`
+}
+
+// A pending safety check for the computer call.
+//
+// The property ID is required.
+type ResponseComputerToolCallPendingSafetyCheckParam struct {
+	// The ID of the pending safety check.
+	ID string `json:"id"`
+	// The type of the pending safety check.
+	Code string `json:"code,omitzero"`
+	// Details about the pending safety check.
+	Message string `json:"message,omitzero"`
+}
+
+// The output of a computer tool call.
+//
+// The properties CallID, Output, Type are required.
+type ResponseInputItemComputerCallOutputParam struct {
+	// The ID of the computer tool call that produced the output.
+	CallID string `json:"call_id"`
+	// A computer screenshot image used with the computer use tool.
+	Output ResponseComputerToolCallOutputScreenshotParam `json:"output,omitzero"`
+	// The ID of the computer tool call output.
+	ID string `json:"id,omitzero"`
+	// The safety checks reported by the API that have been acknowledged by the
+	// developer.
+	AcknowledgedSafetyChecks []ResponseInputItemComputerCallOutputAcknowledgedSafetyCheckParam `json:"acknowledged_safety_checks,omitzero"`
+	// The status of the message input. One of `in_progress`, `completed`, or
+	// `incomplete`. Populated when input items are returned via API.
+	//
+	// Any of "in_progress", "completed", "incomplete".
+	Status string `json:"status,omitzero"`
+	// The type of the computer tool call output. Always `computer_call_output`.
+	Type string `json:"type"`
+}
+
+// A computer screenshot image used with the computer use tool.
+//
+// The property Type is required.
+type ResponseComputerToolCallOutputScreenshotParam struct {
+	// The identifier of an uploaded file that contains the screenshot.
+	FileID string `json:"file_id,omitzero"`
+	// The URL of the screenshot image.
+	ImageURL string `json:"image_url,omitzero"`
+	// Specifies the event type. For a computer screenshot, this property is always set
+	// to `computer_screenshot`.
+	Type string `json:"type"`
+}
+
+// A pending safety check for the computer call.
+//
+// The property ID is required.
+type ResponseInputItemComputerCallOutputAcknowledgedSafetyCheckParam struct {
+	// The ID of the pending safety check.
+	ID string `json:"id"`
+	// The type of the pending safety check.
+	Code string `json:"code,omitzero"`
+	// Details about the pending safety check.
+	Message string `json:"message,omitzero"`
+}
+
+// The results of a web search tool call. See the
+// [web search guide](https://platform.openai.com/docs/guides/tools-web-search) for
+// more information.
+//
+// The properties ID, Action, Status, Type are required.
+type ResponseFunctionWebSearch struct {
+	// The unique ID of the web search tool call.
+	ID string `json:"id"`
+	// An object describing the specific action taken in this web search call. Includes
+	// details on how the model used the web (search, open_page, find).
+	Action ResponseFunctionWebSearchActionUnionParam `json:"action,omitzero"`
+	// The status of the web search tool call.
+	//
+	// Any of "in_progress", "searching", "completed", "failed".
+	Status string `json:"status,omitzero"`
+	// The type of the web search tool call. Always `web_search_call`.
+	Type string `json:"type"`
+}
+
+// ResponseFunctionWebSearchActionUnionParam is a union type for different web search action parameters.
+// Only one field can be non-zero.
+type ResponseFunctionWebSearchActionUnionParam struct {
+	OfSearch   *ResponseFunctionWebSearchActionSearchParam
+	OfOpenPage *ResponseFunctionWebSearchActionOpenPageParam
+	OfFind     *ResponseFunctionWebSearchActionFindParam
+}
+
+func (r ResponseFunctionWebSearchActionUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfSearch != nil:
+		return json.Marshal(r.OfSearch)
+	case r.OfOpenPage != nil:
+		return json.Marshal(r.OfOpenPage)
+	case r.OfFind != nil:
+		return json.Marshal(r.OfFind)
+	default:
+		return nil, errors.New("no web search action to marshal in websearch action")
+	}
+}
+
+func (r *ResponseFunctionWebSearchActionUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "search":
+		var s ResponseFunctionWebSearchActionSearchParam
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		r.OfSearch = &s
+	case "open_page":
+		var op ResponseFunctionWebSearchActionOpenPageParam
+		if err := json.Unmarshal(data, &op); err != nil {
+			return err
+		}
+		r.OfOpenPage = &op
+	case "find":
+		var f ResponseFunctionWebSearchActionFindParam
+		if err := json.Unmarshal(data, &f); err != nil {
+			return err
+		}
+		r.OfFind = &f
+	default:
+		return errors.New("unknown type for websearch action: " + typ.String())
+	}
+	return nil
+}
+
+// Action type "search" - Performs a web search query.
+//
+// The properties Query, Type are required.
+type ResponseFunctionWebSearchActionSearchParam struct {
+	// The search query.
+	Query string `json:"query"`
+	// The sources used in the search.
+	Sources []ResponseFunctionWebSearchActionSearchSourceParam `json:"sources,omitzero"`
+	// The action type. Always "search".
+	Type string `json:"type"`
+}
+
+// A source used in the search.
+//
+// The properties Type, URL are required.
+type ResponseFunctionWebSearchActionSearchSourceParam struct {
+	// The URL of the source.
+	URL string `json:"url"`
+	// The type of source. Always `url`.
+	Type string `json:"type"`
+}
+
+// Action type "open_page" - Opens a specific URL from search results.
+//
+// The properties Type, URL are required.
+type ResponseFunctionWebSearchActionOpenPageParam struct {
+	// The URL opened by the model.
+	URL string `json:"url"`
+	// The action type. Always "open_page".
+	Type string `json:"type"`
+}
+
+// Action type "find": Searches for a pattern within a loaded page.
+//
+// The properties Pattern, Type, URL are required.
+type ResponseFunctionWebSearchActionFindParam struct {
+	// The pattern or text to search for within the page.
+	Pattern string `json:"pattern"`
+	// The URL of the page searched for the pattern.
+	URL string `json:"url"`
+	// The action type.
+	Type string `json:"type"`
+}
+
+// A tool call to run a function. See the
+// [function calling guide](https://platform.openai.com/docs/guides/function-calling)
+// for more information.
+//
+// The properties Arguments, CallID, Name, Type are required.
+type ResponseFunctionToolCall struct {
+	// A JSON string of the arguments to pass to the function.
+	Arguments string `json:"arguments"`
+	// The unique ID of the function tool call generated by the model.
+	CallID string `json:"call_id"`
+	// The name of the function to run.
+	Name string `json:"name"`
+	// The unique ID of the function tool call.
+	ID string `json:"id,omitzero"`
+	// The status of the item. One of `in_progress`, `completed`, or `incomplete`.
+	// Populated when items are returned via API.
+	//
+	// Any of "in_progress", "completed", "incomplete".
+	Status string `json:"status,omitzero"`
+	// The type of the function tool call. Always `function_call`.
+	Type string `json:"type"`
+}
+
+// The output of a function tool call.
+//
+// The properties CallID, Output, Type are required.
+type ResponseInputItemFunctionCallOutputParam struct {
+	// The unique ID of the function tool call generated by the model.
+	CallID string `json:"call_id"`
+	// Text, image, or file output of the function tool call.
+	Output ResponseInputItemFunctionCallOutputOutputUnionParam `json:"output,omitzero"`
+	// The unique ID of the function tool call output. Populated when this item is
+	// returned via API.
+	ID string `json:"id,omitzero"`
+	// The status of the item. One of `in_progress`, `completed`, or `incomplete`.
+	// Populated when items are returned via API.
+	//
+	// Any of "in_progress", "completed", "incomplete".
+	Status string `json:"status,omitzero"`
+	// The type of the function tool call output. Always `function_call_output`.
+	Type string `json:"type"`
+}
+
+// ResponseInputItemFunctionCallOutputOutputUnionParam is a union type for different function call output parameters.
+// Only one field can be non-zero.
+type ResponseInputItemFunctionCallOutputOutputUnionParam struct {
+	OfString                              *string
+	OfResponseFunctionCallOutputItemArray []ResponseFunctionCallOutputItemUnionParam
+}
+
+func (r ResponseInputItemFunctionCallOutputOutputUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfString != nil:
+		return json.Marshal(r.OfString)
+	case r.OfResponseFunctionCallOutputItemArray != nil:
+		return json.Marshal(r.OfResponseFunctionCallOutputItemArray)
+	default:
+		return nil, errors.New("no function call output to marshal in input item function call output")
+	}
+}
+
+func (r *ResponseInputItemFunctionCallOutputOutputUnionParam) UnmarshalJSON(data []byte) error {
+	switch data[0] {
+	case '"':
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		r.OfString = &s
+	case '[':
+		var arr []ResponseFunctionCallOutputItemUnionParam
+		if err := json.Unmarshal(data, &arr); err != nil {
+			return err
+		}
+		r.OfResponseFunctionCallOutputItemArray = arr
+	default:
+		return errors.New("unknown type for function call output in input item function call output")
+	}
+	return nil
+}
+
+// ResponseFunctionCallOutputItemUnionParam is a union type for different function call output item parameters.
+// Only one field can be non-zero.
+type ResponseFunctionCallOutputItemUnionParam struct {
+	OfInputText  *ResponseInputTextContentParam
+	OfInputImage *ResponseInputImageContentParam
+	OfInputFile  *ResponseInputFileContentParam
+}
+
+func (r ResponseFunctionCallOutputItemUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfInputText != nil:
+		return json.Marshal(r.OfInputText)
+	case r.OfInputImage != nil:
+		return json.Marshal(r.OfInputImage)
+	case r.OfInputFile != nil:
+		return json.Marshal(r.OfInputFile)
+	default:
+		return nil, errors.New("no function call output item to marshal in function call output item")
+	}
+}
+
+func (r *ResponseFunctionCallOutputItemUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "input_text":
+		var it ResponseInputTextContentParam
+		if err := json.Unmarshal(data, &it); err != nil {
+			return err
+		}
+		r.OfInputText = &it
+	case "input_image":
+		var ii ResponseInputImageContentParam
+		if err := json.Unmarshal(data, &ii); err != nil {
+			return err
+		}
+		r.OfInputImage = &ii
+	case "input_file":
+		var ifp ResponseInputFileContentParam
+		if err := json.Unmarshal(data, &ifp); err != nil {
+			return err
+		}
+		r.OfInputFile = &ifp
+	default:
+		return errors.New("unknown type for function call output item: " + typ.String())
+	}
+	return nil
+}
+
+// A text input to the model.
+//
+// The properties Text, Type are required.
+type ResponseInputTextContentParam struct {
+	// The text input to the model.
+	Text string `json:"text"`
+	// The type of the input item. Always `input_text`.
+	Type string `json:"type"`
+}
+
+// An image input to the model. Learn about
+// [image inputs](https://platform.openai.com/docs/guides/vision)
+//
+// The property Type is required.
+type ResponseInputImageContentParam struct {
+	// The ID of the file to be sent to the model.
+	FileID string `json:"file_id,omitzero"`
+	// The URL of the image to be sent to the model. A fully qualified URL or base64
+	// encoded image in a data URL.
+	ImageURL string `json:"image_url,omitzero"`
+	// The detail level of the image to be sent to the model. One of `high`, `low`, or
+	// `auto`. Defaults to `auto`.
+	//
+	// Any of "low", "high", "auto".
+	Detail string `json:"detail,omitzero"`
+	// The type of the input item. Always `input_image`.
+	Type string `json:"type"`
+}
+
+// A file input to the model.
+//
+// The property Type is required.
+type ResponseInputFileContentParam struct {
+	// The base64-encoded data of the file to be sent to the model.
+	FileData string `json:"file_data,omitzero"`
+	// The ID of the file to be sent to the model.
+	FileID string `json:"file_id,omitzero"`
+	// The URL of the file to be sent to the model.
+	FileURL string `json:"file_url,omitzero"`
+	// The name of the file to be sent to the model.
+	Filename string `json:"filename,omitzero"`
+	// The type of the input item. Always `input_file`.
+	Type string `json:"type"`
+}
+
+// A description of the chain of thought used by a reasoning model while generating
+// a response. Be sure to include these items in your `input` to the Responses API
+// for subsequent turns of a conversation if you are manually
+// [managing context](https://platform.openai.com/docs/guides/conversation-state).
+//
+// The properties ID, Summary, Type are required.
+type ResponseReasoningItem struct {
+	// The unique identifier of the reasoning content.
+	ID string `json:"id"`
+	// Reasoning summary content.
+	Summary []ResponseReasoningItemSummaryParam `json:"summary,omitzero"`
+	// The encrypted content of the reasoning item - populated when a response is
+	// generated with `reasoning.encrypted_content` in the `include` parameter.
+	EncryptedContent string `json:"encrypted_content,omitzero"`
+	// Reasoning text content.
+	Content []ResponseReasoningItemContentParam `json:"content,omitzero"`
+	// The status of the item. One of `in_progress`, `completed`, or `incomplete`.
+	// Populated when items are returned via API.
+	//
+	// Any of "in_progress", "completed", "incomplete".
+	Status string `json:"status,omitzero"`
+	// The type of the object. Always `reasoning`.
+	Type string `json:"type"`
+}
+
+// A summary text from the model.
+//
+// The properties Text, Type are required.
+type ResponseReasoningItemSummaryParam struct {
+	// A summary of the reasoning output from the model so far.
+	Text string `json:"text"`
+	// The type of the object. Always `summary_text`.
+	Type string `json:"type"`
+}
+
+// Reasoning text from the model.
+//
+// The properties Text, Type are required.
+type ResponseReasoningItemContentParam struct {
+	// The reasoning text from the model.
+	Text string `json:"text"`
+	// The type of the reasoning text. Always `reasoning_text`.
+	Type string `json:"type"`
+}
+
+// A compaction item generated by the
+// [`v1/responses/compact` API](https://platform.openai.com/docs/api-reference/responses/compact).
+//
+// The properties EncryptedContent, Type are required.
+type ResponseCompactionItemParam struct {
+	EncryptedContent string `json:"encrypted_content"`
+	// The ID of the compaction item.
+	ID string `json:"id,omitzero"`
+	// The type of the item. Always `compaction`.
+	Type string `json:"type"`
+}
+
+// An image generation request made by the model.
+//
+// The properties ID, Result, Status, Type are required.
+type ResponseInputItemImageGenerationCallParam struct {
+	// The generated image encoded in base64.
+	Result string `json:"result,omitzero"`
+	// The unique ID of the image generation call.
+	ID string `json:"id"`
+	// The status of the image generation call.
+	//
+	// Any of "in_progress", "completed", "generating", "failed".
+	Status string `json:"status,omitzero"`
+	// The type of the image generation call. Always `image_generation_call`.
+	Type string `json:"type"`
+}
+
+// A tool call to run code.
+//
+// The properties ID, Code, ContainerID, Outputs, Status, Type are required.
+type ResponseCodeInterpreterToolCallParam struct {
+	// The code to run, or null if not available.
+	Code string `json:"code,omitzero"`
+	// The outputs generated by the code interpreter, such as logs or images. Can be
+	// null if no outputs are available.
+	Outputs []ResponseCodeInterpreterToolCallOutputUnionParam `json:"outputs,omitzero"`
+	// The unique ID of the code interpreter tool call.
+	ID string `json:"id"`
+	// The ID of the container used to run the code.
+	ContainerID string `json:"container_id"`
+	// The status of the code interpreter tool call. Valid values are `in_progress`,
+	// `completed`, `incomplete`, `interpreting`, and `failed`.
+	//
+	// Any of "in_progress", "completed", "incomplete", "interpreting", "failed".
+	Status string `json:"status,omitzero"`
+	// The type of the code interpreter tool call. Always `code_interpreter_call`.
+	Type string `json:"type"`
+}
+
+// ResponseCodeInterpreterToolCallOutputUnionParam is a union type for different code interpreter tool call output parameters.
+// Only one field can be non-zero.
+type ResponseCodeInterpreterToolCallOutputUnionParam struct {
+	OfLogs  *ResponseCodeInterpreterToolCallOutputLogsParam
+	OfImage *ResponseCodeInterpreterToolCallOutputImageParam
+}
+
+func (r ResponseCodeInterpreterToolCallOutputUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfLogs != nil:
+		return json.Marshal(r.OfLogs)
+	case r.OfImage != nil:
+		return json.Marshal(r.OfImage)
+	default:
+		return nil, errors.New("no code interpreter tool call output to marshal")
+	}
+}
+
+func (r *ResponseCodeInterpreterToolCallOutputUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "logs":
+		var logs ResponseCodeInterpreterToolCallOutputLogsParam
+		if err := json.Unmarshal(data, &logs); err != nil {
+			return err
+		}
+		r.OfLogs = &logs
+	case "image":
+		var image ResponseCodeInterpreterToolCallOutputImageParam
+		if err := json.Unmarshal(data, &image); err != nil {
+			return err
+		}
+		r.OfImage = &image
+	default:
+		return errors.New("unknown type for code interpreter tool call output: " + typ.String())
+	}
+	return nil
+}
+
+// The logs output from the code interpreter.
+//
+// The properties Logs, Type are required.
+type ResponseCodeInterpreterToolCallOutputLogsParam struct {
+	// The logs output from the code interpreter.
+	Logs string `json:"logs"`
+	// The type of the output. Always `logs`.
+	Type string `json:"type"`
+}
+
+// The image output from the code interpreter.
+//
+// The properties Type, URL are required.
+type ResponseCodeInterpreterToolCallOutputImageParam struct {
+	// The URL of the image output from the code interpreter.
+	URL string `json:"url"`
+	// The type of the output. Always `image`.
+	Type string `json:"type"`
+}
+
+// A tool call to run a command on the local shell.
+//
+// The properties ID, Action, CallID, Status, Type are required.
+type ResponseInputItemLocalShellCallParam struct {
+	// The unique ID of the local shell call.
+	ID string `json:"id"`
+	// Execute a shell command on the server.
+	Action ResponseInputItemLocalShellCallActionParam `json:"action,omitzero"`
+	// The unique ID of the local shell tool call generated by the model.
+	CallID string `json:"call_id"`
+	// The status of the local shell call.
+	//
+	// Any of "in_progress", "completed", "incomplete".
+	Status string `json:"status,omitzero"`
+	// The type of the local shell call. Always `local_shell_call`.
+	Type string `json:"type"`
+}
+
+// Execute a shell command on the server.
+//
+// The properties Command, Env, Type are required.
+type ResponseInputItemLocalShellCallActionParam struct {
+	// The command to run.
+	Command []string `json:"command,omitzero"`
+	// Environment variables to set for the command.
+	Env map[string]string `json:"env,omitzero"`
+	// Optional timeout in milliseconds for the command.
+	TimeoutMs int64 `json:"timeout_ms,omitzero"`
+	// Optional user to run the command as.
+	User string `json:"user,omitzero"`
+	// Optional working directory to run the command in.
+	WorkingDirectory string `json:"working_directory,omitzero"`
+	// The type of the local shell action. Always `exec`.
+	Type string `json:"type"`
+}
+
+// The output of a local shell tool call.
+//
+// The properties ID, Output, Type are required.
+type ResponseInputItemLocalShellCallOutputParam struct {
+	// The unique ID of the local shell tool call generated by the model.
+	ID string `json:"id"`
+	// A JSON string of the output of the local shell tool call.
+	Output string `json:"output"`
+	// The status of the item. One of `in_progress`, `completed`, or `incomplete`.
+	//
+	// Any of "in_progress", "completed", "incomplete".
+	Status string `json:"status,omitzero"`
+	// The type of the local shell tool call output. Always `local_shell_call_output`.
+	Type string `json:"type"`
+}
+
+// A tool representing a request to execute one or more shell commands.
+//
+// The properties Action, CallID, Type are required.
+type ResponseInputItemShellCallParam struct {
+	// The shell commands and limits that describe how to run the tool call.
+	Action ResponseInputItemShellCallActionParam `json:"action,omitzero"`
+	// The unique ID of the shell tool call generated by the model.
+	CallID string `json:"call_id"`
+	// The unique ID of the shell tool call. Populated when this item is returned via
+	// API.
+	ID string `json:"id,omitzero"`
+	// The status of the shell call. One of `in_progress`, `completed`, or
+	// `incomplete`.
+	//
+	// Any of "in_progress", "completed", "incomplete".
+	Status string `json:"status,omitzero"`
+	// The type of the item. Always `shell_call`.
+	Type string `json:"type"`
+}
+
+// The shell commands and limits that describe how to run the tool call.
+//
+// The property Commands is required.
+type ResponseInputItemShellCallActionParam struct {
+	// Ordered shell commands for the execution environment to run.
+	Commands []string `json:"commands,omitzero"`
+	// Maximum number of UTF-8 characters to capture from combined stdout and stderr
+	// output.
+	MaxOutputLength int64 `json:"max_output_length,omitzero"`
+	// Maximum wall-clock time in milliseconds to allow the shell commands to run.
+	TimeoutMs int64 `json:"timeout_ms,omitzero"`
+}
+
+// The streamed output items emitted by a shell tool call.
+//
+// The properties CallID, Output, Type are required.
+type ResponseInputItemShellCallOutputParam struct {
+	// The unique ID of the shell tool call generated by the model.
+	CallID string `json:"call_id"`
+	// Captured chunks of stdout and stderr output, along with their associated
+	// outcomes.
+	Output []ResponseFunctionShellCallOutputContentParam `json:"output,omitzero"`
+	// The unique ID of the shell tool call output. Populated when this item is
+	// returned via API.
+	ID string `json:"id,omitzero"`
+	// The maximum number of UTF-8 characters captured for this shell call's combined
+	// output.
+	MaxOutputLength *int64 `json:"max_output_length,omitempty"`
+	// The type of the item. Always `shell_call_output`.
+	Type string `json:"type"`
+}
+
+// Captured stdout and stderr for a portion of a shell tool call output.
+//
+// The properties Outcome, Stderr, Stdout are required.
+type ResponseFunctionShellCallOutputContentParam struct {
+	// The exit or timeout outcome associated with this shell call.
+	Outcome ResponseFunctionShellCallOutputContentOutcomeUnionParam `json:"outcome,omitzero"`
+	// Captured stderr output for the shell call.
+	Stderr string `json:"stderr"`
+	// Captured stdout output for the shell call.
+	Stdout string `json:"stdout"`
+}
+
+// ResponseFunctionShellCallOutputContentOutcomeUnionParam is a union type for different shell call output content
+// outcome parameters.
+// Only one field can be non-zero.
+type ResponseFunctionShellCallOutputContentOutcomeUnionParam struct {
+	OfTimeout *ResponseFunctionShellCallOutputContentOutcomeTimeoutParam
+	OfExit    *ResponseFunctionShellCallOutputOutputContentOutcomeExitParam
+}
+
+func (r ResponseFunctionShellCallOutputContentOutcomeUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfTimeout != nil:
+		return json.Marshal(r.OfTimeout)
+	case r.OfExit != nil:
+		return json.Marshal(r.OfExit)
+	default:
+		return nil, errors.New("no shell call output content outcome to marshal")
+	}
+}
+
+func (r *ResponseFunctionShellCallOutputContentOutcomeUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "timeout":
+		var to ResponseFunctionShellCallOutputContentOutcomeTimeoutParam
+		if err := json.Unmarshal(data, &to); err != nil {
+			return err
+		}
+		r.OfTimeout = &to
+	case "exit":
+		var eo ResponseFunctionShellCallOutputOutputContentOutcomeExitParam
+		if err := json.Unmarshal(data, &eo); err != nil {
+			return err
+		}
+		r.OfExit = &eo
+	default:
+		return errors.New("unknown type for function shell call output content outcome: " + typ.String())
+	}
+	return nil
+}
+
+// Indicates that the shell call exceeded its configured time limit.
+type ResponseFunctionShellCallOutputContentOutcomeTimeoutParam struct {
+	// The outcome type. Always `timeout`.
+	Type string `json:"type"`
+}
+
+// Indicates that the shell commands finished and returned an exit code.
+//
+// The properties ExitCode, Type are required.
+type ResponseFunctionShellCallOutputOutputContentOutcomeExitParam struct {
+	// The exit code returned by the shell process.
+	ExitCode int64 `json:"exit_code"`
+	// The outcome type. Always `exit`.
+	Type string `json:"type"`
+}
+
+// A tool call representing a request to create, delete, or update files using diff
+// patches.
+//
+// The properties CallID, Operation, Status, Type are required.
+type ResponseInputItemApplyPatchCallParam struct {
+	// The unique ID of the apply patch tool call generated by the model.
+	CallID string `json:"call_id"`
+	// The specific create, delete, or update instruction for the apply_patch tool
+	// call.
+	Operation ResponseInputItemApplyPatchCallOperationUnionParam `json:"operation,omitzero"`
+	// The status of the apply patch tool call. One of `in_progress` or `completed`.
+	//
+	// Any of "in_progress", "completed".
+	Status string `json:"status,omitzero"`
+	// The unique ID of the apply patch tool call. Populated when this item is returned
+	// via API.
+	ID string `json:"id,omitzero"`
+	// The type of the item. Always `apply_patch_call`.
+	Type string `json:"type"`
+}
+
+// ResponseInputItemApplyPatchCallOperationUnionParam is a union type for different apply patch call operation parameters.
+// Only one field can be non-zero.
+type ResponseInputItemApplyPatchCallOperationUnionParam struct {
+	OfCreateFile *ResponseInputItemApplyPatchCallOperationCreateFileParam
+	OfDeleteFile *ResponseInputItemApplyPatchCallOperationDeleteFileParam
+	OfUpdateFile *ResponseInputItemApplyPatchCallOperationUpdateFileParam
+}
+
+func (r ResponseInputItemApplyPatchCallOperationUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfCreateFile != nil:
+		return json.Marshal(r.OfCreateFile)
+	case r.OfDeleteFile != nil:
+		return json.Marshal(r.OfDeleteFile)
+	case r.OfUpdateFile != nil:
+		return json.Marshal(r.OfUpdateFile)
+	default:
+		return nil, errors.New("no apply patch call operation to marshal")
+	}
+}
+
+func (r *ResponseInputItemApplyPatchCallOperationUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "create_file":
+		var cf ResponseInputItemApplyPatchCallOperationCreateFileParam
+		if err := json.Unmarshal(data, &cf); err != nil {
+			return err
+		}
+		r.OfCreateFile = &cf
+	case "delete_file":
+		var df ResponseInputItemApplyPatchCallOperationDeleteFileParam
+		if err := json.Unmarshal(data, &df); err != nil {
+			return err
+		}
+		r.OfDeleteFile = &df
+	case "update_file":
+		var uf ResponseInputItemApplyPatchCallOperationUpdateFileParam
+		if err := json.Unmarshal(data, &uf); err != nil {
+			return err
+		}
+		r.OfUpdateFile = &uf
+	default:
+		return errors.New("unknown type for input item apply patch call operation: " + typ.String())
+	}
+	return nil
+}
+
+// Instruction for creating a new file via the apply_patch tool.
+//
+// The properties Diff, Path, Type are required.
+type ResponseInputItemApplyPatchCallOperationCreateFileParam struct {
+	// Unified diff content to apply when creating the file.
+	Diff string `json:"diff"`
+	// Path of the file to create relative to the workspace root.
+	Path string `json:"path"`
+	// The operation type. Always `create_file`.
+	Type string `json:"type"`
+}
+
+// Instruction for deleting an existing file via the apply_patch tool.
+//
+// The properties Path, Type are required.
+type ResponseInputItemApplyPatchCallOperationDeleteFileParam struct {
+	// Path of the file to delete relative to the workspace root.
+	Path string `json:"path"`
+	// The operation type. Always `delete_file`.
+	Type string `json:"type"`
+}
+
+// Instruction for updating an existing file via the apply_patch tool.
+//
+// The properties Diff, Path, Type are required.
+type ResponseInputItemApplyPatchCallOperationUpdateFileParam struct {
+	// Unified diff content to apply to the existing file.
+	Diff string `json:"diff"`
+	// Path of the file to update relative to the workspace root.
+	Path string `json:"path"`
+	// The operation type. Always `update_file`.
+	Type string `json:"type"`
+}
+
+// The streamed output emitted by an apply patch tool call.
+//
+// The properties CallID, Status, Type are required.
+type ResponseInputItemApplyPatchCallOutputParam struct {
+	// The unique ID of the apply patch tool call generated by the model.
+	CallID string `json:"call_id"`
+	// The status of the apply patch tool call output. One of `completed` or `failed`.
+	//
+	// Any of "completed", "failed".
+	Status string `json:"status,omitzero"`
+	// The unique ID of the apply patch tool call output. Populated when this item is
+	// returned via API.
+	ID string `json:"id,omitzero"`
+	// Optional human-readable log text from the apply patch tool (e.g., patch results
+	// or errors).
+	Output string `json:"output,omitzero"`
+	// The type of the item. Always `apply_patch_call_output`.
+	Type string `json:"type"`
+}
+
+// A tool available on an MCP server.
+
+// The properties InputSchema, Name are required.
+type ResponseOutputItemMcpListTools = ResponseInputItemMcpListToolsToolParam
+
+// A list of tools available on an MCP server.
+//
+// The properties ID, ServerLabel, Tools, Type are required.
+type ResponseMcpListTools struct {
+	// The unique ID of the list.
+	ID string `json:"id"`
+	// The label of the MCP server.
+	ServerLabel string `json:"server_label"`
+	// The tools available on the server.
+	Tools []ResponseOutputItemMcpListTools `json:"tools,omitzero"`
+	// Error message if the server could not list tools.
+	Error string `json:"error,omitzero"`
+	// The type of the item. Always `mcp_list_tools`.
+	Type string `json:"type"`
+}
+
+// A tool available on an MCP server.
+//
+// The properties InputSchema, Name are required.
+type ResponseInputItemMcpListToolsToolParam struct {
+	// The JSON schema describing the tool's input.
+	InputSchema any `json:"input_schema,omitzero"`
+	// The name of the tool.
+	Name string `json:"name"`
+	// The description of the tool.
+	Description string `json:"description,omitzero"`
+	// Additional annotations about the tool.
+	Annotations any `json:"annotations,omitzero"`
+}
+
+// A request for human approval of a tool invocation.
+//
+// The properties ID, Arguments, Name, ServerLabel, Type are required.
+type ResponseMcpApprovalRequest struct {
+	// The unique ID of the approval request.
+	ID string `json:"id"`
+	// A JSON string of arguments for the tool.
+	Arguments string `json:"arguments"`
+	// The name of the tool to run.
+	Name string `json:"name"`
+	// The label of the MCP server making the request.
+	ServerLabel string `json:"server_label"`
+	// The type of the item. Always `mcp_approval_request`.
+	Type string `json:"type"`
+}
+
+// A response to an MCP approval request.
+//
+// The properties ApprovalRequestID, Approve, Type are required.
+type ResponseInputItemMcpApprovalResponseParam struct {
+	// The ID of the approval request being answered.
+	ApprovalRequestID string `json:"approval_request_id"`
+	// Whether the request was approved.
+	Approve bool `json:"approve"`
+	// The unique ID of the approval response
+	ID string `json:"id,omitzero"`
+	// Optional reason for the decision.
+	Reason string `json:"reason,omitzero"`
+	// The type of the item. Always `mcp_approval_response`.
+	Type string `json:"type"`
+}
+
+// An invocation of a tool on an MCP server.
+//
+// The properties ID, Arguments, Name, ServerLabel, Type are required.
+type ResponseMcpCall struct {
+	// The unique ID of the tool call.
+	ID string `json:"id"`
+	// A JSON string of the arguments passed to the tool.
+	Arguments string `json:"arguments"`
+	// The name of the tool that was run.
+	Name string `json:"name"`
+	// The label of the MCP server running the tool.
+	ServerLabel string `json:"server_label"`
+	// Unique identifier for the MCP tool call approval request. Include this value in
+	// a subsequent `mcp_approval_response` input to approve or reject the
+	// corresponding tool call.
+	ApprovalRequestID string `json:"approval_request_id,omitzero"`
+	// The error from the tool call, if any.
+	Error string `json:"error,omitzero"`
+	// The output from the tool call.
+	Output string `json:"output,omitzero"`
+	// The status of the tool call. One of `in_progress`, `completed`, `incomplete`,
+	// `calling`, or `failed`.
+	//
+	// Any of "in_progress", "completed", "incomplete", "calling", "failed".
+	Status string `json:"status,omitzero"`
+	// The type of the item. Always `mcp_call`.
+	Type string `json:"type"`
+}
+
+// The output of a custom tool call from your code, being sent back to the model.
+//
+// The properties CallID, Output, Type are required.
+type ResponseCustomToolCallOutputParam struct {
+	// The call ID, used to map this custom tool call output to a custom tool call.
+	CallID string `json:"call_id"`
+	// The output from the custom tool call generated by your code. Can be a string or
+	// an list of output content.
+	Output ResponseCustomToolCallOutputOutputUnionParam `json:"output,omitzero"`
+	// The unique ID of the custom tool call output in the OpenAI platform.
+	ID string `json:"id,omitzero"`
+	// The type of the custom tool call output. Always `custom_tool_call_output`.
+	Type string `json:"type"`
+}
+
+// ResponseCustomToolCallOutputOutputUnionParam is a union type for different custom tool call output parameters.
+// Only one field can be non-zero.
+type ResponseCustomToolCallOutputOutputUnionParam struct {
+	OfString            *string
+	OfOutputContentList []ResponseCustomToolCallOutputContentListItemUnionParam
+}
+
+func (r ResponseCustomToolCallOutputOutputUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfString != nil:
+		return json.Marshal(r.OfString)
+	case r.OfOutputContentList != nil:
+		return json.Marshal(r.OfOutputContentList)
+	default:
+		return nil, errors.New("no custom tool call output to marshal")
+	}
+}
+
+func (r *ResponseCustomToolCallOutputOutputUnionParam) UnmarshalJSON(data []byte) error {
+	// Check if data is a string
+	if data[0] == '"' {
+		var str string
+		if err := json.Unmarshal(data, &str); err != nil {
+			return err
+		}
+		r.OfString = &str
+		return nil
+	}
+	var arr []ResponseCustomToolCallOutputContentListItemUnionParam
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return err
+	}
+	r.OfOutputContentList = arr
+	return nil
+}
+
+// ResponseCustomToolCallOutputContentListItemUnionParam is a union type for different custom tool call output content list item parameters.
+// Only one field can be non-zero.
+type ResponseCustomToolCallOutputContentListItemUnionParam struct {
+	OfInputText  *ResponseInputTextParam
+	OfInputImage *ResponseInputImageParam
+	OfInputFile  *ResponseInputFileParam
+}
+
+func (r ResponseCustomToolCallOutputContentListItemUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfInputText != nil:
+		return json.Marshal(r.OfInputText)
+	case r.OfInputImage != nil:
+		return json.Marshal(r.OfInputImage)
+	case r.OfInputFile != nil:
+		return json.Marshal(r.OfInputFile)
+	default:
+		return nil, errors.New("no custom tool call output content list item to marshal")
+	}
+}
+
+func (r *ResponseCustomToolCallOutputContentListItemUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "input_text":
+		var it ResponseInputTextParam
+		if err := json.Unmarshal(data, &it); err != nil {
+			return err
+		}
+		r.OfInputText = &it
+	case "input_image":
+		var ii ResponseInputImageParam
+		if err := json.Unmarshal(data, &ii); err != nil {
+			return err
+		}
+		r.OfInputImage = &ii
+	case "input_file":
+		var ifile ResponseInputFileParam
+		if err := json.Unmarshal(data, &ifile); err != nil {
+			return err
+		}
+		r.OfInputFile = &ifile
+	default:
+		return errors.New("unknown type for custom tool call output content list item: " + typ.String())
+	}
+	return nil
+}
+
+// A call to a custom tool created by the model.
+//
+// The properties CallID, Input, Name, Type are required.
+type ResponseCustomToolCall struct {
+	// An identifier used to map this custom tool call to a tool call output.
+	CallID string `json:"call_id"`
+	// The input for the custom tool call generated by the model.
+	Input string `json:"input"`
+	// The name of the custom tool being called.
+	Name string `json:"name"`
+	// The unique ID of the custom tool call in the OpenAI platform.
+	ID string `json:"id,omitzero"`
+	// The type of the custom tool call. Always `custom_tool_call`.
+	Type string `json:"type"`
+}
+
+// An internal identifier for an item to reference.
+//
+// The property ID is required.
+type ResponseInputItemItemReferenceParam struct {
+	// The ID of the item to reference.
+	ID string `json:"id"`
+	// The type of item to reference. Always `item_reference`.
+	Type string `json:"type,omitzero"`
+}
+
+// ResponseToolChoiceUnion is a union type for tool choice configuration in Responses API.
+// Only one of the fields should be set.
+type ResponseToolChoiceUnion struct {
+	OfToolChoiceMode *string
+	OfAllowedTools   *ToolChoiceAllowed
+	OfHostedTool     *ToolChoiceTypes
+	OfFunctionTool   *ToolChoiceFunction
+	OfMcpTool        *ToolChoiceMcp
+	OfCustomTool     *ToolChoiceCustom
+	OfApplyPatchTool *ToolChoiceApplyPatch
+	OfShellTool      *ToolChoiceShell
+}
+
+func (r *ResponseToolChoiceUnion) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as ToolChoiceMode (string)
+	var mode string
+	if err := json.Unmarshal(data, &mode); err == nil {
+		r.OfToolChoiceMode = &mode
+		return nil
+	}
+	typ := gjson.GetBytes(data, "type")
+	if !typ.Exists() {
+		return errors.New("missing type field in tool choice")
+	}
+
+	switch typ.String() {
+	case "allowed_tools":
+		// Try to unmarshal as ToolChoiceAllowed
+		var allowedTools ToolChoiceAllowed
+		if err := json.Unmarshal(data, &allowedTools); err != nil {
+			return err
+		}
+		r.OfAllowedTools = &allowedTools
+	case "file_search", "web_search_preview", "computer_use_preview", "web_search_preview_2025_03_11", "image_generation", "code_interpreter":
+		// Try to unmarshal as ToolChoiceTypes
+		var hostedTool ToolChoiceTypes
+		if err := json.Unmarshal(data, &hostedTool); err != nil {
+			return err
+		}
+		r.OfHostedTool = &hostedTool
+	case "function":
+		// Try to unmarshal as ToolChoiceFunction
+		var functionTool ToolChoiceFunction
+		if err := json.Unmarshal(data, &functionTool); err != nil {
+			return err
+		}
+		r.OfFunctionTool = &functionTool
+	case "mcp":
+		// Try to unmarshal as ToolChoiceMcp
+		var mcpTool ToolChoiceMcp
+		if err := json.Unmarshal(data, &mcpTool); err != nil {
+			return err
+		}
+		r.OfMcpTool = &mcpTool
+	case "custom":
+		// Try to unmarshal as ToolChoiceCustom
+		var customTool ToolChoiceCustom
+		if err := json.Unmarshal(data, &customTool); err != nil {
+			return err
+		}
+		r.OfCustomTool = &customTool
+	case "apply_patch":
+		// Try to unmarshal as ToolChoiceApplyPatch
+		var applyPatchTool ToolChoiceApplyPatch
+		if err := json.Unmarshal(data, &applyPatchTool); err != nil {
+			return err
+		}
+		r.OfApplyPatchTool = &applyPatchTool
+	case "shell":
+		// Try to unmarshal as ToolChoiceShell
+		var shellTool ToolChoiceShell
+		if err := json.Unmarshal(data, &shellTool); err != nil {
+			return err
+		}
+		r.OfShellTool = &shellTool
+	default:
+		return fmt.Errorf("unknown tool choice type: %s", typ.String())
+	}
+	return nil
+}
+
+func (r ResponseToolChoiceUnion) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfToolChoiceMode != nil:
+		return json.Marshal(r.OfToolChoiceMode)
+	case r.OfAllowedTools != nil:
+		return json.Marshal(r.OfAllowedTools)
+	case r.OfHostedTool != nil:
+		return json.Marshal(r.OfHostedTool)
+	case r.OfFunctionTool != nil:
+		return json.Marshal(r.OfFunctionTool)
+	case r.OfMcpTool != nil:
+		return json.Marshal(r.OfMcpTool)
+	case r.OfCustomTool != nil:
+		return json.Marshal(r.OfCustomTool)
+	case r.OfApplyPatchTool != nil:
+		return json.Marshal(r.OfApplyPatchTool)
+	case r.OfShellTool != nil:
+		return json.Marshal(r.OfShellTool)
+	default:
+		return nil, errors.New("no tool choice to marshal")
+	}
+}
+
+// Constrains the tools available to the model to a pre-defined set.
+//
+// The properties Mode, Tools, Type are required.
+type ToolChoiceAllowed struct {
+	// Constrains the tools available to the model to a pre-defined set.
+	//
+	// `auto` allows the model to pick from among the allowed tools and generate a
+	// message.
+	//
+	// `required` requires the model to call one or more of the allowed tools.
+	//
+	// Any of "auto", "required".
+	Mode string `json:"mode,omitzero"`
+	// A list of tool definitions that the model should be allowed to call.
+	//
+	// For the Responses API, the list of tool definitions might look like:
+	//
+	// ```json
+	// [
+	//
+	//	{ "type": "function", "name": "get_weather" },
+	//	{ "type": "mcp", "server_label": "deepwiki" },
+	//	{ "type": "image_generation" }
+	//
+	// ]
+	// ```
+	Tools []map[string]any `json:"tools,omitzero"`
+	// Allowed tool configuration type. Always `allowed_tools`.
+	Type string `json:"type,omitzero"`
+}
+
+// Indicates that the model should use a built-in tool to generate a response.
+// [Learn more about built-in tools](https://platform.openai.com/docs/guides/tools).
+//
+// The property Type is required.
+type ToolChoiceTypes struct {
+	// The type of hosted tool the model should to use. Learn more about
+	// [built-in tools](https://platform.openai.com/docs/guides/tools).
+	//
+	// Allowed values are:
+	//
+	// - `file_search`
+	// - `web_search_preview`
+	// - `computer_use_preview`
+	// - `code_interpreter`
+	// - `image_generation`
+	// - `apply_patch`
+	//
+	// Any of "file_search", "web_search_preview", "computer_use_preview",
+	// "web_search_preview_2025_03_11", "image_generation", "code_interpreter".
+	Type string `json:"type,omitzero"`
+}
+
+// Use this option to force the model to call a specific function.
+//
+// The properties Name, Type are required.
+type ToolChoiceFunction struct {
+	// The name of the function to call.
+	Name string `json:"name"`
+	// For function calling, the type is always `function`.
+	Type string `json:"type,omitzero"`
+}
+
+// Use this option to force the model to call a specific tool on a remote MCP
+// server.
+//
+// The properties ServerLabel, Type are required.
+type ToolChoiceMcp struct {
+	// The label of the MCP server to use.
+	ServerLabel string `json:"server_label"`
+	// The name of the tool to call on the server.
+	Name string `json:"name,omitzero"`
+	// For MCP tools, the type is always `mcp`.
+	Type string `json:"type,omitzero"`
+}
+
+// Use this option to force the model to call a specific custom tool.
+//
+// The properties Name, Type are required.
+type ToolChoiceCustom struct {
+	// The name of the custom tool to call.
+	Name string `json:"name"`
+	// For custom tool calling, the type is always `custom`.
+	Type string `json:"type,omitzero"`
+}
+
+// Forces the model to call the apply_patch tool when executing a tool call.
+type ToolChoiceApplyPatch struct {
+	// The tool to call. Always `apply_patch`.
+	Type string `json:"type"`
+}
+
+// Forces the model to call the shell tool when a tool call is required.
+type ToolChoiceShell struct {
+	// The tool to call. Always `shell`.
+	Type string `json:"type,omitzero"`
+}
+
 // Response represents a response from the /v1/responses endpoint.
 // Docs: https://platform.openai.com/docs/api-reference/responses/object
 type Response struct {
@@ -2361,6 +5714,9 @@ type Response struct {
 
 	// Unix timestamp (in seconds) of when this Response was created.
 	CreatedAt JSONUNIXTime `json:"created_at"`
+
+	// Unix timestamp (in seconds) of when this Response was completed. Only present when the status is `completed`.
+	CompletedAt *JSONUNIXTime `json:"completed_at,omitempty"`
 
 	// An error object returned when the model fails to generate a Response.
 	Error ResponseError `json:"error,omitzero"`
@@ -2373,7 +5729,7 @@ type Response struct {
 	// When using along with `previous_response_id`, the instructions from a previous
 	// response will not be carried over to the next response. This makes it simple to
 	// swap out system (or developer) messages in new responses.
-	Instructions responses.ResponseInstructionsUnion `json:"instructions,omitzero"`
+	Instructions ResponseInstructionsUnion `json:"instructions,omitzero"`
 
 	// Set of 16 key-value pairs that can be attached to an object. This can be useful
 	// for storing additional information about the object in a structured format, and
@@ -2396,10 +5752,10 @@ type Response struct {
 	//   - Rather than accessing the first item in the `output` array and assuming it's
 	//     an `assistant` message with the content generated by the model, you might
 	//     consider using the `output_text` property where supported in SDKs.
-	Output []responses.ResponseOutputItemUnion `json:"output"`
+	Output []ResponseOutputItemUnion `json:"output,omitzero"`
 
 	// Whether to allow the model to run tool calls in parallel.
-	ParallelToolCalls bool `json:"parallel_tool_calls"`
+	ParallelToolCalls *bool `json:"parallel_tool_calls,omitempty"`
 
 	// What sampling temperature to use, between 0 and 2. Higher values like 0.8 will
 	// make the output more random, while lower values like 0.2 will make it more
@@ -2410,11 +5766,11 @@ type Response struct {
 	// How the model should select which tool (or tools) to use when generating a
 	// response. See the `tools` parameter to see how to specify which tools the model
 	// can call.
-	ToolChoice responses.ResponseToolChoiceUnion `json:"tool_choice,omitzero"`
+	ToolChoice ResponseToolChoiceUnion `json:"tool_choice,omitzero"`
 
 	// An array of tools the model may call while generating a response. You can
 	// specify which tool to use by setting the `tool_choice` parameter.
-	Tools []responses.ToolUnion `json:"tools,omitzero"`
+	Tools []ResponseToolUnion `json:"tools,omitzero"`
 
 	// An alternative to sampling with temperature, called nucleus sampling, where the
 	// model considers the results of the tokens with top_p probability mass. So 0.1
@@ -2539,6 +5895,511 @@ type Response struct {
 	User string `json:"user,omitzero"`
 }
 
+// ResponseInstructionsUnion contains all possible properties and values from
+// [string], [[]ResponseInputItemUnion].
+type ResponseInstructionsUnion struct {
+	// This field will be present if the value is a [string] instead of an object.
+	OfString *string
+	// This field will be present if the value is a [[]ResponseInputItemUnion] instead
+	// of an object.
+	OfInputItemList []ResponseInputItemUnionParam
+}
+
+func (r ResponseInstructionsUnion) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfString != nil:
+		return json.Marshal(r.OfString)
+	case r.OfInputItemList != nil:
+		return json.Marshal(r.OfInputItemList)
+	default:
+		return nil, errors.New("no instructions to marshal")
+	}
+}
+
+func (r *ResponseInstructionsUnion) UnmarshalJSON(data []byte) error {
+	// Check if data is a string
+	if data[0] == '"' {
+		var str string
+		if err := json.Unmarshal(data, &str); err != nil {
+			return err
+		}
+		r.OfString = &str
+		return nil
+	}
+	var arr []ResponseInputItemUnionParam
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return err
+	}
+	r.OfInputItemList = arr
+	return nil
+}
+
+type ResponseOutputItemUnion struct {
+	OfOutputMessage        *ResponseOutputMessage
+	OfFileSearchCall       *ResponseFileSearchToolCall
+	OfComputerCall         *ResponseComputerToolCall
+	OfFunctionCall         *ResponseFunctionToolCall
+	OfWebSearchCall        *ResponseFunctionWebSearch
+	OfReasoning            *ResponseReasoningItem
+	OfCompaction           *ResponseCompactionItem
+	OfImageGenerationCall  *ResponseOutputItemImageGenerationCall
+	OfCodeInterpreterCall  *ResponseCodeInterpreterToolCall
+	OfLocalShellCall       *ResponseOutputItemLocalShellCall
+	OfShellCall            *ResponseFunctionShellToolCall
+	OfShellCallOutput      *ResponseFunctionShellToolCallOutput
+	OfApplyPatchCall       *ResponseApplyPatchToolCall
+	OfApplyPatchCallOutput *ResponseApplyPatchToolCallOutput
+	OfMcpCall              *ResponseMcpCall
+	OfMcpListTools         *ResponseMcpListTools
+	OfMcpApprovalRequest   *ResponseMcpApprovalRequest
+	OfCustomToolCall       *ResponseCustomToolCall
+}
+
+func (r ResponseOutputItemUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
+	switch {
+	case r.OfOutputMessage != nil:
+		return json.Marshal(r.OfOutputMessage)
+	case r.OfFileSearchCall != nil:
+		return json.Marshal(r.OfFileSearchCall)
+	case r.OfComputerCall != nil:
+		return json.Marshal(r.OfComputerCall)
+	case r.OfFunctionCall != nil:
+		return json.Marshal(r.OfFunctionCall)
+	case r.OfWebSearchCall != nil:
+		return json.Marshal(r.OfWebSearchCall)
+	case r.OfReasoning != nil:
+		return json.Marshal(r.OfReasoning)
+	case r.OfCompaction != nil:
+		return json.Marshal(r.OfCompaction)
+	case r.OfImageGenerationCall != nil:
+		return json.Marshal(r.OfImageGenerationCall)
+	case r.OfCodeInterpreterCall != nil:
+		return json.Marshal(r.OfCodeInterpreterCall)
+	case r.OfLocalShellCall != nil:
+		return json.Marshal(r.OfLocalShellCall)
+	case r.OfShellCall != nil:
+		return json.Marshal(r.OfShellCall)
+	case r.OfShellCallOutput != nil:
+		return json.Marshal(r.OfShellCallOutput)
+	case r.OfApplyPatchCall != nil:
+		return json.Marshal(r.OfApplyPatchCall)
+	case r.OfApplyPatchCallOutput != nil:
+		return json.Marshal(r.OfApplyPatchCallOutput)
+	case r.OfMcpCall != nil:
+		return json.Marshal(r.OfMcpCall)
+	case r.OfMcpListTools != nil:
+		return json.Marshal(r.OfMcpListTools)
+	case r.OfMcpApprovalRequest != nil:
+		return json.Marshal(r.OfMcpApprovalRequest)
+	case r.OfCustomToolCall != nil:
+		return json.Marshal(r.OfCustomToolCall)
+	default:
+		return nil, errors.New("no output item to marshal")
+	}
+}
+
+func (r *ResponseOutputItemUnion) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "message":
+		var msg ResponseOutputMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return err
+		}
+		r.OfOutputMessage = &msg
+	case "file_search_call":
+		var f ResponseFileSearchToolCall
+		if err := json.Unmarshal(data, &f); err != nil {
+			return err
+		}
+		r.OfFileSearchCall = &f
+	case "function_call":
+		var f ResponseFunctionToolCall
+		if err := json.Unmarshal(data, &f); err != nil {
+			return err
+		}
+		r.OfFunctionCall = &f
+	case "web_search_call":
+		var w ResponseFunctionWebSearch
+		if err := json.Unmarshal(data, &w); err != nil {
+			return err
+		}
+		r.OfWebSearchCall = &w
+	case "computer_call":
+		var c ResponseComputerToolCall
+		if err := json.Unmarshal(data, &c); err != nil {
+			return err
+		}
+		r.OfComputerCall = &c
+	case "reasoning":
+		var rr ResponseReasoningItem
+		if err := json.Unmarshal(data, &rr); err != nil {
+			return err
+		}
+		r.OfReasoning = &rr
+	case "compaction":
+		var c ResponseCompactionItem
+		if err := json.Unmarshal(data, &c); err != nil {
+			return err
+		}
+		r.OfCompaction = &c
+	case "image_generation_call":
+		var i ResponseOutputItemImageGenerationCall
+		if err := json.Unmarshal(data, &i); err != nil {
+			return err
+		}
+		r.OfImageGenerationCall = &i
+	case "code_interpreter_call":
+		var c ResponseCodeInterpreterToolCall
+		if err := json.Unmarshal(data, &c); err != nil {
+			return err
+		}
+		r.OfCodeInterpreterCall = &c
+	case "local_shell_call":
+		var l ResponseOutputItemLocalShellCall
+		if err := json.Unmarshal(data, &l); err != nil {
+			return err
+		}
+		r.OfLocalShellCall = &l
+	case "shell_call":
+		var s ResponseFunctionShellToolCall
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		r.OfShellCall = &s
+	case "shell_call_output":
+		var s ResponseFunctionShellToolCallOutput
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		r.OfShellCallOutput = &s
+	case "apply_patch_call":
+		var p ResponseApplyPatchToolCall
+		if err := json.Unmarshal(data, &p); err != nil {
+			return err
+		}
+		r.OfApplyPatchCall = &p
+	case "apply_patch_call_output":
+		var p ResponseApplyPatchToolCallOutput
+		if err := json.Unmarshal(data, &p); err != nil {
+			return err
+		}
+		r.OfApplyPatchCallOutput = &p
+	case "mcp_call":
+		var m ResponseMcpCall
+		if err := json.Unmarshal(data, &m); err != nil {
+			return err
+		}
+		r.OfMcpCall = &m
+	case "mcp_list_tools":
+		var m ResponseMcpListTools
+		if err := json.Unmarshal(data, &m); err != nil {
+			return err
+		}
+		r.OfMcpListTools = &m
+	case "mcp_approval_request":
+		var m ResponseMcpApprovalRequest
+		if err := json.Unmarshal(data, &m); err != nil {
+			return err
+		}
+		r.OfMcpApprovalRequest = &m
+	case "custom_tool_call":
+		var c ResponseCustomToolCall
+		if err := json.Unmarshal(data, &c); err != nil {
+			return err
+		}
+		r.OfCustomToolCall = &c
+	default:
+		return fmt.Errorf("unknown type field value '%s' for response output item union", typ.String())
+	}
+	return nil
+}
+
+// A compaction item generated by the
+// [`v1/responses/compact` API](https://platform.openai.com/docs/api-reference/responses/compact).
+type ResponseCompactionItem struct {
+	// The unique ID of the compaction item.
+	ID               string `json:"id"`
+	EncryptedContent string `json:"encrypted_content"`
+	// The type of the item. Always `compaction`.
+	Type      string `json:"type"`
+	CreatedBy string `json:"created_by,omitzero"`
+}
+
+// An image generation request made by the model.
+type ResponseOutputItemImageGenerationCall struct {
+	// The unique ID of the image generation call.
+	ID string `json:"id"`
+	// The generated image encoded in base64.
+	Result string `json:"result"`
+	// The status of the image generation call.
+	//
+	// Any of "in_progress", "completed", "generating", "failed".
+	Status string `json:"status"`
+	// The type of the image generation call. Always `image_generation_call`.
+	Type string `json:"type"`
+}
+
+// A tool call to run a command on the local shell.
+type ResponseOutputItemLocalShellCall struct {
+	// The unique ID of the local shell call.
+	ID string `json:"id"`
+	// Execute a shell command on the server.
+	Action ResponseOutputItemLocalShellCallAction `json:"action"`
+	// The unique ID of the local shell tool call generated by the model.
+	CallID string `json:"call_id"`
+	// The status of the local shell call.
+	//
+	// Any of "in_progress", "completed", "incomplete".
+	Status string `json:"status"`
+	// The type of the local shell call. Always `local_shell_call`.
+	Type string `json:"type"`
+}
+
+// Execute a shell command on the server.
+type ResponseOutputItemLocalShellCallAction struct {
+	// The command to run.
+	Command []string `json:"command"`
+	// Environment variables to set for the command.
+	Env map[string]string `json:"env"`
+	// The type of the local shell action. Always `exec`.
+	Type string `json:"type"`
+	// Optional timeout in milliseconds for the command.
+	TimeoutMs int64 `json:"timeout_ms,omitempty"`
+	// Optional user to run the command as.
+	User string `json:"user,omitzero"`
+	// Optional working directory to run the command in.
+	WorkingDirectory string `json:"working_directory,omitzero"`
+}
+
+// The output of a shell tool call.
+type ResponseFunctionShellToolCallOutput struct {
+	// The unique ID of the shell call output. Populated when this item is returned via
+	// API.
+	ID string `json:"id"`
+	// The unique ID of the shell tool call generated by the model.
+	CallID string `json:"call_id"`
+	// The maximum length of the shell command output. This is generated by the model
+	// and should be passed back with the raw output.
+	MaxOutputLength int64 `json:"max_output_length"`
+	// An array of shell call output contents
+	Output []ResponseFunctionShellToolCallOutputOutput `json:"output"`
+	// The type of the shell call output. Always `shell_call_output`.
+	Type      string `json:"type"`
+	CreatedBy string `json:"created_by,omitzero"`
+}
+
+// The content of a shell call output.
+type ResponseFunctionShellToolCallOutputOutput struct {
+	// Represents either an exit outcome (with an exit code) or a timeout outcome for a
+	// shell call output chunk.
+	Outcome   ResponseFunctionShellToolCallOutputOutputOutcomeUnion `json:"outcome"`
+	Stderr    string                                                `json:"stderr"`
+	Stdout    string                                                `json:"stdout"`
+	CreatedBy string                                                `json:"created_by,omitzero"`
+}
+
+// ResponseFunctionShellToolCallOutputOutputOutcomeUnion contains all possible
+// properties and values from
+// [ResponseFunctionShellToolCallOutputOutcomeTimeout],
+// [ResponseFunctionShellToolCallOutputOutcomeExit].
+type ResponseFunctionShellToolCallOutputOutputOutcomeUnion struct {
+	OfResponseFunctionShellToolCallOutputOutputOutcomeTimeout *ResponseFunctionShellToolCallOutputOutputOutcomeTimeout
+	OfResponseFunctionShellToolCallOutputOutputOutcomeExit    *ResponseFunctionShellToolCallOutputOutputOutcomeExit
+}
+
+func (r ResponseFunctionShellToolCallOutputOutputOutcomeUnion) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfResponseFunctionShellToolCallOutputOutputOutcomeExit != nil:
+		return json.Marshal(r.OfResponseFunctionShellToolCallOutputOutputOutcomeExit)
+	case r.OfResponseFunctionShellToolCallOutputOutputOutcomeTimeout != nil:
+		return json.Marshal(r.OfResponseFunctionShellToolCallOutputOutputOutcomeTimeout)
+	default:
+		return nil, errors.New("no function tool call output outcome to marshal")
+	}
+}
+
+func (r *ResponseFunctionShellToolCallOutputOutputOutcomeUnion) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "timeout":
+		var t ResponseFunctionShellToolCallOutputOutputOutcomeTimeout
+		if err := json.Unmarshal(data, &t); err != nil {
+			return err
+		}
+		r.OfResponseFunctionShellToolCallOutputOutputOutcomeTimeout = &t
+	case "exit":
+		var e ResponseFunctionShellToolCallOutputOutputOutcomeExit
+		if err := json.Unmarshal(data, &e); err != nil {
+			return err
+		}
+		r.OfResponseFunctionShellToolCallOutputOutputOutcomeExit = &e
+	default:
+		return fmt.Errorf("unknown type field value '%s' for function shell tool call output outcome", typ.String())
+	}
+	return nil
+}
+
+// Indicates that the shell call exceeded its configured time limit.
+type ResponseFunctionShellToolCallOutputOutputOutcomeTimeout struct {
+	// The outcome type. Always `timeout`.
+	Type string `json:"type"`
+}
+
+// Indicates that the shell commands finished and returned an exit code.
+type ResponseFunctionShellToolCallOutputOutputOutcomeExit struct {
+	// Exit code from the shell process.
+	ExitCode int64 `json:"exit_code"`
+	// The outcome type. Always `exit`.
+	Type string `json:"type"`
+}
+
+// A tool call that applies file diffs by creating, deleting, or updating files.
+type ResponseApplyPatchToolCall struct {
+	// The unique ID of the apply patch tool call. Populated when this item is returned
+	// via API.
+	ID string `json:"id"`
+	// The unique ID of the apply patch tool call generated by the model.
+	CallID string `json:"call_id"`
+	// One of the create_file, delete_file, or update_file operations applied via
+	// apply_patch.
+	Operation ResponseApplyPatchToolCallOperationUnion `json:"operation"`
+	// The status of the apply patch tool call. One of `in_progress` or `completed`.
+	//
+	// Any of "in_progress", "completed".
+	Status string `json:"status"`
+	// The type of the item. Always `apply_patch_call`.
+	Type string `json:"type"`
+	// The ID of the entity that created this tool call.
+	CreatedBy string `json:"created_by,omitzero"`
+}
+
+// ResponseApplyPatchToolCallOperationUnion contains all possible properties and
+// values from [ResponseApplyPatchToolCallOperationCreateFile],
+// [ResponseApplyPatchToolCallOperationDeleteFile],
+// [ResponseApplyPatchToolCallOperationUpdateFile].
+type ResponseApplyPatchToolCallOperationUnion struct {
+	OfResponseApplyPatchToolCallOperationCreateFile *ResponseApplyPatchToolCallOperationCreateFile
+	OfResponseApplyPatchToolCallOperationDeleteFile *ResponseApplyPatchToolCallOperationDeleteFile
+	OfResponseApplyPatchToolCallOperationUpdateFile *ResponseApplyPatchToolCallOperationUpdateFile
+}
+
+func (r ResponseApplyPatchToolCallOperationUnion) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfResponseApplyPatchToolCallOperationCreateFile != nil:
+		return json.Marshal(r.OfResponseApplyPatchToolCallOperationCreateFile)
+	case r.OfResponseApplyPatchToolCallOperationDeleteFile != nil:
+		return json.Marshal(r.OfResponseApplyPatchToolCallOperationDeleteFile)
+	case r.OfResponseApplyPatchToolCallOperationUpdateFile != nil:
+		return json.Marshal(r.OfResponseApplyPatchToolCallOperationUpdateFile)
+	default:
+		return nil, errors.New("no apply patch tool call operation to marshal")
+	}
+}
+
+func (r *ResponseApplyPatchToolCallOperationUnion) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "create_file":
+		var c ResponseApplyPatchToolCallOperationCreateFile
+		if err := json.Unmarshal(data, &c); err != nil {
+			return err
+		}
+		r.OfResponseApplyPatchToolCallOperationCreateFile = &c
+	case "delete_file":
+		var d ResponseApplyPatchToolCallOperationDeleteFile
+		if err := json.Unmarshal(data, &d); err != nil {
+			return err
+		}
+		r.OfResponseApplyPatchToolCallOperationDeleteFile = &d
+	case "update_file":
+		var u ResponseApplyPatchToolCallOperationUpdateFile
+		if err := json.Unmarshal(data, &u); err != nil {
+			return err
+		}
+		r.OfResponseApplyPatchToolCallOperationUpdateFile = &u
+	default:
+		return fmt.Errorf("unknown type field value '%s' for apply patch tool call operation", typ.String())
+	}
+	return nil
+}
+
+// Instruction describing how to create a file via the apply_patch tool.
+type ResponseApplyPatchToolCallOperationCreateFile struct {
+	// Diff to apply.
+	Diff string `json:"diff"`
+	// Path of the file to create.
+	Path string `json:"path"`
+	// Create a new file with the provided diff. Always "create_file"
+	Type string `json:"type"`
+}
+
+// Instruction describing how to delete a file via the apply_patch tool.
+type ResponseApplyPatchToolCallOperationDeleteFile struct {
+	// Path of the file to delete.
+	Path string `json:"path"`
+	// Delete the specified file. Always "delete_file"
+	Type string `json:"type"`
+}
+
+// Instruction describing how to update a file via the apply_patch tool.
+type ResponseApplyPatchToolCallOperationUpdateFile struct {
+	// Diff to apply.
+	Diff string `json:"diff"`
+	// Path of the file to update.
+	Path string `json:"path"`
+	// Update an existing file with the provided diff. Always "update_file"
+	Type string `json:"type"`
+}
+
+// The output emitted by an apply patch tool call.
+type ResponseApplyPatchToolCallOutput struct {
+	// The unique ID of the apply patch tool call output. Populated when this item is
+	// returned via API.
+	ID string `json:"id"`
+	// The unique ID of the apply patch tool call generated by the model.
+	CallID string `json:"call_id"`
+	// The status of the apply patch tool call output. One of `completed` or `failed`.
+	//
+	// Any of "completed", "failed".
+	Status string `json:"status"`
+	// The type of the item. Always `apply_patch_call_output`.
+	Type string `json:"type"`
+	// The ID of the entity that created this tool call output.
+	CreatedBy string `json:"created_by,omitzero"`
+	// Optional textual output returned by the apply patch tool.
+	Output string `json:"output"`
+}
+
+// A tool call that executes one or more shell commands in a managed environment.
+type ResponseFunctionShellToolCall struct {
+	// The unique ID of the shell tool call. Populated when this item is returned via
+	// API.
+	ID string `json:"id"`
+	// The shell commands and limits that describe how to run the tool call.
+	Action ResponseFunctionShellToolCallAction `json:"action"`
+	// The unique ID of the shell tool call generated by the model.
+	CallID string `json:"call_id"`
+	// The status of the shell call. One of `in_progress`, `completed`, or
+	// `incomplete`.
+	//
+	// Any of "in_progress", "completed", "incomplete".
+	Status string `json:"status"`
+	// The type of the item. Always `shell_call`.
+	Type string `json:"type"`
+	// The ID of the entity that created this tool call.
+	CreatedBy string `json:"created_by,omitzero"`
+}
+
+// The shell commands and limits that describe how to run the tool call.
+type ResponseFunctionShellToolCallAction struct {
+	Commands []string `json:"commands"`
+	// Optional maximum number of characters to return from each command.
+	MaxOutputLength int64 `json:"max_output_length,omitempty"`
+	// Optional timeout in milliseconds for the commands.
+	TimeoutMs int64 `json:"timeout_ms,omitempty"`
+}
+
 // Represents token usage details including input tokens, output tokens, a
 // breakdown of output tokens, and the total tokens used.
 type ResponseUsage struct {
@@ -2627,7 +6488,7 @@ type ResponsePrompt struct {
 	// Optional map of values to substitute in for variables in your prompt. The
 	// substitution values can either be strings, or other Response input types like
 	// images or files.
-	Variables map[string]responses.ResponsePromptVariableUnion `json:"variables,omitzero"`
+	Variables map[string]ResponsePromptVariableUnionParam `json:"variables,omitzero"`
 	// Optional version of the prompt template.
 	Version string `json:"version,omitzero"`
 }
@@ -2650,13 +6511,1070 @@ type ResponseTextConfig struct {
 	// Setting to `{ "type": "json_object" }` enables the older JSON mode, which
 	// ensures the message the model generates is valid JSON. Using `json_schema` is
 	// preferred for models that support it.
-	Format responses.ResponseFormatTextConfigUnion `json:"format"`
+	Format ResponseFormatTextConfigUnionParam `json:"format"`
 	// Constrains the verbosity of the model's response. Lower values will result in
 	// more concise responses, while higher values will result in more verbose
 	// responses. Currently supported values are `low`, `medium`, and `high`.
 	//
 	// Any of "low", "medium", "high".
 	Verbosity string `json:"verbosity,omitzero"`
+}
+
+// ResponseStreamEventUnion contains all possible properties and values for response events
+// Any one of the fields should be set.
+type ResponseStreamEventUnion struct {
+	OfAudioDelta                         *ResponseAudioDeltaEvent
+	OfAudioDone                          *ResponseAudioDoneEvent
+	OfAudioTranscriptDelta               *ResponseAudioTranscriptDeltaEvent
+	OfAudioTranscriptDone                *ResponseAudioTranscriptDoneEvent
+	OfCodeInterpreterCallCodeDelta       *ResponseCodeInterpreterCallCodeDeltaEvent
+	OfCodeInterpreterCallCodeDone        *ResponseCodeInterpreterCallCodeDoneEvent
+	OfCodeInterpreterCallCompleted       *ResponseCodeInterpreterCallCompletedEvent
+	OfCodeInterpreterCallInprogress      *ResponseCodeInterpreterCallInProgressEvent
+	OfCodeInterpreterCallInterpreting    *ResponseCodeInterpreterCallInterpretingEvent
+	OfResponseCompleted                  *ResponseCompletedEvent
+	OfResponseContentPartAdded           *ResponseContentPartAddedEvent
+	OfResponseContentPartDone            *ResponseContentPartDoneEvent
+	OfResponseCreated                    *ResponseCreatedEvent
+	OfError                              *ResponseErrorEvent
+	OfResponseFileSearchCallCompleted    *ResponseFileSearchCallCompletedEvent
+	OfResponseFileSearchCallInProgress   *ResponseFileSearchCallInProgressEvent
+	OfResponseFileSearchCallSearching    *ResponseFileSearchCallSearchingEvent
+	OfResponseFunctionCallArgumentsDelta *ResponseFunctionCallArgumentsDeltaEvent
+	OfResponseFunctionCallArgumentsDone  *ResponseFunctionCallArgumentsDoneEvent
+	OfResponseInProgress                 *ResponseInProgressEvent
+	OfResponseFailed                     *ResponseFailedEvent
+	OfResponseIncomplete                 *ResponseIncompleteEvent
+	OfResponseOutputItemAdded            *ResponseOutputItemAddedEvent
+	OfResponseOutputItemDone             *ResponseOutputItemDoneEvent
+	OfResponseReasoningSummaryPartAdded  *ResponseReasoningSummaryPartAddedEvent
+	OfResponseReasoningSummaryPartDone   *ResponseReasoningSummaryPartDoneEvent
+	OfResponseReasoningSummaryTextDelta  *ResponseReasoningSummaryTextDeltaEvent
+	OfResponseReasoningSummaryTextDone   *ResponseReasoningSummaryTextDoneEvent
+	OfResponseReasoningTextDelta         *ResponseReasoningTextDeltaEvent
+	OfResponseReasoningTextDone          *ResponseReasoningTextDoneEvent
+	OfResponseRefusalDelta               *ResponseRefusalDeltaEvent
+	OfResponseRefusalDone                *ResponseRefusalDoneEvent
+	OfResponseTextDelta                  *ResponseTextDeltaEvent
+	OfResponseTextDone                   *ResponseTextDoneEvent
+	OfResponseWebSearchCallCompleted     *ResponseWebSearchCallCompletedEvent
+	OfResponseWebSearchCallInProgress    *ResponseWebSearchCallInProgressEvent
+	OfResponseWebSearchCallSearching     *ResponseWebSearchCallSearchingEvent
+	OfResponseImageGenCallCompleted      *ResponseImageGenCallCompletedEvent
+	OfResponseImageGenCallGenerating     *ResponseImageGenCallGeneratingEvent
+	OfResponseImageGenCallInProgress     *ResponseImageGenCallInProgressEvent
+	OfResponseImageGenCallPartialImage   *ResponseImageGenCallPartialImageEvent
+	OfResponseMcpCallArgumentsDelta      *ResponseMcpCallArgumentsDeltaEvent
+	OfResponseMcpCallArgumentsDone       *ResponseMcpCallArgumentsDoneEvent
+	OfResponseMcpCallCompleted           *ResponseMcpCallCompletedEvent
+	OfResponseMcpCallFailed              *ResponseMcpCallFailedEvent
+	OfResponseMcpCallInProgress          *ResponseMcpCallInProgressEvent
+	OfResponseMcpListToolsCompleted      *ResponseMcpListToolsCompletedEvent
+	OfResponseMcpListToolsFailed         *ResponseMcpListToolsFailedEvent
+	OfResponseMcpListToolsInProgress     *ResponseMcpListToolsInProgressEvent
+	OfResponseOutputTextAnnotationAdded  *ResponseOutputTextAnnotationAddedEvent
+	OfResponseQueued                     *ResponseQueuedEvent
+	OfResponseCustomToolCallInputDelta   *ResponseCustomToolCallInputDeltaEvent
+	OfResponseCustomToolCallInputDone    *ResponseCustomToolCallInputDoneEvent
+}
+
+func (r ResponseStreamEventUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
+	switch {
+	case r.OfAudioDelta != nil:
+		return json.Marshal(r.OfAudioDelta)
+	case r.OfAudioDone != nil:
+		return json.Marshal(r.OfAudioDone)
+	case r.OfAudioTranscriptDelta != nil:
+		return json.Marshal(r.OfAudioTranscriptDelta)
+	case r.OfAudioTranscriptDone != nil:
+		return json.Marshal(r.OfAudioTranscriptDone)
+	case r.OfCodeInterpreterCallCodeDelta != nil:
+		return json.Marshal(r.OfCodeInterpreterCallCodeDelta)
+	case r.OfCodeInterpreterCallCodeDone != nil:
+		return json.Marshal(r.OfCodeInterpreterCallCodeDone)
+	case r.OfCodeInterpreterCallCompleted != nil:
+		return json.Marshal(r.OfCodeInterpreterCallCompleted)
+	case r.OfCodeInterpreterCallInprogress != nil:
+		return json.Marshal(r.OfCodeInterpreterCallInprogress)
+	case r.OfCodeInterpreterCallInterpreting != nil:
+		return json.Marshal(r.OfCodeInterpreterCallInterpreting)
+	case r.OfResponseCompleted != nil:
+		return json.Marshal(r.OfResponseCompleted)
+	case r.OfResponseContentPartAdded != nil:
+		return json.Marshal(r.OfResponseContentPartAdded)
+	case r.OfResponseContentPartDone != nil:
+		return json.Marshal(r.OfResponseContentPartDone)
+	case r.OfResponseCreated != nil:
+		return json.Marshal(r.OfResponseCreated)
+	case r.OfError != nil:
+		return json.Marshal(r.OfError)
+	case r.OfResponseFileSearchCallCompleted != nil:
+		return json.Marshal(r.OfResponseFileSearchCallCompleted)
+	case r.OfResponseFileSearchCallInProgress != nil:
+		return json.Marshal(r.OfResponseFileSearchCallInProgress)
+	case r.OfResponseFileSearchCallSearching != nil:
+		return json.Marshal(r.OfResponseFileSearchCallSearching)
+	case r.OfResponseFunctionCallArgumentsDelta != nil:
+		return json.Marshal(r.OfResponseFunctionCallArgumentsDelta)
+	case r.OfResponseFunctionCallArgumentsDone != nil:
+		return json.Marshal(r.OfResponseFunctionCallArgumentsDone)
+	case r.OfResponseInProgress != nil:
+		return json.Marshal(r.OfResponseInProgress)
+	case r.OfResponseFailed != nil:
+		return json.Marshal(r.OfResponseFailed)
+	case r.OfResponseIncomplete != nil:
+		return json.Marshal(r.OfResponseIncomplete)
+	case r.OfResponseOutputItemAdded != nil:
+		return json.Marshal(r.OfResponseOutputItemAdded)
+	case r.OfResponseOutputItemDone != nil:
+		return json.Marshal(r.OfResponseOutputItemDone)
+	case r.OfResponseReasoningSummaryPartAdded != nil:
+		return json.Marshal(r.OfResponseReasoningSummaryPartAdded)
+	case r.OfResponseReasoningSummaryPartDone != nil:
+		return json.Marshal(r.OfResponseReasoningSummaryPartDone)
+	case r.OfResponseReasoningSummaryTextDelta != nil:
+		return json.Marshal(r.OfResponseReasoningSummaryTextDelta)
+	case r.OfResponseReasoningSummaryTextDone != nil:
+		return json.Marshal(r.OfResponseReasoningSummaryTextDone)
+	case r.OfResponseReasoningTextDelta != nil:
+		return json.Marshal(r.OfResponseReasoningTextDelta)
+	case r.OfResponseReasoningTextDone != nil:
+		return json.Marshal(r.OfResponseReasoningTextDone)
+	case r.OfResponseRefusalDelta != nil:
+		return json.Marshal(r.OfResponseRefusalDelta)
+	case r.OfResponseRefusalDone != nil:
+		return json.Marshal(r.OfResponseRefusalDone)
+	case r.OfResponseTextDelta != nil:
+		return json.Marshal(r.OfResponseTextDelta)
+	case r.OfResponseTextDone != nil:
+		return json.Marshal(r.OfResponseTextDone)
+	case r.OfResponseWebSearchCallCompleted != nil:
+		return json.Marshal(r.OfResponseWebSearchCallCompleted)
+	case r.OfResponseWebSearchCallInProgress != nil:
+		return json.Marshal(r.OfResponseWebSearchCallInProgress)
+	case r.OfResponseWebSearchCallSearching != nil:
+		return json.Marshal(r.OfResponseWebSearchCallSearching)
+	case r.OfResponseImageGenCallCompleted != nil:
+		return json.Marshal(r.OfResponseImageGenCallCompleted)
+	case r.OfResponseImageGenCallGenerating != nil:
+		return json.Marshal(r.OfResponseImageGenCallGenerating)
+	case r.OfResponseImageGenCallInProgress != nil:
+		return json.Marshal(r.OfResponseImageGenCallInProgress)
+	case r.OfResponseImageGenCallPartialImage != nil:
+		return json.Marshal(r.OfResponseImageGenCallPartialImage)
+	case r.OfResponseMcpCallArgumentsDelta != nil:
+		return json.Marshal(r.OfResponseMcpCallArgumentsDelta)
+	case r.OfResponseMcpCallArgumentsDone != nil:
+		return json.Marshal(r.OfResponseMcpCallArgumentsDone)
+	case r.OfResponseMcpCallCompleted != nil:
+		return json.Marshal(r.OfResponseMcpCallCompleted)
+	case r.OfResponseMcpCallFailed != nil:
+		return json.Marshal(r.OfResponseMcpCallFailed)
+	case r.OfResponseMcpCallInProgress != nil:
+		return json.Marshal(r.OfResponseMcpCallInProgress)
+	case r.OfResponseMcpListToolsCompleted != nil:
+		return json.Marshal(r.OfResponseMcpListToolsCompleted)
+	case r.OfResponseMcpListToolsFailed != nil:
+		return json.Marshal(r.OfResponseMcpListToolsFailed)
+	case r.OfResponseMcpListToolsInProgress != nil:
+		return json.Marshal(r.OfResponseMcpListToolsInProgress)
+	case r.OfResponseOutputTextAnnotationAdded != nil:
+		return json.Marshal(r.OfResponseOutputTextAnnotationAdded)
+	case r.OfResponseQueued != nil:
+		return json.Marshal(r.OfResponseQueued)
+	case r.OfResponseCustomToolCallInputDelta != nil:
+		return json.Marshal(r.OfResponseCustomToolCallInputDelta)
+	case r.OfResponseCustomToolCallInputDone != nil:
+		return json.Marshal(r.OfResponseCustomToolCallInputDone)
+	default:
+		return nil, errors.New("no response stream event to marshal")
+	}
+}
+
+func (r *ResponseStreamEventUnion) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "response.audio.delta":
+		// Try to unmarshal as ResponseAudioDeltaEvent
+		var event ResponseAudioDeltaEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfAudioDelta = &event
+	case "response.audio.done":
+		var event ResponseAudioDoneEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfAudioDone = &event
+	case "response.audio.transcript.delta":
+		var event ResponseAudioTranscriptDeltaEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfAudioTranscriptDelta = &event
+	case "response.audio.transcript.done":
+		var event ResponseAudioTranscriptDoneEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfAudioTranscriptDone = &event
+	case "response.code_interpreter_call_code.delta":
+		var event ResponseCodeInterpreterCallCodeDeltaEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfCodeInterpreterCallCodeDelta = &event
+	case "response.code_interpreter_call_code.done":
+		var event ResponseCodeInterpreterCallCodeDoneEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfCodeInterpreterCallCodeDone = &event
+	case "response.code_interpreter_call.completed":
+		var event ResponseCodeInterpreterCallCompletedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfCodeInterpreterCallCompleted = &event
+	case "response.code_interpreter_call.in_progress":
+		var event ResponseCodeInterpreterCallInProgressEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfCodeInterpreterCallInprogress = &event
+	case "response.code_interpreter_call.interpreting":
+		var event ResponseCodeInterpreterCallInterpretingEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfCodeInterpreterCallInterpreting = &event
+	case "response.completed":
+		var event ResponseCompletedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseCompleted = &event
+	case "response.content_part.added":
+		var event ResponseContentPartAddedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseContentPartAdded = &event
+	case "response.content_part.done":
+		var event ResponseContentPartDoneEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseContentPartDone = &event
+	case "response.created":
+		var event ResponseCreatedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseCreated = &event
+	case "error":
+		var event ResponseErrorEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfError = &event
+	case "response.file_search_call.completed":
+		var event ResponseFileSearchCallCompletedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseFileSearchCallCompleted = &event
+	case "response.file_search_call.in_progress":
+		var event ResponseFileSearchCallInProgressEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseFileSearchCallInProgress = &event
+	case "response.file_search_call.searching":
+		var event ResponseFileSearchCallSearchingEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseFileSearchCallSearching = &event
+	case "response.function_call_arguments.delta":
+		var event ResponseFunctionCallArgumentsDeltaEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseFunctionCallArgumentsDelta = &event
+	case "response.function_call_arguments.done":
+		var event ResponseFunctionCallArgumentsDoneEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseFunctionCallArgumentsDone = &event
+	case "response.in_progress":
+		var event ResponseInProgressEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseInProgress = &event
+	case "response.failed":
+		var event ResponseFailedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseFailed = &event
+	case "response.incomplete":
+		var event ResponseIncompleteEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseIncomplete = &event
+	case "response.output_item.added":
+		var event ResponseOutputItemAddedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseOutputItemAdded = &event
+	case "response.output_item.done":
+		var event ResponseOutputItemDoneEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseOutputItemDone = &event
+	case "response.reasoning_summary_part.added":
+		var event ResponseReasoningSummaryPartAddedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseReasoningSummaryPartAdded = &event
+	case "response.reasoning_summary_part.done":
+		var event ResponseReasoningSummaryPartDoneEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseReasoningSummaryPartDone = &event
+	case "response.reasoning_summary_text.delta":
+		var event ResponseReasoningSummaryTextDeltaEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseReasoningSummaryTextDelta = &event
+	case "response.reasoning_summary_text.done":
+		var event ResponseReasoningSummaryTextDoneEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseReasoningSummaryTextDone = &event
+	case "response.reasoning_text.delta":
+		var event ResponseReasoningTextDeltaEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseReasoningTextDelta = &event
+	case "response.reasoning_text.done":
+		var event ResponseReasoningTextDoneEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseReasoningTextDone = &event
+	case "response.refusal.delta":
+		var event ResponseRefusalDeltaEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseRefusalDelta = &event
+	case "response.refusal.done":
+		var event ResponseRefusalDoneEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseRefusalDone = &event
+	case "response.output_text.delta":
+		var event ResponseTextDeltaEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseTextDelta = &event
+	case "response.output_text.done":
+		var event ResponseTextDoneEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseTextDone = &event
+	case "response.web_search_call.completed":
+		var event ResponseWebSearchCallCompletedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseWebSearchCallCompleted = &event
+	case "response.web_search_call.in_progress":
+		var event ResponseWebSearchCallInProgressEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseWebSearchCallInProgress = &event
+	case "response.web_search_call.searching":
+		var event ResponseWebSearchCallSearchingEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseWebSearchCallSearching = &event
+	case "response.image_generation_call.completed":
+		var event ResponseImageGenCallCompletedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseImageGenCallCompleted = &event
+	case "response.image_generation_call.generating":
+		var event ResponseImageGenCallGeneratingEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseImageGenCallGenerating = &event
+	case "response.image_generation_call.in_progress":
+		var event ResponseImageGenCallInProgressEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseImageGenCallInProgress = &event
+	case "response.image_generation_call.partial_image":
+		var event ResponseImageGenCallPartialImageEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseImageGenCallPartialImage = &event
+	case "response.mcp_call_arguments.delta":
+		var event ResponseMcpCallArgumentsDeltaEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseMcpCallArgumentsDelta = &event
+	case "response.mcp_call_arguments.done":
+		var event ResponseMcpCallArgumentsDoneEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseMcpCallArgumentsDone = &event
+	case "response.mcp_call.completed":
+		var event ResponseMcpCallCompletedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseMcpCallCompleted = &event
+	case "response.mcp_call.failed":
+		var event ResponseMcpCallFailedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseMcpCallFailed = &event
+	case "response.mcp_call.in_progress":
+		var event ResponseMcpCallInProgressEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseMcpCallInProgress = &event
+	case "response.mcp_list_tools.completed":
+		var event ResponseMcpListToolsCompletedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseMcpListToolsCompleted = &event
+	case "response.mcp_list_tools.failed":
+		var event ResponseMcpListToolsFailedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseMcpListToolsFailed = &event
+	case "response.mcp_list_tools.in_progress":
+		var event ResponseMcpListToolsInProgressEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseMcpListToolsInProgress = &event
+	case "response.output_text.annotation.added":
+		var event ResponseOutputTextAnnotationAddedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseOutputTextAnnotationAdded = &event
+	case "response.queued":
+		var event ResponseQueuedEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseQueued = &event
+	case "response.custom_tool_call_input.delta":
+		var event ResponseCustomToolCallInputDeltaEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseCustomToolCallInputDelta = &event
+	case "response.custom_tool_call_input.done":
+		var event ResponseCustomToolCallInputDoneEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		r.OfResponseCustomToolCallInputDone = &event
+	default:
+		return fmt.Errorf("unknown type field value '%s' for response stream event", typ.String())
+	}
+	return nil
+}
+
+func (r *ResponseStreamEventUnion) GetEventType() string {
+	switch {
+	case r.OfAudioDelta != nil:
+		return r.OfAudioDelta.Type
+	case r.OfAudioDone != nil:
+		return r.OfAudioDone.Type
+	case r.OfAudioTranscriptDelta != nil:
+		return r.OfAudioTranscriptDelta.Type
+	case r.OfAudioTranscriptDone != nil:
+		return r.OfAudioTranscriptDone.Type
+	case r.OfCodeInterpreterCallCodeDelta != nil:
+		return r.OfCodeInterpreterCallCodeDelta.Type
+	case r.OfCodeInterpreterCallCodeDone != nil:
+		return r.OfCodeInterpreterCallCodeDone.Type
+	case r.OfCodeInterpreterCallCompleted != nil:
+		return r.OfCodeInterpreterCallCompleted.Type
+	case r.OfCodeInterpreterCallInprogress != nil:
+		return r.OfCodeInterpreterCallInprogress.Type
+	case r.OfCodeInterpreterCallInterpreting != nil:
+		return r.OfCodeInterpreterCallInterpreting.Type
+	case r.OfResponseCompleted != nil:
+		return r.OfResponseCompleted.Type
+	case r.OfResponseContentPartAdded != nil:
+		return r.OfResponseContentPartAdded.Type
+	case r.OfResponseContentPartDone != nil:
+		return r.OfResponseContentPartDone.Type
+	case r.OfResponseCreated != nil:
+		return r.OfResponseCreated.Type
+	case r.OfError != nil:
+		return r.OfError.Type
+	case r.OfResponseFileSearchCallCompleted != nil:
+		return r.OfResponseFileSearchCallCompleted.Type
+	case r.OfResponseFileSearchCallInProgress != nil:
+		return r.OfResponseFileSearchCallInProgress.Type
+	case r.OfResponseFileSearchCallSearching != nil:
+		return r.OfResponseFileSearchCallSearching.Type
+	case r.OfResponseFunctionCallArgumentsDelta != nil:
+		return r.OfResponseFunctionCallArgumentsDelta.Type
+	case r.OfResponseFunctionCallArgumentsDone != nil:
+		return r.OfResponseFunctionCallArgumentsDone.Type
+	case r.OfResponseInProgress != nil:
+		return r.OfResponseInProgress.Type
+	case r.OfResponseFailed != nil:
+		return r.OfResponseFailed.Type
+	case r.OfResponseIncomplete != nil:
+		return r.OfResponseIncomplete.Type
+	case r.OfResponseOutputItemAdded != nil:
+		return r.OfResponseOutputItemAdded.Type
+	case r.OfResponseOutputItemDone != nil:
+		return r.OfResponseOutputItemDone.Type
+	case r.OfResponseReasoningSummaryPartAdded != nil:
+		return r.OfResponseReasoningSummaryPartAdded.Type
+	case r.OfResponseReasoningSummaryPartDone != nil:
+		return r.OfResponseReasoningSummaryPartDone.Type
+	case r.OfResponseReasoningSummaryTextDelta != nil:
+		return r.OfResponseReasoningSummaryTextDelta.Type
+	case r.OfResponseReasoningSummaryTextDone != nil:
+		return r.OfResponseReasoningSummaryTextDone.Type
+	case r.OfResponseReasoningTextDelta != nil:
+		return r.OfResponseReasoningTextDelta.Type
+	case r.OfResponseReasoningTextDone != nil:
+		return r.OfResponseReasoningTextDone.Type
+	case r.OfResponseRefusalDelta != nil:
+		return r.OfResponseRefusalDelta.Type
+	case r.OfResponseRefusalDone != nil:
+		return r.OfResponseRefusalDone.Type
+	case r.OfResponseTextDelta != nil:
+		return r.OfResponseTextDelta.Type
+	case r.OfResponseTextDone != nil:
+		return r.OfResponseTextDone.Type
+	case r.OfResponseWebSearchCallCompleted != nil:
+		return r.OfResponseWebSearchCallCompleted.Type
+	case r.OfResponseWebSearchCallInProgress != nil:
+		return r.OfResponseWebSearchCallInProgress.Type
+	case r.OfResponseWebSearchCallSearching != nil:
+		return r.OfResponseWebSearchCallSearching.Type
+	case r.OfResponseImageGenCallCompleted != nil:
+		return r.OfResponseImageGenCallCompleted.Type
+	case r.OfResponseImageGenCallGenerating != nil:
+		return r.OfResponseImageGenCallGenerating.Type
+	case r.OfResponseImageGenCallInProgress != nil:
+		return r.OfResponseImageGenCallInProgress.Type
+	case r.OfResponseImageGenCallPartialImage != nil:
+		return r.OfResponseImageGenCallPartialImage.Type
+	case r.OfResponseMcpCallArgumentsDelta != nil:
+		return r.OfResponseMcpCallArgumentsDelta.Type
+	case r.OfResponseMcpCallArgumentsDone != nil:
+		return r.OfResponseMcpCallArgumentsDone.Type
+	case r.OfResponseMcpCallCompleted != nil:
+		return r.OfResponseMcpCallCompleted.Type
+	case r.OfResponseMcpCallFailed != nil:
+		return r.OfResponseMcpCallFailed.Type
+	case r.OfResponseMcpCallInProgress != nil:
+		return r.OfResponseMcpCallInProgress.Type
+	case r.OfResponseMcpListToolsCompleted != nil:
+		return r.OfResponseMcpListToolsCompleted.Type
+	case r.OfResponseMcpListToolsFailed != nil:
+		return r.OfResponseMcpListToolsFailed.Type
+	case r.OfResponseMcpListToolsInProgress != nil:
+		return r.OfResponseMcpListToolsInProgress.Type
+	case r.OfResponseOutputTextAnnotationAdded != nil:
+		return r.OfResponseOutputTextAnnotationAdded.Type
+	case r.OfResponseQueued != nil:
+		return r.OfResponseQueued.Type
+	case r.OfResponseCustomToolCallInputDelta != nil:
+		return r.OfResponseCustomToolCallInputDelta.Type
+	case r.OfResponseCustomToolCallInputDone != nil:
+		return r.OfResponseCustomToolCallInputDone.Type
+	default:
+		return ""
+	}
+}
+
+// Emitted when there is a partial audio response.
+type ResponseAudioDeltaEvent struct {
+	// A chunk of Base64 encoded response audio bytes.
+	Delta string `json:"delta"`
+	// A sequence number for this chunk of the stream response.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.audio.delta`.
+	Type string `json:"type"`
+}
+
+// Emitted when the audio response is complete.
+type ResponseAudioDoneEvent struct {
+	// The sequence number of the delta.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.audio.done`.
+	Type string `json:"type"`
+	// JSON contains metadata for fields, check presence with [respjson.Field.Valid].
+}
+
+// Emitted when there is a partial transcript of audio.
+type ResponseAudioTranscriptDeltaEvent struct {
+	// The partial transcript of the audio response.
+	Delta string `json:"delta"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.audio.transcript.delta`.
+	Type string `json:"type"`
+}
+
+// Emitted when the full audio transcript is completed.
+type ResponseAudioTranscriptDoneEvent struct {
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.audio.transcript.done`.
+	Type string `json:"type"`
+}
+
+// Emitted when a partial code snippet is streamed by the code interpreter.
+type ResponseCodeInterpreterCallCodeDeltaEvent struct {
+	// The partial code snippet being streamed by the code interpreter.
+	Delta string `json:"delta"`
+	// The unique identifier of the code interpreter tool call item.
+	ItemID string `json:"item_id"`
+	// The index of the output item in the response for which the code is being
+	// streamed.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event, used to order streaming events.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.code_interpreter_call_code.delta`.
+	Type string `json:"type"`
+}
+
+// Emitted when the code snippet is finalized by the code interpreter.
+type ResponseCodeInterpreterCallCodeDoneEvent struct {
+	// The final code snippet output by the code interpreter.
+	Code string `json:"code"`
+	// The unique identifier of the code interpreter tool call item.
+	ItemID string `json:"item_id"`
+	// The index of the output item in the response for which the code is finalized.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event, used to order streaming events.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.code_interpreter_call_code.done`.
+	Type string `json:"type"`
+}
+
+// Emitted when the code interpreter call is completed.
+type ResponseCodeInterpreterCallCompletedEvent struct {
+	// The unique identifier of the code interpreter tool call item.
+	ItemID string `json:"item_id"`
+	// The index of the output item in the response for which the code interpreter call
+	// is completed.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event, used to order streaming events.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.code_interpreter_call.completed`.
+	Type string `json:"type"`
+}
+
+// Emitted when a code interpreter call is in progress.
+type ResponseCodeInterpreterCallInProgressEvent struct {
+	// The unique identifier of the code interpreter tool call item.
+	ItemID string `json:"item_id"`
+	// The index of the output item in the response for which the code interpreter call
+	// is in progress.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event, used to order streaming events.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.code_interpreter_call.in_progress`.
+	Type string `json:"type"`
+}
+
+// Emitted when the code interpreter is actively interpreting the code snippet.
+type ResponseCodeInterpreterCallInterpretingEvent struct {
+	// The unique identifier of the code interpreter tool call item.
+	ItemID string `json:"item_id"`
+	// The index of the output item in the response for which the code interpreter is
+	// interpreting code.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event, used to order streaming events.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.code_interpreter_call.interpreting`.
+	Type string `json:"type"`
+}
+
+// A tool call to run code.
+type ResponseCodeInterpreterToolCall struct {
+	// The unique ID of the code interpreter tool call.
+	ID string `json:"id"`
+	// The code to run, or null if not available.
+	Code string `json:"code"`
+	// The ID of the container used to run the code.
+	ContainerID string `json:"container_id"`
+	// The outputs generated by the code interpreter, such as logs or images. Can be
+	// null if no outputs are available.
+	Outputs []ResponseCodeInterpreterToolCallOutputUnion `json:"outputs"`
+	// The status of the code interpreter tool call. Valid values are `in_progress`,
+	// `completed`, `incomplete`, `interpreting`, and `failed`.
+	//
+	// Any of "in_progress", "completed", "incomplete", "interpreting", "failed".
+	Status string `json:"status"`
+	// The type of the code interpreter tool call. Always `code_interpreter_call`.
+	Type string `json:"type"`
+}
+
+// ResponseCodeInterpreterToolCallOutputUnion contains all possible properties and
+// values from [ResponseCodeInterpreterToolCallOutputLogs],
+// [ResponseCodeInterpreterToolCallOutputImage].
+type ResponseCodeInterpreterToolCallOutputUnion struct {
+	OfResponseCodeInterpreterToolCallOutputLogs  *ResponseCodeInterpreterToolCallOutputLogs
+	OfResponseCodeInterpreterToolCallOutputImage *ResponseCodeInterpreterToolCallOutputImage
+}
+
+func (r ResponseCodeInterpreterToolCallOutputUnion) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfResponseCodeInterpreterToolCallOutputLogs != nil:
+		return json.Marshal(r.OfResponseCodeInterpreterToolCallOutputLogs)
+	case r.OfResponseCodeInterpreterToolCallOutputImage != nil:
+		return json.Marshal(r.OfResponseCodeInterpreterToolCallOutputImage)
+	default:
+		return nil, errors.New("no output to marshal in code interpreter tool call output")
+	}
+}
+
+func (r *ResponseCodeInterpreterToolCallOutputUnion) UnmarshalJSON(data []byte) error {
+	// Peek at the "type" field to determine which struct to unmarshal into
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "logs":
+		var logs ResponseCodeInterpreterToolCallOutputLogs
+		if err := json.Unmarshal(data, &logs); err != nil {
+			return err
+		}
+		r.OfResponseCodeInterpreterToolCallOutputLogs = &logs
+		return nil
+	case "image":
+		var image ResponseCodeInterpreterToolCallOutputImage
+		if err := json.Unmarshal(data, &image); err != nil {
+			return err
+		}
+		r.OfResponseCodeInterpreterToolCallOutputImage = &image
+		return nil
+	default:
+		return fmt.Errorf("unknown type for code interpreter tool call output: %s", typ.String())
+	}
+}
+
+// The logs output from the code interpreter.
+type ResponseCodeInterpreterToolCallOutputLogs struct {
+	// The logs output from the code interpreter.
+	Logs string `json:"logs"`
+	// The type of the output. Always `logs`.
+	Type string `json:"type"`
+}
+
+// The image output from the code interpreter.
+type ResponseCodeInterpreterToolCallOutputImage struct {
+	// The type of the output. Always `image`.
+	Type string `json:"type"`
+	// The URL of the image output from the code interpreter.
+	URL string `json:"url"`
+}
+
+// Emitted when a new content part is added.
+type ResponseContentPartAddedEvent struct {
+	// The index of the content part that was added.
+	ContentIndex int64 `json:"content_index"`
+	// The ID of the output item that the content part was added to.
+	ItemID string `json:"item_id"`
+	// The index of the output item that the content part was added to.
+	OutputIndex int64 `json:"output_index"`
+	// The content part that was added.
+	Part ResponseContentPartAddedEventPartUnion `json:"part"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.content_part.added`.
+	Type string `json:"type"`
+}
+
+// ResponseContentPartAddedEventPartUnion contains all possible properties and
+// values from [ResponseOutputText], [ResponseOutputRefusal],
+// [ResponseContentPartAddedEventPartReasoningText].
+type ResponseContentPartAddedEventPartUnion struct {
+	OfResponseOutputText                            *ResponseOutputTextParam
+	OfResponseOutputRefusal                         *ResponseOutputRefusalParam
+	OfResponsContentPartAddedEventPartReasoningText *ResponseContentPartAddedEventPartReasoningText
+}
+
+func (r ResponseContentPartAddedEventPartUnion) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfResponseOutputText != nil:
+		return json.Marshal(r.OfResponseOutputText)
+	case r.OfResponseOutputRefusal != nil:
+		return json.Marshal(r.OfResponseOutputRefusal)
+	case r.OfResponsContentPartAddedEventPartReasoningText != nil:
+		return json.Marshal(r.OfResponsContentPartAddedEventPartReasoningText)
+	default:
+		return nil, errors.New("no part to marshal in content part added event")
+	}
+}
+
+func (r *ResponseContentPartAddedEventPartUnion) UnmarshalJSON(data []byte) error {
+	// Peek at the "type" field to determine which struct to unmarshal into
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "output_text":
+		var text ResponseOutputTextParam
+		if err := json.Unmarshal(data, &text); err != nil {
+			return err
+		}
+		r.OfResponseOutputText = &text
+		return nil
+	case "refusal":
+		var refusal ResponseOutputRefusalParam
+		if err := json.Unmarshal(data, &refusal); err != nil {
+			return err
+		}
+		r.OfResponseOutputRefusal = &refusal
+		return nil
+	case "reasoning_text":
+		var reasoningText ResponseContentPartAddedEventPartReasoningText
+		if err := json.Unmarshal(data, &reasoningText); err != nil {
+			return err
+		}
+		r.OfResponsContentPartAddedEventPartReasoningText = &reasoningText
+		return nil
+	default:
+		return fmt.Errorf("unknown type for content part added event part: %s", typ.String())
+	}
+}
+
+// Reasoning text from the model.
+type ResponseContentPartAddedEventPartReasoningText struct {
+	// The reasoning text from the model.
+	Text string `json:"text"`
+	// The type of the reasoning text. Always `reasoning_text`.
+	Type string `json:"type"`
+}
+
+// Emitted when a content part is done.
+type ResponseContentPartDoneEvent struct {
+	// The index of the content part that is done.
+	ContentIndex int64 `json:"content_index"`
+	// The ID of the output item that the content part was added to.
+	ItemID string `json:"item_id"`
+	// The index of the output item that the content part was added to.
+	OutputIndex int64 `json:"output_index"`
+	// The content part that is done.
+	Part ResponseContentPartDoneEventPartUnion `json:"part"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.content_part.done`.
+	Type string `json:"type"`
+}
+
+// ResponseContentPartDoneEventPartUnion contains all possible properties and
+// values from [ResponseOutputText], [ResponseOutputRefusal],
+// [ResponseContentPartDoneEventPartReasoningText].
+type ResponseContentPartDoneEventPartUnion struct {
+	OfResponseOutputText                           *ResponseOutputTextParam
+	OfResponseOutputRefusal                        *ResponseOutputRefusalParam
+	OfResponsContentPartDoneEventPartReasoningText *ResponseContentPartDoneEventPartReasoningText
+}
+
+func (r ResponseContentPartDoneEventPartUnion) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfResponseOutputText != nil:
+		return json.Marshal(r.OfResponseOutputText)
+	case r.OfResponseOutputRefusal != nil:
+		return json.Marshal(r.OfResponseOutputRefusal)
+	case r.OfResponsContentPartDoneEventPartReasoningText != nil:
+		return json.Marshal(r.OfResponsContentPartDoneEventPartReasoningText)
+	default:
+		return nil, errors.New("no part to marshal in content part done event")
+	}
+}
+
+func (r *ResponseContentPartDoneEventPartUnion) UnmarshalJSON(data []byte) error {
+	// Peek at the "type" field to determine which struct to unmarshal into
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "output_text":
+		var text ResponseOutputTextParam
+		if err := json.Unmarshal(data, &text); err != nil {
+			return err
+		}
+		r.OfResponseOutputText = &text
+		return nil
+	case "refusal":
+		var refusal ResponseOutputRefusalParam
+		if err := json.Unmarshal(data, &refusal); err != nil {
+			return err
+		}
+		r.OfResponseOutputRefusal = &refusal
+		return nil
+	case "reasoning_text":
+		var reasoningText ResponseContentPartDoneEventPartReasoningText
+		if err := json.Unmarshal(data, &reasoningText); err != nil {
+			return err
+		}
+		r.OfResponsContentPartDoneEventPartReasoningText = &reasoningText
+		return nil
+	default:
+		return fmt.Errorf("unknown type for content part done event part: %s", typ.String())
+	}
+}
+
+// Reasoning text from the model.
+type ResponseContentPartDoneEventPartReasoningText struct {
+	// The reasoning text from the model.
+	Text string `json:"text"`
+	// The type of the reasoning text. Always `reasoning_text`.
+	Type string `json:"type"`
+}
+
+// An event that is emitted when a response is created.
+type ResponseCreatedEvent struct {
+	// The response that was created.
+	Response Response `json:"response"`
+	// The sequence number for this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.created`.
+	Type string `json:"type"`
+}
+
+// Emitted when an error occurs.
+type ResponseErrorEvent struct {
+	// The error code.
+	Code string `json:"code"`
+	// The error message.
+	Message string `json:"message"`
+	// The error parameter.
+	Param string `json:"param"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `error`.
+	Type string `json:"type"`
+}
+
+// An event that is emitted when a response fails.
+type ResponseFailedEvent struct {
+	// The response that failed.
+	Response Response `json:"response"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.failed`.
+	Type string `json:"type"`
+}
+
+// Emitted when a file search call is completed (results found).
+type ResponseFileSearchCallCompletedEvent struct {
+	// The ID of the output item that the file search call is initiated.
+	ItemID string `json:"item_id"`
+	// The index of the output item that the file search call is initiated.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.file_search_call.completed`.
+	Type string `json:"type"`
+}
+
+// Emitted when a file search call is initiated.
+type ResponseFileSearchCallInProgressEvent struct {
+	// The ID of the output item that the file search call is initiated.
+	ItemID string `json:"item_id"`
+	// The index of the output item that the file search call is initiated.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.file_search_call.in_progress`.
+	Type string `json:"type"`
+}
+
+// Emitted when a file search is currently searching.
+type ResponseFileSearchCallSearchingEvent struct {
+	// The ID of the output item that the file search call is initiated.
+	ItemID string `json:"item_id"`
+	// The index of the output item that the file search call is searching.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.file_search_call.searching`.
+	Type string `json:"type"`
+}
+
+// Emitted when there is a partial function-call arguments delta.
+type ResponseFunctionCallArgumentsDeltaEvent struct {
+	// The function-call arguments delta that is added.
+	Delta string `json:"delta"`
+	// The ID of the output item that the function-call arguments delta is added to.
+	ItemID string `json:"item_id"`
+	// The index of the output item that the function-call arguments delta is added to.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.function_call_arguments.delta`.
+	Type string `json:"type"`
+}
+
+// Emitted when function-call arguments are finalized.
+type ResponseFunctionCallArgumentsDoneEvent struct {
+	// The function-call arguments.
+	Arguments string `json:"arguments"`
+	// The ID of the item.
+	ItemID string `json:"item_id"`
+	// The name of the function that was called.
+	Name string `json:"name"`
+	// The index of the output item.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.function_call_arguments.done`.
+	Type string `json:"type"`
+}
+
+// Emitted when the response is in progress.
+type ResponseInProgressEvent struct {
+	// The response that is in progress.
+	Response Response `json:"response"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.in_progress`.
+	Type string `json:"type"`
 }
 
 // Emitted when the model response is complete.
@@ -2669,5 +7587,504 @@ type ResponseCompletedEvent struct {
 	Type string `json:"type"`
 }
 
-// ResponseStreamEventUnion contains all possible properties and values for response events
-type ResponseStreamEventUnion = responses.ResponseStreamEventUnion
+// An event that is emitted when a response finishes as incomplete.
+type ResponseIncompleteEvent struct {
+	// The response that was incomplete.
+	Response Response `json:"response"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.incomplete`.
+	Type string `json:"type"`
+}
+
+// Emitted when a new output item is added.
+type ResponseOutputItemAddedEvent struct {
+	// The output item that was added.
+	Item ResponseOutputItemUnion `json:"item"`
+	// The index of the output item that was added.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.output_item.added`.
+	Type string `json:"type"`
+}
+
+// Emitted when an output item is marked done.
+type ResponseOutputItemDoneEvent struct {
+	// The output item that was marked done.
+	Item ResponseOutputItemUnion `json:"item"`
+	// The index of the output item that was marked done.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.output_item.done`.
+	Type string `json:"type"`
+}
+
+// Emitted when a new reasoning summary part is added.
+type ResponseReasoningSummaryPartAddedEvent struct {
+	// The ID of the item this summary part is associated with.
+	ItemID string `json:"item_id"`
+	// The index of the output item this summary part is associated with.
+	OutputIndex int64 `json:"output_index"`
+	// The summary part that was added.
+	Part ResponseReasoningSummaryPartAddedEventPart `json:"part"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The index of the summary part within the reasoning summary.
+	SummaryIndex int64 `json:"summary_index"`
+	// The type of the event. Always `response.reasoning_summary_part.added`.
+	Type string `json:"type"`
+}
+
+// The summary part that was added.
+type ResponseReasoningSummaryPartAddedEventPart struct {
+	// The text of the summary part.
+	Text string `json:"text"`
+	// The type of the summary part. Always `summary_text`.
+	Type string `json:"type"`
+}
+
+// Emitted when a reasoning summary part is completed.
+type ResponseReasoningSummaryPartDoneEvent struct {
+	// The ID of the item this summary part is associated with.
+	ItemID string `json:"item_id"`
+	// The index of the output item this summary part is associated with.
+	OutputIndex int64 `json:"output_index"`
+	// The completed summary part.
+	Part ResponseReasoningSummaryPartDoneEventPart `json:"part"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The index of the summary part within the reasoning summary.
+	SummaryIndex int64 `json:"summary_index"`
+	// The type of the event. Always `response.reasoning_summary_part.done`.
+	Type string `json:"type"`
+}
+
+// The completed summary part.
+type ResponseReasoningSummaryPartDoneEventPart struct {
+	// The text of the summary part.
+	Text string `json:"text"`
+	// The type of the summary part. Always `summary_text`.
+	Type string `json:"type"`
+}
+
+// Emitted when a delta is added to a reasoning summary text.
+type ResponseReasoningSummaryTextDeltaEvent struct {
+	// The text delta that was added to the summary.
+	Delta string `json:"delta"`
+	// The ID of the item this summary text delta is associated with.
+	ItemID string `json:"item_id"`
+	// The index of the output item this summary text delta is associated with.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The index of the summary part within the reasoning summary.
+	SummaryIndex int64 `json:"summary_index"`
+	// The type of the event. Always `response.reasoning_summary_text.delta`.
+	Type string `json:"type"`
+}
+
+// Emitted when a reasoning summary text is completed.
+type ResponseReasoningSummaryTextDoneEvent struct {
+	// The ID of the item this summary text is associated with.
+	ItemID string `json:"item_id"`
+	// The index of the output item this summary text is associated with.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The index of the summary part within the reasoning summary.
+	SummaryIndex int64 `json:"summary_index"`
+	// The full text of the completed reasoning summary.
+	Text string `json:"text"`
+	// The type of the event. Always `response.reasoning_summary_text.done`.
+	Type string `json:"type"`
+}
+
+// Emitted when a delta is added to a reasoning text.
+type ResponseReasoningTextDeltaEvent struct {
+	// The index of the reasoning content part this delta is associated with.
+	ContentIndex int64 `json:"content_index"`
+	// The text delta that was added to the reasoning content.
+	Delta string `json:"delta"`
+	// The ID of the item this reasoning text delta is associated with.
+	ItemID string `json:"item_id"`
+	// The index of the output item this reasoning text delta is associated with.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.reasoning_text.delta`.
+	Type string `json:"type"`
+}
+
+// Emitted when a reasoning text is completed.
+type ResponseReasoningTextDoneEvent struct {
+	// The index of the reasoning content part.
+	ContentIndex int64 `json:"content_index"`
+	// The ID of the item this reasoning text is associated with.
+	ItemID string `json:"item_id"`
+	// The index of the output item this reasoning text is associated with.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The full text of the completed reasoning content.
+	Text string `json:"text"`
+	// The type of the event. Always `response.reasoning_text.done`.
+	Type string `json:"type"`
+}
+
+// Emitted when there is a partial refusal text.
+type ResponseRefusalDeltaEvent struct {
+	// The index of the content part that the refusal text is added to.
+	ContentIndex int64 `json:"content_index"`
+	// The refusal text that is added.
+	Delta string `json:"delta"`
+	// The ID of the output item that the refusal text is added to.
+	ItemID string `json:"item_id"`
+	// The index of the output item that the refusal text is added to.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.refusal.delta`.
+	Type string `json:"type"`
+}
+
+// Emitted when refusal text is finalized.
+type ResponseRefusalDoneEvent struct {
+	// The index of the content part that the refusal text is finalized.
+	ContentIndex int64 `json:"content_index"`
+	// The ID of the output item that the refusal text is finalized.
+	ItemID string `json:"item_id"`
+	// The index of the output item that the refusal text is finalized.
+	OutputIndex int64 `json:"output_index"`
+	// The refusal text that is finalized.
+	Refusal string `json:"refusal"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.refusal.done`.
+	Type string `json:"type"`
+}
+
+// Emitted when there is an additional text delta.
+type ResponseTextDeltaEvent struct {
+	// The index of the content part that the text delta was added to.
+	ContentIndex int64 `json:"content_index"`
+	// The text delta that was added.
+	Delta string `json:"delta"`
+	// The ID of the output item that the text delta was added to.
+	ItemID string `json:"item_id"`
+	// The log probabilities of the tokens in the delta.
+	Logprobs []ResponseTextDeltaEventLogprob `json:"logprobs,omitzero"`
+	// The index of the output item that the text delta was added to.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number for this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.output_text.delta`.
+	Type string `json:"type"`
+}
+
+// A logprob is the logarithmic probability that the model assigns to producing a
+// particular token at a given position in the sequence. Less-negative (higher)
+// logprob values indicate greater model confidence in that token choice.
+type ResponseTextDeltaEventLogprob struct {
+	// A possible text token.
+	Token string `json:"token"`
+	// The log probability of this token.
+	Logprob float64 `json:"logprob"`
+	// The log probability of the top 20 most likely tokens.
+	TopLogprobs []ResponseTextDeltaEventLogprobTopLogprob `json:"top_logprobs"`
+}
+
+type ResponseTextDeltaEventLogprobTopLogprob struct {
+	// A possible text token.
+	Token string `json:"token"`
+	// The log probability of this token.
+	Logprob float64 `json:"logprob"`
+}
+
+// Emitted when text content is finalized.
+type ResponseTextDoneEvent struct {
+	// The index of the content part that the text content is finalized.
+	ContentIndex int64 `json:"content_index"`
+	// The ID of the output item that the text content is finalized.
+	ItemID string `json:"item_id"`
+	// The log probabilities of the tokens in the delta.
+	Logprobs []ResponseTextDoneEventLogprob `json:"logprobs,omitzero"`
+	// The index of the output item that the text content is finalized.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number for this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The text content that is finalized.
+	Text string `json:"text"`
+	// The type of the event. Always `response.output_text.done`.
+	Type string `json:"type"`
+}
+
+// A logprob is the logarithmic probability that the model assigns to producing a
+// particular token at a given position in the sequence. Less-negative (higher)
+// logprob values indicate greater model confidence in that token choice.
+type ResponseTextDoneEventLogprob struct {
+	// A possible text token.
+	Token string `json:"token"`
+	// The log probability of this token.
+	Logprob float64 `json:"logprob"`
+	// The log probability of the top 20 most likely tokens.
+	TopLogprobs []ResponseTextDoneEventLogprobTopLogprob `json:"top_logprobs"`
+}
+
+type ResponseTextDoneEventLogprobTopLogprob struct {
+	// A possible text token.
+	Token string `json:"token"`
+	// The log probability of this token.
+	Logprob float64 `json:"logprob"`
+}
+
+// Emitted when a web search call is completed.
+type ResponseWebSearchCallCompletedEvent struct {
+	// Unique ID for the output item associated with the web search call.
+	ItemID string `json:"item_id"`
+	// The index of the output item that the web search call is associated with.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of the web search call being processed.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.web_search_call.completed`.
+	Type string `json:"type"`
+}
+
+// Emitted when a web search call is initiated.
+type ResponseWebSearchCallInProgressEvent struct {
+	// Unique ID for the output item associated with the web search call.
+	ItemID string `json:"item_id"`
+	// The index of the output item that the web search call is associated with.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of the web search call being processed.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.web_search_call.in_progress`.
+	Type string `json:"type"`
+}
+
+// Emitted when a web search call is executing.
+type ResponseWebSearchCallSearchingEvent struct {
+	// Unique ID for the output item associated with the web search call.
+	ItemID string `json:"item_id"`
+	// The index of the output item that the web search call is associated with.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of the web search call being processed.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always `response.web_search_call.searching`.
+	Type string `json:"type"`
+}
+
+// Emitted when an image generation tool call has completed and the final image is
+// available.
+type ResponseImageGenCallCompletedEvent struct {
+	// The unique identifier of the image generation item being processed.
+	ItemID string `json:"item_id"`
+	// The index of the output item in the response's output array.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always 'response.image_generation_call.completed'.
+	Type string `json:"type"`
+}
+
+// Emitted when an image generation tool call is actively generating an image
+// (intermediate state).
+type ResponseImageGenCallGeneratingEvent struct {
+	// The unique identifier of the image generation item being processed.
+	ItemID string `json:"item_id"`
+	// The index of the output item in the response's output array.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of the image generation item being processed.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always 'response.image_generation_call.generating'.
+	Type string `json:"type"`
+}
+
+// Emitted when an image generation tool call is in progress.
+type ResponseImageGenCallInProgressEvent struct {
+	// The unique identifier of the image generation item being processed.
+	ItemID string `json:"item_id"`
+	// The index of the output item in the response's output array.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of the image generation item being processed.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always 'response.image_generation_call.in_progress'.
+	Type string `json:"type"`
+}
+
+// Emitted when a partial image is available during image generation streaming.
+type ResponseImageGenCallPartialImageEvent struct {
+	// The unique identifier of the image generation item being processed.
+	ItemID string `json:"item_id"`
+	// The index of the output item in the response's output array.
+	OutputIndex int64 `json:"output_index"`
+	// Base64-encoded partial image data, suitable for rendering as an image.
+	PartialImageB64 string `json:"partial_image_b64"`
+	// 0-based index for the partial image (backend is 1-based, but this is 0-based for
+	// the user).
+	PartialImageIndex int64 `json:"partial_image_index"`
+	// The sequence number of the image generation item being processed.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always 'response.image_generation_call.partial_image'.
+	Type string `json:"type"`
+}
+
+// Emitted when there is a delta (partial update) to the arguments of an MCP tool
+// call.
+type ResponseMcpCallArgumentsDeltaEvent struct {
+	// A JSON string containing the partial update to the arguments for the MCP tool
+	// call.
+	Delta string `json:"delta"`
+	// The unique identifier of the MCP tool call item being processed.
+	ItemID string `json:"item_id"`
+	// The index of the output item in the response's output array.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always 'response.mcp_call_arguments.delta'.
+	Type string `json:"type"`
+}
+
+// Emitted when the arguments for an MCP tool call are finalized.
+type ResponseMcpCallArgumentsDoneEvent struct {
+	// A JSON string containing the finalized arguments for the MCP tool call.
+	Arguments string `json:"arguments"`
+	// The unique identifier of the MCP tool call item being processed.
+	ItemID string `json:"item_id"`
+	// The index of the output item in the response's output array.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always 'response.mcp_call_arguments.done'.
+	Type string `json:"type"`
+}
+
+// Emitted when an MCP tool call has completed successfully.
+type ResponseMcpCallCompletedEvent struct {
+	// The ID of the MCP tool call item that completed.
+	ItemID string `json:"item_id"`
+	// The index of the output item that completed.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always 'response.mcp_call.completed'.
+	Type string `json:"type"`
+}
+
+// Emitted when an MCP tool call has failed.
+type ResponseMcpCallFailedEvent struct {
+	// The ID of the MCP tool call item that failed.
+	ItemID string `json:"item_id"`
+	// The index of the output item that failed.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always 'response.mcp_call.failed'.
+	Type string `json:"type"`
+}
+
+// Emitted when an MCP tool call is in progress.
+type ResponseMcpCallInProgressEvent struct {
+	// The unique identifier of the MCP tool call item being processed.
+	ItemID string `json:"item_id"`
+	// The index of the output item in the response's output array.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always 'response.mcp_call.in_progress'.
+	Type string `json:"type"`
+}
+
+// Emitted when the list of available MCP tools has been successfully retrieved.
+type ResponseMcpListToolsCompletedEvent struct {
+	// The ID of the MCP tool call item that produced this output.
+	ItemID string `json:"item_id"`
+	// The index of the output item that was processed.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always 'response.mcp_list_tools.completed'.
+	Type string `json:"type"`
+}
+
+// Emitted when the attempt to list available MCP tools has failed.
+type ResponseMcpListToolsFailedEvent struct {
+	// The ID of the MCP tool call item that failed.
+	ItemID string `json:"item_id"`
+	// The index of the output item that failed.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always 'response.mcp_list_tools.failed'.
+	Type string `json:"type"`
+}
+
+// Emitted when the system is in the process of retrieving the list of available
+// MCP tools.
+type ResponseMcpListToolsInProgressEvent struct {
+	// The ID of the MCP tool call item that is being processed.
+	ItemID string `json:"item_id"`
+	// The index of the output item that is being processed.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always 'response.mcp_list_tools.in_progress'.
+	Type string `json:"type"`
+}
+
+// Emitted when an annotation is added to output text content.
+type ResponseOutputTextAnnotationAddedEvent struct {
+	// The annotation object being added. (See annotation schema for details.)
+	Annotation any `json:"annotation"`
+	// The index of the annotation within the content part.
+	AnnotationIndex int64 `json:"annotation_index"`
+	// The index of the content part within the output item.
+	ContentIndex int64 `json:"content_index"`
+	// The unique identifier of the item to which the annotation is being added.
+	ItemID string `json:"item_id"`
+	// The index of the output item in the response's output array.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always 'response.output_text.annotation.added'.
+	Type string `json:"type"`
+}
+
+// Emitted when a response is queued and waiting to be processed.
+type ResponseQueuedEvent struct {
+	// The full response object that is queued.
+	Response Response `json:"response"`
+	// The sequence number for this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The type of the event. Always 'response.queued'.
+	Type string `json:"type"`
+}
+
+// Event representing a delta (partial update) to the input of a custom tool call.
+type ResponseCustomToolCallInputDeltaEvent struct {
+	// The incremental input data (delta) for the custom tool call.
+	Delta string `json:"delta"`
+	// Unique identifier for the API item associated with this event.
+	ItemID string `json:"item_id"`
+	// The index of the output this delta applies to.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The event type identifier. Always response.custom_tool_call_input.delta
+	Type string `json:"type"`
+}
+
+// Event indicating that input for a custom tool call is complete.
+type ResponseCustomToolCallInputDoneEvent struct {
+	// The complete input data for the custom tool call.
+	Input string `json:"input"`
+	// Unique identifier for the API item associated with this event.
+	ItemID string `json:"item_id"`
+	// The index of the output this event applies to.
+	OutputIndex int64 `json:"output_index"`
+	// The sequence number of this event.
+	SequenceNumber int64 `json:"sequence_number"`
+	// The event type identifier. Always response.custom_tool_call_input.done
+	Type string `json:"type"`
+}

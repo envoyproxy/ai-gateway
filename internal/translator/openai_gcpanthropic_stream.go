@@ -21,7 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
-var sseEventPrefix = []byte("event:")
+var sseEventPrefix = []byte("event: ")
 
 // streamingToolCall holds the state for a single tool call that is being streamed.
 type streamingToolCall struct {

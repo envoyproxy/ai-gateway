@@ -8,33 +8,34 @@
 ARG VARIANT=static
 ARG COMMAND_NAME
 
+# Base image configuration
+ARG GOLANG_BASE_IMAGE=golang:1.25
+ARG RUNTIME_BASE_IMAGE=gcr.io/distroless/${VARIANT}-debian12:nonroot
+
 # Pre-download Envoy for aigw using func-e. This reduces latency and avoids
 # needing to declare a volume for the Envoy binary, which is tricky in Docker
 # Compose v2 because volumes end up owned by root.
-FROM golang:1.25 AS envoy-downloader
+FROM ${GOLANG_BASE_IMAGE} AS build
 ARG TARGETOS
 ARG TARGETARCH
 ARG COMMAND_NAME
 # Download Envoy binary to AIGW_DATA_HOME for the nonroot user
-WORKDIR /build
+WORKDIR /home/nonroot
+COPY ./out/${COMMAND_NAME}-${TARGETOS}-${TARGETARCH} /app
 RUN if [ "$COMMAND_NAME" = "aigw" ]; then \
-      go install github.com/tetratelabs/func-e/cmd/func-e@latest && \
-      FUNC_E_DATA_HOME=/home/nonroot/.local/share/aigw func-e --platform ${TARGETOS}/${TARGETARCH} run --version; \
+      AIGW_DATA_HOME=/home/nonroot/.local/share/aigw /app download-envoy; \
     fi \
-    # Create directories for the nonroot user
-    && mkdir -p /home/nonroot /tmp/envoy-gateway/certs \
-    && chown -R 65532:65532 /home/nonroot /tmp/envoy-gateway \
-    && chmod -R 755 /home/nonroot /tmp/envoy-gateway
+    && chown -R 65532:65532 /home/nonroot \
+    && chmod -R 755 /home/nonroot /app
 
-FROM gcr.io/distroless/${VARIANT}-debian12:nonroot
+FROM ${RUNTIME_BASE_IMAGE}
 ARG COMMAND_NAME
 ARG TARGETOS
 ARG TARGETARCH
 
-# Copy pre-downloaded Envoy binary and EG certs directory
-COPY --from=envoy-downloader /home/nonroot /home/nonroot
-COPY --from=envoy-downloader /tmp/envoy-gateway /tmp/envoy-gateway
-COPY ./out/${COMMAND_NAME}-${TARGETOS}-${TARGETARCH} /app
+# Copy pre-downloaded Envoy binary
+COPY --from=build /home/nonroot /home/nonroot
+COPY --from=build /app /app
 
 USER nonroot:nonroot
 

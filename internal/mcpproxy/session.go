@@ -42,7 +42,7 @@ const (
 type session struct {
 	id                 secureClientToGatewaySessionID
 	route              string
-	proxy              *MCPProxy
+	reqCtx             *mcpRequestContext
 	mu                 sync.RWMutex
 	perBackendSessions map[filterapi.MCPBackendName]*compositeSessionEntry
 }
@@ -56,18 +56,18 @@ func (s *session) Close() error {
 			continue
 		}
 		// Make DELETE request to the MCP server to close the session.
-		backend, err := s.proxy.getBackendForRoute(s.route, backendName)
+		backend, err := s.reqCtx.getBackendForRoute(s.route, backendName)
 		if err != nil {
-			s.proxy.l.Error("failed to get backend for route",
+			s.reqCtx.l.Error("failed to get backend for route",
 				slog.String("backend", backendName),
 				slog.String("session_id", string(sessionID)),
 				slog.String("error", err.Error()),
 			)
 			continue
 		}
-		req, err := http.NewRequest(http.MethodDelete, s.proxy.mcpEndpointForBackend(backend), nil)
+		req, err := http.NewRequest(http.MethodDelete, s.reqCtx.mcpEndpointForBackend(backend), nil)
 		if err != nil {
-			s.proxy.l.Error("failed to create DELETE request to MCP server to close session",
+			s.reqCtx.l.Error("failed to create DELETE request to MCP server to close session",
 				slog.String("backend", backendName),
 				slog.String("session_id", string(sessionID)),
 				slog.String("error", err.Error()),
@@ -75,10 +75,11 @@ func (s *session) Close() error {
 			continue
 		}
 		addMCPHeaders(req, nil, s.route, backendName)
+		s.reqCtx.applyOriginalPathHeaders(req)
 		req.Header.Set(sessionIDHeader, sessionID.String())
-		resp, err := s.proxy.client.Do(req)
+		resp, err := s.reqCtx.client.Do(req)
 		if err != nil {
-			s.proxy.l.Error("failed to send DELETE request to MCP server to close session",
+			s.reqCtx.l.Error("failed to send DELETE request to MCP server to close session",
 				slog.String("backend", backendName),
 				slog.String("session_id", string(sessionID)),
 				slog.String("error", err.Error()),
@@ -91,7 +92,7 @@ func (s *session) Close() error {
 			status != http.StatusMethodNotAllowed &&
 			// Some stateless backends may return 404 Not Found if they don't track sessions.
 			status != http.StatusNotFound {
-			s.proxy.l.Error("failed to close MCP session",
+			s.reqCtx.l.Error("failed to close MCP session",
 				slog.String("backend", backendName),
 				slog.String("session_id", string(sessionID)),
 				slog.Int("status_code", resp.StatusCode),
@@ -112,7 +113,7 @@ func (s *session) getCompositeSessionEntry(backend filterapi.MCPBackendName) *co
 
 	entry, ok := s.perBackendSessions[backend]
 	if !ok {
-		s.proxy.l.Warn("attempt to get session for unknown backend in session",
+		s.reqCtx.l.Warn("attempt to get session for unknown backend in session",
 			slog.String("backend", backend))
 		return nil
 	}
@@ -124,7 +125,7 @@ func (s *session) setLastEventID(backend filterapi.MCPBackendName, lastEventID s
 	defer s.mu.Unlock()
 	entry, ok := s.perBackendSessions[backend]
 	if !ok {
-		s.proxy.l.Warn("attempt to set last event ID for unknown backend in session",
+		s.reqCtx.l.Warn("attempt to set last event ID for unknown backend in session",
 			slog.String("backend", backend))
 		return
 	}
@@ -143,10 +144,10 @@ func (s *session) lastEventID() string {
 		_, _ = b.WriteString(",")
 	}
 	lastEventID := b.String()[:b.Len()-1] // string the trailing ','.
-	if s.proxy != nil && s.proxy.sessionCrypto != nil {
-		encrypted, err := s.proxy.sessionCrypto.Encrypt(lastEventID)
+	if s.reqCtx != nil && s.reqCtx.sessionCrypto != nil {
+		encrypted, err := s.reqCtx.sessionCrypto.Encrypt(lastEventID)
 		if err != nil {
-			s.proxy.l.Error("failed to encrypt last event ID", slog.String("error", err.Error()))
+			s.reqCtx.l.Error("failed to encrypt last event ID", slog.String("error", err.Error()))
 			return ""
 		}
 		return encrypted
@@ -218,20 +219,20 @@ func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter
 			prev := event.id
 			s.setLastEventID(event.backend, event.id)
 			event.id = s.lastEventID()
-			if s.proxy.l.Enabled(ctx, slog.LevelDebug) {
-				s.proxy.l.Debug("Changed event ID", slog.String("backend", event.backend),
+			if s.reqCtx.l.Enabled(ctx, slog.LevelDebug) {
+				s.reqCtx.l.Debug("Changed event ID", slog.String("backend", event.backend),
 					slog.String("prev_event_id", prev),
 					slog.String("event_id", event.id))
 			}
 			for _, _msg := range event.messages {
 				// Maybe the server->client request made during the notification handling needs to be modified.
 				if msg, ok := _msg.(*jsonrpc.Request); ok {
-					if err := s.proxy.maybeServerToClientRequestModify(ctx, msg, event.backend); err != nil {
-						s.proxy.l.Error("failed to modify server->client request", slog.String("error", err.Error()))
+					if err := s.reqCtx.maybeServerToClientRequestModify(ctx, msg, event.backend); err != nil {
+						s.reqCtx.l.Error("failed to modify server->client request", slog.String("error", err.Error()))
 						continue
 					}
 				}
-				s.proxy.recordResponse(ctx, _msg)
+				s.reqCtx.recordResponse(ctx, _msg)
 			}
 			event.writeAndMaybeFlush(w)
 			// Reset the heartbeat ticker so that the next heartbeat will be sent after the full interval.
@@ -277,7 +278,7 @@ func getHeartbeatInterval(def time.Duration) time.Duration {
 // the response events from all backends.
 func (s *session) sendToAllBackends(ctx context.Context, httpMethod string, request *jsonrpc.Request, span tracingapi.MCPSpan) <-chan *sseEvent {
 	var (
-		logger      = s.proxy.l
+		logger      = s.reqCtx.l
 		backendMsgs = make(chan *sseEvent, 200)
 		wg          sync.WaitGroup
 	)
@@ -287,7 +288,7 @@ func (s *session) sendToAllBackends(ctx context.Context, httpMethod string, requ
 		sessionID := cse.sessionID
 		go func() {
 			defer wg.Done()
-			backend, err := s.proxy.getBackendForRoute(s.route, backendName)
+			backend, err := s.reqCtx.getBackendForRoute(s.route, backendName)
 			if err != nil {
 				logger.Error("failed to get backend for route",
 					slog.String("backend", backendName),
@@ -333,12 +334,14 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 		body = bytes.NewReader(encodedReq)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, httpMethod, s.proxy.mcpEndpointForBackend(backend), body)
+	req, err := http.NewRequestWithContext(ctx, httpMethod, s.reqCtx.mcpEndpointForBackend(backend), body)
 	if err != nil {
 		return fmt.Errorf("failed to create GET request: %w", err)
 	}
 	sessionID := cse.sessionID.String()
 	addMCPHeaders(req, request, routeName, backend.Name)
+	s.reqCtx.applyLogHeaderMappings(req, request)
+	s.reqCtx.applyOriginalPathHeaders(req)
 	req.Header.Set(protocolVersionHeader, protocolVersion20250618)
 	req.Header.Set(sessionIDHeader, cse.sessionID.String())
 	if httpMethod != http.MethodGet {
@@ -350,7 +353,7 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 	if lastEventID := cse.lastEventID; lastEventID != "" {
 		req.Header.Set(lastEventIDHeader, lastEventID)
 	}
-	if s.proxy.l.Enabled(ctx, slog.LevelDebug) {
+	if s.reqCtx.l.Enabled(ctx, slog.LevelDebug) {
 		args := []any{
 			slog.String("backend", backend.Name),
 			slog.String("session_id", sessionID),
@@ -368,9 +371,9 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 		if lastEventID := cse.lastEventID; lastEventID != "" {
 			args = append(args, slog.String("last_event_id", lastEventID))
 		}
-		s.proxy.l.Debug("sending MCP request", args...)
+		s.reqCtx.l.Debug("sending MCP request", args...)
 	}
-	httpResp, err := s.proxy.client.Do(req)
+	httpResp, err := s.reqCtx.client.Do(req)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return nil

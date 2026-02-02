@@ -97,7 +97,7 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 }
 
 // authorizeRequest authorizes the request based on the given MCPRouteAuthorization configuration.
-func (m *MCPProxy) authorizeRequest(authorization *compiledAuthorization, req *authorizationRequest) (bool, []string) {
+func (m *mcpRequestContext) authorizeRequest(authorization *compiledAuthorization, req *authorizationRequest) (bool, []string) {
 	if authorization == nil {
 		return true, nil
 	}
@@ -287,7 +287,7 @@ func extractScopes(claims jwt.MapClaims) []string {
 	return scopes
 }
 
-func (m *MCPProxy) evalRuleCEL(rule *compiledAuthorizationRule, activation map[string]any) (bool, error) {
+func (m *mcpRequestContext) evalRuleCEL(rule *compiledAuthorizationRule, activation map[string]any) (bool, error) {
 	result, _, err := rule.celProgram.Eval(activation)
 	if err != nil {
 		m.l.Error("failed to evaluate authorization CEL", slog.String("error", err.Error()), slog.String("expression", rule.celExpression))
@@ -305,7 +305,7 @@ func (m *MCPProxy) evalRuleCEL(rule *compiledAuthorizationRule, activation map[s
 	}
 }
 
-func (m *MCPProxy) toolMatches(backend, tool string, tools []filterapi.ToolCall) bool {
+func (m *mcpRequestContext) toolMatches(backend, tool string, tools []filterapi.ToolCall) bool {
 	// Empty tools means all tools match.
 	if len(tools) == 0 {
 		return true

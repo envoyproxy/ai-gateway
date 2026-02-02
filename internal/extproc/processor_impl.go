@@ -22,11 +22,16 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
+
+// LogRequestHeaderAttributes is the mapping of request headers to log as dynamic metadata attributes.
+// This is configured at the startup of the extproc server.
+var LogRequestHeaderAttributes map[string]string
 
 // NewFactory creates a ProcessorFactory with the given parameters.
 //
@@ -48,10 +53,10 @@ func NewFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.
 	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
 	_ EndpointSpecT, // This is a type marker to bind EndpointSpecT without specifying ReqT, RespT, RespChunkT explicitly.
 ) ProcessorFactory {
-	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool, enableRedaction bool) (Processor, error) {
 		logger = logger.With("isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
-			return newRouterProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer), nil
+			return newRouterProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer, enableRedaction), nil
 		}
 		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](requestHeaders, f.NewMetrics(), logger), nil
 	}
@@ -89,6 +94,8 @@ type (
 		// This is used to determine if the request is a retry request.
 		upstreamFilterCount int
 		stream              bool
+		debugLogEnabled     bool
+		enableRedaction     bool
 	}
 	// upstreamProcessor implements [Processor] for the upstream filter for the standard LLM endpoints.
 	//
@@ -118,13 +125,17 @@ func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.
 	requestHeaders map[string]string,
 	logger *slog.Logger,
 	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
+	enableRedaction bool,
 ) *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT] {
+	debugLogEnabled := logger.Enabled(context.Background(), slog.LevelDebug)
 	return &routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]{
 		config:            config,
 		requestHeaders:    requestHeaders,
 		logger:            logger,
 		tracer:            tracer,
 		forceBodyMutation: false,
+		debugLogEnabled:   debugLogEnabled,
+		enableRedaction:   enableRedaction,
 	}
 }
 
@@ -167,6 +178,26 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
+
+	// Use the request-scoped logger from context if available, otherwise fall back to processor logger
+	logger := loggerFromContext(ctx)
+	if logger == nil {
+		logger = r.logger
+	}
+
+	// Only log parsed request body when redaction is enabled
+	if r.debugLogEnabled && r.enableRedaction {
+		if redactedBody, err := r.eh.RedactSensitiveInfoFromRequest(body); err != nil {
+			logger.Warn("failed to redact sensitive info from request, ignoring and continuing", slog.Any("error", err))
+		} else {
+			if jsonBody, err := json.Marshal(redactedBody); err != nil {
+				logger.Error("failed to marshal redacted request for logging, ignoring and continuing", slog.Any("error", err))
+			} else {
+				logger.Debug("request body processing", slog.Any("request", string(jsonBody)))
+			}
+		}
+	}
+
 	if mutatedOriginalBody != nil {
 		r.originalRequestBodyRaw = mutatedOriginalBody
 		r.forceBodyMutation = true
@@ -180,9 +211,20 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the original model to the request header with the key `x-ai-eg-model`.
 		Header: &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
-	}, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(r.requestHeaders[":path"])},
 	})
+	originalPath := r.requestHeaders[":path"]
+	if r.requestHeaders[originalPathHeader] == "" {
+		r.requestHeaders[originalPathHeader] = originalPath
+		additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
+			Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(originalPath)},
+		})
+	}
+	if r.requestHeaders[internalapi.EnvoyOriginalPathHeader] == "" {
+		r.requestHeaders[internalapi.EnvoyOriginalPathHeader] = originalPath
+		additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
+			Header: &corev3.HeaderValue{Key: internalapi.EnvoyOriginalPathHeader, RawValue: []byte(originalPath)},
+		})
+	}
 	r.originalModel = originalModel
 	r.originalRequestBody = body
 	r.stream = stream
@@ -264,8 +306,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 	}
 
 	// Apply body mutations from the route and also restore original body on retry.
-	bodyMutation = applyBodyMutation(u.bodyMutator, bodyMutation,
-		u.parent.originalRequestBodyRaw, forceBodyMutation, u.logger)
+	bodyMutation = applyBodyMutation(u.bodyMutator, bodyMutation, u.parent.originalRequestBodyRaw, u.logger)
 
 	// Ensure bodyMutation is not nil for subsequent processing
 	if bodyMutation == nil {
@@ -294,6 +335,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 	if bm := bodyMutation.GetBody(); bm != nil {
 		dm = buildContentLengthDynamicMetadataOnRequest(len(bm))
 	}
+	dm = mergeDynamicMetadata(dm, buildRequestHeaderDynamicMetadata(u.requestHeaders))
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
@@ -477,6 +519,18 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	if err != nil {
 		return fmt.Errorf("failed to create translator for backend %s: %w", b.Name, err)
 	}
+
+	switch redactor := u.translator.(type) {
+	case translator.ResponseRedactor:
+		redactor.SetRedactionConfig(u.parent.debugLogEnabled, u.parent.enableRedaction, u.logger)
+	case translator.AnthropicResponseRedactor:
+		redactor.SetRedactionConfig(u.parent.debugLogEnabled, u.parent.enableRedaction, u.logger)
+	default:
+		if u.parent.debugLogEnabled && u.parent.enableRedaction {
+			u.logger.Debug("translator does not support redaction", slog.String("backend", b.Name))
+		}
+	}
+
 	return
 }
 
@@ -517,6 +571,54 @@ func buildContentLengthDynamicMetadataOnRequest(contentLength int) *structpb.Str
 		},
 	}
 	return metadata
+}
+
+func buildRequestHeaderDynamicMetadata(requestHeaders map[string]string) *structpb.Struct {
+	if len(LogRequestHeaderAttributes) == 0 {
+		return nil
+	}
+	fields := make(map[string]*structpb.Value, len(LogRequestHeaderAttributes))
+	for header, attr := range LogRequestHeaderAttributes {
+		value, ok := requestHeaders[header]
+		if !ok || value == "" {
+			continue
+		}
+		fields[attr] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: value}}
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			internalapi.AIGatewayFilterMetadataNamespace: {
+				Kind: &structpb.Value_StructValue{
+					StructValue: &structpb.Struct{Fields: fields},
+				},
+			},
+		},
+	}
+}
+
+func mergeDynamicMetadata(base, extra *structpb.Struct) *structpb.Struct {
+	if base == nil {
+		return extra
+	}
+	if extra == nil {
+		return base
+	}
+	baseFields := base.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+	if baseFields == nil {
+		baseFields = &structpb.Struct{Fields: map[string]*structpb.Value{}}
+		base.Fields[internalapi.AIGatewayFilterMetadataNamespace] = structpb.NewStructValue(baseFields)
+	}
+	extraFields := extra.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+	if extraFields == nil {
+		return base
+	}
+	for k, v := range extraFields.Fields {
+		baseFields.Fields[k] = v
+	}
+	return base
 }
 
 // buildDynamicMetadata creates metadata for rate limiting and cost tracking.

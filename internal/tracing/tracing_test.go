@@ -21,22 +21,16 @@ import (
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
-// clearEnv clears any OTEL configuration that could exist in the environment.
-func clearEnv(t *testing.T) {
-	t.Helper()
-	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
-	t.Setenv("OTEL_METRICS_EXPORTER", "")
-	t.Setenv("OTEL_SERVICE_NAME", "")
-}
-
 // TestNewTracingFromEnv_DefaultServiceName tests that the service name.
 // defaults to "ai-gateway" when OTEL_SERVICE_NAME is not set.
 func TestNewTracingFromEnv_DefaultServiceName(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name              string
 		env               map[string]string
@@ -61,7 +55,6 @@ func TestNewTracingFromEnv_DefaultServiceName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
@@ -87,6 +80,7 @@ func TestNewTracingFromEnv_DefaultServiceName(t *testing.T) {
 }
 
 func TestNewTracingFromEnv_DisabledByEnv(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name string
 		env  map[string]string
@@ -119,7 +113,6 @@ func TestNewTracingFromEnv_DisabledByEnv(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
@@ -134,6 +127,7 @@ func TestNewTracingFromEnv_DisabledByEnv(t *testing.T) {
 // TestNewTracingFromEnv_EndpointHierarchy tests the OTEL endpoint hierarchy.
 // according to the OTEL spec where signal-specific endpoints override generic ones.
 func TestNewTracingFromEnv_EndpointHierarchy(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name         string
 		env          map[string]string
@@ -173,7 +167,6 @@ func TestNewTracingFromEnv_EndpointHierarchy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
@@ -196,6 +189,7 @@ func TestNewTracingFromEnv_EndpointHierarchy(t *testing.T) {
 // TestNewTracingFromEnv_ConsoleExporter tests that console exporter works.
 // without requiring OTLP endpoints and doesn't make network calls.
 func TestNewTracingFromEnv_ConsoleExporter(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name                string
 		env                 map[string]string
@@ -238,7 +232,6 @@ func TestNewTracingFromEnv_ConsoleExporter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
@@ -284,10 +277,10 @@ func TestNewTracingFromEnv_ConsoleExporter(t *testing.T) {
 // variable works.
 // See: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_traces_exporter
 func TestNewTracingFromEnv_Exporter(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	// Just test 2 exporters to prove the SDK is wired up correctly.
 	for _, exporter := range []string{"console", "otlp"} {
 		t.Run(exporter, func(t *testing.T) {
-			clearEnv(t)
 			t.Setenv("OTEL_TRACES_EXPORTER", exporter)
 
 			var stdout bytes.Buffer
@@ -316,6 +309,7 @@ func TestNewTracingFromEnv_Exporter(t *testing.T) {
 // variable works.
 // See: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_traces_sampler
 func TestNewTracingFromEnv_TracesSampler(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	// Just test 2 samplers to prove the SDK is wired up correctly.
 	tests := []struct {
 		sampler       string
@@ -327,7 +321,6 @@ func TestNewTracingFromEnv_TracesSampler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.sampler, func(t *testing.T) {
-			clearEnv(t)
 			t.Setenv("OTEL_TRACES_SAMPLER", tt.sampler)
 			collector, tracing := newTracingFromEnvForTest(t, io.Discard)
 
@@ -354,6 +347,7 @@ func TestNewTracingFromEnv_TracesSampler(t *testing.T) {
 // variable works.
 // See: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators
 func TestNewTracingFromEnv_OtelPropagators(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	// Just test 2 propagators to prove the SDK is wired up correctly.
 	tests := []struct {
 		propagator         string
@@ -374,7 +368,6 @@ func TestNewTracingFromEnv_OtelPropagators(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.propagator, func(t *testing.T) {
-			clearEnv(t)
 			t.Setenv("OTEL_PROPAGATORS", tt.propagator)
 			collector, tracing := newTracingFromEnvForTest(t, io.Discard)
 
@@ -410,6 +403,7 @@ func TestNewTracingFromEnv_OtelPropagators(t *testing.T) {
 // work correctly to redact sensitive data from spans, following the OpenInference.
 // configuration specification.
 func TestNewTracingFromEnv_ChatCompletion_Redaction(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name        string
 		hideInputs  bool
@@ -439,7 +433,6 @@ func TestNewTracingFromEnv_ChatCompletion_Redaction(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			t.Setenv(openinference.EnvHideInputs, strconv.FormatBool(tt.hideInputs))
 			t.Setenv(openinference.EnvHideOutputs, strconv.FormatBool(tt.hideOutputs))
 
@@ -532,6 +525,7 @@ func newTracingFromEnvForTest(t *testing.T, stdout io.Writer) (*testotel.OTLPCol
 // TestNewTracingFromEnv_OTLPHeaders tests that OTEL_EXPORTER_OTLP_HEADERS
 // is properly handled by the autoexport package.
 func TestNewTracingFromEnv_OTLPHeaders(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	expectedAuthorization := "ApiKey test-key-123"
 	actualAuthorization := make(chan string, 1)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -540,7 +534,6 @@ func TestNewTracingFromEnv_OTLPHeaders(t *testing.T) {
 	}))
 	t.Cleanup(ts.Close)
 
-	clearEnv(t)
 	t.Setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization="+expectedAuthorization)
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", ts.URL)
 	t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
@@ -567,14 +560,14 @@ func TestNewTracingFromEnv_OTLPHeaders(t *testing.T) {
 // TestNewTracingFromEnv_HeaderAttributeMapping verifies that headerAttributeMapping
 // passed to NewTracingFromEnv is applied by tracers to set span attributes.
 func TestNewTracingFromEnv_HeaderAttributeMapping(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	collector := testotel.StartOTLPCollector()
 	t.Cleanup(collector.Close)
-	clearEnv(t)
 	collector.SetEnv(t.Setenv)
 
 	mapping := map[string]string{
-		"x-session-id": "session.id",
-		"x-user-id":    "user.id",
+		"agent-session-id": "session.id",
+		"x-tenant-id":      "tenant.id",
 	}
 
 	result, err := NewTracingFromEnv(t.Context(), io.Discard, mapping)
@@ -582,8 +575,8 @@ func TestNewTracingFromEnv_HeaderAttributeMapping(t *testing.T) {
 	t.Cleanup(func() { _ = result.Shutdown(context.Background()) })
 
 	headers := map[string]string{
-		"x-session-id": "abc123",
-		"x-user-id":    "user456",
+		"agent-session-id": "abc123",
+		"x-tenant-id":      "user456",
 	}
 	carrier := propagation.MapCarrier{}
 
@@ -601,7 +594,7 @@ func TestNewTracingFromEnv_HeaderAttributeMapping(t *testing.T) {
 		attrs[kv.Key] = kv.Value.GetStringValue()
 	}
 	require.Equal(t, "abc123", attrs["session.id"])
-	require.Equal(t, "user456", attrs["user.id"])
+	require.Equal(t, "user456", attrs["tenant.id"])
 }
 
 // TestNewTracingFromEnv_Embeddings_Redaction tests that the OpenInference
@@ -609,6 +602,7 @@ func TestNewTracingFromEnv_HeaderAttributeMapping(t *testing.T) {
 // work correctly to redact sensitive data from embeddings spans, following the OpenInference
 // configuration specification.
 func TestNewTracingFromEnv_Embeddings_Redaction(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name                  string
 		hideEmbeddingsText    bool
@@ -638,7 +632,6 @@ func TestNewTracingFromEnv_Embeddings_Redaction(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			t.Setenv(openinference.EnvHideEmbeddingsText, strconv.FormatBool(tt.hideEmbeddingsText))
 			t.Setenv(openinference.EnvHideEmbeddingsVectors, strconv.FormatBool(tt.hideEmbeddingsVectors))
 

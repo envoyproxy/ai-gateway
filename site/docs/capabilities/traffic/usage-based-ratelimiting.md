@@ -115,7 +115,7 @@ spec:
         # Stricter limit due to higher cost per token
         - clientSelectors:
             - headers:
-                - name: x-user-id
+                - name: x-tenant-id
                   type: Distinct
                 - name: x-ai-eg-model
                   type: Exact
@@ -136,7 +136,7 @@ spec:
         # Higher limit since the model is more cost-effective
         - clientSelectors:
             - headers:
-                - name: x-user-id
+                - name: x-tenant-id
                   type: Distinct
                 - name: x-ai-eg-model
                   type: Exact
@@ -167,13 +167,13 @@ When configuring rate limits:
 
 For proper cost control and rate limiting, requests must include:
 
-- `x-user-id`: Identifies the user making the request
+- `x-tenant-id`: Identifies the user making the request
 
 Example request:
 
 ```shell
 curl -H "Content-Type: application/json" \
-  -H "x-user-id: user123" \
+  -H "x-tenant-id: user123" \
   -d '{
         "model": "gpt-4",
         "messages": [

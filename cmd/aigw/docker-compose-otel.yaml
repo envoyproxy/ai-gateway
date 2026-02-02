@@ -23,7 +23,7 @@ services:
     container_name: otel-tui
     profiles: ["otel-tui"]
     ports:
-      - "4318:4318"
+      - "4317:4317"
     stdin_open: true
     tty: true
 
@@ -35,7 +35,8 @@ services:
     container_name: phoenix
     profiles: ["phoenix"] # Only start when explicitly requested
     ports:
-      - "6006:6006"
+      - "4317:4317" # OTLP gRPC
+      - "6006:6006" # Web UI
     environment:
       PHOENIX_ENABLE_AUTH: "false"
 
@@ -73,10 +74,9 @@ services:
     environment:
       - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
       - OPENAI_API_KEY=unused
-      # Map HTTP request headers to otel span and metric attributes for session tracking
-      # Format: header:attribute,header:attribute
-      - OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES=x-session-id:session.id,x-user-id:user.id
-      - OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES=x-user-id:user.id
+      - AIGW_DEBUG
+      # session.id is used in logs and traces (not metrics; high-cardinality)
+      - OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES=x-tenant-id:tenant.id
     configs:
       - source: mcp-config
         target: /etc/aigw/mcp-servers.json
@@ -104,6 +104,8 @@ services:
     environment:
       - OPENAI_BASE_URL=http://aigw:1975/v1
       - OPENAI_API_KEY=unused
+      - AIGW_TENANT_ID=${AIGW_TENANT_ID:-tenant-1}
+      - AIGW_SESSION_ID=${AIGW_SESSION_ID:-session-123}
 
   # create-embeddings is the standard OpenAI client (`openai` in pip), instrumented
   # with the following OpenTelemetry instrumentation libraries:
@@ -122,6 +124,8 @@ services:
     environment:
       - OPENAI_BASE_URL=http://aigw:1975/v1
       - OPENAI_API_KEY=unused
+      - AIGW_TENANT_ID=${AIGW_TENANT_ID:-tenant-1}
+      - AIGW_SESSION_ID=${AIGW_SESSION_ID:-session-123}
 
   # completion is the standard OpenAI client (`openai` in pip), instrumented
   # with the following OpenTelemetry instrumentation libraries:
@@ -140,6 +144,8 @@ services:
     environment:
       - OPENAI_BASE_URL=http://aigw:1975/v1
       - OPENAI_API_KEY=unused
+      - AIGW_TENANT_ID=${AIGW_TENANT_ID:-tenant-1}
+      - AIGW_SESSION_ID=${AIGW_SESSION_ID:-session-123}
 
   # mcp is a test client for calling MCP tools through aigw.
   # TODO: add client tracing + mcp propagation to this
@@ -147,18 +153,23 @@ services:
     image: ghcr.io/modelcontextprotocol/inspector:latest
     container_name: mcp
     profiles: ["test"]
-    entrypoint: node
+    environment:
+      - AIGW_TENANT_ID=${AIGW_TENANT_ID:-tenant-1}
+      - AIGW_SESSION_ID=${AIGW_SESSION_ID:-session-123}
+    entrypoint: sh
     command:
-      - cli/build/cli.js
-      - --cli
-      - http://aigw:1975/mcp
-      - --method
-      - tools/call
-      - --tool-name
-      - kiwi__search-flight
-      - --tool-arg
-      - flyFrom=NYC
-      - --tool-arg
-      - flyTo=LAX
-      - --tool-arg
-      - departureDate=15/12/2026
+      - -c
+      - |
+        # GET stream has no JSON-RPC _meta; send headers for access-log mapping.
+        node cli/build/cli.js \
+          --cli \
+          http://aigw:1975/mcp \
+          --header "x-tenant-id: $$AIGW_TENANT_ID" \
+          --header "agent-session-id: $$AIGW_SESSION_ID" \
+          --metadata x-tenant-id=$$AIGW_TENANT_ID \
+          --metadata agent-session-id=$$AIGW_SESSION_ID \
+          --method tools/call \
+          --tool-name kiwi__search-flight \
+          --tool-arg flyFrom=NYC \
+          --tool-arg flyTo=LAX \
+          --tool-arg departureDate=15/12/2026

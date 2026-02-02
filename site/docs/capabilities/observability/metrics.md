@@ -49,7 +49,7 @@ Each metric comes with some default attributes such as:
 
 :::tip
 
-You can enrich the metrics with custom labels extracted from HTTP request headers. It can be configured via the `controller.metricsRequestHeaderAttributes` helm installation value. Please refer to [values.yaml](https://github.com/envoyproxy/ai-gateway/blob/main/manifests/charts/ai-gateway-helm/values.yaml) for more details including other configurations.
+You can enrich the metrics with custom labels extracted from HTTP request headers. Use `controller.requestHeaderAttributes` for a base mapping shared with spans and access logs, and `controller.metricsRequestHeaderAttributes` for metrics-only mappings. Metrics never default to `session.id` because it is high-cardinality. See [values.yaml](https://github.com/envoyproxy/ai-gateway/blob/main/manifests/charts/ai-gateway-helm/values.yaml) for more details including other configurations.
 
 :::
 

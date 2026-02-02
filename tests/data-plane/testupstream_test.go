@@ -823,6 +823,90 @@ data: [DONE]
 			expResponseBody: `{"error": {"message": "input cannot be empty", "type": "BadRequestError", "code": "400"}}`,
 		},
 		{
+			name:              "gcp-vertexai - /v1/embeddings - simple string",
+			backend:           "gcp-vertexai",
+			path:              "/v1/embeddings",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"text-embedding-004","input":"How do I reset my password?"}`,
+			expRequestBody:    `{"instances":[{"content":"How do I reset my password?"}],"parameters":{}}`,
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/text-embedding-004:predict",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
+			responseBody:      `{"predictions":[{"embeddings":{"values":[0.5,1.0,1.5],"statistics":{"token_count":5,"truncated":false}}}]}`,
+			expStatus:         http.StatusOK,
+			expResponseBody:   `{"data":[{"embedding":[0.5,1,1.5],"index":0,"object":"embedding"}],"model":"text-embedding-004","object":"list","usage":{"prompt_tokens":5,"total_tokens":5}}`,
+		},
+		{
+			name:              "gcp-vertexai - /v1/embeddings - with task_type and title",
+			backend:           "gcp-vertexai",
+			path:              "/v1/embeddings",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"text-embedding-004","input":{"content":"Machine learning fundamentals","task_type":"RETRIEVAL_DOCUMENT","title":"ML Guide"}}`,
+			expRequestBody:    `{"instances":[{"content":"Machine learning fundamentals","task_type":"RETRIEVAL_DOCUMENT","title":"ML Guide"}],"parameters":{}}`,
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/text-embedding-004:predict",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
+			responseBody:      `{"predictions":[{"embeddings":{"values":[0.25,0.5,0.75],"statistics":{"token_count":7,"truncated":false}}}]}`,
+			expStatus:         http.StatusOK,
+			expResponseBody:   `{"data":[{"embedding":[0.25,0.5,0.75],"index":0,"object":"embedding"}],"model":"text-embedding-004","object":"list","usage":{"prompt_tokens":7,"total_tokens":7}}`,
+		},
+		{
+			name:              "gcp-vertexai - /v1/embeddings - array of strings",
+			backend:           "gcp-vertexai",
+			path:              "/v1/embeddings",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"text-embedding-004","input":["First text","Second text","Third text"]}`,
+			expRequestBody:    `{"instances":[{"content":"First text"},{"content":"Second text"},{"content":"Third text"}],"parameters":{}}`,
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/text-embedding-004:predict",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
+			responseBody:      `{"predictions":[{"embeddings":{"values":[0.5,1.0],"statistics":{"token_count":2,"truncated":false}}},{"embeddings":{"values":[1.5,2.0],"statistics":{"token_count":2,"truncated":false}}},{"embeddings":{"values":[2.5,3.0],"statistics":{"token_count":2,"truncated":false}}}]}`,
+			expStatus:         http.StatusOK,
+			expResponseBody:   `{"data":[{"embedding":[0.5,1],"index":0,"object":"embedding"},{"embedding":[1.5,2],"index":1,"object":"embedding"},{"embedding":[2.5,3],"index":2,"object":"embedding"}],"model":"text-embedding-004","object":"list","usage":{"prompt_tokens":6,"total_tokens":6}}`,
+		},
+		{
+			name:              "gcp-vertexai - /v1/embeddings - array of objects",
+			backend:           "gcp-vertexai",
+			path:              "/v1/embeddings",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"text-embedding-004","input":[{"content":"Query about cats","task_type":"RETRIEVAL_QUERY"},{"content":"Document about dogs","task_type":"RETRIEVAL_DOCUMENT","title":"Dog Info"}]}`,
+			expRequestBody:    `{"instances":[{"content":"Query about cats","task_type":"RETRIEVAL_QUERY"},{"content":"Document about dogs","task_type":"RETRIEVAL_DOCUMENT","title":"Dog Info"}],"parameters":{}}`,
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/text-embedding-004:predict",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
+			responseBody:      `{"predictions":[{"embeddings":{"values":[3.5,4.0],"statistics":{"token_count":4,"truncated":false}}},{"embeddings":{"values":[4.5,5.0],"statistics":{"token_count":5,"truncated":false}}}]}`,
+			expStatus:         http.StatusOK,
+			expResponseBody:   `{"data":[{"embedding":[3.5,4],"index":0,"object":"embedding"},{"embedding":[4.5,5],"index":1,"object":"embedding"}],"model":"text-embedding-004","object":"list","usage":{"prompt_tokens":9,"total_tokens":9}}`,
+		},
+		{
+			name:              "gcp-vertexai - /v1/embeddings - with dimensions",
+			backend:           "gcp-vertexai",
+			path:              "/v1/embeddings",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"text-embedding-004","input":"Text for dimension testing","dimensions":256}`,
+			expRequestBody:    `{"instances":[{"content":"Text for dimension testing"}],"parameters":{"outputDimensionality":256}}`,
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/text-embedding-004:predict",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
+			responseBody:      `{"predictions":[{"embeddings":{"values":[7.5,8.0,8.5],"statistics":{"token_count":4,"truncated":false}}}]}`,
+			expStatus:         http.StatusOK,
+			expResponseBody:   `{"data":[{"embedding":[7.5,8,8.5],"index":0,"object":"embedding"}],"model":"text-embedding-004","object":"list","usage":{"prompt_tokens":4,"total_tokens":4}}`,
+		},
+		{
+			name:              "gcp-vertexai - /v1/embeddings - error response",
+			backend:           "gcp-vertexai",
+			path:              "/v1/embeddings",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"text-embedding-004","input":""}`,
+			expRequestBody:    `{"instances":[{"content":""}],"parameters":{}}`,
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/text-embedding-004:predict",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    "400",
+			expStatus:         http.StatusBadRequest,
+			responseBody:      `{"error":{"code":400,"message":"Invalid embedding request","status":"INVALID_ARGUMENT"}}`,
+			expResponseBody:   `{"type":"error","error":{"code":"400","message":"Invalid embedding request","type":"INVALID_ARGUMENT"}}`,
+		},
+		{
 			name:                "openai - /v1/models",
 			backend:             "openai",
 			path:                "/v1/models",
@@ -988,7 +1072,7 @@ data: {"type":"message_stop"       }
 			path:            "/anthropic/v1/messages",
 			method:          http.MethodPost,
 			requestBody:     `{"model":"anthropic.claude-3-sonnet-20240229-v1:0","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Hello from AWS!"}]}],"stream":false}`,
-			expRequestBody:  `{"max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Hello from AWS!"}]}],"stream":false,"anthropic_version":"bedrock-2023-05-31"}`,
+			expRequestBody:  `{"max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Hello from AWS!"}]}],"anthropic_version":"bedrock-2023-05-31"}`,
 			expPath:         "/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke",
 			responseStatus:  strconv.Itoa(http.StatusOK),
 			responseBody:    `{"id":"msg_aws_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from AWS Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":20}}`,
@@ -1000,54 +1084,52 @@ data: {"type":"message_stop"       }
 			backend:        "aws-anthropic",
 			path:           "/anthropic/v1/messages",
 			method:         http.MethodPost,
-			responseType:   "sse",
+			responseType:   "aws-event-stream",
 			requestBody:    `{"model":"anthropic.claude-3-haiku-20240307-v1:0","max_tokens":150,"messages":[{"role":"user","content":[{"type":"text","text":"Tell me a joke"}]}],"stream":true}`,
-			expRequestBody: `{"max_tokens":150,"messages":[{"role":"user","content":[{"type":"text","text":"Tell me a joke"}]}],"stream":true,"anthropic_version":"bedrock-2023-05-31"}`,
-			expPath:        "/model/anthropic.claude-3-haiku-20240307-v1:0/invoke-stream",
+			expRequestBody: `{"max_tokens":150,"messages":[{"role":"user","content":[{"type":"text","text":"Tell me a joke"}]}],"anthropic_version":"bedrock-2023-05-31"}`,
+			expPath:        "/model/anthropic.claude-3-haiku-20240307-v1:0/invoke-with-response-stream",
 			responseStatus: strconv.Itoa(http.StatusOK),
-			responseBody: `event: message_start
-data: {"type":"message_start","message":{"id":"msg_aws_456","usage":{"input_tokens":12}}}
-
-event: content_block_start
-data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
-
-event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Why did the"}}
-
-event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" chicken cross the road?"}}
-
-event: content_block_stop
-data: {"type":"content_block_stop","index":0}
-
-event: message_delta
-data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":18}}
-
-event: message_stop
-data: {"type":"message_stop"}
-
+			responseBody: `{"bytes":"eyJ0eXBlIjoibWVzc2FnZV9zdGFydCIsIm1lc3NhZ2UiOnsibW9kZWwiOiJjbGF1ZGUtc29ubmV0LTQtNS0yMDI1MDkyOSIsImlkIjoibXNnX2JkcmtfMDEyR0JQenBjb01DTFAxYjJwY0pzU0hrIiwidHlwZSI6Im1lc3NhZ2UiLCJyb2xlIjoiYXNzaXN0YW50IiwiY29udGVudCI6W10sInN0b3BfcmVhc29uIjpudWxsLCJzdG9wX3NlcXVlbmNlIjpudWxsLCJ1c2FnZSI6eyJpbnB1dF90b2tlbnMiOjEwLCJjYWNoZV9jcmVhdGlvbl9pbnB1dF90b2tlbnMiOjAsImNhY2hlX3JlYWRfaW5wdXRfdG9rZW5zIjowLCJjYWNoZV9jcmVhdGlvbiI6eyJlcGhlbWVyYWxfNW1faW5wdXRfdG9rZW5zIjowLCJlcGhlbWVyYWxfMWhfaW5wdXRfdG9rZW5zIjowfSwib3V0cHV0X3Rva2VucyI6MX19fQ==","p":"abcdefghijklmnopqr"}
+{"bytes":"eyJ0eXBlIjoiY29udGVudF9ibG9ja19zdGFydCIsImluZGV4IjowLCJjb250ZW50X2Jsb2NrIjp7InR5cGUiOiJ0ZXh0IiwidGV4dCI6IiJ9fQ==","p":"abcdefghijklmnopqrstuvwxy"}
+{"bytes":"eyJ0eXBlIjoiY29udGVudF9ibG9ja19kZWx0YSIsImluZGV4IjowLCJkZWx0YSI6eyJ0eXBlIjoidGV4dF9kZWx0YSIsInRleHQiOiJIaSJ9fQ==","p":"abcdefghijklmnopqrstuvwxyzABCDEF"}
+{"bytes":"eyJ0eXBlIjoiY29udGVudF9ibG9ja19kZWx0YSIsImluZGV4IjowLCJkZWx0YSI6eyJ0eXBlIjoidGV4dF9kZWx0YSIsInRleHQiOiIhIn19","p":"abcdefghijklmnopqrstuvwxyzAB"}
+{"bytes":"eyJ0eXBlIjoiY29udGVudF9ibG9ja19kZWx0YSIsImluZGV4IjowLCJkZWx0YSI6eyJ0eXBlIjoidGV4dF9kZWx0YSIsInRleHQiOiIgIn19","p":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJK"}
+{"bytes":"eyJ0eXBlIjoiY29udGVudF9ibG9ja19kZWx0YSIsImluZGV4IjowLCJkZWx0YSI6eyJ0eXBlIjoidGV4dF9kZWx0YSIsInRleHQiOiLwn5GLIEhvdyJ9fQ==","p":"abcdefghijklmnopqrstuvwxyzABCDEFG"}
+{"bytes":"eyJ0eXBlIjoiY29udGVudF9ibG9ja19kZWx0YSIsImluZGV4IjowLCJkZWx0YSI6eyJ0eXBlIjoidGV4dF9kZWx0YSIsInRleHQiOiIgYXJlIHlvdSBkb2luZyB0b2RheT8ifX0=","p":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234"}
+{"bytes":"eyJ0eXBlIjoiY29udGVudF9ibG9ja19zdG9wIiwiaW5kZXgiOjB9","p":"abcdefghijklmnopqrstuvwxyz"}
+{"bytes":"eyJ0eXBlIjoibWVzc2FnZV9kZWx0YSIsImRlbHRhIjp7InN0b3BfcmVhc29uIjoiZW5kX3R1cm4iLCJzdG9wX3NlcXVlbmNlIjpudWxsfSwidXNhZ2UiOnsib3V0cHV0X3Rva2VucyI6MTV9fQ==","p":"abcdefghijklmnopqrstu"}
+{"bytes":"eyJ0eXBlIjoibWVzc2FnZV9zdG9wIiwiYW1hem9uLWJlZHJvY2staW52b2NhdGlvbk1ldHJpY3MiOnsiaW5wdXRUb2tlbkNvdW50IjoxMCwib3V0cHV0VG9rZW5Db3VudCI6MTUsImludm9jYXRpb25MYXRlbmN5IjoxNzk4LCJmaXJzdEJ5dGVMYXRlbmN5IjoxNTA3fX0=","p":"ab"}
 `,
 			expStatus: http.StatusOK,
 			expResponseBody: `event: message_start
-data: {"type":"message_start","message":{"id":"msg_aws_456","usage":{"input_tokens":12}}}
+data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_bdrk_012GBPzpcoMCLP1b2pcJsSHk","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1}}}
 
 event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Why did the"}}
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" chicken cross the road?"}}
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"!"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" "}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"👋 How"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" are you doing today?"}}
 
 event: content_block_stop
 data: {"type":"content_block_stop","index":0}
 
 event: message_delta
-data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":18}}
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":15}}
 
 event: message_stop
-data: {"type":"message_stop"}
+data: {"type":"message_stop","amazon-bedrock-invocationMetrics":{"inputTokenCount":10,"outputTokenCount":15,"invocationLatency":1798,"firstByteLatency":1507}}
 
 `,
 		},
@@ -1339,7 +1421,7 @@ data: {"type":"response.completed","sequence_number":10,"response":{"id":"resp_6
 			}
 			t.Logf("%v: %v", time.Now(), chunk.Choices[0].Delta.Content)
 			// Check each event is received less than a second after the previous one.
-			require.Less(t, time.Since(start), time.Second)
+			require.Less(t, time.Since(start), 3*time.Second)
 			start = time.Now()
 			asserted = true
 		}

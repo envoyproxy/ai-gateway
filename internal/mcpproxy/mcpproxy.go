@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"strings"
 	"sync"
@@ -22,46 +23,46 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
+	"github.com/envoyproxy/ai-gateway/internal/lang"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
-// MCPProxy serves /mcp endpoint.
-//
-// This implements [extproc.ConfigReceiver] to gets the up-to-date configuration.
-type MCPProxy struct {
-	*mcpProxyConfig
-	metrics            metrics.MCPMetrics
-	l                  *slog.Logger
-	sessionCrypto      SessionCrypto
-	tracer             tracingapi.MCPTracer
-	toolChangeSignaler changeSignaler // signals tool changes to active sessions.
-	client             http.Client
+// mcpRequestContext serves /mcp endpoint.
+type mcpRequestContext struct {
+	*ProxyConfig
+	metrics        metrics.MCPMetrics
+	requestHeaders http.Header
+	originalPath   string
 }
 
 // NewMCPProxy creates a new MCPProxy instance.
-func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingapi.MCPTracer, sessionCrypto SessionCrypto) (*ProxyConfig, *http.ServeMux, error) {
+func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingapi.MCPTracer, sessionCrypto SessionCrypto, logRequestHeaderAttributes map[string]string) (*ProxyConfig, *http.ServeMux, error) {
 	toolChangeSignaler := newMultiWatcherSignaler() // used to signal changes to all active sessions.
-	cfg := &ProxyConfig{toolChangeSignaler: toolChangeSignaler}
+	cfg := &ProxyConfig{
+		toolChangeSignaler:         toolChangeSignaler,
+		tracer:                     tracer,
+		sessionCrypto:              sessionCrypto,
+		l:                          l,
+		client:                     http.Client{}, // No timeout as it's enforced at Envoy level.
+		logRequestHeaderAttributes: maps.Clone(logRequestHeaderAttributes),
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc(
 		// Must match all paths since the route selection happens at Envoy level and the "route" header is already
 		// set when it reaches here. We use that to select the appropriate backends, so we don't need to have different paths here.
 		//
 		// For example, if we mistakenly set /mcp here, only the route with prefix /mcp will be matched, and other routes
-		// with different prefixes will not be matched, which is not what we want.
+		// with different prefixes will not be matched, which is not desired.
 		"/", func(w http.ResponseWriter, r *http.Request) {
-			proxy := &MCPProxy{
-				mcpProxyConfig:     cfg.mcpProxyConfig,
-				l:                  l,
-				metrics:            mcpMetrics.WithRequestAttributes(r),
-				tracer:             tracer,
-				sessionCrypto:      sessionCrypto,
-				toolChangeSignaler: toolChangeSignaler,
-				client:             http.Client{}, // No timeout as it's enforced at Envoy level.
+			proxy := &mcpRequestContext{
+				metrics:        mcpMetrics.WithRequestAttributes(r),
+				ProxyConfig:    cfg,
+				requestHeaders: r.Header,
+				originalPath:   originalPathForRequest(r),
 			}
-
 			switch r.Method {
 			case http.MethodGet:
 				proxy.serveGET(w, r)
@@ -76,9 +77,64 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingap
 	return cfg, mux, nil
 }
 
+func originalPathForRequest(r *http.Request) string {
+	if r.RequestURI != "" {
+		return r.RequestURI
+	}
+	if r.URL == nil {
+		return ""
+	}
+	return r.URL.RequestURI()
+}
+
+func setHeaderIfMissing(h http.Header, key, value string) {
+	if h.Get(key) != "" {
+		return
+	}
+	h.Set(key, value)
+}
+
+func (m *mcpRequestContext) applyOriginalPathHeaders(req *http.Request) {
+	setHeaderIfMissing(req.Header, internalapi.OriginalPathHeader, m.originalPath)
+	setHeaderIfMissing(req.Header, internalapi.EnvoyOriginalPathHeader, m.originalPath)
+}
+
+func (m *mcpRequestContext) applyLogHeaderMappings(req *http.Request, msg jsonrpc.Message) {
+	if req == nil || len(m.logRequestHeaderAttributes) == 0 {
+		return
+	}
+	meta := extractMetaFromJSONRPCMessage(msg)
+	for header := range m.logRequestHeaderAttributes {
+		if value := lang.CaseInsensitiveValue(meta, header); value != "" {
+			req.Header.Set(header, value)
+			continue
+		}
+		if m.requestHeaders == nil {
+			continue
+		}
+		if value := m.requestHeaders.Get(header); value != "" {
+			req.Header.Set(header, value)
+		}
+	}
+}
+
+func extractMetaFromJSONRPCMessage(msg jsonrpc.Message) map[string]any {
+	req, ok := msg.(*jsonrpc.Request)
+	if !ok || req == nil || len(req.Params) == 0 {
+		return nil
+	}
+	var params struct {
+		Meta map[string]any `json:"_meta"`
+	}
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return nil
+	}
+	return params.Meta
+}
+
 // newSession creates a new session for a downstream client.
 // It multiplexes the initialize request to all backends defined in the MCPRoute associated with the downstream request.
-func (m *MCPProxy) newSession(ctx context.Context, p *mcp.InitializeParams, routeName filterapi.MCPRouteName, subject string, span tracingapi.MCPSpan) (*session, error) {
+func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializeParams, routeName filterapi.MCPRouteName, subject string, span tracingapi.MCPSpan) (*session, error) {
 	m.l.Debug("creating new MCP session")
 
 	var (
@@ -142,11 +198,11 @@ func (m *MCPProxy) newSession(ctx context.Context, p *mcp.InitializeParams, rout
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt session ID: %w", err)
 	}
-	return &session{proxy: m, id: secureClientToGatewaySessionID(encrypted)}, nil
+	return &session{reqCtx: m, id: secureClientToGatewaySessionID(encrypted)}, nil
 }
 
 // sessionFromID returns the session with the given ID, or error if not found or invalid.
-func (m *MCPProxy) sessionFromID(id secureClientToGatewaySessionID, lastEvent secureClientToGatewayEventID) (*session, error) {
+func (m *mcpRequestContext) sessionFromID(id secureClientToGatewaySessionID, lastEvent secureClientToGatewayEventID) (*session, error) {
 	decrypted, err := m.sessionCrypto.Decrypt(string(id))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt session ID: %w", err)
@@ -170,7 +226,7 @@ func (m *MCPProxy) sessionFromID(id secureClientToGatewaySessionID, lastEvent se
 		}
 	}
 
-	return &session{id: id, route: route, proxy: m, perBackendSessions: perBackendSessionIDs}, nil
+	return &session{id: id, route: route, reqCtx: m, perBackendSessions: perBackendSessionIDs}, nil
 }
 
 type initializeResult struct {
@@ -178,7 +234,7 @@ type initializeResult struct {
 	result    *mcp.InitializeResult
 }
 
-func (m *MCPProxy) initializeSession(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, p *mcp.InitializeParams) (*initializeResult, error) {
+func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, p *mcp.InitializeParams) (*initializeResult, error) {
 	// Send the initialize request to the MCP backend listener.
 	reqID := mustJSONRPCRequestID()
 	var (
@@ -296,7 +352,7 @@ func (m *MCPProxy) initializeSession(ctx context.Context, routeName filterapi.MC
 	}, nil
 }
 
-func (m *MCPProxy) invokeJSONRPCRequest(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry, msg jsonrpc.Message) (*http.Response, error) {
+func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry, msg jsonrpc.Message) (*http.Response, error) {
 	encoded, err := jsonrpc.EncodeMessage(msg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode MCP message: %w", err)
@@ -306,6 +362,8 @@ func (m *MCPProxy) invokeJSONRPCRequest(ctx context.Context, routeName filterapi
 		return nil, fmt.Errorf("failed to create MCP notifications/initialized request: %w", err)
 	}
 	addMCPHeaders(req, msg, routeName, backend.Name)
+	m.applyLogHeaderMappings(req, msg)
+	m.applyOriginalPathHeaders(req)
 	if cse != nil {
 		if len(cse.sessionID) > 0 {
 			req.Header.Set(sessionIDHeader, string(cse.sessionID))
@@ -324,7 +382,7 @@ func (m *MCPProxy) invokeJSONRPCRequest(ctx context.Context, routeName filterapi
 	return resp, nil
 }
 
-func (m *MCPProxy) getBackendForRoute(route, backend filterapi.MCPBackendName) (filterapi.MCPBackend, error) {
+func (m *mcpRequestContext) getBackendForRoute(route, backend filterapi.MCPBackendName) (filterapi.MCPBackend, error) {
 	r := m.routes[route]
 	if r == nil {
 		return filterapi.MCPBackend{}, fmt.Errorf("no route found for %q", route)

@@ -16,15 +16,19 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
+
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func Test_doMain(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name         string
 		args         []string
 		env          map[string]string
 		rf           runFn
 		hf           healthcheckFn
+		df           downloadEnvoyFn
 		expOut       string
 		expPanicCode *int
 	}{
@@ -55,6 +59,9 @@ Commands:
 
   healthcheck [flags]
     Docker HEALTHCHECK command.
+
+  download-envoy [flags]
+    Download Envoy binary for the Envoy Gateway default version.
 
 Run "aigw <command> --help" for more information on a command.
 `,
@@ -128,7 +135,8 @@ Flags:
       --runtime-dir=STRING    Ephemeral runtime files directory. Defaults to
                               /tmp/aigw-$UID ($AIGW_RUNTIME_DIR)
 
-      --debug                 Enable debug logging emitted to stderr.
+      --debug                 Enable debug logging emitted to stderr
+                              ($AIGW_DEBUG).
       --admin-port=1064       HTTP port for the admin server (serves /metrics
                               and /health endpoints).
       --mcp-config=STRING     Path to MCP servers configuration file.
@@ -152,20 +160,48 @@ Flags:
 				return nil
 			},
 		},
+		{
+			name: "download-envoy",
+			args: []string{"download-envoy"},
+			df: func(_ context.Context, c *cmdDownloadEnvoy, _, _ io.Writer) error {
+				require.NotNil(t, c)
+				require.NotEmpty(t, c.dataHome)
+				return nil
+			},
+		},
+		{
+			name:         "download-envoy help",
+			args:         []string{"download-envoy", "--help"},
+			expPanicCode: ptr.To(0),
+			expOut: `Usage: aigw download-envoy [flags]
+
+Download Envoy binary for the Envoy Gateway default version.
+
+Flags:
+  -h, --help                  Show context-sensitive help.
+      --config-home=STRING    Configuration files directory. Defaults to
+                              ~/.config/aigw ($AIGW_CONFIG_HOME)
+      --data-home=STRING      Downloaded Envoy binaries directory. Defaults to
+                              ~/.local/share/aigw ($AIGW_DATA_HOME)
+      --state-home=STRING     Persistent state and logs directory. Defaults to
+                              ~/.local/state/aigw ($AIGW_STATE_HOME)
+      --runtime-dir=STRING    Ephemeral runtime files directory. Defaults to
+                              /tmp/aigw-$UID ($AIGW_RUNTIME_DIR)
+`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
 			out := &bytes.Buffer{}
 			if tt.expPanicCode != nil {
 				require.PanicsWithValue(t, *tt.expPanicCode, func() {
-					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.rf, tt.hf)
+					doMain(t.Context(), out, os.Stderr, tt.args, func(code int) { panic(code) }, tt.rf, tt.hf, tt.df)
 				})
 			} else {
-				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.rf, tt.hf)
+				doMain(t.Context(), out, os.Stderr, tt.args, nil, tt.rf, tt.hf, tt.df)
 			}
 			fmt.Println(out.String())
 			require.Equal(t, tt.expOut, out.String())
@@ -174,6 +210,7 @@ Flags:
 }
 
 func TestCmd_BeforeApply(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name            string
 		configHome      string
@@ -225,7 +262,6 @@ func TestCmd_BeforeApply(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
 			}
@@ -359,6 +395,7 @@ func TestCmdRun_BeforeApply(t *testing.T) {
 }
 
 func TestCmdRun_Validate(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name          string
 		path          string
@@ -423,7 +460,6 @@ func TestCmdRun_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
 			}

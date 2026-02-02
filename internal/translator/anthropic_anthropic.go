@@ -10,6 +10,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/internal/redaction"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
@@ -39,6 +41,10 @@ type anthropicToAnthropicTranslator struct {
 	buffered               []byte
 	streamingResponseModel internalapi.ResponseModel
 	streamingTokenUsage    metrics.TokenUsage
+	// Redaction configuration for debug logging
+	debugLogEnabled bool
+	enableRedaction bool
+	logger          *slog.Logger
 }
 
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody].
@@ -99,6 +105,15 @@ func (a *anthropicToAnthropicTranslator) ResponseBody(_ map[string]string, body 
 	if err := json.NewDecoder(body).Decode(anthropicResp); err != nil {
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
+
+	// Redact and log response when enabled
+	if a.debugLogEnabled && a.enableRedaction && a.logger != nil {
+		redactedResp := a.RedactAnthropicBody(anthropicResp)
+		if jsonBody, marshalErr := json.Marshal(redactedResp); marshalErr == nil {
+			a.logger.Debug("response body processing", slog.Any("response", string(jsonBody)))
+		}
+	}
+
 	usage := anthropicResp.Usage
 	tokenUsage = metrics.ExtractTokenUsageFromExplicitCaching(
 		int64(usage.InputTokens),
@@ -135,32 +150,35 @@ func (a *anthropicToAnthropicTranslator) extractUsageFromBufferEvent(s tracingap
 		if s != nil {
 			s.RecordResponseChunk(eventUnion)
 		}
+		a.reflectStreamingEvent(eventUnion)
+	}
+}
 
-		switch {
-		case eventUnion.MessageStart != nil:
-			message := eventUnion.MessageStart
-			// Store the response model for future batches
-			if message.Model != "" {
-				a.streamingResponseModel = message.Model
-			}
-			// Extract usage from message_start event - this sets the baseline input tokens
-			if u := message.Usage; u != nil {
-				messageStartUsage := metrics.ExtractTokenUsageFromExplicitCaching(
-					int64(u.InputTokens),
-					int64(u.OutputTokens),
-					ptr.To(int64(u.CacheReadInputTokens)),
-					ptr.To(int64(u.CacheCreationInputTokens)),
-				)
-				// Override with message_start usage (contains input tokens and initial state)
-				a.streamingTokenUsage.Override(messageStartUsage)
-			}
-		case eventUnion.MessageDelta != nil:
-			u := eventUnion.MessageDelta.Usage
-			// message_delta events provide final counts for specific token types
-			// Update output tokens from message_delta (final count)
-			if u.OutputTokens >= 0 {
-				a.streamingTokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
-			}
+func (a *anthropicToAnthropicTranslator) reflectStreamingEvent(eventUnion *anthropic.MessagesStreamChunk) {
+	switch {
+	case eventUnion.MessageStart != nil:
+		message := eventUnion.MessageStart
+		// Store the response model for future batches
+		if message.Model != "" {
+			a.streamingResponseModel = message.Model
+		}
+		// Extract usage from message_start event - this sets the baseline input tokens
+		if u := message.Usage; u != nil {
+			messageStartUsage := metrics.ExtractTokenUsageFromExplicitCaching(
+				int64(u.InputTokens),
+				int64(u.OutputTokens),
+				ptr.To(int64(u.CacheReadInputTokens)),
+				ptr.To(int64(u.CacheCreationInputTokens)),
+			)
+			// Override with message_start usage (contains input tokens and initial state)
+			a.streamingTokenUsage.Override(messageStartUsage)
+		}
+	case eventUnion.MessageDelta != nil:
+		u := eventUnion.MessageDelta.Usage
+		// message_delta events provide final counts for specific token types
+		// Update output tokens from message_delta (final count)
+		if u.OutputTokens >= 0 {
+			a.streamingTokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
 		}
 	}
 }
@@ -241,4 +259,65 @@ func (a *anthropicToAnthropicTranslator) ResponseError(respHeaders map[string]st
 		)
 	}
 	return
+}
+
+// SetRedactionConfig implements [AnthropicResponseRedactor.SetRedactionConfig].
+func (a *anthropicToAnthropicTranslator) SetRedactionConfig(debugLogEnabled, enableRedaction bool, logger *slog.Logger) {
+	a.debugLogEnabled = debugLogEnabled
+	a.enableRedaction = enableRedaction
+	a.logger = logger
+}
+
+// RedactAnthropicBody implements [AnthropicResponseRedactor.RedactAnthropicBody].
+// Creates a redacted copy of the Anthropic response for safe logging without modifying the original.
+func (a *anthropicToAnthropicTranslator) RedactAnthropicBody(resp *anthropic.MessagesResponse) *anthropic.MessagesResponse {
+	if resp == nil {
+		return nil
+	}
+
+	// Create a shallow copy of the response
+	redacted := *resp
+
+	// Redact content blocks (contains AI-generated content)
+	if len(resp.Content) > 0 {
+		redacted.Content = make([]anthropic.MessagesContentBlock, len(resp.Content))
+		for i := range resp.Content {
+			redacted.Content[i] = redactAnthropicContent(&resp.Content[i])
+		}
+	}
+
+	return &redacted
+}
+
+// redactAnthropicContent redacts sensitive content from an Anthropic content block.
+func redactAnthropicContent(content *anthropic.MessagesContentBlock) anthropic.MessagesContentBlock {
+	redactedContent := *content
+
+	// Redact text content
+	if content.Text != nil {
+		textCopy := *content.Text
+		textCopy.Text = redaction.RedactString(content.Text.Text)
+		redactedContent.Text = &textCopy
+	}
+
+	// Redact thinking content
+	if content.Thinking != nil {
+		thinkingCopy := *content.Thinking
+		thinkingCopy.Thinking = redaction.RedactString(content.Thinking.Thinking)
+		redactedContent.Thinking = &thinkingCopy
+	}
+
+	// Redact tool use input (may contain sensitive data)
+	if content.Tool != nil {
+		toolCopy := *content.Tool
+		// For tool use, we redact by replacing the input with a placeholder
+		toolCopy.Input = map[string]any{
+			"redacted": redaction.RedactString(fmt.Sprintf("%v", content.Tool.Input)),
+		}
+		redactedContent.Tool = &toolCopy
+	}
+
+	// Note: tool_use_id and function names are metadata, not sensitive content
+
+	return redactedContent
 }
