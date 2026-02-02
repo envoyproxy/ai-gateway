@@ -7,6 +7,7 @@ package translator
 
 import (
 	"io"
+	"log/slog"
 
 	"github.com/tidwall/sjson"
 
@@ -72,6 +73,28 @@ type Translator[ReqT any, SpanT any] interface {
 		mutatedBody []byte,
 		err error,
 	)
+}
+
+// ResponseRedactor is an optional interface that translators can implement
+// to support response body redaction for debug logging.
+type ResponseRedactor interface {
+	// SetRedactionConfig configures redaction settings for the translator.
+	SetRedactionConfig(debugLogEnabled, enableRedaction bool, logger *slog.Logger)
+	// RedactBody creates a redacted copy of the response for safe logging.
+	// Returns a new ChatCompletionResponse with sensitive fields redacted.
+	// The original response is never modified.
+	RedactBody(resp *openai.ChatCompletionResponse) *openai.ChatCompletionResponse
+}
+
+// AnthropicResponseRedactor is an optional interface that Anthropic translators
+// can implement to support response body redaction for debug logging.
+type AnthropicResponseRedactor interface {
+	// SetRedactionConfig configures redaction settings for the translator.
+	SetRedactionConfig(debugLogEnabled, enableRedaction bool, logger *slog.Logger)
+	// RedactAnthropicBody creates a redacted copy of the Anthropic response for safe logging.
+	// Returns a new MessagesResponse with sensitive fields redacted.
+	// The original response is never modified.
+	RedactAnthropicBody(resp *anthropicschema.MessagesResponse) *anthropicschema.MessagesResponse
 }
 
 type (

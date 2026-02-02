@@ -97,8 +97,67 @@ spec:
       default: error
 {{- end }}
   telemetry:
+{{- if not (and .OTELLog (eq .OTELLog.Exporter "none")) }}
     accessLog:
       settings:
+{{- if and .OTELLog (eq .OTELLog.Exporter "otlp") .OTELLog.BackendName }}
+        - matches:
+            # MCP metadata only exists on backend-listener requests, which do not carry /mcp paths.
+            # Match LLM by x-ai-eg-model and MCP by x-ai-eg-mcp-backend.
+            - "request.headers['x-ai-eg-model'] != ''"
+          sinks:
+            - type: OpenTelemetry
+              openTelemetry:
+                backendRefs:
+                  - group: gateway.envoyproxy.io
+                    kind: Backend
+                    name: {{ .OTELLog.BackendName }}
+{{- if .OTELLog.Headers }}
+                headers:
+{{- range .OTELLog.Headers }}
+                  - name: {{ .Name }}
+                    value: "{{ .Value }}"
+{{- end }}
+{{- end }}
+{{- if .OTELLog.Resources }}
+                resources:
+{{- range .OTELLog.Resources }}
+                  {{ .Key }}: "{{ .Value }}"
+{{- end }}
+{{- end }}
+          format:
+            text: "[%START_TIME%] %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% model=%REQ(X-AI-EG-MODEL)% %RESPONSE_CODE% llm_input_token=%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)% llm_output_token=%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)% %DURATION%ms"
+            json:
+{{ template "aigw.llmAccessLogFields" . }}
+{{ template "aigw.commonAccessLogFields" . }}
+        - matches:
+            - "request.headers['x-ai-eg-mcp-backend'] != ''"
+          sinks:
+            - type: OpenTelemetry
+              openTelemetry:
+                backendRefs:
+                  - group: gateway.envoyproxy.io
+                    kind: Backend
+                    name: {{ .OTELLog.BackendName }}
+{{- if .OTELLog.Headers }}
+                headers:
+{{- range .OTELLog.Headers }}
+                  - name: {{ .Name }}
+                    value: "{{ .Value }}"
+{{- end }}
+{{- end }}
+{{- if .OTELLog.Resources }}
+                resources:
+{{- range .OTELLog.Resources }}
+                  {{ .Key }}: "{{ .Value }}"
+{{- end }}
+{{- end }}
+          format:
+            text: "[%START_TIME%] %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% mcp_method=%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)% mcp_backend=%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)% %RESPONSE_CODE% %DURATION%ms"
+            json:
+{{ template "aigw.mcpAccessLogFields" . }}
+{{ template "aigw.commonAccessLogFields" . }}
+{{- else }}
         - matches:
             # MCP metadata only exists on backend-listener requests, which do not carry /mcp paths.
             # Match LLM by x-ai-eg-model and MCP by x-ai-eg-mcp-backend.
@@ -123,7 +182,8 @@ spec:
             json:
 {{ template "aigw.mcpAccessLogFields" . }}
 {{ template "aigw.commonAccessLogFields" . }}
-
+{{- end }}
+{{ end }}
 ---
 {{- if .OpenAI }}
 apiVersion: aigateway.envoyproxy.io/v1alpha1

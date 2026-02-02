@@ -62,6 +62,8 @@ var Scheme = runtime.NewScheme()
 type Options struct {
 	// ExtProcLogLevel is the log level for the external processor, e.g., debug, info, warn, or error.
 	ExtProcLogLevel string
+	// ExtProcEnableRedaction enables redaction of sensitive information in debug logs for the external processor.
+	ExtProcEnableRedaction bool
 	// ExtProcImage is the image for the external processor set on Deployment.
 	ExtProcImage string
 	// ExtProcImagePullPolicy is the image pull policy for the external processor set on Deployment.
@@ -244,6 +246,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcImage,
 			options.ExtProcImagePullPolicy,
 			options.ExtProcLogLevel,
+			options.ExtProcEnableRedaction,
 			options.UDSPath,
 			options.RequestHeaderAttributes,
 			options.TracingRequestHeaderAttributes,

@@ -42,6 +42,7 @@ type extProcFlags struct {
 	configPath                             string        // path to the configuration file.
 	extProcAddr                            string        // gRPC address for the external processor.
 	logLevel                               slog.Level    // log level for the external processor.
+	enableRedaction                        bool          // enable redaction of sensitive information in debug logs.
 	adminPort                              int           // HTTP port for the admin server (metrics and health).
 	requestHeaderAttributes                *string       // comma-separated key-value pairs for mapping HTTP request headers to otel attributes shared across metrics, spans, and access logs.
 	spanRequestHeaderAttributes            *string       // comma-separated key-value pairs for mapping HTTP request headers to otel span attributes.
@@ -92,6 +93,8 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"info",
 		"log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
 	)
+	fs.BoolVar(&flags.enableRedaction, "enableRedaction", false,
+		"Enable redaction of sensitive information in debug logs.")
 	fs.IntVar(&flags.adminPort, "adminPort", 1064, "HTTP port for the admin server (serves /metrics and /health endpoints).")
 	fs.Func("requestHeaderAttributes",
 		"Comma-separated key-value pairs for mapping HTTP request headers to otel attributes shared across metrics, spans, and access logs. Format: x-tenant-id:tenant.id.",
@@ -284,7 +287,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 
 	extproc.LogRequestHeaderAttributes = logRequestHeaderAttributes
 
-	server, err := extproc.NewServer(l)
+	server, err := extproc.NewServer(l, flags.enableRedaction)
 	if err != nil {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}

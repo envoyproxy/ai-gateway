@@ -22,6 +22,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
@@ -52,10 +53,10 @@ func NewFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.
 	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
 	_ EndpointSpecT, // This is a type marker to bind EndpointSpecT without specifying ReqT, RespT, RespChunkT explicitly.
 ) ProcessorFactory {
-	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool, enableRedaction bool) (Processor, error) {
 		logger = logger.With("isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
-			return newRouterProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer), nil
+			return newRouterProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer, enableRedaction), nil
 		}
 		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](requestHeaders, f.NewMetrics(), logger), nil
 	}
@@ -93,6 +94,8 @@ type (
 		// This is used to determine if the request is a retry request.
 		upstreamFilterCount int
 		stream              bool
+		debugLogEnabled     bool
+		enableRedaction     bool
 	}
 	// upstreamProcessor implements [Processor] for the upstream filter for the standard LLM endpoints.
 	//
@@ -122,13 +125,17 @@ func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.
 	requestHeaders map[string]string,
 	logger *slog.Logger,
 	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
+	enableRedaction bool,
 ) *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT] {
+	debugLogEnabled := logger.Enabled(context.Background(), slog.LevelDebug)
 	return &routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]{
 		config:            config,
 		requestHeaders:    requestHeaders,
 		logger:            logger,
 		tracer:            tracer,
 		forceBodyMutation: false,
+		debugLogEnabled:   debugLogEnabled,
+		enableRedaction:   enableRedaction,
 	}
 }
 
@@ -171,6 +178,26 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
+
+	// Use the request-scoped logger from context if available, otherwise fall back to processor logger
+	logger := loggerFromContext(ctx)
+	if logger == nil {
+		logger = r.logger
+	}
+
+	// Only log parsed request body when redaction is enabled
+	if r.debugLogEnabled && r.enableRedaction {
+		if redactedBody, err := r.eh.RedactSensitiveInfoFromRequest(body); err != nil {
+			logger.Warn("failed to redact sensitive info from request, ignoring and continuing", slog.Any("error", err))
+		} else {
+			if jsonBody, err := json.Marshal(redactedBody); err != nil {
+				logger.Error("failed to marshal redacted request for logging, ignoring and continuing", slog.Any("error", err))
+			} else {
+				logger.Debug("request body processing", slog.Any("request", string(jsonBody)))
+			}
+		}
+	}
+
 	if mutatedOriginalBody != nil {
 		r.originalRequestBodyRaw = mutatedOriginalBody
 		r.forceBodyMutation = true
@@ -492,6 +519,18 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	if err != nil {
 		return fmt.Errorf("failed to create translator for backend %s: %w", b.Name, err)
 	}
+
+	switch redactor := u.translator.(type) {
+	case translator.ResponseRedactor:
+		redactor.SetRedactionConfig(u.parent.debugLogEnabled, u.parent.enableRedaction, u.logger)
+	case translator.AnthropicResponseRedactor:
+		redactor.SetRedactionConfig(u.parent.debugLogEnabled, u.parent.enableRedaction, u.logger)
+	default:
+		if u.parent.debugLogEnabled && u.parent.enableRedaction {
+			u.logger.Debug("translator does not support redaction", slog.String("backend", b.Name))
+		}
+	}
+
 	return
 }
 

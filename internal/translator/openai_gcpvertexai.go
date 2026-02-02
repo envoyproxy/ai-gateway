@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/internal/redaction"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
@@ -80,6 +82,10 @@ type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
 	bufferedBody      []byte // Buffer for incomplete JSON chunks.
 	requestModel      internalapi.RequestModel
 	toolCallIndex     int64
+	// Redaction configuration for debug logging
+	debugLogEnabled bool
+	enableRedaction bool
+	logger          *slog.Logger
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP Gemini.
@@ -158,6 +164,14 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 	openAIResp, err := o.geminiResponseToOpenAIMessage(gcpResp, responseModel)
 	if err != nil {
 		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("error converting GCP response to OpenAI format: %w", err)
+	}
+
+	// Redact and log response when enabled
+	if o.debugLogEnabled && o.enableRedaction && o.logger != nil {
+		redactedResp := o.RedactBody(openAIResp)
+		if jsonBody, marshalErr := json.Marshal(redactedResp); marshalErr == nil {
+			o.logger.Debug("response body processing", slog.Any("response", string(jsonBody)))
+		}
 	}
 
 	// Marshal the OpenAI response.
@@ -578,10 +592,9 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMe
 	return openaiResp, nil
 }
 
-// ResponseError implements [OpenAIChatCompletionTranslator.ResponseError].
-// Translate GCP Vertex AI exceptions to OpenAI error type.
-// GCP error responses typically contain JSON with error details or plain text error messages.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
+// convertGCPVertexAIErrorToOpenAI converts GCP Vertex AI error responses to OpenAI error format.
+// This is a shared function used by both chat completion and embedding translators.
+func convertGCPVertexAIErrorToOpenAI(respHeaders map[string]string, body io.Reader) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	var buf []byte
@@ -625,4 +638,83 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseError(respHeader
 		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
 	}
 	return
+}
+
+// ResponseError implements [OpenAIChatCompletionTranslator.ResponseError].
+// Translate GCP Vertex AI exceptions to OpenAI error type.
+// GCP error responses typically contain JSON with error details or plain text error messages.
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
+	newHeaders []internalapi.Header, newBody []byte, err error,
+) {
+	return convertGCPVertexAIErrorToOpenAI(respHeaders, body)
+}
+
+// SetRedactionConfig implements [ResponseRedactor.SetRedactionConfig].
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) SetRedactionConfig(debugLogEnabled, enableRedaction bool, logger *slog.Logger) {
+	o.debugLogEnabled = debugLogEnabled
+	o.enableRedaction = enableRedaction
+	o.logger = logger
+}
+
+// RedactBody implements [ResponseRedactor.RedactBody].
+// Creates a redacted copy of the response for safe logging without modifying the original.
+// Reuses the same redaction logic as the OpenAI translator since GCP Vertex AI responses
+// are converted to OpenAI format.
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RedactBody(resp *openai.ChatCompletionResponse) *openai.ChatCompletionResponse {
+	if resp == nil {
+		return nil
+	}
+
+	// Create a shallow copy of the response
+	redacted := *resp
+
+	// Redact choices (contains AI-generated content)
+	if len(resp.Choices) > 0 {
+		redacted.Choices = make([]openai.ChatCompletionResponseChoice, len(resp.Choices))
+		for i := range resp.Choices {
+			redactedChoice := resp.Choices[i]
+			redactedChoice.Message = redactGCPResponseMessage(&resp.Choices[i].Message)
+			redacted.Choices[i] = redactedChoice
+		}
+	}
+
+	return &redacted
+}
+
+// redactGCPResponseMessage redacts sensitive content from a GCP Vertex AI response message
+// that has been converted to OpenAI format.
+func redactGCPResponseMessage(msg *openai.ChatCompletionResponseChoiceMessage) openai.ChatCompletionResponseChoiceMessage {
+	redactedMsg := *msg
+
+	// Redact message content (AI-generated text)
+	if msg.Content != nil {
+		redactedContent := redaction.RedactString(*msg.Content)
+		redactedMsg.Content = &redactedContent
+	}
+
+	// Redact tool calls (may contain sensitive function arguments)
+	if len(msg.ToolCalls) > 0 {
+		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.ToolCalls))
+		for i, tc := range msg.ToolCalls {
+			redactedToolCall := tc
+			redactedToolCall.Function.Name = redaction.RedactString(tc.Function.Name)
+			redactedToolCall.Function.Arguments = redaction.RedactString(tc.Function.Arguments)
+			redactedMsg.ToolCalls[i] = redactedToolCall
+		}
+	}
+
+	// Redact audio data if present
+	if msg.Audio != nil {
+		redactedAudio := *msg.Audio
+		redactedAudio.Data = redaction.RedactString(msg.Audio.Data)
+		redactedAudio.Transcript = redaction.RedactString(msg.Audio.Transcript)
+		redactedMsg.Audio = &redactedAudio
+	}
+
+	// Redact reasoning content if present (GCP-specific extended thinking)
+	if msg.ReasoningContent != nil {
+		redactedMsg.ReasoningContent = redactReasoningContent(msg.ReasoningContent)
+	}
+
+	return redactedMsg
 }
