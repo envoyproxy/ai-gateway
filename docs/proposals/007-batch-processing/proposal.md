@@ -23,6 +23,7 @@
   - [OpenAI to GCP Vertex AI](#openai-to-gcp-vertex-ai)
 - [Out of Scope](#out-of-scope)
 - [Future Work](#future-work)
+- [Batch Token Usage and Rate Limiting](#batch-token-usage-and-rate-limiting)
 - [Open Questions for Community Discussion](#open-questions-for-community-discussion)
 
 <!-- /toc -->
