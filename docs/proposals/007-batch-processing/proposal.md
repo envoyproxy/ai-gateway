@@ -443,14 +443,144 @@ GCP Vertex AI format:
 }
 ```
 
+## Batch Token Usage and Rate Limiting
+
+Batch API token usage tracking presents unique challenges due to the asynchronous nature of batch processing.
+Each provider handles token usage reporting differently, introducing complexity in standardization and tracking.
+
+### Token Usage Reporting Challenges
+
+Token usage reporting for batch requests involves several key complexities:
+
+- **Delayed Information**: Token usage is only available after result retrieval
+- **State Management**: Tracking repeated retrievals and preventing double-counting
+- **Retrieval Uncertainty**: Handling scenarios where results are never retrieved
+
+### Rate Limiting Complexity
+
+Applying rate limits for batch requests is challenging due to:
+
+- Offline, asynchronous processing nature
+- Delayed token usage information
+- Multiple potential rate limiting strategies
+
+### Potential Rate Limiting Approaches
+
+1. **Request-Level Limiting**:
+   - Constrain number of batch jobs submitted
+   - Simple to implement
+   - May not accurately reflect actual resource consumption
+
+2. **Token Usage Limiting**:
+   - Track and limit total tokens processed
+   - More precise representation of computational resources
+   - Requires complex tracking mechanism
+
+3. **Hybrid Approach**:
+   - Combine request-level and token-based limits
+   - Most comprehensive but most complex to implement
+
+### Open Questions
+
+Critical considerations for future implementation:
+
+- Gateway's architectural role: Stateless vs. stateful batch request management
+- Interaction with cloud provider-specific storage (AWS S3, GCP GCS)
+- Capability to parse results and extract token usage
+- Handling of multiple result retrievals
+- Management of unretrieved results
+
+### Recommendation
+
+Given the complexity and numerous open questions, I recommend **deferring comprehensive token usage and rate limiting implementation** to a future proposal. The initial implementation will focus on core batch processing functionality.
+
+### Token Usage in Batch Responses
+
+#### OpenAI/Azure
+
+```jsonl
+{"id": "batch_req_123", "custom_id": "request-2", "response": {"status_code": 200, "request_id": "req_123", "body": {"id": "chatcmpl-123", "object": "chat.completion", "created": 1711652795, "model": "gpt-3.5-turbo-0125", "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello."}, "logprobs": null, "finish_reason": "stop"}], "usage": {"prompt_tokens": 22, "completion_tokens": 2, "total_tokens": 24}, "system_fingerprint": "fp_123"}}, "error": null}
+{"id": "batch_req_456", "custom_id": "request-1", "response": {"status_code": 200, "request_id": "req_789", "body": {"id": "chatcmpl-abc", "object": "chat.completion", "created": 1711652789, "model": "gpt-3.5-turbo-0125", "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello! How can I assist you today?"}, "logprobs": null, "finish_reason": "stop"}], "usage": {"prompt_tokens": 20, "completion_tokens": 9, "total_tokens": 29}, "system_fingerprint": "fp_3ba"}}, "error": null}
+```
+
+#### GCP Vertex AI
+
+```json
+{
+  "status": "",
+  "processed_time": "2024-11-01T18:13:16.826+00:00",
+  "request": {
+    "contents": [
+      {
+        "parts": [
+          {
+            "fileData": null,
+            "text": "What is the relation between the following video and image samples?"
+          },
+          {
+            "fileData": {
+              "fileUri": "gs://cloud-samples-data/generative-ai/video/animals.mp4",
+              "mimeType": "video/mp4"
+            },
+            "text": null
+          },
+          {
+            "fileData": {
+              "fileUri": "gs://cloud-samples-data/generative-ai/image/cricket.jpeg",
+              "mimeType": "image/jpeg"
+            },
+            "text": null
+          }
+        ],
+        "role": "user"
+      }
+    ]
+  },
+  "response": {
+    "candidates": [
+      {
+        "avgLogprobs": -0.5782725546095107,
+        "content": {
+          "parts": [
+            {
+              "text": "This video shows a Google Photos marketing campaign where animals at the Los Angeles Zoo take self-portraits using a modified Google phone housed in a protective case. The image is unrelated."
+            }
+          ],
+          "role": "model"
+        },
+        "finishReason": "STOP"
+      }
+    ],
+    "modelVersion": "gemini-2.0-flash-001@default",
+    "usageMetadata": {
+      "candidatesTokenCount": 36,
+      "promptTokenCount": 29180,
+      "totalTokenCount": 29216
+    }
+  }
+}
+```
+
+#### AWS Bedrock
+
+```jsonl
+{ "recordId" : "3223593EFGH", "modelInput" : {"inputText": "Roses are red, violets are"}, "modelOutput" : {'inputTextTokenCount': 8, 'results': [{'tokenCount': 3, 'outputText': 'blue\n', 'completionReason': 'FINISH'}]}}
+{ "recordId" : "1223213ABCD", "modelInput" : {"inputText": "Hello world"}, "error" : {"errorCode" : 400, "errorMessage" : "bad request" }}
+```
+
+#### Anthropic
+
+```jsonl
+{"custom_id":"my-second-request","result":{"type":"succeeded","message":{"id":"msg_014VwiXbi91y3JMjcpyGBHX5","type":"message","role":"assistant","model":"claude-sonnet-4-5-20250929","content":[{"type":"text","text":"Hello again! It's nice to see you. How can I assist you today? Is there anything specific you'd like to chat about or any questions you have?"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":11,"output_tokens":36}}}}
+{"custom_id":"my-first-request","result":{"type":"succeeded","message":{"id":"msg_01FqfsLoHwgeFbguDgpz48m7","type":"message","role":"assistant","model":"claude-sonnet-4-5-20250929","content":[{"type":"text","text":"Hello! How can I assist you today? Feel free to ask me any questions or let me know if there's anything you'd like to chat about."}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":34}}}}
+```
+
 ## Out of Scope
 
 The following items are explicitly out of scope for this initial proposal:
 
 1. **Anthropic Native Batch API**: Due to fundamental architectural differences (inline requests vs. file-based), Anthropic batch support is deferred to future work.
-
 2. **Streaming Batch Results**: All providers return batch results as complete files; real-time streaming of batch progress is not supported.
-
 3. **Cross-Provider Batch Aggregation**: Submitting a single batch job that spans multiple providers.
 
 ## Future Work
@@ -480,7 +610,7 @@ The following items are explicitly out of scope for this initial proposal:
 
 ### API Endpoint Naming Convention
 
-**Question**: Should we use unified endpoints or provider-prefixed endpoints?
+**Question**: Should we use unified endpoints or provider-prefixed endpoints? I slightly prefer unified endpoints approach.
 
 | Aspect                | Option 1: Unified Endpoints (Proposed)                                                                                      | Option 2: Provider-Prefixed Endpoints                                                                                                    |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
