@@ -26,17 +26,17 @@ func TestNewTokenizeToGCPVertexAITranslator(t *testing.T) {
 	translator := NewTokenizeToGCPVertexAITranslator("")
 
 	require.NotNil(t, translator)
-	concrete := translator.(*ToGCPVertexAITranslatorV1Tokenize)
+	concrete := translator.(*ToGCPVertexAIV1Tokenize)
 	require.Empty(t, concrete.modelNameOverride)
 	require.Empty(t, concrete.requestModel)
 }
 
-func TestToGCPVertexAITranslatorV1Tokenize_RequestBody(t *testing.T) {
+func TestToGCPVertexAIV1Tokenize_RequestBody(t *testing.T) {
 	t.Run("chat request - no model override", func(t *testing.T) {
-		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAITranslatorV1Tokenize)
+		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAIV1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "gemini-2.0-flash-001",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -71,12 +71,12 @@ func TestToGCPVertexAITranslatorV1Tokenize_RequestBody(t *testing.T) {
 	})
 
 	t.Run("chat request - with model override", func(t *testing.T) {
-		translator := &ToGCPVertexAITranslatorV1Tokenize{
+		translator := &ToGCPVertexAIV1Tokenize{
 			modelNameOverride: "override-model",
 		}
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "original-model",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -98,10 +98,10 @@ func TestToGCPVertexAITranslatorV1Tokenize_RequestBody(t *testing.T) {
 	})
 
 	t.Run("chat request - with system instruction", func(t *testing.T) {
-		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAITranslatorV1Tokenize)
+		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAIV1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "gemini-1.5-pro",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -134,10 +134,10 @@ func TestToGCPVertexAITranslatorV1Tokenize_RequestBody(t *testing.T) {
 	})
 
 	t.Run("completion request - not supported", func(t *testing.T) {
-		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAITranslatorV1Tokenize)
+		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAIV1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+		req := &tokenize.RequestUnion{
+			CompletionRequest: &tokenize.CompletionRequest{
 				Model:  "gemini-2.0-flash-001",
 				Prompt: "Hello world",
 			},
@@ -145,14 +145,14 @@ func TestToGCPVertexAITranslatorV1Tokenize_RequestBody(t *testing.T) {
 
 		_, _, err := translator.RequestBody(nil, req, false)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "only TokenizeChatRequest is supported for gemini models")
+		require.Contains(t, err.Error(), "only ChatRequest is supported for gemini models")
 	})
 
 	t.Run("empty model string", func(t *testing.T) {
-		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAITranslatorV1Tokenize)
+		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAIV1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "", // Empty model string should be handled gracefully
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -172,11 +172,11 @@ func TestToGCPVertexAITranslatorV1Tokenize_RequestBody(t *testing.T) {
 	})
 
 	t.Run("message conversion error", func(t *testing.T) {
-		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAITranslatorV1Tokenize)
+		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAIV1Tokenize)
 
 		// Create a request with invalid message structure that would cause conversion error
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model:    "gemini-1.5-pro",
 				Messages: []openai.ChatCompletionMessageParamUnion{}, // Empty messages
 			},
@@ -188,9 +188,9 @@ func TestToGCPVertexAITranslatorV1Tokenize_RequestBody(t *testing.T) {
 	})
 }
 
-func TestToGCPVertexAITranslatorV1Tokenize_ResponseBody(t *testing.T) {
+func TestToGCPVertexAIV1Tokenize_ResponseBody(t *testing.T) {
 	t.Run("valid GCP response", func(t *testing.T) {
-		translator := &ToGCPVertexAITranslatorV1Tokenize{
+		translator := &ToGCPVertexAIV1Tokenize{
 			requestModel: "gemini-2.0-flash-001",
 		}
 
@@ -215,7 +215,7 @@ func TestToGCPVertexAITranslatorV1Tokenize_ResponseBody(t *testing.T) {
 		require.Equal(t, contentLengthHeaderName, headers[0].Key())
 
 		// Verify the response is converted to OpenAI format
-		var openAIResp tokenize.TokenizeResponse
+		var openAIResp tokenize.Response
 		require.NoError(t, json.Unmarshal(body, &openAIResp))
 		require.Equal(t, 42, openAIResp.Count)
 
@@ -226,7 +226,7 @@ func TestToGCPVertexAITranslatorV1Tokenize_ResponseBody(t *testing.T) {
 	})
 
 	t.Run("empty response model fallback", func(t *testing.T) {
-		translator := &ToGCPVertexAITranslatorV1Tokenize{
+		translator := &ToGCPVertexAIV1Tokenize{
 			requestModel: "gemini-1.5-pro",
 		}
 
@@ -249,7 +249,7 @@ func TestToGCPVertexAITranslatorV1Tokenize_ResponseBody(t *testing.T) {
 	})
 
 	t.Run("invalid JSON response", func(t *testing.T) {
-		translator := &ToGCPVertexAITranslatorV1Tokenize{}
+		translator := &ToGCPVertexAIV1Tokenize{}
 
 		invalidJSON := "invalid json response"
 
@@ -265,7 +265,7 @@ func TestToGCPVertexAITranslatorV1Tokenize_ResponseBody(t *testing.T) {
 	})
 
 	t.Run("GCP response conversion error", func(t *testing.T) {
-		translator := &ToGCPVertexAITranslatorV1Tokenize{}
+		translator := &ToGCPVertexAIV1Tokenize{}
 
 		// Valid JSON but might cause conversion issues
 		gcpResp := &genai.CountTokensResponse{
@@ -288,7 +288,7 @@ func TestToGCPVertexAITranslatorV1Tokenize_ResponseBody(t *testing.T) {
 	})
 
 	t.Run("response marshaling error simulation", func(t *testing.T) {
-		translator := &ToGCPVertexAITranslatorV1Tokenize{}
+		translator := &ToGCPVertexAIV1Tokenize{}
 
 		// Create a valid GCP response
 		gcpResp := &genai.CountTokensResponse{
@@ -304,7 +304,7 @@ func TestToGCPVertexAITranslatorV1Tokenize_ResponseBody(t *testing.T) {
 	})
 
 	t.Run("nil span handling", func(t *testing.T) {
-		translator := &ToGCPVertexAITranslatorV1Tokenize{
+		translator := &ToGCPVertexAIV1Tokenize{
 			requestModel: "gemini-1.5-pro",
 		}
 
@@ -318,8 +318,8 @@ func TestToGCPVertexAITranslatorV1Tokenize_ResponseBody(t *testing.T) {
 	})
 }
 
-func TestToGCPVertexAITranslatorV1Tokenize_ResponseError(t *testing.T) {
-	translator := &ToGCPVertexAITranslatorV1Tokenize{}
+func TestToGCPVertexAIV1Tokenize_ResponseError(t *testing.T) {
+	translator := &ToGCPVertexAIV1Tokenize{}
 
 	tests := []struct {
 		name            string
@@ -409,7 +409,7 @@ func TestToGCPVertexAITranslatorV1Tokenize_ResponseError(t *testing.T) {
 
 			require.Len(t, headers, 2)
 			require.Equal(t, contentTypeHeaderName, headers[0].Key())
-			require.Equal(t, jsonContentType, headers[0].Value())
+			require.Equal(t, jsonContentType, headers[0].Value()) //nolint:testifylint // comparing header value, not JSON
 			require.Equal(t, contentLengthHeaderName, headers[1].Key())
 			require.Equal(t, strconv.Itoa(len(newBody)), headers[1].Value())
 
@@ -445,8 +445,8 @@ func TestToGCPVertexAITranslatorV1Tokenize_ResponseError(t *testing.T) {
 	})
 }
 
-func TestToGCPVertexAITranslatorV1Tokenize_ResponseHeaders(t *testing.T) {
-	translator := &ToGCPVertexAITranslatorV1Tokenize{}
+func TestToGCPVertexAIV1Tokenize_ResponseHeaders(t *testing.T) {
+	translator := &ToGCPVertexAIV1Tokenize{}
 
 	headers, err := translator.ResponseHeaders(map[string]string{
 		"content-type":  "application/json",
@@ -458,11 +458,11 @@ func TestToGCPVertexAITranslatorV1Tokenize_ResponseHeaders(t *testing.T) {
 	require.Nil(t, headers) // Current implementation returns nil
 }
 
-func TestToGCPVertexAITranslatorV1Tokenize_HelperMethods(t *testing.T) {
-	translator := &ToGCPVertexAITranslatorV1Tokenize{}
+func TestToGCPVertexAIV1Tokenize_HelperMethods(t *testing.T) {
+	translator := &ToGCPVertexAIV1Tokenize{}
 
 	t.Run("tokenizeToGeminiCountToken", func(t *testing.T) {
-		chatReq := &tokenize.TokenizeChatRequest{
+		chatReq := &tokenize.ChatRequest{
 			Model: "gemini-1.5-pro",
 			Messages: []openai.ChatCompletionMessageParamUnion{
 				{
@@ -483,19 +483,19 @@ func TestToGCPVertexAITranslatorV1Tokenize_HelperMethods(t *testing.T) {
 		require.Equal(t, "Test message", gcpReq.Contents[0].Parts[0].Text)
 	})
 
-	t.Run("geminiCountTokenToTokenizeResponse", func(t *testing.T) {
+	t.Run("geminiCountTokenToResponse", func(t *testing.T) {
 		gcpResp := &genai.CountTokensResponse{
 			TotalTokens: 25,
 		}
 
-		tokenizeResp, err := translator.geminiCountTokenToTokenizeResponse(gcpResp)
+		tokenizeResp, err := translator.geminiCountTokenToResponse(gcpResp)
 		require.NoError(t, err)
 		require.NotNil(t, tokenizeResp)
 		require.Equal(t, 25, tokenizeResp.Count)
 	})
 
 	t.Run("tokenizeToGeminiCountToken with invalid messages", func(t *testing.T) {
-		chatReq := &tokenize.TokenizeChatRequest{
+		chatReq := &tokenize.ChatRequest{
 			Model:    "gemini-1.5-pro",
 			Messages: []openai.ChatCompletionMessageParamUnion{}, // Empty messages
 		}
@@ -504,34 +504,34 @@ func TestToGCPVertexAITranslatorV1Tokenize_HelperMethods(t *testing.T) {
 		require.Error(t, err) // Should error on empty messages
 	})
 
-	t.Run("geminiCountTokenToTokenizeResponse with zero tokens", func(t *testing.T) {
+	t.Run("geminiCountTokenToResponse with zero tokens", func(t *testing.T) {
 		gcpResp := &genai.CountTokensResponse{
 			TotalTokens: 0,
 		}
 
-		tokenizeResp, err := translator.geminiCountTokenToTokenizeResponse(gcpResp)
+		tokenizeResp, err := translator.geminiCountTokenToResponse(gcpResp)
 		require.NoError(t, err)
 		require.Equal(t, 0, tokenizeResp.Count)
 	})
 
-	t.Run("geminiCountTokenToTokenizeResponse with large token count", func(t *testing.T) {
+	t.Run("geminiCountTokenToResponse with large token count", func(t *testing.T) {
 		gcpResp := &genai.CountTokensResponse{
 			TotalTokens: 1000000,
 		}
 
-		tokenizeResp, err := translator.geminiCountTokenToTokenizeResponse(gcpResp)
+		tokenizeResp, err := translator.geminiCountTokenToResponse(gcpResp)
 		require.NoError(t, err)
 		require.Equal(t, 1000000, tokenizeResp.Count)
 	})
 }
 
-func TestToGCPVertexAITranslatorV1Tokenize_IntegrationScenarios(t *testing.T) {
+func TestToGCPVertexAIV1Tokenize_IntegrationScenarios(t *testing.T) {
 	t.Run("complete flow - request to response", func(t *testing.T) {
-		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAITranslatorV1Tokenize)
+		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAIV1Tokenize)
 
 		// Step 1: Process request
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "gemini-2.0-flash-001",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -568,7 +568,7 @@ func TestToGCPVertexAITranslatorV1Tokenize_IntegrationScenarios(t *testing.T) {
 		require.Equal(t, "gemini-2.0-flash-001", responseModel)
 
 		// Step 4: Verify final OpenAI response
-		var finalResp tokenize.TokenizeResponse
+		var finalResp tokenize.Response
 		require.NoError(t, json.Unmarshal(respBody, &finalResp))
 		require.Equal(t, 7, finalResp.Count)
 
@@ -578,7 +578,7 @@ func TestToGCPVertexAITranslatorV1Tokenize_IntegrationScenarios(t *testing.T) {
 	})
 
 	t.Run("error flow - request error to response error", func(t *testing.T) {
-		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAITranslatorV1Tokenize)
+		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAIV1Tokenize)
 
 		// Test error handling
 		headers := map[string]string{
@@ -607,9 +607,9 @@ func TestToGCPVertexAITranslatorV1Tokenize_IntegrationScenarios(t *testing.T) {
 }
 
 // Test edge cases and identified improvements
-func TestToGCPVertexAITranslatorV1Tokenize_IdentifiedIssues(t *testing.T) {
+func TestToGCPVertexAIV1Tokenize_IdentifiedIssues(t *testing.T) {
 	t.Run("IMPROVEMENT: missing token usage extraction", func(t *testing.T) {
-		translator := &ToGCPVertexAITranslatorV1Tokenize{}
+		translator := &ToGCPVertexAIV1Tokenize{}
 
 		gcpResp := &genai.CountTokensResponse{
 			TotalTokens: 42, // This should be used for token metrics
@@ -637,10 +637,10 @@ func TestToGCPVertexAITranslatorV1Tokenize_IdentifiedIssues(t *testing.T) {
 	})
 
 	t.Run("ISSUE RESOLVED: model field is now required", func(t *testing.T) {
-		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAITranslatorV1Tokenize)
+		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAIV1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "gemini-1.5-pro", // Model is now required field
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -662,11 +662,11 @@ func TestToGCPVertexAITranslatorV1Tokenize_IdentifiedIssues(t *testing.T) {
 	})
 
 	t.Run("IMPROVEMENT: input validation missing", func(t *testing.T) {
-		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAITranslatorV1Tokenize)
+		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAIV1Tokenize)
 
-		// Test with nil TokenizeChatRequest
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: nil,
+		// Test with nil ChatRequest
+		req := &tokenize.RequestUnion{
+			ChatRequest: nil,
 		}
 
 		// Union validation now runs first and catches this invalid state
@@ -676,15 +676,15 @@ func TestToGCPVertexAITranslatorV1Tokenize_IdentifiedIssues(t *testing.T) {
 	})
 
 	t.Run("union validation now implemented", func(t *testing.T) {
-		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAITranslatorV1Tokenize)
+		translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAIV1Tokenize)
 
 		// Test 1: Invalid union state - both types set
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+		req := &tokenize.RequestUnion{
+			CompletionRequest: &tokenize.CompletionRequest{
 				Model:  "gpt-4",
 				Prompt: "Hello",
 			},
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "gemini-2.0-flash-001",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -703,14 +703,14 @@ func TestToGCPVertexAITranslatorV1Tokenize_IdentifiedIssues(t *testing.T) {
 		require.Contains(t, err.Error(), "only one request type can be set")
 
 		// Test 2: Invalid union state - no types set
-		emptyReq := &tokenize.TokenizeRequestUnion{}
+		emptyReq := &tokenize.RequestUnion{}
 		_, _, err = translator.RequestBody(nil, emptyReq, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "one request type must be set")
 
 		// Test 3: Valid union state - only chat set (completion not supported for Gemini)
-		validChatReq := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		validChatReq := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "gemini-2.0-flash-001",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -728,10 +728,10 @@ func TestToGCPVertexAITranslatorV1Tokenize_IdentifiedIssues(t *testing.T) {
 }
 
 // Benchmark tests for performance
-func BenchmarkToGCPVertexAITranslatorV1Tokenize_RequestBody(b *testing.B) {
-	translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAITranslatorV1Tokenize)
-	req := &tokenize.TokenizeRequestUnion{
-		TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+func BenchmarkToGCPVertexAIV1Tokenize_RequestBody(b *testing.B) {
+	translator := NewTokenizeToGCPVertexAITranslator("").(*ToGCPVertexAIV1Tokenize)
+	req := &tokenize.RequestUnion{
+		ChatRequest: &tokenize.ChatRequest{
 			Model: "gemini-2.0-flash-001",
 			Messages: []openai.ChatCompletionMessageParamUnion{
 				{
@@ -753,8 +753,8 @@ func BenchmarkToGCPVertexAITranslatorV1Tokenize_RequestBody(b *testing.B) {
 	}
 }
 
-func BenchmarkToGCPVertexAITranslatorV1Tokenize_ResponseBody(b *testing.B) {
-	translator := &ToGCPVertexAITranslatorV1Tokenize{requestModel: "gemini-2.0-flash-001"}
+func BenchmarkToGCPVertexAIV1Tokenize_ResponseBody(b *testing.B) {
+	translator := &ToGCPVertexAIV1Tokenize{requestModel: "gemini-2.0-flash-001"}
 	gcpResp := &genai.CountTokensResponse{TotalTokens: 100}
 	responseJSON, _ := json.Marshal(gcpResp)
 

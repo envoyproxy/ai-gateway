@@ -25,17 +25,17 @@ func TestNewTokenizeToGCPAnthropicTranslator(t *testing.T) {
 	translator := NewTokenizeToGCPAnthropicTranslator("")
 
 	require.NotNil(t, translator)
-	concrete := translator.(*ToGCPAnthropicTranslatorV1Tokenize)
+	concrete := translator.(*ToGCPAnthropicV1Tokenize)
 	require.Empty(t, concrete.modelNameOverride)
 	require.Empty(t, concrete.requestModel)
 }
 
-func TestToGCPAnthropicTranslatorV1Tokenize_RequestBody(t *testing.T) {
+func TestToGCPAnthropicV1Tokenize_RequestBody(t *testing.T) {
 	t.Run("chat request - no model override", func(t *testing.T) {
-		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicTranslatorV1Tokenize)
+		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicV1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "claude-3-opus-20240229",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -69,12 +69,12 @@ func TestToGCPAnthropicTranslatorV1Tokenize_RequestBody(t *testing.T) {
 	})
 
 	t.Run("chat request - with model override", func(t *testing.T) {
-		translator := &ToGCPAnthropicTranslatorV1Tokenize{
+		translator := &ToGCPAnthropicV1Tokenize{
 			modelNameOverride: "override-model",
 		}
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "original-model",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -96,10 +96,10 @@ func TestToGCPAnthropicTranslatorV1Tokenize_RequestBody(t *testing.T) {
 	})
 
 	t.Run("chat request - with system instruction", func(t *testing.T) {
-		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicTranslatorV1Tokenize)
+		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicV1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "claude-3-opus-20240229",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -130,10 +130,10 @@ func TestToGCPAnthropicTranslatorV1Tokenize_RequestBody(t *testing.T) {
 	})
 
 	t.Run("completion request - not supported", func(t *testing.T) {
-		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicTranslatorV1Tokenize)
+		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicV1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+		req := &tokenize.RequestUnion{
+			CompletionRequest: &tokenize.CompletionRequest{
 				Model:  "claude-3-opus-20240229",
 				Prompt: "Hello world",
 			},
@@ -141,14 +141,14 @@ func TestToGCPAnthropicTranslatorV1Tokenize_RequestBody(t *testing.T) {
 
 		_, _, err := translator.RequestBody(nil, req, false)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "only TokenizeChatRequest is supported for gcp anthropic models")
+		require.Contains(t, err.Error(), "only ChatRequest is supported for gcp anthropic models")
 	})
 
 	t.Run("empty model string", func(t *testing.T) {
-		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicTranslatorV1Tokenize)
+		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicV1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "", // Empty model string
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -167,11 +167,11 @@ func TestToGCPAnthropicTranslatorV1Tokenize_RequestBody(t *testing.T) {
 	})
 
 	t.Run("message conversion error", func(t *testing.T) {
-		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicTranslatorV1Tokenize)
+		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicV1Tokenize)
 
 		// Create a request with empty messages which should work fine
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model:    "claude-3-opus-20240229",
 				Messages: []openai.ChatCompletionMessageParamUnion{}, // Empty messages
 			},
@@ -182,14 +182,14 @@ func TestToGCPAnthropicTranslatorV1Tokenize_RequestBody(t *testing.T) {
 	})
 
 	t.Run("invalid union - both types set", func(t *testing.T) {
-		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicTranslatorV1Tokenize)
+		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicV1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+		req := &tokenize.RequestUnion{
+			CompletionRequest: &tokenize.CompletionRequest{
 				Model:  "claude-3-opus-20240229",
 				Prompt: "Hello",
 			},
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "claude-3-opus-20240229",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -208,9 +208,9 @@ func TestToGCPAnthropicTranslatorV1Tokenize_RequestBody(t *testing.T) {
 	})
 
 	t.Run("invalid union - no types set", func(t *testing.T) {
-		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicTranslatorV1Tokenize)
+		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicV1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
+		req := &tokenize.RequestUnion{
 			// Neither completion nor chat request set
 		}
 
@@ -220,9 +220,9 @@ func TestToGCPAnthropicTranslatorV1Tokenize_RequestBody(t *testing.T) {
 	})
 }
 
-func TestToGCPAnthropicTranslatorV1Tokenize_ResponseBody(t *testing.T) {
+func TestToGCPAnthropicV1Tokenize_ResponseBody(t *testing.T) {
 	t.Run("valid Anthropic response", func(t *testing.T) {
-		translator := &ToGCPAnthropicTranslatorV1Tokenize{
+		translator := &ToGCPAnthropicV1Tokenize{
 			requestModel: "claude-3-opus-20240229",
 		}
 
@@ -247,7 +247,7 @@ func TestToGCPAnthropicTranslatorV1Tokenize_ResponseBody(t *testing.T) {
 		require.Equal(t, contentLengthHeaderName, headers[0].Key())
 
 		// Verify the response is converted to OpenAI format
-		var openAIResp tokenize.TokenizeResponse
+		var openAIResp tokenize.Response
 		require.NoError(t, json.Unmarshal(body, &openAIResp))
 		require.Equal(t, 42, openAIResp.Count)
 
@@ -257,7 +257,7 @@ func TestToGCPAnthropicTranslatorV1Tokenize_ResponseBody(t *testing.T) {
 	})
 
 	t.Run("empty response model fallback", func(t *testing.T) {
-		translator := &ToGCPAnthropicTranslatorV1Tokenize{
+		translator := &ToGCPAnthropicV1Tokenize{
 			requestModel: "claude-3-haiku-20240307",
 		}
 
@@ -280,7 +280,7 @@ func TestToGCPAnthropicTranslatorV1Tokenize_ResponseBody(t *testing.T) {
 	})
 
 	t.Run("invalid JSON response", func(t *testing.T) {
-		translator := &ToGCPAnthropicTranslatorV1Tokenize{}
+		translator := &ToGCPAnthropicV1Tokenize{}
 
 		invalidJSON := "invalid json response"
 
@@ -296,7 +296,7 @@ func TestToGCPAnthropicTranslatorV1Tokenize_ResponseBody(t *testing.T) {
 	})
 
 	t.Run("response conversion handles zero tokens", func(t *testing.T) {
-		translator := &ToGCPAnthropicTranslatorV1Tokenize{}
+		translator := &ToGCPAnthropicV1Tokenize{}
 
 		anthropicResp := &anthropic.MessageTokensCount{
 			InputTokens: 0, // Zero tokens
@@ -314,13 +314,13 @@ func TestToGCPAnthropicTranslatorV1Tokenize_ResponseBody(t *testing.T) {
 
 		require.NoError(t, err)
 
-		var openAIResp tokenize.TokenizeResponse
+		var openAIResp tokenize.Response
 		require.NoError(t, json.Unmarshal(body, &openAIResp))
 		require.Equal(t, 0, openAIResp.Count)
 	})
 
 	t.Run("response conversion handles large token count", func(t *testing.T) {
-		translator := &ToGCPAnthropicTranslatorV1Tokenize{}
+		translator := &ToGCPAnthropicV1Tokenize{}
 
 		anthropicResp := &anthropic.MessageTokensCount{
 			InputTokens: 100000, // Large token count
@@ -338,14 +338,14 @@ func TestToGCPAnthropicTranslatorV1Tokenize_ResponseBody(t *testing.T) {
 
 		require.NoError(t, err)
 
-		var openAIResp tokenize.TokenizeResponse
+		var openAIResp tokenize.Response
 		require.NoError(t, json.Unmarshal(body, &openAIResp))
 		require.Equal(t, 100000, openAIResp.Count)
 	})
 }
 
-func TestToGCPAnthropicTranslatorV1Tokenize_ResponseError(t *testing.T) {
-	translator := &ToGCPAnthropicTranslatorV1Tokenize{}
+func TestToGCPAnthropicV1Tokenize_ResponseError(t *testing.T) {
+	translator := &ToGCPAnthropicV1Tokenize{}
 
 	tests := []struct {
 		name            string
@@ -406,7 +406,7 @@ func TestToGCPAnthropicTranslatorV1Tokenize_ResponseError(t *testing.T) {
 
 			require.Len(t, headers, 2)
 			require.Equal(t, contentTypeHeaderName, headers[0].Key())
-			require.Equal(t, jsonContentType, headers[0].Value())
+			require.Equal(t, jsonContentType, headers[0].Value()) //nolint:testifylint // comparing header value, not JSON
 			require.Equal(t, contentLengthHeaderName, headers[1].Key())
 			require.Equal(t, strconv.Itoa(len(newBody)), headers[1].Value())
 
@@ -430,8 +430,8 @@ func TestToGCPAnthropicTranslatorV1Tokenize_ResponseError(t *testing.T) {
 	})
 }
 
-func TestToGCPAnthropicTranslatorV1Tokenize_ResponseHeaders(t *testing.T) {
-	translator := &ToGCPAnthropicTranslatorV1Tokenize{}
+func TestToGCPAnthropicV1Tokenize_ResponseHeaders(t *testing.T) {
+	translator := &ToGCPAnthropicV1Tokenize{}
 
 	headers, err := translator.ResponseHeaders(map[string]string{
 		"content-type":  "application/json",
@@ -443,11 +443,11 @@ func TestToGCPAnthropicTranslatorV1Tokenize_ResponseHeaders(t *testing.T) {
 	require.Nil(t, headers) // Current implementation returns nil
 }
 
-func TestToGCPAnthropicTranslatorV1Tokenize_HelperMethods(t *testing.T) {
-	translator := &ToGCPAnthropicTranslatorV1Tokenize{}
+func TestToGCPAnthropicV1Tokenize_HelperMethods(t *testing.T) {
+	translator := &ToGCPAnthropicV1Tokenize{}
 
 	t.Run("tokenizeToAnthropicMessages", func(t *testing.T) {
-		chatReq := &tokenize.TokenizeChatRequest{
+		chatReq := &tokenize.ChatRequest{
 			Model: "claude-3-opus-20240229",
 			Messages: []openai.ChatCompletionMessageParamUnion{
 				{
@@ -468,19 +468,19 @@ func TestToGCPAnthropicTranslatorV1Tokenize_HelperMethods(t *testing.T) {
 		require.Equal(t, anthropic.MessageParamRoleUser, anthropicReq.Messages[0].Role)
 	})
 
-	t.Run("anthropicTokensCountToTokenizeResponse", func(t *testing.T) {
+	t.Run("anthropicTokensCountToResponse", func(t *testing.T) {
 		anthropicResp := &anthropic.MessageTokensCount{
 			InputTokens: 25,
 		}
 
-		tokenizeResp, err := translator.anthropicTokensCountToTokenizeResponse(anthropicResp)
+		tokenizeResp, err := translator.anthropicTokensCountToResponse(anthropicResp)
 		require.NoError(t, err)
 		require.NotNil(t, tokenizeResp)
 		require.Equal(t, 25, tokenizeResp.Count)
 	})
 
 	t.Run("tokenizeToAnthropicMessages with empty messages", func(t *testing.T) {
-		chatReq := &tokenize.TokenizeChatRequest{
+		chatReq := &tokenize.ChatRequest{
 			Model:    "claude-3-opus-20240229",
 			Messages: []openai.ChatCompletionMessageParamUnion{}, // Empty messages
 		}
@@ -490,13 +490,13 @@ func TestToGCPAnthropicTranslatorV1Tokenize_HelperMethods(t *testing.T) {
 	})
 }
 
-func TestToGCPAnthropicTranslatorV1Tokenize_IntegrationScenarios(t *testing.T) {
+func TestToGCPAnthropicV1Tokenize_IntegrationScenarios(t *testing.T) {
 	t.Run("complete flow - request to response", func(t *testing.T) {
-		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicTranslatorV1Tokenize)
+		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicV1Tokenize)
 
 		// Step 1: Process request
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "claude-3-opus-20240229",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{
@@ -533,7 +533,7 @@ func TestToGCPAnthropicTranslatorV1Tokenize_IntegrationScenarios(t *testing.T) {
 		require.Equal(t, "claude-3-opus-20240229", responseModel)
 
 		// Step 4: Verify final OpenAI response
-		var finalResp tokenize.TokenizeResponse
+		var finalResp tokenize.Response
 		require.NoError(t, json.Unmarshal(respBody, &finalResp))
 		require.Equal(t, 7, finalResp.Count)
 
@@ -543,7 +543,7 @@ func TestToGCPAnthropicTranslatorV1Tokenize_IntegrationScenarios(t *testing.T) {
 	})
 
 	t.Run("error flow - request error to response error", func(t *testing.T) {
-		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicTranslatorV1Tokenize)
+		translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicV1Tokenize)
 
 		// Test error handling
 		headers := map[string]string{
@@ -572,10 +572,10 @@ func TestToGCPAnthropicTranslatorV1Tokenize_IntegrationScenarios(t *testing.T) {
 }
 
 // Benchmark tests for performance
-func BenchmarkToGCPAnthropicTranslatorV1Tokenize_RequestBody(b *testing.B) {
-	translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicTranslatorV1Tokenize)
-	req := &tokenize.TokenizeRequestUnion{
-		TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+func BenchmarkToGCPAnthropicV1Tokenize_RequestBody(b *testing.B) {
+	translator := NewTokenizeToGCPAnthropicTranslator("").(*ToGCPAnthropicV1Tokenize)
+	req := &tokenize.RequestUnion{
+		ChatRequest: &tokenize.ChatRequest{
 			Model: "claude-3-opus-20240229",
 			Messages: []openai.ChatCompletionMessageParamUnion{
 				{
@@ -597,8 +597,8 @@ func BenchmarkToGCPAnthropicTranslatorV1Tokenize_RequestBody(b *testing.B) {
 	}
 }
 
-func BenchmarkToGCPAnthropicTranslatorV1Tokenize_ResponseBody(b *testing.B) {
-	translator := &ToGCPAnthropicTranslatorV1Tokenize{requestModel: "claude-3-opus-20240229"}
+func BenchmarkToGCPAnthropicV1Tokenize_ResponseBody(b *testing.B) {
+	translator := &ToGCPAnthropicV1Tokenize{requestModel: "claude-3-opus-20240229"}
 	anthropicResp := &anthropic.MessageTokensCount{
 		InputTokens: 100,
 	}

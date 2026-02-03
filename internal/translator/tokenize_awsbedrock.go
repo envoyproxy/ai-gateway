@@ -23,22 +23,22 @@ import (
 
 // NewTokenizeToAWSBedrockTranslator implements [Factory] for tokenize to AWS Bedrock translation.
 func NewTokenizeToAWSBedrockTranslator(modelNameOverride internalapi.ModelNameOverride) TokenizeTranslator {
-	return &ToAWSBedrockTranslatorV1Tokenize{
+	return &ToAWSBedrockV1Tokenize{
 		modelNameOverride: modelNameOverride,
 	}
 }
 
-// ToAWSBedrockTranslatorV1Tokenize translates tokenize API requests to AWS Bedrock format.
+// ToAWSBedrockV1Tokenize translates tokenize API requests to AWS Bedrock format.
 // Converts OpenAI-compatible tokenize requests to AWS Bedrock Converse API format for token counting.
 // Uses the Converse API with minimal token generation to extract input token usage statistics.
-type ToAWSBedrockTranslatorV1Tokenize struct {
+type ToAWSBedrockV1Tokenize struct {
 	modelNameOverride internalapi.ModelNameOverride
 	requestModel      internalapi.RequestModel
 }
 
 // tokenizeToBedrockCountTokens converts an OpenAI tokenize chat request to AWS Bedrock CountTokens format.
 // AWS Bedrock has a dedicated CountTokens endpoint that counts input tokens without generating any output.
-func (o *ToAWSBedrockTranslatorV1Tokenize) tokenizeToBedrockCountTokens(tokenizeChatReq *tokenize.TokenizeChatRequest) (*awsbedrock.CountTokensInput, error) {
+func (o *ToAWSBedrockV1Tokenize) tokenizeToBedrockCountTokens(tokenizeChatReq *tokenize.ChatRequest) (*awsbedrock.CountTokensInput, error) {
 	var bedrockReq awsbedrock.CountTokensInput
 
 	// Convert Chat Completion messages to Bedrock format
@@ -94,7 +94,7 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) tokenizeToBedrockCountTokens(tokenize
 }
 
 // Helper methods adapted from the existing AWS Bedrock chat completion translator
-func (o *ToAWSBedrockTranslatorV1Tokenize) openAIMessageToBedrockMessageRoleUser(
+func (o *ToAWSBedrockV1Tokenize) openAIMessageToBedrockMessageRoleUser(
 	openAiMessage *openai.ChatCompletionUserMessageParam, role string,
 ) (*awsbedrock.Message, error) {
 	if v, ok := openAiMessage.Content.Value.(string); ok {
@@ -123,7 +123,7 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) openAIMessageToBedrockMessageRoleUser
 	return nil, fmt.Errorf("unexpected content type")
 }
 
-func (o *ToAWSBedrockTranslatorV1Tokenize) openAIMessageToBedrockMessageRoleAssistant(
+func (o *ToAWSBedrockV1Tokenize) openAIMessageToBedrockMessageRoleAssistant(
 	openAiMessage *openai.ChatCompletionAssistantMessageParam, role string,
 ) (*awsbedrock.Message, error) {
 	bedrockMessage := &awsbedrock.Message{Role: role}
@@ -153,7 +153,7 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) openAIMessageToBedrockMessageRoleAssi
 	return bedrockMessage, nil
 }
 
-func (o *ToAWSBedrockTranslatorV1Tokenize) openAIMessageToBedrockMessageRoleSystem(
+func (o *ToAWSBedrockV1Tokenize) openAIMessageToBedrockMessageRoleSystem(
 	openAiMessage *openai.ChatCompletionSystemMessageParam, bedrockSystem *[]*awsbedrock.SystemContentBlock,
 ) error {
 	if v, ok := openAiMessage.Content.Value.(string); ok {
@@ -174,7 +174,7 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) openAIMessageToBedrockMessageRoleSyst
 	return nil
 }
 
-func (o *ToAWSBedrockTranslatorV1Tokenize) openAIMessageToBedrockMessageRoleTool(
+func (o *ToAWSBedrockV1Tokenize) openAIMessageToBedrockMessageRoleTool(
 	openAiMessage *openai.ChatCompletionToolMessageParam, role string,
 ) (*awsbedrock.Message, error) {
 	content := make([]*awsbedrock.ToolResultContentBlock, 0)
@@ -209,7 +209,7 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) openAIMessageToBedrockMessageRoleTool
 	}, nil
 }
 
-func (o *ToAWSBedrockTranslatorV1Tokenize) openAIToolsToBedrockToolConfiguration(tokenizeChatReq *tokenize.TokenizeChatRequest,
+func (o *ToAWSBedrockV1Tokenize) openAIToolsToBedrockToolConfiguration(tokenizeChatReq *tokenize.ChatRequest,
 	bedrockReq *awsbedrock.CountTokensInput,
 ) error {
 	bedrockReq.ToolConfig = &awsbedrock.ToolConfiguration{}
@@ -238,10 +238,10 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) openAIToolsToBedrockToolConfiguration
 	return nil
 }
 
-// bedrockCountTokensToTokenizeResponse converts an AWS Bedrock CountTokens response to OpenAI tokenize format.
+// bedrockCountTokensToResponse converts an AWS Bedrock CountTokens response to OpenAI tokenize format.
 // Extracts the input token count from the CountTokens response.
-func (o *ToAWSBedrockTranslatorV1Tokenize) bedrockCountTokensToTokenizeResponse(bedrockResp *awsbedrock.CountTokensResponse) (*tokenize.TokenizeResponse, error) {
-	tokenizeResp := &tokenize.TokenizeResponse{
+func (o *ToAWSBedrockV1Tokenize) bedrockCountTokensToResponse(bedrockResp *awsbedrock.CountTokensResponse) (*tokenize.Response, error) {
+	tokenizeResp := &tokenize.Response{
 		Count: bedrockResp.InputTokens,
 	}
 
@@ -250,7 +250,7 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) bedrockCountTokensToTokenizeResponse(
 
 // RequestBody implements [TokenizeTranslator.RequestBody] for AWS Bedrock.
 // This method translates an OpenAI tokenize request to AWS Bedrock CountTokens format.
-func (o *ToAWSBedrockTranslatorV1Tokenize) RequestBody(_ []byte, tokenizeReq *tokenize.TokenizeRequestUnion, _ bool) (
+func (o *ToAWSBedrockV1Tokenize) RequestBody(_ []byte, tokenizeReq *tokenize.RequestUnion, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Validate that the union has exactly one request type set
@@ -259,10 +259,10 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) RequestBody(_ []byte, tokenizeReq *to
 	}
 
 	// Store the request model to use as fallback for response model
-	if tokenizeReq.TokenizeChatRequest != nil {
-		o.requestModel = tokenizeReq.TokenizeChatRequest.Model
+	if tokenizeReq.ChatRequest != nil {
+		o.requestModel = tokenizeReq.ChatRequest.Model
 	} else {
-		return nil, nil, fmt.Errorf("only TokenizeChatRequest is supported for AWS Bedrock models")
+		return nil, nil, fmt.Errorf("only ChatRequest is supported for AWS Bedrock models")
 	}
 
 	if o.modelNameOverride != "" {
@@ -277,7 +277,7 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) RequestBody(_ []byte, tokenizeReq *to
 	encodedModelName := url.PathEscape(o.requestModel)
 	path := fmt.Sprintf(pathTemplate, encodedModelName)
 
-	bedrockReq, err := o.tokenizeToBedrockCountTokens(tokenizeReq.TokenizeChatRequest)
+	bedrockReq, err := o.tokenizeToBedrockCountTokens(tokenizeReq.ChatRequest)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error converting to Bedrock request: %w", err)
 	}
@@ -296,7 +296,7 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) RequestBody(_ []byte, tokenizeReq *to
 
 // ResponseError implements [TokenizeTranslator.ResponseError] for AWS Bedrock.
 // Translate AWS Bedrock exceptions to OpenAI error type.
-func (o *ToAWSBedrockTranslatorV1Tokenize) ResponseError(respHeaders map[string]string, body io.Reader) (
+func (o *ToAWSBedrockV1Tokenize) ResponseError(respHeaders map[string]string, body io.Reader) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	statusCode := respHeaders[statusHeaderName]
@@ -341,7 +341,7 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) ResponseError(respHeaders map[string]
 }
 
 // ResponseHeaders implements [TokenizeTranslator.ResponseHeaders].
-func (o *ToAWSBedrockTranslatorV1Tokenize) ResponseHeaders(map[string]string) (newHeaders []internalapi.Header, err error) {
+func (o *ToAWSBedrockV1Tokenize) ResponseHeaders(map[string]string) (newHeaders []internalapi.Header, err error) {
 	return nil, nil
 }
 
@@ -349,7 +349,7 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) ResponseHeaders(map[string]string) (n
 // This method translates an AWS Bedrock CountTokens response to OpenAI tokenize format.
 // AWS Bedrock uses static model execution without virtualization, where the requested model
 // is exactly what gets executed. We extract token count from the CountTokens response.
-func (o *ToAWSBedrockTranslatorV1Tokenize) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.TokenizeSpan) (
+func (o *ToAWSBedrockV1Tokenize) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.TokenizeSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	bedrockResp := &awsbedrock.CountTokensResponse{}
@@ -360,7 +360,7 @@ func (o *ToAWSBedrockTranslatorV1Tokenize) ResponseBody(_ map[string]string, bod
 	responseModel = o.requestModel
 
 	// Convert to OpenAI format.
-	openAIResp, err := o.bedrockCountTokensToTokenizeResponse(bedrockResp)
+	openAIResp, err := o.bedrockCountTokensToResponse(bedrockResp)
 	if err != nil {
 		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("error converting Bedrock response to OpenAI format: %w", err)
 	}

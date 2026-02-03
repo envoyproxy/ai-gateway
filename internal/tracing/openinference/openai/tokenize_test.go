@@ -58,13 +58,13 @@ func TestTokenizeRecorder_StartParams(t *testing.T) {
 
 	tests := []struct {
 		name string
-		req  *tokenize.TokenizeRequestUnion
+		req  *tokenize.RequestUnion
 		body []byte
 	}{
 		{
 			name: "chat request",
-			req: &tokenize.TokenizeRequestUnion{
-				TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+			req: &tokenize.RequestUnion{
+				ChatRequest: &tokenize.ChatRequest{
 					Model: "gpt-4",
 					Messages: []openai.ChatCompletionMessageParamUnion{
 						{
@@ -80,8 +80,8 @@ func TestTokenizeRecorder_StartParams(t *testing.T) {
 		},
 		{
 			name: "completion request",
-			req: &tokenize.TokenizeRequestUnion{
-				TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+			req: &tokenize.RequestUnion{
+				CompletionRequest: &tokenize.CompletionRequest{
 					Model:  "gpt-4",
 					Prompt: "Hello world",
 				},
@@ -108,7 +108,7 @@ func TestTokenizeRecorder_StartParams(t *testing.T) {
 func TestTokenizeRecorder_RecordRequest(t *testing.T) {
 	tests := []struct {
 		name           string
-		req            *tokenize.TokenizeRequestUnion
+		req            *tokenize.RequestUnion
 		body           string
 		config         *openinference.TraceConfig
 		expectedAttrs  map[string]interface{}
@@ -116,8 +116,8 @@ func TestTokenizeRecorder_RecordRequest(t *testing.T) {
 	}{
 		{
 			name: "chat request with all attributes",
-			req: &tokenize.TokenizeRequestUnion{
-				TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+			req: &tokenize.RequestUnion{
+				ChatRequest: &tokenize.ChatRequest{
 					Model:                "gpt-4",
 					AddGenerationPrompt:  true,
 					ContinueFinalMessage: false,
@@ -161,8 +161,8 @@ func TestTokenizeRecorder_RecordRequest(t *testing.T) {
 		},
 		{
 			name: "completion request",
-			req: &tokenize.TokenizeRequestUnion{
-				TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+			req: &tokenize.RequestUnion{
+				CompletionRequest: &tokenize.CompletionRequest{
 					Model:            "gpt-3.5-turbo",
 					Prompt:           "Complete this",
 					AddSpecialTokens: false,
@@ -188,8 +188,8 @@ func TestTokenizeRecorder_RecordRequest(t *testing.T) {
 		},
 		{
 			name: "hidden inputs",
-			req: &tokenize.TokenizeRequestUnion{
-				TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+			req: &tokenize.RequestUnion{
+				ChatRequest: &tokenize.ChatRequest{
 					Model: "gpt-4",
 					Messages: []openai.ChatCompletionMessageParamUnion{
 						{
@@ -252,7 +252,7 @@ func TestTokenizeRecorder_RecordResponse(t *testing.T) {
 	tests := []struct {
 		name       string
 		config     *openinference.TraceConfig
-		resp       *tokenize.TokenizeResponse
+		resp       *tokenize.Response
 		expectBody bool
 	}{
 		{
@@ -260,7 +260,7 @@ func TestTokenizeRecorder_RecordResponse(t *testing.T) {
 			config: &openinference.TraceConfig{
 				HideOutputs: false,
 			},
-			resp: &tokenize.TokenizeResponse{
+			resp: &tokenize.Response{
 				Count:  25,
 				Tokens: []int{1, 2, 3},
 			},
@@ -271,7 +271,7 @@ func TestTokenizeRecorder_RecordResponse(t *testing.T) {
 			config: &openinference.TraceConfig{
 				HideOutputs: true,
 			},
-			resp: &tokenize.TokenizeResponse{
+			resp: &tokenize.Response{
 				Count:  25,
 				Tokens: []int{1, 2, 3},
 			},
@@ -308,7 +308,7 @@ func TestTokenizeRecorder_RecordResponse(t *testing.T) {
 
 			if tt.expectBody {
 				// Should contain actual JSON response
-				var resp tokenize.TokenizeResponse
+				var resp tokenize.Response
 				err := json.Unmarshal([]byte(outputValue.(string)), &resp)
 				require.NoError(t, err, "Output value should be valid JSON")
 				assert.Equal(t, tt.resp.Count, resp.Count, "Response should match")

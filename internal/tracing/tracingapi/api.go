@@ -90,7 +90,7 @@ type (
 	// MessageTracer creates spans for Anthropic messages requests.
 	MessageTracer = RequestTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// TokenizeTracer creates spans for tokenize requests.
-	TokenizeTracer = RequestTracer[tokenize.TokenizeRequestUnion, tokenize.TokenizeResponse, struct{}]
+	TokenizeTracer = RequestTracer[tokenize.RequestUnion, tokenize.Response, struct{}]
 )
 
 type (
@@ -127,7 +127,7 @@ type (
 	// MessageSpan represents an Anthropic messages request span.
 	MessageSpan = Span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// TokenizeSpan represents a tokenize request span. The chunk type is unused and therefore set to struct{}.
-	TokenizeSpan = Span[tokenize.TokenizeResponse, struct{}]
+	TokenizeSpan = Span[tokenize.Response, struct{}]
 )
 
 type (
@@ -178,7 +178,7 @@ type (
 	// MessageRecorder records attributes to a span according to a semantic convention.
 	MessageRecorder = SpanRecorder[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// TokenizeRecorder records attributes to a span according to a semantic convention.
-	TokenizeRecorder = SpanRecorder[tokenize.TokenizeRequestUnion, tokenize.TokenizeResponse, struct{}]
+	TokenizeRecorder = SpanRecorder[tokenize.RequestUnion, tokenize.Response, struct{}]
 )
 
 // NoopChunkRecorder provides a no-op RecordResponseChunks implementation for recorders that don't emit streaming chunks.
@@ -277,7 +277,7 @@ type (
 	// NoopMessageTracer implements MessageTracer.
 	NoopMessageTracer = NoopTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// NoopTokenizeTracer implements TokenizeTracer.
-	NoopTokenizeTracer = NoopTracer[tokenize.TokenizeRequestUnion, tokenize.TokenizeResponse, struct{}]
+	NoopTokenizeTracer = NoopTracer[tokenize.RequestUnion, tokenize.Response, struct{}]
 )
 
 // StartSpanAndInjectHeaders implements RequestTracer.StartSpanAndInjectHeaders.

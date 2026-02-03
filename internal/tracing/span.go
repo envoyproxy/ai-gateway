@@ -57,5 +57,5 @@ type (
 	translationSpan     = span[openai.TranslationResponse, struct{}]
 	rerankSpan          = span[cohereschema.RerankV2Response, struct{}]
 	messageSpan         = span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
-	tokenizeSpan        = span[tokenize.TokenizeResponse, struct{}]
+	tokenizeSpan        = span[tokenize.Response, struct{}]
 )

@@ -23,13 +23,13 @@ import (
 
 // NewTokenizeTranslator implements [Factory] for OpenAI to OpenAI tokenize translation.
 func NewTokenizeTranslator(modelNameOverride internalapi.ModelNameOverride) TokenizeTranslator {
-	return &TranslatorV1Tokenize{modelNameOverride: modelNameOverride, path: "/tokenize"}
+	return &V1Tokenize{modelNameOverride: modelNameOverride, path: "/tokenize"}
 }
 
-// TranslatorV1Tokenize is a passthrough translator for OpenAI Tokenize API.
+// V1Tokenize is a passthrough translator for OpenAI Tokenize API.
 // It may apply model overrides but otherwise preserves the tokenization requests in OpenAI format.
 // Supports both chat and completion tokenize requests as defined in the tokenize API spec.
-type TranslatorV1Tokenize struct {
+type V1Tokenize struct {
 	modelNameOverride internalapi.ModelNameOverride
 	// requestModel serves as fallback for non-compliant backends that
 	// don't return model in responses, ensuring metrics/tracing always have a model.
@@ -41,7 +41,7 @@ type TranslatorV1Tokenize struct {
 // RequestBody implements [TokenizeTranslator.RequestBody].
 // This method validates the tokenize request union, applies model overrides if specified,
 // and sets the appropriate routing headers for the tokenize endpoint.
-func (o *TranslatorV1Tokenize) RequestBody(original []byte, req *tokenize.TokenizeRequestUnion, forceBodyMutation bool) (
+func (o *V1Tokenize) RequestBody(original []byte, req *tokenize.RequestUnion, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Validate that the union has exactly one request type set
@@ -51,10 +51,10 @@ func (o *TranslatorV1Tokenize) RequestBody(original []byte, req *tokenize.Tokeni
 
 	// Store the request model to use as fallback for response model
 	var model string
-	if req.TokenizeCompletionRequest != nil {
-		model = req.TokenizeCompletionRequest.Model
-	} else if req.TokenizeChatRequest != nil {
-		model = req.TokenizeChatRequest.Model
+	if req.CompletionRequest != nil {
+		model = req.CompletionRequest.Model
+	} else if req.ChatRequest != nil {
+		model = req.ChatRequest.Model
 	}
 
 	o.requestModel = model
@@ -84,7 +84,7 @@ func (o *TranslatorV1Tokenize) RequestBody(original []byte, req *tokenize.Tokeni
 // ResponseError implements [TokenizeTranslator.ResponseError].
 // For OpenAI-based backends we return the OpenAI error type as is.
 // If connection fails the error body is translated to OpenAI error type for events such as HTTP 503 or 504.
-func (o *TranslatorV1Tokenize) ResponseError(respHeaders map[string]string, body io.Reader) (
+func (o *V1Tokenize) ResponseError(respHeaders map[string]string, body io.Reader) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	statusCode := respHeaders[statusHeaderName]
@@ -116,17 +116,17 @@ func (o *TranslatorV1Tokenize) ResponseError(respHeaders map[string]string, body
 
 // ResponseHeaders implements [TokenizeTranslator.ResponseHeaders].
 // For OpenAI tokenize responses, no header modifications are needed so this returns nil.
-func (o *TranslatorV1Tokenize) ResponseHeaders(map[string]string) (newHeaders []internalapi.Header, err error) {
+func (o *V1Tokenize) ResponseHeaders(map[string]string) (newHeaders []internalapi.Header, err error) {
 	return nil, nil
 }
 
 // ResponseBody implements [TokenizeTranslator.ResponseBody].
 // OpenAI tokenize responses are passed through unchanged. The response does not contain
 // a model field, so we fallback to the request model for metrics and tracing consistency.
-func (o *TranslatorV1Tokenize) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.TokenizeSpan) (
+func (o *V1Tokenize) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.TokenizeSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
-	resp := &tokenize.TokenizeResponse{}
+	resp := &tokenize.Response{}
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}

@@ -135,7 +135,7 @@ type (
 	// OpenAIAudioTranslationTranslator translates the OpenAI's /v1/audio/translations endpoint.
 	OpenAIAudioTranslationTranslator = Translator[openai.TranslationRequest, tracingapi.TranslationSpan]
 	// TokenizeTranslator translates the tokenize endpoint.
-	TokenizeTranslator = Translator[tokenize.TokenizeRequestUnion, tracingapi.TokenizeSpan]
+	TokenizeTranslator = Translator[tokenize.RequestUnion, tracingapi.TokenizeSpan]
 )
 
 var (

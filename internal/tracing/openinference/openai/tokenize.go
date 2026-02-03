@@ -49,12 +49,12 @@ func NewTokenizeRecorder(config *openinference.TraceConfig) tracingapi.TokenizeR
 }
 
 // StartParams implements the same method as defined in tracingapi.TokenizeRecorder.
-func (r *TokenizeRecorder) StartParams(*tokenize.TokenizeRequestUnion, []byte) (spanName string, opts []trace.SpanStartOption) {
+func (r *TokenizeRecorder) StartParams(*tokenize.RequestUnion, []byte) (spanName string, opts []trace.SpanStartOption) {
 	return "Tokenize", startOptsTokenize
 }
 
 // RecordRequest implements the same method as defined in tracingapi.TokenizeRecorder.
-func (r *TokenizeRecorder) RecordRequest(span trace.Span, tokenizeReq *tokenize.TokenizeRequestUnion, body []byte) {
+func (r *TokenizeRecorder) RecordRequest(span trace.Span, tokenizeReq *tokenize.RequestUnion, body []byte) {
 	span.SetAttributes(buildTokenizeRequestAttributes(tokenizeReq, string(body), r.traceConfig)...)
 }
 
@@ -64,7 +64,7 @@ func (r *TokenizeRecorder) RecordResponseOnError(span trace.Span, statusCode int
 }
 
 // RecordResponse implements the same method as defined in tracingapi.TokenizeRecorder.
-func (r *TokenizeRecorder) RecordResponse(span trace.Span, resp *tokenize.TokenizeResponse) {
+func (r *TokenizeRecorder) RecordResponse(span trace.Span, resp *tokenize.Response) {
 	// Set output attributes.
 	var attrs []attribute.KeyValue
 	attrs = buildTokenizeResponseAttributes(resp, r.traceConfig)
@@ -82,7 +82,7 @@ func (r *TokenizeRecorder) RecordResponse(span trace.Span, resp *tokenize.Tokeni
 }
 
 // buildTokenizeRequestAttributes builds OpenInference attributes from a tokenize request.
-func buildTokenizeRequestAttributes(req *tokenize.TokenizeRequestUnion, body string, config *openinference.TraceConfig) []attribute.KeyValue {
+func buildTokenizeRequestAttributes(req *tokenize.RequestUnion, body string, config *openinference.TraceConfig) []attribute.KeyValue {
 	var attrs []attribute.KeyValue
 
 	// Set span kind to LLM since tokenization is an LLM operation
@@ -93,10 +93,10 @@ func buildTokenizeRequestAttributes(req *tokenize.TokenizeRequestUnion, body str
 
 	// Extract model name from the union
 	var model string
-	if req.TokenizeCompletionRequest != nil {
-		model = req.TokenizeCompletionRequest.Model
-	} else if req.TokenizeChatRequest != nil {
-		model = req.TokenizeChatRequest.Model
+	if req.CompletionRequest != nil {
+		model = req.CompletionRequest.Model
+	} else if req.ChatRequest != nil {
+		model = req.ChatRequest.Model
 	}
 	if model != "" {
 		attrs = append(attrs, attribute.String(openinference.LLMModelName, model))
@@ -111,23 +111,23 @@ func buildTokenizeRequestAttributes(req *tokenize.TokenizeRequestUnion, body str
 	}
 
 	// Add tokenization-specific attributes
-	if req.TokenizeCompletionRequest != nil {
+	if req.CompletionRequest != nil {
 		attrs = append(attrs,
 			attribute.String("tokenize.request_type", "completion"),
-			attribute.Bool("tokenize.add_special_tokens", req.TokenizeCompletionRequest.AddSpecialTokens),
+			attribute.Bool("tokenize.add_special_tokens", req.CompletionRequest.AddSpecialTokens),
 		)
-		if req.TokenizeCompletionRequest.ReturnTokenStrs != nil {
-			attrs = append(attrs, attribute.Bool("tokenize.return_token_strs", *req.TokenizeCompletionRequest.ReturnTokenStrs))
+		if req.CompletionRequest.ReturnTokenStrs != nil {
+			attrs = append(attrs, attribute.Bool("tokenize.return_token_strs", *req.CompletionRequest.ReturnTokenStrs))
 		}
-	} else if req.TokenizeChatRequest != nil {
+	} else if req.ChatRequest != nil {
 		attrs = append(attrs,
 			attribute.String("tokenize.request_type", "chat"),
 			attribute.Bool("tokenize.add_generation_prompt", req.AddGenerationPrompt),
 			attribute.Bool("tokenize.continue_final_message", req.ContinueFinalMessage),
-			attribute.Bool("tokenize.add_special_tokens", req.TokenizeChatRequest.AddSpecialTokens),
+			attribute.Bool("tokenize.add_special_tokens", req.ChatRequest.AddSpecialTokens),
 		)
-		if req.TokenizeChatRequest.ReturnTokenStrs != nil {
-			attrs = append(attrs, attribute.Bool("tokenize.return_token_strs", *req.TokenizeChatRequest.ReturnTokenStrs))
+		if req.ChatRequest.ReturnTokenStrs != nil {
+			attrs = append(attrs, attribute.Bool("tokenize.return_token_strs", *req.ChatRequest.ReturnTokenStrs))
 		}
 		if len(req.Messages) > 0 {
 			attrs = append(attrs, attribute.Int("tokenize.message_count", len(req.Messages)))
@@ -138,7 +138,7 @@ func buildTokenizeRequestAttributes(req *tokenize.TokenizeRequestUnion, body str
 }
 
 // buildTokenizeResponseAttributes builds OpenInference attributes from a tokenize response.
-func buildTokenizeResponseAttributes(resp *tokenize.TokenizeResponse, _ *openinference.TraceConfig) []attribute.KeyValue {
+func buildTokenizeResponseAttributes(resp *tokenize.Response, _ *openinference.TraceConfig) []attribute.KeyValue {
 	var attrs []attribute.KeyValue
 
 	// Add tokenization results

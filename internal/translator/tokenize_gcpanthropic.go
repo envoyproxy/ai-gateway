@@ -29,15 +29,15 @@ const (
 
 // NewTokenizeToGCPAnthropicTranslator implements [Factory] for tokenize to GCP Anthropic translation.
 func NewTokenizeToGCPAnthropicTranslator(modelNameOverride internalapi.ModelNameOverride) TokenizeTranslator {
-	return &ToGCPAnthropicTranslatorV1Tokenize{
+	return &ToGCPAnthropicV1Tokenize{
 		modelNameOverride: modelNameOverride,
 	}
 }
 
-// ToGCPAnthropicTranslatorV1Tokenize translates tokenize API requests to GCP Anthropic format.
+// ToGCPAnthropicV1Tokenize translates tokenize API requests to GCP Anthropic format.
 // Converts OpenAI-compatible tokenize requests to GCP Anthropic Messages API format for token counting.
 // Uses the count-tokens model with rawPredict method for token counting.
-type ToGCPAnthropicTranslatorV1Tokenize struct {
+type ToGCPAnthropicV1Tokenize struct {
 	modelNameOverride internalapi.ModelNameOverride
 	requestModel      internalapi.RequestModel
 	apiVersion        string
@@ -46,7 +46,7 @@ type ToGCPAnthropicTranslatorV1Tokenize struct {
 // tokenizeToAnthropicMessages converts an OpenAI tokenize chat request to GCP Anthropic token counting format.
 // Since Anthropic doesn't have a dedicated tokenization endpoint, we use the MessageCountTokens API
 // to count input tokens accurately without needing to generate any output.
-func (o *ToGCPAnthropicTranslatorV1Tokenize) tokenizeToAnthropicMessages(tokenizeChatReq *tokenize.TokenizeChatRequest, requestModel internalapi.RequestModel) (*anthropic.MessageCountTokensParams, error) {
+func (o *ToGCPAnthropicV1Tokenize) tokenizeToAnthropicMessages(tokenizeChatReq *tokenize.ChatRequest, requestModel internalapi.RequestModel) (*anthropic.MessageCountTokensParams, error) {
 	// Convert OpenAI messages to Anthropic format
 	messages, systemBlocks, err := openAIToAnthropicMessages(tokenizeChatReq.Messages)
 	if err != nil {
@@ -99,10 +99,10 @@ func (o *ToGCPAnthropicTranslatorV1Tokenize) tokenizeToAnthropicMessages(tokeniz
 	return countTokensParam, nil
 }
 
-// anthropicTokensCountToTokenizeResponse converts an Anthropic MessageTokensCount response to OpenAI tokenize format.
+// anthropicTokensCountToResponse converts an Anthropic MessageTokensCount response to OpenAI tokenize format.
 // Extracts the input token count from the token counting response.
-func (o *ToGCPAnthropicTranslatorV1Tokenize) anthropicTokensCountToTokenizeResponse(anthropicResp *anthropic.MessageTokensCount) (*tokenize.TokenizeResponse, error) {
-	tokenizeResp := &tokenize.TokenizeResponse{
+func (o *ToGCPAnthropicV1Tokenize) anthropicTokensCountToResponse(anthropicResp *anthropic.MessageTokensCount) (*tokenize.Response, error) {
+	tokenizeResp := &tokenize.Response{
 		Count: int(anthropicResp.InputTokens),
 	}
 
@@ -112,7 +112,7 @@ func (o *ToGCPAnthropicTranslatorV1Tokenize) anthropicTokensCountToTokenizeRespo
 // RequestBody implements [TokenizeTranslator.RequestBody] for GCP Anthropic.
 // This method translates an OpenAI tokenize request to GCP Anthropic Messages format.
 // TODO: check whether I need to add other fields.
-func (o *ToGCPAnthropicTranslatorV1Tokenize) RequestBody(_ []byte, tokenizeReq *tokenize.TokenizeRequestUnion, _ bool) (
+func (o *ToGCPAnthropicV1Tokenize) RequestBody(_ []byte, tokenizeReq *tokenize.RequestUnion, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Validate that the union has exactly one request type set
@@ -121,11 +121,11 @@ func (o *ToGCPAnthropicTranslatorV1Tokenize) RequestBody(_ []byte, tokenizeReq *
 	}
 
 	// Store the request model to use as fallback for response model
-	// Support both TokenizeChatRequest and TokenizeCompletionRequest
-	if tokenizeReq.TokenizeChatRequest != nil {
-		o.requestModel = tokenizeReq.TokenizeChatRequest.Model
+	// Support both ChatRequest and CompletionRequest
+	if tokenizeReq.ChatRequest != nil {
+		o.requestModel = tokenizeReq.ChatRequest.Model
 	} else {
-		return nil, nil, fmt.Errorf("only TokenizeChatRequest is supported for gcp anthropic models")
+		return nil, nil, fmt.Errorf("only ChatRequest is supported for gcp anthropic models")
 	}
 
 	if o.modelNameOverride != "" {
@@ -137,7 +137,7 @@ func (o *ToGCPAnthropicTranslatorV1Tokenize) RequestBody(_ []byte, tokenizeReq *
 	// Use countTokens method as per: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude/count-tokens
 	path := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, "count-tokens", gcpMethodRawPredict)
 
-	anthropicReq, err := o.tokenizeToAnthropicMessages(tokenizeReq.TokenizeChatRequest, o.requestModel)
+	anthropicReq, err := o.tokenizeToAnthropicMessages(tokenizeReq.ChatRequest, o.requestModel)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error converting to Anthropic request: %w", err)
 	}
@@ -166,14 +166,14 @@ func (o *ToGCPAnthropicTranslatorV1Tokenize) RequestBody(_ []byte, tokenizeReq *
 
 // ResponseError implements [TokenizeTranslator.ResponseError] for GCP Anthropic.
 // Translate GCP Anthropic exceptions to OpenAI error type.
-func (o *ToGCPAnthropicTranslatorV1Tokenize) ResponseError(respHeaders map[string]string, body io.Reader) (
+func (o *ToGCPAnthropicV1Tokenize) ResponseError(respHeaders map[string]string, body io.Reader) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	return translateGCPAnthropicErrorToOpenAI(respHeaders, body)
 }
 
 // ResponseHeaders implements [TokenizeTranslator.ResponseHeaders].
-func (o *ToGCPAnthropicTranslatorV1Tokenize) ResponseHeaders(map[string]string) (newHeaders []internalapi.Header, err error) {
+func (o *ToGCPAnthropicV1Tokenize) ResponseHeaders(map[string]string) (newHeaders []internalapi.Header, err error) {
 	return nil, nil
 }
 
@@ -181,7 +181,7 @@ func (o *ToGCPAnthropicTranslatorV1Tokenize) ResponseHeaders(map[string]string) 
 // This method translates a GCP Anthropic MessageTokensCount response to OpenAI tokenize format.
 // GCP Anthropic uses deterministic model mapping without virtualization, where the requested model
 // is exactly what gets executed. We extract token count from the token counting response.
-func (o *ToGCPAnthropicTranslatorV1Tokenize) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.TokenizeSpan) (
+func (o *ToGCPAnthropicV1Tokenize) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.TokenizeSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
 	anthropicResp := &anthropic.MessageTokensCount{}
@@ -192,7 +192,7 @@ func (o *ToGCPAnthropicTranslatorV1Tokenize) ResponseBody(_ map[string]string, b
 	responseModel = o.requestModel
 
 	// Convert to OpenAI format.
-	openAIResp, err := o.anthropicTokensCountToTokenizeResponse(anthropicResp)
+	openAIResp, err := o.anthropicTokensCountToResponse(anthropicResp)
 	if err != nil {
 		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("error converting Anthropic response to OpenAI format: %w", err)
 	}

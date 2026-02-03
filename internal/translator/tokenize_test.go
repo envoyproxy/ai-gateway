@@ -25,17 +25,17 @@ func TestNewTokenizeTranslator(t *testing.T) {
 	translator := NewTokenizeTranslator("override-model")
 
 	require.NotNil(t, translator)
-	concrete := translator.(*TranslatorV1Tokenize)
+	concrete := translator.(*V1Tokenize)
 	require.Equal(t, "override-model", concrete.modelNameOverride)
 	require.Equal(t, "/tokenize", concrete.path)
 }
 
 func TestTokenizeTranslator_RequestBody(t *testing.T) {
 	t.Run("completion request - no model override", func(t *testing.T) {
-		translator := NewTokenizeTranslator("").(*TranslatorV1Tokenize)
+		translator := NewTokenizeTranslator("").(*V1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+		req := &tokenize.RequestUnion{
+			CompletionRequest: &tokenize.CompletionRequest{
 				Model:  "gpt-4",
 				Prompt: "Hello world",
 			},
@@ -51,10 +51,10 @@ func TestTokenizeTranslator_RequestBody(t *testing.T) {
 	})
 
 	t.Run("chat request - no model override", func(t *testing.T) {
-		translator := NewTokenizeTranslator("").(*TranslatorV1Tokenize)
+		translator := NewTokenizeTranslator("").(*V1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "gpt-4",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{}, // Mock message union
@@ -72,11 +72,11 @@ func TestTokenizeTranslator_RequestBody(t *testing.T) {
 	})
 
 	t.Run("completion request - with model override", func(t *testing.T) {
-		translator := NewTokenizeTranslator("override-model").(*TranslatorV1Tokenize)
+		translator := NewTokenizeTranslator("override-model").(*V1Tokenize)
 
 		originalJSON := `{"model": "gpt-4", "prompt": "Hello world"}`
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+		req := &tokenize.RequestUnion{
+			CompletionRequest: &tokenize.CompletionRequest{
 				Model:  "gpt-4",
 				Prompt: "Hello world",
 			},
@@ -100,11 +100,11 @@ func TestTokenizeTranslator_RequestBody(t *testing.T) {
 	})
 
 	t.Run("chat request - with model override", func(t *testing.T) {
-		translator := NewTokenizeTranslator("override-model").(*TranslatorV1Tokenize)
+		translator := NewTokenizeTranslator("override-model").(*V1Tokenize)
 
 		originalJSON := `{"model": "gpt-4", "messages": [{"role": "user", "content": "Hello"}]}`
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model: "gpt-4",
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{}, // Mock message union
@@ -130,11 +130,11 @@ func TestTokenizeTranslator_RequestBody(t *testing.T) {
 	})
 
 	t.Run("forced body mutation", func(t *testing.T) {
-		translator := NewTokenizeTranslator("").(*TranslatorV1Tokenize)
+		translator := NewTokenizeTranslator("").(*V1Tokenize)
 
 		original := []byte(`{"model": "gpt-4", "prompt": "Hello"}`)
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+		req := &tokenize.RequestUnion{
+			CompletionRequest: &tokenize.CompletionRequest{
 				Model:  "gpt-4",
 				Prompt: "Hello",
 			},
@@ -151,10 +151,10 @@ func TestTokenizeTranslator_RequestBody(t *testing.T) {
 	})
 
 	t.Run("empty model string - completion request", func(t *testing.T) {
-		translator := NewTokenizeTranslator("").(*TranslatorV1Tokenize)
+		translator := NewTokenizeTranslator("").(*V1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+		req := &tokenize.RequestUnion{
+			CompletionRequest: &tokenize.CompletionRequest{
 				Model:  "", // Empty model string should be handled gracefully
 				Prompt: "Hello world",
 			},
@@ -170,10 +170,10 @@ func TestTokenizeTranslator_RequestBody(t *testing.T) {
 	})
 
 	t.Run("empty model string - chat request", func(t *testing.T) {
-		translator := NewTokenizeTranslator("").(*TranslatorV1Tokenize)
+		translator := NewTokenizeTranslator("").(*V1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model:    "", // Empty model string should be handled gracefully
 				Messages: []openai.ChatCompletionMessageParamUnion{{}},
 			},
@@ -188,9 +188,9 @@ func TestTokenizeTranslator_RequestBody(t *testing.T) {
 	})
 
 	t.Run("empty union - no request type set", func(t *testing.T) {
-		translator := NewTokenizeTranslator("").(*TranslatorV1Tokenize)
+		translator := NewTokenizeTranslator("").(*V1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
+		req := &tokenize.RequestUnion{
 			// Neither completion nor chat request set
 		}
 
@@ -205,14 +205,14 @@ func TestTokenizeTranslator_RequestBody(t *testing.T) {
 	})
 
 	t.Run("both union types set - invalid state", func(t *testing.T) {
-		translator := NewTokenizeTranslator("").(*TranslatorV1Tokenize)
+		translator := NewTokenizeTranslator("").(*V1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+		req := &tokenize.RequestUnion{
+			CompletionRequest: &tokenize.CompletionRequest{
 				Model:  "gpt-4",
 				Prompt: "Hello",
 			},
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+			ChatRequest: &tokenize.ChatRequest{
 				Model:    "gpt-4",
 				Messages: []openai.ChatCompletionMessageParamUnion{{}},
 			},
@@ -291,7 +291,7 @@ func TestTokenizeTranslator_ResponseError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			translator := &TranslatorV1Tokenize{}
+			translator := &V1Tokenize{}
 			headers, newBody, err := translator.ResponseError(tt.responseHeaders, tt.input)
 			require.NoError(t, err)
 
@@ -313,7 +313,7 @@ func TestTokenizeTranslator_ResponseError(t *testing.T) {
 			require.NotNil(t, headers)
 			require.Len(t, headers, 2)
 			require.Equal(t, contentTypeHeaderName, headers[0].Key())
-			require.Equal(t, jsonContentType, headers[0].Value())
+			require.Equal(t, jsonContentType, headers[0].Value()) //nolint:testifylint // comparing header value, not JSON
 			require.Equal(t, contentLengthHeaderName, headers[1].Key())
 			require.Equal(t, strconv.Itoa(len(newBody)), headers[1].Value())
 
@@ -327,7 +327,7 @@ func TestTokenizeTranslator_ResponseError(t *testing.T) {
 }
 
 func TestTokenizeTranslator_ResponseHeaders(t *testing.T) {
-	translator := &TranslatorV1Tokenize{}
+	translator := &V1Tokenize{}
 
 	headers, err := translator.ResponseHeaders(map[string]string{
 		"content-type":  "application/json",
@@ -340,9 +340,9 @@ func TestTokenizeTranslator_ResponseHeaders(t *testing.T) {
 
 func TestTokenizeTranslator_ResponseBody(t *testing.T) {
 	t.Run("valid response", func(t *testing.T) {
-		translator := &TranslatorV1Tokenize{requestModel: "gpt-4"}
+		translator := &V1Tokenize{requestModel: "gpt-4"}
 
-		response := tokenize.TokenizeResponse{
+		response := tokenize.Response{
 			Count:       15,
 			MaxModelLen: 4096,
 			Tokens:      []int{1, 2, 3, 4, 5},
@@ -371,9 +371,9 @@ func TestTokenizeTranslator_ResponseBody(t *testing.T) {
 	})
 
 	t.Run("response with fallback model", func(t *testing.T) {
-		translator := &TranslatorV1Tokenize{requestModel: "gpt-4-turbo"}
+		translator := &V1Tokenize{requestModel: "gpt-4-turbo"}
 
-		response := tokenize.TokenizeResponse{
+		response := tokenize.Response{
 			Count:       42,
 			MaxModelLen: 8192,
 			Tokens:      []int{100, 101, 102},
@@ -402,7 +402,7 @@ func TestTokenizeTranslator_ResponseBody(t *testing.T) {
 	})
 
 	t.Run("invalid JSON response", func(t *testing.T) {
-		translator := &TranslatorV1Tokenize{requestModel: "gpt-4"}
+		translator := &V1Tokenize{requestModel: "gpt-4"}
 
 		invalidJSON := "invalid json response"
 
@@ -418,9 +418,9 @@ func TestTokenizeTranslator_ResponseBody(t *testing.T) {
 	})
 
 	t.Run("empty response", func(t *testing.T) {
-		translator := &TranslatorV1Tokenize{requestModel: "gpt-4"}
+		translator := &V1Tokenize{requestModel: "gpt-4"}
 
-		emptyResponse := tokenize.TokenizeResponse{}
+		emptyResponse := tokenize.Response{}
 		responseJSON, err := json.Marshal(emptyResponse)
 		require.NoError(t, err)
 
@@ -442,7 +442,7 @@ func TestTokenizeTranslator_ResponseBody(t *testing.T) {
 	})
 
 	t.Run("response body read error", func(t *testing.T) {
-		translator := &TranslatorV1Tokenize{}
+		translator := &V1Tokenize{}
 
 		// Create a reader that will fail
 		pr, pw := io.Pipe()
@@ -457,11 +457,11 @@ func TestTokenizeTranslator_ResponseBody(t *testing.T) {
 // Test the model override behavior specifically
 func TestTokenizeTranslator_ModelOverride(t *testing.T) {
 	t.Run("completion request with override", func(t *testing.T) {
-		translator := NewTokenizeTranslator("custom-model").(*TranslatorV1Tokenize)
+		translator := NewTokenizeTranslator("custom-model").(*V1Tokenize)
 
 		originalJSON := `{"model": "gpt-4", "prompt": "Test prompt", "add_special_tokens": true}`
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+		req := &tokenize.RequestUnion{
+			CompletionRequest: &tokenize.CompletionRequest{
 				Model:            "gpt-4",
 				Prompt:           "Test prompt",
 				AddSpecialTokens: true,
@@ -473,7 +473,7 @@ func TestTokenizeTranslator_ModelOverride(t *testing.T) {
 		require.NotNil(t, body)
 
 		// Verify model was overridden in the body
-		var newReq tokenize.TokenizeCompletionRequest
+		var newReq tokenize.CompletionRequest
 		require.NoError(t, json.Unmarshal(body, &newReq))
 		require.Equal(t, "custom-model", newReq.Model)
 		require.Equal(t, "Test prompt", newReq.Prompt)
@@ -488,11 +488,11 @@ func TestTokenizeTranslator_ModelOverride(t *testing.T) {
 	})
 
 	t.Run("chat request with override", func(t *testing.T) {
-		translator := NewTokenizeTranslator("custom-chat-model").(*TranslatorV1Tokenize)
+		translator := NewTokenizeTranslator("custom-chat-model").(*V1Tokenize)
 
 		originalJSON := `{"model": "gpt-4", "messages": [{"role": "user", "content": "Hello"}], "return_token_strs": true}`
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		req := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model:           "gpt-4",
 				Messages:        []openai.ChatCompletionMessageParamUnion{{}},
 				ReturnTokenStrs: ptr.To(true),
@@ -504,7 +504,7 @@ func TestTokenizeTranslator_ModelOverride(t *testing.T) {
 		require.NotNil(t, body)
 
 		// Verify model was overridden in the body
-		var newReq tokenize.TokenizeChatRequest
+		var newReq tokenize.ChatRequest
 		require.NoError(t, json.Unmarshal(body, &newReq))
 		require.Equal(t, "custom-chat-model", newReq.Model)
 		require.True(t, *newReq.ReturnTokenStrs)
@@ -519,10 +519,10 @@ func TestTokenizeTranslator_ModelOverride(t *testing.T) {
 // Test edge cases and error conditions
 func TestTokenizeTranslator_EdgeCases(t *testing.T) {
 	t.Run("path configuration", func(t *testing.T) {
-		translator := NewTokenizeTranslator("").(*TranslatorV1Tokenize)
+		translator := NewTokenizeTranslator("").(*V1Tokenize)
 		require.Equal(t, "/tokenize", translator.path)
 
-		translatorWithModel := NewTokenizeTranslator("test-model").(*TranslatorV1Tokenize)
+		translatorWithModel := NewTokenizeTranslator("test-model").(*V1Tokenize)
 		require.Equal(t, "/tokenize", translatorWithModel.path)
 	})
 }
@@ -530,9 +530,9 @@ func TestTokenizeTranslator_EdgeCases(t *testing.T) {
 // Test tracing integration
 func TestTokenizeTranslator_Tracing(t *testing.T) {
 	t.Run("span recording", func(t *testing.T) {
-		translator := &TranslatorV1Tokenize{requestModel: "gpt-4"}
+		translator := &V1Tokenize{requestModel: "gpt-4"}
 
-		response := tokenize.TokenizeResponse{
+		response := tokenize.Response{
 			Count:       10,
 			MaxModelLen: 4096,
 			Tokens:      []int{1, 2, 3},
@@ -549,9 +549,9 @@ func TestTokenizeTranslator_Tracing(t *testing.T) {
 	})
 
 	t.Run("nil span handling", func(t *testing.T) {
-		translator := &TranslatorV1Tokenize{requestModel: "gpt-4"}
+		translator := &V1Tokenize{requestModel: "gpt-4"}
 
-		response := tokenize.TokenizeResponse{Count: 5}
+		response := tokenize.Response{Count: 5}
 		responseJSON, err := json.Marshal(response)
 		require.NoError(t, err)
 
@@ -564,10 +564,10 @@ func TestTokenizeTranslator_Tracing(t *testing.T) {
 // Test the identified bugs and areas for improvement
 func TestTokenizeTranslator_IdentifiedIssues(t *testing.T) {
 	t.Run("ISSUE RESOLVED: model field is now required", func(t *testing.T) {
-		translator := NewTokenizeTranslator("").(*TranslatorV1Tokenize)
+		translator := NewTokenizeTranslator("").(*V1Tokenize)
 
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+		req := &tokenize.RequestUnion{
+			CompletionRequest: &tokenize.CompletionRequest{
 				Model:  "test-model", // Model is now required field
 				Prompt: "Test",
 			},
@@ -582,9 +582,9 @@ func TestTokenizeTranslator_IdentifiedIssues(t *testing.T) {
 	})
 
 	t.Run("IMPROVEMENT: token usage extraction missing", func(t *testing.T) {
-		translator := &TranslatorV1Tokenize{}
+		translator := &V1Tokenize{}
 
-		response := tokenize.TokenizeResponse{
+		response := tokenize.Response{
 			Count:  25, // This should be used for token metrics
 			Tokens: []int{1, 2, 3, 4, 5},
 		}
@@ -610,15 +610,15 @@ func TestTokenizeTranslator_IdentifiedIssues(t *testing.T) {
 	})
 
 	t.Run("union validation now implemented", func(t *testing.T) {
-		translator := NewTokenizeTranslator("").(*TranslatorV1Tokenize)
+		translator := NewTokenizeTranslator("").(*V1Tokenize)
 
 		// Test 1: Invalid union state - both types set
-		req := &tokenize.TokenizeRequestUnion{
-			TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+		req := &tokenize.RequestUnion{
+			CompletionRequest: &tokenize.CompletionRequest{
 				Model:  "gpt-4",
 				Prompt: "Hello",
 			},
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+			ChatRequest: &tokenize.ChatRequest{
 				Model:    "gpt-3.5-turbo",
 				Messages: []openai.ChatCompletionMessageParamUnion{{}},
 			},
@@ -630,14 +630,14 @@ func TestTokenizeTranslator_IdentifiedIssues(t *testing.T) {
 		require.Contains(t, err.Error(), "only one request type can be set")
 
 		// Test 2: Invalid union state - no types set
-		emptyReq := &tokenize.TokenizeRequestUnion{}
+		emptyReq := &tokenize.RequestUnion{}
 		_, _, err = translator.RequestBody(nil, emptyReq, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "one request type must be set")
 
 		// Test 3: Valid union state - only completion set
-		validCompletionReq := &tokenize.TokenizeRequestUnion{
-			TokenizeCompletionRequest: &tokenize.TokenizeCompletionRequest{
+		validCompletionReq := &tokenize.RequestUnion{
+			CompletionRequest: &tokenize.CompletionRequest{
 				Model:  "gpt-4",
 				Prompt: "Hello",
 			},
@@ -646,8 +646,8 @@ func TestTokenizeTranslator_IdentifiedIssues(t *testing.T) {
 		require.NoError(t, err)
 
 		// Test 4: Valid union state - only chat set
-		validChatReq := &tokenize.TokenizeRequestUnion{
-			TokenizeChatRequest: &tokenize.TokenizeChatRequest{
+		validChatReq := &tokenize.RequestUnion{
+			ChatRequest: &tokenize.ChatRequest{
 				Model:    "gpt-4",
 				Messages: []openai.ChatCompletionMessageParamUnion{{}},
 			},

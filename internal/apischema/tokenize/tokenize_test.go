@@ -15,17 +15,17 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
-func TestTokenizeCompletionRequest_JSON(t *testing.T) {
+func TestCompletionRequest_JSON(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected TokenizeCompletionRequest
+		expected CompletionRequest
 		wantErr  bool
 	}{
 		{
 			name:  "basic completion request",
 			input: `{"prompt": "Hello world", "model": "gpt-4"}`,
-			expected: TokenizeCompletionRequest{
+			expected: CompletionRequest{
 				Prompt: "Hello world",
 				Model:  "gpt-4",
 			},
@@ -33,7 +33,7 @@ func TestTokenizeCompletionRequest_JSON(t *testing.T) {
 		{
 			name:  "completion request with all fields",
 			input: `{"prompt": "Hello", "model": "gpt-4", "add_special_tokens": true, "return_token_strs": true}`,
-			expected: TokenizeCompletionRequest{
+			expected: CompletionRequest{
 				Prompt:           "Hello",
 				Model:            "gpt-4",
 				AddSpecialTokens: true,
@@ -43,14 +43,14 @@ func TestTokenizeCompletionRequest_JSON(t *testing.T) {
 		{
 			name:  "completion request with defaults",
 			input: `{"prompt": "Hello"}`,
-			expected: TokenizeCompletionRequest{
+			expected: CompletionRequest{
 				Prompt: "Hello",
 			},
 		},
 		{
 			name:  "completion request missing prompt",
 			input: `{"model": "gpt-4"}`,
-			expected: TokenizeCompletionRequest{
+			expected: CompletionRequest{
 				Model:  "gpt-4",
 				Prompt: "", // Empty prompt - should be validated elsewhere
 			},
@@ -60,7 +60,7 @@ func TestTokenizeCompletionRequest_JSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var req TokenizeCompletionRequest
+			var req CompletionRequest
 			err := json.Unmarshal([]byte(tt.input), &req)
 
 			if tt.wantErr {
@@ -75,7 +75,7 @@ func TestTokenizeCompletionRequest_JSON(t *testing.T) {
 			data, err := json.Marshal(req)
 			require.NoError(t, err)
 
-			var req2 TokenizeCompletionRequest
+			var req2 CompletionRequest
 			err = json.Unmarshal(data, &req2)
 			require.NoError(t, err)
 			assert.Equal(t, req, req2)
@@ -83,11 +83,11 @@ func TestTokenizeCompletionRequest_JSON(t *testing.T) {
 	}
 }
 
-func TestTokenizeChatRequest_JSON(t *testing.T) {
+func TestChatRequest_JSON(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected TokenizeChatRequest
+		expected ChatRequest
 		wantErr  bool
 	}{
 		{
@@ -96,7 +96,7 @@ func TestTokenizeChatRequest_JSON(t *testing.T) {
 				"messages": [{"role": "user", "content": "Hello"}],
 				"model": "gpt-4"
 			}`,
-			expected: TokenizeChatRequest{
+			expected: ChatRequest{
 				Model:    "gpt-4",
 				Messages: []openai.ChatCompletionMessageParamUnion{},
 			},
@@ -124,7 +124,7 @@ func TestTokenizeChatRequest_JSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var req TokenizeChatRequest
+			var req ChatRequest
 			err := json.Unmarshal([]byte(tt.input), &req)
 
 			if tt.wantErr {
@@ -142,16 +142,16 @@ func TestTokenizeChatRequest_JSON(t *testing.T) {
 	}
 }
 
-func TestTokenizeChatRequest_Validate(t *testing.T) {
+func TestChatRequest_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		request TokenizeChatRequest
+		request ChatRequest
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name: "valid request",
-			request: TokenizeChatRequest{
+			request: ChatRequest{
 				AddGenerationPrompt:  true,
 				ContinueFinalMessage: false,
 			},
@@ -159,7 +159,7 @@ func TestTokenizeChatRequest_Validate(t *testing.T) {
 		},
 		{
 			name: "conflicting flags",
-			request: TokenizeChatRequest{
+			request: ChatRequest{
 				AddGenerationPrompt:  true,
 				ContinueFinalMessage: true,
 			},
@@ -168,7 +168,7 @@ func TestTokenizeChatRequest_Validate(t *testing.T) {
 		},
 		{
 			name: "continue final message only",
-			request: TokenizeChatRequest{
+			request: ChatRequest{
 				AddGenerationPrompt:  false,
 				ContinueFinalMessage: true,
 			},
@@ -190,7 +190,7 @@ func TestTokenizeChatRequest_Validate(t *testing.T) {
 	}
 }
 
-func TestTokenizeRequestUnion_JSON(t *testing.T) {
+func TestRequestUnion_JSON(t *testing.T) {
 	tests := []struct {
 		name         string
 		input        string
@@ -211,7 +211,7 @@ func TestTokenizeRequestUnion_JSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var union TokenizeRequestUnion
+			var union RequestUnion
 			err := json.Unmarshal([]byte(tt.input), &union)
 			require.NoError(t, err)
 
@@ -223,15 +223,15 @@ func TestTokenizeRequestUnion_JSON(t *testing.T) {
 	}
 }
 
-func TestTokenizeResponse_JSON(t *testing.T) {
+func TestResponse_JSON(t *testing.T) {
 	tests := []struct {
 		name     string
-		response TokenizeResponse
+		response Response
 		wantJSON string
 	}{
 		{
 			name: "basic response",
-			response: TokenizeResponse{
+			response: Response{
 				Count:       10,
 				MaxModelLen: 4096,
 				Tokens:      []int{1, 2, 3, 4, 5},
@@ -240,7 +240,7 @@ func TestTokenizeResponse_JSON(t *testing.T) {
 		},
 		{
 			name: "response with token strings",
-			response: TokenizeResponse{
+			response: Response{
 				Count:       3,
 				MaxModelLen: 2048,
 				Tokens:      []int{1, 2, 3},
@@ -257,7 +257,7 @@ func TestTokenizeResponse_JSON(t *testing.T) {
 			assert.JSONEq(t, tt.wantJSON, string(data))
 
 			// Test roundtrip
-			var response2 TokenizeResponse
+			var response2 Response
 			err = json.Unmarshal(data, &response2)
 			require.NoError(t, err)
 			assert.Equal(t, tt.response, response2)
@@ -392,8 +392,8 @@ func TestTokenizerInfoResponse_MarshalJSON(t *testing.T) {
 // Test edge cases and error conditions
 func TestTokenizeRequestValidation(t *testing.T) {
 	t.Run("empty prompt should be caught by validation", func(_ *testing.T) {
-		// This highlights the need for validation in TokenizeCompletionRequest
-		req := TokenizeCompletionRequest{
+		// This highlights the need for validation in CompletionRequest
+		req := CompletionRequest{
 			Prompt: "",
 			Model:  "gpt-4",
 		}
@@ -404,8 +404,8 @@ func TestTokenizeRequestValidation(t *testing.T) {
 	})
 
 	t.Run("empty messages should be caught by validation", func(t *testing.T) {
-		// This highlights the need for validation in TokenizeChatRequest
-		req := TokenizeChatRequest{
+		// This highlights the need for validation in ChatRequest
+		req := ChatRequest{
 			Messages: []openai.ChatCompletionMessageParamUnion{},
 			Model:    "gpt-4",
 		}
@@ -418,19 +418,19 @@ func TestTokenizeRequestValidation(t *testing.T) {
 	})
 }
 
-func TestTokenizeRequestUnion_HelperMethods(t *testing.T) {
+func TestRequestUnion_HelperMethods(t *testing.T) {
 	// This test highlights the need for helper methods
 	t.Run("need helper methods to check union type", func(t *testing.T) {
 		// Completion request
-		union1 := TokenizeRequestUnion{
-			TokenizeCompletionRequest: &TokenizeCompletionRequest{
+		union1 := RequestUnion{
+			CompletionRequest: &CompletionRequest{
 				Prompt: "Hello",
 			},
 		}
 
 		// Chat request
-		union2 := TokenizeRequestUnion{
-			TokenizeChatRequest: &TokenizeChatRequest{
+		union2 := RequestUnion{
+			ChatRequest: &ChatRequest{
 				Messages: []openai.ChatCompletionMessageParamUnion{},
 			},
 		}
@@ -438,15 +438,15 @@ func TestTokenizeRequestUnion_HelperMethods(t *testing.T) {
 		// TODO: Add helper methods like:
 		// union1.IsCompletion() bool
 		// union1.IsChatCompletion() bool
-		// union1.GetCompletion() *TokenizeCompletionRequest
-		// union1.GetChat() *TokenizeChatRequest
+		// union1.GetCompletion() *CompletionRequest
+		// union1.GetChat() *ChatRequest
 
 		// Current way to check (verbose)
-		assert.NotNil(t, union1.TokenizeCompletionRequest)
-		assert.Nil(t, union1.TokenizeChatRequest)
+		assert.NotNil(t, union1.CompletionRequest)
+		assert.Nil(t, union1.ChatRequest)
 
-		assert.Nil(t, union2.TokenizeCompletionRequest)
-		assert.NotNil(t, union2.TokenizeChatRequest)
+		assert.Nil(t, union2.CompletionRequest)
+		assert.NotNil(t, union2.ChatRequest)
 	})
 }
 

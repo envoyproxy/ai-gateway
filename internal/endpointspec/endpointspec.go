@@ -425,19 +425,19 @@ func (RerankEndpointSpec) RedactSensitiveInfoFromRequest(req *cohereschema.Reran
 func (TokenizeEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-) (internalapi.OriginalModel, *tokenize.TokenizeRequestUnion, bool, []byte, error) {
+) (internalapi.OriginalModel, *tokenize.RequestUnion, bool, []byte, error) {
 	// Try to detect if it's a chat or completion request by checking for "messages" field
 	var rawRequest map[string]interface{}
 	if err := json.Unmarshal(body, &rawRequest); err != nil {
 		return "", nil, false, nil, fmt.Errorf("failed to unmarshal tokenize request: %w", err)
 	}
 
-	var req tokenize.TokenizeRequestUnion
+	var req tokenize.RequestUnion
 	var model string
 
 	// Check if this is a chat tokenize request (has "messages" field)
 	if _, hasMessages := rawRequest["messages"]; hasMessages {
-		var chatReq tokenize.TokenizeChatRequest
+		var chatReq tokenize.ChatRequest
 		if err := json.Unmarshal(body, &chatReq); err != nil {
 			return "", nil, false, nil, fmt.Errorf("failed to unmarshal chat tokenize request: %w", err)
 		}
@@ -445,15 +445,15 @@ func (TokenizeEndpointSpec) ParseBody(
 		if err := chatReq.Validate(); err != nil {
 			return "", nil, false, nil, fmt.Errorf("invalid chat tokenize request: %w", err)
 		}
-		req.TokenizeChatRequest = &chatReq
+		req.ChatRequest = &chatReq
 		model = chatReq.Model
 	} else {
 		// This is a completion tokenize request (has "prompt" field)
-		var completionReq tokenize.TokenizeCompletionRequest
+		var completionReq tokenize.CompletionRequest
 		if err := json.Unmarshal(body, &completionReq); err != nil {
 			return "", nil, false, nil, fmt.Errorf("failed to unmarshal completion tokenize request: %w", err)
 		}
-		req.TokenizeCompletionRequest = &completionReq
+		req.CompletionRequest = &completionReq
 		model = completionReq.Model
 	}
 
@@ -483,7 +483,7 @@ func (TokenizeEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
-func (TokenizeEndpointSpec) RedactSensitiveInfoFromRequest(req *tokenize.TokenizeRequestUnion) (redactedReq *tokenize.TokenizeRequestUnion, err error) {
+func (TokenizeEndpointSpec) RedactSensitiveInfoFromRequest(req *tokenize.RequestUnion) (redactedReq *tokenize.RequestUnion, err error) {
 	// Placeholder if redaction is required in future
 	return req, nil
 }
