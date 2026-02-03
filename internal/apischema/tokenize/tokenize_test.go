@@ -6,13 +6,13 @@
 package tokenize
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestTokenizeCompletionRequest_JSON(t *testing.T) {
@@ -181,10 +181,10 @@ func TestTokenizeChatRequest_Validate(t *testing.T) {
 			err := tt.request.Validate()
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -328,10 +328,11 @@ func TestTokenizerInfoResponse_CustomJSON(t *testing.T) {
 
 			require.NoError(t, err)
 
-			if tt.name == "basic response" {
+			switch tt.name {
+			case "basic response":
 				assert.Equal(t, "GPT2TokenizerFast", resp.TokenizerClass)
-				assert.Equal(t, 0, len(resp.ExtraConfig))
-			} else if tt.name == "response with extra fields" {
+				assert.Empty(t, resp.ExtraConfig)
+			case "response with extra fields":
 				// Check that the tokenizer class is correct
 				assert.Equal(t, "GPT2TokenizerFast", resp.TokenizerClass)
 				// Check that extra fields were captured
@@ -351,7 +352,7 @@ func TestTokenizerInfoResponse_CustomJSON(t *testing.T) {
 			err = json.Unmarshal(data, &resp2)
 			require.NoError(t, err)
 			assert.Equal(t, resp.TokenizerClass, resp2.TokenizerClass)
-			assert.Equal(t, len(resp.ExtraConfig), len(resp2.ExtraConfig))
+			assert.Len(t, resp2.ExtraConfig, len(resp.ExtraConfig))
 		})
 	}
 }
@@ -385,12 +386,12 @@ func TestTokenizerInfoResponse_MarshalJSON(t *testing.T) {
 	data2, err := json.Marshal(resp2)
 	require.NoError(t, err)
 	assert.Contains(t, string(data2), "SomeOtherTokenizer")
-	assert.Equal(t, `{"tokenizer_class":"SomeOtherTokenizer"}`, string(data2))
+	assert.JSONEq(t, `{"tokenizer_class":"SomeOtherTokenizer"}`, string(data2))
 }
 
 // Test edge cases and error conditions
 func TestTokenizeRequestValidation(t *testing.T) {
-	t.Run("empty prompt should be caught by validation", func(t *testing.T) {
+	t.Run("empty prompt should be caught by validation", func(_ *testing.T) {
 		// This highlights the need for validation in TokenizeCompletionRequest
 		req := TokenizeCompletionRequest{
 			Prompt: "",

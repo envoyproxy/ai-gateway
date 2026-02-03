@@ -7,7 +7,6 @@ package translator
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strconv"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/tokenize"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestNewTokenizeTranslator(t *testing.T) {
@@ -166,7 +166,7 @@ func TestTokenizeTranslator_RequestBody(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, headers, 1)
 		require.Nil(t, body)
-		require.Equal(t, "", translator.requestModel) // Empty model should be stored
+		require.Empty(t, translator.requestModel) // Empty model should be stored
 	})
 
 	t.Run("empty model string - chat request", func(t *testing.T) {
@@ -184,7 +184,7 @@ func TestTokenizeTranslator_RequestBody(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, headers, 1)
 		require.Nil(t, body)
-		require.Equal(t, "", translator.requestModel) // Empty model should be stored
+		require.Empty(t, translator.requestModel) // Empty model should be stored
 	})
 
 	t.Run("empty union - no request type set", func(t *testing.T) {

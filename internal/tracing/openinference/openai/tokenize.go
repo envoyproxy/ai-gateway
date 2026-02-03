@@ -6,13 +6,12 @@
 package openai
 
 import (
-	"encoding/json"
-
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/tokenize"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
@@ -23,7 +22,7 @@ var startOptsTokenize = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKin
 
 // TokenizeRecorder implements recorders for OpenInference tokenize spans.
 type TokenizeRecorder struct {
-	traceConfig                         *openinference.TraceConfig
+	traceConfig                            *openinference.TraceConfig
 	tracingapi.NoopChunkRecorder[struct{}] // Tokenize operations don't have streaming chunks
 }
 
@@ -87,8 +86,10 @@ func buildTokenizeRequestAttributes(req *tokenize.TokenizeRequestUnion, body str
 	var attrs []attribute.KeyValue
 
 	// Set span kind to LLM since tokenization is an LLM operation
-	attrs = append(attrs, attribute.String(openinference.SpanKind, openinference.SpanKindLLM))
-	attrs = append(attrs, attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI))
+	attrs = append(attrs,
+		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+	)
 
 	// Extract model name from the union
 	var model string
@@ -103,27 +104,33 @@ func buildTokenizeRequestAttributes(req *tokenize.TokenizeRequestUnion, body str
 
 	// Add input value if not hidden
 	if !config.HideInputs {
-		attrs = append(attrs, attribute.String(openinference.InputValue, body))
-		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+		attrs = append(attrs,
+			attribute.String(openinference.InputValue, body),
+			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+		)
 	}
 
 	// Add tokenization-specific attributes
 	if req.TokenizeCompletionRequest != nil {
-		attrs = append(attrs, attribute.String("tokenize.request_type", "completion"))
-		attrs = append(attrs, attribute.Bool("tokenize.add_special_tokens", req.TokenizeCompletionRequest.AddSpecialTokens))
+		attrs = append(attrs,
+			attribute.String("tokenize.request_type", "completion"),
+			attribute.Bool("tokenize.add_special_tokens", req.TokenizeCompletionRequest.AddSpecialTokens),
+		)
 		if req.TokenizeCompletionRequest.ReturnTokenStrs != nil {
 			attrs = append(attrs, attribute.Bool("tokenize.return_token_strs", *req.TokenizeCompletionRequest.ReturnTokenStrs))
 		}
 	} else if req.TokenizeChatRequest != nil {
-		attrs = append(attrs, attribute.String("tokenize.request_type", "chat"))
-		attrs = append(attrs, attribute.Bool("tokenize.add_generation_prompt", req.TokenizeChatRequest.AddGenerationPrompt))
-		attrs = append(attrs, attribute.Bool("tokenize.continue_final_message", req.TokenizeChatRequest.ContinueFinalMessage))
-		attrs = append(attrs, attribute.Bool("tokenize.add_special_tokens", req.TokenizeChatRequest.AddSpecialTokens))
+		attrs = append(attrs,
+			attribute.String("tokenize.request_type", "chat"),
+			attribute.Bool("tokenize.add_generation_prompt", req.AddGenerationPrompt),
+			attribute.Bool("tokenize.continue_final_message", req.ContinueFinalMessage),
+			attribute.Bool("tokenize.add_special_tokens", req.TokenizeChatRequest.AddSpecialTokens),
+		)
 		if req.TokenizeChatRequest.ReturnTokenStrs != nil {
 			attrs = append(attrs, attribute.Bool("tokenize.return_token_strs", *req.TokenizeChatRequest.ReturnTokenStrs))
 		}
-		if len(req.TokenizeChatRequest.Messages) > 0 {
-			attrs = append(attrs, attribute.Int("tokenize.message_count", len(req.TokenizeChatRequest.Messages)))
+		if len(req.Messages) > 0 {
+			attrs = append(attrs, attribute.Int("tokenize.message_count", len(req.Messages)))
 		}
 	}
 

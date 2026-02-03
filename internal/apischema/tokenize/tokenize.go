@@ -7,12 +7,12 @@
 package tokenize
 
 import (
-	"encoding/json"
 	"errors"
 
 	"google.golang.org/genai"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // Different than vLLM's definition, "model" field should be a required field for both TokenizeCompletionRequest and TokenizeChatRequest in a gateway.
