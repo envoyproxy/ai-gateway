@@ -612,6 +612,7 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [QuotaPolicyStatus](#quotapolicystatus)
 - [QuotaRule](#quotarule)
 - [QuotaValue](#quotavalue)
+- [ServiceQuotaDefinition](#servicequotadefinition)
 - [ToolCall](#toolcall)
 - [VersionedAPISchema](#versionedapischema)
 
@@ -2269,7 +2270,7 @@ References:
 **Appears in:**
 - [QuotaDefinition](#quotadefinition)
 
-QuotaBucketMode specifies whether global and per request buckets values are exclusive or inclusive.
+QuotaBucketMode specifies whether the default and per request buckets values are exclusive or inclusive.
 
 
 
@@ -2292,7 +2293,6 @@ QuotaBucketMode specifies whether global and per request buckets values are excl
 
 **Appears in:**
 - [PerModelQuota](#permodelquota)
-- [QuotaPolicySpec](#quotapolicyspec)
 
 QuotaDefinition specified expression for computing request cost and rules for matching requests to quota buckets.
 
@@ -2309,9 +2309,9 @@ QuotaDefinition specified expression for computing request cost and rules for ma
   name="mode"
   type="[QuotaBucketMode](#quotabucketmode)"
   required="true"
-  description="The `Mode` determines how quota is charged to the `GlobalBucket` and matching `BucketRules`.<br />In the `exclusive` mode the quota is charged to matching BucketRules or the GlobalBucket<br />if no BucketRules match the request. The request is denied if all matching buckets are out of quota.<br />In the `shared` mode the quota is charged to all matching `BucketRules` AND the `GlobalBucket`<br />and request is allowed only if the quota is available in all matching buckets."
+  description="The `Mode` determines how quota is charged to the `DefaultBucket` and matching `BucketRules`.<br />In the `exclusive` mode the quota is charged to matching BucketRules or the DefaultBucket<br />if no BucketRules match the request. The request is denied if all matching buckets are out of quota.<br />In the `shared` mode the quota is charged to all matching `BucketRules` AND the `DefaultBucket`<br />and request is allowed only if the quota is available in all matching buckets."
 /><ApiField
-  name="globalBucket"
+  name="defaultBucket"
   type="[QuotaValue](#quotavalue)"
   required="false"
   description="Quota applicable to all traffic. This value can be overridden for specific classes of requests<br />using the `BucketRules` configuration."
@@ -2343,7 +2343,7 @@ QuotaPolicySpec specifies rules for computing token based costs of requests.
   description="TargetRefs are the names of the AIServiceBackend resources this QuotaPolicy is being attached to."
 /><ApiField
   name="serviceQuota"
-  type="[QuotaDefinition](#quotadefinition)"
+  type="[ServiceQuotaDefinition](#servicequotadefinition)"
   required="false"
   description="Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the `PerModelQuotas`<br />configuration."
 /><ApiField
@@ -2413,6 +2413,7 @@ QuotaPolicyStatus contains the conditions by the reconciliation result.
 **Appears in:**
 - [QuotaDefinition](#quotadefinition)
 - [QuotaRule](#quotarule)
+- [ServiceQuotaDefinition](#servicequotadefinition)
 
 QuotaValue defines the quota limits using sliding window.
 
@@ -2430,6 +2431,32 @@ QuotaValue defines the quota limits using sliding window.
   type="string"
   required="true"
   description="Time window. The suffix is used to specify units. The following<br />suffixes are supported:<br />* s - seconds (the default unit)<br />* m - minutes<br />* h - hours"
+/>
+
+
+#### ServiceQuotaDefinition
+
+
+
+**Appears in:**
+- [QuotaPolicySpec](#quotapolicyspec)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="costExpression"
+  type="string"
+  required="false"
+  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> * `input_tokens + cached_input_tokens * 0.1 + output_tokens * 6`"
+/><ApiField
+  name="quota"
+  type="[QuotaValue](#quotavalue)"
+  required="true"
+  description="Quota value applicable to all requests.<br />A response with 429 HTTP status code is sent back to the client when<br />the selected requests have exceeded the quota."
 />
 
 

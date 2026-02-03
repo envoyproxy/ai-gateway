@@ -41,13 +41,28 @@ type QuotaPolicySpec struct {
 	// configuration.
 	//
 	// +optional
-	ServiceQuota QuotaDefinition `json:"serviceQuota,omitempty"`
+	ServiceQuota ServiceQuotaDefinition `json:"serviceQuota,omitempty"`
 	// PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this
 	// policy is attached.
 	//
 	// +kubebuilder:validation:MaxItems=128
 	// +optional
 	PerModelQuotas []PerModelQuota `json:"perModelQuotas,omitempty"`
+}
+
+type ServiceQuotaDefinition struct {
+	// CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.
+	// If no expression is specified the "total_tokens" value is used.
+	// For example:
+	//
+	//  * "input_tokens + cached_input_tokens * 0.1 + output_tokens * 6"
+	//
+	// +optional
+	CostExpression *string `json:"costExpression,omitempty"`
+	// Quota value applicable to all requests.
+	// A response with 429 HTTP status code is sent back to the client when
+	// the selected requests have exceeded the quota.
+	Quota QuotaValue `json:"quota"`
 }
 
 type PerModelQuota struct {
@@ -73,17 +88,17 @@ type QuotaDefinition struct {
 	//
 	// +optional
 	CostExpression *string `json:"costExpression,omitempty"`
-	// The "Mode" determines how quota is charged to the "GlobalBucket" and matching "BucketRules".
-	// In the "exclusive" mode the quota is charged to matching BucketRules or the GlobalBucket
+	// The "Mode" determines how quota is charged to the "DefaultBucket" and matching "BucketRules".
+	// In the "exclusive" mode the quota is charged to matching BucketRules or the DefaultBucket
 	// if no BucketRules match the request. The request is denied if all matching buckets are out of quota.
-	// In the "shared" mode the quota is charged to all matching "BucketRules" AND the "GlobalBucket"
+	// In the "shared" mode the quota is charged to all matching "BucketRules" AND the "DefaultBucket"
 	// and request is allowed only if the quota is available in all matching buckets.
 	Mode QuotaBucketMode `json:"mode"`
 	// Quota applicable to all traffic. This value can be overridden for specific classes of requests
 	// using the "BucketRules" configuration.
 	//
 	// +optional
-	GlobalBucket QuotaValue `json:"globalBucket"`
+	DefaultBucket QuotaValue `json:"defaultBucket"`
 	// BucketRules are a list of client selectors and quotas. If a request
 	// matches multiple rules, each of their associated quotas get applied, so a
 	// single request might burn down the quota for multiple rules.
@@ -92,7 +107,7 @@ type QuotaDefinition struct {
 	BucketRules []QuotaRule `json:"bucketRules"`
 }
 
-// QuotaBucketMode specifies whether global and per request buckets values are exclusive or inclusive.
+// QuotaBucketMode specifies whether the default and per request buckets values are exclusive or inclusive.
 //
 // +kubebuilder:validation:Enum=Exclusive;Shared
 type QuotaBucketMode string
