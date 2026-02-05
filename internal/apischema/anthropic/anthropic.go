@@ -143,17 +143,101 @@ func (m *MessageContent) MarshalJSON() ([]byte, error) {
 
 type (
 	// ContentBlockParam represents an element of the array content in a message.
-	// https://docs.claude.com/en/api/messages#body-messages-content
+	// https://platform.claude.com/docs/en/api/messages#body-messages-content
 	ContentBlockParam struct {
-		Text *TextBlockParam
-		// TODO add others when we need it for observability, etc.
+		Text                *TextBlockParam
+		Image               *ImageBlockParam
+		Document            *DocumentBlockParam
+		SearchResult        *SearchResultBlockParam
+		Thinking            *ThinkingBlockParam
+		RedactedThinking    *RedactedThinkingBlockParam
+		ToolUse             *ToolUseBlockParam
+		ToolResult          *ToolResultBlockParam
+		ServerToolUse       *ServerToolUseBlockParam
+		WebSearchToolResult *WebSearchToolResultBlockParam
 	}
 
+	// TextBlockParam represents a text content block.
 	TextBlockParam struct {
 		Text         string `json:"text"`
 		Type         string `json:"type"` // Always "text".
 		CacheControl any    `json:"cache_control,omitempty"`
 		Citations    []any  `json:"citations,omitempty"`
+	}
+
+	// ImageBlockParam represents an image content block.
+	ImageBlockParam struct {
+		Type         string `json:"type"` // Always "image".
+		Source       any    `json:"source"`
+		CacheControl any    `json:"cache_control,omitempty"`
+	}
+
+	// DocumentBlockParam represents a document content block.
+	DocumentBlockParam struct {
+		Type         string `json:"type"` // Always "document".
+		Source       any    `json:"source"`
+		CacheControl any    `json:"cache_control,omitempty"`
+		Citations    any    `json:"citations,omitempty"`
+		Context      string `json:"context,omitempty"`
+		Title        string `json:"title,omitempty"`
+	}
+
+	// SearchResultBlockParam represents a search result content block.
+	SearchResultBlockParam struct {
+		Type         string           `json:"type"` // Always "search_result".
+		Content      []TextBlockParam `json:"content"`
+		Source       string           `json:"source"`
+		Title        string           `json:"title"`
+		CacheControl any              `json:"cache_control,omitempty"`
+		Citations    any              `json:"citations,omitempty"`
+	}
+
+	// ThinkingBlockParam represents a thinking content block in a request.
+	ThinkingBlockParam struct {
+		Type      string `json:"type"` // Always "thinking".
+		Thinking  string `json:"thinking"`
+		Signature string `json:"signature"`
+	}
+
+	// RedactedThinkingBlockParam represents a redacted thinking content block.
+	RedactedThinkingBlockParam struct {
+		Type string `json:"type"` // Always "redacted_thinking".
+		Data string `json:"data"`
+	}
+
+	// ToolUseBlockParam represents a tool use content block in a request.
+	ToolUseBlockParam struct {
+		Type         string         `json:"type"` // Always "tool_use".
+		ID           string         `json:"id"`
+		Name         string         `json:"name"`
+		Input        map[string]any `json:"input"`
+		CacheControl any            `json:"cache_control,omitempty"`
+	}
+
+	// ToolResultBlockParam represents a tool result content block.
+	ToolResultBlockParam struct {
+		Type         string `json:"type"` // Always "tool_result".
+		ToolUseID    string `json:"tool_use_id"`
+		Content      any    `json:"content,omitempty"` // string or array of content blocks.
+		IsError      bool   `json:"is_error,omitempty"`
+		CacheControl any    `json:"cache_control,omitempty"`
+	}
+
+	// ServerToolUseBlockParam represents a server tool use content block.
+	ServerToolUseBlockParam struct {
+		Type         string         `json:"type"` // Always "server_tool_use".
+		ID           string         `json:"id"`
+		Name         string         `json:"name"`
+		Input        map[string]any `json:"input"`
+		CacheControl any            `json:"cache_control,omitempty"`
+	}
+
+	// WebSearchToolResultBlockParam represents a web search tool result content block.
+	WebSearchToolResultBlockParam struct {
+		Type         string `json:"type"` // Always "web_search_tool_result".
+		ToolUseID    string `json:"tool_use_id"`
+		Content      any    `json:"content"`
+		CacheControl any    `json:"cache_control,omitempty"`
 	}
 )
 
@@ -164,24 +248,103 @@ func (m *ContentBlockParam) UnmarshalJSON(data []byte) error {
 	}
 	switch typ.String() {
 	case "text":
-		var textBlock TextBlockParam
-		if err := json.Unmarshal(data, &textBlock); err != nil {
+		var block TextBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
 			return fmt.Errorf("failed to unmarshal text block: %w", err)
 		}
-		m.Text = &textBlock
-		return nil
+		m.Text = &block
+	case "image":
+		var block ImageBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal image block: %w", err)
+		}
+		m.Image = &block
+	case "document":
+		var block DocumentBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal document block: %w", err)
+		}
+		m.Document = &block
+	case "search_result":
+		var block SearchResultBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal search result block: %w", err)
+		}
+		m.SearchResult = &block
+	case "thinking":
+		var block ThinkingBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal thinking block: %w", err)
+		}
+		m.Thinking = &block
+	case "redacted_thinking":
+		var block RedactedThinkingBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal redacted thinking block: %w", err)
+		}
+		m.RedactedThinking = &block
+	case "tool_use":
+		var block ToolUseBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal tool use block: %w", err)
+		}
+		m.ToolUse = &block
+	case "tool_result":
+		var block ToolResultBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal tool result block: %w", err)
+		}
+		m.ToolResult = &block
+	case "server_tool_use":
+		var block ServerToolUseBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal server tool use block: %w", err)
+		}
+		m.ServerToolUse = &block
+	case "web_search_tool_result":
+		var block WebSearchToolResultBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal web search tool result block: %w", err)
+		}
+		m.WebSearchToolResult = &block
 	default:
-		// TODO add others when we need it for observability, etc.
-		// Fow now, we ignore undefined types.
+		// Ignore unknown types for forward compatibility.
 		return nil
 	}
+	return nil
 }
 
 func (m *ContentBlockParam) MarshalJSON() ([]byte, error) {
 	if m.Text != nil {
 		return json.Marshal(m.Text)
 	}
-	// TODO add others when we need it for observability, etc.
+	if m.Image != nil {
+		return json.Marshal(m.Image)
+	}
+	if m.Document != nil {
+		return json.Marshal(m.Document)
+	}
+	if m.SearchResult != nil {
+		return json.Marshal(m.SearchResult)
+	}
+	if m.Thinking != nil {
+		return json.Marshal(m.Thinking)
+	}
+	if m.RedactedThinking != nil {
+		return json.Marshal(m.RedactedThinking)
+	}
+	if m.ToolUse != nil {
+		return json.Marshal(m.ToolUse)
+	}
+	if m.ToolResult != nil {
+		return json.Marshal(m.ToolResult)
+	}
+	if m.ServerToolUse != nil {
+		return json.Marshal(m.ServerToolUse)
+	}
+	if m.WebSearchToolResult != nil {
+		return json.Marshal(m.WebSearchToolResult)
+	}
 	return nil, fmt.Errorf("content block must have a defined type")
 }
 
