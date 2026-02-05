@@ -534,9 +534,97 @@ func (t *ToolUnion) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("tool union must have a defined type")
 }
 
-// ToolChoice represents the tool choice for the model.
-// https://docs.claude.com/en/api/messages#body-tool-choice
-type ToolChoice any // TODO when we need it for observability, etc.
+type (
+	// ToolChoice represents the tool choice for the model.
+	// https://platform.claude.com/docs/en/api/messages#body-tool-choice
+	ToolChoice struct {
+		Auto *ToolChoiceAuto
+		Any  *ToolChoiceAny
+		Tool *ToolChoiceTool
+		None *ToolChoiceNone
+	}
+
+	// ToolChoiceAuto lets the model automatically decide whether to use tools.
+	// https://platform.claude.com/docs/en/api/messages#tool_choice_auto
+	ToolChoiceAuto struct {
+		Type                   string `json:"type"` // Always "auto".
+		DisableParallelToolUse *bool  `json:"disable_parallel_tool_use,omitempty"`
+	}
+
+	// ToolChoiceAny forces the model to use any available tool.
+	// https://platform.claude.com/docs/en/api/messages#tool_choice_any
+	ToolChoiceAny struct {
+		Type                   string `json:"type"` // Always "any".
+		DisableParallelToolUse *bool  `json:"disable_parallel_tool_use,omitempty"`
+	}
+
+	// ToolChoiceTool forces the model to use the specified tool.
+	// https://platform.claude.com/docs/en/api/messages#tool_choice_tool
+	ToolChoiceTool struct {
+		Type                   string `json:"type"` // Always "tool".
+		Name                   string `json:"name"`
+		DisableParallelToolUse *bool  `json:"disable_parallel_tool_use,omitempty"`
+	}
+
+	// ToolChoiceNone prevents the model from using any tools.
+	// https://platform.claude.com/docs/en/api/messages#tool_choice_none
+	ToolChoiceNone struct {
+		Type string `json:"type"` // Always "none".
+	}
+)
+
+func (tc *ToolChoice) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	if !typ.Exists() {
+		return errors.New("missing type field in tool choice")
+	}
+	switch typ.String() {
+	case "auto":
+		var v ToolChoiceAuto
+		if err := json.Unmarshal(data, &v); err != nil {
+			return fmt.Errorf("failed to unmarshal tool choice auto: %w", err)
+		}
+		tc.Auto = &v
+	case "any":
+		var v ToolChoiceAny
+		if err := json.Unmarshal(data, &v); err != nil {
+			return fmt.Errorf("failed to unmarshal tool choice any: %w", err)
+		}
+		tc.Any = &v
+	case "tool":
+		var v ToolChoiceTool
+		if err := json.Unmarshal(data, &v); err != nil {
+			return fmt.Errorf("failed to unmarshal tool choice tool: %w", err)
+		}
+		tc.Tool = &v
+	case "none":
+		var v ToolChoiceNone
+		if err := json.Unmarshal(data, &v); err != nil {
+			return fmt.Errorf("failed to unmarshal tool choice none: %w", err)
+		}
+		tc.None = &v
+	default:
+		// Ignore unknown types for forward compatibility.
+		return nil
+	}
+	return nil
+}
+
+func (tc *ToolChoice) MarshalJSON() ([]byte, error) {
+	if tc.Auto != nil {
+		return json.Marshal(tc.Auto)
+	}
+	if tc.Any != nil {
+		return json.Marshal(tc.Any)
+	}
+	if tc.Tool != nil {
+		return json.Marshal(tc.Tool)
+	}
+	if tc.None != nil {
+		return json.Marshal(tc.None)
+	}
+	return nil, fmt.Errorf("tool choice must have a defined type")
+}
 
 // Thinking represents the configuration for the model's "thinking" behavior.
 // https://docs.claude.com/en/api/messages#body-thinking
@@ -577,11 +665,13 @@ func (s *SystemPrompt) MarshalJSON() ([]byte, error) {
 }
 
 // MCPServer represents an MCP server.
-// https://docs.claude.com/en/api/messages#body-mcp-servers
+// This became a beta status so it is not implemented for now.
+// https://platform.claude.com/docs/en/api/beta/messages/create
 type MCPServer any // TODO when we need it for observability, etc.
 
 // ContextManagement represents the context management configuration.
-// https://docs.claude.com/en/api/messages#body-context-management
+// This became a beta status so it is not implemented for now.
+// https://platform.claude.com/docs/en/api/beta/messages/create
 type ContextManagement any // TODO when we need it for observability, etc.
 
 // MessagesResponse represents a response from the Anthropic Messages API.
