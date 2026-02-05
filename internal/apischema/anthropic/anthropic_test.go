@@ -277,6 +277,91 @@ func TestContentBlockParam_UnmarshalJSON(t *testing.T) {
 			want:    ContentBlockParam{Text: &TextBlockParam{Text: "Hello", Type: "text"}},
 		},
 		{
+			name:    "image block",
+			jsonStr: `{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "abc123"}}`,
+			want: ContentBlockParam{Image: &ImageBlockParam{
+				Type:   "image",
+				Source: map[string]any{"type": "base64", "media_type": "image/png", "data": "abc123"},
+			}},
+		},
+		{
+			name:    "document block",
+			jsonStr: `{"type": "document", "source": {"type": "text", "data": "hello", "media_type": "text/plain"}, "context": "some context", "title": "doc title"}`,
+			want: ContentBlockParam{Document: &DocumentBlockParam{
+				Type:    "document",
+				Source:  map[string]any{"type": "text", "data": "hello", "media_type": "text/plain"},
+				Context: "some context",
+				Title:   "doc title",
+			}},
+		},
+		{
+			name:    "search result block",
+			jsonStr: `{"type": "search_result", "source": "https://example.com", "title": "Example", "content": [{"type": "text", "text": "result text"}]}`,
+			want: ContentBlockParam{SearchResult: &SearchResultBlockParam{
+				Type:    "search_result",
+				Source:  "https://example.com",
+				Title:   "Example",
+				Content: []TextBlockParam{{Type: "text", Text: "result text"}},
+			}},
+		},
+		{
+			name:    "thinking block",
+			jsonStr: `{"type": "thinking", "thinking": "Let me think...", "signature": "sig123"}`,
+			want: ContentBlockParam{Thinking: &ThinkingBlockParam{
+				Type:      "thinking",
+				Thinking:  "Let me think...",
+				Signature: "sig123",
+			}},
+		},
+		{
+			name:    "redacted thinking block",
+			jsonStr: `{"type": "redacted_thinking", "data": "redacted_data_here"}`,
+			want: ContentBlockParam{RedactedThinking: &RedactedThinkingBlockParam{
+				Type: "redacted_thinking",
+				Data: "redacted_data_here",
+			}},
+		},
+		{
+			name:    "tool use block",
+			jsonStr: `{"type": "tool_use", "id": "tu_123", "name": "my_tool", "input": {"query": "test"}}`,
+			want: ContentBlockParam{ToolUse: &ToolUseBlockParam{
+				Type:  "tool_use",
+				ID:    "tu_123",
+				Name:  "my_tool",
+				Input: map[string]any{"query": "test"},
+			}},
+		},
+		{
+			name:    "tool result block",
+			jsonStr: `{"type": "tool_result", "tool_use_id": "tu_123", "content": "result text", "is_error": false}`,
+			want: ContentBlockParam{ToolResult: &ToolResultBlockParam{
+				Type:      "tool_result",
+				ToolUseID: "tu_123",
+				Content:   "result text",
+			}},
+		},
+		{
+			name:    "server tool use block",
+			jsonStr: `{"type": "server_tool_use", "id": "stu_123", "name": "web_search", "input": {"query": "test"}}`,
+			want: ContentBlockParam{ServerToolUse: &ServerToolUseBlockParam{
+				Type:  "server_tool_use",
+				ID:    "stu_123",
+				Name:  "web_search",
+				Input: map[string]any{"query": "test"},
+			}},
+		},
+		{
+			name:    "web search tool result block",
+			jsonStr: `{"type": "web_search_tool_result", "tool_use_id": "stu_123", "content": [{"type": "web_search_result", "title": "Result", "url": "https://example.com", "encrypted_content": "enc123"}]}`,
+			want: ContentBlockParam{WebSearchToolResult: &WebSearchToolResultBlockParam{
+				Type:      "web_search_tool_result",
+				ToolUseID: "stu_123",
+				Content: []any{
+					map[string]any{"type": "web_search_result", "title": "Result", "url": "https://example.com", "encrypted_content": "enc123"},
+				},
+			}},
+		},
+		{
 			name:    "missing type",
 			jsonStr: `{"text": "Hello"}`,
 			wantErr: true,
@@ -313,6 +398,89 @@ func TestContentBlockParam_MarshalJSON(t *testing.T) {
 			name: "text block",
 			cbp:  ContentBlockParam{Text: &TextBlockParam{Text: "Hello", Type: "text"}},
 			want: `{"text":"Hello","type":"text"}`,
+		},
+		{
+			name: "image block",
+			cbp: ContentBlockParam{Image: &ImageBlockParam{
+				Type:   "image",
+				Source: map[string]any{"type": "base64", "media_type": "image/png", "data": "abc123"},
+			}},
+			want: `{"type":"image","source":{"type":"base64","media_type":"image/png","data":"abc123"}}`,
+		},
+		{
+			name: "document block",
+			cbp: ContentBlockParam{Document: &DocumentBlockParam{
+				Type:    "document",
+				Source:  map[string]any{"type": "text", "data": "hello", "media_type": "text/plain"},
+				Context: "some context",
+				Title:   "doc title",
+			}},
+			want: `{"type":"document","source":{"type":"text","data":"hello","media_type":"text/plain"},"context":"some context","title":"doc title"}`,
+		},
+		{
+			name: "search result block",
+			cbp: ContentBlockParam{SearchResult: &SearchResultBlockParam{
+				Type:    "search_result",
+				Source:  "https://example.com",
+				Title:   "Example",
+				Content: []TextBlockParam{{Type: "text", Text: "result text"}},
+			}},
+			want: `{"type":"search_result","content":[{"type":"text","text":"result text"}],"source":"https://example.com","title":"Example"}`,
+		},
+		{
+			name: "thinking block",
+			cbp: ContentBlockParam{Thinking: &ThinkingBlockParam{
+				Type:      "thinking",
+				Thinking:  "Let me think...",
+				Signature: "sig123",
+			}},
+			want: `{"type":"thinking","thinking":"Let me think...","signature":"sig123"}`,
+		},
+		{
+			name: "redacted thinking block",
+			cbp: ContentBlockParam{RedactedThinking: &RedactedThinkingBlockParam{
+				Type: "redacted_thinking",
+				Data: "redacted_data_here",
+			}},
+			want: `{"type":"redacted_thinking","data":"redacted_data_here"}`,
+		},
+		{
+			name: "tool use block",
+			cbp: ContentBlockParam{ToolUse: &ToolUseBlockParam{
+				Type:  "tool_use",
+				ID:    "tu_123",
+				Name:  "my_tool",
+				Input: map[string]any{"query": "test"},
+			}},
+			want: `{"type":"tool_use","id":"tu_123","name":"my_tool","input":{"query":"test"}}`,
+		},
+		{
+			name: "tool result block",
+			cbp: ContentBlockParam{ToolResult: &ToolResultBlockParam{
+				Type:      "tool_result",
+				ToolUseID: "tu_123",
+				Content:   "result text",
+			}},
+			want: `{"type":"tool_result","tool_use_id":"tu_123","content":"result text"}`,
+		},
+		{
+			name: "server tool use block",
+			cbp: ContentBlockParam{ServerToolUse: &ServerToolUseBlockParam{
+				Type:  "server_tool_use",
+				ID:    "stu_123",
+				Name:  "web_search",
+				Input: map[string]any{"query": "test"},
+			}},
+			want: `{"type":"server_tool_use","id":"stu_123","name":"web_search","input":{"query":"test"}}`,
+		},
+		{
+			name: "web search tool result block",
+			cbp: ContentBlockParam{WebSearchToolResult: &WebSearchToolResultBlockParam{
+				Type:      "web_search_tool_result",
+				ToolUseID: "stu_123",
+				Content:   "some content",
+			}},
+			want: `{"type":"web_search_tool_result","tool_use_id":"stu_123","content":"some content"}`,
 		},
 		{
 			name:    "empty block",
