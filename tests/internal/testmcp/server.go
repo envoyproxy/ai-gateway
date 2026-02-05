@@ -103,6 +103,29 @@ func NewServer(opts *Options) (*http.Server, *mcp.Server) {
 		})
 	}
 
+	// Setup claim header validation when environment variable TEST_EXPECTED_CLAIM_HEADERS is set.
+	// Format: "header1=value1,header2=value2"
+	expectedClaimHeaders := os.Getenv("TEST_EXPECTED_CLAIM_HEADERS")
+	if expectedClaimHeaders != "" {
+		expected := map[string]string{}
+		for _, pair := range strings.Split(expectedClaimHeaders, ",") {
+			k, v, ok := strings.Cut(pair, "=")
+			if ok {
+				expected[k] = v
+			}
+		}
+		s.AddReceivingMiddleware(func(handler mcp.MethodHandler) mcp.MethodHandler {
+			return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+				for header, value := range expected {
+					if got := req.GetExtra().Header.Get(header); got != value {
+						return nil, fmt.Errorf("expected header %q=%q, got %q", header, value, got)
+					}
+				}
+				return handler(ctx, method, req)
+			}
+		})
+	}
+
 	s.AddPrompt(CodeReviewPrompt, codReviewPromptHandler)
 	s.AddResource(DummyResource, DummyResourceHandler())
 	s.AddResourceTemplate(DummyResourceTemplate, DummyResourceHandler())

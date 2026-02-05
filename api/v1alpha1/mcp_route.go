@@ -259,28 +259,7 @@ type MCPRouteOAuth struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=16
 	// +optional
-	ClaimToHeaders []ClaimToHeader `json:"claimToHeaders,omitempty"`
-}
-
-// ClaimToHeader defines a mapping from a JWT claim to an HTTP header.
-type ClaimToHeader struct {
-	// Claim is the JWT claim name to extract. Supports nested claims using dot notation
-	// (e.g., "realm_access.roles", "resource_access.my-client.roles").
-	// For array claims, the values will be JSON-encoded in the header.
-	//
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=256
-	Claim string `json:"claim"`
-
-	// Header is the HTTP header name to forward the claim value as.
-	// The header name should follow HTTP header naming conventions.
-	//
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=256
-	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$`
-	Header string `json:"header"`
+	ClaimToHeaders []egv1a1.ClaimToHeader `json:"claimToHeaders,omitempty"`
 }
 
 // MCPRouteAuthorization defines the authorization configuration for a MCPRoute.

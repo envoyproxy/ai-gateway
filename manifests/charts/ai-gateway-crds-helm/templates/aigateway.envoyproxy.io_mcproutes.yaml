@@ -3240,24 +3240,18 @@ spec:
                           - Only the specified claims are extracted; the full JWT is not forwarded to backends
                           - Consider using a header prefix (e.g., "X-Jwt-Claim-") to avoid conflicts with other headers
                         items:
-                          description: ClaimToHeader defines a mapping from a JWT
-                            claim to an HTTP header.
+                          description: ClaimToHeader defines a configuration to convert
+                            JWT claims into HTTP headers
                           properties:
                             claim:
                               description: |-
-                                Claim is the JWT claim name to extract. Supports nested claims using dot notation
-                                (e.g., "realm_access.roles", "resource_access.my-client.roles").
-                                For array claims, the values will be JSON-encoded in the header.
-                              maxLength: 256
-                              minLength: 1
+                                Claim is the JWT Claim that should be saved into the header : it can be a nested claim of type
+                                (eg. "claim.nested.key", "sub"). The nested claim name must use dot "."
+                                to separate the JSON name path.
                               type: string
                             header:
-                              description: |-
-                                Header is the HTTP header name to forward the claim value as.
-                                The header name should follow HTTP header naming conventions.
-                              maxLength: 256
-                              minLength: 1
-                              pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
+                              description: Header defines the name of the HTTP request
+                                header that the JWT Claim will be saved into.
                               type: string
                           required:
                           - claim

@@ -586,7 +586,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy_ClaimToHeaders(t *testing
 					ProtectedResourceMetadata: aigv1a1.ProtectedResourceMetadata{
 						Resource: "https://api.example.com/mcp",
 					},
-					ClaimToHeaders: []aigv1a1.ClaimToHeader{
+					ClaimToHeaders: []egv1a1.ClaimToHeader{
 						{Claim: "sub", Header: "X-User-Id"},
 						{Claim: "email", Header: "X-User-Email"},
 						{Claim: "realm_access.roles", Header: "X-User-Roles"},
