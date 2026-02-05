@@ -137,10 +137,10 @@ func (g *gatewayMutator) Default(ctx context.Context, obj runtime.Object) error 
 }
 
 // buildExtProcArgs builds all command line arguments for the extproc container.
-func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcAdminPort int, needMCP bool) []string {
+func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcAdminPort int, needMCP bool, logLevel string) []string {
 	args := []string{
 		"-configPath", filterConfigFullPath,
-		"-logLevel", g.extProcLogLevel,
+		"-logLevel", logLevel,
 		"-extProcAddr", "unix://" + g.udsPath,
 		"-adminPort", fmt.Sprintf("%d", extProcAdminPort),
 		"-rootPrefix", g.rootPrefix,
@@ -294,10 +294,12 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	var (
 		extProcSpec       *aigv1a1.GatewayConfigExtProc
 		kubernetesExtProc *egv1a1.KubernetesContainerSpec
+		extProcLogLevel   *string
 	)
 	if gatewayConfig != nil {
 		extProcSpec = gatewayConfig.Spec.ExtProc
 		if extProcSpec != nil {
+			extProcLogLevel = extProcSpec.LogLevel
 			kubernetesExtProc = extProcSpec.Kubernetes
 		}
 	}
@@ -345,6 +347,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	// Merge env vars with GatewayConfig overriding global.
 	envVars := g.mergeEnvVars(gatewayConfig)
 	image := g.resolveExtProcImage(extProcSpec)
+	logLevel := g.resolveExtProcLogLevel(extProcLogLevel)
 
 	const (
 		extProcAdminPort      = 1064
@@ -376,7 +379,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		Ports: []corev1.ContainerPort{
 			{Name: "aigw-admin", ContainerPort: extProcAdminPort},
 		},
-		Args: g.buildExtProcArgs(filterConfigFullPath, extProcAdminPort, len(mcpRoutes.Items) > 0),
+		Args: g.buildExtProcArgs(filterConfigFullPath, extProcAdminPort, len(mcpRoutes.Items) > 0, logLevel),
 		Env:  envVars,
 		VolumeMounts: []corev1.VolumeMount{
 			{
@@ -514,6 +517,14 @@ func (g *gatewayMutator) resolveExtProcImage(extProc *aigv1a1.GatewayConfigExtPr
 	default:
 		return g.extProcImage
 	}
+}
+
+// resolveExtProcLogLevel chooses the log level honoring GatewayConfig overrides.
+func (g *gatewayMutator) resolveExtProcLogLevel(logLevel *string) string {
+	if logLevel == nil {
+		return g.extProcLogLevel
+	}
+	return *logLevel
 }
 
 // mergeImageWithRepository reuses the tag or digest from baseImage when a repository override is provided.
