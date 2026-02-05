@@ -258,65 +258,65 @@ func (m *ContentBlockParam) UnmarshalJSON(data []byte) error {
 	}
 	switch typ.String() {
 	case "text":
-		var block TextBlockParam
-		if err := json.Unmarshal(data, &block); err != nil {
-			return fmt.Errorf("failed to unmarshal text block: %w", err)
+		var blockParam TextBlockParam
+		if err := json.Unmarshal(data, &blockParam); err != nil {
+			return fmt.Errorf("failed to unmarshal text blockParam: %w", err)
 		}
-		m.Text = &block
+		m.Text = &blockParam
 	case "image":
-		var block ImageBlockParam
-		if err := json.Unmarshal(data, &block); err != nil {
-			return fmt.Errorf("failed to unmarshal image block: %w", err)
+		var blockParam ImageBlockParam
+		if err := json.Unmarshal(data, &blockParam); err != nil {
+			return fmt.Errorf("failed to unmarshal image blockParam: %w", err)
 		}
-		m.Image = &block
+		m.Image = &blockParam
 	case "document":
-		var block DocumentBlockParam
-		if err := json.Unmarshal(data, &block); err != nil {
-			return fmt.Errorf("failed to unmarshal document block: %w", err)
+		var blockParam DocumentBlockParam
+		if err := json.Unmarshal(data, &blockParam); err != nil {
+			return fmt.Errorf("failed to unmarshal document blockParam: %w", err)
 		}
-		m.Document = &block
+		m.Document = &blockParam
 	case "search_result":
-		var block SearchResultBlockParam
-		if err := json.Unmarshal(data, &block); err != nil {
-			return fmt.Errorf("failed to unmarshal search result block: %w", err)
+		var blockParam SearchResultBlockParam
+		if err := json.Unmarshal(data, &blockParam); err != nil {
+			return fmt.Errorf("failed to unmarshal search result blockParam: %w", err)
 		}
-		m.SearchResult = &block
+		m.SearchResult = &blockParam
 	case "thinking":
-		var block ThinkingBlockParam
-		if err := json.Unmarshal(data, &block); err != nil {
-			return fmt.Errorf("failed to unmarshal thinking block: %w", err)
+		var blockParam ThinkingBlockParam
+		if err := json.Unmarshal(data, &blockParam); err != nil {
+			return fmt.Errorf("failed to unmarshal thinking blockParam: %w", err)
 		}
-		m.Thinking = &block
+		m.Thinking = &blockParam
 	case "redacted_thinking":
-		var block RedactedThinkingBlockParam
-		if err := json.Unmarshal(data, &block); err != nil {
-			return fmt.Errorf("failed to unmarshal redacted thinking block: %w", err)
+		var blockParam RedactedThinkingBlockParam
+		if err := json.Unmarshal(data, &blockParam); err != nil {
+			return fmt.Errorf("failed to unmarshal redacted thinking blockParam: %w", err)
 		}
-		m.RedactedThinking = &block
+		m.RedactedThinking = &blockParam
 	case "tool_use":
-		var block ToolUseBlockParam
-		if err := json.Unmarshal(data, &block); err != nil {
-			return fmt.Errorf("failed to unmarshal tool use block: %w", err)
+		var blockParam ToolUseBlockParam
+		if err := json.Unmarshal(data, &blockParam); err != nil {
+			return fmt.Errorf("failed to unmarshal tool use blockParam: %w", err)
 		}
-		m.ToolUse = &block
+		m.ToolUse = &blockParam
 	case "tool_result":
-		var block ToolResultBlockParam
-		if err := json.Unmarshal(data, &block); err != nil {
-			return fmt.Errorf("failed to unmarshal tool result block: %w", err)
+		var blockParam ToolResultBlockParam
+		if err := json.Unmarshal(data, &blockParam); err != nil {
+			return fmt.Errorf("failed to unmarshal tool result blockParam: %w", err)
 		}
-		m.ToolResult = &block
+		m.ToolResult = &blockParam
 	case "server_tool_use":
-		var block ServerToolUseBlockParam
-		if err := json.Unmarshal(data, &block); err != nil {
-			return fmt.Errorf("failed to unmarshal server tool use block: %w", err)
+		var blockParam ServerToolUseBlockParam
+		if err := json.Unmarshal(data, &blockParam); err != nil {
+			return fmt.Errorf("failed to unmarshal server tool use blockParam: %w", err)
 		}
-		m.ServerToolUse = &block
+		m.ServerToolUse = &blockParam
 	case "web_search_tool_result":
-		var block WebSearchToolResultBlockParam
-		if err := json.Unmarshal(data, &block); err != nil {
-			return fmt.Errorf("failed to unmarshal web search tool result block: %w", err)
+		var blockParam WebSearchToolResultBlockParam
+		if err := json.Unmarshal(data, &blockParam); err != nil {
+			return fmt.Errorf("failed to unmarshal web search tool result blockParam: %w", err)
 		}
-		m.WebSearchToolResult = &block
+		m.WebSearchToolResult = &blockParam
 	default:
 		// Ignore unknown types for forward compatibility.
 		return nil
@@ -355,7 +355,7 @@ func (m *ContentBlockParam) MarshalJSON() ([]byte, error) {
 	if m.WebSearchToolResult != nil {
 		return json.Marshal(m.WebSearchToolResult)
 	}
-	return nil, fmt.Errorf("content block must have a defined type")
+	return nil, fmt.Errorf("content block param must have a defined type")
 }
 
 // MessagesMetadata represents the metadata for the Anthropic Messages API request.
@@ -580,29 +580,29 @@ func (tc *ToolChoice) UnmarshalJSON(data []byte) error {
 	}
 	switch typ.String() {
 	case "auto":
-		var v ToolChoiceAuto
-		if err := json.Unmarshal(data, &v); err != nil {
+		var toolChoice ToolChoiceAuto
+		if err := json.Unmarshal(data, &toolChoice); err != nil {
 			return fmt.Errorf("failed to unmarshal tool choice auto: %w", err)
 		}
-		tc.Auto = &v
+		tc.Auto = &toolChoice
 	case "any":
-		var v ToolChoiceAny
-		if err := json.Unmarshal(data, &v); err != nil {
+		var toolChoice ToolChoiceAny
+		if err := json.Unmarshal(data, &toolChoice); err != nil {
 			return fmt.Errorf("failed to unmarshal tool choice any: %w", err)
 		}
-		tc.Any = &v
+		tc.Any = &toolChoice
 	case "tool":
-		var v ToolChoiceTool
-		if err := json.Unmarshal(data, &v); err != nil {
+		var toolChoice ToolChoiceTool
+		if err := json.Unmarshal(data, &toolChoice); err != nil {
 			return fmt.Errorf("failed to unmarshal tool choice tool: %w", err)
 		}
-		tc.Tool = &v
+		tc.Tool = &toolChoice
 	case "none":
-		var v ToolChoiceNone
-		if err := json.Unmarshal(data, &v); err != nil {
+		var toolChoice ToolChoiceNone
+		if err := json.Unmarshal(data, &toolChoice); err != nil {
 			return fmt.Errorf("failed to unmarshal tool choice none: %w", err)
 		}
-		tc.None = &v
+		tc.None = &toolChoice
 	default:
 		// Ignore unknown types for forward compatibility.
 		return nil
@@ -663,23 +663,23 @@ func (t *Thinking) UnmarshalJSON(data []byte) error {
 	}
 	switch typ.String() {
 	case "enabled":
-		var v ThinkingEnabled
-		if err := json.Unmarshal(data, &v); err != nil {
+		var thinking ThinkingEnabled
+		if err := json.Unmarshal(data, &thinking); err != nil {
 			return fmt.Errorf("failed to unmarshal thinking enabled: %w", err)
 		}
-		t.Enabled = &v
+		t.Enabled = &thinking
 	case "disabled":
-		var v ThinkingDisabled
-		if err := json.Unmarshal(data, &v); err != nil {
+		var thinking ThinkingDisabled
+		if err := json.Unmarshal(data, &thinking); err != nil {
 			return fmt.Errorf("failed to unmarshal thinking disabled: %w", err)
 		}
-		t.Disabled = &v
+		t.Disabled = &thinking
 	case "adaptive":
-		var v ThinkingAdaptive
-		if err := json.Unmarshal(data, &v); err != nil {
+		var thinking ThinkingAdaptive
+		if err := json.Unmarshal(data, &thinking); err != nil {
 			return fmt.Errorf("failed to unmarshal thinking adaptive: %w", err)
 		}
-		t.Adaptive = &v
+		t.Adaptive = &thinking
 	default:
 		// Ignore unknown types for forward compatibility.
 		return nil
@@ -785,20 +785,26 @@ type ConstantMessagesResponseRoleAssistant string
 
 type (
 	// MessagesContentBlock represents a block of content in the Anthropic Messages API response.
-	// https://docs.claude.com/en/api/messages#response-content
+	// https://platform.claude.com/docs/en/api/messages#response-content
 	MessagesContentBlock struct {
-		Text     *TextBlock
-		Tool     *ToolUseBlock
-		Thinking *ThinkingBlock
-		// TODO when we need it for observability, etc.
+		Text                *TextBlock
+		Tool                *ToolUseBlock
+		Thinking            *ThinkingBlock
+		RedactedThinking    *RedactedThinkingBlock
+		ServerToolUse       *ServerToolUseBlock
+		WebSearchToolResult *WebSearchToolResultBlock
 	}
 
+	// TextBlock represents a text content block in the response.
+	// https://platform.claude.com/docs/en/api/messages#text_block
 	TextBlock struct {
-		Type string `json:"type"` // Always "text".
-		Text string `json:"text"`
-		// TODO: citation?
+		Type      string `json:"type"` // Always "text".
+		Text      string `json:"text"`
+		Citations []any  `json:"citations,omitempty"`
 	}
 
+	// ToolUseBlock represents a tool use content block in the response.
+	// https://platform.claude.com/docs/en/api/messages#tool_use_block
 	ToolUseBlock struct {
 		Type  string         `json:"type"` // Always "tool_use".
 		ID    string         `json:"id"`
@@ -806,10 +812,36 @@ type (
 		Input map[string]any `json:"input"`
 	}
 
+	// ThinkingBlock represents a thinking content block in the response.
+	// https://platform.claude.com/docs/en/api/messages#thinking_block
 	ThinkingBlock struct {
 		Type      string `json:"type"` // Always "thinking".
 		Thinking  string `json:"thinking"`
 		Signature string `json:"signature,omitempty"`
+	}
+
+	// RedactedThinkingBlock represents a redacted thinking content block in the response.
+	// https://platform.claude.com/docs/en/api/messages#redacted_thinking_block
+	RedactedThinkingBlock struct {
+		Type string `json:"type"` // Always "redacted_thinking".
+		Data string `json:"data"`
+	}
+
+	// ServerToolUseBlock represents a server tool use content block in the response.
+	// https://platform.claude.com/docs/en/api/messages#server_tool_use_block
+	ServerToolUseBlock struct {
+		Type  string         `json:"type"` // Always "server_tool_use".
+		ID    string         `json:"id"`
+		Name  string         `json:"name"` // e.g. "web_search".
+		Input map[string]any `json:"input"`
+	}
+
+	// WebSearchToolResultBlock represents a web search tool result content block in the response.
+	// https://platform.claude.com/docs/en/api/messages#web_search_tool_result_block
+	WebSearchToolResultBlock struct {
+		Type      string `json:"type"` // Always "web_search_tool_result".
+		ToolUseID string `json:"tool_use_id"`
+		Content   any    `json:"content"` // Array of WebSearchResult or a WebSearchToolResultError.
 	}
 )
 
@@ -820,31 +852,46 @@ func (m *MessagesContentBlock) UnmarshalJSON(data []byte) error {
 	}
 	switch typ.String() {
 	case "text":
-		var textBlock TextBlock
-		if err := json.Unmarshal(data, &textBlock); err != nil {
+		var contentBlock TextBlock
+		if err := json.Unmarshal(data, &contentBlock); err != nil {
 			return fmt.Errorf("failed to unmarshal text block: %w", err)
 		}
-		m.Text = &textBlock
-		return nil
+		m.Text = &contentBlock
 	case "tool_use":
-		var toolUseBlock ToolUseBlock
-		if err := json.Unmarshal(data, &toolUseBlock); err != nil {
+		var contentBlock ToolUseBlock
+		if err := json.Unmarshal(data, &contentBlock); err != nil {
 			return fmt.Errorf("failed to unmarshal tool use block: %w", err)
 		}
-		m.Tool = &toolUseBlock
-		return nil
+		m.Tool = &contentBlock
 	case "thinking":
-		var thinkingBlock ThinkingBlock
-		if err := json.Unmarshal(data, &thinkingBlock); err != nil {
+		var contentBlock ThinkingBlock
+		if err := json.Unmarshal(data, &contentBlock); err != nil {
 			return fmt.Errorf("failed to unmarshal thinking block: %w", err)
 		}
-		m.Thinking = &thinkingBlock
-		return nil
+		m.Thinking = &contentBlock
+	case "redacted_thinking":
+		var contentBlock RedactedThinkingBlock
+		if err := json.Unmarshal(data, &contentBlock); err != nil {
+			return fmt.Errorf("failed to unmarshal redacted thinking block: %w", err)
+		}
+		m.RedactedThinking = &contentBlock
+	case "server_tool_use":
+		var contentBlock ServerToolUseBlock
+		if err := json.Unmarshal(data, &contentBlock); err != nil {
+			return fmt.Errorf("failed to unmarshal server tool use block: %w", err)
+		}
+		m.ServerToolUse = &contentBlock
+	case "web_search_tool_result":
+		var contentBlock WebSearchToolResultBlock
+		if err := json.Unmarshal(data, &contentBlock); err != nil {
+			return fmt.Errorf("failed to unmarshal web search tool result block: %w", err)
+		}
+		m.WebSearchToolResult = &contentBlock
 	default:
-		// TODO add others when we need it for observability, etc.
-		// Fow now, we ignore undefined types.
+		// Ignore unknown types for forward compatibility.
 		return nil
 	}
+	return nil
 }
 
 func (m *MessagesContentBlock) MarshalJSON() ([]byte, error) {
@@ -857,7 +904,15 @@ func (m *MessagesContentBlock) MarshalJSON() ([]byte, error) {
 	if m.Thinking != nil {
 		return json.Marshal(m.Thinking)
 	}
-	// TODO add others when we need it for observability, etc.
+	if m.RedactedThinking != nil {
+		return json.Marshal(m.RedactedThinking)
+	}
+	if m.ServerToolUse != nil {
+		return json.Marshal(m.ServerToolUse)
+	}
+	if m.WebSearchToolResult != nil {
+		return json.Marshal(m.WebSearchToolResult)
+	}
 	return nil, fmt.Errorf("content block must have a defined type")
 }
 
