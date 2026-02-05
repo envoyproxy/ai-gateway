@@ -626,9 +626,79 @@ func (tc *ToolChoice) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("tool choice must have a defined type")
 }
 
-// Thinking represents the configuration for the model's "thinking" behavior.
-// https://docs.claude.com/en/api/messages#body-thinking
-type Thinking any // TODO when we need it for observability, etc.
+type (
+	// Thinking represents the configuration for the model's "thinking" behavior.
+	// This is not to be confused with the thinking block that is part of the response message's contentblock
+	// https://platform.claude.com/docs/en/api/messages#body-thinking
+	Thinking struct {
+		Enabled  *ThinkingEnabled
+		Disabled *ThinkingDisabled
+		Adaptive *ThinkingAdaptive
+	}
+
+	// ThinkingEnabled enables extended thinking with a token budget.
+	// https://platform.claude.com/docs/en/api/messages#thinking_config_enabled
+	ThinkingEnabled struct {
+		Type         string  `json:"type"`          // Always "enabled".
+		BudgetTokens float64 `json:"budget_tokens"` // Must be >= 1024 and < max_tokens.
+	}
+
+	// ThinkingDisabled disables extended thinking.
+	// https://platform.claude.com/docs/en/api/messages#thinking_config_disabled
+	ThinkingDisabled struct {
+		Type string `json:"type"` // Always "disabled".
+	}
+
+	// ThinkingAdaptive lets the model decide whether to use extended thinking.
+	// https://platform.claude.com/docs/en/api/messages#thinking_config_adaptive
+	ThinkingAdaptive struct {
+		Type string `json:"type"` // Always "adaptive".
+	}
+)
+
+func (t *Thinking) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	if !typ.Exists() {
+		return errors.New("missing type field in thinking config")
+	}
+	switch typ.String() {
+	case "enabled":
+		var v ThinkingEnabled
+		if err := json.Unmarshal(data, &v); err != nil {
+			return fmt.Errorf("failed to unmarshal thinking enabled: %w", err)
+		}
+		t.Enabled = &v
+	case "disabled":
+		var v ThinkingDisabled
+		if err := json.Unmarshal(data, &v); err != nil {
+			return fmt.Errorf("failed to unmarshal thinking disabled: %w", err)
+		}
+		t.Disabled = &v
+	case "adaptive":
+		var v ThinkingAdaptive
+		if err := json.Unmarshal(data, &v); err != nil {
+			return fmt.Errorf("failed to unmarshal thinking adaptive: %w", err)
+		}
+		t.Adaptive = &v
+	default:
+		// Ignore unknown types for forward compatibility.
+		return nil
+	}
+	return nil
+}
+
+func (t *Thinking) MarshalJSON() ([]byte, error) {
+	if t.Enabled != nil {
+		return json.Marshal(t.Enabled)
+	}
+	if t.Disabled != nil {
+		return json.Marshal(t.Disabled)
+	}
+	if t.Adaptive != nil {
+		return json.Marshal(t.Adaptive)
+	}
+	return nil, fmt.Errorf("thinking config must have a defined type")
+}
 
 // SystemPrompt represents a system prompt to guide the model's behavior.
 // https://docs.claude.com/en/api/messages#body-system
