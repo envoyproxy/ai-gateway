@@ -138,9 +138,7 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 				},
 			}},
 		},
-		ToolChoice: ptr.To(anthropic.ToolChoice(map[string]any{
-			"type": "auto",
-		})),
+		ToolChoice: &anthropic.ToolChoice{Auto: &anthropic.ToolChoiceAuto{Type: "auto"}},
 	}
 
 	raw, err := json.Marshal(originalReq)
@@ -360,10 +358,8 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 				},
 			}},
 		},
-		ToolChoice: ptr.To(anthropic.ToolChoice(map[string]any{
-			"type": "auto",
-		})),
-		Metadata: &anthropic.MessagesMetadata{UserID: ptr.To("test123")},
+		ToolChoice: &anthropic.ToolChoice{Auto: &anthropic.ToolChoiceAuto{Type: "auto"}},
+		Metadata:   &anthropic.MessagesMetadata{UserID: ptr.To("test123")},
 	}
 
 	raw, err := json.Marshal(parsedReq)
