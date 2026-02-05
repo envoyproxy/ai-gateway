@@ -36,7 +36,7 @@ type Processor interface {
 	//
 	// routerProcessor is the processor that is the "parent" which was used to determine the route at the
 	// router level. It holds the additional state that can be used to determine the backend to use.
-	SetBackend(ctx context.Context, backend *filterapi.Backend, handler filterapi.BackendAuthHandler, routerProcessor Processor) error
+	SetBackend(ctx context.Context, backend *filterapi.RuntimeBackend, routerProcessor Processor) error
 }
 
 // passThroughProcessor implements the Processor interface.
@@ -63,6 +63,6 @@ func (p passThroughProcessor) ProcessResponseBody(context.Context, *extprocv3.Ht
 }
 
 // SetBackend implements [Processor.SetBackend].
-func (p passThroughProcessor) SetBackend(context.Context, *filterapi.Backend, filterapi.BackendAuthHandler, Processor) error {
+func (p passThroughProcessor) SetBackend(context.Context, *filterapi.RuntimeBackend, Processor) error {
 	return nil
 }

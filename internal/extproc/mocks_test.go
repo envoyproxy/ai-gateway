@@ -44,7 +44,7 @@ type mockProcessor struct {
 }
 
 // SetBackend implements [Processor.SetBackend].
-func (m mockProcessor) SetBackend(context.Context, *filterapi.Backend, filterapi.BackendAuthHandler, Processor) error {
+func (m mockProcessor) SetBackend(context.Context, *filterapi.RuntimeBackend, Processor) error {
 	return nil
 }
 
