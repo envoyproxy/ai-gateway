@@ -122,8 +122,8 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 		TopP:          func() *float64 { v := 0.95; return &v }(),
 		StopSequences: []string{"Human:", "Assistant:"},
 		System:        &anthropic.SystemPrompt{Text: "You are a helpful weather assistant."},
-		Tools: []anthropic.Tool{
-			{
+		Tools: []anthropic.ToolUnion{
+			{Tool: &anthropic.Tool{
 				Name:        "get_weather",
 				Description: "Get current weather information",
 				InputSchema: anthropic.ToolInputSchema{
@@ -136,7 +136,7 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 					},
 					Required: []string{"location"},
 				},
-			},
+			}},
 		},
 		ToolChoice: ptr.To(anthropic.ToolChoice(map[string]any{
 			"type": "auto",
@@ -348,8 +348,8 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 		StopSequences: []string{"Human:", "Assistant:"},
 		Stream:        false,
 		System:        &anthropic.SystemPrompt{Text: "You are a helpful assistant"},
-		Tools: []anthropic.Tool{
-			{
+		Tools: []anthropic.ToolUnion{
+			{Tool: &anthropic.Tool{
 				Name:        "get_weather",
 				Description: "Get weather info",
 				InputSchema: anthropic.ToolInputSchema{
@@ -358,7 +358,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 						"location": map[string]any{"type": "string"},
 					},
 				},
-			},
+			}},
 		},
 		ToolChoice: ptr.To(anthropic.ToolChoice(map[string]any{
 			"type": "auto",

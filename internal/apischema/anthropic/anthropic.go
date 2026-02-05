@@ -76,7 +76,7 @@ type MessagesRequest struct {
 
 	// Tools is the list of tools available to the model.
 	// https://docs.claude.com/en/api/messages#body-tools
-	Tools []Tool `json:"tools,omitempty"`
+	Tools []ToolUnion `json:"tools,omitempty"`
 
 	// Stream indicates whether to stream the response.
 	Stream bool `json:"stream,omitempty"`
@@ -158,6 +158,7 @@ type (
 	}
 
 	// TextBlockParam represents a text content block.
+	// https://platform.claude.com/docs/en/api/messages#text_block_param
 	TextBlockParam struct {
 		Text         string `json:"text"`
 		Type         string `json:"type"` // Always "text".
@@ -166,6 +167,7 @@ type (
 	}
 
 	// ImageBlockParam represents an image content block.
+	// https://platform.claude.com/docs/en/api/messages#image_block_param
 	ImageBlockParam struct {
 		Type         string `json:"type"` // Always "image".
 		Source       any    `json:"source"`
@@ -173,6 +175,7 @@ type (
 	}
 
 	// DocumentBlockParam represents a document content block.
+	// https://platform.claude.com/docs/en/api/messages#document_block_param
 	DocumentBlockParam struct {
 		Type         string `json:"type"` // Always "document".
 		Source       any    `json:"source"`
@@ -183,6 +186,7 @@ type (
 	}
 
 	// SearchResultBlockParam represents a search result content block.
+	// https://platform.claude.com/docs/en/api/messages#search_result_block_param
 	SearchResultBlockParam struct {
 		Type         string           `json:"type"` // Always "search_result".
 		Content      []TextBlockParam `json:"content"`
@@ -193,6 +197,7 @@ type (
 	}
 
 	// ThinkingBlockParam represents a thinking content block in a request.
+	// https://platform.claude.com/docs/en/api/messages#thinking_block_param
 	ThinkingBlockParam struct {
 		Type      string `json:"type"` // Always "thinking".
 		Thinking  string `json:"thinking"`
@@ -200,12 +205,14 @@ type (
 	}
 
 	// RedactedThinkingBlockParam represents a redacted thinking content block.
+	// https://platform.claude.com/docs/en/api/messages#redacted_thinking_block_param
 	RedactedThinkingBlockParam struct {
 		Type string `json:"type"` // Always "redacted_thinking".
 		Data string `json:"data"`
 	}
 
 	// ToolUseBlockParam represents a tool use content block in a request.
+	// https://platform.claude.com/docs/en/api/messages#tool_use_block_param
 	ToolUseBlockParam struct {
 		Type         string         `json:"type"` // Always "tool_use".
 		ID           string         `json:"id"`
@@ -215,6 +222,7 @@ type (
 	}
 
 	// ToolResultBlockParam represents a tool result content block.
+	// https://platform.claude.com/docs/en/api/messages#tool_result_block_param
 	ToolResultBlockParam struct {
 		Type         string `json:"type"` // Always "tool_result".
 		ToolUseID    string `json:"tool_use_id"`
@@ -224,6 +232,7 @@ type (
 	}
 
 	// ServerToolUseBlockParam represents a server tool use content block.
+	// https://platform.claude.com/docs/en/api/messages#server_tool_use_block_param
 	ServerToolUseBlockParam struct {
 		Type         string         `json:"type"` // Always "server_tool_use".
 		ID           string         `json:"id"`
@@ -233,6 +242,7 @@ type (
 	}
 
 	// WebSearchToolResultBlockParam represents a web search tool result content block.
+	// https://platform.claude.com/docs/en/api/messages#web_search_tool_result_block_param
 	WebSearchToolResultBlockParam struct {
 		Type         string `json:"type"` // Always "web_search_tool_result".
 		ToolUseID    string `json:"tool_use_id"`
@@ -366,22 +376,84 @@ const (
 )
 
 // Container represents a container identifier for reuse across requests.
-// https://docs.claude.com/en/api/messages#body-container
+// This became a beta status so it is not implemented for now.
+// https://platform.claude.com/docs/en/api/beta/messages/create
 type Container any // TODO when we need it for observability, etc.
 
 type (
 	// ToolUnion represents a tool available to the model.
 	// https://platform.claude.com/docs/en/api/messages#tool_union
 	ToolUnion struct {
-		Tool *Tool
-		// TODO when we need it for observability, etc.
+		Tool                   *Tool
+		BashTool               *BashTool
+		TextEditorTool20250124 *TextEditorTool20250124
+		TextEditorTool20250429 *TextEditorTool20250429
+		TextEditorTool20250728 *TextEditorTool20250728
+		WebSearchTool          *WebSearchTool
 	}
+
+	// Tool represents a custom tool definition.
+	// https://platform.claude.com/docs/en/api/messages#tool
 	Tool struct {
 		Type         string          `json:"type"` // Always "custom".
 		Name         string          `json:"name"`
 		InputSchema  ToolInputSchema `json:"input_schema"`
-		CacheControl any             `json:"cache_schema,omitempty"`
+		CacheControl any             `json:"cache_control,omitempty"`
 		Description  string          `json:"description,omitempty"`
+	}
+
+	// BashTool represents the bash tool for computer use.
+	// https://platform.claude.com/docs/en/api/messages#tool_bash_20250124
+	BashTool struct {
+		Type         string `json:"type"` // Always "bash_20250124".
+		Name         string `json:"name"` // Always "bash".
+		CacheControl any    `json:"cache_control,omitempty"`
+	}
+
+	// TextEditorTool20250124 represents the text editor tool (v1).
+	// https://platform.claude.com/docs/en/api/messages#tool_text_editor_20250124
+	TextEditorTool20250124 struct {
+		Type         string `json:"type"` // Always "text_editor_20250124".
+		Name         string `json:"name"` // Always "str_replace_editor".
+		CacheControl any    `json:"cache_control,omitempty"`
+	}
+
+	// TextEditorTool20250429 represents the text editor tool (v2).
+	// https://platform.claude.com/docs/en/api/messages#tool_text_editor_20250429
+	TextEditorTool20250429 struct {
+		Type         string `json:"type"` // Always "text_editor_20250429".
+		Name         string `json:"name"` // Always "str_replace_based_edit_tool".
+		CacheControl any    `json:"cache_control,omitempty"`
+	}
+
+	// TextEditorTool20250728 represents the text editor tool (v3).
+	// https://platform.claude.com/docs/en/api/messages#tool_text_editor_20250728
+	TextEditorTool20250728 struct {
+		Type          string   `json:"type"` // Always "text_editor_20250728".
+		Name          string   `json:"name"` // Always "str_replace_based_edit_tool".
+		MaxCharacters *float64 `json:"max_characters,omitempty"`
+		CacheControl  any      `json:"cache_control,omitempty"`
+	}
+
+	// WebSearchTool represents the web search tool.
+	// https://platform.claude.com/docs/en/api/messages#web_search_tool_20250305
+	WebSearchTool struct {
+		Type           string             `json:"type"` // Always "web_search_20250305".
+		Name           string             `json:"name"` // Always "web_search".
+		AllowedDomains []string           `json:"allowed_domains,omitempty"`
+		BlockedDomains []string           `json:"blocked_domains,omitempty"`
+		MaxUses        *float64           `json:"max_uses,omitempty"`
+		UserLocation   *WebSearchLocation `json:"user_location,omitempty"`
+		CacheControl   any                `json:"cache_control,omitempty"`
+	}
+
+	// WebSearchLocation represents the user location for the web search tool.
+	WebSearchLocation struct {
+		Type     string `json:"type"` // Always "approximate".
+		City     string `json:"city,omitempty"`
+		Country  string `json:"country,omitempty"`
+		Region   string `json:"region,omitempty"`
+		Timezone string `json:"timezone,omitempty"`
 	}
 
 	ToolInputSchema struct {
@@ -403,12 +475,63 @@ func (t *ToolUnion) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("failed to unmarshal tool: %w", err)
 		}
 		t.Tool = &tool
-		return nil
+	case "bash_20250124":
+		var tool BashTool
+		if err := json.Unmarshal(data, &tool); err != nil {
+			return fmt.Errorf("failed to unmarshal bash tool: %w", err)
+		}
+		t.BashTool = &tool
+	case "text_editor_20250124":
+		var tool TextEditorTool20250124
+		if err := json.Unmarshal(data, &tool); err != nil {
+			return fmt.Errorf("failed to unmarshal text editor tool: %w", err)
+		}
+		t.TextEditorTool20250124 = &tool
+	case "text_editor_20250429":
+		var tool TextEditorTool20250429
+		if err := json.Unmarshal(data, &tool); err != nil {
+			return fmt.Errorf("failed to unmarshal text editor tool: %w", err)
+		}
+		t.TextEditorTool20250429 = &tool
+	case "text_editor_20250728":
+		var tool TextEditorTool20250728
+		if err := json.Unmarshal(data, &tool); err != nil {
+			return fmt.Errorf("failed to unmarshal text editor tool: %w", err)
+		}
+		t.TextEditorTool20250728 = &tool
+	case "web_search_20250305":
+		var tool WebSearchTool
+		if err := json.Unmarshal(data, &tool); err != nil {
+			return fmt.Errorf("failed to unmarshal web search tool: %w", err)
+		}
+		t.WebSearchTool = &tool
 	default:
-		// TODO add others when we need it for observability, etc.
-		// Fow now, we ignore undefined types.
+		// Ignore unknown types for forward compatibility.
 		return nil
 	}
+	return nil
+}
+
+func (t *ToolUnion) MarshalJSON() ([]byte, error) {
+	if t.Tool != nil {
+		return json.Marshal(t.Tool)
+	}
+	if t.BashTool != nil {
+		return json.Marshal(t.BashTool)
+	}
+	if t.TextEditorTool20250124 != nil {
+		return json.Marshal(t.TextEditorTool20250124)
+	}
+	if t.TextEditorTool20250429 != nil {
+		return json.Marshal(t.TextEditorTool20250429)
+	}
+	if t.TextEditorTool20250728 != nil {
+		return json.Marshal(t.TextEditorTool20250728)
+	}
+	if t.WebSearchTool != nil {
+		return json.Marshal(t.WebSearchTool)
+	}
+	return nil, fmt.Errorf("tool union must have a defined type")
 }
 
 // ToolChoice represents the tool choice for the model.
