@@ -58,7 +58,7 @@ kubectl wait --timeout=5m -n envoy-ai-gateway-system \
 Upgrade your AI Gateway installation with [OpenTelemetry configuration][otel-config]:
 
 <CodeBlock language="shell">
-{`helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \\
+{`helm upgrade aieg oci://docker.io/envoyproxy/ai-gateway-helm \\
     --version v${vars.aigwVersion} \\
     --namespace envoy-ai-gateway-system \\
     --set "extProc.extraEnvVars[0].name=OTEL_EXPORTER_OTLP_ENDPOINT" \\
@@ -179,7 +179,7 @@ Here's an example of keeping the default session mapping for spans/logs while
 only adding a low-cardinality attribute to metrics:
 
 <CodeBlock language="shell">
-{`helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \\
+{`helm upgrade aieg oci://docker.io/envoyproxy/ai-gateway-helm \\
     --version v${vars.aigwVersion} \\
     --namespace envoy-ai-gateway-system \\
     --reuse-values \\
@@ -196,7 +196,7 @@ helm uninstall phoenix -n envoy-ai-gateway-system
 
 # Disable tracing in AI Gateway
 
-helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \\
+helm upgrade aieg oci://docker.io/envoyproxy/ai-gateway-helm \\
 --version v${vars.aigwVersion} \\
 --namespace envoy-ai-gateway-system \\
 --reuse-values \\
