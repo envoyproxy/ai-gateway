@@ -81,6 +81,7 @@ func TestChatCompletionsEndpointSpec_GetTranslator(t *testing.T) {
 	supported := []filterapi.VersionedAPISchema{
 		{Name: filterapi.APISchemaOpenAI, Prefix: "v1"},
 		{Name: filterapi.APISchemaAWSBedrock},
+		{Name: filterapi.APISchemaAWSInvokeOpenAI, Version: "v1"},
 		{Name: filterapi.APISchemaAzureOpenAI, Version: "2024-02-01"},
 		{Name: filterapi.APISchemaGCPVertexAI},
 		{Name: filterapi.APISchemaGCPAnthropic, Version: "2024-05-01"},
@@ -805,5 +806,35 @@ func TestRedactString(t *testing.T) {
 		result := redaction.RedactString("sensitive data")
 		require.Contains(t, result, "[REDACTED LENGTH=14")
 		require.Contains(t, result, "HASH=")
+	})
+}
+
+func TestAWSInvokeOpenAIAPISchemaIntegration(t *testing.T) {
+	schema := filterapi.VersionedAPISchema{
+		Name:    filterapi.APISchemaAWSInvokeOpenAI,
+		Version: "v1",
+	}
+
+	t.Run("ChatCompletions", func(t *testing.T) {
+		endpointSpec := ChatCompletionsEndpointSpec{}
+		translator, err := endpointSpec.GetTranslator(schema, "")
+		require.NoError(t, err)
+		require.NotNil(t, translator)
+	})
+}
+
+func TestAWSInvokeOpenAIAPISchemaWithModelOverride(t *testing.T) {
+	schema := filterapi.VersionedAPISchema{
+		Name:    filterapi.APISchemaAWSInvokeOpenAI,
+		Version: "v1",
+	}
+
+	modelOverride := "arn:aws:bedrock:us-east-1:123456789:model/gpt-4"
+
+	t.Run("ChatCompletions", func(t *testing.T) {
+		endpointSpec := ChatCompletionsEndpointSpec{}
+		translator, err := endpointSpec.GetTranslator(schema, modelOverride)
+		require.NoError(t, err)
+		require.NotNil(t, translator)
 	})
 }

@@ -1,0 +1,93 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-basic-aws-openai
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-basic
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              # This is an example model ID - replace with your actual AWS Bedrock OpenAI-compatible model
+              value: openai.example-model:0
+      backendRefs:
+        - name: envoy-ai-gateway-basic-aws-openai
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-basic-aws-openai
+  namespace: default
+spec:
+  schema:
+    name: AWSInvokeOpenAI
+  backendRef:
+    name: envoy-ai-gateway-basic-aws-openai
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: envoy-ai-gateway-basic-aws-openai-credentials
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-basic-aws-openai
+  type: AWSCredentials
+  awsCredentials:
+    region: us-west-2
+    credentialsFile:
+      secretRef:
+        name: envoy-ai-gateway-basic-aws-openai-credentials
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-basic-aws-openai
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: bedrock-runtime.us-west-2.amazonaws.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: envoy-ai-gateway-basic-aws-openai-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: "gateway.envoyproxy.io"
+      kind: Backend
+      name: envoy-ai-gateway-basic-aws-openai
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: bedrock-runtime.us-west-2.amazonaws.com
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-aws-openai-credentials
+  namespace: default
+type: Opaque
+stringData:
+  # Replace this with your AWS credentials.
+  # You can also use AWS IAM roles for service accounts (IRSA) or EKS Pod Identity.
+  credentials: |
+    [default]
+    aws_access_key_id = AWS_ACCESS_KEY_ID
+    aws_secret_access_key = AWS_SECRET_ACCESS_KEY
