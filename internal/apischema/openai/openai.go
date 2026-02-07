@@ -3633,7 +3633,7 @@ func (r ResponseInputItemUnionParam) MarshalJSON() ([]byte, error) { // nolint:g
 
 func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
-	
+
 	// Handle messages without explicit type field (for compatibility with simple message arrays)
 	// This allows arrays like [{"role": "user", "content": "Hello"}] to work without requiring type field
 	if typ.String() == "" {
@@ -3647,7 +3647,7 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 			return nil
 		}
 	}
-	
+
 	switch typ.String() {
 	case "message":
 		// Check for id field to determine which type to unmarshal into
