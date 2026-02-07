@@ -45,6 +45,9 @@ type session struct {
 	reqCtx             *mcpRequestContext
 	mu                 sync.RWMutex
 	perBackendSessions map[filterapi.MCPBackendName]*compositeSessionEntry
+	// claimHeaders contains JWT claims extracted from the initial request and forwarded to backends.
+	// The key is the HTTP header name, the value is the claim value.
+	claimHeaders map[string]string
 }
 
 // Close implements [io.Closer.Close].
@@ -349,6 +352,14 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 	}
 	req.Header.Set("Accept", "text/event-stream, application/json")
 	req.Header.Set("Accept-encoding", "gzip, br, zstd, deflate")
+
+	// Forward JWT claim headers to the backend.
+	// First, strip any client-provided headers that match configured claim headers to prevent forgery.
+	// Then set the claim values extracted from the JWT.
+	for header, value := range s.claimHeaders {
+		req.Header.Del(header) // Prevent forgery by stripping client-provided headers.
+		req.Header.Set(header, value)
+	}
 
 	if lastEventID := cse.lastEventID; lastEventID != "" {
 		req.Header.Set(lastEventIDHeader, lastEventID)
