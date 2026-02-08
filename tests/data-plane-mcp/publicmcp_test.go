@@ -29,8 +29,8 @@ func TestPublicMCPServers(t *testing.T) {
 			{
 				Name: "test-route",
 				Backends: []filterapi.MCPBackend{
-					{Name: "context7", Path: "/mcp"},
-					{Name: "kiwi", Path: "/"},
+					{Name: "context7"},
+					{Name: "kiwi"},
 				},
 			},
 		},
@@ -42,7 +42,6 @@ func TestPublicMCPServers(t *testing.T) {
 		mcpConfig.Routes[0].Backends = append(mcpConfig.Routes[0].Backends,
 			filterapi.MCPBackend{
 				Name: "github",
-				Path: "/mcp/readonly",
 				ToolSelector: &filterapi.MCPToolSelector{
 					IncludeRegex: []string{".*pull_requests?.*", ".*issues?.*"},
 				},

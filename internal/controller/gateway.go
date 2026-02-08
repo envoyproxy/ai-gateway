@@ -495,7 +495,6 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 			mcpBackend := filterapi.MCPBackend{
 				// MCPRoute doesn't support cross-namespace backend reference so just use the name.
 				Name: filterapi.MCPBackendName(b.Name),
-				Path: ptr.Deref(b.Path, "/mcp"),
 			}
 			if b.ToolSelector != nil {
 				mcpBackend.ToolSelector = &filterapi.MCPToolSelector{

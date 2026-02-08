@@ -77,9 +77,9 @@ func TestLoadConfig_BasicConfiguration(t *testing.T) {
 				{
 					Name: "route1",
 					Backends: []filterapi.MCPBackend{
-						{Name: "backend1", Path: "/mcp1"},
+						{Name: "backend1"},
 						{
-							Name: "backend2", Path: "/mcp2",
+							Name: "backend2",
 							ToolSelector: &filterapi.MCPToolSelector{
 								Include:      []string{"tool1", "tool2"},
 								IncludeRegex: []string{"^test.*"},
@@ -90,8 +90,8 @@ func TestLoadConfig_BasicConfiguration(t *testing.T) {
 				{
 					Name: "route2",
 					Backends: []filterapi.MCPBackend{
-						{Name: "backend3", Path: "/mcp3"},
-						{Name: "backend4", Path: "/mcp4"},
+						{Name: "backend3"},
+						{Name: "backend4"},
 					},
 				},
 			},
@@ -130,7 +130,7 @@ func TestLoadConfig_ToolsChangedNotification(t *testing.T) {
 			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
 				"route1": {
 					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
-						"backend1": {Name: "backend1", Path: "/mcp1"},
+						"backend1": {Name: "backend1"},
 					},
 					toolSelectors: map[filterapi.MCPBackendName]*toolSelector{},
 				},
@@ -147,8 +147,8 @@ func TestLoadConfig_ToolsChangedNotification(t *testing.T) {
 				{
 					Name: "route1",
 					Backends: []filterapi.MCPBackend{
-						{Name: "backend1", Path: "/mcp1"},
-						{Name: "backend2", Path: "/mcp2"}, // Added backend
+						{Name: "backend1"},
+						{Name: "backend2"}, // Added backend
 					},
 				},
 			},
@@ -178,7 +178,7 @@ func TestLoadConfig_NoToolsChangedNotification(t *testing.T) {
 			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
 				"route1": {
 					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
-						"backend1": {Name: "backend1", Path: "/mcp1"},
+						"backend1": {Name: "backend1"},
 					},
 					toolSelectors: map[filterapi.MCPBackendName]*toolSelector{},
 				},
@@ -195,7 +195,7 @@ func TestLoadConfig_NoToolsChangedNotification(t *testing.T) {
 				{
 					Name: "route1",
 					Backends: []filterapi.MCPBackend{
-						{Name: "backend1", Path: "/mcp1"}, // Same backend
+						{Name: "backend1"}, // Same backend
 					},
 				},
 			},
@@ -229,7 +229,6 @@ func TestLoadConfig_InvalidRegex(t *testing.T) {
 					Backends: []filterapi.MCPBackend{
 						{
 							Name: "backend1",
-							Path: "/mcp1",
 							ToolSelector: &filterapi.MCPToolSelector{
 								IncludeRegex: []string{"[invalid"}, // Invalid regex
 							},
@@ -256,7 +255,7 @@ func TestLoadConfig_ToolSelectorChange(t *testing.T) {
 			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
 				"route1": {
 					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
-						"backend1": {Name: "backend1", Path: "/mcp1"},
+						"backend1": {Name: "backend1"},
 					},
 					toolSelectors: map[filterapi.MCPBackendName]*toolSelector{
 						"backend1": {
@@ -279,7 +278,6 @@ func TestLoadConfig_ToolSelectorChange(t *testing.T) {
 					Backends: []filterapi.MCPBackend{
 						{
 							Name: "backend1",
-							Path: "/mcp1",
 							ToolSelector: &filterapi.MCPToolSelector{
 								Include: []string{"tool1", "tool2"}, // Different tools
 							},
@@ -315,11 +313,11 @@ func TestLoadConfig_ToolOrderDoesNotMatter(t *testing.T) {
 	// Initialize proxy with initial configuration directly
 	proxy := &ProxyConfig{
 		mcpProxyConfig: &mcpProxyConfig{
-			backendListenerAddr: "http://localhost:8080",
+			backendListenerAddr: "http://localhost:8080/",
 			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
 				"route1": {
 					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
-						"backend1": {Name: "backend1", Path: "/mcp1"},
+						"backend1": {Name: "backend1"},
 					},
 					toolSelectors: map[filterapi.MCPBackendName]*toolSelector{
 						"backend1": {
@@ -351,7 +349,6 @@ func TestLoadConfig_ToolOrderDoesNotMatter(t *testing.T) {
 					Backends: []filterapi.MCPBackend{
 						{
 							Name: "backend1",
-							Path: "/mcp1",
 							ToolSelector: &filterapi.MCPToolSelector{
 								Include:      []string{"tool-c", "tool-a", "tool-b"},        // Different order
 								IncludeRegex: []string{"^exact$", ".*suffix$", "^prefix.*"}, // Different order

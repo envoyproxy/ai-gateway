@@ -357,7 +357,7 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode MCP message: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.mcpEndpointForBackend(backend), bytes.NewReader(encoded))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.backendListenerAddr, bytes.NewReader(encoded))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create MCP notifications/initialized request: %w", err)
 	}

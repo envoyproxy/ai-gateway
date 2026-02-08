@@ -38,9 +38,6 @@ type MCPBackend struct {
 	// This name is set in [internalapi.MCPBackendHeader] header to route the request to the specific backend.
 	Name MCPBackendName `json:"name"`
 
-	// Path is the HTTP endpoint path of the backend MCP server.
-	Path string `json:"path"`
-
 	// ToolSelector filters the tools exposed by this backend. If not set, all tools are exposed.
 	ToolSelector *MCPToolSelector `json:"toolSelector,omitempty"`
 }
