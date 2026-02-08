@@ -23,6 +23,8 @@ type Interface interface {
 	GatewayConfigs() GatewayConfigInformer
 	// MCPRoutes returns a MCPRouteInformer.
 	MCPRoutes() MCPRouteInformer
+	// QuotaPolicies returns a QuotaPolicyInformer.
+	QuotaPolicies() QuotaPolicyInformer
 }
 
 type version struct {
@@ -59,4 +61,9 @@ func (v *version) GatewayConfigs() GatewayConfigInformer {
 // MCPRoutes returns a MCPRouteInformer.
 func (v *version) MCPRoutes() MCPRouteInformer {
 	return &mCPRouteInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// QuotaPolicies returns a QuotaPolicyInformer.
+func (v *version) QuotaPolicies() QuotaPolicyInformer {
+	return &quotaPolicyInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

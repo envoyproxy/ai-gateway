@@ -112,7 +112,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, op
 	}
 	gcpReq, err := o.openAIMessageToGeminiMessage(openAIReq, o.requestModel)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error converting OpenAI request to Gemini request: %w", err)
+		return nil, nil, err
 	}
 	newBody, err = json.Marshal(gcpReq)
 	if err != nil {
@@ -514,19 +514,19 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) openAIMessageToGeminiMes
 	// Convert OpenAI tools to Gemini tools.
 	tools, err := openAIToolsToGeminiTools(openAIReq.Tools, parametersJSONSchemaAvailable)
 	if err != nil {
-		return nil, fmt.Errorf("error converting tools: %w", err)
+		return nil, fmt.Errorf("invalid tools: %w", err)
 	}
 
 	// Convert tool config.
 	toolConfig, err := openAIToolChoiceToGeminiToolConfig(openAIReq.ToolChoice)
 	if err != nil {
-		return nil, fmt.Errorf("error converting tool choice: %w", err)
+		return nil, fmt.Errorf("invalid tool configs: %w", err)
 	}
 
 	// Convert generation config.
 	generationConfig, responseMode, err := openAIReqToGeminiGenerationConfig(openAIReq, requestModel)
 	if err != nil {
-		return nil, fmt.Errorf("error converting generation config: %w", err)
+		return nil, fmt.Errorf("invalid generation configs: %w", err)
 	}
 	o.responseMode = responseMode
 

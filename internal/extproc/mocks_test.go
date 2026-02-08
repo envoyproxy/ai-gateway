@@ -310,3 +310,13 @@ type mockBackendAuthHandler struct{}
 func (m *mockBackendAuthHandler) Do(context.Context, map[string]string, []byte) ([]internalapi.Header, error) {
 	return []internalapi.Header{{"foo", "mock-auth-handler"}}, nil
 }
+
+// mockBackendAuthHandlerError implements [filterapi.BackendAuthHandler] for testing auth errors.
+type mockBackendAuthHandlerError struct {
+	err error
+}
+
+// Do implements [filterapi.BackendAuthHandler.Do].
+func (m *mockBackendAuthHandlerError) Do(context.Context, map[string]string, []byte) ([]internalapi.Header, error) {
+	return nil, m.err
+}

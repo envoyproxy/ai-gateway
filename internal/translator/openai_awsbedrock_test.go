@@ -28,6 +28,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
@@ -1839,7 +1840,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBodyErr(t *testing.
 				},
 				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: 123},
 			},
-			err: fmt.Errorf("unexpected type: int"),
+			err: internalapi.ErrInvalidRequestBody,
 		},
 	}
 	for _, tt := range tests {
@@ -1847,7 +1848,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBodyErr(t *testing.
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			originalReq := tt.input
 			_, _, err := o.RequestBody(nil, &originalReq, false)
-			require.Equal(t, err.Error(), tt.err.Error())
+			require.ErrorIs(t, err, tt.err)
 		})
 	}
 }

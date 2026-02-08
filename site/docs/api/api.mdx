@@ -25,6 +25,8 @@ API group.
 - [GatewayConfigList](#gatewayconfiglist)
 - [MCPRoute](#mcproute)
 - [MCPRouteList](#mcproutelist)
+- [QuotaPolicy](#quotapolicy)
+- [QuotaPolicyList](#quotapolicylist)
 
 ### Kind Definitions
 #### AIGatewayRoute
@@ -467,6 +469,87 @@ MCPRouteList contains a list of MCPRoute.
 />
 
 
+#### QuotaPolicy
+
+
+
+**Appears in:**
+- [QuotaPolicyList](#quotapolicylist)
+
+QuotaPolicy specifies token quota configuration for inference services.
+Providing a list of backends in the AIGatewayRouteRule allows failover to a different service
+if token quota for a service had been exceeded.
+
+##### Fields
+
+<ApiField
+  name="apiVersion"
+  type="String"
+  required="true"
+  description="We are on version <code>aigateway.envoyproxy.io/v1alpha1</code> of the API."
+/>
+
+<ApiField
+  name="kind"
+  type="String"
+  required="true"
+  description="This is a <code>QuotaPolicy</code> resource"
+/>
+
+<ApiField
+  name="metadata"
+  type="[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta)"
+  required="true"
+  description="Refer to Kubernetes API documentation for fields of `metadata`."
+/><ApiField
+  name="spec"
+  type="[QuotaPolicySpec](#quotapolicyspec)"
+  required="true"
+  description=""
+/><ApiField
+  name="status"
+  type="[QuotaPolicyStatus](#quotapolicystatus)"
+  required="true"
+  description="Status defines the status details of the QuotaPolicy."
+/>
+
+
+#### QuotaPolicyList
+
+
+
+
+QuotaPolicyList contains a list of QuotaPolicy
+
+##### Fields
+
+<ApiField
+  name="apiVersion"
+  type="String"
+  required="true"
+  description="We are on version <code>aigateway.envoyproxy.io/v1alpha1</code> of the API."
+/>
+
+<ApiField
+  name="kind"
+  type="String"
+  required="true"
+  description="This is a <code>QuotaPolicyList</code> resource"
+/>
+
+<ApiField
+  name="metadata"
+  type="[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#listmeta-v1-meta)"
+  required="true"
+  description="Refer to Kubernetes API documentation for fields of `metadata`."
+/><ApiField
+  name="items"
+  type="[QuotaPolicy](#quotapolicy) array"
+  required="true"
+  description=""
+/>
+
+
 ## Supporting Types
 
 ### Available Types
@@ -521,7 +604,15 @@ MCPRouteList contains a list of MCPRoute.
 - [MCPRouteSpec](#mcproutespec)
 - [MCPRouteStatus](#mcproutestatus)
 - [MCPToolFilter](#mcptoolfilter)
+- [PerModelQuota](#permodelquota)
 - [ProtectedResourceMetadata](#protectedresourcemetadata)
+- [QuotaBucketMode](#quotabucketmode)
+- [QuotaDefinition](#quotadefinition)
+- [QuotaPolicySpec](#quotapolicyspec)
+- [QuotaPolicyStatus](#quotapolicystatus)
+- [QuotaRule](#quotarule)
+- [QuotaValue](#quotavalue)
+- [ServiceQuotaDefinition](#servicequotadefinition)
 - [ToolCall](#toolcall)
 - [VersionedAPISchema](#versionedapischema)
 
@@ -891,7 +982,7 @@ APISchema defines the API schema.
   name="AWSAnthropic"
   type="enum"
   required="false"
-  description="APISchemaAWSAnthropic is the schema for Anthropic models hosted on AWS Bedrock.<br />Uses the native Anthropic Messages API format for requests and responses.<br />https://aws.amazon.com/bedrock/anthropic/<br />https://docs.claude.com/en/api/claude-on-amazon-bedrock<br />"
+  description="APISchemaAWSAnthropic is the schema for Anthropic models hosted on AWS Bedrock.<br />Uses the native Anthropic Messages API format for requests and responses.<br />When used with /v1/chat/completions endpoint, translates OpenAI format to Anthropic.<br />When used with /v1/messages endpoint, passes through native Anthropic format.<br />https://aws.amazon.com/bedrock/anthropic/<br />https://docs.claude.com/en/api/claude-on-amazon-bedrock<br />"
 />
 #### AWSCredentialsFile
 
@@ -2102,6 +2193,32 @@ MCPToolFilter filters tools using include patterns with exact matches or regular
 />
 
 
+#### PerModelQuota
+
+
+
+**Appears in:**
+- [QuotaPolicySpec](#quotapolicyspec)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="modelName"
+  type="string"
+  required="true"
+  description="Model name for which the quota is specified."
+/><ApiField
+  name="quota"
+  type="[QuotaDefinition](#quotadefinition)"
+  required="true"
+  description="Expression for computing request cost and rules for matching requests to quota buckets."
+/>
+
+
 #### ProtectedResourceMetadata
 
 
@@ -2149,6 +2266,203 @@ References:
   type="string"
   required="false"
   description="ResourcePolicyURI is a URL that points to the resource server's policy document."
+/>
+
+
+#### QuotaBucketMode
+
+**Underlying type:** string
+
+**Appears in:**
+- [QuotaDefinition](#quotadefinition)
+
+QuotaBucketMode specifies whether the default and per request buckets values are exclusive or inclusive.
+
+
+
+##### Possible Values
+
+<ApiField
+  name="Shared"
+  type="enum"
+  required="false"
+  description=""
+/><ApiField
+  name="Exclusive"
+  type="enum"
+  required="false"
+  description=""
+/>
+#### QuotaDefinition
+
+
+
+**Appears in:**
+- [PerModelQuota](#permodelquota)
+
+QuotaDefinition specified expression for computing request cost and rules for matching requests to quota buckets.
+
+##### Fields
+
+
+
+<ApiField
+  name="costExpression"
+  type="string"
+  required="false"
+  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> * `input_tokens + cached_input_tokens * 0.1 + output_tokens * 6`"
+/><ApiField
+  name="mode"
+  type="[QuotaBucketMode](#quotabucketmode)"
+  required="true"
+  description="The `Mode` determines how quota is charged to the `DefaultBucket` and matching `BucketRules`.<br />In the `exclusive` mode the quota is charged to matching BucketRules or the DefaultBucket<br />if no BucketRules match the request. The request is denied if all matching buckets are out of quota.<br />In the `shared` mode the quota is charged to all matching `BucketRules` AND the `DefaultBucket`<br />and request is allowed only if the quota is available in all matching buckets."
+/><ApiField
+  name="defaultBucket"
+  type="[QuotaValue](#quotavalue)"
+  required="false"
+  description="Quota applicable to all traffic. This value can be overridden for specific classes of requests<br />using the `BucketRules` configuration."
+/><ApiField
+  name="bucketRules"
+  type="[QuotaRule](#quotarule) array"
+  required="false"
+  description="BucketRules are a list of client selectors and quotas. If a request<br />matches multiple rules, each of their associated quotas get applied, so a<br />single request might burn down the quota for multiple rules."
+/>
+
+
+#### QuotaPolicySpec
+
+
+
+**Appears in:**
+- [QuotaPolicy](#quotapolicy)
+
+QuotaPolicySpec specifies rules for computing token based costs of requests.
+
+##### Fields
+
+
+
+<ApiField
+  name="targetRefs"
+  type="[LocalPolicyTargetReference](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1alpha2.LocalPolicyTargetReference) array"
+  required="false"
+  description="TargetRefs are the names of the AIServiceBackend resources this QuotaPolicy is being attached to."
+/><ApiField
+  name="serviceQuota"
+  type="[ServiceQuotaDefinition](#servicequotadefinition)"
+  required="false"
+  description="Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the `PerModelQuotas`<br />configuration."
+/><ApiField
+  name="perModelQuotas"
+  type="[PerModelQuota](#permodelquota) array"
+  required="false"
+  description="PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this<br />policy is attached."
+/>
+
+
+#### QuotaPolicyStatus
+
+
+
+**Appears in:**
+- [QuotaPolicy](#quotapolicy)
+
+QuotaPolicyStatus contains the conditions by the reconciliation result.
+
+##### Fields
+
+
+
+<ApiField
+  name="conditions"
+  type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
+  required="true"
+  description="Conditions is the list of conditions by the reconciliation result.<br />Currently, at most one condition is set.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`."
+/>
+
+
+#### QuotaRule
+
+
+
+**Appears in:**
+- [QuotaDefinition](#quotadefinition)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="clientSelectors"
+  type="RateLimitSelectCondition array"
+  required="false"
+  description="ClientSelectors holds the list of conditions to select<br />specific clients using attributes from the traffic flow.<br />All individual select conditions must hold True for this rule<br />and its limit to be applied.<br />If no client selectors are specified, the rule applies to all traffic of<br />the targeted AIServiceBackend."
+/><ApiField
+  name="quota"
+  type="[QuotaValue](#quotavalue)"
+  required="true"
+  description="Quota value for given client selectors.<br />This quota is applied for traffic flows when the selectors<br />compute to True, causing the request to be counted towards the limit.<br />A response with 429 HTTP status code is sent back to the client when<br />the selected requests have exceeded the quota."
+/><ApiField
+  name="shadowMode"
+  type="boolean"
+  required="false"
+  description="ShadowMode indicates whether this quota rule runs in shadow mode.<br />When enabled, all quota checks are performed (cache lookups,<br />counter updates, telemetry generation), but the outcome is never enforced.<br />The request always succeeds, even if the configured quota is exceeded."
+/>
+
+
+#### QuotaValue
+
+
+
+**Appears in:**
+- [QuotaDefinition](#quotadefinition)
+- [QuotaRule](#quotarule)
+- [ServiceQuotaDefinition](#servicequotadefinition)
+
+QuotaValue defines the quota limits using sliding window.
+
+##### Fields
+
+
+
+<ApiField
+  name="limit"
+  type="integer"
+  required="true"
+  description="The limit alloted for a specified time window."
+/><ApiField
+  name="duration"
+  type="string"
+  required="true"
+  description="Time window. The suffix is used to specify units. The following<br />suffixes are supported:<br />* s - seconds (the default unit)<br />* m - minutes<br />* h - hours"
+/>
+
+
+#### ServiceQuotaDefinition
+
+
+
+**Appears in:**
+- [QuotaPolicySpec](#quotapolicyspec)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="costExpression"
+  type="string"
+  required="false"
+  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> * `input_tokens + cached_input_tokens * 0.1 + output_tokens * 6`"
+/><ApiField
+  name="quota"
+  type="[QuotaValue](#quotavalue)"
+  required="true"
+  description="Quota value applicable to all requests.<br />A response with 429 HTTP status code is sent back to the client when<br />the selected requests have exceeded the quota."
 />
 
 

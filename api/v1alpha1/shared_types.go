@@ -80,6 +80,8 @@ const (
 	APISchemaAnthropic APISchema = "Anthropic"
 	// APISchemaAWSAnthropic is the schema for Anthropic models hosted on AWS Bedrock.
 	// Uses the native Anthropic Messages API format for requests and responses.
+	// When used with /v1/chat/completions endpoint, translates OpenAI format to Anthropic.
+	// When used with /v1/messages endpoint, passes through native Anthropic format.
 	//
 	// https://aws.amazon.com/bedrock/anthropic/
 	// https://docs.claude.com/en/api/claude-on-amazon-bedrock
