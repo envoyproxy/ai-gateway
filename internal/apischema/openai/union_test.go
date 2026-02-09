@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // TestUnmarshalJSONNestedUnion tests the completion API prompt parsing.
@@ -282,6 +284,113 @@ func TestUnmarshalJSONEmbeddingInput_Errors(t *testing.T) {
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.expectedErr)
 			require.Zero(t, val)
+		})
+	}
+}
+
+func TestThinkingUnion_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		data   string
+		expect ThinkingUnion
+	}{
+		{
+			name: "enabled",
+			data: `{"type":"enabled","budget_tokens":1024}`,
+			expect: ThinkingUnion{
+				OfEnabled: &ThinkingEnabled{Type: "enabled", BudgetTokens: 1024},
+			},
+		},
+		{
+			name: "disabled",
+			data: `{"type":"disabled"}`,
+			expect: ThinkingUnion{
+				OfDisabled: &ThinkingDisabled{Type: "disabled"},
+			},
+		},
+		{
+			name: "adaptive",
+			data: `{"type":"adaptive"}`,
+			expect: ThinkingUnion{
+				OfAdaptive: &ThinkingAdaptive{Type: "adaptive"},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var got ThinkingUnion
+			err := json.Unmarshal([]byte(tc.data), &got)
+			require.NoError(t, err)
+			require.Equal(t, tc.expect, got)
+		})
+	}
+}
+
+func TestThinkingUnion_UnmarshalJSON_Errors(t *testing.T) {
+	tests := []struct {
+		name        string
+		data        string
+		expectedErr string
+	}{
+		{
+			name:        "missing type field",
+			data:        `{"budget_tokens":1024}`,
+			expectedErr: "thinking config does not have a type",
+		},
+		{
+			name:        "invalid type value",
+			data:        `{"type":"unknown"}`,
+			expectedErr: "invalid thinking union type: unknown",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var got ThinkingUnion
+			err := json.Unmarshal([]byte(tc.data), &got)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.expectedErr)
+		})
+	}
+}
+
+func TestThinkingUnion_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  ThinkingUnion
+		expect string
+	}{
+		{
+			name: "enabled",
+			input: ThinkingUnion{
+				OfEnabled: &ThinkingEnabled{Type: "enabled", BudgetTokens: 1024},
+			},
+			expect: `{"budget_tokens":1024,"type":"enabled"}`,
+		},
+		{
+			name: "disabled",
+			input: ThinkingUnion{
+				OfDisabled: &ThinkingDisabled{Type: "disabled"},
+			},
+			expect: `{"type":"disabled"}`,
+		},
+		{
+			name: "adaptive",
+			input: ThinkingUnion{
+				OfAdaptive: &ThinkingAdaptive{Type: "adaptive"},
+			},
+			expect: `{"type":"adaptive"}`,
+		},
+		{
+			name:   "all nil returns empty object",
+			input:  ThinkingUnion{},
+			expect: `{}`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := json.Marshal(&tc.input)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expect, string(got))
 		})
 	}
 }

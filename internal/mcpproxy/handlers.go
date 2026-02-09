@@ -1021,10 +1021,6 @@ func (m *mcpRequestContext) recordResponse(ctx context.Context, rawMsg jsonrpc.M
 	}
 }
 
-func (m *mcpRequestContext) mcpEndpointForBackend(backend filterapi.MCPBackend) string {
-	return m.backendListenerAddr + backend.Path
-}
-
 func (m *mcpRequestContext) handleResourceReadRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ReadResourceParams) error {
 	backendName, resourceName, err := upstreamResourceURI(p.URI)
 	if err != nil {

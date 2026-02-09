@@ -131,7 +131,7 @@ func TestSendRequestPerBackend_SetsOriginalPathHeaders(t *testing.T) {
 	ch := make(chan *sseEvent, 1)
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
-	err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1", Path: "/mcp"}, &compositeSessionEntry{
+	err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
 	}, http.MethodGet, nil)
 	require.NoError(t, err)
