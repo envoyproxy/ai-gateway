@@ -251,67 +251,81 @@ type (
 	}
 )
 
+// Content block type constants used by ContentBlockParam and MessagesContentBlock.
+const (
+	contentBlockTypeText                = "text"
+	contentBlockTypeImage               = "image"
+	contentBlockTypeDocument            = "document"
+	contentBlockTypeSearchResult        = "search_result"
+	contentBlockTypeThinking            = "thinking"
+	contentBlockTypeRedactedThinking    = "redacted_thinking"
+	contentBlockTypeToolUse             = "tool_use"
+	contentBlockTypeToolResult          = "tool_result"
+	contentBlockTypeServerToolUse       = "server_tool_use"
+	contentBlockTypeWebSearchToolResult = "web_search_tool_result"
+)
+
 func (m *ContentBlockParam) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
 	if !typ.Exists() {
 		return errors.New("missing type field in message content block")
 	}
 	switch typ.String() {
-	case "text":
+	case contentBlockTypeText:
 		var blockParam TextBlockParam
 		if err := json.Unmarshal(data, &blockParam); err != nil {
 			return fmt.Errorf("failed to unmarshal text blockParam: %w", err)
 		}
 		m.Text = &blockParam
-	case "image":
+	case contentBlockTypeImage:
 		var blockParam ImageBlockParam
 		if err := json.Unmarshal(data, &blockParam); err != nil {
 			return fmt.Errorf("failed to unmarshal image blockParam: %w", err)
 		}
 		m.Image = &blockParam
-	case "document":
+	case contentBlockTypeDocument:
 		var blockParam DocumentBlockParam
 		if err := json.Unmarshal(data, &blockParam); err != nil {
 			return fmt.Errorf("failed to unmarshal document blockParam: %w", err)
 		}
 		m.Document = &blockParam
-	case "search_result":
+	case contentBlockTypeSearchResult:
 		var blockParam SearchResultBlockParam
 		if err := json.Unmarshal(data, &blockParam); err != nil {
 			return fmt.Errorf("failed to unmarshal search result blockParam: %w", err)
 		}
 		m.SearchResult = &blockParam
-	case "thinking":
+	case contentBlockTypeThinking:
 		var blockParam ThinkingBlockParam
 		if err := json.Unmarshal(data, &blockParam); err != nil {
 			return fmt.Errorf("failed to unmarshal thinking blockParam: %w", err)
 		}
 		m.Thinking = &blockParam
-	case "redacted_thinking":
+	case contentBlockTypeRedactedThinking:
 		var blockParam RedactedThinkingBlockParam
 		if err := json.Unmarshal(data, &blockParam); err != nil {
 			return fmt.Errorf("failed to unmarshal redacted thinking blockParam: %w", err)
 		}
 		m.RedactedThinking = &blockParam
-	case "tool_use":
+	case contentBlockTypeToolUse:
 		var blockParam ToolUseBlockParam
 		if err := json.Unmarshal(data, &blockParam); err != nil {
 			return fmt.Errorf("failed to unmarshal tool use blockParam: %w", err)
 		}
 		m.ToolUse = &blockParam
-	case "tool_result":
+	case contentBlockTypeToolResult:
 		var blockParam ToolResultBlockParam
 		if err := json.Unmarshal(data, &blockParam); err != nil {
 			return fmt.Errorf("failed to unmarshal tool result blockParam: %w", err)
 		}
 		m.ToolResult = &blockParam
-	case "server_tool_use":
+	case contentBlockTypeServerToolUse:
 		var blockParam ServerToolUseBlockParam
 		if err := json.Unmarshal(data, &blockParam); err != nil {
 			return fmt.Errorf("failed to unmarshal server tool use blockParam: %w", err)
 		}
 		m.ServerToolUse = &blockParam
-	case "web_search_tool_result":
+	case contentBlockTypeWebSearchToolResult:
 		var blockParam WebSearchToolResultBlockParam
 		if err := json.Unmarshal(data, &blockParam); err != nil {
 			return fmt.Errorf("failed to unmarshal web search tool result blockParam: %w", err)
@@ -463,43 +477,53 @@ type (
 	}
 )
 
+// Tool type constants used by ToolUnion.
+const (
+	toolTypeCustom             = "custom"
+	toolTypeBash20250124       = "bash_20250124"
+	toolTypeTextEditor20250124 = "text_editor_20250124"
+	toolTypeTextEditor20250429 = "text_editor_20250429"
+	toolTypeTextEditor20250728 = "text_editor_20250728"
+	toolTypeWebSearch20250305  = "web_search_20250305"
+)
+
 func (t *ToolUnion) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
 	if !typ.Exists() {
 		return errors.New("missing type field in tool")
 	}
 	switch typ.String() {
-	case "custom":
+	case toolTypeCustom:
 		var tool Tool
 		if err := json.Unmarshal(data, &tool); err != nil {
 			return fmt.Errorf("failed to unmarshal tool: %w", err)
 		}
 		t.Tool = &tool
-	case "bash_20250124":
+	case toolTypeBash20250124:
 		var tool BashTool
 		if err := json.Unmarshal(data, &tool); err != nil {
 			return fmt.Errorf("failed to unmarshal bash tool: %w", err)
 		}
 		t.BashTool = &tool
-	case "text_editor_20250124":
+	case toolTypeTextEditor20250124:
 		var tool TextEditorTool20250124
 		if err := json.Unmarshal(data, &tool); err != nil {
 			return fmt.Errorf("failed to unmarshal text editor tool: %w", err)
 		}
 		t.TextEditorTool20250124 = &tool
-	case "text_editor_20250429":
+	case toolTypeTextEditor20250429:
 		var tool TextEditorTool20250429
 		if err := json.Unmarshal(data, &tool); err != nil {
 			return fmt.Errorf("failed to unmarshal text editor tool: %w", err)
 		}
 		t.TextEditorTool20250429 = &tool
-	case "text_editor_20250728":
+	case toolTypeTextEditor20250728:
 		var tool TextEditorTool20250728
 		if err := json.Unmarshal(data, &tool); err != nil {
 			return fmt.Errorf("failed to unmarshal text editor tool: %w", err)
 		}
 		t.TextEditorTool20250728 = &tool
-	case "web_search_20250305":
+	case toolTypeWebSearch20250305:
 		var tool WebSearchTool
 		if err := json.Unmarshal(data, &tool); err != nil {
 			return fmt.Errorf("failed to unmarshal web search tool: %w", err)
@@ -573,31 +597,39 @@ type (
 	}
 )
 
+// Tool choice type constants used by ToolChoice.
+const (
+	toolChoiceTypeAuto = "auto"
+	toolChoiceTypeAny  = "any"
+	toolChoiceTypeTool = "tool"
+	toolChoiceTypeNone = "none"
+)
+
 func (tc *ToolChoice) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
 	if !typ.Exists() {
 		return errors.New("missing type field in tool choice")
 	}
 	switch typ.String() {
-	case "auto":
+	case toolChoiceTypeAuto:
 		var toolChoice ToolChoiceAuto
 		if err := json.Unmarshal(data, &toolChoice); err != nil {
 			return fmt.Errorf("failed to unmarshal tool choice auto: %w", err)
 		}
 		tc.Auto = &toolChoice
-	case "any":
+	case toolChoiceTypeAny:
 		var toolChoice ToolChoiceAny
 		if err := json.Unmarshal(data, &toolChoice); err != nil {
 			return fmt.Errorf("failed to unmarshal tool choice any: %w", err)
 		}
 		tc.Any = &toolChoice
-	case "tool":
+	case toolChoiceTypeTool:
 		var toolChoice ToolChoiceTool
 		if err := json.Unmarshal(data, &toolChoice); err != nil {
 			return fmt.Errorf("failed to unmarshal tool choice tool: %w", err)
 		}
 		tc.Tool = &toolChoice
-	case "none":
+	case toolChoiceTypeNone:
 		var toolChoice ToolChoiceNone
 		if err := json.Unmarshal(data, &toolChoice); err != nil {
 			return fmt.Errorf("failed to unmarshal tool choice none: %w", err)
@@ -656,25 +688,32 @@ type (
 	}
 )
 
+// Thinking config type constants used by Thinking.
+const (
+	thinkingConfigTypeEnabled  = "enabled"
+	thinkingConfigTypeDisabled = "disabled"
+	thinkingConfigTypeAdaptive = "adaptive"
+)
+
 func (t *Thinking) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
 	if !typ.Exists() {
 		return errors.New("missing type field in thinking config")
 	}
 	switch typ.String() {
-	case "enabled":
+	case thinkingConfigTypeEnabled:
 		var thinking ThinkingEnabled
 		if err := json.Unmarshal(data, &thinking); err != nil {
 			return fmt.Errorf("failed to unmarshal thinking enabled: %w", err)
 		}
 		t.Enabled = &thinking
-	case "disabled":
+	case thinkingConfigTypeDisabled:
 		var thinking ThinkingDisabled
 		if err := json.Unmarshal(data, &thinking); err != nil {
 			return fmt.Errorf("failed to unmarshal thinking disabled: %w", err)
 		}
 		t.Disabled = &thinking
-	case "adaptive":
+	case thinkingConfigTypeAdaptive:
 		var thinking ThinkingAdaptive
 		if err := json.Unmarshal(data, &thinking); err != nil {
 			return fmt.Errorf("failed to unmarshal thinking adaptive: %w", err)
@@ -851,37 +890,37 @@ func (m *MessagesContentBlock) UnmarshalJSON(data []byte) error {
 		return errors.New("missing type field in message content block")
 	}
 	switch typ.String() {
-	case "text":
+	case contentBlockTypeText:
 		var contentBlock TextBlock
 		if err := json.Unmarshal(data, &contentBlock); err != nil {
 			return fmt.Errorf("failed to unmarshal text block: %w", err)
 		}
 		m.Text = &contentBlock
-	case "tool_use":
+	case contentBlockTypeToolUse:
 		var contentBlock ToolUseBlock
 		if err := json.Unmarshal(data, &contentBlock); err != nil {
 			return fmt.Errorf("failed to unmarshal tool use block: %w", err)
 		}
 		m.Tool = &contentBlock
-	case "thinking":
+	case contentBlockTypeThinking:
 		var contentBlock ThinkingBlock
 		if err := json.Unmarshal(data, &contentBlock); err != nil {
 			return fmt.Errorf("failed to unmarshal thinking block: %w", err)
 		}
 		m.Thinking = &contentBlock
-	case "redacted_thinking":
+	case contentBlockTypeRedactedThinking:
 		var contentBlock RedactedThinkingBlock
 		if err := json.Unmarshal(data, &contentBlock); err != nil {
 			return fmt.Errorf("failed to unmarshal redacted thinking block: %w", err)
 		}
 		m.RedactedThinking = &contentBlock
-	case "server_tool_use":
+	case contentBlockTypeServerToolUse:
 		var contentBlock ServerToolUseBlock
 		if err := json.Unmarshal(data, &contentBlock); err != nil {
 			return fmt.Errorf("failed to unmarshal server tool use block: %w", err)
 		}
 		m.ServerToolUse = &contentBlock
-	case "web_search_tool_result":
+	case contentBlockTypeWebSearchToolResult:
 		var contentBlock WebSearchToolResultBlock
 		if err := json.Unmarshal(data, &contentBlock); err != nil {
 			return fmt.Errorf("failed to unmarshal web search tool result block: %w", err)
