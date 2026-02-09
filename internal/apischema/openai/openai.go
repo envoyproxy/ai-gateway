@@ -2366,6 +2366,12 @@ type ResponseRequest struct {
 	//     [function calling](https://platform.openai.com/docs/guides/function-calling).
 	//     You can also use custom tools to call your own code.
 	Tools []ResponseToolUnion `json:"tools,omitzero"`
+
+	// Penalizes new tokens based on whether they appear in the text so far.
+	PresencePenalty *float32 `json:"presence_penalty,omitempty"`
+
+	// Penalizes new tokens based on their frequency in the text so far.
+	FrequencyPenalty *float32 `json:"frequency_penalty,omitempty"`
 }
 
 // Configuration options for a text response from the model. Can be plain text or
@@ -3943,6 +3949,8 @@ type ResponseInputItemMessageParam struct {
 	Status string `json:"status,omitzero"`
 	// The type of the message input. Always set to `message`.
 	Type string `json:"type,omitzero"`
+	// The unique ID of this message item.
+	ID string `json:"id,omitzero"`
 }
 
 // An output message from the model.
@@ -4761,6 +4769,7 @@ type ResponseFunctionCallOutputItemUnionParam struct {
 	OfInputText  *ResponseInputTextContentParam
 	OfInputImage *ResponseInputImageContentParam
 	OfInputFile  *ResponseInputFileContentParam
+	OfInputVideo *ResponseInputVideoContentParam
 }
 
 func (r ResponseFunctionCallOutputItemUnionParam) MarshalJSON() ([]byte, error) {
@@ -4771,6 +4780,8 @@ func (r ResponseFunctionCallOutputItemUnionParam) MarshalJSON() ([]byte, error) 
 		return json.Marshal(r.OfInputImage)
 	case r.OfInputFile != nil:
 		return json.Marshal(r.OfInputFile)
+	case r.OfInputVideo != nil:
+		return json.Marshal(r.OfInputVideo)
 	default:
 		return nil, errors.New("no function call output item to marshal in function call output item")
 	}
@@ -4797,6 +4808,12 @@ func (r *ResponseFunctionCallOutputItemUnionParam) UnmarshalJSON(data []byte) er
 			return err
 		}
 		r.OfInputFile = &ifp
+	case "input_video":
+		var ivp ResponseInputVideoContentParam
+		if err := json.Unmarshal(data, &ivp); err != nil {
+			return err
+		}
+		r.OfInputVideo = &ivp
 	default:
 		return errors.New("unknown type for function call output item: " + typ.String())
 	}
@@ -4846,6 +4863,15 @@ type ResponseInputFileContentParam struct {
 	Filename string `json:"filename,omitzero"`
 	// The type of the input item. Always `input_file`.
 	Type string `json:"type"`
+}
+
+// A content block representing a video input to the model.
+// The properties Type, VideoURL are required.
+type ResponseInputVideoContentParam struct {
+	// The type of the input content. Always `input_video`.
+	Type string `json:"type"`
+	// A base64 or remote url that resolves to a video file.
+	VideoURL string `json:"video_url"`
 }
 
 // A description of the chain of thought used by a reasoning model while generating
