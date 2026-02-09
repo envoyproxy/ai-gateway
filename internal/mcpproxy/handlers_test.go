@@ -59,13 +59,13 @@ func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *mcpRequestContext {
 							"backend1": {include: map[string]struct{}{"test-tool": {}}},
 						},
 						backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
-							"backend1": {Name: "backend1", Path: "/mcp"},
-							"backend2": {Name: "backend2", Path: "/"},
+							"backend1": {Name: "backend1"},
+							"backend2": {Name: "backend2"},
 						},
 					},
 					"test-route-another": {
 						backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
-							"backend3": {Name: "backend3", Path: "/mcp"},
+							"backend3": {Name: "backend3"},
 						},
 					},
 				},

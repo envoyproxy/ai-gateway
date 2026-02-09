@@ -982,7 +982,7 @@ APISchema defines the API schema.
   name="AWSAnthropic"
   type="enum"
   required="false"
-  description="APISchemaAWSAnthropic is the schema for Anthropic models hosted on AWS Bedrock.<br />Uses the native Anthropic Messages API format for requests and responses.<br />https://aws.amazon.com/bedrock/anthropic/<br />https://docs.claude.com/en/api/claude-on-amazon-bedrock<br />"
+  description="APISchemaAWSAnthropic is the schema for Anthropic models hosted on AWS Bedrock.<br />Uses the native Anthropic Messages API format for requests and responses.<br />When used with /v1/chat/completions endpoint, translates OpenAI format to Anthropic.<br />When used with /v1/messages endpoint, passes through native Anthropic format.<br />https://aws.amazon.com/bedrock/anthropic/<br />https://docs.claude.com/en/api/claude-on-amazon-bedrock<br />"
 />
 #### AWSCredentialsFile
 
@@ -1858,6 +1858,7 @@ MCPAuthorizationTarget defines the target of an authorization rule.
 - [MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)
 
 MCPBackendAPIKey defines the configuration for the API Key Authentication to a backend.
+When both `header` and `queryParam` are unspecified, the API key will be injected into the "Authorization" header by default.
 
 ##### Fields
 
@@ -1877,7 +1878,12 @@ MCPBackendAPIKey defines the configuration for the API Key Authentication to a b
   name="header"
   type="string"
   required="false"
-  description="Header is the HTTP header to inject the API key into. If not specified,<br />defaults to `Authorization`.<br />When the header is `Authorization`, the injected header value will be<br />prefixed with `Bearer `."
+  description="Header is the HTTP header to inject the API key into. If not specified,<br />defaults to `Authorization`.<br />When the header is `Authorization`, the injected header value will be<br />prefixed with `Bearer `.<br />Either one of Header or QueryParam can be specified to inject the API key."
+/><ApiField
+  name="queryParam"
+  type="string"
+  required="false"
+  description="QueryParam is the HTTP query parameter to inject the API key into.<br />For example, if QueryParam is set to `api_key`, and the API key is `mysecretkey`, the request URL will be modified to include<br />`?api_key=mysecretkey`.<br />Either one of Header or QueryParam can be specified to inject the API key."
 />
 
 

@@ -869,6 +869,7 @@ type WebSearchLocation struct {
 type ThinkingUnion struct {
 	OfEnabled  *ThinkingEnabled  `json:",omitzero,inline"`
 	OfDisabled *ThinkingDisabled `json:",omitzero,inline"`
+	OfAdaptive *ThinkingAdaptive `json:",omitzero,inline"`
 }
 
 type ThinkingEnabled struct {
@@ -887,6 +888,10 @@ type ThinkingDisabled struct {
 	Type string `json:"type,"`
 }
 
+type ThinkingAdaptive struct {
+	Type string `json:"type,"`
+}
+
 // MarshalJSON implements the json.Marshaler interface for ThinkingUnion.
 func (t *ThinkingUnion) MarshalJSON() ([]byte, error) {
 	if t.OfEnabled != nil {
@@ -894,6 +899,9 @@ func (t *ThinkingUnion) MarshalJSON() ([]byte, error) {
 	}
 	if t.OfDisabled != nil {
 		return json.Marshal(t.OfDisabled)
+	}
+	if t.OfAdaptive != nil {
+		return json.Marshal(t.OfAdaptive)
 	}
 	// If both are nil, return an empty object or an error, depending on your desired behavior.
 	return []byte(`{}`), nil
@@ -923,6 +931,12 @@ func (t *ThinkingUnion) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		t.OfDisabled = &disabled
+	case "adaptive":
+		var adaptive ThinkingAdaptive
+		if err := json.Unmarshal(data, &adaptive); err != nil {
+			return err
+		}
+		t.OfAdaptive = &adaptive
 	default:
 		return fmt.Errorf("invalid thinking union type: %s", typeVal)
 	}
