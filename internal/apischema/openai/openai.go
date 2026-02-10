@@ -3655,9 +3655,8 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
 	switch typ.String() {
 	case "message":
-		// Check for id field to determine which type to unmarshal into
-		// ResponseOutputMessage has id field (required property)
-		if gjson.GetBytes(data, "id").Exists() {
+		// If role is assistant Unmarshal as ResponseOutputMessage
+		if gjson.GetBytes(data, "role").String() == "assistant" {
 			var om ResponseOutputMessage
 			if err := json.Unmarshal(data, &om); err != nil {
 				return err

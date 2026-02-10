@@ -4497,15 +4497,16 @@ func TestResponseInputItemUnionParamMarshalJSON(t *testing.T) {
 			name: "marshal input_message",
 			input: ResponseInputItemUnionParam{
 				OfInputMessage: &ResponseInputItemMessageParam{
+					ID:     "resp-123",
 					Type:   "message",
-					Role:   "assistant",
+					Role:   "developer",
 					Status: "completed",
 					Content: []ResponseInputContentUnionParam{
-						{OfInputText: &ResponseInputTextParam{Text: "Hello! How can I assist you ?", Type: "input_text"}},
+						{OfInputText: &ResponseInputTextParam{Text: "Hello!", Type: "input_text"}},
 					},
 				},
 			},
-			expRes: []byte(`{"type": "message", "role": "assistant", "status": "completed", "content": [{"text": "Hello! How can I assist you ?", "type": "input_text"}]}`),
+			expRes: []byte(`{"type": "message", "id": "resp-123", "role": "developer", "status": "completed", "content": [{"text": "Hello!", "type": "input_text"}]}`),
 		},
 		{
 			name: "marshal output_message",
@@ -4906,14 +4907,15 @@ func TestResponseInputItemUnionParamUnmarshalJSON(t *testing.T) {
 			expRes: ResponseInputItemUnionParam{
 				OfInputMessage: &ResponseInputItemMessageParam{
 					Type:   "message",
-					Role:   "assistant",
+					Role:   "developer",
 					Status: "completed",
+					ID:     "resp-123",
 					Content: []ResponseInputContentUnionParam{
-						{OfInputText: &ResponseInputTextParam{Text: "Hello! How can I assist you ?", Type: "input_text"}},
+						{OfInputText: &ResponseInputTextParam{Text: "Hello!", Type: "input_text"}},
 					},
 				},
 			},
-			input: []byte(`{"type": "message", "role": "assistant", "status": "completed", "content": [{"text": "Hello! How can I assist you ?", "type": "input_text"}]}`),
+			input: []byte(`{"type": "message", "id": "resp-123", "role": "developer", "status": "completed", "content": [{"text": "Hello!", "type": "input_text"}]}`),
 		},
 		{
 			name: "unmarshal output_message",
@@ -7034,7 +7036,7 @@ func TestResponseInputItemFunctionCallOutputOutputUnionParamMarshalJSON(t *testi
 			name:   "array with single text item",
 			expect: []byte(`[{"text":"hello","type":"input_text"}]`),
 			input: ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseInputItemFunctionCallOutputItemUnionParam{
 					{
 						OfInputText: &ResponseInputTextContentParam{
 							Text: "hello",
@@ -7048,7 +7050,7 @@ func TestResponseInputItemFunctionCallOutputOutputUnionParamMarshalJSON(t *testi
 			name:   "array with text and image items",
 			expect: []byte(`[{"text":"hello","type":"input_text"},{"type":"input_image","file_id":"file-123"}]`),
 			input: ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseInputItemFunctionCallOutputItemUnionParam{
 					{
 						OfInputText: &ResponseInputTextContentParam{
 							Text: "hello",
@@ -7068,7 +7070,7 @@ func TestResponseInputItemFunctionCallOutputOutputUnionParamMarshalJSON(t *testi
 			name:   "array with image item with url",
 			expect: []byte(`[{"type":"input_image","image_url":"https://example.com/image.jpg","detail":"high"}]`),
 			input: ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseInputItemFunctionCallOutputItemUnionParam{
 					{
 						OfInputImage: &ResponseInputImageContentParam{
 							Type:     "input_image",
@@ -7083,7 +7085,7 @@ func TestResponseInputItemFunctionCallOutputOutputUnionParamMarshalJSON(t *testi
 			name:   "array with file item",
 			expect: []byte(`[{"type":"input_file","file_id":"file-456","filename":"data.json"}]`),
 			input: ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseInputItemFunctionCallOutputItemUnionParam{
 					{
 						OfInputFile: &ResponseInputFileContentParam{
 							Type:     "input_file",
@@ -7098,7 +7100,7 @@ func TestResponseInputItemFunctionCallOutputOutputUnionParamMarshalJSON(t *testi
 			name:   "array with multiple items mixed types",
 			expect: []byte(`[{"text":"hello","type":"input_text"},{"type":"input_image","file_id":"file-123"},{"type":"input_file","file_id":"file-456"}]`),
 			input: ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseInputItemFunctionCallOutputItemUnionParam{
 					{
 						OfInputText: &ResponseInputTextContentParam{
 							Text: "hello",
@@ -7124,7 +7126,7 @@ func TestResponseInputItemFunctionCallOutputOutputUnionParamMarshalJSON(t *testi
 			name:   "array with empty text item",
 			expect: []byte(`[{"text":"","type":"input_text"}]`),
 			input: ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseInputItemFunctionCallOutputItemUnionParam{
 					{
 						OfInputText: &ResponseInputTextContentParam{
 							Text: "",
@@ -7186,7 +7188,7 @@ func TestResponseInputItemFunctionCallOutputOutputUnionParamUnmarshalJSON(t *tes
 			name:  "array with single text item",
 			input: []byte(`[{"text":"hello","type":"input_text"}]`),
 			expect: ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseInputItemFunctionCallOutputItemUnionParam{
 					{
 						OfInputText: &ResponseInputTextContentParam{
 							Text: "hello",
@@ -7200,7 +7202,7 @@ func TestResponseInputItemFunctionCallOutputOutputUnionParamUnmarshalJSON(t *tes
 			name:  "array with text and image items",
 			input: []byte(`[{"text":"hello","type":"input_text"},{"type":"input_image","file_id":"file-123"}]`),
 			expect: ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseInputItemFunctionCallOutputItemUnionParam{
 					{
 						OfInputText: &ResponseInputTextContentParam{
 							Text: "hello",
@@ -7220,7 +7222,7 @@ func TestResponseInputItemFunctionCallOutputOutputUnionParamUnmarshalJSON(t *tes
 			name:  "array with image item with url",
 			input: []byte(`[{"type":"input_image","image_url":"https://example.com/image.jpg","detail":"high"}]`),
 			expect: ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseInputItemFunctionCallOutputItemUnionParam{
 					{
 						OfInputImage: &ResponseInputImageContentParam{
 							Type:     "input_image",
@@ -7235,7 +7237,7 @@ func TestResponseInputItemFunctionCallOutputOutputUnionParamUnmarshalJSON(t *tes
 			name:  "array with file item",
 			input: []byte(`[{"type":"input_file","file_id":"file-456","filename":"data.json"}]`),
 			expect: ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseInputItemFunctionCallOutputItemUnionParam{
 					{
 						OfInputFile: &ResponseInputFileContentParam{
 							Type:     "input_file",
@@ -7250,7 +7252,7 @@ func TestResponseInputItemFunctionCallOutputOutputUnionParamUnmarshalJSON(t *tes
 			name:  "array with multiple items mixed types",
 			input: []byte(`[{"text":"hello","type":"input_text"},{"type":"input_image","file_id":"file-123"},{"type":"input_file","file_id":"file-456"}]`),
 			expect: ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseInputItemFunctionCallOutputItemUnionParam{
 					{
 						OfInputText: &ResponseInputTextContentParam{
 							Text: "hello",
@@ -7276,7 +7278,7 @@ func TestResponseInputItemFunctionCallOutputOutputUnionParamUnmarshalJSON(t *tes
 			name:  "array with empty text item",
 			input: []byte(`[{"text":"","type":"input_text"}]`),
 			expect: ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseInputItemFunctionCallOutputItemUnionParam{
 					{
 						OfInputText: &ResponseInputTextContentParam{
 							Text: "",
@@ -7307,17 +7309,17 @@ func TestResponseInputItemFunctionCallOutputOutputUnionParamUnmarshalJSON(t *tes
 	}
 }
 
-func TestResponseFunctionCallOutputItemUnionParamMarshalJSON(t *testing.T) {
+func TestResponseInputItemFunctionCallOutputItemUnionParamMarshalJSON(t *testing.T) {
 	tests := []struct {
 		name   string
 		expect []byte
-		input  ResponseFunctionCallOutputItemUnionParam
+		input  ResponseInputItemFunctionCallOutputItemUnionParam
 		expErr string
 	}{
 		{
 			name:   "text input item",
 			expect: []byte(`{"text":"hello","type":"input_text"}`),
-			input: ResponseFunctionCallOutputItemUnionParam{
+			input: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputText: &ResponseInputTextContentParam{
 					Text: "hello",
 					Type: "input_text",
@@ -7327,7 +7329,7 @@ func TestResponseFunctionCallOutputItemUnionParamMarshalJSON(t *testing.T) {
 		{
 			name:   "text input item with empty value",
 			expect: []byte(`{"text":"","type":"input_text"}`),
-			input: ResponseFunctionCallOutputItemUnionParam{
+			input: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputText: &ResponseInputTextContentParam{
 					Text: "",
 					Type: "input_text",
@@ -7337,7 +7339,7 @@ func TestResponseFunctionCallOutputItemUnionParamMarshalJSON(t *testing.T) {
 		{
 			name:   "text input item with special characters",
 			expect: []byte(`{"text":"hello with \"quotes\" and newline\n","type":"input_text"}`),
-			input: ResponseFunctionCallOutputItemUnionParam{
+			input: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputText: &ResponseInputTextContentParam{
 					Text: "hello with \"quotes\" and newline\n",
 					Type: "input_text",
@@ -7347,7 +7349,7 @@ func TestResponseFunctionCallOutputItemUnionParamMarshalJSON(t *testing.T) {
 		{
 			name:   "image input item with file_id",
 			expect: []byte(`{"type":"input_image","file_id":"file-123"}`),
-			input: ResponseFunctionCallOutputItemUnionParam{
+			input: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputImage: &ResponseInputImageContentParam{
 					Type:   "input_image",
 					FileID: "file-123",
@@ -7357,7 +7359,7 @@ func TestResponseFunctionCallOutputItemUnionParamMarshalJSON(t *testing.T) {
 		{
 			name:   "image input item with image_url",
 			expect: []byte(`{"type":"input_image","image_url":"https://example.com/image.jpg"}`),
-			input: ResponseFunctionCallOutputItemUnionParam{
+			input: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputImage: &ResponseInputImageContentParam{
 					Type:     "input_image",
 					ImageURL: "https://example.com/image.jpg",
@@ -7367,7 +7369,7 @@ func TestResponseFunctionCallOutputItemUnionParamMarshalJSON(t *testing.T) {
 		{
 			name:   "image input item with detail",
 			expect: []byte(`{"type":"input_image","image_url":"https://example.com/image.jpg","detail":"high"}`),
-			input: ResponseFunctionCallOutputItemUnionParam{
+			input: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputImage: &ResponseInputImageContentParam{
 					Type:     "input_image",
 					ImageURL: "https://example.com/image.jpg",
@@ -7378,7 +7380,7 @@ func TestResponseFunctionCallOutputItemUnionParamMarshalJSON(t *testing.T) {
 		{
 			name:   "file input item with file_id",
 			expect: []byte(`{"type":"input_file","file_id":"file-456"}`),
-			input: ResponseFunctionCallOutputItemUnionParam{
+			input: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputFile: &ResponseInputFileContentParam{
 					Type:   "input_file",
 					FileID: "file-456",
@@ -7388,7 +7390,7 @@ func TestResponseFunctionCallOutputItemUnionParamMarshalJSON(t *testing.T) {
 		{
 			name:   "file input item with filename",
 			expect: []byte(`{"type":"input_file","file_id":"file-456","filename":"data.json"}`),
-			input: ResponseFunctionCallOutputItemUnionParam{
+			input: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputFile: &ResponseInputFileContentParam{
 					Type:     "input_file",
 					FileID:   "file-456",
@@ -7399,7 +7401,7 @@ func TestResponseFunctionCallOutputItemUnionParamMarshalJSON(t *testing.T) {
 		{
 			name:   "file input item with all fields",
 			expect: []byte(`{"type":"input_file","file_id":"file-456","filename":"document.pdf","file_data":"base64data"}`),
-			input: ResponseFunctionCallOutputItemUnionParam{
+			input: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputFile: &ResponseInputFileContentParam{
 					Type:     "input_file",
 					FileID:   "file-456",
@@ -7411,7 +7413,7 @@ func TestResponseFunctionCallOutputItemUnionParamMarshalJSON(t *testing.T) {
 		{
 			name:   "file input item with file_url",
 			expect: []byte(`{"type":"input_file","file_id":"file-789","file_url":"https://example.com/file.pdf"}`),
-			input: ResponseFunctionCallOutputItemUnionParam{
+			input: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputFile: &ResponseInputFileContentParam{
 					Type:    "input_file",
 					FileID:  "file-789",
@@ -7420,8 +7422,18 @@ func TestResponseFunctionCallOutputItemUnionParamMarshalJSON(t *testing.T) {
 			},
 		},
 		{
+			name:   "video input item with url",
+			expect: []byte(`{"type":"input_video","video_url":"https://example.com/video.mp4"}`),
+			input: ResponseInputItemFunctionCallOutputItemUnionParam{
+				OfInputVideo: &ResponseInputVideoContentParam{
+					Type:     "input_video",
+					VideoURL: "https://example.com/video.mp4",
+				},
+			},
+		},
+		{
 			name:   "nil union",
-			input:  ResponseFunctionCallOutputItemUnionParam{},
+			input:  ResponseInputItemFunctionCallOutputItemUnionParam{},
 			expErr: "no function call output item to marshal in function call output item",
 		},
 	}
@@ -7439,17 +7451,17 @@ func TestResponseFunctionCallOutputItemUnionParamMarshalJSON(t *testing.T) {
 	}
 }
 
-func TestResponseFunctionCallOutputItemUnionParamUnmarshalJSON(t *testing.T) {
+func TestResponseInputItemFunctionCallOutputItemUnionParamUnmarshalJSON(t *testing.T) {
 	tests := []struct {
 		name   string
 		input  []byte
-		expect ResponseFunctionCallOutputItemUnionParam
+		expect ResponseInputItemFunctionCallOutputItemUnionParam
 		expErr string
 	}{
 		{
 			name:  "text input item",
 			input: []byte(`{"text":"hello","type":"input_text"}`),
-			expect: ResponseFunctionCallOutputItemUnionParam{
+			expect: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputText: &ResponseInputTextContentParam{
 					Text: "hello",
 					Type: "input_text",
@@ -7459,7 +7471,7 @@ func TestResponseFunctionCallOutputItemUnionParamUnmarshalJSON(t *testing.T) {
 		{
 			name:  "text input item with empty value",
 			input: []byte(`{"text":"","type":"input_text"}`),
-			expect: ResponseFunctionCallOutputItemUnionParam{
+			expect: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputText: &ResponseInputTextContentParam{
 					Text: "",
 					Type: "input_text",
@@ -7469,7 +7481,7 @@ func TestResponseFunctionCallOutputItemUnionParamUnmarshalJSON(t *testing.T) {
 		{
 			name:  "text input item with special characters",
 			input: []byte(`{"text":"hello with \"quotes\" and newline\n","type":"input_text"}`),
-			expect: ResponseFunctionCallOutputItemUnionParam{
+			expect: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputText: &ResponseInputTextContentParam{
 					Text: "hello with \"quotes\" and newline\n",
 					Type: "input_text",
@@ -7479,7 +7491,7 @@ func TestResponseFunctionCallOutputItemUnionParamUnmarshalJSON(t *testing.T) {
 		{
 			name:  "image input item with file_id",
 			input: []byte(`{"type":"input_image","file_id":"file-123"}`),
-			expect: ResponseFunctionCallOutputItemUnionParam{
+			expect: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputImage: &ResponseInputImageContentParam{
 					Type:   "input_image",
 					FileID: "file-123",
@@ -7489,7 +7501,7 @@ func TestResponseFunctionCallOutputItemUnionParamUnmarshalJSON(t *testing.T) {
 		{
 			name:  "image input item with image_url",
 			input: []byte(`{"type":"input_image","image_url":"https://example.com/image.jpg"}`),
-			expect: ResponseFunctionCallOutputItemUnionParam{
+			expect: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputImage: &ResponseInputImageContentParam{
 					Type:     "input_image",
 					ImageURL: "https://example.com/image.jpg",
@@ -7499,7 +7511,7 @@ func TestResponseFunctionCallOutputItemUnionParamUnmarshalJSON(t *testing.T) {
 		{
 			name:  "image input item with detail",
 			input: []byte(`{"type":"input_image","image_url":"https://example.com/image.jpg","detail":"high"}`),
-			expect: ResponseFunctionCallOutputItemUnionParam{
+			expect: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputImage: &ResponseInputImageContentParam{
 					Type:     "input_image",
 					ImageURL: "https://example.com/image.jpg",
@@ -7510,7 +7522,7 @@ func TestResponseFunctionCallOutputItemUnionParamUnmarshalJSON(t *testing.T) {
 		{
 			name:  "file input item with file_id",
 			input: []byte(`{"type":"input_file","file_id":"file-456"}`),
-			expect: ResponseFunctionCallOutputItemUnionParam{
+			expect: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputFile: &ResponseInputFileContentParam{
 					Type:   "input_file",
 					FileID: "file-456",
@@ -7520,7 +7532,7 @@ func TestResponseFunctionCallOutputItemUnionParamUnmarshalJSON(t *testing.T) {
 		{
 			name:  "file input item with filename",
 			input: []byte(`{"type":"input_file","file_id":"file-456","filename":"data.json"}`),
-			expect: ResponseFunctionCallOutputItemUnionParam{
+			expect: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputFile: &ResponseInputFileContentParam{
 					Type:     "input_file",
 					FileID:   "file-456",
@@ -7531,7 +7543,7 @@ func TestResponseFunctionCallOutputItemUnionParamUnmarshalJSON(t *testing.T) {
 		{
 			name:  "file input item with all fields",
 			input: []byte(`{"type":"input_file","file_id":"file-456","filename":"document.pdf","file_data":"base64data"}`),
-			expect: ResponseFunctionCallOutputItemUnionParam{
+			expect: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputFile: &ResponseInputFileContentParam{
 					Type:     "input_file",
 					FileID:   "file-456",
@@ -7543,11 +7555,21 @@ func TestResponseFunctionCallOutputItemUnionParamUnmarshalJSON(t *testing.T) {
 		{
 			name:  "file input item with file_url",
 			input: []byte(`{"type":"input_file","file_id":"file-789","file_url":"https://example.com/file.pdf"}`),
-			expect: ResponseFunctionCallOutputItemUnionParam{
+			expect: ResponseInputItemFunctionCallOutputItemUnionParam{
 				OfInputFile: &ResponseInputFileContentParam{
 					Type:    "input_file",
 					FileID:  "file-789",
 					FileURL: "https://example.com/file.pdf",
+				},
+			},
+		},
+		{
+			name:  "video input item with url",
+			input: []byte(`{"type":"input_video","video_url":"https://example.com/video.mp4"}`),
+			expect: ResponseInputItemFunctionCallOutputItemUnionParam{
+				OfInputVideo: &ResponseInputVideoContentParam{
+					Type:     "input_video",
+					VideoURL: "https://example.com/video.mp4",
 				},
 			},
 		},
@@ -7560,7 +7582,7 @@ func TestResponseFunctionCallOutputItemUnionParamUnmarshalJSON(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			var result ResponseFunctionCallOutputItemUnionParam
+			var result ResponseInputItemFunctionCallOutputItemUnionParam
 			err := json.Unmarshal(tc.input, &result)
 			if tc.expErr != "" {
 				require.ErrorContains(t, err, tc.expErr)
@@ -9039,6 +9061,21 @@ func TestResponseOutputItemUnionMarshalJSON(t *testing.T) {
 			},
 		},
 		{
+			name: "function call output",
+			input: ResponseOutputItemUnion{
+				OfFunctionCallOutput: &ResponseFunctionCallOutput{
+					CallID: "call-123",
+					Output: ResponseFunctionCallOutputOutputUnionParam{
+						OfString: ptr.To("function output string"),
+					},
+					ID:     "resp-123",
+					Status: "completed",
+					Type:   "function_call_output",
+				},
+			},
+			expect: []byte(`{"type":"function_call_output","call_id":"call-123","output":"function output string","id":"resp-123","status":"completed"}`),
+		},
+		{
 			name:   "code interpreter call",
 			expect: []byte(`{"type": "code_interpreter_call", "id": "resp-123", "container_id": "cntr_320", "status": "completed", "code": "print(\"Hello, World!\")", "outputs": [{"type": "logs", "logs": "log contents"}]}`),
 			input: ResponseOutputItemUnion{
@@ -9348,6 +9385,21 @@ func TestResponseOutputItemUnionUnmarshalJSON(t *testing.T) {
 			},
 		},
 		{
+			name: "function call output",
+			expect: ResponseOutputItemUnion{
+				OfFunctionCallOutput: &ResponseFunctionCallOutput{
+					CallID: "call-123",
+					Output: ResponseFunctionCallOutputOutputUnionParam{
+						OfString: ptr.To("function output string"),
+					},
+					ID:     "resp-123",
+					Status: "completed",
+					Type:   "function_call_output",
+				},
+			},
+			input: []byte(`{"type":"function_call_output","call_id":"call-123","output":"function output string","id":"resp-123","status":"completed"}`),
+		},
+		{
 			name:  "code interpreter call",
 			input: []byte(`{"type": "code_interpreter_call", "id": "resp-123", "container_id": "cntr_320", "status": "completed", "code": "print(\"Hello, World!\")", "outputs": [{"type": "logs", "logs": "log contents"}]}`),
 			expect: ResponseOutputItemUnion{
@@ -9594,6 +9646,576 @@ func TestResponseOutputItemUnionUnmarshalJSON(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var result ResponseOutputItemUnion
+			err := json.Unmarshal(tc.input, &result)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expect, result)
+		})
+	}
+}
+
+func TestResponseunctionCallOutputOutputUnionParamMarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		expect []byte
+		input  ResponseFunctionCallOutputOutputUnionParam
+		expErr string
+	}{
+		{
+			name:   "string output",
+			expect: []byte(`"output from function"`),
+			input: ResponseFunctionCallOutputOutputUnionParam{
+				OfString: ptr.To("output from function"),
+			},
+		},
+		{
+			name:   "string output with empty value",
+			expect: []byte(`""`),
+			input: ResponseFunctionCallOutputOutputUnionParam{
+				OfString: ptr.To(""),
+			},
+		},
+		{
+			name:   "string output with special characters",
+			expect: []byte(`"output with \"quotes\" and newline\n"`),
+			input: ResponseFunctionCallOutputOutputUnionParam{
+				OfString: ptr.To("output with \"quotes\" and newline\n"),
+			},
+		},
+		{
+			name:   "array with single text item",
+			expect: []byte(`[{"text":"hello","type":"input_text"}]`),
+			input: ResponseFunctionCallOutputOutputUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+					{
+						OfInputText: &ResponseInputTextContentParam{
+							Text: "hello",
+							Type: "input_text",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:   "array with text and image items",
+			expect: []byte(`[{"text":"hello","type":"input_text"},{"type":"input_image","file_id":"file-123"}]`),
+			input: ResponseFunctionCallOutputOutputUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+					{
+						OfInputText: &ResponseInputTextContentParam{
+							Text: "hello",
+							Type: "input_text",
+						},
+					},
+					{
+						OfInputImage: &ResponseInputImageContentParam{
+							Type:   "input_image",
+							FileID: "file-123",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:   "array with image item with url",
+			expect: []byte(`[{"type":"input_image","image_url":"https://example.com/image.jpg","detail":"high"}]`),
+			input: ResponseFunctionCallOutputOutputUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+					{
+						OfInputImage: &ResponseInputImageContentParam{
+							Type:     "input_image",
+							ImageURL: "https://example.com/image.jpg",
+							Detail:   "high",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:   "array with file item",
+			expect: []byte(`[{"type":"input_file","file_id":"file-456","filename":"data.json"}]`),
+			input: ResponseFunctionCallOutputOutputUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+					{
+						OfInputFile: &ResponseInputFileContentParam{
+							Type:     "input_file",
+							FileID:   "file-456",
+							Filename: "data.json",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:   "array with multiple items mixed types",
+			expect: []byte(`[{"text":"hello","type":"input_text"},{"type":"input_image","file_id":"file-123"},{"type":"input_file","file_id":"file-456"}]`),
+			input: ResponseFunctionCallOutputOutputUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+					{
+						OfInputText: &ResponseInputTextContentParam{
+							Text: "hello",
+							Type: "input_text",
+						},
+					},
+					{
+						OfInputImage: &ResponseInputImageContentParam{
+							Type:   "input_image",
+							FileID: "file-123",
+						},
+					},
+					{
+						OfInputFile: &ResponseInputFileContentParam{
+							Type:   "input_file",
+							FileID: "file-456",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:   "array with empty text item",
+			expect: []byte(`[{"text":"","type":"input_text"}]`),
+			input: ResponseFunctionCallOutputOutputUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+					{
+						OfInputText: &ResponseInputTextContentParam{
+							Text: "",
+							Type: "input_text",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:   "nil union",
+			input:  ResponseFunctionCallOutputOutputUnionParam{},
+			expErr: "no function call output to marshal in function call output",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.input)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, string(tc.expect), string(data))
+		})
+	}
+}
+
+func TestResponseFunctionCallOutputOutputUnionParamUnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  []byte
+		expect ResponseFunctionCallOutputOutputUnionParam
+		expErr string
+	}{
+		{
+			name:  "string output",
+			input: []byte(`"output from function"`),
+			expect: ResponseFunctionCallOutputOutputUnionParam{
+				OfString: ptr.To("output from function"),
+			},
+		},
+		{
+			name:  "string output with empty value",
+			input: []byte(`""`),
+			expect: ResponseFunctionCallOutputOutputUnionParam{
+				OfString: ptr.To(""),
+			},
+		},
+		{
+			name:  "string output with special characters",
+			input: []byte(`"output with \"quotes\" and newline\n"`),
+			expect: ResponseFunctionCallOutputOutputUnionParam{
+				OfString: ptr.To("output with \"quotes\" and newline\n"),
+			},
+		},
+		{
+			name:  "array with single text item",
+			input: []byte(`[{"text":"hello","type":"input_text"}]`),
+			expect: ResponseFunctionCallOutputOutputUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+					{
+						OfInputText: &ResponseInputTextContentParam{
+							Text: "hello",
+							Type: "input_text",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "array with text and image items",
+			input: []byte(`[{"text":"hello","type":"input_text"},{"type":"input_image","file_id":"file-123"}]`),
+			expect: ResponseFunctionCallOutputOutputUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+					{
+						OfInputText: &ResponseInputTextContentParam{
+							Text: "hello",
+							Type: "input_text",
+						},
+					},
+					{
+						OfInputImage: &ResponseInputImageContentParam{
+							Type:   "input_image",
+							FileID: "file-123",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "array with image item with url",
+			input: []byte(`[{"type":"input_image","image_url":"https://example.com/image.jpg","detail":"high"}]`),
+			expect: ResponseFunctionCallOutputOutputUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+					{
+						OfInputImage: &ResponseInputImageContentParam{
+							Type:     "input_image",
+							ImageURL: "https://example.com/image.jpg",
+							Detail:   "high",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "array with file item",
+			input: []byte(`[{"type":"input_file","file_id":"file-456","filename":"data.json"}]`),
+			expect: ResponseFunctionCallOutputOutputUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+					{
+						OfInputFile: &ResponseInputFileContentParam{
+							Type:     "input_file",
+							FileID:   "file-456",
+							Filename: "data.json",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "array with multiple items mixed types",
+			input: []byte(`[{"text":"hello","type":"input_text"},{"type":"input_image","file_id":"file-123"},{"type":"input_file","file_id":"file-456"}]`),
+			expect: ResponseFunctionCallOutputOutputUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+					{
+						OfInputText: &ResponseInputTextContentParam{
+							Text: "hello",
+							Type: "input_text",
+						},
+					},
+					{
+						OfInputImage: &ResponseInputImageContentParam{
+							Type:   "input_image",
+							FileID: "file-123",
+						},
+					},
+					{
+						OfInputFile: &ResponseInputFileContentParam{
+							Type:   "input_file",
+							FileID: "file-456",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "array with empty text item",
+			input: []byte(`[{"text":"","type":"input_text"}]`),
+			expect: ResponseFunctionCallOutputOutputUnionParam{
+				OfResponseFunctionCallOutputItemArray: []ResponseFunctionCallOutputItemUnionParam{
+					{
+						OfInputText: &ResponseInputTextContentParam{
+							Text: "",
+							Type: "input_text",
+						},
+					},
+				},
+			},
+		},
+		{
+			name:   "invalid input",
+			input:  []byte(`1231`),
+			expErr: "unknown type for function call output in function call output",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var result ResponseFunctionCallOutputOutputUnionParam
+			err := json.Unmarshal(tc.input, &result)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expect, result)
+		})
+	}
+}
+
+func TestResponseFunctionCallOutputItemUnionParamMarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		expect []byte
+		input  ResponseFunctionCallOutputItemUnionParam
+		expErr string
+	}{
+		{
+			name:   "text input item",
+			expect: []byte(`{"text":"hello","type":"input_text"}`),
+			input: ResponseFunctionCallOutputItemUnionParam{
+				OfInputText: &ResponseInputTextContentParam{
+					Text: "hello",
+					Type: "input_text",
+				},
+			},
+		},
+		{
+			name:   "text input item with empty value",
+			expect: []byte(`{"text":"","type":"input_text"}`),
+			input: ResponseFunctionCallOutputItemUnionParam{
+				OfInputText: &ResponseInputTextContentParam{
+					Text: "",
+					Type: "input_text",
+				},
+			},
+		},
+		{
+			name:   "text input item with special characters",
+			expect: []byte(`{"text":"hello with \"quotes\" and newline\n","type":"input_text"}`),
+			input: ResponseFunctionCallOutputItemUnionParam{
+				OfInputText: &ResponseInputTextContentParam{
+					Text: "hello with \"quotes\" and newline\n",
+					Type: "input_text",
+				},
+			},
+		},
+		{
+			name:   "image input item with file_id",
+			expect: []byte(`{"type":"input_image","file_id":"file-123"}`),
+			input: ResponseFunctionCallOutputItemUnionParam{
+				OfInputImage: &ResponseInputImageContentParam{
+					Type:   "input_image",
+					FileID: "file-123",
+				},
+			},
+		},
+		{
+			name:   "image input item with image_url",
+			expect: []byte(`{"type":"input_image","image_url":"https://example.com/image.jpg"}`),
+			input: ResponseFunctionCallOutputItemUnionParam{
+				OfInputImage: &ResponseInputImageContentParam{
+					Type:     "input_image",
+					ImageURL: "https://example.com/image.jpg",
+				},
+			},
+		},
+		{
+			name:   "image input item with detail",
+			expect: []byte(`{"type":"input_image","image_url":"https://example.com/image.jpg","detail":"high"}`),
+			input: ResponseFunctionCallOutputItemUnionParam{
+				OfInputImage: &ResponseInputImageContentParam{
+					Type:     "input_image",
+					ImageURL: "https://example.com/image.jpg",
+					Detail:   "high",
+				},
+			},
+		},
+		{
+			name:   "file input item with file_id",
+			expect: []byte(`{"type":"input_file","file_id":"file-456"}`),
+			input: ResponseFunctionCallOutputItemUnionParam{
+				OfInputFile: &ResponseInputFileContentParam{
+					Type:   "input_file",
+					FileID: "file-456",
+				},
+			},
+		},
+		{
+			name:   "file input item with filename",
+			expect: []byte(`{"type":"input_file","file_id":"file-456","filename":"data.json"}`),
+			input: ResponseFunctionCallOutputItemUnionParam{
+				OfInputFile: &ResponseInputFileContentParam{
+					Type:     "input_file",
+					FileID:   "file-456",
+					Filename: "data.json",
+				},
+			},
+		},
+		{
+			name:   "file input item with all fields",
+			expect: []byte(`{"type":"input_file","file_id":"file-456","filename":"document.pdf","file_data":"base64data"}`),
+			input: ResponseFunctionCallOutputItemUnionParam{
+				OfInputFile: &ResponseInputFileContentParam{
+					Type:     "input_file",
+					FileID:   "file-456",
+					Filename: "document.pdf",
+					FileData: "base64data",
+				},
+			},
+		},
+		{
+			name:   "file input item with file_url",
+			expect: []byte(`{"type":"input_file","file_id":"file-789","file_url":"https://example.com/file.pdf"}`),
+			input: ResponseFunctionCallOutputItemUnionParam{
+				OfInputFile: &ResponseInputFileContentParam{
+					Type:    "input_file",
+					FileID:  "file-789",
+					FileURL: "https://example.com/file.pdf",
+				},
+			},
+		},
+		{
+			name:   "nil union",
+			input:  ResponseFunctionCallOutputItemUnionParam{},
+			expErr: "no function call output item to marshal in function call output item",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.input)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, string(tc.expect), string(data))
+		})
+	}
+}
+
+func TestResponseFunctionCallOutputItemUnionParamUnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  []byte
+		expect ResponseFunctionCallOutputItemUnionParam
+		expErr string
+	}{
+		{
+			name:  "text input item",
+			input: []byte(`{"text":"hello","type":"input_text"}`),
+			expect: ResponseFunctionCallOutputItemUnionParam{
+				OfInputText: &ResponseInputTextContentParam{
+					Text: "hello",
+					Type: "input_text",
+				},
+			},
+		},
+		{
+			name:  "text input item with empty value",
+			input: []byte(`{"text":"","type":"input_text"}`),
+			expect: ResponseFunctionCallOutputItemUnionParam{
+				OfInputText: &ResponseInputTextContentParam{
+					Text: "",
+					Type: "input_text",
+				},
+			},
+		},
+		{
+			name:  "text input item with special characters",
+			input: []byte(`{"text":"hello with \"quotes\" and newline\n","type":"input_text"}`),
+			expect: ResponseFunctionCallOutputItemUnionParam{
+				OfInputText: &ResponseInputTextContentParam{
+					Text: "hello with \"quotes\" and newline\n",
+					Type: "input_text",
+				},
+			},
+		},
+		{
+			name:  "image input item with file_id",
+			input: []byte(`{"type":"input_image","file_id":"file-123"}`),
+			expect: ResponseFunctionCallOutputItemUnionParam{
+				OfInputImage: &ResponseInputImageContentParam{
+					Type:   "input_image",
+					FileID: "file-123",
+				},
+			},
+		},
+		{
+			name:  "image input item with image_url",
+			input: []byte(`{"type":"input_image","image_url":"https://example.com/image.jpg"}`),
+			expect: ResponseFunctionCallOutputItemUnionParam{
+				OfInputImage: &ResponseInputImageContentParam{
+					Type:     "input_image",
+					ImageURL: "https://example.com/image.jpg",
+				},
+			},
+		},
+		{
+			name:  "image input item with detail",
+			input: []byte(`{"type":"input_image","image_url":"https://example.com/image.jpg","detail":"high"}`),
+			expect: ResponseFunctionCallOutputItemUnionParam{
+				OfInputImage: &ResponseInputImageContentParam{
+					Type:     "input_image",
+					ImageURL: "https://example.com/image.jpg",
+					Detail:   "high",
+				},
+			},
+		},
+		{
+			name:  "file input item with file_id",
+			input: []byte(`{"type":"input_file","file_id":"file-456"}`),
+			expect: ResponseFunctionCallOutputItemUnionParam{
+				OfInputFile: &ResponseInputFileContentParam{
+					Type:   "input_file",
+					FileID: "file-456",
+				},
+			},
+		},
+		{
+			name:  "file input item with filename",
+			input: []byte(`{"type":"input_file","file_id":"file-456","filename":"data.json"}`),
+			expect: ResponseFunctionCallOutputItemUnionParam{
+				OfInputFile: &ResponseInputFileContentParam{
+					Type:     "input_file",
+					FileID:   "file-456",
+					Filename: "data.json",
+				},
+			},
+		},
+		{
+			name:  "file input item with all fields",
+			input: []byte(`{"type":"input_file","file_id":"file-456","filename":"document.pdf","file_data":"base64data"}`),
+			expect: ResponseFunctionCallOutputItemUnionParam{
+				OfInputFile: &ResponseInputFileContentParam{
+					Type:     "input_file",
+					FileID:   "file-456",
+					Filename: "document.pdf",
+					FileData: "base64data",
+				},
+			},
+		},
+		{
+			name:  "file input item with file_url",
+			input: []byte(`{"type":"input_file","file_id":"file-789","file_url":"https://example.com/file.pdf"}`),
+			expect: ResponseFunctionCallOutputItemUnionParam{
+				OfInputFile: &ResponseInputFileContentParam{
+					Type:    "input_file",
+					FileID:  "file-789",
+					FileURL: "https://example.com/file.pdf",
+				},
+			},
+		},
+		{
+			name:   "empty type",
+			input:  []byte(`{"type": ""}`),
+			expErr: "unknown type for function call output item: ",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var result ResponseFunctionCallOutputItemUnionParam
 			err := json.Unmarshal(tc.input, &result)
 			if tc.expErr != "" {
 				require.ErrorContains(t, err, tc.expErr)
