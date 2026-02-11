@@ -57,16 +57,18 @@ func (o *ToGCPVertexAIV1Tokenize) tokenizeToGeminiCountToken(tokenizeChatReq *to
 		toolPtrs = append(toolPtrs, &tools[i])
 	}
 
-	// only media_resolution is related to the # prompt tokens
+	// Build the flat CountTokenRequest structure as expected by Vertex AI API
 	gcr := gcp.CountTokenRequest{
-		Contents: contents,
-		Config: genai.CountTokensConfig{
-			SystemInstruction: systemInstruction,
-			Tools:             toolPtrs,
-			GenerationConfig: &genai.GenerationConfig{
-				MediaResolution: tokenizeChatReq.MediaResolution,
-			},
-		},
+		Contents:          contents,
+		SystemInstruction: systemInstruction,
+		Tools:             toolPtrs,
+	}
+
+	// Only include GenerationConfig if MediaResolution is set
+	if tokenizeChatReq.MediaResolution != "" {
+		gcr.GenerationConfig = &genai.GenerationConfig{
+			MediaResolution: tokenizeChatReq.MediaResolution,
+		}
 	}
 
 	return &gcr, nil

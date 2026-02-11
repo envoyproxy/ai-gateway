@@ -152,14 +152,20 @@ type EmbedContentUsageMetadata struct {
 	TotalTokenCount  int `json:"totalTokenCount,omitempty"`
 }
 
+// CountTokenRequest represents the Vertex AI CountTokens API request.
+// The Vertex AI API expects a flat structure (not nested config).
+// https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/count-tokens
 type CountTokenRequest struct {
-	//  The content to count tokens for.
-	//
+	// The content to count tokens for.
 	// https://github.com/googleapis/go-genai/blob/6a8184fcaf8bf15f0c566616a7b356560309be9b/types.go#L858
 	Contents []genai.Content `json:"contents"`
 
-	//  The configuration for counting tokens.
-	//
-	// https://github.com/googleapis/go-genai/blob/2c046453716ca9c10d445da5c0923b5b170773f2/types.go#L3530
-	Config genai.CountTokensConfig `json:"config,omitempty"`
+	// Optional. Instructions for the model to steer it toward better performance.
+	SystemInstruction *genai.Content `json:"systemInstruction,omitempty"`
+
+	// Optional. Code that enables the system to interact with external systems.
+	Tools []*genai.Tool `json:"tools,omitempty"`
+
+	// Optional. Configuration that the model uses to generate the response.
+	GenerationConfig *genai.GenerationConfig `json:"generationConfig,omitempty"`
 }

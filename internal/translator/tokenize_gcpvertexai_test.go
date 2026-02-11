@@ -126,9 +126,9 @@ func TestToGCPVertexAIV1Tokenize_RequestBody(t *testing.T) {
 
 		var gcpReq gcp.CountTokenRequest
 		require.NoError(t, json.Unmarshal(body, &gcpReq))
-		require.NotNil(t, gcpReq.Config.SystemInstruction)
-		require.Len(t, gcpReq.Config.SystemInstruction.Parts, 1)
-		require.Equal(t, "You are a helpful assistant", gcpReq.Config.SystemInstruction.Parts[0].Text)
+		require.NotNil(t, gcpReq.SystemInstruction)
+		require.Len(t, gcpReq.SystemInstruction.Parts, 1)
+		require.Equal(t, "You are a helpful assistant", gcpReq.SystemInstruction.Parts[0].Text)
 		require.Len(t, gcpReq.Contents, 1) // System message should not be in contents
 		require.Equal(t, "user", gcpReq.Contents[0].Role)
 	})
