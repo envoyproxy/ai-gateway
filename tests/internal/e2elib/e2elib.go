@@ -510,6 +510,12 @@ func KubectlApplyManifestStdin(ctx context.Context, manifest string) (err error)
 	return cmd.Run()
 }
 
+func KubectlDeleteManifestStdin(ctx context.Context, manifest string) (err error) {
+	cmd := Kubectl(ctx, "delete", "-f", "-", "--force=true")
+	cmd.Stdin = bytes.NewReader([]byte(manifest))
+	return cmd.Run()
+}
+
 // KubectlDeleteManifest deletes the given manifest using kubectl.
 func KubectlDeleteManifest(ctx context.Context, manifest string) (err error) {
 	cmd := Kubectl(ctx, "delete", "-f", manifest, "--force=true")

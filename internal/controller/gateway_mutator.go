@@ -26,6 +26,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
@@ -137,15 +138,21 @@ func (g *gatewayMutator) Default(ctx context.Context, obj runtime.Object) error 
 }
 
 // buildExtProcArgs builds all command line arguments for the extproc container.
-func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcAdminPort int, needMCP bool) []string {
-	args := []string{
-		"-configPath", filterConfigFullPath,
+func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath, configBundlePath string, extProcAdminPort int, needMCP bool) []string {
+	args := []string{}
+	if filterConfigFullPath != "" {
+		args = append(args, "-configPath", filterConfigFullPath)
+	}
+	if configBundlePath != "" {
+		args = append(args, "-configBundlePath", configBundlePath)
+	}
+	args = append(args,
 		"-logLevel", g.extProcLogLevel,
-		"-extProcAddr", "unix://" + g.udsPath,
+		"-extProcAddr", "unix://"+g.udsPath,
 		"-adminPort", fmt.Sprintf("%d", extProcAdminPort),
 		"-rootPrefix", g.rootPrefix,
 		"-maxRecvMsgSize", fmt.Sprintf("%d", g.extProcMaxRecvMsgSize),
-	}
+	)
 	if needMCP {
 		args = append(args,
 			"-mcpAddr", ":"+strconv.Itoa(internalapi.MCPProxyPort),
@@ -277,17 +284,29 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 
 	podspec := &pod.Spec
 
-	// Check if the config secret is already created. If not, let's skip the mutation for this pod to avoid blocking the Envoy pod creation.
-	// The config secret will be eventually created by the controller, and that will trigger the mutation for new pods since the Gateway controller
-	// will update the pod annotation in the deployment/daemonset template once it creates the config secret.
-	_, err = g.kube.CoreV1().Secrets(pod.Namespace).Get(ctx,
-		FilterConfigSecretPerGatewayName(gatewayName, gatewayNamespace), metav1.GetOptions{})
-	if err != nil && apierrors.IsNotFound(err) {
-		g.logger.Info("filter config secret not found, skipping mutation",
+	// Resolve config secret sources.
+	// Prefer bundled config when available/valid, and fall back to legacy config for compatibility.
+	// If neither exists, skip mutation to avoid blocking Envoy pod creation.
+	// The controller will later trigger new pod mutations by updating pod/deployment annotations when the config secrets are created.
+	legacyConfigSecretName := legacyFilterConfigSecretName(gatewayName, gatewayNamespace)
+	bundleConfigIndexSecretName := FilterConfigBundleIndexSecretName(gatewayName, gatewayNamespace)
+
+	bundleConfigIndexSecret, err := g.kube.CoreV1().Secrets(pod.Namespace).Get(ctx, bundleConfigIndexSecretName, metav1.GetOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("failed to get bundled filter config secret %s: %w", bundleConfigIndexSecretName, err)
+	}
+	hasBundleConfig := err == nil && bundleConfigIndexSecret != nil
+
+	legacyConfigSecret, err := g.kube.CoreV1().Secrets(pod.Namespace).Get(ctx, legacyConfigSecretName, metav1.GetOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("failed to get legacy filter config secret %s: %w", legacyConfigSecretName, err)
+	}
+	hasLegacyConfig := err == nil && legacyConfigSecret != nil
+
+	if !hasBundleConfig && !hasLegacyConfig {
+		g.logger.Info("no filter config secret found, skipping mutation",
 			"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
 		return nil
-	} else if err != nil {
-		return fmt.Errorf("failed to get filter config secret: %w", err)
 	}
 
 	gatewayConfig := g.fetchGatewayConfig(ctx, gatewayName, gatewayNamespace)
@@ -303,23 +322,64 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	}
 
 	// Now we construct the AI Gateway managed containers and volumes.
-	filterConfigSecretName := FilterConfigSecretPerGatewayName(gatewayName, gatewayNamespace)
-	filterConfigVolumeName := mutationNamePrefix + filterConfigSecretName
+	filterConfigVolumeName := legacyFilterConfigVolumeName(gatewayName, gatewayNamespace)
+	filterConfigBundleVolumeName := filterConfigBundleVolumeName(gatewayName, gatewayNamespace)
 	const extProcUDSVolumeName = mutationNamePrefix + "extproc-uds"
-	podspec.Volumes = append(podspec.Volumes,
-		corev1.Volume{
-			Name: filterConfigVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{SecretName: filterConfigSecretName},
-			},
-		},
-		corev1.Volume{
+	volumes := []corev1.Volume{
+		{
 			Name: extProcUDSVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
 		},
-	)
+	}
+	if hasLegacyConfig {
+		volumes = append(volumes, corev1.Volume{
+			Name: filterConfigVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{SecretName: legacyConfigSecretName},
+			},
+		})
+	}
+
+	// Mount the shared config secrets if bundled config exists.
+	if hasBundleConfig {
+		projections := []corev1.VolumeProjection{
+			{
+				Secret: &corev1.SecretProjection{
+					LocalObjectReference: corev1.LocalObjectReference{Name: bundleConfigIndexSecretName},
+					Items: []corev1.KeyToPath{
+						{
+							Key:  FilterConfigBundleIndexKey,
+							Path: filterapi.ConfigBundleIndexFileName,
+						},
+					},
+				},
+			},
+		}
+		for i := 0; i < maxFilterConfigBundleSlots; i++ {
+			projections = append(projections, corev1.VolumeProjection{
+				Secret: &corev1.SecretProjection{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: filterConfigBundlePartSecretName(gatewayName, gatewayNamespace, i),
+					},
+					Items: []corev1.KeyToPath{
+						{
+							Key:  FilterConfigBundlePartKey,
+							Path: filterapi.ConfigBundlePartPath(i),
+						},
+					},
+				},
+			})
+		}
+		volumes = append(volumes, corev1.Volume{
+			Name: filterConfigBundleVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{Sources: projections},
+			},
+		})
+	}
+	podspec.Volumes = append(podspec.Volumes, volumes...)
 
 	// Add imagePullSecrets for extProc if configured
 	if len(g.extProcImagePullSecrets) > 0 {
@@ -347,9 +407,10 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	image := g.resolveExtProcImage(extProcSpec)
 
 	const (
-		extProcAdminPort      = 1064
-		filterConfigMountPath = "/etc/filter-config"
-		filterConfigFullPath  = filterConfigMountPath + "/" + FilterConfigKeyInSecret
+		extProcAdminPort            = 1064
+		filterConfigMountPath       = "/etc/filter-config"
+		filterConfigFullPath        = filterConfigMountPath + "/" + FilterConfigKeyInSecret
+		filterConfigBundleMountPath = "/etc/filter-config-bundle"
 	)
 	udsMountPath := filepath.Dir(g.udsPath)
 	securityContext := &corev1.SecurityContext{
@@ -376,18 +437,23 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		Ports: []corev1.ContainerPort{
 			{Name: "aigw-admin", ContainerPort: extProcAdminPort},
 		},
-		Args: g.buildExtProcArgs(filterConfigFullPath, extProcAdminPort, len(mcpRoutes.Items) > 0),
-		Env:  envVars,
+		Args: func() []string {
+			bundlePath := ""
+			if hasBundleConfig {
+				bundlePath = filterConfigBundleMountPath
+			}
+			configPath := ""
+			if !hasBundleConfig { // for backward compatibility when upgrade from the previous version and the secret is created by the previous version
+				configPath = filterConfigFullPath
+			}
+			return g.buildExtProcArgs(configPath, bundlePath, extProcAdminPort, len(mcpRoutes.Items) > 0)
+		}(),
+		Env: envVars,
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      extProcUDSVolumeName,
 				MountPath: udsMountPath,
 				ReadOnly:  false,
-			},
-			{
-				Name:      filterConfigVolumeName,
-				MountPath: filterConfigMountPath,
-				ReadOnly:  true,
 			},
 		},
 		SecurityContext: securityContext,
@@ -410,6 +476,22 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 
 	if kubernetesExtProc != nil && len(kubernetesExtProc.VolumeMounts) > 0 {
 		container.VolumeMounts = append(container.VolumeMounts, kubernetesExtProc.VolumeMounts...)
+	}
+
+	if hasLegacyConfig {
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+			Name:      filterConfigVolumeName,
+			MountPath: filterConfigMountPath,
+			ReadOnly:  true,
+		})
+	}
+
+	if hasBundleConfig {
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+			Name:      filterConfigBundleVolumeName,
+			MountPath: filterConfigBundleMountPath,
+			ReadOnly:  true,
+		})
 	}
 
 	if g.extProcAsSideCar {
