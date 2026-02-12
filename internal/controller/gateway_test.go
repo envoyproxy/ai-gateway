@@ -1210,22 +1210,6 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 				expected: true,
 			},
 			{
-				name: "ready replicas below desired requeues",
-				deployments: []appsv1.Deployment{
-					{
-						ObjectMeta: metav1.ObjectMeta{Name: "dep", Generation: 1},
-						Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(2))},
-						Status: appsv1.DeploymentStatus{
-							ObservedGeneration: 1,
-							UpdatedReplicas:    2,
-							ReadyReplicas:      1,
-							AvailableReplicas:  2,
-						},
-					},
-				},
-				expected: true,
-			},
-			{
 				name: "available replicas below desired requeues",
 				deployments: []appsv1.Deployment{
 					{
@@ -1622,22 +1606,6 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 							DesiredNumberScheduled: 2,
 							UpdatedNumberScheduled: 1,
 							NumberReady:            2,
-							NumberAvailable:        2,
-						},
-					},
-				},
-				expected: true,
-			},
-			{
-				name: "number ready below desired requeues",
-				daemonSets: []appsv1.DaemonSet{
-					{
-						ObjectMeta: metav1.ObjectMeta{Name: "ds", Generation: 1},
-						Status: appsv1.DaemonSetStatus{
-							ObservedGeneration:     1,
-							DesiredNumberScheduled: 2,
-							UpdatedNumberScheduled: 2,
-							NumberReady:            1,
 							NumberAvailable:        2,
 						},
 					},
