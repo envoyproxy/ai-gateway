@@ -142,11 +142,12 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Finally, we need to annotate the pods of the gateway deployment with the new uuid to propagate the filter config Secret update faster.
 	// If the pod doesn't have the extproc container, it will roll out the deployment altogether which eventually ends up
 	// the mutation hook invoked.
-	if err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uid, hasEffectiveRoutes, len(mcpRoutes.Items) > 0); err != nil {
+	result, err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uid, hasEffectiveRoutes, len(mcpRoutes.Items) > 0)
+	if err != nil {
 		c.logger.Error(err, "Failed to annotate gateway pods", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, err
 	}
-	return ctrl.Result{}, nil
+	return result, nil
 }
 
 // schemaToFilterAPI converts an aigv1a1.VersionedAPISchema to filterapi.VersionedAPISchema.
@@ -743,9 +744,104 @@ func (c *GatewayController) getBSPForInferencePool(ctx context.Context, namespac
 	return matchingBSPs[0], nil
 }
 
+// checkPodHasSideCar checks if a pod has the extproc sidecar container with correct configuration.
+func (c *GatewayController) checkPodHasSideCar(pod *corev1.Pod, needMCP bool) bool {
+	podSpec := pod.Spec
+	hasSideCar := false
+
+	if c.extProcAsSideCar {
+		for i := range podSpec.InitContainers {
+			// If there's an extproc sidecar container with the current target image, we don't need to roll out the deployment.
+			if podSpec.InitContainers[i].Name == extProcContainerName && podSpec.InitContainers[i].Image == c.extProcImage {
+				hasSideCar = true
+				hasMCPAddr := false
+				for j := range podSpec.InitContainers[i].Args {
+					// logLevel arg should be indexed 2 based on gateway_mutator.go, but we check all args to be safe.
+					if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-logLevel" && podSpec.InitContainers[i].Args[j] != c.extProcLogLevel {
+						hasSideCar = false
+						break
+					}
+					// Check if the -mcpAddr argument is present
+					if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-mcpAddr" {
+						hasMCPAddr = true
+					}
+				}
+				// If MCPRoutes exist but the sidecar doesn't have -mcpAddr, we need to roll out
+				if needMCP && !hasMCPAddr {
+					c.logger.Info("MCPRoutes exist but sidecar is missing -mcpAddr argument, triggering rollout",
+						"pod", pod.Name, "namespace", pod.Namespace)
+					hasSideCar = false
+				}
+				break
+			}
+		}
+	} else {
+		for i := range podSpec.Containers {
+			// If there's an extproc container with the current target image, we don't need to roll out the deployment.
+			if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == c.extProcImage {
+				hasSideCar = true
+				hasMCPAddr := false
+				for j := range podSpec.Containers[i].Args {
+					if j > 0 && podSpec.Containers[i].Args[j-1] == "-logLevel" && podSpec.Containers[i].Args[j] != c.extProcLogLevel {
+						hasSideCar = false
+						break
+					}
+					// Check if the -mcpAddr argument is present
+					if j > 0 && podSpec.Containers[i].Args[j-1] == "-mcpAddr" {
+						hasMCPAddr = true
+					}
+				}
+				// If MCPRoutes exist but the sidecar doesn't have -mcpAddr, we need to roll out
+				if needMCP && !hasMCPAddr {
+					c.logger.Info("MCPRoutes exist but sidecar is missing -mcpAddr argument, triggering rollout",
+						"pod", pod.Name, "namespace", pod.Namespace)
+					hasSideCar = false
+				}
+				break
+			}
+		}
+	}
+
+	return hasSideCar
+}
+
+// isRolloutInProgress checks whether any Deployment or DaemonSet is currently rolling out.
+func isRolloutInProgress(deployments []appsv1.Deployment, daemonSets []appsv1.DaemonSet) bool {
+	for i := range deployments {
+		dep := &deployments[i]
+		desired := ptr.Deref(dep.Spec.Replicas, int32(1))
+		if desired == 0 {
+			continue
+		}
+		if dep.Status.ObservedGeneration < dep.Generation {
+			return true
+		}
+		if dep.Status.UpdatedReplicas < desired || dep.Status.ReadyReplicas < desired || dep.Status.AvailableReplicas < desired {
+			return true
+		}
+	}
+	for i := range daemonSets {
+		ds := &daemonSets[i]
+		// Ignore status-based checks until the controller observed this generation.
+		if ds.Status.ObservedGeneration == 0 {
+			continue
+		}
+		if ds.Status.ObservedGeneration < ds.Generation {
+			return true
+		}
+		desired := ds.Status.DesiredNumberScheduled
+		if ds.Status.UpdatedNumberScheduled < desired || ds.Status.NumberReady < desired || ds.Status.NumberAvailable < desired {
+			return true
+		}
+	}
+	return false
+}
+
 // annotateGatewayPods annotates the pods of GW with the new uuid to propagate the filter config Secret update faster.
 // If the pod doesn't have the extproc container, it will roll out the deployment altogether, which eventually ends up
 // the mutation hook invoked.
+//
+// Returns a ctrl.Result that may indicate requeue is needed (e.g., when rollout is in progress).
 //
 // See https://neonmirrors.net/post/2022-12/reducing-pod-volume-update-times/ for explanation.
 func (c *GatewayController) annotateGatewayPods(ctx context.Context,
@@ -755,80 +851,54 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	uuid string,
 	hasEffectiveRoute bool,
 	needMCP bool,
-) error {
-	hasSideCar := false
+) (ctrl.Result, error) {
+	if isRolloutInProgress(deployments, daemonSets) {
+		const requeueAfter = 5 * time.Second
+		c.logger.Info("rollout in progress - requeueing", "requeueAfter", requeueAfter.String())
+		return ctrl.Result{RequeueAfter: requeueAfter}, nil
+	}
+
+	// Detect sidecar state in one pass with early exit on mixed state.
+	// If mixed state exists while rollout is not in progress, force rollout to self-heal.
+	seenWithSidecar := false
+	seenWithoutSidecar := false
+	for i := range pods {
+		if c.checkPodHasSideCar(&pods[i], needMCP) {
+			seenWithSidecar = true
+		} else {
+			seenWithoutSidecar = true
+		}
+		if seenWithSidecar && seenWithoutSidecar {
+			break
+		}
+	}
+	forceRollout := seenWithSidecar && seenWithoutSidecar
+	if forceRollout {
+		c.logger.Info("pods are inconsistent while rollout is stable, forcing rollout",
+			"podsWithSidecarSeen", seenWithSidecar, "podsWithoutSidecarSeen", seenWithoutSidecar)
+	}
+	// When not mixed, "all have sidecar" is equivalent to seeing at least one pod with sidecar
+	// and none without sidecar. For zero pods this remains false.
+	hasSideCar := seenWithSidecar && !seenWithoutSidecar
+
 	for i := range pods {
 		pod := &pods[i]
-		// Get the pod spec and check if it has the extproc container.
-		podSpec := pod.Spec
-		if c.extProcAsSideCar {
-			for i := range podSpec.InitContainers {
-				// If there's an extproc sidecar container with the current target image, we don't need to roll out the deployment.
-				if podSpec.InitContainers[i].Name == extProcContainerName && podSpec.InitContainers[i].Image == c.extProcImage {
-					hasSideCar = true
-					hasMCPAddr := false
-					for j := range podSpec.InitContainers[i].Args {
-						// logLevel arg should be indexed 2 based on gateway_mutator.go, but we check all args to be safe.
-						if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-logLevel" && podSpec.InitContainers[i].Args[j] != c.extProcLogLevel {
-							hasSideCar = false
-							break
-						}
-						// Check if the -mcpAddr argument is present
-						if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-mcpAddr" {
-							hasMCPAddr = true
-						}
-					}
-					// If MCPRoutes exist but the sidecar doesn't have -mcpAddr, we need to roll out
-					if needMCP && !hasMCPAddr {
-						c.logger.Info("MCPRoutes exist but sidecar is missing -mcpAddr argument, triggering rollout",
-							"pod", pod.Name, "namespace", pod.Namespace)
-						hasSideCar = false
-					}
-					break
-				}
-			}
-		} else {
-			for i := range podSpec.Containers {
-				// If there's an extproc container with the current target image, we don't need to roll out the deployment.
-				if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == c.extProcImage {
-					hasSideCar = true
-					hasMCPAddr := false
-					for j := range podSpec.Containers[i].Args {
-						if j > 0 && podSpec.Containers[i].Args[j-1] == "-logLevel" && podSpec.Containers[i].Args[j] != c.extProcLogLevel {
-							hasSideCar = false
-							break
-						}
-						// Check if the -mcpAddr argument is present
-						if j > 0 && podSpec.Containers[i].Args[j-1] == "-mcpAddr" {
-							hasMCPAddr = true
-						}
-					}
-					// If MCPRoutes exist but the sidecar doesn't have -mcpAddr, we need to roll out
-					if needMCP && !hasMCPAddr {
-						c.logger.Info("MCPRoutes exist but sidecar is missing -mcpAddr argument, triggering rollout",
-							"pod", pod.Name, "namespace", pod.Namespace)
-						hasSideCar = false
-					}
-					break
-				}
-			}
-		}
-
 		c.logger.Info("annotating pod", "namespace", pod.Namespace, "name", pod.Name)
 		_, err := c.kube.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType,
 			fmt.Appendf(nil,
 				`{"metadata":{"annotations":{"%s":"%s"}}}`, aigatewayUUIDAnnotationKey, uuid),
 			metav1.PatchOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to patch pod %s: %w", pod.Name, err)
+			return ctrl.Result{}, fmt.Errorf("failed to patch pod %s: %w", pod.Name, err)
 		}
 	}
 
-	// We annotate the deployments and daemonsets only under two scenarios:
+	// We annotate the deployments and daemonsets under three scenarios:
 	// 1. If there's an effective route but no sidecar container, we need to add the sidecar container.
 	// 2. If there's no effective route but has sidecar container,
 	//    we need to roll out the deployment to trigger the mutation webhook to remove the sidecar container.
-	if hasEffectiveRoute != hasSideCar {
+	// 3. If pods are inconsistent even when rollout isn't in progress, force rollout to self-heal.
+	if hasEffectiveRoute != hasSideCar || forceRollout {
 		for i := range deployments {
 			dep := &deployments[i]
 			c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name)
@@ -837,7 +907,7 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
 				metav1.PatchOptions{})
 			if err != nil {
-				return fmt.Errorf("failed to patch deployment %s: %w", dep.Name, err)
+				return ctrl.Result{}, fmt.Errorf("failed to patch deployment %s: %w", dep.Name, err)
 			}
 		}
 
@@ -849,11 +919,11 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
 				metav1.PatchOptions{})
 			if err != nil {
-				return fmt.Errorf("failed to patch daemonset %s: %w", daemonSet.Name, err)
+				return ctrl.Result{}, fmt.Errorf("failed to patch daemonset %s: %w", daemonSet.Name, err)
 			}
 		}
 	}
-	return nil
+	return ctrl.Result{}, nil
 }
 
 // getObjectsForGateway retrieves the pods, deployments, and daemonsets for a given Gateway.
