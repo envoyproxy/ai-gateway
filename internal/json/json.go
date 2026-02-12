@@ -12,14 +12,19 @@ import (
 )
 
 var (
+	config = sonicjson.Config{
+		ValidateString: true,
+		CaseSensitive:  true,
+	}.Froze()
+
 	// Unmarshal is equivalent to encoding/json.Unmarshal.
-	Unmarshal = sonicjson.ConfigDefault.Unmarshal
+	Unmarshal = config.Unmarshal
 	// Marshal is equivalent to encoding/json.Marshal.
-	Marshal = sonicjson.ConfigDefault.Marshal
+	Marshal = config.Marshal
 	// NewEncoder is equivalent to encoding/json.NewEncoder.
-	NewEncoder = sonicjson.ConfigDefault.NewEncoder
+	NewEncoder = config.NewEncoder
 	// NewDecoder is equivalent to encoding/json.NewDecoder.
-	NewDecoder = sonicjson.ConfigDefault.NewDecoder
+	NewDecoder = config.NewDecoder
 	// MarshalForDeterministicTesting marshals a value to JSON in a deterministic way for testing.
 	// The normal sonic configuration does not guarantee deterministic output in terms of field order.
 	// It panics if called outside of tests.
