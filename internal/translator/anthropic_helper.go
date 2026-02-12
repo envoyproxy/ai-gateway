@@ -576,9 +576,19 @@ func getThinkingConfigParamUnion(tu *openai.ThinkingUnion) *anthropic.ThinkingCo
 	return result
 }
 
+// outputConfigAvailable checks if the model supports structured outputs (OutputConfig).
+// Structured outputs are available on Claude Opus 4.6, Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
+// See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+func outputConfigAvailable(model internalapi.RequestModel) bool {
+	modelLower := strings.ToLower(model)
+	return strings.Contains(modelLower, "4-5") ||
+		strings.Contains(modelLower, "4-6")
+}
+
 // buildAnthropicParams is a helper function that translates an OpenAI request
 // into the parameter struct required by the Anthropic SDK.
-func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anthropic.MessageNewParams, err error) {
+// The apiSchema parameter indicates the backend API schema (e.g., "AWSAnthropic", "GCPAnthropic").
+func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string) (params *anthropic.MessageNewParams, err error) {
 	// 1. Handle simple parameters and defaults.
 	maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
 	if maxTokens == nil {
@@ -606,6 +616,24 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest) (params *anth
 		System:     systemBlocks,
 		Tools:      tools,
 		ToolChoice: toolChoice,
+	}
+
+	// 5. Handle structured outputs (ResponseFormat -> OutputConfig).
+	// See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+	// Currently, GCP Vertex AI does not support output_config.
+	isGCPBackend := strings.HasPrefix(apiSchema, "GCP")
+	if !isGCPBackend && openAIReq.ResponseFormat != nil && openAIReq.ResponseFormat.OfJSONSchema != nil && outputConfigAvailable(openAIReq.Model) {
+		// Convert OpenAI JSON schema to Anthropic OutputConfig format
+		var schemaMap map[string]any
+		if err = json.Unmarshal(openAIReq.ResponseFormat.OfJSONSchema.JSONSchema.Schema, &schemaMap); err != nil {
+			return nil, fmt.Errorf("failed to parse JSON schema: %w", err)
+		}
+		params.OutputConfig = anthropic.OutputConfigParam{
+			Format: anthropic.JSONOutputFormatParam{
+				Type:   constant.JSONSchema("json_schema"),
+				Schema: schemaMap,
+			},
+		}
 	}
 
 	if openAIReq.Temperature != nil {
@@ -851,6 +879,9 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if cached, ok := usage.CachedInputTokens(); ok {
 			p.tokenUsage.SetCachedInputTokens(cached)
 		}
+		if cacheCreation, ok := usage.CacheCreationInputTokens(); ok {
+			p.tokenUsage.SetCacheCreationInputTokens(cacheCreation)
+		}
 
 		// reset the toolIndex for each message
 		p.toolIndex = -1
@@ -940,6 +971,11 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			p.tokenUsage.AddInputTokens(cached)
 			// Accumulate any additional cache tokens from delta
 			p.tokenUsage.AddCachedInputTokens(cached)
+		}
+		if cacheCreation, ok := usage.CacheCreationInputTokens(); ok {
+			p.tokenUsage.AddInputTokens(cacheCreation)
+			// Accumulate cache creation tokens
+			p.tokenUsage.AddCacheCreationInputTokens(cacheCreation)
 		}
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
