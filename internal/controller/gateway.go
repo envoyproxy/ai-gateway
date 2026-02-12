@@ -816,7 +816,7 @@ func isRolloutInProgress(deployments []appsv1.Deployment, daemonSets []appsv1.Da
 		if dep.Status.ObservedGeneration < dep.Generation {
 			return true
 		}
-		if dep.Status.UpdatedReplicas < desired || dep.Status.ReadyReplicas < desired || dep.Status.AvailableReplicas < desired {
+		if dep.Status.UpdatedReplicas < desired || dep.Status.AvailableReplicas < desired {
 			return true
 		}
 	}
@@ -830,7 +830,7 @@ func isRolloutInProgress(deployments []appsv1.Deployment, daemonSets []appsv1.Da
 			return true
 		}
 		desired := ds.Status.DesiredNumberScheduled
-		if ds.Status.UpdatedNumberScheduled < desired || ds.Status.NumberReady < desired || ds.Status.NumberAvailable < desired {
+		if ds.Status.UpdatedNumberScheduled < desired || ds.Status.NumberAvailable < desired {
 			return true
 		}
 	}
@@ -863,6 +863,9 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	seenWithSidecar := false
 	seenWithoutSidecar := false
 	for i := range pods {
+		if !pods[i].GetDeletionTimestamp().IsZero() {
+			continue
+		}
 		if c.checkPodHasSideCar(&pods[i], needMCP) {
 			seenWithSidecar = true
 		} else {
@@ -883,6 +886,10 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 
 	for i := range pods {
 		pod := &pods[i]
+		if !pod.GetDeletionTimestamp().IsZero() {
+			c.logger.Info("skipping terminating pod", "namespace", pod.Namespace, "name", pod.Name)
+			continue
+		}
 		c.logger.Info("annotating pod", "namespace", pod.Namespace, "name", pod.Name)
 		_, err := c.kube.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType,
 			fmt.Appendf(nil,
