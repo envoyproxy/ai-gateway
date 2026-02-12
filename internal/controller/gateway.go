@@ -132,30 +132,30 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	uid := c.uuidFn()
 
 	// Set gateway config overrides.
-	configName, ok := gw.Annotations[GatewayConfigAnnotationKey]
+	//configName, ok := gw.Annotations[GatewayConfigAnnotationKey]
 	extProcImage := c.extProcImage
 	extProcLogLevel := c.extProcLogLevel
-	if ok && configName != "" {
-		var gatewayConfig aigv1a1.GatewayConfig
-		if err = c.client.Get(ctx, client.ObjectKey{Name: configName, Namespace: namespace}, &gatewayConfig); err != nil {
-			if apierrors.IsNotFound(err) {
-				c.logger.Error(err, "GatewayConfig referenced by Gateway not found",
-					"gateway_name", req.Name, "gatewayconfig_name", configName)
-			} else {
-				c.logger.Error(err, "failed to get GatewayConfig",
-					"gateway_name", req.Name, "gatewayconfig_name", configName)
-			}
-			return ctrl.Result{}, err
-		}
-		if extproc := gatewayConfig.Spec.ExtProc; extproc != nil {
-			if extproc.LogLevel != nil {
-				extProcLogLevel = *extproc.LogLevel
-			}
-			if extproc.Kubernetes != nil && extproc.Kubernetes.Image != nil {
-				extProcImage = *extproc.Kubernetes.Image
-			}
-		}
-	}
+	//if ok && configName != "" {
+	//	var gatewayConfig aigv1a1.GatewayConfig
+	//	if err = c.client.Get(ctx, client.ObjectKey{Name: configName, Namespace: namespace}, &gatewayConfig); err != nil {
+	//		if apierrors.IsNotFound(err) {
+	//			c.logger.Error(err, "GatewayConfig referenced by Gateway not found",
+	//				"gateway_name", req.Name, "gatewayconfig_name", configName)
+	//		} else {
+	//			c.logger.Error(err, "failed to get GatewayConfig",
+	//				"gateway_name", req.Name, "gatewayconfig_name", configName)
+	//		}
+	//		return ctrl.Result{}, err
+	//	}
+	//	if extproc := gatewayConfig.Spec.ExtProc; extproc != nil {
+	//		if extproc.LogLevel != nil {
+	//			extProcLogLevel = *extproc.LogLevel
+	//		}
+	//		if extproc.Kubernetes != nil && extproc.Kubernetes.Image != nil {
+	//			extProcImage = *extproc.Kubernetes.Image
+	//		}
+	//	}
+	//}
 
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
