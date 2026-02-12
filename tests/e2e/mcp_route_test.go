@@ -26,7 +26,7 @@ type mcpTenantRequestHeaderInjector struct{}
 
 // RoundTrip implements [http.RoundTripper.RoundTrip].
 func (h mcpTenantRequestHeaderInjector) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.Header.Set("x-tenant", "tenant-a")
+	req.Header.Set("x-tenant-id", "tenant-a")
 	return http.DefaultTransport.RoundTrip(req)
 }
 
@@ -52,7 +52,7 @@ func TestMCP(t *testing.T) {
 	})
 	t.Run("tenant route with another path suffix", func(t *testing.T) {
 		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/another", []string{
-			"mcp-backend__sum",
+			"mcp-backend-query-api-key__sum",
 		}, nil, false, true)
 	})
 	t.Run("tenant route with different path", func(t *testing.T) {

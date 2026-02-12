@@ -45,6 +45,8 @@ extProc:
   imagePullSecrets: []
   # One of "info", "debug", "trace", "warn", "error", "fatal", "panic".
   logLevel: info
+  # Enable redaction of sensitive information in debug logs (only takes effect when logLevel is "debug").
+  enableRedaction: false
 
   ## @param extProc.extraEnvVars Array with extra environment variables to add to extProc containers
   ## e.g:
@@ -65,15 +67,29 @@ controller:
   nameOverride: ""
   fullnameOverride: "ai-gateway-controller"
 
-  # Comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes.
-  # Format: "header1:label1,header2:label2"
-  # Example: "x-team-id:team.id,x-user-id:user.id"
-  metricsRequestHeaderAttributes: ""
+  # Comma-separated key-value pairs for mapping HTTP request headers to Otel attributes shared across metrics, spans, and access logs.
+  # Format: "header1:attribute1,header2:attribute2"
+  # Example: "x-tenant-id:tenant.id"
+  requestHeaderAttributes: ""
 
   # Comma-separated key-value pairs for mapping HTTP request headers to otel span attributes.
   # Format: "header1:attribute1,header2:attribute2"
-  # Example: "x-session-id:session.id,x-user-id:user.id"
-  spanRequestHeaderAttributes: ""
+  # Defaults to "agent-session-id:session.id" when unset.
+  # Set to "" to disable the default.
+  # Example: "x-forwarded-proto:url.scheme,x-tenant-id:tenant.id"
+  spanRequestHeaderAttributes: null
+
+  # Comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes.
+  # Format: "header1:label1,header2:label2"
+  # Example: "x-tenant-id:tenant.id,x-tenant-id:tenant.id"
+  metricsRequestHeaderAttributes: ""
+
+  # Comma-separated key-value pairs for mapping HTTP request headers to access log attributes.
+  # Format: "header1:attribute1,header2:attribute2"
+  # Defaults to "agent-session-id:session.id" when unset.
+  # Set to "" to disable the default.
+  # Example: "x-forwarded-proto:url.scheme,x-tenant-id:tenant.id"
+  logRequestHeaderAttributes: null
 
 
   # -- Service Account --

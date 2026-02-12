@@ -73,15 +73,10 @@ func isJSONValue(value string) bool {
 	return false
 }
 
-// Mutate mutates the request body based on the body mutations and restores original body if mutated previously.
-func (b *BodyMutator) Mutate(requestBody []byte, onRetry bool) ([]byte, error) {
+// Mutate mutates the request body based on the body mutations.
+func (b *BodyMutator) Mutate(requestBody []byte) ([]byte, error) {
 	if b.bodyMutations == nil {
 		return requestBody, nil
-	}
-
-	if onRetry && b.originalBody != nil {
-		// On retry, restore the original body first
-		requestBody = b.originalBody
 	}
 
 	mutatedBody := requestBody
@@ -101,7 +96,6 @@ func (b *BodyMutator) Mutate(requestBody []byte, onRetry bool) ([]byte, error) {
 	}
 
 	// Apply sets
-	replaceInPlace := onRetry
 	if len(b.bodyMutations.Set) > 0 {
 		for _, field := range b.bodyMutations.Set {
 			if field.Path != "" {
@@ -109,10 +103,10 @@ func (b *BodyMutator) Mutate(requestBody []byte, onRetry bool) ([]byte, error) {
 				// TODO handle JSON value check in configuration load time too.
 				if isJSONValue(field.Value) {
 					// Use SetRawBytes for JSON values (quoted strings, numbers, booleans, objects, arrays)
-					mutatedBody, err = sjson.SetRawBytesOptions(mutatedBody, field.Path, []byte(field.Value), &sjson.Options{ReplaceInPlace: replaceInPlace})
+					mutatedBody, err = sjson.SetRawBytesOptions(mutatedBody, field.Path, []byte(field.Value), &sjson.Options{ReplaceInPlace: true})
 				} else {
 					// Use SetBytes for plain string values
-					mutatedBody, err = sjson.SetBytesOptions(mutatedBody, field.Path, field.Value, &sjson.Options{ReplaceInPlace: replaceInPlace})
+					mutatedBody, err = sjson.SetBytesOptions(mutatedBody, field.Path, field.Value, &sjson.Options{ReplaceInPlace: true})
 				}
 				if err != nil {
 					return nil, fmt.Errorf("failed to set field %s: %w", field.Path, err)

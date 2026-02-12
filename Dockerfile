@@ -8,10 +8,14 @@
 ARG VARIANT=static
 ARG COMMAND_NAME
 
+# Base image configuration
+ARG GOLANG_BASE_IMAGE=golang:1.25
+ARG RUNTIME_BASE_IMAGE=gcr.io/distroless/${VARIANT}-debian12:nonroot
+
 # Pre-download Envoy for aigw using func-e. This reduces latency and avoids
 # needing to declare a volume for the Envoy binary, which is tricky in Docker
 # Compose v2 because volumes end up owned by root.
-FROM golang:1.25 AS build
+FROM ${GOLANG_BASE_IMAGE} AS build
 ARG TARGETOS
 ARG TARGETARCH
 ARG COMMAND_NAME
@@ -24,7 +28,7 @@ RUN if [ "$COMMAND_NAME" = "aigw" ]; then \
     && chown -R 65532:65532 /home/nonroot \
     && chmod -R 755 /home/nonroot /app
 
-FROM gcr.io/distroless/${VARIANT}-debian12:nonroot
+FROM ${RUNTIME_BASE_IMAGE}
 ARG COMMAND_NAME
 ARG TARGETOS
 ARG TARGETARCH

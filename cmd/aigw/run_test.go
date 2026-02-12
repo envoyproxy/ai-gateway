@@ -23,6 +23,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
@@ -30,6 +31,7 @@ import (
 //
 // The real e2e tests are in tests/e2e-aigw.
 func TestRun(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	// Note: we do not make any real requests here!
 	t.Setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
@@ -42,6 +44,7 @@ func TestRun(t *testing.T) {
 }
 
 func TestRunExtprocStartFailure(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
 
@@ -63,6 +66,7 @@ func TestRunExtprocStartFailure(t *testing.T) {
 }
 
 func TestRunCmdContext_writeEnvoyResourcesAndRunExtProc(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
 	t.Setenv("OPENAI_API_KEY", "unused")
 
@@ -114,9 +118,33 @@ func Test_mustStartExtProc(t *testing.T) {
 	require.ErrorIs(t, <-done, mockErr)
 }
 
+func Test_mustStartExtProc_defaultHeaderAttributes(t *testing.T) {
+	var capturedArgs []string
+	runCtx := &runCmdContext{
+		stderrLogger: slog.New(slog.DiscardHandler),
+		stderr:       io.Discard,
+		tmpdir:       t.TempDir(),
+		adminPort:    1064,
+		extProcLauncher: func(_ context.Context, args []string, _ io.Writer) error {
+			capturedArgs = args
+			return errors.New("mock error")
+		},
+	}
+
+	<-runCtx.mustStartExtProc(t.Context(), &filterapi.Config{Version: version.Parse()})
+
+	require.NotContains(t, capturedArgs, "-requestHeaderAttributes")
+	require.NotContains(t, capturedArgs, "-metricsRequestHeaderAttributes")
+	require.NotContains(t, capturedArgs, "-spanRequestHeaderAttributes")
+	require.NotContains(t, capturedArgs, "-logRequestHeaderAttributes")
+}
+
 func Test_mustStartExtProc_withHeaderAttributes(t *testing.T) {
-	t.Setenv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES", "x-team-id:team.id,x-user-id:user.id")
-	t.Setenv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES", "x-session-id:session.id,x-user-id:user.id")
+	internaltesting.ClearTestEnv(t)
+	t.Setenv("OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES", "x-tenant-id:tenant.id")
+	t.Setenv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES", "x-forwarded-proto:url.scheme")
+	t.Setenv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES", "x-tenant-id:tenant.id")
+	t.Setenv("OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES", "x-forwarded-proto:url.scheme")
 
 	var capturedArgs []string
 	runCtx := &runCmdContext{
@@ -133,21 +161,53 @@ func Test_mustStartExtProc_withHeaderAttributes(t *testing.T) {
 	done := runCtx.mustStartExtProc(t.Context(), &filterapi.Config{Version: version.Parse()})
 	<-done // Wait for completion
 
-	// Verify both metrics and tracing flags are set
-	require.Contains(t, capturedArgs, "-metricsRequestHeaderAttributes")
+	require.Contains(t, capturedArgs, "-requestHeaderAttributes")
+	baseValue := findFlagValue(capturedArgs, "-requestHeaderAttributes")
+	require.Equal(t, "x-tenant-id:tenant.id", baseValue)
 	require.Contains(t, capturedArgs, "-spanRequestHeaderAttributes")
+	spanValue := findFlagValue(capturedArgs, "-spanRequestHeaderAttributes")
+	require.Equal(t, "x-forwarded-proto:url.scheme", spanValue)
+	require.Contains(t, capturedArgs, "-metricsRequestHeaderAttributes")
+	metricsValue := findFlagValue(capturedArgs, "-metricsRequestHeaderAttributes")
+	require.Equal(t, "x-tenant-id:tenant.id", metricsValue)
+	require.Contains(t, capturedArgs, "-logRequestHeaderAttributes")
+	logValue := findFlagValue(capturedArgs, "-logRequestHeaderAttributes")
+	require.Equal(t, "x-forwarded-proto:url.scheme", logValue)
+}
 
-	// Find the index and verify the values
-	for i, arg := range capturedArgs {
-		if arg == "-metricsRequestHeaderAttributes" {
-			require.Less(t, i+1, len(capturedArgs), "metricsRequestHeaderAttributes should have a value")
-			require.Equal(t, "x-team-id:team.id,x-user-id:user.id", capturedArgs[i+1])
-		}
-		if arg == "-spanRequestHeaderAttributes" {
-			require.Less(t, i+1, len(capturedArgs), "spanRequestHeaderAttributes should have a value")
-			require.Equal(t, "x-session-id:session.id,x-user-id:user.id", capturedArgs[i+1])
-		}
+func Test_mustStartExtProc_emptyHeaderAttributesClearsDefaults(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
+	t.Setenv("OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES", "x-tenant-id:tenant.id")
+	t.Setenv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES", "")
+	t.Setenv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES", "x-tenant-id:tenant.id")
+	t.Setenv("OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES", "")
+
+	var capturedArgs []string
+	runCtx := &runCmdContext{
+		stderrLogger: slog.New(slog.DiscardHandler),
+		stderr:       io.Discard,
+		tmpdir:       t.TempDir(),
+		adminPort:    1064,
+		extProcLauncher: func(_ context.Context, args []string, _ io.Writer) error {
+			capturedArgs = args
+			return errors.New("mock error")
+		},
 	}
+
+	<-runCtx.mustStartExtProc(t.Context(), &filterapi.Config{Version: version.Parse()})
+
+	require.Contains(t, capturedArgs, "-requestHeaderAttributes")
+	baseValue := findFlagValue(capturedArgs, "-requestHeaderAttributes")
+	require.Equal(t, "x-tenant-id:tenant.id", baseValue)
+	require.Contains(t, capturedArgs, "-spanRequestHeaderAttributes")
+	spanValue := findFlagValue(capturedArgs, "-spanRequestHeaderAttributes")
+	require.Empty(t, spanValue)
+	require.Contains(t, capturedArgs, "-metricsRequestHeaderAttributes")
+	metricsValue := findFlagValue(capturedArgs, "-metricsRequestHeaderAttributes")
+	require.Equal(t, "x-tenant-id:tenant.id", metricsValue)
+	require.Contains(t, capturedArgs, "-logRequestHeaderAttributes")
+	logValue := findFlagValue(capturedArgs, "-logRequestHeaderAttributes")
+	require.Empty(t, logValue)
 }
 
 func TestTryFindEnvoyListenerPort(t *testing.T) {
@@ -162,19 +222,19 @@ func TestTryFindEnvoyListenerPort(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string
-		gw   *gwapiv1.Gateway
-		want int
+		name     string
+		gw       *gwapiv1.Gateway
+		expected int
 	}{
 		{
-			name: "gateway with no listeners",
-			gw:   &gwapiv1.Gateway{},
-			want: 0,
+			name:     "gateway with no listeners",
+			gw:       &gwapiv1.Gateway{},
+			expected: 0,
 		},
 		{
-			name: "gateway with listener on port 1975",
-			gw:   gwWithListener(1975),
-			want: 1975,
+			name:     "gateway with listener on port 1975",
+			gw:       gwWithListener(1975),
+			expected: 1975,
 		},
 	}
 
@@ -186,7 +246,7 @@ func TestTryFindEnvoyListenerPort(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			port := runCtx.tryFindEnvoyListenerPort(tt.gw)
-			require.Equal(t, tt.want, port)
+			require.Equal(t, tt.expected, port)
 		})
 	}
 }
@@ -228,10 +288,18 @@ func Test_newEnvoyMiddleware(t *testing.T) {
 	}
 }
 
+func findFlagValue(args []string, flag string) string {
+	for i, arg := range args {
+		if arg == flag && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
 func readFileFromProjectRoot(t *testing.T, file string) string {
 	t.Helper()
-	_, filename, _, ok := runtime.Caller(0)
-	require.True(t, ok)
+	_, filename, _, _ := runtime.Caller(0)
 	b, err := os.ReadFile(filepath.Join(filepath.Dir(filename), "..", "..", file))
 	require.NoError(t, err)
 	return string(b)

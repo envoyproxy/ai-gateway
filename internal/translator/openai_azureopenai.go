@@ -54,7 +54,7 @@ func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, 
 		o.stream = true
 	}
 
-	// On retry, the path might have changed to a different provider. So, this will enesure that the path is always set to OpenAI.
+	// On retry, the path might have changed to a different provider. So, this will ensure that the path is always set to OpenAI.
 	if forceBodyMutation {
 		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(raw))})
 	}

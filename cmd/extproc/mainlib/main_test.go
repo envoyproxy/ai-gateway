@@ -23,52 +23,67 @@ import (
 func Test_parseAndValidateFlags(t *testing.T) {
 	t.Run("ok extProcFlags", func(t *testing.T) {
 		for _, tc := range []struct {
-			name       string
-			args       []string
-			configPath string
-			addr       string
-			rootPrefix string
-			logLevel   slog.Level
+			name            string
+			args            []string
+			configPath      string
+			addr            string
+			rootPrefix      string
+			logLevel        slog.Level
+			enableRedaction bool
 		}{
 			{
-				name:       "minimal extProcFlags",
-				args:       []string{"-configPath", "/path/to/config.yaml"},
-				configPath: "/path/to/config.yaml",
-				addr:       ":1063",
-				rootPrefix: "/",
-				logLevel:   slog.LevelInfo,
+				name:            "minimal extProcFlags",
+				args:            []string{"-configPath", "/path/to/config.yaml"},
+				configPath:      "/path/to/config.yaml",
+				addr:            ":1063",
+				rootPrefix:      "/",
+				logLevel:        slog.LevelInfo,
+				enableRedaction: false,
 			},
 			{
-				name:       "custom addr",
-				args:       []string{"-configPath", "/path/to/config.yaml", "-extProcAddr", "unix:///tmp/ext_proc.sock"},
-				configPath: "/path/to/config.yaml",
-				addr:       "unix:///tmp/ext_proc.sock",
-				rootPrefix: "/",
-				logLevel:   slog.LevelInfo,
+				name:            "custom addr",
+				args:            []string{"-configPath", "/path/to/config.yaml", "-extProcAddr", "unix:///tmp/ext_proc.sock"},
+				configPath:      "/path/to/config.yaml",
+				addr:            "unix:///tmp/ext_proc.sock",
+				rootPrefix:      "/",
+				logLevel:        slog.LevelInfo,
+				enableRedaction: false,
 			},
 			{
-				name:       "log level debug",
-				args:       []string{"-configPath", "/path/to/config.yaml", "-logLevel", "debug"},
-				configPath: "/path/to/config.yaml",
-				addr:       ":1063",
-				rootPrefix: "/",
-				logLevel:   slog.LevelDebug,
+				name:            "log level debug",
+				args:            []string{"-configPath", "/path/to/config.yaml", "-logLevel", "debug"},
+				configPath:      "/path/to/config.yaml",
+				addr:            ":1063",
+				rootPrefix:      "/",
+				logLevel:        slog.LevelDebug,
+				enableRedaction: false,
 			},
 			{
-				name:       "log level warn",
-				args:       []string{"-configPath", "/path/to/config.yaml", "-logLevel", "warn"},
-				configPath: "/path/to/config.yaml",
-				addr:       ":1063",
-				rootPrefix: "/",
-				logLevel:   slog.LevelWarn,
+				name:            "log level debug with redaction enabled",
+				args:            []string{"-configPath", "/path/to/config.yaml", "-logLevel", "debug", "-enableRedaction"},
+				configPath:      "/path/to/config.yaml",
+				addr:            ":1063",
+				rootPrefix:      "/",
+				logLevel:        slog.LevelDebug,
+				enableRedaction: true,
 			},
 			{
-				name:       "log level error",
-				args:       []string{"-configPath", "/path/to/config.yaml", "-logLevel", "error"},
-				configPath: "/path/to/config.yaml",
-				addr:       ":1063",
-				rootPrefix: "/",
-				logLevel:   slog.LevelError,
+				name:            "log level warn",
+				args:            []string{"-configPath", "/path/to/config.yaml", "-logLevel", "warn"},
+				configPath:      "/path/to/config.yaml",
+				addr:            ":1063",
+				rootPrefix:      "/",
+				logLevel:        slog.LevelWarn,
+				enableRedaction: false,
+			},
+			{
+				name:            "log level error",
+				args:            []string{"-configPath", "/path/to/config.yaml", "-logLevel", "error"},
+				configPath:      "/path/to/config.yaml",
+				addr:            ":1063",
+				rootPrefix:      "/",
+				logLevel:        slog.LevelError,
+				enableRedaction: false,
 			},
 			{
 				name: "all extProcFlags",
@@ -78,29 +93,44 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					"-logLevel", "debug",
 					"-rootPrefix", "/foo/bar/",
 				},
-				configPath: "/path/to/config.yaml",
-				addr:       "unix:///tmp/ext_proc.sock",
-				rootPrefix: "/foo/bar/",
-				logLevel:   slog.LevelDebug,
+				configPath:      "/path/to/config.yaml",
+				addr:            "unix:///tmp/ext_proc.sock",
+				rootPrefix:      "/foo/bar/",
+				logLevel:        slog.LevelDebug,
+				enableRedaction: false,
 			},
 			{
-				name:       "with endpoint prefixes",
-				args:       []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "openai:/,cohere:/cohere,anthropic:/anthropic"},
-				configPath: "/path/to/config.yaml",
-				addr:       ":1063",
-				rootPrefix: "/",
-				logLevel:   slog.LevelInfo,
+				name:            "with endpoint prefixes",
+				args:            []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "openai:/,cohere:/cohere,anthropic:/anthropic"},
+				configPath:      "/path/to/config.yaml",
+				addr:            ":1063",
+				rootPrefix:      "/",
+				logLevel:        slog.LevelInfo,
+				enableRedaction: false,
 			},
 			{
-				name: "with header mapping",
+				name: "with metrics header mapping",
+				args: []string{
+					"-configPath", "/path/to/config.yaml",
+					"-metricsRequestHeaderAttributes", "x-tenant-id:tenant.id,x-tenant-id:tenant.id",
+				},
+				configPath:      "/path/to/config.yaml",
+				rootPrefix:      "/",
+				addr:            ":1063",
+				logLevel:        slog.LevelInfo,
+				enableRedaction: false,
+			},
+			{
+				name: "with base header mapping",
 				args: []string{
 					"-configPath", "/path/to/config.yaml",
 					"-metricsRequestHeaderAttributes", "x-team-id:team.id,x-user-id:user.id",
 				},
-				configPath: "/path/to/config.yaml",
-				rootPrefix: "/",
-				addr:       ":1063",
-				logLevel:   slog.LevelInfo,
+				configPath:      "/path/to/config.yaml",
+				rootPrefix:      "/",
+				addr:            ":1063",
+				logLevel:        slog.LevelInfo,
+				enableRedaction: false,
 			},
 			{
 				name: "with tracing header attributes",
@@ -108,10 +138,11 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					"-configPath", "/path/to/config.yaml",
 					"-spanRequestHeaderAttributes", "x-session-id:session.id,x-user-id:user.id",
 				},
-				configPath: "/path/to/config.yaml",
-				rootPrefix: "/",
-				addr:       ":1063",
-				logLevel:   slog.LevelInfo,
+				configPath:      "/path/to/config.yaml",
+				rootPrefix:      "/",
+				addr:            ":1063",
+				logLevel:        slog.LevelInfo,
+				enableRedaction: false,
 			},
 			{
 				name: "with both metrics and tracing headers",
@@ -120,10 +151,11 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					"-metricsRequestHeaderAttributes", "x-user-id:user.id",
 					"-spanRequestHeaderAttributes", "x-session-id:session.id",
 				},
-				configPath: "/path/to/config.yaml",
-				rootPrefix: "/",
-				addr:       ":1063",
-				logLevel:   slog.LevelInfo,
+				configPath:      "/path/to/config.yaml",
+				rootPrefix:      "/",
+				addr:            ":1063",
+				logLevel:        slog.LevelInfo,
+				enableRedaction: false,
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
@@ -132,6 +164,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				require.Equal(t, tc.configPath, flags.configPath)
 				require.Equal(t, tc.addr, flags.extProcAddr)
 				require.Equal(t, tc.logLevel, flags.logLevel)
+				require.Equal(t, tc.enableRedaction, flags.enableRedaction)
 				require.Equal(t, tc.rootPrefix, flags.rootPrefix)
 			})
 		}

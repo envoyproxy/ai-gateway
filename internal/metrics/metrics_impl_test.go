@@ -205,8 +205,8 @@ func TestHeaderLabelMapping(t *testing.T) {
 
 		// Test header label mapping.
 		headerMapping = map[string]string{
-			"x-user-id": "user.id",
-			"x-org-id":  "org_id",
+			"x-tenant-id": "tenant.id",
+			"x-org-id":    "org_id",
 		}
 
 		pm = NewMetricsFactory(meter, headerMapping, GenAIOperationCompletion).NewMetrics().(*metricsImpl)
@@ -214,9 +214,9 @@ func TestHeaderLabelMapping(t *testing.T) {
 
 	// Test with headers that should be mapped.
 	requestHeaders := map[string]string{
-		"x-user-id": "user123",
-		"x-org-id":  "org456",
-		"x-other":   "ignored", // This should be ignored as it's not in the mapping.
+		"x-tenant-id": "user123",
+		"x-org-id":    "org456",
+		"x-other":     "ignored", // This should be ignored as it's not in the mapping.
 	}
 
 	pm.SetOriginalModel("test-model")
@@ -239,7 +239,7 @@ func TestHeaderLabelMapping(t *testing.T) {
 		attribute.Key(genaiAttributeRequestModel).String("test-model"),
 		attribute.Key(genaiAttributeResponseModel).String("test-model"),
 		attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeInput),
-		attribute.Key("user.id").String("user123"),
+		attribute.Key("tenant.id").String("user123"),
 		attribute.Key("org_id").String("org456"),
 	)
 

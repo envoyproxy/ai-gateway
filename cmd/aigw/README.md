@@ -34,15 +34,17 @@ Here are values we use for Ollama:
    docker compose up --wait -d
    ```
 
+   **Tip:** Envoy writes access logs to the console when `AIGW_DEBUG=true`.
+
 3. **Make requests to Envoy AI Gateway**:
 
    The following services use `curl` to send requests to the AI Gateway CLI
    (aigw) which routes them to Ollama:
+   Defaults: `AIGW_TENANT_ID=tenant-1` and `AIGW_SESSION_ID=session-123` (override by exporting them).
    - Chat completion:
      ```bash
      docker compose run --rm chat-completion
      ```
-   -
    - Completion (legacy):
 
      ```bash
@@ -59,7 +61,8 @@ Here are values we use for Ollama:
      ```bash
      docker compose run --rm mcp
      ```
-     This calls the kiwi MCP server through aigw's MCP Gateway at `/mcp`.
+     This calls the kiwi MCP server through aigw's MCP Gateway at `/mcp` and passes
+     `x-tenant-id`/`agent-session-id` via JSON-RPC `_meta`.
 
 4. **Shutdown the example stack**:
 
@@ -100,12 +103,24 @@ pre-configured `.env` files for common scenarios:
 <details>
 <summary>Console (Default - no external dependencies)</summary>
 
-Export telemetry directly to the console for debugging. The `.env.otel.console`
-file is already provided and will be used by default when no profile is specified
-or when you set `COMPOSE_PROFILES=console`.
+The [.env.otel.console](.env.otel.console) file is used by default or when you
+set `COMPOSE_PROFILES=console`.
 
 This outputs traces and metrics to stdout/stderr. Useful for debugging without
 requiring any external services.
+
+</details>
+
+<details>
+<summary>Host (Run your own Otel Collector)</summary>
+
+If you are running your own OpenTelemetry Collector on your host machine, you
+can configure the stack to send telemetry data to it.
+
+The [.env.otel.host](.env.otel.host) file is used when you set
+`COMPOSE_PROFILES=host`.
+
+This configures the OTLP gRPC endpoint to host.docker.internal on port 4317.
 
 </details>
 
@@ -115,8 +130,8 @@ requiring any external services.
 [Arize Phoenix][phoenix] is an open-source LLM tracing and evaluation system
 with UX features for spans formatted with [OpenInference semantics][openinference].
 
-The `.env.otel.phoenix` file is already provided and will be used automatically
-when you set `COMPOSE_PROFILES=phoenix`. This also starts the Phoenix service.
+The [.env.otel.phoenix](.env.otel.phoenix) file is used when you set
+`COMPOSE_PROFILES=phoenix`. This also starts the Phoenix service.
 
 This configures:
 
@@ -131,8 +146,8 @@ This configures:
 [otel-tui][otel-tui] provides a terminal-based UI for viewing OpenTelemetry
 traces and metrics in real-time.
 
-The `.env.otel.otel-tui` file is already provided and will be used automatically
-when you set `COMPOSE_PROFILES=otel-tui`. This also starts the otel-tui service.
+The [.env.otel.otel-tui](.env.otel.otel-tui) file is used when you set
+`COMPOSE_PROFILES=otel-tui`. This also starts the otel-tui service.
 
 This configures the OTLP gRPC endpoint to otel-tui on port 4317.
 
@@ -166,7 +181,7 @@ This configures the OTLP gRPC endpoint to otel-tui on port 4317.
    <summary>For Console export</summary>
 
    ```bash
-   # View traces and metrics in aigw logs
+   # View traces, metrics and access logs in the aigw console output
    docker compose -f docker-compose-otel.yaml logs aigw | grep -E "(SpanContext|gen_ai)"
    ```
 
@@ -206,7 +221,7 @@ This configures the OTLP gRPC endpoint to otel-tui on port 4317.
    **Access logs with GenAI fields** (always available):
 
    ```bash
-   docker compose -f docker-compose-otel.yaml logs aigw | grep "genai_model_name"
+   docker compose -f docker-compose-otel.yaml logs aigw | grep "gen_ai.request.model"
    ```
 
 ### Shutdown

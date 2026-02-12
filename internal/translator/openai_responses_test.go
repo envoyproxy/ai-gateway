@@ -11,9 +11,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/openai/openai-go/v2/packages/param"
-	"github.com/openai/openai-go/v2/responses"
 	"github.com/stretchr/testify/require"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/json"
@@ -53,8 +52,8 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: false,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"}`)
@@ -76,8 +75,8 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: true,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","stream":true,"input":"Hi"}`)
@@ -96,8 +95,8 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: false,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"}`)
@@ -124,8 +123,8 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: false,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o", "input":"Hi"}`)
@@ -145,8 +144,8 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: false,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 
@@ -182,8 +181,8 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: false,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"}`)
@@ -258,8 +257,8 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: false,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"}`)
@@ -314,8 +313,8 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: true,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
@@ -374,8 +373,8 @@ data: [DONE]
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o-mini",
 			Stream: true,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o-mini","input":"Hi","stream": true}`)
@@ -419,15 +418,15 @@ func TestResponses_HandleStreamingResponse(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: true,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
 		_, _, err := translator.RequestBody(original, req, false)
 		require.NoError(t, err)
 
-		sseChunks := `data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
+		sseChunks := `data: {"type":"response.created","response":{"id":"resp_67c9fdcecf488190bdd9a0409de3a1ec07b8b0ad4e5eb654","object":"response","created_at":1741487325,"status":"in_progress","model":"gpt-4o-2024-11-20","output":[],"parallel_tool_calls":true,"store":true,"temperature":1.0,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_p":1.0,"truncation":"disabled"},"sequence_number": 1}
 
 data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","type":"message","status":"in_progress","role":"assistant","content":[]}}
 
@@ -473,8 +472,8 @@ data: [DONE]
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: true,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
@@ -497,8 +496,8 @@ func TestResponses_HandleNonStreamingResponse(t *testing.T) {
 		req := &openai.ResponseRequest{
 			Model:  "gpt-4o",
 			Stream: false,
-			Input: responses.ResponseNewParamsInputUnion{
-				OfString: param.Opt[string]{Value: "Hi"},
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"`)
@@ -788,6 +787,7 @@ func TestResponsesOpenAIToOpenAITranslatorWithModelOverride(t *testing.T) {
 				OutputTokens: 5,
 				TotalTokens:  15,
 			},
+			Text: openai.ResponseTextConfig{Format: openai.ResponseFormatTextConfigUnionParam{OfText: &openai.ResponseFormatTextParam{Type: "text"}}},
 		}
 
 		body, err := json.Marshal(resp)

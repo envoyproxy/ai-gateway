@@ -16,9 +16,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
+
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func Test_doMain(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name         string
 		args         []string
@@ -132,7 +135,8 @@ Flags:
       --runtime-dir=STRING    Ephemeral runtime files directory. Defaults to
                               /tmp/aigw-$UID ($AIGW_RUNTIME_DIR)
 
-      --debug                 Enable debug logging emitted to stderr.
+      --debug                 Enable debug logging emitted to stderr
+                              ($AIGW_DEBUG).
       --admin-port=1064       HTTP port for the admin server (serves /metrics
                               and /health endpoints).
       --mcp-config=STRING     Path to MCP servers configuration file.
@@ -188,7 +192,6 @@ Flags:
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}
@@ -207,6 +210,7 @@ Flags:
 }
 
 func TestCmd_BeforeApply(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name            string
 		configHome      string
@@ -258,7 +262,6 @@ func TestCmd_BeforeApply(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
 			}
@@ -392,6 +395,7 @@ func TestCmdRun_BeforeApply(t *testing.T) {
 }
 
 func TestCmdRun_Validate(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name          string
 		path          string
@@ -456,7 +460,6 @@ func TestCmdRun_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
 			}

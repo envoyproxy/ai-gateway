@@ -10,6 +10,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/internal/redaction"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
@@ -46,6 +48,10 @@ type openAIToAWSBedrockTranslatorV1ChatCompletion struct {
 	responseID       string
 	toolIndex        int64
 	activeToolStream bool
+	// Redaction configuration for debug logging
+	debugLogEnabled bool
+	enableRedaction bool
+	logger          *slog.Logger
 }
 
 func getAwsBedrockThinkingMap(tu *openai.ThinkingUnion) map[string]any {
@@ -213,7 +219,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIToolsToBedrockToolC
 				},
 			}
 		} else {
-			return fmt.Errorf("unexpected type: %T", openAIReq.ToolChoice.Value)
+			return fmt.Errorf("%w: tool_choice type not supported", internalapi.ErrInvalidRequestBody)
 		}
 	}
 	return nil
@@ -251,7 +257,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 				imageContentPart := contentPart.OfImageURL
 				contentType, b, err := parseDataURI(imageContentPart.ImageURL.URL)
 				if err != nil {
-					return nil, fmt.Errorf("failed to parse image URL: %s %w", imageContentPart.ImageURL.URL, err)
+					return nil, fmt.Errorf("%w: invalid image data URI", internalapi.ErrInvalidRequestBody)
 				}
 				var format string
 				switch contentType {
@@ -264,8 +270,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 				case mimeTypeImageWEBP:
 					format = "webp"
 				default:
-					return nil, fmt.Errorf("unsupported image type: %s please use one of [png, jpeg, gif, webp]",
-						contentType)
+					return nil, fmt.Errorf("%w: unsupported image format %s", internalapi.ErrInvalidRequestBody, contentType)
 				}
 
 				block := &awsbedrock.ContentBlock{
@@ -287,7 +292,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 		}
 		return chatMessage, nil
 	}
-	return nil, fmt.Errorf("unexpected content type")
+	return nil, fmt.Errorf("%w: unexpected content type for user message", internalapi.ErrInvalidRequestBody)
 }
 
 // unmarshalToolCallArguments is a helper method to unmarshal tool call arguments.
@@ -371,11 +376,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 							CachePoint: cachePointBlock,
 						})
 					}
-
 				case string:
-					return nil, fmt.Errorf("AWS Bedrock does not support string format for RedactedContent, expected []byte")
+					return nil, fmt.Errorf("%w: redacted_content must be a binary/bytes value in bedrock", internalapi.ErrInvalidRequestBody)
 				default:
-					return nil, fmt.Errorf("unsupported RedactedContent type: %T, expected []byte", v)
+					return nil, fmt.Errorf("%w: redacted_content must be a binary/bytes value in bedrock", internalapi.ErrInvalidRequestBody)
 				}
 			}
 		case openai.ChatCompletionAssistantMessageParamContentTypeRefusal:
@@ -438,7 +442,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			}
 		}
 	} else {
-		return fmt.Errorf("unexpected content type for system message")
+		return fmt.Errorf("%w: unexpected content type for system message", internalapi.ErrInvalidRequestBody)
 	}
 	return nil
 }
@@ -465,7 +469,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 		}
 
 	default:
-		return nil, fmt.Errorf("unexpected content type for tool message: %T", openAiMessage.Content.Value)
+		return nil, fmt.Errorf("%w: message 'content' must be a string or an array", internalapi.ErrInvalidRequestBody)
 	}
 
 	return &awsbedrock.Message{
@@ -542,7 +546,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 						}
 					}
 				} else {
-					return fmt.Errorf("unexpected content type for developer message")
+					return fmt.Errorf("%w: unexpected content type for developer message", internalapi.ErrInvalidRequestBody)
 				}
 			}
 		case msg.OfTool != nil:
@@ -572,7 +576,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 
 			bedrockReq.Messages = append(bedrockReq.Messages, bedrockMessage)
 		default:
-			return fmt.Errorf("unexpected role: %s", msg.ExtractMessgaeRole())
+			return fmt.Errorf("%w: unexpected role: %s", internalapi.ErrInvalidRequestBody, msg.ExtractMessgaeRole())
 		}
 
 		i++
@@ -769,7 +773,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		}
 	}
 
-	// AWS Bedrock does not support N(multiple choices) > 0, so there could be only one choice.
+	// AWS Bedrock Converse API does not support N(multiple choices) > 0, so there could be only one choice.
 	choice := openai.ChatCompletionResponseChoice{
 		Index: (int64)(0),
 		Message: openai.ChatCompletionResponseChoiceMessage{
@@ -800,6 +804,14 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		}
 	}
 	openAIResp.Choices = append(openAIResp.Choices, choice)
+
+	// Redact and log response when enabled
+	if o.debugLogEnabled && o.enableRedaction && o.logger != nil {
+		redactedResp := o.RedactBody(openAIResp)
+		if jsonBody, marshalErr := json.Marshal(redactedResp); marshalErr == nil {
+			o.logger.Debug("response body processing", slog.Any("response", string(jsonBody)))
+		}
+	}
 
 	newBody, err = json.Marshal(openAIResp)
 	if err != nil {
@@ -853,6 +865,10 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 	switch event.EventType {
 	// Usage event.
 	case awsbedrock.ConverseStreamEventTypeMetadata.String():
+		if event.ServiceTier != nil {
+			chunk.ServiceTier = event.ServiceTier.Type
+		}
+
 		if event.Usage == nil {
 			return chunk, false
 		}
@@ -986,4 +1002,73 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 		return chunk, false
 	}
 	return chunk, true
+}
+
+// SetRedactionConfig implements [ResponseRedactor.SetRedactionConfig].
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) SetRedactionConfig(debugLogEnabled, enableRedaction bool, logger *slog.Logger) {
+	o.debugLogEnabled = debugLogEnabled
+	o.enableRedaction = enableRedaction
+	o.logger = logger
+}
+
+// RedactBody implements [ResponseRedactor.RedactBody].
+// Creates a redacted copy of the response for safe logging without modifying the original.
+// Reuses the same redaction logic since AWS Bedrock responses are converted to OpenAI format.
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RedactBody(resp *openai.ChatCompletionResponse) *openai.ChatCompletionResponse {
+	if resp == nil {
+		return nil
+	}
+
+	// Create a shallow copy of the response
+	redacted := *resp
+
+	// Redact choices (contains AI-generated content)
+	if len(resp.Choices) > 0 {
+		redacted.Choices = make([]openai.ChatCompletionResponseChoice, len(resp.Choices))
+		for i := range resp.Choices {
+			redactedChoice := resp.Choices[i]
+			redactedChoice.Message = redactAWSBedrockResponseMessage(&resp.Choices[i].Message)
+			redacted.Choices[i] = redactedChoice
+		}
+	}
+
+	return &redacted
+}
+
+// redactAWSBedrockResponseMessage redacts sensitive content from an AWS Bedrock response message
+// that has been converted to OpenAI format.
+func redactAWSBedrockResponseMessage(msg *openai.ChatCompletionResponseChoiceMessage) openai.ChatCompletionResponseChoiceMessage {
+	redactedMsg := *msg
+
+	// Redact message content (AI-generated text)
+	if msg.Content != nil {
+		redactedContent := redaction.RedactString(*msg.Content)
+		redactedMsg.Content = &redactedContent
+	}
+
+	// Redact tool calls (may contain sensitive function arguments)
+	if len(msg.ToolCalls) > 0 {
+		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.ToolCalls))
+		for i, tc := range msg.ToolCalls {
+			redactedToolCall := tc
+			redactedToolCall.Function.Name = redaction.RedactString(tc.Function.Name)
+			redactedToolCall.Function.Arguments = redaction.RedactString(tc.Function.Arguments)
+			redactedMsg.ToolCalls[i] = redactedToolCall
+		}
+	}
+
+	// Redact audio data if present
+	if msg.Audio != nil {
+		redactedAudio := *msg.Audio
+		redactedAudio.Data = redaction.RedactString(msg.Audio.Data)
+		redactedAudio.Transcript = redaction.RedactString(msg.Audio.Transcript)
+		redactedMsg.Audio = &redactedAudio
+	}
+
+	// Redact reasoning content if present (AWS Bedrock thinking blocks)
+	if msg.ReasoningContent != nil {
+		redactedMsg.ReasoningContent = redactReasoningContent(msg.ReasoningContent)
+	}
+
+	return redactedMsg
 }

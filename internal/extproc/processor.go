@@ -16,7 +16,7 @@ import (
 )
 
 // ProcessorFactory is the factory function used to create new instances of a processor.
-type ProcessorFactory func(_ *filterapi.RuntimeConfig, _ map[string]string, _ *slog.Logger, isUpstreamFilter bool) (Processor, error)
+type ProcessorFactory func(_ *filterapi.RuntimeConfig, _ map[string]string, _ *slog.Logger, isUpstreamFilter bool, enableRedaction bool) (Processor, error)
 
 // Processor is the interface for the processor which corresponds to a single gRPC stream per the external processor filter.
 // This decouples the processor implementation detail from the server implementation.

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync"
 	"testing"
 
@@ -60,7 +61,7 @@ var noopTracer = tracingapi.NoopMCPTracer{}
 
 func TestNewMCPProxy(t *testing.T) {
 	l := slog.Default()
-	proxy, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100))
+	proxy, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100), nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, proxy)
@@ -69,7 +70,7 @@ func TestNewMCPProxy(t *testing.T) {
 
 func TestMCPProxy_HTTPMethods(t *testing.T) {
 	l := slog.Default()
-	_, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100))
+	_, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100), nil)
 	require.NoError(t, err)
 
 	// Test unsupported method.
@@ -80,6 +81,109 @@ func TestMCPProxy_HTTPMethods(t *testing.T) {
 
 	require.Equal(t, http.StatusMethodNotAllowed, rr.Code)
 	require.Contains(t, rr.Body.String(), "method not allowed")
+}
+
+func Test_applyLogHeaderMappings(t *testing.T) {
+	logAttrs := map[string]string{"agent-session-id": "session.id"}
+	proxyCfg := &ProxyConfig{logRequestHeaderAttributes: logAttrs}
+
+	t.Run("meta only", func(t *testing.T) {
+		reqCtx := &mcpRequestContext{ProxyConfig: proxyCfg}
+		req, err := http.NewRequest(http.MethodPost, "http://example", nil)
+		require.NoError(t, err)
+
+		id, err := jsonrpc.MakeID("1")
+		require.NoError(t, err)
+		msg := &jsonrpc.Request{
+			ID:     id,
+			Method: "tools/call",
+			Params: []byte(`{"_meta":{"agent-session-id":"meta-session"}}`),
+		}
+
+		reqCtx.applyLogHeaderMappings(req, msg)
+		require.Equal(t, "meta-session", req.Header.Get("agent-session-id"))
+	})
+
+	t.Run("header fallback", func(t *testing.T) {
+		reqCtx := &mcpRequestContext{
+			ProxyConfig:    proxyCfg,
+			requestHeaders: http.Header{"Agent-Session-Id": []string{"header-session"}},
+		}
+		req, err := http.NewRequest(http.MethodPost, "http://example", nil)
+		require.NoError(t, err)
+
+		id, err := jsonrpc.MakeID("2")
+		require.NoError(t, err)
+		msg := &jsonrpc.Request{
+			ID:     id,
+			Method: "tools/call",
+			Params: []byte(`{"_meta":{"other":"x"}}`),
+		}
+
+		reqCtx.applyLogHeaderMappings(req, msg)
+		require.Equal(t, "header-session", req.Header.Get("agent-session-id"))
+	})
+}
+
+func Test_originalPathForRequest(t *testing.T) {
+	t.Run("request uri preferred", func(t *testing.T) {
+		req := &http.Request{RequestURI: "/mcp?x=1"}
+		require.Equal(t, "/mcp?x=1", originalPathForRequest(req))
+	})
+
+	t.Run("url request uri", func(t *testing.T) {
+		req := &http.Request{URL: mustParseURL(t, "http://example/mcp?x=1")}
+		require.Equal(t, "/mcp?x=1", originalPathForRequest(req))
+	})
+
+	t.Run("url path only", func(t *testing.T) {
+		req := &http.Request{URL: mustParseURL(t, "http://example/mcp")}
+		require.Equal(t, "/mcp", originalPathForRequest(req))
+	})
+}
+
+func Test_applyOriginalPathHeaders(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "http://example/mcp", nil)
+	require.NoError(t, err)
+
+	reqCtx := &mcpRequestContext{originalPath: "/mcp?x=1"}
+	reqCtx.applyOriginalPathHeaders(req)
+	require.Equal(t, "/mcp?x=1", req.Header.Get(internalapi.OriginalPathHeader))
+	require.Equal(t, "/mcp?x=1", req.Header.Get(internalapi.EnvoyOriginalPathHeader))
+
+	t.Run("does not override", func(t *testing.T) {
+		req2, err := http.NewRequest(http.MethodGet, "http://example/mcp", nil)
+		require.NoError(t, err)
+		req2.Header.Set(internalapi.OriginalPathHeader, "/already")
+		req2.Header.Set(internalapi.EnvoyOriginalPathHeader, "/envoy-already")
+		reqCtx.applyOriginalPathHeaders(req2)
+		require.Equal(t, "/already", req2.Header.Get(internalapi.OriginalPathHeader))
+		require.Equal(t, "/envoy-already", req2.Header.Get(internalapi.EnvoyOriginalPathHeader))
+	})
+}
+
+func Test_extractMetaFromJSONRPCMessage(t *testing.T) {
+	t.Run("non request", func(t *testing.T) {
+		id, err := jsonrpc.MakeID("1")
+		require.NoError(t, err)
+		resp := &jsonrpc.Response{ID: id, Result: []byte(`{}`)}
+		require.Nil(t, extractMetaFromJSONRPCMessage(resp))
+	})
+
+	t.Run("no meta", func(t *testing.T) {
+		id, err := jsonrpc.MakeID("1")
+		require.NoError(t, err)
+		req := &jsonrpc.Request{ID: id, Method: "tools/call", Params: []byte(`{"x":1}`)}
+		require.Nil(t, extractMetaFromJSONRPCMessage(req))
+	})
+
+	t.Run("meta present", func(t *testing.T) {
+		id, err := jsonrpc.MakeID("1")
+		require.NoError(t, err)
+		req := &jsonrpc.Request{ID: id, Method: "tools/call", Params: []byte(`{"_meta":{"agent-session-id":"s1"}}`)}
+		meta := extractMetaFromJSONRPCMessage(req)
+		require.Equal(t, "s1", meta["agent-session-id"])
+	})
 }
 
 const (
@@ -114,6 +218,13 @@ const (
 type perBackendCallCount struct {
 	mu    sync.Mutex
 	count map[string]int
+}
+
+func mustParseURL(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(raw)
+	require.NoError(t, err)
+	return u
 }
 
 func (p *perBackendCallCount) inc(key string) int {
@@ -243,7 +354,7 @@ func TestInitializeSession_Success(t *testing.T) {
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = backendServer.URL
 
-	res, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend", Path: "/a/b/c"}, &mcp.InitializeParams{})
+	res, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{})
 
 	require.NoError(t, err)
 	require.Equal(t, gatewayToMCPServerSessionID("test-session-123"), res.sessionID)
@@ -261,7 +372,7 @@ func TestInitializeSession_InitializeFailure(t *testing.T) {
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = backendServer.URL
 
-	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend", Path: "/a/b/c"}, &mcp.InitializeParams{})
+	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{})
 
 	require.Error(t, err)
 	require.Empty(t, sessionID)
@@ -289,7 +400,7 @@ func TestInitializeSession_NotificationsInitializedFailure(t *testing.T) {
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = backendServer.URL
 
-	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend", Path: "/aaaaaaaaaaaaaa"}, &mcp.InitializeParams{})
+	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{})
 
 	require.Error(t, err)
 	require.Empty(t, sessionID)
@@ -298,7 +409,7 @@ func TestInitializeSession_NotificationsInitializedFailure(t *testing.T) {
 
 func TestInvokeJSONRPCRequest_Success(t *testing.T) {
 	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/aaaaaaaaaaaaaa", r.URL.Path)
+		require.Equal(t, "/", r.URL.Path)
 		require.Equal(t, "test-backend", r.Header.Get("x-ai-eg-mcp-backend"))
 		require.Equal(t, "test-session", r.Header.Get(sessionIDHeader))
 		require.Equal(t, "application/json", r.Header.Get("Content-Type"))
@@ -309,7 +420,7 @@ func TestInvokeJSONRPCRequest_Success(t *testing.T) {
 
 	m := newTestMCPProxy()
 	m.backendListenerAddr = backendServer.URL
-	resp, err := m.invokeJSONRPCRequest(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend", Path: "/aaaaaaaaaaaaaa"}, &compositeSessionEntry{
+	resp, err := m.invokeJSONRPCRequest(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &compositeSessionEntry{
 		sessionID: "test-session",
 	}, &jsonrpc.Request{})
 
@@ -321,8 +432,7 @@ func TestInvokeJSONRPCRequest_Success(t *testing.T) {
 
 func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check the path equals /mcp.
-		require.Equal(t, "/mcp", r.URL.Path)
+		require.Equal(t, "/", r.URL.Path)
 		require.Equal(t, "test-backend", r.Header.Get("x-ai-eg-mcp-backend"))
 		require.Empty(t, r.Header.Get(sessionIDHeader))
 		w.WriteHeader(http.StatusOK)
@@ -332,7 +442,7 @@ func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 
 	m := newTestMCPProxy()
 	m.backendListenerAddr = backendServer.URL
-	resp, err := m.invokeJSONRPCRequest(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend", Path: "/mcp"}, &compositeSessionEntry{
+	resp, err := m.invokeJSONRPCRequest(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &compositeSessionEntry{
 		sessionID: "",
 	}, &jsonrpc.Request{})
 

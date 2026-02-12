@@ -93,7 +93,7 @@ func run(ctx context.Context, c *cmdRun, o *runOpts, stdout, stderr io.Writer) e
 	// First, we need to create the self-signed certificates used for communication between the EG and Envoy.
 	// Certificates will be placed at ~/.config/envoy-gateway/certs, which is the default location used by Envoy Gateway.
 	certGenOut := &bytes.Buffer{}
-	certGen := root.GetRootCommand()
+	certGen := root.GetRootCommand(nil)
 	certGen.SetOut(certGenOut)
 	certGen.SetErr(certGenOut)
 	certGen.SetArgs([]string{"certgen", "--local"})
@@ -174,7 +174,12 @@ func run(ctx context.Context, c *cmdRun, o *runOpts, stdout, stderr io.Writer) e
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 	s := grpc.NewServer()
-	extSrv := extensionserver.New(fakeClient, ctrl.Log, o.extprocUDSPath, true)
+	requestHeaderAttributes := envOptional("OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES")
+	logRequestHeaderAttributes := envOptional("OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES")
+	extSrv, err := extensionserver.New(fakeClient, ctrl.Log, o.extprocUDSPath, true, requestHeaderAttributes, logRequestHeaderAttributes)
+	if err != nil {
+		return err
+	}
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 
@@ -202,7 +207,7 @@ func run(ctx context.Context, c *cmdRun, o *runOpts, stdout, stderr io.Writer) e
 	// Now running the `envoy-gateway` CLI alternative below by passing `--config-path` to `egConfigPath`.
 	// Then the agent will read the resources from the file pointed inside the config and start the Envoy process.
 
-	server := root.GetRootCommand()
+	server := root.GetRootCommand(nil)
 	// TODO: enable the log by default after the issue is resolved: https://github.com/envoyproxy/gateway/issues/6596
 	if c.Debug {
 		server.SetOut(stdout)
@@ -379,11 +384,17 @@ func (runCtx *runCmdContext) mustStartExtProc(
 		args = append(args, "--logLevel", "warn")
 	}
 
-	if metricsAttrs := os.Getenv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES"); metricsAttrs != "" {
-		args = append(args, "-metricsRequestHeaderAttributes", metricsAttrs)
+	if value, ok := os.LookupEnv("OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES"); ok {
+		args = append(args, "-requestHeaderAttributes", value)
 	}
-	if spanAttrs := os.Getenv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES"); spanAttrs != "" {
-		args = append(args, "-spanRequestHeaderAttributes", spanAttrs)
+	if value, ok := os.LookupEnv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES"); ok {
+		args = append(args, "-spanRequestHeaderAttributes", value)
+	}
+	if value, ok := os.LookupEnv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES"); ok {
+		args = append(args, "-metricsRequestHeaderAttributes", value)
+	}
+	if value, ok := os.LookupEnv("OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES"); ok {
+		args = append(args, "-logRequestHeaderAttributes", value)
 	}
 
 	done := make(chan error)
@@ -395,6 +406,13 @@ func (runCtx *runCmdContext) mustStartExtProc(
 		close(done)
 	}()
 	return done
+}
+
+func envOptional(name string) *string {
+	if value, ok := os.LookupEnv(name); ok {
+		return &value
+	}
+	return nil
 }
 
 // mustClearSetOwnerReferencesAndStatusAndWriteObj clears the owner references and status of the given object, marshals it

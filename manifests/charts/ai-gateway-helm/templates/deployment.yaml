@@ -46,14 +46,23 @@ spec:
             - --extProcImage={{ .Values.extProc.image.repository }}:{{ .Values.extProc.image.tag | default .Chart.AppVersion }}
             - --extProcImagePullPolicy={{ .Values.extProc.imagePullPolicy }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
+            {{- if .Values.extProc.enableRedaction }}
+            - --extProcEnableRedaction=true
+            {{- end }}
             {{- with (include "ai-gateway-helm.extProc.imagePullSecretsString" .) }}
             - --extProcImagePullSecrets={{ . }}
+            {{- end }}
+            {{- if .Values.controller.requestHeaderAttributes }}
+            - --requestHeaderAttributes={{ .Values.controller.requestHeaderAttributes }}
+            {{- end }}
+            {{- if ne .Values.controller.spanRequestHeaderAttributes nil }}
+            - --spanRequestHeaderAttributes={{ .Values.controller.spanRequestHeaderAttributes }}
             {{- end }}
             {{- if .Values.controller.metricsRequestHeaderAttributes }}
             - --metricsRequestHeaderAttributes={{ .Values.controller.metricsRequestHeaderAttributes }}
             {{- end }}
-            {{- if .Values.controller.spanRequestHeaderAttributes }}
-            - --spanRequestHeaderAttributes={{ .Values.controller.spanRequestHeaderAttributes }}
+            {{- if ne .Values.controller.logRequestHeaderAttributes nil }}
+            - --logRequestHeaderAttributes={{ .Values.controller.logRequestHeaderAttributes }}
             {{- end }}
             {{- $endpointPrefixes := list -}}
             {{- if hasKey .Values.endpointConfig "openai" -}}
