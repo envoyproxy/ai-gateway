@@ -858,8 +858,8 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}
 
-	// Detect sidecar state in one pass with early exit on mixed state.
-	// If mixed state exists while rollout is not in progress, force rollout to self-heal.
+	// Detect sidecar state in one pass with early exit on inconsistent state (e.g., some pods have sidecar, some don't).
+	// If inconsistent state exists while rollout is not in progress, force rollout to self-heal.
 	seenWithSidecar := false
 	seenWithoutSidecar := false
 	for i := range pods {
