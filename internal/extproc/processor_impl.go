@@ -75,10 +75,10 @@ func NewFactoryWithCache[ReqT any, RespT any, RespChunkT any, EndpointSpecT endp
 	_ EndpointSpecT,
 	responseCache cache.Cache,
 ) ProcessorFactory {
-	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool, enableRedaction bool) (Processor, error) {
 		logger = logger.With("isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
-			return newRouterProcessorWithCache[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer, responseCache), nil
+			return newRouterProcessorWithCache[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer, responseCache, enableRedaction), nil
 		}
 		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](requestHeaders, f.NewMetrics(), logger), nil
 	}
@@ -178,13 +178,17 @@ func newRouterProcessorWithCache[ReqT, RespT, RespChunkT any, EndpointSpecT endp
 	logger *slog.Logger,
 	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
 	responseCache cache.Cache,
+	enableRedaction bool,
 ) *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT] {
+	debugLogEnabled := logger.Enabled(context.Background(), slog.LevelDebug)
 	return &routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]{
 		config:            config,
 		requestHeaders:    requestHeaders,
 		logger:            logger,
 		tracer:            tracer,
 		forceBodyMutation: false,
+		debugLogEnabled:   debugLogEnabled,
+		enableRedaction:   enableRedaction,
 		cache:             responseCache,
 	}
 }

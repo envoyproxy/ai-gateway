@@ -1362,7 +1362,7 @@ func TestNewFactoryWithCache(t *testing.T) {
 		t.Parallel()
 
 		factory := NewFactoryWithCache(nil, tracingapi.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{}, mockCache)
-		proc, err := factory(cfg, headers, slog.Default(), false)
+		proc, err := factory(cfg, headers, slog.Default(), false, false)
 		require.NoError(t, err)
 		require.IsType(t, &chatCompletionProcessorRouterFilter{}, proc)
 
@@ -1375,7 +1375,7 @@ func TestNewFactoryWithCache(t *testing.T) {
 		t.Parallel()
 
 		factory := NewFactoryWithCache(&mockMetricsFactory{}, tracingapi.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{}, mockCache)
-		proc, err := factory(cfg, headers, slog.Default(), true)
+		proc, err := factory(cfg, headers, slog.Default(), true, false)
 		require.NoError(t, err)
 		require.IsType(t, &chatCompletionProcessorUpstreamFilter{}, proc)
 	})

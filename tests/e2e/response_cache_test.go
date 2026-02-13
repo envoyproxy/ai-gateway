@@ -24,6 +24,10 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
+// userIDAttribute is the attribute used for user ID in otel span and metrics.
+// This is passed via a helm value to the AI Gateway deployment.
+const userIDAttribute = "user.id"
+
 // TestResponseCache tests the response caching functionality with Redis.
 func TestResponseCache(t *testing.T) {
 	ctx := t.Context()
