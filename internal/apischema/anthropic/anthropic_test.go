@@ -502,48 +502,6 @@ func TestContentBlockParam_MarshalJSON(t *testing.T) {
 	}
 }
 
-func TestToolUnion_UnmarshalJSON(t *testing.T) {
-	tests := []struct {
-		name    string
-		jsonStr string
-		want    ToolUnion
-		wantErr bool
-	}{
-		{
-			name:    "custom tool",
-			jsonStr: `{"type": "custom", "name": "my_tool", "input_schema": {"type": "object"}}`,
-			want: ToolUnion{Tool: &Tool{
-				Type:        "custom",
-				Name:        "my_tool",
-				InputSchema: ToolInputSchema{Type: "object"},
-			}},
-		},
-		{
-			name:    "missing type",
-			jsonStr: `{"name": "my_tool"}`,
-			wantErr: true,
-		},
-		{
-			name:    "unknown type",
-			jsonStr: `{"type": "unknown", "name": "my_tool"}`,
-			want:    ToolUnion{},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var tu ToolUnion
-			err := tu.UnmarshalJSON([]byte(tt.jsonStr))
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			require.Equal(t, tt.want, tu)
-		})
-	}
-}
-
 func TestSystemPrompt_UnmarshalJSON(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -651,7 +609,7 @@ func TestMessagesContentBlock_UnmarshalJSON(t *testing.T) {
 			want: MessagesContentBlock{Tool: &ToolUseBlock{
 				Type: "tool_use",
 				Name: "my_tool",
-				Input: map[string]interface{}{
+				Input: map[string]any{
 					"query": "What is the weather today?",
 				},
 			}},
@@ -662,6 +620,33 @@ func TestMessagesContentBlock_UnmarshalJSON(t *testing.T) {
 			want: MessagesContentBlock{Thinking: &ThinkingBlock{
 				Type:     "thinking",
 				Thinking: "Let me think about that.",
+			}},
+		},
+		{
+			name:    "redacted thinking block",
+			jsonStr: `{"type": "redacted_thinking", "data": "redacted_data"}`,
+			want: MessagesContentBlock{RedactedThinking: &RedactedThinkingBlock{
+				Type: "redacted_thinking",
+				Data: "redacted_data",
+			}},
+		},
+		{
+			name:    "server tool use block",
+			jsonStr: `{"type": "server_tool_use", "id": "stu_1", "name": "web_search", "input": {"query": "test"}}`,
+			want: MessagesContentBlock{ServerToolUse: &ServerToolUseBlock{
+				Type:  "server_tool_use",
+				ID:    "stu_1",
+				Name:  "web_search",
+				Input: map[string]any{"query": "test"},
+			}},
+		},
+		{
+			name:    "web search tool result block",
+			jsonStr: `{"type": "web_search_tool_result", "tool_use_id": "stu_1", "content": "results"}`,
+			want: MessagesContentBlock{WebSearchToolResult: &WebSearchToolResultBlock{
+				Type:      "web_search_tool_result",
+				ToolUseID: "stu_1",
+				Content:   "results",
 			}},
 		},
 	}
@@ -685,6 +670,459 @@ func TestMessagesContentBlock_UnmarshalJSON(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, mcb, unmarshaled)
 			}
+		})
+	}
+}
+
+func TestMessagesContentBlock_MarshalJSON(t *testing.T) {
+	t.Run("empty block returns error", func(t *testing.T) {
+		mcb := MessagesContentBlock{}
+		_, err := mcb.MarshalJSON()
+		require.Error(t, err)
+	})
+}
+
+func TestToolUnion_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+		want    ToolUnion
+		wantErr bool
+	}{
+		{
+			name:    "custom tool",
+			jsonStr: `{"type":"custom","name":"my_tool","input_schema":{"type":"object"}}`,
+			want: ToolUnion{Tool: &Tool{
+				Type: "custom", Name: "my_tool",
+				InputSchema: ToolInputSchema{Type: "object"},
+			}},
+		},
+		{
+			name:    "bash tool",
+			jsonStr: `{"type":"bash_20250124","name":"bash"}`,
+			want:    ToolUnion{BashTool: &BashTool{Type: "bash_20250124", Name: "bash"}},
+		},
+		{
+			name:    "text editor tool 20250124",
+			jsonStr: `{"type":"text_editor_20250124","name":"str_replace_editor"}`,
+			want:    ToolUnion{TextEditorTool20250124: &TextEditorTool20250124{Type: "text_editor_20250124", Name: "str_replace_editor"}},
+		},
+		{
+			name:    "text editor tool 20250429",
+			jsonStr: `{"type":"text_editor_20250429","name":"str_replace_based_edit_tool"}`,
+			want:    ToolUnion{TextEditorTool20250429: &TextEditorTool20250429{Type: "text_editor_20250429", Name: "str_replace_based_edit_tool"}},
+		},
+		{
+			name:    "text editor tool 20250728",
+			jsonStr: `{"type":"text_editor_20250728","name":"str_replace_based_edit_tool"}`,
+			want:    ToolUnion{TextEditorTool20250728: &TextEditorTool20250728{Type: "text_editor_20250728", Name: "str_replace_based_edit_tool"}},
+		},
+		{
+			name:    "web search tool",
+			jsonStr: `{"type":"web_search_20250305","name":"web_search"}`,
+			want:    ToolUnion{WebSearchTool: &WebSearchTool{Type: "web_search_20250305", Name: "web_search"}},
+		},
+		{
+			name:    "missing type",
+			jsonStr: `{"name":"my_tool"}`,
+			wantErr: true,
+		},
+		{
+			name:    "unknown type ignored",
+			jsonStr: `{"type":"future_tool","name":"x"}`,
+			want:    ToolUnion{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tu ToolUnion
+			err := tu.UnmarshalJSON([]byte(tt.jsonStr))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, tu)
+		})
+	}
+}
+
+func TestToolUnion_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		tu      ToolUnion
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "custom tool",
+			tu:   ToolUnion{Tool: &Tool{Type: "custom", Name: "t", InputSchema: ToolInputSchema{Type: "object"}}},
+			want: `{"type":"custom","name":"t","input_schema":{"type":"object"}}`,
+		},
+		{
+			name: "bash tool",
+			tu:   ToolUnion{BashTool: &BashTool{Type: "bash_20250124", Name: "bash"}},
+			want: `{"type":"bash_20250124","name":"bash"}`,
+		},
+		{
+			name: "text editor 20250124",
+			tu:   ToolUnion{TextEditorTool20250124: &TextEditorTool20250124{Type: "text_editor_20250124", Name: "str_replace_editor"}},
+			want: `{"type":"text_editor_20250124","name":"str_replace_editor"}`,
+		},
+		{
+			name: "text editor 20250429",
+			tu:   ToolUnion{TextEditorTool20250429: &TextEditorTool20250429{Type: "text_editor_20250429", Name: "n"}},
+			want: `{"type":"text_editor_20250429","name":"n"}`,
+		},
+		{
+			name: "text editor 20250728",
+			tu:   ToolUnion{TextEditorTool20250728: &TextEditorTool20250728{Type: "text_editor_20250728", Name: "n"}},
+			want: `{"type":"text_editor_20250728","name":"n"}`,
+		},
+		{
+			name: "web search tool",
+			tu:   ToolUnion{WebSearchTool: &WebSearchTool{Type: "web_search_20250305", Name: "web_search"}},
+			want: `{"type":"web_search_20250305","name":"web_search"}`,
+		},
+		{
+			name:    "empty tool union",
+			tu:      ToolUnion{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.tu.MarshalJSON()
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(got))
+		})
+	}
+}
+
+func TestToolChoice_UnmarshalJSON(t *testing.T) {
+	boolTrue := true
+	tests := []struct {
+		name    string
+		jsonStr string
+		want    ToolChoice
+		wantErr bool
+	}{
+		{
+			name:    "auto",
+			jsonStr: `{"type":"auto","disable_parallel_tool_use":true}`,
+			want:    ToolChoice{Auto: &ToolChoiceAuto{Type: "auto", DisableParallelToolUse: &boolTrue}},
+		},
+		{
+			name:    "any",
+			jsonStr: `{"type":"any"}`,
+			want:    ToolChoice{Any: &ToolChoiceAny{Type: "any"}},
+		},
+		{
+			name:    "tool",
+			jsonStr: `{"type":"tool","name":"my_tool"}`,
+			want:    ToolChoice{Tool: &ToolChoiceTool{Type: "tool", Name: "my_tool"}},
+		},
+		{
+			name:    "none",
+			jsonStr: `{"type":"none"}`,
+			want:    ToolChoice{None: &ToolChoiceNone{Type: "none"}},
+		},
+		{
+			name:    "missing type",
+			jsonStr: `{"name":"x"}`,
+			wantErr: true,
+		},
+		{
+			name:    "unknown type ignored",
+			jsonStr: `{"type":"future"}`,
+			want:    ToolChoice{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tc ToolChoice
+			err := tc.UnmarshalJSON([]byte(tt.jsonStr))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, tc)
+		})
+	}
+}
+
+func TestToolChoice_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		tc      ToolChoice
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "auto",
+			tc:   ToolChoice{Auto: &ToolChoiceAuto{Type: "auto"}},
+			want: `{"type":"auto"}`,
+		},
+		{
+			name: "any",
+			tc:   ToolChoice{Any: &ToolChoiceAny{Type: "any"}},
+			want: `{"type":"any"}`,
+		},
+		{
+			name: "tool",
+			tc:   ToolChoice{Tool: &ToolChoiceTool{Type: "tool", Name: "my_tool"}},
+			want: `{"type":"tool","name":"my_tool"}`,
+		},
+		{
+			name: "none",
+			tc:   ToolChoice{None: &ToolChoiceNone{Type: "none"}},
+			want: `{"type":"none"}`,
+		},
+		{
+			name:    "empty tool choice",
+			tc:      ToolChoice{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.tc.MarshalJSON()
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(got))
+		})
+	}
+}
+
+func TestThinking_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+		want    Thinking
+		wantErr bool
+	}{
+		{
+			name:    "enabled",
+			jsonStr: `{"type":"enabled","budget_tokens":2048}`,
+			want:    Thinking{Enabled: &ThinkingEnabled{Type: "enabled", BudgetTokens: 2048}},
+		},
+		{
+			name:    "disabled",
+			jsonStr: `{"type":"disabled"}`,
+			want:    Thinking{Disabled: &ThinkingDisabled{Type: "disabled"}},
+		},
+		{
+			name:    "adaptive",
+			jsonStr: `{"type":"adaptive"}`,
+			want:    Thinking{Adaptive: &ThinkingAdaptive{Type: "adaptive"}},
+		},
+		{
+			name:    "missing type",
+			jsonStr: `{"budget_tokens":1024}`,
+			wantErr: true,
+		},
+		{
+			name:    "unknown type ignored",
+			jsonStr: `{"type":"future"}`,
+			want:    Thinking{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var th Thinking
+			err := th.UnmarshalJSON([]byte(tt.jsonStr))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, th)
+		})
+	}
+}
+
+func TestThinking_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		th      Thinking
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "enabled",
+			th:   Thinking{Enabled: &ThinkingEnabled{Type: "enabled", BudgetTokens: 2048}},
+			want: `{"type":"enabled","budget_tokens":2048}`,
+		},
+		{
+			name: "disabled",
+			th:   Thinking{Disabled: &ThinkingDisabled{Type: "disabled"}},
+			want: `{"type":"disabled"}`,
+		},
+		{
+			name: "adaptive",
+			th:   Thinking{Adaptive: &ThinkingAdaptive{Type: "adaptive"}},
+			want: `{"type":"adaptive"}`,
+		},
+		{
+			name:    "empty thinking",
+			th:      Thinking{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.th.MarshalJSON()
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(got))
+		})
+	}
+}
+
+func TestContentBlockParam_UnmarshalJSON_ErrorPaths(t *testing.T) {
+	// Each case has a valid "type" but invalid JSON for that type's struct,
+	// triggering the unmarshal error path for each content block variant.
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		{name: "text invalid", jsonStr: `{"type":"text","text":123}`},
+		{name: "image invalid", jsonStr: `{"type":"image","source":null,"cache_control":}`},
+		{name: "document invalid", jsonStr: `{"type":"document","source":null,"context":123}`},
+		{name: "search_result invalid", jsonStr: `{"type":"search_result","content":"not_array"}`},
+		{name: "thinking invalid", jsonStr: `{"type":"thinking","thinking":123}`},
+		{name: "redacted_thinking invalid", jsonStr: `{"type":"redacted_thinking","data":123}`},
+		{name: "tool_use invalid", jsonStr: `{"type":"tool_use","input":"not_object"}`},
+		{name: "tool_result invalid", jsonStr: `{"type":"tool_result","is_error":"not_bool"}`},
+		{name: "server_tool_use invalid", jsonStr: `{"type":"server_tool_use","input":"not_object"}`},
+		{name: "web_search_tool_result invalid", jsonStr: `{"type":"web_search_tool_result","tool_use_id":123}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var cbp ContentBlockParam
+			err := cbp.UnmarshalJSON([]byte(tt.jsonStr))
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestMessagesContentBlock_UnmarshalJSON_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		{name: "tool_use invalid", jsonStr: `{"type":"tool_use","input":"bad"}`},
+		{name: "thinking invalid", jsonStr: `{"type":"thinking","thinking":123}`},
+		{name: "redacted_thinking invalid", jsonStr: `{"type":"redacted_thinking","data":123}`},
+		{name: "server_tool_use invalid", jsonStr: `{"type":"server_tool_use","input":"bad"}`},
+		{name: "web_search_tool_result invalid", jsonStr: `{"type":"web_search_tool_result","tool_use_id":123}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var mcb MessagesContentBlock
+			err := mcb.UnmarshalJSON([]byte(tt.jsonStr))
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestToolUnion_UnmarshalJSON_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		{name: "custom invalid", jsonStr: `{"type":"custom","input_schema":"bad"}`},
+		{name: "bash invalid", jsonStr: `{"type":"bash_20250124","name":123}`},
+		{name: "text_editor_20250124 invalid", jsonStr: `{"type":"text_editor_20250124","name":123}`},
+		{name: "text_editor_20250429 invalid", jsonStr: `{"type":"text_editor_20250429","name":123}`},
+		{name: "text_editor_20250728 invalid", jsonStr: `{"type":"text_editor_20250728","name":123}`},
+		{name: "web_search invalid", jsonStr: `{"type":"web_search_20250305","name":123}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tu ToolUnion
+			err := tu.UnmarshalJSON([]byte(tt.jsonStr))
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestToolChoice_UnmarshalJSON_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		{name: "auto invalid", jsonStr: `{"type":"auto","disable_parallel_tool_use":"bad"}`},
+		{name: "any invalid", jsonStr: `{"type":"any","disable_parallel_tool_use":"bad"}`},
+		{name: "tool invalid", jsonStr: `{"type":"tool","name":123}`},
+		{name: "none invalid", jsonStr: `{"type":"none","type":123}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tc ToolChoice
+			err := tc.UnmarshalJSON([]byte(tt.jsonStr))
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestThinking_UnmarshalJSON_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		{name: "enabled invalid", jsonStr: `{"type":"enabled","budget_tokens":"bad"}`},
+		{name: "disabled invalid", jsonStr: `{"type":"disabled","type":123}`},
+		{name: "adaptive invalid", jsonStr: `{"type":"adaptive","type":123}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var th Thinking
+			err := th.UnmarshalJSON([]byte(tt.jsonStr))
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestMessagesStreamChunk_UnmarshalJSON_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		{name: "message_delta invalid", jsonStr: `{"type":"message_delta","usage":"bad"}`},
+		{name: "message_stop invalid", jsonStr: `{"type":"message_stop","type":123}`},
+		{name: "content_block_start invalid", jsonStr: `{"type":"content_block_start","content_block":"bad"}`},
+		{name: "content_block_delta invalid", jsonStr: `{"type":"content_block_delta","delta":"bad"}`},
+		{name: "content_block_stop invalid", jsonStr: `{"type":"content_block_stop","index":"bad"}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var msc MessagesStreamChunk
+			err := msc.UnmarshalJSON([]byte(tt.jsonStr))
+			require.Error(t, err)
 		})
 	}
 }
