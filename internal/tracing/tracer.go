@@ -36,6 +36,7 @@ var (
 	_ tracingapi.CompletionTracer      = (*completionTracer)(nil)
 	_ tracingapi.ImageGenerationTracer = (*imageGenerationTracer)(nil)
 	_ tracingapi.ResponsesTracer       = (*responsesTracer)(nil)
+	_ tracingapi.SpeechTracer          = (*speechTracer)(nil)
 	_ tracingapi.RerankTracer          = (*rerankTracer)(nil)
 )
 
@@ -45,6 +46,7 @@ type (
 	completionTracer      = requestTracerImpl[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
 	imageGenerationTracer = requestTracerImpl[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
 	responsesTracer       = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
+	speechTracer          = requestTracerImpl[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
 	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
 )
 
@@ -158,6 +160,18 @@ func newResponsesTracer(tracer trace.Tracer, propagator propagation.TextMapPropa
 		headerAttributes,
 		func(span trace.Span, recorder tracingapi.ResponsesRecorder) tracingapi.ResponsesSpan {
 			return &responsesSpan{span: span, recorder: recorder}
+		},
+	)
+}
+
+func newSpeechTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.SpeechRecorder, headerAttributes map[string]string) tracingapi.SpeechTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		headerAttributes,
+		func(span trace.Span, recorder tracingapi.SpeechRecorder) tracingapi.SpeechSpan {
+			return &speechSpan{span: span, recorder: recorder}
 		},
 	)
 }

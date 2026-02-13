@@ -8117,3 +8117,60 @@ type ResponseCustomToolCallInputDoneEvent struct {
 	// The event type identifier. Always response.custom_tool_call_input.done
 	Type string `json:"type"`
 }
+
+// SpeechRequest represents a request to the /v1/audio/speech endpoint
+type SpeechRequest struct {
+	Model          string   `json:"model"`
+	Input          string   `json:"input"`
+	Voice          string   `json:"voice"`
+	Instructions   *string  `json:"instructions,omitempty"`
+	ResponseFormat *string  `json:"response_format,omitempty"`
+	Speed          *float64 `json:"speed,omitempty"`
+	StreamFormat   *string  `json:"stream_format,omitempty"`
+}
+
+// SpeechStreamChunk for SSE streaming responses
+type SpeechStreamChunk struct {
+	Data []byte `json:"data"` // Audio data chunk
+}
+
+// Voice constants
+const (
+	SpeechVoiceAlloy   = "alloy"
+	SpeechVoiceAsh     = "ash"
+	SpeechVoiceBallad  = "ballad"
+	SpeechVoiceCoral   = "coral"
+	SpeechVoiceEcho    = "echo"
+	SpeechVoiceFable   = "fable"
+	SpeechVoiceOnyx    = "onyx"
+	SpeechVoiceNova    = "nova"
+	SpeechVoiceSage    = "sage"
+	SpeechVoiceShimmer = "shimmer"
+	SpeechVoiceVerse   = "verse"
+	SpeechVoiceMarin   = "marin"
+	SpeechVoiceCedar   = "cedar"
+)
+
+// Audio format constants
+const (
+	AudioFormatMP3  = "mp3"
+	AudioFormatOpus = "opus"
+	AudioFormatAAC  = "aac"
+	AudioFormatFLAC = "flac"
+	AudioFormatWAV  = "wav"
+	AudioFormatPCM  = "pcm"
+)
+
+// Stream format constants
+const (
+	StreamFormatSSE   = "sse"
+	StreamFormatAudio = "audio"
+)
+
+// Speech model constants
+const (
+	SpeechModelTTS1                 = "tts-1"
+	SpeechModelTTS1HD               = "tts-1-hd"
+	SpeechModelGPT4oMiniTTS         = "gpt-4o-mini-tts"
+	SpeechModelGPT4oMiniTTS20251215 = "gpt-4o-mini-tts-2025-12-15"
+)

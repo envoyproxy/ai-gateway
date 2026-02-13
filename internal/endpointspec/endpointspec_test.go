@@ -827,3 +827,177 @@ func TestRedactString(t *testing.T) {
 		require.Contains(t, result, "HASH=")
 	})
 }
+
+func TestSpeechEndpointSpec_ParseBody(t *testing.T) {
+	spec := SpeechEndpointSpec{}
+
+	t.Run("invalid json", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
+		require.ErrorContains(t, err, "failed to unmarshal speech request")
+	})
+
+	t.Run("binary_mode", func(t *testing.T) {
+		req := openai.SpeechRequest{
+			Model: "tts-1",
+			Input: "Hello world",
+			Voice: "alloy",
+		}
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "tts-1", model)
+		require.False(t, stream)
+		require.NotNil(t, parsed)
+		require.Nil(t, mutated)
+	})
+
+	t.Run("sse_streaming_mode", func(t *testing.T) {
+		sseFormat := "sse"
+		req := openai.SpeechRequest{
+			Model:        "gpt-4o-mini-tts",
+			Input:        "Hello streaming",
+			Voice:        "nova",
+			StreamFormat: &sseFormat,
+		}
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o-mini-tts", model)
+		require.True(t, stream)
+		require.NotNil(t, parsed)
+		require.Equal(t, "sse", *parsed.StreamFormat)
+		require.Nil(t, mutated)
+	})
+
+	t.Run("audio_format_mode", func(t *testing.T) {
+		audioFormat := "audio"
+		req := openai.SpeechRequest{
+			Model:        "tts-1-hd",
+			Input:        "Test",
+			Voice:        "alloy",
+			StreamFormat: &audioFormat,
+		}
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		_, _, stream, _, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.False(t, stream, "audio format should not be treated as streaming")
+	})
+
+	t.Run("with_all_optional_params", func(t *testing.T) {
+		instructions := "Speak clearly"
+		responseFormat := "mp3"
+		speed := 1.5
+		req := openai.SpeechRequest{
+			Model:          "tts-1",
+			Input:          "Test with options",
+			Voice:          "shimmer",
+			Instructions:   &instructions,
+			ResponseFormat: &responseFormat,
+			Speed:          &speed,
+		}
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "tts-1", model)
+		require.False(t, stream)
+		require.NotNil(t, parsed)
+		require.Equal(t, "Speak clearly", *parsed.Instructions)
+		require.Equal(t, "mp3", *parsed.ResponseFormat)
+		require.Equal(t, 1.5, *parsed.Speed)
+		require.Nil(t, mutated)
+	})
+}
+
+func TestSpeechEndpointSpec_GetTranslator(t *testing.T) {
+	spec := SpeechEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
+	require.ErrorContains(t, err, "unsupported API schema for speech")
+}
+
+func TestSpeechEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := SpeechEndpointSpec{}
+
+	t.Run("redact_input_text", func(t *testing.T) {
+		req := &openai.SpeechRequest{
+			Model: "tts-1",
+			Input: "This is sensitive text that should be redacted",
+			Voice: "alloy",
+		}
+
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.NotNil(t, redacted)
+		require.Contains(t, redacted.Input, "[REDACTED LENGTH=")
+		require.Equal(t, "tts-1", redacted.Model)
+		require.Equal(t, "alloy", redacted.Voice)
+	})
+
+	t.Run("redact_instructions", func(t *testing.T) {
+		instructions := "Speak with a British accent and emphasize certain words"
+		req := &openai.SpeechRequest{
+			Model:        "gpt-4o-mini-tts",
+			Input:        "Hello world",
+			Voice:        "nova",
+			Instructions: &instructions,
+		}
+
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.NotNil(t, redacted)
+		require.Contains(t, redacted.Input, "[REDACTED LENGTH=")
+		require.NotNil(t, redacted.Instructions)
+		require.Contains(t, *redacted.Instructions, "[REDACTED LENGTH=")
+	})
+
+	t.Run("no_instructions", func(t *testing.T) {
+		req := &openai.SpeechRequest{
+			Model: "tts-1-hd",
+			Input: "Test input",
+			Voice: "echo",
+		}
+
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.NotNil(t, redacted)
+		require.Contains(t, redacted.Input, "[REDACTED LENGTH=")
+		require.Nil(t, redacted.Instructions)
+	})
+
+	t.Run("preserve_other_fields", func(t *testing.T) {
+		responseFormat := "wav"
+		speed := 1.5
+		streamFormat := "sse"
+		req := &openai.SpeechRequest{
+			Model:          "gpt-4o-mini-tts",
+			Input:          "Sensitive content",
+			Voice:          "shimmer",
+			ResponseFormat: &responseFormat,
+			Speed:          &speed,
+			StreamFormat:   &streamFormat,
+		}
+
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.NotNil(t, redacted)
+		require.Contains(t, redacted.Input, "[REDACTED LENGTH=")
+		require.Equal(t, "shimmer", redacted.Voice)
+		require.NotNil(t, redacted.ResponseFormat)
+		require.Equal(t, "wav", *redacted.ResponseFormat)
+		require.NotNil(t, redacted.Speed)
+		require.Equal(t, 1.5, *redacted.Speed)
+		require.NotNil(t, redacted.StreamFormat)
+		require.Equal(t, "sse", *redacted.StreamFormat)
+	})
+}

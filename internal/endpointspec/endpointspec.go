@@ -90,6 +90,8 @@ type (
 	MessagesEndpointSpec struct{}
 	// RerankEndpointSpec implements EndpointSpec for /v2/rerank.
 	RerankEndpointSpec struct{}
+	// SpeechEndpointSpec implements EndpointSpec for /v1/audio/speech.
+	SpeechEndpointSpec struct{}
 )
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -581,4 +583,53 @@ func redactUserContentPart(part openai.ChatCompletionContentPartUserUnionParam) 
 	}
 
 	return redacted
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (SpeechEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+) (internalapi.OriginalModel, *openai.SpeechRequest, bool, []byte, error) {
+	var req openai.SpeechRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "", nil, false, nil, fmt.Errorf("failed to unmarshal speech request: %w", err)
+	}
+
+	// Determine if streaming based on stream_format
+	stream := req.StreamFormat != nil && *req.StreamFormat == openai.StreamFormatSSE
+
+	return req.Model, &req, stream, nil, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (SpeechEndpointSpec) GetTranslator(
+	schema filterapi.VersionedAPISchema,
+	modelNameOverride string,
+) (translator.OpenAISpeechTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewSpeechOpenAIToOpenAITranslator(
+			schema.OpenAIPrefix(),
+			modelNameOverride,
+		), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema for speech: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (SpeechEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.SpeechRequest) (redactedReq *openai.SpeechRequest, err error) {
+	// Create a shallow copy of the request
+	redacted := *req
+
+	// Redact the input text (contains user-provided text to be synthesized)
+	redacted.Input = redaction.RedactString(req.Input)
+
+	// Redact instructions if present (may contain sensitive context)
+	if req.Instructions != nil {
+		redactedInstructions := redaction.RedactString(*req.Instructions)
+		redacted.Instructions = &redactedInstructions
+	}
+
+	return &redacted, nil
 }

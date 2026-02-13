@@ -892,3 +892,178 @@ func TestSystemPromptExtractionCoverage(t *testing.T) {
 		})
 	}
 }
+
+func TestOutputConfigAvailable(t *testing.T) {
+	tests := []struct {
+		name     string
+		model    string
+		expected bool
+	}{
+		{
+			name:     "claude-sonnet-4-5-20250514 supported",
+			model:    "claude-sonnet-4-5-20250514",
+			expected: true,
+		},
+		{
+			name:     "claude-opus-4-6-20250514 supported",
+			model:    "claude-opus-4-6-20250514",
+			expected: true,
+		},
+		{
+			name:     "anthropic.claude-4-5-sonnet-v1 supported",
+			model:    "anthropic.claude-4-5-sonnet-v1",
+			expected: true,
+		},
+		{
+			name:     "claude-3-sonnet not supported",
+			model:    "claude-3-sonnet",
+			expected: false,
+		},
+		{
+			name:     "claude-3.5-sonnet not supported",
+			model:    "claude-3.5-sonnet",
+			expected: false,
+		},
+		{
+			name:     "gpt-4 not supported",
+			model:    "gpt-4",
+			expected: false,
+		},
+		{
+			name:     "empty model not supported",
+			model:    "",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := outputConfigAvailable(tt.model)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestBuildAnthropicParamsWithStructuredOutput(t *testing.T) {
+	tests := []struct {
+		name           string
+		request        *openai.ChatCompletionRequest
+		expectSchema   bool
+		expectedSchema map[string]any
+		expectErr      bool
+	}{
+		{
+			name: "structured output with json_schema on supported model",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-sonnet-4-5-20250514",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: "json_schema",
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Name:   "test_schema",
+							Schema: []byte(`{"type":"object","properties":{"name":{"type":"string"}}}`),
+						},
+					},
+				},
+			},
+			expectSchema: true,
+			expectedSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{
+						"type": "string",
+					},
+				},
+			},
+		},
+		{
+			name: "structured output skipped on unsupported model",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-3-sonnet",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: "json_schema",
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Name:   "test_schema",
+							Schema: []byte(`{"type":"object"}`),
+						},
+					},
+				},
+			},
+			expectSchema: false,
+		},
+		{
+			name: "no response format",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-sonnet-4-5-20250514",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+			},
+			expectSchema: false,
+		},
+		{
+			name: "invalid json schema returns error",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-sonnet-4-5-20250514",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+						Type: "json_schema",
+						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+							Name:   "invalid_schema",
+							Schema: []byte(`{invalid json`),
+						},
+					},
+				},
+			},
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params, err := buildAnthropicParams(tt.request, "AWSAnthropic")
+
+			if tt.expectErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, params)
+
+			if tt.expectSchema {
+				require.NotNil(t, params.OutputConfig.Format.Schema)
+				require.Equal(t, constant.JSONSchema("json_schema"), params.OutputConfig.Format.Type)
+				require.Equal(t, tt.expectedSchema, params.OutputConfig.Format.Schema)
+			} else {
+				require.Nil(t, params.OutputConfig.Format.Schema)
+			}
+		})
+	}
+}
