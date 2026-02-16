@@ -347,7 +347,8 @@ func (s *Server) clusterHasQuotaBackend(clusterName string, quotaBackends map[st
 // enableQuotaRateLimitOnRoute sets per-route rate limit actions via TypedPerFilterConfig.
 // The actions form a descriptor chain of (backend_name, model_name):
 //   - backend_name: read from dynamic metadata set by the upstream ext_proc filter
-//   - model_name: read from the x-ai-eg-model request header
+//   - model_name: read from model_name_override in dynamic metadata set by the upstream ext_proc filter,
+//     so the descriptor value matches the model name defined in the QuotaPolicy
 func enableQuotaRateLimitOnRoute(route *routev3.Route) error {
 	rateLimitActions := []*routev3.RateLimit{
 		{
@@ -369,10 +370,18 @@ func enableQuotaRateLimitOnRoute(route *routev3.Route) error {
 					},
 				},
 				{
-					ActionSpecifier: &routev3.RateLimit_Action_RequestHeaders_{
-						RequestHeaders: &routev3.RateLimit_Action_RequestHeaders{
-							HeaderName:    aigv1a1.AIModelHeaderKey,
+					ActionSpecifier: &routev3.RateLimit_Action_Metadata{
+						Metadata: &routev3.RateLimit_Action_MetaData{
 							DescriptorKey: translator.ModelNameDescriptorKey,
+							MetadataKey: &metadatav3.MetadataKey{
+								Key: aigv1a1.AIGatewayFilterMetadataNamespace,
+								Path: []*metadatav3.MetadataKey_PathSegment{{
+									Segment: &metadatav3.MetadataKey_PathSegment_Key{
+										Key: "model_name_override",
+									},
+								}},
+							},
+							Source: routev3.RateLimit_Action_MetaData_DYNAMIC,
 						},
 					},
 				},
