@@ -52,7 +52,7 @@ const (
 //
 // For InferencePool support, this method creates additional STRICT_DNS clusters that
 // connect to the endpoint picker services specified in InferencePool resources.
-func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
+func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
 	var extProcUDSExist bool
 
 	// Process existing clusters - may add metadata or modify configurations.
@@ -139,6 +139,13 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 	}
 	if err = s.insertRequestHeaderToMetadataFilters(req.Listeners); err != nil {
 		return nil, fmt.Errorf("failed to insert request header metadata filter: %w", err)
+	}
+
+	// Inject rate limit filter into upstream filter chains, add rate limit service cluster,
+	// and patch routes with rate limit actions for QuotaPolicy enforcement.
+	req.Clusters, err = s.maybeInjectQuotaRateLimiting(ctx, req.Clusters, req.Routes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to inject quota rate limiting: %w", err)
 	}
 
 	response := &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets, Listeners: req.Listeners, Routes: req.Routes}
