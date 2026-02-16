@@ -18,10 +18,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
+	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/ratelimit/translator"
-	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 func TestBuildQuotaRateLimitFilter(t *testing.T) {
@@ -97,10 +97,12 @@ func TestInjectQuotaRateLimitFilterIntoCluster(t *testing.T) {
 		po := &httpv3.HttpProtocolOptions{
 			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
 				existingFilter,
-				{Name: "envoy.filters.http.upstream_codec",
+				{
+					Name: "envoy.filters.http.upstream_codec",
 					ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
 						TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
-					}},
+					},
+				},
 			},
 		}
 		cluster := &clusterv3.Cluster{
@@ -123,10 +125,12 @@ func TestInjectQuotaRateLimitFilterIntoCluster(t *testing.T) {
 		po := &httpv3.HttpProtocolOptions{
 			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
 				{Name: "envoy.filters.http.header_mutation"},
-				{Name: "envoy.filters.http.upstream_codec",
+				{
+					Name: "envoy.filters.http.upstream_codec",
 					ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
 						TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
-					}},
+					},
+				},
 			},
 		}
 		cluster := &clusterv3.Cluster{
@@ -179,10 +183,12 @@ func TestInjectQuotaRateLimitFilterIntoCluster(t *testing.T) {
 	t.Run("idempotent on repeated calls", func(t *testing.T) {
 		po := &httpv3.HttpProtocolOptions{
 			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
-				{Name: "envoy.filters.http.upstream_codec",
+				{
+					Name: "envoy.filters.http.upstream_codec",
 					ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
 						TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
-					}},
+					},
+				},
 			},
 		}
 		cluster := &clusterv3.Cluster{
@@ -398,10 +404,12 @@ func TestInjectQuotaRateLimitFilterIntoCluster_FullFilterChain(t *testing.T) {
 		HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
 			{Name: "envoy.filters.http.ext_proc/aigateway"},
 			{Name: "envoy.filters.http.header_mutation"},
-			{Name: "envoy.filters.http.upstream_codec",
+			{
+				Name: "envoy.filters.http.upstream_codec",
 				ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
 					TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
-				}},
+				},
+			},
 		},
 	}
 	cluster := &clusterv3.Cluster{
@@ -433,4 +441,3 @@ func TestInjectQuotaRateLimitFilterIntoCluster_FullFilterChain(t *testing.T) {
 	require.True(t, rlCfg.DisableXEnvoyRatelimitedHeader)
 	require.Equal(t, ratelimitfilterv3.RateLimit_DRAFT_VERSION_03, rlCfg.EnableXRatelimitHeaders)
 }
-
