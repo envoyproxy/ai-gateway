@@ -26,6 +26,8 @@ type (
 		ChatCompletionTracer() ChatCompletionTracer
 		// ImageGenerationTracer creates spans for OpenAI image generation requests.
 		ImageGenerationTracer() ImageGenerationTracer
+		// ImageEditTracer creates spans for OpenAI image edit requests.
+		ImageEditTracer() ImageEditTracer
 		// CompletionTracer creates spans for OpenAI completion requests on /completions endpoint.
 		CompletionTracer() CompletionTracer
 		// EmbeddingsTracer creates spans for OpenAI embeddings requests on /embeddings endpoint.
@@ -63,6 +65,8 @@ type (
 	EmbeddingsTracer = RequestTracer[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
 	// ImageGenerationTracer creates spans for OpenAI image generation requests.
 	ImageGenerationTracer = RequestTracer[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
+	// ImageEditTracer creates spans for OpenAI image edit requests.
+	ImageEditTracer = RequestTracer[openai.ImageEditRequest, openai.ImageEditResponse, struct{}]
 	// ResponsesTracer creates spans for OpenAI responses requests.
 	ResponsesTracer = RequestTracer[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	// RerankTracer creates spans for rerank requests.
@@ -92,6 +96,8 @@ type (
 	EmbeddingsSpan = Span[openai.EmbeddingResponse, struct{}]
 	// ImageGenerationSpan represents an OpenAI image generation.
 	ImageGenerationSpan = Span[openai.ImageGenerationResponse, struct{}]
+	// ImageEditSpan represents an OpenAI image edit.
+	ImageEditSpan = Span[openai.ImageEditResponse, struct{}]
 	// ResponsesSpan represents an OpenAI responses request span.
 	ResponsesSpan = Span[openai.Response, openai.ResponseStreamEventUnion]
 	// RerankSpan represents a rerank request span.
@@ -133,6 +139,8 @@ type (
 	CompletionRecorder = SpanRecorder[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
 	// ImageGenerationRecorder records attributes to a span according to a semantic convention.
 	ImageGenerationRecorder = SpanRecorder[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
+	// ImageEditRecorder records attributes to a span according to a semantic convention.
+	ImageEditRecorder = SpanRecorder[openai.ImageEditRequest, openai.ImageEditResponse, struct{}]
 	// EmbeddingsRecorder records attributes to a span according to a semantic convention.
 	EmbeddingsRecorder = SpanRecorder[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
 	// ResponsesRecorder records attributes to a span according to a semantic convention.
@@ -176,6 +184,11 @@ func (NoopTracing) ImageGenerationTracer() ImageGenerationTracer {
 	return NoopImageGenerationTracer{}
 }
 
+// ImageEditTracer implements Tracing.ImageEditTracer.
+func (NoopTracing) ImageEditTracer() ImageEditTracer {
+	return NoopImageEditTracer{}
+}
+
 // ResponsesTracer implements Tracing.ResponsesTracer.
 func (NoopTracing) ResponsesTracer() ResponsesTracer {
 	return NoopResponsesTracer{}
@@ -206,6 +219,8 @@ type (
 	NoopEmbeddingsTracer = NoopTracer[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
 	// NoopImageGenerationTracer implements ImageGenerationTracer.
 	NoopImageGenerationTracer = NoopTracer[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
+	// NoopImageEditTracer implements ImageEditTracer.
+	NoopImageEditTracer = NoopTracer[openai.ImageEditRequest, openai.ImageEditResponse, struct{}]
 	// NoopResponsesTracer implements ResponsesTracer.
 	NoopResponsesTracer = NoopTracer[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	// NoopRerankTracer implements RerankTracer.

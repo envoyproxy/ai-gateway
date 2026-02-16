@@ -50,6 +50,7 @@ type (
 	completionSpan      = span[openai.CompletionResponse, openai.CompletionResponse]
 	embeddingsSpan      = span[openai.EmbeddingResponse, struct{}]
 	imageGenerationSpan = span[openai.ImageGenerationResponse, struct{}]
+	imageEditSpan       = span[openai.ImageEditResponse, struct{}]
 	responsesSpan       = span[openai.Response, openai.ResponseStreamEventUnion]
 	rerankSpan          = span[cohereschema.RerankV2Response, struct{}]
 	messageSpan         = span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]

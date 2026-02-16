@@ -29,6 +29,7 @@ const (
 	GenAIOperationEmbedding       GenAIOperation = "embeddings"
 	GenAIOperationMessages        GenAIOperation = "messages"
 	GenAIOperationImageGeneration GenAIOperation = "image_generation"
+	GenAIOperationImageEdit       GenAIOperation = "image_edit"
 	GenAIOperationResponses       GenAIOperation = "responses"
 	GenAIOperationRerank          GenAIOperation = "rerank"
 
