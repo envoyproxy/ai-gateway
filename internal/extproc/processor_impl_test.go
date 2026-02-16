@@ -1434,7 +1434,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 
 		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
 		// model_name_override should still be present, just with empty value.
-		require.Equal(t, "", inner.Fields["model_name_override"].GetStringValue())
+		require.Empty(t, inner.Fields["model_name_override"].GetStringValue())
 	})
 }
 
