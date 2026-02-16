@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -376,6 +377,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 		dm = buildContentLengthDynamicMetadataOnRequest(len(bm))
 	}
 	dm = mergeDynamicMetadata(dm, buildRequestHeaderDynamicMetadata(u.requestHeaders))
+	dm = mergeDynamicMetadata(dm, buildBackendNameDynamicMetadata(u.backendName))
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
@@ -633,6 +635,45 @@ func buildRequestHeaderDynamicMetadata(requestHeaders map[string]string) *struct
 			internalapi.AIGatewayFilterMetadataNamespace: {
 				Kind: &structpb.Value_StructValue{
 					StructValue: &structpb.Struct{Fields: fields},
+				},
+			},
+		},
+	}
+}
+
+// buildBackendNameDynamicMetadata builds dynamic metadata containing the backend name.
+// This is emitted during the request headers phase so that downstream filters in the
+// upstream filter chain (e.g. rate limit filter) can read it via a MetaData action
+// with Source: DYNAMIC.
+//
+// The backendName has the PerRouteRuleRefBackendName format:
+//
+//	"{namespace}/{name}/route/{routeName}/rule/{ruleIndex}/ref/{refIndex}"
+//
+// This function extracts the "{namespace}/{name}" prefix to match the rate limit
+// domain format used by the translator.
+func buildBackendNameDynamicMetadata(backendName string) *structpb.Struct {
+	if backendName == "" {
+		return nil
+	}
+	// Extract "namespace/name" from the full PerRouteRuleRefBackendName.
+	// Format: "{namespace}/{name}/route/..."
+	parts := strings.SplitN(backendName, "/", 3)
+	domainName := backendName
+	if len(parts) >= 2 {
+		domainName = parts[0] + "/" + parts[1]
+	}
+	return &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			internalapi.AIGatewayFilterMetadataNamespace: {
+				Kind: &structpb.Value_StructValue{
+					StructValue: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							"backend_name": {
+								Kind: &structpb.Value_StringValue{StringValue: domainName},
+							},
+						},
+					},
 				},
 			},
 		},
