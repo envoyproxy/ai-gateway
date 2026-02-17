@@ -917,7 +917,7 @@ func TestBuildStringMatcher(t *testing.T) {
 			Value: nil,
 		}
 		sm := buildStringMatcher(header)
-		require.Equal(t, "", sm.GetExact())
+		require.Empty(t, sm.GetExact())
 	})
 
 	t.Run("nil value with regex type returns empty exact fallback", func(t *testing.T) {
@@ -927,7 +927,7 @@ func TestBuildStringMatcher(t *testing.T) {
 			Value: nil,
 		}
 		sm := buildStringMatcher(header)
-		require.Equal(t, "", sm.GetExact())
+		require.Empty(t, sm.GetExact())
 	})
 
 	t.Run("nil value and nil type returns empty exact", func(t *testing.T) {
@@ -935,7 +935,7 @@ func TestBuildStringMatcher(t *testing.T) {
 			Name: "x-key",
 		}
 		sm := buildStringMatcher(header)
-		require.Equal(t, "", sm.GetExact())
+		require.Empty(t, sm.GetExact())
 	})
 }
 
