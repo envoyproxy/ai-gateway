@@ -713,4 +713,501 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		// Only the base entry, no bucket rule entries.
 		require.Len(t, perRoute.RateLimits, 1)
 	})
+
+	t.Run("multiple policies with bucket rules aggregate entries", func(t *testing.T) {
+		route := &routev3.Route{Name: "test-route"}
+		policies := []aigv1a1.QuotaPolicy{
+			{
+				Spec: aigv1a1.QuotaPolicySpec{
+					PerModelQuotas: []aigv1a1.PerModelQuota{
+						{
+							ModelName: ptr.To("gpt-4"),
+							Quota: aigv1a1.QuotaDefinition{
+								BucketRules: []aigv1a1.QuotaRule{
+									{
+										Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
+									},
+								},
+								DefaultBucket: aigv1a1.QuotaValue{Limit: 10, Duration: "1m"},
+							},
+						},
+					},
+				},
+			},
+			{
+				Spec: aigv1a1.QuotaPolicySpec{
+					PerModelQuotas: []aigv1a1.PerModelQuota{
+						{
+							ModelName: ptr.To("claude"),
+							Quota: aigv1a1.QuotaDefinition{
+								BucketRules: []aigv1a1.QuotaRule{
+									{
+										Quota: aigv1a1.QuotaValue{Limit: 50, Duration: "1h"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, policies))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+
+		// 1 base + (1 bucket + 1 default) for gpt-4 + 1 bucket for claude = 4
+		require.Len(t, perRoute.RateLimits, 4)
+	})
+
+	t.Run("nil model name in per-model quota is skipped", func(t *testing.T) {
+		route := &routev3.Route{Name: "test-route"}
+		policies := []aigv1a1.QuotaPolicy{
+			{
+				Spec: aigv1a1.QuotaPolicySpec{
+					PerModelQuotas: []aigv1a1.PerModelQuota{
+						{
+							ModelName: nil,
+							Quota: aigv1a1.QuotaDefinition{
+								BucketRules: []aigv1a1.QuotaRule{
+									{Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"}},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, policies))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+
+		// Only the base entry since nil model name is skipped.
+		require.Len(t, perRoute.RateLimits, 1)
+	})
+
+	t.Run("multiple bucket rules for same model", func(t *testing.T) {
+		route := &routev3.Route{Name: "test-route"}
+		policies := []aigv1a1.QuotaPolicy{
+			{
+				Spec: aigv1a1.QuotaPolicySpec{
+					PerModelQuotas: []aigv1a1.PerModelQuota{
+						{
+							ModelName: ptr.To("gpt-4"),
+							Quota: aigv1a1.QuotaDefinition{
+								BucketRules: []aigv1a1.QuotaRule{
+									{
+										ClientSelectors: []egv1a1.RateLimitSelectCondition{
+											{Headers: []egv1a1.HeaderMatch{
+												{Name: "x-api-key", Type: ptr.To(egv1a1.HeaderMatchExact), Value: ptr.To("premium")},
+											}},
+										},
+										Quota: aigv1a1.QuotaValue{Limit: 200, Duration: "1m"},
+									},
+									{
+										ClientSelectors: []egv1a1.RateLimitSelectCondition{
+											{Headers: []egv1a1.HeaderMatch{
+												{Name: "x-tier", Type: ptr.To(egv1a1.HeaderMatchExact), Value: ptr.To("free")},
+											}},
+										},
+										Quota: aigv1a1.QuotaValue{Limit: 10, Duration: "1m"},
+									},
+								},
+								DefaultBucket: aigv1a1.QuotaValue{Limit: 50, Duration: "1m"},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, policies))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+
+		// 1 base + 2 bucket rules + 1 default = 4
+		require.Len(t, perRoute.RateLimits, 4)
+
+		// Verify bucket rule 0
+		r0 := perRoute.RateLimits[1]
+		require.Len(t, r0.Actions, 3) // 2 base + 1 header
+		hvm0 := r0.Actions[2].GetHeaderValueMatch()
+		require.NotNil(t, hvm0)
+		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 0, 0), hvm0.DescriptorKey)
+		require.Equal(t, "x-api-key", hvm0.Headers[0].Name)
+
+		// Verify bucket rule 1
+		r1 := perRoute.RateLimits[2]
+		require.Len(t, r1.Actions, 3)
+		hvm1 := r1.Actions[2].GetHeaderValueMatch()
+		require.NotNil(t, hvm1)
+		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 1, 0), hvm1.DescriptorKey)
+		require.Equal(t, "x-tier", hvm1.Headers[0].Name)
+
+		// Verify default bucket
+		dfl := perRoute.RateLimits[3]
+		require.Len(t, dfl.Actions, 3)
+		gk := dfl.Actions[2].GetGenericKey()
+		require.NotNil(t, gk)
+		require.Equal(t, translator.DefaultBucketDescriptorKey("gpt-4", 2), gk.DescriptorKey)
+	})
+
+	t.Run("nil policies list", func(t *testing.T) {
+		route := &routev3.Route{Name: "test-route"}
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, nil))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+
+		// Only the base entry.
+		require.Len(t, perRoute.RateLimits, 1)
+		require.Len(t, perRoute.RateLimits[0].Actions, 2)
+	})
+
+	t.Run("empty policies list", func(t *testing.T) {
+		route := &routev3.Route{Name: "test-route"}
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, []aigv1a1.QuotaPolicy{}))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+
+		require.Len(t, perRoute.RateLimits, 1)
+	})
+}
+
+func TestBuildStringMatcher(t *testing.T) {
+	t.Run("exact match", func(t *testing.T) {
+		header := egv1a1.HeaderMatch{
+			Name:  "x-api-key",
+			Type:  ptr.To(egv1a1.HeaderMatchExact),
+			Value: ptr.To("premium"),
+		}
+		sm := buildStringMatcher(header)
+		require.Equal(t, "premium", sm.GetExact())
+	})
+
+	t.Run("regex match", func(t *testing.T) {
+		header := egv1a1.HeaderMatch{
+			Name:  "x-tier",
+			Type:  ptr.To(egv1a1.HeaderMatchRegularExpression),
+			Value: ptr.To("premium|enterprise"),
+		}
+		sm := buildStringMatcher(header)
+		require.Equal(t, "premium|enterprise", sm.GetSafeRegex().Regex)
+	})
+
+	t.Run("nil type defaults to exact", func(t *testing.T) {
+		header := egv1a1.HeaderMatch{
+			Name:  "x-key",
+			Type:  nil,
+			Value: ptr.To("value"),
+		}
+		sm := buildStringMatcher(header)
+		require.Equal(t, "value", sm.GetExact())
+	})
+
+	t.Run("nil value with exact type returns empty exact", func(t *testing.T) {
+		header := egv1a1.HeaderMatch{
+			Name:  "x-key",
+			Type:  ptr.To(egv1a1.HeaderMatchExact),
+			Value: nil,
+		}
+		sm := buildStringMatcher(header)
+		require.Equal(t, "", sm.GetExact())
+	})
+
+	t.Run("nil value with regex type returns empty exact fallback", func(t *testing.T) {
+		header := egv1a1.HeaderMatch{
+			Name:  "x-key",
+			Type:  ptr.To(egv1a1.HeaderMatchRegularExpression),
+			Value: nil,
+		}
+		sm := buildStringMatcher(header)
+		require.Equal(t, "", sm.GetExact())
+	})
+
+	t.Run("nil value and nil type returns empty exact", func(t *testing.T) {
+		header := egv1a1.HeaderMatch{
+			Name: "x-key",
+		}
+		sm := buildStringMatcher(header)
+		require.Equal(t, "", sm.GetExact())
+	})
+}
+
+func TestBuildBucketRuleLimitEntries(t *testing.T) {
+	t.Run("no bucket rules returns nil", func(t *testing.T) {
+		quota := &aigv1a1.QuotaDefinition{}
+		entries := buildBucketRuleLimitEntries("gpt-4", quota)
+		require.Nil(t, entries)
+	})
+
+	t.Run("single bucket rule with no default", func(t *testing.T) {
+		quota := &aigv1a1.QuotaDefinition{
+			BucketRules: []aigv1a1.QuotaRule{
+				{
+					Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
+				},
+			},
+		}
+		entries := buildBucketRuleLimitEntries("gpt-4", quota)
+		require.Len(t, entries, 1)
+		// 2 base actions + 1 GenericKey (no client selectors)
+		require.Len(t, entries[0].Actions, 3)
+		gk := entries[0].Actions[2].GetGenericKey()
+		require.NotNil(t, gk)
+	})
+
+	t.Run("single bucket rule with default", func(t *testing.T) {
+		quota := &aigv1a1.QuotaDefinition{
+			BucketRules: []aigv1a1.QuotaRule{
+				{Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"}},
+			},
+			DefaultBucket: aigv1a1.QuotaValue{Limit: 10, Duration: "1m"},
+		}
+		entries := buildBucketRuleLimitEntries("gpt-4", quota)
+		require.Len(t, entries, 2) // 1 rule + 1 default
+
+		// Default bucket entry
+		defaultEntry := entries[1]
+		require.Len(t, defaultEntry.Actions, 3)
+		gk := defaultEntry.Actions[2].GetGenericKey()
+		require.NotNil(t, gk)
+		require.Equal(t, translator.DefaultBucketDescriptorKey("gpt-4", 1), gk.DescriptorKey)
+		require.Equal(t, translator.DefaultBucketDescriptorKey("gpt-4", 1), gk.DescriptorValue)
+	})
+
+	t.Run("zero limit default bucket is not added", func(t *testing.T) {
+		quota := &aigv1a1.QuotaDefinition{
+			BucketRules: []aigv1a1.QuotaRule{
+				{Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"}},
+			},
+			DefaultBucket: aigv1a1.QuotaValue{Limit: 0},
+		}
+		entries := buildBucketRuleLimitEntries("gpt-4", quota)
+		require.Len(t, entries, 1)
+	})
+
+	t.Run("bucket rule with client selectors", func(t *testing.T) {
+		quota := &aigv1a1.QuotaDefinition{
+			BucketRules: []aigv1a1.QuotaRule{
+				{
+					ClientSelectors: []egv1a1.RateLimitSelectCondition{
+						{
+							Headers: []egv1a1.HeaderMatch{
+								{Name: "x-api-key", Type: ptr.To(egv1a1.HeaderMatchExact), Value: ptr.To("premium")},
+							},
+						},
+					},
+					Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
+				},
+			},
+		}
+		entries := buildBucketRuleLimitEntries("gpt-4", quota)
+		require.Len(t, entries, 1)
+		// 2 base + 1 header match = 3 actions
+		require.Len(t, entries[0].Actions, 3)
+		hvm := entries[0].Actions[2].GetHeaderValueMatch()
+		require.NotNil(t, hvm)
+	})
+
+	t.Run("base actions are always backend_name and model_name_override", func(t *testing.T) {
+		quota := &aigv1a1.QuotaDefinition{
+			BucketRules: []aigv1a1.QuotaRule{
+				{Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"}},
+			},
+		}
+		entries := buildBucketRuleLimitEntries("gpt-4", quota)
+		require.Len(t, entries, 1)
+
+		verifyMetadataAction(t, entries[0].Actions[0], translator.BackendNameDescriptorKey, "backend_name")
+		verifyMetadataAction(t, entries[0].Actions[1], translator.ModelNameDescriptorKey, "model_name_override")
+	})
+}
+
+func TestBuildClientSelectorActions(t *testing.T) {
+	t.Run("empty selectors returns GenericKey", func(t *testing.T) {
+		actions := buildClientSelectorActions("gpt-4", 0, nil)
+		require.Len(t, actions, 1)
+		gk := actions[0].GetGenericKey()
+		require.NotNil(t, gk)
+		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 0, 0), gk.DescriptorKey)
+	})
+
+	t.Run("selectors with no headers returns GenericKey", func(t *testing.T) {
+		selectors := []egv1a1.RateLimitSelectCondition{
+			{}, // no headers
+		}
+		actions := buildClientSelectorActions("gpt-4", 0, selectors)
+		require.Len(t, actions, 1)
+		gk := actions[0].GetGenericKey()
+		require.NotNil(t, gk)
+	})
+
+	t.Run("single header exact match", func(t *testing.T) {
+		selectors := []egv1a1.RateLimitSelectCondition{
+			{
+				Headers: []egv1a1.HeaderMatch{
+					{Name: "x-api-key", Type: ptr.To(egv1a1.HeaderMatchExact), Value: ptr.To("premium")},
+				},
+			},
+		}
+		actions := buildClientSelectorActions("gpt-4", 0, selectors)
+		require.Len(t, actions, 1)
+		hvm := actions[0].GetHeaderValueMatch()
+		require.NotNil(t, hvm)
+		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 0, 0), hvm.DescriptorKey)
+	})
+
+	t.Run("single header distinct match", func(t *testing.T) {
+		selectors := []egv1a1.RateLimitSelectCondition{
+			{
+				Headers: []egv1a1.HeaderMatch{
+					{Name: "x-user-id", Type: ptr.To(egv1a1.HeaderMatchDistinct)},
+				},
+			},
+		}
+		actions := buildClientSelectorActions("gpt-4", 0, selectors)
+		require.Len(t, actions, 1)
+		rh := actions[0].GetRequestHeaders()
+		require.NotNil(t, rh)
+		require.Equal(t, "x-user-id", rh.HeaderName)
+		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 0, 0), rh.DescriptorKey)
+	})
+
+	t.Run("multiple headers across selectors flattened", func(t *testing.T) {
+		selectors := []egv1a1.RateLimitSelectCondition{
+			{
+				Headers: []egv1a1.HeaderMatch{
+					{Name: "h1", Type: ptr.To(egv1a1.HeaderMatchExact), Value: ptr.To("v1")},
+				},
+			},
+			{
+				Headers: []egv1a1.HeaderMatch{
+					{Name: "h2", Type: ptr.To(egv1a1.HeaderMatchExact), Value: ptr.To("v2")},
+					{Name: "h3", Type: ptr.To(egv1a1.HeaderMatchDistinct)},
+				},
+			},
+		}
+		actions := buildClientSelectorActions("model", 1, selectors)
+		require.Len(t, actions, 3) // 3 headers total
+
+		// h1: HeaderValueMatch
+		require.NotNil(t, actions[0].GetHeaderValueMatch())
+		require.Equal(t, translator.BucketRuleDescriptorKey("model", 1, 0), actions[0].GetHeaderValueMatch().DescriptorKey)
+
+		// h2: HeaderValueMatch
+		require.NotNil(t, actions[1].GetHeaderValueMatch())
+		require.Equal(t, translator.BucketRuleDescriptorKey("model", 1, 1), actions[1].GetHeaderValueMatch().DescriptorKey)
+
+		// h3: RequestHeaders (Distinct)
+		require.NotNil(t, actions[2].GetRequestHeaders())
+		require.Equal(t, translator.BucketRuleDescriptorKey("model", 1, 2), actions[2].GetRequestHeaders().DescriptorKey)
+	})
+}
+
+func TestBuildHeaderMatchAction(t *testing.T) {
+	t.Run("exact match creates HeaderValueMatch with ExpectMatch true", func(t *testing.T) {
+		header := egv1a1.HeaderMatch{
+			Name:  "x-api-key",
+			Type:  ptr.To(egv1a1.HeaderMatchExact),
+			Value: ptr.To("premium"),
+		}
+		action := buildHeaderMatchAction("gpt-4", 0, 0, header)
+		hvm := action.GetHeaderValueMatch()
+		require.NotNil(t, hvm)
+		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 0, 0), hvm.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 0, 0), hvm.DescriptorValue)
+		require.True(t, hvm.ExpectMatch.Value)
+		require.Len(t, hvm.Headers, 1)
+		require.Equal(t, "x-api-key", hvm.Headers[0].Name)
+		require.Equal(t, "premium", hvm.Headers[0].GetStringMatch().GetExact())
+	})
+
+	t.Run("regex match creates HeaderValueMatch with regex", func(t *testing.T) {
+		header := egv1a1.HeaderMatch{
+			Name:  "x-tier",
+			Type:  ptr.To(egv1a1.HeaderMatchRegularExpression),
+			Value: ptr.To("premium|enterprise"),
+		}
+		action := buildHeaderMatchAction("gpt-4", 0, 0, header)
+		hvm := action.GetHeaderValueMatch()
+		require.NotNil(t, hvm)
+		require.True(t, hvm.ExpectMatch.Value)
+		require.Equal(t, "premium|enterprise", hvm.Headers[0].GetStringMatch().GetSafeRegex().Regex)
+	})
+
+	t.Run("distinct match creates RequestHeaders action", func(t *testing.T) {
+		header := egv1a1.HeaderMatch{
+			Name: "x-user-id",
+			Type: ptr.To(egv1a1.HeaderMatchDistinct),
+		}
+		action := buildHeaderMatchAction("gpt-4", 0, 0, header)
+		rh := action.GetRequestHeaders()
+		require.NotNil(t, rh)
+		require.Equal(t, "x-user-id", rh.HeaderName)
+		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 0, 0), rh.DescriptorKey)
+	})
+
+	t.Run("invert true sets ExpectMatch false", func(t *testing.T) {
+		header := egv1a1.HeaderMatch{
+			Name:   "x-tier",
+			Type:   ptr.To(egv1a1.HeaderMatchExact),
+			Value:  ptr.To("internal"),
+			Invert: ptr.To(true),
+		}
+		action := buildHeaderMatchAction("gpt-4", 0, 0, header)
+		hvm := action.GetHeaderValueMatch()
+		require.NotNil(t, hvm)
+		require.False(t, hvm.ExpectMatch.Value)
+	})
+
+	t.Run("invert false sets ExpectMatch true", func(t *testing.T) {
+		header := egv1a1.HeaderMatch{
+			Name:   "x-tier",
+			Type:   ptr.To(egv1a1.HeaderMatchExact),
+			Value:  ptr.To("external"),
+			Invert: ptr.To(false),
+		}
+		action := buildHeaderMatchAction("gpt-4", 0, 0, header)
+		hvm := action.GetHeaderValueMatch()
+		require.NotNil(t, hvm)
+		require.True(t, hvm.ExpectMatch.Value)
+	})
+
+	t.Run("nil invert defaults to ExpectMatch true", func(t *testing.T) {
+		header := egv1a1.HeaderMatch{
+			Name:  "x-tier",
+			Type:  ptr.To(egv1a1.HeaderMatchExact),
+			Value: ptr.To("standard"),
+		}
+		action := buildHeaderMatchAction("gpt-4", 0, 0, header)
+		hvm := action.GetHeaderValueMatch()
+		require.NotNil(t, hvm)
+		require.True(t, hvm.ExpectMatch.Value)
+	})
+
+	t.Run("descriptor key encodes model, rule, and match index", func(t *testing.T) {
+		header := egv1a1.HeaderMatch{
+			Name:  "h1",
+			Type:  ptr.To(egv1a1.HeaderMatchExact),
+			Value: ptr.To("v"),
+		}
+		action := buildHeaderMatchAction("claude", 3, 2, header)
+		hvm := action.GetHeaderValueMatch()
+		require.Equal(t, "rule-claude-3-match-2", hvm.DescriptorKey)
+		require.Equal(t, "rule-claude-3-match-2", hvm.DescriptorValue)
+	})
+}
+
+func TestBaseDescriptorActions(t *testing.T) {
+	actions := baseDescriptorActions()
+	require.Len(t, actions, 2)
+
+	verifyMetadataAction(t, actions[0], translator.BackendNameDescriptorKey, "backend_name")
+	verifyMetadataAction(t, actions[1], translator.ModelNameDescriptorKey, "model_name_override")
 }
