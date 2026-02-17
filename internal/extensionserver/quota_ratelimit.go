@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
@@ -19,9 +20,11 @@ import (
 	ratelimitfilterv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ratelimit/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	httpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
+	matcherv3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	metadatav3 "github.com/envoyproxy/go-control-plane/envoy/type/metadata/v3"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -58,9 +61,9 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 		return clusters, nil
 	}
 
-	// Build a set of "namespace/backendName" keys that have QuotaPolicies.
-	quotaBackends := buildQuotaBackendSet(quotaPolicies)
-	if len(quotaBackends) == 0 {
+	// Build a map of "namespace/backendName" to the QuotaPolicies targeting each backend.
+	quotaBackendPolicies := buildQuotaBackendPolicies(quotaPolicies)
+	if len(quotaBackendPolicies) == 0 {
 		return clusters, nil
 	}
 
@@ -82,7 +85,7 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 	// whose backends have QuotaPolicies. All clusters share the same global domain;
 	// the backend_name descriptor disambiguates at runtime.
 	for _, cluster := range clusters {
-		if !s.clusterHasQuotaBackend(cluster.Name, quotaBackends) {
+		if !s.clusterHasQuotaBackend(cluster.Name, quotaBackendPolicies) {
 			continue
 		}
 		if err := injectQuotaRateLimitFilterIntoCluster(cluster, translator.QuotaDomain); err != nil {
@@ -92,7 +95,7 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 
 	// Add rate limit actions to routes targeting backends with QuotaPolicies.
 	for _, routeConfig := range routes {
-		s.patchRoutesWithQuotaRateLimits(routeConfig, quotaBackends)
+		s.patchRoutesWithQuotaRateLimits(routeConfig, quotaBackendPolicies)
 	}
 
 	return clusters, nil
@@ -107,14 +110,17 @@ func (s *Server) listQuotaPolicies(ctx context.Context) ([]aigv1a1.QuotaPolicy, 
 	return list.Items, nil
 }
 
-// buildQuotaBackendSet builds a set of "namespace/backendName" keys that have QuotaPolicies.
-func buildQuotaBackendSet(policies []aigv1a1.QuotaPolicy) map[string]struct{} {
-	backends := make(map[string]struct{})
+// buildQuotaBackendPolicies builds a map from "namespace/backendName" keys to the
+// QuotaPolicies that target each backend. This preserves the full QuotaPolicy data
+// (including PerModelQuotas, BucketRules, and ClientSelectors) so that downstream
+// functions can generate header-matching rate limit actions.
+func buildQuotaBackendPolicies(policies []aigv1a1.QuotaPolicy) map[string][]aigv1a1.QuotaPolicy {
+	backends := make(map[string][]aigv1a1.QuotaPolicy)
 	for i := range policies {
 		policy := &policies[i]
 		for _, ref := range policy.Spec.TargetRefs {
 			key := policy.Namespace + "/" + string(ref.Name)
-			backends[key] = struct{}{}
+			backends[key] = append(backends[key], *policy)
 		}
 	}
 	return backends
@@ -244,7 +250,7 @@ func buildQuotaRateLimitFilter(domain string) (*httpconnectionmanagerv3.HttpFilt
 // from dynamic metadata and the model name from the x-ai-eg-model header.
 func (s *Server) patchRoutesWithQuotaRateLimits(
 	routeConfig *routev3.RouteConfiguration,
-	quotaBackends map[string]struct{}, // set of "namespace/backendName"
+	quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy,
 ) {
 	for _, vh := range routeConfig.VirtualHosts {
 		for _, route := range vh.Routes {
@@ -258,12 +264,15 @@ func (s *Server) patchRoutesWithQuotaRateLimits(
 			}
 
 			// Check if any backend on this route has a QuotaPolicy.
-			if !s.routeHasQuotaBackend(route, quotaBackends) {
+			if !s.routeHasQuotaBackend(route, quotaBackendPolicies) {
 				continue
 			}
 
+			// Collect the QuotaPolicies relevant to this route's backends.
+			policies := s.policiesForRoute(route, quotaBackendPolicies)
+
 			// Set per-route rate limit actions using the global quota domain.
-			if err := enableQuotaRateLimitOnRoute(route); err != nil {
+			if err := enableQuotaRateLimitOnRoute(route, policies); err != nil {
 				s.log.Error(err, "failed to enable quota rate limit on route", "route", route.Name)
 			}
 		}
@@ -272,10 +281,10 @@ func (s *Server) patchRoutesWithQuotaRateLimits(
 
 // routeHasQuotaBackend checks whether any backend referenced by the route has
 // a QuotaPolicy by resolving the cluster name to an AIGatewayRoute and checking
-// its BackendRefs against the quotaBackends set.
+// its BackendRefs against the quotaBackendPolicies map.
 func (s *Server) routeHasQuotaBackend(
 	route *routev3.Route,
-	quotaBackends map[string]struct{},
+	quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy,
 ) bool {
 	routeAction := route.GetRoute()
 	if routeAction == nil {
@@ -284,13 +293,13 @@ func (s *Server) routeHasQuotaBackend(
 
 	// Check single cluster.
 	if clusterName := routeAction.GetCluster(); clusterName != "" {
-		return s.clusterHasQuotaBackend(clusterName, quotaBackends)
+		return s.clusterHasQuotaBackend(clusterName, quotaBackendPolicies)
 	}
 
 	// Check weighted clusters.
 	if wc := routeAction.GetWeightedClusters(); wc != nil {
 		for _, c := range wc.Clusters {
-			if s.clusterHasQuotaBackend(c.Name, quotaBackends) {
+			if s.clusterHasQuotaBackend(c.Name, quotaBackendPolicies) {
 				return true
 			}
 		}
@@ -304,8 +313,8 @@ func (s *Server) routeHasQuotaBackend(
 //
 // Cluster name format: "httproute/{namespace}/{routeName}/rule/{ruleIndex}"
 // The function fetches the AIGatewayRoute, indexes into the rule, and checks each
-// BackendRef against the quotaBackends set.
-func (s *Server) clusterHasQuotaBackend(clusterName string, quotaBackends map[string]struct{}) bool {
+// BackendRef against the quotaBackendPolicies map.
+func (s *Server) clusterHasQuotaBackend(clusterName string, quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy) bool {
 	// Parse cluster name: "httproute/{namespace}/{routeName}/rule/{ruleIndex}"
 	parts := strings.Split(clusterName, "/")
 	if len(parts) != 5 || parts[0] != "httproute" {
@@ -333,62 +342,117 @@ func (s *Server) clusterHasQuotaBackend(clusterName string, quotaBackends map[st
 	}
 	rule := &aigwRoute.Spec.Rules[ruleIndex]
 
-	// Check each backend ref against the quota backends set.
+	// Check each backend ref against the quota backend policies map.
 	for _, backendRef := range rule.BackendRefs {
 		key := namespace + "/" + backendRef.Name
-		if _, ok := quotaBackends[key]; ok {
+		if _, ok := quotaBackendPolicies[key]; ok {
 			return true
 		}
 	}
 	return false
 }
 
-// enableQuotaRateLimitOnRoute sets per-route rate limit actions via TypedPerFilterConfig.
-// The actions form a descriptor chain of (backend_name, model_name):
-//   - backend_name: read from dynamic metadata set by the upstream ext_proc filter
-//   - model_name: read from model_name_override in dynamic metadata set by the upstream ext_proc filter,
-//     so the descriptor value matches the model name defined in the QuotaPolicy
-func enableQuotaRateLimitOnRoute(route *routev3.Route) error {
-	rateLimitActions := []*routev3.RateLimit{
-		{
-			Actions: []*routev3.RateLimit_Action{
-				{
-					ActionSpecifier: &routev3.RateLimit_Action_Metadata{
-						Metadata: &routev3.RateLimit_Action_MetaData{
-							DescriptorKey: translator.BackendNameDescriptorKey,
-							MetadataKey: &metadatav3.MetadataKey{
-								Key: aigv1a1.AIGatewayFilterMetadataNamespace,
-								Path: []*metadatav3.MetadataKey_PathSegment{{
-									Segment: &metadatav3.MetadataKey_PathSegment_Key{
-										Key: "backend_name",
-									},
-								}},
-							},
-							Source: routev3.RateLimit_Action_MetaData_DYNAMIC,
-						},
-					},
-				},
-				{
-					ActionSpecifier: &routev3.RateLimit_Action_Metadata{
-						Metadata: &routev3.RateLimit_Action_MetaData{
-							DescriptorKey: translator.ModelNameDescriptorKey,
-							MetadataKey: &metadatav3.MetadataKey{
-								Key: aigv1a1.AIGatewayFilterMetadataNamespace,
-								Path: []*metadatav3.MetadataKey_PathSegment{{
-									Segment: &metadatav3.MetadataKey_PathSegment_Key{
-										Key: "model_name_override",
-									},
-								}},
-							},
-							Source: routev3.RateLimit_Action_MetaData_DYNAMIC,
-						},
-					},
-				},
-			},
-		},
+// policiesForRoute collects the deduplicated QuotaPolicies applicable to a route
+// by resolving its clusters to backends and looking up the policies map.
+func (s *Server) policiesForRoute(
+	route *routev3.Route,
+	quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy,
+) []aigv1a1.QuotaPolicy {
+	seen := make(map[string]struct{})
+	var result []aigv1a1.QuotaPolicy
+
+	collectFromCluster := func(clusterName string) {
+		backendKeys := s.backendKeysForCluster(clusterName)
+		for _, key := range backendKeys {
+			policies, ok := quotaBackendPolicies[key]
+			if !ok {
+				continue
+			}
+			for i := range policies {
+				uid := string(policies[i].UID)
+				if _, dup := seen[uid]; dup {
+					continue
+				}
+				seen[uid] = struct{}{}
+				result = append(result, policies[i])
+			}
+		}
 	}
 
-	// Build per-route config with the global quota domain and rate limit actions.
+	routeAction := route.GetRoute()
+	if routeAction == nil {
+		return nil
+	}
+	if clusterName := routeAction.GetCluster(); clusterName != "" {
+		collectFromCluster(clusterName)
+	}
+	if wc := routeAction.GetWeightedClusters(); wc != nil {
+		for _, c := range wc.Clusters {
+			collectFromCluster(c.Name)
+		}
+	}
+	return result
+}
+
+// backendKeysForCluster resolves a cluster name to "namespace/backendName" keys
+// by fetching the AIGatewayRoute and looking up its BackendRefs.
+func (s *Server) backendKeysForCluster(clusterName string) []string {
+	parts := strings.Split(clusterName, "/")
+	if len(parts) != 5 || parts[0] != "httproute" {
+		return nil
+	}
+	namespace := parts[1]
+	routeName := parts[2]
+	ruleIndex, err := strconv.Atoi(parts[4])
+	if err != nil {
+		return nil
+	}
+
+	var aigwRoute aigv1a1.AIGatewayRoute
+	if err := s.k8sClient.Get(context.Background(), client.ObjectKey{
+		Namespace: namespace,
+		Name:      routeName,
+	}, &aigwRoute); err != nil {
+		return nil
+	}
+
+	if ruleIndex >= len(aigwRoute.Spec.Rules) {
+		return nil
+	}
+	rule := &aigwRoute.Spec.Rules[ruleIndex]
+
+	var keys []string
+	for _, backendRef := range rule.BackendRefs {
+		keys = append(keys, namespace+"/"+backendRef.Name)
+	}
+	return keys
+}
+
+// enableQuotaRateLimitOnRoute sets per-route rate limit actions via TypedPerFilterConfig.
+//
+// The base RateLimit entry sends (backend_name, model_name_override) for quotas without
+// bucket rules and service-wide quotas. Additional RateLimit entries are appended for
+// each bucket rule, extending the chain with header-matching actions that correspond to
+// the ClientSelectors defined in the QuotaPolicy.
+func enableQuotaRateLimitOnRoute(route *routev3.Route, policies []aigv1a1.QuotaPolicy) error {
+	// Base RateLimit entry: (backend_name, model_name_override).
+	// Handles models without bucket rules and service-wide quotas.
+	rateLimitActions := []*routev3.RateLimit{
+		{Actions: baseDescriptorActions()},
+	}
+
+	// Append RateLimit entries for bucket rules from each policy's per-model quotas.
+	for i := range policies {
+		for _, pmq := range policies[i].Spec.PerModelQuotas {
+			if pmq.ModelName == nil || len(pmq.Quota.BucketRules) == 0 {
+				continue
+			}
+			modelName := *pmq.ModelName
+			bucketActions := buildBucketRuleLimitEntries(modelName, &pmq.Quota)
+			rateLimitActions = append(rateLimitActions, bucketActions...)
+		}
+	}
+
 	perRouteConfig := &ratelimitfilterv3.RateLimitPerRoute{
 		Domain:     translator.QuotaDomain,
 		RateLimits: rateLimitActions,
@@ -404,4 +468,186 @@ func enableQuotaRateLimitOnRoute(route *routev3.Route) error {
 	}
 	route.TypedPerFilterConfig[quotaRateLimitFilterName] = perRouteAny
 	return nil
+}
+
+// baseDescriptorActions returns the two base actions that read backend_name and
+// model_name_override from dynamic metadata set by the ext_proc filter.
+func baseDescriptorActions() []*routev3.RateLimit_Action {
+	return []*routev3.RateLimit_Action{
+		{
+			ActionSpecifier: &routev3.RateLimit_Action_Metadata{
+				Metadata: &routev3.RateLimit_Action_MetaData{
+					DescriptorKey: translator.BackendNameDescriptorKey,
+					MetadataKey: &metadatav3.MetadataKey{
+						Key: aigv1a1.AIGatewayFilterMetadataNamespace,
+						Path: []*metadatav3.MetadataKey_PathSegment{{
+							Segment: &metadatav3.MetadataKey_PathSegment_Key{
+								Key: "backend_name",
+							},
+						}},
+					},
+					Source: routev3.RateLimit_Action_MetaData_DYNAMIC,
+				},
+			},
+		},
+		{
+			ActionSpecifier: &routev3.RateLimit_Action_Metadata{
+				Metadata: &routev3.RateLimit_Action_MetaData{
+					DescriptorKey: translator.ModelNameDescriptorKey,
+					MetadataKey: &metadatav3.MetadataKey{
+						Key: aigv1a1.AIGatewayFilterMetadataNamespace,
+						Path: []*metadatav3.MetadataKey_PathSegment{{
+							Segment: &metadatav3.MetadataKey_PathSegment_Key{
+								Key: "model_name_override",
+							},
+						}},
+					},
+					Source: routev3.RateLimit_Action_MetaData_DYNAMIC,
+				},
+			},
+		},
+	}
+}
+
+// buildBucketRuleLimitEntries creates RateLimit entries for a model's bucket rules.
+// Each bucket rule and the default bucket gets its own RateLimit entry with the base
+// descriptor actions plus header-matching or generic-key actions.
+func buildBucketRuleLimitEntries(modelName string, quota *aigv1a1.QuotaDefinition) []*routev3.RateLimit {
+	var entries []*routev3.RateLimit
+
+	for rIdx, rule := range quota.BucketRules {
+		actions := append([]*routev3.RateLimit_Action{}, baseDescriptorActions()...)
+		actions = append(actions, buildClientSelectorActions(modelName, rIdx, rule.ClientSelectors)...)
+		entries = append(entries, &routev3.RateLimit{Actions: actions})
+	}
+
+	// Default bucket: always matches via GenericKey.
+	if quota.DefaultBucket.Limit > 0 {
+		defaultKey := translator.DefaultBucketDescriptorKey(modelName, len(quota.BucketRules))
+		actions := append([]*routev3.RateLimit_Action{}, baseDescriptorActions()...)
+		actions = append(actions, &routev3.RateLimit_Action{
+			ActionSpecifier: &routev3.RateLimit_Action_GenericKey_{
+				GenericKey: &routev3.RateLimit_Action_GenericKey{
+					DescriptorKey:   defaultKey,
+					DescriptorValue: defaultKey,
+				},
+			},
+		})
+		entries = append(entries, &routev3.RateLimit{Actions: actions})
+	}
+
+	return entries
+}
+
+// buildClientSelectorActions converts ClientSelectors into rate limit actions.
+// Headers from all selectors are flattened (ANDed) and each becomes a separate action.
+// If no selectors are specified, a GenericKey action is used (matches all traffic).
+func buildClientSelectorActions(
+	modelName string, ruleIndex int, selectors []egv1a1.RateLimitSelectCondition,
+) []*routev3.RateLimit_Action {
+	// Flatten all headers across all selectors.
+	var headers []egv1a1.HeaderMatch
+	for _, sel := range selectors {
+		headers = append(headers, sel.Headers...)
+	}
+
+	// No headers: rule applies to all traffic, use GenericKey.
+	if len(headers) == 0 {
+		key := translator.BucketRuleDescriptorKey(modelName, ruleIndex, 0)
+		return []*routev3.RateLimit_Action{
+			{
+				ActionSpecifier: &routev3.RateLimit_Action_GenericKey_{
+					GenericKey: &routev3.RateLimit_Action_GenericKey{
+						DescriptorKey:   key,
+						DescriptorValue: key,
+					},
+				},
+			},
+		}
+	}
+
+	var actions []*routev3.RateLimit_Action
+	for mIdx, header := range headers {
+		actions = append(actions, buildHeaderMatchAction(modelName, ruleIndex, mIdx, header))
+	}
+	return actions
+}
+
+// buildHeaderMatchAction converts a single HeaderMatch into a rate limit action.
+//   - Distinct: RateLimit_Action_RequestHeaders_ (each unique value gets its own bucket)
+//   - Exact/RegularExpression: RateLimit_Action_HeaderValueMatch_ with StringMatcher
+func buildHeaderMatchAction(
+	modelName string, ruleIndex, matchIndex int, header egv1a1.HeaderMatch,
+) *routev3.RateLimit_Action {
+	descriptorKey := translator.BucketRuleDescriptorKey(modelName, ruleIndex, matchIndex)
+
+	// Distinct: use RequestHeaders action.
+	if header.Type != nil && *header.Type == egv1a1.HeaderMatchDistinct {
+		return &routev3.RateLimit_Action{
+			ActionSpecifier: &routev3.RateLimit_Action_RequestHeaders_{
+				RequestHeaders: &routev3.RateLimit_Action_RequestHeaders{
+					HeaderName:    header.Name,
+					DescriptorKey: descriptorKey,
+				},
+			},
+		}
+	}
+
+	// Exact or RegularExpression: use HeaderValueMatch action.
+	stringMatcher := buildStringMatcher(header)
+	headerMatcher := &routev3.HeaderMatcher{
+		Name: header.Name,
+		HeaderMatchSpecifier: &routev3.HeaderMatcher_StringMatch{
+			StringMatch: stringMatcher,
+		},
+	}
+
+	expectMatch := header.Invert == nil || !*header.Invert
+
+	return &routev3.RateLimit_Action{
+		ActionSpecifier: &routev3.RateLimit_Action_HeaderValueMatch_{
+			HeaderValueMatch: &routev3.RateLimit_Action_HeaderValueMatch{
+				DescriptorKey:   descriptorKey,
+				DescriptorValue: descriptorKey,
+				ExpectMatch:     &wrapperspb.BoolValue{Value: expectMatch},
+				Headers:         []*routev3.HeaderMatcher{headerMatcher},
+			},
+		},
+	}
+}
+
+// buildStringMatcher creates an Envoy StringMatcher from a HeaderMatch.
+func buildStringMatcher(header egv1a1.HeaderMatch) *matcherv3.StringMatcher {
+	matchType := egv1a1.HeaderMatchExact
+	if header.Type != nil {
+		matchType = *header.Type
+	}
+
+	switch matchType {
+	case egv1a1.HeaderMatchRegularExpression:
+		if header.Value != nil {
+			return &matcherv3.StringMatcher{
+				MatchPattern: &matcherv3.StringMatcher_SafeRegex{
+					SafeRegex: &matcherv3.RegexMatcher{
+						Regex: *header.Value,
+					},
+				},
+			}
+		}
+	default: // Exact
+		if header.Value != nil {
+			return &matcherv3.StringMatcher{
+				MatchPattern: &matcherv3.StringMatcher_Exact{
+					Exact: *header.Value,
+				},
+			}
+		}
+	}
+
+	// Fallback: empty exact match.
+	return &matcherv3.StringMatcher{
+		MatchPattern: &matcherv3.StringMatcher_Exact{
+			Exact: "",
+		},
+	}
 }
