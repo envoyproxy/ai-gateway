@@ -1772,7 +1772,7 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 	t.Run("quota policies without matching targets returns clusters unchanged", func(t *testing.T) {
 		qp := aigv1a1.QuotaPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: "qp1", Namespace: "default"},
-			Spec: aigv1a1.QuotaPolicySpec{
+			Spec:       aigv1a1.QuotaPolicySpec{
 				// No targetRefs -> buildQuotaBackendPolicies returns empty map.
 			},
 		}
