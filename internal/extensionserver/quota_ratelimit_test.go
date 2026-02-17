@@ -16,13 +16,18 @@ import (
 	upstream_codecv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/upstream_codec/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	httpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
+	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/structpb"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/ratelimit/translator"
 )
 
@@ -1210,4 +1215,774 @@ func TestBaseDescriptorActions(t *testing.T) {
 
 	verifyMetadataAction(t, actions[0], translator.BackendNameDescriptorKey, "backend_name")
 	verifyMetadataAction(t, actions[1], translator.ModelNameDescriptorKey, "model_name_override")
+}
+
+// aiGatewayRouteMetadata returns route metadata that makes isRouteGeneratedByAIGateway return true.
+func aiGatewayRouteMetadata(t *testing.T) *corev3.Metadata {
+	t.Helper()
+	s, err := structpb.NewStruct(map[string]any{
+		"resources": []any{
+			map[string]any{
+				"annotations": map[string]any{
+					internalapi.AIGatewayGeneratedHTTPRouteAnnotation: "true",
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	return &corev3.Metadata{
+		FilterMetadata: map[string]*structpb.Struct{
+			"envoy-gateway": s,
+		},
+	}
+}
+
+// newTestServerWithRoute creates a Server backed by a fake k8s client that contains
+// the given AIGatewayRoute and QuotaPolicy objects.
+func newTestServerWithRoute(t *testing.T, route *aigv1a1.AIGatewayRoute, policies ...aigv1a1.QuotaPolicy) *Server {
+	t.Helper()
+	c := newFakeClient()
+	if route != nil {
+		require.NoError(t, c.Create(t.Context(), route))
+	}
+	for i := range policies {
+		require.NoError(t, c.Create(t.Context(), &policies[i]))
+	}
+	s, err := New(c, logr.Discard(), udsPath, false, nil, nil)
+	require.NoError(t, err)
+	return s
+}
+
+func TestBackendKeysForCluster(t *testing.T) {
+	route := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "backend-a"},
+						{Name: "backend-b"},
+					},
+				},
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "backend-c"},
+					},
+				},
+			},
+		},
+	}
+	s := newTestServerWithRoute(t, route)
+
+	t.Run("valid cluster name returns backend keys", func(t *testing.T) {
+		keys := s.backendKeysForCluster("httproute/default/myroute/rule/0")
+		require.Equal(t, []string{"default/backend-a", "default/backend-b"}, keys)
+	})
+
+	t.Run("second rule index", func(t *testing.T) {
+		keys := s.backendKeysForCluster("httproute/default/myroute/rule/1")
+		require.Equal(t, []string{"default/backend-c"}, keys)
+	})
+
+	t.Run("wrong number of parts returns nil", func(t *testing.T) {
+		keys := s.backendKeysForCluster("too/few/parts")
+		require.Nil(t, keys)
+	})
+
+	t.Run("not starting with httproute returns nil", func(t *testing.T) {
+		keys := s.backendKeysForCluster("tcproute/default/myroute/rule/0")
+		require.Nil(t, keys)
+	})
+
+	t.Run("non-numeric rule index returns nil", func(t *testing.T) {
+		keys := s.backendKeysForCluster("httproute/default/myroute/rule/abc")
+		require.Nil(t, keys)
+	})
+
+	t.Run("route not found returns nil", func(t *testing.T) {
+		keys := s.backendKeysForCluster("httproute/default/nonexistent/rule/0")
+		require.Nil(t, keys)
+	})
+
+	t.Run("rule index out of bounds returns nil", func(t *testing.T) {
+		keys := s.backendKeysForCluster("httproute/default/myroute/rule/99")
+		require.Nil(t, keys)
+	})
+}
+
+func TestClusterHasQuotaBackend(t *testing.T) {
+	route := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "backend-a"},
+						{Name: "backend-b"},
+					},
+				},
+			},
+		},
+	}
+	s := newTestServerWithRoute(t, route)
+
+	quotaBackendPolicies := map[string][]aigv1a1.QuotaPolicy{
+		"default/backend-a": {{Spec: aigv1a1.QuotaPolicySpec{}}},
+	}
+
+	t.Run("cluster with matching backend returns true", func(t *testing.T) {
+		result := s.clusterHasQuotaBackend("httproute/default/myroute/rule/0", quotaBackendPolicies)
+		require.True(t, result)
+	})
+
+	t.Run("cluster with no matching backend returns false", func(t *testing.T) {
+		noMatchPolicies := map[string][]aigv1a1.QuotaPolicy{
+			"default/backend-x": {{Spec: aigv1a1.QuotaPolicySpec{}}},
+		}
+		result := s.clusterHasQuotaBackend("httproute/default/myroute/rule/0", noMatchPolicies)
+		require.False(t, result)
+	})
+
+	t.Run("invalid cluster name returns false", func(t *testing.T) {
+		result := s.clusterHasQuotaBackend("invalid", quotaBackendPolicies)
+		require.False(t, result)
+	})
+
+	t.Run("nonexistent route returns false", func(t *testing.T) {
+		result := s.clusterHasQuotaBackend("httproute/default/missing/rule/0", quotaBackendPolicies)
+		require.False(t, result)
+	})
+
+	t.Run("rule index out of bounds returns false", func(t *testing.T) {
+		result := s.clusterHasQuotaBackend("httproute/default/myroute/rule/5", quotaBackendPolicies)
+		require.False(t, result)
+	})
+
+	t.Run("non-numeric rule index returns false", func(t *testing.T) {
+		result := s.clusterHasQuotaBackend("httproute/default/myroute/rule/bad", quotaBackendPolicies)
+		require.False(t, result)
+	})
+}
+
+func TestRouteHasQuotaBackend(t *testing.T) {
+	aigwRoute := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "backend-a"},
+					},
+				},
+			},
+		},
+	}
+	s := newTestServerWithRoute(t, aigwRoute)
+
+	quotaBackendPolicies := map[string][]aigv1a1.QuotaPolicy{
+		"default/backend-a": {{Spec: aigv1a1.QuotaPolicySpec{}}},
+	}
+
+	t.Run("nil route action returns false", func(t *testing.T) {
+		route := &routev3.Route{Name: "test"}
+		result := s.routeHasQuotaBackend(route, quotaBackendPolicies)
+		require.False(t, result)
+	})
+
+	t.Run("single cluster with quota backend returns true", func(t *testing.T) {
+		route := &routev3.Route{
+			Name: "test",
+			Action: &routev3.Route_Route{
+				Route: &routev3.RouteAction{
+					ClusterSpecifier: &routev3.RouteAction_Cluster{
+						Cluster: "httproute/default/myroute/rule/0",
+					},
+				},
+			},
+		}
+		result := s.routeHasQuotaBackend(route, quotaBackendPolicies)
+		require.True(t, result)
+	})
+
+	t.Run("single cluster without quota backend returns false", func(t *testing.T) {
+		route := &routev3.Route{
+			Name: "test",
+			Action: &routev3.Route_Route{
+				Route: &routev3.RouteAction{
+					ClusterSpecifier: &routev3.RouteAction_Cluster{
+						Cluster: "httproute/default/nonexistent/rule/0",
+					},
+				},
+			},
+		}
+		result := s.routeHasQuotaBackend(route, quotaBackendPolicies)
+		require.False(t, result)
+	})
+
+	t.Run("weighted clusters with one matching returns true", func(t *testing.T) {
+		route := &routev3.Route{
+			Name: "test",
+			Action: &routev3.Route_Route{
+				Route: &routev3.RouteAction{
+					ClusterSpecifier: &routev3.RouteAction_WeightedClusters{
+						WeightedClusters: &routev3.WeightedCluster{
+							Clusters: []*routev3.WeightedCluster_ClusterWeight{
+								{Name: "httproute/default/nonexistent/rule/0"},
+								{Name: "httproute/default/myroute/rule/0"},
+							},
+						},
+					},
+				},
+			},
+		}
+		result := s.routeHasQuotaBackend(route, quotaBackendPolicies)
+		require.True(t, result)
+	})
+
+	t.Run("weighted clusters with none matching returns false", func(t *testing.T) {
+		route := &routev3.Route{
+			Name: "test",
+			Action: &routev3.Route_Route{
+				Route: &routev3.RouteAction{
+					ClusterSpecifier: &routev3.RouteAction_WeightedClusters{
+						WeightedClusters: &routev3.WeightedCluster{
+							Clusters: []*routev3.WeightedCluster_ClusterWeight{
+								{Name: "httproute/default/nonexistent/rule/0"},
+							},
+						},
+					},
+				},
+			},
+		}
+		result := s.routeHasQuotaBackend(route, quotaBackendPolicies)
+		require.False(t, result)
+	})
+}
+
+func TestPoliciesForRoute(t *testing.T) {
+	aigwRoute := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "backend-a"},
+					},
+				},
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "backend-b"},
+					},
+				},
+			},
+		},
+	}
+	s := newTestServerWithRoute(t, aigwRoute)
+
+	policyA := aigv1a1.QuotaPolicy{
+		ObjectMeta: metav1.ObjectMeta{UID: types.UID("uid-a")},
+		Spec:       aigv1a1.QuotaPolicySpec{},
+	}
+	policyB := aigv1a1.QuotaPolicy{
+		ObjectMeta: metav1.ObjectMeta{UID: types.UID("uid-b")},
+		Spec:       aigv1a1.QuotaPolicySpec{},
+	}
+	quotaBackendPolicies := map[string][]aigv1a1.QuotaPolicy{
+		"default/backend-a": {policyA},
+		"default/backend-b": {policyB},
+	}
+
+	t.Run("nil route action returns nil", func(t *testing.T) {
+		route := &routev3.Route{Name: "test"}
+		result := s.policiesForRoute(route, quotaBackendPolicies)
+		require.Nil(t, result)
+	})
+
+	t.Run("single cluster collects policies", func(t *testing.T) {
+		route := &routev3.Route{
+			Name: "test",
+			Action: &routev3.Route_Route{
+				Route: &routev3.RouteAction{
+					ClusterSpecifier: &routev3.RouteAction_Cluster{
+						Cluster: "httproute/default/myroute/rule/0",
+					},
+				},
+			},
+		}
+		result := s.policiesForRoute(route, quotaBackendPolicies)
+		require.Len(t, result, 1)
+		require.Equal(t, types.UID("uid-a"), result[0].UID)
+	})
+
+	t.Run("weighted clusters collect policies from all clusters", func(t *testing.T) {
+		route := &routev3.Route{
+			Name: "test",
+			Action: &routev3.Route_Route{
+				Route: &routev3.RouteAction{
+					ClusterSpecifier: &routev3.RouteAction_WeightedClusters{
+						WeightedClusters: &routev3.WeightedCluster{
+							Clusters: []*routev3.WeightedCluster_ClusterWeight{
+								{Name: "httproute/default/myroute/rule/0"},
+								{Name: "httproute/default/myroute/rule/1"},
+							},
+						},
+					},
+				},
+			},
+		}
+		result := s.policiesForRoute(route, quotaBackendPolicies)
+		require.Len(t, result, 2)
+	})
+
+	t.Run("deduplicates policies with same UID", func(t *testing.T) {
+		// Both backends reference the same policy.
+		sharedPolicies := map[string][]aigv1a1.QuotaPolicy{
+			"default/backend-a": {policyA},
+			"default/backend-b": {policyA},
+		}
+		route := &routev3.Route{
+			Name: "test",
+			Action: &routev3.Route_Route{
+				Route: &routev3.RouteAction{
+					ClusterSpecifier: &routev3.RouteAction_WeightedClusters{
+						WeightedClusters: &routev3.WeightedCluster{
+							Clusters: []*routev3.WeightedCluster_ClusterWeight{
+								{Name: "httproute/default/myroute/rule/0"},
+								{Name: "httproute/default/myroute/rule/1"},
+							},
+						},
+					},
+				},
+			},
+		}
+		result := s.policiesForRoute(route, sharedPolicies)
+		require.Len(t, result, 1)
+		require.Equal(t, types.UID("uid-a"), result[0].UID)
+	})
+
+	t.Run("cluster with no matching policies returns empty", func(t *testing.T) {
+		route := &routev3.Route{
+			Name: "test",
+			Action: &routev3.Route_Route{
+				Route: &routev3.RouteAction{
+					ClusterSpecifier: &routev3.RouteAction_Cluster{
+						Cluster: "httproute/default/nonexistent/rule/0",
+					},
+				},
+			},
+		}
+		result := s.policiesForRoute(route, quotaBackendPolicies)
+		require.Empty(t, result)
+	})
+}
+
+func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
+	aigwRoute := &aigv1a1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
+		Spec: aigv1a1.AIGatewayRouteSpec{
+			Rules: []aigv1a1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						{Name: "backend-a"},
+					},
+				},
+			},
+		},
+	}
+	s := newTestServerWithRoute(t, aigwRoute)
+
+	quotaBackendPolicies := map[string][]aigv1a1.QuotaPolicy{
+		"default/backend-a": {
+			{
+				Spec: aigv1a1.QuotaPolicySpec{
+					PerModelQuotas: []aigv1a1.PerModelQuota{
+						{
+							ModelName: ptr.To("gpt-4"),
+							Quota: aigv1a1.QuotaDefinition{
+								BucketRules: []aigv1a1.QuotaRule{
+									{Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("patches route with quota backend and AI gateway annotation", func(t *testing.T) {
+		routeConfig := &routev3.RouteConfiguration{
+			VirtualHosts: []*routev3.VirtualHost{
+				{
+					Routes: []*routev3.Route{
+						{
+							Name:     "test-route",
+							Metadata: aiGatewayRouteMetadata(t),
+							Action: &routev3.Route_Route{
+								Route: &routev3.RouteAction{
+									ClusterSpecifier: &routev3.RouteAction_Cluster{
+										Cluster: "httproute/default/myroute/rule/0",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		s.patchRoutesWithQuotaRateLimits(routeConfig, quotaBackendPolicies)
+
+		route := routeConfig.VirtualHosts[0].Routes[0]
+		require.NotNil(t, route.TypedPerFilterConfig)
+		require.Contains(t, route.TypedPerFilterConfig, quotaRateLimitFilterName)
+	})
+
+	t.Run("skips route without AI gateway annotation", func(t *testing.T) {
+		routeConfig := &routev3.RouteConfiguration{
+			VirtualHosts: []*routev3.VirtualHost{
+				{
+					Routes: []*routev3.Route{
+						{
+							Name: "non-aigw-route",
+							Action: &routev3.Route_Route{
+								Route: &routev3.RouteAction{
+									ClusterSpecifier: &routev3.RouteAction_Cluster{
+										Cluster: "httproute/default/myroute/rule/0",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		s.patchRoutesWithQuotaRateLimits(routeConfig, quotaBackendPolicies)
+
+		route := routeConfig.VirtualHosts[0].Routes[0]
+		require.Nil(t, route.TypedPerFilterConfig)
+	})
+
+	t.Run("skips route with nil route action", func(t *testing.T) {
+		routeConfig := &routev3.RouteConfiguration{
+			VirtualHosts: []*routev3.VirtualHost{
+				{
+					Routes: []*routev3.Route{
+						{
+							Name:     "redirect-route",
+							Metadata: aiGatewayRouteMetadata(t),
+							Action: &routev3.Route_Redirect{
+								Redirect: &routev3.RedirectAction{},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		s.patchRoutesWithQuotaRateLimits(routeConfig, quotaBackendPolicies)
+
+		route := routeConfig.VirtualHosts[0].Routes[0]
+		require.Nil(t, route.TypedPerFilterConfig)
+	})
+
+	t.Run("skips route without quota backend", func(t *testing.T) {
+		routeConfig := &routev3.RouteConfiguration{
+			VirtualHosts: []*routev3.VirtualHost{
+				{
+					Routes: []*routev3.Route{
+						{
+							Name:     "no-quota-route",
+							Metadata: aiGatewayRouteMetadata(t),
+							Action: &routev3.Route_Route{
+								Route: &routev3.RouteAction{
+									ClusterSpecifier: &routev3.RouteAction_Cluster{
+										Cluster: "httproute/default/nonexistent/rule/0",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		s.patchRoutesWithQuotaRateLimits(routeConfig, quotaBackendPolicies)
+
+		route := routeConfig.VirtualHosts[0].Routes[0]
+		require.Nil(t, route.TypedPerFilterConfig)
+	})
+
+	t.Run("patches multiple routes across virtual hosts", func(t *testing.T) {
+		routeConfig := &routev3.RouteConfiguration{
+			VirtualHosts: []*routev3.VirtualHost{
+				{
+					Routes: []*routev3.Route{
+						{
+							Name:     "route-1",
+							Metadata: aiGatewayRouteMetadata(t),
+							Action: &routev3.Route_Route{
+								Route: &routev3.RouteAction{
+									ClusterSpecifier: &routev3.RouteAction_Cluster{
+										Cluster: "httproute/default/myroute/rule/0",
+									},
+								},
+							},
+						},
+					},
+				},
+				{
+					Routes: []*routev3.Route{
+						{
+							Name:     "route-2",
+							Metadata: aiGatewayRouteMetadata(t),
+							Action: &routev3.Route_Route{
+								Route: &routev3.RouteAction{
+									ClusterSpecifier: &routev3.RouteAction_Cluster{
+										Cluster: "httproute/default/myroute/rule/0",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		s.patchRoutesWithQuotaRateLimits(routeConfig, quotaBackendPolicies)
+
+		require.Contains(t, routeConfig.VirtualHosts[0].Routes[0].TypedPerFilterConfig, quotaRateLimitFilterName)
+		require.Contains(t, routeConfig.VirtualHosts[1].Routes[0].TypedPerFilterConfig, quotaRateLimitFilterName)
+	})
+}
+
+func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
+	t.Run("no quota policies returns clusters unchanged", func(t *testing.T) {
+		s := newTestServerWithRoute(t, nil)
+		clusters := []*clusterv3.Cluster{{Name: "existing"}}
+		routes := []*routev3.RouteConfiguration{}
+
+		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, routes)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		require.Equal(t, "existing", result[0].Name)
+	})
+
+	t.Run("quota policies without matching targets returns clusters unchanged", func(t *testing.T) {
+		qp := aigv1a1.QuotaPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: "qp1", Namespace: "default"},
+			Spec: aigv1a1.QuotaPolicySpec{
+				// No targetRefs -> buildQuotaBackendPolicies returns empty map.
+			},
+		}
+		s := newTestServerWithRoute(t, nil, qp)
+		clusters := []*clusterv3.Cluster{{Name: "existing"}}
+
+		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, nil)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+	})
+
+	t.Run("adds rate limit cluster and injects filter", func(t *testing.T) {
+		aigwRoute := &aigv1a1.AIGatewayRoute{
+			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				Rules: []aigv1a1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+							{Name: "backend-a"},
+						},
+					},
+				},
+			},
+		}
+		qp := aigv1a1.QuotaPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: "qp1", Namespace: "default"},
+			Spec: aigv1a1.QuotaPolicySpec{
+				TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+					{Name: "backend-a"},
+				},
+			},
+		}
+		s := newTestServerWithRoute(t, aigwRoute, qp)
+
+		// Build cluster with HttpProtocolOptions so the filter can be injected.
+		po := &httpv3.HttpProtocolOptions{
+			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
+				{
+					Name: "envoy.filters.http.upstream_codec",
+					ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+						TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
+					},
+				},
+			},
+		}
+		cluster := &clusterv3.Cluster{
+			Name: "httproute/default/myroute/rule/0",
+			TypedExtensionProtocolOptions: map[string]*anypb.Any{
+				httpProtocolOptionsKey: mustToAny(t, po),
+			},
+		}
+		clusters := []*clusterv3.Cluster{cluster}
+
+		routeConfig := &routev3.RouteConfiguration{
+			VirtualHosts: []*routev3.VirtualHost{
+				{
+					Routes: []*routev3.Route{
+						{
+							Name:     "test-route",
+							Metadata: aiGatewayRouteMetadata(t),
+							Action: &routev3.Route_Route{
+								Route: &routev3.RouteAction{
+									ClusterSpecifier: &routev3.RouteAction_Cluster{
+										Cluster: "httproute/default/myroute/rule/0",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		routes := []*routev3.RouteConfiguration{routeConfig}
+
+		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, routes)
+		require.NoError(t, err)
+
+		// Should have original cluster + rate limit cluster.
+		require.Len(t, result, 2)
+		require.Equal(t, quotaRateLimitClusterName, result[1].Name)
+
+		// Verify filter was injected into the original cluster.
+		updatedPO := &httpv3.HttpProtocolOptions{}
+		require.NoError(t, result[0].TypedExtensionProtocolOptions[httpProtocolOptionsKey].UnmarshalTo(updatedPO))
+		require.Len(t, updatedPO.HttpFilters, 2)
+		require.Equal(t, quotaRateLimitFilterName, updatedPO.HttpFilters[0].Name)
+
+		// Verify route was patched.
+		patchedRoute := routeConfig.VirtualHosts[0].Routes[0]
+		require.Contains(t, patchedRoute.TypedPerFilterConfig, quotaRateLimitFilterName)
+	})
+
+	t.Run("does not duplicate rate limit cluster", func(t *testing.T) {
+		aigwRoute := &aigv1a1.AIGatewayRoute{
+			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				Rules: []aigv1a1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+							{Name: "backend-a"},
+						},
+					},
+				},
+			},
+		}
+		qp := aigv1a1.QuotaPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: "qp1", Namespace: "default"},
+			Spec: aigv1a1.QuotaPolicySpec{
+				TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+					{Name: "backend-a"},
+				},
+			},
+		}
+		s := newTestServerWithRoute(t, aigwRoute, qp)
+
+		existingRLCluster := buildQuotaRateLimitCluster()
+		clusters := []*clusterv3.Cluster{existingRLCluster}
+
+		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, nil)
+		require.NoError(t, err)
+		// Should not add another rate limit cluster.
+		rlCount := 0
+		for _, c := range result {
+			if c.Name == quotaRateLimitClusterName {
+				rlCount++
+			}
+		}
+		require.Equal(t, 1, rlCount)
+	})
+
+	t.Run("skips cluster without quota backend", func(t *testing.T) {
+		aigwRoute := &aigv1a1.AIGatewayRoute{
+			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				Rules: []aigv1a1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+							{Name: "backend-a"},
+						},
+					},
+				},
+			},
+		}
+		qp := aigv1a1.QuotaPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: "qp1", Namespace: "default"},
+			Spec: aigv1a1.QuotaPolicySpec{
+				TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+					{Name: "backend-a"},
+				},
+			},
+		}
+		s := newTestServerWithRoute(t, aigwRoute, qp)
+
+		// Cluster that doesn't match any quota backend.
+		po := &httpv3.HttpProtocolOptions{
+			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
+				{
+					Name: "envoy.filters.http.upstream_codec",
+					ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
+						TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
+					},
+				},
+			},
+		}
+		unrelatedCluster := &clusterv3.Cluster{
+			Name: "httproute/other/otherroute/rule/0",
+			TypedExtensionProtocolOptions: map[string]*anypb.Any{
+				httpProtocolOptionsKey: mustToAny(t, po),
+			},
+		}
+
+		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), []*clusterv3.Cluster{unrelatedCluster}, nil)
+		require.NoError(t, err)
+
+		// Filter should NOT have been injected into the unrelated cluster.
+		updatedPO := &httpv3.HttpProtocolOptions{}
+		require.NoError(t, result[0].TypedExtensionProtocolOptions[httpProtocolOptionsKey].UnmarshalTo(updatedPO))
+		require.Len(t, updatedPO.HttpFilters, 1) // only upstream_codec, no ratelimit filter added
+	})
+}
+
+func TestListQuotaPolicies(t *testing.T) {
+	t.Run("returns empty list when no policies exist", func(t *testing.T) {
+		s := newTestServerWithRoute(t, nil)
+		policies, err := s.listQuotaPolicies(t.Context())
+		require.NoError(t, err)
+		require.Empty(t, policies)
+	})
+
+	t.Run("returns all policies across namespaces", func(t *testing.T) {
+		qp1 := aigv1a1.QuotaPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: "qp1", Namespace: "ns1"},
+			Spec: aigv1a1.QuotaPolicySpec{
+				TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+					{Name: "backend-a"},
+				},
+			},
+		}
+		qp2 := aigv1a1.QuotaPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: "qp2", Namespace: "ns2"},
+			Spec: aigv1a1.QuotaPolicySpec{
+				TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+					{Name: "backend-b"},
+				},
+			},
+		}
+		s := newTestServerWithRoute(t, nil, qp1, qp2)
+
+		policies, err := s.listQuotaPolicies(t.Context())
+		require.NoError(t, err)
+		require.Len(t, policies, 2)
+	})
 }
