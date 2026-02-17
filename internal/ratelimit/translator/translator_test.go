@@ -274,7 +274,7 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 		desc, err := buildPerModelDescriptor("gpt-4", quota)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4", desc.Value)
-		require.Nil(t, desc.RateLimit) // rate limit on nested descriptors, not parent
+		require.Nil(t, desc.RateLimit)      // rate limit on nested descriptors, not parent
 		require.Len(t, desc.Descriptors, 2) // 1 bucket rule + 1 default
 	})
 
