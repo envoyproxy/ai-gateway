@@ -8,6 +8,7 @@ package extensionserver
 import (
 	"testing"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
@@ -18,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"k8s.io/utils/ptr"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -217,7 +219,7 @@ func TestInjectQuotaRateLimitFilterIntoCluster(t *testing.T) {
 func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 	t.Run("sets per-route rate limit config", func(t *testing.T) {
 		route := &routev3.Route{Name: "test-route"}
-		err := enableQuotaRateLimitOnRoute(route)
+		err := enableQuotaRateLimitOnRoute(route, nil)
 		require.NoError(t, err)
 		require.NotNil(t, route.TypedPerFilterConfig)
 		require.Contains(t, route.TypedPerFilterConfig, quotaRateLimitFilterName)
@@ -232,7 +234,7 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 
 	t.Run("backend_name action reads from dynamic metadata", func(t *testing.T) {
 		route := &routev3.Route{Name: "test-route"}
-		require.NoError(t, enableQuotaRateLimitOnRoute(route))
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, nil))
 
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
@@ -249,7 +251,7 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 
 	t.Run("model_name action reads model_name_override from dynamic metadata", func(t *testing.T) {
 		route := &routev3.Route{Name: "test-route"}
-		require.NoError(t, enableQuotaRateLimitOnRoute(route))
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, nil))
 
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
@@ -271,7 +273,7 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 				"some-other-filter": {},
 			},
 		}
-		require.NoError(t, enableQuotaRateLimitOnRoute(route))
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, nil))
 		require.Len(t, route.TypedPerFilterConfig, 2)
 		require.Contains(t, route.TypedPerFilterConfig, "some-other-filter")
 		require.Contains(t, route.TypedPerFilterConfig, quotaRateLimitFilterName)
@@ -279,7 +281,7 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 
 	t.Run("both actions use same metadata namespace", func(t *testing.T) {
 		route := &routev3.Route{Name: "test-route"}
-		require.NoError(t, enableQuotaRateLimitOnRoute(route))
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, nil))
 
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
@@ -293,9 +295,9 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 	})
 }
 
-func TestBuildQuotaBackendSet(t *testing.T) {
+func TestBuildQuotaBackendPolicies(t *testing.T) {
 	t.Run("empty policies", func(t *testing.T) {
-		result := buildQuotaBackendSet(nil)
+		result := buildQuotaBackendPolicies(nil)
 		require.Empty(t, result)
 	})
 
@@ -310,9 +312,10 @@ func TestBuildQuotaBackendSet(t *testing.T) {
 			},
 		}
 		policies[0].Namespace = "default"
-		result := buildQuotaBackendSet(policies)
+		result := buildQuotaBackendPolicies(policies)
 		require.Len(t, result, 1)
 		require.Contains(t, result, "default/backend-a")
+		require.Len(t, result["default/backend-a"], 1)
 	})
 
 	t.Run("multiple policies multiple targets", func(t *testing.T) {
@@ -335,14 +338,14 @@ func TestBuildQuotaBackendSet(t *testing.T) {
 		}
 		policies[0].Namespace = "ns1"
 		policies[1].Namespace = "ns2"
-		result := buildQuotaBackendSet(policies)
+		result := buildQuotaBackendPolicies(policies)
 		require.Len(t, result, 3)
 		require.Contains(t, result, "ns1/backend-a")
 		require.Contains(t, result, "ns1/backend-b")
 		require.Contains(t, result, "ns2/backend-c")
 	})
 
-	t.Run("deduplicates same backend", func(t *testing.T) {
+	t.Run("same backend collects multiple policies", func(t *testing.T) {
 		policies := []aigv1a1.QuotaPolicy{
 			{
 				Spec: aigv1a1.QuotaPolicySpec{
@@ -361,9 +364,10 @@ func TestBuildQuotaBackendSet(t *testing.T) {
 		}
 		policies[0].Namespace = "default"
 		policies[1].Namespace = "default"
-		result := buildQuotaBackendSet(policies)
+		result := buildQuotaBackendPolicies(policies)
 		require.Len(t, result, 1)
 		require.Contains(t, result, "default/backend-a")
+		require.Len(t, result["default/backend-a"], 2)
 	})
 }
 
@@ -383,7 +387,7 @@ func verifyMetadataAction(t *testing.T, action *routev3.RateLimit_Action, descri
 func TestEnableQuotaRateLimitOnRoute_DescriptorChain(t *testing.T) {
 	// Verify the full descriptor chain structure that gets sent to the rate limit service.
 	route := &routev3.Route{Name: "test-route"}
-	require.NoError(t, enableQuotaRateLimitOnRoute(route))
+	require.NoError(t, enableQuotaRateLimitOnRoute(route, nil))
 
 	perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 	require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
@@ -440,4 +444,273 @@ func TestInjectQuotaRateLimitFilterIntoCluster_FullFilterChain(t *testing.T) {
 	require.False(t, rlCfg.FailureModeDeny)
 	require.True(t, rlCfg.DisableXEnvoyRatelimitedHeader)
 	require.Equal(t, ratelimitfilterv3.RateLimit_DRAFT_VERSION_03, rlCfg.EnableXRatelimitHeaders)
+}
+
+func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
+	t.Run("exact header match generates HeaderValueMatch action", func(t *testing.T) {
+		route := &routev3.Route{Name: "test-route"}
+		policies := []aigv1a1.QuotaPolicy{
+			{
+				Spec: aigv1a1.QuotaPolicySpec{
+					PerModelQuotas: []aigv1a1.PerModelQuota{
+						{
+							ModelName: ptr.To("gpt-4"),
+							Quota: aigv1a1.QuotaDefinition{
+								BucketRules: []aigv1a1.QuotaRule{
+									{
+										ClientSelectors: []egv1a1.RateLimitSelectCondition{
+											{
+												Headers: []egv1a1.HeaderMatch{
+													{
+														Name:  "x-api-key",
+														Type:  ptr.To(egv1a1.HeaderMatchExact),
+														Value: ptr.To("premium"),
+													},
+												},
+											},
+										},
+										Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
+									},
+								},
+								DefaultBucket: aigv1a1.QuotaValue{Limit: 10, Duration: "1m"},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, policies))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+
+		// 1 base + 1 bucket rule + 1 default bucket = 3 RateLimit entries.
+		require.Len(t, perRoute.RateLimits, 3)
+
+		// Bucket rule entry: base (2 actions) + HeaderValueMatch (1 action) = 3 actions.
+		ruleEntry := perRoute.RateLimits[1]
+		require.Len(t, ruleEntry.Actions, 3)
+
+		hvm := ruleEntry.Actions[2].GetHeaderValueMatch()
+		require.NotNil(t, hvm)
+		expectedKey := translator.BucketRuleDescriptorKey("gpt-4", 0, 0)
+		require.Equal(t, expectedKey, hvm.DescriptorKey)
+		require.Equal(t, expectedKey, hvm.DescriptorValue)
+		require.True(t, hvm.ExpectMatch.Value)
+		require.Len(t, hvm.Headers, 1)
+		require.Equal(t, "x-api-key", hvm.Headers[0].Name)
+		require.Equal(t, "premium", hvm.Headers[0].GetStringMatch().GetExact())
+
+		// Default bucket entry: base (2 actions) + GenericKey (1 action) = 3 actions.
+		defaultEntry := perRoute.RateLimits[2]
+		require.Len(t, defaultEntry.Actions, 3)
+		gk := defaultEntry.Actions[2].GetGenericKey()
+		require.NotNil(t, gk)
+		require.Equal(t, translator.DefaultBucketDescriptorKey("gpt-4", 1), gk.DescriptorKey)
+	})
+
+	t.Run("distinct header generates RequestHeaders action", func(t *testing.T) {
+		route := &routev3.Route{Name: "test-route"}
+		policies := []aigv1a1.QuotaPolicy{
+			{
+				Spec: aigv1a1.QuotaPolicySpec{
+					PerModelQuotas: []aigv1a1.PerModelQuota{
+						{
+							ModelName: ptr.To("gpt-4"),
+							Quota: aigv1a1.QuotaDefinition{
+								BucketRules: []aigv1a1.QuotaRule{
+									{
+										ClientSelectors: []egv1a1.RateLimitSelectCondition{
+											{
+												Headers: []egv1a1.HeaderMatch{
+													{
+														Name: "x-user-id",
+														Type: ptr.To(egv1a1.HeaderMatchDistinct),
+													},
+												},
+											},
+										},
+										Quota: aigv1a1.QuotaValue{Limit: 50, Duration: "1h"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, policies))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+
+		// 1 base + 1 bucket rule = 2 entries (no default bucket).
+		require.Len(t, perRoute.RateLimits, 2)
+
+		ruleEntry := perRoute.RateLimits[1]
+		require.Len(t, ruleEntry.Actions, 3)
+
+		rh := ruleEntry.Actions[2].GetRequestHeaders()
+		require.NotNil(t, rh)
+		require.Equal(t, "x-user-id", rh.HeaderName)
+		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 0, 0), rh.DescriptorKey)
+	})
+
+	t.Run("regex header with invert", func(t *testing.T) {
+		route := &routev3.Route{Name: "test-route"}
+		policies := []aigv1a1.QuotaPolicy{
+			{
+				Spec: aigv1a1.QuotaPolicySpec{
+					PerModelQuotas: []aigv1a1.PerModelQuota{
+						{
+							ModelName: ptr.To("claude"),
+							Quota: aigv1a1.QuotaDefinition{
+								BucketRules: []aigv1a1.QuotaRule{
+									{
+										ClientSelectors: []egv1a1.RateLimitSelectCondition{
+											{
+												Headers: []egv1a1.HeaderMatch{
+													{
+														Name:   "x-tier",
+														Type:   ptr.To(egv1a1.HeaderMatchRegularExpression),
+														Value:  ptr.To("premium|enterprise"),
+														Invert: ptr.To(true),
+													},
+												},
+											},
+										},
+										Quota: aigv1a1.QuotaValue{Limit: 5, Duration: "1m"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, policies))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+
+		ruleEntry := perRoute.RateLimits[1]
+		hvm := ruleEntry.Actions[2].GetHeaderValueMatch()
+		require.NotNil(t, hvm)
+		require.False(t, hvm.ExpectMatch.Value)
+		require.Equal(t, "premium|enterprise", hvm.Headers[0].GetStringMatch().GetSafeRegex().Regex)
+	})
+
+	t.Run("empty client selectors uses GenericKey", func(t *testing.T) {
+		route := &routev3.Route{Name: "test-route"}
+		policies := []aigv1a1.QuotaPolicy{
+			{
+				Spec: aigv1a1.QuotaPolicySpec{
+					PerModelQuotas: []aigv1a1.PerModelQuota{
+						{
+							ModelName: ptr.To("gpt-4"),
+							Quota: aigv1a1.QuotaDefinition{
+								BucketRules: []aigv1a1.QuotaRule{
+									{
+										Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, policies))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+
+		ruleEntry := perRoute.RateLimits[1]
+		gk := ruleEntry.Actions[2].GetGenericKey()
+		require.NotNil(t, gk)
+		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 0, 0), gk.DescriptorKey)
+	})
+
+	t.Run("multiple headers across selectors are flattened", func(t *testing.T) {
+		route := &routev3.Route{Name: "test-route"}
+		policies := []aigv1a1.QuotaPolicy{
+			{
+				Spec: aigv1a1.QuotaPolicySpec{
+					PerModelQuotas: []aigv1a1.PerModelQuota{
+						{
+							ModelName: ptr.To("gpt-4"),
+							Quota: aigv1a1.QuotaDefinition{
+								BucketRules: []aigv1a1.QuotaRule{
+									{
+										ClientSelectors: []egv1a1.RateLimitSelectCondition{
+											{
+												Headers: []egv1a1.HeaderMatch{
+													{Name: "x-api-key", Type: ptr.To(egv1a1.HeaderMatchExact), Value: ptr.To("premium")},
+												},
+											},
+											{
+												Headers: []egv1a1.HeaderMatch{
+													{Name: "x-org", Type: ptr.To(egv1a1.HeaderMatchExact), Value: ptr.To("acme")},
+												},
+											},
+										},
+										Quota: aigv1a1.QuotaValue{Limit: 200, Duration: "1h"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, policies))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+
+		// Bucket rule entry: 2 base + 2 header actions = 4 actions.
+		ruleEntry := perRoute.RateLimits[1]
+		require.Len(t, ruleEntry.Actions, 4)
+
+		hvm0 := ruleEntry.Actions[2].GetHeaderValueMatch()
+		require.NotNil(t, hvm0)
+		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 0, 0), hvm0.DescriptorKey)
+		require.Equal(t, "x-api-key", hvm0.Headers[0].Name)
+
+		hvm1 := ruleEntry.Actions[3].GetHeaderValueMatch()
+		require.NotNil(t, hvm1)
+		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 0, 1), hvm1.DescriptorKey)
+		require.Equal(t, "x-org", hvm1.Headers[0].Name)
+	})
+
+	t.Run("models without bucket rules do not add extra entries", func(t *testing.T) {
+		route := &routev3.Route{Name: "test-route"}
+		policies := []aigv1a1.QuotaPolicy{
+			{
+				Spec: aigv1a1.QuotaPolicySpec{
+					PerModelQuotas: []aigv1a1.PerModelQuota{
+						{
+							ModelName: ptr.To("gpt-4"),
+							Quota: aigv1a1.QuotaDefinition{
+								DefaultBucket: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, policies))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+
+		// Only the base entry, no bucket rule entries.
+		require.Len(t, perRoute.RateLimits, 1)
+	})
 }
