@@ -62,6 +62,27 @@ extProc:
   ##
   extraEnvVars: []
 
+  # Redis configuration for response caching.
+  # When redis.addr or redis.secretRef.name is set, the extProc will use Redis for caching LLM responses.
+  redis:
+    # Redis server address (e.g., "redis.redis-system.svc.cluster.local:6379").
+    # If empty and secretRef is not set, response caching is disabled.
+    addr: ""
+    # Enable TLS for Redis connections.
+    tls: false
+    # Password for Redis authentication. Leave empty if no authentication is required.
+    # For production, use secretRef instead to avoid storing passwords in values.
+    password: ""
+    # Secret reference for Redis configuration (takes precedence over direct values above).
+    # The secret should contain keys: addr (required), password (optional).
+    # Example secret creation:
+    #   kubectl create secret generic redis-cache-secret \
+    #     --from-literal=addr=redis.redis-system.svc.cluster.local:6379 \
+    #     --from-literal=password=your-redis-password
+    secretRef:
+      # Name of the secret containing Redis configuration.
+      name: ""
+
 controller:
   logLevel: info
   nameOverride: ""
@@ -90,7 +111,6 @@ controller:
   # Set to "" to disable the default.
   # Example: "x-forwarded-proto:url.scheme,x-tenant-id:tenant.id"
   logRequestHeaderAttributes: null
-
 
   # -- Service Account --
   serviceAccount:
@@ -159,21 +179,21 @@ controller:
   service:
     type: ClusterIP
     ports:
-      - name: mutating-webhook
-        protocol: TCP
-        port: 9443
-        appProtocol: http
-        targetPort: 9443
-      - name: grpc
-        protocol: TCP
-        port: 1063
-        appProtocol: grpc
-        targetPort: 1063
-      - name: http-metrics
-        protocol: TCP
-        appProtocol: http
-        port: 9090
-        targetPort: 9090
+    - name: mutating-webhook
+      protocol: TCP
+      port: 9443
+      appProtocol: http
+      targetPort: 9443
+    - name: grpc
+      protocol: TCP
+      port: 1063
+      appProtocol: grpc
+      targetPort: 1063
+    - name: http-metrics
+      protocol: TCP
+      appProtocol: http
+      port: 9090
+      targetPort: 9090
 
   mutatingWebhook:
     # The secret that contains the CA certificate and the server certificate for the webhook server.
@@ -246,4 +266,4 @@ controller:
 # Configuration for the Envoy Gateway component that AI Gateway relies on to program Envoy.
 envoyGateway:
   # The namespace where the Envoy Gateway controller is installed.
-  namespace : envoy-gateway-system
+  namespace: envoy-gateway-system

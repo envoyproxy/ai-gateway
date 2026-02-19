@@ -195,6 +195,16 @@ type AIGatewayRouteSpec struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=36
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
+
+	// ResponseCache configures response caching for this route.
+	// When enabled, responses are cached in Redis and returned for identical requests,
+	// reducing latency and costs for repeated LLM calls.
+	//
+	// Requires Redis to be configured globally via extproc flags (--redisAddr).
+	// If Redis is not configured, this setting is ignored.
+	//
+	// +optional
+	ResponseCache *ResponseCacheConfig `json:"responseCache,omitempty"`
 }
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
@@ -465,6 +475,45 @@ type HTTPBodyMutation struct {
 	// +listType=set
 	// +kubebuilder:validation:MaxItems=16
 	Remove []string `json:"remove,omitempty"`
+}
+
+// ResponseCacheConfig configures response caching for an AIGatewayRoute.
+type ResponseCacheConfig struct {
+	// Enabled controls whether response caching is active for this route.
+	// When true, responses are cached and returned for identical requests.
+	//
+	// Default is false.
+	//
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// TTL is the time-to-live for cached responses.
+	// After this duration, cached responses expire and new requests will be forwarded to the backend.
+	//
+	// Default is 1 hour.
+	//
+	// +optional
+	TTL *metav1.Duration `json:"ttl,omitempty"`
+
+	// RespectCacheControl controls whether HTTP Cache-Control headers are honored.
+	// When true (default), request and response Cache-Control headers can override caching behavior:
+	//
+	// Request headers:
+	//   - Cache-Control: no-cache - Bypass cache lookup, but still cache the response
+	//   - Cache-Control: no-store - Bypass cache entirely (no lookup, no store)
+	//
+	// Response headers:
+	//   - Cache-Control: no-store - Do not cache this response
+	//   - Cache-Control: no-cache - Do not cache this response (treated as no-store)
+	//   - Cache-Control: private - Do not cache (shared cache should not store)
+	//   - Cache-Control: max-age=N - Use N seconds as TTL instead of configured default
+	//
+	// When false, Cache-Control headers are ignored and caching behavior is determined
+	// solely by the Enabled and TTL fields.
+	//
+	// +optional
+	// +kubebuilder:default=true
+	RespectCacheControl *bool `json:"respectCacheControl,omitempty"`
 }
 
 // HTTPBodyField represents a JSON field name and value for body mutation

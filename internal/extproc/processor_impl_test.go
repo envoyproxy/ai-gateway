@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -22,6 +24,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/cache"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
@@ -1344,4 +1347,782 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 		require.NotContains(t, retryResult, "model", "OpenAI 'model' field should NOT be present on retry")
 		require.Contains(t, retryResult, "messages", "Bedrock 'messages' field should be present on retry")
 	})
+}
+
+func TestNewFactoryWithCache(t *testing.T) {
+	cfg := &filterapi.RuntimeConfig{
+		ResponseCache: &filterapi.ResponseCacheConfig{
+			Enabled: true,
+		},
+	}
+	headers := map[string]string{"foo": "bar"}
+	mockCache := &mockCacheImpl{}
+
+	t.Run("router with cache", func(t *testing.T) {
+		t.Parallel()
+
+		factory := NewFactoryWithCache(nil, tracingapi.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{}, mockCache)
+		proc, err := factory(cfg, headers, slog.Default(), false, false)
+		require.NoError(t, err)
+		require.IsType(t, &chatCompletionProcessorRouterFilter{}, proc)
+
+		router := proc.(*chatCompletionProcessorRouterFilter)
+		require.Equal(t, cfg, router.config)
+		require.Equal(t, mockCache, router.cache)
+	})
+
+	t.Run("upstream without cache", func(t *testing.T) {
+		t.Parallel()
+
+		factory := NewFactoryWithCache(&mockMetricsFactory{}, tracingapi.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{}, mockCache)
+		proc, err := factory(cfg, headers, slog.Default(), true, false)
+		require.NoError(t, err)
+		require.IsType(t, &chatCompletionProcessorUpstreamFilter{}, proc)
+	})
+}
+
+func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody_CacheHit(t *testing.T) {
+	cachedResponse := []byte(`{"id":"cached","choices":[{"message":{"content":"cached response"}}]}`)
+	mockCache := &mockCacheImpl{
+		getResponse: cachedResponse,
+		getFound:    true,
+	}
+
+	headers := map[string]string{":path": "/v1/chat/completions"}
+	p := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{
+			ResponseCache: &filterapi.ResponseCacheConfig{
+				Enabled: true,
+			},
+		},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		cache:          mockCache,
+	}
+
+	resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Should return an immediate response with cached data
+	ir, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+	require.True(t, ok, "expected ImmediateResponse for cache hit")
+	require.Equal(t, cachedResponse, ir.ImmediateResponse.Body)
+	require.True(t, p.cacheHit)
+}
+
+func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody_CacheMiss(t *testing.T) {
+	mockCache := &mockCacheImpl{
+		getFound: false,
+	}
+
+	headers := map[string]string{":path": "/v1/chat/completions"}
+	p := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{
+			ResponseCache: &filterapi.ResponseCacheConfig{
+				Enabled: true,
+			},
+		},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		cache:          mockCache,
+	}
+
+	resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Should return a normal RequestBody response (not immediate)
+	_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	require.True(t, ok, "expected RequestBody response for cache miss")
+	require.False(t, p.cacheHit)
+	require.NotEmpty(t, p.cacheKey)
+}
+
+func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody_CacheDisabled(t *testing.T) {
+	mockCache := &mockCacheImpl{
+		getResponse: []byte(`{"cached": true}`),
+		getFound:    true,
+	}
+
+	headers := map[string]string{":path": "/v1/chat/completions"}
+	p := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{
+			ResponseCache: &filterapi.ResponseCacheConfig{
+				Enabled: false, // Cache disabled
+			},
+		},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		cache:          mockCache,
+	}
+
+	resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Should return a normal RequestBody response even though cache has data
+	_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	require.True(t, ok, "expected RequestBody response when cache is disabled")
+	require.False(t, p.cacheHit)
+	require.Empty(t, p.cacheKey)
+}
+
+func Test_chatCompletionProcessorRouterFilter_isCacheEnabled(t *testing.T) {
+	mockCache := &mockCacheImpl{}
+
+	t.Run("enabled", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{Enabled: true},
+			},
+			cache: mockCache,
+		}
+		require.True(t, p.isCacheEnabled())
+	})
+
+	t.Run("disabled - no cache", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{Enabled: true},
+			},
+			cache: nil,
+		}
+		require.False(t, p.isCacheEnabled())
+	})
+
+	t.Run("disabled - no config", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{},
+			cache:  mockCache,
+		}
+		require.False(t, p.isCacheEnabled())
+	})
+
+	t.Run("disabled - enabled=false", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{Enabled: false},
+			},
+			cache: mockCache,
+		}
+		require.False(t, p.isCacheEnabled())
+	})
+}
+
+func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody_CacheControl(t *testing.T) {
+	cachedResponse := []byte(`{"id":"cached","choices":[{"message":{"content":"cached response"}}]}`)
+
+	t.Run("request no-store bypasses cache entirely", func(t *testing.T) {
+		mockCache := &mockCacheImpl{
+			getResponse: cachedResponse,
+			getFound:    true,
+		}
+
+		headers := map[string]string{
+			":path":         "/v1/chat/completions",
+			"cache-control": "no-store",
+		}
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled:             true,
+					RespectCacheControl: true,
+				},
+			},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+			cache:          mockCache,
+		}
+
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should NOT return cached response (bypass lookup)
+		_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+		require.True(t, ok, "expected RequestBody response when no-store bypasses cache")
+		require.False(t, p.cacheHit)
+		require.True(t, p.skipCacheStore, "skipCacheStore should be true for no-store")
+	})
+
+	t.Run("request no-cache skips lookup but allows store", func(t *testing.T) {
+		mockCache := &mockCacheImpl{
+			getResponse: cachedResponse,
+			getFound:    true,
+		}
+
+		headers := map[string]string{
+			":path":         "/v1/chat/completions",
+			"cache-control": "no-cache",
+		}
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled:             true,
+					RespectCacheControl: true,
+				},
+			},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+			cache:          mockCache,
+		}
+
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should NOT return cached response (skip lookup)
+		_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+		require.True(t, ok, "expected RequestBody response when no-cache skips lookup")
+		require.False(t, p.cacheHit)
+		require.False(t, p.skipCacheStore, "skipCacheStore should be false for no-cache (still allow store)")
+	})
+
+	t.Run("cache-control ignored when RespectCacheControl is false", func(t *testing.T) {
+		mockCache := &mockCacheImpl{
+			getResponse: cachedResponse,
+			getFound:    true,
+		}
+
+		headers := map[string]string{
+			":path":         "/v1/chat/completions",
+			"cache-control": "no-store",
+		}
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled:             true,
+					RespectCacheControl: false, // Ignore cache-control headers
+				},
+			},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+			cache:          mockCache,
+		}
+
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Should return cached response (cache-control ignored)
+		ir, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+		require.True(t, ok, "expected ImmediateResponse when cache-control is ignored")
+		require.Equal(t, cachedResponse, ir.ImmediateResponse.Body)
+		require.True(t, p.cacheHit)
+		require.False(t, p.skipCacheStore)
+	})
+}
+
+func Test_chatCompletionProcessorRouterFilter_shouldRespectCacheControl(t *testing.T) {
+	t.Run("true when enabled", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled:             true,
+					RespectCacheControl: true,
+				},
+			},
+		}
+		require.True(t, p.shouldRespectCacheControl())
+	})
+
+	t.Run("false when disabled", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled:             true,
+					RespectCacheControl: false,
+				},
+			},
+		}
+		require.False(t, p.shouldRespectCacheControl())
+	})
+
+	t.Run("false when no config", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{},
+		}
+		require.False(t, p.shouldRespectCacheControl())
+	})
+}
+
+func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody_CacheLookupError(t *testing.T) {
+	// Test that cache lookup errors fail open - request proceeds to backend
+	mockCache := &mockCacheImpl{
+		getErr: errors.New("redis connection refused"),
+	}
+
+	headers := map[string]string{":path": "/v1/chat/completions"}
+	p := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{
+			ResponseCache: &filterapi.ResponseCacheConfig{
+				Enabled: true,
+			},
+		},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		cache:          mockCache,
+	}
+
+	resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+	require.NoError(t, err, "cache lookup error should not cause request failure")
+	require.NotNil(t, resp)
+
+	// Should return a normal RequestBody response (proceed to backend, not immediate response)
+	_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	require.True(t, ok, "expected RequestBody response when cache lookup fails - should fail open")
+	require.False(t, p.cacheHit, "should not be a cache hit when lookup fails")
+	require.NotEmpty(t, p.cacheKey, "cache key should still be computed")
+}
+
+func Test_upstreamProcessor_ProcessResponseBody_CacheStoreError(t *testing.T) {
+	// Test that cache store errors fail open - response is still returned to client
+	// The store happens asynchronously, so we verify:
+	// 1. Response is returned successfully
+	// 2. Store was attempted (setCalled will be true after goroutine runs)
+
+	mockCache := &mockCacheImpl{
+		setErr: errors.New("redis connection refused"),
+	}
+
+	inBody := &extprocv3.HttpBody{Body: []byte(`{"id":"test","choices":[]}`), EndOfStream: true}
+	mm := &mockMetrics{}
+	mt := &mockTranslator{t: t, expResponseBody: inBody}
+
+	parent := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{
+			ResponseCache: &filterapi.ResponseCacheConfig{
+				Enabled: true,
+				TTL:     time.Hour,
+			},
+		},
+		cacheKey:       "test-cache-key",
+		cacheHit:       false,
+		skipCacheStore: false,
+		logger:         slog.Default(),
+		cache:          mockCache,
+	}
+
+	p := &chatCompletionProcessorUpstreamFilter{
+		translator:      mt,
+		metrics:         mm,
+		responseHeaders: map[string]string{":status": "200"},
+		parent:          parent,
+	}
+
+	// Process response body - should succeed even though cache store will fail
+	resp, err := p.ProcessResponseBody(t.Context(), inBody)
+	require.NoError(t, err, "cache store error should not cause response failure")
+	require.NotNil(t, resp)
+
+	// Verify response is returned correctly
+	_, ok := resp.Response.(*extprocv3.ProcessingResponse_ResponseBody)
+	require.True(t, ok, "expected ResponseBody response")
+
+	// Give the async goroutine time to run
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify store was attempted (the error is logged but doesn't affect the response)
+	require.True(t, mockCache.SetCalled(), "cache store should have been attempted")
+	require.Equal(t, "test-cache-key", mockCache.SetKey())
+}
+
+func Test_upstreamProcessor_ProcessResponseBody_CacheMissHeader(t *testing.T) {
+	// Test that x-aigw-cache: miss header is added when caching is enabled and it's not a cache hit
+	mockCache := &mockCacheImpl{}
+
+	inBody := &extprocv3.HttpBody{Body: []byte(`{"id":"test","choices":[]}`), EndOfStream: true}
+	mm := &mockMetrics{}
+	mt := &mockTranslator{t: t, expResponseBody: inBody}
+
+	parent := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{
+			ResponseCache: &filterapi.ResponseCacheConfig{
+				Enabled: true,
+				TTL:     time.Hour,
+			},
+		},
+		cacheKey:       "test-cache-key",
+		cacheHit:       false,
+		skipCacheStore: false,
+		logger:         slog.Default(),
+		cache:          mockCache,
+	}
+
+	p := &chatCompletionProcessorUpstreamFilter{
+		translator:      mt,
+		metrics:         mm,
+		responseHeaders: map[string]string{":status": "200"},
+		parent:          parent,
+	}
+
+	resp, err := p.ProcessResponseBody(t.Context(), inBody)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Verify x-aigw-cache: miss header is present
+	respBody := resp.Response.(*extprocv3.ProcessingResponse_ResponseBody)
+	headerMutation := respBody.ResponseBody.Response.HeaderMutation
+	require.NotNil(t, headerMutation)
+
+	found := false
+	for _, h := range headerMutation.SetHeaders {
+		if h.Header.Key == "x-aigw-cache" {
+			require.Equal(t, []byte("miss"), h.Header.RawValue)
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "x-aigw-cache: miss header should be present")
+}
+
+func Test_upstreamProcessor_ProcessResponseBody_ResponseCacheControl(t *testing.T) {
+	t.Run("no-store skips cache store", func(t *testing.T) {
+		mockCache := &mockCacheImpl{}
+		inBody := &extprocv3.HttpBody{Body: []byte(`{"id":"test"}`), EndOfStream: true}
+		mm := &mockMetrics{}
+		mt := &mockTranslator{t: t, expResponseBody: inBody}
+
+		parent := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled:             true,
+					TTL:                 time.Hour,
+					RespectCacheControl: true,
+				},
+			},
+			cacheKey:       "test-key",
+			cacheHit:       false,
+			skipCacheStore: false,
+			logger:         slog.Default(),
+			cache:          mockCache,
+		}
+
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200", "cache-control": "no-store"},
+			parent:          parent,
+		}
+
+		_, err := p.ProcessResponseBody(t.Context(), inBody)
+		require.NoError(t, err)
+
+		// Give async goroutine time to run (if it were to run)
+		time.Sleep(50 * time.Millisecond)
+
+		// Cache store should NOT have been called due to no-store
+		require.False(t, mockCache.SetCalled(), "cache store should be skipped for no-store")
+	})
+
+	t.Run("private skips cache store", func(t *testing.T) {
+		mockCache := &mockCacheImpl{}
+		inBody := &extprocv3.HttpBody{Body: []byte(`{"id":"test"}`), EndOfStream: true}
+		mm := &mockMetrics{}
+		mt := &mockTranslator{t: t, expResponseBody: inBody}
+
+		parent := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled:             true,
+					TTL:                 time.Hour,
+					RespectCacheControl: true,
+				},
+			},
+			cacheKey:       "test-key",
+			cacheHit:       false,
+			skipCacheStore: false,
+			logger:         slog.Default(),
+			cache:          mockCache,
+		}
+
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200", "cache-control": "private"},
+			parent:          parent,
+		}
+
+		_, err := p.ProcessResponseBody(t.Context(), inBody)
+		require.NoError(t, err)
+
+		time.Sleep(50 * time.Millisecond)
+		require.False(t, mockCache.SetCalled(), "cache store should be skipped for private")
+	})
+
+	t.Run("max-age overrides configured TTL", func(t *testing.T) {
+		mockCache := &mockCacheImpl{}
+		inBody := &extprocv3.HttpBody{Body: []byte(`{"id":"test"}`), EndOfStream: true}
+		mm := &mockMetrics{}
+		mt := &mockTranslator{t: t, expResponseBody: inBody}
+
+		parent := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled:             true,
+					TTL:                 time.Hour, // Configured TTL
+					RespectCacheControl: true,
+				},
+			},
+			cacheKey:       "test-key",
+			cacheHit:       false,
+			skipCacheStore: false,
+			logger:         slog.Default(),
+			cache:          mockCache,
+		}
+
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200", "cache-control": "max-age=300"}, // 5 minutes
+			parent:          parent,
+		}
+
+		_, err := p.ProcessResponseBody(t.Context(), inBody)
+		require.NoError(t, err)
+
+		time.Sleep(50 * time.Millisecond)
+		require.True(t, mockCache.SetCalled(), "cache store should be called")
+		// Note: We can't easily verify the TTL used since it's passed to the async goroutine
+	})
+
+	t.Run("cache-control ignored when RespectCacheControl is false", func(t *testing.T) {
+		mockCache := &mockCacheImpl{}
+		inBody := &extprocv3.HttpBody{Body: []byte(`{"id":"test"}`), EndOfStream: true}
+		mm := &mockMetrics{}
+		mt := &mockTranslator{t: t, expResponseBody: inBody}
+
+		parent := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled:             true,
+					TTL:                 time.Hour,
+					RespectCacheControl: false, // Ignore Cache-Control
+				},
+			},
+			cacheKey:       "test-key",
+			cacheHit:       false,
+			skipCacheStore: false,
+			logger:         slog.Default(),
+			cache:          mockCache,
+		}
+
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200", "cache-control": "no-store"}, // Should be ignored
+			parent:          parent,
+		}
+
+		_, err := p.ProcessResponseBody(t.Context(), inBody)
+		require.NoError(t, err)
+
+		time.Sleep(50 * time.Millisecond)
+		require.True(t, mockCache.SetCalled(), "cache store should be called when RespectCacheControl is false")
+	})
+}
+
+func Test_chatCompletionProcessorRouterFilter_getCacheTTL(t *testing.T) {
+	t.Run("returns configured TTL", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled: true,
+					TTL:     30 * time.Minute,
+				},
+			},
+		}
+		require.Equal(t, 30*time.Minute, p.getCacheTTL())
+	})
+
+	t.Run("returns default TTL when not configured", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				ResponseCache: &filterapi.ResponseCacheConfig{
+					Enabled: true,
+					TTL:     0, // Not configured
+				},
+			},
+		}
+		require.Equal(t, cache.DefaultTTL, p.getCacheTTL())
+	})
+
+	t.Run("returns default TTL when ResponseCache is nil", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{},
+		}
+		require.Equal(t, cache.DefaultTTL, p.getCacheTTL())
+	})
+}
+
+func Test_upstreamProcessor_ProcessResponseBody_BuffersResponse(t *testing.T) {
+	// Test that response body is buffered for caching
+	mockCache := &mockCacheImpl{}
+	responseBody := []byte(`{"id":"test","choices":[{"message":{"content":"hello"}}]}`)
+	inBody := &extprocv3.HttpBody{Body: responseBody, EndOfStream: true}
+	mm := &mockMetrics{}
+	mt := &mockTranslator{t: t, expResponseBody: inBody}
+
+	parent := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{
+			ResponseCache: &filterapi.ResponseCacheConfig{
+				Enabled: true,
+				TTL:     time.Hour,
+			},
+		},
+		cacheKey:       "test-key",
+		cacheHit:       false,
+		skipCacheStore: false,
+		logger:         slog.Default(),
+		cache:          mockCache,
+	}
+
+	p := &chatCompletionProcessorUpstreamFilter{
+		translator:      mt,
+		metrics:         mm,
+		responseHeaders: map[string]string{":status": "200"},
+		parent:          parent,
+	}
+
+	_, err := p.ProcessResponseBody(t.Context(), inBody)
+	require.NoError(t, err)
+
+	// Give async goroutine time to run
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify cache was called with the response body
+	require.True(t, mockCache.SetCalled())
+	require.Equal(t, "test-key", mockCache.SetKey())
+	require.Equal(t, responseBody, mockCache.SetValue())
+}
+
+func Test_upstreamProcessor_ProcessResponseBody_SkipsCacheOnCacheHit(t *testing.T) {
+	// Test that cache store is skipped when this was a cache hit (shouldn't re-cache)
+	mockCache := &mockCacheImpl{}
+	inBody := &extprocv3.HttpBody{Body: []byte(`{"id":"test"}`), EndOfStream: true}
+	mm := &mockMetrics{}
+	mt := &mockTranslator{t: t, expResponseBody: inBody}
+
+	parent := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{
+			ResponseCache: &filterapi.ResponseCacheConfig{
+				Enabled: true,
+				TTL:     time.Hour,
+			},
+		},
+		cacheKey:       "test-key",
+		cacheHit:       true, // This was a cache hit
+		skipCacheStore: false,
+		logger:         slog.Default(),
+		cache:          mockCache,
+	}
+
+	p := &chatCompletionProcessorUpstreamFilter{
+		translator:      mt,
+		metrics:         mm,
+		responseHeaders: map[string]string{":status": "200"},
+		parent:          parent,
+	}
+
+	_, err := p.ProcessResponseBody(t.Context(), inBody)
+	require.NoError(t, err)
+
+	time.Sleep(50 * time.Millisecond)
+	require.False(t, mockCache.SetCalled(), "cache store should be skipped on cache hit")
+}
+
+func Test_upstreamProcessor_ProcessResponseBody_SkipsCacheWhenSkipCacheStoreSet(t *testing.T) {
+	// Test that cache store is skipped when skipCacheStore flag is set (from request no-store)
+	mockCache := &mockCacheImpl{}
+	inBody := &extprocv3.HttpBody{Body: []byte(`{"id":"test"}`), EndOfStream: true}
+	mm := &mockMetrics{}
+	mt := &mockTranslator{t: t, expResponseBody: inBody}
+
+	parent := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{
+			ResponseCache: &filterapi.ResponseCacheConfig{
+				Enabled: true,
+				TTL:     time.Hour,
+			},
+		},
+		cacheKey:       "test-key",
+		cacheHit:       false,
+		skipCacheStore: true, // Set by request Cache-Control: no-store
+		logger:         slog.Default(),
+		cache:          mockCache,
+	}
+
+	p := &chatCompletionProcessorUpstreamFilter{
+		translator:      mt,
+		metrics:         mm,
+		responseHeaders: map[string]string{":status": "200"},
+		parent:          parent,
+	}
+
+	_, err := p.ProcessResponseBody(t.Context(), inBody)
+	require.NoError(t, err)
+
+	time.Sleep(50 * time.Millisecond)
+	require.False(t, mockCache.SetCalled(), "cache store should be skipped when skipCacheStore is set")
+}
+
+// mockCacheImpl is a mock implementation of cache.Cache for testing.
+// It is thread-safe to support async cache operations.
+type mockCacheImpl struct {
+	mu          sync.Mutex
+	getResponse []byte
+	getFound    bool
+	getErr      error
+	setErr      error
+	setCalled   bool
+	setKey      string
+	setValue    []byte
+}
+
+func (m *mockCacheImpl) Get(_ context.Context, _ string) ([]byte, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.getResponse, m.getFound, m.getErr
+}
+
+func (m *mockCacheImpl) Set(_ context.Context, key string, value []byte, _ time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.setCalled = true
+	m.setKey = key
+	m.setValue = value
+	return m.setErr
+}
+
+func (m *mockCacheImpl) Close() error {
+	return nil
+}
+
+// SetCalled returns whether Set was called (thread-safe).
+func (m *mockCacheImpl) SetCalled() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.setCalled
+}
+
+// SetKey returns the key passed to Set (thread-safe).
+func (m *mockCacheImpl) SetKey() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.setKey
+}
+
+// SetValue returns the value passed to Set (thread-safe).
+func (m *mockCacheImpl) SetValue() []byte {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.setValue
 }

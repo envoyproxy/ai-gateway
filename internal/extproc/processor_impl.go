@@ -6,11 +6,13 @@
 package extproc
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
 	"strconv"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -20,6 +22,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
+	"github.com/envoyproxy/ai-gateway/internal/cache"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
@@ -64,6 +67,23 @@ func NewFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.
 	}
 }
 
+// NewFactoryWithCache creates a ProcessorFactory with caching support.
+// This is similar to NewFactory but accepts a cache instance for response caching.
+func NewFactoryWithCache[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]](
+	f metrics.Factory,
+	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
+	_ EndpointSpecT,
+	responseCache cache.Cache,
+) ProcessorFactory {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool, enableRedaction bool) (Processor, error) {
+		logger = logger.With("isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
+		if !isUpstreamFilter {
+			return newRouterProcessorWithCache[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer, responseCache, enableRedaction), nil
+		}
+		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](requestHeaders, f.NewMetrics(), logger), nil
+	}
+}
+
 type (
 	// routerProcessor implements [Processor] for the router filter for the standard LLM endpoints.
 	routerProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
@@ -98,6 +118,15 @@ type (
 		stream              bool
 		debugLogEnabled     bool
 		enableRedaction     bool
+		// cache is the response cache instance. May be nil if caching is disabled.
+		cache cache.Cache
+		// cacheKey is the computed cache key for this request.
+		cacheKey string
+		// cacheHit indicates if this request was served from cache.
+		cacheHit bool
+		// skipCacheStore indicates that the response should not be stored in cache.
+		// Set when request Cache-Control: no-store is present.
+		skipCacheStore bool
 	}
 	// upstreamProcessor implements [Processor] for the upstream filter for the standard LLM endpoints.
 	//
@@ -119,6 +148,8 @@ type (
 		costs metrics.TokenUsage
 		// metrics tracking.
 		metrics metrics.Metrics
+		// responseBuffer accumulates response body chunks for caching streaming responses.
+		responseBuffer bytes.Buffer
 	}
 )
 
@@ -138,6 +169,27 @@ func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.
 		forceBodyMutation: false,
 		debugLogEnabled:   debugLogEnabled,
 		enableRedaction:   enableRedaction,
+	}
+}
+
+func newRouterProcessorWithCache[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]](
+	config *filterapi.RuntimeConfig,
+	requestHeaders map[string]string,
+	logger *slog.Logger,
+	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
+	responseCache cache.Cache,
+	enableRedaction bool,
+) *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT] {
+	debugLogEnabled := logger.Enabled(context.Background(), slog.LevelDebug)
+	return &routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]{
+		config:            config,
+		requestHeaders:    requestHeaders,
+		logger:            logger,
+		tracer:            tracer,
+		forceBodyMutation: false,
+		debugLogEnabled:   debugLogEnabled,
+		enableRedaction:   enableRedaction,
+		cache:             responseCache,
 	}
 }
 
@@ -240,6 +292,39 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 
 	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = originalModel
 
+	// Check cache if enabled, optionally respecting HTTP Cache-Control headers
+	if r.isCacheEnabled() {
+		r.cacheKey = cache.HashBody(rawBody.Body)
+		skipLookup := false
+
+		// Check request Cache-Control headers if configured to respect them
+		if r.shouldRespectCacheControl() {
+			reqCC := cache.ParseCacheControl(r.requestHeaders["cache-control"])
+
+			// If request has no-store, skip cache entirely (no lookup, no store)
+			if reqCC.NoStore {
+				r.skipCacheStore = true
+				skipLookup = true
+				r.logger.Debug("cache bypassed due to request Cache-Control: no-store")
+			} else if reqCC.NoCache {
+				// If request has no-cache, skip lookup but still cache the response
+				skipLookup = true
+				r.logger.Debug("cache lookup skipped due to request Cache-Control: no-cache")
+			}
+		}
+
+		// Normal cache lookup (unless skipped by Cache-Control)
+		if !skipLookup {
+			if cached, found, cacheErr := r.cache.Get(ctx, r.cacheKey); cacheErr != nil {
+				r.logger.Warn("cache lookup failed", slog.String("error", cacheErr.Error()))
+			} else if found {
+				r.cacheHit = true
+				r.logger.Debug("cache hit", slog.String("cache_key", r.cacheKey))
+				return r.buildCachedResponse(cached)
+			}
+		}
+	}
+
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the original model to the request header with the key `x-ai-eg-model`.
@@ -281,6 +366,42 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 					HeaderMutation:  headerMutation,
 					ClearRouteCache: true,
 				},
+			},
+		},
+	}, nil
+}
+
+// isCacheEnabled returns true if response caching is enabled for this request.
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) isCacheEnabled() bool {
+	return r.cache != nil && r.config.ResponseCache != nil && r.config.ResponseCache.Enabled
+}
+
+// shouldRespectCacheControl returns true if HTTP Cache-Control headers should be honored.
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) shouldRespectCacheControl() bool {
+	return r.config.ResponseCache != nil && r.config.ResponseCache.RespectCacheControl
+}
+
+// getCacheTTL returns the TTL for cached responses.
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) getCacheTTL() time.Duration {
+	if r.config.ResponseCache != nil && r.config.ResponseCache.TTL > 0 {
+		return r.config.ResponseCache.TTL
+	}
+	return cache.DefaultTTL
+}
+
+// buildCachedResponse creates an immediate response from cached data.
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) buildCachedResponse(cachedBody []byte) (*extprocv3.ProcessingResponse, error) {
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: &extprocv3.ImmediateResponse{
+				Status: &typev3.HttpStatus{Code: typev3.StatusCode_OK},
+				Headers: &extprocv3.HeaderMutation{
+					SetHeaders: []*corev3.HeaderValueOption{
+						{Header: &corev3.HeaderValue{Key: "content-type", RawValue: []byte("application/json")}},
+						{Header: &corev3.HeaderValue{Key: "x-aigw-cache", RawValue: []byte("hit")}},
+					},
+				},
+				Body: cachedBody,
 			},
 		},
 	}, nil
@@ -481,6 +602,16 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	// Remove content-encoding header if original body encoded but was mutated in the processor.
 	headerMutation = removeContentEncodingIfNeeded(headerMutation, bodyMutation, decodingResult.isEncoded)
 
+	// Add x-aigw-cache: miss header if caching is enabled and this is not a cache hit
+	if u.parent.isCacheEnabled() && !u.parent.cacheHit {
+		if headerMutation == nil {
+			headerMutation = &extprocv3.HeaderMutation{}
+		}
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+			Header: &corev3.HeaderValue{Key: "x-aigw-cache", RawValue: []byte("miss")},
+		})
+	}
+
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseBody{
 			ResponseBody: &extprocv3.BodyResponse{
@@ -490,6 +621,15 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 				},
 			},
 		},
+	}
+
+	// Buffer response body for caching if enabled
+	if u.parent.isCacheEnabled() && !u.parent.cacheHit {
+		if mutatedBody := bodyMutation.GetBody(); mutatedBody != nil {
+			u.responseBuffer.Write(mutatedBody)
+		} else {
+			u.responseBuffer.Write(body.Body)
+		}
 	}
 
 	// Translator reports the latest cumulative token usage which we use to override existing costs.
@@ -527,7 +667,67 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	if body.EndOfStream && u.parent.span != nil {
 		u.parent.span.EndSpan()
 	}
+
+	// Store response in cache at end of stream
+	if body.EndOfStream && u.parent.isCacheEnabled() && !u.parent.cacheHit && u.parent.cacheKey != "" && !u.parent.skipCacheStore {
+		ttl := u.parent.getCacheTTL()
+		shouldStore := true
+
+		// Check response Cache-Control headers if configured to respect them
+		if u.parent.shouldRespectCacheControl() {
+			respCC := cache.ParseCacheControl(u.responseHeaders["cache-control"])
+			if respCC.ShouldSkipCacheStore() {
+				shouldStore = false
+				u.parent.logger.Debug("cache store skipped due to response Cache-Control",
+					slog.Bool("no-store", respCC.NoStore),
+					slog.Bool("no-cache", respCC.NoCache),
+					slog.Bool("private", respCC.Private))
+			} else if respCC.MaxAge != nil {
+				// Use max-age from response if present
+				ttl = *respCC.MaxAge
+				u.parent.logger.Debug("using max-age from response Cache-Control",
+					slog.Duration("ttl", ttl))
+			}
+		}
+
+		if shouldStore {
+			u.storeInCacheWithTTL(ctx, ttl)
+		}
+	}
+
 	return resp, nil
+}
+
+// storeInCacheWithTTL stores the buffered response in the cache asynchronously with the specified TTL.
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) storeInCacheWithTTL(_ context.Context, ttl time.Duration) {
+	if u.responseBuffer.Len() == 0 {
+		return
+	}
+
+	// Make a copy of the buffer since we're storing asynchronously
+	responseData := make([]byte, u.responseBuffer.Len())
+	copy(responseData, u.responseBuffer.Bytes())
+	cacheKey := u.parent.cacheKey
+	cacheInstance := u.parent.cache
+	logger := u.parent.logger
+
+	// Store asynchronously to not block the response
+	go func() {
+		// Use a background context since the request context may be cancelled
+		storeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := cacheInstance.Set(storeCtx, cacheKey, responseData, ttl); err != nil {
+			logger.Warn("failed to store response in cache",
+				slog.String("cache_key", cacheKey),
+				slog.String("error", err.Error()))
+		} else {
+			logger.Debug("stored response in cache",
+				slog.String("cache_key", cacheKey),
+				slog.Int("size", len(responseData)),
+				slog.Duration("ttl", ttl))
+		}
+	}()
 }
 
 // SetBackend implements [Processor.SetBackend].

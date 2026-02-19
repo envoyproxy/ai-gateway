@@ -63,6 +63,13 @@ type gatewayMutator struct {
 	// Whether to run the extProc container as a sidecar (true) as a normal container (false).
 	// This is essentially a workaround for old k8s versions, and we can remove this in the future.
 	extProcAsSideCar bool
+
+	// extProcRedisAddr is the Redis server address for response caching.
+	extProcRedisAddr string
+	// extProcRedisTLS enables TLS for Redis connections.
+	extProcRedisTLS bool
+	// extProcRedisPassword is the password for Redis authentication.
+	extProcRedisPassword string
 }
 
 func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
@@ -70,6 +77,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 	udsPath string, requestHeaderAttributes, spanRequestHeaderAttributes, metricsRequestHeaderAttributes, logRequestHeaderAttributes *string, rootPrefix, endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets string, extProcMaxRecvMsgSize int,
 	extProcAsSideCar bool,
 	mcpSessionEncryptionSeed string, mcpSessionEncryptionIterations int, mcpFallbackSessionEncryptionSeed string, mcpFallbackSessionEncryptionIterations int,
+	extProcRedisAddr string, extProcRedisTLS bool, extProcRedisPassword string,
 ) *gatewayMutator {
 	var parsedEnvVars []corev1.EnvVar
 	if extProcExtraEnvVars != "" {
@@ -114,6 +122,9 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 		mcpSessionEncryptionIterations:         mcpSessionEncryptionIterations,
 		mcpFallbackSessionEncryptionSeed:       mcpFallbackSessionEncryptionSeed,
 		mcpFallbackSessionEncryptionIterations: mcpFallbackSessionEncryptionIterations,
+		extProcRedisAddr:                       extProcRedisAddr,
+		extProcRedisTLS:                        extProcRedisTLS,
+		extProcRedisPassword:                   extProcRedisPassword,
 	}
 }
 
@@ -182,6 +193,17 @@ func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcAd
 
 	if g.extProcEnableRedaction {
 		args = append(args, "-enableRedaction")
+	}
+
+	// Add Redis configuration for response caching if configured.
+	if g.extProcRedisAddr != "" {
+		args = append(args, "-redisAddr", g.extProcRedisAddr)
+		if g.extProcRedisTLS {
+			args = append(args, "-redisTLS")
+		}
+		if g.extProcRedisPassword != "" {
+			args = append(args, "-redisPassword", g.extProcRedisPassword)
+		}
 	}
 
 	return args

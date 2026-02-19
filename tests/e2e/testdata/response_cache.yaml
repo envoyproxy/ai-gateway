@@ -1,0 +1,139 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This manifest tests response caching functionality with Redis.
+# It requires Redis to be deployed and the AI Gateway controller to be configured
+# with --extProcRedisAddr pointing to the Redis service.
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: response-cache-test
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: response-cache-test
+  namespace: default
+spec:
+  gatewayClassName: response-cache-test
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: response-cache-test
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: response-cache-test
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          # Clear the default memory/cpu requirements for local tests.
+          resources: {}
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: response-cache-test
+  namespace: default
+spec:
+  parentRefs:
+    - name: response-cache-test
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  # Enable response caching
+  responseCache:
+    enabled: true
+    ttl: 5m
+    respectCacheControl: true
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: cache-test-model
+      backendRefs:
+        - name: response-cache-test-backend
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: response-cache-test-backend
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: response-cache-testupstream
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: response-cache-testupstream
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: response-cache-testupstream.default.svc.cluster.local
+        port: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: response-cache-testupstream
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: response-cache-testupstream
+  template:
+    metadata:
+      labels:
+        app: response-cache-testupstream
+    spec:
+      containers:
+        - name: testupstream
+          image: docker.io/envoyproxy/ai-gateway-testupstream:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TESTUPSTREAM_ID
+              value: response-cache
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: response-cache-testupstream
+  namespace: default
+spec:
+  selector:
+    app: response-cache-testupstream
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP

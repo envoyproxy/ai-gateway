@@ -435,6 +435,7 @@ func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, 
 		fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
 		"info", false, "/tmp/extproc.sock", requestHeaderAttributes, spanRequestHeaderAttributes, metricsRequestHeaderAttributes, logRequestHeaderAttributes, "/v1", endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets, 512*1024*1024,
 		sidecar, "seed", 100, "fallback", 200,
+		"", false, "", // Redis config (empty for tests)
 	)
 }
 
@@ -756,4 +757,94 @@ func TestGatewayMutator_resolveExtProcImage(t *testing.T) {
 			require.Equal(t, tt.expected, g.resolveExtProcImage(tt.extProc))
 		})
 	}
+}
+
+func TestGatewayMutator_buildExtProcArgs_RedisConfig(t *testing.T) {
+	t.Run("no redis config", func(t *testing.T) {
+		g := &gatewayMutator{
+			extProcLogLevel:  "info",
+			udsPath:          "/tmp/extproc.sock",
+			rootPrefix:       "/v1",
+			extProcRedisAddr: "", // No Redis
+		}
+		args := g.buildExtProcArgs("/path/to/config", 9901, false)
+
+		// Should not contain any redis flags
+		for _, arg := range args {
+			require.NotContains(t, arg, "redis", "should not contain redis flags when not configured")
+		}
+	})
+
+	t.Run("redis addr only", func(t *testing.T) {
+		g := &gatewayMutator{
+			extProcLogLevel:  "info",
+			udsPath:          "/tmp/extproc.sock",
+			rootPrefix:       "/v1",
+			extProcRedisAddr: "redis.redis-system.svc.cluster.local:6379",
+		}
+		args := g.buildExtProcArgs("/path/to/config", 9901, false)
+
+		require.Contains(t, args, "-redisAddr")
+		// Find the index of -redisAddr and check the next value
+		for i, arg := range args {
+			if arg == "-redisAddr" {
+				require.Equal(t, "redis.redis-system.svc.cluster.local:6379", args[i+1])
+				break
+			}
+		}
+		// Should not contain TLS or password flags
+		require.NotContains(t, args, "-redisTLS")
+		require.NotContains(t, args, "-redisPassword")
+	})
+
+	t.Run("redis with TLS", func(t *testing.T) {
+		g := &gatewayMutator{
+			extProcLogLevel:  "info",
+			udsPath:          "/tmp/extproc.sock",
+			rootPrefix:       "/v1",
+			extProcRedisAddr: "redis:6379",
+			extProcRedisTLS:  true,
+		}
+		args := g.buildExtProcArgs("/path/to/config", 9901, false)
+
+		require.Contains(t, args, "-redisAddr")
+		require.Contains(t, args, "-redisTLS")
+	})
+
+	t.Run("redis with password", func(t *testing.T) {
+		g := &gatewayMutator{
+			extProcLogLevel:      "info",
+			udsPath:              "/tmp/extproc.sock",
+			rootPrefix:           "/v1",
+			extProcRedisAddr:     "redis:6379",
+			extProcRedisPassword: "secret123",
+		}
+		args := g.buildExtProcArgs("/path/to/config", 9901, false)
+
+		require.Contains(t, args, "-redisAddr")
+		require.Contains(t, args, "-redisPassword")
+		// Find the index of -redisPassword and check the next value
+		for i, arg := range args {
+			if arg == "-redisPassword" {
+				require.Equal(t, "secret123", args[i+1])
+				break
+			}
+		}
+	})
+
+	t.Run("redis with all options", func(t *testing.T) {
+		g := &gatewayMutator{
+			extProcLogLevel:      "info",
+			udsPath:              "/tmp/extproc.sock",
+			rootPrefix:           "/v1",
+			extProcRedisAddr:     "redis.prod.svc:6380",
+			extProcRedisTLS:      true,
+			extProcRedisPassword: "prod-secret",
+		}
+		args := g.buildExtProcArgs("/path/to/config", 9901, false)
+
+		require.Contains(t, args, "-redisAddr")
+		require.Contains(t, args, "-redisTLS")
+		require.Contains(t, args, "-redisPassword")
+	})
 }
