@@ -169,7 +169,7 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 			},
 			expectedParts:     nil,
 			expectedToolCalls: map[string]string{},
-			expectedErrorMsg:  "unsupported content type in assistant message: int",
+			expectedErrorMsg:  "message 'content' must be a string or an array",
 		},
 		{
 			name: "simple text content",
@@ -310,7 +310,7 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 					},
 				},
 			},
-			expectedErrorMsg: "function arguments should be valid json string",
+			expectedErrorMsg: "function arguments must be valid JSON",
 		},
 		{
 			name: "nil content",
@@ -603,7 +603,7 @@ func TestDeveloperMsgToGeminiParts(t *testing.T) {
 			expectedParts: []*genai.Part{
 				{Text: "This is a system message"},
 			},
-			expectedErrorMsg: "unsupported content type in developer message: int",
+			expectedErrorMsg: "message 'content' must be a string or an array",
 		},
 	}
 
@@ -642,7 +642,7 @@ func TestToolMsgToGeminiParts(t *testing.T) {
 				ToolCallID: "tool_123",
 			},
 			knownToolCalls:   map[string]string{"tool_123": "get_weather"},
-			expectedErrorMsg: "unsupported content type in tool message: int",
+			expectedErrorMsg: "message 'content' must be a string or an array",
 		},
 		{
 			name: "Tool message with string content",
@@ -891,7 +891,7 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 					},
 				},
 			},
-			expectedErrMsg: "data uri does not have a valid format",
+			expectedErrMsg: "invalid image data URI",
 		},
 		{
 			name: "audio content - not supported",
@@ -907,7 +907,7 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 					},
 				},
 			},
-			expectedErrMsg: "audio content not supported yet",
+			expectedErrMsg: "audio content not supported",
 		},
 		{
 			name: "unsupported content type",
@@ -917,7 +917,7 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 					Value: 42, // not a string or array.
 				},
 			},
-			expectedErrMsg: "unsupported content type in user message: int",
+			expectedErrMsg: "message 'content' must be a string or an array",
 		},
 		{
 			name: "image with low detail",
@@ -1057,7 +1057,7 @@ func TestUserMsgToGeminiParts(t *testing.T) {
 					},
 				},
 			},
-			expectedErrMsg: "invalid Detail:",
+			expectedErrMsg: "invalid detail",
 		},
 	}
 
@@ -1259,7 +1259,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 					},
 				},
 			},
-			expectedErrMsg: "invalid JSON schema",
+			expectedErrMsg: "invalid json schema",
 			requestModel:   "gemini-2.5-flash",
 		},
 		{
@@ -1307,7 +1307,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 				},
 				GuidedChoice: []string{"A", "B"},
 			},
-			expectedErrMsg: "multiple format specifiers specified",
+			expectedErrMsg: "only one of responseFormat, guidedChoice, guidedRegex, guidedJSON can be specified",
 			requestModel:   "gemini-2.5-flash",
 		},
 		{
@@ -1341,7 +1341,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 			input: &openai.ChatCompletionRequest{
 				ReasoningEffort: openaigo.ReasoningEffortHigh,
 			},
-			expectedErrMsg: "reasoning effort:",
+			expectedErrMsg: "unsupported reasoning effort level",
 			requestModel:   "gemini-3-pro",
 		},
 	}
@@ -1538,7 +1538,7 @@ func TestOpenAIToolsToGeminiTools(t *testing.T) {
 				},
 			},
 			parametersJSONSchemaAvailable: false,
-			expectedError:                 "invalid JSON schema for parameters in tool bad: expected map[string]any",
+			expectedError:                 "tool bad parameters must be a JSON object",
 		},
 		{
 			name: "tool with invalid parameters schema - parametersJSONSchemaAvailable=true",
@@ -1913,12 +1913,12 @@ func TestOpenAIToolChoiceToGeminiToolConfig(t *testing.T) {
 		{
 			name:      "unsupported type",
 			input:     &openai.ChatCompletionToolChoiceUnion{Value: 123},
-			expectErr: "unsupported tool choice type",
+			expectErr: "tool_choice type not supported",
 		},
 		{
 			name:      "unsupported string value",
 			input:     &openai.ChatCompletionToolChoiceUnion{Value: "invalid"},
-			expectErr: "unsupported tool choice: 'invalid'",
+			expectErr: "unsupported tool_choice value 'invalid'",
 		},
 	}
 
@@ -2729,17 +2729,17 @@ func TestMapDetailMediaResolution(t *testing.T) {
 		{
 			name:             "empty string detail",
 			detail:           openai.ChatCompletionContentPartImageImageURLDetail(""),
-			expectedErrorMsg: "unsupported detail level:",
+			expectedErrorMsg: "unsupported detail level",
 		},
 		{
 			name:             "unknown detail value",
 			detail:           openai.ChatCompletionContentPartImageImageURLDetail("unknown"),
-			expectedErrorMsg: "unsupported detail level:",
+			expectedErrorMsg: "unsupported detail level",
 		},
 		{
 			name:             "invalid detail value",
 			detail:           openai.ChatCompletionContentPartImageImageURLDetail("invalid_value"),
-			expectedErrorMsg: "unsupported detail level:",
+			expectedErrorMsg: "unsupported detail level",
 		},
 	}
 
@@ -2779,22 +2779,22 @@ func TestMapReasoningEffortToThinkingLevel(t *testing.T) {
 		{
 			name:             "minimal effort - not supported",
 			reasoningEffort:  openaigo.ReasoningEffortMinimal,
-			expectedErrorMsg: "unsupported reasoning effort level:",
+			expectedErrorMsg: "unsupported reasoning effort level",
 		},
 		{
 			name:             "high effort - not supported",
 			reasoningEffort:  openaigo.ReasoningEffortHigh,
-			expectedErrorMsg: "unsupported reasoning effort level:",
+			expectedErrorMsg: "unsupported reasoning effort level",
 		},
 		{
 			name:             "empty effort - not supported",
 			reasoningEffort:  "",
-			expectedErrorMsg: "unsupported reasoning effort level:",
+			expectedErrorMsg: "unsupported reasoning effort level",
 		},
 		{
 			name:             "unknown effort - not supported",
 			reasoningEffort:  "unknown",
-			expectedErrorMsg: "unsupported reasoning effort level:",
+			expectedErrorMsg: "unsupported reasoning effort level",
 		},
 	}
 

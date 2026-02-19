@@ -119,6 +119,36 @@ func TestServer_processMsg(t *testing.T) {
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
 	})
+	t.Run("request body with immediate response (malformed request)", func(t *testing.T) {
+		s, p := requireNewServerWithMockProcessor(t)
+		ctx := context.WithValue(t.Context(), loggerContextKey, slog.Default())
+
+		reqBody := &extprocv3.HttpBody{}
+		// Simulate what happens when ProcessRequestBody returns an error response
+		// (e.g., for malformed JSON) - it returns ImmediateResponse instead of RequestBody
+		expResponse := &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+				ImmediateResponse: &extprocv3.ImmediateResponse{
+					Status: &typev3.HttpStatus{Code: typev3.StatusCode_BadRequest},
+					Body:   []byte(`{"type":"error","error":{"type":"BadRequest","code":"400","message":"malformed request"}}`),
+				},
+			},
+		}
+		p.t = t
+		p.expBody = reqBody
+		p.retProcessingResponse = expResponse
+		req := &extprocv3.ProcessingRequest{
+			Request: &extprocv3.ProcessingRequest_RequestBody{RequestBody: reqBody},
+		}
+		// This should not panic even though response type is ImmediateResponse
+		resp, err := s.processMsg(ctx, p, req, "test-req-id", false)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, expResponse, resp)
+		// Verify it's actually an ImmediateResponse
+		_, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+		require.True(t, ok, "expected ImmediateResponse type")
+	})
 	t.Run("response headers", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
 		ctx := context.WithValue(t.Context(), loggerContextKey, slog.Default())
