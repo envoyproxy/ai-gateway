@@ -38,9 +38,9 @@ spec:
           image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.controller.imagePullPolicy }}
           ports:
-            - containerPort: 9443
-            - containerPort: 1063
-            - containerPort: 9090
+            {{- range .Values.controller.service.ports }}
+            - containerPort: {{ .targetPort }}
+            {{- end }}
           args:
             - -logLevel={{ .Values.controller.logLevel }}
             - --extProcImage={{ .Values.extProc.image.repository }}:{{ .Values.extProc.image.tag | default .Chart.AppVersion }}
