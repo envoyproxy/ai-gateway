@@ -13,8 +13,7 @@ import (
 
 var (
 	config = sonicjson.Config{
-		ValidateString: true,
-		CaseSensitive:  true,
+		CaseSensitive: true,
 	}.Froze()
 
 	// Unmarshal is equivalent to encoding/json.Unmarshal.
