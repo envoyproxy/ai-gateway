@@ -6,6 +6,8 @@
 package bodymutator
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -241,18 +243,12 @@ func TestMutateResponseSSE(t *testing.T) {
 		mutated, err := mutator.MutateResponseSSE(chunk)
 		require.NoError(t, err)
 
-		lines := make([][]byte, 0)
-		for _, line := range []string{
-			"data: {\"id\":\"chatcmpl-123\",\"choices\":[]}",
-			"",
-			"data: {\"id\":\"chatcmpl-124\",\"choices\":[]}",
-		} {
-			lines = append(lines, []byte(line))
-		}
-		// Verify provider is removed from both data lines.
-		require.NotContains(t, string(mutated), "provider")
-		require.Contains(t, string(mutated), "chatcmpl-123")
-		require.Contains(t, string(mutated), "chatcmpl-124")
+		expected := bytes.Join([][]byte{
+			[]byte("data: {\"id\":\"chatcmpl-123\",\"choices\":[]}"),
+			{},
+			[]byte("data: {\"id\":\"chatcmpl-124\",\"choices\":[]}"),
+		}, []byte("\n"))
+		require.Equal(t, expected, mutated)
 	})
 
 	t.Run("passes through DONE line unchanged", func(t *testing.T) {
