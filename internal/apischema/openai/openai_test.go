@@ -4890,6 +4890,30 @@ func TestResponseInputItemUnionParamUnmarshalJSON(t *testing.T) {
 			expErr: "cannot unmarshal unknown input type: ",
 		},
 		{
+			name: "unmarshal message without type field (role and content present)",
+			expRes: ResponseInputItemUnionParam{
+				OfMessage: &EasyInputMessageParam{
+					Role: "user",
+					Content: EasyInputMessageContentUnionParam{
+						OfString: ptr.To("Hello"),
+					},
+				},
+			},
+			input: []byte(`{"role": "user", "content": "Hello"}`),
+		},
+		{
+			name:   "unmarshal message without type field (role missing, should error)",
+			expRes: ResponseInputItemUnionParam{},
+			input:  []byte(`{"content": "Hello"}`),
+			expErr: "cannot unmarshal unknown input type: ",
+		},
+		{
+			name:   "unmarshal message without type field (content missing, should error)",
+			expRes: ResponseInputItemUnionParam{},
+			input:  []byte(`{"role": "user"}`),
+			expErr: "cannot unmarshal unknown input type: ",
+		},
+		{
 			name: "unmarshal message",
 			expRes: ResponseInputItemUnionParam{
 				OfMessage: &EasyInputMessageParam{
