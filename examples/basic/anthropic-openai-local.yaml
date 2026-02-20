@@ -4,9 +4,9 @@
 # the root of the repo.
 
 # This example routes /v1/messages (Anthropic Messages API) requests to a
-# vLLM backend that natively supports the Anthropic messages endpoint.
+# local vLLM backend.
 # The AIServiceBackend schema is set to OpenAI so the gateway passes through
-# the Anthropic request format without translation.
+# the Anthropic request format with translation.
 
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
@@ -60,7 +60,6 @@ spec:
   connection:
     bufferLimit: 50Mi
 ---
-
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayRoute
 metadata:
@@ -87,8 +86,7 @@ metadata:
   namespace: default
 spec:
   schema:
-    name: OpenAI # vLLM exposes an OpenAI-compatible API. Using OpenAI schema triggers a passthrough
-                 # for /v1/messages so that vLLM handles the Anthropic format natively.
+    name: OpenAI # vLLM exposes an OpenAI-compatible API, so Anthropic Messages Requests are translated
   backendRef:
     name: envoy-ai-gateway-basic-openai
     kind: Backend
@@ -102,5 +100,5 @@ metadata:
 spec:
   endpoints:
     - ip:
-        address: 172.18.0.1 # Replace with your vLLM service hostname or IP (e.g. a k8s Service name or "localhost").
-        port: 8000             # Replace with the port your vLLM instance listens on (default: 8000).
+        address: 0.0.0.0 # Replace with your vLLM service hostname or IP (e.g. localhost's internal IP from kind cluster).
+        port: 8000 # Replace with the port your vLLM instance listens on (default: 8000).
