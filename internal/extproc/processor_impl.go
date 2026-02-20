@@ -113,7 +113,7 @@ type (
 		modelNameOverride internalapi.ModelNameOverride
 		headerMutator        *headermutator.HeaderMutator
 		bodyMutator          *bodymutator.BodyMutator
-		responseBodyMutation *filterapi.HTTPBodyMutation
+		responseBodyMutator  *bodymutator.BodyMutator
 		backendName          string
 		handler           filterapi.BackendAuthHandler
 		// cost is the cost of the request that is accumulated during the processing of the response.
@@ -480,9 +480,8 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
 
 	// Apply response body mutation (field stripping) if configured.
-	if u.responseBodyMutation != nil && len(u.responseBodyMutation.Remove) > 0 {
-		responseMutator := bodymutator.NewBodyMutator(u.responseBodyMutation, nil)
-		// Get the body to mutate: use newBody if translator already mutated it, else raw body
+	if u.responseBodyMutator.HasMutations() {
+		// Get the body to mutate: use newBody if translator already mutated it, else raw body.
 		bodyToMutate := newBody
 		if bodyToMutate == nil {
 			bodyToMutate = body.Body
@@ -490,21 +489,24 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		var mutatedBody []byte
 		var mutateErr error
 		if u.parent.stream {
-			mutatedBody, mutateErr = responseMutator.MutateResponseSSE(bodyToMutate)
+			mutatedBody, mutateErr = u.responseBodyMutator.MutateResponseSSE(bodyToMutate)
 		} else {
-			mutatedBody, mutateErr = responseMutator.MutateResponse(bodyToMutate)
+			mutatedBody, mutateErr = u.responseBodyMutator.MutateResponse(bodyToMutate)
 		}
 		if mutateErr != nil {
 			u.logger.Error("failed to apply response body mutation", "error", mutateErr)
 		} else {
 			newBody = mutatedBody
-			// Recompute mutations after body changed
+			// Recompute mutations after body changed.
 			headerMutation, bodyMutation = mutationsFromTranslationResult(newHeaders, newBody)
-			// Update content-length header
-			headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
-				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
-				Header:       &corev3.HeaderValue{Key: "content-length", RawValue: []byte(strconv.Itoa(len(newBody)))},
-			})
+			// Update content-length only for non-streaming responses.
+			// SSE uses Transfer-Encoding: chunked; setting content-length per chunk is incorrect.
+			if !u.parent.stream {
+				headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+					AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+					Header:       &corev3.HeaderValue{Key: "content-length", RawValue: []byte(strconv.Itoa(len(newBody)))},
+				})
+			}
 		}
 	}
 
@@ -578,7 +580,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	u.handler = backendHandler
 	u.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
 	u.bodyMutator = bodymutator.NewBodyMutator(b.BodyMutation, rp.originalRequestBodyRaw)
-	u.responseBodyMutation = b.ResponseBodyMutation
+	u.responseBodyMutator = bodymutator.NewBodyMutator(b.ResponseBodyMutation, nil)
 	// Header-derived labels/CEL must be able to see the overridden request model.
 	if u.modelNameOverride != "" {
 		u.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = u.modelNameOverride
