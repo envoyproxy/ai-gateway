@@ -475,7 +475,7 @@ func (c *MCPRouteController) ensureMCPProxyBackend(ctx context.Context, mcpRoute
 			panic(fmt.Errorf("BUG: failed to set controller reference for MCP proxy Backend: %w", err))
 		}
 
-		c.logger.Info("Creating MCP proxy Backend", "namespace", mcpRoute.Namespace, "name", mcpProxyBackendName)
+		c.logger.Info("Creating MCP proxy Backend", "namespace", mcpRoute.Namespace, "name", name)
 		if err = c.client.Create(ctx, &backend); err != nil {
 			return fmt.Errorf("failed to create MCP proxy Backend: %w", err)
 		}
