@@ -193,7 +193,7 @@ func TestBodyMutator_Mutate_InvalidJSONValue(t *testing.T) {
 	require.Equal(t, "valid", result["valid_field"])
 }
 
-func TestMutateResponse(t *testing.T) {
+func TestBodyMutator_MutateResponse(t *testing.T) {
 	t.Run("removes configured fields", func(t *testing.T) {
 		bodyMutations := &filterapi.HTTPBodyMutation{
 			Remove: []string{"provider", "system_fingerprint"},
@@ -232,7 +232,7 @@ func TestMutateResponse(t *testing.T) {
 	})
 }
 
-func TestMutateResponseSSE(t *testing.T) {
+func TestBodyMutator_MutateResponseSSE(t *testing.T) {
 	t.Run("removes fields from data lines", func(t *testing.T) {
 		bodyMutations := &filterapi.HTTPBodyMutation{
 			Remove: []string{"provider"},
