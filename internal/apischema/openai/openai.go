@@ -3664,8 +3664,10 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 
 	switch typ.String() {
 	case "message":
-		// Check for id field to determine which type to unmarshal into
-		// ResponseOutputMessage has id field (required property)
+		// Check for id field or assistant role to determine if this is an output message.
+		// ResponseOutputMessage has id field (required property) and role is always "assistant".
+		// Assistant messages without id (e.g., from multi-turn conversation history) also
+		// contain output_text content that only ResponseOutputMessage can parse.
 		if gjson.GetBytes(data, "id").Exists() {
 			var om ResponseOutputMessage
 			if err := json.Unmarshal(data, &om); err != nil {
@@ -3673,6 +3675,13 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 			}
 			r.OfOutputMessage = &om
 			return nil
+		}
+		if gjson.GetBytes(data, "role").String() == "assistant" {
+			var om ResponseOutputMessage
+			if err := json.Unmarshal(data, &om); err == nil {
+				r.OfOutputMessage = &om
+				return nil
+			}
 		}
 
 		// Try ResponseInputItemMessageParam (has status field for tracking)
