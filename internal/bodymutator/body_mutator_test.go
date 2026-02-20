@@ -190,3 +190,103 @@ func TestBodyMutator_Mutate_InvalidJSONValue(t *testing.T) {
 	require.Equal(t, "not valid json but will be treated as string", result["service_tier"])
 	require.Equal(t, "valid", result["valid_field"])
 }
+
+func TestMutateResponse(t *testing.T) {
+	t.Run("removes configured fields", func(t *testing.T) {
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Remove: []string{"provider", "system_fingerprint"},
+		}
+		mutator := NewBodyMutator(bodyMutations, nil)
+
+		body := []byte(`{"id":"chatcmpl-123","provider":"openai","system_fingerprint":"fp_abc","choices":[]}`)
+		mutated, err := mutator.MutateResponse(body)
+		require.NoError(t, err)
+
+		var result map[string]interface{}
+		err = json.Unmarshal(mutated, &result)
+		require.NoError(t, err)
+
+		require.NotContains(t, result, "provider")
+		require.NotContains(t, result, "system_fingerprint")
+		require.Equal(t, "chatcmpl-123", result["id"])
+		require.Contains(t, result, "choices")
+	})
+
+	t.Run("no mutations configured", func(t *testing.T) {
+		mutator := NewBodyMutator(nil, nil)
+		body := []byte(`{"id":"chatcmpl-123","provider":"openai"}`)
+		mutated, err := mutator.MutateResponse(body)
+		require.NoError(t, err)
+		require.Equal(t, body, mutated)
+	})
+
+	t.Run("empty remove list", func(t *testing.T) {
+		bodyMutations := &filterapi.HTTPBodyMutation{Remove: []string{}}
+		mutator := NewBodyMutator(bodyMutations, nil)
+		body := []byte(`{"id":"chatcmpl-123","provider":"openai"}`)
+		mutated, err := mutator.MutateResponse(body)
+		require.NoError(t, err)
+		require.Equal(t, body, mutated)
+	})
+}
+
+func TestMutateResponseSSE(t *testing.T) {
+	t.Run("removes fields from data lines", func(t *testing.T) {
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Remove: []string{"provider"},
+		}
+		mutator := NewBodyMutator(bodyMutations, nil)
+
+		chunk := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\",\"choices\":[]}\n\ndata: {\"id\":\"chatcmpl-124\",\"provider\":\"openai\",\"choices\":[]}")
+		mutated, err := mutator.MutateResponseSSE(chunk)
+		require.NoError(t, err)
+
+		lines := make([][]byte, 0)
+		for _, line := range []string{
+			"data: {\"id\":\"chatcmpl-123\",\"choices\":[]}",
+			"",
+			"data: {\"id\":\"chatcmpl-124\",\"choices\":[]}",
+		} {
+			lines = append(lines, []byte(line))
+		}
+		// Verify provider is removed from both data lines.
+		require.NotContains(t, string(mutated), "provider")
+		require.Contains(t, string(mutated), "chatcmpl-123")
+		require.Contains(t, string(mutated), "chatcmpl-124")
+	})
+
+	t.Run("passes through DONE line unchanged", func(t *testing.T) {
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Remove: []string{"provider"},
+		}
+		mutator := NewBodyMutator(bodyMutations, nil)
+
+		chunk := []byte("data: [DONE]")
+		mutated, err := mutator.MutateResponseSSE(chunk)
+		require.NoError(t, err)
+		require.Equal(t, chunk, mutated)
+	})
+
+	t.Run("passes through non-data lines unchanged", func(t *testing.T) {
+		bodyMutations := &filterapi.HTTPBodyMutation{
+			Remove: []string{"provider"},
+		}
+		mutator := NewBodyMutator(bodyMutations, nil)
+
+		chunk := []byte("event: message\ndata: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\"}")
+		mutated, err := mutator.MutateResponseSSE(chunk)
+		require.NoError(t, err)
+
+		require.Contains(t, string(mutated), "event: message")
+		require.NotContains(t, string(mutated), "provider")
+		require.Contains(t, string(mutated), "chatcmpl-123")
+	})
+
+	t.Run("no mutations configured", func(t *testing.T) {
+		mutator := NewBodyMutator(nil, nil)
+		chunk := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\"}")
+		mutated, err := mutator.MutateResponseSSE(chunk)
+		require.NoError(t, err)
+		require.Equal(t, chunk, mutated)
+	})
+}

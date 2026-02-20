@@ -1345,3 +1345,106 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 		require.Contains(t, retryResult, "messages", "Bedrock 'messages' field should be present on retry")
 	})
 }
+
+func Test_chatCompletionProcessorUpstreamFilter_ResponseBodyMutation(t *testing.T) {
+	t.Run("non-streaming: removes configured field from response", func(t *testing.T) {
+		// The translator returns a body with a "provider" field that should be stripped.
+		responseBody := []byte(`{"id":"chatcmpl-123","provider":"openai","choices":[]}`)
+		inBody := &extprocv3.HttpBody{Body: responseBody, EndOfStream: true}
+		mm := &mockMetrics{}
+		mt := &mockTranslator{
+			t: t, expResponseBody: inBody,
+			retBodyMutation: responseBody,
+		}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator: mt,
+			metrics:    mm,
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: false,
+				config: &filterapi.RuntimeConfig{},
+			},
+			requestHeaders:  map[string]string{},
+			responseHeaders: map[string]string{":status": "200"},
+			responseBodyMutation: &filterapi.HTTPBodyMutation{
+				Remove: []string{"provider"},
+			},
+		}
+		res, err := p.ProcessResponseBody(t.Context(), inBody)
+		require.NoError(t, err)
+		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
+		mutatedBody := commonRes.BodyMutation.GetBody()
+		require.NotNil(t, mutatedBody)
+		require.NotContains(t, string(mutatedBody), "provider")
+		require.Contains(t, string(mutatedBody), "chatcmpl-123")
+		// content-length header should be updated.
+		var hasContentLength bool
+		for _, h := range commonRes.HeaderMutation.SetHeaders {
+			if h.Header.Key == "content-length" {
+				hasContentLength = true
+				break
+			}
+		}
+		require.True(t, hasContentLength, "expected content-length header to be set")
+		mm.RequireRequestSuccess(t)
+	})
+
+	t.Run("streaming: removes configured field from SSE chunks", func(t *testing.T) {
+		sseChunk := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\",\"choices\":[]}\n\ndata: [DONE]")
+		inBody := &extprocv3.HttpBody{Body: sseChunk, EndOfStream: true}
+		mm := &mockMetrics{}
+		mt := &mockTranslator{
+			t: t, expResponseBody: inBody,
+			retBodyMutation: sseChunk,
+		}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator: mt,
+			metrics:    mm,
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: true,
+				config: &filterapi.RuntimeConfig{},
+			},
+			requestHeaders:  map[string]string{},
+			responseHeaders: map[string]string{":status": "200"},
+			responseBodyMutation: &filterapi.HTTPBodyMutation{
+				Remove: []string{"provider"},
+			},
+		}
+		res, err := p.ProcessResponseBody(t.Context(), inBody)
+		require.NoError(t, err)
+		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
+		mutatedBody := commonRes.BodyMutation.GetBody()
+		require.NotNil(t, mutatedBody)
+		require.NotContains(t, string(mutatedBody), "provider")
+		require.Contains(t, string(mutatedBody), "chatcmpl-123")
+		require.Contains(t, string(mutatedBody), "[DONE]")
+		mm.RequireRequestSuccess(t)
+	})
+
+	t.Run("no mutation configured: body passes through unchanged", func(t *testing.T) {
+		responseBody := []byte(`{"id":"chatcmpl-123","provider":"openai","choices":[]}`)
+		inBody := &extprocv3.HttpBody{Body: responseBody, EndOfStream: true}
+		mm := &mockMetrics{}
+		mt := &mockTranslator{
+			t: t, expResponseBody: inBody,
+			retBodyMutation: responseBody,
+		}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:           mt,
+			metrics:              mm,
+			responseBodyMutation: nil,
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: false,
+				config: &filterapi.RuntimeConfig{},
+			},
+			requestHeaders:  map[string]string{},
+			responseHeaders: map[string]string{":status": "200"},
+		}
+		res, err := p.ProcessResponseBody(t.Context(), inBody)
+		require.NoError(t, err)
+		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
+		mutatedBody := commonRes.BodyMutation.GetBody()
+		// Body should be unchanged (contains provider field).
+		require.Contains(t, string(mutatedBody), "provider")
+		mm.RequireRequestSuccess(t)
+	})
+}

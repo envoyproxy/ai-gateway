@@ -384,6 +384,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					// Merge with route-level taking precedence over backend-level
 					mergedBodyMutation := mergeBodyMutations(routeBodyMutation, backendBodyMutation)
 					b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
+					b.ResponseBodyMutation = bodyMutationToFilterAPI(backendObj.Spec.ResponseBodyMutation)
 
 					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema, c.logger)
 				}
