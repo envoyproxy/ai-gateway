@@ -4955,6 +4955,20 @@ func TestResponseInputItemUnionParamUnmarshalJSON(t *testing.T) {
 			input: []byte(`{"type": "message", "role": "assistant", "status": "completed", "id": "resp-123", "content": [{"text": "Hello! How can I assist you ?", "type": "output_text"}]}`),
 		},
 		{
+			name: "unmarshal output_message without id using output_text",
+			expRes: ResponseInputItemUnionParam{
+				OfOutputMessage: &ResponseOutputMessage{
+					Type: "message",
+					Role: "assistant",
+					Content: []ResponseOutputMessageContentUnion{
+						{OfOutputText: &ResponseOutputTextParam{Text: "Hello! How can I assist you ?", Type: "output_text"}},
+					},
+					Status: "completed",
+				},
+			},
+			input: []byte(`{"type": "message", "role": "assistant", "status": "completed", "content": [{"text": "Hello! How can I assist you ?", "type": "output_text"}]}`),
+		},
+		{
 			name: "unmarshal file_search_call",
 			expRes: ResponseInputItemUnionParam{
 				OfFileSearchCall: &ResponseFileSearchToolCall{

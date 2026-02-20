@@ -3666,7 +3666,9 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 	case "message":
 		// Check for id field to determine which type to unmarshal into
 		// ResponseOutputMessage has id field (required property)
-		if gjson.GetBytes(data, "id").Exists() {
+		if gjson.GetBytes(data, "id").Exists() ||
+			// Compatibility for Codex that can send output_text messages without id.
+			isAssistantOutputMessage(data) {
 			var om ResponseOutputMessage
 			if err := json.Unmarshal(data, &om); err != nil {
 				return err
@@ -3831,6 +3833,24 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 		return errors.New("cannot unmarshal unknown input type: " + typ.String())
 	}
 	return nil
+}
+
+func isAssistantOutputMessage(data []byte) bool {
+	if gjson.GetBytes(data, "role").String() != ChatMessageRoleAssistant {
+		return false
+	}
+
+	contentItems := gjson.GetBytes(data, "content").Array()
+	if len(contentItems) == 0 {
+		return false
+	}
+
+	for _, item := range contentItems {
+		if item.Get("type").String() != "output_text" {
+			return false
+		}
+	}
+	return true
 }
 
 // A message input to the model with a role indicating instruction following
