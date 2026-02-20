@@ -193,96 +193,92 @@ func TestBodyMutator_Mutate_InvalidJSONValue(t *testing.T) {
 	require.Equal(t, "valid", result["valid_field"])
 }
 
-func TestBodyMutator_MutateResponse(t *testing.T) {
-	t.Run("removes configured fields", func(t *testing.T) {
-		bodyMutations := &filterapi.HTTPBodyMutation{
-			Remove: []string{"provider", "system_fingerprint"},
-		}
-		mutator := NewBodyMutator(bodyMutations, nil)
+func TestBodyMutator_MutateResponse_RemovesConfiguredFields(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider", "system_fingerprint"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
 
-		body := []byte(`{"id":"chatcmpl-123","provider":"openai","system_fingerprint":"fp_abc","choices":[]}`)
-		mutated, err := mutator.MutateResponse(body)
-		require.NoError(t, err)
+	body := []byte(`{"id":"chatcmpl-123","provider":"openai","system_fingerprint":"fp_abc","choices":[]}`)
+	mutated, err := mutator.MutateResponse(body)
+	require.NoError(t, err)
 
-		var result map[string]interface{}
-		err = json.Unmarshal(mutated, &result)
-		require.NoError(t, err)
+	var result map[string]interface{}
+	err = json.Unmarshal(mutated, &result)
+	require.NoError(t, err)
 
-		require.NotContains(t, result, "provider")
-		require.NotContains(t, result, "system_fingerprint")
-		require.Equal(t, "chatcmpl-123", result["id"])
-		require.Contains(t, result, "choices")
-	})
-
-	t.Run("no mutations configured", func(t *testing.T) {
-		mutator := NewBodyMutator(nil, nil)
-		body := []byte(`{"id":"chatcmpl-123","provider":"openai"}`)
-		mutated, err := mutator.MutateResponse(body)
-		require.NoError(t, err)
-		require.Equal(t, body, mutated)
-	})
-
-	t.Run("empty remove list", func(t *testing.T) {
-		bodyMutations := &filterapi.HTTPBodyMutation{Remove: []string{}}
-		mutator := NewBodyMutator(bodyMutations, nil)
-		body := []byte(`{"id":"chatcmpl-123","provider":"openai"}`)
-		mutated, err := mutator.MutateResponse(body)
-		require.NoError(t, err)
-		require.Equal(t, body, mutated)
-	})
+	require.NotContains(t, result, "provider")
+	require.NotContains(t, result, "system_fingerprint")
+	require.Equal(t, "chatcmpl-123", result["id"])
+	require.Contains(t, result, "choices")
 }
 
-func TestBodyMutator_MutateResponseSSE(t *testing.T) {
-	t.Run("removes fields from data lines", func(t *testing.T) {
-		bodyMutations := &filterapi.HTTPBodyMutation{
-			Remove: []string{"provider"},
-		}
-		mutator := NewBodyMutator(bodyMutations, nil)
+func TestBodyMutator_MutateResponse_NoMutations(t *testing.T) {
+	mutator := NewBodyMutator(nil, nil)
+	body := []byte(`{"id":"chatcmpl-123","provider":"openai"}`)
+	mutated, err := mutator.MutateResponse(body)
+	require.NoError(t, err)
+	require.Equal(t, body, mutated)
+}
 
-		chunk := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\",\"choices\":[]}\n\ndata: {\"id\":\"chatcmpl-124\",\"provider\":\"openai\",\"choices\":[]}")
-		mutated, err := mutator.MutateResponseSSE(chunk)
-		require.NoError(t, err)
+func TestBodyMutator_MutateResponse_EmptyRemoveList(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{Remove: []string{}}
+	mutator := NewBodyMutator(bodyMutations, nil)
+	body := []byte(`{"id":"chatcmpl-123","provider":"openai"}`)
+	mutated, err := mutator.MutateResponse(body)
+	require.NoError(t, err)
+	require.Equal(t, body, mutated)
+}
 
-		expected := bytes.Join([][]byte{
-			[]byte("data: {\"id\":\"chatcmpl-123\",\"choices\":[]}"),
-			{},
-			[]byte("data: {\"id\":\"chatcmpl-124\",\"choices\":[]}"),
-		}, []byte("\n"))
-		require.Equal(t, expected, mutated)
-	})
+func TestBodyMutator_MutateResponseSSE_RemovesFieldsFromDataLines(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
 
-	t.Run("passes through DONE line unchanged", func(t *testing.T) {
-		bodyMutations := &filterapi.HTTPBodyMutation{
-			Remove: []string{"provider"},
-		}
-		mutator := NewBodyMutator(bodyMutations, nil)
+	chunk := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\",\"choices\":[]}\n\ndata: {\"id\":\"chatcmpl-124\",\"provider\":\"openai\",\"choices\":[]}")
+	mutated, err := mutator.MutateResponseSSE(chunk)
+	require.NoError(t, err)
 
-		chunk := []byte("data: [DONE]")
-		mutated, err := mutator.MutateResponseSSE(chunk)
-		require.NoError(t, err)
-		require.Equal(t, chunk, mutated)
-	})
+	expected := bytes.Join([][]byte{
+		[]byte("data: {\"id\":\"chatcmpl-123\",\"choices\":[]}"),
+		{},
+		[]byte("data: {\"id\":\"chatcmpl-124\",\"choices\":[]}"),
+	}, []byte("\n"))
+	require.Equal(t, expected, mutated)
+}
 
-	t.Run("passes through non-data lines unchanged", func(t *testing.T) {
-		bodyMutations := &filterapi.HTTPBodyMutation{
-			Remove: []string{"provider"},
-		}
-		mutator := NewBodyMutator(bodyMutations, nil)
+func TestBodyMutator_MutateResponseSSE_PassesThroughDONELine(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
 
-		chunk := []byte("event: message\ndata: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\"}")
-		mutated, err := mutator.MutateResponseSSE(chunk)
-		require.NoError(t, err)
+	chunk := []byte("data: [DONE]")
+	mutated, err := mutator.MutateResponseSSE(chunk)
+	require.NoError(t, err)
+	require.Equal(t, chunk, mutated)
+}
 
-		require.Contains(t, string(mutated), "event: message")
-		require.NotContains(t, string(mutated), "provider")
-		require.Contains(t, string(mutated), "chatcmpl-123")
-	})
+func TestBodyMutator_MutateResponseSSE_PassesThroughNonDataLines(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
 
-	t.Run("no mutations configured", func(t *testing.T) {
-		mutator := NewBodyMutator(nil, nil)
-		chunk := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\"}")
-		mutated, err := mutator.MutateResponseSSE(chunk)
-		require.NoError(t, err)
-		require.Equal(t, chunk, mutated)
-	})
+	chunk := []byte("event: message\ndata: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\"}")
+	mutated, err := mutator.MutateResponseSSE(chunk)
+	require.NoError(t, err)
+
+	require.Contains(t, string(mutated), "event: message")
+	require.NotContains(t, string(mutated), "provider")
+	require.Contains(t, string(mutated), "chatcmpl-123")
+}
+
+func TestBodyMutator_MutateResponseSSE_NoMutations(t *testing.T) {
+	mutator := NewBodyMutator(nil, nil)
+	chunk := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\"}")
+	mutated, err := mutator.MutateResponseSSE(chunk)
+	require.NoError(t, err)
+	require.Equal(t, chunk, mutated)
 }

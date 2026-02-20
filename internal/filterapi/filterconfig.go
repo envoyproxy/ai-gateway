@@ -149,7 +149,7 @@ type Backend struct {
 	HeaderMutation *HTTPHeaderMutation `json:"httpHeaderMutation,omitempty"`
 	// Body mutations to be applied to the request before sending to the backend. Optional.
 	BodyMutation *HTTPBodyMutation `json:"httpBodyMutation,omitempty"`
-	// ResponseBodyMutation defines the mutation of HTTP response body JSON fields.
+	// Response body mutations to be applied before returning to the client. Optional.
 	ResponseBodyMutation *HTTPBodyMutation `json:"responseBodyMutation,omitempty"`
 }
 

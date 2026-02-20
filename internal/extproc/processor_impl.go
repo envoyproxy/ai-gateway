@@ -105,17 +105,17 @@ type (
 	upstreamProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
 		parent *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]
 
-		logger            *slog.Logger
-		requestHeaders    map[string]string
-		responseHeaders   map[string]string
-		responseEncoding  string
-		translator        translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]]
-		modelNameOverride internalapi.ModelNameOverride
-		headerMutator        *headermutator.HeaderMutator
-		bodyMutator          *bodymutator.BodyMutator
-		responseBodyMutator  *bodymutator.BodyMutator
-		backendName          string
-		handler           filterapi.BackendAuthHandler
+		logger              *slog.Logger
+		requestHeaders      map[string]string
+		responseHeaders     map[string]string
+		responseEncoding    string
+		translator          translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]]
+		modelNameOverride   internalapi.ModelNameOverride
+		headerMutator       *headermutator.HeaderMutator
+		bodyMutator         *bodymutator.BodyMutator
+		responseBodyMutator *bodymutator.BodyMutator
+		backendName         string
+		handler             filterapi.BackendAuthHandler
 		// cost is the cost of the request that is accumulated during the processing of the response.
 		costs metrics.TokenUsage
 		// metrics tracking.
