@@ -2222,7 +2222,7 @@ type ResponseRequest struct {
 	// [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#safety-identifiers).
 	SafetyIdentifier string `json:"safety_identifier,omitzero"`
 
-	// This field is being replaced by `safety_identifier` and `prompt_cache_key`. Use
+	// Deprecated: This field is being replaced by `safety_identifier` and `prompt_cache_key`. Use
 	// `prompt_cache_key` instead to maintain caching optimizations. A stable
 	// identifier for your end-users. Used to boost cache hit rates by better bucketing
 	// similar requests and to help OpenAI detect and prevent abuse.
@@ -2366,6 +2366,12 @@ type ResponseRequest struct {
 	//     [function calling](https://platform.openai.com/docs/guides/function-calling).
 	//     You can also use custom tools to call your own code.
 	Tools []ResponseToolUnion `json:"tools,omitzero"`
+
+	// Penalizes new tokens based on whether they appear in the text so far.
+	PresencePenalty *float32 `json:"presence_penalty,omitempty"`
+
+	// Penalizes new tokens based on their frequency in the text so far.
+	FrequencyPenalty *float32 `json:"frequency_penalty,omitempty"`
 }
 
 // Configuration options for a text response from the model. Can be plain text or
@@ -3664,9 +3670,8 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 
 	switch typ.String() {
 	case "message":
-		// Check for id field to determine which type to unmarshal into
-		// ResponseOutputMessage has id field (required property)
-		if gjson.GetBytes(data, "id").Exists() {
+		// If role is assistant Unmarshal as ResponseOutputMessage
+		if gjson.GetBytes(data, "role").String() == "assistant" {
 			var om ResponseOutputMessage
 			if err := json.Unmarshal(data, &om); err != nil {
 				return err
@@ -3958,6 +3963,8 @@ type ResponseInputItemMessageParam struct {
 	Status string `json:"status,omitzero"`
 	// The type of the message input. Always set to `message`.
 	Type string `json:"type,omitzero"`
+	// The unique ID of this message item.
+	ID string `json:"id,omitzero"`
 }
 
 // An output message from the model.
@@ -4736,7 +4743,7 @@ type ResponseInputItemFunctionCallOutputParam struct {
 // Only one field can be non-zero.
 type ResponseInputItemFunctionCallOutputOutputUnionParam struct {
 	OfString                              *string
-	OfResponseFunctionCallOutputItemArray []ResponseFunctionCallOutputItemUnionParam
+	OfResponseFunctionCallOutputItemArray []ResponseInputItemFunctionCallOutputItemUnionParam
 }
 
 func (r ResponseInputItemFunctionCallOutputOutputUnionParam) MarshalJSON() ([]byte, error) {
@@ -4759,7 +4766,7 @@ func (r *ResponseInputItemFunctionCallOutputOutputUnionParam) UnmarshalJSON(data
 		}
 		r.OfString = &s
 	case '[':
-		var arr []ResponseFunctionCallOutputItemUnionParam
+		var arr []ResponseInputItemFunctionCallOutputItemUnionParam
 		if err := json.Unmarshal(data, &arr); err != nil {
 			return err
 		}
@@ -4770,15 +4777,16 @@ func (r *ResponseInputItemFunctionCallOutputOutputUnionParam) UnmarshalJSON(data
 	return nil
 }
 
-// ResponseFunctionCallOutputItemUnionParam is a union type for different function call output item parameters.
+// ResponseInputItemFunctionCallOutputItemUnionParam is a union type for different function call output item parameters.
 // Only one field can be non-zero.
-type ResponseFunctionCallOutputItemUnionParam struct {
+type ResponseInputItemFunctionCallOutputItemUnionParam struct {
 	OfInputText  *ResponseInputTextContentParam
 	OfInputImage *ResponseInputImageContentParam
 	OfInputFile  *ResponseInputFileContentParam
+	OfInputVideo *ResponseInputVideoContentParam
 }
 
-func (r ResponseFunctionCallOutputItemUnionParam) MarshalJSON() ([]byte, error) {
+func (r ResponseInputItemFunctionCallOutputItemUnionParam) MarshalJSON() ([]byte, error) {
 	switch {
 	case r.OfInputText != nil:
 		return json.Marshal(r.OfInputText)
@@ -4786,12 +4794,14 @@ func (r ResponseFunctionCallOutputItemUnionParam) MarshalJSON() ([]byte, error) 
 		return json.Marshal(r.OfInputImage)
 	case r.OfInputFile != nil:
 		return json.Marshal(r.OfInputFile)
+	case r.OfInputVideo != nil:
+		return json.Marshal(r.OfInputVideo)
 	default:
 		return nil, errors.New("no function call output item to marshal in function call output item")
 	}
 }
 
-func (r *ResponseFunctionCallOutputItemUnionParam) UnmarshalJSON(data []byte) error {
+func (r *ResponseInputItemFunctionCallOutputItemUnionParam) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
 	switch typ.String() {
 	case "input_text":
@@ -4812,6 +4822,12 @@ func (r *ResponseFunctionCallOutputItemUnionParam) UnmarshalJSON(data []byte) er
 			return err
 		}
 		r.OfInputFile = &ifp
+	case "input_video":
+		var ivp ResponseInputVideoContentParam
+		if err := json.Unmarshal(data, &ivp); err != nil {
+			return err
+		}
+		r.OfInputVideo = &ivp
 	default:
 		return errors.New("unknown type for function call output item: " + typ.String())
 	}
@@ -4861,6 +4877,15 @@ type ResponseInputFileContentParam struct {
 	Filename string `json:"filename,omitzero"`
 	// The type of the input item. Always `input_file`.
 	Type string `json:"type"`
+}
+
+// A content block representing a video input to the model.
+// The properties Type, VideoURL are required.
+type ResponseInputVideoContentParam struct {
+	// The type of the input content. Always `input_video`.
+	Type string `json:"type"`
+	// A base64 or remote url that resolves to a video file.
+	VideoURL string `json:"video_url"`
 }
 
 // A description of the chain of thought used by a reasoning model while generating
@@ -5922,6 +5947,15 @@ type Response struct {
 	//
 	// Deprecated: deprecated
 	User string `json:"user,omitzero"`
+
+	// Penalizes new tokens based on whether they appear in the text so far.
+	PresencePenalty *float32 `json:"presence_penalty,omitempty"`
+
+	// Penalizes new tokens based on their frequency in the text so far.
+	FrequencyPenalty *float32 `json:"frequency_penalty,omitempty"`
+
+	// Whether this response was stored so it can be retrieved later.
+	Store *bool `json:"store,omitempty"`
 }
 
 // ResponseInstructionsUnion contains all possible properties and values from
@@ -5968,6 +6002,7 @@ type ResponseOutputItemUnion struct {
 	OfFileSearchCall       *ResponseFileSearchToolCall
 	OfComputerCall         *ResponseComputerToolCall
 	OfFunctionCall         *ResponseFunctionToolCall
+	OfFunctionCallOutput   *ResponseFunctionCallOutput
 	OfWebSearchCall        *ResponseFunctionWebSearch
 	OfReasoning            *ResponseReasoningItem
 	OfCompaction           *ResponseCompactionItem
@@ -5994,6 +6029,8 @@ func (r ResponseOutputItemUnion) MarshalJSON() ([]byte, error) { // nolint:gocri
 		return json.Marshal(r.OfComputerCall)
 	case r.OfFunctionCall != nil:
 		return json.Marshal(r.OfFunctionCall)
+	case r.OfFunctionCallOutput != nil:
+		return json.Marshal(r.OfFunctionCallOutput)
 	case r.OfWebSearchCall != nil:
 		return json.Marshal(r.OfWebSearchCall)
 	case r.OfReasoning != nil:
@@ -6048,6 +6085,12 @@ func (r *ResponseOutputItemUnion) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		r.OfFunctionCall = &f
+	case "function_call_output":
+		var o ResponseFunctionCallOutput
+		if err := json.Unmarshal(data, &o); err != nil {
+			return err
+		}
+		r.OfFunctionCallOutput = &o
 	case "web_search_call":
 		var w ResponseFunctionWebSearch
 		if err := json.Unmarshal(data, &w); err != nil {
@@ -6140,6 +6183,112 @@ func (r *ResponseOutputItemUnion) UnmarshalJSON(data []byte) error {
 		r.OfCustomToolCall = &c
 	default:
 		return fmt.Errorf("unknown type field value '%s' for response output item union", typ.String())
+	}
+	return nil
+}
+
+// The output of a function tool call.
+//
+// The properties CallID, Output, Type are required.
+type ResponseFunctionCallOutput struct {
+	// The unique ID of the function tool call generated by the model.
+	CallID string `json:"call_id"`
+	// Text, image, or file output of the function tool call.
+	Output ResponseFunctionCallOutputOutputUnionParam `json:"output,omitzero"`
+	// The unique ID of the function tool call output. Populated when this item is
+	// returned via API.
+	ID string `json:"id,omitzero"`
+	// The status of the item. One of `in_progress`, `completed`, or `incomplete`.
+	// Populated when items are returned via API.
+	//
+	// Any of "in_progress", "completed", "incomplete".
+	Status string `json:"status,omitzero"`
+	// The type of the function tool call output. Always `function_call_output`.
+	Type string `json:"type"`
+}
+
+// ResponseFunctionCallOutputOutputUnionParam is a union type for different function call output parameters.
+// Only one field can be non-zero.
+type ResponseFunctionCallOutputOutputUnionParam struct {
+	OfString                              *string
+	OfResponseFunctionCallOutputItemArray []ResponseFunctionCallOutputItemUnionParam
+}
+
+func (r ResponseFunctionCallOutputOutputUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfString != nil:
+		return json.Marshal(r.OfString)
+	case r.OfResponseFunctionCallOutputItemArray != nil:
+		return json.Marshal(r.OfResponseFunctionCallOutputItemArray)
+	default:
+		return nil, errors.New("no function call output to marshal in function call output")
+	}
+}
+
+func (r *ResponseFunctionCallOutputOutputUnionParam) UnmarshalJSON(data []byte) error {
+	switch data[0] {
+	case '"':
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		r.OfString = &s
+	case '[':
+		var arr []ResponseFunctionCallOutputItemUnionParam
+		if err := json.Unmarshal(data, &arr); err != nil {
+			return err
+		}
+		r.OfResponseFunctionCallOutputItemArray = arr
+	default:
+		return errors.New("unknown type for function call output in function call output")
+	}
+	return nil
+}
+
+// ResponseFunctionCallOutputItemUnionParam is a union type for different function call output item parameters.
+// Only one field can be non-zero.
+type ResponseFunctionCallOutputItemUnionParam struct {
+	OfInputText  *ResponseInputTextContentParam
+	OfInputImage *ResponseInputImageContentParam
+	OfInputFile  *ResponseInputFileContentParam
+}
+
+func (r ResponseFunctionCallOutputItemUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfInputText != nil:
+		return json.Marshal(r.OfInputText)
+	case r.OfInputImage != nil:
+		return json.Marshal(r.OfInputImage)
+	case r.OfInputFile != nil:
+		return json.Marshal(r.OfInputFile)
+	default:
+		return nil, errors.New("no function call output item to marshal in function call output item")
+	}
+}
+
+func (r *ResponseFunctionCallOutputItemUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "input_text":
+		var it ResponseInputTextContentParam
+		if err := json.Unmarshal(data, &it); err != nil {
+			return err
+		}
+		r.OfInputText = &it
+	case "input_image":
+		var ii ResponseInputImageContentParam
+		if err := json.Unmarshal(data, &ii); err != nil {
+			return err
+		}
+		r.OfInputImage = &ii
+	case "input_file":
+		var ifp ResponseInputFileContentParam
+		if err := json.Unmarshal(data, &ifp); err != nil {
+			return err
+		}
+		r.OfInputFile = &ifp
+	default:
+		return errors.New("unknown type for function call output item: " + typ.String())
 	}
 	return nil
 }

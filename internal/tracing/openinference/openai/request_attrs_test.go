@@ -1794,7 +1794,7 @@ func TestSetFunctionCallOutputAttrs(t *testing.T) {
 			callOutput: &openai.ResponseInputItemFunctionCallOutputParam{
 				CallID: "tool_call_array_output",
 				Output: openai.ResponseInputItemFunctionCallOutputOutputUnionParam{
-					OfResponseFunctionCallOutputItemArray: []openai.ResponseFunctionCallOutputItemUnionParam{
+					OfResponseFunctionCallOutputItemArray: []openai.ResponseInputItemFunctionCallOutputItemUnionParam{
 						{
 							OfInputText: &openai.ResponseInputTextContentParam{
 								Type: "input_text",
@@ -1817,7 +1817,7 @@ func TestSetFunctionCallOutputAttrs(t *testing.T) {
 			callOutput: &openai.ResponseInputItemFunctionCallOutputParam{
 				CallID: "tool_call_multiple",
 				Output: openai.ResponseInputItemFunctionCallOutputOutputUnionParam{
-					OfResponseFunctionCallOutputItemArray: []openai.ResponseFunctionCallOutputItemUnionParam{
+					OfResponseFunctionCallOutputItemArray: []openai.ResponseInputItemFunctionCallOutputItemUnionParam{
 						{
 							OfInputText: &openai.ResponseInputTextContentParam{
 								Type: "input_text",
