@@ -19,11 +19,11 @@ const FeatureList: FeatureItem[] = [
     ),
   },
   {
-    title: 'v0.4 Release now available',
+    title: 'v0.5 Release now available',
     image: require('@site/static/img/3.png').default,
     description: (
       <>
-        The v0.4 Release of Envoy AI Gateway is now available. See the <a href="/release-notes/v0.4">release notes</a> for more information.
+        The v0.5 Release of Envoy AI Gateway is now available. See the <a href="/release-notes/v0.5">release notes</a> for more information.
       </>
     ),
   },
