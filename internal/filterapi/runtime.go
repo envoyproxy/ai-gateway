@@ -43,6 +43,9 @@ type RuntimeBackend struct {
 	Backend *Backend
 	// Handler is the backend auth handler.
 	Handler BackendAuthHandler
+	// RequestCosts is the list of request costs for this backend.
+	// This is derived from the Backend.LLMRequestCosts configuration.
+	RequestCosts []RuntimeRequestCost
 }
 
 // RuntimeRequestCost is the configuration for the request cost, optionally with a CEL program.
@@ -55,8 +58,8 @@ type RuntimeRequestCost struct {
 // NewRuntimeConfig creates a new runtime filter configuration from the given filterapi.Config and a function to create backend auth handlers.
 func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHandlerFunc) (*RuntimeConfig, error) {
 	backends := make(map[string]*RuntimeBackend, len(config.Backends))
-	for _, backend := range config.Backends {
-		b := backend
+	for i := range config.Backends {
+		b := &config.Backends[i]
 		var h BackendAuthHandler
 		if b.Auth != nil {
 			var err error
@@ -65,9 +68,26 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 				return nil, fmt.Errorf("cannot create backend auth handler: %w", err)
 			}
 		}
-		backends[b.Name] = &RuntimeBackend{Backend: &b, Handler: h}
+
+		// Compile CEL programs for backend-level LLMRequestCosts.
+		backendCosts := make([]RuntimeRequestCost, 0, len(b.LLMRequestCosts))
+		for i := range b.LLMRequestCosts {
+			c := &b.LLMRequestCosts[i]
+			var prog cel.Program
+			if c.CEL != "" {
+				var err error
+				prog, err = llmcostcel.NewProgram(c.CEL)
+				if err != nil {
+					return nil, fmt.Errorf("cannot create CEL program for backend %s cost: %w", b.Name, err)
+				}
+			}
+			backendCosts = append(backendCosts, RuntimeRequestCost{LLMRequestCost: c, CELProg: prog})
+		}
+
+		backends[b.Name] = &RuntimeBackend{Backend: b, Handler: h, RequestCosts: backendCosts}
 	}
 
+	// Compile CEL programs for global LLMRequestCosts (for backward compatibility).
 	costs := make([]RuntimeRequestCost, 0, len(config.LLMRequestCosts))
 	for i := range config.LLMRequestCosts {
 		c := &config.LLMRequestCosts[i]

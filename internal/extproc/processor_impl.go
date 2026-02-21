@@ -115,6 +115,9 @@ type (
 		bodyMutator       *bodymutator.BodyMutator
 		backendName       string
 		handler           filterapi.BackendAuthHandler
+		// backendRequestCosts contains the request costs specific to this backend.
+		// This allows different backends/routes to have different cost calculation formulas.
+		backendRequestCosts []filterapi.RuntimeRequestCost
 		// cost is the cost of the request that is accumulated during the processing of the response.
 		costs metrics.TokenUsage
 		// metrics tracking.
@@ -512,8 +515,13 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		u.metrics.RecordTokenUsage(ctx, u.costs, u.requestHeaders)
 	}
 
-	if body.EndOfStream && len(u.parent.config.RequestCosts) > 0 {
-		metadata, err := buildDynamicMetadata(u.parent.config, &u.costs, u.requestHeaders, u.backendName)
+	// Use backend-level request costs if available, otherwise fall back to global config.
+	requestCosts := u.backendRequestCosts
+	if len(requestCosts) == 0 {
+		requestCosts = u.parent.config.RequestCosts
+	}
+	if body.EndOfStream && len(requestCosts) > 0 {
+		metadata, err := buildDynamicMetadata(requestCosts, &u.costs, u.requestHeaders, u.backendName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
@@ -531,7 +539,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 }
 
 // SetBackend implements [Processor.SetBackend].
-func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler filterapi.BackendAuthHandler, routeProcessor Processor) (err error) {
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(ctx context.Context, backend *filterapi.RuntimeBackend, routeProcessor Processor) (err error) {
 	defer func() {
 		if err != nil {
 			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
@@ -542,12 +550,14 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 		panic("BUG: expected routeProcessor to be of type *chatCompletionProcessorRouterFilter")
 	}
 	rp.upstreamFilterCount++
-	u.metrics.SetBackend(b)
-	u.modelNameOverride = b.ModelNameOverride
-	u.backendName = b.Name
-	u.handler = backendHandler
-	u.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
-	u.bodyMutator = bodymutator.NewBodyMutator(b.BodyMutation, rp.originalRequestBodyRaw)
+	u.metrics.SetBackend(backend.Backend)
+	u.modelNameOverride = backend.Backend.ModelNameOverride
+	u.backendName = backend.Backend.Name
+	u.handler = backend.Handler
+	u.headerMutator = headermutator.NewHeaderMutator(backend.Backend.HeaderMutation, rp.requestHeaders)
+	u.bodyMutator = bodymutator.NewBodyMutator(backend.Backend.BodyMutation, rp.originalRequestBodyRaw)
+	// Set the backend-level request costs.
+	u.backendRequestCosts = backend.RequestCosts
 	// Header-derived labels/CEL must be able to see the overridden request model.
 	if u.modelNameOverride != "" {
 		u.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = u.modelNameOverride
@@ -555,9 +565,9 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	rp.upstreamFilter = u
 	u.parent = rp
 
-	u.translator, err = u.parent.eh.GetTranslator(b.Schema, u.modelNameOverride)
+	u.translator, err = u.parent.eh.GetTranslator(backend.Backend.Schema, u.modelNameOverride)
 	if err != nil {
-		return fmt.Errorf("failed to create translator for backend %s: %w", b.Name, err)
+		return fmt.Errorf("failed to create translator for backend %s: %w", backend.Backend.Name, err)
 	}
 
 	switch redactor := u.translator.(type) {
@@ -665,10 +675,10 @@ func mergeDynamicMetadata(base, extra *structpb.Struct) *structpb.Struct {
 // This function is called by the upstream filter only at the end of the stream (body.EndOfStream=true)
 // when the response is successfully completed. It is not called for failed requests or partial responses.
 // The metadata includes token usage costs and model information for downstream processing.
-func buildDynamicMetadata(config *filterapi.RuntimeConfig, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName string) (*structpb.Struct, error) {
-	metadata := make(map[string]*structpb.Value, len(config.RequestCosts)+2)
-	for i := range config.RequestCosts {
-		rc := &config.RequestCosts[i]
+func buildDynamicMetadata(requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName string) (*structpb.Struct, error) {
+	metadata := make(map[string]*structpb.Value, len(requestCosts)+2)
+	for i := range requestCosts {
+		rc := &requestCosts[i]
 		var cost uint32
 		switch rc.Type {
 		case filterapi.LLMRequestCostTypeInputToken:
