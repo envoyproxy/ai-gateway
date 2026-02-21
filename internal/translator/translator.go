@@ -110,6 +110,8 @@ type (
 	AnthropicMessagesTranslator = Translator[anthropicschema.MessagesRequest, tracingapi.MessageSpan]
 	// OpenAIImageGenerationTranslator translates the OpenAI's /images/generations endpoint.
 	OpenAIImageGenerationTranslator = Translator[openai.ImageGenerationRequest, tracingapi.ImageGenerationSpan]
+	// OpenAIImageEditTranslator translates the OpenAI's /images/edits endpoint.
+	OpenAIImageEditTranslator = Translator[openai.ImageEditRequest, tracingapi.ImageEditSpan]
 	// OpenAIResponsesTranslator translates the OpenAI's /responses endpoint.
 	OpenAIResponsesTranslator = Translator[openai.ResponseRequest, tracingapi.ResponsesSpan]
 	// OpenAISpeechTranslator translates the OpenAI's /v1/audio/speech endpoint.

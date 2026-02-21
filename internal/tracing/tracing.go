@@ -30,6 +30,7 @@ type tracingImpl struct {
 	chatCompletionTracer  tracingapi.ChatCompletionTracer
 	completionTracer      tracingapi.CompletionTracer
 	imageGenerationTracer tracingapi.ImageGenerationTracer
+	imageEditTracer       tracingapi.ImageEditTracer
 	embeddingsTracer      tracingapi.EmbeddingsTracer
 	responsesTracer       tracingapi.ResponsesTracer
 	speechTracer          tracingapi.SpeechTracer
@@ -58,6 +59,11 @@ func (t *tracingImpl) EmbeddingsTracer() tracingapi.EmbeddingsTracer {
 // ImageGenerationTracer implements the same method as documented on tracingapi.Tracing.
 func (t *tracingImpl) ImageGenerationTracer() tracingapi.ImageGenerationTracer {
 	return t.imageGenerationTracer
+}
+
+// ImageEditTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) ImageEditTracer() tracingapi.ImageEditTracer {
+	return t.imageEditTracer
 }
 
 // ResponsesTracer implements the same method as documented on tracingapi.Tracing.
@@ -190,6 +196,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 	// Default to OpenInference trace span semantic conventions.
 	chatRecorder := openai.NewChatCompletionRecorderFromEnv()
 	imageRecorder := openai.NewImageGenerationRecorderFromEnv()
+	imageEditRecorder := openai.NewImageEditRecorderFromEnv()
 	completionRecorder := openai.NewCompletionRecorderFromEnv()
 	embeddingsRecorder := openai.NewEmbeddingsRecorderFromEnv()
 	responsesRecorder := openai.NewResponsesRecorderFromEnv()
@@ -209,6 +216,11 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			tracer,
 			propagator,
 			imageRecorder,
+		),
+		imageEditTracer: newImageEditTracer(
+			tracer,
+			propagator,
+			imageEditRecorder,
 		),
 		completionTracer: newCompletionTracer(
 			tracer,
