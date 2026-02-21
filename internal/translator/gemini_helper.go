@@ -568,19 +568,41 @@ func reasoningEffortAvailable(requestModel internalapi.RequestModel) bool {
 	return strings.Contains(requestModel, "gemini") && strings.Contains(requestModel, "3")
 }
 
+// isGeminiFlashModel checks if the model is a Gemini Flash model.
+func isGeminiFlashModel(model internalapi.RequestModel) bool {
+	return strings.Contains(strings.ToLower(model), "flash")
+}
+
 // mapReasoningEffortToThinkingLevel converts OpenAI reasoning effort levels to Gemini thinking levels.
-// Currently supports:
+// The mapping depends on the model type:
+// - "none" → ThinkingLevelMinimal (Gemini Flash only)
 // - "low" → ThinkingLevelLow
-// - "medium" → ThinkingLevelHigh
-// https://ai.google.dev/gemini-api/docs/gemini-3?thinking=low#openai_compatibility
-func mapReasoningEffortToThinkingLevel(reasonEffort openaisdk.ReasoningEffort) (genai.ThinkingLevel, error) {
+// - "medium" → ThinkingLevelMedium for Flash, ThinkingLevelHigh for Pro
+// - "high" → ThinkingLevelHigh
+// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/start/get-started-with-gemini-3#openai-example
+func mapReasoningEffortToThinkingLevel(reasonEffort openaisdk.ReasoningEffort, model internalapi.RequestModel) (genai.ThinkingLevel, error) {
+	isFlash := isGeminiFlashModel(model)
+
 	switch reasonEffort {
+	case "none":
+		if !isFlash {
+			return "", fmt.Errorf("%w: reasoning effort 'none' is only supported for Gemini Flash models", internalapi.ErrInvalidRequestBody)
+		}
+		return genai.ThinkingLevelMinimal, nil
 	case openaisdk.ReasoningEffortLow:
 		return genai.ThinkingLevelLow, nil
 	case openaisdk.ReasoningEffortMedium:
+		if isFlash {
+			return genai.ThinkingLevelMedium, nil
+		}
+		return genai.ThinkingLevelHigh, nil
+	case openaisdk.ReasoningEffortHigh:
+		if !isFlash {
+			return "", fmt.Errorf("%w: reasoning effort 'high' is only supported for Gemini Flash models", internalapi.ErrInvalidRequestBody)
+		}
 		return genai.ThinkingLevelHigh, nil
 	default:
-		return "", fmt.Errorf("%w: unsupported reasoning effort level: %q (supported: low, medium)", internalapi.ErrInvalidRequestBody, reasonEffort)
+		return "", fmt.Errorf("%w: unsupported reasoning effort level: %q (supported: none, low, medium, high)", internalapi.ErrInvalidRequestBody, reasonEffort)
 	}
 }
 
@@ -674,7 +696,7 @@ func openAIReqToGeminiGenerationConfig(openAIReq *openai.ChatCompletionRequest, 
 		gc.ResponseJsonSchema = openAIReq.GuidedJSON
 	}
 	if openAIReq.ReasoningEffort != "" && reasoningEffortAvailable(requestModel) {
-		thinkLevel, err := mapReasoningEffortToThinkingLevel(openAIReq.ReasoningEffort)
+		thinkLevel, err := mapReasoningEffortToThinkingLevel(openAIReq.ReasoningEffort, requestModel)
 		if err != nil {
 			return nil, responseMode, fmt.Errorf("invalid reasoning effort: %w", err)
 		}
