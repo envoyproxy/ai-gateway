@@ -118,7 +118,7 @@ func (m *mcpRequestContext) serveGET(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing session ID", http.StatusBadRequest)
 		return
 	}
-	s, err := m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(lastEventID))
+	s, err := m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(lastEventID), r)
 	if err != nil {
 		m.l.Error("invalid session ID in GET request", slog.String("session_id", sessionID), slog.String("error", err.Error()))
 		http.Error(w, fmt.Sprintf("invalid session ID: %v", err), http.StatusBadRequest)
@@ -152,7 +152,7 @@ func (m *mcpRequestContext) serverDELETE(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	// we didn't care about last event id in DELETE.
-	s, err := m.sessionFromID(secureClientToGatewaySessionID(sessionID), "")
+	s, err := m.sessionFromID(secureClientToGatewaySessionID(sessionID), "", r)
 	if err != nil {
 		m.l.Error("invalid session ID in DELETE request", slog.String("session_id", sessionID), slog.String("error", err.Error()))
 		http.Error(w, fmt.Sprintf("invalid session ID: %v", err), http.StatusBadRequest)
@@ -223,7 +223,7 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 		m.metrics.RecordMethodCount(ctx, requestMethod, params)
 	}()
 	if sessionID := r.Header.Get(sessionIDHeader); sessionID != "" {
-		s, err = m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(r.Header.Get(lastEventIDHeader)))
+		s, err = m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(r.Header.Get(lastEventIDHeader)), r)
 		if err != nil {
 			errType = metrics.MCPErrorInvalidSessionID
 			m.l.Error("invalid session ID in POST request", slog.String("session_id", sessionID), slog.String("error", err.Error()))
@@ -326,7 +326,12 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 				onErrorResponse(w, http.StatusInternalServerError, "missing route header")
 				return
 			}
-			err = m.handleInitializeRequest(ctx, w, msg, params.(*mcp.InitializeParams), route, extractSubject(r), span)
+			// Extract JWT claim headers configured for this route to forward to backends.
+			var claimHeaders map[string]string
+			if routeConfig := m.routes[route]; routeConfig != nil {
+				claimHeaders = extractClaimHeaders(r, routeConfig.claimToHeaders)
+			}
+			err = m.handleInitializeRequest(ctx, w, msg, params.(*mcp.InitializeParams), route, extractSubject(r), claimHeaders, span)
 		case "notifications/initialized":
 			// According to the MCP spec, when the server receives a JSON-RPC response or notification from the client
 			// and accepts it, the server MUST return HTTP 202 Accepted with an empty body.
@@ -493,9 +498,9 @@ func errorType(err error) metrics.MCPErrorType {
 }
 
 // handleInitializeRequest handles the "initialize" JSON-RPC method.
-func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.InitializeParams, route, subject string, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.InitializeParams, route, subject string, claimHeaders map[string]string, span tracingapi.MCPSpan) error {
 	m.metrics.RecordClientCapabilities(ctx, p.Capabilities, p)
-	s, err := m.newSession(ctx, p, route, subject, span)
+	s, err := m.newSession(ctx, p, route, subject, claimHeaders, span)
 	if err != nil {
 		m.l.Error("failed to create new session", slog.String("error", err.Error()))
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to create new session: %v", err))
@@ -622,7 +627,7 @@ func (m *mcpRequestContext) handleClientToServerResponse(ctx context.Context, s 
 		onErrorResponse(w, http.StatusNotFound, fmt.Sprintf("unknown backend %s", backendName))
 		return fmt.Errorf("%w: unknown backend %s", errBackendNotFound, backendName)
 	}
-	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, cse, res)
+	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, cse, res, s.claimHeaders)
 	if err != nil {
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to send: %v", err))
 		return err
@@ -1184,6 +1189,27 @@ func extractSubject(r *http.Request) string {
 	return claims.Subject
 }
 
+// extractClaimHeaders reads JWT claim headers from the incoming request.
+// These headers are set by Envoy's JWT filter based on the ClaimToHeaders configuration
+// in the SecurityPolicy. This function simply reads them from the request to forward to backends.
+func extractClaimHeaders(r *http.Request, claimToHeaders []filterapi.ClaimToHeader) map[string]string {
+	if len(claimToHeaders) == 0 {
+		return nil
+	}
+
+	result := make(map[string]string)
+	for _, mapping := range claimToHeaders {
+		if value := r.Header.Get(mapping.Header); value != "" {
+			result[mapping.Header] = value
+		}
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
 // handlePromptGetRequest handles the "prompts/get" JSON-RPC method.
 func (m *mcpRequestContext) handlePromptGetRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.GetPromptParams) error {
 	backendName, promptName, err := upstreamResourceName(p.Name)
@@ -1324,7 +1350,7 @@ func (m *mcpRequestContext) handleClientToServerNotificationsProgress(ctx contex
 // invokeAndProxyResponse invokes the given JSON-RPC request to the given backend and proxies the response back to the client
 // via w ResponseWriter.
 func (m *mcpRequestContext) invokeAndProxyResponse(ctx context.Context, s *session, w http.ResponseWriter, backend filterapi.MCPBackend, sess *compositeSessionEntry, req *jsonrpc.Request) error {
-	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, sess, req)
+	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, sess, req, s.claimHeaders)
 	if err != nil {
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("call to %s failed: %v", backend.Name, err))
 		return err

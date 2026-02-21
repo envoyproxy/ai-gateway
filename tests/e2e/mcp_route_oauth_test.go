@@ -96,6 +96,52 @@ func TestMCPRouteOAuth(t *testing.T) {
 		t.Logf("Successfully connected with valid token and retrieved %d tools", len(tools.Tools))
 	})
 
+	t.Run("claim headers forwarded to backend", func(t *testing.T) {
+		// This test validates that JWT claims configured via claimToHeaders are extracted
+		// and forwarded to the backend MCP server. The backend has TEST_EXPECTED_CLAIM_HEADERS
+		// set, so its middleware will reject any request missing the expected claim headers.
+		validToken := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.NHVaYe26MbtOYhSKkoKYdFVomg4i8ZJd8_-RU8VNbftc4TSMb4bXP3l3YlNWACwyXPGffz5aXHc6lty1Y2t4SWRqGteragsVdZufDn5BlnJl9pdR_kdVFUsra2rWKEofkZeIC4yWytE58sMIihvo9H1ScmmVwBcQP6XETqYd0aSHp1gOa9RdUPDvoXQ5oqygTqVtxaDr6wUFKrKItgBMzWIdNZ6y7O9E0DhEPTbE9rfBo6KTFsHAZnMg4k68CDp2woYIaXbmYTWcvbzIuHO7_37GT79XdIwkm95QJ7hYC9RiwrV7mesbY4PAahERJawntho0my942XheVLmGwLMBkQ" //nolint:gosec // Test JWT token
+
+		authHTTPClient := &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &mcpAuthTransport{
+				token: validToken,
+				base:  http.DefaultTransport,
+			},
+		}
+
+		client := mcp.NewClient(&mcp.Implementation{Name: "demo-http-client", Version: "0.1.0"}, nil)
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		var sess *mcp.ClientSession
+		require.Eventually(t, func() bool {
+			var err error
+			sess, err = client.Connect(
+				ctx,
+				&mcp.StreamableClientTransport{
+					Endpoint:   fmt.Sprintf("%s/mcp", fwd.Address()),
+					HTTPClient: authHTTPClient,
+				}, nil)
+			if err != nil {
+				t.Logf("failed to connect to MCP server: %v", err)
+				return false
+			}
+			return true
+		}, 30*time.Second, 100*time.Millisecond, "failed to connect to MCP server")
+		t.Cleanup(func() { _ = sess.Close() })
+
+		// Call the echo tool — if claim headers are missing or wrong, the backend
+		// middleware will reject the request and this call will fail.
+		result, err := sess.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "echo",
+			Arguments: map[string]interface{}{"message": "claim-header-test"},
+		})
+		require.NoError(t, err)
+		require.False(t, result.IsError, "echo tool should succeed when claim headers are forwarded")
+		t.Logf("echo tool result: %+v", result)
+	})
+
 	t.Run("without token using MCP client", func(t *testing.T) {
 		// Create an MCP client and connect to the server over Streamable HTTP.
 		client := mcp.NewClient(&mcp.Implementation{Name: "demo-http-client", Version: "0.1.0"}, nil)

@@ -30,6 +30,18 @@ type MCPRoute struct {
 
 	// Authorization is the authorization configuration for this route.
 	Authorization *MCPRouteAuthorization `json:"authorization,omitempty"`
+
+	// ClaimToHeaders specifies JWT claims to extract and forward as HTTP headers to backend MCP servers.
+	ClaimToHeaders []ClaimToHeader `json:"claimToHeaders,omitempty"`
+}
+
+// ClaimToHeader defines a mapping from a JWT claim to an HTTP header.
+type ClaimToHeader struct {
+	// Claim is the JWT claim name to extract (supports dot notation for nested claims).
+	Claim string `json:"claim"`
+
+	// Header is the HTTP header name to forward the claim value as.
+	Header string `json:"header"`
 }
 
 // MCPBackend is the MCP backend configuration.
