@@ -149,6 +149,8 @@ type Backend struct {
 	HeaderMutation *HTTPHeaderMutation `json:"httpHeaderMutation,omitempty"`
 	// Body mutations to be applied to the request before sending to the backend. Optional.
 	BodyMutation *HTTPBodyMutation `json:"httpBodyMutation,omitempty"`
+	// Response body mutations to be applied before returning to the client. Optional.
+	ResponseBodyMutation *HTTPBodyMutation `json:"responseBodyMutation,omitempty"`
 }
 
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.
