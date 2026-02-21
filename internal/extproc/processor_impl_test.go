@@ -1345,3 +1345,211 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 		require.Contains(t, retryResult, "messages", "Bedrock 'messages' field should be present on retry")
 	})
 }
+
+func Test_buildDynamicMetadata(t *testing.T) {
+	t.Run("sets model_name_override from request headers", func(t *testing.T) {
+		config := &filterapi.RuntimeConfig{}
+		costs := &metrics.TokenUsage{}
+		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
+
+		md, err := buildDynamicMetadata(config, costs, headers, "")
+		require.NoError(t, err)
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "gpt-4", inner.Fields["model_name_override"].GetStringValue())
+	})
+
+	t.Run("model_name_override reflects actual model after backend override", func(t *testing.T) {
+		config := &filterapi.RuntimeConfig{}
+		costs := &metrics.TokenUsage{}
+		// After backend override, the header contains the backend-specific model name.
+		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "us.anthropic.claude-sonnet-4.5-v2"}
+
+		md, err := buildDynamicMetadata(config, costs, headers, "default/my-backend")
+		require.NoError(t, err)
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "us.anthropic.claude-sonnet-4.5-v2", inner.Fields["model_name_override"].GetStringValue())
+	})
+
+	t.Run("sets backend_name when provided", func(t *testing.T) {
+		config := &filterapi.RuntimeConfig{}
+		costs := &metrics.TokenUsage{}
+		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
+
+		md, err := buildDynamicMetadata(config, costs, headers, "ns/backend-a")
+		require.NoError(t, err)
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "ns/backend-a", inner.Fields["backend_name"].GetStringValue())
+	})
+
+	t.Run("omits backend_name when empty", func(t *testing.T) {
+		config := &filterapi.RuntimeConfig{}
+		costs := &metrics.TokenUsage{}
+		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
+
+		md, err := buildDynamicMetadata(config, costs, headers, "")
+		require.NoError(t, err)
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Nil(t, inner.Fields["backend_name"])
+	})
+
+	t.Run("includes token usage costs alongside model_name_override", func(t *testing.T) {
+		config := &filterapi.RuntimeConfig{
+			RequestCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_tokens"}},
+				{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_tokens"}},
+			},
+		}
+		costs := &metrics.TokenUsage{}
+		costs.SetOutputTokens(100)
+		costs.SetInputTokens(50)
+		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "claude-sonnet"}
+
+		md, err := buildDynamicMetadata(config, costs, headers, "default/backend")
+		require.NoError(t, err)
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "claude-sonnet", inner.Fields["model_name_override"].GetStringValue())
+		require.Equal(t, "default/backend", inner.Fields["backend_name"].GetStringValue())
+		require.Equal(t, float64(100), inner.Fields["output_tokens"].GetNumberValue())
+		require.Equal(t, float64(50), inner.Fields["input_tokens"].GetNumberValue())
+	})
+
+	t.Run("model_name_override is empty string when header not set", func(t *testing.T) {
+		config := &filterapi.RuntimeConfig{}
+		costs := &metrics.TokenUsage{}
+		headers := map[string]string{}
+
+		md, err := buildDynamicMetadata(config, costs, headers, "")
+		require.NoError(t, err)
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		// model_name_override should still be present, just with empty value.
+		require.Empty(t, inner.Fields["model_name_override"].GetStringValue())
+	})
+}
+
+func Test_buildBackendNameDynamicMetadata(t *testing.T) {
+	t.Run("returns nil for empty backend name", func(t *testing.T) {
+		md := buildBackendNameDynamicMetadata("")
+		require.Nil(t, md)
+	})
+
+	t.Run("extracts namespace/name from full PerRouteRuleRefBackendName", func(t *testing.T) {
+		md := buildBackendNameDynamicMetadata("default/my-backend/route/myroute/rule/0/ref/0")
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "default/my-backend", inner.Fields["backend_name"].GetStringValue())
+	})
+
+	t.Run("handles simple namespace/name format", func(t *testing.T) {
+		md := buildBackendNameDynamicMetadata("production/openai-backend")
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "production/openai-backend", inner.Fields["backend_name"].GetStringValue())
+	})
+
+	t.Run("handles single segment name", func(t *testing.T) {
+		md := buildBackendNameDynamicMetadata("backend-only")
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "backend-only", inner.Fields["backend_name"].GetStringValue())
+	})
+
+	t.Run("metadata is under correct namespace", func(t *testing.T) {
+		md := buildBackendNameDynamicMetadata("ns/backend")
+		require.NotNil(t, md)
+		require.Contains(t, md.Fields, internalapi.AIGatewayFilterMetadataNamespace)
+	})
+}
+
+func Test_mergeDynamicMetadata(t *testing.T) {
+	t.Run("nil base returns extra", func(t *testing.T) {
+		extra := &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				internalapi.AIGatewayFilterMetadataNamespace: structpb.NewStructValue(&structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"key1": structpb.NewStringValue("val1"),
+					},
+				}),
+			},
+		}
+		result := mergeDynamicMetadata(nil, extra)
+		require.Equal(t, extra, result)
+	})
+
+	t.Run("nil extra returns base", func(t *testing.T) {
+		base := &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				internalapi.AIGatewayFilterMetadataNamespace: structpb.NewStructValue(&structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"key1": structpb.NewStringValue("val1"),
+					},
+				}),
+			},
+		}
+		result := mergeDynamicMetadata(base, nil)
+		require.Equal(t, base, result)
+	})
+
+	t.Run("merges extra fields into base", func(t *testing.T) {
+		base := &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				internalapi.AIGatewayFilterMetadataNamespace: structpb.NewStructValue(&structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"backend_name": structpb.NewStringValue("ns/backend"),
+					},
+				}),
+			},
+		}
+		extra := &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				internalapi.AIGatewayFilterMetadataNamespace: structpb.NewStructValue(&structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"model_name_override": structpb.NewStringValue("gpt-4"),
+					},
+				}),
+			},
+		}
+		result := mergeDynamicMetadata(base, extra)
+		inner := result.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "ns/backend", inner.Fields["backend_name"].GetStringValue())
+		require.Equal(t, "gpt-4", inner.Fields["model_name_override"].GetStringValue())
+	})
+
+	t.Run("extra overwrites existing keys in base", func(t *testing.T) {
+		base := &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				internalapi.AIGatewayFilterMetadataNamespace: structpb.NewStructValue(&structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"key": structpb.NewStringValue("old-value"),
+					},
+				}),
+			},
+		}
+		extra := &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				internalapi.AIGatewayFilterMetadataNamespace: structpb.NewStructValue(&structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"key": structpb.NewStringValue("new-value"),
+					},
+				}),
+			},
+		}
+		result := mergeDynamicMetadata(base, extra)
+		inner := result.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "new-value", inner.Fields["key"].GetStringValue())
+	})
+}
