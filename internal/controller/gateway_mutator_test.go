@@ -35,6 +35,7 @@ var testGatewayConfig = &aigv1a1.GatewayConfig{
 	},
 	Spec: aigv1a1.GatewayConfigSpec{
 		ExtProc: &aigv1a1.GatewayConfigExtProc{
+			LogLevel: ptr.To("debug"), // Overrides global
 			Kubernetes: &egv1a1.KubernetesContainerSpec{
 				Image: ptr.To("gcr.io/custom/extproc:v2"),
 				Env: []corev1.EnvVar{
@@ -308,6 +309,12 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 				memReq := container.Resources.Requests[corev1.ResourceMemory]
 				require.Equal(t, resource.MustParse("200m"), cpuReq)
 				require.Equal(t, resource.MustParse("256Mi"), memReq)
+
+				for i, arg := range container.Args {
+					if i > 0 && container.Args[i-1] == "-logLevel" {
+						require.Equal(t, "debug", arg) // From GatewayConfig logLevel field
+					}
+				}
 			},
 		},
 	}
