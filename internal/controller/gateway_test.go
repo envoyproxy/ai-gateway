@@ -132,7 +132,14 @@ func TestGatewayController_Reconcile(t *testing.T) {
 			},
 		},
 		Spec: appsv1.DeploymentSpec{
+			Replicas: ptr.To(int32(1)),
 			Template: corev1.PodTemplateSpec{},
+		},
+		Status: appsv1.DeploymentStatus{
+			ObservedGeneration: 1,
+			UpdatedReplicas:    1,
+			ReadyReplicas:      1,
+			AvailableReplicas:  1,
 		},
 	}
 	_, err = fakeKube.AppsV1().Deployments(namespace).Create(t.Context(), deployment, metav1.CreateOptions{})
@@ -681,8 +688,9 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 		hasEffectiveRoute := true
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, nil, "some-uuid", hasEffectiveRoute, false)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, nil, "some-uuid", hasEffectiveRoute, false)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 
 		annotated, err := kube.CoreV1().Pods(egNamespace).Get(t.Context(), "pod1", metav1.GetOptions{})
 		require.NoError(t, err)
@@ -695,14 +703,24 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 				Namespace: egNamespace,
 				Labels:    labels,
 			},
-			Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: ptr.To(int32(1)),
+				Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
+			},
+			Status: appsv1.DeploymentStatus{
+				ObservedGeneration: 1,
+				UpdatedReplicas:    1,
+				ReadyReplicas:      1,
+				AvailableReplicas:  1,
+			},
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
 		// Since it has already a sidecar container, passing the hasEffectiveRoute=false should result in adding an annotation to the deployment.
 		hasEffectiveRoute = false
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "another-uuid", hasEffectiveRoute, false)
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "another-uuid", hasEffectiveRoute, false)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 
 		// Check the deployment's pod template has the annotation.
 		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "foo-dep", metav1.GetOptions{})
@@ -728,14 +746,24 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 				Namespace: egNamespace,
 				Labels:    labels,
 			},
-			Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: ptr.To(int32(1)),
+				Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
+			},
+			Status: appsv1.DeploymentStatus{
+				ObservedGeneration: 1,
+				UpdatedReplicas:    1,
+				ReadyReplicas:      1,
+				AvailableReplicas:  1,
+			},
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
 		// When there's no effective route, this should not add the annotation to the deployment.
 		hasEffectiveRoute := false
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", hasEffectiveRoute, false)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", hasEffectiveRoute, false)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
 		require.NoError(t, err)
 		_, exists := deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
@@ -743,8 +771,9 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 
 		// When there's an effective route, this should add the annotation to the deployment.
 		hasEffectiveRoute = true
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", hasEffectiveRoute, false)
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", hasEffectiveRoute, false)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 
 		// Check the deployment's pod template has the annotation.
 		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
@@ -774,12 +803,22 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 				Namespace: egNamespace,
 				Labels:    labels,
 			},
-			Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: ptr.To(int32(1)),
+				Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
+			},
+			Status: appsv1.DeploymentStatus{
+				ObservedGeneration: 1,
+				UpdatedReplicas:    1,
+				ReadyReplicas:      1,
+				AvailableReplicas:  1,
+			},
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 
 		// Check the deployment's pod template has the annotation.
 		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment2", metav1.GetOptions{})
@@ -792,8 +831,9 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again but the deployment's pod template should not be updated again.
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false)
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 
 		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment2", metav1.GetOptions{})
 		require.NoError(t, err)
@@ -822,12 +862,22 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 				Namespace: egNamespace,
 				Labels:    labels,
 			},
-			Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: ptr.To(int32(1)),
+				Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
+			},
+			Status: appsv1.DeploymentStatus{
+				ObservedGeneration: 1,
+				UpdatedReplicas:    1,
+				ReadyReplicas:      1,
+				AvailableReplicas:  1,
+			},
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 
 		// Check the deployment's pod template has the annotation.
 		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment3", metav1.GetOptions{})
@@ -840,8 +890,9 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again but the deployment's pod template should not be updated again.
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false)
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 
 		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment3", metav1.GetOptions{})
 		require.NoError(t, err)
@@ -868,13 +919,23 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 				Namespace: egNamespace,
 				Labels:    labels,
 			},
-			Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: ptr.To(int32(1)),
+				Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
+			},
+			Status: appsv1.DeploymentStatus{
+				ObservedGeneration: 1,
+				UpdatedReplicas:    1,
+				ReadyReplicas:      1,
+				AvailableReplicas:  1,
+			},
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
 		// Call with needMCP=true - should trigger rollout due to missing -mcpAddr
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, true)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, true)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 
 		// Check the deployment's pod template has the annotation (rollout triggered).
 		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment4", metav1.GetOptions{})
@@ -887,13 +948,307 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again - should NOT trigger another rollout
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "another-uuid", true, true)
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "another-uuid", true, true)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 
 		// Deployment annotation should remain unchanged (no new rollout)
 		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment4", metav1.GetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+	})
+
+	t.Run("deployment rollout in progress should requeue", func(t *testing.T) {
+		// Create pod with sidecar
+		podWithSidecar := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-with-sidecar",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+				{Name: extProcContainerName, Image: v2Container, Args: []string{"-logLevel", logLevel}},
+			}},
+		}
+		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), podWithSidecar, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		// Create pod without sidecar
+		podWithoutSidecar := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-without-sidecar",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "envoy"}}},
+		}
+		_, err = kube.CoreV1().Pods(egNamespace).Create(t.Context(), podWithoutSidecar, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		deployment, err := kube.AppsV1().Deployments(egNamespace).Create(t.Context(), &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "deployment-inconsistent",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: ptr.To(int32(1)),
+				Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
+			},
+			Status: appsv1.DeploymentStatus{
+				ObservedGeneration: 1,
+				UpdatedReplicas:    1,
+				ReadyReplicas:      1,
+				AvailableReplicas:  1,
+			},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+		// Simulate rollout in progress.
+		deployment.Generation = 2
+		deployment.Status.ObservedGeneration = 1
+
+		// Call with rollout in progress - should requeue.
+		result, err := c.annotateGatewayPods(t.Context(),
+			[]corev1.Pod{*podWithSidecar, *podWithoutSidecar},
+			[]appsv1.Deployment{*deployment},
+			nil,
+			"some-uuid",
+			true,
+			false)
+		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{RequeueAfter: 5 * time.Second}, result)
+
+		// Deployment should NOT be updated during inconsistent state
+		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment-inconsistent", metav1.GetOptions{})
+		require.NoError(t, err)
+		_, exists := deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
+		require.False(t, exists, "deployment should not be updated when pods are inconsistent")
+	})
+
+	t.Run("inconsistent pods without rollout should force rollout", func(t *testing.T) {
+		podWithSidecar := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-with-sidecar-force",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+				{Name: extProcContainerName, Image: v2Container, Args: []string{"-logLevel", logLevel}},
+			}},
+		}
+		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), podWithSidecar, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		podWithoutSidecar := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-without-sidecar-force",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "envoy"}}},
+		}
+		_, err = kube.CoreV1().Pods(egNamespace).Create(t.Context(), podWithoutSidecar, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		deployment, err := kube.AppsV1().Deployments(egNamespace).Create(t.Context(), &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "deployment-force-rollout",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: ptr.To(int32(1)),
+				Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
+			},
+			Status: appsv1.DeploymentStatus{
+				ObservedGeneration: 1,
+				UpdatedReplicas:    1,
+				ReadyReplicas:      1,
+				AvailableReplicas:  1,
+			},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		result, err := c.annotateGatewayPods(t.Context(),
+			[]corev1.Pod{*podWithSidecar, *podWithoutSidecar},
+			[]appsv1.Deployment{*deployment},
+			nil,
+			"force-rollout-uuid",
+			true,
+			false)
+		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
+
+		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment-force-rollout", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "force-rollout-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+	})
+
+	t.Run("terminating pods are ignored for consistency and annotation", func(t *testing.T) {
+		now := metav1.Now()
+		terminatingPodWithSidecar := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              "pod-terminating-sidecar",
+				Namespace:         egNamespace,
+				Labels:            labels,
+				DeletionTimestamp: &now,
+			},
+			Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+				{Name: extProcContainerName, Image: v2Container, Args: []string{"-logLevel", logLevel}},
+			}},
+		}
+		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), terminatingPodWithSidecar, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		activePodWithoutSidecar := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-active-without-sidecar",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "envoy"}}},
+		}
+		_, err = kube.CoreV1().Pods(egNamespace).Create(t.Context(), activePodWithoutSidecar, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		deployment, err := kube.AppsV1().Deployments(egNamespace).Create(t.Context(), &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "deployment-ignore-terminating",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: ptr.To(int32(1)),
+				Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
+			},
+			Status: appsv1.DeploymentStatus{
+				ObservedGeneration: 1,
+				UpdatedReplicas:    1,
+				ReadyReplicas:      1,
+				AvailableReplicas:  1,
+			},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		// Since terminating pod is ignored, active pods are consistent (without sidecar),
+		// so no forced rollout should happen when there are no effective routes.
+		result, err := c.annotateGatewayPods(t.Context(),
+			[]corev1.Pod{*terminatingPodWithSidecar, *activePodWithoutSidecar},
+			[]appsv1.Deployment{*deployment},
+			nil,
+			"ignore-terminating-uuid",
+			false,
+			false)
+		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
+
+		// Terminating pod should not be patched.
+		terminatingPodWithSidecar, err = kube.CoreV1().Pods(egNamespace).Get(t.Context(), "pod-terminating-sidecar", metav1.GetOptions{})
+		require.NoError(t, err)
+		_, exists := terminatingPodWithSidecar.Annotations[aigatewayUUIDAnnotationKey]
+		require.False(t, exists)
+
+		// Deployment should not roll out in this case.
+		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment-ignore-terminating", metav1.GetOptions{})
+		require.NoError(t, err)
+		_, exists = deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
+		require.False(t, exists)
+	})
+
+	t.Run("rollout in progress checks deployment status", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			deployments []appsv1.Deployment
+			expected    bool
+		}{
+			{
+				name: "zero replicas is ignored",
+				deployments: []appsv1.Deployment{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "dep", Generation: 2},
+						Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(0))},
+						Status: appsv1.DeploymentStatus{
+							ObservedGeneration: 1,
+							UpdatedReplicas:    0,
+							ReadyReplicas:      0,
+							AvailableReplicas:  0,
+						},
+					},
+				},
+				expected: false,
+			},
+			{
+				name: "observed generation behind generation requeues",
+				deployments: []appsv1.Deployment{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "dep", Generation: 2},
+						Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(1))},
+						Status: appsv1.DeploymentStatus{
+							ObservedGeneration: 1,
+							UpdatedReplicas:    1,
+							ReadyReplicas:      1,
+							AvailableReplicas:  1,
+						},
+					},
+				},
+				expected: true,
+			},
+			{
+				name: "updated replicas below desired requeues",
+				deployments: []appsv1.Deployment{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "dep", Generation: 1},
+						Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(2))},
+						Status: appsv1.DeploymentStatus{
+							ObservedGeneration: 1,
+							UpdatedReplicas:    1,
+							ReadyReplicas:      2,
+							AvailableReplicas:  2,
+						},
+					},
+				},
+				expected: true,
+			},
+			{
+				name: "available replicas below desired requeues",
+				deployments: []appsv1.Deployment{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "dep", Generation: 1},
+						Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(2))},
+						Status: appsv1.DeploymentStatus{
+							ObservedGeneration: 1,
+							UpdatedReplicas:    2,
+							ReadyReplicas:      2,
+							AvailableReplicas:  1,
+						},
+					},
+				},
+				expected: true,
+			},
+			{
+				name: "fully ready deployment does not requeue",
+				deployments: []appsv1.Deployment{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "dep", Generation: 1},
+						Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(2))},
+						Status: appsv1.DeploymentStatus{
+							ObservedGeneration: 1,
+							UpdatedReplicas:    2,
+							ReadyReplicas:      2,
+							AvailableReplicas:  2,
+						},
+					},
+				},
+				expected: false,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := isRolloutInProgress(tt.deployments, nil)
+				require.Equal(t, tt.expected, got)
+			})
+		}
 	})
 }
 
@@ -935,8 +1290,9 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 
 		// Check the deployment's pod template has the annotation.
 		deployment, err := kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
@@ -970,8 +1326,9 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 
 		// Check the deployment's pod template has the annotation.
 		deployment, err := kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment2", metav1.GetOptions{})
@@ -984,8 +1341,9 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again, but the deployment's pod template should not be updated again.
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 
 		deployment, err = kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment2", metav1.GetOptions{})
 		require.NoError(t, err)
@@ -1018,8 +1376,9 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 
 		// Check the deployment's pod template has the annotation.
 		deployment, err := kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment3", metav1.GetOptions{})
@@ -1032,12 +1391,267 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again, but the deployment's pod template should not be updated again.
-		err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
 		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
 
 		deployment, err = kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment3", metav1.GetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+	})
+
+	t.Run("daemonset rollout in progress should requeue", func(t *testing.T) {
+		podWithSidecar := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-ds-sidecar-requeue",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+				{Name: extProcContainerName, Image: v2Container, Args: []string{"-logLevel", logLevel}},
+			}},
+		}
+		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), podWithSidecar, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		podWithoutSidecar := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-ds-no-sidecar-requeue",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "envoy"}}},
+		}
+		_, err = kube.CoreV1().Pods(egNamespace).Create(t.Context(), podWithoutSidecar, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		dss, err := kube.AppsV1().DaemonSets(egNamespace).Create(t.Context(), &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "ds-inconsistent-requeue",
+				Namespace:  egNamespace,
+				Labels:     labels,
+				Generation: 2,
+			},
+			Spec: appsv1.DaemonSetSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+			Status: appsv1.DaemonSetStatus{
+				ObservedGeneration: 1,
+			},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		result, err := c.annotateGatewayPods(t.Context(),
+			[]corev1.Pod{*podWithSidecar, *podWithoutSidecar},
+			nil,
+			[]appsv1.DaemonSet{*dss},
+			"uuid-requeue",
+			true,
+			false)
+		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{RequeueAfter: 5 * time.Second}, result)
+	})
+
+	t.Run("inconsistent pods without rollout should force rollout daemonset", func(t *testing.T) {
+		podWithSidecar := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-ds-sidecar-force",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+				{Name: extProcContainerName, Image: v2Container, Args: []string{"-logLevel", logLevel}},
+			}},
+		}
+		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), podWithSidecar, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		podWithoutSidecar := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-ds-no-sidecar-force",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "envoy"}}},
+		}
+		_, err = kube.CoreV1().Pods(egNamespace).Create(t.Context(), podWithoutSidecar, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		dss, err := kube.AppsV1().DaemonSets(egNamespace).Create(t.Context(), &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ds-force-rollout",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: appsv1.DaemonSetSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		result, err := c.annotateGatewayPods(t.Context(),
+			[]corev1.Pod{*podWithSidecar, *podWithoutSidecar},
+			nil,
+			[]appsv1.DaemonSet{*dss},
+			"uuid-force",
+			true,
+			false)
+		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
+
+		dss, err = kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "ds-force-rollout", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, "uuid-force", dss.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+	})
+
+	t.Run("terminating pods are ignored for consistency and annotation daemonset", func(t *testing.T) {
+		now := metav1.Now()
+		terminatingPodWithSidecar := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              "pod-ds-terminating-sidecar",
+				Namespace:         egNamespace,
+				Labels:            labels,
+				DeletionTimestamp: &now,
+			},
+			Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+				{Name: extProcContainerName, Image: v2Container, Args: []string{"-logLevel", logLevel}},
+			}},
+		}
+		_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), terminatingPodWithSidecar, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		activePodWithoutSidecar := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-ds-active-no-sidecar",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "envoy"}}},
+		}
+		_, err = kube.CoreV1().Pods(egNamespace).Create(t.Context(), activePodWithoutSidecar, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		dss, err := kube.AppsV1().DaemonSets(egNamespace).Create(t.Context(), &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ds-ignore-terminating",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: appsv1.DaemonSetSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		result, err := c.annotateGatewayPods(t.Context(),
+			[]corev1.Pod{*terminatingPodWithSidecar, *activePodWithoutSidecar},
+			nil,
+			[]appsv1.DaemonSet{*dss},
+			"uuid-ignore-terminating",
+			false,
+			false)
+		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
+
+		terminatingPodWithSidecar, err = kube.CoreV1().Pods(egNamespace).Get(t.Context(), "pod-ds-terminating-sidecar", metav1.GetOptions{})
+		require.NoError(t, err)
+		_, exists := terminatingPodWithSidecar.Annotations[aigatewayUUIDAnnotationKey]
+		require.False(t, exists)
+
+		dss, err = kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "ds-ignore-terminating", metav1.GetOptions{})
+		require.NoError(t, err)
+		_, exists = dss.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
+		require.False(t, exists)
+	})
+
+	t.Run("rollout in progress checks daemonset status", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			daemonSets []appsv1.DaemonSet
+			expected   bool
+		}{
+			{
+				name: "observed generation zero is ignored",
+				daemonSets: []appsv1.DaemonSet{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "ds", Generation: 2},
+						Status: appsv1.DaemonSetStatus{
+							ObservedGeneration:     0,
+							DesiredNumberScheduled: 1,
+							UpdatedNumberScheduled: 0,
+							NumberReady:            0,
+							NumberAvailable:        0,
+						},
+					},
+				},
+				expected: false,
+			},
+			{
+				name: "observed generation behind generation requeues",
+				daemonSets: []appsv1.DaemonSet{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "ds", Generation: 2},
+						Status: appsv1.DaemonSetStatus{
+							ObservedGeneration:     1,
+							DesiredNumberScheduled: 1,
+							UpdatedNumberScheduled: 1,
+							NumberReady:            1,
+							NumberAvailable:        1,
+						},
+					},
+				},
+				expected: true,
+			},
+			{
+				name: "updated number scheduled below desired requeues",
+				daemonSets: []appsv1.DaemonSet{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "ds", Generation: 1},
+						Status: appsv1.DaemonSetStatus{
+							ObservedGeneration:     1,
+							DesiredNumberScheduled: 2,
+							UpdatedNumberScheduled: 1,
+							NumberReady:            2,
+							NumberAvailable:        2,
+						},
+					},
+				},
+				expected: true,
+			},
+			{
+				name: "number available below desired requeues",
+				daemonSets: []appsv1.DaemonSet{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "ds", Generation: 1},
+						Status: appsv1.DaemonSetStatus{
+							ObservedGeneration:     1,
+							DesiredNumberScheduled: 2,
+							UpdatedNumberScheduled: 2,
+							NumberReady:            2,
+							NumberAvailable:        1,
+						},
+					},
+				},
+				expected: true,
+			},
+			{
+				name: "fully ready daemonset does not requeue",
+				daemonSets: []appsv1.DaemonSet{
+					{
+						ObjectMeta: metav1.ObjectMeta{Name: "ds", Generation: 1},
+						Status: appsv1.DaemonSetStatus{
+							ObservedGeneration:     1,
+							DesiredNumberScheduled: 2,
+							UpdatedNumberScheduled: 2,
+							NumberReady:            2,
+							NumberAvailable:        2,
+						},
+					},
+				},
+				expected: false,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := isRolloutInProgress(nil, tt.daemonSets)
+				require.Equal(t, tt.expected, got)
+			})
+		}
 	})
 }
 
