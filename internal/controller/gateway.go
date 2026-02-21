@@ -131,10 +131,9 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	uid := c.uuidFn()
 
-	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
-	// to access it.
+	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc and mcp proxy need to access it.
 	var hasEffectiveRoutes bool // indicates whether the filter config is effective (i.e., there is at least one active route).
-	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, aiRoutes.Items, mcpRoutes.Items, uid)
+	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, gw.Name, gw.Namespace, namespace, aiRoutes.Items, mcpRoutes.Items, uid)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -299,7 +298,8 @@ func mergeHeaderMutations(routeLevel, backendLevel *aigv1a1.HTTPHeaderMutation) 
 // reconcileFilterConfigSecret updates the filter config secret for the external processor.
 func (c *GatewayController) reconcileFilterConfigSecret(
 	ctx context.Context,
-	configSecretName,
+	gatewayName,
+	gatewayNamespace,
 	configSecretNamespace string,
 	aiGatewayRoutes []aigv1a1.AIGatewayRoute,
 	mcpRoutes []aigv1a1.MCPRoute,
@@ -447,29 +447,51 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	if err != nil {
 		return false, fmt.Errorf("failed to marshal extproc config: %w", err)
 	}
-	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
-	// to access it.
+	if err = c.writeFilterConfigBundle(ctx, gatewayName, gatewayNamespace, configSecretNamespace, marshaled, uuid); err != nil {
+		return false, err
+	}
+	// TODO(huabing): this can be removed in the next release.
+	if err = c.writeLegacyFilterConfigSecret(ctx, gatewayName, gatewayNamespace, configSecretNamespace, marshaled); err != nil {
+		return false, err
+	}
+	return hasEffectiveRoute, nil
+}
+
+func (c *GatewayController) writeLegacyFilterConfigSecret(
+	ctx context.Context,
+	gatewayName,
+	gatewayNamespace,
+	configSecretNamespace string,
+	marshaled []byte,
+) error {
+	legacySecretName := legacyFilterConfigSecretName(gatewayName, gatewayNamespace)
+
+	// Create legacy secret only if the secret name and content still fit Kubernetes limits.
+	if len(legacySecretName) > k8sObjectNameMaxLen || len(marshaled) > corev1.MaxSecretSize {
+		return nil
+	}
+
 	data := map[string]string{FilterConfigKeyInSecret: string(marshaled)}
-	secret, err := c.kube.CoreV1().Secrets(configSecretNamespace).Get(ctx, configSecretName, metav1.GetOptions{})
+	secret, err := c.kube.CoreV1().Secrets(configSecretNamespace).Get(ctx, legacySecretName, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			secret = &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: configSecretName, Namespace: configSecretNamespace},
+				ObjectMeta: metav1.ObjectMeta{Name: legacySecretName, Namespace: configSecretNamespace},
 				StringData: data,
 			}
 			if _, err = c.kube.CoreV1().Secrets(configSecretNamespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
-				return false, fmt.Errorf("failed to create secret %s: %w", configSecretName, err)
+				return fmt.Errorf("failed to create secret %s: %w", legacySecretName, err)
 			}
-			return hasEffectiveRoute, nil
+			return nil
 		}
-		return false, fmt.Errorf("failed to get secret %s: %w", configSecretName, err)
+		return fmt.Errorf("failed to get secret %s: %w", legacySecretName, err)
 	}
 
 	secret.StringData = data
 	if _, err := c.kube.CoreV1().Secrets(configSecretNamespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
-		return false, fmt.Errorf("failed to update secret %s: %w", secret.Name, err)
+		return fmt.Errorf("failed to update secret %s: %w", secret.Name, err)
 	}
-	return hasEffectiveRoute, nil
+	return nil
 }
 
 // reconcileFilterConfigSecretForMCPGateway updates the filter config secret for the external processor.

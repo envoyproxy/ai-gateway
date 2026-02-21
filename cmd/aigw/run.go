@@ -336,23 +336,40 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&ep.TypeMeta, ep)
 	}
 
-	filterConfigSecret, err := runCtx.fakeClientSet.CoreV1().
+	// Get the filter config from the sharded config secrets.
+	filterConfigIndexSecret, err := runCtx.fakeClientSet.CoreV1().
 		Secrets("").Get(ctx,
-		controller.FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), metav1.GetOptions{})
+		controller.FilterConfigBundleIndexSecretName(gw.Name, gw.Namespace), metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to get filter config secret: %w", err)
 	}
 
-	rawConfig, ok := filterConfigSecret.StringData[controller.FilterConfigKeyInSecret]
+	filterConfigIndexRaw, ok := filterConfigIndexSecret.StringData[controller.FilterConfigBundleIndexKey]
 	if !ok {
-		return nil, nil, 0, fmt.Errorf("failed to get filter config from secret: %w", err)
+		return nil, nil, 0, fmt.Errorf("failed to get filter config index from secret %s", filterConfigIndexSecret.Name)
 	}
-	var fc filterapi.Config
-	if err = yaml.Unmarshal([]byte(rawConfig), &fc); err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to unmarshal filter config: %w", err)
+
+	filterConfigIndex, err := filterapi.UnmarshalConfigBundleIndex([]byte(filterConfigIndexRaw))
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to parse filter config index: %w", err)
 	}
-	runCtx.stderrLogger.Info("Running external process", "config", fc)
-	done := runCtx.mustStartExtProc(ctx, &fc)
+
+	fc, err := filterapi.ReassembleBundleConfig(filterConfigIndex, func(part filterapi.ConfigBundlePart) ([]byte, error) {
+		partSecret, getErr := runCtx.fakeClientSet.CoreV1().Secrets("").Get(ctx, part.Name, metav1.GetOptions{})
+		if getErr != nil {
+			return nil, getErr
+		}
+		if b, exists := partSecret.StringData[controller.FilterConfigBundlePartKey]; exists {
+			return []byte(b), nil
+		}
+		return nil, fmt.Errorf("missing key %q in part secret %s", controller.FilterConfigBundlePartKey, part.Name)
+	})
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to reassemble filter config bundle: %w", err)
+	}
+
+	runCtx.stderrLogger.Info("Running external process", "config", *fc)
+	done := runCtx.mustStartExtProc(ctx, fc)
 	return fakeClient, done, runCtx.tryFindEnvoyListenerPort(gw), nil
 }
 

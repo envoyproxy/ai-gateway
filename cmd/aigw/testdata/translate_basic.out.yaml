@@ -189,6 +189,66 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
+  name: envoy-ai-gateway-basic-default-21a9f8f801bd
+stringData:
+  index.yaml: |
+    checksum: 4688edcd560882a731a3a5c288e97d5d51748bfda435c456eb4249680ef159a1
+    parts:
+    - name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-000
+      path: parts/000
+      sizeBytes: 1054
+    uuid: aigw-translate
+    version: dev
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-000
+stringData:
+  chunk: |
+    backends:
+    - auth:
+        apiKey:
+          key: apiKey
+      modelNameOverride: ""
+      name: default/envoy-ai-gateway-basic-openai/route/envoy-ai-gateway-basic/rule/0/ref/0
+      schema:
+        name: OpenAI
+        prefix: v1
+        version: v1
+    - auth:
+        aws:
+          credentialFileLiteral: |
+            [default]
+            aws_access_key_id = AWS_ACCESS_KEY_ID
+            aws_secret_access_key = AWS_SECRET_ACCESS_KEY
+          region: us-east-1
+      modelNameOverride: us.meta.llama3-2-1b-instruct-v1:0
+      name: default/envoy-ai-gateway-basic-aws/route/envoy-ai-gateway-basic/rule/1/ref/0
+      schema:
+        name: AWSBedrock
+    - modelNameOverride: ""
+      name: default/envoy-ai-gateway-basic-testupstream/route/envoy-ai-gateway-basic/rule/2/ref/0
+      schema:
+        name: OpenAI
+        prefix: v1
+        version: v1
+    models:
+    - CreatedAt: "2025-05-23T00:00:00Z"
+      Name: gpt-4o-mini
+      OwnedBy: openai
+    - CreatedAt: "2025-05-23T00:00:00Z"
+      Name: llama3-2-1b-instruct-v1
+      OwnedBy: aws
+    - CreatedAt: "2025-05-23T00:00:00Z"
+      Name: some-cool-self-hosted-model
+      OwnedBy: Envoy AI Gateway
+    uuid: aigw-translate
+    version: dev
+---
+apiVersion: v1
+kind: Secret
+metadata:
   name: envoy-ai-gateway-basic-default
 stringData:
   filter-config.yaml: |
@@ -264,4 +324,52 @@ spec:
     - name: http
       port: 8888
       protocol: HTTP
-
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-001
+stringData:
+  chunk: ""
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-002
+stringData:
+  chunk: ""
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-003
+stringData:
+  chunk: ""
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-004
+stringData:
+  chunk: ""
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-005
+stringData:
+  chunk: ""
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-006
+stringData:
+  chunk: ""
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-007
+stringData:
+  chunk: ""
