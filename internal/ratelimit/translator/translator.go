@@ -157,14 +157,14 @@ func buildPerModelDescriptor(modelName string, quota *aigv1a1.QuotaDefinition) (
 		return desc, nil
 	}
 
-	// Build nested descriptors for bucket rules.
+	// Build descriptors for bucket rules.
 	var nested []*rlsconfv3.RateLimitDescriptor
 	for rIdx, rule := range quota.BucketRules {
-		ruleDesc, err := buildBucketRuleDescriptor(modelName, rIdx, &rule)
+		ruleDescs, err := buildBucketRuleDescriptors(modelName, rIdx, &rule)
 		if err != nil {
 			return nil, fmt.Errorf("bucket rule %d: %w", rIdx, err)
 		}
-		nested = append(nested, ruleDesc)
+		nested = append(nested, ruleDescs...)
 	}
 
 	// Add default bucket as a catch-all (no specific match).
@@ -199,59 +199,52 @@ func buildServiceQuotaDescriptor(sq *aigv1a1.ServiceQuotaDefinition) (*rlsconfv3
 	}, nil
 }
 
-// buildBucketRuleDescriptor creates a descriptor (or nested chain of descriptors)
-// for a single bucket rule. Header matches from ClientSelectors are flattened
-// and each becomes a nesting level so the rate limit service ANDs them.
+// buildBucketRuleDescriptors creates a flat array of descriptors for a single
+// bucket rule. Header matches from ClientSelectors are flattened and each
+// becomes its own descriptor in the array (no nesting).
 //
-// For 0 or 1 header matches the descriptor is flat with the rate limit attached directly.
-// For N header matches (N>1) the descriptors are nested: match-0 → match-1 → ... → match-(N-1)
-// with the rate limit on the innermost descriptor.
-func buildBucketRuleDescriptor(modelName string, ruleIndex int, rule *aigv1a1.QuotaRule) (*rlsconfv3.RateLimitDescriptor, error) {
+// For 0 or 1 header matches a single descriptor is returned.
+// For N header matches (N>1) N descriptors are returned, each with the rate
+// limit and shadow mode attached directly.
+func buildBucketRuleDescriptors(modelName string, ruleIndex int, rule *aigv1a1.QuotaRule) ([]*rlsconfv3.RateLimitDescriptor, error) {
 	policy, err := quotaValueToPolicy(&rule.Quota)
 	if err != nil {
 		return nil, err
 	}
 	shadowMode := rule.ShadowMode != nil && *rule.ShadowMode
 
-	// Count total header matches across all ClientSelectors (all are ANDed).
+	// Count total header matches across all ClientSelectors.
 	var totalHeaders int
 	for _, sel := range rule.ClientSelectors {
 		totalHeaders += len(sel.Headers)
 	}
 
-	// 0 or 1 header match: flat descriptor.
+	// 0 or 1 header match: single descriptor.
 	if totalHeaders <= 1 {
 		key := BucketRuleDescriptorKey(modelName, ruleIndex, 0)
-		return &rlsconfv3.RateLimitDescriptor{
+		return []*rlsconfv3.RateLimitDescriptor{
+			{
+				Key:        key,
+				Value:      key,
+				RateLimit:  policy,
+				ShadowMode: shadowMode,
+			},
+		}, nil
+	}
+
+	// Multiple header matches: flat array of descriptors, each with rate limit.
+	var descs []*rlsconfv3.RateLimitDescriptor
+	for i := 0; i < totalHeaders; i++ {
+		key := BucketRuleDescriptorKey(modelName, ruleIndex, i)
+		descs = append(descs, &rlsconfv3.RateLimitDescriptor{
 			Key:        key,
 			Value:      key,
 			RateLimit:  policy,
 			ShadowMode: shadowMode,
-		}, nil
+		})
 	}
 
-	// Multiple header matches: nested descriptors, innermost has rate limit.
-	// Build from the innermost outward.
-	matchIdx := totalHeaders - 1
-	innerKey := BucketRuleDescriptorKey(modelName, ruleIndex, matchIdx)
-	innermost := &rlsconfv3.RateLimitDescriptor{
-		Key:        innerKey,
-		Value:      innerKey,
-		RateLimit:  policy,
-		ShadowMode: shadowMode,
-	}
-
-	current := innermost
-	for i := matchIdx - 1; i >= 0; i-- {
-		key := BucketRuleDescriptorKey(modelName, ruleIndex, i)
-		current = &rlsconfv3.RateLimitDescriptor{
-			Key:         key,
-			Value:       key,
-			Descriptors: []*rlsconfv3.RateLimitDescriptor{current},
-		}
-	}
-
-	return current, nil
+	return descs, nil
 }
 
 // quotaValueToPolicy converts a QuotaValue to a rate limit policy protobuf.
