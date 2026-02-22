@@ -264,7 +264,7 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 		require.Nil(t, desc.Descriptors)
 	})
 
-	t.Run("with bucket rules creates nested descriptors", func(t *testing.T) {
+	t.Run("with bucket rules creates descriptors array", func(t *testing.T) {
 		quota := &aigv1a1.QuotaDefinition{
 			BucketRules: []aigv1a1.QuotaRule{
 				{Quota: aigv1a1.QuotaValue{Limit: 200, Duration: "1m"}},
@@ -328,20 +328,21 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 	})
 }
 
-func TestBuildBucketRuleDescriptor(t *testing.T) {
-	t.Run("no client selectors creates flat descriptor", func(t *testing.T) {
+func TestBuildBucketRuleDescriptors(t *testing.T) {
+	t.Run("no client selectors creates single descriptor", func(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 		}
-		desc, err := buildBucketRuleDescriptor("gpt-4", 0, rule)
+		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
 		require.NoError(t, err)
-		require.Equal(t, "rule-gpt-4-0-match-0", desc.Key)
-		require.Equal(t, "rule-gpt-4-0-match-0", desc.Value)
-		require.NotNil(t, desc.RateLimit)
-		require.Nil(t, desc.Descriptors) // flat
+		require.Len(t, descs, 1)
+		require.Equal(t, "rule-gpt-4-0-match-0", descs[0].Key)
+		require.Equal(t, "rule-gpt-4-0-match-0", descs[0].Value)
+		require.NotNil(t, descs[0].RateLimit)
+		require.Nil(t, descs[0].Descriptors)
 	})
 
-	t.Run("one header creates flat descriptor", func(t *testing.T) {
+	t.Run("one header creates single descriptor", func(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			ClientSelectors: []egv1a1.RateLimitSelectCondition{
 				{
@@ -352,14 +353,15 @@ func TestBuildBucketRuleDescriptor(t *testing.T) {
 			},
 			Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 		}
-		desc, err := buildBucketRuleDescriptor("gpt-4", 0, rule)
+		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
 		require.NoError(t, err)
-		require.Equal(t, "rule-gpt-4-0-match-0", desc.Key)
-		require.NotNil(t, desc.RateLimit)
-		require.Nil(t, desc.Descriptors) // still flat for 1 header
+		require.Len(t, descs, 1)
+		require.Equal(t, "rule-gpt-4-0-match-0", descs[0].Key)
+		require.NotNil(t, descs[0].RateLimit)
+		require.Nil(t, descs[0].Descriptors)
 	})
 
-	t.Run("two headers creates nested descriptors", func(t *testing.T) {
+	t.Run("two headers creates flat array of descriptors", func(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			ClientSelectors: []egv1a1.RateLimitSelectCondition{
 				{
@@ -371,22 +373,22 @@ func TestBuildBucketRuleDescriptor(t *testing.T) {
 			},
 			Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 		}
-		desc, err := buildBucketRuleDescriptor("gpt-4", 0, rule)
+		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
 		require.NoError(t, err)
+		require.Len(t, descs, 2)
 
-		// Outermost descriptor is match-0
-		require.Equal(t, "rule-gpt-4-0-match-0", desc.Key)
-		require.Nil(t, desc.RateLimit)
-		require.Len(t, desc.Descriptors, 1)
+		require.Equal(t, "rule-gpt-4-0-match-0", descs[0].Key)
+		require.NotNil(t, descs[0].RateLimit)
+		require.Equal(t, uint32(100), descs[0].RateLimit.RequestsPerUnit)
+		require.Nil(t, descs[0].Descriptors)
 
-		// Inner descriptor is match-1 with the rate limit
-		inner := desc.Descriptors[0]
-		require.Equal(t, "rule-gpt-4-0-match-1", inner.Key)
-		require.NotNil(t, inner.RateLimit)
-		require.Equal(t, uint32(100), inner.RateLimit.RequestsPerUnit)
+		require.Equal(t, "rule-gpt-4-0-match-1", descs[1].Key)
+		require.NotNil(t, descs[1].RateLimit)
+		require.Equal(t, uint32(100), descs[1].RateLimit.RequestsPerUnit)
+		require.Nil(t, descs[1].Descriptors)
 	})
 
-	t.Run("three headers across multiple selectors creates deeply nested descriptors", func(t *testing.T) {
+	t.Run("three headers across multiple selectors creates flat array", func(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			ClientSelectors: []egv1a1.RateLimitSelectCondition{
 				{
@@ -403,24 +405,23 @@ func TestBuildBucketRuleDescriptor(t *testing.T) {
 			},
 			Quota: aigv1a1.QuotaValue{Limit: 50, Duration: "1h"},
 		}
-		desc, err := buildBucketRuleDescriptor("model", 1, rule)
+		descs, err := buildBucketRuleDescriptors("model", 1, rule)
 		require.NoError(t, err)
+		require.Len(t, descs, 3)
 
-		// match-0 -> match-1 -> match-2 (innermost has rate limit)
-		require.Equal(t, "rule-model-1-match-0", desc.Key)
-		require.Nil(t, desc.RateLimit)
-		require.Len(t, desc.Descriptors, 1)
+		require.Equal(t, "rule-model-1-match-0", descs[0].Key)
+		require.NotNil(t, descs[0].RateLimit)
+		require.Equal(t, uint32(50), descs[0].RateLimit.RequestsPerUnit)
+		require.Equal(t, rlsconfv3.RateLimitUnit_HOUR, descs[0].RateLimit.Unit)
+		require.Nil(t, descs[0].Descriptors)
 
-		mid := desc.Descriptors[0]
-		require.Equal(t, "rule-model-1-match-1", mid.Key)
-		require.Nil(t, mid.RateLimit)
-		require.Len(t, mid.Descriptors, 1)
+		require.Equal(t, "rule-model-1-match-1", descs[1].Key)
+		require.NotNil(t, descs[1].RateLimit)
+		require.Nil(t, descs[1].Descriptors)
 
-		inner := mid.Descriptors[0]
-		require.Equal(t, "rule-model-1-match-2", inner.Key)
-		require.NotNil(t, inner.RateLimit)
-		require.Equal(t, uint32(50), inner.RateLimit.RequestsPerUnit)
-		require.Equal(t, rlsconfv3.RateLimitUnit_HOUR, inner.RateLimit.Unit)
+		require.Equal(t, "rule-model-1-match-2", descs[2].Key)
+		require.NotNil(t, descs[2].RateLimit)
+		require.Nil(t, descs[2].Descriptors)
 	})
 
 	t.Run("shadow mode enabled", func(t *testing.T) {
@@ -428,9 +429,10 @@ func TestBuildBucketRuleDescriptor(t *testing.T) {
 			Quota:      aigv1a1.QuotaValue{Limit: 50, Duration: "1m"},
 			ShadowMode: ptr.To(true),
 		}
-		desc, err := buildBucketRuleDescriptor("gpt-4", 0, rule)
+		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
 		require.NoError(t, err)
-		require.True(t, desc.ShadowMode)
+		require.Len(t, descs, 1)
+		require.True(t, descs[0].ShadowMode)
 	})
 
 	t.Run("shadow mode disabled", func(t *testing.T) {
@@ -438,21 +440,23 @@ func TestBuildBucketRuleDescriptor(t *testing.T) {
 			Quota:      aigv1a1.QuotaValue{Limit: 50, Duration: "1m"},
 			ShadowMode: ptr.To(false),
 		}
-		desc, err := buildBucketRuleDescriptor("gpt-4", 0, rule)
+		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
 		require.NoError(t, err)
-		require.False(t, desc.ShadowMode)
+		require.Len(t, descs, 1)
+		require.False(t, descs[0].ShadowMode)
 	})
 
 	t.Run("shadow mode nil", func(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			Quota: aigv1a1.QuotaValue{Limit: 50, Duration: "1m"},
 		}
-		desc, err := buildBucketRuleDescriptor("gpt-4", 0, rule)
+		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
 		require.NoError(t, err)
-		require.False(t, desc.ShadowMode)
+		require.Len(t, descs, 1)
+		require.False(t, descs[0].ShadowMode)
 	})
 
-	t.Run("shadow mode propagated to innermost in nested case", func(t *testing.T) {
+	t.Run("shadow mode applied to all descriptors in flat array", func(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			ClientSelectors: []egv1a1.RateLimitSelectCondition{
 				{Headers: []egv1a1.HeaderMatch{{Name: "h1"}, {Name: "h2"}}},
@@ -460,19 +464,18 @@ func TestBuildBucketRuleDescriptor(t *testing.T) {
 			Quota:      aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 			ShadowMode: ptr.To(true),
 		}
-		desc, err := buildBucketRuleDescriptor("m", 0, rule)
+		descs, err := buildBucketRuleDescriptors("m", 0, rule)
 		require.NoError(t, err)
-		// Outer descriptor does NOT have shadow mode
-		require.False(t, desc.ShadowMode)
-		// Inner descriptor HAS shadow mode
-		require.True(t, desc.Descriptors[0].ShadowMode)
+		require.Len(t, descs, 2)
+		require.True(t, descs[0].ShadowMode)
+		require.True(t, descs[1].ShadowMode)
 	})
 
 	t.Run("invalid duration", func(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "bad"},
 		}
-		_, err := buildBucketRuleDescriptor("gpt-4", 0, rule)
+		_, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
 		require.Error(t, err)
 	})
 
@@ -480,9 +483,10 @@ func TestBuildBucketRuleDescriptor(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 		}
-		desc, err := buildBucketRuleDescriptor("gpt-4", 5, rule)
+		descs, err := buildBucketRuleDescriptors("gpt-4", 5, rule)
 		require.NoError(t, err)
-		require.Equal(t, "rule-gpt-4-5-match-0", desc.Key)
+		require.Len(t, descs, 1)
+		require.Equal(t, "rule-gpt-4-5-match-0", descs[0].Key)
 	})
 }
 
@@ -805,11 +809,11 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 		// per-model (gpt-4 with bucket rules) + service quota catch-all = 2
 		require.Len(t, backendDesc.Descriptors, 2)
 
-		// gpt-4 descriptor has nested bucket rules
+		// gpt-4 descriptor has bucket rule descriptors
 		gpt4Desc := backendDesc.Descriptors[0]
 		require.Equal(t, "gpt-4", gpt4Desc.Value)
-		require.Nil(t, gpt4Desc.RateLimit) // has nested descriptors instead
-		// 2 bucket rules + 1 default = 3 nested descriptors
+		require.Nil(t, gpt4Desc.RateLimit) // has descriptors array instead
+		// 2 bucket rules + 1 default = 3 descriptors
 		require.Len(t, gpt4Desc.Descriptors, 3)
 		require.True(t, gpt4Desc.Descriptors[0].ShadowMode)
 		require.False(t, gpt4Desc.Descriptors[1].ShadowMode)
