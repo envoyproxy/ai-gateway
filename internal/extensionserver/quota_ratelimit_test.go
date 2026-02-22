@@ -6,6 +6,7 @@
 package extensionserver
 
 import (
+	"fmt"
 	"testing"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -404,6 +405,63 @@ func TestEnableQuotaRateLimitOnRoute_DescriptorChain(t *testing.T) {
 
 	verifyMetadataAction(t, actions[0], translator.BackendNameDescriptorKey, "backend_name")
 	verifyMetadataAction(t, actions[1], translator.ModelNameDescriptorKey, "model_name_override")
+}
+
+func TestQuotaHitsAddend(t *testing.T) {
+	ha := quotaHitsAddend()
+	require.NotNil(t, ha)
+	expectedFormat := fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s)%%", aigv1a1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey)
+	require.Equal(t, expectedFormat, ha.Format)
+}
+
+func TestEnableQuotaRateLimitOnRoute_HitsAddend(t *testing.T) {
+	t.Run("base entry has HitsAddend and ApplyOnStreamDone", func(t *testing.T) {
+		route := &routev3.Route{Name: "test-route"}
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, nil))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+
+		require.Len(t, perRoute.RateLimits, 1)
+		rl := perRoute.RateLimits[0]
+		require.NotNil(t, rl.HitsAddend)
+		require.Equal(t, fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s)%%", aigv1a1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey), rl.HitsAddend.Format)
+		require.True(t, rl.ApplyOnStreamDone)
+	})
+
+	t.Run("bucket rule entries have HitsAddend and ApplyOnStreamDone", func(t *testing.T) {
+		route := &routev3.Route{Name: "test-route"}
+		policies := []aigv1a1.QuotaPolicy{
+			{
+				Spec: aigv1a1.QuotaPolicySpec{
+					PerModelQuotas: []aigv1a1.PerModelQuota{
+						{
+							ModelName: ptr.To("gpt-4"),
+							Quota: aigv1a1.QuotaDefinition{
+								BucketRules: []aigv1a1.QuotaRule{
+									{Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"}},
+								},
+								DefaultBucket: aigv1a1.QuotaValue{Limit: 10, Duration: "1m"},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		require.NoError(t, enableQuotaRateLimitOnRoute(route, policies))
+
+		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
+		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
+
+		// 1 base + 1 bucket rule + 1 default = 3 entries, all with HitsAddend.
+		require.Len(t, perRoute.RateLimits, 3)
+		for i, rl := range perRoute.RateLimits {
+			require.NotNil(t, rl.HitsAddend, "RateLimit entry %d should have HitsAddend", i)
+			require.NotEmpty(t, rl.HitsAddend.Format, "RateLimit entry %d should have HitsAddend format", i)
+			require.True(t, rl.ApplyOnStreamDone, "RateLimit entry %d should have ApplyOnStreamDone", i)
+		}
+	})
 }
 
 func TestInjectQuotaRateLimitFilterIntoCluster_FullFilterChain(t *testing.T) {

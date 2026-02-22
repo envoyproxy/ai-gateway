@@ -42,6 +42,10 @@ const (
 	defaultQuotaRateLimitServicePort = 8081
 
 	httpProtocolOptionsKey = "envoy.extensions.upstreams.http.v3.HttpProtocolOptions"
+
+	// quotaCostMetadataKey is the dynamic metadata key where the ext_proc filter stores
+	// the computed request cost (token usage) for quota enforcement.
+	quotaCostMetadataKey = "llm_total_token"
 )
 
 // maybeInjectQuotaRateLimiting injects the rate limit HTTP filter into the upstream
@@ -438,7 +442,11 @@ func enableQuotaRateLimitOnRoute(route *routev3.Route, policies []aigv1a1.QuotaP
 	// Base RateLimit entry: (backend_name, model_name_override).
 	// Handles models without bucket rules and service-wide quotas.
 	rateLimitActions := []*routev3.RateLimit{
-		{Actions: baseDescriptorActions()},
+		{
+			Actions:           baseDescriptorActions(),
+			HitsAddend:        quotaHitsAddend(),
+			ApplyOnStreamDone: true,
+		},
 	}
 
 	// Append RateLimit entries for bucket rules from each policy's per-model quotas.
@@ -509,6 +517,16 @@ func baseDescriptorActions() []*routev3.RateLimit_Action {
 	}
 }
 
+// quotaHitsAddend returns the HitsAddend that reads the request cost from dynamic
+// metadata stored by the ext_proc filter. This allows quota enforcement based on
+// token usage rather than request count.
+func quotaHitsAddend() *routev3.RateLimit_HitsAddend {
+	return &routev3.RateLimit_HitsAddend{
+		Format: fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s)%%",
+			aigv1a1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey),
+	}
+}
+
 // buildBucketRuleLimitEntries creates RateLimit entries for a model's bucket rules.
 // Each bucket rule and the default bucket gets its own RateLimit entry with the base
 // descriptor actions plus header-matching or generic-key actions.
@@ -518,7 +536,11 @@ func buildBucketRuleLimitEntries(modelName string, quota *aigv1a1.QuotaDefinitio
 	for rIdx, rule := range quota.BucketRules {
 		actions := append([]*routev3.RateLimit_Action{}, baseDescriptorActions()...)
 		actions = append(actions, buildClientSelectorActions(modelName, rIdx, rule.ClientSelectors)...)
-		entries = append(entries, &routev3.RateLimit{Actions: actions})
+		entries = append(entries, &routev3.RateLimit{
+			Actions:           actions,
+			HitsAddend:        quotaHitsAddend(),
+			ApplyOnStreamDone: true,
+		})
 	}
 
 	// Default bucket: always matches via GenericKey.
@@ -533,7 +555,11 @@ func buildBucketRuleLimitEntries(modelName string, quota *aigv1a1.QuotaDefinitio
 				},
 			},
 		})
-		entries = append(entries, &routev3.RateLimit{Actions: actions})
+		entries = append(entries, &routev3.RateLimit{
+			Actions:           actions,
+			HitsAddend:        quotaHitsAddend(),
+			ApplyOnStreamDone: true,
+		})
 	}
 
 	return entries
