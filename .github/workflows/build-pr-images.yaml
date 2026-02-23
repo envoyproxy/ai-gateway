@@ -12,13 +12,13 @@ on:
       - main
       - anthropic-support-for-openai
     tags:
-      - 'pr1878'
+      - "pr1878"
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Image tag (default: pr1878)'
+        description: "Image tag (default: pr1878)"
         required: false
-        default: 'pr1878'
+        default: "pr1878"
 
 env:
   REGISTRY: ghcr.io
