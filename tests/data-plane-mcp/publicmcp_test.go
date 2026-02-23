@@ -29,7 +29,15 @@ func TestPublicMCPServers(t *testing.T) {
 			{
 				Name: "test-route",
 				Backends: []filterapi.MCPBackend{
-					{Name: "context7"},
+					// TODO(nacx): Context7 started giving errors due to its certificate:
+					// time=2026-02-20T12:14:12.555+01:00 level=ERROR msg="failed to create MCP session" component=mcp-proxy backend=context7
+					// error="MCP initialize request failed with status code 503 and body=upstream connect error or disconnect/reset before headers.
+					// reset reason: remote connection failure, transport failure reason: TLS_error:|268435563:SSL routines:OPENSSL_internal:BAD_ECC_CERT:TLS_error_end"
+					//
+					// Until those are resolved or figure out, we're just adding kiwi to verify that we can connect to a public MCP server and call a tool.
+					// context7 can be enabled back when the certificate issue is sorted out.
+					//
+					// {Name: "context7"},
 					{Name: "kiwi"},
 				},
 			},
@@ -78,8 +86,8 @@ func TestPublicMCPServers(t *testing.T) {
 		}
 
 		exps := []string{
-			"context7__resolve-library-id",
-			"context7__query-docs",
+			// "context7__resolve-library-id",
+			// "context7__query-docs",
 			"kiwi__search-flight",
 			"kiwi__feedback-to-devs",
 		}
@@ -107,20 +115,20 @@ func TestPublicMCPServers(t *testing.T) {
 			params   map[string]any
 		}
 		tests := []callToolTest{
-			{
-				toolName: "context7__resolve-library-id",
-				params: map[string]any{
-					"libraryName": "envoyproxy/ai-gateway",
-					"query":       "how can I route to an LLM bakend",
-				},
-			},
-			{
-				toolName: "context7__query-docs",
-				params: map[string]any{
-					"libraryId": "/envoyproxy/ai-gateway",
-					"query":     "how can I route to an LLM bakend",
-				},
-			},
+			// {
+			// 	toolName: "context7__resolve-library-id",
+			// 	params: map[string]any{
+			// 		"libraryName": "envoyproxy/ai-gateway",
+			// 		"query":       "how can I route to an LLM bakend",
+			// 	},
+			// },
+			// {
+			// 	toolName: "context7__query-docs",
+			// 	params: map[string]any{
+			// 		"libraryId": "/envoyproxy/ai-gateway",
+			// 		"query":     "how can I route to an LLM bakend",
+			// 	},
+			// },
 			{
 				toolName: "kiwi__search-flight",
 				params: map[string]any{

@@ -172,8 +172,8 @@ controller:
       - name: http-metrics
         protocol: TCP
         appProtocol: http
-        port: 9090
-        targetPort: 9090
+        port: 8080
+        targetPort: 8080
 
   mutatingWebhook:
     # The secret that contains the CA certificate and the server certificate for the webhook server.

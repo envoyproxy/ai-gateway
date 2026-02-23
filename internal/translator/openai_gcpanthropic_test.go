@@ -381,7 +381,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				Role:       constant.Assistant(anthropic.MessageParamRoleAssistant),
 				Content:    []anthropic.ContentBlockUnion{{Type: "text", Text: "Hello there!"}},
 				StopReason: anthropic.StopReasonEndTurn,
-				Usage:      anthropic.Usage{InputTokens: 10, OutputTokens: 20, CacheReadInputTokens: 5},
+				Usage:      anthropic.Usage{InputTokens: 10, OutputTokens: 20, CacheReadInputTokens: 5, CacheCreationInputTokens: 3},
 			},
 			respHeaders: map[string]string{statusHeaderName: "200"},
 			expectedOpenAIResponse: openai.ChatCompletionResponse{
@@ -390,11 +390,12 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Usage: openai.Usage{
-					PromptTokens:     15,
+					PromptTokens:     18,
 					CompletionTokens: 20,
-					TotalTokens:      35,
+					TotalTokens:      38,
 					PromptTokensDetails: &openai.PromptTokensDetails{
-						CachedTokens: 5,
+						CachedTokens:        5,
+						CacheCreationTokens: 3,
 					},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
@@ -417,7 +418,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 					{Type: "tool_use", ID: "toolu_01", Name: "get_weather", Input: []byte(`{"location":"Tokyo","unit":"celsius"}`)},
 				},
 				StopReason: anthropic.StopReasonToolUse,
-				Usage:      anthropic.Usage{InputTokens: 25, OutputTokens: 15, CacheReadInputTokens: 10},
+				Usage:      anthropic.Usage{InputTokens: 25, OutputTokens: 15, CacheReadInputTokens: 10, CacheCreationInputTokens: 7},
 			},
 			respHeaders: map[string]string{statusHeaderName: "200"},
 			expectedOpenAIResponse: openai.ChatCompletionResponse{
@@ -426,9 +427,10 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Usage: openai.Usage{
-					PromptTokens: 35, CompletionTokens: 15, TotalTokens: 50,
+					PromptTokens: 42, CompletionTokens: 15, TotalTokens: 57,
 					PromptTokensDetails: &openai.PromptTokensDetails{
-						CachedTokens: 10,
+						CachedTokens:        10,
+						CacheCreationTokens: 7,
 					},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{

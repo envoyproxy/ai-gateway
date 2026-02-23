@@ -304,9 +304,14 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 		}
 		// If the DEBUG log level is enabled, filter the sensitive data before logging.
 		if s.debugLogEnabled && resp != nil && resp.Response != nil {
-			rb := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
-			logContent := redactRequestBodyResponse(rb, l, sensitiveHeaderKeys, s.enableRedaction)
-			l.Debug("request body processed", slog.Any("response", logContent))
+			switch val := resp.Response.(type) {
+			case *extprocv3.ProcessingResponse_RequestBody:
+				logContent := redactRequestBodyResponse(val, l, sensitiveHeaderKeys, s.enableRedaction)
+				l.Debug("request body processed", slog.Any("response", logContent))
+			case *extprocv3.ProcessingResponse_ImmediateResponse:
+				// ImmediateResponse (e.g., for malformed requests) doesn't need request body redaction
+				l.Debug("request body processed", slog.Any("response", val))
+			}
 		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_ResponseHeaders:
