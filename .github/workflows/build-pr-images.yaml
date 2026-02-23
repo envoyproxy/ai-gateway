@@ -1,0 +1,96 @@
+# Builds controller + extproc and pushes to GitHub Container Registry (ghcr.io).
+# Use these images to test PR #1878 in production (see TEST-ISSUE-1867.md).
+#
+# Triggers: push to main or anthropic-support-for-openai, tag pr1878, or manual run.
+# Required: Settings → Actions → General → Workflow permissions → Read and write permissions.
+
+name: Build PR images (controller + extproc)
+
+on:
+  push:
+    branches:
+      - main
+      - anthropic-support-for-openai
+    tags:
+      - 'pr1878'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag (default: pr1878)'
+        required: false
+        default: 'pr1878'
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "tag=${{ github.event.inputs.tag || 'pr1878' }}" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/heads/}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Cache Go
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ hashFiles('go.sum') }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push controller
+        run: |
+          make docker-build.controller \
+            OCI_REPOSITORY_PREFIX=ghcr.io/groundsada/ai-gateway \
+            TAG=${{ steps.tag.outputs.tag }} \
+            ENABLE_MULTI_PLATFORMS=true \
+            DOCKER_BUILD_ARGS="--push"
+
+      - name: Build and push extproc
+        run: |
+          make docker-build.extproc \
+            OCI_REPOSITORY_PREFIX=ghcr.io/groundsada/ai-gateway \
+            TAG=${{ steps.tag.outputs.tag }} \
+            ENABLE_MULTI_PLATFORMS=true \
+            DOCKER_BUILD_ARGS="--push"
+
+      - name: Summary
+        run: |
+          echo "## Images pushed" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/groundsada/ai-gateway-controller:${{ steps.tag.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/groundsada/ai-gateway-extproc:${{ steps.tag.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "To use in production, set controller image and \`--extProcImage\` to these (see TEST-ISSUE-1867.md)." >> $GITHUB_STEP_SUMMARY
