@@ -323,7 +323,9 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 		if m.l.Enabled(ctx, slog.LevelDebug) {
 			m.l.Debug("MCP session initialized", slog.Any("capabilities", initResult.Capabilities))
 		}
-		m.metrics.WithBackend(backend.Name).RecordServerCapabilities(ctx, initResult.Capabilities, p)
+		backendMetrics := m.metrics.WithBackend(backend.Name)
+		backendMetrics.RecordServerCapabilities(ctx, initResult.Capabilities, p)
+		backendMetrics.RecordMethodCount(ctx, "initialize", p)
 	}
 
 	// Need to invoke "notifications/initialized" to complete the initialization.
@@ -343,6 +345,7 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 			body, _ := io.ReadAll(resp.Body)
 			return nil, fmt.Errorf("MCP notifications/initialized request failed with status code %d, body=%s", resp.StatusCode, string(body))
 		}
+		m.metrics.WithBackend(backend.Name).RecordMethodCount(ctx, "notifications/initialized", p)
 	}
 	if m.l.Enabled(ctx, slog.LevelDebug) {
 		m.l.Debug("sent MCP notifications/initialized", slog.String("backend", backend.Name), slog.String("session_id", sessionID))
