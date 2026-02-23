@@ -753,3 +753,37 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_MalformedChunkSkipped(t *tes
 	err := state.processBuffer(&out, false)
 	require.NoError(t, err)
 }
+
+func TestOpenAIStreamToAnthropicState_handleToolCallDelta_OpenBlock(t *testing.T) {
+	state := &openAIStreamToAnthropicState{
+		activeTools:  make(map[int64]*streamToolCall),
+		hasOpenBlock: true,
+		blockIndex:   0,
+	}
+	toolID := "test_id"
+	toolCall := &openai.ChatCompletionChunkChoiceDeltaToolCall{
+		Index: 5,
+		ID:    &toolID,
+		Function: openai.ChatCompletionMessageToolCallFunctionParam{
+			Name:      "test",
+			Arguments: "test_args",
+		},
+	}
+
+	var out []byte
+	err := state.handleToolCallDelta(toolCall, &out)
+	require.NoError(t, err)
+	require.Equal(t, 1, state.blockIndex)
+}
+
+func TestOpenAIStreamToAnthropicState_handleChunk_ZeroLen(t *testing.T) {
+	state := &openAIStreamToAnthropicState{}
+
+	chunk := &openai.ChatCompletionResponseChunk{
+		Choices: []openai.ChatCompletionResponseChunkChoice{},
+		Usage:   nil,
+	}
+	var out []byte
+	err := state.handleChunk(chunk, &out)
+	require.NoError(t, err)
+}

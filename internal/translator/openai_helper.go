@@ -484,7 +484,6 @@ func (s *openAIStreamToAnthropicState) handleToolCallDelta(tc *openai.ChatComple
 				return err
 			}
 			s.blockIndex++
-			s.hasOpenBlock = false
 		}
 
 		id := ""

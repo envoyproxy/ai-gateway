@@ -7,6 +7,8 @@ package translator
 
 import (
 	"bytes"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -537,4 +539,179 @@ func TestAnthropicToOpenAITranslator_RedactAnthropicBody(t *testing.T) {
 		assert.Equal(t, "msg-empty", redacted.ID)
 		assert.Nil(t, redacted.Content)
 	})
+}
+
+// mockMessageSpan implements tracingapi.MessageSpan for testing.
+type mockMessageSpan struct {
+	recordedResponse *anthropic.MessagesResponse
+}
+
+func (m *mockMessageSpan) RecordResponse(resp *anthropic.MessagesResponse) {
+	m.recordedResponse = resp
+}
+func (m *mockMessageSpan) RecordResponseChunk(_ *anthropic.MessagesStreamChunk) {}
+func (m *mockMessageSpan) EndSpanOnError(_ int, _ []byte)                       {}
+func (m *mockMessageSpan) EndSpan()                                             {}
+
+// buildOpenAITextResponse is a helper that marshals a simple OpenAI ChatCompletionResponse
+// containing a single text choice and returns it as a bytes.Reader.
+func buildOpenAITextResponse(id, model, text string) *bytes.Reader {
+	content := text
+	resp := openai.ChatCompletionResponse{
+		ID:    id,
+		Model: model,
+		Choices: []openai.ChatCompletionResponseChoice{
+			{
+				FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
+				Message:      openai.ChatCompletionResponseChoiceMessage{Content: &content, Role: "assistant"},
+			},
+		},
+		Usage: openai.Usage{PromptTokens: 5, CompletionTokens: 3},
+	}
+	b, _ := json.Marshal(resp)
+	return bytes.NewReader(b)
+}
+
+// initNonStreamingTranslator initialises the translator for a basic non-streaming request so
+// that requestModel and stream fields are correctly populated before calling ResponseBody.
+func initNonStreamingTranslator(t *testing.T, modelOverride string) *anthropicToOpenAIV1ChatCompletionTranslator {
+	t.Helper()
+	tr := NewAnthropicToChatCompletionOpenAITranslator("v1", modelOverride).(*anthropicToOpenAIV1ChatCompletionTranslator)
+	req := &anthropic.MessagesRequest{
+		Model:     "claude-3-haiku",
+		MaxTokens: 100,
+		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
+	}
+	_, _, err := tr.RequestBody(nil, req, false)
+	require.NoError(t, err)
+	return tr
+}
+
+// SetRedactionConfig should store all three parameters on the struct.
+func TestAnthropicToOpenAITranslator_SetRedactionConfig(t *testing.T) {
+	tr := NewAnthropicToChatCompletionOpenAITranslator("v1", "").(*anthropicToOpenAIV1ChatCompletionTranslator)
+
+	assert.False(t, tr.debugLogEnabled)
+	assert.False(t, tr.enableRedaction)
+	assert.Nil(t, tr.logger)
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	tr.SetRedactionConfig(true, true, logger)
+
+	assert.True(t, tr.debugLogEnabled)
+	assert.True(t, tr.enableRedaction)
+	assert.Equal(t, logger, tr.logger)
+}
+
+// Debug logging should only fire when debugLogEnabled AND enableRedaction AND logger != nil.
+func TestAnthropicToOpenAITranslator_ResponseBody_DebugLogging(t *testing.T) {
+	makeLogger := func(buf *bytes.Buffer) *slog.Logger {
+		return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	}
+
+	t.Run("logs when all conditions are true", func(t *testing.T) {
+		var buf bytes.Buffer
+		tr := initNonStreamingTranslator(t, "")
+		tr.SetRedactionConfig(true, true, makeLogger(&buf))
+
+		_, _, _, _, err := tr.ResponseBody(
+			map[string]string{},
+			buildOpenAITextResponse("id-1", "gpt-4o", "hello"),
+			true,
+			nil,
+		)
+		require.NoError(t, err)
+		assert.Contains(t, buf.String(), "response body processing")
+	})
+
+	t.Run("no log when debugLogEnabled is false", func(t *testing.T) {
+		var buf bytes.Buffer
+		tr := initNonStreamingTranslator(t, "")
+		tr.SetRedactionConfig(false, true, makeLogger(&buf))
+
+		_, _, _, _, err := tr.ResponseBody(
+			map[string]string{},
+			buildOpenAITextResponse("id-2", "gpt-4o", "hello"),
+			true,
+			nil,
+		)
+		require.NoError(t, err)
+		assert.Empty(t, buf.String())
+	})
+
+	t.Run("no log when enableRedaction is false", func(t *testing.T) {
+		var buf bytes.Buffer
+		tr := initNonStreamingTranslator(t, "")
+		tr.SetRedactionConfig(true, false, makeLogger(&buf))
+
+		_, _, _, _, err := tr.ResponseBody(
+			map[string]string{},
+			buildOpenAITextResponse("id-3", "gpt-4o", "hello"),
+			true,
+			nil,
+		)
+		require.NoError(t, err)
+		assert.Empty(t, buf.String())
+	})
+
+	t.Run("no log when logger is nil", func(t *testing.T) {
+		tr := initNonStreamingTranslator(t, "")
+		tr.SetRedactionConfig(true, true, nil)
+
+		// Should not panic even though logger is nil (guarded by the nil check).
+		_, _, _, _, err := tr.ResponseBody(
+			map[string]string{},
+			buildOpenAITextResponse("id-4", "gpt-4o", "hello"),
+			true,
+			nil,
+		)
+		require.NoError(t, err)
+	})
+}
+
+// When a non-nil span is provided, RecordResponse should be called with the converted response.
+func TestAnthropicToOpenAITranslator_ResponseBody_SpanRecording(t *testing.T) {
+	t.Run("span RecordResponse called with converted response", func(t *testing.T) {
+		tr := initNonStreamingTranslator(t, "")
+		span := &mockMessageSpan{}
+
+		_, _, _, _, err := tr.ResponseBody(
+			map[string]string{},
+			buildOpenAITextResponse("chatcmpl-span", "gpt-4o", "span content"),
+			true,
+			span,
+		)
+		require.NoError(t, err)
+		require.NotNil(t, span.recordedResponse, "RecordResponse should have been called")
+		assert.Equal(t, "chatcmpl-span", span.recordedResponse.ID)
+	})
+
+	t.Run("nil span does not panic", func(t *testing.T) {
+		tr := initNonStreamingTranslator(t, "")
+
+		_, _, _, _, err := tr.ResponseBody(
+			map[string]string{},
+			buildOpenAITextResponse("chatcmpl-nospan", "gpt-4o", "no span"),
+			true,
+			nil,
+		)
+		require.NoError(t, err)
+	})
+}
+
+// responseBodyStreaming should return an error when streamState is nil.
+func TestAnthropicToOpenAITranslator_ResponseBody_StreamStateNilGuard(t *testing.T) {
+	tr := NewAnthropicToChatCompletionOpenAITranslator("v1", "").(*anthropicToOpenAIV1ChatCompletionTranslator)
+	// Manually enable streaming without initialising streamState to trigger the nil guard.
+	tr.stream = true
+	tr.streamState = nil
+
+	_, _, _, _, err := tr.ResponseBody(
+		map[string]string{},
+		strings.NewReader("data: {}\n\n"),
+		true,
+		nil,
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "stream state not initialized")
 }
