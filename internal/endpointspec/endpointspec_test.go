@@ -298,6 +298,25 @@ func TestResponsesEndpointSpec_ParseBody(t *testing.T) {
 		require.NotNil(t, parsed)
 		require.Nil(t, mutated)
 	})
+
+	t.Run("array_input_without_type_field", func(t *testing.T) {
+		body := []byte(`{
+			"model": "gpt-4.7",
+			"input": [{"role": "user", "content": "Hello"}],
+			"max_tokens": 50
+		}`)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4.7", model)
+		require.False(t, stream)
+		require.NotNil(t, parsed)
+		require.NotNil(t, parsed.Input.OfInputItemList)
+		require.Len(t, parsed.Input.OfInputItemList, 1)
+		require.NotNil(t, parsed.Input.OfInputItemList[0].OfMessage)
+		require.Equal(t, "user", parsed.Input.OfInputItemList[0].OfMessage.Role)
+		require.Nil(t, mutated)
+	})
 }
 
 func TestResponsesEndpointSpec_GetTranslator(t *testing.T) {
