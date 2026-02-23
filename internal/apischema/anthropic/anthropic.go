@@ -145,8 +145,9 @@ type (
 	// ContentBlockParam represents an element of the array content in a message.
 	// https://docs.claude.com/en/api/messages#body-messages-content
 	ContentBlockParam struct {
-		Text *TextBlockParam
-		// TODO add others when we need it for observability, etc.
+		Text       *TextBlockParam
+		ToolUse    *ToolUseBlockParam
+		ToolResult *ToolResultBlockParam
 	}
 
 	TextBlockParam struct {
@@ -154,6 +155,28 @@ type (
 		Type         string `json:"type"` // Always "text".
 		CacheControl any    `json:"cache_control,omitempty"`
 		Citations    []any  `json:"citations,omitempty"`
+	}
+
+	// ToolUseBlockParam is a request content block for assistant tool use.
+	ToolUseBlockParam struct {
+		Type  string         `json:"type"` // Always "tool_use".
+		ID    string         `json:"id"`
+		Name  string         `json:"name"`
+		Input map[string]any `json:"input"`
+	}
+
+	// ToolResultBlockParam is a request content block for user tool results.
+	ToolResultBlockParam struct {
+		Type      string                   `json:"type"` // Always "tool_result".
+		ToolUseID string                   `json:"tool_use_id"`
+		Content   []ToolResultContentParam `json:"content"`
+		IsError   *bool                    `json:"is_error,omitempty"`
+	}
+
+	// ToolResultContentParam is a single content item inside a tool_result (e.g. text).
+	ToolResultContentParam struct {
+		Type string `json:"type"`
+		Text string `json:"text,omitempty"`
 	}
 )
 
@@ -170,9 +193,21 @@ func (m *ContentBlockParam) UnmarshalJSON(data []byte) error {
 		}
 		m.Text = &textBlock
 		return nil
+	case "tool_use":
+		var toolUseBlock ToolUseBlockParam
+		if err := json.Unmarshal(data, &toolUseBlock); err != nil {
+			return fmt.Errorf("failed to unmarshal tool_use block: %w", err)
+		}
+		m.ToolUse = &toolUseBlock
+		return nil
+	case "tool_result":
+		var toolResultBlock ToolResultBlockParam
+		if err := json.Unmarshal(data, &toolResultBlock); err != nil {
+			return fmt.Errorf("failed to unmarshal tool_result block: %w", err)
+		}
+		m.ToolResult = &toolResultBlock
+		return nil
 	default:
-		// TODO add others when we need it for observability, etc.
-		// Fow now, we ignore undefined types.
 		return nil
 	}
 }
@@ -181,7 +216,12 @@ func (m *ContentBlockParam) MarshalJSON() ([]byte, error) {
 	if m.Text != nil {
 		return json.Marshal(m.Text)
 	}
-	// TODO add others when we need it for observability, etc.
+	if m.ToolUse != nil {
+		return json.Marshal(m.ToolUse)
+	}
+	if m.ToolResult != nil {
+		return json.Marshal(m.ToolResult)
+	}
 	return nil, fmt.Errorf("content block must have a defined type")
 }
 
