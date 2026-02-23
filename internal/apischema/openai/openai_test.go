@@ -4450,7 +4450,7 @@ func TestResponseNewParamsInputUnionUnmarshalJSON(t *testing.T) {
 		{
 			name:   "unmarshal invalid type",
 			input:  []byte(`{"invalid": "data"}`),
-			expErr: "input must be either a string or an array of input items",
+			expErr: "mismatched type with value",
 		},
 	}
 
@@ -4514,8 +4514,10 @@ func TestResponseInputItemUnionParamMarshalJSON(t *testing.T) {
 				OfOutputMessage: &ResponseOutputMessage{
 					Type: "message",
 					Role: "assistant",
-					Content: []ResponseOutputMessageContentUnion{
-						{OfOutputText: &ResponseOutputTextParam{Text: "Hello! How can I assist you ?", Type: "output_text"}},
+					Content: ResponseOutputMessageContentUnion{
+						OfContentArray: []ResponseOutputMessageContentArrayUnion{
+							{OfOutputText: &ResponseOutputTextParam{Text: "Hello! How can I assist you ?", Type: "output_text"}},
+						},
 					},
 					Status: "completed",
 					ID:     "resp-123",
@@ -4947,8 +4949,10 @@ func TestResponseInputItemUnionParamUnmarshalJSON(t *testing.T) {
 				OfOutputMessage: &ResponseOutputMessage{
 					Type: "message",
 					Role: "assistant",
-					Content: []ResponseOutputMessageContentUnion{
-						{OfOutputText: &ResponseOutputTextParam{Text: "Hello! How can I assist you ?", Type: "output_text"}},
+					Content: ResponseOutputMessageContentUnion{
+						OfContentArray: []ResponseOutputMessageContentArrayUnion{
+							{OfOutputText: &ResponseOutputTextParam{Text: "Hello! How can I assist you ?", Type: "output_text"}},
+						},
 					},
 					Status: "completed",
 					ID:     "resp-123",
@@ -4962,8 +4966,10 @@ func TestResponseInputItemUnionParamUnmarshalJSON(t *testing.T) {
 				OfOutputMessage: &ResponseOutputMessage{
 					Type: "message",
 					Role: "assistant",
-					Content: []ResponseOutputMessageContentUnion{
-						{OfOutputText: &ResponseOutputTextParam{Text: "Hi! I'm here and working.", Type: "output_text"}},
+					Content: ResponseOutputMessageContentUnion{
+						OfContentArray: []ResponseOutputMessageContentArrayUnion{
+							{OfOutputText: &ResponseOutputTextParam{Text: "Hi! I'm here and working.", Type: "output_text"}},
+						},
 					},
 				},
 			},
@@ -6010,6 +6016,124 @@ func TestResponseOutputMessageContentUnionMarshalJSON(t *testing.T) {
 		{
 			name: "marshal output text",
 			input: ResponseOutputMessageContentUnion{
+				OfContentArray: []ResponseOutputMessageContentArrayUnion{
+					{
+						OfOutputText: &ResponseOutputTextParam{
+							Text: "Hello, world!",
+							Type: "output_text",
+						},
+					},
+				},
+			},
+			expected: `[{"text":"Hello, world!","type":"output_text"}]`,
+		},
+		{
+			name: "marshal output string",
+			input: ResponseOutputMessageContentUnion{
+				OfString: ptr.To("Hello, world!"),
+			},
+			expected: `"Hello, world!"`,
+		},
+		{
+			name: "marshal output text with annotations",
+			input: ResponseOutputMessageContentUnion{
+				OfContentArray: []ResponseOutputMessageContentArrayUnion{
+					{
+						OfOutputText: &ResponseOutputTextParam{
+							Text: "Check this [citation]",
+							Type: "output_text",
+							Annotations: []ResponseOutputTextAnnotationUnionParam{
+								{
+									OfFileCitation: &ResponseOutputTextAnnotationFileCitationParam{
+										Type:     "file_citation",
+										FileID:   "file-123",
+										Filename: "document.pdf",
+										Index:    0,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: `[{"annotations":[{"file_id":"file-123","filename":"document.pdf","index":0,"type":"file_citation"}],"text":"Check this [citation]","type":"output_text"}]`,
+		},
+		{
+			name: "marshal refusal",
+			input: ResponseOutputMessageContentUnion{
+				OfContentArray: []ResponseOutputMessageContentArrayUnion{
+					{
+						OfRefusal: &ResponseOutputRefusalParam{
+							Refusal: "I cannot help with that request",
+							Type:    "refusal",
+						},
+					},
+				},
+			},
+			expected: `[{"refusal":"I cannot help with that request","type":"refusal"}]`,
+		},
+		{
+			name:   "marshal empty union",
+			input:  ResponseOutputMessageContentUnion{},
+			expErr: "no output message content to marshal",
+		},
+		{
+			name: "marshal complex output text",
+			input: ResponseOutputMessageContentUnion{
+				OfContentArray: []ResponseOutputMessageContentArrayUnion{
+					{
+						OfOutputText: &ResponseOutputTextParam{
+							Text: "Complex response",
+							Type: "output_text",
+							Logprobs: []ResponseOutputTextLogprobParam{
+								{
+									Token:   "Complex",
+									Logprob: -0.25,
+									TopLogprobs: []ResponseOutputTextLogprobTopLogprobParam{
+										{
+											Token:   "Complex",
+											Logprob: -0.25,
+										},
+										{
+											Token:   "Complicated",
+											Logprob: -1.5,
+										},
+									},
+								},
+								{
+									Token:   "response",
+									Logprob: -0.1,
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: `[{"logprobs":[{"logprob":-0.25,"token":"Complex","top_logprobs":[{"logprob":-0.25,"token":"Complex"},{"logprob":-1.5,"token":"Complicated"}]},{"logprob":-0.1,"token":"response"}],"text":"Complex response","type":"output_text"}]`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := json.Marshal(tc.input)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, string(data))
+		})
+	}
+}
+
+func TestResponseOutputMessageContentArrayUnionMarshalJSON(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		input    ResponseOutputMessageContentArrayUnion
+		expected string
+		expErr   string
+	}{
+		{
+			name: "marshal output text",
+			input: ResponseOutputMessageContentArrayUnion{
 				OfOutputText: &ResponseOutputTextParam{
 					Text: "Hello, world!",
 					Type: "output_text",
@@ -6019,7 +6143,7 @@ func TestResponseOutputMessageContentUnionMarshalJSON(t *testing.T) {
 		},
 		{
 			name: "marshal output text with annotations",
-			input: ResponseOutputMessageContentUnion{
+			input: ResponseOutputMessageContentArrayUnion{
 				OfOutputText: &ResponseOutputTextParam{
 					Text: "Check this [citation]",
 					Type: "output_text",
@@ -6039,7 +6163,7 @@ func TestResponseOutputMessageContentUnionMarshalJSON(t *testing.T) {
 		},
 		{
 			name: "marshal output text with logprobs",
-			input: ResponseOutputMessageContentUnion{
+			input: ResponseOutputMessageContentArrayUnion{
 				OfOutputText: &ResponseOutputTextParam{
 					Text: "test",
 					Type: "output_text",
@@ -6055,7 +6179,7 @@ func TestResponseOutputMessageContentUnionMarshalJSON(t *testing.T) {
 		},
 		{
 			name: "marshal refusal",
-			input: ResponseOutputMessageContentUnion{
+			input: ResponseOutputMessageContentArrayUnion{
 				OfRefusal: &ResponseOutputRefusalParam{
 					Refusal: "I cannot help with that request",
 					Type:    "refusal",
@@ -6065,7 +6189,7 @@ func TestResponseOutputMessageContentUnionMarshalJSON(t *testing.T) {
 		},
 		{
 			name: "marshal refusal with special characters",
-			input: ResponseOutputMessageContentUnion{
+			input: ResponseOutputMessageContentArrayUnion{
 				OfRefusal: &ResponseOutputRefusalParam{
 					Refusal: "Cannot process: \"illegal\" request with \\n newlines",
 					Type:    "refusal",
@@ -6075,12 +6199,12 @@ func TestResponseOutputMessageContentUnionMarshalJSON(t *testing.T) {
 		},
 		{
 			name:   "marshal empty union",
-			input:  ResponseOutputMessageContentUnion{},
+			input:  ResponseOutputMessageContentArrayUnion{},
 			expErr: "no output message content to marshal",
 		},
 		{
 			name: "marshal complex output text",
-			input: ResponseOutputMessageContentUnion{
+			input: ResponseOutputMessageContentArrayUnion{
 				OfOutputText: &ResponseOutputTextParam{
 					Text: "Complex response",
 					Type: "output_text",
@@ -6121,16 +6245,16 @@ func TestResponseOutputMessageContentUnionMarshalJSON(t *testing.T) {
 	}
 }
 
-func TestResponseOutputMessageContentUnionUnmarshalJSON(t *testing.T) {
+func TestResponseOutputMessageContentArrayUnionUnmarshalJSON(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
-		expected ResponseOutputMessageContentUnion
+		expected ResponseOutputMessageContentArrayUnion
 		input    string
 		expErr   string
 	}{
 		{
 			name: "unmarshal output text",
-			expected: ResponseOutputMessageContentUnion{
+			expected: ResponseOutputMessageContentArrayUnion{
 				OfOutputText: &ResponseOutputTextParam{
 					Text: "Hello, world!",
 					Type: "output_text",
@@ -6140,7 +6264,7 @@ func TestResponseOutputMessageContentUnionUnmarshalJSON(t *testing.T) {
 		},
 		{
 			name: "unmarshal output text with annotations",
-			expected: ResponseOutputMessageContentUnion{
+			expected: ResponseOutputMessageContentArrayUnion{
 				OfOutputText: &ResponseOutputTextParam{
 					Text: "Check this [citation]",
 					Type: "output_text",
@@ -6160,7 +6284,7 @@ func TestResponseOutputMessageContentUnionUnmarshalJSON(t *testing.T) {
 		},
 		{
 			name: "unmarshal output text with logprobs",
-			expected: ResponseOutputMessageContentUnion{
+			expected: ResponseOutputMessageContentArrayUnion{
 				OfOutputText: &ResponseOutputTextParam{
 					Text: "test",
 					Type: "output_text",
@@ -6176,7 +6300,7 @@ func TestResponseOutputMessageContentUnionUnmarshalJSON(t *testing.T) {
 		},
 		{
 			name: "unmarshal refusal",
-			expected: ResponseOutputMessageContentUnion{
+			expected: ResponseOutputMessageContentArrayUnion{
 				OfRefusal: &ResponseOutputRefusalParam{
 					Refusal: "I cannot help with that request",
 					Type:    "refusal",
@@ -6186,7 +6310,7 @@ func TestResponseOutputMessageContentUnionUnmarshalJSON(t *testing.T) {
 		},
 		{
 			name: "unmarshal refusal with special characters",
-			expected: ResponseOutputMessageContentUnion{
+			expected: ResponseOutputMessageContentArrayUnion{
 				OfRefusal: &ResponseOutputRefusalParam{
 					Refusal: "Cannot process: \"illegal\" request with \\n newlines",
 					Type:    "refusal",
@@ -6201,7 +6325,7 @@ func TestResponseOutputMessageContentUnionUnmarshalJSON(t *testing.T) {
 		},
 		{
 			name: "unmarshal complex output text",
-			expected: ResponseOutputMessageContentUnion{
+			expected: ResponseOutputMessageContentArrayUnion{
 				OfOutputText: &ResponseOutputTextParam{
 					Text: "Complex response",
 					Type: "output_text",
@@ -6228,6 +6352,101 @@ func TestResponseOutputMessageContentUnionUnmarshalJSON(t *testing.T) {
 				},
 			},
 			input: `{"logprobs":[{"logprob":-0.25,"token":"Complex","top_logprobs":[{"logprob":-0.25,"token":"Complex"},{"logprob":-1.5,"token":"Complicated"}]},{"logprob":-0.1,"token":"response"}],"text":"Complex response","type":"output_text"}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var result ResponseOutputMessageContentArrayUnion
+			err := json.Unmarshal([]byte(tc.input), &result)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestResponseOutputMessageContentUnionUnmarshalJSON(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		expected ResponseOutputMessageContentUnion
+		input    string
+		expErr   string
+	}{
+		{
+			name: "unmarshal output text",
+			expected: ResponseOutputMessageContentUnion{
+				OfContentArray: []ResponseOutputMessageContentArrayUnion{
+					{
+						OfOutputText: &ResponseOutputTextParam{
+							Text: "Hello, world!",
+							Type: "output_text",
+						},
+					},
+				},
+			},
+			input: `[{"text":"Hello, world!","type":"output_text"}]`,
+		},
+		{
+			name: "unmarshal output string",
+			expected: ResponseOutputMessageContentUnion{
+				OfString: ptr.To("Hello, world!"),
+			},
+			input: `"Hello, world!"`,
+		},
+		{
+			name: "unmarshal refusal",
+			expected: ResponseOutputMessageContentUnion{
+				OfContentArray: []ResponseOutputMessageContentArrayUnion{
+					{
+						OfRefusal: &ResponseOutputRefusalParam{
+							Refusal: "I cannot help with that request",
+							Type:    "refusal",
+						},
+					},
+				},
+			},
+			input: `[{"refusal":"I cannot help with that request","type":"refusal"}]`,
+		},
+		{
+			name:   "unmarshal empty type",
+			input:  `{"type": ""}`,
+			expErr: "unable to unmarshal output message content",
+		},
+		{
+			name: "unmarshal complex output text",
+			expected: ResponseOutputMessageContentUnion{
+				OfContentArray: []ResponseOutputMessageContentArrayUnion{
+					{
+						OfOutputText: &ResponseOutputTextParam{
+							Text: "Complex response",
+							Type: "output_text",
+							Logprobs: []ResponseOutputTextLogprobParam{
+								{
+									Token:   "Complex",
+									Logprob: -0.25,
+									TopLogprobs: []ResponseOutputTextLogprobTopLogprobParam{
+										{
+											Token:   "Complex",
+											Logprob: -0.25,
+										},
+										{
+											Token:   "Complicated",
+											Logprob: -1.5,
+										},
+									},
+								},
+								{
+									Token:   "response",
+									Logprob: -0.1,
+								},
+							},
+						},
+					},
+				},
+			},
+			input: `[{"logprobs":[{"logprob":-0.25,"token":"Complex","top_logprobs":[{"logprob":-0.25,"token":"Complex"},{"logprob":-1.5,"token":"Complicated"}]},{"logprob":-0.1,"token":"response"}],"text":"Complex response","type":"output_text"}]`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -9060,8 +9279,10 @@ func TestResponseOutputItemUnionMarshalJSON(t *testing.T) {
 					ID:   "msg_123",
 					Type: "message",
 					Role: "assistant",
-					Content: []ResponseOutputMessageContentUnion{
-						{OfOutputText: &ResponseOutputTextParam{Text: "Hello! How can I assist you ?", Type: "output_text"}},
+					Content: ResponseOutputMessageContentUnion{
+						OfContentArray: []ResponseOutputMessageContentArrayUnion{
+							{OfOutputText: &ResponseOutputTextParam{Text: "Hello! How can I assist you ?", Type: "output_text"}},
+						},
 					},
 					Status: "completed",
 				},
@@ -9384,8 +9605,10 @@ func TestResponseOutputItemUnionUnmarshalJSON(t *testing.T) {
 					ID:   "msg_123",
 					Type: "message",
 					Role: "assistant",
-					Content: []ResponseOutputMessageContentUnion{
-						{OfOutputText: &ResponseOutputTextParam{Text: "Hello! How can I assist you ?", Type: "output_text"}},
+					Content: ResponseOutputMessageContentUnion{
+						OfContentArray: []ResponseOutputMessageContentArrayUnion{
+							{OfOutputText: &ResponseOutputTextParam{Text: "Hello! How can I assist you ?", Type: "output_text"}},
+						},
 					},
 					Status: "completed",
 				},
@@ -10719,11 +10942,13 @@ func TestResponseStreamEventUnionUnmarshalJSON(t *testing.T) {
 									Type: "message",
 									ID:   "msg-123",
 									Role: "assistant",
-									Content: []ResponseOutputMessageContentUnion{
-										{
-											OfOutputText: &ResponseOutputTextParam{
-												Type: "output_text",
-												Text: "Hello World!",
+									Content: ResponseOutputMessageContentUnion{
+										OfContentArray: []ResponseOutputMessageContentArrayUnion{
+											{
+												OfOutputText: &ResponseOutputTextParam{
+													Type: "output_text",
+													Text: "Hello World!",
+												},
 											},
 										},
 									},
@@ -10995,11 +11220,13 @@ func TestResponseStreamEventUnionUnmarshalJSON(t *testing.T) {
 							ID:     "msg_123",
 							Status: "in_progress",
 							Role:   "assistant",
-							Content: []ResponseOutputMessageContentUnion{
-								{
-									OfOutputText: &ResponseOutputTextParam{
-										Type: "output_text",
-										Text: "Hello World!",
+							Content: ResponseOutputMessageContentUnion{
+								OfContentArray: []ResponseOutputMessageContentArrayUnion{
+									{
+										OfOutputText: &ResponseOutputTextParam{
+											Type: "output_text",
+											Text: "Hello World!",
+										},
 									},
 								},
 							},
@@ -11563,11 +11790,13 @@ func TestResponseStreamEventUnionMarshalJSON(t *testing.T) {
 									Type: "message",
 									ID:   "msg-123",
 									Role: "assistant",
-									Content: []ResponseOutputMessageContentUnion{
-										{
-											OfOutputText: &ResponseOutputTextParam{
-												Type: "output_text",
-												Text: "Hello World!",
+									Content: ResponseOutputMessageContentUnion{
+										OfContentArray: []ResponseOutputMessageContentArrayUnion{
+											{
+												OfOutputText: &ResponseOutputTextParam{
+													Type: "output_text",
+													Text: "Hello World!",
+												},
 											},
 										},
 									},
@@ -11839,11 +12068,13 @@ func TestResponseStreamEventUnionMarshalJSON(t *testing.T) {
 							ID:     "msg_123",
 							Status: "in_progress",
 							Role:   "assistant",
-							Content: []ResponseOutputMessageContentUnion{
-								{
-									OfOutputText: &ResponseOutputTextParam{
-										Type: "output_text",
-										Text: "Hello World!",
+							Content: ResponseOutputMessageContentUnion{
+								OfContentArray: []ResponseOutputMessageContentArrayUnion{
+									{
+										OfOutputText: &ResponseOutputTextParam{
+											Type: "output_text",
+											Text: "Hello World!",
+										},
 									},
 								},
 							},

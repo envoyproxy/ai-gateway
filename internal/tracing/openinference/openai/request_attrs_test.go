@@ -3199,10 +3199,12 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "basic output text without redaction",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "This is a response",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "This is a response",
+							},
 						},
 					},
 				},
@@ -3216,13 +3218,47 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			},
 		},
 		{
+			name: "basic string content without redaction",
+			output: &openai.ResponseOutputMessage{
+				Role: "assistant",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfString: ptr("This is a response"),
+				},
+			},
+			messageIndex: 0,
+			config:       openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), "This is a response"),
+			},
+		},
+		{
+			name: "basic string content with redaction",
+			output: &openai.ResponseOutputMessage{
+				Role: "assistant",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfString: ptr("This is a response"),
+				},
+			},
+			messageIndex: 0,
+			config:       &openinference.TraceConfig{HideInputText: true},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.InputMessageContentAttribute(0, 0, "text"), openinference.RedactedValue),
+			},
+		},
+		{
 			name: "output text with HideInputText enabled",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "Sensitive response data",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "Sensitive response data",
+							},
 						},
 					},
 				},
@@ -3239,10 +3275,12 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "output refusal without redaction",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfRefusal: &openai.ResponseOutputRefusalParam{
-							Refusal: "I cannot help with this request",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfRefusal: &openai.ResponseOutputRefusalParam{
+								Refusal: "I cannot help with this request",
+							},
 						},
 					},
 				},
@@ -3259,10 +3297,12 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "output refusal with HideInputText enabled",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfRefusal: &openai.ResponseOutputRefusalParam{
-							Refusal: "Refusal reason",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfRefusal: &openai.ResponseOutputRefusalParam{
+								Refusal: "Refusal reason",
+							},
 						},
 					},
 				},
@@ -3279,7 +3319,7 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "empty content slice",
 			output: &openai.ResponseOutputMessage{
 				Role:    "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{},
+				Content: openai.ResponseOutputMessageContentUnion{},
 			},
 			messageIndex: 4,
 			config:       openinference.NewTraceConfig(),
@@ -3291,15 +3331,17 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "multiple content parts with mixed types",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "First response",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "First response",
+							},
 						},
-					},
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "Second response",
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "Second response",
+							},
 						},
 					},
 				},
@@ -3318,15 +3360,17 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "multiple content with text and refusal",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "Here is some output",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "Here is some output",
+							},
 						},
-					},
-					{
-						OfRefusal: &openai.ResponseOutputRefusalParam{
-							Refusal: "Cannot do that",
+						{
+							OfRefusal: &openai.ResponseOutputRefusalParam{
+								Refusal: "Cannot do that",
+							},
 						},
 					},
 				},
@@ -3345,15 +3389,17 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "multiple content with text and refusal, HideInputText enabled",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "Here is some output",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "Here is some output",
+							},
 						},
-					},
-					{
-						OfRefusal: &openai.ResponseOutputRefusalParam{
-							Refusal: "Cannot do that",
+						{
+							OfRefusal: &openai.ResponseOutputRefusalParam{
+								Refusal: "Cannot do that",
+							},
 						},
 					},
 				},
@@ -3372,10 +3418,12 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "output text with empty string",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "",
+							},
 						},
 					},
 				},
@@ -3392,10 +3440,12 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "output refusal with empty string",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfRefusal: &openai.ResponseOutputRefusalParam{
-							Refusal: "",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfRefusal: &openai.ResponseOutputRefusalParam{
+								Refusal: "",
+							},
 						},
 					},
 				},
@@ -3412,10 +3462,12 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "different message index at index 15",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "Response at index 15",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "Response at index 15",
+							},
 						},
 					},
 				},
@@ -3432,10 +3484,12 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "with HideInputText disabled explicitly",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "visible data",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "visible data",
+							},
 						},
 					},
 				},
@@ -3452,10 +3506,12 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "long output text",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "This is a very long response text with special characters like !@#$%^&*() and unicode characters like café and 日本語",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "This is a very long response text with special characters like !@#$%^&*() and unicode characters like café and 日本語",
+							},
 						},
 					},
 				},
@@ -3472,10 +3528,12 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "long output text with HideInputText enabled",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "This contains a lot of sensitive data that should be redacted completely",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "This contains a lot of sensitive data that should be redacted completely",
+							},
 						},
 					},
 				},
@@ -3495,10 +3553,12 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			},
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "response",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "response",
+							},
 						},
 					},
 				},
@@ -3520,10 +3580,12 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			},
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "secret",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "secret",
+							},
 						},
 					},
 				},
@@ -3542,20 +3604,22 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "three content parts with different types",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "First text",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "First text",
+							},
 						},
-					},
-					{
-						OfRefusal: &openai.ResponseOutputRefusalParam{
-							Refusal: "Cannot proceed",
+						{
+							OfRefusal: &openai.ResponseOutputRefusalParam{
+								Refusal: "Cannot proceed",
+							},
 						},
-					},
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "Last text",
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "Last text",
+							},
 						},
 					},
 				},
@@ -3576,20 +3640,22 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "three content parts redacted",
 			output: &openai.ResponseOutputMessage{
 				Role: "assistant",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "First text",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "First text",
+							},
 						},
-					},
-					{
-						OfRefusal: &openai.ResponseOutputRefusalParam{
-							Refusal: "Cannot proceed",
+						{
+							OfRefusal: &openai.ResponseOutputRefusalParam{
+								Refusal: "Cannot proceed",
+							},
 						},
-					},
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "Last text",
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "Last text",
+							},
 						},
 					},
 				},
@@ -3610,10 +3676,12 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "user role in output message",
 			output: &openai.ResponseOutputMessage{
 				Role: "user",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "User response",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "User response",
+							},
 						},
 					},
 				},
@@ -3630,10 +3698,12 @@ func TestSetOutputMsgAttrs(t *testing.T) {
 			name: "tool role in output message",
 			output: &openai.ResponseOutputMessage{
 				Role: "tool",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Text: "Tool output",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Text: "Tool output",
+							},
 						},
 					},
 				},
@@ -4604,11 +4674,13 @@ func TestHandleInputItemUnionAttrs(t *testing.T) {
 			item: &openai.ResponseInputItemUnionParam{
 				OfOutputMessage: &openai.ResponseOutputMessage{
 					Role: "assistant",
-					Content: []openai.ResponseOutputMessageContentUnion{
-						{
-							OfOutputText: &openai.ResponseOutputTextParam{
-								Type: "output_text",
-								Text: "Output text",
+					Content: openai.ResponseOutputMessageContentUnion{
+						OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+							{
+								OfOutputText: &openai.ResponseOutputTextParam{
+									Type: "output_text",
+									Text: "Output text",
+								},
 							},
 						},
 					},

@@ -3534,7 +3534,8 @@ type ResponseNewParamsInputUnion struct {
 func (r *ResponseNewParamsInputUnion) UnmarshalJSON(data []byte) error {
 	// Try string
 	var s string
-	if err := json.Unmarshal(data, &s); err == nil {
+	var err error
+	if err = json.Unmarshal(data, &s); err == nil {
 		r.OfString = &s
 		r.OfInputItemList = nil
 		return nil
@@ -3542,13 +3543,13 @@ func (r *ResponseNewParamsInputUnion) UnmarshalJSON(data []byte) error {
 
 	// Try input item list
 	var items []ResponseInputItemUnionParam
-	if err := json.Unmarshal(data, &items); err == nil {
+	if err = json.Unmarshal(data, &items); err == nil {
 		r.OfString = nil
 		r.OfInputItemList = items
 		return nil
 	}
 
-	return errors.New("input must be either a string or an array of input items")
+	return err
 }
 
 func (r ResponseNewParamsInputUnion) MarshalJSON() ([]byte, error) {
@@ -3980,7 +3981,7 @@ type ResponseOutputMessage struct {
 	// The unique ID of the output message.
 	ID string `json:"id,omitzero"`
 	// The content of the output message.
-	Content []ResponseOutputMessageContentUnion `json:"content,omitzero"`
+	Content ResponseOutputMessageContentUnion `json:"content,omitzero"`
 	// The status of the message input. One of `in_progress`, `completed`, or
 	// `incomplete`. Populated when input items are returned via API.
 	//
@@ -3995,11 +3996,51 @@ type ResponseOutputMessage struct {
 // ResponseOutputMessageContentUnion is a union type for different output message content parameters.
 // Only one field can be non-zero.
 type ResponseOutputMessageContentUnion struct {
+	OfString       *string
+	OfContentArray []ResponseOutputMessageContentArrayUnion
+}
+
+func (r ResponseOutputMessageContentUnion) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfString != nil:
+		return json.Marshal(r.OfString)
+	case r.OfContentArray != nil:
+		return json.Marshal(r.OfContentArray)
+	default:
+		return nil, errors.New("no output message content to marshal")
+	}
+}
+
+func (r *ResponseOutputMessageContentUnion) UnmarshalJSON(data []byte) error {
+	switch data[0] {
+	case '"':
+		// Try to parse as string
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		r.OfString = &s
+	case '[':
+		// Try to parse as array
+		var ot []ResponseOutputMessageContentArrayUnion
+		if err := json.Unmarshal(data, &ot); err != nil {
+			return err
+		}
+		r.OfContentArray = ot
+	default:
+		return errors.New("unable to unmarshal output message content")
+	}
+	return nil
+}
+
+// ResponseOutputMessageContentArrayUnion is a union type for different output message content array parameters.
+// Only one field can be non-zero.
+type ResponseOutputMessageContentArrayUnion struct {
 	OfOutputText *ResponseOutputTextParam
 	OfRefusal    *ResponseOutputRefusalParam
 }
 
-func (r ResponseOutputMessageContentUnion) MarshalJSON() ([]byte, error) {
+func (r ResponseOutputMessageContentArrayUnion) MarshalJSON() ([]byte, error) {
 	switch {
 	case r.OfOutputText != nil:
 		return json.Marshal(r.OfOutputText)
@@ -4010,7 +4051,7 @@ func (r ResponseOutputMessageContentUnion) MarshalJSON() ([]byte, error) {
 	}
 }
 
-func (r *ResponseOutputMessageContentUnion) UnmarshalJSON(data []byte) error {
+func (r *ResponseOutputMessageContentArrayUnion) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
 	switch typ.String() {
 	case "output_text":
