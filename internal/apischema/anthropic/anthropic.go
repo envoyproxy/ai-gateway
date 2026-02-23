@@ -162,21 +162,23 @@ type (
 		Type  string        `json:"type"` // Always "tool_use".
 		ID    string        `json:"id"`
 		Name  string        `json:"name"`
-		Input FlexibleInput `json:"input"` // Object or JSON string (some clients send string).
+		Input FlexibleInput `json:"input"` // Object or JSON string; same lenient pattern as openai.ContentUnion.
 	}
 
-	// FlexibleInput is map[string]any that unmarshals from either a JSON object or a JSON string.
+	// FlexibleInput accepts either a JSON object or a JSON string (parsed as object), for client compatibility.
+	// Mirrors the lenient parsing used in internal/apischema/openai (e.g. ContentUnion, EmbeddingContent).
 	FlexibleInput map[string]any
 
 	// ToolResultBlockParam is a request content block for user tool results.
 	ToolResultBlockParam struct {
-		Type      string                     `json:"type"` // Always "tool_result".
-		ToolUseID string                     `json:"tool_use_id"`
-		Content   ToolResultContentArray     `json:"content"` // Array or single string (some clients send string).
-		IsError   *bool                      `json:"is_error,omitempty"`
+		Type      string                 `json:"type"` // Always "tool_result".
+		ToolUseID string                 `json:"tool_use_id"`
+		Content   ToolResultContentArray `json:"content"` // Array or single string; same lenient pattern as openai.
+		IsError   *bool                  `json:"is_error,omitempty"`
 	}
 
-	// ToolResultContentArray is []ToolResultContentParam but unmarshals from array or a single string (treated as one text block).
+	// ToolResultContentArray accepts either an array of content blocks or a single string (one text block).
+	// Mirrors the lenient parsing used in internal/apischema/openai (e.g. StringOrUserRoleContentUnion).
 	ToolResultContentArray []ToolResultContentParam
 
 	// ToolResultContentParam is a single content item inside a tool_result (e.g. text).
@@ -186,7 +188,7 @@ type (
 	}
 )
 
-// UnmarshalJSON allows FlexibleInput to be either a JSON object or a JSON string (parsed as object).
+// UnmarshalJSON implements lenient parsing: object or JSON string (parsed as object), consistent with openai schema.
 func (f *FlexibleInput) UnmarshalJSON(data []byte) error {
 	var m map[string]any
 	if err := json.Unmarshal(data, &m); err == nil {
@@ -195,16 +197,16 @@ func (f *FlexibleInput) UnmarshalJSON(data []byte) error {
 	}
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
-		return err
+		return fmt.Errorf("cannot unmarshal tool_use input (must be object or JSON string): %w", err)
 	}
 	if err := json.Unmarshal([]byte(s), &m); err != nil {
-		return err
+		return fmt.Errorf("cannot unmarshal tool_use input string as object: %w", err)
 	}
 	*f = m
 	return nil
 }
 
-// UnmarshalJSON allows ToolResultContentArray to be either an array of content blocks or a single string (one text block).
+// UnmarshalJSON implements lenient parsing: array of content blocks or single string (one text block), consistent with openai schema.
 func (t *ToolResultContentArray) UnmarshalJSON(data []byte) error {
 	var arr []ToolResultContentParam
 	if err := json.Unmarshal(data, &arr); err == nil {
@@ -213,7 +215,7 @@ func (t *ToolResultContentArray) UnmarshalJSON(data []byte) error {
 	}
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
-		return err
+		return fmt.Errorf("cannot unmarshal tool_result content (must be array or string): %w", err)
 	}
 	*t = []ToolResultContentParam{{Type: "text", Text: s}}
 	return nil
