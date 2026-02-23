@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 
@@ -32,13 +33,14 @@ var (
 // handling the different line terminations: CR, LF, CRLF.
 type sseEventParser struct {
 	backend filterapi.MCPBackendName
+	startAt time.Time
 	r       io.Reader
 	readBuf [4096]byte
 	buf     []byte
 }
 
-func newSSEEventParser(r io.Reader, backend filterapi.MCPBackendName) sseEventParser {
-	return sseEventParser{r: r, backend: backend}
+func newSSEEventParser(r io.Reader, backend filterapi.MCPBackendName, startAt time.Time) sseEventParser {
+	return sseEventParser{r: r, backend: backend, startAt: startAt}
 }
 
 // next reads the next SSE event from the stream.
@@ -75,7 +77,7 @@ func (s *sseEventParser) next() (*sseEvent, error) {
 
 // parseEvent parses one normalized chunk into an sseEvent.
 func (s *sseEventParser) parseEvent(chunk []byte) (*sseEvent, error) {
-	ret := &sseEvent{backend: s.backend}
+	ret := &sseEvent{backend: s.backend, startAt: s.startAt}
 
 	for line := range bytes.SplitSeq(chunk, sseLF) {
 		switch {
@@ -119,6 +121,7 @@ type sseEvent struct {
 	event, id string
 	messages  []jsonrpc.Message
 	backend   filterapi.MCPBackendName
+	startAt   time.Time
 }
 
 func (s *sseEvent) writeAndMaybeFlush(w io.Writer) {

@@ -363,6 +363,7 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 		}
 		s.reqCtx.l.Debug("sending MCP request", args...)
 	}
+	startAt := time.Now()
 	httpResp, err := s.reqCtx.client.Do(req)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -405,13 +406,14 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 			event:    "message",
 			id:       "", // No event ID in this case.
 			messages: []jsonrpc.Message{msg},
+			startAt:  startAt,
 		}
 		return nil
 	}
 
 	// io.Copy won't flush until the end, which doesn't happen for streaming responses.
 	// So we need to read the body in chunks and flush after each chunk.
-	parser := newSSEEventParser(httpResp.Body, backend.Name)
+	parser := newSSEEventParser(httpResp.Body, backend.Name, startAt)
 	for {
 		var event *sseEvent
 		event, err = parser.next()

@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -255,11 +256,15 @@ func TestServePOST_InitializeRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.ElementsMatch(t, []filterapi.MCPBackendName{"backend1"}, slices.Collect(maps.Keys(perBackendSessions)))
 
-	count, sum := testotel.GetHistogramValues(t, mr, "mcp.initialization.duration", attribute.NewSet())
+	// backend1 is the only backend that successfully initialized.
+	count, sum := testotel.GetHistogramValues(t, mr, "mcp.initialization.duration", attribute.NewSet(
+		attribute.String("mcp.backend", "backend1"),
+	))
 	require.Equal(t, 1, int(count)) // nolint: gosec
 	require.Greater(t, sum, 0.0)
 
 	capaCount := testotel.GetCounterValue(t, mr, "mcp.capabilities.negotiated", attribute.NewSet(
+		attribute.String("mcp.backend", "backend1"),
 		attribute.String("capability.type", "tools"),
 		attribute.String("capability.side", "server")))
 	require.Equal(t, 1, int(capaCount))
@@ -531,7 +536,7 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 				resp, ok = msg.(*jsonrpc.Response)
 				require.True(t, ok)
 			} else {
-				p := newSSEEventParser(rr.Body, "backend1")
+				p := newSSEEventParser(rr.Body, "backend1", time.Time{})
 				var event *sseEvent
 				event, err = p.next()
 				require.NoError(t, err)
@@ -616,16 +621,23 @@ func TestServePOST_ToolsCallRequest(t *testing.T) {
 			var countAttrs, durationAttrs attribute.Set
 			if tt.wantStatus == http.StatusOK {
 				countAttrs = attribute.NewSet(
+					attribute.String("mcp.backend", tt.wantBackend),
 					attribute.String("mcp.method.name", "tools/call"),
 					attribute.String("status", "success"),
 				)
-				durationAttrs = attribute.NewSet()
+				durationAttrs = attribute.NewSet(
+					attribute.String("mcp.backend", tt.wantBackend),
+				)
 			} else {
 				countAttrs = attribute.NewSet(
+					attribute.String("mcp.backend", tt.wantBackend),
 					attribute.String("mcp.method.name", "tools/call"),
 					attribute.String("status", "error"),
 				)
-				durationAttrs = attribute.NewSet(attribute.String("error.type", string(metrics.MCPErrorInvalidParam)))
+				durationAttrs = attribute.NewSet(
+					attribute.String("mcp.backend", tt.wantBackend),
+					attribute.String("error.type", string(metrics.MCPErrorInvalidParam)),
+				)
 			}
 
 			methodCount := testotel.GetCounterValue(t, mr, "mcp.method.count", countAttrs)
@@ -1779,7 +1791,9 @@ func Test_sendToAllBackendsAndAggregateResponsesImpl(t *testing.T) {
 	}()
 
 	rr := httptest.NewRecorder()
+	var testParams *mcp.ListToolsParams
 	err = sendToAllBackendsAndAggregateResponsesImpl(t.Context(), events, proxy, rr, s, &jsonrpc.Request{ID: reqID, Method: "test"},
+		testParams,
 		func(_ *session, res []broadCastResponse[testData]) testData {
 			var combined testData
 			for _, r := range res {

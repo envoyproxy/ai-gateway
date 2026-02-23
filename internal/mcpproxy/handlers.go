@@ -196,6 +196,18 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 				slog.String("error_type", string(errType)),
 				slog.String("duration", time.Since(startAt).String()))
 		}
+
+		if m.perBackendMetricsRecorded {
+			if span != nil {
+				if err != nil {
+					span.EndSpanOnError(string(errType), err)
+				} else {
+					span.EndSpan()
+				}
+			}
+			return
+		}
+
 		applicationError = false
 		if err != nil {
 			var errToolCall *errToolCall
@@ -561,6 +573,7 @@ func (m *mcpRequestContext) handleClientToServerResponse(ctx context.Context, s 
 	originalIDRaw := parts[0]
 	typeIdentifier := parts[1]
 	backendName := parts[2]
+	m.metrics = m.metrics.WithBackend(backendName)
 	var id jsonrpc.ID
 	switch typeIdentifier {
 	case "i": // ID is an int64 encoded as bytes.
@@ -641,6 +654,7 @@ func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *sessio
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid tool name %s: %v", p.Name, err))
 		return err
 	}
+	m.metrics = m.metrics.WithBackend(backendName)
 
 	backend, err := m.getBackendForRoute(s.route, backendName)
 	if err != nil {
@@ -785,7 +799,9 @@ func (m *mcpRequestContext) proxyResponseBody(ctx context.Context, s *session, w
 		m.l.Debug("Starting to stream MCP response body", slog.String("content_type", resp.Header.Get("Content-Type")), slog.String("mcp_session_id", resp.Header.Get(sessionIDHeader)))
 	}
 	w.WriteHeader(resp.StatusCode)
-	parser := newSSEEventParser(resp.Body, backend.Name)
+	// For single-backend operations, metrics are recorded in the defer of servePOST,
+	// so we don't need to track startAt in events here.
+	parser := newSSEEventParser(resp.Body, backend.Name, time.Time{})
 
 	// Collect errors from multiple events to return them all to the caller
 	var responseErrors []error
@@ -1027,6 +1043,7 @@ func (m *mcpRequestContext) handleResourceReadRequest(ctx context.Context, s *se
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid resource name %s: %v", p.URI, err))
 		return err
 	}
+	m.metrics = m.metrics.WithBackend(backendName)
 	backend, err := m.getBackendForRoute(s.route, backendName)
 	if err != nil {
 		onErrorResponse(w, http.StatusNotFound, fmt.Sprintf("unknown backend %s", backendName))
@@ -1077,6 +1094,7 @@ func (m *mcpRequestContext) handleResourcesSubscriptionRequest(ctx context.Conte
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid resource name %s: %v", uri, err))
 		return err
 	}
+	m.metrics = m.metrics.WithBackend(backendName)
 	backend, err := m.getBackendForRoute(s.route, backendName)
 	if err != nil {
 		onErrorResponse(w, http.StatusNotFound, fmt.Sprintf("unknown backend %s", backendName))
@@ -1191,6 +1209,7 @@ func (m *mcpRequestContext) handlePromptGetRequest(ctx context.Context, s *sessi
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid prompt name %s: %v", p.Name, err))
 		return err
 	}
+	m.metrics = m.metrics.WithBackend(backendName)
 	backend, err := m.getBackendForRoute(s.route, backendName)
 	if err != nil {
 		onErrorResponse(w, http.StatusNotFound, fmt.Sprintf("unknown backend %s", backendName))
@@ -1230,6 +1249,7 @@ func (m *mcpRequestContext) handleCompletionComplete(ctx context.Context, s *ses
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid resource name %s: %v", cmp.Or(param.Ref.Name, param.Ref.URI), err))
 		return err
 	}
+	m.metrics = m.metrics.WithBackend(backendName)
 
 	encodedParam, _ := json.Marshal(param)
 	req.Params = encodedParam
@@ -1301,6 +1321,7 @@ func (m *mcpRequestContext) handleClientToServerNotificationsProgress(ctx contex
 	}
 
 	backendName := parts[2]
+	m.metrics = m.metrics.WithBackend(backendName)
 	backend, err := m.getBackendForRoute(s.route, backendName)
 	if err != nil {
 		onErrorResponse(w, http.StatusNotFound, fmt.Sprintf("unknown backend %s", backendName))
@@ -1380,11 +1401,11 @@ func sendToAllBackendsAndAggregateResponses[responseType any, paramsType mcp.Par
 	encoded, _ := json.Marshal(p)
 	request.Params = encoded
 	backendMsgs := s.sendToAllBackends(ctx, http.MethodPost, request, span)
-	return sendToAllBackendsAndAggregateResponsesImpl(ctx, backendMsgs, m, w, s, request, mergeFn)
+	return sendToAllBackendsAndAggregateResponsesImpl(ctx, backendMsgs, m, w, s, request, p, mergeFn)
 }
 
 // sendToAllBackendsAndAggregateResponsesImpl is the implementation of sendToAllBackendsAndAggregateResponses for better testability.
-func sendToAllBackendsAndAggregateResponsesImpl[responseType any](ctx context.Context, events <-chan *sseEvent, m *mcpRequestContext, w http.ResponseWriter, s *session, request *jsonrpc.Request, mergeFn broadCastResponseMergeFn[responseType]) error {
+func sendToAllBackendsAndAggregateResponsesImpl[responseType any, paramsType mcp.Params](ctx context.Context, events <-chan *sseEvent, m *mcpRequestContext, w http.ResponseWriter, s *session, request *jsonrpc.Request, params paramsType, mergeFn broadCastResponseMergeFn[responseType]) error {
 	logger := m.l.With(slog.String("method", request.Method), slog.String("client_gateway_session_id", string(s.clientGatewaySessionID())))
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -1400,18 +1421,28 @@ func sendToAllBackendsAndAggregateResponsesImpl[responseType any](ctx context.Co
 			// Since the "response" is always the last message in the SSE stream per backend,
 			// we can just check the last message to see if it's a response to the original request.
 			if respMsg, ok := event.messages[l-1].(*jsonrpc.Response); ok && respMsg.ID == request.ID {
+				backendMetrics := m.metrics.WithBackend(event.backend)
 				switch {
 				case respMsg.Error != nil:
 					hasBackendError = true
 					logger.Error("error response from backend", slog.String("backend", event.backend), slog.Any("error", respMsg.Error))
+					// Record per-backend error metrics.
+					backendMetrics.RecordMethodErrorCount(ctx, request.Method, params, metrics.MCPStatusError)
+					backendMetrics.RecordRequestErrorDuration(ctx, event.startAt, metrics.MCPErrorInternal, params)
 				case respMsg.Result != nil: // Empty result is valid, for example set/loggingLevel returns empty result from some backends.
 					var result responseType
 					if err := json.Unmarshal(respMsg.Result, &result); err != nil {
 						// Partial failure, log and ignore this backend's response so that it won't affect the overall response.
 						logger.Error("failed to unmarshal response from backend. Ignoring this backend's response",
 							slog.String("backend", event.backend), slog.String("error", err.Error()), slog.String("result", string(respMsg.Result)))
+						// Record per-backend error metrics for unmarshal failure.
+						backendMetrics.RecordMethodErrorCount(ctx, request.Method, params, metrics.MCPStatusError)
+						backendMetrics.RecordRequestErrorDuration(ctx, event.startAt, metrics.MCPErrorInternal, params)
 					} else {
 						responses = append(responses, broadCastResponse[responseType]{backendName: event.backend, res: result})
+						// Record per-backend success metrics.
+						backendMetrics.RecordMethodCount(ctx, request.Method, params)
+						backendMetrics.RecordRequestDuration(ctx, event.startAt, params)
 					}
 				}
 				// Regardless of whether it's error or success response, we need to remove it from the event messages so that
@@ -1433,6 +1464,9 @@ func sendToAllBackendsAndAggregateResponsesImpl[responseType any](ctx context.Co
 			}
 		}
 	}
+
+	// Mark that per-backend metrics were recorded to avoid duplicate recording in defer.
+	m.perBackendMetricsRecorded = true
 
 	mergedResp := mergeFn(s, responses)
 	encodedResp, err := json.Marshal(mergedResp)

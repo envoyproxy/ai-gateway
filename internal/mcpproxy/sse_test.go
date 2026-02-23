@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/stretchr/testify/require"
@@ -83,7 +84,7 @@ func TestSSEEventParser_SingleEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := newSSEEventParser(bytes.NewReader(tt.raw), "mybackend")
+			p := newSSEEventParser(bytes.NewReader(tt.raw), "mybackend", time.Time{})
 			ev, err := p.next()
 			require.NoError(t, err)
 			require.Equal(t, "mybackend", ev.backend)
@@ -142,7 +143,7 @@ func TestSSEEventParser_MultipleEvents(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := newSSEEventParser(bytes.NewReader(tt.raw), "mybackend")
+			p := newSSEEventParser(bytes.NewReader(tt.raw), "mybackend", time.Time{})
 			ev1, err := p.next()
 			require.NoError(t, err)
 			ev2, err := p.next()
@@ -211,7 +212,7 @@ func TestSSEEventParser_PartialReads(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pr := &partialReader{chunks: [][]byte{tt.raw[:5], tt.raw[5:12], tt.raw[12:20], tt.raw[20:30], tt.raw[30:]}}
-			p := newSSEEventParser(pr, "mybackend")
+			p := newSSEEventParser(pr, "mybackend", time.Time{})
 			ev, err := p.next()
 			require.NoError(t, err)
 			require.Equal(t, "mybackend", ev.backend)
@@ -224,7 +225,7 @@ func TestSSEEventParser_PartialReads(t *testing.T) {
 
 func TestSSEEventParser_IncompleteEvent(t *testing.T) {
 	raw := []byte("event: foo\ndat")
-	p := newSSEEventParser(bytes.NewReader(raw), "mybackend")
+	p := newSSEEventParser(bytes.NewReader(raw), "mybackend", time.Time{})
 	ev, err := p.next()
 	require.NotNil(t, ev)
 	require.ErrorIs(t, err, io.EOF)
@@ -237,7 +238,7 @@ func TestSSEEventParser_IncompleteEvent(t *testing.T) {
 func TestSSEEventParser_InvalidJSONRPCMessage(t *testing.T) {
 	// Malformed JSON (not a jsonrpc message).
 	raw := []byte("data: {invalid json}\n\n")
-	p := newSSEEventParser(bytes.NewReader(raw), "mybackend")
+	p := newSSEEventParser(bytes.NewReader(raw), "mybackend", time.Time{})
 	ev, err := p.next()
 	require.Nil(t, ev)
 	require.Error(t, err)
@@ -290,7 +291,7 @@ func TestSSEEventParser_EndOfStream(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := newSSEEventParser(bytes.NewReader(tt.raw), "mybackend")
+			p := newSSEEventParser(bytes.NewReader(tt.raw), "mybackend", time.Time{})
 			ev, err := p.next()
 			require.NoError(t, err)
 			require.NotNil(t, ev)

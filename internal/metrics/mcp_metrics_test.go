@@ -204,3 +204,73 @@ func TestRecordProgressNotifications(t *testing.T) {
 	val = testotel.GetCounterValue(t, mr, mpcProgressNotifications, attribute.NewSet())
 	require.Equal(t, float64(2), val)
 }
+
+func TestWithBackend(t *testing.T) {
+	mr := metric.NewManualReader()
+	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+
+	m := NewMCP(meter, nil)
+	require.NotNil(t, m)
+
+	// Record metrics with backend label
+	mWithBackend := m.WithBackend("test-backend")
+	startAt := time.Now().Add(-1 * time.Minute)
+	mWithBackend.RecordRequestDuration(t.Context(), startAt, nil)
+
+	count, sum := testotel.GetHistogramValues(t, mr, mcpRequestDuration,
+		attribute.NewSet(
+			attribute.String(mcpAttributeBackend, "test-backend"),
+		))
+	require.Equal(t, uint64(1), count)
+	require.Equal(t, 60, int(sum))
+
+	// Test method count with backend
+	mWithBackend.RecordMethodCount(t.Context(), "tools/call", nil)
+	attrs := attribute.NewSet(
+		attribute.String(mcpAttributeBackend, "test-backend"),
+		attribute.Key(mcpAttributeMethodName).String("tools/call"),
+		attribute.Key(mcpAttributeStatusName).String(string(MCPStatusSuccess)),
+	)
+	val := testotel.GetCounterValue(t, mr, mcpMethodCount, attrs)
+	require.Equal(t, float64(1), val)
+
+	// Test initialization duration with backend
+	mWithBackend2 := m.WithBackend("another-backend")
+	initStart := time.Now().Add(-30 * time.Second)
+	mWithBackend2.RecordInitializationDuration(t.Context(), initStart, nil)
+
+	count, sum = testotel.GetHistogramValues(t, mr, mcpInitializationDuration,
+		attribute.NewSet(
+			attribute.String(mcpAttributeBackend, "another-backend"),
+		))
+	require.Equal(t, uint64(1), count)
+	require.Equal(t, 30, int(sum))
+}
+
+func TestWithBackendAndRequestAttributes(t *testing.T) {
+	mr := metric.NewManualReader()
+	meter := metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+
+	m := NewMCP(meter, map[string]string{
+		"x-region": "user.region",
+	})
+	require.NotNil(t, m)
+
+	req, err := http.NewRequest("GET", "https://example.com", nil)
+	require.NoError(t, err)
+	req.Header.Set("X-Region", "us-west-2")
+
+	// Chain WithRequestAttributes and WithBackend
+	mWithAttrs := m.WithRequestAttributes(req).WithBackend("backend-1")
+
+	startAt := time.Now().Add(-20 * time.Second)
+	mWithAttrs.RecordRequestDuration(t.Context(), startAt, nil)
+
+	count, sum := testotel.GetHistogramValues(t, mr, mcpRequestDuration,
+		attribute.NewSet(
+			attribute.String("user.region", "us-west-2"),
+			attribute.String(mcpAttributeBackend, "backend-1"),
+		))
+	require.Equal(t, uint64(1), count)
+	require.Equal(t, 20, int(sum))
+}

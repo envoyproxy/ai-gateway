@@ -33,9 +33,10 @@ import (
 // mcpRequestContext serves /mcp endpoint.
 type mcpRequestContext struct {
 	*ProxyConfig
-	metrics        metrics.MCPMetrics
-	requestHeaders http.Header
-	originalPath   string
+	metrics                   metrics.MCPMetrics
+	requestHeaders            http.Header
+	originalPath              string
+	perBackendMetricsRecorded bool
 }
 
 // NewMCPProxy creates a new MCPProxy instance.
@@ -169,7 +170,7 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 				// TODO: should we record a metric for this?
 				return
 			}
-			m.metrics.RecordInitializationDuration(ctx, startAt, p)
+			m.metrics.WithBackend(backend.Name).RecordInitializationDuration(ctx, startAt, p)
 			if m.l.Enabled(ctx, slog.LevelDebug) {
 				m.l.Debug("created MCP session", slog.String("backend", backend.Name), slog.String("session_id", string(initResult.sessionID)))
 			}
@@ -275,7 +276,7 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 		var rawMsg jsonrpc.Message
 		switch resp.Header.Get("Content-Type") {
 		case "text/event-stream":
-			parser := newSSEEventParser(resp.Body, backend.Name)
+			parser := newSSEEventParser(resp.Body, backend.Name, time.Time{})
 			for {
 				event, parseErr := parser.next()
 				// TODO: handle reconnect. We need to re-arrange the event ID so that it will also contain the backend name and the original session ID.
@@ -322,7 +323,7 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 		if m.l.Enabled(ctx, slog.LevelDebug) {
 			m.l.Debug("MCP session initialized", slog.Any("capabilities", initResult.Capabilities))
 		}
-		m.metrics.RecordServerCapabilities(ctx, initResult.Capabilities, p)
+		m.metrics.WithBackend(backend.Name).RecordServerCapabilities(ctx, initResult.Capabilities, p)
 	}
 
 	// Need to invoke "notifications/initialized" to complete the initialization.

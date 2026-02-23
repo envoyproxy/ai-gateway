@@ -31,6 +31,7 @@ import (
 type stubMetrics struct{}
 
 func (s stubMetrics) WithRequestAttributes(_ *http.Request) metrics.MCPMetrics            { return s }
+func (s stubMetrics) WithBackend(_ string) metrics.MCPMetrics                             { return s }
 func (stubMetrics) RecordRequestDuration(_ context.Context, _ time.Time, _ mcpsdk.Params) {}
 func (stubMetrics) RecordRequestErrorDuration(_ context.Context, _ time.Time, _ metrics.MCPErrorType, _ mcpsdk.Params) {
 }
