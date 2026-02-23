@@ -159,19 +159,25 @@ type (
 
 	// ToolUseBlockParam is a request content block for assistant tool use.
 	ToolUseBlockParam struct {
-		Type  string         `json:"type"` // Always "tool_use".
-		ID    string         `json:"id"`
-		Name  string         `json:"name"`
-		Input map[string]any `json:"input"`
+		Type  string        `json:"type"` // Always "tool_use".
+		ID    string        `json:"id"`
+		Name  string        `json:"name"`
+		Input FlexibleInput `json:"input"` // Object or JSON string (some clients send string).
 	}
+
+	// FlexibleInput is map[string]any that unmarshals from either a JSON object or a JSON string.
+	FlexibleInput map[string]any
 
 	// ToolResultBlockParam is a request content block for user tool results.
 	ToolResultBlockParam struct {
-		Type      string                   `json:"type"` // Always "tool_result".
-		ToolUseID string                   `json:"tool_use_id"`
-		Content   []ToolResultContentParam `json:"content"`
-		IsError   *bool                    `json:"is_error,omitempty"`
+		Type      string                     `json:"type"` // Always "tool_result".
+		ToolUseID string                     `json:"tool_use_id"`
+		Content   ToolResultContentArray     `json:"content"` // Array or single string (some clients send string).
+		IsError   *bool                      `json:"is_error,omitempty"`
 	}
+
+	// ToolResultContentArray is []ToolResultContentParam but unmarshals from array or a single string (treated as one text block).
+	ToolResultContentArray []ToolResultContentParam
 
 	// ToolResultContentParam is a single content item inside a tool_result (e.g. text).
 	ToolResultContentParam struct {
@@ -179,6 +185,39 @@ type (
 		Text string `json:"text,omitempty"`
 	}
 )
+
+// UnmarshalJSON allows FlexibleInput to be either a JSON object or a JSON string (parsed as object).
+func (f *FlexibleInput) UnmarshalJSON(data []byte) error {
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err == nil {
+		*f = m
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		return err
+	}
+	*f = m
+	return nil
+}
+
+// UnmarshalJSON allows ToolResultContentArray to be either an array of content blocks or a single string (one text block).
+func (t *ToolResultContentArray) UnmarshalJSON(data []byte) error {
+	var arr []ToolResultContentParam
+	if err := json.Unmarshal(data, &arr); err == nil {
+		*t = arr
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	*t = []ToolResultContentParam{{Type: "text", Text: s}}
+	return nil
+}
 
 func (m *ContentBlockParam) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
