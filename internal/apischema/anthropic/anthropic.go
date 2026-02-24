@@ -160,40 +160,40 @@ type (
 	// TextBlockParam represents a text content block.
 	// https://platform.claude.com/docs/en/api/messages#text_block_param
 	TextBlockParam struct {
-		Text         string `json:"text"`
-		Type         string `json:"type"` // Always "text".
-		CacheControl any    `json:"cache_control,omitempty"`
-		Citations    []any  `json:"citations,omitempty"`
+		Text         string          `json:"text"`
+		Type         string          `json:"type"` // Always "text".
+		CacheControl *CacheControl   `json:"cache_control,omitempty"`
+		Citations    []TextCitation  `json:"citations,omitempty"`
 	}
 
 	// ImageBlockParam represents an image content block.
 	// https://platform.claude.com/docs/en/api/messages#image_block_param
 	ImageBlockParam struct {
-		Type         string `json:"type"` // Always "image".
-		Source       any    `json:"source"`
-		CacheControl any    `json:"cache_control,omitempty"`
+		Type         string        `json:"type"` // Always "image".
+		Source       ImageSource   `json:"source"`
+		CacheControl *CacheControl `json:"cache_control,omitempty"`
 	}
 
 	// DocumentBlockParam represents a document content block.
 	// https://platform.claude.com/docs/en/api/messages#document_block_param
 	DocumentBlockParam struct {
-		Type         string `json:"type"` // Always "document".
-		Source       any    `json:"source"`
-		CacheControl any    `json:"cache_control,omitempty"`
-		Citations    any    `json:"citations,omitempty"`
-		Context      string `json:"context,omitempty"`
-		Title        string `json:"title,omitempty"`
+		Type         string               `json:"type"` // Always "document".
+		Source       DocumentSource       `json:"source"`
+		CacheControl *CacheControl        `json:"cache_control,omitempty"`
+		Citations    *CitationsConfigParam `json:"citations,omitempty"`
+		Context      string               `json:"context,omitempty"`
+		Title        string               `json:"title,omitempty"`
 	}
 
 	// SearchResultBlockParam represents a search result content block.
 	// https://platform.claude.com/docs/en/api/messages#search_result_block_param
 	SearchResultBlockParam struct {
-		Type         string           `json:"type"` // Always "search_result".
-		Content      []TextBlockParam `json:"content"`
-		Source       string           `json:"source"`
-		Title        string           `json:"title"`
-		CacheControl any              `json:"cache_control,omitempty"`
-		Citations    any              `json:"citations,omitempty"`
+		Type         string               `json:"type"` // Always "search_result".
+		Content      []TextBlockParam     `json:"content"`
+		Source       string               `json:"source"`
+		Title        string               `json:"title"`
+		CacheControl *CacheControl        `json:"cache_control,omitempty"`
+		Citations    *CitationsConfigParam `json:"citations,omitempty"`
 	}
 
 	// ThinkingBlockParam represents a thinking content block in a request.
@@ -218,17 +218,34 @@ type (
 		ID           string         `json:"id"`
 		Name         string         `json:"name"`
 		Input        map[string]any `json:"input"`
-		CacheControl any            `json:"cache_control,omitempty"`
+		CacheControl *CacheControl  `json:"cache_control,omitempty"`
 	}
 
 	// ToolResultBlockParam represents a tool result content block.
 	// https://platform.claude.com/docs/en/api/messages#tool_result_block_param
 	ToolResultBlockParam struct {
-		Type         string `json:"type"` // Always "tool_result".
-		ToolUseID    string `json:"tool_use_id"`
-		Content      any    `json:"content,omitempty"` // string or array of content blocks.
-		IsError      bool   `json:"is_error,omitempty"`
-		CacheControl any    `json:"cache_control,omitempty"`
+		Type         string             `json:"type"` // Always "tool_result".
+		ToolUseID    string             `json:"tool_use_id"`
+		Content      *ToolResultContent `json:"content,omitempty"` // string or array of content blocks.
+		IsError      bool               `json:"is_error,omitempty"`
+		CacheControl *CacheControl      `json:"cache_control,omitempty"`
+	}
+
+	// ToolResultContent represents the content of a tool result block,
+	// which can be a string or an array of text, image, search result, or document blocks.
+	// https://platform.claude.com/docs/en/api/messages#tool_result_block_param
+	ToolResultContent struct {
+		Text  string                  // Non-empty if this is plain text content.
+		Array []ToolResultContentItem // Non-empty if this is array content.
+	}
+
+	// ToolResultContentItem is a single content block in a tool result array.
+	// https://platform.claude.com/docs/en/api/messages#tool_result_block_param
+	ToolResultContentItem struct {
+		Text         *TextBlockParam
+		Image        *ImageBlockParam
+		SearchResult *SearchResultBlockParam
+		Document     *DocumentBlockParam
 	}
 
 	// ServerToolUseBlockParam represents a server tool use content block.
@@ -238,16 +255,16 @@ type (
 		ID           string         `json:"id"`
 		Name         string         `json:"name"`
 		Input        map[string]any `json:"input"`
-		CacheControl any            `json:"cache_control,omitempty"`
+		CacheControl *CacheControl  `json:"cache_control,omitempty"`
 	}
 
 	// WebSearchToolResultBlockParam represents a web search tool result content block.
 	// https://platform.claude.com/docs/en/api/messages#web_search_tool_result_block_param
 	WebSearchToolResultBlockParam struct {
-		Type         string `json:"type"` // Always "web_search_tool_result".
-		ToolUseID    string `json:"tool_use_id"`
-		Content      any    `json:"content"`
-		CacheControl any    `json:"cache_control,omitempty"`
+		Type         string                     `json:"type"` // Always "web_search_tool_result".
+		ToolUseID    string                     `json:"tool_use_id"`
+		Content      WebSearchToolResultContent `json:"content"`
+		CacheControl *CacheControl              `json:"cache_control,omitempty"`
 	}
 )
 
@@ -372,6 +389,618 @@ func (m *ContentBlockParam) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("content block param must have a defined type")
 }
 
+func (c *ToolResultContent) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		c.Text = text
+		return nil
+	}
+	var array []ToolResultContentItem
+	if err := json.Unmarshal(data, &array); err == nil {
+		c.Array = array
+		return nil
+	}
+	return fmt.Errorf("tool result content must be either text or array of content blocks")
+}
+
+func (c *ToolResultContent) MarshalJSON() ([]byte, error) {
+	if c.Text != "" {
+		return json.Marshal(c.Text)
+	}
+	if len(c.Array) > 0 {
+		return json.Marshal(c.Array)
+	}
+	return nil, fmt.Errorf("tool result content must have either text or array")
+}
+
+func (item *ToolResultContentItem) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	if !typ.Exists() {
+		return errors.New("missing type field in tool result content item")
+	}
+	switch typ.String() {
+	case contentBlockTypeText:
+		var block TextBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal text block in tool result: %w", err)
+		}
+		item.Text = &block
+	case contentBlockTypeImage:
+		var block ImageBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal image block in tool result: %w", err)
+		}
+		item.Image = &block
+	case contentBlockTypeSearchResult:
+		var block SearchResultBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal search result block in tool result: %w", err)
+		}
+		item.SearchResult = &block
+	case contentBlockTypeDocument:
+		var block DocumentBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal document block in tool result: %w", err)
+		}
+		item.Document = &block
+	default:
+		// Ignore unknown types for forward compatibility.
+	}
+	return nil
+}
+
+func (item ToolResultContentItem) MarshalJSON() ([]byte, error) {
+	if item.Text != nil {
+		return json.Marshal(item.Text)
+	}
+	if item.Image != nil {
+		return json.Marshal(item.Image)
+	}
+	if item.SearchResult != nil {
+		return json.Marshal(item.SearchResult)
+	}
+	if item.Document != nil {
+		return json.Marshal(item.Document)
+	}
+	return nil, fmt.Errorf("tool result content item must have a defined type")
+}
+
+// CacheControl represents a cache control configuration.
+// https://platform.claude.com/docs/en/api/messages#cache_control_ephemeral
+type CacheControl struct {
+	Ephemeral *CacheControlEphemeral
+}
+
+// CacheControlEphemeral represents an ephemeral cache control breakpoint.
+// https://platform.claude.com/docs/en/api/messages#cache_control_ephemeral
+type CacheControlEphemeral struct {
+	// Type is always "ephemeral".
+	Type string `json:"type"`
+	// TTL is the time-to-live for the cache entry. Valid values: "5m" or "1h". Defaults to "5m".
+	TTL *string `json:"ttl,omitempty"`
+}
+
+const cacheControlTypeEphemeral = "ephemeral"
+
+func (c *CacheControl) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	if !typ.Exists() {
+		return errors.New("missing type field in cache control")
+	}
+	switch typ.String() {
+	case cacheControlTypeEphemeral:
+		var cc CacheControlEphemeral
+		if err := json.Unmarshal(data, &cc); err != nil {
+			return fmt.Errorf("failed to unmarshal cache control ephemeral: %w", err)
+		}
+		c.Ephemeral = &cc
+	default:
+		// Ignore unknown types for forward compatibility.
+	}
+	return nil
+}
+
+func (c *CacheControl) MarshalJSON() ([]byte, error) {
+	if c.Ephemeral != nil {
+		return json.Marshal(c.Ephemeral)
+	}
+	return nil, fmt.Errorf("cache control must have a defined type")
+}
+
+type (
+	// ImageSource represents the source of an image content block.
+	// https://platform.claude.com/docs/en/api/messages#image_block_param
+	ImageSource struct {
+		Base64 *Base64ImageSource
+		URL    *URLImageSource
+	}
+
+	// Base64ImageSource represents a base64-encoded image.
+	// https://platform.claude.com/docs/en/api/messages#base64_image_source
+	Base64ImageSource struct {
+		// Type is always "base64".
+		Type string `json:"type"`
+		// MediaType is the MIME type of the image. Valid values: "image/jpeg", "image/png", "image/gif", "image/webp".
+		MediaType string `json:"media_type"`
+		// Data is the base64-encoded image data.
+		Data string `json:"data"`
+	}
+
+	// URLImageSource represents an image from a URL.
+	// https://platform.claude.com/docs/en/api/messages#url_image_source
+	URLImageSource struct {
+		// Type is always "url".
+		Type string `json:"type"`
+		// URL is the URL of the image.
+		URL string `json:"url"`
+	}
+)
+
+// Image source type constants.
+const (
+	imageSourceTypeBase64 = "base64"
+	imageSourceTypeURL    = "url"
+)
+
+func (s *ImageSource) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	if !typ.Exists() {
+		return errors.New("missing type field in image source")
+	}
+	switch typ.String() {
+	case imageSourceTypeBase64:
+		var src Base64ImageSource
+		if err := json.Unmarshal(data, &src); err != nil {
+			return fmt.Errorf("failed to unmarshal base64 image source: %w", err)
+		}
+		s.Base64 = &src
+	case imageSourceTypeURL:
+		var src URLImageSource
+		if err := json.Unmarshal(data, &src); err != nil {
+			return fmt.Errorf("failed to unmarshal URL image source: %w", err)
+		}
+		s.URL = &src
+	default:
+		// Ignore unknown types for forward compatibility.
+	}
+	return nil
+}
+
+func (s ImageSource) MarshalJSON() ([]byte, error) {
+	if s.Base64 != nil {
+		return json.Marshal(s.Base64)
+	}
+	if s.URL != nil {
+		return json.Marshal(s.URL)
+	}
+	return nil, fmt.Errorf("image source must have a defined type")
+}
+
+type (
+	// DocumentSource represents the source of a document content block.
+	// https://platform.claude.com/docs/en/api/messages#document_block_param
+	DocumentSource struct {
+		Base64PDF    *Base64PDFSource
+		PlainText    *PlainTextSource
+		URL          *URLPDFSource
+		ContentBlock *ContentBlockSource
+	}
+
+	// Base64PDFSource represents a base64-encoded PDF document.
+	// https://platform.claude.com/docs/en/api/messages#base64_pdf_source
+	Base64PDFSource struct {
+		// Type is always "base64".
+		Type string `json:"type"`
+		// MediaType is always "application/pdf".
+		MediaType string `json:"media_type"`
+		// Data is the base64-encoded PDF data.
+		Data string `json:"data"`
+	}
+
+	// PlainTextSource represents a plain text document.
+	// https://platform.claude.com/docs/en/api/messages#plain_text_source
+	PlainTextSource struct {
+		// Type is always "text".
+		Type string `json:"type"`
+		// MediaType is always "text/plain".
+		MediaType string `json:"media_type"`
+		// Data is the plain text content.
+		Data string `json:"data"`
+	}
+
+	// URLPDFSource represents a PDF document from a URL.
+	// https://platform.claude.com/docs/en/api/messages#url_pdf_source
+	URLPDFSource struct {
+		// Type is always "url".
+		Type string `json:"type"`
+		// URL is the URL of the PDF document.
+		URL string `json:"url"`
+	}
+
+	// ContentBlockSource represents a document sourced from content blocks.
+	// https://platform.claude.com/docs/en/api/messages#content_block_source
+	ContentBlockSource struct {
+		// Type is always "content".
+		Type string `json:"type"`
+		// Content is the content of the document, either a string or an array of content blocks.
+		Content ContentBlockSourceContent `json:"content"`
+	}
+
+	// ContentBlockSourceContent is the content of a ContentBlockSource, which can be
+	// a string or an array of text/image content blocks.
+	ContentBlockSourceContent struct {
+		Text  string                   // Non-empty if this is plain string content.
+		Array []ContentBlockSourceItem // Non-empty if this is array content.
+	}
+
+	// ContentBlockSourceItem is a single content block in a ContentBlockSource array.
+	// It can be a text or image block.
+	ContentBlockSourceItem struct {
+		Text  *TextBlockParam
+		Image *ImageBlockParam
+	}
+)
+
+// Document source type constants.
+const (
+	documentSourceTypeBase64  = "base64"
+	documentSourceTypeText    = "text"
+	documentSourceTypeURL     = "url"
+	documentSourceTypeContent = "content"
+)
+
+func (s *DocumentSource) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	if !typ.Exists() {
+		return errors.New("missing type field in document source")
+	}
+	switch typ.String() {
+	case documentSourceTypeBase64:
+		var src Base64PDFSource
+		if err := json.Unmarshal(data, &src); err != nil {
+			return fmt.Errorf("failed to unmarshal base64 PDF source: %w", err)
+		}
+		s.Base64PDF = &src
+	case documentSourceTypeText:
+		var src PlainTextSource
+		if err := json.Unmarshal(data, &src); err != nil {
+			return fmt.Errorf("failed to unmarshal plain text source: %w", err)
+		}
+		s.PlainText = &src
+	case documentSourceTypeURL:
+		var src URLPDFSource
+		if err := json.Unmarshal(data, &src); err != nil {
+			return fmt.Errorf("failed to unmarshal URL PDF source: %w", err)
+		}
+		s.URL = &src
+	case documentSourceTypeContent:
+		var src ContentBlockSource
+		if err := json.Unmarshal(data, &src); err != nil {
+			return fmt.Errorf("failed to unmarshal content block source: %w", err)
+		}
+		s.ContentBlock = &src
+	default:
+		// Ignore unknown types for forward compatibility.
+	}
+	return nil
+}
+
+func (s DocumentSource) MarshalJSON() ([]byte, error) {
+	if s.Base64PDF != nil {
+		return json.Marshal(s.Base64PDF)
+	}
+	if s.PlainText != nil {
+		return json.Marshal(s.PlainText)
+	}
+	if s.URL != nil {
+		return json.Marshal(s.URL)
+	}
+	if s.ContentBlock != nil {
+		return json.Marshal(s.ContentBlock)
+	}
+	return nil, fmt.Errorf("document source must have a defined type")
+}
+
+func (c *ContentBlockSourceContent) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as string first.
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		c.Text = text
+		return nil
+	}
+	// Try to unmarshal as array of content blocks.
+	var array []ContentBlockSourceItem
+	if err := json.Unmarshal(data, &array); err == nil {
+		c.Array = array
+		return nil
+	}
+	return fmt.Errorf("content block source content must be either text or array")
+}
+
+func (c ContentBlockSourceContent) MarshalJSON() ([]byte, error) {
+	if c.Text != "" {
+		return json.Marshal(c.Text)
+	}
+	if len(c.Array) > 0 {
+		return json.Marshal(c.Array)
+	}
+	return nil, fmt.Errorf("content block source content must have either text or array")
+}
+
+func (item *ContentBlockSourceItem) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	if !typ.Exists() {
+		return errors.New("missing type field in content block source item")
+	}
+	switch typ.String() {
+	case contentBlockTypeText:
+		var block TextBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal text block in content block source: %w", err)
+		}
+		item.Text = &block
+	case contentBlockTypeImage:
+		var block ImageBlockParam
+		if err := json.Unmarshal(data, &block); err != nil {
+			return fmt.Errorf("failed to unmarshal image block in content block source: %w", err)
+		}
+		item.Image = &block
+	default:
+		// Ignore unknown types for forward compatibility.
+	}
+	return nil
+}
+
+func (item ContentBlockSourceItem) MarshalJSON() ([]byte, error) {
+	if item.Text != nil {
+		return json.Marshal(item.Text)
+	}
+	if item.Image != nil {
+		return json.Marshal(item.Image)
+	}
+	return nil, fmt.Errorf("content block source item must have a defined type")
+}
+
+// CitationsConfigParam enables or disables citations for a document or search result block.
+// https://platform.claude.com/docs/en/api/messages#citations_config_param
+type CitationsConfigParam struct {
+	// Enabled indicates whether citations are enabled.
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+type (
+	// TextCitation represents a single citation in a text block, used in both requests
+	// and responses.
+	// https://platform.claude.com/docs/en/api/messages#text_citation_param
+	TextCitation struct {
+		CharLocation            *CitationCharLocation
+		PageLocation            *CitationPageLocation
+		ContentBlockLocation    *CitationContentBlockLocation
+		WebSearchResultLocation *CitationWebSearchResultLocation
+		SearchResultLocation    *CitationSearchResultLocation
+	}
+
+	// CitationCharLocation represents a citation with character-level location in a document.
+	// https://platform.claude.com/docs/en/api/messages#citation_char_location
+	CitationCharLocation struct {
+		// Type is always "char_location".
+		Type string `json:"type"`
+		// CitedText is the exact text being cited.
+		CitedText string `json:"cited_text"`
+		// DocumentIndex is the index of the document being cited in the documents array.
+		DocumentIndex int `json:"document_index"`
+		// DocumentTitle is the title of the cited document.
+		DocumentTitle *string `json:"document_title,omitempty"`
+		// StartCharIndex is the start character index of the citation within the document.
+		StartCharIndex int `json:"start_char_index"`
+		// EndCharIndex is the end character index of the citation within the document.
+		EndCharIndex int `json:"end_char_index"`
+	}
+
+	// CitationPageLocation represents a citation with page-level location in a document.
+	// https://platform.claude.com/docs/en/api/messages#citation_page_location
+	CitationPageLocation struct {
+		// Type is always "page_location".
+		Type string `json:"type"`
+		// CitedText is the exact text being cited.
+		CitedText string `json:"cited_text"`
+		// DocumentIndex is the index of the document being cited in the documents array.
+		DocumentIndex int `json:"document_index"`
+		// DocumentTitle is the title of the cited document.
+		DocumentTitle *string `json:"document_title,omitempty"`
+		// StartPageNumber is the 1-indexed start page number of the citation.
+		StartPageNumber int `json:"start_page_number"`
+		// EndPageNumber is the 1-indexed end page number of the citation.
+		EndPageNumber int `json:"end_page_number"`
+	}
+
+	// CitationContentBlockLocation represents a citation with content-block-level location.
+	// https://platform.claude.com/docs/en/api/messages#citation_content_block_location
+	CitationContentBlockLocation struct {
+		// Type is always "content_block_location".
+		Type string `json:"type"`
+		// CitedText is the exact text being cited.
+		CitedText string `json:"cited_text"`
+		// DocumentIndex is the index of the document being cited in the documents array.
+		DocumentIndex int `json:"document_index"`
+		// DocumentTitle is the title of the cited document.
+		DocumentTitle *string `json:"document_title,omitempty"`
+		// StartBlockIndex is the start block index of the citation within the document.
+		StartBlockIndex int `json:"start_block_index"`
+		// EndBlockIndex is the end block index of the citation within the document.
+		EndBlockIndex int `json:"end_block_index"`
+	}
+
+	// CitationWebSearchResultLocation represents a citation from a web search result.
+	// https://platform.claude.com/docs/en/api/messages#citation_web_search_result_location
+	CitationWebSearchResultLocation struct {
+		// Type is always "web_search_result_location".
+		Type string `json:"type"`
+		// CitedText is the exact text being cited.
+		CitedText string `json:"cited_text"`
+		// EncryptedIndex is the encrypted index of the web search result.
+		EncryptedIndex string `json:"encrypted_index"`
+		// Title is the title of the web page.
+		Title string `json:"title,omitempty"`
+		// URL is the URL of the web page.
+		URL string `json:"url"`
+	}
+
+	// CitationSearchResultLocation represents a citation from a search result block.
+	// https://platform.claude.com/docs/en/api/messages#citation_search_result_location
+	CitationSearchResultLocation struct {
+		// Type is always "search_result_location".
+		Type string `json:"type"`
+		// CitedText is the exact text being cited.
+		CitedText string `json:"cited_text"`
+		// Title is the title of the search result.
+		Title string `json:"title,omitempty"`
+		// Source is the source URL or identifier of the search result.
+		Source string `json:"source"`
+		// StartBlockIndex is the start block index within the search result.
+		StartBlockIndex int `json:"start_block_index"`
+		// EndBlockIndex is the end block index within the search result.
+		EndBlockIndex int `json:"end_block_index"`
+		// SearchResultIndex is the index of the search result in the search results array.
+		SearchResultIndex int `json:"search_result_index"`
+	}
+)
+
+// Citation type constants.
+const (
+	citationTypeCharLocation            = "char_location"
+	citationTypePageLocation            = "page_location"
+	citationTypeContentBlockLocation    = "content_block_location"
+	citationTypeWebSearchResultLocation = "web_search_result_location"
+	citationTypeSearchResultLocation    = "search_result_location"
+)
+
+func (c *TextCitation) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	if !typ.Exists() {
+		return errors.New("missing type field in text citation")
+	}
+	switch typ.String() {
+	case citationTypeCharLocation:
+		var citation CitationCharLocation
+		if err := json.Unmarshal(data, &citation); err != nil {
+			return fmt.Errorf("failed to unmarshal char location citation: %w", err)
+		}
+		c.CharLocation = &citation
+	case citationTypePageLocation:
+		var citation CitationPageLocation
+		if err := json.Unmarshal(data, &citation); err != nil {
+			return fmt.Errorf("failed to unmarshal page location citation: %w", err)
+		}
+		c.PageLocation = &citation
+	case citationTypeContentBlockLocation:
+		var citation CitationContentBlockLocation
+		if err := json.Unmarshal(data, &citation); err != nil {
+			return fmt.Errorf("failed to unmarshal content block location citation: %w", err)
+		}
+		c.ContentBlockLocation = &citation
+	case citationTypeWebSearchResultLocation:
+		var citation CitationWebSearchResultLocation
+		if err := json.Unmarshal(data, &citation); err != nil {
+			return fmt.Errorf("failed to unmarshal web search result location citation: %w", err)
+		}
+		c.WebSearchResultLocation = &citation
+	case citationTypeSearchResultLocation:
+		var citation CitationSearchResultLocation
+		if err := json.Unmarshal(data, &citation); err != nil {
+			return fmt.Errorf("failed to unmarshal search result location citation: %w", err)
+		}
+		c.SearchResultLocation = &citation
+	default:
+		// Ignore unknown types for forward compatibility.
+	}
+	return nil
+}
+
+func (c *TextCitation) MarshalJSON() ([]byte, error) {
+	if c.CharLocation != nil {
+		return json.Marshal(c.CharLocation)
+	}
+	if c.PageLocation != nil {
+		return json.Marshal(c.PageLocation)
+	}
+	if c.ContentBlockLocation != nil {
+		return json.Marshal(c.ContentBlockLocation)
+	}
+	if c.WebSearchResultLocation != nil {
+		return json.Marshal(c.WebSearchResultLocation)
+	}
+	if c.SearchResultLocation != nil {
+		return json.Marshal(c.SearchResultLocation)
+	}
+	return nil, fmt.Errorf("text citation must have a defined type")
+}
+
+type (
+	// WebSearchToolResultContent is the content of a web search tool result block.
+	// It can be an array of web search results or a single error.
+	WebSearchToolResultContent struct {
+		Results []WebSearchResult         // Non-nil if content is an array of results.
+		Error   *WebSearchToolResultError // Non-nil if content is an error.
+	}
+
+	// WebSearchResult represents a single web search result.
+	// https://platform.claude.com/docs/en/api/messages#web_search_result
+	WebSearchResult struct {
+		// Type is always "web_search_result".
+		Type string `json:"type"`
+		// Title is the title of the web page.
+		Title string `json:"title"`
+		// URL is the URL of the web page.
+		URL string `json:"url"`
+		// EncryptedContent is the encrypted content of the web page.
+		EncryptedContent string `json:"encrypted_content"`
+		// PageAge is an optional age indicator for the page (e.g. "2 days ago").
+		PageAge *string `json:"page_age,omitempty"`
+	}
+
+	// WebSearchToolResultError represents an error in a web search tool result.
+	// https://platform.claude.com/docs/en/api/messages#web_search_tool_result_error
+	WebSearchToolResultError struct {
+		// Type is always "web_search_tool_result_error".
+		Type string `json:"type"`
+		// ErrorCode is the error code. Valid values: "invalid_tool_input", "unavailable",
+		// "max_uses_exceeded", "too_many_requests", "query_too_long", "request_too_large".
+		ErrorCode string `json:"error_code"`
+	}
+)
+
+const (
+	webSearchToolResultContentTypeResult = "web_search_result"
+	webSearchToolResultContentTypeError  = "web_search_tool_result_error"
+)
+
+func (w *WebSearchToolResultContent) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as array of WebSearchResult first.
+	var results []WebSearchResult
+	if err := json.Unmarshal(data, &results); err == nil {
+		w.Results = results
+		return nil
+	}
+	// Try to unmarshal as a single WebSearchToolResultError.
+	var wsError WebSearchToolResultError
+	if err := json.Unmarshal(data, &wsError); err == nil {
+		w.Error = &wsError
+		return nil
+	}
+	return fmt.Errorf("web search tool result content must be an array of results or an error")
+}
+
+func (w WebSearchToolResultContent) MarshalJSON() ([]byte, error) {
+	if w.Results != nil {
+		return json.Marshal(w.Results)
+	}
+	if w.Error != nil {
+		return json.Marshal(w.Error)
+	}
+	return nil, fmt.Errorf("web search tool result content must have either results or an error")
+}
+
 // MessagesMetadata represents the metadata for the Anthropic Messages API request.
 // https://docs.claude.com/en/api/messages#body-metadata
 type MessagesMetadata struct {
@@ -412,41 +1041,41 @@ type (
 		Type         string          `json:"type"` // Always "custom".
 		Name         string          `json:"name"`
 		InputSchema  ToolInputSchema `json:"input_schema"`
-		CacheControl any             `json:"cache_control,omitempty"`
+		CacheControl *CacheControl   `json:"cache_control,omitempty"`
 		Description  string          `json:"description,omitempty"`
 	}
 
 	// BashTool represents the bash tool for computer use.
 	// https://platform.claude.com/docs/en/api/messages#tool_bash_20250124
 	BashTool struct {
-		Type         string `json:"type"` // Always "bash_20250124".
-		Name         string `json:"name"` // Always "bash".
-		CacheControl any    `json:"cache_control,omitempty"`
+		Type         string        `json:"type"` // Always "bash_20250124".
+		Name         string        `json:"name"` // Always "bash".
+		CacheControl *CacheControl `json:"cache_control,omitempty"`
 	}
 
 	// TextEditorTool20250124 represents the text editor tool (v1).
 	// https://platform.claude.com/docs/en/api/messages#tool_text_editor_20250124
 	TextEditorTool20250124 struct {
-		Type         string `json:"type"` // Always "text_editor_20250124".
-		Name         string `json:"name"` // Always "str_replace_editor".
-		CacheControl any    `json:"cache_control,omitempty"`
+		Type         string        `json:"type"` // Always "text_editor_20250124".
+		Name         string        `json:"name"` // Always "str_replace_editor".
+		CacheControl *CacheControl `json:"cache_control,omitempty"`
 	}
 
 	// TextEditorTool20250429 represents the text editor tool (v2).
 	// https://platform.claude.com/docs/en/api/messages#tool_text_editor_20250429
 	TextEditorTool20250429 struct {
-		Type         string `json:"type"` // Always "text_editor_20250429".
-		Name         string `json:"name"` // Always "str_replace_based_edit_tool".
-		CacheControl any    `json:"cache_control,omitempty"`
+		Type         string        `json:"type"` // Always "text_editor_20250429".
+		Name         string        `json:"name"` // Always "str_replace_based_edit_tool".
+		CacheControl *CacheControl `json:"cache_control,omitempty"`
 	}
 
 	// TextEditorTool20250728 represents the text editor tool (v3).
 	// https://platform.claude.com/docs/en/api/messages#tool_text_editor_20250728
 	TextEditorTool20250728 struct {
-		Type          string   `json:"type"` // Always "text_editor_20250728".
-		Name          string   `json:"name"` // Always "str_replace_based_edit_tool".
-		MaxCharacters *float64 `json:"max_characters,omitempty"`
-		CacheControl  any      `json:"cache_control,omitempty"`
+		Type          string        `json:"type"` // Always "text_editor_20250728".
+		Name          string        `json:"name"` // Always "str_replace_based_edit_tool".
+		MaxCharacters *float64      `json:"max_characters,omitempty"`
+		CacheControl  *CacheControl `json:"cache_control,omitempty"`
 	}
 
 	// WebSearchTool represents the web search tool.
@@ -458,7 +1087,7 @@ type (
 		BlockedDomains []string           `json:"blocked_domains,omitempty"`
 		MaxUses        *float64           `json:"max_uses,omitempty"`
 		UserLocation   *WebSearchLocation `json:"user_location,omitempty"`
-		CacheControl   any                `json:"cache_control,omitempty"`
+		CacheControl   *CacheControl      `json:"cache_control,omitempty"`
 	}
 
 	// WebSearchLocation represents the user location for the web search tool.
@@ -837,9 +1466,9 @@ type (
 	// TextBlock represents a text content block in the response.
 	// https://platform.claude.com/docs/en/api/messages#text_block
 	TextBlock struct {
-		Type      string `json:"type"` // Always "text".
-		Text      string `json:"text"`
-		Citations []any  `json:"citations,omitempty"`
+		Type      string         `json:"type"` // Always "text".
+		Text      string         `json:"text"`
+		Citations []TextCitation `json:"citations,omitempty"`
 	}
 
 	// ToolUseBlock represents a tool use content block in the response.
@@ -878,9 +1507,9 @@ type (
 	// WebSearchToolResultBlock represents a web search tool result content block in the response.
 	// https://platform.claude.com/docs/en/api/messages#web_search_tool_result_block
 	WebSearchToolResultBlock struct {
-		Type      string `json:"type"` // Always "web_search_tool_result".
-		ToolUseID string `json:"tool_use_id"`
-		Content   any    `json:"content"` // Array of WebSearchResult or a WebSearchToolResultError.
+		Type      string                     `json:"type"` // Always "web_search_tool_result".
+		ToolUseID string                     `json:"tool_use_id"`
+		Content   WebSearchToolResultContent `json:"content"` // Array of WebSearchResult or a WebSearchToolResultError.
 	}
 )
 

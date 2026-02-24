@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestMessageContent_UnmarshalJSON(t *testing.T) {
@@ -281,7 +283,7 @@ func TestContentBlockParam_UnmarshalJSON(t *testing.T) {
 			jsonStr: `{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "abc123"}}`,
 			want: ContentBlockParam{Image: &ImageBlockParam{
 				Type:   "image",
-				Source: map[string]any{"type": "base64", "media_type": "image/png", "data": "abc123"},
+				Source: ImageSource{Base64: &Base64ImageSource{Type: "base64", MediaType: "image/png", Data: "abc123"}},
 			}},
 		},
 		{
@@ -289,7 +291,7 @@ func TestContentBlockParam_UnmarshalJSON(t *testing.T) {
 			jsonStr: `{"type": "document", "source": {"type": "text", "data": "hello", "media_type": "text/plain"}, "context": "some context", "title": "doc title"}`,
 			want: ContentBlockParam{Document: &DocumentBlockParam{
 				Type:    "document",
-				Source:  map[string]any{"type": "text", "data": "hello", "media_type": "text/plain"},
+				Source:  DocumentSource{PlainText: &PlainTextSource{Type: "text", MediaType: "text/plain", Data: "hello"}},
 				Context: "some context",
 				Title:   "doc title",
 			}},
@@ -337,7 +339,7 @@ func TestContentBlockParam_UnmarshalJSON(t *testing.T) {
 			want: ContentBlockParam{ToolResult: &ToolResultBlockParam{
 				Type:      "tool_result",
 				ToolUseID: "tu_123",
-				Content:   "result text",
+				Content:   &ToolResultContent{Text: "result text"},
 			}},
 		},
 		{
@@ -356,8 +358,10 @@ func TestContentBlockParam_UnmarshalJSON(t *testing.T) {
 			want: ContentBlockParam{WebSearchToolResult: &WebSearchToolResultBlockParam{
 				Type:      "web_search_tool_result",
 				ToolUseID: "stu_123",
-				Content: []any{
-					map[string]any{"type": "web_search_result", "title": "Result", "url": "https://example.com", "encrypted_content": "enc123"},
+				Content: WebSearchToolResultContent{
+					Results: []WebSearchResult{
+						{Type: "web_search_result", Title: "Result", URL: "https://example.com", EncryptedContent: "enc123"},
+					},
 				},
 			}},
 		},
@@ -403,7 +407,7 @@ func TestContentBlockParam_MarshalJSON(t *testing.T) {
 			name: "image block",
 			cbp: ContentBlockParam{Image: &ImageBlockParam{
 				Type:   "image",
-				Source: map[string]any{"type": "base64", "media_type": "image/png", "data": "abc123"},
+				Source: ImageSource{Base64: &Base64ImageSource{Type: "base64", MediaType: "image/png", Data: "abc123"}},
 			}},
 			want: `{"type":"image","source":{"type":"base64","media_type":"image/png","data":"abc123"}}`,
 		},
@@ -411,7 +415,7 @@ func TestContentBlockParam_MarshalJSON(t *testing.T) {
 			name: "document block",
 			cbp: ContentBlockParam{Document: &DocumentBlockParam{
 				Type:    "document",
-				Source:  map[string]any{"type": "text", "data": "hello", "media_type": "text/plain"},
+				Source:  DocumentSource{PlainText: &PlainTextSource{Type: "text", MediaType: "text/plain", Data: "hello"}},
 				Context: "some context",
 				Title:   "doc title",
 			}},
@@ -459,7 +463,7 @@ func TestContentBlockParam_MarshalJSON(t *testing.T) {
 			cbp: ContentBlockParam{ToolResult: &ToolResultBlockParam{
 				Type:      "tool_result",
 				ToolUseID: "tu_123",
-				Content:   "result text",
+				Content:   &ToolResultContent{Text: "result text"},
 			}},
 			want: `{"type":"tool_result","tool_use_id":"tu_123","content":"result text"}`,
 		},
@@ -478,9 +482,13 @@ func TestContentBlockParam_MarshalJSON(t *testing.T) {
 			cbp: ContentBlockParam{WebSearchToolResult: &WebSearchToolResultBlockParam{
 				Type:      "web_search_tool_result",
 				ToolUseID: "stu_123",
-				Content:   "some content",
+				Content: WebSearchToolResultContent{
+					Results: []WebSearchResult{
+						{Type: "web_search_result", Title: "Example", URL: "https://example.com", EncryptedContent: "enc123"},
+					},
+				},
 			}},
-			want: `{"type":"web_search_tool_result","tool_use_id":"stu_123","content":"some content"}`,
+			want: `{"type":"web_search_tool_result","tool_use_id":"stu_123","content":[{"type":"web_search_result","title":"Example","url":"https://example.com","encrypted_content":"enc123"}]}`,
 		},
 		{
 			name:    "empty block",
@@ -642,11 +650,15 @@ func TestMessagesContentBlock_UnmarshalJSON(t *testing.T) {
 		},
 		{
 			name:    "web search tool result block",
-			jsonStr: `{"type": "web_search_tool_result", "tool_use_id": "stu_1", "content": "results"}`,
+			jsonStr: `{"type": "web_search_tool_result", "tool_use_id": "stu_1", "content": [{"type": "web_search_result", "title": "Result", "url": "https://example.com", "encrypted_content": "enc456"}]}`,
 			want: MessagesContentBlock{WebSearchToolResult: &WebSearchToolResultBlock{
 				Type:      "web_search_tool_result",
 				ToolUseID: "stu_1",
-				Content:   "results",
+				Content: WebSearchToolResultContent{
+					Results: []WebSearchResult{
+						{Type: "web_search_result", Title: "Result", URL: "https://example.com", EncryptedContent: "enc456"},
+					},
+				},
 			}},
 		},
 	}
@@ -1125,4 +1137,1263 @@ func TestMessagesStreamChunk_UnmarshalJSON_ErrorPaths(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+}
+
+func TestCacheControl_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+		want    CacheControl
+		wantErr bool
+	}{
+		{
+			name:    "ephemeral no TTL",
+			jsonStr: `{"type":"ephemeral"}`,
+			want:    CacheControl{Ephemeral: &CacheControlEphemeral{Type: "ephemeral"}},
+		},
+		{
+			name:    "ephemeral with 5m TTL",
+			jsonStr: `{"type":"ephemeral","ttl":"5m"}`,
+			want: CacheControl{Ephemeral: &CacheControlEphemeral{
+				Type: "ephemeral",
+				TTL:  strPtr("5m"),
+			}},
+		},
+		{
+			name:    "ephemeral with 1h TTL",
+			jsonStr: `{"type":"ephemeral","ttl":"1h"}`,
+			want: CacheControl{Ephemeral: &CacheControlEphemeral{
+				Type: "ephemeral",
+				TTL:  strPtr("1h"),
+			}},
+		},
+		{
+			name:    "unknown type ignored",
+			jsonStr: `{"type":"persistent"}`,
+			want:    CacheControl{},
+		},
+		{
+			name:    "missing type",
+			jsonStr: `{"ttl":"5m"}`,
+			wantErr: true,
+		},
+		{
+			name:    "invalid JSON",
+			jsonStr: `{bad}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var cc CacheControl
+			err := cc.UnmarshalJSON([]byte(tt.jsonStr))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, cc)
+		})
+	}
+}
+
+func TestCacheControl_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		cc      CacheControl
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "ephemeral no TTL",
+			cc:   CacheControl{Ephemeral: &CacheControlEphemeral{Type: "ephemeral"}},
+			want: `{"type":"ephemeral"}`,
+		},
+		{
+			name: "ephemeral with TTL",
+			cc:   CacheControl{Ephemeral: &CacheControlEphemeral{Type: "ephemeral", TTL: strPtr("1h")}},
+			want: `{"type":"ephemeral","ttl":"1h"}`,
+		},
+		{
+			name:    "empty cache control",
+			cc:      CacheControl{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.cc.MarshalJSON()
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(got))
+		})
+	}
+}
+
+func TestImageSource_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+		want    ImageSource
+		wantErr bool
+	}{
+		{
+			name:    "base64 jpeg",
+			jsonStr: `{"type":"base64","media_type":"image/jpeg","data":"abc123"}`,
+			want: ImageSource{Base64: &Base64ImageSource{
+				Type: "base64", MediaType: "image/jpeg", Data: "abc123",
+			}},
+		},
+		{
+			name:    "base64 png",
+			jsonStr: `{"type":"base64","media_type":"image/png","data":"xyz789"}`,
+			want: ImageSource{Base64: &Base64ImageSource{
+				Type: "base64", MediaType: "image/png", Data: "xyz789",
+			}},
+		},
+		{
+			name:    "url source",
+			jsonStr: `{"type":"url","url":"https://example.com/image.png"}`,
+			want: ImageSource{URL: &URLImageSource{
+				Type: "url", URL: "https://example.com/image.png",
+			}},
+		},
+		{
+			name:    "unknown type ignored",
+			jsonStr: `{"type":"file","file_id":"file_123"}`,
+			want:    ImageSource{},
+		},
+		{
+			name:    "missing type",
+			jsonStr: `{"media_type":"image/png","data":"abc"}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var is ImageSource
+			err := is.UnmarshalJSON([]byte(tt.jsonStr))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, is)
+		})
+	}
+}
+
+func TestImageSource_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		is      ImageSource
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "base64",
+			is:   ImageSource{Base64: &Base64ImageSource{Type: "base64", MediaType: "image/gif", Data: "gif_data"}},
+			want: `{"type":"base64","media_type":"image/gif","data":"gif_data"}`,
+		},
+		{
+			name: "url",
+			is:   ImageSource{URL: &URLImageSource{Type: "url", URL: "https://example.com/img.webp"}},
+			want: `{"type":"url","url":"https://example.com/img.webp"}`,
+		},
+		{
+			name:    "empty image source",
+			is:      ImageSource{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.is.MarshalJSON()
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(got))
+		})
+	}
+}
+
+func TestImageSource_UnmarshalJSON_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		{name: "base64 invalid", jsonStr: `{"type":"base64","data":123}`},
+		{name: "url invalid", jsonStr: `{"type":"url","url":123}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var is ImageSource
+			err := is.UnmarshalJSON([]byte(tt.jsonStr))
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestDocumentSource_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+		want    DocumentSource
+		wantErr bool
+	}{
+		{
+			name:    "base64 PDF",
+			jsonStr: `{"type":"base64","media_type":"application/pdf","data":"pdf_data"}`,
+			want: DocumentSource{Base64PDF: &Base64PDFSource{
+				Type: "base64", MediaType: "application/pdf", Data: "pdf_data",
+			}},
+		},
+		{
+			name:    "plain text",
+			jsonStr: `{"type":"text","media_type":"text/plain","data":"hello world"}`,
+			want: DocumentSource{PlainText: &PlainTextSource{
+				Type: "text", MediaType: "text/plain", Data: "hello world",
+			}},
+		},
+		{
+			name:    "URL PDF",
+			jsonStr: `{"type":"url","url":"https://example.com/doc.pdf"}`,
+			want: DocumentSource{URL: &URLPDFSource{
+				Type: "url", URL: "https://example.com/doc.pdf",
+			}},
+		},
+		{
+			name:    "content block - string content",
+			jsonStr: `{"type":"content","content":"some text content"}`,
+			want: DocumentSource{ContentBlock: &ContentBlockSource{
+				Type:    "content",
+				Content: ContentBlockSourceContent{Text: "some text content"},
+			}},
+		},
+		{
+			name:    "content block - array content",
+			jsonStr: `{"type":"content","content":[{"type":"text","text":"part one"}]}`,
+			want: DocumentSource{ContentBlock: &ContentBlockSource{
+				Type: "content",
+				Content: ContentBlockSourceContent{
+					Array: []ContentBlockSourceItem{
+						{Text: &TextBlockParam{Type: "text", Text: "part one"}},
+					},
+				},
+			}},
+		},
+		{
+			name:    "unknown type ignored",
+			jsonStr: `{"type":"file","file_id":"f_123"}`,
+			want:    DocumentSource{},
+		},
+		{
+			name:    "missing type",
+			jsonStr: `{"data":"pdf_data"}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ds DocumentSource
+			err := ds.UnmarshalJSON([]byte(tt.jsonStr))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, ds)
+		})
+	}
+}
+
+func TestDocumentSource_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		ds      DocumentSource
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "base64 PDF",
+			ds:   DocumentSource{Base64PDF: &Base64PDFSource{Type: "base64", MediaType: "application/pdf", Data: "pdf_data"}},
+			want: `{"type":"base64","media_type":"application/pdf","data":"pdf_data"}`,
+		},
+		{
+			name: "plain text",
+			ds:   DocumentSource{PlainText: &PlainTextSource{Type: "text", MediaType: "text/plain", Data: "hello"}},
+			want: `{"type":"text","media_type":"text/plain","data":"hello"}`,
+		},
+		{
+			name: "URL PDF",
+			ds:   DocumentSource{URL: &URLPDFSource{Type: "url", URL: "https://example.com/doc.pdf"}},
+			want: `{"type":"url","url":"https://example.com/doc.pdf"}`,
+		},
+		{
+			name: "content block with string",
+			ds: DocumentSource{ContentBlock: &ContentBlockSource{
+				Type:    "content",
+				Content: ContentBlockSourceContent{Text: "text content"},
+			}},
+			want: `{"type":"content","content":"text content"}`,
+		},
+		{
+			name: "content block with array",
+			ds: DocumentSource{ContentBlock: &ContentBlockSource{
+				Type: "content",
+				Content: ContentBlockSourceContent{
+					Array: []ContentBlockSourceItem{
+						{Text: &TextBlockParam{Type: "text", Text: "hello"}},
+					},
+				},
+			}},
+			want: `{"type":"content","content":[{"text":"hello","type":"text"}]}`,
+		},
+		{
+			name:    "empty document source",
+			ds:      DocumentSource{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.ds.MarshalJSON()
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(got))
+		})
+	}
+}
+
+func TestDocumentSource_UnmarshalJSON_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		{name: "base64 invalid", jsonStr: `{"type":"base64","data":123}`},
+		{name: "text invalid", jsonStr: `{"type":"text","data":123}`},
+		{name: "url invalid", jsonStr: `{"type":"url","url":123}`},
+		{name: "content invalid", jsonStr: `{"type":"content","content":123}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ds DocumentSource
+			err := ds.UnmarshalJSON([]byte(tt.jsonStr))
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestContentBlockSourceContent_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+		want    ContentBlockSourceContent
+		wantErr bool
+	}{
+		{
+			name:    "string content",
+			jsonStr: `"hello world"`,
+			want:    ContentBlockSourceContent{Text: "hello world"},
+		},
+		{
+			name:    "array with text block",
+			jsonStr: `[{"type":"text","text":"block one"}]`,
+			want: ContentBlockSourceContent{
+				Array: []ContentBlockSourceItem{
+					{Text: &TextBlockParam{Type: "text", Text: "block one"}},
+				},
+			},
+		},
+		{
+			name:    "array with image block",
+			jsonStr: `[{"type":"image","source":{"type":"url","url":"https://example.com/img.png"}}]`,
+			want: ContentBlockSourceContent{
+				Array: []ContentBlockSourceItem{
+					{Image: &ImageBlockParam{
+						Type:   "image",
+						Source: ImageSource{URL: &URLImageSource{Type: "url", URL: "https://example.com/img.png"}},
+					}},
+				},
+			},
+		},
+		{
+			name:    "invalid content",
+			jsonStr: `12345`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var c ContentBlockSourceContent
+			err := c.UnmarshalJSON([]byte(tt.jsonStr))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, c)
+		})
+	}
+}
+
+func TestContentBlockSourceContent_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		c       ContentBlockSourceContent
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "string content",
+			c:    ContentBlockSourceContent{Text: "hello world"},
+			want: `"hello world"`,
+		},
+		{
+			name: "array content",
+			c: ContentBlockSourceContent{
+				Array: []ContentBlockSourceItem{
+					{Text: &TextBlockParam{Type: "text", Text: "item"}},
+				},
+			},
+			want: `[{"text":"item","type":"text"}]`,
+		},
+		{
+			name:    "empty content",
+			c:       ContentBlockSourceContent{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.c.MarshalJSON()
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(got))
+		})
+	}
+}
+
+func TestContentBlockSourceItem_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+		want    ContentBlockSourceItem
+		wantErr bool
+	}{
+		{
+			name:    "text item",
+			jsonStr: `{"type":"text","text":"hello"}`,
+			want:    ContentBlockSourceItem{Text: &TextBlockParam{Type: "text", Text: "hello"}},
+		},
+		{
+			name:    "image item",
+			jsonStr: `{"type":"image","source":{"type":"base64","media_type":"image/png","data":"abc"}}`,
+			want: ContentBlockSourceItem{Image: &ImageBlockParam{
+				Type:   "image",
+				Source: ImageSource{Base64: &Base64ImageSource{Type: "base64", MediaType: "image/png", Data: "abc"}},
+			}},
+		},
+		{
+			name:    "unknown type ignored",
+			jsonStr: `{"type":"document","source":{"type":"url","url":"https://example.com/doc.pdf"}}`,
+			want:    ContentBlockSourceItem{},
+		},
+		{
+			name:    "missing type",
+			jsonStr: `{"text":"hello"}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var item ContentBlockSourceItem
+			err := item.UnmarshalJSON([]byte(tt.jsonStr))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, item)
+		})
+	}
+}
+
+func TestContentBlockSourceItem_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		item    ContentBlockSourceItem
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "text item",
+			item: ContentBlockSourceItem{Text: &TextBlockParam{Type: "text", Text: "hello"}},
+			want: `{"text":"hello","type":"text"}`,
+		},
+		{
+			name: "image item",
+			item: ContentBlockSourceItem{Image: &ImageBlockParam{
+				Type:   "image",
+				Source: ImageSource{URL: &URLImageSource{Type: "url", URL: "https://example.com/img.png"}},
+			}},
+			want: `{"type":"image","source":{"type":"url","url":"https://example.com/img.png"}}`,
+		},
+		{
+			name:    "empty item",
+			item:    ContentBlockSourceItem{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.item.MarshalJSON()
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(got))
+		})
+	}
+}
+
+func TestContentBlockSourceItem_UnmarshalJSON_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		{name: "text invalid", jsonStr: `{"type":"text","text":123}`},
+		{name: "image invalid", jsonStr: `{"type":"image","source":{"type":"url","url":123}}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var item ContentBlockSourceItem
+			err := item.UnmarshalJSON([]byte(tt.jsonStr))
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestTextCitation_UnmarshalJSON(t *testing.T) {
+	docTitle := "My Document"
+	tests := []struct {
+		name    string
+		jsonStr string
+		want    TextCitation
+		wantErr bool
+	}{
+		{
+			name:    "char_location",
+			jsonStr: `{"type":"char_location","cited_text":"exact quote","document_index":0,"document_title":"My Document","start_char_index":10,"end_char_index":21}`,
+			want: TextCitation{CharLocation: &CitationCharLocation{
+				Type: "char_location", CitedText: "exact quote", DocumentIndex: 0,
+				DocumentTitle: &docTitle, StartCharIndex: 10, EndCharIndex: 21,
+			}},
+		},
+		{
+			name:    "char_location no title",
+			jsonStr: `{"type":"char_location","cited_text":"quote","document_index":1,"start_char_index":5,"end_char_index":10}`,
+			want: TextCitation{CharLocation: &CitationCharLocation{
+				Type: "char_location", CitedText: "quote", DocumentIndex: 1,
+				StartCharIndex: 5, EndCharIndex: 10,
+			}},
+		},
+		{
+			name:    "page_location",
+			jsonStr: `{"type":"page_location","cited_text":"page text","document_index":2,"document_title":"My Document","start_page_number":3,"end_page_number":5}`,
+			want: TextCitation{PageLocation: &CitationPageLocation{
+				Type: "page_location", CitedText: "page text", DocumentIndex: 2,
+				DocumentTitle: &docTitle, StartPageNumber: 3, EndPageNumber: 5,
+			}},
+		},
+		{
+			name:    "content_block_location",
+			jsonStr: `{"type":"content_block_location","cited_text":"block text","document_index":0,"document_title":"My Document","start_block_index":1,"end_block_index":3}`,
+			want: TextCitation{ContentBlockLocation: &CitationContentBlockLocation{
+				Type: "content_block_location", CitedText: "block text", DocumentIndex: 0,
+				DocumentTitle: &docTitle, StartBlockIndex: 1, EndBlockIndex: 3,
+			}},
+		},
+		{
+			name:    "web_search_result_location",
+			jsonStr: `{"type":"web_search_result_location","cited_text":"web quote","encrypted_index":"enc_abc","title":"Example Page","url":"https://example.com"}`,
+			want: TextCitation{WebSearchResultLocation: &CitationWebSearchResultLocation{
+				Type: "web_search_result_location", CitedText: "web quote",
+				EncryptedIndex: "enc_abc", Title: "Example Page", URL: "https://example.com",
+			}},
+		},
+		{
+			name:    "search_result_location",
+			jsonStr: `{"type":"search_result_location","cited_text":"search text","title":"Result Title","source":"https://source.com","start_block_index":0,"end_block_index":2,"search_result_index":1}`,
+			want: TextCitation{SearchResultLocation: &CitationSearchResultLocation{
+				Type: "search_result_location", CitedText: "search text", Title: "Result Title",
+				Source: "https://source.com", StartBlockIndex: 0, EndBlockIndex: 2, SearchResultIndex: 1,
+			}},
+		},
+		{
+			name:    "unknown type ignored",
+			jsonStr: `{"type":"future_citation","data":"x"}`,
+			want:    TextCitation{},
+		},
+		{
+			name:    "missing type",
+			jsonStr: `{"cited_text":"quote"}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var c TextCitation
+			err := c.UnmarshalJSON([]byte(tt.jsonStr))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, c)
+		})
+	}
+}
+
+func TestTextCitation_MarshalJSON(t *testing.T) {
+	docTitle := "My Document"
+	tests := []struct {
+		name    string
+		c       TextCitation
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "char_location",
+			c: TextCitation{CharLocation: &CitationCharLocation{
+				Type: "char_location", CitedText: "quote", DocumentIndex: 0,
+				DocumentTitle: &docTitle, StartCharIndex: 5, EndCharIndex: 10,
+			}},
+			want: `{"type":"char_location","cited_text":"quote","document_index":0,"document_title":"My Document","start_char_index":5,"end_char_index":10}`,
+		},
+		{
+			name: "page_location",
+			c: TextCitation{PageLocation: &CitationPageLocation{
+				Type: "page_location", CitedText: "page text", DocumentIndex: 1,
+				StartPageNumber: 2, EndPageNumber: 4,
+			}},
+			want: `{"type":"page_location","cited_text":"page text","document_index":1,"start_page_number":2,"end_page_number":4}`,
+		},
+		{
+			name: "content_block_location",
+			c: TextCitation{ContentBlockLocation: &CitationContentBlockLocation{
+				Type: "content_block_location", CitedText: "block", DocumentIndex: 0,
+				StartBlockIndex: 0, EndBlockIndex: 1,
+			}},
+			want: `{"type":"content_block_location","cited_text":"block","document_index":0,"start_block_index":0,"end_block_index":1}`,
+		},
+		{
+			name: "web_search_result_location",
+			c: TextCitation{WebSearchResultLocation: &CitationWebSearchResultLocation{
+				Type: "web_search_result_location", CitedText: "web text",
+				EncryptedIndex: "enc_xyz", URL: "https://example.com",
+			}},
+			want: `{"type":"web_search_result_location","cited_text":"web text","encrypted_index":"enc_xyz","url":"https://example.com"}`,
+		},
+		{
+			name: "search_result_location",
+			c: TextCitation{SearchResultLocation: &CitationSearchResultLocation{
+				Type: "search_result_location", CitedText: "search text",
+				Source: "https://source.com", StartBlockIndex: 0, EndBlockIndex: 1, SearchResultIndex: 2,
+			}},
+			want: `{"type":"search_result_location","cited_text":"search text","source":"https://source.com","start_block_index":0,"end_block_index":1,"search_result_index":2}`,
+		},
+		{
+			name:    "empty citation",
+			c:       TextCitation{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.c.MarshalJSON()
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(got))
+		})
+	}
+}
+
+func TestTextCitation_UnmarshalJSON_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		{name: "char_location invalid", jsonStr: `{"type":"char_location","document_index":"bad"}`},
+		{name: "page_location invalid", jsonStr: `{"type":"page_location","document_index":"bad"}`},
+		{name: "content_block_location invalid", jsonStr: `{"type":"content_block_location","document_index":"bad"}`},
+		{name: "web_search_result_location invalid", jsonStr: `{"type":"web_search_result_location","cited_text":123}`},
+		{name: "search_result_location invalid", jsonStr: `{"type":"search_result_location","cited_text":123}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var c TextCitation
+			err := c.UnmarshalJSON([]byte(tt.jsonStr))
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestWebSearchToolResultContent_UnmarshalJSON(t *testing.T) {
+	pageAge := "2 days ago"
+	tests := []struct {
+		name    string
+		jsonStr string
+		want    WebSearchToolResultContent
+		wantErr bool
+	}{
+		{
+			name:    "array of results",
+			jsonStr: `[{"type":"web_search_result","title":"Example","url":"https://example.com","encrypted_content":"enc123"}]`,
+			want: WebSearchToolResultContent{
+				Results: []WebSearchResult{
+					{Type: "web_search_result", Title: "Example", URL: "https://example.com", EncryptedContent: "enc123"},
+				},
+			},
+		},
+		{
+			name:    "result with page age",
+			jsonStr: `[{"type":"web_search_result","title":"Old Page","url":"https://old.com","encrypted_content":"enc456","page_age":"2 days ago"}]`,
+			want: WebSearchToolResultContent{
+				Results: []WebSearchResult{
+					{Type: "web_search_result", Title: "Old Page", URL: "https://old.com", EncryptedContent: "enc456", PageAge: &pageAge},
+				},
+			},
+		},
+		{
+			name:    "multiple results",
+			jsonStr: `[{"type":"web_search_result","title":"A","url":"https://a.com","encrypted_content":"enc_a"},{"type":"web_search_result","title":"B","url":"https://b.com","encrypted_content":"enc_b"}]`,
+			want: WebSearchToolResultContent{
+				Results: []WebSearchResult{
+					{Type: "web_search_result", Title: "A", URL: "https://a.com", EncryptedContent: "enc_a"},
+					{Type: "web_search_result", Title: "B", URL: "https://b.com", EncryptedContent: "enc_b"},
+				},
+			},
+		},
+		{
+			name:    "error result",
+			jsonStr: `{"type":"web_search_tool_result_error","error_code":"unavailable"}`,
+			want: WebSearchToolResultContent{
+				Error: &WebSearchToolResultError{Type: "web_search_tool_result_error", ErrorCode: "unavailable"},
+			},
+		},
+		{
+			name:    "max_uses_exceeded error",
+			jsonStr: `{"type":"web_search_tool_result_error","error_code":"max_uses_exceeded"}`,
+			want: WebSearchToolResultContent{
+				Error: &WebSearchToolResultError{Type: "web_search_tool_result_error", ErrorCode: "max_uses_exceeded"},
+			},
+		},
+		{
+			name:    "empty array",
+			jsonStr: `[]`,
+			want:    WebSearchToolResultContent{Results: []WebSearchResult{}},
+		},
+		{
+			name:    "invalid content - plain string",
+			jsonStr: `"some string"`,
+			wantErr: true,
+		},
+		{
+			name:    "invalid content - number",
+			jsonStr: `42`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var w WebSearchToolResultContent
+			err := w.UnmarshalJSON([]byte(tt.jsonStr))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, w)
+		})
+	}
+}
+
+func TestWebSearchToolResultContent_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		w       WebSearchToolResultContent
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "results",
+			w: WebSearchToolResultContent{
+				Results: []WebSearchResult{
+					{Type: "web_search_result", Title: "Example", URL: "https://example.com", EncryptedContent: "enc123"},
+				},
+			},
+			want: `[{"type":"web_search_result","title":"Example","url":"https://example.com","encrypted_content":"enc123"}]`,
+		},
+		{
+			name: "error",
+			w: WebSearchToolResultContent{
+				Error: &WebSearchToolResultError{Type: "web_search_tool_result_error", ErrorCode: "query_too_long"},
+			},
+			want: `{"type":"web_search_tool_result_error","error_code":"query_too_long"}`,
+		},
+		{
+			name: "empty results array",
+			w:    WebSearchToolResultContent{Results: []WebSearchResult{}},
+			want: `[]`,
+		},
+		{
+			name:    "empty content",
+			w:       WebSearchToolResultContent{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.w.MarshalJSON()
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(got))
+		})
+	}
+}
+
+func TestCacheControl_InTextBlockParam(t *testing.T) {
+	ttl1h := "1h"
+	jsonStr := `{"type":"text","text":"Hello","cache_control":{"type":"ephemeral","ttl":"1h"},"citations":[{"type":"char_location","cited_text":"quote","document_index":0,"start_char_index":5,"end_char_index":10}]}`
+	var param TextBlockParam
+	err := json.Unmarshal([]byte(jsonStr), &param)
+	require.NoError(t, err)
+	require.Equal(t, TextBlockParam{
+		Type: "text",
+		Text: "Hello",
+		CacheControl: &CacheControl{Ephemeral: &CacheControlEphemeral{
+			Type: "ephemeral",
+			TTL:  &ttl1h,
+		}},
+		Citations: []TextCitation{
+			{CharLocation: &CitationCharLocation{
+				Type: "char_location", CitedText: "quote", DocumentIndex: 0,
+				StartCharIndex: 5, EndCharIndex: 10,
+			}},
+		},
+	}, param)
+
+	// Round-trip marshal.
+	data, err := json.Marshal(param)
+	require.NoError(t, err)
+	require.JSONEq(t, jsonStr, string(data))
+}
+
+func TestCacheControl_InDocumentBlockParam(t *testing.T) {
+	enabled := true
+	jsonStr := `{"type":"document","source":{"type":"text","media_type":"text/plain","data":"doc content"},"cache_control":{"type":"ephemeral"},"citations":{"enabled":true},"title":"My Doc","context":"some context"}`
+	var param DocumentBlockParam
+	err := json.Unmarshal([]byte(jsonStr), &param)
+	require.NoError(t, err)
+	require.Equal(t, DocumentBlockParam{
+		Type:         "document",
+		Source:       DocumentSource{PlainText: &PlainTextSource{Type: "text", MediaType: "text/plain", Data: "doc content"}},
+		CacheControl: &CacheControl{Ephemeral: &CacheControlEphemeral{Type: "ephemeral"}},
+		Citations:    &CitationsConfigParam{Enabled: &enabled},
+		Title:        "My Doc",
+		Context:      "some context",
+	}, param)
+
+	// Round-trip marshal.
+	data, err := json.Marshal(param)
+	require.NoError(t, err)
+	require.JSONEq(t, jsonStr, string(data))
+}
+
+func TestTextBlock_WithCitations(t *testing.T) {
+	docTitle := "Source Doc"
+	jsonStr := `{"type":"text","text":"Response with citation","citations":[{"type":"char_location","cited_text":"cited","document_index":0,"document_title":"Source Doc","start_char_index":0,"end_char_index":5},{"type":"web_search_result_location","cited_text":"web cited","encrypted_index":"enc_123","url":"https://example.com"}]}`
+	var block TextBlock
+	err := json.Unmarshal([]byte(jsonStr), &block)
+	require.NoError(t, err)
+	require.Equal(t, TextBlock{
+		Type: "text",
+		Text: "Response with citation",
+		Citations: []TextCitation{
+			{CharLocation: &CitationCharLocation{
+				Type: "char_location", CitedText: "cited", DocumentIndex: 0,
+				DocumentTitle: &docTitle, StartCharIndex: 0, EndCharIndex: 5,
+			}},
+			{WebSearchResultLocation: &CitationWebSearchResultLocation{
+				Type: "web_search_result_location", CitedText: "web cited",
+				EncryptedIndex: "enc_123", URL: "https://example.com",
+			}},
+		},
+	}, block)
+}
+
+func TestImageBlockParam_WithCacheControl(t *testing.T) {
+	jsonStr := `{"type":"image","source":{"type":"url","url":"https://example.com/img.png"},"cache_control":{"type":"ephemeral"}}`
+	var param ImageBlockParam
+	err := json.Unmarshal([]byte(jsonStr), &param)
+	require.NoError(t, err)
+	require.Equal(t, ImageBlockParam{
+		Type:         "image",
+		Source:       ImageSource{URL: &URLImageSource{Type: "url", URL: "https://example.com/img.png"}},
+		CacheControl: &CacheControl{Ephemeral: &CacheControlEphemeral{Type: "ephemeral"}},
+	}, param)
+}
+
+func TestWebSearchToolResultBlockParam_WithError(t *testing.T) {
+	jsonStr := `{"type":"web_search_tool_result","tool_use_id":"ws_123","content":{"type":"web_search_tool_result_error","error_code":"too_many_requests"}}`
+	var param WebSearchToolResultBlockParam
+	err := json.Unmarshal([]byte(jsonStr), &param)
+	require.NoError(t, err)
+	require.Equal(t, WebSearchToolResultBlockParam{
+		Type:      "web_search_tool_result",
+		ToolUseID: "ws_123",
+		Content: WebSearchToolResultContent{
+			Error: &WebSearchToolResultError{
+				Type:      "web_search_tool_result_error",
+				ErrorCode: "too_many_requests",
+			},
+		},
+	}, param)
+}
+
+func TestDocumentBlockSource_ContentBlockSource(t *testing.T) {
+	jsonStr := `{"type":"content","content":[{"type":"text","text":"text part"},{"type":"image","source":{"type":"base64","media_type":"image/webp","data":"webp_data"}}]}`
+	var src ContentBlockSource
+	err := json.Unmarshal([]byte(jsonStr), &src)
+	require.NoError(t, err)
+	require.Equal(t, ContentBlockSource{
+		Type: "content",
+		Content: ContentBlockSourceContent{
+			Array: []ContentBlockSourceItem{
+				{Text: &TextBlockParam{Type: "text", Text: "text part"}},
+				{Image: &ImageBlockParam{
+					Type:   "image",
+					Source: ImageSource{Base64: &Base64ImageSource{Type: "base64", MediaType: "image/webp", Data: "webp_data"}},
+				}},
+			},
+		},
+	}, src)
+}
+
+func TestToolResultContent_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+		want    ToolResultContent
+		wantErr bool
+	}{
+		{
+			name:    "string content",
+			jsonStr: `"result text"`,
+			want:    ToolResultContent{Text: "result text"},
+		},
+		{
+			name:    "array with text block",
+			jsonStr: `[{"type":"text","text":"result text"}]`,
+			want: ToolResultContent{Array: []ToolResultContentItem{
+				{Text: &TextBlockParam{Type: "text", Text: "result text"}},
+			}},
+		},
+		{
+			name:    "array with image block",
+			jsonStr: `[{"type":"image","source":{"type":"url","url":"https://example.com/img.png"}}]`,
+			want: ToolResultContent{Array: []ToolResultContentItem{
+				{Image: &ImageBlockParam{
+					Type:   "image",
+					Source: ImageSource{URL: &URLImageSource{Type: "url", URL: "https://example.com/img.png"}},
+				}},
+			}},
+		},
+		{
+			name:    "array with document block",
+			jsonStr: `[{"type":"document","source":{"type":"text","media_type":"text/plain","data":"doc content"}}]`,
+			want: ToolResultContent{Array: []ToolResultContentItem{
+				{Document: &DocumentBlockParam{
+					Type:   "document",
+					Source: DocumentSource{PlainText: &PlainTextSource{Type: "text", MediaType: "text/plain", Data: "doc content"}},
+				}},
+			}},
+		},
+		{
+			name:    "array with search result block",
+			jsonStr: `[{"type":"search_result","source":"https://example.com","title":"Result","content":[{"type":"text","text":"snippet"}]}]`,
+			want: ToolResultContent{Array: []ToolResultContentItem{
+				{SearchResult: &SearchResultBlockParam{
+					Type:    "search_result",
+					Source:  "https://example.com",
+					Title:   "Result",
+					Content: []TextBlockParam{{Type: "text", Text: "snippet"}},
+				}},
+			}},
+		},
+		{
+			name:    "invalid content",
+			jsonStr: `12345`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var c ToolResultContent
+			err := c.UnmarshalJSON([]byte(tt.jsonStr))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, c)
+		})
+	}
+}
+
+func TestToolResultContent_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		c       ToolResultContent
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "string content",
+			c:    ToolResultContent{Text: "result text"},
+			want: `"result text"`,
+		},
+		{
+			name: "array content",
+			c: ToolResultContent{Array: []ToolResultContentItem{
+				{Text: &TextBlockParam{Type: "text", Text: "result text"}},
+			}},
+			want: `[{"text":"result text","type":"text"}]`,
+		},
+		{
+			name:    "empty content",
+			c:       ToolResultContent{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.c.MarshalJSON()
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(got))
+		})
+	}
+}
+
+func TestToolResultContentItem_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+		want    ToolResultContentItem
+		wantErr bool
+	}{
+		{
+			name:    "text item",
+			jsonStr: `{"type":"text","text":"hello"}`,
+			want:    ToolResultContentItem{Text: &TextBlockParam{Type: "text", Text: "hello"}},
+		},
+		{
+			name:    "image item",
+			jsonStr: `{"type":"image","source":{"type":"base64","media_type":"image/png","data":"abc"}}`,
+			want: ToolResultContentItem{Image: &ImageBlockParam{
+				Type:   "image",
+				Source: ImageSource{Base64: &Base64ImageSource{Type: "base64", MediaType: "image/png", Data: "abc"}},
+			}},
+		},
+		{
+			name:    "search result item",
+			jsonStr: `{"type":"search_result","source":"https://example.com","title":"Result","content":[{"type":"text","text":"snippet"}]}`,
+			want: ToolResultContentItem{SearchResult: &SearchResultBlockParam{
+				Type:    "search_result",
+				Source:  "https://example.com",
+				Title:   "Result",
+				Content: []TextBlockParam{{Type: "text", Text: "snippet"}},
+			}},
+		},
+		{
+			name:    "document item",
+			jsonStr: `{"type":"document","source":{"type":"text","media_type":"text/plain","data":"doc"}}`,
+			want: ToolResultContentItem{Document: &DocumentBlockParam{
+				Type:   "document",
+				Source: DocumentSource{PlainText: &PlainTextSource{Type: "text", MediaType: "text/plain", Data: "doc"}},
+			}},
+		},
+		{
+			name:    "unknown type ignored",
+			jsonStr: `{"type":"thinking","thinking":"Let me think"}`,
+			want:    ToolResultContentItem{},
+		},
+		{
+			name:    "missing type",
+			jsonStr: `{"text":"hello"}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var item ToolResultContentItem
+			err := item.UnmarshalJSON([]byte(tt.jsonStr))
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, item)
+		})
+	}
+}
+
+func TestToolResultContentItem_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		item    ToolResultContentItem
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "text item",
+			item: ToolResultContentItem{Text: &TextBlockParam{Type: "text", Text: "hello"}},
+			want: `{"text":"hello","type":"text"}`,
+		},
+		{
+			name: "image item",
+			item: ToolResultContentItem{Image: &ImageBlockParam{
+				Type:   "image",
+				Source: ImageSource{URL: &URLImageSource{Type: "url", URL: "https://example.com/img.png"}},
+			}},
+			want: `{"type":"image","source":{"type":"url","url":"https://example.com/img.png"}}`,
+		},
+		{
+			name: "search result item",
+			item: ToolResultContentItem{SearchResult: &SearchResultBlockParam{
+				Type:    "search_result",
+				Source:  "https://example.com",
+				Title:   "Result",
+				Content: []TextBlockParam{{Type: "text", Text: "snippet"}},
+			}},
+			want: `{"type":"search_result","content":[{"text":"snippet","type":"text"}],"source":"https://example.com","title":"Result"}`,
+		},
+		{
+			name: "document item",
+			item: ToolResultContentItem{Document: &DocumentBlockParam{
+				Type:   "document",
+				Source: DocumentSource{PlainText: &PlainTextSource{Type: "text", MediaType: "text/plain", Data: "doc"}},
+			}},
+			want: `{"type":"document","source":{"type":"text","data":"doc","media_type":"text/plain"}}`,
+		},
+		{
+			name:    "empty item",
+			item:    ToolResultContentItem{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.item.MarshalJSON()
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(got))
+		})
+	}
+}
+
+func TestToolResultContentItem_UnmarshalJSON_ErrorPaths(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		{name: "text invalid", jsonStr: `{"type":"text","text":123}`},
+		{name: "image invalid", jsonStr: `{"type":"image","source":{"type":"url","url":123}}`},
+		{name: "search_result invalid", jsonStr: `{"type":"search_result","content":"not_array"}`},
+		{name: "document invalid", jsonStr: `{"type":"document","source":null,"context":123}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var item ToolResultContentItem
+			err := item.UnmarshalJSON([]byte(tt.jsonStr))
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestToolResultContent_InToolResultBlockParam(t *testing.T) {
+	jsonStr := `{"type":"tool_result","tool_use_id":"tu_123","content":[{"type":"text","text":"42"},{"type":"image","source":{"type":"url","url":"https://example.com/chart.png"}}]}`
+	var param ToolResultBlockParam
+	err := json.Unmarshal([]byte(jsonStr), &param)
+	require.NoError(t, err)
+	require.Equal(t, ToolResultBlockParam{
+		Type:      "tool_result",
+		ToolUseID: "tu_123",
+		Content: &ToolResultContent{Array: []ToolResultContentItem{
+			{Text: &TextBlockParam{Type: "text", Text: "42"}},
+			{Image: &ImageBlockParam{
+				Type:   "image",
+				Source: ImageSource{URL: &URLImageSource{Type: "url", URL: "https://example.com/chart.png"}},
+			}},
+		}},
+	}, param)
+
+	// Round-trip marshal.
+	data, err := json.Marshal(param)
+	require.NoError(t, err)
+	require.JSONEq(t, jsonStr, string(data))
+}
+
+// strPtr is a helper to create a pointer to a string literal.
+func strPtr(s string) *string {
+	return &s
 }
