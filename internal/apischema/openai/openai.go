@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -8381,3 +8382,121 @@ const (
 	SpeechModelGPT4oMiniTTS         = "gpt-4o-mini-tts"
 	SpeechModelGPT4oMiniTTS20251215 = "gpt-4o-mini-tts-2025-12-15"
 )
+
+// File API
+
+type FileNewParams struct {
+	// The File object (not file name) to be uploaded.
+	File io.Reader `json:"file,omitzero"`
+	// The intended purpose of the uploaded file. One of:
+	//
+	// - `assistants`: Used in the Assistants API
+	// - `batch`: Used in the Batch API
+	// - `fine-tune`: Used for fine-tuning
+	// - `vision`: Images used for vision fine-tuning
+	// - `user_data`: Flexible file type for any purpose
+	// - `evals`: Used for eval data sets
+	//
+	// Any of "assistants", "batch", "fine-tune", "vision", "user_data", "evals".
+	Purpose FilePurpose `json:"purpose,omitzero"`
+	// The expiration policy for a file.
+	ExpiresAfter FileNewParamsExpiresAfter `json:"expires_after,omitzero"`
+}
+
+// The intended purpose of the uploaded file. One of:
+//
+// - `assistants`: Used in the Assistants API
+// - `batch`: Used in the Batch API
+// - `fine-tune`: Used for fine-tuning
+// - `vision`: Images used for vision fine-tuning
+// - `user_data`: Flexible file type for any purpose
+// - `evals`: Used for eval data sets
+type FilePurpose string
+
+const (
+	FilePurposeAssistants FilePurpose = "assistants"
+	FilePurposeBatch      FilePurpose = "batch"
+	FilePurposeFineTune   FilePurpose = "fine-tune"
+	FilePurposeVision     FilePurpose = "vision"
+	FilePurposeUserData   FilePurpose = "user_data"
+	FilePurposeEvals      FilePurpose = "evals"
+)
+
+type CreatedAt string
+
+// The expiration policy for a file.
+// The properties Anchor, Seconds are required.
+type FileNewParamsExpiresAfter struct {
+	// The number of seconds after the anchor time that the file will expire.
+	Seconds int64 `json:"seconds"`
+	// Anchor timestamp after which the expiration policy applies. Supported anchors:
+	// `created_at`.
+	Anchor CreatedAt `json:"anchor"`
+}
+
+// The `File` object represents a document that has been uploaded to upstream.
+type FileObject struct {
+	// The file identifier, which can be referenced in the API endpoints.
+	ID string `json:"id"`
+	// The size of the file, in bytes.
+	Bytes int64 `json:"bytes"`
+	// The Unix timestamp (in seconds) for when the file was created.
+	CreatedAt JSONUNIXTime `json:"created_at"`
+	// The name of the file.
+	Filename string `json:"filename"`
+	// The object type, which is always `file`.
+	Object string `json:"object"`
+	// The intended purpose of the file. Supported values are `assistants`,
+	// `assistants_output`, `batch`, `batch_output`, `fine-tune`, `fine-tune-results`,
+	// `vision`, and `user_data`.
+	//
+	// Any of "assistants", "assistants_output", "batch", "batch_output", "fine-tune",
+	// "fine-tune-results", "vision", "user_data".
+	Purpose FileObjectPurpose `json:"purpose"`
+	// Deprecated. The current status of the file, which can be either `uploaded`,
+	// `processed`, or `error`.
+	//
+	// Any of "uploaded", "processed", "error".
+	//
+	// Deprecated: deprecated
+	Status FileObjectStatus `json:"status"`
+	// The Unix timestamp (in seconds) for when the file will expire.
+	ExpiresAt JSONUNIXTime `json:"expires_at,omitzero"`
+	// Deprecated.
+	//
+	// Deprecated: deprecated
+	StatusDetails string `json:"status_details"`
+}
+
+// The intended purpose of the file. Supported values are `assistants`,
+// `assistants_output`, `batch`, `batch_output`, `fine-tune`, `fine-tune-results`,
+// `vision`, and `user_data`.
+type FileObjectPurpose string
+
+const (
+	FileObjectPurposeAssistants       FileObjectPurpose = "assistants"
+	FileObjectPurposeAssistantsOutput FileObjectPurpose = "assistants_output"
+	FileObjectPurposeBatch            FileObjectPurpose = "batch"
+	FileObjectPurposeBatchOutput      FileObjectPurpose = "batch_output"
+	FileObjectPurposeFineTune         FileObjectPurpose = "fine-tune"
+	FileObjectPurposeFineTuneResults  FileObjectPurpose = "fine-tune-results"
+	FileObjectPurposeVision           FileObjectPurpose = "vision"
+	FileObjectPurposeUserData         FileObjectPurpose = "user_data"
+)
+
+// Deprecated. The current status of the file, which can be either `uploaded`,
+// `processed`, or `error`.
+type FileObjectStatus string
+
+const (
+	FileObjectStatusUploaded  FileObjectStatus = "uploaded"
+	FileObjectStatusProcessed FileObjectStatus = "processed"
+	FileObjectStatusError     FileObjectStatus = "error"
+)
+
+// The `FileDeleted` object represents the response from the API when a file is deleted.
+type FileDeleted struct {
+	ID      string `json:"id"`
+	Deleted bool   `json:"deleted"`
+	Object  string `json:"object"`
+}
