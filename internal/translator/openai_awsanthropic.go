@@ -70,7 +70,7 @@ func (o *openAIToAWSAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		o.streamParser = newAnthropicStreamParser(o.requestModel)
 	}
 
-	params, err := buildAnthropicParams(openAIReq)
+	params, err := buildAnthropicParams(openAIReq, "AWSAnthropic")
 	if err != nil {
 		return
 	}
