@@ -160,10 +160,10 @@ type (
 	// TextBlockParam represents a text content block.
 	// https://platform.claude.com/docs/en/api/messages#text_block_param
 	TextBlockParam struct {
-		Text         string          `json:"text"`
-		Type         string          `json:"type"` // Always "text".
-		CacheControl *CacheControl   `json:"cache_control,omitempty"`
-		Citations    []TextCitation  `json:"citations,omitempty"`
+		Text         string         `json:"text"`
+		Type         string         `json:"type"` // Always "text".
+		CacheControl *CacheControl  `json:"cache_control,omitempty"`
+		Citations    []TextCitation `json:"citations,omitempty"`
 	}
 
 	// ImageBlockParam represents an image content block.
@@ -177,22 +177,22 @@ type (
 	// DocumentBlockParam represents a document content block.
 	// https://platform.claude.com/docs/en/api/messages#document_block_param
 	DocumentBlockParam struct {
-		Type         string               `json:"type"` // Always "document".
-		Source       DocumentSource       `json:"source"`
-		CacheControl *CacheControl        `json:"cache_control,omitempty"`
+		Type         string                `json:"type"` // Always "document".
+		Source       DocumentSource        `json:"source"`
+		CacheControl *CacheControl         `json:"cache_control,omitempty"`
 		Citations    *CitationsConfigParam `json:"citations,omitempty"`
-		Context      string               `json:"context,omitempty"`
-		Title        string               `json:"title,omitempty"`
+		Context      string                `json:"context,omitempty"`
+		Title        string                `json:"title,omitempty"`
 	}
 
 	// SearchResultBlockParam represents a search result content block.
 	// https://platform.claude.com/docs/en/api/messages#search_result_block_param
 	SearchResultBlockParam struct {
-		Type         string               `json:"type"` // Always "search_result".
-		Content      []TextBlockParam     `json:"content"`
-		Source       string               `json:"source"`
-		Title        string               `json:"title"`
-		CacheControl *CacheControl        `json:"cache_control,omitempty"`
+		Type         string                `json:"type"` // Always "search_result".
+		Content      []TextBlockParam      `json:"content"`
+		Source       string                `json:"source"`
+		Title        string                `json:"title"`
+		CacheControl *CacheControl         `json:"cache_control,omitempty"`
 		Citations    *CitationsConfigParam `json:"citations,omitempty"`
 	}
 
@@ -968,11 +968,6 @@ type (
 		// "max_uses_exceeded", "too_many_requests", "query_too_long", "request_too_large".
 		ErrorCode string `json:"error_code"`
 	}
-)
-
-const (
-	webSearchToolResultContentTypeResult = "web_search_result"
-	webSearchToolResultContentTypeError  = "web_search_tool_result_error"
 )
 
 func (w *WebSearchToolResultContent) UnmarshalJSON(data []byte) error {
