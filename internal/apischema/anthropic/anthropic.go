@@ -145,8 +145,9 @@ type (
 	// ContentBlockParam represents an element of the array content in a message.
 	// https://docs.claude.com/en/api/messages#body-messages-content
 	ContentBlockParam struct {
-		Text *TextBlockParam
-		// TODO add others when we need it for observability, etc.
+		Text       *TextBlockParam
+		ToolUse    *ToolUseBlockParam
+		ToolResult *ToolResultBlockParam
 	}
 
 	TextBlockParam struct {
@@ -155,7 +156,70 @@ type (
 		CacheControl any    `json:"cache_control,omitempty"`
 		Citations    []any  `json:"citations,omitempty"`
 	}
+
+	// ToolUseBlockParam is a request content block for assistant tool use.
+	ToolUseBlockParam struct {
+		Type  string        `json:"type"` // Always "tool_use".
+		ID    string        `json:"id"`
+		Name  string        `json:"name"`
+		Input FlexibleInput `json:"input"` // Object or JSON string; same lenient pattern as openai.ContentUnion.
+	}
+
+	// FlexibleInput accepts either a JSON object or a JSON string (parsed as object), for client compatibility.
+	// Mirrors the lenient parsing used in internal/apischema/openai (e.g. ContentUnion, EmbeddingContent).
+	FlexibleInput map[string]any
+
+	// ToolResultBlockParam is a request content block for user tool results.
+	ToolResultBlockParam struct {
+		Type      string                 `json:"type"` // Always "tool_result".
+		ToolUseID string                 `json:"tool_use_id"`
+		Content   ToolResultContentArray `json:"content"` // Array or single string; same lenient pattern as openai.
+		IsError   *bool                  `json:"is_error,omitempty"`
+	}
+
+	// ToolResultContentArray accepts either an array of content blocks or a single string (one text block).
+	// Mirrors the lenient parsing used in internal/apischema/openai (e.g. StringOrUserRoleContentUnion).
+	ToolResultContentArray []ToolResultContentParam
+
+	// ToolResultContentParam is a single content item inside a tool_result (e.g. text).
+	ToolResultContentParam struct {
+		Type string `json:"type"`
+		Text string `json:"text,omitempty"`
+	}
 )
+
+// UnmarshalJSON implements lenient parsing: object or JSON string (parsed as object), consistent with openai schema.
+func (f *FlexibleInput) UnmarshalJSON(data []byte) error {
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err == nil {
+		*f = m
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("cannot unmarshal tool_use input (must be object or JSON string): %w", err)
+	}
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		return fmt.Errorf("cannot unmarshal tool_use input string as object: %w", err)
+	}
+	*f = m
+	return nil
+}
+
+// UnmarshalJSON implements lenient parsing: array of content blocks or single string (one text block), consistent with openai schema.
+func (t *ToolResultContentArray) UnmarshalJSON(data []byte) error {
+	var arr []ToolResultContentParam
+	if err := json.Unmarshal(data, &arr); err == nil {
+		*t = arr
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("cannot unmarshal tool_result content (must be array or string): %w", err)
+	}
+	*t = []ToolResultContentParam{{Type: "text", Text: s}}
+	return nil
+}
 
 func (m *ContentBlockParam) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
@@ -170,9 +234,21 @@ func (m *ContentBlockParam) UnmarshalJSON(data []byte) error {
 		}
 		m.Text = &textBlock
 		return nil
+	case "tool_use":
+		var toolUseBlock ToolUseBlockParam
+		if err := json.Unmarshal(data, &toolUseBlock); err != nil {
+			return fmt.Errorf("failed to unmarshal tool_use block: %w", err)
+		}
+		m.ToolUse = &toolUseBlock
+		return nil
+	case "tool_result":
+		var toolResultBlock ToolResultBlockParam
+		if err := json.Unmarshal(data, &toolResultBlock); err != nil {
+			return fmt.Errorf("failed to unmarshal tool_result block: %w", err)
+		}
+		m.ToolResult = &toolResultBlock
+		return nil
 	default:
-		// TODO add others when we need it for observability, etc.
-		// Fow now, we ignore undefined types.
 		return nil
 	}
 }
@@ -181,7 +257,12 @@ func (m *ContentBlockParam) MarshalJSON() ([]byte, error) {
 	if m.Text != nil {
 		return json.Marshal(m.Text)
 	}
-	// TODO add others when we need it for observability, etc.
+	if m.ToolUse != nil {
+		return json.Marshal(m.ToolUse)
+	}
+	if m.ToolResult != nil {
+		return json.Marshal(m.ToolResult)
+	}
 	return nil, fmt.Errorf("content block must have a defined type")
 }
 

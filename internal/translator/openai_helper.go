@@ -59,6 +59,7 @@ func buildOpenAIChatCompletionRequest(body *anthropic.MessagesRequest, modelName
 }
 
 // anthropicMessagesToOpenAI converts Anthropic messages (including the system prompt) to OpenAI message format.
+// It preserves tool_use (assistant) and tool_result (user) blocks so backends receive full tool history.
 func anthropicMessagesToOpenAI(body *anthropic.MessagesRequest) []openai.ChatCompletionMessageParamUnion {
 	var messages []openai.ChatCompletionMessageParamUnion
 
@@ -78,23 +79,139 @@ func anthropicMessagesToOpenAI(body *anthropic.MessagesRequest) []openai.ChatCom
 	for _, msg := range body.Messages {
 		switch msg.Role {
 		case anthropic.MessageRoleUser:
-			messages = append(messages, openai.ChatCompletionMessageParamUnion{
-				OfUser: &openai.ChatCompletionUserMessageParam{
-					Content: openai.StringOrUserRoleContentUnion{Value: anthropicContentToText(msg.Content)},
-					Role:    openai.ChatMessageRoleUser,
-				},
-			})
+			messages = append(messages, anthropicUserMessageToOpenAI(msg)...)
 		case anthropic.MessageRoleAssistant:
-			messages = append(messages, openai.ChatCompletionMessageParamUnion{
-				OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-					Content: openai.StringOrAssistantRoleContentUnion{Value: anthropicContentToText(msg.Content)},
-					Role:    openai.ChatMessageRoleAssistant,
-				},
-			})
+			messages = append(messages, anthropicAssistantMessageToOpenAI(msg)...)
 		}
 	}
 
 	return messages
+}
+
+// anthropicUserMessageToOpenAI converts one Anthropic user message to OpenAI messages.
+// A user message can contain text and/or tool_result blocks; tool_result blocks become separate role="tool" messages.
+func anthropicUserMessageToOpenAI(msg anthropic.MessageParam) []openai.ChatCompletionMessageParamUnion {
+	content := msg.Content
+	// String content → single user message.
+	if content.Text != "" {
+		return []openai.ChatCompletionMessageParamUnion{{
+			OfUser: &openai.ChatCompletionUserMessageParam{
+				Content: openai.StringOrUserRoleContentUnion{Value: content.Text},
+				Role:    openai.ChatMessageRoleUser,
+			},
+		}}
+	}
+	// Array content: collect text and tool_result blocks; emit one user message for text, then one tool message per tool_result.
+	var textParts []string
+	var toolResults []*anthropic.ToolResultBlockParam
+	for _, block := range content.Array {
+		if block.Text != nil {
+			textParts = append(textParts, block.Text.Text)
+		}
+		if block.ToolResult != nil {
+			toolResults = append(toolResults, block.ToolResult)
+		}
+	}
+	var out []openai.ChatCompletionMessageParamUnion
+	if len(textParts) > 0 {
+		out = append(out, openai.ChatCompletionMessageParamUnion{
+			OfUser: &openai.ChatCompletionUserMessageParam{
+				Content: openai.StringOrUserRoleContentUnion{Value: strings.Join(textParts, "")},
+				Role:    openai.ChatMessageRoleUser,
+			},
+		})
+	}
+	for _, tr := range toolResults {
+		toolContent := anthropicToolResultContentToOpenAIString(tr)
+		out = append(out, openai.ChatCompletionMessageParamUnion{
+			OfTool: &openai.ChatCompletionToolMessageParam{
+				Content:    openai.ContentUnion{Value: toolContent},
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: tr.ToolUseID,
+			},
+		})
+	}
+	// If we had no text and no tool results (e.g. only unsupported blocks), emit a single user message with empty content to keep order.
+	if len(out) == 0 {
+		out = append(out, openai.ChatCompletionMessageParamUnion{
+			OfUser: &openai.ChatCompletionUserMessageParam{
+				Content: openai.StringOrUserRoleContentUnion{Value: ""},
+				Role:    openai.ChatMessageRoleUser,
+			},
+		})
+	}
+	return out
+}
+
+// anthropicToolResultContentToOpenAIString renders Anthropic tool_result content as a single string for OpenAI tool message content.
+func anthropicToolResultContentToOpenAIString(tr *anthropic.ToolResultBlockParam) string {
+	var parts []string
+	for _, c := range tr.Content {
+		if c.Text != "" {
+			parts = append(parts, c.Text)
+		}
+	}
+	return strings.Join(parts, "")
+}
+
+// anthropicAssistantMessageToOpenAI converts one Anthropic assistant message to OpenAI format.
+// Assistant content can include text and tool_use blocks; tool_use becomes tool_calls.
+func anthropicAssistantMessageToOpenAI(msg anthropic.MessageParam) []openai.ChatCompletionMessageParamUnion {
+	content := msg.Content
+	// String content → single assistant message with no tool_calls.
+	if content.Text != "" {
+		return []openai.ChatCompletionMessageParamUnion{{
+			OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+				Content: openai.StringOrAssistantRoleContentUnion{Value: content.Text},
+				Role:    openai.ChatMessageRoleAssistant,
+			},
+		}}
+	}
+	// Array content: collect text and tool_use blocks.
+	var textParts []string
+	var toolUseBlocks []*anthropic.ToolUseBlockParam
+	for _, block := range content.Array {
+		if block.Text != nil {
+			textParts = append(textParts, block.Text.Text)
+		}
+		if block.ToolUse != nil {
+			toolUseBlocks = append(toolUseBlocks, block.ToolUse)
+		}
+	}
+	assistantText := strings.Join(textParts, "")
+	toolCalls := anthropicToolUseBlocksToOpenAI(toolUseBlocks)
+	return []openai.ChatCompletionMessageParamUnion{{
+		OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+			Content:   openai.StringOrAssistantRoleContentUnion{Value: assistantText},
+			Role:      openai.ChatMessageRoleAssistant,
+			ToolCalls: toolCalls,
+		},
+	}}
+}
+
+// anthropicToolUseBlocksToOpenAI converts Anthropic tool_use blocks to OpenAI tool_calls.
+func anthropicToolUseBlocksToOpenAI(blocks []*anthropic.ToolUseBlockParam) []openai.ChatCompletionMessageToolCallParam {
+	if len(blocks) == 0 {
+		return nil
+	}
+	out := make([]openai.ChatCompletionMessageToolCallParam, 0, len(blocks))
+	for _, b := range blocks {
+		arguments := ""
+		if len(b.Input) > 0 {
+			if raw, err := json.Marshal(b.Input); err == nil {
+				arguments = string(raw)
+			}
+		}
+		out = append(out, openai.ChatCompletionMessageToolCallParam{
+			ID: ptr.To(b.ID),
+			Function: openai.ChatCompletionMessageToolCallFunctionParam{
+				Name:      b.Name,
+				Arguments: arguments,
+			},
+			Type: openai.ChatCompletionMessageToolCallTypeFunction,
+		})
+	}
+	return out
 }
 
 // anthropicSystemPromptToText extracts a plain string from an Anthropic system prompt,

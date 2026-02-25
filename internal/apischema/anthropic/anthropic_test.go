@@ -286,6 +286,38 @@ func TestContentBlockParam_UnmarshalJSON(t *testing.T) {
 			jsonStr: `{"type": "unknown", "text": "Hello"}`,
 			want:    ContentBlockParam{},
 		},
+		{
+			name:    "tool_use block with object input",
+			jsonStr: `{"type": "tool_use", "id": "call_1", "name": "get_weather", "input": {"location": "Tokyo"}}`,
+			want: ContentBlockParam{ToolUse: &ToolUseBlockParam{
+				Type: "tool_use", ID: "call_1", Name: "get_weather",
+				Input: FlexibleInput{"location": "Tokyo"},
+			}},
+		},
+		{
+			name:    "tool_use block with string input (lenient)",
+			jsonStr: `{"type": "tool_use", "id": "call_2", "name": "web_search", "input": "{\"query\":\"nrp.ai\"}"}`,
+			want: ContentBlockParam{ToolUse: &ToolUseBlockParam{
+				Type: "tool_use", ID: "call_2", Name: "web_search",
+				Input: FlexibleInput{"query": "nrp.ai"},
+			}},
+		},
+		{
+			name:    "tool_result block with array content",
+			jsonStr: `{"type": "tool_result", "tool_use_id": "call_1", "content": [{"type": "text", "text": "72°F"}]}`,
+			want: ContentBlockParam{ToolResult: &ToolResultBlockParam{
+				Type: "tool_result", ToolUseID: "call_1",
+				Content: ToolResultContentArray{{Type: "text", Text: "72°F"}},
+			}},
+		},
+		{
+			name:    "tool_result block with string content (lenient)",
+			jsonStr: `{"type": "tool_result", "tool_use_id": "call_2", "content": "Search result here"}`,
+			want: ContentBlockParam{ToolResult: &ToolResultBlockParam{
+				Type: "tool_result", ToolUseID: "call_2",
+				Content: ToolResultContentArray{{Type: "text", Text: "Search result here"}},
+			}},
+		},
 	}
 
 	for _, tt := range tests {
@@ -298,6 +330,99 @@ func TestContentBlockParam_UnmarshalJSON(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tt.want, cbp)
+		})
+	}
+}
+
+// TestFlexibleInput_UnmarshalJSON mirrors the lenient parsing pattern used in internal/apischema/openai.
+func TestFlexibleInput_UnmarshalJSON(t *testing.T) {
+	successCases := []struct {
+		name     string
+		data     []byte
+		expected FlexibleInput
+	}{
+		{
+			name:     "object",
+			data:     []byte(`{"location":"Tokyo","unit":"celsius"}`),
+			expected: FlexibleInput{"location": "Tokyo", "unit": "celsius"},
+		},
+		{
+			name:     "empty object",
+			data:     []byte(`{}`),
+			expected: FlexibleInput{},
+		},
+		{
+			name:     "JSON string",
+			data:     []byte(`"{\"query\":\"nrp.ai\"}"`),
+			expected: FlexibleInput{"query": "nrp.ai"},
+		},
+	}
+	for _, tc := range successCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var f FlexibleInput
+			err := f.UnmarshalJSON(tc.data)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, f)
+		})
+	}
+	errorCases := []struct {
+		name string
+		data []byte
+	}{
+		{name: "invalid JSON", data: []byte(`not json`)},
+		{name: "string not valid JSON object", data: []byte(`"plain string"`)},
+	}
+	for _, tc := range errorCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var f FlexibleInput
+			err := f.UnmarshalJSON(tc.data)
+			require.Error(t, err)
+		})
+	}
+}
+
+// TestToolResultContentArray_UnmarshalJSON mirrors the lenient parsing pattern used in internal/apischema/openai.
+func TestToolResultContentArray_UnmarshalJSON(t *testing.T) {
+	successCases := []struct {
+		name     string
+		data     []byte
+		expected ToolResultContentArray
+	}{
+		{
+			name:     "array",
+			data:     []byte(`[{"type":"text","text":"72°F"}]`),
+			expected: ToolResultContentArray{{Type: "text", Text: "72°F"}},
+		},
+		{
+			name:     "empty array",
+			data:     []byte(`[]`),
+			expected: ToolResultContentArray{},
+		},
+		{
+			name:     "single string",
+			data:     []byte(`"Search result here"`),
+			expected: ToolResultContentArray{{Type: "text", Text: "Search result here"}},
+		},
+	}
+	for _, tc := range successCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var tca ToolResultContentArray
+			err := tca.UnmarshalJSON(tc.data)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, tca)
+		})
+	}
+	errorCases := []struct {
+		name string
+		data []byte
+	}{
+		{name: "invalid JSON", data: []byte(`{`)},
+	}
+	for _, tc := range errorCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var tca ToolResultContentArray
+			err := tca.UnmarshalJSON(tc.data)
+			require.Error(t, err)
 		})
 	}
 }
