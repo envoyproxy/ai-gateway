@@ -2263,30 +2263,54 @@ data: {"candidates":[{"content":{"parts":[{"text":"world"}]}}]}
 	}
 }
 
-// TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody_ReturnsEmptyBodyNotNil
-// verifies that when streaming chunks cannot be parsed (incomplete data is buffered),
-// ResponseBody returns an empty slice []byte{} instead of nil. This prevents Envoy from
-// passing through the original Gemini-format body unchanged in STREAMED mode.
-func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody_ReturnsEmptyBodyNotNil(t *testing.T) {
+// TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody_IncompleteFirstChunkThenComplete
+// tests that incomplete first chunks return []byte{} (not nil) and subsequent chunks are properly translated.
+// Simulates large thoughtSignature being split across TCP packets in Gemini reasoning models.
+func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody_IncompleteFirstChunkThenComplete(t *testing.T) {
 	translator := &openAIToGCPVertexAITranslatorV1ChatCompletion{
 		stream:       true,
-		requestModel: "gemini-2.0-flash",
+		requestModel: "gemini-2.5-pro",
 	}
 
-	// Simulate incomplete/unparseable data that will be buffered (e.g., TCP packet boundary)
-	incompleteChunk := []byte(`data: {"candidates":[{"content":{"parts":[{"text":"Hello`)
+	// Large signature (~832 chars) simulating real thoughtSignature from reasoning models.
+	largeSignature := strings.Repeat("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", 13)
 
-	_, newBody, _, _, err := translator.ResponseBody(
-		nil,
-		bytes.NewReader(incompleteChunk),
-		false, // not end of stream
-		nil,   // no span
-	)
+	// First chunk: incomplete JSON cut mid-signature (simulates TCP packet boundary).
+	firstChunkData := `data: {"candidates":[{"content":{"parts":[{"text":"Let me analyze this problem.","thought":true},{"text":"The answer is 42.","thoughtSignature":"` + largeSignature[:400]
+	firstChunk := []byte(firstChunkData)
+
+	_, newBody1, _, _, err := translator.ResponseBody(nil, bytes.NewReader(firstChunk), false, nil)
 
 	require.NoError(t, err)
-	// newBody must be empty slice, NOT nil - nil causes Envoy to pass through original body
-	require.NotNil(t, newBody, "newBody must not be nil - nil causes Envoy to pass through original body in STREAMED mode")
-	require.Empty(t, newBody, "newBody should be empty when no complete chunks are parsed")
+	// newBody1 must be []byte{}, not nil. Nil causes Envoy to pass through original Gemini format.
+	require.NotNil(t, newBody1, "newBody must not be nil")
+	require.Empty(t, newBody1, "newBody should be empty when data is buffered")
+
+	// Second chunk: rest of signature + JSON closing + usage metadata.
+	secondChunkData := largeSignature[400:] + `"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":20,"totalTokenCount":30}}
+
+`
+	secondChunk := []byte(secondChunkData)
+
+	_, newBody2, tokenUsage, _, err := translator.ResponseBody(nil, bytes.NewReader(secondChunk), false, nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, newBody2)
+	require.NotEmpty(t, newBody2, "should contain translated OpenAI format")
+
+	bodyStr := string(newBody2)
+	require.Contains(t, bodyStr, "data: {", "should be SSE format")
+	require.Contains(t, bodyStr, `"object":"chat.completion.chunk"`, "should be OpenAI format")
+	require.Contains(t, bodyStr, "reasoning_content", "thought should translate to reasoning_content")
+	require.Contains(t, bodyStr, "The answer is 42", "response text should be present")
+	require.Contains(t, bodyStr, "signature", "thoughtSignature should translate to signature")
+
+	inputTokens, ok := tokenUsage.InputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(10), inputTokens)
+	outputTokens, ok := tokenUsage.OutputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(20), outputTokens)
 }
 
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseError(t *testing.T) {
