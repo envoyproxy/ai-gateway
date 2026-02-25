@@ -153,6 +153,13 @@ test: ## Run the unit tests for the codebase. This doesn't run the integration t
 	  echo "Running unit tests for packages: $$PKGS"; \
 	  go test $(GO_TEST_ARGS) $$PKGS
 
+# Run all tests except e2e (no kind/Docker/Ollama required). Use after pulling a PR to verify without full e2e env.
+.PHONY: test-no-e2e
+test-no-e2e: ## Run all tests except e2e* (controller, crdcel, data-plane, data-plane-mcp included; e2e/e2e-aigw/e2e-inference-extension/e2e-namespaced/e2e-upgrade excluded).
+	@PKGS=$$(go list ./... | grep -v -E '/tests/e2e$$|/tests/e2e-aigw|/tests/e2e-inference-extension|/tests/e2e-namespaced|/tests/e2e-upgrade'); \
+	  echo "Running tests (no e2e) for $$(echo $$PKGS | wc -w) packages"; \
+	  go test $(GO_TEST_ARGS) $$PKGS
+
 # This runs the unit tests for the codebase with coverage check.
 .PHONY: test-coverage
 test-coverage: ## Run the unit tests for the codebase with coverage check.
