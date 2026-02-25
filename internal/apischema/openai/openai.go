@@ -2163,6 +2163,9 @@ type ResponseRequest struct {
 	// [Learn more](https://platform.openai.com/docs/guides/background).
 	Background *bool `json:"background,omitempty"`
 
+	// Context management configuration for this request.
+	ContextManagement []ResponseContextManagement `json:"context_management,omitzero"`
+
 	// A system (or developer) message inserted into the model's context.
 	//
 	// When using along with `previous_response_id`, the instructions from a previous
@@ -2366,6 +2369,14 @@ type ResponseRequest struct {
 	//     [function calling](https://platform.openai.com/docs/guides/function-calling).
 	//     You can also use custom tools to call your own code.
 	Tools []ResponseToolUnion `json:"tools,omitzero"`
+}
+
+// Context management configuration
+type ResponseContextManagement struct {
+	// The context management entry type.
+	Type string `json:"type"`
+	// Token threshold at which compaction should be triggered for this entry.
+	CompactThreshold int64 `json:"compact_threshold,omitzero"`
 }
 
 // Configuration options for a text response from the model. Can be plain text or
