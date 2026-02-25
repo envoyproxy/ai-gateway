@@ -809,14 +809,12 @@ func (c *GatewayController) checkPodHasSideCar(pod *corev1.Pod, needMCP bool) bo
 func isRolloutInProgress(deployments []appsv1.Deployment, daemonSets []appsv1.DaemonSet) bool {
 	for i := range deployments {
 		dep := &deployments[i]
-		desired := ptr.Deref(dep.Spec.Replicas, int32(1))
-		if desired == 0 {
-			continue
-		}
 		if dep.Status.ObservedGeneration < dep.Generation {
 			return true
 		}
-		if dep.Status.UpdatedReplicas < desired || dep.Status.AvailableReplicas < desired {
+		// Rollout is still converging while total pods exceed updated pods, which
+		// indicates at least one old-template pod is still present.
+		if dep.Status.Replicas > dep.Status.UpdatedReplicas {
 			return true
 		}
 	}
@@ -829,8 +827,9 @@ func isRolloutInProgress(deployments []appsv1.Deployment, daemonSets []appsv1.Da
 		if ds.Status.ObservedGeneration < ds.Generation {
 			return true
 		}
-		desired := ds.Status.DesiredNumberScheduled
-		if ds.Status.UpdatedNumberScheduled < desired || ds.Status.NumberAvailable < desired {
+		// Rollout is still converging while total pods exceed updated pods, which
+		// indicates at least one old-template pod is still present.
+		if ds.Status.CurrentNumberScheduled > ds.Status.UpdatedNumberScheduled {
 			return true
 		}
 	}

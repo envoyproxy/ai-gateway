@@ -1162,22 +1162,6 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 			expected    bool
 		}{
 			{
-				name: "zero replicas is ignored",
-				deployments: []appsv1.Deployment{
-					{
-						ObjectMeta: metav1.ObjectMeta{Name: "dep", Generation: 2},
-						Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(0))},
-						Status: appsv1.DeploymentStatus{
-							ObservedGeneration: 1,
-							UpdatedReplicas:    0,
-							ReadyReplicas:      0,
-							AvailableReplicas:  0,
-						},
-					},
-				},
-				expected: false,
-			},
-			{
 				name: "observed generation behind generation requeues",
 				deployments: []appsv1.Deployment{
 					{
@@ -1194,32 +1178,17 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 				expected: true,
 			},
 			{
-				name: "updated replicas below desired requeues",
+				name: "old-template pods still present requeues",
 				deployments: []appsv1.Deployment{
 					{
 						ObjectMeta: metav1.ObjectMeta{Name: "dep", Generation: 1},
 						Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(2))},
 						Status: appsv1.DeploymentStatus{
 							ObservedGeneration: 1,
-							UpdatedReplicas:    1,
-							ReadyReplicas:      2,
-							AvailableReplicas:  2,
-						},
-					},
-				},
-				expected: true,
-			},
-			{
-				name: "available replicas below desired requeues",
-				deployments: []appsv1.Deployment{
-					{
-						ObjectMeta: metav1.ObjectMeta{Name: "dep", Generation: 1},
-						Spec:       appsv1.DeploymentSpec{Replicas: ptr.To(int32(2))},
-						Status: appsv1.DeploymentStatus{
-							ObservedGeneration: 1,
+							Replicas:           3,
 							UpdatedReplicas:    2,
-							ReadyReplicas:      2,
-							AvailableReplicas:  1,
+							ReadyReplicas:      3,
+							AvailableReplicas:  3,
 						},
 					},
 				},
@@ -1597,32 +1566,17 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 				expected: true,
 			},
 			{
-				name: "updated number scheduled below desired requeues",
+				name: "old-template daemonset pods still present requeues",
 				daemonSets: []appsv1.DaemonSet{
 					{
 						ObjectMeta: metav1.ObjectMeta{Name: "ds", Generation: 1},
 						Status: appsv1.DaemonSetStatus{
 							ObservedGeneration:     1,
 							DesiredNumberScheduled: 2,
-							UpdatedNumberScheduled: 1,
-							NumberReady:            2,
-							NumberAvailable:        2,
-						},
-					},
-				},
-				expected: true,
-			},
-			{
-				name: "number available below desired requeues",
-				daemonSets: []appsv1.DaemonSet{
-					{
-						ObjectMeta: metav1.ObjectMeta{Name: "ds", Generation: 1},
-						Status: appsv1.DaemonSetStatus{
-							ObservedGeneration:     1,
-							DesiredNumberScheduled: 2,
+							CurrentNumberScheduled: 3,
 							UpdatedNumberScheduled: 2,
-							NumberReady:            2,
-							NumberAvailable:        1,
+							NumberReady:            3,
+							NumberAvailable:        3,
 						},
 					},
 				},
