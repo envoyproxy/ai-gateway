@@ -160,8 +160,11 @@ func (a *anthropicToOpenAIV1ChatCompletionTranslator) responseBodyStreaming(body
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to read stream body: %w", err)
 	}
 
-	// Copy processed stream from streamState buffer
-	var out []byte
+	// Initialize out as a non-nil empty slice so that if no Anthropic events are emitted
+	// (e.g., for finish_reason-only chunks or [DONE]), we still return a non-nil newBody.
+	// A non-nil empty body tells Envoy to replace the chunk with nothing, suppressing the
+	// raw upstream bytes instead of passing them through unchanged.
+	out := make([]byte, 0)
 	if err = a.streamState.processBuffer(&out, endOfStream); err != nil {
 		return nil, nil, tokenUsage, responseModel, err
 	}
@@ -170,10 +173,8 @@ func (a *anthropicToOpenAIV1ChatCompletionTranslator) responseBodyStreaming(body
 	responseModel = cmp.Or(a.streamState.model, a.requestModel)
 	tokenUsage = a.streamState.tokenUsage
 
-	// Update body with new processed stream bytes
-	if len(out) > 0 {
-		newBody = out
-	}
+	// Always return newBody (even if empty) to suppress the original upstream chunk.
+	newBody = out
 	return
 }
 

@@ -258,6 +258,101 @@ func openAIFinishReasonToAnthropic(reason openai.ChatCompletionChoicesFinishReas
 
 // The following are helpers that convert an OpenAI Stream to an Anthropic Stream (SSE conversion)
 
+// The following structs are used to produce deterministic JSON for Anthropic SSE events.
+// Using typed structs (instead of map[string]any) ensures sonic serializes fields in
+// declaration order, making the output stable across runs.
+
+type sseMessageStart struct {
+	Type    string         `json:"type"`
+	Message sseMessageBody `json:"message"`
+}
+
+type sseMessageBody struct {
+	ID           string          `json:"id"`
+	Type         string          `json:"type"`
+	Role         string          `json:"role"`
+	Content      []any           `json:"content"`
+	Model        string          `json:"model"`
+	StopReason   any             `json:"stop_reason"`
+	StopSequence any             `json:"stop_sequence"`
+	Usage        sseMessageUsage `json:"usage"`
+}
+
+type sseMessageUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+}
+
+type sseContentBlockStartText struct {
+	Type         string       `json:"type"`
+	Index        int          `json:"index"`
+	ContentBlock sseTextBlock `json:"content_block"`
+}
+
+type sseTextBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+type sseContentBlockStartTool struct {
+	Type         string       `json:"type"`
+	Index        int          `json:"index"`
+	ContentBlock sseToolBlock `json:"content_block"`
+}
+
+type sseToolBlock struct {
+	Type  string         `json:"type"`
+	ID    string         `json:"id"`
+	Name  string         `json:"name"`
+	Input map[string]any `json:"input"`
+}
+
+type sseContentBlockDeltaText struct {
+	Type  string       `json:"type"`
+	Index int          `json:"index"`
+	Delta sseTextDelta `json:"delta"`
+}
+
+type sseTextDelta struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+type sseContentBlockDeltaTool struct {
+	Type  string            `json:"type"`
+	Index int               `json:"index"`
+	Delta sseInputJSONDelta `json:"delta"`
+}
+
+type sseInputJSONDelta struct {
+	Type        string `json:"type"`
+	PartialJSON string `json:"partial_json"`
+}
+
+type sseContentBlockStop struct {
+	Type  string `json:"type"`
+	Index int    `json:"index"`
+}
+
+type sseMessageDelta struct {
+	Type  string              `json:"type"`
+	Delta sseMessageDeltaBody `json:"delta"`
+	Usage sseOutputUsage      `json:"usage"`
+}
+
+type sseMessageDeltaBody struct {
+	StopReason   string `json:"stop_reason"`
+	StopSequence any    `json:"stop_sequence"`
+}
+
+type sseOutputUsage struct {
+	OutputTokens int `json:"output_tokens"`
+}
+
+type sseMessageStop struct {
+	Type string `json:"type"`
+}
+
 // openAIStreamToAnthropicState tracks the state for converting OpenAI SSE chunks to Anthropic SSE events.
 type openAIStreamToAnthropicState struct {
 	buffer         bytes.Buffer
@@ -415,18 +510,18 @@ func (s *openAIStreamToAnthropicState) handleChunk(chunk *openai.ChatCompletionR
 // emitMessageStart emits the Anthropic message_start SSE event.
 func (s *openAIStreamToAnthropicState) emitMessageStart(out *[]byte) error {
 	s.messageStarted = true
-	payload := map[string]any{
-		"type": "message_start",
-		"message": map[string]any{
-			"id":            s.messageID,
-			"type":          "message",
-			"role":          "assistant",
-			"content":       []any{},
-			"model":         cmp.Or(s.model, s.requestModel),
-			"stop_reason":   nil,
-			"stop_sequence": nil,
+	payload := sseMessageStart{
+		Type: "message_start",
+		Message: sseMessageBody{
+			ID:           s.messageID,
+			Type:         "message",
+			Role:         "assistant",
+			Content:      []any{},
+			Model:        cmp.Or(s.model, s.requestModel),
+			StopReason:   nil,
+			StopSequence: nil,
 			// Input tokens are not yet known; they will be reported in message_delta.usage.
-			"usage": map[string]int{"input_tokens": 0, "output_tokens": 0},
+			Usage: sseMessageUsage{InputTokens: 0, OutputTokens: 0},
 		},
 	}
 	data, err := json.Marshal(payload)
@@ -440,13 +535,10 @@ func (s *openAIStreamToAnthropicState) emitMessageStart(out *[]byte) error {
 // emitTextBlockStart emits a content_block_start SSE event for a text content block.
 func (s *openAIStreamToAnthropicState) emitTextBlockStart(out *[]byte) error {
 	s.hasOpenBlock = true
-	payload := map[string]any{
-		"type":  "content_block_start",
-		"index": s.blockIndex,
-		"content_block": map[string]any{
-			"type": "text",
-			"text": "",
-		},
+	payload := sseContentBlockStartText{
+		Type:         "content_block_start",
+		Index:        s.blockIndex,
+		ContentBlock: sseTextBlock{Type: "text", Text: ""},
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -458,13 +550,10 @@ func (s *openAIStreamToAnthropicState) emitTextBlockStart(out *[]byte) error {
 
 // emitTextDelta emits a content_block_delta SSE event with text content.
 func (s *openAIStreamToAnthropicState) emitTextDelta(text string, out *[]byte) error {
-	payload := map[string]any{
-		"type":  "content_block_delta",
-		"index": s.blockIndex,
-		"delta": map[string]any{
-			"type": "text_delta",
-			"text": text,
-		},
+	payload := sseContentBlockDeltaText{
+		Type:  "content_block_delta",
+		Index: s.blockIndex,
+		Delta: sseTextDelta{Type: "text_delta", Text: text},
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -499,14 +588,14 @@ func (s *openAIStreamToAnthropicState) handleToolCallDelta(tc *openai.ChatComple
 		s.hasOpenBlock = true
 
 		// Emit content_block_start for the new tool_use block.
-		payload := map[string]any{
-			"type":  "content_block_start",
-			"index": tool.blockIdx,
-			"content_block": map[string]any{
-				"type":  "tool_use",
-				"id":    id,
-				"name":  tc.Function.Name,
-				"input": map[string]any{},
+		payload := sseContentBlockStartTool{
+			Type:  "content_block_start",
+			Index: tool.blockIdx,
+			ContentBlock: sseToolBlock{
+				Type:  "tool_use",
+				ID:    id,
+				Name:  tc.Function.Name,
+				Input: map[string]any{},
 			},
 		}
 		data, err := json.Marshal(payload)
@@ -518,13 +607,10 @@ func (s *openAIStreamToAnthropicState) handleToolCallDelta(tc *openai.ChatComple
 
 	// Emit input_json_delta for accumulated tool arguments.
 	if tc.Function.Arguments != "" {
-		payload := map[string]any{
-			"type":  "content_block_delta",
-			"index": tool.blockIdx,
-			"delta": map[string]any{
-				"type":         "input_json_delta",
-				"partial_json": tc.Function.Arguments,
-			},
+		payload := sseContentBlockDeltaTool{
+			Type:  "content_block_delta",
+			Index: tool.blockIdx,
+			Delta: sseInputJSONDelta{Type: "input_json_delta", PartialJSON: tc.Function.Arguments},
 		}
 		data, err := json.Marshal(payload)
 		if err != nil {
@@ -538,10 +624,7 @@ func (s *openAIStreamToAnthropicState) handleToolCallDelta(tc *openai.ChatComple
 
 // emitContentBlockStop emits a content_block_stop SSE event for the current block.
 func (s *openAIStreamToAnthropicState) emitContentBlockStop(out *[]byte) error {
-	payload := map[string]any{
-		"type":  "content_block_stop",
-		"index": s.blockIndex,
-	}
+	payload := sseContentBlockStop{Type: "content_block_stop", Index: s.blockIndex}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal content_block_stop: %w", err)
@@ -571,15 +654,10 @@ func (s *openAIStreamToAnthropicState) emitClosingEvents(out *[]byte) error {
 	}
 
 	// Emit message_delta with stop_reason and final output token count.
-	msgDeltaPayload := map[string]any{
-		"type": "message_delta",
-		"delta": map[string]any{
-			"stop_reason":   stopReason,
-			"stop_sequence": nil,
-		},
-		"usage": map[string]int{
-			"output_tokens": s.outputTokens,
-		},
+	msgDeltaPayload := sseMessageDelta{
+		Type:  "message_delta",
+		Delta: sseMessageDeltaBody{StopReason: stopReason, StopSequence: nil},
+		Usage: sseOutputUsage{OutputTokens: s.outputTokens},
 	}
 	data, err := json.Marshal(msgDeltaPayload)
 	if err != nil {
@@ -588,8 +666,7 @@ func (s *openAIStreamToAnthropicState) emitClosingEvents(out *[]byte) error {
 	appendAnthropicSSEEvent(out, "message_delta", data)
 
 	// Emit message_stop.
-	msgStopPayload := map[string]any{"type": "message_stop"}
-	data, err = json.Marshal(msgStopPayload)
+	data, err = json.Marshal(sseMessageStop{Type: "message_stop"})
 	if err != nil {
 		return fmt.Errorf("failed to marshal message_stop: %w", err)
 	}
