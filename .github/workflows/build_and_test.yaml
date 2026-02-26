@@ -57,7 +57,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v5
         with:
           cache: false
           go-version-file: go.mod
@@ -93,7 +93,7 @@ jobs:
           - macos-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v5
         with:
           cache: false
           go-version-file: go.mod
@@ -119,7 +119,7 @@ jobs:
           - macos-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v5
         with:
           cache: false
           go-version-file: go.mod
@@ -145,7 +145,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v5
         with:
           cache: false
           go-version-file: go.mod
@@ -181,7 +181,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v5
         with:
           cache: false
           go-version-file: go.mod
@@ -216,7 +216,7 @@ jobs:
             envoy_gateway_version: v1.6.2
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v5
         with:
           cache: false
           go-version-file: go.mod
@@ -254,7 +254,7 @@ jobs:
           - v1.32.8
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v5
         with:
           cache: false
           go-version-file: go.mod
@@ -284,7 +284,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v5
         with:
           cache: false
           go-version-file: go.mod
@@ -312,7 +312,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v5
         with:
           cache: false
           go-version-file: go.mod
@@ -338,7 +338,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v5
         with:
           cache: false
           go-version-file: go.mod
