@@ -12,11 +12,11 @@ import (
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	ratelimitfilterv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ratelimit/v3"
-	upstream_codecv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/upstream_codec/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
-	httpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -67,158 +67,109 @@ func TestBuildQuotaRateLimitCluster(t *testing.T) {
 	require.Equal(t, uint32(defaultQuotaRateLimitServicePort), ep.Address.GetSocketAddress().GetPortValue())
 }
 
-func TestInjectQuotaRateLimitFilterIntoCluster(t *testing.T) {
-	t.Run("nil TypedExtensionProtocolOptions returns nil", func(t *testing.T) {
-		cluster := &clusterv3.Cluster{Name: "test"}
-		err := injectQuotaRateLimitFilterIntoCluster(cluster, translator.QuotaDomain)
-		require.NoError(t, err)
-	})
-
-	t.Run("missing HttpProtocolOptions key returns nil", func(t *testing.T) {
-		cluster := &clusterv3.Cluster{
-			Name:                          "test",
-			TypedExtensionProtocolOptions: map[string]*anypb.Any{},
+func TestInjectQuotaRateLimitFilterIntoListeners(t *testing.T) {
+	buildTestListener := func(t *testing.T, httpFilters []*httpconnectionmanagerv3.HttpFilter) *listenerv3.Listener {
+		t.Helper()
+		hcm := &httpconnectionmanagerv3.HttpConnectionManager{
+			HttpFilters: httpFilters,
 		}
-		err := injectQuotaRateLimitFilterIntoCluster(cluster, translator.QuotaDomain)
-		require.NoError(t, err)
-	})
-
-	t.Run("invalid HttpProtocolOptions returns error", func(t *testing.T) {
-		cluster := &clusterv3.Cluster{
-			Name: "test",
-			TypedExtensionProtocolOptions: map[string]*anypb.Any{
-				httpProtocolOptionsKey: {
-					TypeUrl: "type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions",
-					Value:   []byte("invalid"),
+		hcmAny := mustToAny(t, hcm)
+		return &listenerv3.Listener{
+			Name: "test-listener",
+			FilterChains: []*listenerv3.FilterChain{
+				{
+					Filters: []*listenerv3.Filter{
+						{
+							Name:       wellknown.HTTPConnectionManager,
+							ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: hcmAny},
+						},
+					},
 				},
 			},
 		}
-		err := injectQuotaRateLimitFilterIntoCluster(cluster, translator.QuotaDomain)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "failed to unmarshal HttpProtocolOptions")
+	}
+
+	getHCMFilters := func(t *testing.T, ln *listenerv3.Listener) []*httpconnectionmanagerv3.HttpFilter {
+		t.Helper()
+		hcm, _, err := findHCM(ln.FilterChains[0])
+		require.NoError(t, err)
+		return hcm.HttpFilters
+	}
+
+	t.Run("injects filter before router", func(t *testing.T) {
+		ln := buildTestListener(t, []*httpconnectionmanagerv3.HttpFilter{
+			{Name: "envoy.filters.http.health_check"},
+			{Name: wellknown.Router},
+		})
+
+		require.NoError(t, injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
+
+		filters := getHCMFilters(t, ln)
+		require.Len(t, filters, 3)
+		require.Equal(t, "envoy.filters.http.health_check", filters[0].Name)
+		require.Equal(t, quotaRateLimitFilterName, filters[1].Name)
+		require.True(t, filters[1].Disabled)
+		require.Equal(t, wellknown.Router, filters[2].Name)
+
+		// Verify the injected filter config.
+		rlCfg := &ratelimitfilterv3.RateLimit{}
+		require.NoError(t, filters[1].GetTypedConfig().UnmarshalTo(rlCfg))
+		require.Equal(t, translator.QuotaDomain, rlCfg.Domain)
+		require.Equal(t, quotaRateLimitClusterName, rlCfg.RateLimitService.GrpcService.GetEnvoyGrpc().ClusterName)
+		require.Equal(t, corev3.ApiVersion_V3, rlCfg.RateLimitService.TransportApiVersion)
 	})
 
 	t.Run("filter already exists is a no-op", func(t *testing.T) {
 		existingFilter, err := buildQuotaRateLimitFilter(translator.QuotaDomain)
 		require.NoError(t, err)
 
-		po := &httpv3.HttpProtocolOptions{
-			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
-				existingFilter,
-				{
-					Name: "envoy.filters.http.upstream_codec",
-					ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-						TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
-					},
-				},
-			},
-		}
-		cluster := &clusterv3.Cluster{
-			Name: "test",
-			TypedExtensionProtocolOptions: map[string]*anypb.Any{
-				httpProtocolOptionsKey: mustToAny(t, po),
-			},
-		}
+		ln := buildTestListener(t, []*httpconnectionmanagerv3.HttpFilter{
+			existingFilter,
+			{Name: wellknown.Router},
+		})
 
-		err = injectQuotaRateLimitFilterIntoCluster(cluster, translator.QuotaDomain)
-		require.NoError(t, err)
+		require.NoError(t, injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
 
-		// Unmarshal and verify still only 2 filters.
-		updatedPO := &httpv3.HttpProtocolOptions{}
-		require.NoError(t, cluster.TypedExtensionProtocolOptions[httpProtocolOptionsKey].UnmarshalTo(updatedPO))
-		require.Len(t, updatedPO.HttpFilters, 2)
+		filters := getHCMFilters(t, ln)
+		require.Len(t, filters, 2)
 	})
 
-	t.Run("injects filter before last filter", func(t *testing.T) {
-		po := &httpv3.HttpProtocolOptions{
-			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
-				{Name: "envoy.filters.http.header_mutation"},
-				{
-					Name: "envoy.filters.http.upstream_codec",
-					ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-						TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
-					},
-				},
-			},
-		}
-		cluster := &clusterv3.Cluster{
-			Name: "test",
-			TypedExtensionProtocolOptions: map[string]*anypb.Any{
-				httpProtocolOptionsKey: mustToAny(t, po),
-			},
-		}
+	t.Run("appends if no router filter found", func(t *testing.T) {
+		ln := buildTestListener(t, []*httpconnectionmanagerv3.HttpFilter{
+			{Name: "envoy.filters.http.health_check"},
+		})
 
-		err := injectQuotaRateLimitFilterIntoCluster(cluster, translator.QuotaDomain)
-		require.NoError(t, err)
+		require.NoError(t, injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
 
-		updatedPO := &httpv3.HttpProtocolOptions{}
-		require.NoError(t, cluster.TypedExtensionProtocolOptions[httpProtocolOptionsKey].UnmarshalTo(updatedPO))
-		require.Len(t, updatedPO.HttpFilters, 3)
-
-		// Verify ordering: header_mutation, ratelimit, upstream_codec.
-		require.Equal(t, "envoy.filters.http.header_mutation", updatedPO.HttpFilters[0].Name)
-		require.Equal(t, quotaRateLimitFilterName, updatedPO.HttpFilters[1].Name)
-		require.Equal(t, "envoy.filters.http.upstream_codec", updatedPO.HttpFilters[2].Name)
-
-		// Verify the injected filter config.
-		rlCfg := &ratelimitfilterv3.RateLimit{}
-		require.NoError(t, updatedPO.HttpFilters[1].GetTypedConfig().UnmarshalTo(rlCfg))
-		require.Equal(t, translator.QuotaDomain, rlCfg.Domain)
-		require.Equal(t, quotaRateLimitClusterName, rlCfg.RateLimitService.GrpcService.GetEnvoyGrpc().ClusterName)
-		require.Equal(t, corev3.ApiVersion_V3, rlCfg.RateLimitService.TransportApiVersion)
-	})
-
-	t.Run("injects into empty filter list", func(t *testing.T) {
-		po := &httpv3.HttpProtocolOptions{
-			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{},
-		}
-		cluster := &clusterv3.Cluster{
-			Name: "test",
-			TypedExtensionProtocolOptions: map[string]*anypb.Any{
-				httpProtocolOptionsKey: mustToAny(t, po),
-			},
-		}
-
-		err := injectQuotaRateLimitFilterIntoCluster(cluster, translator.QuotaDomain)
-		require.NoError(t, err)
-
-		updatedPO := &httpv3.HttpProtocolOptions{}
-		require.NoError(t, cluster.TypedExtensionProtocolOptions[httpProtocolOptionsKey].UnmarshalTo(updatedPO))
-		require.Len(t, updatedPO.HttpFilters, 1)
-		require.Equal(t, quotaRateLimitFilterName, updatedPO.HttpFilters[0].Name)
+		filters := getHCMFilters(t, ln)
+		require.Len(t, filters, 2)
+		require.Equal(t, quotaRateLimitFilterName, filters[1].Name)
 	})
 
 	t.Run("idempotent on repeated calls", func(t *testing.T) {
-		po := &httpv3.HttpProtocolOptions{
-			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
+		ln := buildTestListener(t, []*httpconnectionmanagerv3.HttpFilter{
+			{Name: wellknown.Router},
+		})
+
+		require.NoError(t, injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
+		require.Len(t, getHCMFilters(t, ln), 2)
+
+		require.NoError(t, injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
+		require.Len(t, getHCMFilters(t, ln), 2)
+	})
+
+	t.Run("skips listeners without HCM", func(t *testing.T) {
+		ln := &listenerv3.Listener{
+			Name: "non-hcm",
+			FilterChains: []*listenerv3.FilterChain{
 				{
-					Name: "envoy.filters.http.upstream_codec",
-					ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-						TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
+					Filters: []*listenerv3.Filter{
+						{Name: "envoy.filters.network.tcp_proxy"},
 					},
 				},
 			},
 		}
-		cluster := &clusterv3.Cluster{
-			Name: "test",
-			TypedExtensionProtocolOptions: map[string]*anypb.Any{
-				httpProtocolOptionsKey: mustToAny(t, po),
-			},
-		}
-
-		// First injection.
-		require.NoError(t, injectQuotaRateLimitFilterIntoCluster(cluster, translator.QuotaDomain))
-
-		updatedPO := &httpv3.HttpProtocolOptions{}
-		require.NoError(t, cluster.TypedExtensionProtocolOptions[httpProtocolOptionsKey].UnmarshalTo(updatedPO))
-		require.Len(t, updatedPO.HttpFilters, 2)
-
-		// Second injection should be a no-op.
-		require.NoError(t, injectQuotaRateLimitFilterIntoCluster(cluster, translator.QuotaDomain))
-
-		updatedPO2 := &httpv3.HttpProtocolOptions{}
-		require.NoError(t, cluster.TypedExtensionProtocolOptions[httpProtocolOptionsKey].UnmarshalTo(updatedPO2))
-		require.Len(t, updatedPO2.HttpFilters, 2)
+		require.NoError(t, injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
 	})
 }
 
@@ -234,8 +185,10 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 		require.Equal(t, translator.QuotaDomain, perRoute.Domain)
-		require.Len(t, perRoute.RateLimits, 1)
+		// 1 request-time entry + 1 stream-done entry = 2 base entries.
+		require.Len(t, perRoute.RateLimits, 2)
 		require.Len(t, perRoute.RateLimits[0].Actions, 2)
+		require.Len(t, perRoute.RateLimits[1].Actions, 2)
 	})
 
 	t.Run("backend_name action reads from dynamic metadata", func(t *testing.T) {
@@ -398,13 +351,20 @@ func TestEnableQuotaRateLimitOnRoute_DescriptorChain(t *testing.T) {
 	perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 	require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-	// Should have exactly one RateLimit with two actions forming the (backend_name, model_name) chain.
-	require.Len(t, perRoute.RateLimits, 1)
-	actions := perRoute.RateLimits[0].Actions
-	require.Len(t, actions, 2)
+	// Should have 2 RateLimits: request-time check + stream-done count.
+	require.Len(t, perRoute.RateLimits, 2)
 
-	verifyMetadataAction(t, actions[0], translator.BackendNameDescriptorKey, "backend_name")
-	verifyMetadataAction(t, actions[1], translator.ModelNameDescriptorKey, "model_name_override")
+	// Request-time entry: same descriptor chain, no HitsAddend/ApplyOnStreamDone.
+	reqTimeActions := perRoute.RateLimits[0].Actions
+	require.Len(t, reqTimeActions, 2)
+	verifyMetadataAction(t, reqTimeActions[0], translator.BackendNameDescriptorKey, "backend_name")
+	verifyMetadataAction(t, reqTimeActions[1], translator.ModelNameDescriptorKey, "model_name_override")
+
+	// Stream-done entry: same descriptor chain, with HitsAddend and ApplyOnStreamDone.
+	streamDoneActions := perRoute.RateLimits[1].Actions
+	require.Len(t, streamDoneActions, 2)
+	verifyMetadataAction(t, streamDoneActions[0], translator.BackendNameDescriptorKey, "backend_name")
+	verifyMetadataAction(t, streamDoneActions[1], translator.ModelNameDescriptorKey, "model_name_override")
 }
 
 func TestQuotaHitsAddend(t *testing.T) {
@@ -415,21 +375,26 @@ func TestQuotaHitsAddend(t *testing.T) {
 }
 
 func TestEnableQuotaRateLimitOnRoute_HitsAddend(t *testing.T) {
-	t.Run("base entry has HitsAddend and ApplyOnStreamDone", func(t *testing.T) {
+	t.Run("request-time entry has no HitsAddend, stream-done entry has HitsAddend", func(t *testing.T) {
 		route := &routev3.Route{Name: "test-route"}
 		require.NoError(t, enableQuotaRateLimitOnRoute(route, nil))
 
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		require.Len(t, perRoute.RateLimits, 1)
-		rl := perRoute.RateLimits[0]
-		require.NotNil(t, rl.HitsAddend)
-		require.Equal(t, fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s)%%", aigv1a1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey), rl.HitsAddend.Format)
-		require.True(t, rl.ApplyOnStreamDone)
+		require.Len(t, perRoute.RateLimits, 2)
+		// Request-time entry: no HitsAddend, no ApplyOnStreamDone.
+		reqTime := perRoute.RateLimits[0]
+		require.Nil(t, reqTime.HitsAddend)
+		require.False(t, reqTime.ApplyOnStreamDone)
+		// Stream-done entry: has HitsAddend and ApplyOnStreamDone.
+		streamDone := perRoute.RateLimits[1]
+		require.NotNil(t, streamDone.HitsAddend)
+		require.Equal(t, fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s)%%", aigv1a1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey), streamDone.HitsAddend.Format)
+		require.True(t, streamDone.ApplyOnStreamDone)
 	})
 
-	t.Run("bucket rule entries have HitsAddend and ApplyOnStreamDone", func(t *testing.T) {
+	t.Run("bucket rule entries have request-time and stream-done pairs", func(t *testing.T) {
 		route := &routev3.Route{Name: "test-route"}
 		policies := []aigv1a1.QuotaPolicy{
 			{
@@ -454,53 +419,65 @@ func TestEnableQuotaRateLimitOnRoute_HitsAddend(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// 1 base + 1 bucket rule + 1 default = 3 entries, all with HitsAddend.
-		require.Len(t, perRoute.RateLimits, 3)
-		for i, rl := range perRoute.RateLimits {
+		// 2 base (req-time + stream-done) + 2 bucket rule (req-time + stream-done) + 2 default (req-time + stream-done) = 6 entries.
+		require.Len(t, perRoute.RateLimits, 6)
+		// Odd-indexed entries (1, 3, 5) are stream-done with HitsAddend.
+		for i := 1; i < len(perRoute.RateLimits); i += 2 {
+			rl := perRoute.RateLimits[i]
 			require.NotNil(t, rl.HitsAddend, "RateLimit entry %d should have HitsAddend", i)
 			require.NotEmpty(t, rl.HitsAddend.Format, "RateLimit entry %d should have HitsAddend format", i)
 			require.True(t, rl.ApplyOnStreamDone, "RateLimit entry %d should have ApplyOnStreamDone", i)
 		}
+		// Even-indexed entries (0, 2, 4) are request-time without HitsAddend.
+		for i := 0; i < len(perRoute.RateLimits); i += 2 {
+			rl := perRoute.RateLimits[i]
+			require.Nil(t, rl.HitsAddend, "RateLimit entry %d should not have HitsAddend", i)
+			require.False(t, rl.ApplyOnStreamDone, "RateLimit entry %d should not have ApplyOnStreamDone", i)
+		}
 	})
 }
 
-func TestInjectQuotaRateLimitFilterIntoCluster_FullFilterChain(t *testing.T) {
-	// Simulate the typical upstream filter chain: ext_proc, header_mutation, upstream_codec.
-	// After injection, the ratelimit filter should be inserted before upstream_codec.
-	po := &httpv3.HttpProtocolOptions{
+func TestInjectQuotaRateLimitFilterIntoListeners_FullHCMChain(t *testing.T) {
+	// Simulate the typical HCM filter chain: health_check, header_to_metadata, router.
+	// After injection, the ratelimit filter should be inserted before the router.
+	hcm := &httpconnectionmanagerv3.HttpConnectionManager{
 		HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
-			{Name: "envoy.filters.http.ext_proc/aigateway"},
-			{Name: "envoy.filters.http.header_mutation"},
+			{Name: "envoy.filters.http.health_check"},
+			{Name: "envoy.filters.http.header_to_metadata"},
+			{Name: wellknown.Router},
+		},
+	}
+	hcmAny := mustToAny(t, hcm)
+	ln := &listenerv3.Listener{
+		Name: "test-listener",
+		FilterChains: []*listenerv3.FilterChain{
 			{
-				Name: "envoy.filters.http.upstream_codec",
-				ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-					TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
+				Filters: []*listenerv3.Filter{
+					{
+						Name:       wellknown.HTTPConnectionManager,
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: hcmAny},
+					},
 				},
 			},
 		},
 	}
-	cluster := &clusterv3.Cluster{
-		Name: "httproute/default/myroute/rule/0",
-		TypedExtensionProtocolOptions: map[string]*anypb.Any{
-			httpProtocolOptionsKey: mustToAny(t, po),
-		},
-	}
 
-	require.NoError(t, injectQuotaRateLimitFilterIntoCluster(cluster, translator.QuotaDomain))
+	require.NoError(t, injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
 
-	updatedPO := &httpv3.HttpProtocolOptions{}
-	require.NoError(t, cluster.TypedExtensionProtocolOptions[httpProtocolOptionsKey].UnmarshalTo(updatedPO))
-	require.Len(t, updatedPO.HttpFilters, 4)
+	updatedHCM, _, err := findHCM(ln.FilterChains[0])
+	require.NoError(t, err)
+	require.Len(t, updatedHCM.HttpFilters, 4)
 
-	// Verify ordering: ext_proc, header_mutation, ratelimit, upstream_codec.
-	require.Equal(t, "envoy.filters.http.ext_proc/aigateway", updatedPO.HttpFilters[0].Name)
-	require.Equal(t, "envoy.filters.http.header_mutation", updatedPO.HttpFilters[1].Name)
-	require.Equal(t, quotaRateLimitFilterName, updatedPO.HttpFilters[2].Name)
-	require.Equal(t, "envoy.filters.http.upstream_codec", updatedPO.HttpFilters[3].Name)
+	// Verify ordering: health_check, header_to_metadata, ratelimit, router.
+	require.Equal(t, "envoy.filters.http.health_check", updatedHCM.HttpFilters[0].Name)
+	require.Equal(t, "envoy.filters.http.header_to_metadata", updatedHCM.HttpFilters[1].Name)
+	require.Equal(t, quotaRateLimitFilterName, updatedHCM.HttpFilters[2].Name)
+	require.True(t, updatedHCM.HttpFilters[2].Disabled)
+	require.Equal(t, wellknown.Router, updatedHCM.HttpFilters[3].Name)
 
 	// Verify the ratelimit filter's internal configuration.
 	rlCfg := &ratelimitfilterv3.RateLimit{}
-	require.NoError(t, updatedPO.HttpFilters[2].GetTypedConfig().UnmarshalTo(rlCfg))
+	require.NoError(t, updatedHCM.HttpFilters[2].GetTypedConfig().UnmarshalTo(rlCfg))
 	require.Equal(t, translator.QuotaDomain, rlCfg.Domain)
 	require.Equal(t, quotaRateLimitClusterName, rlCfg.RateLimitService.GrpcService.GetEnvoyGrpc().ClusterName)
 	require.Equal(t, corev3.ApiVersion_V3, rlCfg.RateLimitService.TransportApiVersion)
@@ -548,11 +525,11 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// 1 base + 1 bucket rule + 1 default bucket = 3 RateLimit entries.
-		require.Len(t, perRoute.RateLimits, 3)
+		// 2 base + 2 bucket rule + 2 default bucket = 6 RateLimit entries (request-time + stream-done pairs).
+		require.Len(t, perRoute.RateLimits, 6)
 
-		// Bucket rule entry: base (2 actions) + HeaderValueMatch (1 action) = 3 actions.
-		ruleEntry := perRoute.RateLimits[1]
+		// Bucket rule request-time entry (index 2): base (2 actions) + HeaderValueMatch (1 action) = 3 actions.
+		ruleEntry := perRoute.RateLimits[2]
 		require.Len(t, ruleEntry.Actions, 3)
 
 		hvm := ruleEntry.Actions[2].GetHeaderValueMatch()
@@ -565,8 +542,8 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		require.Equal(t, "x-api-key", hvm.Headers[0].Name)
 		require.Equal(t, "premium", hvm.Headers[0].GetStringMatch().GetExact())
 
-		// Default bucket entry: base (2 actions) + GenericKey (1 action) = 3 actions.
-		defaultEntry := perRoute.RateLimits[2]
+		// Default bucket request-time entry (index 4): base (2 actions) + GenericKey (1 action) = 3 actions.
+		defaultEntry := perRoute.RateLimits[4]
 		require.Len(t, defaultEntry.Actions, 3)
 		gk := defaultEntry.Actions[2].GetGenericKey()
 		require.NotNil(t, gk)
@@ -609,10 +586,11 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// 1 base + 1 bucket rule = 2 entries (no default bucket).
-		require.Len(t, perRoute.RateLimits, 2)
+		// 2 base + 2 bucket rule = 4 entries (no default bucket).
+		require.Len(t, perRoute.RateLimits, 4)
 
-		ruleEntry := perRoute.RateLimits[1]
+		// Request-time bucket rule entry (index 2).
+		ruleEntry := perRoute.RateLimits[2]
 		require.Len(t, ruleEntry.Actions, 3)
 
 		rh := ruleEntry.Actions[2].GetRequestHeaders()
@@ -659,7 +637,8 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		ruleEntry := perRoute.RateLimits[1]
+		// Request-time bucket rule entry (index 2).
+		ruleEntry := perRoute.RateLimits[2]
 		hvm := ruleEntry.Actions[2].GetHeaderValueMatch()
 		require.NotNil(t, hvm)
 		require.False(t, hvm.ExpectMatch.Value)
@@ -692,7 +671,8 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		ruleEntry := perRoute.RateLimits[1]
+		// Request-time bucket rule entry (index 2).
+		ruleEntry := perRoute.RateLimits[2]
 		gk := ruleEntry.Actions[2].GetGenericKey()
 		require.NotNil(t, gk)
 		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 0, 0), gk.DescriptorKey)
@@ -736,8 +716,8 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// Bucket rule entry: 2 base + 2 header actions = 4 actions.
-		ruleEntry := perRoute.RateLimits[1]
+		// Request-time bucket rule entry (index 2): 2 base + 2 header actions = 4 actions.
+		ruleEntry := perRoute.RateLimits[2]
 		require.Len(t, ruleEntry.Actions, 4)
 
 		hvm0 := ruleEntry.Actions[2].GetHeaderValueMatch()
@@ -773,8 +753,8 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// Only the base entry, no bucket rule entries.
-		require.Len(t, perRoute.RateLimits, 1)
+		// Only the 2 base entries (request-time + stream-done), no bucket rule entries.
+		require.Len(t, perRoute.RateLimits, 2)
 	})
 
 	t.Run("multiple policies with bucket rules aggregate entries", func(t *testing.T) {
@@ -820,8 +800,8 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// 1 base + (1 bucket + 1 default) for gpt-4 + 1 bucket for claude = 4
-		require.Len(t, perRoute.RateLimits, 4)
+		// 2 base + (2 bucket + 2 default) for gpt-4 + 2 bucket for claude = 8
+		require.Len(t, perRoute.RateLimits, 8)
 	})
 
 	t.Run("nil model name in per-model quota is skipped", func(t *testing.T) {
@@ -848,8 +828,8 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// Only the base entry since nil model name is skipped.
-		require.Len(t, perRoute.RateLimits, 1)
+		// Only the 2 base entries since nil model name is skipped.
+		require.Len(t, perRoute.RateLimits, 2)
 	})
 
 	t.Run("multiple bucket rules for same model", func(t *testing.T) {
@@ -892,27 +872,27 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// 1 base + 2 bucket rules + 1 default = 4
-		require.Len(t, perRoute.RateLimits, 4)
+		// 2 base + 2*2 bucket rules + 2 default = 8
+		require.Len(t, perRoute.RateLimits, 8)
 
-		// Verify bucket rule 0
-		r0 := perRoute.RateLimits[1]
+		// Verify bucket rule 0 (request-time entry at index 2)
+		r0 := perRoute.RateLimits[2]
 		require.Len(t, r0.Actions, 3) // 2 base + 1 header
 		hvm0 := r0.Actions[2].GetHeaderValueMatch()
 		require.NotNil(t, hvm0)
 		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 0, 0), hvm0.DescriptorKey)
 		require.Equal(t, "x-api-key", hvm0.Headers[0].Name)
 
-		// Verify bucket rule 1
-		r1 := perRoute.RateLimits[2]
+		// Verify bucket rule 1 (request-time entry at index 4)
+		r1 := perRoute.RateLimits[4]
 		require.Len(t, r1.Actions, 3)
 		hvm1 := r1.Actions[2].GetHeaderValueMatch()
 		require.NotNil(t, hvm1)
 		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 1, 0), hvm1.DescriptorKey)
 		require.Equal(t, "x-tier", hvm1.Headers[0].Name)
 
-		// Verify default bucket
-		dfl := perRoute.RateLimits[3]
+		// Verify default bucket (request-time entry at index 6)
+		dfl := perRoute.RateLimits[6]
 		require.Len(t, dfl.Actions, 3)
 		gk := dfl.Actions[2].GetGenericKey()
 		require.NotNil(t, gk)
@@ -926,8 +906,8 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// Only the base entry.
-		require.Len(t, perRoute.RateLimits, 1)
+		// 2 base entries (request-time + stream-done).
+		require.Len(t, perRoute.RateLimits, 2)
 		require.Len(t, perRoute.RateLimits[0].Actions, 2)
 	})
 
@@ -938,7 +918,7 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		require.Len(t, perRoute.RateLimits, 1)
+		require.Len(t, perRoute.RateLimits, 2)
 	})
 }
 
@@ -1018,11 +998,16 @@ func TestBuildBucketRuleLimitEntries(t *testing.T) {
 			},
 		}
 		entries := buildBucketRuleLimitEntries("gpt-4", quota)
-		require.Len(t, entries, 1)
-		// 2 base actions + 1 GenericKey (no client selectors)
+		require.Len(t, entries, 2) // 1 request-time + 1 stream-done
+		// Request-time entry: 2 base actions + 1 GenericKey (no client selectors)
 		require.Len(t, entries[0].Actions, 3)
 		gk := entries[0].Actions[2].GetGenericKey()
 		require.NotNil(t, gk)
+		require.Nil(t, entries[0].HitsAddend)
+		require.False(t, entries[0].ApplyOnStreamDone)
+		// Stream-done entry
+		require.NotNil(t, entries[1].HitsAddend)
+		require.True(t, entries[1].ApplyOnStreamDone)
 	})
 
 	t.Run("single bucket rule with default", func(t *testing.T) {
@@ -1033,10 +1018,10 @@ func TestBuildBucketRuleLimitEntries(t *testing.T) {
 			DefaultBucket: aigv1a1.QuotaValue{Limit: 10, Duration: "1m"},
 		}
 		entries := buildBucketRuleLimitEntries("gpt-4", quota)
-		require.Len(t, entries, 2) // 1 rule + 1 default
+		require.Len(t, entries, 4) // 2 rule (req-time + stream-done) + 2 default (req-time + stream-done)
 
-		// Default bucket entry
-		defaultEntry := entries[1]
+		// Default bucket request-time entry (index 2)
+		defaultEntry := entries[2]
 		require.Len(t, defaultEntry.Actions, 3)
 		gk := defaultEntry.Actions[2].GetGenericKey()
 		require.NotNil(t, gk)
@@ -1052,7 +1037,7 @@ func TestBuildBucketRuleLimitEntries(t *testing.T) {
 			DefaultBucket: aigv1a1.QuotaValue{Limit: 0},
 		}
 		entries := buildBucketRuleLimitEntries("gpt-4", quota)
-		require.Len(t, entries, 1)
+		require.Len(t, entries, 2) // 1 request-time + 1 stream-done (no default)
 	})
 
 	t.Run("bucket rule with client selectors", func(t *testing.T) {
@@ -1071,8 +1056,8 @@ func TestBuildBucketRuleLimitEntries(t *testing.T) {
 			},
 		}
 		entries := buildBucketRuleLimitEntries("gpt-4", quota)
-		require.Len(t, entries, 1)
-		// 2 base + 1 header match = 3 actions
+		require.Len(t, entries, 2) // 1 request-time + 1 stream-done
+		// Request-time entry: 2 base + 1 header match = 3 actions
 		require.Len(t, entries[0].Actions, 3)
 		hvm := entries[0].Actions[2].GetHeaderValueMatch()
 		require.NotNil(t, hvm)
@@ -1085,7 +1070,7 @@ func TestBuildBucketRuleLimitEntries(t *testing.T) {
 			},
 		}
 		entries := buildBucketRuleLimitEntries("gpt-4", quota)
-		require.Len(t, entries, 1)
+		require.Len(t, entries, 2) // request-time + stream-done
 
 		verifyMetadataAction(t, entries[0].Actions[0], translator.BackendNameDescriptorKey, "backend_name")
 		verifyMetadataAction(t, entries[0].Actions[1], translator.ModelNameDescriptorKey, "model_name_override")
@@ -1816,12 +1801,42 @@ func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
 }
 
 func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
+	// buildTestListenerWithRDS creates a listener whose HCM references the given
+	// route config name via RDS, so findListenerRouteConfigs can resolve it.
+	buildTestListenerWithRDS := func(t *testing.T, routeConfigName string) *listenerv3.Listener {
+		t.Helper()
+		hcm := &httpconnectionmanagerv3.HttpConnectionManager{
+			RouteSpecifier: &httpconnectionmanagerv3.HttpConnectionManager_Rds{
+				Rds: &httpconnectionmanagerv3.Rds{
+					RouteConfigName: routeConfigName,
+				},
+			},
+			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
+				{Name: wellknown.Router},
+			},
+		}
+		hcmAny := mustToAny(t, hcm)
+		return &listenerv3.Listener{
+			Name: "test-listener",
+			FilterChains: []*listenerv3.FilterChain{
+				{
+					Filters: []*listenerv3.Filter{
+						{
+							Name:       wellknown.HTTPConnectionManager,
+							ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: hcmAny},
+						},
+					},
+				},
+			},
+		}
+	}
+
 	t.Run("no quota policies returns clusters unchanged", func(t *testing.T) {
 		s := newTestServerWithRoute(t, nil)
 		clusters := []*clusterv3.Cluster{{Name: "existing"}}
 		routes := []*routev3.RouteConfiguration{}
 
-		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, routes)
+		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, nil, routes)
 		require.NoError(t, err)
 		require.Len(t, result, 1)
 		require.Equal(t, "existing", result[0].Name)
@@ -1837,12 +1852,12 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 		s := newTestServerWithRoute(t, nil, qp)
 		clusters := []*clusterv3.Cluster{{Name: "existing"}}
 
-		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, nil)
+		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, result, 1)
 	})
 
-	t.Run("adds rate limit cluster and injects filter", func(t *testing.T) {
+	t.Run("adds rate limit cluster and injects filter into listener", func(t *testing.T) {
 		aigwRoute := &aigv1a1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
 			Spec: aigv1a1.AIGatewayRouteSpec{
@@ -1865,26 +1880,13 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 		}
 		s := newTestServerWithRoute(t, aigwRoute, qp)
 
-		// Build cluster with HttpProtocolOptions so the filter can be injected.
-		po := &httpv3.HttpProtocolOptions{
-			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
-				{
-					Name: "envoy.filters.http.upstream_codec",
-					ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-						TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
-					},
-				},
-			},
-		}
 		cluster := &clusterv3.Cluster{
 			Name: "httproute/default/myroute/rule/0",
-			TypedExtensionProtocolOptions: map[string]*anypb.Any{
-				httpProtocolOptionsKey: mustToAny(t, po),
-			},
 		}
 		clusters := []*clusterv3.Cluster{cluster}
 
 		routeConfig := &routev3.RouteConfiguration{
+			Name: "test-route-config",
 			VirtualHosts: []*routev3.VirtualHost{
 				{
 					Routes: []*routev3.Route{
@@ -1905,22 +1907,81 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 		}
 		routes := []*routev3.RouteConfiguration{routeConfig}
 
-		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, routes)
+		ln := buildTestListenerWithRDS(t, "test-route-config")
+		listeners := []*listenerv3.Listener{ln}
+
+		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, listeners, routes)
 		require.NoError(t, err)
 
 		// Should have original cluster + rate limit cluster.
 		require.Len(t, result, 2)
 		require.Equal(t, quotaRateLimitClusterName, result[1].Name)
 
-		// Verify filter was injected into the original cluster.
-		updatedPO := &httpv3.HttpProtocolOptions{}
-		require.NoError(t, result[0].TypedExtensionProtocolOptions[httpProtocolOptionsKey].UnmarshalTo(updatedPO))
-		require.Len(t, updatedPO.HttpFilters, 2)
-		require.Equal(t, quotaRateLimitFilterName, updatedPO.HttpFilters[0].Name)
+		// Verify filter was injected into the listener HCM.
+		updatedHCM, _, err := findHCM(ln.FilterChains[0])
+		require.NoError(t, err)
+		require.Len(t, updatedHCM.HttpFilters, 2)
+		require.Equal(t, quotaRateLimitFilterName, updatedHCM.HttpFilters[0].Name)
+		require.True(t, updatedHCM.HttpFilters[0].Disabled)
 
 		// Verify route was patched.
 		patchedRoute := routeConfig.VirtualHosts[0].Routes[0]
 		require.Contains(t, patchedRoute.TypedPerFilterConfig, quotaRateLimitFilterName)
+	})
+
+	t.Run("does not inject filter into listener without quota routes", func(t *testing.T) {
+		aigwRoute := &aigv1a1.AIGatewayRoute{
+			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
+			Spec: aigv1a1.AIGatewayRouteSpec{
+				Rules: []aigv1a1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+							{Name: "backend-a"},
+						},
+					},
+				},
+			},
+		}
+		qp := aigv1a1.QuotaPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: "qp1", Namespace: "default"},
+			Spec: aigv1a1.QuotaPolicySpec{
+				TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+					{Name: "backend-a"},
+				},
+			},
+		}
+		s := newTestServerWithRoute(t, aigwRoute, qp)
+
+		// Listener references a route config that has no quota backends.
+		ln := buildTestListenerWithRDS(t, "unrelated-route-config")
+		routeConfig := &routev3.RouteConfiguration{
+			Name: "unrelated-route-config",
+			VirtualHosts: []*routev3.VirtualHost{
+				{
+					Routes: []*routev3.Route{
+						{
+							Name: "no-quota-route",
+							Action: &routev3.Route_Route{
+								Route: &routev3.RouteAction{
+									ClusterSpecifier: &routev3.RouteAction_Cluster{
+										Cluster: "httproute/other/otherroute/rule/0",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		_, err := s.maybeInjectQuotaRateLimiting(t.Context(), nil, []*listenerv3.Listener{ln}, []*routev3.RouteConfiguration{routeConfig})
+		require.NoError(t, err)
+
+		// Verify filter was NOT injected into the listener.
+		updatedHCM, _, err := findHCM(ln.FilterChains[0])
+		require.NoError(t, err)
+		require.Len(t, updatedHCM.HttpFilters, 1)
+		require.Equal(t, wellknown.Router, updatedHCM.HttpFilters[0].Name)
 	})
 
 	t.Run("does not duplicate rate limit cluster", func(t *testing.T) {
@@ -1949,7 +2010,7 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 		existingRLCluster := buildQuotaRateLimitCluster()
 		clusters := []*clusterv3.Cluster{existingRLCluster}
 
-		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, nil)
+		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, nil, nil)
 		require.NoError(t, err)
 		// Should not add another rate limit cluster.
 		rlCount := 0
@@ -1959,56 +2020,6 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 			}
 		}
 		require.Equal(t, 1, rlCount)
-	})
-
-	t.Run("skips cluster without quota backend", func(t *testing.T) {
-		aigwRoute := &aigv1a1.AIGatewayRoute{
-			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
-					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
-							{Name: "backend-a"},
-						},
-					},
-				},
-			},
-		}
-		qp := aigv1a1.QuotaPolicy{
-			ObjectMeta: metav1.ObjectMeta{Name: "qp1", Namespace: "default"},
-			Spec: aigv1a1.QuotaPolicySpec{
-				TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
-					{Name: "backend-a"},
-				},
-			},
-		}
-		s := newTestServerWithRoute(t, aigwRoute, qp)
-
-		// Cluster that doesn't match any quota backend.
-		po := &httpv3.HttpProtocolOptions{
-			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
-				{
-					Name: "envoy.filters.http.upstream_codec",
-					ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-						TypedConfig: mustToAny(t, &upstream_codecv3.UpstreamCodec{}),
-					},
-				},
-			},
-		}
-		unrelatedCluster := &clusterv3.Cluster{
-			Name: "httproute/other/otherroute/rule/0",
-			TypedExtensionProtocolOptions: map[string]*anypb.Any{
-				httpProtocolOptionsKey: mustToAny(t, po),
-			},
-		}
-
-		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), []*clusterv3.Cluster{unrelatedCluster}, nil)
-		require.NoError(t, err)
-
-		// Filter should NOT have been injected into the unrelated cluster.
-		updatedPO := &httpv3.HttpProtocolOptions{}
-		require.NoError(t, result[0].TypedExtensionProtocolOptions[httpProtocolOptionsKey].UnmarshalTo(updatedPO))
-		require.Len(t, updatedPO.HttpFilters, 1) // only upstream_codec, no ratelimit filter added
 	})
 }
 
