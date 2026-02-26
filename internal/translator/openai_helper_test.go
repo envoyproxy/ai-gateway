@@ -165,15 +165,15 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 			Messages: []anthropic.MessageParam{
 				{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Get weather"}},
 			},
-			Tools: []anthropic.Tool{
-				{
+			Tools: []anthropic.ToolUnion{
+				{Tool: &anthropic.Tool{
 					Name:        "get_weather",
 					Description: "Retrieve current weather information",
 					InputSchema: anthropic.ToolInputSchema{
 						Type:     "object",
 						Required: []string{"location"},
 					},
-				},
+				}},
 			},
 		}
 		req := buildOpenAIChatCompletionRequest(body, "")
@@ -185,7 +185,7 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 	})
 
 	t.Run("no tools means tool choice not set even if body has it", func(t *testing.T) {
-		tc := anthropic.ToolChoice(map[string]any{"type": "auto"})
+		tc := anthropic.ToolChoice{Auto: &anthropic.ToolChoiceAuto{Type: "auto"}}
 		body := &anthropic.MessagesRequest{
 			Model:      "claude-3",
 			Messages:   []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
@@ -198,12 +198,10 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 
 	t.Run("tools with auto tool_choice", func(t *testing.T) {
 		body := &anthropic.MessagesRequest{
-			Model:    "claude-3",
-			Messages: []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
-			Tools:    []anthropic.Tool{{Name: "search", InputSchema: anthropic.ToolInputSchema{Type: "object"}}},
-			ToolChoice: ptr.To(anthropic.ToolChoice(map[string]any{
-				"type": "auto",
-			})),
+			Model:      "claude-3",
+			Messages:   []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
+			Tools:      []anthropic.ToolUnion{{Tool: &anthropic.Tool{Name: "search", InputSchema: anthropic.ToolInputSchema{Type: "object"}}}},
+			ToolChoice: ptr.To(anthropic.ToolChoice{Auto: &anthropic.ToolChoiceAuto{Type: "auto"}}),
 		}
 		req := buildOpenAIChatCompletionRequest(body, "")
 		require.NotNil(t, req.Tools)
@@ -296,12 +294,12 @@ func TestAnthropicToolsToOpenAI(t *testing.T) {
 	})
 
 	t.Run("empty tools returns nil", func(t *testing.T) {
-		assert.Nil(t, anthropicToolsToOpenAI([]anthropic.Tool{}))
+		assert.Nil(t, anthropicToolsToOpenAI([]anthropic.ToolUnion{}))
 	})
 
 	t.Run("single tool converted correctly", func(t *testing.T) {
-		tools := []anthropic.Tool{
-			{
+		tools := []anthropic.ToolUnion{
+			{Tool: &anthropic.Tool{
 				Name:        "search",
 				Description: "Search the web",
 				InputSchema: anthropic.ToolInputSchema{
@@ -309,7 +307,7 @@ func TestAnthropicToolsToOpenAI(t *testing.T) {
 					Properties: map[string]any{"query": map[string]any{"type": "string"}},
 					Required:   []string{"query"},
 				},
-			},
+			}},
 		}
 		result := anthropicToolsToOpenAI(tools)
 		require.Len(t, result, 1)
@@ -320,9 +318,9 @@ func TestAnthropicToolsToOpenAI(t *testing.T) {
 	})
 
 	t.Run("multiple tools all converted", func(t *testing.T) {
-		tools := []anthropic.Tool{
-			{Name: "tool1", InputSchema: anthropic.ToolInputSchema{Type: "object"}},
-			{Name: "tool2", InputSchema: anthropic.ToolInputSchema{Type: "object"}},
+		tools := []anthropic.ToolUnion{
+			{Tool: &anthropic.Tool{Name: "tool1", InputSchema: anthropic.ToolInputSchema{Type: "object"}}},
+			{Tool: &anthropic.Tool{Name: "tool2", InputSchema: anthropic.ToolInputSchema{Type: "object"}}},
 		}
 		result := anthropicToolsToOpenAI(tools)
 		require.Len(t, result, 2)
@@ -340,55 +338,43 @@ func TestAnthropicToolChoiceToOpenAI(t *testing.T) {
 		expectVal any
 	}{
 		{
-			name:      "nil tool choice returns nil",
-			tc:        nil,
+			name:      "zero value tool choice returns nil",
+			tc:        anthropic.ToolChoice{},
 			hasTools:  true,
 			expectNil: true,
 		},
 		{
 			name:      "no tools returns nil even with valid choice",
-			tc:        map[string]any{"type": "auto"},
+			tc:        anthropic.ToolChoice{Auto: &anthropic.ToolChoiceAuto{Type: "auto"}},
 			hasTools:  false,
 			expectNil: true,
 		},
 		{
 			name:      "auto maps to auto",
-			tc:        map[string]any{"type": "auto"},
+			tc:        anthropic.ToolChoice{Auto: &anthropic.ToolChoiceAuto{Type: "auto"}},
 			hasTools:  true,
 			expectVal: string(openai.ToolChoiceTypeAuto),
 		},
 		{
 			name:      "none maps to none",
-			tc:        map[string]any{"type": "none"},
+			tc:        anthropic.ToolChoice{None: &anthropic.ToolChoiceNone{Type: "none"}},
 			hasTools:  true,
 			expectVal: string(openai.ToolChoiceTypeNone),
 		},
 		{
 			name:      "any maps to required",
-			tc:        map[string]any{"type": "any"},
+			tc:        anthropic.ToolChoice{Any: &anthropic.ToolChoiceAny{Type: "any"}},
 			hasTools:  true,
 			expectVal: string(openai.ToolChoiceTypeRequired),
 		},
 		{
 			name:     "tool type with name maps to named tool choice",
-			tc:       map[string]any{"type": "tool", "name": "search"},
+			tc:       anthropic.ToolChoice{Tool: &anthropic.ToolChoiceTool{Type: "tool", Name: "search"}},
 			hasTools: true,
 			expectVal: openai.ChatCompletionNamedToolChoice{
 				Type:     openai.ToolTypeFunction,
 				Function: openai.ChatCompletionNamedToolChoiceFunction{Name: "search"},
 			},
-		},
-		{
-			name:      "unknown type returns nil",
-			tc:        map[string]any{"type": "unknown_type"},
-			hasTools:  true,
-			expectNil: true,
-		},
-		{
-			name:      "non-map type returns nil",
-			tc:        "auto",
-			hasTools:  true,
-			expectNil: true,
 		},
 	}
 	for _, tt := range tests {

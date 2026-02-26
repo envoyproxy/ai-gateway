@@ -28,8 +28,6 @@ func buildOpenAIChatCompletionRequest(body *anthropic.MessagesRequest, modelName
 	model := cmp.Or(modelNameOverride, body.Model)
 	messages := anthropicMessagesToOpenAI(body)
 	tools := anthropicToolsToOpenAI(body.Tools)
-	// body.ToolChoice is *anthropic.ToolChoice (pointer-to-interface). Dereference it before
-	// passing so the type assertion inside anthropicToolChoiceToOpenAI works correctly.
 	var toolChoiceVal anthropic.ToolChoice
 	if body.ToolChoice != nil {
 		toolChoiceVal = *body.ToolChoice
@@ -126,50 +124,50 @@ func anthropicContentToText(content anthropic.MessageContent) string {
 }
 
 // anthropicToolsToOpenAI converts Anthropic custom tools to OpenAI function tools.
-func anthropicToolsToOpenAI(tools []anthropic.Tool) []openai.Tool {
+// Only ToolUnion entries with a custom Tool variant are converted; built-in tool types are skipped.
+func anthropicToolsToOpenAI(tools []anthropic.ToolUnion) []openai.Tool {
 	if len(tools) == 0 {
 		return nil
 	}
 	result := make([]openai.Tool, 0, len(tools))
 	for _, t := range tools {
+		if t.Tool == nil {
+			continue
+		}
 		result = append(result, openai.Tool{
 			Type: openai.ToolTypeFunction,
 			Function: &openai.FunctionDefinition{
-				Name:        t.Name,
-				Description: t.Description,
-				Parameters:  t.InputSchema,
+				Name:        t.Tool.Name,
+				Description: t.Tool.Description,
+				Parameters:  t.Tool.InputSchema,
 			},
 		})
+	}
+	if len(result) == 0 {
+		return nil
 	}
 	return result
 }
 
 // anthropicToolChoiceToOpenAI converts an Anthropic tool_choice value to an OpenAI ChatCompletionToolChoiceUnion.
-// Returns nil if no tools are present or the tool choice type is unrecognized.
+// Returns nil if no tools are present or the tool choice has no variant set.
 func anthropicToolChoiceToOpenAI(tc anthropic.ToolChoice, hasTools bool) *openai.ChatCompletionToolChoiceUnion {
-	if tc == nil || !hasTools {
+	if !hasTools {
 		return nil
 	}
-	// TODO: Change this, typ, and name (type assertion) when ToolChoice is further defined
-	m, ok := tc.(map[string]any)
-	if !ok {
-		return nil
-	}
-	typ, _ := m["type"].(string)
-	switch typ {
-	case "auto":
+	switch {
+	case tc.Auto != nil:
 		return &openai.ChatCompletionToolChoiceUnion{Value: string(openai.ToolChoiceTypeAuto)}
-	case "none":
+	case tc.None != nil:
 		return &openai.ChatCompletionToolChoiceUnion{Value: string(openai.ToolChoiceTypeNone)}
-	case "any":
+	case tc.Any != nil:
 		// Anthropic "any" maps to OpenAI "required" (model must call a tool).
 		return &openai.ChatCompletionToolChoiceUnion{Value: string(openai.ToolChoiceTypeRequired)}
-	case "tool":
-		name, _ := m["name"].(string)
+	case tc.Tool != nil:
 		return &openai.ChatCompletionToolChoiceUnion{
 			Value: openai.ChatCompletionNamedToolChoice{
 				Type:     openai.ToolTypeFunction,
-				Function: openai.ChatCompletionNamedToolChoiceFunction{Name: name},
+				Function: openai.ChatCompletionNamedToolChoiceFunction{Name: tc.Tool.Name},
 			},
 		}
 	default:
