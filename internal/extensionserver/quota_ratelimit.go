@@ -15,13 +15,14 @@ import (
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
+	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	ratelimitv3 "github.com/envoyproxy/go-control-plane/envoy/config/ratelimit/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	ratelimitfilterv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ratelimit/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
-	httpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	matcherv3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	metadatav3 "github.com/envoyproxy/go-control-plane/envoy/type/metadata/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -34,26 +35,27 @@ import (
 const (
 	// quotaRateLimitClusterName is the Envoy cluster name for the AI Gateway rate limit service.
 	quotaRateLimitClusterName = "ai_gateway_ratelimit_cluster"
-	// quotaRateLimitFilterName is the name of the rate limit HTTP filter inserted for QuotaPolicy enforcement.
-	quotaRateLimitFilterName = "envoy.filters.http.ratelimit/ai-gateway-quota"
+	// quotaRateLimitFilterName is the name of the rate limit HTTP filter inserted into the
+	// HCM filter chain for QuotaPolicy enforcement. The filter is disabled by default and
+	// enabled per-route via TypedPerFilterConfig on routes with quota backends.
+	quotaRateLimitFilterName = "envoy.filters.http.ratelimit"
 	// defaultQuotaRateLimitServiceHost is the default hostname for the AI Gateway rate limit service.
 	defaultQuotaRateLimitServiceHost = "envoy-ai-gateway-ratelimit"
 	// defaultQuotaRateLimitServicePort is the default gRPC port for the rate limit service.
 	defaultQuotaRateLimitServicePort = 8081
-
-	httpProtocolOptionsKey = "envoy.extensions.upstreams.http.v3.HttpProtocolOptions"
 
 	// quotaCostMetadataKey is the dynamic metadata key where the ext_proc filter stores
 	// the computed request cost (token usage) for quota enforcement.
 	quotaCostMetadataKey = "llm_total_token"
 )
 
-// maybeInjectQuotaRateLimiting injects the rate limit HTTP filter into the upstream
-// filter chain of clusters whose backends have QuotaPolicies, adds the rate limit
-// service cluster, and patches routes with rate limit actions.
+// maybeInjectQuotaRateLimiting injects the rate limit HTTP filter into the HCM
+// filter chain of listeners that serve AI Gateway routes with quota backends,
+// adds the rate limit service cluster, and patches routes with rate limit actions.
 func (s *Server) maybeInjectQuotaRateLimiting(
 	ctx context.Context,
 	clusters []*clusterv3.Cluster,
+	listeners []*listenerv3.Listener,
 	routes []*routev3.RouteConfiguration,
 ) ([]*clusterv3.Cluster, error) {
 	// Find all QuotaPolicies and their target backends.
@@ -85,21 +87,35 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 		s.log.Info("Added quota rate limit cluster", "cluster", quotaRateLimitClusterName)
 	}
 
-	// Inject rate limit filter into the upstream filter chain of clusters
-	// whose backends have QuotaPolicies. All clusters share the same global domain;
-	// the backend_name descriptor disambiguates at runtime.
-	for _, cluster := range clusters {
-		if !s.clusterHasQuotaBackend(cluster.Name, quotaBackendPolicies) {
-			continue
-		}
-		if err := injectQuotaRateLimitFilterIntoCluster(cluster, translator.QuotaDomain); err != nil {
-			s.log.Error(err, "failed to inject quota rate limit filter into cluster", "cluster", cluster.Name)
+	// Build listener-to-route and route name-to-config mappings so we can
+	// selectively inject the filter only into listeners serving quota routes.
+	routeNameToConfig := make(map[string]*routev3.RouteConfiguration, len(routes))
+	for _, rc := range routes {
+		routeNameToConfig[rc.Name] = rc
+	}
+
+	// Patch routes and track which route configs had quota backends enabled.
+	quotaEnabledRoutes := make(map[string]bool)
+	for _, routeConfig := range routes {
+		if s.patchRoutesWithQuotaRateLimits(routeConfig, quotaBackendPolicies) {
+			quotaEnabledRoutes[routeConfig.Name] = true
 		}
 	}
 
-	// Add rate limit actions to routes targeting backends with QuotaPolicies.
-	for _, routeConfig := range routes {
-		s.patchRoutesWithQuotaRateLimits(routeConfig, quotaBackendPolicies)
+	// Only inject the rate limit filter into listeners whose routes have quota backends.
+	for _, ln := range listeners {
+		hasQuotaRoute := false
+		for _, rcName := range findListenerRouteConfigs(ln) {
+			if quotaEnabledRoutes[rcName] {
+				hasQuotaRoute = true
+				break
+			}
+		}
+		if hasQuotaRoute {
+			if err := injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain); err != nil {
+				s.log.Error(err, "failed to inject quota rate limit filter into listener", "listener", ln.Name)
+			}
+		}
 	}
 
 	return clusters, nil
@@ -165,57 +181,66 @@ func buildQuotaRateLimitCluster() *clusterv3.Cluster {
 	}
 }
 
-// injectQuotaRateLimitFilterIntoCluster adds the quota rate limit HTTP filter
-// into the upstream filter chain of a cluster. The filter is inserted after the
-// header_mutation filter and before the upstream_codec filter so it can read
-// dynamic metadata set by the ext_proc filter.
-func injectQuotaRateLimitFilterIntoCluster(cluster *clusterv3.Cluster, domain string) error {
-	if cluster.TypedExtensionProtocolOptions == nil {
-		return nil
+// injectQuotaRateLimitFilterIntoListener adds the quota rate limit HTTP filter
+// into the HCM filter chain of the given listener. The filter is inserted before the
+// router filter and is disabled by default. It is enabled per-route via
+// TypedPerFilterConfig on routes whose backends have QuotaPolicies.
+func injectQuotaRateLimitFilterIntoListener(ln *listenerv3.Listener, domain string) error {
+	filterChains := ln.GetFilterChains()
+	if ln.DefaultFilterChain != nil {
+		filterChains = append(filterChains, ln.DefaultFilterChain)
 	}
-	raw, ok := cluster.TypedExtensionProtocolOptions[httpProtocolOptionsKey]
-	if !ok {
-		return nil
-	}
-
-	po := &httpv3.HttpProtocolOptions{}
-	if err := raw.UnmarshalTo(po); err != nil {
-		return fmt.Errorf("failed to unmarshal HttpProtocolOptions: %w", err)
-	}
-
-	// Check if the filter already exists.
-	for _, f := range po.HttpFilters {
-		if f.Name == quotaRateLimitFilterName {
-			return nil
+	for _, currChain := range filterChains {
+		httpConManager, hcmIndex, err := findHCM(currChain)
+		if err != nil {
+			continue
 		}
-	}
 
-	// Build the rate limit filter with the domain set directly.
-	rateLimitFilter, err := buildQuotaRateLimitFilter(domain)
-	if err != nil {
-		return fmt.Errorf("failed to build quota rate limit filter: %w", err)
-	}
+		// Check if the filter already exists.
+		alreadyExists := false
+		for _, f := range httpConManager.HttpFilters {
+			if f.Name == quotaRateLimitFilterName {
+				alreadyExists = true
+				break
+			}
+		}
+		if alreadyExists {
+			continue
+		}
 
-	// Insert before the last filter (upstream_codec must always be last).
-	if len(po.HttpFilters) > 0 {
-		last := po.HttpFilters[len(po.HttpFilters)-1]
-		po.HttpFilters = po.HttpFilters[:len(po.HttpFilters)-1]
-		po.HttpFilters = append(po.HttpFilters, rateLimitFilter, last)
-	} else {
-		po.HttpFilters = append(po.HttpFilters, rateLimitFilter)
-	}
+		rateLimitFilter, err := buildQuotaRateLimitFilter(domain)
+		if err != nil {
+			return fmt.Errorf("failed to build quota rate limit filter: %w", err)
+		}
+		// Disabled by default; enabled per-route via TypedPerFilterConfig.
+		rateLimitFilter.Disabled = true
 
-	poAny, err := toAny(po)
-	if err != nil {
-		return fmt.Errorf("failed to marshal HttpProtocolOptions: %w", err)
+		// Insert before the router filter.
+		inserted := false
+		for i, f := range httpConManager.HttpFilters {
+			if f.Name == wellknown.Router {
+				httpConManager.HttpFilters = append(httpConManager.HttpFilters, nil)
+				copy(httpConManager.HttpFilters[i+1:], httpConManager.HttpFilters[i:])
+				httpConManager.HttpFilters[i] = rateLimitFilter
+				inserted = true
+				break
+			}
+		}
+		if !inserted {
+			httpConManager.HttpFilters = append(httpConManager.HttpFilters, rateLimitFilter)
+		}
+
+		hcmAny, err := toAny(httpConManager)
+		if err != nil {
+			return fmt.Errorf("failed to marshal HttpConnectionManager: %w", err)
+		}
+		currChain.Filters[hcmIndex].ConfigType = &listenerv3.Filter_TypedConfig{TypedConfig: hcmAny}
 	}
-	cluster.TypedExtensionProtocolOptions[httpProtocolOptionsKey] = poAny
 	return nil
 }
 
 // buildQuotaRateLimitFilter creates the envoy.filters.http.ratelimit filter
-// for QuotaPolicy enforcement in the upstream filter chain. The domain is set
-// directly since the filter is installed per-cluster.
+// for QuotaPolicy enforcement in the HCM filter chain.
 func buildQuotaRateLimitFilter(domain string) (*httpconnectionmanagerv3.HttpFilter, error) {
 	rateLimitCfg := &ratelimitfilterv3.RateLimit{
 		Domain: domain,
@@ -252,10 +277,12 @@ func buildQuotaRateLimitFilter(domain string) (*httpconnectionmanagerv3.HttpFilt
 // patchRoutesWithQuotaRateLimits adds rate limit actions to routes that target
 // AIServiceBackends with QuotaPolicies. The actions extract the backend name
 // from dynamic metadata and the model name from the x-ai-eg-model header.
+// Returns true if any route in the configuration was patched.
 func (s *Server) patchRoutesWithQuotaRateLimits(
 	routeConfig *routev3.RouteConfiguration,
 	quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy,
-) {
+) bool {
+	patched := false
 	for _, vh := range routeConfig.VirtualHosts {
 		for _, route := range vh.Routes {
 			if !s.isRouteGeneratedByAIGateway(route) {
@@ -279,8 +306,10 @@ func (s *Server) patchRoutesWithQuotaRateLimits(
 			if err := enableQuotaRateLimitOnRoute(route, policies); err != nil {
 				s.log.Error(err, "failed to enable quota rate limit on route", "route", route.Name)
 			}
+			patched = true
 		}
 	}
+	return patched
 }
 
 // routeHasQuotaBackend checks whether any backend referenced by the route has
@@ -439,15 +468,20 @@ func (s *Server) backendKeysForCluster(clusterName string) []string {
 // each bucket rule, extending the chain with header-matching actions that correspond to
 // the ClientSelectors defined in the QuotaPolicy.
 func enableQuotaRateLimitOnRoute(route *routev3.Route, policies []aigv1a1.QuotaPolicy) error {
-	// Base RateLimit entry: (backend_name, model_name_override).
-	// Handles models without bucket rules and service-wide quotas.
+	// Request-time base entry: checks quota at request time (returns 429 if exceeded).
+	// Uses the same descriptor actions but without HitsAddend and ApplyOnStreamDone.
 	rateLimitActions := []*routev3.RateLimit{
 		{
-			Actions:           baseDescriptorActions(),
-			HitsAddend:        quotaHitsAddend(),
-			ApplyOnStreamDone: true,
+			Actions: baseDescriptorActions(),
 		},
 	}
+
+	// Stream-done base entry: counts tokens after response is complete.
+	rateLimitActions = append(rateLimitActions, &routev3.RateLimit{
+		Actions:           baseDescriptorActions(),
+		HitsAddend:        quotaHitsAddend(),
+		ApplyOnStreamDone: true,
+	})
 
 	// Append RateLimit entries for bucket rules from each policy's per-model quotas.
 	for i := range policies {
@@ -536,6 +570,11 @@ func buildBucketRuleLimitEntries(modelName string, quota *aigv1a1.QuotaDefinitio
 	for rIdx, rule := range quota.BucketRules {
 		actions := append([]*routev3.RateLimit_Action{}, baseDescriptorActions()...)
 		actions = append(actions, buildClientSelectorActions(modelName, rIdx, rule.ClientSelectors)...)
+		// Request-time entry: checks quota (returns 429 if exceeded).
+		entries = append(entries, &routev3.RateLimit{
+			Actions: actions,
+		})
+		// Stream-done entry: counts tokens after response.
 		entries = append(entries, &routev3.RateLimit{
 			Actions:           actions,
 			HitsAddend:        quotaHitsAddend(),
@@ -555,6 +594,11 @@ func buildBucketRuleLimitEntries(modelName string, quota *aigv1a1.QuotaDefinitio
 				},
 			},
 		})
+		// Request-time entry: checks quota (returns 429 if exceeded).
+		entries = append(entries, &routev3.RateLimit{
+			Actions: actions,
+		})
+		// Stream-done entry: counts tokens after response.
 		entries = append(entries, &routev3.RateLimit{
 			Actions:           actions,
 			HitsAddend:        quotaHitsAddend(),
