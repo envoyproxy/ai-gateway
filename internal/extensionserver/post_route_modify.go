@@ -39,8 +39,10 @@ func (s *Server) PostRouteModify(_ context.Context, req *egextension.PostRouteMo
 		// set by the endpoint picker. The endpoint picker sets the destination via
 		// x-gateway-destination-endpoint header and we need to preserve the original
 		// host for proper routing to the selected endpoint.
-		req.Route.GetRoute().HostRewriteSpecifier = &routev3.RouteAction_AutoHostRewrite{
-			AutoHostRewrite: wrapperspb.Bool(false),
+		if routeAction := req.Route.GetRoute(); routeAction != nil {
+			routeAction.HostRewriteSpecifier = &routev3.RouteAction_AutoHostRewrite{
+				AutoHostRewrite: wrapperspb.Bool(false),
+			}
 		}
 		if req.Route.TypedPerFilterConfig == nil {
 			req.Route.TypedPerFilterConfig = make(map[string]*anypb.Any)
