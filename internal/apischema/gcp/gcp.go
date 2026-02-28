@@ -26,8 +26,8 @@ type GenerateContentRequest struct {
 	// https://github.com/googleapis/go-genai/blob/6a8184fcaf8bf15f0c566616a7b356560309be9b/types.go#L1466
 	ToolConfig *genai.ToolConfig `json:"tool_config,omitempty"`
 	// Optional. Generation config.
-	// You can find API default values and more details at https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference#generationconfig
-	// and https://cloud.google.com/vertex-ai/generative-ai/docs/multimodal/content-generation-parameters.
+	// You can find API default values and more details at https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference#generationconfig
+	// and https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/content-generation-parameters.
 	GenerationConfig *genai.GenerationConfig `json:"generation_config,omitempty"`
 	// Optional. Instructions for the model to steer it toward better performance.
 	// For example, "Answer as concisely as possible" or "Don't use technical
@@ -106,4 +106,46 @@ type Prediction struct {
 // https://github.com/googleapis/python-aiplatform/blob/30e41d01f3fd0ef08da6ad6eb7f83df34476105e/google/cloud/aiplatform_v1/types/prediction_service.py#L117
 type PredictResponse struct {
 	Predictions []*Prediction `json:"predictions"`
+}
+
+// ImagePredictRequest is the request body for the Imagen predict endpoint.
+// See: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/imagen-api#generate_images
+type ImagePredictRequest struct {
+	Instances  []*ImageInstance `json:"instances"`
+	Parameters ImageParameters  `json:"parameters,omitempty"`
+}
+
+// ImageInstance holds the prompt for a single image generation request.
+type ImageInstance struct {
+	Prompt string `json:"prompt"`
+}
+
+// ImageParameters controls the image generation settings for Imagen.
+// See: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/imagen-api#generate_images
+type ImageParameters struct {
+	SampleCount     int                 `json:"sampleCount"`
+	AspectRatio     string              `json:"aspectRatio,omitempty"`
+	SampleImageSize string              `json:"sampleImageSize,omitempty"`
+	OutputOptions   *ImageOutputOptions `json:"outputOptions,omitempty"`
+}
+
+// ImageOutputOptions specifies the output format and compression for generated images.
+type ImageOutputOptions struct {
+	MIMEType           string `json:"mimeType,omitempty"`
+	CompressionQuality int    `json:"compressionQuality,omitempty"`
+}
+
+// ImagePrediction is a single image in the Imagen predict response.
+// If BytesBase64Encoded is empty, the image was filtered by Responsible AI safety policies.
+// If the model supports prompt enhancement, Prompt contains the enhanced prompt used for generation.
+// See: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/imagen-api#generate_images
+type ImagePrediction struct {
+	MIMEType           string `json:"mimeType,omitempty"`
+	Prompt             string `json:"prompt,omitempty"`
+	BytesBase64Encoded string `json:"bytesBase64Encoded"`
+}
+
+// ImagePredictionResponse is the response body from the Imagen predict endpoint.
+type ImagePredictionResponse struct {
+	Predictions []*ImagePrediction `json:"predictions"`
 }

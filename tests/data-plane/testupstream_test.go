@@ -172,6 +172,65 @@ func TestWithTestUpstream(t *testing.T) {
 			expResponseBody: `{"error":{"type":"OpenAIBackendError","message":"backend timeout","code":"503"},"type":"error"}`,
 		},
 		{
+			name:              "gcp-vertexai - /v1/images/generations - imagen model",
+			backend:           "gcp-vertexai",
+			path:              "/v1/images/generations",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"imagen-4.0-generate-001","prompt":"a cat wearing sunglasses","n":2,"size":"1792x1024","quality":"high"}`,
+			expRequestBody:    `{"instances":[{"prompt":"a cat wearing sunglasses"}],"parameters":{"sampleCount":2,"aspectRatio":"16:9","sampleImageSize":"4K"}}`,
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/imagen-4.0-generate-001:predict",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
+			responseBody:      `{"predictions":[{"mimeType":"image/png","bytesBase64Encoded":"aW1hZ2VkYXRh"},{"mimeType":"image/png","bytesBase64Encoded":"aW1hZ2VkYXRhMg=="}]}`,
+			expStatus:         http.StatusOK,
+			expResponseBodyFunc: func(t require.TestingT, body []byte) {
+				var resp openai.ImageGenerationResponse
+				require.NoError(t, json.Unmarshal(body, &resp))
+				require.Len(t, resp.Data, 2)
+				require.Equal(t, "aW1hZ2VkYXRh", resp.Data[0].B64JSON)
+				require.Equal(t, "aW1hZ2VkYXRhMg==", resp.Data[1].B64JSON)
+				require.Equal(t, "png", resp.OutputFormat)
+				require.True(t, resp.Created > 0)
+			},
+		},
+		{
+			name:              "gcp-vertexai - /v1/images/generations - gemini model",
+			backend:           "gcp-vertexai",
+			path:              "/v1/images/generations",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"gemini-2.0-flash-exp","prompt":"a dog playing fetch","n":1}`,
+			expRequestBody:    `{"contents":[{"parts":[{"text":"a dog playing fetch"}]}],"tools":null,"generation_config":{"candidateCount":1}}`,
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/gemini-2.0-flash-exp:generateContent",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseStatus:    strconv.Itoa(http.StatusOK),
+			responseBody:      `{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"ZmFrZS1pbWFnZQ=="}}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":50,"totalTokenCount":60}}`,
+			expStatus:         http.StatusOK,
+			expResponseBodyFunc: func(t require.TestingT, body []byte) {
+				var resp openai.ImageGenerationResponse
+				require.NoError(t, json.Unmarshal(body, &resp))
+				require.Len(t, resp.Data, 1)
+				require.NotEmpty(t, resp.Data[0].B64JSON)
+				require.Equal(t, "png", resp.OutputFormat)
+				require.NotNil(t, resp.Usage)
+				require.Equal(t, 10, resp.Usage.InputTokens)
+				require.Equal(t, 50, resp.Usage.OutputTokens)
+			},
+		},
+		{
+			name:              "gcp-vertexai - /v1/images/generations - non json upstream error",
+			backend:           "gcp-vertexai",
+			path:              "/v1/images/generations",
+			method:            http.MethodPost,
+			requestBody:       `{"model":"imagen-4.0-generate-001","prompt":"test"}`,
+			expPath:           "/v1/projects/gcp-project-name/locations/gcp-region/publishers/google/models/imagen-4.0-generate-001:predict",
+			expRequestHeaders: map[string]string{"Authorization": "Bearer " + fakeGCPAuthToken},
+			responseHeaders:   "content-type:text/plain",
+			responseStatus:    strconv.Itoa(http.StatusServiceUnavailable),
+			responseBody:      `backend timeout`,
+			expStatus:         http.StatusServiceUnavailable,
+			expResponseBody:   `{"error":{"type":"GCPVertexAIBackendError","message":"backend timeout","code":"503"},"type":"error"}`,
+		},
+		{
 			name:            "unknown path",
 			path:            "/unknown",
 			requestBody:     `{"prompt": "hello"}`,
