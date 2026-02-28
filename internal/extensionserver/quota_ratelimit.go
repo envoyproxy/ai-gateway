@@ -183,8 +183,7 @@ func buildQuotaRateLimitCluster() *clusterv3.Cluster {
 
 // injectQuotaRateLimitFilterIntoListener adds the quota rate limit HTTP filter
 // into the HCM filter chain of the given listener. The filter is inserted before the
-// router filter and is disabled by default. It is enabled per-route via
-// TypedPerFilterConfig on routes whose backends have QuotaPolicies.
+// router filter. It is a no-op on routes without per-route RateLimitPerRoute config.
 func injectQuotaRateLimitFilterIntoListener(ln *listenerv3.Listener, domain string) error {
 	filterChains := ln.GetFilterChains()
 	if ln.DefaultFilterChain != nil {
@@ -212,8 +211,13 @@ func injectQuotaRateLimitFilterIntoListener(ln *listenerv3.Listener, domain stri
 		if err != nil {
 			return fmt.Errorf("failed to build quota rate limit filter: %w", err)
 		}
-		// Disabled by default; enabled per-route via TypedPerFilterConfig.
-		rateLimitFilter.Disabled = true
+		// The filter is always enabled at the HCM level. Routes without
+		// per-route RateLimitPerRoute config will have no rate limit actions,
+		// making the filter a no-op. We cannot use Disabled=true here because
+		// ext_proc clears the route cache after modifying headers, and the
+		// filter chain is created based on the initial route match (before
+		// ext_proc runs). The initial route typically lacks the per-route
+		// config, so a disabled filter would never be re-enabled.
 
 		// Insert before the router filter.
 		inserted := false
@@ -505,26 +509,18 @@ func enableQuotaRateLimitOnRoute(route *routev3.Route, policies []aigv1a1.QuotaP
 		return fmt.Errorf("failed to marshal RateLimitPerRoute: %w", err)
 	}
 
-	// Wrap in FilterConfig to re-enable the filter for this route.
-	// The HCM-level filter has Disabled=true, so a raw per-route config alone
-	// does not re-enable it. The FilterConfig wrapper with Disabled=false (default)
-	// explicitly enables the filter on this route.
-	fcAny, err := toAny(&routev3.FilterConfig{
-		Config: perRouteAny,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to marshal FilterConfig: %w", err)
-	}
-
 	if route.TypedPerFilterConfig == nil {
 		route.TypedPerFilterConfig = make(map[string]*anypb.Any)
 	}
-	route.TypedPerFilterConfig[quotaRateLimitFilterName] = fcAny
+	route.TypedPerFilterConfig[quotaRateLimitFilterName] = perRouteAny
 	return nil
 }
 
-// baseDescriptorActions returns the two base actions that read backend_name and
-// model_name_override from dynamic metadata set by the ext_proc filter.
+// baseDescriptorActions returns the two base actions that read ai_service_backend_name
+// and model_name_override from dynamic metadata set by the ext_proc filter.
+// ai_service_backend_name contains the short "namespace/name" format that matches
+// the rate limit service config, as opposed to backend_name which contains the
+// full route ref path.
 func baseDescriptorActions() []*routev3.RateLimit_Action {
 	return []*routev3.RateLimit_Action{
 		{
@@ -535,7 +531,7 @@ func baseDescriptorActions() []*routev3.RateLimit_Action {
 						Key: aigv1a1.AIGatewayFilterMetadataNamespace,
 						Path: []*metadatav3.MetadataKey_PathSegment{{
 							Segment: &metadatav3.MetadataKey_PathSegment_Key{
-								Key: "backend_name",
+								Key: "ai_service_backend_name",
 							},
 						}},
 					},
