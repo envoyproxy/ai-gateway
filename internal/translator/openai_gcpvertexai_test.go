@@ -881,7 +881,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 				"usageMetadata": {
 					"promptTokenCount": 10,
 					"candidatesTokenCount": 15,
-					"totalTokenCount": 25,
+					"totalTokenCount": 35,
                     "cachedContentTokenCount": 10,
                     "thoughtsTokenCount": 10
 				}
@@ -910,10 +910,10 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "prompt_tokens_details": {
             "cached_tokens": 10
         },
-        "total_tokens": 25
+        "total_tokens": 35
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(10, 10, -1, 15, 25),
+			wantTokenUsage: tokenUsageFrom(10, 10, -1, 25, 35),
 		},
 		{
 			name: "response with safety ratings",
@@ -1005,7 +1005,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantError:      false,
 			wantHeaderMut:  []internalapi.Header{{contentLengthHeaderName, "28"}},
 			wantBodyMut:    []byte(`{"object":"chat.completion"}`),
-			wantTokenUsage: tokenUsageFrom(-1, -1, -1, -1, -1),
+			wantTokenUsage: tokenUsageFrom(0, -1, -1, 0, 0),
 		},
 		{
 			name: "single stream chunk response",
@@ -1180,7 +1180,7 @@ data: [DONE]
 				"usageMetadata": {
 					"promptTokenCount": 10,
 					"candidatesTokenCount": 15,
-					"totalTokenCount": 25,
+					"totalTokenCount": 35,
                     "cachedContentTokenCount": 10,
                     "thoughtsTokenCount": 10
 				}
@@ -1210,11 +1210,11 @@ data: [DONE]
         "prompt_tokens_details": {
             "cached_tokens": 10
         },
-        "total_tokens": 25
+        "total_tokens": 35
     }
 }`),
 
-			wantTokenUsage: tokenUsageFrom(10, 10, -1, 15, 25), // Does not support Cache Creation.
+			wantTokenUsage: tokenUsageFrom(10, 10, -1, 25, 35), // Does not support Cache Creation.
 		},
 		{
 			name: "stream chunks with thought summary",
