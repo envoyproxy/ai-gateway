@@ -40,7 +40,7 @@ const (
 	// enabled per-route via TypedPerFilterConfig on routes with quota backends.
 	quotaRateLimitFilterName = "envoy.filters.http.ratelimit"
 	// defaultQuotaRateLimitServiceHost is the default hostname for the AI Gateway rate limit service.
-	defaultQuotaRateLimitServiceHost = "envoy-ai-gateway-ratelimit"
+	defaultQuotaRateLimitServiceHost = "envoy-ai-gateway-ratelimit.envoy-gateway-system"
 	// defaultQuotaRateLimitServicePort is the default gRPC port for the rate limit service.
 	defaultQuotaRateLimitServicePort = 8081
 
@@ -505,10 +505,21 @@ func enableQuotaRateLimitOnRoute(route *routev3.Route, policies []aigv1a1.QuotaP
 		return fmt.Errorf("failed to marshal RateLimitPerRoute: %w", err)
 	}
 
+	// Wrap in FilterConfig to re-enable the filter for this route.
+	// The HCM-level filter has Disabled=true, so a raw per-route config alone
+	// does not re-enable it. The FilterConfig wrapper with Disabled=false (default)
+	// explicitly enables the filter on this route.
+	fcAny, err := toAny(&routev3.FilterConfig{
+		Config: perRouteAny,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal FilterConfig: %w", err)
+	}
+
 	if route.TypedPerFilterConfig == nil {
 		route.TypedPerFilterConfig = make(map[string]*anypb.Any)
 	}
-	route.TypedPerFilterConfig[quotaRateLimitFilterName] = perRouteAny
+	route.TypedPerFilterConfig[quotaRateLimitFilterName] = fcAny
 	return nil
 }
 
@@ -570,12 +581,11 @@ func buildBucketRuleLimitEntries(modelName string, quota *aigv1a1.QuotaDefinitio
 	for rIdx, rule := range quota.BucketRules {
 		actions := append([]*routev3.RateLimit_Action{}, baseDescriptorActions()...)
 		actions = append(actions, buildClientSelectorActions(modelName, rIdx, rule.ClientSelectors)...)
-		// Request-time entry: checks quota (returns 429 if exceeded).
+		// Request-time entry checks quota (returns 429 if exceeded).
+		// Stream-done entry counts tokens after response.
 		entries = append(entries, &routev3.RateLimit{
 			Actions: actions,
-		})
-		// Stream-done entry: counts tokens after response.
-		entries = append(entries, &routev3.RateLimit{
+		}, &routev3.RateLimit{
 			Actions:           actions,
 			HitsAddend:        quotaHitsAddend(),
 			ApplyOnStreamDone: true,
