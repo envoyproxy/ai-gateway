@@ -28,7 +28,7 @@ var (
 )
 
 var localOllamaEnv = []string{
-	"OPENAI_BASE_URL=http://localhost:11434/v1",
+	"OPENAI_BASE_URL=http://127.0.0.1:11434/v1",
 	"OPENAI_API_KEY=unused",
 }
 
@@ -62,9 +62,9 @@ func TestAIGWRun_AdminEndpoints(t *testing.T) {
 	statusOK := func(r *http.Response) bool { return r.StatusCode == 200 }
 
 	for endpoint, condition := range map[string]func(r *http.Response) bool{
-		"http://localhost:1064/health":                      statusOK,
-		"http://localhost:1064/metrics":                     statusOK,
-		fmt.Sprintf("http://localhost:%d/stats", adminPort): statusOK,
+		"http://127.0.0.1:1064/health":                      statusOK,
+		"http://127.0.0.1:1064/metrics":                     statusOK,
+		fmt.Sprintf("http://127.0.0.1:%d/stats", adminPort): statusOK,
 	} {
 		t.Logf("Waiting for endpoint %q to be available...", endpoint)
 		internaltesting.RequireEventuallyNoError(t, func() error {
@@ -154,7 +154,7 @@ func startAIGWCLI(t *testing.T, aigwBin string, env []string, arg ...string) (ad
 	t.Log("Waiting for MCP endpoint to be available...")
 	internaltesting.RequireEventuallyNoError(t, func() error {
 		return checkEndpointAvailable(t.Context(),
-			fmt.Sprintf("http://localhost:%d/mcp", gatewayPort),
+			fmt.Sprintf("http://127.0.0.1:%d/mcp", gatewayPort),
 			func(r *http.Response) bool { return r.StatusCode < 500 },
 		)
 	}, 120*time.Second, 2*time.Second, "MCP endpoint never became available")

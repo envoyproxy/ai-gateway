@@ -32,6 +32,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/mcpproxy"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/internal/requestheaderattrs"
 	"github.com/envoyproxy/ai-gateway/internal/tracing"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
@@ -41,9 +42,12 @@ type extProcFlags struct {
 	configPath                             string        // path to the configuration file.
 	extProcAddr                            string        // gRPC address for the external processor.
 	logLevel                               slog.Level    // log level for the external processor.
+	enableRedaction                        bool          // enable redaction of sensitive information in debug logs.
 	adminPort                              int           // HTTP port for the admin server (metrics and health).
-	metricsRequestHeaderAttributes         string        // comma-separated key-value pairs for mapping HTTP request headers to otel metric attributes.
-	spanRequestHeaderAttributes            string        // comma-separated key-value pairs for mapping HTTP request headers to otel span attributes.
+	requestHeaderAttributes                *string       // comma-separated key-value pairs for mapping HTTP request headers to otel attributes shared across metrics, spans, and access logs.
+	spanRequestHeaderAttributes            *string       // comma-separated key-value pairs for mapping HTTP request headers to otel span attributes.
+	metricsRequestHeaderAttributes         *string       // comma-separated key-value pairs for mapping HTTP request headers to otel metric attributes.
+	logRequestHeaderAttributes             *string       // comma-separated key-value pairs for mapping HTTP request headers to access log attributes.
 	mcpAddr                                string        // address for the MCP proxy server which can be either tcp or unix domain socket.
 	mcpSessionEncryptionSeed               string        // Seed for deriving the key for encrypting MCP sessions.
 	mcpSessionEncryptionIterations         int           // Number of iterations to use for PBKDF2 key derivation for MCP session encryption.
@@ -56,6 +60,13 @@ type extProcFlags struct {
 	maxRecvMsgSize int
 	// endpointPrefixes is the comma-separated key-value pairs for endpoint prefixes.
 	endpointPrefixes string
+}
+
+func setOptionalString(dst **string) func(string) error {
+	return func(value string) error {
+		*dst = &value
+		return nil
+	}
 }
 
 // parseAndValidateFlags parses and validates the flags passed to the external processor.
@@ -82,16 +93,24 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"info",
 		"log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
 	)
+	fs.BoolVar(&flags.enableRedaction, "enableRedaction", false,
+		"Enable redaction of sensitive information in debug logs.")
 	fs.IntVar(&flags.adminPort, "adminPort", 1064, "HTTP port for the admin server (serves /metrics and /health endpoints).")
-	fs.StringVar(&flags.metricsRequestHeaderAttributes,
-		"metricsRequestHeaderAttributes",
-		"",
-		"Comma-separated key-value pairs for mapping HTTP request headers to otel metric attributes. Format: x-team-id:team.id,x-user-id:user.id.",
+	fs.Func("requestHeaderAttributes",
+		"Comma-separated key-value pairs for mapping HTTP request headers to otel attributes shared across metrics, spans, and access logs. Format: x-tenant-id:tenant.id.",
+		setOptionalString(&flags.requestHeaderAttributes),
 	)
-	fs.StringVar(&flags.spanRequestHeaderAttributes,
-		"spanRequestHeaderAttributes",
-		"",
-		"Comma-separated key-value pairs for mapping HTTP request headers to otel span attributes. Format: x-session-id:session.id,x-user-id:user.id.",
+	fs.Func("spanRequestHeaderAttributes",
+		"Comma-separated key-value pairs for mapping HTTP request headers to otel span attributes. Format: agent-session-id:session.id,x-tenant-id:tenant.id. Default: agent-session-id:session.id (when unset). Set to empty to disable.",
+		setOptionalString(&flags.spanRequestHeaderAttributes),
+	)
+	fs.Func("metricsRequestHeaderAttributes",
+		"Comma-separated key-value pairs for mapping HTTP request headers to otel metric attributes. Format: x-tenant-id:tenant.id,x-tenant-id:tenant.id.",
+		setOptionalString(&flags.metricsRequestHeaderAttributes),
+	)
+	fs.Func("logRequestHeaderAttributes",
+		"Comma-separated key-value pairs for mapping HTTP request headers to access log attributes. Format: agent-session-id:session.id,x-tenant-id:tenant.id. Default: agent-session-id:session.id (when unset). Set to empty to disable.",
+		setOptionalString(&flags.logRequestHeaderAttributes),
 	)
 	fs.StringVar(&flags.rootPrefix,
 		"rootPrefix",
@@ -130,9 +149,24 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	if err := flags.logLevel.UnmarshalText([]byte(*logLevelPtr)); err != nil {
 		errs = append(errs, fmt.Errorf("failed to unmarshal log level: %w", err))
 	}
-	if flags.spanRequestHeaderAttributes != "" {
-		if _, err := internalapi.ParseRequestHeaderAttributeMapping(flags.spanRequestHeaderAttributes); err != nil {
+	if flags.requestHeaderAttributes != nil && *flags.requestHeaderAttributes != "" {
+		if _, err := internalapi.ParseRequestHeaderAttributeMapping(*flags.requestHeaderAttributes); err != nil {
+			errs = append(errs, fmt.Errorf("failed to parse request header mapping: %w", err))
+		}
+	}
+	if flags.spanRequestHeaderAttributes != nil && *flags.spanRequestHeaderAttributes != "" {
+		if _, err := internalapi.ParseRequestHeaderAttributeMapping(*flags.spanRequestHeaderAttributes); err != nil {
 			errs = append(errs, fmt.Errorf("failed to parse tracing header mapping: %w", err))
+		}
+	}
+	if flags.metricsRequestHeaderAttributes != nil && *flags.metricsRequestHeaderAttributes != "" {
+		if _, err := internalapi.ParseRequestHeaderAttributeMapping(*flags.metricsRequestHeaderAttributes); err != nil {
+			errs = append(errs, fmt.Errorf("failed to parse metrics header mapping: %w", err))
+		}
+	}
+	if flags.logRequestHeaderAttributes != nil && *flags.logRequestHeaderAttributes != "" {
+		if _, err := internalapi.ParseRequestHeaderAttributeMapping(*flags.logRequestHeaderAttributes); err != nil {
+			errs = append(errs, fmt.Errorf("failed to parse access log header mapping: %w", err))
 		}
 	}
 	if flags.endpointPrefixes != "" {
@@ -208,22 +242,25 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		l.Info("MCP proxy is enabled", "address", flags.mcpAddr)
 	}
 
-	// Parse header mapping for metrics.
-	metricsRequestHeaderAttributes, err := internalapi.ParseRequestHeaderAttributeMapping(flags.metricsRequestHeaderAttributes)
+	spanRequestHeaderAttributes, metricsRequestHeaderAttributes, logRequestHeaderAttributes, err := requestheaderattrs.ResolveAll(
+		flags.requestHeaderAttributes,
+		flags.spanRequestHeaderAttributes,
+		flags.metricsRequestHeaderAttributes,
+		flags.logRequestHeaderAttributes,
+	)
 	if err != nil {
-		return fmt.Errorf("failed to parse metrics header mapping: %w", err)
-	}
-
-	// Parse header mapping for tracing spans.
-	spanRequestHeaderAttributes, err := internalapi.ParseRequestHeaderAttributeMapping(flags.spanRequestHeaderAttributes)
-	if err != nil {
-		return fmt.Errorf("failed to parse tracing header mapping: %w", err)
+		return err
 	}
 
 	// Parse endpoint prefixes and apply defaults for any missing values.
 	endpointPrefixes, err := internalapi.ParseEndpointPrefixes(flags.endpointPrefixes)
 	if err != nil {
 		return fmt.Errorf("failed to parse endpoint prefixes: %w", err)
+	}
+
+	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)
+	if err != nil {
+		return err
 	}
 
 	// Create Prometheus registry and reader which automatically converts
@@ -245,15 +282,13 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	embeddingsMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationEmbedding)
 	imageGenerationMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationImageGeneration)
 	responsesMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationResponses)
+	speechMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationSpeech)
 	rerankMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationRerank)
 	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
-	tracing, err := tracing.NewTracingFromEnv(ctx, os.Stdout, spanRequestHeaderAttributes)
-	if err != nil {
-		return err
-	}
+	extproc.LogRequestHeaderAttributes = logRequestHeaderAttributes
 
-	server, err := extproc.NewServer(l)
+	server, err := extproc.NewServer(l, flags.enableRedaction)
 	if err != nil {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
@@ -265,6 +300,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		embeddingsMetricsFactory, tracing.EmbeddingsTracer(), endpointspec.EmbeddingsEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/responses"), extproc.NewFactory(
 		responsesMetricsFactory, tracing.ResponsesTracer(), endpointspec.ResponsesEndpointSpec{}))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/speech"), extproc.NewFactory(
+		speechMetricsFactory, tracing.SpeechTracer(), endpointspec.SpeechEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/images/generations"), extproc.NewFactory(
 		imageGenerationMetricsFactory, tracing.ImageGenerationTracer(), endpointspec.ImageGenerationEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Cohere, "/v2/rerank"), extproc.NewFactory(
@@ -294,7 +331,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		var mcpProxyMux *http.ServeMux
 		var mcpProxyConfig *mcpproxy.ProxyConfig
 		mcpProxyConfig, mcpProxyMux, err = mcpproxy.NewMCPProxy(l.With("component", "mcp-proxy"), mcpMetrics,
-			tracing.MCPTracer(), mcpSessionCrypto)
+			tracing.MCPTracer(), mcpSessionCrypto, logRequestHeaderAttributes)
 		if err != nil {
 			return fmt.Errorf("failed to create MCP proxy: %w", err)
 		}

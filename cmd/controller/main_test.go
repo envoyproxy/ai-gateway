@@ -23,6 +23,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 	t.Run("no flags", func(t *testing.T) {
 		f, err := parseAndValidateFlags([]string{})
 		require.Equal(t, "info", f.extProcLogLevel)
+		require.False(t, f.extProcEnableRedaction)
 		require.Equal(t, "docker.io/envoyproxy/ai-gateway-extproc:latest", f.extProcImage)
 		require.Equal(t, corev1.PullIfNotPresent, f.extProcImagePullPolicy)
 		require.True(t, f.enableLeaderElection)
@@ -32,6 +33,8 @@ func Test_parseAndValidateFlags(t *testing.T) {
 		require.Equal(t, "tls.crt", f.tlsCertName)
 		require.Equal(t, "tls.key", f.tlsKeyName)
 		require.Equal(t, 4*1024*1024, f.maxRecvMsgSize)
+		require.Nil(t, f.spanRequestHeaderAttributes)
+		require.Nil(t, f.logRequestHeaderAttributes)
 		require.NoError(t, err)
 	})
 	t.Run("all flags", func(t *testing.T) {
@@ -45,13 +48,16 @@ func Test_parseAndValidateFlags(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				args := []string{
 					tc.dash + "extProcLogLevel=debug",
+					tc.dash + "extProcEnableRedaction=true",
 					tc.dash + "extProcImage=example.com/extproc:latest",
 					tc.dash + "extProcImagePullPolicy=Always",
 					tc.dash + "enableLeaderElection=false",
 					tc.dash + "logLevel=debug",
 					tc.dash + "port=:8080",
 					tc.dash + "extProcExtraEnvVars=OTEL_SERVICE_NAME=test;OTEL_TRACES_EXPORTER=console",
-					tc.dash + "spanRequestHeaderAttributes=x-session-id:session.id",
+					tc.dash + "requestHeaderAttributes=x-tenant-id:tenant.id",
+					tc.dash + "spanRequestHeaderAttributes=x-forwarded-proto:url.scheme",
+					tc.dash + "logRequestHeaderAttributes=x-forwarded-proto:url.scheme",
 					tc.dash + "endpointPrefixes=openai:/v1,cohere:/cohere/v2,anthropic:/anthropic/v1",
 					tc.dash + "maxRecvMsgSize=33554432",
 					tc.dash + "watchNamespaces=default,envoy-ai-gateway-system",
@@ -63,13 +69,19 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				}
 				f, err := parseAndValidateFlags(args)
 				require.Equal(t, "debug", f.extProcLogLevel)
+				require.True(t, f.extProcEnableRedaction)
 				require.Equal(t, "example.com/extproc:latest", f.extProcImage)
 				require.Equal(t, corev1.PullAlways, f.extProcImagePullPolicy)
 				require.False(t, f.enableLeaderElection)
 				require.Equal(t, "debug", f.logLevel.String())
 				require.Equal(t, ":8080", f.extensionServerPort)
 				require.Equal(t, "OTEL_SERVICE_NAME=test;OTEL_TRACES_EXPORTER=console", f.extProcExtraEnvVars)
-				require.Equal(t, "x-session-id:session.id", f.spanRequestHeaderAttributes)
+				require.NotNil(t, f.requestHeaderAttributes)
+				require.Equal(t, "x-tenant-id:tenant.id", *f.requestHeaderAttributes)
+				require.NotNil(t, f.spanRequestHeaderAttributes)
+				require.Equal(t, "x-forwarded-proto:url.scheme", *f.spanRequestHeaderAttributes)
+				require.NotNil(t, f.logRequestHeaderAttributes)
+				require.Equal(t, "x-forwarded-proto:url.scheme", *f.logRequestHeaderAttributes)
 				require.Equal(t, "openai:/v1,cohere:/cohere/v2,anthropic:/anthropic/v1", f.endpointPrefixes)
 				require.Equal(t, 32*1024*1024, f.maxRecvMsgSize)
 				require.Equal(t, []string{"default", "envoy-ai-gateway-system"}, f.watchNamespaces)
@@ -116,8 +128,18 @@ func Test_parseAndValidateFlags(t *testing.T) {
 			},
 			{
 				name:   "invalid spanRequestHeaderAttributes - missing colon",
-				flags:  []string{"--spanRequestHeaderAttributes=x-session-id"},
+				flags:  []string{"--spanRequestHeaderAttributes=agent-session-id"},
 				expErr: "invalid tracing header attributes",
+			},
+			{
+				name:   "invalid logRequestHeaderAttributes - missing colon",
+				flags:  []string{"--logRequestHeaderAttributes=agent-session-id"},
+				expErr: "invalid access log header attributes",
+			},
+			{
+				name:   "invalid requestHeaderAttributes - missing colon",
+				flags:  []string{"--requestHeaderAttributes=agent-session-id"},
+				expErr: "invalid request header attributes",
 			},
 			{
 				name:   "invalid spanRequestHeaderAttributes - empty header",

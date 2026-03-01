@@ -59,6 +59,11 @@ func readConfig(path string, mcpServers *autoconfig.MCPServers, debug bool) (str
 		return "", errors.New("you must supply at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY, ANTHROPIC_API_KEY, or a config file path")
 	}
 
+	// Otel access logging is handled by Envoy directly where supported.
+	if err := autoconfig.PopulateOTELLogEnvConfig(&data); err != nil {
+		return "", fmt.Errorf("failed to configure OTEL logging: %w", err)
+	}
+
 	// We have any auto-generated config: write it and apply envsubst
 	config, err := autoconfig.WriteConfig(&data)
 	if err != nil {

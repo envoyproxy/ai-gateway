@@ -785,8 +785,9 @@ func TestSecretController(t *testing.T) {
 	mgr, err := ctrl.NewManager(cfg, opt)
 	require.NoError(t, err)
 
-	eventCh := internaltesting.NewControllerEventChan[*aigv1a1.BackendSecurityPolicy]()
-	sc := controller.NewSecretController(mgr.GetClient(), k, defaultLogger(), eventCh.Ch)
+	bspCh := internaltesting.NewControllerEventChan[*aigv1a1.BackendSecurityPolicy]()
+	mcpRouteCh := internaltesting.NewControllerEventChan[*aigv1a1.MCPRoute]()
+	sc := controller.NewSecretController(mgr.GetClient(), k, defaultLogger(), bspCh.Ch, mcpRouteCh.Ch)
 	const secretName, secretNamespace = "mysecret", "default"
 
 	err = ctrl.NewControllerManagedBy(mgr).For(&corev1.Secret{}).Complete(sc)
@@ -832,7 +833,7 @@ func TestSecretController(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify that they are the same.
-		bsps := eventCh.RequireItemsEventually(t, 2)
+		bsps := bspCh.RequireItemsEventually(t, 2)
 		slices.SortFunc(bsps, func(a, b *aigv1a1.BackendSecurityPolicy) int {
 			a.TypeMeta = metav1.TypeMeta{}
 			b.TypeMeta = metav1.TypeMeta{}
@@ -849,7 +850,7 @@ func TestSecretController(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify that they are the same.
-		bsps := eventCh.RequireItemsEventually(t, 2)
+		bsps := bspCh.RequireItemsEventually(t, 2)
 		slices.SortFunc(bsps, func(a, b *aigv1a1.BackendSecurityPolicy) int {
 			a.TypeMeta = metav1.TypeMeta{}
 			b.TypeMeta = metav1.TypeMeta{}

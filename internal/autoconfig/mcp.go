@@ -136,9 +136,11 @@ func AddMCPServers(data *ConfigData, input *MCPServers) error {
 		}
 
 		// Create Backend for this MCP server
+		hostname, ip := splitHost(serverURL.Hostname())
 		backend := Backend{
 			Name:     name,
-			Hostname: serverURL.Hostname(),
+			Hostname: hostname,
+			IP:       ip,
 			Port:     port,
 			NeedsTLS: serverURL.Scheme == "https",
 		}

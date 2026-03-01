@@ -117,5 +117,7 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) (sets []
 // it can cause unexpected behavior if they are modified unexpectedly. User shouldn't need to
 // modify these headers via header mutation API.
 func shouldIgnoreHeader(key string) bool {
-	return strings.HasPrefix(key, ":") || strings.HasPrefix(key, internalapi.EnvoyAIGatewayHeaderPrefix)
+	return strings.HasPrefix(key, ":") ||
+		strings.HasPrefix(key, internalapi.EnvoyAIGatewayHeaderPrefix) ||
+		strings.EqualFold(key, internalapi.EnvoyOriginalPathHeader)
 }

@@ -3,7 +3,7 @@
     "version": "v0.4",
     "title": "Envoy AI Gateway v0.4.x",
     "subtitle": "Release introducing Model Context Protocol (MCP) Gateway, OpenAI Image Generation, Anthropic support (direct and AWS Bedrock), guided output decoding for GCP Vertex AI/Gemini, cross-namespace references, enhanced authentication, and comprehensive observability improvements.",
-    "badge": "Latest",
+    "badge": "Stable",
     "badgeType": "milestone"
   },
   "releases": [
@@ -276,6 +276,7 @@
     }
   ],
   "navigation": {
-    "previous": { "version": "v0.3.x Series", "path": "/release-notes/v0.3" }
+    "previous": { "version": "v0.3.x Series", "path": "/release-notes/v0.3" },
+    "next": { "version": "v0.5.x Series", "path": "/release-notes/v0.5" }
   }
 }

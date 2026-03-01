@@ -20,6 +20,7 @@ import (
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"github.com/envoyproxy/ai-gateway/internal/json"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 )
 
@@ -31,12 +32,8 @@ type otelTestEnvironment struct {
 
 // setupOtelTestEnvironment starts all required services and returns ports and a closer.
 func setupOtelTestEnvironment(t *testing.T, extraExtProcEnv ...string) *otelTestEnvironment {
-	// clear env vars before starting the tests
-	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
-	t.Setenv("OTEL_METRICS_EXPORTER", "")
-	t.Setenv("OTEL_SERVICE_NAME", "")
+	internaltesting.ClearTestEnv(t)
 
-	// Start OTLP collector.
 	collector := testotel.StartOTLPCollector()
 	t.Cleanup(collector.Close)
 

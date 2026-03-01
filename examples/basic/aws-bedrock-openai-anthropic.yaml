@@ -1,0 +1,109 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This example demonstrates using the AWSAnthropic schema to access
+# Claude models on AWS Bedrock via the InvokeModel API with OpenAI-compatible requests.
+#
+# The AWSAnthropic schema works with both input formats:
+# - /v1/chat/completions: Translates OpenAI ChatCompletion requests to Anthropic Messages API format
+# - /v1/messages: Passes through native Anthropic Messages API format
+#
+# Use cases:
+# - When you want to use OpenAI SDK/format with Claude models on AWS Bedrock
+# - When migrating from OpenAI to Claude on AWS without changing client code
+# - When using tools that only support OpenAI format but need Claude on AWS
+
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-aws-bedrock-claude-openai-format
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-basic
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: anthropic.claude-3-5-sonnet-20241022-v2:0
+      backendRefs:
+        - name: envoy-ai-gateway-aws-bedrock-claude-openai
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-aws-bedrock-claude-openai
+  namespace: default
+spec:
+  # AWSAnthropic schema supports both OpenAI and Anthropic input formats.
+  # The endpoint path determines the translator used.
+  schema:
+    name: AWSAnthropic
+    # Optional: Specify Anthropic API version for Bedrock
+    # Default: bedrock-2023-05-31
+    version: bedrock-2023-05-31
+  backendRef:
+    name: envoy-ai-gateway-basic-aws
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: envoy-ai-gateway-aws-bedrock-credentials
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-aws-bedrock-claude-openai
+  type: AWSCredentials
+  awsCredentials:
+    region: us-east-1
+    credentialsFile:
+      secretRef:
+        name: envoy-ai-gateway-basic-aws-credentials
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-basic-aws
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: bedrock-runtime.us-east-1.amazonaws.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: envoy-ai-gateway-basic-aws-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: "gateway.envoyproxy.io"
+      kind: Backend
+      name: envoy-ai-gateway-basic-aws
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: bedrock-runtime.us-east-1.amazonaws.com
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-aws-credentials
+  namespace: default
+type: Opaque
+stringData:
+  # Replace this with your AWS credentials.
+  # You can also use AWS IAM roles for service accounts (IRSA) in EKS.
+  credentials: |
+    [default]
+    aws_access_key_id = AWS_ACCESS_KEY_ID
+    aws_secret_access_key = AWS_SECRET_ACCESS_KEY

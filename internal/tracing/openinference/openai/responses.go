@@ -65,11 +65,8 @@ func (r *ResponsesRecorder) RecordResponseChunks(span trace.Span, chunks []*open
 	for _, chunk := range chunks {
 		if chunk != nil {
 			// response.completed event contains the full response so we don't need to accumulate chunks.
-			if chunk.Type == "response.completed" {
-				respComplEvent := openai.ResponseCompletedEvent{}
-				if err := json.Unmarshal([]byte(chunk.RawJSON()), &respComplEvent); err != nil {
-					continue // skip if unmarshal fails
-				}
+			if chunk.GetEventType() == "response.completed" {
+				respComplEvent := chunk.OfResponseCompleted
 				span.AddEvent("Response Completed Event")
 				r.RecordResponse(span, &respComplEvent.Response)
 			}

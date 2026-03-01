@@ -17,9 +17,12 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
+
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func TestNewNonEmptyConsoleExporter(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name         string
 		envValue     string
@@ -54,7 +57,6 @@ func TestNewNonEmptyConsoleExporter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			t.Setenv("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE", tt.envValue)
 
 			var buf bytes.Buffer
@@ -72,6 +74,7 @@ func TestNewNonEmptyConsoleExporter(t *testing.T) {
 }
 
 func TestParseTemporalityPreference(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name        string
 		envValue    string
@@ -106,7 +109,6 @@ func TestParseTemporalityPreference(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			t.Setenv("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE", tt.envValue)
 
 			temporality, err := parseTemporalityPreference()

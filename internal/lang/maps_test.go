@@ -21,10 +21,16 @@ func TestCaseInsensitiveValue(t *testing.T) {
 			want: "",
 		},
 		{
-			name: "exact match returns value",
+			name: "alphabetical first chosen when multiple case variants",
 			m:    map[string]any{"Foo": "bar", "foo": "should-not-be-used"},
 			key:  "Foo",
 			want: "bar",
+		},
+		{
+			name: "alphabetical chosen even if exact match exists",
+			m:    map[string]any{"foo": "lower", "FOO": "upper"},
+			key:  "foo",
+			want: "upper",
 		},
 		{
 			name: "case-insensitive match when exact not present",

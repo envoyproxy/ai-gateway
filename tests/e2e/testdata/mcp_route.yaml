@@ -86,6 +86,47 @@ spec:
       port: 1063
       targetPort: 1063
   type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-backend-query-api-key
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-backend-query-api-key
+  template:
+    metadata:
+      labels:
+        app: mcp-backend-query-api-key
+    spec:
+      containers:
+        - name: mcp-backend
+          image: docker.io/envoyproxy/ai-gateway-testmcpserver:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 1063
+          env:
+            - name: TEST_API_KEY
+              value: "test-api-key"
+            - name: TEST_API_KEY_QUERY_PARAM
+              value: "api_key"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-backend-query-api-key
+  namespace: default
+spec:
+  selector:
+    app: mcp-backend-query-api-key
+  ports:
+    - protocol: TCP
+      port: 1063
+      targetPort: 1063
+  type: ClusterIP
 
 ---
 apiVersion: v1
@@ -105,7 +146,7 @@ spec:
       group: gateway.networking.k8s.io
       namespace: default
   headers:
-    - name: x-tenant
+    - name: x-tenant-id
       value: tenant-a
       type: Exact
   backendRefs:
@@ -186,11 +227,12 @@ spec:
       group: gateway.networking.k8s.io
       namespace: default
   backendRefs:
-    - name: mcp-backend
+    - name: mcp-backend-query-api-key
       port: 1063
       securityPolicy:
         apiKey:
           inline: "test-api-key"
+          queryParam: "api_key"
       toolSelector:
         include:
           - sum

@@ -17,6 +17,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/envoyproxy/ai-gateway/internal/requestheaderattrs"
 )
 
 // Server is the implementation of the EnvoyGatewayExtensionServer interface.
@@ -28,14 +30,26 @@ type Server struct {
 	// This is used to communicate with the external processor.
 	udsPath          string
 	isStandAloneMode bool
+	// logRequestHeaderAttributes maps request headers to dynamic metadata keys for access logs.
+	logRequestHeaderAttributes map[string]string
 }
 
 const serverName = "envoy-gateway-extension-server"
 
 // New creates a new instance of the extension server that implements the EnvoyGatewayExtensionServer interface.
-func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool) *Server {
+func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, requestHeaderAttributes, logRequestHeaderAttributes *string) (*Server, error) {
 	logger = logger.WithName(serverName)
-	return &Server{log: logger, k8sClient: k8sClient, udsPath: udsPath, isStandAloneMode: isStandAloneMode}
+	logAttrs, err := requestheaderattrs.ResolveLog(requestHeaderAttributes, logRequestHeaderAttributes)
+	if err != nil {
+		return nil, err
+	}
+	return &Server{
+		log:                        logger,
+		k8sClient:                  k8sClient,
+		udsPath:                    udsPath,
+		isStandAloneMode:           isStandAloneMode,
+		logRequestHeaderAttributes: logAttrs,
+	}, nil
 }
 
 // Check implements [grpc_health_v1.HealthServer].

@@ -137,6 +137,33 @@ func TestOpenAIToOpenAITranslatorV1CompletionResponseBody(t *testing.T) {
 			expModel:      "gpt-3.5-turbo-instruct",
 		},
 		{
+			name: "valid_response_with_cached_tokens",
+			responseBody: `{
+				"id": "cmpl-123",
+				"object": "text_completion",
+				"created": 1677649420,
+				"model": "gpt-3.5-turbo-instruct",
+				"choices": [
+					{
+						"text": "Hello! How can I help you today?",
+						"index": 0,
+						"finish_reason": "stop"
+					}
+				],
+				"usage": {
+					"prompt_tokens": 5,
+					"completion_tokens": 8,
+					"total_tokens": 13,
+					"prompt_tokens_details": {
+						"cached_tokens": 2,
+						"cache_creation_input_tokens": 1
+					}
+				}
+			}`,
+			expTokenUsage: tokenUsageFrom(5, 2, 1, 8, 13),
+			expModel:      "gpt-3.5-turbo-instruct",
+		},
+		{
 			name:          "invalid_json",
 			responseBody:  `invalid json`,
 			expError:      true,

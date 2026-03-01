@@ -240,9 +240,9 @@ func TestRequestTracers_Unsampled(t *testing.T) {
 func TestRequestTracer_HeaderAttributeMapping(t *testing.T) {
 	t.Run("chat completion", func(t *testing.T) {
 		headers := map[string]string{
-			"x-session-id": "abc123",
-			"x-user-id":    "user456",
-			"x-other":      "ignored",
+			"agent-session-id": "abc123",
+			"x-tenant-id":      "user456",
+			"x-other":          "ignored",
 		}
 		reqBody, err := json.Marshal(req)
 		require.NoError(t, err)
@@ -253,7 +253,7 @@ func TestRequestTracer_HeaderAttributeMapping(t *testing.T) {
 			constructor:      chatCompletionTracerCtor,
 			req:              req,
 			headers:          headers,
-			headerAttrs:      map[string]string{"x-session-id": "session.id", "x-user-id": "user.id"},
+			headerAttrs:      map[string]string{"agent-session-id": "session.id", "x-tenant-id": "tenant.id"},
 			reqBody:          reqBody,
 			expectedSpanName: spanName,
 			expectedSpanType: (*chatCompletionSpan)(nil),
@@ -269,7 +269,7 @@ func TestRequestTracer_HeaderAttributeMapping(t *testing.T) {
 				require.Equal(t, "stream: false", attrMap["req"].AsString())
 				require.Equal(t, len(reqBody), int(attrMap["reqBodyLen"].AsInt64()))
 				require.Equal(t, "abc123", attrMap["session.id"].AsString())
-				require.Equal(t, "user456", attrMap["user.id"].AsString())
+				require.Equal(t, "user456", attrMap["tenant.id"].AsString())
 			},
 		})
 	})
@@ -279,7 +279,7 @@ func TestNewCompletionTracer_BuildsGenericRequestTracer(t *testing.T) {
 	tp := trace.NewTracerProvider()
 	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 
-	headerAttrs := map[string]string{"x-session-id": "session.id"}
+	headerAttrs := map[string]string{"agent-session-id": "session.id"}
 
 	tracer := newCompletionTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testCompletionRecorder{}, headerAttrs)
 	impl, ok := tracer.(*requestTracerImpl[
@@ -298,7 +298,7 @@ func TestNewEmbeddingsTracer_BuildsGenericRequestTracer(t *testing.T) {
 	tp := trace.NewTracerProvider()
 	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 
-	headerAttrs := map[string]string{"x-session-id": "session.id"}
+	headerAttrs := map[string]string{"agent-session-id": "session.id"}
 
 	tracer := newEmbeddingsTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testEmbeddingsRecorder{}, headerAttrs)
 	impl, ok := tracer.(*requestTracerImpl[
@@ -315,7 +315,7 @@ func TestNewRerankTracer_BuildsGenericRequestTracer(t *testing.T) {
 	tp := trace.NewTracerProvider()
 	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 
-	headerAttrs := map[string]string{"x-session-id": "session.id"}
+	headerAttrs := map[string]string{"agent-session-id": "session.id"}
 
 	tracer := newRerankTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testRerankTracerRecorder{}, headerAttrs)
 	impl, ok := tracer.(*requestTracerImpl[
@@ -353,7 +353,7 @@ func TestResponsesTracer_BuildsGenericRequestTracer(t *testing.T) {
 	tp := trace.NewTracerProvider()
 	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 
-	headerAttrs := map[string]string{"x-session-id": "session.id"}
+	headerAttrs := map[string]string{"agent-session-id": "session.id"}
 
 	tracer := newResponsesTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testResponsesRecorder{}, headerAttrs)
 	impl, ok := tracer.(*requestTracerImpl[

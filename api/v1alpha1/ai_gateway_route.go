@@ -112,7 +112,7 @@ type AIGatewayRouteSpec struct {
 	//    type: CacheCreationInputToken
 	// ```
 	// Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three
-	// rate limit buckets for each unique x-user-id header value. One bucket is for the input token,
+	// rate limit buckets for each unique x-tenant-id header value. One bucket is for the input token,
 	// the other is for the output token, and the last one is for the total token.
 	// Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.
 	//
@@ -132,9 +132,9 @@ type AIGatewayRouteSpec struct {
 	//	    global:
 	//	      rules:
 	//	        - clientSelectors:
-	//	            # Do the rate limiting based on the x-user-id header.
+	//	            # Do the rate limiting based on the x-tenant-id header.
 	//	            - headers:
-	//	                - name: x-user-id
+	//	                - name: x-tenant-id
 	//	                  type: Distinct
 	//	          limit:
 	//	            # Configures the number of "tokens" allowed per hour.
@@ -156,7 +156,7 @@ type AIGatewayRouteSpec struct {
 	//	                key: llm_input_token
 	//	        - clientSelectors:
 	//	            - headers:
-	//	                - name: x-user-id
+	//	                - name: x-tenant-id
 	//	                  type: Distinct
 	//	          limit:
 	//	            requests: 10000
@@ -172,7 +172,7 @@ type AIGatewayRouteSpec struct {
 	//	                key: llm_output_token
 	//	        - clientSelectors:
 	//	            - headers:
-	//	                - name: x-user-id
+	//	                - name: x-tenant-id
 	//	                  type: Distinct
 	//	          limit:
 	//	            requests: 10000

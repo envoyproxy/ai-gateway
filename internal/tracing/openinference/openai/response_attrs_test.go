@@ -447,3 +447,1202 @@ func TestBuildCompletionResponseAttributes(t *testing.T) {
 		})
 	}
 }
+
+func TestSetResponseOutputMsgAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		msg           *openai.ResponseOutputMessage
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "output message with text content",
+			msg: &openai.ResponseOutputMessage{
+				ID:   "msg-123",
+				Role: "assistant",
+				Type: "message",
+				Content: []openai.ResponseOutputMessageContentUnion{
+					{
+						OfOutputText: &openai.ResponseOutputTextParam{
+							Type: "output_text",
+							Text: "Hello! This is a test response.",
+						},
+					},
+				},
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), "Hello! This is a test response."),
+			},
+		},
+		{
+			name: "output message with refusal",
+			msg: &openai.ResponseOutputMessage{
+				ID:   "msg-124",
+				Role: "assistant",
+				Type: "message",
+				Content: []openai.ResponseOutputMessageContentUnion{
+					{
+						OfRefusal: &openai.ResponseOutputRefusalParam{
+							Type:    "refusal",
+							Refusal: "I cannot provide that information.",
+						},
+					},
+				},
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), "I cannot provide that information."),
+			},
+		},
+		{
+			name: "output message with refusal hideoutput text",
+			msg: &openai.ResponseOutputMessage{
+				ID:   "msg-124",
+				Role: "assistant",
+				Type: "message",
+				Content: []openai.ResponseOutputMessageContentUnion{
+					{
+						OfRefusal: &openai.ResponseOutputRefusalParam{
+							Type:    "refusal",
+							Refusal: "I cannot provide that information.",
+						},
+					},
+				},
+			},
+			config:       &openinference.TraceConfig{HideOutputText: true},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "output message with hidden text",
+			msg: &openai.ResponseOutputMessage{
+				ID:   "msg-125",
+				Role: "assistant",
+				Type: "message",
+				Content: []openai.ResponseOutputMessageContentUnion{
+					{
+						OfOutputText: &openai.ResponseOutputTextParam{
+							Type: "output_text",
+							Text: "Sensitive information",
+						},
+					},
+				},
+			},
+			config: &openinference.TraceConfig{
+				HideOutputText: true,
+			},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "output message with multiple content items",
+			msg: &openai.ResponseOutputMessage{
+				ID:   "msg-126",
+				Role: "assistant",
+				Type: "message",
+				Content: []openai.ResponseOutputMessageContentUnion{
+					{
+						OfOutputText: &openai.ResponseOutputTextParam{
+							Type: "output_text",
+							Text: "First part",
+						},
+					},
+					{
+						OfOutputText: &openai.ResponseOutputTextParam{
+							Type: "output_text",
+							Text: "Second part",
+						},
+					},
+				},
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 1,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(1, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageContentAttribute(1, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(1, 0, "text"), "First part"),
+				attribute.String(openinference.OutputMessageContentAttribute(1, 1, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(1, 1, "text"), "Second part"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseOutputMsgAttrs(tt.msg, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseFunctionCallAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          *openai.ResponseFunctionToolCall
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "function call with arguments",
+			call: &openai.ResponseFunctionToolCall{
+				ID:        "call-456",
+				CallID:    "call_123",
+				Name:      "get_weather",
+				Arguments: `{"location":"NYC","unit":"fahrenheit"}`,
+				Type:      "function_call",
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "call_123"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "get_weather"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), `{"location":"NYC","unit":"fahrenheit"}`),
+			},
+		},
+		{
+			name: "function call with hidden output",
+			call: &openai.ResponseFunctionToolCall{
+				ID:        "call-457",
+				CallID:    "call_456",
+				Name:      "get_stock_price",
+				Arguments: `{"symbol":"AAPL"}`,
+				Type:      "function_call",
+			},
+			config: &openinference.TraceConfig{
+				HideOutputText: true,
+			},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "function call with empty arguments",
+			call: &openai.ResponseFunctionToolCall{
+				ID:        "call-458",
+				CallID:    "call_789",
+				Name:      "get_current_time",
+				Arguments: `{}`,
+				Type:      "function_call",
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 2,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(2, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(2, 0, openinference.ToolCallID), "call_789"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(2, 0, openinference.ToolCallFunctionName), "get_current_time"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(2, 0, openinference.ToolCallFunctionArguments), `{}`),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseFunctionCallAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseFileSearchCallAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          *openai.ResponseFileSearchToolCall
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "file search call with queries",
+			call: &openai.ResponseFileSearchToolCall{
+				ID:      "fs-001",
+				Type:    "file_search_call",
+				Status:  "completed",
+				Queries: []string{"project documentation", "API reference"},
+				Results: []openai.ResponseFileSearchToolCallResultParam{
+					{
+						FileID:   "file-123",
+						Filename: "README.md",
+						Score:    ptr(0.95),
+						Text:     "This is the project documentation...",
+					},
+				},
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "fs-001"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "file_search_call"),
+			},
+		},
+		{
+			name: "file search call with hidden output",
+			call: &openai.ResponseFileSearchToolCall{
+				ID:      "fs-002",
+				Type:    "file_search_call",
+				Status:  "completed",
+				Queries: []string{"sensitive data"},
+				Results: []openai.ResponseFileSearchToolCallResultParam{},
+			},
+			config: &openinference.TraceConfig{
+				HideOutputText: true,
+			},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "file search call at different message index",
+			call: &openai.ResponseFileSearchToolCall{
+				ID:      "fs-003",
+				Type:    "file_search_call",
+				Status:  "in_progress",
+				Queries: []string{"search query"},
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 3,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(3, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(3, 0, openinference.ToolCallID), "fs-003"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(3, 0, openinference.ToolCallFunctionName), "file_search_call"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseFileSearchCallAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseComputerCallAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          *openai.ResponseComputerToolCall
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "computer call with click action",
+			call: &openai.ResponseComputerToolCall{
+				ID:     "computer-001",
+				CallID: "comp_click_123",
+				Type:   "computer_call",
+				Status: "completed",
+				Action: openai.ResponseComputerToolCallActionUnionParam{
+					OfClick: &openai.ResponseComputerToolCallActionClickParam{
+						Type:   "click",
+						X:      100,
+						Y:      200,
+						Button: "left",
+					},
+				},
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.MessageRole), "tool"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "comp_click_123"),
+			},
+		},
+		{
+			name: "computer call with hidden output",
+			call: &openai.ResponseComputerToolCall{
+				ID:     "computer-002",
+				CallID: "comp_type_456",
+				Type:   "computer_call",
+				Status: "completed",
+				Action: openai.ResponseComputerToolCallActionUnionParam{
+					OfType: &openai.ResponseComputerToolCallActionTypeParam{
+						Type: "type",
+						Text: "sensitive input",
+					},
+				},
+			},
+			config: &openinference.TraceConfig{
+				HideOutputText: true,
+			},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.MessageRole), "tool"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "computer call with screenshot action",
+			call: &openai.ResponseComputerToolCall{
+				ID:     "computer-003",
+				CallID: "comp_screenshot_789",
+				Type:   "computer_call",
+				Status: "completed",
+				Action: openai.ResponseComputerToolCallActionUnionParam{
+					OfScreenshot: &openai.ResponseComputerToolCallActionScreenshotParam{
+						Type: "screenshot",
+					},
+				},
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 1,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(1, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.MessageRole), "tool"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallID), "comp_screenshot_789"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseComputerCallAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseReasoningAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		reasoning     *openai.ResponseReasoningItem
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "reasoning item with single summary",
+			reasoning: &openai.ResponseReasoningItem{
+				ID:     "reason-001",
+				Type:   "reasoning",
+				Status: "completed",
+				Summary: []openai.ResponseReasoningItemSummaryParam{
+					{
+						Type: "summary_text",
+						Text: "The model analyzed the problem step by step.",
+					},
+				},
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), "The model analyzed the problem step by step."),
+			},
+		},
+		{
+			name: "reasoning item with multiple summaries",
+			reasoning: &openai.ResponseReasoningItem{
+				ID:     "reason-002",
+				Type:   "reasoning",
+				Status: "completed",
+				Summary: []openai.ResponseReasoningItemSummaryParam{
+					{
+						Type: "summary_text",
+						Text: "First step of reasoning",
+					},
+					{
+						Type: "summary_text",
+						Text: "Second step of reasoning",
+					},
+				},
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), "First step of reasoning"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 1, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 1, "text"), "Second step of reasoning"),
+			},
+		},
+		{
+			name: "reasoning item with hidden text",
+			reasoning: &openai.ResponseReasoningItem{
+				ID:     "reason-003",
+				Type:   "reasoning",
+				Status: "completed",
+				Summary: []openai.ResponseReasoningItemSummaryParam{
+					{
+						Type: "summary_text",
+						Text: "Sensitive reasoning process",
+					},
+				},
+			},
+			config: &openinference.TraceConfig{
+				HideOutputText: true,
+			},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "reasoning item with empty summaries",
+			reasoning: &openai.ResponseReasoningItem{
+				ID:      "reason-004",
+				Type:    "reasoning",
+				Status:  "in_progress",
+				Summary: []openai.ResponseReasoningItemSummaryParam{},
+			},
+			config:        openinference.NewTraceConfig(),
+			messageIndex:  2,
+			expectedAttrs: []attribute.KeyValue{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseReasoningAttrs(tt.reasoning, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseWebSearchCallAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		webSearch     *openai.ResponseFunctionWebSearch
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "web search call with search action",
+			webSearch: &openai.ResponseFunctionWebSearch{
+				ID:     "ws-001",
+				Type:   "web_search_call",
+				Status: "completed",
+				Action: openai.ResponseFunctionWebSearchActionUnionParam{
+					OfSearch: &openai.ResponseFunctionWebSearchActionSearchParam{
+						Type:  "search",
+						Query: "golang concurrency patterns",
+						Sources: []openai.ResponseFunctionWebSearchActionSearchSourceParam{
+							{
+								Type: "url",
+								URL:  "https://golang.org/doc/effective_go",
+							},
+						},
+					},
+				},
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "ws-001"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "web_search_call"),
+			},
+		},
+		{
+			name: "web search call with open page action",
+			webSearch: &openai.ResponseFunctionWebSearch{
+				ID:     "ws-002",
+				Type:   "web_search_call",
+				Status: "completed",
+				Action: openai.ResponseFunctionWebSearchActionUnionParam{
+					OfOpenPage: &openai.ResponseFunctionWebSearchActionOpenPageParam{
+						Type: "open_page",
+						URL:  "https://example.com/page",
+					},
+				},
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "ws-002"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "web_search_call"),
+			},
+		},
+		{
+			name: "web search call with hidden output",
+			webSearch: &openai.ResponseFunctionWebSearch{
+				ID:     "ws-003",
+				Type:   "web_search_call",
+				Status: "completed",
+				Action: openai.ResponseFunctionWebSearchActionUnionParam{
+					OfFind: &openai.ResponseFunctionWebSearchActionFindParam{
+						Type:    "find",
+						URL:     "https://private.example.com",
+						Pattern: "secret",
+					},
+				},
+			},
+			config: &openinference.TraceConfig{
+				HideOutputText: true,
+			},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "web search call at different message index",
+			webSearch: &openai.ResponseFunctionWebSearch{
+				ID:     "ws-004",
+				Type:   "web_search_call",
+				Status: "in_progress",
+				Action: openai.ResponseFunctionWebSearchActionUnionParam{
+					OfSearch: &openai.ResponseFunctionWebSearchActionSearchParam{
+						Type:    "search",
+						Query:   "test query",
+						Sources: []openai.ResponseFunctionWebSearchActionSearchSourceParam{},
+					},
+				},
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 2,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(2, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(2, 0, openinference.ToolCallID), "ws-004"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(2, 0, openinference.ToolCallFunctionName), "web_search_call"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseWebSearchCallAttrs(tt.webSearch, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseCustomToolCallAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		toolCall      *openai.ResponseCustomToolCall
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "custom tool call with simple input",
+			toolCall: &openai.ResponseCustomToolCall{
+				ID:     "custom-001",
+				CallID: "custom_call_123",
+				Name:   "my_custom_tool",
+				Input:  "simple input",
+				Type:   "custom_tool_call",
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "custom_call_123"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "my_custom_tool"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), `{"input":"simple input"}`),
+			},
+		},
+		{
+			name: "custom tool call with JSON input",
+			toolCall: &openai.ResponseCustomToolCall{
+				ID:     "custom-002",
+				CallID: "custom_call_456",
+				Name:   "data_processor",
+				Input:  `{"key":"value","nested":{"data":"test"}}`,
+				Type:   "custom_tool_call",
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 1,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(1, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallID), "custom_call_456"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallFunctionName), "data_processor"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallFunctionArguments), `{"input":"{\"key\":\"value\",\"nested\":{\"data\":\"test\"}}"}`),
+			},
+		},
+		{
+			name: "custom tool call with hidden output",
+			toolCall: &openai.ResponseCustomToolCall{
+				ID:     "custom-003",
+				CallID: "custom_call_789",
+				Name:   "sensitive_tool",
+				Input:  "secret data",
+				Type:   "custom_tool_call",
+			},
+			config: &openinference.TraceConfig{
+				HideOutputText: true,
+			},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "custom tool call with empty input",
+			toolCall: &openai.ResponseCustomToolCall{
+				ID:     "custom-004",
+				CallID: "custom_call_empty",
+				Name:   "no_param_tool",
+				Input:  "",
+				Type:   "custom_tool_call",
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "custom_call_empty"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "no_param_tool"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), `{"input":""}`),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseCustomToolCallAttrs(tt.toolCall, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseOutputAttrs(t *testing.T) {
+	// Helper config
+	defaultConfig := openinference.NewTraceConfig()
+	redactedConfig := &openinference.TraceConfig{HideOutputText: true}
+
+	// Minimal stubs for each union type
+	msgContent := []openai.ResponseOutputMessageContentUnion{
+		{OfOutputText: &openai.ResponseOutputTextParam{Text: "hi", Type: "output_text"}},
+	}
+	msg := &openai.ResponseOutputMessage{Role: "assistant", Content: msgContent, Type: "message"}
+	fnCall := &openai.ResponseFunctionToolCall{ID: "id", Name: "fn", Arguments: "{}", CallID: "call_id", Type: "function_call"}
+	fileSearch := &openai.ResponseFileSearchToolCall{ID: "id", Queries: []string{"q"}, Type: "file_search_call"}
+	computerCall := &openai.ResponseComputerToolCall{ID: "id", CallID: "call_id", Type: "computer_call"}
+	reasoning := &openai.ResponseReasoningItem{ID: "id", Type: "reasoning"}
+	webSearch := &openai.ResponseFunctionWebSearch{ID: "id", Type: "web_search_call"}
+	customTool := &openai.ResponseCustomToolCall{ID: "cid", CallID: "callid", Name: "tool", Input: "input", Type: "custom_tool_call"}
+
+	// Each case triggers a different branch in setResponseOutputAttrs
+	cases := []struct {
+		name   string
+		union  openai.ResponseOutputItemUnion
+		config *openinference.TraceConfig
+		want   []attribute.KeyValue
+	}{
+		{
+			name:   "OfOutputMessage",
+			union:  openai.ResponseOutputItemUnion{OfOutputMessage: msg},
+			config: defaultConfig,
+			want:   setResponseOutputMsgAttrs(msg, nil, defaultConfig, 0),
+		},
+		{
+			name:   "OfFunctionCall",
+			union:  openai.ResponseOutputItemUnion{OfFunctionCall: fnCall},
+			config: defaultConfig,
+			want:   setResponseFunctionCallAttrs(fnCall, nil, defaultConfig, 0),
+		},
+		{
+			name:   "OfFileSearchCall",
+			union:  openai.ResponseOutputItemUnion{OfFileSearchCall: fileSearch},
+			config: defaultConfig,
+			want:   setResponseFileSearchCallAttrs(fileSearch, nil, defaultConfig, 0),
+		},
+		{
+			name:   "OfComputerCall",
+			union:  openai.ResponseOutputItemUnion{OfComputerCall: computerCall},
+			config: defaultConfig,
+			want:   setResponseComputerCallAttrs(computerCall, nil, defaultConfig, 0),
+		},
+		{
+			name:   "OfReasoning",
+			union:  openai.ResponseOutputItemUnion{OfReasoning: reasoning},
+			config: defaultConfig,
+			want:   setResponseReasoningAttrs(reasoning, nil, defaultConfig, 0),
+		},
+		{
+			name:   "OfWebSearchCall",
+			union:  openai.ResponseOutputItemUnion{OfWebSearchCall: webSearch},
+			config: defaultConfig,
+			want:   setResponseWebSearchCallAttrs(webSearch, nil, defaultConfig, 0),
+		},
+		{
+			name:   "OfCustomToolCall",
+			union:  openai.ResponseOutputItemUnion{OfCustomToolCall: customTool},
+			config: defaultConfig,
+			want:   setResponseCustomToolCallAttrs(customTool, nil, defaultConfig, 0),
+		},
+		{
+			name:   "OfCustomToolCall redacted",
+			union:  openai.ResponseOutputItemUnion{OfCustomToolCall: customTool},
+			config: redactedConfig,
+			want:   setResponseCustomToolCallAttrs(customTool, nil, redactedConfig, 0),
+		},
+		// The rest are TODO branches, just check passthrough (should not panic or add attrs)
+		{
+			name:   "OfImageGenerationCall",
+			union:  openai.ResponseOutputItemUnion{OfImageGenerationCall: &openai.ResponseOutputItemImageGenerationCall{}},
+			config: defaultConfig,
+			want:   nil,
+		},
+		{
+			name:   "OfCodeInterpreterCall",
+			union:  openai.ResponseOutputItemUnion{OfCodeInterpreterCall: &openai.ResponseCodeInterpreterToolCall{}},
+			config: defaultConfig,
+			want:   nil,
+		},
+		{
+			name:   "OfLocalShellCall",
+			union:  openai.ResponseOutputItemUnion{OfLocalShellCall: &openai.ResponseOutputItemLocalShellCall{}},
+			config: defaultConfig,
+			want:   nil,
+		},
+		{
+			name:   "OfMcpCall",
+			union:  openai.ResponseOutputItemUnion{OfMcpCall: &openai.ResponseMcpCall{}},
+			config: defaultConfig,
+			want:   nil,
+		},
+		{
+			name:   "OfMcpListTools",
+			union:  openai.ResponseOutputItemUnion{OfMcpListTools: &openai.ResponseMcpListTools{}},
+			config: defaultConfig,
+			want:   nil,
+		},
+		{
+			name:   "OfMcpApprovalRequest",
+			union:  openai.ResponseOutputItemUnion{OfMcpApprovalRequest: &openai.ResponseMcpApprovalRequest{}},
+			config: defaultConfig,
+			want:   nil,
+		},
+		{
+			name:   "OfShellCall",
+			union:  openai.ResponseOutputItemUnion{OfShellCall: &openai.ResponseFunctionShellToolCall{}},
+			config: defaultConfig,
+			want:   nil,
+		},
+		{
+			name:   "OfShellCallOutput",
+			union:  openai.ResponseOutputItemUnion{OfShellCallOutput: &openai.ResponseFunctionShellToolCallOutput{}},
+			config: defaultConfig,
+			want:   nil,
+		},
+		{
+			name:   "OfApplyPatchCall",
+			union:  openai.ResponseOutputItemUnion{OfApplyPatchCall: &openai.ResponseApplyPatchToolCall{}},
+			config: defaultConfig,
+			want:   nil,
+		},
+		{
+			name:   "OfApplyPatchCallOutput",
+			union:  openai.ResponseOutputItemUnion{OfApplyPatchCallOutput: &openai.ResponseApplyPatchToolCallOutput{}},
+			config: defaultConfig,
+			want:   nil,
+		},
+		{
+			name:   "OfCompaction",
+			union:  openai.ResponseOutputItemUnion{OfCompaction: &openai.ResponseCompactionItem{}},
+			config: defaultConfig,
+			want:   nil,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := setResponseOutputAttrs(&tc.union, nil, tc.config, 0)
+			openinference.RequireAttributesEqual(t, tc.want, got)
+		})
+	}
+}
+
+func TestBuildResponsesResponseAttributes(t *testing.T) {
+	tests := []struct {
+		name          string
+		resp          *openai.Response
+		config        *openinference.TraceConfig
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "basic response with model and usage",
+			resp: &openai.Response{
+				Model: "gpt-4o",
+				Usage: &openai.ResponseUsage{
+					InputTokens:  10,
+					OutputTokens: 20,
+					TotalTokens:  30,
+					InputTokensDetails: openai.ResponseUsageInputTokensDetails{
+						CachedTokens:        0,
+						CacheCreationTokens: 0,
+					},
+					OutputTokensDetails: openai.ResponseUsageOutputTokensDetails{
+						ReasoningTokens: 0,
+					},
+				},
+				Output: []openai.ResponseOutputItemUnion{},
+			},
+			config: openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMModelName, "gpt-4o"),
+				attribute.Int(openinference.LLMTokenCountPrompt, 10),
+				attribute.Int(openinference.LLMTokenCountCompletion, 20),
+				attribute.Int(openinference.LLMTokenCountTotal, 30),
+			},
+		},
+		{
+			name: "response with cache tokens",
+			resp: &openai.Response{
+				Model: "gpt-4-turbo",
+				Usage: &openai.ResponseUsage{
+					InputTokens:  100,
+					OutputTokens: 50,
+					TotalTokens:  150,
+					InputTokensDetails: openai.ResponseUsageInputTokensDetails{
+						CachedTokens:        25,
+						CacheCreationTokens: 10,
+					},
+					OutputTokensDetails: openai.ResponseUsageOutputTokensDetails{
+						ReasoningTokens: 0,
+					},
+				},
+				Output: []openai.ResponseOutputItemUnion{},
+			},
+			config: openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMModelName, "gpt-4-turbo"),
+				attribute.Int(openinference.LLMTokenCountPrompt, 100),
+				attribute.Int(openinference.LLMTokenCountCompletion, 50),
+				attribute.Int(openinference.LLMTokenCountTotal, 150),
+				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 25),
+				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, 10),
+			},
+		},
+		{
+			name: "response with reasoning tokens",
+			resp: &openai.Response{
+				Model: "o1",
+				Usage: &openai.ResponseUsage{
+					InputTokens:  50,
+					OutputTokens: 200,
+					TotalTokens:  250,
+					InputTokensDetails: openai.ResponseUsageInputTokensDetails{
+						CachedTokens:        0,
+						CacheCreationTokens: 0,
+					},
+					OutputTokensDetails: openai.ResponseUsageOutputTokensDetails{
+						ReasoningTokens: 100,
+					},
+				},
+				Output: []openai.ResponseOutputItemUnion{},
+			},
+			config: openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMModelName, "o1"),
+				attribute.Int(openinference.LLMTokenCountPrompt, 50),
+				attribute.Int(openinference.LLMTokenCountCompletion, 200),
+				attribute.Int(openinference.LLMTokenCountTotal, 250),
+				attribute.Int(openinference.LLMTokenCountCompletionReasoning, 100),
+			},
+		},
+		{
+			name: "hide outputs config",
+			resp: &openai.Response{
+				Model: "gpt-4o",
+				Usage: &openai.ResponseUsage{
+					InputTokens:  10,
+					OutputTokens: 20,
+					TotalTokens:  30,
+					InputTokensDetails: openai.ResponseUsageInputTokensDetails{
+						CachedTokens:        0,
+						CacheCreationTokens: 0,
+					},
+					OutputTokensDetails: openai.ResponseUsageOutputTokensDetails{
+						ReasoningTokens: 0,
+					},
+				},
+				Output: []openai.ResponseOutputItemUnion{},
+			},
+			config: &openinference.TraceConfig{HideOutputs: true},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMModelName, "gpt-4o"),
+				attribute.String(openinference.OutputValue, openinference.RedactedValue),
+				attribute.Int(openinference.LLMTokenCountPrompt, 10),
+				attribute.Int(openinference.LLMTokenCountCompletion, 20),
+				attribute.Int(openinference.LLMTokenCountTotal, 30),
+			},
+		},
+		{
+			name: "empty model name (should not add LLMModelName attribute)",
+			resp: &openai.Response{
+				Model: "",
+				Usage: &openai.ResponseUsage{
+					InputTokens:  5,
+					OutputTokens: 10,
+					TotalTokens:  15,
+					InputTokensDetails: openai.ResponseUsageInputTokensDetails{
+						CachedTokens:        0,
+						CacheCreationTokens: 0,
+					},
+					OutputTokensDetails: openai.ResponseUsageOutputTokensDetails{
+						ReasoningTokens: 0,
+					},
+				},
+				Output: []openai.ResponseOutputItemUnion{},
+			},
+			config: openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.Int(openinference.LLMTokenCountPrompt, 5),
+				attribute.Int(openinference.LLMTokenCountCompletion, 10),
+				attribute.Int(openinference.LLMTokenCountTotal, 15),
+			},
+		},
+		{
+			name: "nil usage (should not add token count attributes)",
+			resp: &openai.Response{
+				Model:  "gpt-4o",
+				Usage:  nil,
+				Output: []openai.ResponseOutputItemUnion{},
+			},
+			config: openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMModelName, "gpt-4o"),
+			},
+		},
+		{
+			name: "zero token counts (should not add zero token attributes)",
+			resp: &openai.Response{
+				Model: "gpt-4o",
+				Usage: &openai.ResponseUsage{
+					InputTokens:  0,
+					OutputTokens: 0,
+					TotalTokens:  0,
+					InputTokensDetails: openai.ResponseUsageInputTokensDetails{
+						CachedTokens:        0,
+						CacheCreationTokens: 0,
+					},
+					OutputTokensDetails: openai.ResponseUsageOutputTokensDetails{
+						ReasoningTokens: 0,
+					},
+				},
+				Output: []openai.ResponseOutputItemUnion{},
+			},
+			config: openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMModelName, "gpt-4o"),
+			},
+		},
+		{
+			name: "response with output message and hide output messages",
+			resp: &openai.Response{
+				Model: "gpt-4o",
+				Usage: &openai.ResponseUsage{
+					InputTokens:  10,
+					OutputTokens: 20,
+					TotalTokens:  30,
+					InputTokensDetails: openai.ResponseUsageInputTokensDetails{
+						CachedTokens:        0,
+						CacheCreationTokens: 0,
+					},
+					OutputTokensDetails: openai.ResponseUsageOutputTokensDetails{
+						ReasoningTokens: 0,
+					},
+				},
+				Output: []openai.ResponseOutputItemUnion{
+					{
+						OfOutputMessage: &openai.ResponseOutputMessage{
+							Role: "assistant",
+							Content: []openai.ResponseOutputMessageContentUnion{
+								{
+									OfOutputText: &openai.ResponseOutputTextParam{
+										Type: "output_text",
+										Text: "Hello!",
+									},
+								},
+							},
+							Type: "message",
+						},
+					},
+				},
+			},
+			config: &openinference.TraceConfig{HideOutputMessages: true},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMModelName, "gpt-4o"),
+				attribute.Int(openinference.LLMTokenCountPrompt, 10),
+				attribute.Int(openinference.LLMTokenCountCompletion, 20),
+				attribute.Int(openinference.LLMTokenCountTotal, 30),
+			},
+		},
+		{
+			name: "response with output message (not hidden)",
+			resp: &openai.Response{
+				Model: "gpt-4o",
+				Usage: &openai.ResponseUsage{
+					InputTokens:  10,
+					OutputTokens: 20,
+					TotalTokens:  30,
+					InputTokensDetails: openai.ResponseUsageInputTokensDetails{
+						CachedTokens:        0,
+						CacheCreationTokens: 0,
+					},
+					OutputTokensDetails: openai.ResponseUsageOutputTokensDetails{
+						ReasoningTokens: 0,
+					},
+				},
+				Output: []openai.ResponseOutputItemUnion{
+					{
+						OfOutputMessage: &openai.ResponseOutputMessage{
+							Role: "assistant",
+							Content: []openai.ResponseOutputMessageContentUnion{
+								{
+									OfOutputText: &openai.ResponseOutputTextParam{
+										Type: "output_text",
+										Text: "Hello!",
+									},
+								},
+							},
+							Type: "message",
+						},
+					},
+				},
+			},
+			config: openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMModelName, "gpt-4o"),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), "Hello!"),
+				attribute.Int(openinference.LLMTokenCountPrompt, 10),
+				attribute.Int(openinference.LLMTokenCountCompletion, 20),
+				attribute.Int(openinference.LLMTokenCountTotal, 30),
+			},
+		},
+		{
+			name: "response with multiple outputs",
+			resp: &openai.Response{
+				Model: "gpt-4o",
+				Usage: &openai.ResponseUsage{
+					InputTokens:  10,
+					OutputTokens: 20,
+					TotalTokens:  30,
+					InputTokensDetails: openai.ResponseUsageInputTokensDetails{
+						CachedTokens:        0,
+						CacheCreationTokens: 0,
+					},
+					OutputTokensDetails: openai.ResponseUsageOutputTokensDetails{
+						ReasoningTokens: 0,
+					},
+				},
+				Output: []openai.ResponseOutputItemUnion{
+					{
+						OfOutputMessage: &openai.ResponseOutputMessage{
+							Role: "assistant",
+							Content: []openai.ResponseOutputMessageContentUnion{
+								{
+									OfOutputText: &openai.ResponseOutputTextParam{
+										Type: "output_text",
+										Text: "First message",
+									},
+								},
+							},
+							Type: "message",
+						},
+					},
+					{
+						OfFunctionCall: &openai.ResponseFunctionToolCall{
+							CallID:    "call_123",
+							ID:        "func_123",
+							Name:      "get_weather",
+							Arguments: `{"location":"NYC"}`,
+							Type:      "function_call",
+						},
+					},
+				},
+			},
+			config: openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMModelName, "gpt-4o"),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), "First message"),
+				attribute.String(openinference.OutputMessageAttribute(1, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallID), "call_123"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallFunctionName), "get_weather"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallFunctionArguments), `{"location":"NYC"}`),
+				attribute.Int(openinference.LLMTokenCountPrompt, 10),
+				attribute.Int(openinference.LLMTokenCountCompletion, 20),
+				attribute.Int(openinference.LLMTokenCountTotal, 30),
+			},
+		},
+		{
+			name: "all token details populated",
+			resp: &openai.Response{
+				Model: "gpt-4-turbo",
+				Usage: &openai.ResponseUsage{
+					InputTokens:  100,
+					OutputTokens: 200,
+					TotalTokens:  300,
+					InputTokensDetails: openai.ResponseUsageInputTokensDetails{
+						CachedTokens:        30,
+						CacheCreationTokens: 20,
+					},
+					OutputTokensDetails: openai.ResponseUsageOutputTokensDetails{
+						ReasoningTokens: 50,
+					},
+				},
+				Output: []openai.ResponseOutputItemUnion{},
+			},
+			config: openinference.NewTraceConfig(),
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMModelName, "gpt-4-turbo"),
+				attribute.Int(openinference.LLMTokenCountPrompt, 100),
+				attribute.Int(openinference.LLMTokenCountCompletion, 200),
+				attribute.Int(openinference.LLMTokenCountTotal, 300),
+				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 30),
+				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, 20),
+				attribute.Int(openinference.LLMTokenCountCompletionReasoning, 50),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildResponsesResponseAttributes(tt.resp, tt.config)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, got)
+		})
+	}
+}

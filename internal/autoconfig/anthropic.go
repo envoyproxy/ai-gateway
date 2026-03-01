@@ -42,6 +42,7 @@ func PopulateAnthropicEnvConfig(data *ConfigData) error {
 	backend := Backend{
 		Name:     "anthropic",
 		Hostname: parsed.hostname,
+		IP:       parsed.ip,
 		Port:     parsed.port,
 		NeedsTLS: parsed.needsTLS,
 	}

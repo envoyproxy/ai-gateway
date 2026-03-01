@@ -6,11 +6,10 @@
 package openai
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
-	"github.com/openai/openai-go/v2/packages/param"
-	"github.com/openai/openai-go/v2/responses"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -25,24 +24,36 @@ import (
 var (
 	basicResponseReq = &openai.ResponseRequest{
 		Model: openai.ModelGPT5Nano,
-		Input: responses.ResponseNewParamsInputUnion{
-			OfString: param.Opt[string]{Value: "Hi"},
+		Input: openai.ResponseNewParamsInputUnion{
+			OfString: ptr("Hi"),
 		},
 	}
 	basicResponseReqBody = mustJSON(basicResponseReq)
 
 	basicResponseResp = &openai.Response{
-		ID:    "resp-123",
-		Model: openai.ModelGPT5Nano,
-		Output: []responses.ResponseOutputItemUnion{
+		ID:     "resp-123",
+		Model:  openai.ModelGPT5Nano,
+		Status: "completed",
+		Text: openai.ResponseTextConfig{
+			Format: openai.ResponseFormatTextConfigUnionParam{
+				OfText: &openai.ResponseFormatTextParam{
+					Type: "text",
+				},
+			},
+		},
+		Output: []openai.ResponseOutputItemUnion{
 			{
-				ID:   "msg_01",
-				Type: "message",
-				Role: "assistant",
-				Content: []responses.ResponseOutputMessageContentUnion{
-					{
-						Type: "output_text",
-						Text: "Hello, how can I help?",
+				OfOutputMessage: &openai.ResponseOutputMessage{
+					ID:   "msg_01",
+					Type: "message",
+					Role: "assistant",
+					Content: []openai.ResponseOutputMessageContentUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Type: "output_text",
+								Text: "Hello, how can I help?",
+							},
+						},
 					},
 				},
 			},
@@ -50,7 +61,8 @@ var (
 		Usage: &openai.ResponseUsage{
 			InputTokens: 20,
 			InputTokensDetails: openai.ResponseUsageInputTokensDetails{
-				CachedTokens: 2,
+				CachedTokens:        2,
+				CacheCreationTokens: 4,
 			},
 			OutputTokens: 10,
 			TotalTokens:  30,
@@ -59,17 +71,29 @@ var (
 	basicResponseRespBody = mustJSON(basicResponseResp)
 
 	responseWithCacheWrite = &openai.Response{
-		ID:    "resp-456",
-		Model: openai.ModelGPT5Nano,
-		Output: []responses.ResponseOutputItemUnion{
+		ID:     "resp-456",
+		Model:  openai.ModelGPT5Nano,
+		Status: "completed",
+		Text: openai.ResponseTextConfig{
+			Format: openai.ResponseFormatTextConfigUnionParam{
+				OfText: &openai.ResponseFormatTextParam{
+					Type: "text",
+				},
+			},
+		},
+		Output: []openai.ResponseOutputItemUnion{
 			{
-				ID:   "msg_02",
-				Type: "message",
-				Role: "assistant",
-				Content: []responses.ResponseOutputMessageContentUnion{
-					{
-						Type: "output_text",
-						Text: "This response includes cache write tokens.",
+				OfOutputMessage: &openai.ResponseOutputMessage{
+					ID:   "msg_02",
+					Type: "message",
+					Role: "assistant",
+					Content: []openai.ResponseOutputMessageContentUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Type: "output_text",
+								Text: "This response includes cache write tokens.",
+							},
+						},
 					},
 				},
 			},
@@ -88,8 +112,8 @@ var (
 
 	responseReqWithStreaming = &openai.ResponseRequest{
 		Model: openai.ModelGPT5Nano,
-		Input: responses.ResponseNewParamsInputUnion{
-			OfString: param.Opt[string]{Value: "Hi"},
+		Input: openai.ResponseNewParamsInputUnion{
+			OfString: ptr("Hi"),
 		},
 		Stream: true,
 	}
@@ -147,6 +171,9 @@ func TestResponsesRecorder_RecordRequest(t *testing.T) {
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(basicResponseReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, fmt.Sprintf("{\"model\":\"%s\"}", basicResponseReq.Model)),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "user"),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), *basicResponseReq.Input.OfString),
 			},
 		},
 		{
@@ -159,6 +186,9 @@ func TestResponsesRecorder_RecordRequest(t *testing.T) {
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(responseReqWithStreamingBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, fmt.Sprintf("{\"model\":\"%s\",\"stream\":true}", responseReqWithStreaming.Model)),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "user"),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), *responseReqWithStreaming.Input.OfString),
 			},
 		},
 	}
@@ -192,12 +222,17 @@ func TestResponsesRecorder_RecordResponse(t *testing.T) {
 			resp:   basicResponseResp,
 			config: &openinference.TraceConfig{},
 			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.Int(openinference.LLMTokenCountPrompt, 20),
 				attribute.Int(openinference.LLMTokenCountCompletion, 10),
 				attribute.Int(openinference.LLMTokenCountTotal, 30),
 				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 2),
+				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, 4),
 				attribute.String(openinference.OutputValue, string(basicResponseRespBody)),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), basicResponseResp.Output[0].OfOutputMessage.Content[0].OfOutputText.Text),
 			},
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
@@ -206,6 +241,7 @@ func TestResponsesRecorder_RecordResponse(t *testing.T) {
 			resp:   responseWithCacheWrite,
 			config: &openinference.TraceConfig{},
 			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMimeType, openinference.MimeTypeJSON),
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.Int(openinference.LLMTokenCountPrompt, 100),
 				attribute.Int(openinference.LLMTokenCountCompletion, 25),
@@ -213,6 +249,9 @@ func TestResponsesRecorder_RecordResponse(t *testing.T) {
 				attribute.Int(openinference.LLMTokenCountPromptCacheHit, 10),
 				attribute.Int(openinference.LLMTokenCountPromptCacheWrite, 50),
 				attribute.String(openinference.OutputValue, string(responseWithCacheWriteBody)),
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), responseWithCacheWrite.Output[0].OfOutputMessage.Content[0].OfOutputText.Text),
 			},
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
@@ -358,7 +397,7 @@ func TestResponsesRecorder_RecordResponseChunks(t *testing.T) {
       },
       "sequence_number": 2
     }`
-	var respCmplEvent responses.ResponseStreamEventUnion
+	var respCmplEvent openai.ResponseStreamEventUnion
 	err := respCmplEvent.UnmarshalJSON([]byte(respCmplEventJSON))
 	require.NoError(t, err)
 
@@ -397,6 +436,7 @@ func TestResponsesRecorder_WithConfig_HideInputs(t *testing.T) {
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, openinference.RedactedValue),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
 			},
 		},
 		{
@@ -408,6 +448,9 @@ func TestResponsesRecorder_WithConfig_HideInputs(t *testing.T) {
 				attribute.String(openinference.LLMModelName, openai.ModelGPT5Nano),
 				attribute.String(openinference.InputValue, string(basicResponseReqBody)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.LLMInvocationParameters, `{"model":"gpt-5-nano"}`),
+				attribute.String("llm.input_messages.0.message.role", "user"),
+				attribute.String("llm.input_messages.0.message.content", "Hi"),
 			},
 		},
 	}
@@ -438,12 +481,14 @@ func TestResponsesRecorder_ConfigFromEnvironment(t *testing.T) {
 		return false
 	})
 
-	// Verify input is hidden.
+	// Verify span was created with LLM attributes
 	attrs := make(map[string]attribute.Value)
 	for _, kv := range reqSpan.Attributes {
 		attrs[string(kv.Key)] = kv.Value
 	}
-	require.Equal(t, openinference.RedactedValue, attrs[openinference.InputValue].AsString())
+	require.Equal(t, openinference.SpanKindLLM, attrs[openinference.SpanKind].AsString())
+	require.Equal(t, openinference.LLMSystemOpenAI, attrs[openinference.LLMSystem].AsString())
+	require.Equal(t, openai.ModelGPT5Nano, attrs[openinference.LLMModelName].AsString())
 }
 
 func TestResponsesRecorder_NewResponsesRecorder_NilConfig(t *testing.T) {

@@ -38,6 +38,7 @@ import (
 
 type flags struct {
 	extProcLogLevel                string
+	extProcEnableRedaction         bool
 	extProcImage                   string
 	extProcImagePullPolicy         corev1.PullPolicy
 	enableLeaderElection           bool
@@ -47,8 +48,10 @@ type flags struct {
 	tlsCertName                    string
 	tlsKeyName                     string
 	caBundleName                   string
-	metricsRequestHeaderAttributes string
-	spanRequestHeaderAttributes    string
+	requestHeaderAttributes        *string
+	spanRequestHeaderAttributes    *string
+	metricsRequestHeaderAttributes *string
+	logRequestHeaderAttributes     *string
 	endpointPrefixes               string
 	rootPrefix                     string
 	extProcExtraEnvVars            string
@@ -63,6 +66,13 @@ type flags struct {
 	mcpFallbackSessionEncryptionIterations int
 	watchNamespaces                        []string
 	cacheSyncTimeout                       time.Duration
+}
+
+func setOptionalString(dst **string) func(string) error {
+	return func(value string) error {
+		*dst = &value
+		return nil
+	}
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -96,6 +106,11 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		"extProcLogLevel",
 		"info",
 		"The log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
+	)
+	extProcEnableRedactionPtr := fs.Bool(
+		"extProcEnableRedaction",
+		false,
+		"Enable redaction of sensitive information in debug logs for the external processor.",
 	)
 	extProcImagePtr := fs.String(
 		"extProcImage",
@@ -142,15 +157,25 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		"tls.key",
 		"The name of the TLS key file.",
 	)
-	metricsRequestHeaderAttributes := fs.String(
-		"metricsRequestHeaderAttributes",
-		"",
-		"Comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes. Format: x-team-id:team.id,x-user-id:user.id.",
+	var requestHeaderAttributes *string
+	fs.Func("requestHeaderAttributes",
+		"Comma-separated key-value pairs for mapping HTTP request headers to Otel attributes shared across metrics, spans, and access logs. Format: x-tenant-id:tenant.id.",
+		setOptionalString(&requestHeaderAttributes),
 	)
-	spanRequestHeaderAttributes := fs.String(
-		"spanRequestHeaderAttributes",
-		"",
-		"Comma-separated key-value pairs for mapping HTTP request headers to otel span attributes. Format: x-session-id:session.id,x-user-id:user.id.",
+	var spanRequestHeaderAttributes *string
+	fs.Func("spanRequestHeaderAttributes",
+		"Comma-separated key-value pairs for mapping HTTP request headers to otel span attributes. Format: agent-session-id:session.id,x-tenant-id:tenant.id. Default: agent-session-id:session.id (when unset). Set to empty to disable.",
+		setOptionalString(&spanRequestHeaderAttributes),
+	)
+	var metricsRequestHeaderAttributes *string
+	fs.Func("metricsRequestHeaderAttributes",
+		"Comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes. Format: x-tenant-id:tenant.id,x-tenant-id:tenant.id.",
+		setOptionalString(&metricsRequestHeaderAttributes),
+	)
+	var logRequestHeaderAttributes *string
+	fs.Func("logRequestHeaderAttributes",
+		"Comma-separated key-value pairs for mapping HTTP request headers to access log attributes. Format: agent-session-id:session.id,x-tenant-id:tenant.id. Default: agent-session-id:session.id (when unset). Set to empty to disable.",
+		setOptionalString(&logRequestHeaderAttributes),
 	)
 	endpointPrefixes := fs.String(
 		"endpointPrefixes",
@@ -223,19 +248,35 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		return nil, err
 	}
 
+	// Validate request header attributes if provided.
+	if requestHeaderAttributes != nil && *requestHeaderAttributes != "" {
+		_, err := internalapi.ParseRequestHeaderAttributeMapping(*requestHeaderAttributes)
+		if err != nil {
+			return nil, fmt.Errorf("invalid request header attributes: %w", err)
+		}
+	}
+
+	// Validate tracing header attributes if provided.
+	if spanRequestHeaderAttributes != nil && *spanRequestHeaderAttributes != "" {
+		_, err := internalapi.ParseRequestHeaderAttributeMapping(*spanRequestHeaderAttributes)
+		if err != nil {
+			return nil, fmt.Errorf("invalid tracing header attributes: %w", err)
+		}
+	}
+
 	// Validate metrics header attributes if provided.
-	if *metricsRequestHeaderAttributes != "" {
+	if metricsRequestHeaderAttributes != nil && *metricsRequestHeaderAttributes != "" {
 		_, err := internalapi.ParseRequestHeaderAttributeMapping(*metricsRequestHeaderAttributes)
 		if err != nil {
 			return nil, fmt.Errorf("invalid metrics header attributes: %w", err)
 		}
 	}
 
-	// Validate tracing header attributes if provided.
-	if *spanRequestHeaderAttributes != "" {
-		_, err := internalapi.ParseRequestHeaderAttributeMapping(*spanRequestHeaderAttributes)
+	// Validate access log header attributes if provided.
+	if logRequestHeaderAttributes != nil && *logRequestHeaderAttributes != "" {
+		_, err := internalapi.ParseRequestHeaderAttributeMapping(*logRequestHeaderAttributes)
 		if err != nil {
-			return nil, fmt.Errorf("invalid tracing header attributes: %w", err)
+			return nil, fmt.Errorf("invalid access log header attributes: %w", err)
 		}
 	}
 
@@ -271,6 +312,7 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 
 	return &flags{
 		extProcLogLevel:                        *extProcLogLevelPtr,
+		extProcEnableRedaction:                 *extProcEnableRedactionPtr,
 		extProcImage:                           *extProcImagePtr,
 		extProcImagePullPolicy:                 extProcPullPolicy,
 		enableLeaderElection:                   *enableLeaderElectionPtr,
@@ -280,8 +322,10 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		tlsCertName:                            *tlsCertName,
 		tlsKeyName:                             *tlsKeyName,
 		caBundleName:                           *caBundleName,
-		metricsRequestHeaderAttributes:         *metricsRequestHeaderAttributes,
-		spanRequestHeaderAttributes:            *spanRequestHeaderAttributes,
+		requestHeaderAttributes:                requestHeaderAttributes,
+		spanRequestHeaderAttributes:            spanRequestHeaderAttributes,
+		metricsRequestHeaderAttributes:         metricsRequestHeaderAttributes,
+		logRequestHeaderAttributes:             logRequestHeaderAttributes,
 		endpointPrefixes:                       *endpointPrefixes,
 		rootPrefix:                             *rootPrefix,
 		extProcExtraEnvVars:                    *extProcExtraEnvVars,
@@ -343,7 +387,7 @@ func main() {
 		setupLog.Error(err, "failed to create client")
 		os.Exit(1)
 	}
-	if err := maybePatchAdmissionWebhook(ctx, cli, filepath.Join(parsedFlags.tlsCertDir, parsedFlags.caBundleName)); err != nil {
+	if err = maybePatchAdmissionWebhook(ctx, cli, filepath.Join(parsedFlags.tlsCertDir, parsedFlags.caBundleName)); err != nil {
 		setupLog.Error(err, "failed to patch admission webhook")
 		os.Exit(1)
 	}
@@ -351,7 +395,11 @@ func main() {
 	// Start the extension server running alongside the controller.
 	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
 	s := grpc.NewServer(grpc.MaxRecvMsgSize(parsedFlags.maxRecvMsgSize))
-	extSrv := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false)
+	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes)
+	if err != nil {
+		setupLog.Error(err, "failed to create extension server")
+		os.Exit(1)
+	}
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {
@@ -369,10 +417,13 @@ func main() {
 		ExtProcImage:                           parsedFlags.extProcImage,
 		ExtProcImagePullPolicy:                 parsedFlags.extProcImagePullPolicy,
 		ExtProcLogLevel:                        parsedFlags.extProcLogLevel,
+		ExtProcEnableRedaction:                 parsedFlags.extProcEnableRedaction,
 		EnableLeaderElection:                   parsedFlags.enableLeaderElection,
 		UDSPath:                                extProcUDSPath,
-		MetricsRequestHeaderAttributes:         parsedFlags.metricsRequestHeaderAttributes,
+		RequestHeaderAttributes:                parsedFlags.requestHeaderAttributes,
 		TracingRequestHeaderAttributes:         parsedFlags.spanRequestHeaderAttributes,
+		MetricsRequestHeaderAttributes:         parsedFlags.metricsRequestHeaderAttributes,
+		LogRequestHeaderAttributes:             parsedFlags.logRequestHeaderAttributes,
 		EndpointPrefixes:                       parsedFlags.endpointPrefixes,
 		RootPrefix:                             parsedFlags.rootPrefix,
 		ExtProcExtraEnvVars:                    parsedFlags.extProcExtraEnvVars,

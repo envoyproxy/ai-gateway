@@ -72,6 +72,7 @@ func PopulateOpenAIEnvConfig(data *ConfigData) error {
 	backend := Backend{
 		Name:     "openai",
 		Hostname: parsed.hostname,
+		IP:       parsed.ip,
 		Port:     parsed.port,
 		NeedsTLS: parsed.needsTLS,
 	}

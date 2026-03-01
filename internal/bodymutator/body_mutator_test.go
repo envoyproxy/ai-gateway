@@ -28,7 +28,7 @@ func TestBodyMutator_Mutate_Set(t *testing.T) {
 
 	requestBody := []byte(`{"model": "gpt-4", "service_tier": "default", "messages": []}`)
 
-	mutatedBody, err := mutator.Mutate(requestBody, false)
+	mutatedBody, err := mutator.Mutate(requestBody)
 	require.NoError(t, err)
 
 	var result map[string]interface{}
@@ -51,7 +51,7 @@ func TestBodyMutator_Mutate_Remove(t *testing.T) {
 
 	requestBody := []byte(`{"model": "gpt-4", "service_tier": "default", "internal_flag": true, "messages": []}`)
 
-	mutatedBody, err := mutator.Mutate(requestBody, false)
+	mutatedBody, err := mutator.Mutate(requestBody)
 	require.NoError(t, err)
 
 	var result map[string]interface{}
@@ -78,7 +78,7 @@ func TestBodyMutator_Mutate_SetAndRemove(t *testing.T) {
 
 	requestBody := []byte(`{"model": "gpt-4", "service_tier": "default", "internal_flag": true}`)
 
-	mutatedBody, err := mutator.Mutate(requestBody, false)
+	mutatedBody, err := mutator.Mutate(requestBody)
 	require.NoError(t, err)
 
 	var result map[string]interface{}
@@ -89,41 +89,6 @@ func TestBodyMutator_Mutate_SetAndRemove(t *testing.T) {
 	require.Equal(t, "added", result["new_field"])
 	require.NotContains(t, result, "internal_flag")
 	require.Equal(t, "gpt-4", result["model"])
-}
-
-func TestBodyMutator_Mutate_OnRetry(t *testing.T) {
-	bodyMutations := &filterapi.HTTPBodyMutation{
-		Set: []filterapi.HTTPBodyField{
-			{Path: "service_tier", Value: "\"premium\""},
-		},
-	}
-
-	originalBody := []byte(`{"model": "gpt-4", "service_tier": "default"}`)
-	mutator := NewBodyMutator(bodyMutations, originalBody)
-
-	// First mutation
-	requestBody := []byte(`{"model": "gpt-4", "service_tier": "default"}`)
-	mutatedBody, err := mutator.Mutate(requestBody, false)
-	require.NoError(t, err)
-
-	var result map[string]interface{}
-	err = json.Unmarshal(mutatedBody, &result)
-	require.NoError(t, err)
-	require.Equal(t, "premium", result["service_tier"])
-
-	// On retry, should restore original body first
-	modifiedBody := []byte(`{"model": "gpt-4", "service_tier": "modified", "extra": "field"}`)
-	mutatedBodyRetry, err := mutator.Mutate(modifiedBody, true)
-	require.NoError(t, err)
-
-	var retryResult map[string]interface{}
-	err = json.Unmarshal(mutatedBodyRetry, &retryResult)
-	require.NoError(t, err)
-
-	// Should have the mutation applied to the original body, not the modified body
-	require.Equal(t, "premium", retryResult["service_tier"])
-	require.Equal(t, "gpt-4", retryResult["model"])
-	require.NotContains(t, retryResult, "extra") // Should not have the extra field from modified body
 }
 
 func TestBodyMutator_Mutate_ComplexValues(t *testing.T) {
@@ -141,7 +106,7 @@ func TestBodyMutator_Mutate_ComplexValues(t *testing.T) {
 
 	requestBody := []byte(`{"model": "gpt-4"}`)
 
-	mutatedBody, err := mutator.Mutate(requestBody, false)
+	mutatedBody, err := mutator.Mutate(requestBody)
 	require.NoError(t, err)
 
 	var result map[string]interface{}
@@ -173,7 +138,7 @@ func TestBodyMutator_Mutate_NoMutations(t *testing.T) {
 
 	requestBody := []byte(`{"model": "gpt-4", "service_tier": "default"}`)
 
-	mutatedBody, err := mutator.Mutate(requestBody, false)
+	mutatedBody, err := mutator.Mutate(requestBody)
 	require.NoError(t, err)
 
 	require.Equal(t, requestBody, mutatedBody)
@@ -192,7 +157,7 @@ func TestBodyMutator_Mutate_InvalidJSON(t *testing.T) {
 	invalidRequestBody := []byte(`{invalid json}`)
 
 	// sjson is more graceful and can handle malformed JSON
-	mutatedBody, err := mutator.Mutate(invalidRequestBody, false)
+	mutatedBody, err := mutator.Mutate(invalidRequestBody)
 	require.NoError(t, err)
 	require.NotNil(t, mutatedBody)
 
@@ -214,7 +179,7 @@ func TestBodyMutator_Mutate_InvalidJSONValue(t *testing.T) {
 
 	requestBody := []byte(`{"model": "gpt-4"}`)
 
-	mutatedBody, err := mutator.Mutate(requestBody, false)
+	mutatedBody, err := mutator.Mutate(requestBody)
 	require.NoError(t, err)
 
 	var result map[string]interface{}

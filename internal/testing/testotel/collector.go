@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-// Package testotel provides test utilities for OpenTelemetry tracing and metrics tests.
+// Package testotel provides test utilities for OpenTelemetry tracing, metrics, and logs tests.
 // This is not internal for use in cmd/extproc/mainlib/main_test.go.
 package testotel
 
@@ -14,8 +14,10 @@ import (
 	"strings"
 	"time"
 
+	collectlogsv1 "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collectmetricsv1 "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	collecttracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	logsv1 "go.opentelemetry.io/proto/otlp/logs/v1"
 	metricsv1 "go.opentelemetry.io/proto/otlp/metrics/v1"
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/grpc"
@@ -64,10 +66,29 @@ func (s *metricsServer) Export(_ context.Context, req *collectmetricsv1.ExportMe
 	return &collectmetricsv1.ExportMetricsServiceResponse{}, nil
 }
 
-// StartOTLPCollector starts a test OTLP collector server that receives trace and metrics data via gRPC.
+// logsServer implements the OTLP logs service.
+type logsServer struct {
+	collectlogsv1.UnimplementedLogsServiceServer
+	logsCh chan *logsv1.ResourceLogs
+}
+
+func (s *logsServer) Export(_ context.Context, req *collectlogsv1.ExportLogsServiceRequest) (*collectlogsv1.ExportLogsServiceResponse, error) {
+	for _, resourceLogs := range req.ResourceLogs {
+		timeout := time.After(otlpTimeout)
+		select {
+		case s.logsCh <- resourceLogs:
+		case <-timeout:
+			fmt.Println("Warning: Dropping logs due to timeout")
+		}
+	}
+	return &collectlogsv1.ExportLogsServiceResponse{}, nil
+}
+
+// StartOTLPCollector starts a test OTLP collector server that receives trace, metrics, and logs data via gRPC.
 func StartOTLPCollector() *OTLPCollector {
 	spanCh := make(chan *tracev1.ResourceSpans, 10)
 	metricsCh := make(chan *metricsv1.ResourceMetrics, 10)
+	logsCh := make(chan *logsv1.ResourceLogs, 10)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -77,6 +98,7 @@ func StartOTLPCollector() *OTLPCollector {
 	server := grpc.NewServer()
 	collecttracev1.RegisterTraceServiceServer(server, &traceServer{spanCh: spanCh})
 	collectmetricsv1.RegisterMetricsServiceServer(server, &metricsServer{metricsCh: metricsCh})
+	collectlogsv1.RegisterLogsServiceServer(server, &logsServer{logsCh: logsCh})
 
 	go func() {
 		// Server.Serve returns error on Stop/GracefulStop which is expected.
@@ -93,7 +115,14 @@ func StartOTLPCollector() *OTLPCollector {
 		// Use delta temporality to prevent metric accumulation across subtests.
 		"OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta",
 	}
-	return &OTLPCollector{server, listener, env, spanCh, metricsCh}
+	return &OTLPCollector{
+		server:    server,
+		listener:  listener,
+		env:       env,
+		spanCh:    spanCh,
+		metricsCh: metricsCh,
+		logsCh:    logsCh,
+	}
 }
 
 type OTLPCollector struct {
@@ -102,6 +131,7 @@ type OTLPCollector struct {
 	env       []string
 	spanCh    chan *tracev1.ResourceSpans
 	metricsCh chan *metricsv1.ResourceMetrics
+	logsCh    chan *logsv1.ResourceLogs
 }
 
 // Env returns the environment variables needed to configure the OTLP collector.
@@ -179,6 +209,16 @@ func (o *OTLPCollector) TakeMetrics(expectedCount int) []*metricsv1.ResourceMetr
 		case <-deadline:
 			return metrics
 		}
+	}
+}
+
+// TakeLog returns a single log entry or nil if none were recorded.
+func (o *OTLPCollector) TakeLog() *logsv1.ResourceLogs {
+	select {
+	case resourceLogs := <-o.logsCh:
+		return resourceLogs
+	case <-time.After(otlpTimeout):
+		return nil
 	}
 }
 

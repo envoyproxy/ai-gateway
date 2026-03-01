@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/autoconfig"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 var testMcpServers = &autoconfig.MCPServers{
@@ -24,18 +25,9 @@ var testMcpServers = &autoconfig.MCPServers{
 	},
 }
 
-// clearEnv clears any credential environment variable that can affect the autoconfig.
-func clearEnv(t *testing.T) {
-	t.Helper()
-	t.Setenv("OPENAI_API_KEY", "")
-	t.Setenv("OPENAI_BASE_URL", "")
-	t.Setenv("AZURE_OPENAI_API_KEY", "")
-	t.Setenv("ANTHROPIC_API_KEY", "")
-	t.Setenv("ANTHROPIC_BASE_URL", "")
-}
-
 // TestReadConfig is mainly for coverage as the autoconfig package is tested more thoroughly.
 func TestReadConfig(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name            string
 		path            string
@@ -95,11 +87,19 @@ func TestReadConfig(t *testing.T) {
 			expectHostnames: []string{"api.openai.com"},
 			expectPort:      "443",
 		},
+		{
+			name: "configures OTEL access logs when OTLP endpoint is set",
+			envVars: map[string]string{
+				"OPENAI_API_KEY":              "test-key",
+				"OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector:4317",
+			},
+			expectHostnames: []string{"api.openai.com", "otel-collector"},
+			expectPort:      "4317",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
 			}
@@ -119,7 +119,6 @@ func TestReadConfig(t *testing.T) {
 	}
 
 	t.Run("error when file and no OPENAI_API_KEY", func(t *testing.T) {
-		clearEnv(t)
 		_, err := readConfig("", nil, false)
 		require.Error(t, err)
 		require.EqualError(t, err, "you must supply at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY, ANTHROPIC_API_KEY, or a config file path")
@@ -133,6 +132,7 @@ func TestReadConfig(t *testing.T) {
 }
 
 func TestExpandPath(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	homeDir, err := os.UserHomeDir()
 	require.NoError(t, err)
 
@@ -182,7 +182,6 @@ func TestExpandPath(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)
 			}

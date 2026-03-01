@@ -1,0 +1,164 @@
+---
+title: Envoy AI Gateway v0.5.x Release Series
+description: Major release introducing GatewayConfig CRD, OpenAI Responses API, enhanced caching for AWS Bedrock and GCP Anthropic, CEL-based MCP authorization, MCP stdio server proxy, Google Search grounding for Gemini, unified thinking configuration, and route-level body mutation
+toc_min_heading_level: 2
+toc_max_heading_level: 4
+---
+
+import Link from '@docusaurus/Link';
+import {
+  ReleaseSeriesLayout,
+  ReleaseHeader,
+  FeatureSectionCard,
+  PatchRelease,
+  ItemList,
+  Dependencies
+} from '../../components/ReleaseNotes';
+import releaseData from '../../data/releases/v0.5.json';
+import React from 'react';
+
+export const { series, releases, navigation } = releaseData;
+export const mainRelease = releases[0]; // v0.5.0
+export const patchReleases = releases.slice(1).reverse(); // Future patch releases (newest first)
+
+<ReleaseSeriesLayout
+  title={series.title}
+  subtitle={series.subtitle}
+  seriesVersion={series.version}
+  badgeText={series.badge}
+  badgeType={series.badgeType}
+  previousSeries={navigation.previous}
+>
+
+<ReleaseHeader
+  version={mainRelease.version}
+  date={mainRelease.date}
+  type={mainRelease.type}
+  tags={mainRelease.tags}
+>
+
+{mainRelease.overview}
+
+</ReleaseHeader>
+
+## ✨ New Features
+
+{mainRelease.features.map((featureSection, index) => (
+  <FeatureSectionCard key={index} section={featureSection} />
+))}
+
+## 🔗 API Updates
+
+{mainRelease.apiChanges.length > 0 && (
+  <ItemList items={mainRelease.apiChanges} />
+)}
+
+### Deprecations
+{mainRelease.deprecations?.length > 0 && (
+  <>
+    <ItemList items={mainRelease.deprecations} />
+  </>
+)}
+
+## 🐛 Bug Fixes
+
+{mainRelease.bugFixes?.length > 0 && (
+  <ItemList items={mainRelease.bugFixes} />
+)}
+
+## 📖 Upgrade Guidance
+
+### Migrating to GatewayConfig
+
+If you're using `AIGatewayFilterConfigExternalProcessor.resources` for container resource configuration, migrate to the new `GatewayConfig` CRD:
+
+1. Create a `GatewayConfig` resource with your desired configuration:
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: GatewayConfig
+metadata:
+  name: my-gateway-config
+  namespace: default
+spec:
+  extProc:
+    kubernetes:
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
+      env:
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector:4317"
+```
+
+2. Reference the `GatewayConfig` from your Gateway:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: ai-gateway
+  annotations:
+    aigateway.envoyproxy.io/gateway-config: my-gateway-config
+```
+
+### Migrating Endpoint Prefix Configuration
+
+If you're using the `version` field as a prefix for OpenAI-compatible backends, migrate to the new `prefix` field:
+
+**Before:**
+```yaml
+schema:
+  name: OpenAI
+  version: "/v1beta/openai"  # Deprecated usage
+```
+
+**After:**
+```yaml
+schema:
+  name: OpenAI
+  prefix: "/v1beta/openai"
+```
+
+## 📦 Dependencies Versions
+
+<Dependencies dependencies={mainRelease.dependencies} />
+
+## ⏩ Patch Releases
+
+{patchReleases.map((release, index) => (
+  <PatchRelease
+    key={index}
+    version={release.version}
+    date={release.date}
+    type={release.type}
+    tags={release.tags}
+    overview={release.overview}
+    features={release.features}
+    bugFixes={release.bugFixes}
+  />
+))}
+
+## 🙏 Acknowledgements
+
+We extend our gratitude to all contributors who made this release possible. Special thanks to:
+
+- The growing community of adopters including Bloomberg, LY Corporation, Alan by Comma Soft, and NRP for their valuable feedback and production insights
+- Everyone who reported bugs, submitted PRs, and participated in design discussions
+- The Envoy Gateway team for their continued collaboration
+
+## 🔮 What's Next
+
+We're already working on exciting features for future releases:
+
+- **Additional provider integrations** - AWS Bedrock InvokeModel API support for Claude and GPT models, Gemini embeddings, and Azure/AKS workload identity
+- **Batch inference APIs** - Support for batch processing to improve throughput for high-volume workloads
+- **Advanced caching strategies** - Prompt cache key and retention controls for OpenAI chat completions
+- **Upstream provider quota policies** - New API for managing upstream provider quotas
+- **Sensitive data redaction** - Request and response body redaction for protecting sensitive information
+
+</ReleaseSeriesLayout>

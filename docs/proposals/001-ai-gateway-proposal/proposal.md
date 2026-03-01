@@ -143,7 +143,7 @@ FilterConfig *AIGatewayFilterConfig `json:"filterConfig,omitempty"`
 //	  type: TotalToken
 //
 // Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three
-// rate limit buckets for each unique x-user-id header value. One bucket is for the input token,
+// rate limit buckets for each unique x-tenant-id header value. One bucket is for the input token,
 // the other is for the output token, and the last one is for the total token.
 // Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.
 //
@@ -544,7 +544,7 @@ spec:
             - name: x-ai-eg-model
               type: exact
               value: llama-3.3-70b-instruction
-            - name: x-user-id
+            - name: x-tenant-id
               type: Distinct
           limit:
             # configure the number of allowed token per minute, per user and model

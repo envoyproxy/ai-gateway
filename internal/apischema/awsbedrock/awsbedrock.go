@@ -472,6 +472,7 @@ type ConverseStreamEvent struct {
 	StopReason        *string                               `json:"stopReason,omitempty"`
 	Usage             *TokenUsage                           `json:"usage,omitempty"`
 	Start             *ContentBlockStart                    `json:"start,omitempty"`
+	ServiceTier       *ServiceTier                          `json:"serviceTier,omitempty"`
 }
 
 // ConverseStreamEventContentBlockDelta is defined in the AWS Bedrock API:

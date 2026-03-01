@@ -115,6 +115,36 @@ func TestSession_Close(t *testing.T) {
 	require.Equal(t, int32(2), deletes.Load())
 }
 
+func TestSendRequestPerBackend_SetsOriginalPathHeaders(t *testing.T) {
+	headersCh := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- r.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	proxy.originalPath = "/mcp?foo=bar"
+
+	s := &session{reqCtx: proxy}
+	ch := make(chan *sseEvent, 1)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+		sessionID: "sess1",
+	}, http.MethodGet, nil)
+	require.NoError(t, err)
+
+	select {
+	case hdr := <-headersCh:
+		require.Equal(t, "/mcp?foo=bar", hdr.Get(internalapi.OriginalPathHeader))
+		require.Equal(t, "/mcp?foo=bar", hdr.Get(internalapi.EnvoyOriginalPathHeader))
+	case <-ctx.Done():
+		require.Fail(t, "timed out waiting for backend request")
+	}
+}
+
 func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
 	// Provide two SSE events with valid JSON-RPC requests then close.
 	id1, _ := jsonrpc.MakeID("1")
@@ -162,11 +192,11 @@ func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
 
 func TestSession_StreamNotifications(t *testing.T) {
 	tests := []struct {
-		name              string
-		eventInterval     time.Duration
-		deadline          time.Duration
-		heartbeatInterval time.Duration
-		wantHeartbeats    bool
+		name               string
+		eventInterval      time.Duration
+		deadline           time.Duration
+		heartbeatInterval  time.Duration
+		expectedHeartbeats bool
 	}{
 		// the default heartbeat interval is 1 second, but the events will come faster, so
 		// we don't expect any heartbeats.
@@ -236,7 +266,7 @@ func TestSession_StreamNotifications(t *testing.T) {
 			require.Contains(t, out, "event: a2")
 			heartbeatCount := strings.Count(out, `"method":"ping"`)
 
-			if tc.wantHeartbeats {
+			if tc.expectedHeartbeats {
 				require.Greater(t, heartbeatCount, 1, "expected some heartbeats after the initial one")
 			} else {
 				require.Equal(t, 1, heartbeatCount, "expected only the initial heartbeat")
@@ -340,9 +370,9 @@ func TestGetHeartbeatInterval(t *testing.T) {
 	defaultInterval := 1 * time.Minute
 
 	tests := []struct {
-		name string
-		env  string
-		want time.Duration
+		name     string
+		env      string
+		expected time.Duration
 	}{
 		{"unset", "", defaultInterval},
 		{"invalid", "invalid", defaultInterval},
@@ -355,7 +385,7 @@ func TestGetHeartbeatInterval(t *testing.T) {
 			if tt.env != "" {
 				t.Setenv("MCP_PROXY_HEARTBEAT_INTERVAL", tt.env)
 			}
-			require.Equal(t, tt.want, getHeartbeatInterval(defaultInterval))
+			require.Equal(t, tt.expected, getHeartbeatInterval(defaultInterval))
 		})
 	}
 }

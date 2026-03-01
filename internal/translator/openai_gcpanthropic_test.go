@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"testing"
 	"time"
@@ -27,6 +28,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
@@ -231,7 +233,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 				OfStringArray: []string{"stop1", "stop2"},
 			},
 		}
-		messageParam, err := buildAnthropicParams(openaiRequest)
+		messageParam, err := buildAnthropicParams(openaiRequest, "GCPAnthropic")
 		require.NoError(t, err)
 		require.Equal(t, int64(100), messageParam.MaxTokens)
 		require.Equal(t, "0.1", messageParam.TopP.String())
@@ -250,7 +252,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 				OfString: openaigo.Opt[string]("stop1"),
 			},
 		}
-		messageParam, err := buildAnthropicParams(openaiRequest)
+		messageParam, err := buildAnthropicParams(openaiRequest, "GCPAnthropic")
 		require.NoError(t, err)
 		require.Equal(t, int64(100), messageParam.MaxTokens)
 		require.Equal(t, "0.1", messageParam.TopP.String())
@@ -267,8 +269,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
 		_, _, err := translator.RequestBody(nil, invalidTempReq, false)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), fmt.Sprintf(tempNotSupportedError, *invalidTempReq.Temperature))
+		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
 	})
 
 	t.Run("Invalid Temperature (below bound)", func(t *testing.T) {
@@ -280,8 +281,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
 		_, _, err := translator.RequestBody(nil, invalidTempReq, false)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), fmt.Sprintf(tempNotSupportedError, *invalidTempReq.Temperature))
+		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
 	})
 
 	// Test for missing required parameter.
@@ -293,7 +293,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
 		_, _, err := translator.RequestBody(nil, missingTokensReq, false)
-		require.ErrorContains(t, err, "the maximum number of tokens must be set for Anthropic, got nil instead")
+		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
 	})
 	t.Run("API Version Override", func(t *testing.T) {
 		customAPIVersion := "bedrock-2023-05-31"
@@ -381,7 +381,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				Role:       constant.Assistant(anthropic.MessageParamRoleAssistant),
 				Content:    []anthropic.ContentBlockUnion{{Type: "text", Text: "Hello there!"}},
 				StopReason: anthropic.StopReasonEndTurn,
-				Usage:      anthropic.Usage{InputTokens: 10, OutputTokens: 20, CacheReadInputTokens: 5},
+				Usage:      anthropic.Usage{InputTokens: 10, OutputTokens: 20, CacheReadInputTokens: 5, CacheCreationInputTokens: 3},
 			},
 			respHeaders: map[string]string{statusHeaderName: "200"},
 			expectedOpenAIResponse: openai.ChatCompletionResponse{
@@ -390,11 +390,12 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Usage: openai.Usage{
-					PromptTokens:     15,
+					PromptTokens:     18,
 					CompletionTokens: 20,
-					TotalTokens:      35,
+					TotalTokens:      38,
 					PromptTokensDetails: &openai.PromptTokensDetails{
-						CachedTokens: 5,
+						CachedTokens:        5,
+						CacheCreationTokens: 3,
 					},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
@@ -417,7 +418,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 					{Type: "tool_use", ID: "toolu_01", Name: "get_weather", Input: []byte(`{"location":"Tokyo","unit":"celsius"}`)},
 				},
 				StopReason: anthropic.StopReasonToolUse,
-				Usage:      anthropic.Usage{InputTokens: 25, OutputTokens: 15, CacheReadInputTokens: 10},
+				Usage:      anthropic.Usage{InputTokens: 25, OutputTokens: 15, CacheReadInputTokens: 10, CacheCreationInputTokens: 7},
 			},
 			respHeaders: map[string]string{statusHeaderName: "200"},
 			expectedOpenAIResponse: openai.ChatCompletionResponse{
@@ -426,9 +427,10 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)),
 				Object:  "chat.completion",
 				Usage: openai.Usage{
-					PromptTokens: 35, CompletionTokens: 15, TotalTokens: 50,
+					PromptTokens: 42, CompletionTokens: 15, TotalTokens: 57,
 					PromptTokensDetails: &openai.PromptTokensDetails{
-						CachedTokens: 10,
+						CachedTokens:        10,
+						CacheCreationTokens: 7,
 					},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
@@ -899,7 +901,7 @@ func TestMessageTranslation(t *testing.T) {
 				{
 					Role: anthropic.MessageParamRoleAssistant,
 					Content: []anthropic.ContentBlockParamUnion{
-						anthropic.NewThinkingBlock("Let me think about this step by step...", "signature-123"),
+						anthropic.NewThinkingBlock("signature-123", "Let me think about this step by step..."),
 					},
 				},
 			},
@@ -1209,875 +1211,6 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseError(t *testing
 			if diff := cmp.Diff(tt.expectedOutput, gotError); diff != "" {
 				t.Errorf("ResponseError() mismatch (-want +got):\n%s", diff)
 			}
-		})
-	}
-}
-
-// New test function for helper coverage.
-func TestHelperFunctions(t *testing.T) {
-	t.Run("anthropicToOpenAIFinishReason invalid reason", func(t *testing.T) {
-		_, err := anthropicToOpenAIFinishReason("unknown_reason")
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "received invalid stop reason")
-	})
-
-	t.Run("anthropicRoleToOpenAIRole invalid role", func(t *testing.T) {
-		_, err := anthropicRoleToOpenAIRole("unknown_role")
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid anthropic role")
-	})
-}
-
-func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
-	anthropicTestTool := []anthropic.ToolUnionParam{
-		{OfTool: &anthropic.ToolParam{Name: "get_weather", Description: anthropic.String("")}},
-	}
-	openaiTestTool := []openai.Tool{
-		{Type: "function", Function: &openai.FunctionDefinition{Name: "get_weather"}},
-	}
-	tests := []struct {
-		name               string
-		openAIReq          *openai.ChatCompletionRequest
-		expectedTools      []anthropic.ToolUnionParam
-		expectedToolChoice anthropic.ToolChoiceUnionParam
-		expectErr          bool
-	}{
-		{
-			name: "auto tool choice",
-			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
-				Tools:      openaiTestTool,
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfAuto: &anthropic.ToolChoiceAutoParam{
-					DisableParallelToolUse: anthropic.Bool(false),
-				},
-			},
-		},
-		{
-			name: "any tool choice",
-			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "any"},
-				Tools:      openaiTestTool,
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfAny: &anthropic.ToolChoiceAnyParam{},
-			},
-		},
-		{
-			name: "specific tool choice by name",
-			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: openai.ChatCompletionNamedToolChoice{Type: "function", Function: openai.ChatCompletionNamedToolChoiceFunction{Name: "my_func"}}},
-				Tools:      openaiTestTool,
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfTool: &anthropic.ToolChoiceToolParam{Type: "tool", Name: "my_func"},
-			},
-		},
-		{
-			name: "tool definition",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "get_weather",
-							Description: "Get the weather",
-							Parameters: map[string]any{
-								"type": "object",
-								"properties": map[string]any{
-									"location": map[string]any{"type": "string"},
-								},
-							},
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "get_weather",
-						Description: anthropic.String("Get the weather"),
-						InputSchema: anthropic.ToolInputSchemaParam{
-							Type: "object",
-							Properties: map[string]any{
-								"location": map[string]any{"type": "string"},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "tool_definition_with_required_field",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "get_weather",
-							Description: "Get the weather with a required location",
-							Parameters: map[string]any{
-								"type": "object",
-								"properties": map[string]any{
-									"location": map[string]any{"type": "string"},
-									"unit":     map[string]any{"type": "string"},
-								},
-								"required": []any{"location"},
-							},
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "get_weather",
-						Description: anthropic.String("Get the weather with a required location"),
-						InputSchema: anthropic.ToolInputSchemaParam{
-							Type: "object",
-							Properties: map[string]any{
-								"location": map[string]any{"type": "string"},
-								"unit":     map[string]any{"type": "string"},
-							},
-							Required: []string{"location"},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "tool definition with no parameters",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "get_time",
-							Description: "Get the current time",
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "get_time",
-						Description: anthropic.String("Get the current time"),
-					},
-				},
-			},
-		},
-		{
-			name: "disable parallel tool calls",
-			openAIReq: &openai.ChatCompletionRequest{
-				ToolChoice:        &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
-				Tools:             openaiTestTool,
-				ParallelToolCalls: ptr.To(false),
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfAuto: &anthropic.ToolChoiceAutoParam{
-					DisableParallelToolUse: anthropic.Bool(true),
-				},
-			},
-		},
-		{
-			name: "explicitly enable parallel tool calls",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools:             openaiTestTool,
-				ToolChoice:        &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
-				ParallelToolCalls: ptr.To(true),
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfAuto: &anthropic.ToolChoiceAutoParam{DisableParallelToolUse: anthropic.Bool(false)},
-			},
-		},
-		{
-			name: "default disable parallel tool calls to false (nil)",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools:      openaiTestTool,
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "auto"},
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfAuto: &anthropic.ToolChoiceAutoParam{DisableParallelToolUse: anthropic.Bool(false)},
-			},
-		},
-		{
-			name: "none tool choice",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools:      openaiTestTool,
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "none"},
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfNone: &anthropic.ToolChoiceNoneParam{},
-			},
-		},
-		{
-			name: "function tool choice",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools:      openaiTestTool,
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "function"},
-			},
-			expectedTools: anthropicTestTool,
-			expectedToolChoice: anthropic.ToolChoiceUnionParam{
-				OfTool: &anthropic.ToolChoiceToolParam{Name: "function"},
-			},
-		},
-		{
-			name: "invalid tool choice string",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools:      openaiTestTool,
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "invalid_choice"},
-			},
-			expectErr: true,
-		},
-		{
-			name: "skips function tool with nil function definition",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type:     "function",
-						Function: nil, // This tool has the correct type but a nil definition and should be skipped.
-					},
-					{
-						Type:     "function",
-						Function: &openai.FunctionDefinition{Name: "get_weather"}, // This is a valid tool.
-					},
-				},
-			},
-			// We expect only the valid function tool to be translated.
-			expectedTools: []anthropic.ToolUnionParam{
-				{OfTool: &anthropic.ToolParam{Name: "get_weather", Description: anthropic.String("")}},
-			},
-			expectErr: false,
-		},
-		{
-			name: "skips non-function tools",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "retrieval",
-					},
-					{
-						Type:     "function",
-						Function: &openai.FunctionDefinition{Name: "get_weather"},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{OfTool: &anthropic.ToolParam{Name: "get_weather", Description: anthropic.String("")}},
-			},
-			expectErr: false,
-		},
-		{
-			name: "tool definition without type field",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "get_weather",
-							Description: "Get the weather without type",
-							Parameters: map[string]any{
-								"properties": map[string]any{
-									"location": map[string]any{"type": "string"},
-								},
-								"required": []any{"location"},
-							},
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "get_weather",
-						Description: anthropic.String("Get the weather without type"),
-						InputSchema: anthropic.ToolInputSchemaParam{
-							Type: "",
-							Properties: map[string]any{
-								"location": map[string]any{"type": "string"},
-							},
-							Required: []string{"location"},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "tool definition without properties field",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "get_weather",
-							Description: "Get the weather without properties",
-							Parameters: map[string]any{
-								"type":     "object",
-								"required": []any{"location"},
-							},
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "get_weather",
-						Description: anthropic.String("Get the weather without properties"),
-						InputSchema: anthropic.ToolInputSchemaParam{
-							Type:     "object",
-							Required: []string{"location"},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "unsupported tool_choice type",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools:      openaiTestTool,
-				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: 123}, // Use an integer to trigger the default case.
-			},
-			expectErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tools, toolChoice, err := translateOpenAItoAnthropicTools(tt.openAIReq.Tools, tt.openAIReq.ToolChoice, tt.openAIReq.ParallelToolCalls)
-			if tt.expectErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				if tt.openAIReq.ToolChoice != nil {
-					require.NotNil(t, toolChoice)
-					require.Equal(t, *tt.expectedToolChoice.GetType(), *toolChoice.GetType())
-					if tt.expectedToolChoice.GetName() != nil {
-						require.Equal(t, *tt.expectedToolChoice.GetName(), *toolChoice.GetName())
-					}
-					if tt.expectedToolChoice.OfTool != nil {
-						require.Equal(t, tt.expectedToolChoice.OfTool.Name, toolChoice.OfTool.Name)
-					}
-					if tt.expectedToolChoice.OfAuto != nil {
-						require.Equal(t, tt.expectedToolChoice.OfAuto.DisableParallelToolUse, toolChoice.OfAuto.DisableParallelToolUse)
-					}
-				}
-				if tt.openAIReq.Tools != nil {
-					require.NotNil(t, tools)
-					require.Len(t, tools, len(tt.expectedTools))
-					require.Equal(t, tt.expectedTools[0].GetName(), tools[0].GetName())
-					require.Equal(t, tt.expectedTools[0].GetType(), tools[0].GetType())
-					require.Equal(t, tt.expectedTools[0].GetDescription(), tools[0].GetDescription())
-					if tt.expectedTools[0].GetInputSchema().Properties != nil {
-						require.Equal(t, tt.expectedTools[0].GetInputSchema().Properties, tools[0].GetInputSchema().Properties)
-					}
-				}
-			}
-		})
-	}
-}
-
-// TestFinishReasonTranslation covers specific cases for the anthropicToOpenAIFinishReason function.
-func TestFinishReasonTranslation(t *testing.T) {
-	tests := []struct {
-		name                 string
-		input                anthropic.StopReason
-		expectedFinishReason openai.ChatCompletionChoicesFinishReason
-		expectErr            bool
-	}{
-		{
-			name:                 "max tokens stop reason",
-			input:                anthropic.StopReasonMaxTokens,
-			expectedFinishReason: openai.ChatCompletionChoicesFinishReasonLength,
-		},
-		{
-			name:                 "refusal stop reason",
-			input:                anthropic.StopReasonRefusal,
-			expectedFinishReason: openai.ChatCompletionChoicesFinishReasonContentFilter,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			reason, err := anthropicToOpenAIFinishReason(tt.input)
-			if tt.expectErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.expectedFinishReason, reason)
-			}
-		})
-	}
-}
-
-// TestToolParameterDereferencing tests the JSON schema dereferencing functionality
-// for tool parameters when translating from OpenAI to GCP Anthropic.
-func TestToolParameterDereferencing(t *testing.T) {
-	tests := []struct {
-		name               string
-		openAIReq          *openai.ChatCompletionRequest
-		expectedTools      []anthropic.ToolUnionParam
-		expectedToolChoice anthropic.ToolChoiceUnionParam
-		expectErr          bool
-		expectedErrMsg     string
-	}{
-		{
-			name: "tool with complex nested $ref - successful dereferencing",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "complex_tool",
-							Description: "Tool with complex nested references",
-							Parameters: map[string]any{
-								"type": "object",
-								"$defs": map[string]any{
-									"BaseType": map[string]any{
-										"type": "object",
-										"properties": map[string]any{
-											"id": map[string]any{
-												"type": "string",
-											},
-											"required": []any{"id"},
-										},
-									},
-									"NestedType": map[string]any{
-										"allOf": []any{
-											map[string]any{"$ref": "#/$defs/BaseType"},
-											map[string]any{
-												"properties": map[string]any{
-													"name": map[string]any{
-														"type": "string",
-													},
-												},
-											},
-										},
-									},
-								},
-								"properties": map[string]any{
-									"nested": map[string]any{
-										"$ref": "#/$defs/NestedType",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "complex_tool",
-						Description: anthropic.String("Tool with complex nested references"),
-						InputSchema: anthropic.ToolInputSchemaParam{
-							Type: "object",
-							Properties: map[string]any{
-								"nested": map[string]any{
-									"allOf": []any{
-										map[string]any{
-											"type": "object",
-											"properties": map[string]any{
-												"id": map[string]any{
-													"type": "string",
-												},
-												"required": []any{"id"},
-											},
-										},
-										map[string]any{
-											"properties": map[string]any{
-												"name": map[string]any{
-													"type": "string",
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "tool with invalid $ref - dereferencing error",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "invalid_ref_tool",
-							Description: "Tool with invalid reference",
-							Parameters: map[string]any{
-								"type": "object",
-								"properties": map[string]any{
-									"location": map[string]any{
-										"$ref": "#/$defs/NonExistent",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			expectErr:      true,
-			expectedErrMsg: "failed to dereference tool parameters",
-		},
-		{
-			name: "tool with circular $ref - dereferencing error",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "circular_ref_tool",
-							Description: "Tool with circular reference",
-							Parameters: map[string]any{
-								"type": "object",
-								"$defs": map[string]any{
-									"A": map[string]any{
-										"type": "object",
-										"properties": map[string]any{
-											"b": map[string]any{
-												"$ref": "#/$defs/B",
-											},
-										},
-									},
-									"B": map[string]any{
-										"type": "object",
-										"properties": map[string]any{
-											"a": map[string]any{
-												"$ref": "#/$defs/A",
-											},
-										},
-									},
-								},
-								"properties": map[string]any{
-									"circular": map[string]any{
-										"$ref": "#/$defs/A",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			expectErr:      true,
-			expectedErrMsg: "failed to dereference tool parameters",
-		},
-		{
-			name: "tool without $ref - no dereferencing needed",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "simple_tool",
-							Description: "Simple tool without references",
-							Parameters: map[string]any{
-								"type": "object",
-								"properties": map[string]any{
-									"location": map[string]any{
-										"type": "string",
-									},
-								},
-								"required": []any{"location"},
-							},
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "simple_tool",
-						Description: anthropic.String("Simple tool without references"),
-						InputSchema: anthropic.ToolInputSchemaParam{
-							Type: "object",
-							Properties: map[string]any{
-								"location": map[string]any{
-									"type": "string",
-								},
-							},
-							Required: []string{"location"},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "tool parameter dereferencing returns non-map type - casting error",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "problematic_tool",
-							Description: "Tool with parameters that can't be properly dereferenced to map",
-							// This creates a scenario where jsonSchemaDereference might return a non-map type
-							// though this is a contrived example since normally the function should return map[string]any
-							Parameters: map[string]any{
-								"$ref": "#/$defs/StringType", // This would resolve to a string, not a map
-								"$defs": map[string]any{
-									"StringType": "not-a-map", // This would cause the casting to fail
-								},
-							},
-						},
-					},
-				},
-			},
-			expectErr:      true,
-			expectedErrMsg: "failed to cast dereferenced tool parameters",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tools, toolChoice, err := translateOpenAItoAnthropicTools(tt.openAIReq.Tools, tt.openAIReq.ToolChoice, tt.openAIReq.ParallelToolCalls)
-
-			if tt.expectErr {
-				require.Error(t, err)
-				if tt.expectedErrMsg != "" {
-					require.Contains(t, err.Error(), tt.expectedErrMsg)
-				}
-				return
-			}
-
-			require.NoError(t, err)
-
-			if tt.openAIReq.Tools != nil {
-				require.NotNil(t, tools)
-				require.Len(t, tools, len(tt.expectedTools))
-
-				for i, expectedTool := range tt.expectedTools {
-					actualTool := tools[i]
-					require.Equal(t, expectedTool.GetName(), actualTool.GetName())
-					require.Equal(t, expectedTool.GetType(), actualTool.GetType())
-					require.Equal(t, expectedTool.GetDescription(), actualTool.GetDescription())
-
-					expectedSchema := expectedTool.GetInputSchema()
-					actualSchema := actualTool.GetInputSchema()
-
-					require.Equal(t, expectedSchema.Type, actualSchema.Type)
-					require.Equal(t, expectedSchema.Required, actualSchema.Required)
-
-					// For properties, we'll do a deep comparison to verify dereferencing worked
-					if expectedSchema.Properties != nil {
-						require.NotNil(t, actualSchema.Properties)
-						require.Equal(t, expectedSchema.Properties, actualSchema.Properties)
-					}
-				}
-			}
-
-			if tt.openAIReq.ToolChoice != nil {
-				require.NotNil(t, toolChoice)
-				require.Equal(t, *tt.expectedToolChoice.GetType(), *toolChoice.GetType())
-			}
-		})
-	}
-}
-
-// TestContentTranslationCoverage adds specific coverage for the openAIToAnthropicContent helper.
-func TestContentTranslationCoverage(t *testing.T) {
-	tests := []struct {
-		name            string
-		inputContent    any
-		expectedContent []anthropic.ContentBlockParamUnion
-		expectErr       bool
-	}{
-		{
-			name:         "nil content",
-			inputContent: nil,
-		},
-		{
-			name:         "empty string content",
-			inputContent: "",
-		},
-		{
-			name: "pdf data uri",
-			inputContent: []openai.ChatCompletionContentPartUserUnionParam{
-				{OfImageURL: &openai.ChatCompletionContentPartImageParam{ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: "data:application/pdf;base64,dGVzdA=="}}},
-			},
-			expectedContent: []anthropic.ContentBlockParamUnion{
-				{
-					OfDocument: &anthropic.DocumentBlockParam{
-						Source: anthropic.DocumentBlockParamSourceUnion{
-							OfBase64: &anthropic.Base64PDFSourceParam{
-								Type:      constant.ValueOf[constant.Base64](),
-								MediaType: constant.ValueOf[constant.ApplicationPDF](),
-								Data:      "dGVzdA==",
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "pdf url",
-			inputContent: []openai.ChatCompletionContentPartUserUnionParam{
-				{OfImageURL: &openai.ChatCompletionContentPartImageParam{ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: "https://example.com/doc.pdf"}}},
-			},
-			expectedContent: []anthropic.ContentBlockParamUnion{
-				{
-					OfDocument: &anthropic.DocumentBlockParam{
-						Source: anthropic.DocumentBlockParamSourceUnion{
-							OfURL: &anthropic.URLPDFSourceParam{
-								Type: constant.ValueOf[constant.URL](),
-								URL:  "https://example.com/doc.pdf",
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "image url",
-			inputContent: []openai.ChatCompletionContentPartUserUnionParam{
-				{OfImageURL: &openai.ChatCompletionContentPartImageParam{ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: "https://example.com/image.png"}}},
-			},
-			expectedContent: []anthropic.ContentBlockParamUnion{
-				{
-					OfImage: &anthropic.ImageBlockParam{
-						Source: anthropic.ImageBlockParamSourceUnion{
-							OfURL: &anthropic.URLImageSourceParam{
-								Type: constant.ValueOf[constant.URL](),
-								URL:  "https://example.com/image.png",
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name:         "audio content error",
-			inputContent: []openai.ChatCompletionContentPartUserUnionParam{{OfInputAudio: &openai.ChatCompletionContentPartInputAudioParam{}}},
-			expectErr:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			content, err := openAIToAnthropicContent(tt.inputContent)
-			if tt.expectErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-
-			// Use direct assertions instead of cmp.Diff to avoid panics on unexported fields.
-			require.Len(t, content, len(tt.expectedContent), "Number of content blocks should match")
-
-			// Use direct assertions instead of cmp.Diff to avoid panics on unexported fields.
-			require.Len(t, content, len(tt.expectedContent), "Number of content blocks should match")
-			for i, expectedBlock := range tt.expectedContent {
-				actualBlock := content[i]
-				require.Equal(t, expectedBlock.GetType(), actualBlock.GetType(), "Content block types should match")
-				if expectedBlock.OfDocument != nil {
-					require.NotNil(t, actualBlock.OfDocument, "Expected a document block, but got nil")
-					require.NotNil(t, actualBlock.OfDocument.Source, "Document source should not be nil")
-
-					if expectedBlock.OfDocument.Source.OfBase64 != nil {
-						require.NotNil(t, actualBlock.OfDocument.Source.OfBase64, "Expected a base64 source")
-						require.Equal(t, expectedBlock.OfDocument.Source.OfBase64.Data, actualBlock.OfDocument.Source.OfBase64.Data)
-					}
-					if expectedBlock.OfDocument.Source.OfURL != nil {
-						require.NotNil(t, actualBlock.OfDocument.Source.OfURL, "Expected a URL source")
-						require.Equal(t, expectedBlock.OfDocument.Source.OfURL.URL, actualBlock.OfDocument.Source.OfURL.URL)
-					}
-				}
-				if expectedBlock.OfImage != nil {
-					require.NotNil(t, actualBlock.OfImage, "Expected an image block, but got nil")
-					require.NotNil(t, actualBlock.OfImage.Source, "Image source should not be nil")
-
-					if expectedBlock.OfImage.Source.OfURL != nil {
-						require.NotNil(t, actualBlock.OfImage.Source.OfURL, "Expected a URL image source")
-						require.Equal(t, expectedBlock.OfImage.Source.OfURL.URL, actualBlock.OfImage.Source.OfURL.URL)
-					}
-				}
-			}
-
-			for i, expectedBlock := range tt.expectedContent {
-				actualBlock := content[i]
-				if expectedBlock.OfDocument != nil {
-					require.NotNil(t, actualBlock.OfDocument, "Expected a document block, but got nil")
-					require.NotNil(t, actualBlock.OfDocument.Source, "Document source should not be nil")
-
-					if expectedBlock.OfDocument.Source.OfBase64 != nil {
-						require.NotNil(t, actualBlock.OfDocument.Source.OfBase64, "Expected a base64 source")
-						require.Equal(t, expectedBlock.OfDocument.Source.OfBase64.Data, actualBlock.OfDocument.Source.OfBase64.Data)
-					}
-					if expectedBlock.OfDocument.Source.OfURL != nil {
-						require.NotNil(t, actualBlock.OfDocument.Source.OfURL, "Expected a URL source")
-						require.Equal(t, expectedBlock.OfDocument.Source.OfURL.URL, actualBlock.OfDocument.Source.OfURL.URL)
-					}
-				}
-				if expectedBlock.OfImage != nil {
-					require.NotNil(t, actualBlock.OfImage, "Expected an image block, but got nil")
-					require.NotNil(t, actualBlock.OfImage.Source, "Image source should not be nil")
-
-					if expectedBlock.OfImage.Source.OfURL != nil {
-						require.NotNil(t, actualBlock.OfImage.Source.OfURL, "Expected a URL image source")
-						require.Equal(t, expectedBlock.OfImage.Source.OfURL.URL, actualBlock.OfImage.Source.OfURL.URL)
-					}
-				}
-			}
-		})
-	}
-}
-
-// TestSystemPromptExtractionCoverage adds specific coverage for the extractSystemPromptFromDeveloperMsg helper.
-func TestSystemPromptExtractionCoverage(t *testing.T) {
-	tests := []struct {
-		name           string
-		inputMsg       openai.ChatCompletionDeveloperMessageParam
-		expectedPrompt string
-	}{
-		{
-			name: "developer message with content parts",
-			inputMsg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
-					{Type: "text", Text: "part 1"},
-					{Type: "text", Text: " part 2"},
-				}},
-			},
-			expectedPrompt: "part 1 part 2",
-		},
-		{
-			name:           "developer message with nil content",
-			inputMsg:       openai.ChatCompletionDeveloperMessageParam{Content: openai.ContentUnion{Value: nil}},
-			expectedPrompt: "",
-		},
-		{
-			name: "developer message with string content",
-			inputMsg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.ContentUnion{Value: "simple string"},
-			},
-			expectedPrompt: "simple string",
-		},
-		{
-			name: "developer message with text parts array",
-			inputMsg: openai.ChatCompletionDeveloperMessageParam{
-				Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
-					{Type: "text", Text: "text part"},
-				}},
-			},
-			expectedPrompt: "text part",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			prompt, _ := extractSystemPromptFromDeveloperMsg(tt.inputMsg)
-			require.Equal(t, tt.expectedPrompt, prompt)
 		})
 	}
 }
@@ -2608,4 +1741,307 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_Cache(t *testing.T) {
 		require.Equal(t, "call_003", result.Get("messages.0.content.2.tool_use_id").String())
 		require.Equal(t, string(constant.ValueOf[constant.Ephemeral]()), result.Get("messages.0.content.2.cache_control.type").String(), "tool 3 (with cache) should be cached")
 	})
+}
+
+func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_SetRedactionConfig(t *testing.T) {
+	translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	translator.SetRedactionConfig(true, true, logger)
+
+	require.True(t, translator.debugLogEnabled)
+	require.True(t, translator.enableRedaction)
+	require.NotNil(t, translator.logger)
+}
+
+func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RedactBody(t *testing.T) {
+	translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+
+	t.Run("nil response returns nil", func(t *testing.T) {
+		result := translator.RedactBody(nil)
+		require.Nil(t, result)
+	})
+
+	t.Run("redacts message content", func(t *testing.T) {
+		resp := &openai.ChatCompletionResponse{
+			ID:    "test-id",
+			Model: "test-model",
+			Choices: []openai.ChatCompletionResponseChoice{
+				{
+					Index:   0,
+					Message: openai.ChatCompletionResponseChoiceMessage{Role: "assistant", Content: ptr.To("sensitive content")},
+				},
+			},
+		}
+
+		result := translator.RedactBody(resp)
+		require.NotNil(t, result)
+		require.Equal(t, "test-id", result.ID)
+		require.Len(t, result.Choices, 1)
+		// Content should be redacted (not the original value)
+		require.NotNil(t, result.Choices[0].Message.Content)
+		require.NotEqual(t, "sensitive content", *result.Choices[0].Message.Content)
+	})
+
+	t.Run("redacts tool calls", func(t *testing.T) {
+		resp := &openai.ChatCompletionResponse{
+			ID:    "test-id",
+			Model: "test-model",
+			Choices: []openai.ChatCompletionResponseChoice{
+				{
+					Index: 0,
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role: "assistant",
+						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+							{
+								ID:   ptr.To("tool-1"),
+								Type: openai.ChatCompletionMessageToolCallTypeFunction,
+								Function: openai.ChatCompletionMessageToolCallFunctionParam{
+									Name:      "get_secret",
+									Arguments: `{"password": "secret123"}`,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		result := translator.RedactBody(resp)
+		require.NotNil(t, result)
+		require.Len(t, result.Choices, 1)
+		require.Len(t, result.Choices[0].Message.ToolCalls, 1)
+		// Tool call name and arguments should be redacted
+		require.NotEqual(t, "get_secret", result.Choices[0].Message.ToolCalls[0].Function.Name)
+		require.NotEqual(t, `{"password": "secret123"}`, result.Choices[0].Message.ToolCalls[0].Function.Arguments)
+	})
+
+	t.Run("redacts audio data", func(t *testing.T) {
+		resp := &openai.ChatCompletionResponse{
+			ID:    "test-id",
+			Model: "test-model",
+			Choices: []openai.ChatCompletionResponseChoice{
+				{
+					Index: 0,
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role: "assistant",
+						Audio: &openai.ChatCompletionResponseChoiceMessageAudio{
+							Data:       "base64-audio-data",
+							Transcript: "sensitive transcript",
+						},
+					},
+				},
+			},
+		}
+
+		result := translator.RedactBody(resp)
+		require.NotNil(t, result)
+		require.Len(t, result.Choices, 1)
+		require.NotNil(t, result.Choices[0].Message.Audio)
+		// Audio data and transcript should be redacted
+		require.NotEqual(t, "base64-audio-data", result.Choices[0].Message.Audio.Data)
+		require.NotEqual(t, "sensitive transcript", result.Choices[0].Message.Audio.Transcript)
+	})
+
+	t.Run("redacts reasoning content", func(t *testing.T) {
+		resp := &openai.ChatCompletionResponse{
+			ID:    "test-id",
+			Model: "test-model",
+			Choices: []openai.ChatCompletionResponseChoice{
+				{
+					Index: 0,
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role: "assistant",
+						ReasoningContent: &openai.ReasoningContentUnion{
+							Value: &openai.ReasoningContent{
+								ReasoningContent: &awsbedrock.ReasoningContentBlock{
+									ReasoningText: &awsbedrock.ReasoningTextBlock{
+										Text:      "sensitive reasoning",
+										Signature: "sig123",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		result := translator.RedactBody(resp)
+		require.NotNil(t, result)
+		require.Len(t, result.Choices, 1)
+		require.NotNil(t, result.Choices[0].Message.ReasoningContent)
+	})
+
+	t.Run("empty choices returns empty choices", func(t *testing.T) {
+		resp := &openai.ChatCompletionResponse{
+			ID:      "test-id",
+			Model:   "test-model",
+			Choices: []openai.ChatCompletionResponseChoice{},
+		}
+
+		result := translator.RedactBody(resp)
+		require.NotNil(t, result)
+		require.Empty(t, result.Choices)
+	})
+}
+
+func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseHeaders(t *testing.T) {
+	t.Run("returns event-stream content type for streaming", func(t *testing.T) {
+		openAIReq := &openai.ChatCompletionRequest{
+			Stream:    true,
+			Model:     "test-model",
+			MaxTokens: ptr.To(int64(100)),
+		}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+
+		// Initialize the stream parser by calling RequestBody with streaming request
+		_, _, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		// Now ResponseHeaders should return the streaming content type
+		headers, err := translator.ResponseHeaders(nil)
+		require.NoError(t, err)
+		require.Len(t, headers, 1)
+		require.Equal(t, contentTypeHeaderName, headers[0].Key())
+		require.Equal(t, eventStreamContentType, headers[0].Value())
+	})
+
+	t.Run("returns no headers for non-streaming", func(t *testing.T) {
+		openAIReq := &openai.ChatCompletionRequest{
+			Stream:    false,
+			Model:     "test-model",
+			MaxTokens: ptr.To(int64(100)),
+		}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+
+		// Initialize without streaming
+		_, _, err := translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		// ResponseHeaders should return nil for non-streaming
+		headers, err := translator.ResponseHeaders(nil)
+		require.NoError(t, err)
+		require.Nil(t, headers)
+	})
+}
+
+func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody_WithDebugLogging(t *testing.T) {
+	// Create a buffer to capture log output
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+	translator.SetRedactionConfig(true, true, logger)
+
+	// Initialize translator with the model
+	req := &openai.ChatCompletionRequest{
+		Model:     "claude-3",
+		MaxTokens: ptr.To(int64(100)),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+					Role:    openai.ChatMessageRoleUser,
+				},
+			},
+		},
+	}
+	reqBody, _ := json.Marshal(req)
+	_, _, err := translator.RequestBody(reqBody, req, false)
+	require.NoError(t, err)
+
+	// Create a response
+	anthropicResponse := anthropic.Message{
+		ID:   "msg_01XYZ",
+		Type: constant.ValueOf[constant.Message](),
+		Role: constant.ValueOf[constant.Assistant](),
+		Content: []anthropic.ContentBlockUnion{
+			{
+				Type: "text",
+				Text: "Hello! How can I help you?",
+			},
+		},
+		StopReason: anthropic.StopReasonEndTurn,
+		Usage: anthropic.Usage{
+			InputTokens:  10,
+			OutputTokens: 5,
+		},
+	}
+
+	body, err := json.Marshal(anthropicResponse)
+	require.NoError(t, err)
+
+	_, _, _, _, err = translator.ResponseBody(nil, bytes.NewReader(body), true, nil)
+	require.NoError(t, err)
+
+	// Verify that debug logging occurred
+	logOutput := logBuf.String()
+	require.Contains(t, logOutput, "response body processing")
+}
+
+// mockSpan implements tracingapi.ChatCompletionSpan for testing
+type mockSpan struct {
+	recordedResponse *openai.ChatCompletionResponse
+}
+
+func (m *mockSpan) RecordResponseChunk(_ *openai.ChatCompletionResponseChunk) {}
+func (m *mockSpan) RecordResponse(resp *openai.ChatCompletionResponse) {
+	m.recordedResponse = resp
+}
+func (m *mockSpan) EndSpanOnError(_ int, _ []byte) {}
+func (m *mockSpan) EndSpan()                       {}
+
+func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody_WithSpanRecording(t *testing.T) {
+	translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "").(*openAIToGCPAnthropicTranslatorV1ChatCompletion)
+
+	// Initialize translator with the model
+	req := &openai.ChatCompletionRequest{
+		Model:     "claude-3",
+		MaxTokens: ptr.To(int64(100)),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+					Role:    openai.ChatMessageRoleUser,
+				},
+			},
+		},
+	}
+	reqBody, _ := json.Marshal(req)
+	_, _, err := translator.RequestBody(reqBody, req, false)
+	require.NoError(t, err)
+
+	// Create a response
+	anthropicResponse := anthropic.Message{
+		ID:   "msg_01XYZ",
+		Type: constant.ValueOf[constant.Message](),
+		Role: constant.ValueOf[constant.Assistant](),
+		Content: []anthropic.ContentBlockUnion{
+			{
+				Type: "text",
+				Text: "Hello!",
+			},
+		},
+		StopReason: anthropic.StopReasonEndTurn,
+		Usage: anthropic.Usage{
+			InputTokens:  10,
+			OutputTokens: 5,
+		},
+	}
+
+	body, err := json.Marshal(anthropicResponse)
+	require.NoError(t, err)
+
+	// Create a mock span
+	span := &mockSpan{}
+
+	_, _, _, _, err = translator.ResponseBody(nil, bytes.NewReader(body), true, span)
+	require.NoError(t, err)
+
+	// Verify the span recorded the response
+	require.NotNil(t, span.recordedResponse)
+	require.Equal(t, "msg_01XYZ", span.recordedResponse.ID)
+	require.Len(t, span.recordedResponse.Choices, 1)
+	require.Equal(t, "Hello!", *span.recordedResponse.Choices[0].Message.Content)
 }

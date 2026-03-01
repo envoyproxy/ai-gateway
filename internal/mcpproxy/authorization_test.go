@@ -61,7 +61,7 @@ func TestAuthorizeRequest(t *testing.T) {
 				Rules: []filterapi.MCPRouteAuthorizationRule{
 					{
 						Action: "Allow",
-						CEL:    ptr.To(`request.host.startsWith("api.") && request.mcp.backend == "backend1" && request.mcp.params.arguments.mode == "fast" && request.headers["x-tenant"] == "t-123"`),
+						CEL:    ptr.To(`request.host.startsWith("api.") && request.mcp.backend == "backend1" && request.mcp.params.arguments.mode == "fast" && request.headers["x-tenant-id"] == "t-123"`),
 					},
 				},
 			},
@@ -69,7 +69,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			tool:          "tool1",
 			args:          &mcp.CallToolParams{Arguments: map[string]any{"mode": "fast"}},
 			host:          "api.example.com",
-			headers:       http.Header{"X-Tenant": []string{"t-123"}},
+			headers:       http.Header{"X-Tenant-Id": []string{"t-123"}},
 			expectAllowed: true,
 		},
 		{
@@ -79,7 +79,7 @@ func TestAuthorizeRequest(t *testing.T) {
 				Rules: []filterapi.MCPRouteAuthorizationRule{
 					{
 						Action: "Allow",
-						CEL:    ptr.To(`request.host.startsWith("api.") && request.mcp.backend == "backend1" && request.mcp.params.arguments.mode == "fast" && request.headers["x-tenant"] == "t-123"`),
+						CEL:    ptr.To(`request.host.startsWith("api.") && request.mcp.backend == "backend1" && request.mcp.params.arguments.mode == "fast" && request.headers["x-tenant-id"] == "t-123"`),
 					},
 				},
 			},
@@ -87,7 +87,7 @@ func TestAuthorizeRequest(t *testing.T) {
 			tool:          "tool1",
 			args:          &mcp.CallToolParams{Name: "p1", Arguments: map[string]any{"mode": "fast"}},
 			host:          "api.example.com",
-			headers:       http.Header{"X-Tenant": []string{"t-234"}},
+			headers:       http.Header{"X-Tenant-Id": []string{"t-234"}},
 			expectAllowed: false,
 		},
 		{
@@ -154,11 +154,11 @@ func TestAuthorizeRequest(t *testing.T) {
 								Tool:    "tool1",
 							}},
 						},
-						CEL: ptr.To(`request.method == "POST" && request.mcp.backend == "backend1" && request.mcp.tool == "tool1" && request.headers["x-tenant"] == "t-123" && request.mcp.params.arguments["flag"] == true`),
+						CEL: ptr.To(`request.method == "POST" && request.mcp.backend == "backend1" && request.mcp.tool == "tool1" && request.headers["x-tenant-id"] == "t-123" && request.mcp.params.arguments["flag"] == true`),
 					},
 				},
 			},
-			headers: http.Header{"Authorization": []string{"Bearer " + makeToken("read", "write")}, "X-Tenant": []string{"t-123"}},
+			headers: http.Header{"Authorization": []string{"Bearer " + makeToken("read", "write")}, "X-Tenant-Id": []string{"t-123"}},
 			backend: "backend1",
 			tool:    "tool1",
 			args: &mcp.CallToolParams{

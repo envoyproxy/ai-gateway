@@ -1,0 +1,497 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  labels:
+    gateway.networking.k8s.io/policy: direct
+  name: quotapolicies.aigateway.envoyproxy.io
+spec:
+  group: aigateway.envoyproxy.io
+  names:
+    kind: QuotaPolicy
+    listKind: QuotaPolicyList
+    plural: quotapolicies
+    singular: quotapolicy
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[-1:].type
+      name: Status
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          QuotaPolicy specifies token quota configuration for inference services.
+          Providing a list of backends in the AIGatewayRouteRule allows failover to a different service
+          if token quota for a service had been exceeded.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: QuotaPolicySpec specifies rules for computing token based
+              costs of requests.
+            properties:
+              perModelQuotas:
+                description: |-
+                  PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this
+                  policy is attached.
+                items:
+                  properties:
+                    modelName:
+                      description: Model name for which the quota is specified.
+                      minLength: 1
+                      type: string
+                    quota:
+                      description: Expression for computing request cost and rules
+                        for matching requests to quota buckets.
+                      properties:
+                        bucketRules:
+                          description: |-
+                            BucketRules are a list of client selectors and quotas. If a request
+                            matches multiple rules, each of their associated quotas get applied, so a
+                            single request might burn down the quota for multiple rules.
+                          items:
+                            properties:
+                              clientSelectors:
+                                description: |-
+                                  ClientSelectors holds the list of conditions to select
+                                  specific clients using attributes from the traffic flow.
+                                  All individual select conditions must hold True for this rule
+                                  and its limit to be applied.
+
+                                  If no client selectors are specified, the rule applies to all traffic of
+                                  the targeted AIServiceBackend.
+                                items:
+                                  description: |-
+                                    RateLimitSelectCondition specifies the attributes within the traffic flow that can
+                                    be used to select a subset of clients to be ratelimited.
+                                    All the individual conditions must hold True for the overall condition to hold True.
+                                    And, at least one of headers or methods or path or sourceCIDR or queryParams condition must be specified.
+                                  properties:
+                                    headers:
+                                      description: |-
+                                        Headers is a list of request headers to match. Multiple header values are ANDed together,
+                                        meaning, a request MUST match all the specified headers.
+                                      items:
+                                        description: HeaderMatch defines the match
+                                          attributes within the HTTP Headers of the
+                                          request.
+                                        properties:
+                                          invert:
+                                            default: false
+                                            description: |-
+                                              Invert specifies whether the value match result will be inverted.
+                                              Do not set this field when Type="Distinct", implying matching on any/all unique
+                                              values within the header.
+                                            type: boolean
+                                          name:
+                                            description: |-
+                                              Name of the HTTP header.
+                                              The header name is case-insensitive unless PreserveHeaderCase is set to true.
+                                              For example, "Foo" and "foo" are considered the same header.
+                                            maxLength: 256
+                                            minLength: 1
+                                            type: string
+                                          type:
+                                            default: Exact
+                                            description: Type specifies how to match
+                                              against the value of the header.
+                                            enum:
+                                            - Exact
+                                            - RegularExpression
+                                            - Distinct
+                                            type: string
+                                          value:
+                                            description: |-
+                                              Value within the HTTP header.
+                                              Do not set this field when Type="Distinct", implying matching on any/all unique
+                                              values within the header.
+                                            maxLength: 1024
+                                            type: string
+                                        required:
+                                        - name
+                                        type: object
+                                      maxItems: 16
+                                      type: array
+                                    methods:
+                                      description: |-
+                                        Methods is a list of request methods to match. Multiple method values are ORed together,
+                                        meaning, a request can match any one of the specified methods. If not specified, it matches all methods.
+                                      items:
+                                        description: MethodMatch defines the matching
+                                          criteria for the HTTP method of a request.
+                                        properties:
+                                          invert:
+                                            default: false
+                                            description: Invert specifies whether
+                                              the value match result will be inverted.
+                                            type: boolean
+                                          value:
+                                            description: Value specifies the HTTP
+                                              method.
+                                            enum:
+                                            - GET
+                                            - HEAD
+                                            - POST
+                                            - PUT
+                                            - DELETE
+                                            - CONNECT
+                                            - OPTIONS
+                                            - TRACE
+                                            - PATCH
+                                            type: string
+                                        required:
+                                        - value
+                                        type: object
+                                      type: array
+                                    path:
+                                      description: |-
+                                        Path is the request path to match.
+                                        Support Exact, PathPrefix and RegularExpression match types.
+                                      properties:
+                                        invert:
+                                          default: false
+                                          description: Invert specifies whether the
+                                            value match result will be inverted.
+                                          type: boolean
+                                        type:
+                                          default: PathPrefix
+                                          description: Type specifies how to match
+                                            against the value of the path.
+                                          enum:
+                                          - Exact
+                                          - PathPrefix
+                                          - RegularExpression
+                                          type: string
+                                        value:
+                                          default: /
+                                          description: Value specifies the HTTP path.
+                                          maxLength: 1024
+                                          type: string
+                                      required:
+                                      - value
+                                      type: object
+                                    queryParams:
+                                      description: |-
+                                        QueryParams is a list of query parameters to match. Multiple query parameter values are ANDed together,
+                                        meaning, a request MUST match all the specified query parameters.
+                                      items:
+                                        description: QueryParamMatch defines the match
+                                          attributes within the query parameters of
+                                          the request.
+                                        properties:
+                                          invert:
+                                            default: false
+                                            description: |-
+                                              Invert specifies whether the value match result will be inverted.
+                                              Do not set this field when Type="Distinct", implying matching on any/all unique
+                                              values within the query parameter.
+                                            type: boolean
+                                          name:
+                                            description: Name of the query parameter.
+                                            maxLength: 256
+                                            minLength: 1
+                                            type: string
+                                          type:
+                                            default: Exact
+                                            description: Type specifies how to match
+                                              against the value of the query parameter.
+                                            enum:
+                                            - Exact
+                                            - RegularExpression
+                                            - Distinct
+                                            type: string
+                                          value:
+                                            description: |-
+                                              Value of the query parameter.
+                                              Do not set this field when Type="Distinct", implying matching on any/all unique
+                                              values within the query parameter.
+                                            maxLength: 1024
+                                            type: string
+                                        required:
+                                        - name
+                                        type: object
+                                      maxItems: 16
+                                      type: array
+                                    sourceCIDR:
+                                      description: SourceCIDR is the client IP Address
+                                        range to match on.
+                                      properties:
+                                        type:
+                                          default: Exact
+                                          enum:
+                                          - Exact
+                                          - Distinct
+                                          type: string
+                                        value:
+                                          description: |-
+                                            Value is the IP CIDR that represents the range of Source IP Addresses of the client.
+                                            These could also be the intermediate addresses through which the request has flown through and is part of the  `X-Forwarded-For` header.
+                                            For example, `192.168.0.1/32`, `192.168.0.0/24`, `001:db8::/64`.
+                                          maxLength: 256
+                                          minLength: 1
+                                          type: string
+                                      required:
+                                      - value
+                                      type: object
+                                  type: object
+                                  x-kubernetes-validations:
+                                  - message: at least one of headers, methods, path,
+                                      sourceCIDR or queryParams must be specified
+                                    rule: has(self.headers) || has(self.methods) ||
+                                      has(self.path) || has(self.sourceCIDR) || has(self.queryParams)
+                                maxItems: 8
+                                type: array
+                              quota:
+                                description: |-
+                                  Quota value for given client selectors.
+                                  This quota is applied for traffic flows when the selectors
+                                  compute to True, causing the request to be counted towards the limit.
+                                  A response with 429 HTTP status code is sent back to the client when
+                                  the selected requests have exceeded the quota.
+                                properties:
+                                  duration:
+                                    description: |-
+                                      Time window. The suffix is used to specify units. The following
+                                      suffixes are supported:
+                                      * s - seconds (the default unit)
+                                      * m - minutes
+                                      * h - hours
+                                    type: string
+                                  limit:
+                                    description: The limit alloted for a specified
+                                      time window.
+                                    type: integer
+                                required:
+                                - duration
+                                - limit
+                                type: object
+                              shadowMode:
+                                description: |-
+                                  ShadowMode indicates whether this quota rule runs in shadow mode.
+                                  When enabled, all quota checks are performed (cache lookups,
+                                  counter updates, telemetry generation), but the outcome is never enforced.
+                                  The request always succeeds, even if the configured quota is exceeded.
+                                type: boolean
+                            required:
+                            - quota
+                            type: object
+                          type: array
+                        costExpression:
+                          description: |-
+                            CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.
+                            If no expression is specified the "total_tokens" value is used.
+                            For example:
+
+                             * "input_tokens + cached_input_tokens * 0.1 + output_tokens * 6"
+                          type: string
+                        defaultBucket:
+                          description: |-
+                            Quota applicable to all traffic. This value can be overridden for specific classes of requests
+                            using the "BucketRules" configuration.
+                          properties:
+                            duration:
+                              description: |-
+                                Time window. The suffix is used to specify units. The following
+                                suffixes are supported:
+                                * s - seconds (the default unit)
+                                * m - minutes
+                                * h - hours
+                              type: string
+                            limit:
+                              description: The limit alloted for a specified time
+                                window.
+                              type: integer
+                          required:
+                          - duration
+                          - limit
+                          type: object
+                        mode:
+                          description: |-
+                            The "Mode" determines how quota is charged to the "DefaultBucket" and matching "BucketRules".
+                            In the "exclusive" mode the quota is charged to matching BucketRules or the DefaultBucket
+                            if no BucketRules match the request. The request is denied if all matching buckets are out of quota.
+                            In the "shared" mode the quota is charged to all matching "BucketRules" AND the "DefaultBucket"
+                            and request is allowed only if the quota is available in all matching buckets.
+                          enum:
+                          - Exclusive
+                          - Shared
+                          type: string
+                      required:
+                      - mode
+                      type: object
+                  required:
+                  - modelName
+                  - quota
+                  type: object
+                maxItems: 128
+                type: array
+              serviceQuota:
+                description: |-
+                  Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the "PerModelQuotas"
+                  configuration.
+                properties:
+                  costExpression:
+                    description: |-
+                      CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.
+                      If no expression is specified the "total_tokens" value is used.
+                      For example:
+
+                       * "input_tokens + cached_input_tokens * 0.1 + output_tokens * 6"
+                    type: string
+                  quota:
+                    description: |-
+                      Quota value applicable to all requests.
+                      A response with 429 HTTP status code is sent back to the client when
+                      the selected requests have exceeded the quota.
+                    properties:
+                      duration:
+                        description: |-
+                          Time window. The suffix is used to specify units. The following
+                          suffixes are supported:
+                          * s - seconds (the default unit)
+                          * m - minutes
+                          * h - hours
+                        type: string
+                      limit:
+                        description: The limit alloted for a specified time window.
+                        type: integer
+                    required:
+                    - duration
+                    - limit
+                    type: object
+                required:
+                - quota
+                type: object
+              targetRefs:
+                description: TargetRefs are the names of the AIServiceBackend resources
+                  this QuotaPolicy is being attached to.
+                items:
+                  description: |-
+                    LocalPolicyTargetReference identifies an API object to apply a direct or
+                    inherited policy to. This should be used as part of Policy resources
+                    that can target Gateway API resources. For more information on how this
+                    policy attachment model works, and a sample Policy resource, refer to
+                    the policy attachment documentation for Gateway API.
+                  properties:
+                    group:
+                      description: Group is the group of the target resource.
+                      maxLength: 253
+                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                      type: string
+                    kind:
+                      description: Kind is kind of the target resource.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                      type: string
+                    name:
+                      description: Name is the name of the target resource.
+                      maxLength: 253
+                      minLength: 1
+                      type: string
+                  required:
+                  - group
+                  - kind
+                  - name
+                  type: object
+                maxItems: 16
+                type: array
+                x-kubernetes-validations:
+                - message: targetRefs must reference AIServiceBackend resources
+                  rule: self.all(ref, ref.group == 'aigateway.envoyproxy.io' && ref.kind
+                    == 'AIServiceBackend')
+            type: object
+          status:
+            description: Status defines the status details of the QuotaPolicy.
+            properties:
+              conditions:
+                description: |-
+                  Conditions is the list of conditions by the reconciliation result.
+                  Currently, at most one condition is set.
+
+                  Known .status.conditions.type are: "Accepted", "NotAccepted".
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -10,9 +10,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func TestPopulateOpenAIEnvConfig(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
 	tests := []struct {
 		name          string
 		envVars       map[string]string
@@ -100,6 +103,28 @@ func TestPopulateOpenAIEnvConfig(t *testing.T) {
 					{
 						Name:     "openai",
 						Hostname: "localhost",
+						Port:     11434,
+						NeedsTLS: false,
+					},
+				},
+				OpenAI: &OpenAIConfig{
+					BackendName: "openai",
+					SchemaName:  "OpenAI",
+					Version:     "",
+				},
+			},
+		},
+		{
+			name: "OpenAI with IP base URL",
+			envVars: map[string]string{
+				"OPENAI_API_KEY":  "sk-test123",
+				"OPENAI_BASE_URL": "http://127.0.0.1:11434/v1",
+			},
+			expected: ConfigData{
+				Backends: []Backend{
+					{
+						Name:     "openai",
+						IP:       "127.0.0.1",
 						Port:     11434,
 						NeedsTLS: false,
 					},
@@ -207,15 +232,6 @@ func TestPopulateOpenAIEnvConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear any existing env vars first
-			t.Setenv("OPENAI_API_KEY", "")
-			t.Setenv("OPENAI_BASE_URL", "")
-			t.Setenv("OPENAI_ORG_ID", "")
-			t.Setenv("OPENAI_PROJECT_ID", "")
-			t.Setenv("AZURE_OPENAI_API_KEY", "")
-			t.Setenv("AZURE_OPENAI_ENDPOINT", "")
-			t.Setenv("OPENAI_API_VERSION", "")
-
 			// Set test environment variables
 			for k, v := range tt.envVars {
 				t.Setenv(k, v)

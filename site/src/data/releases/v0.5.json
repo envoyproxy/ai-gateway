@@ -1,0 +1,250 @@
+{
+  "series": {
+    "version": "v0.5",
+    "title": "Envoy AI Gateway v0.5.x",
+    "subtitle": "Multi-gateway configuration, prompt caching cost savings, fine-grained MCP authorization, OpenAI Responses API, and Google Search grounding for Gemini",
+    "badge": "Latest",
+    "badgeType": "milestone"
+  },
+  "releases": [
+    {
+      "version": "v0.5.0",
+      "date": "January 23, 2026",
+      "type": "minor",
+      "tags": [
+        { "text": "GatewayConfig CRD", "type": "feature" },
+        { "text": "OpenAI Responses API", "type": "feature" },
+        { "text": "AWS Bedrock Caching", "type": "feature" },
+        { "text": "CEL Authorization", "type": "feature" },
+        { "text": "MCP Stdio Servers", "type": "feature" },
+        { "text": "Google Search Grounding", "type": "feature" },
+        { "text": "Body Mutation", "type": "feature" }
+      ],
+      "overview": "Envoy AI Gateway v0.5.0 makes multi-gateway deployments easier with the new GatewayConfig CRD, cuts costs with prompt caching for AWS Bedrock and GCP Claude, and unlocks fine-grained access control with CEL-based MCP authorization. Developers gain OpenAI Responses API support, Google Search grounding for Gemini, and the ability to mutate request bodies per-route. Under the hood, the switch to sonic JSON processing reduces latency across all requests.",
+      "features": [
+        {
+          "title": "Gateway Configuration",
+          "items": [
+            {
+              "title": "New <code>GatewayConfig</code> CRD",
+              "description": "Introduces a new <code>GatewayConfig</code> custom resource for gateway-scoped configuration. Reference it from a Gateway via the <code>aigateway.envoyproxy.io/gateway-config</code> annotation to configure the external processor container with environment variables, resource requirements, and other Kubernetes container settings. Multiple Gateways can share the same GatewayConfig for consistent configuration."
+            },
+            {
+              "title": "Configurable endpoint prefixes",
+              "description": "Added <code>prefix</code> field to <code>VersionedAPISchema</code> for configuring API endpoint prefixes. Useful for routing to backends with OpenAI-compatible APIs that use non-standard prefixes, such as Gemini's <code>/v1beta/openai</code> or Cohere's <code>/compatibility/v1</code>."
+            }
+          ]
+        },
+        {
+          "title": "OpenAI API Support",
+          "items": [
+            {
+              "title": "OpenAI Responses API <code>/v1/responses</code>",
+              "description": "Full support for OpenAI's new Responses API endpoint with streaming and non-streaming modes, function calling, MCP tools support, reasoning, multi-turn conversations, and native multimodal capabilities. Includes complete token usage tracking and OpenInference tracing."
+            }
+          ]
+        },
+        {
+          "title": "Provider Caching Enhancements",
+          "items": [
+            {
+              "title": "Prompt caching for AWS Bedrock Claude",
+              "description": "Reduce costs and latency by reusing cached system prompts with Bedrock Anthropic models. The gateway handles cache point markers automatically and tracks both cache creation and cache hit tokens separately for accurate billing visibility."
+            },
+            {
+              "title": "Prompt caching for GCP Vertex AI Claude",
+              "description": "Same cost-saving prompt caching now works with Claude models on GCP Vertex AI. Cache your system prompts and few-shot examples to cut input token costs on repeated requests."
+            }
+          ]
+        },
+        {
+          "title": "MCP Gateway Enhancements",
+          "items": [
+            {
+              "title": "Fine-grained authorization with CEL, JWT claims, and external auth",
+              "description": "Comprehensive authorization system for MCP routes. Write expressive CEL rules using request attributes (HTTP method, headers, JWT claims, tool names and call arguments), enforce access based on JWT claim values from your identity provider, or delegate to external gRPC/HTTP authorization services. Control which users can access which tools with precision."
+            },
+            {
+              "title": "Real-time tool list synchronization",
+              "description": "MCP clients automatically stay in sync when you update MCPRoutes. The gateway sends <code>notifications/tools/list_changed</code> notifications, so clients refresh their available tools without manual intervention or reconnection."
+            },
+            {
+              "title": "Stdio server proxy in standalone mode",
+              "description": "Run command-line MCP tools (like <code>npx</code>-based servers) without code changes. The <code>aigw</code> CLI proxies stdio-based MCP servers over HTTP, letting you integrate CLI tools directly into your AI workflows."
+            },
+            {
+              "title": "Improved OAuth metadata discovery",
+              "description": "OAuth well-known endpoints now serve at the MCPRoute path prefix, ensuring MCP clients correctly discover authorization configuration even when multiple routes have different security policies."
+            }
+          ]
+        },
+        {
+          "title": "Inference Extension",
+          "items": [
+            {
+              "title": "Security policies for inference pools",
+              "description": "Apply <code>BackendSecurityPolicy</code> to <code>InferencePool</code> resources, ensuring consistent authentication across all dynamically-selected inference endpoints in your pool."
+            }
+          ]
+        },
+        {
+          "title": "Gemini Provider Enhancements",
+          "items": [
+            {
+              "title": "Ground responses with live web search",
+              "description": "Give Gemini models access to real-time information via the <code>google_search</code> tool type. Filter results by domain, set blocking confidence thresholds, and restrict time ranges to ensure responses use current, relevant sources."
+            },
+            {
+              "title": "Consistent thinking configuration across providers",
+              "description": "Use the same <code>thinking</code> configuration for both Anthropic and Gemini models. Write provider-agnostic code that works with extended thinking features regardless of which model backend processes the request."
+            },
+            {
+              "title": "Gemini 3 reasoning and image quality controls",
+              "description": "Fine-tune Gemini 3 behavior with <code>thinking_level</code> (control reasoning depth) and <code>media_resolution</code> (balance image quality vs. speed). These settings gracefully degrade on older Gemini versions."
+            },
+            {
+              "title": "Visibility into model reasoning",
+              "description": "When thinking is enabled, the gateway extracts and surfaces thought summaries from Gemini responses, helping you understand how the model reached its conclusions."
+            },
+            {
+              "title": "Enterprise web search integration",
+              "description": "Connect Gemini to your organization's search infrastructure with the <code>enterprise_search</code> tool type. Configure custom data sources for grounding responses in enterprise-specific knowledge."
+            }
+          ]
+        },
+        {
+          "title": "Traffic Management",
+          "items": [
+            {
+              "title": "Route-level body mutation",
+              "description": "Inject or remove JSON fields in request bodies per-backend without application changes. Use <code>bodyMutation</code> to add <code>service_tier</code>, set custom parameters, or strip internal fields before requests reach different providers. Route-level settings override backend defaults for flexible multi-backend configurations."
+            },
+            {
+              "title": "AWS Bedrock service tier control",
+              "description": "Choose between standard, flex, priority, and reserved for Bedrock requests. Set <code>service_tier</code> to prioritize latency-sensitive workloads or optimize costs for batch processing, with automatic fallback handling."
+            }
+          ]
+        },
+        {
+          "title": "Observability Enhancements",
+          "items": [
+            {
+              "title": "Per-provider cost attribution",
+              "description": "Track spending across AI providers with the new <code>gen_ai.provider.name</code> metric attribute. Filter dashboards and alerts by provider to identify cost drivers and optimize your multi-provider strategy."
+            },
+            {
+              "title": "Full tracing for Anthropic Messages API",
+              "description": "Debug Claude model requests end-to-end with OpenInference-compliant tracing for the native <code>/messages</code> endpoint. View prompts, responses, and timing in Arize Phoenix or any OpenTelemetry-compatible observability platform."
+            },
+            {
+              "title": "Cohere Rerank visibility",
+              "description": "Track reranking operations in your traces. Full OpenTelemetry support for Cohere's v2 rerank endpoint captures query, documents, and relevance scores for debugging RAG pipelines."
+            }
+          ]
+        },
+        {
+          "title": "Performance and Operations",
+          "items": [
+            {
+              "title": "Faster request processing with sonic JSON",
+              "description": "Reduced gateway latency by migrating to bytedance/sonic for JSON encoding and decoding. Expect measurable latency improvements and lower CPU usage, especially for large payloads and high request volumes."
+            },
+            {
+              "title": "Faster cross-namespace reference validation",
+              "description": "Reduced controller reconciliation time with optimized ReferenceGrant indexing. Cross-namespace backend references now validate faster, improving startup time and configuration change responsiveness."
+            },
+            {
+              "title": "Improved MCP proxy throughput",
+              "description": "MCP proxy now reuses HTTP connections across requests, eliminating per-request connection overhead. This significantly improves throughput when proxying to multiple MCP backend servers. <a href=\"/blog/mcp-in-envoy-ai-gateway\">View the MCP performance blog post for details →</a>"
+            }
+          ]
+        }
+      ],
+      "apiChanges": [
+        {
+          "title": "New <code>GatewayConfig</code> CRD",
+          "description": "New custom resource for gateway-level configuration. Spec includes <code>extProc.kubernetes</code> for container settings (resources, env vars, image overrides). Reference from Gateway via <code>aigateway.envoyproxy.io/gateway-config</code> annotation."
+        },
+        {
+          "title": "<code>VersionedAPISchema.prefix</code>",
+          "description": "New <code>prefix</code> field replaces overloading <code>version</code> for endpoint path customization. Example: <code>prefix: \"/v1beta/openai\"</code> for Gemini's OpenAI-compatible API."
+        },
+        {
+          "title": "<code>AIGatewayRouteRuleBackendRef.bodyMutation</code>",
+          "description": "New field with <code>set</code> (list of field/value pairs) and <code>remove</code> (list of field names) for request body manipulation."
+        },
+        {
+          "title": "<code>LLMRequestCostType.CacheCreationInputToken</code>",
+          "description": "New cost type for tracking tokens written to cache, separate from <code>CachedInputToken</code> (tokens read from cache)."
+        },
+        {
+          "title": "<code>MCPRouteSecurityPolicy</code> authorization fields",
+          "description": "New <code>authorization</code> block with <code>defaultAction</code> (Allow/Deny), <code>rules</code> array supporting <code>cel</code> expressions, JWT <code>scopes</code>/<code>claims</code>, and <code>tools</code> targeting. New <code>extAuth</code> field for external authorization delegation."
+        },
+        {
+          "title": "<code>BackendSecurityPolicy.targetRefs</code> expansion",
+          "description": "Now accepts <code>InferencePool</code> (group: <code>inference.networking.x-k8s.io</code>) in addition to <code>AIServiceBackend</code>."
+        }
+      ],
+      "deprecations": [
+        {
+          "title": "<code>AIGatewayFilterConfigExternalProcessor.resources</code>",
+          "description": "The <code>resources</code> field in <code>AIGatewayFilterConfigExternalProcessor</code> is deprecated. Use <code>GatewayConfig</code> for gateway-scoped resource configuration instead. This field will be removed in the next v0.6."
+        },
+        {
+          "title": "<code>version</code> field as prefix for OpenAI schema",
+          "description": "Using the <code>version</code> field as a prefix for OpenAI schema is deprecated. Use the new <code>prefix</code> field instead. The legacy behavior will be removed in the next v0.6."
+        }
+      ],
+      "breakingChanges": [],
+      "bugFixes": [
+        {
+          "title": "AWS Bedrock Claude streaming reliability",
+          "description": "Streaming responses from Bedrock Claude models now complete correctly. Previously, some streamed responses could be truncated or malformed."
+        },
+        {
+          "title": "Gemini streaming token counts",
+          "description": "Token usage in Gemini streaming responses now matches OpenAI format, fixing integrations that parse usage from stream chunks."
+        },
+        {
+          "title": "Multi-chunk Gemini tool calls",
+          "description": "Tool calls that span multiple streaming chunks now have correct indices, preventing function calling errors with Gemini."
+        },
+        {
+          "title": "GCP Claude reasoning content",
+          "description": "Reasoning/thinking content now correctly passes through for Claude models on GCP Vertex AI in both requests and responses."
+        },
+        {
+          "title": "Zero-weight backend references",
+          "description": "Backend references with zero weight no longer cause routing errors, allowing gradual traffic shifts via weight changes."
+        },
+        {
+          "title": "Umbrella chart image pull secrets",
+          "description": "Helm deployments within umbrella charts now correctly inherit <code>global.imagePullSecrets</code> when chart-level secrets aren't set."
+        },
+        {
+          "title": "GCP global region backends",
+          "description": "Vertex AI backends configured with global region now work correctly instead of failing during setup."
+        },
+        {
+          "title": "Accurate per-token latency metrics",
+          "description": "Fixed integer truncation in <code>time_per_output_token</code> calculation that caused incorrect latency measurements for fast responses."
+        },
+        {
+          "title": "Anthropic token counting",
+          "description": "Improved accuracy of input and output token counts for Anthropic models, ensuring billing metrics match provider reports."
+        }
+      ],
+      "dependencies": [
+        { "title": "Go 1.25.6", "description": "Updated to Go 1.25.6 for improved performance and security fixes." },
+        { "title": "Envoy Gateway v1.6", "description": "Built on Envoy Gateway v1.6 for enhanced data plane capabilities and stability improvements." },
+        { "title": "Envoy v1.36", "description": "Leveraging Envoy Proxy v1.36.4 with the latest networking and security features." },
+        { "title": "Gateway API v1.4.0", "description": "Support for Gateway API v1.4.0 specifications." },
+        { "title": "Gateway API Inference Extension v1.0.2", "description": "Integration with Gateway API Inference Extension v1.0.2 for stable intelligent endpoint selection." }
+      ]
+    }
+  ],
+  "navigation": {
+    "previous": { "version": "v0.4.x Series", "path": "/release-notes/v0.4" }
+  }
+}
