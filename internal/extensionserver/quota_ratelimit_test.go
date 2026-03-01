@@ -108,7 +108,7 @@ func TestInjectQuotaRateLimitFilterIntoListeners(t *testing.T) {
 		require.Len(t, filters, 3)
 		require.Equal(t, "envoy.filters.http.health_check", filters[0].Name)
 		require.Equal(t, quotaRateLimitFilterName, filters[1].Name)
-		require.True(t, filters[1].Disabled)
+		require.False(t, filters[1].Disabled)
 		require.Equal(t, wellknown.Router, filters[2].Name)
 
 		// Verify the injected filter config.
@@ -204,7 +204,7 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 		require.Equal(t, translator.BackendNameDescriptorKey, md.DescriptorKey)
 		require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, md.MetadataKey.Key)
 		require.Len(t, md.MetadataKey.Path, 1)
-		require.Equal(t, "backend_name", md.MetadataKey.Path[0].GetKey())
+		require.Equal(t, "ai_service_backend_name", md.MetadataKey.Path[0].GetKey())
 		require.Equal(t, routev3.RateLimit_Action_MetaData_DYNAMIC, md.Source)
 	})
 
@@ -357,13 +357,13 @@ func TestEnableQuotaRateLimitOnRoute_DescriptorChain(t *testing.T) {
 	// Request-time entry: same descriptor chain, no HitsAddend/ApplyOnStreamDone.
 	reqTimeActions := perRoute.RateLimits[0].Actions
 	require.Len(t, reqTimeActions, 2)
-	verifyMetadataAction(t, reqTimeActions[0], translator.BackendNameDescriptorKey, "backend_name")
+	verifyMetadataAction(t, reqTimeActions[0], translator.BackendNameDescriptorKey, "ai_service_backend_name")
 	verifyMetadataAction(t, reqTimeActions[1], translator.ModelNameDescriptorKey, "model_name_override")
 
 	// Stream-done entry: same descriptor chain, with HitsAddend and ApplyOnStreamDone.
 	streamDoneActions := perRoute.RateLimits[1].Actions
 	require.Len(t, streamDoneActions, 2)
-	verifyMetadataAction(t, streamDoneActions[0], translator.BackendNameDescriptorKey, "backend_name")
+	verifyMetadataAction(t, streamDoneActions[0], translator.BackendNameDescriptorKey, "ai_service_backend_name")
 	verifyMetadataAction(t, streamDoneActions[1], translator.ModelNameDescriptorKey, "model_name_override")
 }
 
@@ -472,7 +472,7 @@ func TestInjectQuotaRateLimitFilterIntoListeners_FullHCMChain(t *testing.T) {
 	require.Equal(t, "envoy.filters.http.health_check", updatedHCM.HttpFilters[0].Name)
 	require.Equal(t, "envoy.filters.http.header_to_metadata", updatedHCM.HttpFilters[1].Name)
 	require.Equal(t, quotaRateLimitFilterName, updatedHCM.HttpFilters[2].Name)
-	require.True(t, updatedHCM.HttpFilters[2].Disabled)
+	require.False(t, updatedHCM.HttpFilters[2].Disabled)
 	require.Equal(t, wellknown.Router, updatedHCM.HttpFilters[3].Name)
 
 	// Verify the ratelimit filter's internal configuration.
@@ -1072,7 +1072,7 @@ func TestBuildBucketRuleLimitEntries(t *testing.T) {
 		entries := buildBucketRuleLimitEntries("gpt-4", quota)
 		require.Len(t, entries, 2) // request-time + stream-done
 
-		verifyMetadataAction(t, entries[0].Actions[0], translator.BackendNameDescriptorKey, "backend_name")
+		verifyMetadataAction(t, entries[0].Actions[0], translator.BackendNameDescriptorKey, "ai_service_backend_name")
 		verifyMetadataAction(t, entries[0].Actions[1], translator.ModelNameDescriptorKey, "model_name_override")
 	})
 }
@@ -1256,7 +1256,7 @@ func TestBaseDescriptorActions(t *testing.T) {
 	actions := baseDescriptorActions()
 	require.Len(t, actions, 2)
 
-	verifyMetadataAction(t, actions[0], translator.BackendNameDescriptorKey, "backend_name")
+	verifyMetadataAction(t, actions[0], translator.BackendNameDescriptorKey, "ai_service_backend_name")
 	verifyMetadataAction(t, actions[1], translator.ModelNameDescriptorKey, "model_name_override")
 }
 
@@ -1922,7 +1922,7 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, updatedHCM.HttpFilters, 2)
 		require.Equal(t, quotaRateLimitFilterName, updatedHCM.HttpFilters[0].Name)
-		require.True(t, updatedHCM.HttpFilters[0].Disabled)
+		require.False(t, updatedHCM.HttpFilters[0].Disabled)
 
 		// Verify route was patched.
 		patchedRoute := routeConfig.VirtualHosts[0].Routes[0]
