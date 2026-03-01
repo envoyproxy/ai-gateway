@@ -153,6 +153,8 @@ func TestStart(t *testing.T) {
 
 		// Wait until the cache is initialized (Start has begun).
 		require.Eventually(t, func() bool {
+			r.mu.Lock()
+			defer r.mu.Unlock()
 			return r.cache != nil
 		}, 5*time.Second, 50*time.Millisecond)
 
