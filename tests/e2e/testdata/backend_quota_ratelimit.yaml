@@ -169,7 +169,7 @@ spec:
       containers:
         - name: ratelimit
           command:
-          - /bin/ratelimit
+            - /bin/ratelimit
           image: docker.io/envoyproxy/ratelimit:60d8e81b
           imagePullPolicy: IfNotPresent
           ports:
