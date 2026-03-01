@@ -257,12 +257,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 	openAiMessage *openai.ChatCompletionAssistantMessageParam, role string,
 ) (*awsbedrock.Message, error) {
 	var bedrockMessage *awsbedrock.Message
-	contentBlocks := make([]*awsbedrock.ContentBlock, 0)
+	contentBlocks := make([]*awsbedrock.ContentBlock, 1)
 	if openAiMessage.Content.Type == openai.ChatCompletionAssistantMessageParamContentTypeRefusal {
-		contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: openAiMessage.Content.Refusal})
-	} else if openAiMessage.Content.Text != nil {
-		// TODO: we are sometimes missing the content (should fix)
-		contentBlocks = append(contentBlocks, &awsbedrock.ContentBlock{Text: openAiMessage.Content.Text})
+		contentBlocks[0] = &awsbedrock.ContentBlock{Text: openAiMessage.Content.Refusal}
+	} else {
+		contentBlocks[0] = &awsbedrock.ContentBlock{Text: openAiMessage.Content.Text}
 	}
 	bedrockMessage = &awsbedrock.Message{
 		Role:    role,
@@ -312,34 +311,22 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMessageRoleTool(
 	openAiMessage *openai.ChatCompletionToolMessageParam, role string,
 ) (*awsbedrock.Message, error) {
-	// Validate and cast the openai content value into bedrock content block
-	content := make([]*awsbedrock.ToolResultContentBlock, 0)
-
-	switch v := openAiMessage.Content.Value.(type) {
-	case string:
-		content = []*awsbedrock.ToolResultContentBlock{
-			{
-				Text: &v,
-			},
-		}
-	case []openai.ChatCompletionContentPartTextParam:
-		for _, part := range v {
-			content = append(content, &awsbedrock.ToolResultContentBlock{
-				Text: &part.Text,
-			})
-		}
-
-	default:
-		return nil, fmt.Errorf("unexpected content type for tool message: %T", openAiMessage.Content.Value)
+	text := ""
+	if t, ok := openAiMessage.Content.Value.(string); ok {
+		text = t
+	} else if content, ok := openAiMessage.Content.Value.([]openai.ChatCompletionContentPartTextParam); ok {
+		text = content[0].Text
 	}
-
 	return &awsbedrock.Message{
 		Role: role,
 		Content: []*awsbedrock.ContentBlock{
 			{
 				ToolResult: &awsbedrock.ToolResultBlock{
-					Content:   content,
-					ToolUseID: &openAiMessage.ToolCallID,
+					Content: []*awsbedrock.ToolResultContentBlock{
+						{
+							Text: &text,
+						},
+					},
 				},
 			},
 		},
@@ -578,6 +565,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 	if err = json.NewDecoder(body).Decode(&bedrockResp); err != nil {
 		return nil, nil, tokenUsage, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
+
 	openAIResp := openai.ChatCompletionResponse{
 		Object:  "chat.completion",
 		Choices: make([]openai.ChatCompletionResponseChoice, 0),
@@ -595,7 +583,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(respHeaders 
 			CompletionTokens: bedrockResp.Usage.OutputTokens,
 		}
 	}
-
 	// AWS Bedrock does not support N(multiple choices) > 0, so there could be only one choice.
 	choice := openai.ChatCompletionResponseChoice{
 		Index: (int64)(0),
