@@ -57,8 +57,10 @@ func New(logger logr.Logger, port int) *Runner {
 
 // Start starts the xDS gRPC server. It blocks until ctx is cancelled.
 func (r *Runner) Start(ctx context.Context) error {
+	r.mu.Lock()
 	r.cache = cachev3.NewSnapshotCache(false, cachev3.IDHash{}, nil)
 	r.grpcServer = grpc.NewServer()
+	r.mu.Unlock()
 
 	xdsServer := serverv3.NewServer(ctx, r.cache, serverv3.CallbackFuncs{})
 	discoveryv3.RegisterAggregatedDiscoveryServiceServer(r.grpcServer, xdsServer)
