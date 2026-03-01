@@ -11,8 +11,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
@@ -47,10 +50,13 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 
 	const modelName = "quota-test-model"
 
+	// Flush any existing quota keys in Redis to start with a clean state.
+	flushQuotaKeys(t)
+
 	// makeRequest sends a chat completion request via the test upstream with the
 	// specified total_tokens in the fake response. It asserts that the response
-	// status matches expStatus.
-	makeRequest := func(totalTokens int, expStatus int) {
+	// status is 200 OK and returns the response body.
+	makeRequest := func(totalTokens int) {
 		fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 		defer fwd.Kill()
 
@@ -72,29 +78,96 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		if resp.StatusCode == http.StatusOK {
-			var oaiBody openai.ChatCompletion
-			require.NoError(t, json.Unmarshal(body, &oaiBody))
-			require.Equal(t, "This is a test.", oaiBody.Choices[0].Message.Content)
-			require.Equal(t, int64(totalTokens), oaiBody.Usage.TotalTokens)
-		}
-		require.Equal(t, expStatus, resp.StatusCode, "unexpected status code, body: %s", string(body))
+
+		require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code, body: %s", string(body))
+
+		var oaiBody openai.ChatCompletion
+		require.NoError(t, json.Unmarshal(body, &oaiBody))
+		require.Equal(t, "This is a test.", oaiBody.Choices[0].Message.Content)
+		require.Equal(t, int64(totalTokens), oaiBody.Usage.TotalTokens)
 	}
 
-	// Test per-model quota enforcement.
+	// Test per-model quota enforcement by verifying the quota counter in Redis.
 	// The QuotaPolicy sets a quota of 10 total tokens per hour for "quota-test-model".
 	//
-	// The first request uses 20 total_tokens which exceeds the quota limit of 10.
-	// Since ApplyOnStreamDone is used, the rate limit check happens after the response
-	// is received, so the first request succeeds but burns down the quota.
-	t.Run("per-model quota", func(_ *testing.T) {
-		// First request: 20 total tokens. This exceeds the limit of 10, but the
-		// response has already been sent, so the request succeeds. The quota counter
-		// is incremented to 20 (over the limit of 10).
-		makeRequest(20, http.StatusOK)
+	// The stream-done rate limit entry (ApplyOnStreamDone=true) runs after the
+	// response is complete and increments the quota counter by the token usage.
+	// Since stream-done runs asynchronously after the response, we verify the
+	// counter in Redis rather than expecting a 429 on the next request.
+	t.Run("per-model quota", func(t *testing.T) {
+		// First request: 20 total tokens (exceeds the limit of 10).
+		// The request succeeds because stream-done counting happens after the response.
+		makeRequest(20)
 
-		// Second request: the quota is already exhausted from the first request,
-		// so this should be rate limited.
-		makeRequest(0, http.StatusTooManyRequests)
+		// Verify the quota counter in Redis was incremented to 20.
+		requireQuotaUsage(t, modelName, 20)
+
+		// Second request: 5 more total tokens.
+		makeRequest(5)
+
+		// Verify the quota counter increased to 25.
+		requireQuotaUsage(t, modelName, 25)
 	})
+}
+
+// redisExec runs a redis-cli command on the Redis pod and returns the output.
+func redisExec(t *testing.T, args ...string) string {
+	t.Helper()
+	cmdArgs := append([]string{
+		"exec", "-n", "redis-system",
+		"deploy/redis", "--",
+		"redis-cli",
+	}, args...)
+	cmd := exec.CommandContext(t.Context(), "kubectl", cmdArgs...)
+	out, err := cmd.Output()
+	require.NoError(t, err, "redis-cli %v failed", args)
+	return strings.TrimSpace(string(out))
+}
+
+// flushQuotaKeys deletes all quota-related keys from Redis.
+func flushQuotaKeys(t *testing.T) {
+	t.Helper()
+	keys := redisExec(t, "KEYS", "ai-gateway-quota_*")
+	if keys == "" {
+		return
+	}
+	for _, key := range strings.Split(keys, "\n") {
+		key = strings.TrimSpace(key)
+		if key != "" {
+			redisExec(t, "DEL", key)
+		}
+	}
+}
+
+// getQuotaUsage retrieves the current quota counter value from Redis for the given model.
+// The key pattern is: ai-gateway-quota_backend_name_{backend}_model_name_override_{model}_{timestamp}
+func getQuotaUsage(t *testing.T, modelName string) (int, bool) {
+	t.Helper()
+	pattern := fmt.Sprintf("ai-gateway-quota_backend_name_*_model_name_override_%s_*", modelName)
+	keys := redisExec(t, "KEYS", pattern)
+	if keys == "" {
+		return 0, false
+	}
+	// Use the first matching key (there should be exactly one per model per time window).
+	key := strings.Split(keys, "\n")[0]
+	key = strings.TrimSpace(key)
+	val := redisExec(t, "GET", key)
+	if val == "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(val)
+	require.NoError(t, err, "failed to parse quota counter value: %q", val)
+	return n, true
+}
+
+// requireQuotaUsage polls Redis until the quota counter for the given model reaches
+// the expected value. The stream-done rate limit entry updates Redis asynchronously
+// after the response, so polling is necessary.
+func requireQuotaUsage(t *testing.T, modelName string, expected int) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		usage, ok := getQuotaUsage(t, modelName)
+		return ok && usage == expected
+	}, 30*time.Second, 500*time.Millisecond,
+		"quota counter for model %q did not reach expected value %d", modelName, expected)
 }
