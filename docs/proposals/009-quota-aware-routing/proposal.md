@@ -2,7 +2,7 @@
 
 ## Overview
 
-This proposal describes a quota-aware routing system for AI Gateway that enables intelligent traffic distribution between Provisioned Throughput (PT) and On-Demand capacity endpoints based on real-time quota consumption. 
+This proposal describes a quota-aware routing system for AI Gateway that enables intelligent traffic distribution between Provisioned Throughput (PT) and On-Demand capacity endpoints based on real-time quota consumption.
 The system leverages the existing `AIGatewayRoute` backendRefs and routing rules to define endpoint pools, with quota enforcement applied at the **router-level rate limit filter** using QuotaMode to search available backend quota and route according to priority.
 
 ## Goals
@@ -346,7 +346,6 @@ The ExtProc reads these violations and selects the highest-priority backend with
 The rate limit filter is configured at the router level with QuotaMode descriptors
 for per-backend quota vis envoy xDS.
 
-
 ### How Failover Works (Router-Level Quota Search)
 
 1. **Request Arrives**: Router-level RL filter evaluates all backend quota descriptors
@@ -361,6 +360,7 @@ for per-backend quota vis envoy xDS.
 6. **All Exhausted**: If no backend has available quota → return 429 to client
 
 **Example Walkthrough:**
+
 - Backends: `PT-east-1` (P0, desc 2), `PT-west-2` (P0, desc 3), `OD-anthropic` (P1, desc 4)
 - `quotaModeViolations: [2]` → PT-east-1 exceeded
 - ExtProc checks P0 backends: PT-east-1 ✗ (violated), PT-west-2 ✓ (available)
