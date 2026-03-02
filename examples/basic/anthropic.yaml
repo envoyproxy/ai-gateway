@@ -34,6 +34,10 @@ spec:
     name: envoy-ai-gateway-basic-anthropic
     kind: Backend
     group: gateway.envoyproxy.io
+  headerMutation:
+    set:
+      - name: anthropic-version
+        value: "2023-06-01"
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: BackendSecurityPolicy
