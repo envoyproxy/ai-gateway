@@ -1275,6 +1275,128 @@ event: response.completed
 data: {"type":"response.completed","sequence_number":10,"response":{"id":"resp_67c","object":"response","created_at":1741290958,"status":"completed","error":null,"incomplete_details":null,"instructions":"You are a helpful assistant.","max_output_tokens":null,"model":"gpt-4.1-2025-04-14","output":[{"id":"msg_67c","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"This is a test.","annotations":[]}]}],"parallel_tool_calls":true,"previous_response_id":null,"reasoning":{"effort":null,"summary":null},"store":true,"temperature":1.0,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":37,"output_tokens":11,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":48},"user":null,"metadata":{}}}
 `,
 		},
+		{
+			name:            "anthropic-openai - /anthropic/v1/messages - OpenAI Backend with Anthropic messages endpoint",
+			backend:         "openai",
+			path:            "/anthropic/v1/messages",
+			method:          http.MethodPost,
+			requestBody:     `{"model": "foo","max_tokens": 1000, "messages": [{"role": "user", "content": "say hi"}]}`,
+			expRequestBody:  `{"messages":[{"content":"say hi","role":"user"}],"model":"foo","max_completion_tokens":1000}`,
+			expPath:         "/v1/chat/completions",
+			responseBody:    `{"choices":[{"message":{"content":"hi, this is a test."}}]}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"id":"","type":"message","role":"assistant","content":[{"type":"text","text":"hi, this is a test."}],"model":"foo","stop_reason":"end_turn","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":0,"output_tokens":0}}`,
+		},
+		{
+			name:            "anthropic-openai - /anthropic/v1/messages - non-streaming with system prompt",
+			backend:         "openai",
+			path:            "/anthropic/v1/messages",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"claude-test","max_tokens":100,"system":"You are a helpful assistant.","messages":[{"role":"user","content":"Hello"}]}`,
+			expRequestBody:  `{"messages":[{"content":"You are a helpful assistant.","role":"system"},{"content":"Hello","role":"user"}],"model":"claude-test","max_completion_tokens":100}`,
+			expPath:         "/v1/chat/completions",
+			responseBody:    `{"id":"chatcmpl-sys","model":"gpt-4o","choices":[{"message":{"content":"Hello! How can I help you today?","role":"assistant"},"finish_reason":"stop"}],"usage":{"prompt_tokens":25,"completion_tokens":10}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"id":"chatcmpl-sys","type":"message","role":"assistant","content":[{"type":"text","text":"Hello! How can I help you today?"}],"model":"gpt-4o","stop_reason":"end_turn","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":25,"output_tokens":10}}`,
+		},
+		{
+			name:            "anthropic-openai - /anthropic/v1/messages - non-streaming tool call",
+			backend:         "openai",
+			path:            "/anthropic/v1/messages",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"claude-test","max_tokens":200,"messages":[{"role":"user","content":"What's the weather in Paris?"}],"tools":[{"type":"custom","name":"get_weather","description":"Get weather info","input_schema":{"type":"object","properties":{"location":{"type":"string"}},"required":["location"]}}]}`,
+			expRequestBody:  `{"messages":[{"content":"What's the weather in Paris?","role":"user"}],"model":"claude-test","max_completion_tokens":200,"tools":[{"type":"function","function":{"name":"get_weather","description":"Get weather info","parameters":{"type":"object","properties":{"location":{"type":"string"}},"required":["location"]}}}]}`,
+			expPath:         "/v1/chat/completions",
+			responseBody:    `{"id":"chatcmpl-tool","model":"gpt-4o","choices":[{"message":{"role":"assistant","tool_calls":[{"id":"call_abc","type":"function","function":{"name":"get_weather","arguments":"{\"location\":\"Paris\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":50,"completion_tokens":15}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"id":"chatcmpl-tool","type":"message","role":"assistant","content":[{"type":"tool_use","id":"call_abc","name":"get_weather","input":{"location":"Paris"}}],"model":"gpt-4o","stop_reason":"tool_use","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":50,"output_tokens":15}}`,
+		},
+		{
+			name:           "anthropic-openai - /anthropic/v1/messages - streaming text response",
+			backend:        "openai",
+			path:           "/anthropic/v1/messages",
+			method:         http.MethodPost,
+			responseType:   "sse",
+			requestBody:    `{"model":"claude-test","max_tokens":100,"messages":[{"role":"user","content":"Say hi"}],"stream":true}`,
+			expRequestBody: `{"messages":[{"content":"Say hi","role":"user"}],"model":"claude-test","max_completion_tokens":100,"stream":true,"stream_options":{"include_usage":true}}`,
+			expPath:        "/v1/chat/completions",
+			responseBody: `{"id":"chatcmpl-stream","model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-stream","model":"gpt-4o","choices":[{"index":0,"delta":{"content":" there!"},"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-stream","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":null}
+{"id":"chatcmpl-stream","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":3}}
+[DONE]`,
+			expStatus: http.StatusOK,
+			expResponseBody: `event: message_start
+data: {"type":"message_start","message":{"id":"chatcmpl-stream","type":"message","role":"assistant","content":[],"model":"gpt-4o","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" there!"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":3}}
+
+event: message_stop
+data: {"type":"message_stop"}`,
+		},
+		{
+			name:           "anthropic-openai - /anthropic/v1/messages - streaming tool call",
+			backend:        "openai",
+			path:           "/anthropic/v1/messages",
+			method:         http.MethodPost,
+			responseType:   "sse",
+			requestBody:    `{"model":"claude-test","max_tokens":100,"messages":[{"role":"user","content":"Get the weather in Paris"}],"stream":true,"tools":[{"type":"custom","name":"get_weather","description":"Get weather info","input_schema":{"type":"object","properties":{"location":{"type":"string"}},"required":["location"]}}]}`,
+			expRequestBody: `{"messages":[{"content":"Get the weather in Paris","role":"user"}],"model":"claude-test","max_completion_tokens":100,"stream":true,"stream_options":{"include_usage":true},"tools":[{"type":"function","function":{"name":"get_weather","description":"Get weather info","parameters":{"type":"object","properties":{"location":{"type":"string"}},"required":["location"]}}}]}`,
+			expPath:        "/v1/chat/completions",
+			responseBody: `{"id":"chatcmpl-tool","model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_abc","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-tool","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\":"}}]},"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-tool","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Paris\"}"}}]},"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-tool","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":null}
+{"id":"chatcmpl-tool","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":50,"completion_tokens":15}}
+[DONE]`,
+			expStatus: http.StatusOK,
+			expResponseBody: `event: message_start
+data: {"type":"message_start","message":{"id":"chatcmpl-tool","type":"message","role":"assistant","content":[],"model":"gpt-4o","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call_abc","name":"get_weather","input":{}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"location\":"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"Paris\"}"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":15}}
+
+event: message_stop
+data: {"type":"message_stop"}`,
+		},
+		{
+			name:            "anthropic-openai - /anthropic/v1/messages - OpenAI JSON error translated to Anthropic error",
+			backend:         "openai",
+			path:            "/anthropic/v1/messages",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"claude-test","max_tokens":100,"messages":[{"role":"user","content":"Hello"}]}`,
+			expPath:         "/v1/chat/completions",
+			expRequestBody:  `{"messages":[{"content":"Hello","role":"user"}],"model":"claude-test","max_completion_tokens":100}`,
+			responseBody:    `{"error":{"type":"invalid_request_error","message":"Model not found","code":"model_not_found"}}`,
+			responseStatus:  "400",
+			expStatus:       http.StatusBadRequest,
+			expResponseBody: `{"error":{"message":"Model not found","type":"invalid_request_error"},"request_id":"","type":"error"}`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
