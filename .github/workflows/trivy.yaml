@@ -31,7 +31,7 @@ jobs:
           make docker-build.${{ matrix.target.command_name }} TAG=${{ github.sha }}
 
       - name: Run Trivy vulnerability scanner for ${{ matrix.target.command_name }}
-        uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284 # master
+        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518 # master
         with:
           image-ref: docker.io/envoyproxy/ai-gateway-${{ matrix.target.command_name }}:${{ github.sha }}
           format: "table"
