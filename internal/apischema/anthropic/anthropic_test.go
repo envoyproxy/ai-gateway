@@ -27,7 +27,7 @@ func TestMessageContent_UnmarshalJSON(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "array content",
+			name:    "array contents",
 			jsonStr: `[{"type": "text", "text": "Hello, "}, {"type": "text", "text": "world!"}]`,
 			want: MessageContent{Array: []ContentBlockParam{
 				{Text: &TextBlockParam{Text: "Hello, ", Type: "text"}},
@@ -2396,4 +2396,83 @@ func TestToolResultContent_InToolResultBlockParam(t *testing.T) {
 // strPtr is a helper to create a pointer to a string literal.
 func strPtr(s string) *string {
 	return &s
+}
+
+func TestToolUnionUnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name     string
+		jsonData string
+		wantType string
+	}{
+		{
+			name:     "custom tool (explicit type)",
+			jsonData: `{"type":"custom","name":"mytool","input_schema":{"type":"object"}}`,
+			wantType: "Tool",
+		},
+		{
+			name:     "bash tool",
+			jsonData: `{"type":"bash_20250124","name":"bash"}`,
+			wantType: "BashTool",
+		},
+		{
+			name:     "text editor tool v1",
+			jsonData: `{"type":"text_editor_20250124","name":"str_replace_editor"}`,
+			wantType: "TextEditorTool20250124",
+		},
+		{
+			name:     "text editor tool v2",
+			jsonData: `{"type":"text_editor_20250429","name":"str_replace_based_edit_tool"}`,
+			wantType: "TextEditorTool20250429",
+		},
+		{
+			name:     "text editor tool v3",
+			jsonData: `{"type":"text_editor_20250728","name":"str_replace_based_edit_tool"}`,
+			wantType: "TextEditorTool20250728",
+		},
+		{
+			name:     "web search tool",
+			jsonData: `{"type":"web_search_20250305","name":"web_search"}`,
+			wantType: "WebSearchTool",
+		},
+		{
+			name:     "custom tool (missing type)",
+			jsonData: `{"name":"mytool","input_schema":{"type":"object"}}`,
+			wantType: "Tool",
+		},
+		{
+			name:     "unknown type",
+			jsonData: `{"type":"unknown_type","name":"foo"}`,
+			wantType: "None",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tu ToolUnion
+			err := json.Unmarshal([]byte(tt.jsonData), &tu)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			typeSet := "None"
+			switch {
+			case tu.Tool != nil:
+				typeSet = "Tool"
+			case tu.BashTool != nil:
+				typeSet = "BashTool"
+			case tu.TextEditorTool20250124 != nil:
+				typeSet = "TextEditorTool20250124"
+			case tu.TextEditorTool20250429 != nil:
+				typeSet = "TextEditorTool20250429"
+			case tu.TextEditorTool20250728 != nil:
+				typeSet = "TextEditorTool20250728"
+			case tu.WebSearchTool != nil:
+				typeSet = "WebSearchTool"
+			}
+
+			if typeSet != tt.wantType {
+				t.Errorf("expected %s, got %s", tt.wantType, typeSet)
+			}
+		})
+	}
 }

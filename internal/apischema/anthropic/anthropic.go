@@ -1113,10 +1113,13 @@ const (
 
 func (t *ToolUnion) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
-	if !typ.Exists() {
-		return errors.New("missing type field in tool")
+	toolType := toolTypeCustom // Default to custom tool if type is missing for backward compatibility.
+	
+	if typ.Exists() {
+		toolType = typ.String()
 	}
-	switch typ.String() {
+
+	switch toolType {
 	case toolTypeCustom:
 		var tool Tool
 		if err := json.Unmarshal(data, &tool); err != nil {
