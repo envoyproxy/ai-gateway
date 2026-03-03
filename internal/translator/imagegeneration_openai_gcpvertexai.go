@@ -45,16 +45,31 @@ func (o *openAIToGCPVertexAIImageGenerationTranslator) RequestBody(original []by
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	o.requestModel = cmp.Or(o.modelNameOverride, openAIReq.Model)
+	if o.requestModel == "" {
+		err = fmt.Errorf("%w: model field is required", internalapi.ErrInvalidRequestBody)
+		return
+	}
 	o.isImagenModel = strings.HasPrefix(o.requestModel, "imagen")
 	var path string
 	if o.isImagenModel {
-		newBody, err = json.Marshal(openAIToImagenRequest(openAIReq))
+		var imgGenReq *gcp.ImagePredictRequest
+		imgGenReq, err = openAIToImagenRequest(openAIReq)
+		if err != nil {
+			return
+		}
+		newBody, err = json.Marshal(imgGenReq)
 		path = buildGCPModelPathSuffix(gcpModelPublisherGoogle, string(o.requestModel), gcpMethodPredict)
 	} else {
-		newBody, err = json.Marshal(openAIToGeminiRequest(openAIReq))
+		var geminiReq *gcp.GenerateContentRequest
+		geminiReq, err = openAIToGeminiRequest(openAIReq)
+		if err != nil {
+			return
+		}
+		newBody, err = json.Marshal(geminiReq)
 		path = buildGCPModelPathSuffix(gcpModelPublisherGoogle, string(o.requestModel), gcpMethodGenerateContent)
 	}
 	if err != nil {
+		err = fmt.Errorf("failed to encode request: %w", err)
 		return
 	}
 	newHeaders = []internalapi.Header{
@@ -103,38 +118,62 @@ func (o *openAIToGCPVertexAIImageGenerationTranslator) ResponseBody(_ map[string
 }
 
 // openAIToImagenRequest converts an OpenAI image generation request to a GCP Imagen predict request.
-// It maps the size parameter to an aspect ratio and the quality parameter to an output image size.
+// It maps supported OpenAI sizes to explicit Imagen aspect ratio + sample image size.
 // See: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/imagen-api
-func openAIToImagenRequest(req *openai.ImageGenerationRequest) *gcp.ImagePredictRequest {
-	outputOptionsMIMEType := outputFormatToMIMEType(req.OutputFormat)
-	var compressionQuality int
-	if req.OutputCompression != nil {
-		compressionQuality = *req.OutputCompression
+func openAIToImagenRequest(req *openai.ImageGenerationRequest) (*gcp.ImagePredictRequest, error) {
+	if req.Quality != "" {
+		return nil, fmt.Errorf("%w: quality parameter is not supported for Vertex AI Imagen models",
+			internalapi.ErrInvalidRequestBody)
+	}
+
+	outputOptionsMIMEType, err := outputFormatToMIMEType(req.OutputFormat)
+	if err != nil {
+		return nil, err
 	}
 	var outputOptions *gcp.ImageOutputOptions
-	if outputOptionsMIMEType != "" || compressionQuality != 0 {
+	if outputOptionsMIMEType != "" || req.OutputCompression != nil {
 		outputOptions = &gcp.ImageOutputOptions{
 			MIMEType:           outputOptionsMIMEType,
-			CompressionQuality: compressionQuality,
+			CompressionQuality: req.OutputCompression,
 		}
+	}
+
+	aspectRatio, sampleImageSize, err := sizeToAspectRatioAndSampleImageSize(req.Size)
+	if err != nil {
+		return nil, err
 	}
 
 	return &gcp.ImagePredictRequest{
 		Instances: []*gcp.ImageInstance{
 			{Prompt: req.Prompt},
 		},
-		Parameters: gcp.ImageParameters{
+		Parameters: &gcp.ImageParameters{
 			SampleCount:     int(cmp.Or(req.N, 1)),
-			AspectRatio:     sizeToAspectRatio(req.Size),
-			SampleImageSize: qualityToImageSize(req.Quality),
+			AspectRatio:     aspectRatio,
+			SampleImageSize: sampleImageSize,
 			OutputOptions:   outputOptions,
 		},
-	}
+	}, nil
 }
 
 // openAIToGeminiRequest converts an OpenAI image generation request to a GCP Gemini generateContent request.
 // See: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference
-func openAIToGeminiRequest(req *openai.ImageGenerationRequest) *gcp.GenerateContentRequest {
+func openAIToGeminiRequest(req *openai.ImageGenerationRequest) (*gcp.GenerateContentRequest, error) {
+	// Note: this translator builds Vertex REST JSON directly, instead of calling
+	// genai.Models.GenerateContent(..., *genai.GenerateContentConfig). The request
+	// schema currently uses generation_config backed by genai.GenerationConfig,
+	// which does not carry ImageConfig. Therefore size/quality cannot be
+	// forwarded for Gemini image models in this path.
+	// See: https://pkg.go.dev/google.golang.org/genai#GenerateContentConfig
+	if req.Size != "" {
+		return nil, fmt.Errorf("%w: size parameter is not supported for Gemini image models",
+			internalapi.ErrInvalidRequestBody)
+	}
+	if req.Quality != "" {
+		return nil, fmt.Errorf("%w: quality parameter is not supported for Gemini image models",
+			internalapi.ErrInvalidRequestBody)
+	}
+
 	return &gcp.GenerateContentRequest{
 		Contents: []genai.Content{
 			{
@@ -143,19 +182,16 @@ func openAIToGeminiRequest(req *openai.ImageGenerationRequest) *gcp.GenerateCont
 				},
 			},
 		},
-		// Note: ImageConfig (aspect ratio, image size) is only available in
-		// genai.GenerateContentConfig (SDK wrapper), not genai.GenerationConfig which is used
-		// by GenerateContentRequest. Size/quality parameters are not forwarded for Gemini models.
-		// See: https://pkg.go.dev/google.golang.org/genai#GenerateContentConfig
 		GenerationConfig: &genai.GenerationConfig{
 			CandidateCount: int32(cmp.Or(req.N, 1)),
 		},
-	}
+	}, nil
 }
 
 // imagenToOpenAIResponse converts a GCP Imagen prediction response to an OpenAI image generation response.
 // Predictions with an empty BytesBase64Encoded field are skipped, as they indicate images filtered
 // by Responsible AI safety policies.
+// See: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/image/responsible-ai-imagen
 func imagenToOpenAIResponse(resp *gcp.ImagePredictionResponse) *openai.ImageGenerationResponse {
 	var images []openai.ImageGenerationResponseData
 	outputFormat := ""
@@ -209,13 +245,18 @@ func geminiToOpenAIResponse(resp *genai.GenerateContentResponse, tokenUsage *met
 
 	var usage *openai.ImageGenerationUsage
 	if resp.UsageMetadata != nil {
+		inputTokens := resp.UsageMetadata.PromptTokenCount + resp.UsageMetadata.ToolUsePromptTokenCount
+		outputTokens := resp.UsageMetadata.CandidatesTokenCount + resp.UsageMetadata.ThoughtsTokenCount
+		totalTokens := resp.UsageMetadata.TotalTokenCount
+
 		usage = &openai.ImageGenerationUsage{
-			TotalTokens:  int(resp.UsageMetadata.TotalTokenCount),
-			InputTokens:  int(resp.UsageMetadata.PromptTokenCount),
-			OutputTokens: int(resp.UsageMetadata.CandidatesTokenCount),
+			TotalTokens:  int(totalTokens),
+			InputTokens:  int(inputTokens),
+			OutputTokens: int(outputTokens),
 		}
-		tokenUsage.AddInputTokens(uint32(resp.UsageMetadata.PromptTokenCount))
-		tokenUsage.AddOutputTokens(uint32(resp.UsageMetadata.CandidatesTokenCount))
+		tokenUsage.SetInputTokens(uint32(inputTokens))
+		tokenUsage.SetOutputTokens(uint32(outputTokens))
+		tokenUsage.SetTotalTokens(uint32(totalTokens))
 	}
 
 	return &openai.ImageGenerationResponse{
@@ -226,51 +267,31 @@ func geminiToOpenAIResponse(resp *genai.GenerateContentResponse, tokenUsage *met
 	}
 }
 
-// sizeToAspectRatio maps OpenAI image sizes to Imagen aspect ratios.
-// Supported aspect ratios: 1:1, 3:4, 4:3, 9:16, 16:9.
-// See: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/imagen/4-0-generate
-func sizeToAspectRatio(size string) string {
+// sizeToAspectRatioAndSampleImageSize maps OpenAI size to explicit Imagen output settings.
+// Empty/auto size is preserved as backend default by not sending explicit aspect ratio/image size.
+// For explicit OpenAI size, only the cross-provider compatible size 1024x1024 is supported.
+// See: https://developers.openai.com/api/reference/resources/images/methods/generate
+// And: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/imagen/4-0-generate
+func sizeToAspectRatioAndSampleImageSize(size string) (aspectRatio string, sampleImageSize string, err error) {
 	switch size {
-	case "1792x1024":
-		return "16:9"
-	case "1024x1792":
-		return "9:16"
-	case "1536x1024":
-		return "4:3"
-	case "1024x1536":
-		return "3:4"
-	default: // "1024x1024", "512x512", "256x256", ""
-		return "1:1"
+	case "", "auto":
+		return "", "", nil
+	case "1024x1024":
+		return "1:1", "1K", nil
 	}
+	return "", "", fmt.Errorf("%w: size %q is not supported by Vertex AI Imagen (supported: 1024x1024)", internalapi.ErrInvalidRequestBody, size)
 }
 
 // outputFormatToMIMEType maps an OpenAI output format string to a MIME type.
 // Vertex AI Imagen does not support webp output format, so only png and jpeg are mapped.
 // See: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/imagen-api
-func outputFormatToMIMEType(outputFormat string) string {
+func outputFormatToMIMEType(outputFormat string) (string, error) {
 	// webp is not supported by Vertex AI Imagen.
-	if outputFormat == "png" || outputFormat == "jpeg" {
-		return "image/" + outputFormat
+	switch outputFormat {
+	case "png", "jpeg":
+		return "image/" + outputFormat, nil
+	case "":
+		return "", nil
 	}
-	return ""
-}
-
-// qualityToImageSize maps OpenAI quality values to Imagen image size strings.
-// gpt-image-1 uses low/medium/high; DALL-E models use standard/hd.
-// See: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/imagen-api
-func qualityToImageSize(quality string) string {
-	switch quality {
-	case "low":
-		return "1K"
-	case "medium":
-		return "2K"
-	case "high":
-		return "4K"
-	case "standard":
-		return "1K"
-	case "hd":
-		return "2K"
-	default:
-		return ""
-	}
+	return "", fmt.Errorf("%w: output format %q is not supported by Vertex AI Imagen (supported: png, jpeg)", internalapi.ErrInvalidRequestBody, outputFormat)
 }

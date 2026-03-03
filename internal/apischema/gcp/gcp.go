@@ -25,8 +25,12 @@ type GenerateContentRequest struct {
 	//
 	// https://github.com/googleapis/go-genai/blob/6a8184fcaf8bf15f0c566616a7b356560309be9b/types.go#L1466
 	ToolConfig *genai.ToolConfig `json:"tool_config,omitempty"`
-	// Optional. Generation config.
-	// You can find API default values and more details at https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference#generationconfig
+	// Optional. generation_config payload for Vertex REST requests.
+	// Note: this struct models the JSON request body directly (translator path), not
+	// the SDK call signature of Models.GenerateContent(..., *genai.GenerateContentConfig).
+	// genai.GenerationConfig is a subset and does not include fields like ImageConfig.
+	// You can find API default values and more details at
+	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference#generationconfig
 	// and https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/content-generation-parameters.
 	GenerationConfig *genai.GenerationConfig `json:"generation_config,omitempty"`
 	// Optional. Instructions for the model to steer it toward better performance.
@@ -112,7 +116,7 @@ type PredictResponse struct {
 // See: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/imagen-api#generate_images
 type ImagePredictRequest struct {
 	Instances  []*ImageInstance `json:"instances"`
-	Parameters ImageParameters  `json:"parameters,omitempty"`
+	Parameters *ImageParameters `json:"parameters,omitempty"`
 }
 
 // ImageInstance holds the prompt for a single image generation request.
@@ -132,7 +136,7 @@ type ImageParameters struct {
 // ImageOutputOptions specifies the output format and compression for generated images.
 type ImageOutputOptions struct {
 	MIMEType           string `json:"mimeType,omitempty"`
-	CompressionQuality int    `json:"compressionQuality,omitempty"`
+	CompressionQuality *int    `json:"compressionQuality,omitempty"`
 }
 
 // ImagePrediction is a single image in the Imagen predict response.
