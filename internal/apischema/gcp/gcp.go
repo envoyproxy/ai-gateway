@@ -26,11 +26,7 @@ type GenerateContentRequest struct {
 	// https://github.com/googleapis/go-genai/blob/6a8184fcaf8bf15f0c566616a7b356560309be9b/types.go#L1466
 	ToolConfig *genai.ToolConfig `json:"tool_config,omitempty"`
 	// Optional. generation_config payload for Vertex REST requests.
-	// Note: this struct models the JSON request body directly (translator path), not
-	// the SDK call signature of Models.GenerateContent(..., *genai.GenerateContentConfig).
-	// genai.GenerationConfig is a subset and does not include fields like ImageConfig.
-	// You can find API default values and more details at
-	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference#generationconfig
+	// You can find API default values and more details at https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference#generationconfig
 	// and https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/content-generation-parameters.
 	GenerationConfig *genai.GenerationConfig `json:"generation_config,omitempty"`
 	// Optional. Instructions for the model to steer it toward better performance.
