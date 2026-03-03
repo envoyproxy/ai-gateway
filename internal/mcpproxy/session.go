@@ -266,10 +266,10 @@ func getHeartbeatInterval(def time.Duration) time.Duration {
 
 // sendToAllBackends sends an HTTP request to all backends in this session and returns a channel that streams
 // the response events from all backends.
-func (s *session) sendToAllBackends(ctx context.Context, httpMethod string, request *jsonrpc.Request, span tracingapi.MCPSpan) <-chan *sseEvent {
+func (s *session) sendToAllBackends(ctx context.Context, httpMethod string, request *jsonrpc.Request, span tracingapi.MCPSpan) <-chan *backendEvent {
 	var (
 		logger      = s.reqCtx.l
-		backendMsgs = make(chan *sseEvent, 200)
+		backendMsgs = make(chan *backendEvent, 200)
 		wg          sync.WaitGroup
 	)
 
@@ -312,7 +312,7 @@ func (s *session) sendToAllBackends(ctx context.Context, httpMethod string, requ
 }
 
 // sendRequestPerBackend sends an HTTP request to the given backend and streams the response events to eventChan.
-func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *sseEvent, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry,
+func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *backendEvent, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry,
 	httpMethod string, request *jsonrpc.Request,
 ) error {
 	var body io.Reader
@@ -401,19 +401,21 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 		if err != nil {
 			return fmt.Errorf("failed to decode jsonrpc message from MCP response body: %w", err)
 		}
-		eventChan <- &sseEvent{
-			backend:  backend.Name,
-			event:    "message",
-			id:       "", // No event ID in this case.
-			messages: []jsonrpc.Message{msg},
-			startAt:  startAt,
+		eventChan <- &backendEvent{
+			sseEvent: &sseEvent{
+				backend:  backend.Name,
+				event:    "message",
+				id:       "", // No event ID in this case.
+				messages: []jsonrpc.Message{msg},
+			},
+			startAt: startAt,
 		}
 		return nil
 	}
 
 	// io.Copy won't flush until the end, which doesn't happen for streaming responses.
 	// So we need to read the body in chunks and flush after each chunk.
-	parser := newSSEEventParser(httpResp.Body, backend.Name, startAt)
+	parser := newSSEEventParser(httpResp.Body, backend.Name)
 	for {
 		var event *sseEvent
 		event, err = parser.next()
@@ -425,7 +427,7 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 		//
 		// In any case, the reconnect support here must be in line with proxyResponseBody's reconnect logic when that happens.
 		if event != nil {
-			eventChan <- event
+			eventChan <- &backendEvent{sseEvent: event, startAt: startAt}
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) ||

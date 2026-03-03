@@ -33,14 +33,13 @@ var (
 // handling the different line terminations: CR, LF, CRLF.
 type sseEventParser struct {
 	backend filterapi.MCPBackendName
-	startAt time.Time
 	r       io.Reader
 	readBuf [4096]byte
 	buf     []byte
 }
 
-func newSSEEventParser(r io.Reader, backend filterapi.MCPBackendName, startAt time.Time) sseEventParser {
-	return sseEventParser{r: r, backend: backend, startAt: startAt}
+func newSSEEventParser(r io.Reader, backend filterapi.MCPBackendName) sseEventParser {
+	return sseEventParser{r: r, backend: backend}
 }
 
 // next reads the next SSE event from the stream.
@@ -77,7 +76,7 @@ func (s *sseEventParser) next() (*sseEvent, error) {
 
 // parseEvent parses one normalized chunk into an sseEvent.
 func (s *sseEventParser) parseEvent(chunk []byte) (*sseEvent, error) {
-	ret := &sseEvent{backend: s.backend, startAt: s.startAt}
+	ret := &sseEvent{backend: s.backend}
 
 	for line := range bytes.SplitSeq(chunk, sseLF) {
 		switch {
@@ -117,11 +116,18 @@ func normalizeNewlines(b []byte) []byte {
 	return b
 }
 
+// sseEvent represents a parsed Server-Sent Event.
+// This struct contains only SSE protocol data and the backend it originated from.
 type sseEvent struct {
 	event, id string
 	messages  []jsonrpc.Message
 	backend   filterapi.MCPBackendName
-	startAt   time.Time
+}
+
+// backendEvent wraps an sseEvent with request timing context for metrics.
+type backendEvent struct {
+	*sseEvent
+	startAt time.Time
 }
 
 func (s *sseEvent) writeAndMaybeFlush(w io.Writer) {

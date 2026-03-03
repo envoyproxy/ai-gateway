@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -263,7 +264,7 @@ func TestNewSession_Success(t *testing.T) {
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = backendServer.URL
 
-	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil)
+	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil, time.Now())
 
 	require.NoError(t, err)
 	require.NotNil(t, s)
@@ -273,7 +274,7 @@ func TestNewSession_Success(t *testing.T) {
 func TestNewSession_NoBackend(t *testing.T) {
 	proxy := newTestMCPProxy()
 
-	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil)
+	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil, time.Now())
 	require.ErrorContains(t, err, `failed to create MCP session to any backend`)
 	require.Nil(t, s)
 }
@@ -303,7 +304,7 @@ data: {"jsonrpc":"2.0","id":"ff3964c5-4c79-4567-96e2-29e905754e58","result":{"ca
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = backendServer.URL
 
-	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil)
+	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil, time.Now())
 
 	require.NoError(t, err)
 	require.NotNil(t, s)
@@ -354,7 +355,7 @@ func TestInitializeSession_Success(t *testing.T) {
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = backendServer.URL
 
-	res, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{})
+	res, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{}, time.Now())
 
 	require.NoError(t, err)
 	require.Equal(t, gatewayToMCPServerSessionID("test-session-123"), res.sessionID)
@@ -372,7 +373,7 @@ func TestInitializeSession_InitializeFailure(t *testing.T) {
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = backendServer.URL
 
-	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{})
+	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{}, time.Now())
 
 	require.Error(t, err)
 	require.Empty(t, sessionID)
@@ -400,7 +401,7 @@ func TestInitializeSession_NotificationsInitializedFailure(t *testing.T) {
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = backendServer.URL
 
-	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{})
+	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{}, time.Now())
 
 	require.Error(t, err)
 	require.Empty(t, sessionID)
