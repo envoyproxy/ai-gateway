@@ -327,16 +327,8 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		podspec.ImagePullSecrets = append(podspec.ImagePullSecrets, g.extProcImagePullSecrets...)
 	}
 
-	// TODO: remove after the next release v0.5.
+	// Use resources from GatewayConfig if present.
 	var resources corev1.ResourceRequirements
-	for i := range routes.Items {
-		fc := routes.Items[i].Spec.FilterConfig
-		if fc != nil && fc.ExternalProcessor != nil && fc.ExternalProcessor.Resources != nil {
-			resources = *fc.ExternalProcessor.Resources
-		}
-	}
-
-	// GatewayConfig resources override route-scoped values when present.
 	if kubernetesExtProc != nil && kubernetesExtProc.Resources != nil {
 		resources = *kubernetesExtProc.Resources
 		g.logger.Info("using resources from GatewayConfig",

@@ -23,7 +23,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -90,16 +89,6 @@ func TestStartControllers(t *testing.T) {
 			require.NoError(t, err)
 		}
 	})
-	resourceReq := &corev1.ResourceRequirements{
-		Limits: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("200m"),
-			corev1.ResourceMemory: resource.MustParse("16Mi"),
-		},
-		Requests: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("100m"),
-			corev1.ResourceMemory: resource.MustParse("8Mi"),
-		},
-	}
 	t.Run("setup routes", func(t *testing.T) {
 		for _, route := range []string{"route1", "route2"} {
 			parentRefs := []gwapiv1a2.ParentReference{{Name: "gtw"}}
@@ -125,12 +114,6 @@ func TestStartControllers(t *testing.T) {
 								{Name: "backend1", Weight: ptr.To[int32](1)},
 								{Name: "backend2", Weight: ptr.To[int32](1)},
 							},
-						},
-					},
-					FilterConfig: &aigv1b1.AIGatewayFilterConfig{
-						Type: aigv1b1.AIGatewayFilterConfigTypeExternalProcessor,
-						ExternalProcessor: &aigv1b1.AIGatewayFilterConfigExternalProcessor{
-							Resources: resourceReq,
 						},
 					},
 				},
@@ -296,17 +279,6 @@ func TestAIGatewayRouteController(t *testing.T) {
 	err = controller.TypedControllerBuilderForCRD(mgr, &aigv1b1.AIGatewayRoute{}).Complete(rc)
 	require.NoError(t, err)
 
-	resourceReq := &corev1.ResourceRequirements{
-		Limits: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("200m"),
-			corev1.ResourceMemory: resource.MustParse("16Mi"),
-		},
-		Requests: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("100m"),
-			corev1.ResourceMemory: resource.MustParse("8Mi"),
-		},
-	}
-
 	const gatewayName = "gtw"
 	// Create the Gateway to be referenced by the AIGatewayRoute.
 	err = c.Create(t.Context(), &gwapiv1.Gateway{
@@ -337,12 +309,6 @@ func TestAIGatewayRouteController(t *testing.T) {
 						{Name: "backend1", Weight: ptr.To[int32](1)},
 						{Name: "backend2", Weight: ptr.To[int32](1)},
 					},
-				},
-			},
-			FilterConfig: &aigv1b1.AIGatewayFilterConfig{
-				Type: aigv1b1.AIGatewayFilterConfigTypeExternalProcessor,
-				ExternalProcessor: &aigv1b1.AIGatewayFilterConfigExternalProcessor{
-					Resources: resourceReq,
 				},
 			},
 		},
@@ -416,13 +382,17 @@ func TestAIGatewayRouteController(t *testing.T) {
 			if err := c.Get(t.Context(), types.NamespacedName{Name: "myroute", Namespace: "default"}, &r); err != nil {
 				return err
 			}
-			newResource := &corev1.ResourceRequirements{
-				Limits: corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse("300m"),
-					corev1.ResourceMemory: resource.MustParse("32Mi"),
+			// Update LLMRequestCosts to test route updates
+			r.Spec.LLMRequestCosts = []aigv1b1.LLMRequestCost{
+				{
+					MetadataKey: "llm_input_token",
+					Type:        aigv1b1.LLMRequestCostTypeInputToken,
+				},
+				{
+					MetadataKey: "llm_output_token",
+					Type:        aigv1b1.LLMRequestCostTypeOutputToken,
 				},
 			}
-			r.Spec.FilterConfig.ExternalProcessor.Resources = newResource
 			return c.Update(t.Context(), &r)
 		})
 		require.NoError(t, err)

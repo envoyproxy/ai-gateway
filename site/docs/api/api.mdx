@@ -553,9 +553,6 @@ QuotaPolicyList contains a list of QuotaPolicy
 ## Supporting Types
 
 ### Available Types
-- [AIGatewayFilterConfig](#aigatewayfilterconfig)
-- [AIGatewayFilterConfigExternalProcessor](#aigatewayfilterconfigexternalprocessor)
-- [AIGatewayFilterConfigType](#aigatewayfilterconfigtype)
 - [AIGatewayRouteRule](#aigatewayrouterule)
 - [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
 - [AIGatewayRouteRuleMatch](#aigatewayrouterulematch)
@@ -617,78 +614,6 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [VersionedAPISchema](#versionedapischema)
 
 ### Type Definitions
-#### AIGatewayFilterConfig
-
-
-
-**Appears in:**
-- [AIGatewayRouteSpec](#aigatewayroutespec)
-
-
-
-##### Fields
-
-
-
-<ApiField
-  name="type"
-  type="[AIGatewayFilterConfigType](#aigatewayfilterconfigtype)"
-  required="true"
-  defaultValue="ExternalProcessor"
-  description="Type specifies the type of the filter configuration.<br />Currently, only ExternalProcessor is supported, and default is ExternalProcessor."
-/><ApiField
-  name="externalProcessor"
-  type="[AIGatewayFilterConfigExternalProcessor](#aigatewayfilterconfigexternalprocessor)"
-  required="false"
-  description="ExternalProcessor is the configuration for the external processor filter.<br />This is optional, and if not set, the default values of Deployment spec will be used."
-/>
-
-
-#### AIGatewayFilterConfigExternalProcessor
-
-
-
-**Appears in:**
-- [AIGatewayFilterConfig](#aigatewayfilterconfig)
-
-
-
-##### Fields
-
-
-
-<ApiField
-  name="resources"
-  type="[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)"
-  required="false"
-  description="Resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/<br />Deprecated: Use GatewayConfig for gateway-scoped resource configuration instead.<br />Configure resources using GatewayConfig.spec.extProc.resources and reference it<br />from the Gateway via the `aigateway.envoyproxy.io/gateway-config` annotation.<br />This field will be removed in a future version.<br />Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each<br />AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them<br />to configure the resource requirements of the external processor container."
-/>
-
-
-#### AIGatewayFilterConfigType
-
-**Underlying type:** string
-
-**Appears in:**
-- [AIGatewayFilterConfig](#aigatewayfilterconfig)
-
-AIGatewayFilterConfigType specifies the type of the filter configuration.
-
-
-
-##### Possible Values
-
-<ApiField
-  name="ExternalProcessor"
-  type="enum"
-  required="false"
-  description=""
-/><ApiField
-  name="DynamicModule"
-  type="enum"
-  required="false"
-  description=""
-/>
 #### AIGatewayRouteRule
 
 
@@ -839,11 +764,6 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   type="[AIGatewayRouteRule](#aigatewayrouterule) array"
   required="true"
   description="Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.<br />Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).<br />AI Gateway controller will generate a HTTPRoute based on the configuration given here with the additional<br />modifications to achieve the necessary jobs, notably inserting the AI Gateway filter responsible for<br />the transformation of the request and response, etc.<br />In the matching conditions in the AIGatewayRouteRule, `x-ai-eg-model` header is available<br />if we want to describe the routing behavior based on the model name. The model name is extracted<br />from the request content before the routing decision.<br />How multiple rules are matched is the same as the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRoute"
-/><ApiField
-  name="filterConfig"
-  type="[AIGatewayFilterConfig](#aigatewayfilterconfig)"
-  required="false"
-  description="FilterConfig is the configuration for the AI Gateway filter inserted in the generated HTTPRoute.<br />An AI Gateway filter is responsible for the transformation of the request and response<br />as well as the routing behavior based on the model name extracted from the request content, etc.<br />Currently, the filter is only implemented as an external processor filter, which might be<br />extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90"
 /><ApiField
   name="llmRequestCosts"
   type="[LLMRequestCost](#llmrequestcost) array"
@@ -2910,9 +2830,6 @@ GatewayConfigList contains a list of GatewayConfig.
 ## Supporting Types
 
 ### Available Types
-- [AIGatewayFilterConfig](#aigatewayfilterconfig)
-- [AIGatewayFilterConfigExternalProcessor](#aigatewayfilterconfigexternalprocessor)
-- [AIGatewayFilterConfigType](#aigatewayfilterconfigtype)
 - [AIGatewayRouteRule](#aigatewayrouterule)
 - [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
 - [AIGatewayRouteRuleMatch](#aigatewayrouterulematch)
@@ -2950,78 +2867,6 @@ GatewayConfigList contains a list of GatewayConfig.
 - [VersionedAPISchema](#versionedapischema)
 
 ### Type Definitions
-#### AIGatewayFilterConfig
-
-
-
-**Appears in:**
-- [AIGatewayRouteSpec](#aigatewayroutespec)
-
-
-
-##### Fields
-
-
-
-<ApiField
-  name="type"
-  type="[AIGatewayFilterConfigType](#aigatewayfilterconfigtype)"
-  required="true"
-  defaultValue="ExternalProcessor"
-  description="Type specifies the type of the filter configuration.<br />Currently, only ExternalProcessor is supported, and default is ExternalProcessor."
-/><ApiField
-  name="externalProcessor"
-  type="[AIGatewayFilterConfigExternalProcessor](#aigatewayfilterconfigexternalprocessor)"
-  required="false"
-  description="ExternalProcessor is the configuration for the external processor filter.<br />This is optional, and if not set, the default values of Deployment spec will be used."
-/>
-
-
-#### AIGatewayFilterConfigExternalProcessor
-
-
-
-**Appears in:**
-- [AIGatewayFilterConfig](#aigatewayfilterconfig)
-
-
-
-##### Fields
-
-
-
-<ApiField
-  name="resources"
-  type="[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)"
-  required="false"
-  description="Resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/<br />Deprecated: Use GatewayConfig for gateway-scoped resource configuration instead.<br />Configure resources using GatewayConfig.spec.extProc.resources and reference it<br />from the Gateway via the `aigateway.envoyproxy.io/gateway-config` annotation.<br />This field will be removed in a future version.<br />Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each<br />AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them<br />to configure the resource requirements of the external processor container."
-/>
-
-
-#### AIGatewayFilterConfigType
-
-**Underlying type:** string
-
-**Appears in:**
-- [AIGatewayFilterConfig](#aigatewayfilterconfig)
-
-AIGatewayFilterConfigType specifies the type of the filter configuration.
-
-
-
-##### Possible Values
-
-<ApiField
-  name="ExternalProcessor"
-  type="enum"
-  required="false"
-  description=""
-/><ApiField
-  name="DynamicModule"
-  type="enum"
-  required="false"
-  description=""
-/>
 #### AIGatewayRouteRule
 
 
@@ -3172,11 +3017,6 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   type="[AIGatewayRouteRule](#aigatewayrouterule) array"
   required="true"
   description="Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.<br />Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).<br />AI Gateway controller will generate a HTTPRoute based on the configuration given here with the additional<br />modifications to achieve the necessary jobs, notably inserting the AI Gateway filter responsible for<br />the transformation of the request and response, etc.<br />In the matching conditions in the AIGatewayRouteRule, `x-ai-eg-model` header is available<br />if we want to describe the routing behavior based on the model name. The model name is extracted<br />from the request content before the routing decision.<br />How multiple rules are matched is the same as the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRoute"
-/><ApiField
-  name="filterConfig"
-  type="[AIGatewayFilterConfig](#aigatewayfilterconfig)"
-  required="false"
-  description="FilterConfig is the configuration for the AI Gateway filter inserted in the generated HTTPRoute.<br />An AI Gateway filter is responsible for the transformation of the request and response<br />as well as the routing behavior based on the model name extracted from the request content, etc.<br />Currently, the filter is only implemented as an external processor filter, which might be<br />extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90"
 /><ApiField
   name="llmRequestCosts"
   type="[LLMRequestCost](#llmrequestcost) array"
