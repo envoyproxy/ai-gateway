@@ -85,6 +85,8 @@ const (
 	LLMRequestCostTypeCacheCreationInputToken LLMRequestCostType = "CacheCreationInputToken"
 	// LLMRequestCostTypeTotalToken specifies that the request cost is calculated from the total token.
 	LLMRequestCostTypeTotalToken LLMRequestCostType = "TotalToken"
+	// LLMRequestCostTypeReasoningToken specifies that the request cost is calculated from the reasoning token.
+	LLMRequestCostTypeReasoningToken LLMRequestCostType = "ReasoningToken"
 	// LLMRequestCostTypeCEL specifies that the request cost is calculated from the CEL expression.
 	LLMRequestCostTypeCEL LLMRequestCostType = "CEL"
 )
