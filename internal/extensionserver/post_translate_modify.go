@@ -295,6 +295,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 	extProcConfig.RequestAttributes = []string{
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
 		internalapi.XDSClusterMetadataBackendNamePath,
+		internalapi.XDSRouteMetadataRouteNamePath,
 	}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
 		RequestHeaderMode: extprocv3.ProcessingMode_SEND,
@@ -579,6 +580,7 @@ func (s *Server) patchVirtualHostWithInferencePool(vh *routev3.VirtualHost, infe
 // for those routes. It returns true if any route was modified.
 func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.RouteConfiguration) (bool, error) {
 	enabled := false
+	defaultRouteName := routeNameFromRouteConfigName(routeConfig.Name)
 	fcAny, err := toAny(&routev3.FilterConfig{
 		Config: &anypb.Any{},
 	})
@@ -596,6 +598,15 @@ func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.R
 				}
 				// Enable the extproc filter for this route.
 				route.TypedPerFilterConfig[aiGatewayExtProcName] = fcAny
+
+				routeName := routeNameFromEnvoyGatewayMetadata(route)
+				if routeName == "" {
+					routeName = defaultRouteName
+				}
+				if routeName == "" {
+					routeName = route.Name
+				}
+				ensureRouteInternalMetadata(route).Fields[internalapi.InternalMetadataRouteNameKey] = structpb.NewStringValue(routeName)
 			}
 		}
 	}
@@ -735,6 +746,61 @@ func (s *Server) isRouteGeneratedByAIGateway(route *routev3.Route) bool {
 		}
 	}
 	return false
+}
+
+func routeNameFromRouteConfigName(routeConfigName string) string {
+	// Envoy Gateway generated route config names follow:
+	// httproute/<namespace>/<name>/rule/<index>.
+	// We rely on this format for the fallback route name extraction when
+	// resource metadata does not carry the route name explicitly.
+	parts := strings.Split(routeConfigName, "/")
+	if len(parts) >= 3 && parts[0] == "httproute" {
+		return parts[2]
+	}
+	return ""
+}
+
+func routeNameFromEnvoyGatewayMetadata(route *routev3.Route) string {
+	if route.Metadata == nil || route.Metadata.FilterMetadata == nil {
+		return ""
+	}
+	eg, ok := route.Metadata.FilterMetadata["envoy-gateway"]
+	if !ok || eg == nil || eg.Fields == nil {
+		return ""
+	}
+	resources, ok := eg.Fields["resources"]
+	if !ok || resources.GetListValue() == nil {
+		return ""
+	}
+	for _, resource := range resources.GetListValue().Values {
+		resourceStruct := resource.GetStructValue()
+		if resourceStruct == nil || resourceStruct.Fields == nil {
+			continue
+		}
+		name, ok := resourceStruct.Fields["name"]
+		if ok && name.GetStringValue() != "" {
+			return name.GetStringValue()
+		}
+	}
+	return ""
+}
+
+func ensureRouteInternalMetadata(route *routev3.Route) *structpb.Struct {
+	if route.Metadata == nil {
+		route.Metadata = &corev3.Metadata{}
+	}
+	if route.Metadata.FilterMetadata == nil {
+		route.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
+	}
+	m, ok := route.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+	if !ok || m == nil {
+		m = &structpb.Struct{}
+		route.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
+	}
+	if m.Fields == nil {
+		m.Fields = make(map[string]*structpb.Value)
+	}
+	return m
 }
 
 // setClusterMetadataBackendName sets the backend name on cluster-level metadata.
