@@ -1,0 +1,69 @@
+<!--
+  ~ Copyright Envoy AI Gateway Authors
+  ~ SPDX-License-Identifier: Apache-2.0
+  ~ The full text of the Apache license is available in the LICENSE file at
+  ~ the root of the repo.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="540" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="450" y="30" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#333">Flow 2: Compound Model (Lazy Multi-Region)</text>
+
+  <!-- Lifeline labels -->
+  <text x="100" y="60" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#1976d2">Client</text>
+  <text x="300" y="60" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#388e3c">ai-gateway</text>
+  <text x="550" y="60" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#f57c00">Cache Service</text>
+  <text x="780" y="60" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#7b1fa2">Vertex AI</text>
+
+  <!-- Lifelines -->
+  <line x1="100" y1="75" x2="100" y2="500" stroke="#999" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="300" y1="75" x2="300" y2="500" stroke="#999" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="550" y1="75" x2="550" y2="500" stroke="#999" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="780" y1="75" x2="780" y2="500" stroke="#999" stroke-width="1" stroke-dasharray="5,5"/>
+
+  <!-- Step 1: Client to ai-gateway -->
+  <line x1="100" y1="100" x2="290" y2="100" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="195" y="90" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">POST /v1/chat/completions</text>
+  <text x="195" y="115" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#666">(with cache_control)</text>
+
+  <!-- Step 2: Routing decision box (BEFORE cache service) -->
+  <rect x="240" y="140" width="120" height="40" rx="4" fill="#e8f5e9" stroke="#388e3c" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="300" y="158" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#388e3c">Route based on</text>
+  <text x="300" y="172" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#388e3c">quota/weight → us-east1</text>
+
+  <!-- Step 3: ai-gateway to Cache Service (with selected region) -->
+  <line x1="300" y1="210" x2="540" y2="210" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="420" y="200" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">POST /v1/cache/resolve</text>
+  <text x="420" y="225" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#666">X-Cache-Region: us-east1</text>
+
+  <!-- Step 4: Cache Service response -->
+  <line x1="550" y1="280" x2="310" y2="280" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="430" y="270" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">{cached_content: "...", messages: [...]}</text>
+
+  <!-- Step 5: ai-gateway to Vertex AI -->
+  <line x1="300" y1="340" x2="770" y2="340" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="535" y="330" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">POST generateContent (us-east1)</text>
+  <text x="535" y="355" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#666">(with cachedContent for us-east1)</text>
+
+  <!-- Step 6: Vertex AI response -->
+  <line x1="780" y1="400" x2="310" y2="400" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="545" y="390" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">Response (usageMetadata)</text>
+
+  <!-- Step 7: ai-gateway to Client -->
+  <line x1="300" y1="460" x2="110" y2="460" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="205" y="450" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">Response (OpenAI format)</text>
+
+  <!-- Note about lazy caching -->
+  <rect x="600" y="470" width="280" height="35" rx="4" fill="#fff8e1" stroke="#ffa000" stroke-width="1"/>
+  <text x="740" y="485" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#666">Cache created on-demand per region.</text>
+  <text x="740" y="498" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#666">Next request to us-central1 creates cache there.</text>
+</svg>
