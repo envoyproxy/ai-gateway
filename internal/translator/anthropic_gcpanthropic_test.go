@@ -567,6 +567,10 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 }
 
 func tokenUsageFrom(in, cachedInput, cacheCreationInput, out, total int32) metrics.TokenUsage {
+	return tokenUsageFromWithReasoning(in, cachedInput, cacheCreationInput, out, total, -1)
+}
+
+func tokenUsageFromWithReasoning(in, cachedInput, cacheCreationInput, out, total, reasoning int32) metrics.TokenUsage {
 	var usage metrics.TokenUsage
 	if in >= 0 {
 		usage.SetInputTokens(uint32(in))
@@ -582,6 +586,9 @@ func tokenUsageFrom(in, cachedInput, cacheCreationInput, out, total int32) metri
 	}
 	if total >= 0 {
 		usage.SetTotalTokens(uint32(total))
+	}
+	if reasoning >= 0 {
+		usage.SetReasoningTokens(uint32(reasoning))
 	}
 	return usage
 }
