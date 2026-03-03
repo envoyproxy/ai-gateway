@@ -1446,7 +1446,7 @@ func sendToAllBackendsAndAggregateResponsesImpl[responseType any, paramsType mcp
 	for event := range events {
 		// Update backend last event id and regenerate event ID.
 		s.setLastEventID(event.backend, event.id)
-		event.sseEvent.id = s.lastEventID()
+		event.id = s.lastEventID()
 		if l := len(event.messages); l != 0 {
 			// Since the "response" is always the last message in the SSE stream per backend,
 			// we can just check the last message to see if it's a response to the original request.
@@ -1477,7 +1477,7 @@ func sendToAllBackendsAndAggregateResponsesImpl[responseType any, paramsType mcp
 				}
 				// Regardless of whether it's error or success response, we need to remove it from the event messages so that
 				// we can send back to the client only one merged response below.
-				event.sseEvent.messages = event.messages[:l-1]
+				event.messages = event.messages[:l-1]
 			}
 			// We need to write any remaining events to the client.
 			for _, msg := range event.messages {
@@ -1490,7 +1490,7 @@ func sendToAllBackendsAndAggregateResponsesImpl[responseType any, paramsType mcp
 				}
 			}
 			if len(event.messages) > 0 {
-				event.sseEvent.writeAndMaybeFlush(w)
+				event.writeAndMaybeFlush(w)
 			}
 		}
 	}
