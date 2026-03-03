@@ -913,7 +913,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 35
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(10, 10, -1, 25, 35),
+			wantTokenUsage: tokenUsageFromWithReasoning(10, 10, -1, 25, 35, 10),
 		},
 		{
 			name: "response with safety ratings",
@@ -993,7 +993,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 20
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(8, 0, -1, 12, 20),
+			wantTokenUsage: tokenUsageFromWithReasoning(8, 0, -1, 12, 20, 0),
 		},
 		{
 			name: "empty response",
@@ -1025,7 +1025,7 @@ data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_t
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8), // Does not support cache creation.
+			wantTokenUsage: tokenUsageFromWithReasoning(5, 0, -1, 3, 8, 0), // Does not support cache creation.
 		},
 		{
 			name: "response with model version field",
@@ -1080,7 +1080,7 @@ data: [DONE]
         "total_tokens": 14
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(6, 0, -1, 8, 14), // Does not support Cache Creation.
+			wantTokenUsage: tokenUsageFromWithReasoning(6, 0, -1, 8, 14, 0), // Does not support Cache Creation.
 		},
 
 		{
@@ -1149,7 +1149,7 @@ data: [DONE]
         "total_tokens": 20
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(8, 0, -1, 12, 20), // Does not support Cache Creation.
+			wantTokenUsage: tokenUsageFromWithReasoning(8, 0, -1, 12, 20, 0), // Does not support Cache Creation.
 		},
 		{
 			name: "response with thought summary",
@@ -1214,7 +1214,7 @@ data: [DONE]
     }
 }`),
 
-			wantTokenUsage: tokenUsageFrom(10, 10, -1, 25, 35), // Does not support Cache Creation.
+			wantTokenUsage: tokenUsageFromWithReasoning(10, 10, -1, 25, 35, 10), // Does not support Cache Creation.
 		},
 		{
 			name: "stream chunks with thought summary",
@@ -1236,7 +1236,7 @@ data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_t
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8), // Does not support Cache Creation.
+			wantTokenUsage: tokenUsageFromWithReasoning(5, 0, -1, 3, 8, 0), // Does not support Cache Creation.
 		},
 		{
 			name: "stream chunks with thought signature on text part",
@@ -1258,7 +1258,7 @@ data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(10, 0, -1, 8, 18),
+			wantTokenUsage: tokenUsageFromWithReasoning(10, 0, -1, 8, 18, 0),
 		},
 	}
 
