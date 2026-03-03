@@ -498,7 +498,8 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 				var toolContent []anthropic.ToolResultBlockParamContentUnion
 				var cacheControl *anthropic.CacheControlEphemeralParam
 
-				for _, c := range contentBlocks {
+				for i := range contentBlocks {
+					c := &contentBlocks[i]
 					var trb anthropic.ToolResultBlockParamContentUnion
 					// Check if the translated part has caching enabled.
 					switch {
