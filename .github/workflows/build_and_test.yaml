@@ -29,13 +29,14 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: dorny/paths-filter@668c092af3649c4b664c54e4b704aa46782f6f7c
         id: changes
         with:
           filters: |
             code:
               - '!**/*.md'
+              - '!docs/**'
               - '!site/**'
               - '!netlify.toml'
           predicate-quantifier: every # Make the filters be AND-ed
@@ -55,12 +56,12 @@ jobs:
           - macos-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -70,7 +71,7 @@ jobs:
       - run: make test-coverage GO_TEST_ARGS='-race'
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest'
-        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
+        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
         with:
           fail_ci_if_error: true
           files: ./out/go-test-coverage.out
@@ -91,18 +92,18 @@ jobs:
           - ubuntu-latest
           - macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
             ~/go/bin
-          key: celvalidation-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
+          key: controller-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
       - run: make test-crdcel
 
   test_controller:
@@ -117,12 +118,12 @@ jobs:
           - ubuntu-latest
           - macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -131,10 +132,10 @@ jobs:
           key: controller-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
       - run: make test-controller
 
-  test_extproc:
+  test_data_plane:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
-    name: External Processor Test (${{ matrix.os }})
+    name: Data Plane Test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -143,18 +144,18 @@ jobs:
           - macos-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
             ~/go/bin
-          key: extproc-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+          key: data-plane-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
       - env:
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
           TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_USER_AWS_SECRET_ACCESS_KEY }}
@@ -165,8 +166,35 @@ jobs:
           TEST_GROK_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_GROK_API_KEY }}
           TEST_SAMBANOVA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_SAMBANOVA_API_KEY }}
           TEST_DEEPINFRA_API_KEY: ${{ secrets.ENVOY_AI_GATEWAY_DEEPINFRA_API_KEY }}
-          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: make test-extproc
+        run: make test-data-plane
+
+  test_data_plane_mcp:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    name: Data Plane MCP Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
+        with:
+          cache: false
+          go-version-file: go.mod
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+            ~/go/bin
+          key: data-plane-tests-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
+      - run: make test-data-plane-mcp
+        env:
+          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.TEST_GITHUB_ACCESS_TOKEN }}
 
   test_e2e:
     needs: changes
@@ -184,17 +212,15 @@ jobs:
         include:
           - name: latest
             envoy_gateway_version: v0.0.0-latest
-          - name: v1.6.0-rc.1
-            envoy_gateway_version: v1.6.0-rc.1
-          - name: v1.5.0
-            envoy_gateway_version: v1.5.0
+          - name: v1.6.2
+            envoy_gateway_version: v1.6.2
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -202,7 +228,7 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: e2e-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - env:
           EG_VERSION: ${{ matrix.envoy_gateway_version }}
           TEST_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_BEDROCK_USER_AWS_ACCESS_KEY_ID }}
@@ -221,20 +247,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Note: this is to simply ensure that the controller working as expected with or without
-        # extproc being inserted as a k8s sidecar (init container with the restartPolicy=always).
-        # On newer k8s versions (v1.33+), that is always enabled by default, so we only need to test
-        # on older versions. After v1.32 reaches EOL, we can remove the older k8s versions from here.
         k8s-version:
+          - v1.35.0
+          - v1.34.3
           - v1.33.4
           - v1.32.8
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -242,11 +266,11 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: e2e-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - run: make test-e2e-upgrade
         env:
           # We only need to test the upgrade from the latest stable version of EG.
-          EG_VERSION: v1.6.0-rc.1
+          EG_VERSION: v1.6.0
           K8S_VERSION: ${{ matrix.k8s-version }}
 
   test_e2e_inference_extension:
@@ -259,12 +283,12 @@ jobs:
     # https://github.com/actions/runner-images/issues/17#issuecomment-1971073406
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -272,10 +296,10 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: e2e-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - run: make test-e2e-inference-extension
         env:
-          EG_VERSION: v1.6.0-rc.1
+          EG_VERSION: v1.6.0
 
   test_e2e_namespaced:
     needs: changes
@@ -287,12 +311,12 @@ jobs:
     # https://github.com/actions/runner-images/issues/17#issuecomment-1971073406
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -300,12 +324,12 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: e2e-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - run: make test-e2e-namespaced
         env:
           # We only need to test with the latest stable version of EG, since these e2e tests
           # do not depend on the EG version.
-          EG_VERSION: v1.6.0-rc.1
+          EG_VERSION: v1.6.0
 
   test_e2e_aigw:
     needs: changes
@@ -313,12 +337,12 @@ jobs:
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
         with:
           cache: false
           go-version-file: go.mod
-      - uses: actions/cache@v4
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
         with:
           path: |
             ~/.cache/go-build
@@ -326,7 +350,7 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: e2e-aigw-test-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Start Ollama server
         run: |
           curl -fsSL https://ollama.com/install.sh | sh && sudo systemctl stop ollama
@@ -349,8 +373,7 @@ jobs:
         run: |
           curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash
       - env:
-          # This is used to access the GitHub MCP server.
-          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEST_GITHUB_ACCESS_TOKEN: ${{ secrets.TEST_GITHUB_ACCESS_TOKEN }}
         run: make test-e2e-aigw
       - if: failure()
         run: cat ollama.log || true
@@ -370,9 +393,9 @@ jobs:
     needs: [docker_push]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
       - name: Login into DockerHub
-        uses: docker/login-action@v3
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
@@ -389,10 +412,11 @@ jobs:
       - unittest
       - test_crdcel
       - test_controller
-      - test_extproc
       - test_e2e
       - test_e2e_upgrade
       - test_e2e_inference_extension
+      - test_data_plane
+      - test_data_plane_mcp
       - test_e2e_aigw
     # We need this to run always to force-fail (and not skip) if any needed
     # job has failed. Otherwise, a skipped job will not fail the workflow.

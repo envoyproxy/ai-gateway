@@ -30,13 +30,14 @@ import (
 // stubMetrics implements metrics.MCPMetrics with no-ops.
 type stubMetrics struct{}
 
-func (s stubMetrics) WithRequestAttributes(_ *http.Request) metrics.MCPMetrics             { return s }
-func (stubMetrics) RecordRequestDuration(_ context.Context, _ *time.Time, _ mcpsdk.Params) {}
-func (stubMetrics) RecordRequestErrorDuration(_ context.Context, _ *time.Time, _ metrics.MCPErrorType, _ mcpsdk.Params) {
+func (s stubMetrics) WithRequestAttributes(_ *http.Request) metrics.MCPMetrics            { return s }
+func (stubMetrics) RecordRequestDuration(_ context.Context, _ time.Time, _ mcpsdk.Params) {}
+func (stubMetrics) RecordRequestErrorDuration(_ context.Context, _ time.Time, _ metrics.MCPErrorType, _ mcpsdk.Params) {
 }
-func (stubMetrics) RecordMethodCount(_ context.Context, _ string, _ mcpsdk.Params)                {}
-func (stubMetrics) RecordMethodErrorCount(_ context.Context, _ mcpsdk.Params)                     {}
-func (stubMetrics) RecordInitializationDuration(_ context.Context, _ *time.Time, _ mcpsdk.Params) {}
+func (stubMetrics) RecordMethodCount(_ context.Context, _ string, _ mcpsdk.Params) {}
+func (stubMetrics) RecordMethodErrorCount(_ context.Context, _ string, _ mcpsdk.Params, _ metrics.MCPStatusType) {
+}
+func (stubMetrics) RecordInitializationDuration(_ context.Context, _ time.Time, _ mcpsdk.Params) {}
 func (stubMetrics) RecordClientCapabilities(_ context.Context, _ *mcpsdk.ClientCapabilities, _ mcpsdk.Params) {
 }
 
@@ -98,7 +99,7 @@ func TestSession_Close(t *testing.T) {
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = server.URL
 	s := &session{
-		proxy: proxy,
+		reqCtx: proxy,
 		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
 			"backend1": {
 				sessionID: "s1",
@@ -112,6 +113,36 @@ func TestSession_Close(t *testing.T) {
 	err := s.Close()
 	require.NoError(t, err)
 	require.Equal(t, int32(2), deletes.Load())
+}
+
+func TestSendRequestPerBackend_SetsOriginalPathHeaders(t *testing.T) {
+	headersCh := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- r.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	proxy.originalPath = "/mcp?foo=bar"
+
+	s := &session{reqCtx: proxy}
+	ch := make(chan *sseEvent, 1)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1", Path: "/mcp"}, &compositeSessionEntry{
+		sessionID: "sess1",
+	}, http.MethodGet, nil)
+	require.NoError(t, err)
+
+	select {
+	case hdr := <-headersCh:
+		require.Equal(t, "/mcp?foo=bar", hdr.Get(internalapi.OriginalPathHeader))
+		require.Equal(t, "/mcp?foo=bar", hdr.Get(internalapi.EnvoyOriginalPathHeader))
+	case <-ctx.Done():
+		require.Fail(t, "timed out waiting for backend request")
+	}
 }
 
 func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
@@ -142,8 +173,8 @@ func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
 	}))
 	defer server.Close()
 	l := slog.Default()
-	proxy := &MCPProxy{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l, metrics: stubMetrics{}}
-	s := &session{proxy: proxy}
+	proxy := &mcpRequestContext{metrics: stubMetrics{}, ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l}}
+	s := &session{reqCtx: proxy}
 	ch := make(chan *sseEvent, 10)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
@@ -161,11 +192,11 @@ func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
 
 func TestSession_StreamNotifications(t *testing.T) {
 	tests := []struct {
-		name              string
-		eventInterval     time.Duration
-		deadline          time.Duration
-		heartbeatInterval time.Duration
-		wantHeartbeats    bool
+		name               string
+		eventInterval      time.Duration
+		deadline           time.Duration
+		heartbeatInterval  time.Duration
+		expectedHeartbeats bool
 	}{
 		// the default heartbeat interval is 1 second, but the events will come faster, so
 		// we don't expect any heartbeats.
@@ -217,7 +248,7 @@ func TestSession_StreamNotifications(t *testing.T) {
 			proxy.backendListenerAddr = srv.URL
 
 			s := &session{
-				proxy: proxy,
+				reqCtx: proxy,
 				perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
 					"backend1": {
 						sessionID: "s1",
@@ -228,20 +259,76 @@ func TestSession_StreamNotifications(t *testing.T) {
 			rr := httptest.NewRecorder()
 			ctx, cancel := context.WithTimeout(t.Context(), tc.deadline)
 			defer cancel()
-			err2 := s.streamNotifications(ctx, rr)
+			err2 := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
 			require.NoError(t, err2)
 			out := rr.Body.String()
 			require.Contains(t, out, "event: a1")
 			require.Contains(t, out, "event: a2")
 			heartbeatCount := strings.Count(out, `"method":"ping"`)
 
-			if tc.wantHeartbeats {
+			if tc.expectedHeartbeats {
 				require.Greater(t, heartbeatCount, 1, "expected some heartbeats after the initial one")
 			} else {
 				require.Equal(t, 1, heartbeatCount, "expected only the initial heartbeat")
 			}
 		})
 	}
+}
+
+func TestNotifyToolsChanged(t *testing.T) {
+	var (
+		reloadConfig atomic.Bool
+		proxy        = newTestMCPProxy()
+		cfg          = ProxyConfig{
+			toolChangeSignaler: proxy.toolChangeSignaler,
+			mcpProxyConfig:     proxy.mcpProxyConfig,
+		}
+		s = &session{
+			reqCtx: proxy,
+			route:  "test-route",
+			perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"backend1": {sessionID: "s1"},
+			},
+		}
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		// if the test wants to reload config, trigger it once the stream is open, to better simulate
+		// changes when there is an active streaming session.
+		// wait a bit and trigger the config change.
+		if reloadConfig.Load() {
+			time.Sleep(50 * time.Millisecond)
+			require.NoError(t, cfg.LoadConfig(t.Context(),
+				// Clear all the routes -> should trigger a tools changed notification.
+				&filterapi.Config{MCPConfig: &filterapi.MCPConfig{}}),
+			)
+		}
+	}))
+	proxy.backendListenerAddr = srv.URL
+
+	t.Run("no tool changes by default", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		t.Cleanup(cancel)
+		err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
+		require.NoError(t, err)
+		out := rr.Body.String()
+		require.NotContains(t, out, `"id":"`+envoyAIGatewayServerToClientToolsChangedRequestIDPrefix)
+		require.NotContains(t, out, `"method":"notifications/tools/list_changed"`)
+	})
+
+	t.Run("notify tools changed", func(t *testing.T) {
+		reloadConfig.Store(true)
+		rr := httptest.NewRecorder()
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		t.Cleanup(cancel)
+		err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
+		require.NoError(t, err)
+		out := rr.Body.String()
+		require.Contains(t, out, `"id":"`+envoyAIGatewayServerToClientToolsChangedRequestIDPrefix)
+		require.Contains(t, out, `"method":"notifications/tools/list_changed"`)
+	})
 }
 
 func TestSendRequestPerBackend_ErrorStatus(t *testing.T) {
@@ -251,8 +338,8 @@ func TestSendRequestPerBackend_ErrorStatus(t *testing.T) {
 	}))
 	defer server.Close()
 	l := slog.Default()
-	proxy := &MCPProxy{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l, metrics: stubMetrics{}}
-	s := &session{proxy: proxy}
+	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l}, metrics: stubMetrics{}}
+	s := &session{reqCtx: proxy}
 	ch := make(chan *sseEvent, 1)
 	cse := &compositeSessionEntry{
 		sessionID: "sess1",
@@ -270,8 +357,8 @@ func TestSendRequestPerBackend_EOF(t *testing.T) {
 	}))
 	defer server.Close()
 	l := slog.Default()
-	proxy := &MCPProxy{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l, metrics: stubMetrics{}}
-	s := &session{proxy: proxy}
+	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l}, metrics: stubMetrics{}}
+	s := &session{reqCtx: proxy}
 	ch := make(chan *sseEvent, 1)
 	err2 := s.sendRequestPerBackend(t.Context(), ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
@@ -283,9 +370,9 @@ func TestGetHeartbeatInterval(t *testing.T) {
 	defaultInterval := 1 * time.Minute
 
 	tests := []struct {
-		name string
-		env  string
-		want time.Duration
+		name     string
+		env      string
+		expected time.Duration
 	}{
 		{"unset", "", defaultInterval},
 		{"invalid", "invalid", defaultInterval},
@@ -298,7 +385,7 @@ func TestGetHeartbeatInterval(t *testing.T) {
 			if tt.env != "" {
 				t.Setenv("MCP_PROXY_HEARTBEAT_INTERVAL", tt.env)
 			}
-			require.Equal(t, tt.want, getHeartbeatInterval(defaultInterval))
+			require.Equal(t, tt.expected, getHeartbeatInterval(defaultInterval))
 		})
 	}
 }

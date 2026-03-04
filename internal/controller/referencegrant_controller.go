@@ -74,7 +74,7 @@ func (c *ReferenceGrantController) Reconcile(ctx context.Context, req reconcile.
 		c.logger.Info("Triggering reconciliation for affected AIGatewayRoute",
 			"route_namespace", route.Namespace, "route_name", route.Name,
 			"grant_namespace", referenceGrant.Namespace, "grant_name", referenceGrant.Name)
-		c.aiGatewayRouteChan <- event.GenericEvent{Object: &route}
+		c.aiGatewayRouteChan <- event.GenericEvent{Object: route}
 	}
 
 	return reconcile.Result{}, nil
@@ -85,8 +85,8 @@ func (c *ReferenceGrantController) Reconcile(ctx context.Context, req reconcile.
 func (c *ReferenceGrantController) getAffectedAIGatewayRoutes(
 	ctx context.Context,
 	grant *gwapiv1b1.ReferenceGrant,
-) ([]aigv1a1.AIGatewayRoute, error) {
-	var affectedRoutes []aigv1a1.AIGatewayRoute
+) ([]*aigv1a1.AIGatewayRoute, error) {
+	var affectedRoutes []*aigv1a1.AIGatewayRoute
 
 	// For each "from" reference in the grant, find AIGatewayRoutes in that namespace
 	// that might reference AIServiceBackends in the grant's namespace
@@ -101,8 +101,9 @@ func (c *ReferenceGrantController) getAffectedAIGatewayRoutes(
 		}
 
 		// Check if any of these routes reference backends in the grant's namespace
-		for _, route := range routes.Items {
-			if c.routeReferencesNamespace(&route, grant.Namespace) {
+		for i := range routes.Items {
+			route := &routes.Items[i]
+			if c.routeReferencesNamespace(route, grant.Namespace) {
 				affectedRoutes = append(affectedRoutes, route)
 			}
 		}

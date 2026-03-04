@@ -33,7 +33,7 @@ func TestStartAdminServer_Metrics(t *testing.T) {
 			name: "successful chat completion - ollama with qwen2.5:0.5b",
 			metricFamilies: []*prometheusmodel.MetricFamily{
 				{
-					Name: proto.String("gen_ai_client_token_usage_token"),
+					Name: proto.String("gen_ai_client_token_usage"),
 					Help: proto.String("Number of tokens processed."),
 					Type: prometheusmodel.MetricType_HISTOGRAM.Enum(),
 					Metric: []*prometheusmodel.Metric{
@@ -103,14 +103,14 @@ func TestStartAdminServer_Metrics(t *testing.T) {
 					},
 				},
 			},
-			expectedBody: `# HELP gen_ai_client_token_usage_token Number of tokens processed.
-# TYPE gen_ai_client_token_usage_token histogram
-gen_ai_client_token_usage_token_bucket{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="qwen2.5:0.5b",gen_ai_response_model="qwen2.5:0.5b",gen_ai_token_type="input",otel_scope_name="envoyproxy/ai-gateway",otel_scope_schema_url="",otel_scope_version="",le="+Inf"} 1
-gen_ai_client_token_usage_token_sum{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="qwen2.5:0.5b",gen_ai_response_model="qwen2.5:0.5b",gen_ai_token_type="input",otel_scope_name="envoyproxy/ai-gateway",otel_scope_schema_url="",otel_scope_version=""} 44
-gen_ai_client_token_usage_token_count{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="qwen2.5:0.5b",gen_ai_response_model="qwen2.5:0.5b",gen_ai_token_type="input",otel_scope_name="envoyproxy/ai-gateway",otel_scope_schema_url="",otel_scope_version=""} 1
-gen_ai_client_token_usage_token_bucket{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="qwen2.5:0.5b",gen_ai_response_model="qwen2.5:0.5b",gen_ai_token_type="output",otel_scope_name="envoyproxy/ai-gateway",otel_scope_schema_url="",otel_scope_version="",le="+Inf"} 1
-gen_ai_client_token_usage_token_sum{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="qwen2.5:0.5b",gen_ai_response_model="qwen2.5:0.5b",gen_ai_token_type="output",otel_scope_name="envoyproxy/ai-gateway",otel_scope_schema_url="",otel_scope_version=""} 14
-gen_ai_client_token_usage_token_count{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="qwen2.5:0.5b",gen_ai_response_model="qwen2.5:0.5b",gen_ai_token_type="output",otel_scope_name="envoyproxy/ai-gateway",otel_scope_schema_url="",otel_scope_version=""} 1
+			expectedBody: `# HELP gen_ai_client_token_usage Number of tokens processed.
+# TYPE gen_ai_client_token_usage histogram
+gen_ai_client_token_usage_bucket{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="qwen2.5:0.5b",gen_ai_response_model="qwen2.5:0.5b",gen_ai_token_type="input",otel_scope_name="envoyproxy/ai-gateway",otel_scope_schema_url="",otel_scope_version="",le="+Inf"} 1
+gen_ai_client_token_usage_sum{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="qwen2.5:0.5b",gen_ai_response_model="qwen2.5:0.5b",gen_ai_token_type="input",otel_scope_name="envoyproxy/ai-gateway",otel_scope_schema_url="",otel_scope_version=""} 44
+gen_ai_client_token_usage_count{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="qwen2.5:0.5b",gen_ai_response_model="qwen2.5:0.5b",gen_ai_token_type="input",otel_scope_name="envoyproxy/ai-gateway",otel_scope_schema_url="",otel_scope_version=""} 1
+gen_ai_client_token_usage_bucket{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="qwen2.5:0.5b",gen_ai_response_model="qwen2.5:0.5b",gen_ai_token_type="output",otel_scope_name="envoyproxy/ai-gateway",otel_scope_schema_url="",otel_scope_version="",le="+Inf"} 1
+gen_ai_client_token_usage_sum{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="qwen2.5:0.5b",gen_ai_response_model="qwen2.5:0.5b",gen_ai_token_type="output",otel_scope_name="envoyproxy/ai-gateway",otel_scope_schema_url="",otel_scope_version=""} 14
+gen_ai_client_token_usage_count{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="qwen2.5:0.5b",gen_ai_response_model="qwen2.5:0.5b",gen_ai_token_type="output",otel_scope_name="envoyproxy/ai-gateway",otel_scope_schema_url="",otel_scope_version=""} 1
 # HELP gen_ai_server_request_duration_seconds Generative AI server request duration such as time-to-last byte or last output token.
 # TYPE gen_ai_server_request_duration_seconds histogram
 gen_ai_server_request_duration_seconds_bucket{gen_ai_operation_name="chat",gen_ai_provider_name="openai",gen_ai_request_model="qwen2.5:0.5b",gen_ai_response_model="qwen2.5:0.5b",otel_scope_name="envoyproxy/ai-gateway",otel_scope_schema_url="",otel_scope_version="",le="+Inf"} 1

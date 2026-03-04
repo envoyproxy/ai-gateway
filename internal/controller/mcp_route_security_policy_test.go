@@ -6,12 +6,12 @@
 package controller
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -24,6 +24,7 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
@@ -59,6 +60,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 		wantSecPol     bool
 		wantJWT        bool
 		wantAPIKeyAuth *egv1a1.APIKeyAuth
+		wantExtAuth    *egv1a1.ExtAuth
 		wantBTP        bool
 		wantFilter     bool
 		wantJWKS       *egv1a1.RemoteJWKS
@@ -218,6 +220,114 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 			wantJWKS:   nil,
 			wantErr:    false,
 		},
+		{
+			name: "ext auth configured",
+			mcpRoute: &aigv1a1.MCPRoute{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
+				Spec: aigv1a1.MCPRouteSpec{
+					SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{
+						ExtAuth: &egv1a1.ExtAuth{
+							GRPC: &egv1a1.GRPCExtAuthService{
+								BackendCluster: egv1a1.BackendCluster{
+									BackendRefs: []egv1a1.BackendRef{
+										{
+											BackendObjectReference: gwapiv1.BackendObjectReference{
+												Name: "grpc-service",
+												Port: ptr.To(gwapiv1.PortNumber(1073)),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantSecPol: true,
+			wantJWT:    false,
+			wantExtAuth: &egv1a1.ExtAuth{
+				GRPC: &egv1a1.GRPCExtAuthService{
+					BackendCluster: egv1a1.BackendCluster{
+						BackendRefs: []egv1a1.BackendRef{
+							{
+								BackendObjectReference: gwapiv1.BackendObjectReference{
+									Name: "grpc-service",
+									Port: ptr.To(gwapiv1.PortNumber(1073)),
+								},
+							},
+						},
+					},
+				},
+			},
+			wantBTP:    false,
+			wantFilter: false,
+			wantJWKS:   nil,
+			wantErr:    false,
+		},
+		{
+			name: "api key authentication and ext auth configured",
+			mcpRoute: &aigv1a1.MCPRoute{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
+				Spec: aigv1a1.MCPRouteSpec{
+					SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{
+						APIKeyAuth: &egv1a1.APIKeyAuth{
+							CredentialRefs: []gwapiv1.SecretObjectReference{
+								{Name: "client-keys"},
+							},
+							ExtractFrom: []*egv1a1.ExtractFrom{
+								{Headers: []string{"x-api-key"}},
+							},
+							ForwardClientIDHeader: ptr.To("x-client-id"),
+							Sanitize:              ptr.To(true),
+						},
+						ExtAuth: &egv1a1.ExtAuth{
+							GRPC: &egv1a1.GRPCExtAuthService{
+								BackendCluster: egv1a1.BackendCluster{
+									BackendRefs: []egv1a1.BackendRef{
+										{
+											BackendObjectReference: gwapiv1.BackendObjectReference{
+												Name: "grpc-service",
+												Port: ptr.To(gwapiv1.PortNumber(1073)),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantSecPol: true,
+			wantJWT:    false,
+			wantAPIKeyAuth: &egv1a1.APIKeyAuth{ // expected spec
+				CredentialRefs: []gwapiv1.SecretObjectReference{
+					{Name: "client-keys"},
+				},
+				ExtractFrom: []*egv1a1.ExtractFrom{
+					{Headers: []string{"x-api-key"}},
+				},
+				ForwardClientIDHeader: ptr.To("x-client-id"),
+				Sanitize:              ptr.To(true),
+			},
+			wantExtAuth: &egv1a1.ExtAuth{
+				GRPC: &egv1a1.GRPCExtAuthService{
+					BackendCluster: egv1a1.BackendCluster{
+						BackendRefs: []egv1a1.BackendRef{
+							{
+								BackendObjectReference: gwapiv1.BackendObjectReference{
+									Name: "grpc-service",
+									Port: ptr.To(gwapiv1.PortNumber(1073)),
+								},
+							},
+						},
+					},
+				},
+			},
+			wantBTP:    false,
+			wantFilter: false,
+			wantJWKS:   nil,
+			wantErr:    false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -263,6 +373,13 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 					require.Equal(t, tt.wantAPIKeyAuth, securityPolicy.Spec.APIKeyAuth)
 				} else {
 					require.Nil(t, securityPolicy.Spec.APIKeyAuth)
+				}
+
+				if tt.wantExtAuth != nil {
+					require.NotNil(t, securityPolicy.Spec.ExtAuth)
+					require.Equal(t, tt.wantExtAuth, securityPolicy.Spec.ExtAuth)
+				} else {
+					require.Nil(t, securityPolicy.Spec.ExtAuth)
 				}
 
 				// The SecurityPolicy should only apply to the HTTPRoute MCP proxy rule.
@@ -479,63 +596,87 @@ func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com/mcp/v1",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp/v1"`,
 		},
 		{
 			name: "https URL without path",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource"`,
 		},
 		{
 			name: "https URL with trailing slash",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com/mcp/",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "http URL with path",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com/mcp/v1",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource/mcp/v1"`,
 		},
 		{
 			name: "http URL without path",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource"`,
 		},
 		{
 			name: "http URL with trailing slash",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com/mcp/",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "URL with port number https",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com:8080/mcp",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com:8080/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com:8080/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "URL with port number http",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com:8080/mcp",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="http://api.example.com:8080/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="http://api.example.com:8080/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "complex path with multiple segments",
 			metadata: &aigv1a1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com/v1/mcp/endpoint",
 			},
-			expected: `Bearer error="invalid_request", error_description="No access token was provided in this request", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource"`,
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/v1/mcp/endpoint"`,
+		},
+		{
+			name: "with empty scopes supported",
+			metadata: &aigv1a1.ProtectedResourceMetadata{
+				Resource:        "https://api.example.com/mcp",
+				ScopesSupported: []string{},
+			},
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp"`,
+		},
+		{
+			name: "with single scope supported",
+			metadata: &aigv1a1.ProtectedResourceMetadata{
+				Resource:        "https://api.example.com/mcp",
+				ScopesSupported: []string{"read"},
+			},
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp", scope="read"`,
+		},
+		{
+			name: "with multiple scopes supported",
+			metadata: &aigv1a1.ProtectedResourceMetadata{
+				Resource:        "https://api.example.com/mcp",
+				ScopesSupported: []string{"read", "write"},
+			},
+			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp", scope="read write"`,
 		},
 	}
 
@@ -543,6 +684,129 @@ func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := buildWWWAuthenticateHeaderValue(tt.metadata)
 			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Test_fetchOAuthServerMetadata(t *testing.T) {
+	tests := []struct {
+		name           string
+		issuerPath     string
+		authSeverURL   string
+		forcedFailures int
+		wantStatusCode int
+	}{
+		{
+			name:           "root path empty",
+			issuerPath:     "",
+			authSeverURL:   "/.well-known/oauth-authorization-server",
+			forcedFailures: 0,
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "root path trailing slash",
+			issuerPath:     "/",
+			authSeverURL:   "/.well-known/oauth-authorization-server",
+			forcedFailures: 0,
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "well-known at the end",
+			issuerPath:     "/some/path",
+			authSeverURL:   "/some/path/.well-known/oauth-authorization-server",
+			forcedFailures: 0,
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "well-known after issuer",
+			issuerPath:     "/some/path",
+			authSeverURL:   "/.well-known/oauth-authorization-server/some/path",
+			forcedFailures: 0,
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "oidc well-known at the end",
+			issuerPath:     "/some/path",
+			authSeverURL:   "/some/path/.well-known/openid-configuration",
+			forcedFailures: 0,
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "oidc well-known after issuer",
+			issuerPath:     "/some/path",
+			authSeverURL:   "/.well-known/openid-configuration/some/path",
+			forcedFailures: 0,
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "unknown failure",
+			issuerPath:     "/",
+			authSeverURL:   "/.well-known/oauth-authorization-server",
+			forcedFailures: 1, // Allow to self-heal before the backoff retries are exhausted.
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "unknown failure",
+			issuerPath:     "/",
+			authSeverURL:   "/.well-known/oauth-authorization-server",
+			forcedFailures: 20, // Do not allow to self-heal before the backoff retries are exhausted.
+			wantStatusCode: http.StatusInternalServerError,
+		},
+		{
+			name:           "no valid URL found",
+			issuerPath:     "/",
+			authSeverURL:   "/not-a-well-known",
+			forcedFailures: 0,
+			wantStatusCode: http.StatusNotFound,
+		},
+	}
+
+	handler := func(failCount int) http.HandlerFunc {
+		failures := 0
+		return func(w http.ResponseWriter, r *http.Request) {
+			if failures < failCount {
+				w.WriteHeader(http.StatusInternalServerError)
+				failures++
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Content-Type", "application/json")
+			metadata := map[string]interface{}{
+				"issuer":                 "http://" + r.Host,
+				"authorization_endpoint": "http://" + r.Host + "/auth",
+				"token_endpoint":         "http://" + r.Host + "/token",
+				// Use HTTP to force the backend TLS Policy discovery.
+				"jwks_uri": "https://" + r.Host + "/.well-known/jwks.json",
+			}
+			_ = json.NewEncoder(w).Encode(metadata)
+		}
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc(tt.authSeverURL, handler(tt.forcedFailures))
+
+			server := httptest.NewServer(mux)
+			t.Cleanup(server.Close)
+			addr := server.Listener.Addr().String()
+
+			// Use a small backoff timeout that allows the test to configure a number of attempts
+			// to force failures or self-healing.
+			metadata, err := fetchOAuthAuthServerMetadata(server.URL+tt.issuerPath, 1*time.Second)
+
+			if tt.wantStatusCode != http.StatusOK {
+				var httpError *httpError
+				require.ErrorAs(t, err, &httpError)
+				require.Equal(t, tt.wantStatusCode, httpError.statusCode)
+				require.Nil(t, metadata)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, "http://"+addr, metadata.Issuer)
+				require.Equal(t, "http://"+addr+"/auth", metadata.AuthorizationEndpoint)
+				require.Equal(t, "http://"+addr+"/token", metadata.TokenEndpoint)
+				require.Equal(t, "https://"+addr+"/.well-known/jwks.json", metadata.JwksURI)
+			}
 		})
 	}
 }

@@ -26,18 +26,17 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
-	s, err := NewServer(slog.Default(), tracing.NoopTracing{})
+	s, err := NewServer(slog.Default())
 	require.NoError(t, err)
 	require.NotNil(t, s)
-	s.config = &processorConfig{}
+	s.config = &filterapi.RuntimeConfig{}
 
 	m := newMockProcessor(s.config, s.logger)
-	s.Register("/", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
 		return m, nil
 	})
 
@@ -45,50 +44,11 @@ func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
 }
 
 func TestServer_LoadConfig(t *testing.T) {
-	now := time.Now()
-
-	t.Run("ok", func(t *testing.T) {
-		config := &filterapi.Config{
-			LLMRequestCosts: []filterapi.LLMRequestCost{
-				{MetadataKey: "key", Type: filterapi.LLMRequestCostTypeOutputToken},
-				{MetadataKey: "cel_key", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1 + 1"},
-			},
-			Backends: []filterapi.Backend{
-				{Name: "kserve", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
-				{Name: "awsbedrock", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}},
-				{Name: "openai", Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}},
-			},
-			Models: []filterapi.Model{
-				{
-					Name:      "llama3.3333",
-					OwnedBy:   "meta",
-					CreatedAt: now,
-				},
-				{
-					Name:      "gpt4.4444",
-					OwnedBy:   "openai",
-					CreatedAt: now,
-				},
-			},
-		}
-		s, _ := requireNewServerWithMockProcessor(t)
-		err := s.LoadConfig(t.Context(), config)
-		require.NoError(t, err)
-
-		require.NotNil(t, s.config)
-
-		require.Len(t, s.config.requestCosts, 2)
-		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, s.config.requestCosts[0].Type)
-		require.Equal(t, "key", s.config.requestCosts[0].MetadataKey)
-		require.Equal(t, filterapi.LLMRequestCostTypeCEL, s.config.requestCosts[1].Type)
-		require.Equal(t, "1 + 1", s.config.requestCosts[1].CEL)
-		prog := s.config.requestCosts[1].celProg
-		require.NotNil(t, prog)
-		val, err := llmcostcel.EvaluateProgram(prog, "", "", 1, 1, 1, 1)
-		require.NoError(t, err)
-		require.Equal(t, uint64(2), val)
-		require.Equal(t, config.Models, s.config.declaredModels)
-	})
+	config := &filterapi.Config{}
+	s := &Server{}
+	err := s.LoadConfig(t.Context(), config)
+	require.NoError(t, err)
+	require.NotNil(t, s.config)
 }
 
 func TestServer_Check(t *testing.T) {
@@ -283,12 +243,18 @@ func TestServer_Process(t *testing.T) {
 	})
 }
 
-func TestServer_setBackend(t *testing.T) {
+// TestServer_setBackend_legacy is the tests for the legacy behavior of setBackend function
+// using the text-encoded Metadata proto in the xds.upstream_host_metadata or xds.cluster_metadata field.
+//
+// TODO: delete this test after the v0.5 is released.
+func TestServer_setBackend_legacy(t *testing.T) {
 	for _, tc := range []struct {
 		md     *corev3.Metadata
 		errStr string
 	}{
-		{md: &corev3.Metadata{}, errStr: "missing aigateway.envoy.io metadata"},
+		{md: &corev3.Metadata{
+			FilterMetadata: map[string]*structpb.Struct{"foo": {}},
+		}, errStr: "missing aigateway.envoy.io metadata"},
 		{
 			md:     &corev3.Metadata{FilterMetadata: map[string]*structpb.Struct{internalapi.InternalEndpointMetadataNamespace: {}}},
 			errStr: "missing per_route_rule_backend_name in endpoint metadata",
@@ -315,7 +281,7 @@ func TestServer_setBackend(t *testing.T) {
 				str, err := prototext.Marshal(tc.md)
 				require.NoError(t, err)
 				s, _ := requireNewServerWithMockProcessor(t)
-				s.config.backends = map[string]*processorConfigBackend{"openai": {b: &filterapi.Backend{Name: "openai", HeaderMutation: &filterapi.HTTPHeaderMutation{Set: []filterapi.HTTPHeader{{Name: "x-foo", Value: "foo"}}}}}}
+				s.config.Backends = map[string]*filterapi.RuntimeBackend{"openai": {Backend: &filterapi.Backend{Name: "openai", HeaderMutation: &filterapi.HTTPHeaderMutation{Set: []filterapi.HTTPHeader{{Name: "x-foo", Value: "foo"}}}}}}
 				mockProc := &mockProcessor{}
 
 				// Use the correct metadata field key based on isEndpointPicker.
@@ -338,17 +304,46 @@ func TestServer_setBackend(t *testing.T) {
 	}
 }
 
+func TestServer_setBackend(t *testing.T) {
+	s, _ := requireNewServerWithMockProcessor(t)
+	s.config.Backends = map[string]*filterapi.RuntimeBackend{"openai": {Backend: &filterapi.Backend{Name: "openai"}}}
+	mockProc := &mockProcessor{}
+
+	for _, isEndpointPicker := range []bool{true, false} {
+		t.Run(fmt.Sprintf("isEndpointPicker=%t", isEndpointPicker), func(t *testing.T) {
+			attributeKey := internalapi.XDSUpstreamHostMetadataBackendNamePath
+			if isEndpointPicker {
+				attributeKey = internalapi.XDSClusterMetadataBackendNamePath
+			}
+
+			err := s.setBackend(t.Context(), mockProc, "aaaaaaaaaaaa", isEndpointPicker, &extprocv3.ProcessingRequest{
+				Attributes: map[string]*structpb.Struct{
+					"envoy.filters.http.ext_proc": {Fields: map[string]*structpb.Value{
+						attributeKey: {Kind: &structpb.Value_StringValue{
+							StringValue: "openai",
+						}},
+					}},
+				},
+				Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{}},
+			})
+			// Should be an error as there is no router processor registered for openai backend.
+			// The purpose of this test is to verify that the backend name is correctly extracted.
+			require.ErrorContains(t, err, `no router processor found, request_id=aaaaaaaaaaaa, backend=openai`)
+		})
+	}
+}
+
 func TestServer_ProcessorSelection(t *testing.T) {
-	s, err := NewServer(slog.Default(), tracing.NoopTracing{})
+	s, err := NewServer(slog.Default())
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
-	s.config = &processorConfig{}
-	s.Register("/one", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.config = &filterapi.RuntimeConfig{}
+	s.Register("/one", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
 		// Returning nil guarantees that the test will fail if this processor is selected.
 		return nil, nil
 	})
-	s.Register("/two", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/two", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
 		return &mockProcessor{
 			t:                     t,
 			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}, {Key: "x-request-id", Value: "original-req-id"}}},
@@ -445,7 +440,10 @@ func Test_filterSensitiveHeadersForLogging(t *testing.T) {
 }
 
 func Test_filterSensitiveBodyForLogging(t *testing.T) {
-	logger, buf := newTestLoggerWithBuffer()
+	buf := internaltesting.CaptureOutput("test")[0]
+	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{
@@ -509,18 +507,18 @@ func Test_headersToMap(t *testing.T) {
 }
 
 func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
-	s, err := NewServer(slog.Default(), tracing.NoopTracing{})
+	s, err := NewServer(slog.Default())
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
-	s.config = &processorConfig{}
+	s.config = &filterapi.RuntimeConfig{}
 
 	// Register processors for different base paths.
 	mockProc := &mockProcessor{}
-	s.Register("/v1/messages", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/v1/messages", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
 		return mockProc, nil
 	})
-	s.Register("/anthropic/v1/messages", func(*processorConfig, map[string]string, *slog.Logger, tracing.Tracing, bool) (Processor, error) {
+	s.Register("/anthropic/v1/messages", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool) (Processor, error) {
 		return mockProc, nil
 	})
 

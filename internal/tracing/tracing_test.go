@@ -15,14 +15,15 @@ import (
 	"strconv"
 	"testing"
 
-	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/propagation"
 	"k8s.io/utils/ptr"
 
+	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 // clearEnv clears any OTEL configuration that could exist in the environment.
@@ -125,7 +126,7 @@ func TestNewTracingFromEnv_DisabledByEnv(t *testing.T) {
 
 			result, err := NewTracingFromEnv(t.Context(), io.Discard, nil)
 			require.NoError(t, err)
-			require.IsType(t, tracing.NoopTracing{}, result)
+			require.IsType(t, tracingapi.NoopTracing{}, result)
 		})
 	}
 }
@@ -181,10 +182,10 @@ func TestNewTracingFromEnv_EndpointHierarchy(t *testing.T) {
 			require.NoError(t, err)
 
 			if tt.expectActive {
-				_, isNoop := result.(tracing.NoopTracing)
+				_, isNoop := result.(tracingapi.NoopTracing)
 				require.False(t, isNoop, "expected active tracing")
 			} else {
-				require.IsType(t, tracing.NoopTracing{}, result)
+				require.IsType(t, tracingapi.NoopTracing{}, result)
 			}
 
 			_ = result.Shutdown(context.Background())
@@ -250,13 +251,13 @@ func TestNewTracingFromEnv_ConsoleExporter(t *testing.T) {
 			})
 
 			if tt.expectNoop {
-				_, ok := result.(tracing.NoopTracing)
+				_, ok := result.(tracingapi.NoopTracing)
 				require.True(t, ok, "expected NoopTracing")
 				return
 			}
 
 			// Verify it's not noop.
-			_, ok := result.(tracing.NoopTracing)
+			_, ok := result.(tracingapi.NoopTracing)
 			require.False(t, ok, "expected non-noop tracing")
 
 			// For console exporter, create a span and verify output.
@@ -378,17 +379,16 @@ func TestNewTracingFromEnv_OtelPropagators(t *testing.T) {
 			collector, tracing := newTracingFromEnvForTest(t, io.Discard)
 
 			// Create headers for injection.
-			headerMutation := &extprocv3.HeaderMutation{}
+			carrier := propagation.MapCarrier{}
 
 			// Start span and inject headers.
-			span := startCompletionsSpan(t, tracing, headerMutation)
+			span := startCompletionsSpan(t, tracing, carrier)
 			require.NotNil(t, span)
 			span.EndSpan()
 
 			// Check that the expected header was injected.
-			require.Len(t, headerMutation.SetHeaders, 1, "expected exactly one header to be set")
-			header := headerMutation.SetHeaders[0].Header
-			require.Equal(t, tt.expectHeaderKey, header.Key)
+			require.Len(t, carrier, 1, "expected exactly one header to be set")
+			require.Contains(t, carrier, tt.expectHeaderKey)
 
 			// Get the span to check trace/span IDs.
 			v1Span := collector.TakeSpan()
@@ -400,7 +400,7 @@ func TestNewTracingFromEnv_OtelPropagators(t *testing.T) {
 
 			// Verify the header value format.
 			expectedValue := tt.expectHeaderFormat(traceIDStr, spanIDStr)
-			require.Equal(t, expectedValue, string(header.RawValue))
+			require.Equal(t, expectedValue, carrier[tt.expectHeaderKey])
 		})
 	}
 }
@@ -474,7 +474,7 @@ func TestNewTracingFromEnv_ChatCompletion_Redaction(t *testing.T) {
 			span := tracer.StartSpanAndInjectHeaders(
 				t.Context(),
 				map[string]string{},
-				&extprocv3.HeaderMutation{},
+				propagation.MapCarrier{},
 				req,
 				reqBody,
 			)
@@ -515,7 +515,7 @@ func TestNewTracingFromEnv_ChatCompletion_Redaction(t *testing.T) {
 	}
 }
 
-func newTracingFromEnvForTest(t *testing.T, stdout io.Writer) (*testotel.OTLPCollector, tracing.Tracing) {
+func newTracingFromEnvForTest(t *testing.T, stdout io.Writer) (*testotel.OTLPCollector, tracingapi.Tracing) {
 	collector := testotel.StartOTLPCollector()
 	t.Cleanup(collector.Close)
 	collector.SetEnv(t.Setenv)
@@ -527,12 +527,6 @@ func newTracingFromEnvForTest(t *testing.T, stdout io.Writer) (*testotel.OTLPCol
 	})
 
 	return collector, result
-}
-
-func TestNoopShutdown(t *testing.T) {
-	ns := noopShutdown{}
-	err := ns.Shutdown(t.Context())
-	require.NoError(t, err)
 }
 
 // TestNewTracingFromEnv_OTLPHeaders tests that OTEL_EXPORTER_OTLP_HEADERS
@@ -591,11 +585,11 @@ func TestNewTracingFromEnv_HeaderAttributeMapping(t *testing.T) {
 		"x-session-id": "abc123",
 		"x-user-id":    "user456",
 	}
-	headerMutation := &extprocv3.HeaderMutation{}
+	carrier := propagation.MapCarrier{}
 
 	tr := result.ChatCompletionTracer()
 	req := &openai.ChatCompletionRequest{Model: openai.ModelGPT5Nano}
-	span := tr.StartSpanAndInjectHeaders(t.Context(), headers, headerMutation, req, []byte("{}"))
+	span := tr.StartSpanAndInjectHeaders(t.Context(), headers, carrier, req, []byte("{}"))
 	require.NotNil(t, span)
 	span.EndSpan()
 
@@ -679,7 +673,7 @@ func TestNewTracingFromEnv_Embeddings_Redaction(t *testing.T) {
 			span := tracer.StartSpanAndInjectHeaders(
 				t.Context(),
 				map[string]string{},
-				&extprocv3.HeaderMutation{},
+				propagation.MapCarrier{},
 				req,
 				reqBody,
 			)
@@ -721,12 +715,24 @@ func TestNewTracingFromEnv_Embeddings_Redaction(t *testing.T) {
 }
 
 // startCompletionsSpan is a test helper that creates a span with a basic request.
-// If headerMutation is nil, a new empty HeaderMutation will be created.
-func startCompletionsSpan(t *testing.T, tracing tracing.Tracing, headerMutation *extprocv3.HeaderMutation) tracing.ChatCompletionSpan {
-	if headerMutation == nil {
-		headerMutation = &extprocv3.HeaderMutation{}
+func startCompletionsSpan(t *testing.T, tracing tracingapi.Tracing, carrier propagation.MapCarrier) tracingapi.ChatCompletionSpan {
+	if carrier == nil {
+		carrier = propagation.MapCarrier{}
 	}
 	tracer := tracing.ChatCompletionTracer()
 	req := &openai.ChatCompletionRequest{Model: openai.ModelGPT5Nano}
-	return tracer.StartSpanAndInjectHeaders(t.Context(), nil, headerMutation, req, nil)
+	return tracer.StartSpanAndInjectHeaders(t.Context(), nil, carrier, req, nil)
+}
+
+func TestTracingImpl_Getters_ImageGenerationAndRerank(t *testing.T) {
+	ig := tracingapi.NoopTracer[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]{}
+	rr := tracingapi.NoopTracer[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]{}
+
+	ti := &tracingImpl{
+		imageGenerationTracer: ig,
+		rerankTracer:          rr,
+	}
+
+	require.Equal(t, ig, ti.ImageGenerationTracer())
+	require.Equal(t, rr, ti.RerankTracer())
 }

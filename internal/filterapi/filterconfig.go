@@ -12,6 +12,7 @@
 package filterapi
 
 import (
+	"cmp"
 	"os"
 	"time"
 
@@ -20,25 +21,20 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// DefaultConfig is the default configuration that can be used as a
-// fallback when the configuration is not explicitly provided.
-var DefaultConfig = ``
-
 // Config is the configuration for the Envoy AI Gateway filter.
 type Config struct {
+	// Version is the version of the AI Gateway, e.g., "v0.4.0" derived from internal/version package.
+	// This is to ensure compatibility between the filter and the AI Gateway management plane.
+	//
+	// When there's discrepancy between the version set here (by the controller) and the version of the extproc
+	// filter binary, which can happen during rolling upgrade, the filter will not load the configuration,
+	// and keep working with the previous configuration.
+	Version string `json:"version,omitempty"`
 	// UUID is the unique identifier of the filter configuration assigned by the AI Gateway when the configuration is updated.
 	UUID string `json:"uuid,omitempty"`
-	// MetadataNamespace is the namespace of the dynamic metadata to be used by the filter.
-	// Deprecated.
-	// TODO: Drop this after v0.4.0.
-	MetadataNamespace string `json:"metadataNamespace"`
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
-	// ModelNameHeaderKey is the header key to be populated with the model name by the filter.
-	// Deprecated.
-	// TODO: Drop this after v0.4.0.
-	ModelNameHeaderKey internalapi.ModelNameHeaderKey `json:"modelNameHeaderKey"`
 	// Backends is the list of backends that this listener can route to.
 	Backends []Backend `json:"backends,omitempty"`
 	// Models is the list of models that this route is aware of. Used to populate the "/models" endpoint in OpenAI-compatible APIs.
@@ -86,8 +82,10 @@ const (
 	LLMRequestCostTypeOutputToken LLMRequestCostType = "OutputToken"
 	// LLMRequestCostTypeInputToken specifies that the request cost is calculated from the input token.
 	LLMRequestCostTypeInputToken LLMRequestCostType = "InputToken"
-	// LLMRequestCostTypeCachedInputToken specifies that the request cost is calculated from the cached input token.
+	// LLMRequestCostTypeCachedInputToken specifies that the request cost is calculated from the cached read input token.
 	LLMRequestCostTypeCachedInputToken LLMRequestCostType = "CachedInputToken"
+	// LLMRequestCostTypeCacheCreationInputToken specifies that the request cost is calculated from the cache creation input token.
+	LLMRequestCostTypeCacheCreationInputToken LLMRequestCostType = "CacheCreationInputToken"
 	// LLMRequestCostTypeTotalToken specifies that the request cost is calculated from the total token.
 	LLMRequestCostTypeTotalToken LLMRequestCostType = "TotalToken"
 	// LLMRequestCostTypeCEL specifies that the request cost is calculated from the CEL expression.
@@ -100,6 +98,15 @@ type VersionedAPISchema struct {
 	Name APISchemaName `json:"name"`
 	// Version is the version of the API schema. Optional.
 	Version string `json:"version,omitempty"`
+	// Prefix is the prefix of the API schema. Optional. Currently, only used for OpenAI.
+	Prefix string `json:"prefix,omitempty"`
+}
+
+// OpenAIPrefix returns the OpenAI API prefix for the VersionedAPISchema.
+// This is for backwards compatibility with existing users. This won't be
+// necessary after v0.5 release when we can use Prefix directly.
+func (v VersionedAPISchema) OpenAIPrefix() string {
+	return cmp.Or(v.Version, v.Prefix)
 }
 
 // APISchemaName corresponds to APISchemaName in api/v1alpha1/api.go.
@@ -142,6 +149,8 @@ type Backend struct {
 	Auth *BackendAuth `json:"auth,omitempty"`
 	// Sensitive Headers to be removed from the request before sending to the backend. Optional.
 	HeaderMutation *HTTPHeaderMutation `json:"httpHeaderMutation,omitempty"`
+	// Body mutations to be applied to the request before sending to the backend. Optional.
+	BodyMutation *HTTPBodyMutation `json:"httpBodyMutation,omitempty"`
 }
 
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.
@@ -228,6 +237,27 @@ type HTTPHeader struct {
 	Value string `json:"value"`
 }
 
+// HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request
+type HTTPBodyMutation struct {
+	// Set overwrites/adds the request body with the given JSON field (name, value)
+	// before sending to the backend. Only top-level fields are currently supported.
+	Set []HTTPBodyField `json:"set,omitempty"`
+	// Remove the given JSON field(s) from the HTTP request body before sending to the backend.
+	// The value of Remove is a list of top-level field names to remove.
+	Remove []string `json:"remove,omitempty"`
+}
+
+// HTTPBodyField represents a JSON field name and value for body mutation
+type HTTPBodyField struct {
+	// Path is the top-level field name to set in the request body.
+	// Examples: "service_tier", "max_tokens", "temperature"
+	Path string `json:"path"`
+	// Value is the JSON value to set at the specified field. This can be any valid JSON value:
+	// string, number, boolean, object, array, or null.
+	// The value will be parsed as JSON and inserted at the specified field.
+	Value string `json:"value"`
+}
+
 // UnmarshalConfigYaml reads the file at the given path and unmarshals it into a Config struct.
 func UnmarshalConfigYaml(path string) (*Config, error) {
 	raw, err := os.ReadFile(path)
@@ -239,14 +269,4 @@ func UnmarshalConfigYaml(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
-}
-
-// MustLoadDefaultConfig loads the default configuration.
-// This panics if the configuration fails to be loaded.
-func MustLoadDefaultConfig() *Config {
-	var cfg Config
-	if err := yaml.Unmarshal([]byte(DefaultConfig), &cfg); err != nil {
-		panic(err)
-	}
-	return &cfg
 }

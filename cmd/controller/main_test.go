@@ -52,9 +52,14 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					tc.dash + "port=:8080",
 					tc.dash + "extProcExtraEnvVars=OTEL_SERVICE_NAME=test;OTEL_TRACES_EXPORTER=console",
 					tc.dash + "spanRequestHeaderAttributes=x-session-id:session.id",
+					tc.dash + "endpointPrefixes=openai:/v1,cohere:/cohere/v2,anthropic:/anthropic/v1",
 					tc.dash + "maxRecvMsgSize=33554432",
 					tc.dash + "watchNamespaces=default,envoy-ai-gateway-system",
 					tc.dash + "cacheSyncTimeout=5m",
+					tc.dash + "mcpSessionEncryptionSeed=my-seed",
+					tc.dash + "mcpSessionEncryptionIterations=100",
+					tc.dash + "mcpFallbackSessionEncryptionSeed=my-fallback-seed",
+					tc.dash + "mcpFallbackSessionEncryptionIterations=200",
 				}
 				f, err := parseAndValidateFlags(args)
 				require.Equal(t, "debug", f.extProcLogLevel)
@@ -65,34 +70,17 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				require.Equal(t, ":8080", f.extensionServerPort)
 				require.Equal(t, "OTEL_SERVICE_NAME=test;OTEL_TRACES_EXPORTER=console", f.extProcExtraEnvVars)
 				require.Equal(t, "x-session-id:session.id", f.spanRequestHeaderAttributes)
+				require.Equal(t, "openai:/v1,cohere:/cohere/v2,anthropic:/anthropic/v1", f.endpointPrefixes)
 				require.Equal(t, 32*1024*1024, f.maxRecvMsgSize)
 				require.Equal(t, []string{"default", "envoy-ai-gateway-system"}, f.watchNamespaces)
 				require.Equal(t, 5*time.Minute, f.cacheSyncTimeout)
+				require.Equal(t, "my-seed", f.mcpSessionEncryptionSeed)
+				require.Equal(t, 100, f.mcpSessionEncryptionIterations)
+				require.Equal(t, "my-fallback-seed", f.mcpFallbackSessionEncryptionSeed)
+				require.Equal(t, 200, f.mcpFallbackSessionEncryptionIterations)
 				require.NoError(t, err)
 			})
 		}
-	})
-
-	t.Run("deprecated metricsRequestHeaderLabels flag", func(t *testing.T) {
-		args := []string{
-			"--metricsRequestHeaderLabels=x-team-id:team.id",
-		}
-		f, err := parseAndValidateFlags(args)
-		require.NoError(t, err)
-		// Verify the deprecated flag value is used for metricsRequestHeaderAttributes
-		require.Equal(t, "x-team-id:team.id", f.metricsRequestHeaderAttributes)
-		require.Equal(t, "x-team-id:team.id", f.metricsRequestHeaderLabels)
-	})
-
-	t.Run("new flag takes precedence over deprecated flag", func(t *testing.T) {
-		args := []string{
-			"--metricsRequestHeaderLabels=x-old:old.value",
-			"--metricsRequestHeaderAttributes=x-new:new.value",
-		}
-		f, err := parseAndValidateFlags(args)
-		require.NoError(t, err)
-		// Verify the new flag takes precedence
-		require.Equal(t, "x-new:new.value", f.metricsRequestHeaderAttributes)
 	})
 
 	t.Run("invalid flags", func(t *testing.T) {
@@ -135,6 +123,36 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				name:   "invalid spanRequestHeaderAttributes - empty header",
 				flags:  []string{"--spanRequestHeaderAttributes=:session.id"},
 				expErr: "invalid tracing header attributes",
+			},
+			{
+				name:   "invalid endpointPrefixes - unknown key",
+				flags:  []string{"--endpointPrefixes=foo:/x"},
+				expErr: "invalid endpoint prefixes",
+			},
+			{
+				name:   "invalid endpointPrefixes - missing colon",
+				flags:  []string{"--endpointPrefixes=openai"},
+				expErr: "invalid endpoint prefixes",
+			},
+			{
+				name:   "invalid mcp session encryption iterations",
+				flags:  []string{"--mcpSessionEncryptionIterations=invalid"},
+				expErr: `invalid value "invalid" for flag -mcpSessionEncryptionIterations: parse error`,
+			},
+			{
+				name:   "negative mcp session encryption iterations",
+				flags:  []string{"--mcpSessionEncryptionIterations=-1"},
+				expErr: "mcp session encryption iterations must be positive: -1",
+			},
+			{
+				name:   "invalid mcp fallback session encryption iterations",
+				flags:  []string{"--mcpFallbackSessionEncryptionSeed=fallback", "--mcpFallbackSessionEncryptionIterations=invalid"},
+				expErr: `invalid value "invalid" for flag -mcpFallbackSessionEncryptionIterations: parse error`,
+			},
+			{
+				name:   "negative mcp fallback session encryption iterations",
+				flags:  []string{"--mcpFallbackSessionEncryptionSeed=fallback", "--mcpFallbackSessionEncryptionIterations=-1"},
+				expErr: "mcp fallback session encryption iterations must be positive: -1",
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
@@ -276,21 +294,21 @@ func Test_parseAndValidateFlags_watchNamespaces(t *testing.T) {
 
 func TestSetupCache(t *testing.T) {
 	t.Run("default", func(t *testing.T) {
-		c := setupCache(flags{})
+		c := setupCache(&flags{})
 
 		require.NotNil(t, c.DefaultTransform)
 		require.Nil(t, c.DefaultNamespaces)
 	})
 
 	t.Run("empty watch namespaces", func(t *testing.T) {
-		c := setupCache(flags{watchNamespaces: []string{}})
+		c := setupCache(&flags{watchNamespaces: []string{}})
 
 		require.NotNil(t, c.DefaultTransform)
 		require.Nil(t, c.DefaultNamespaces)
 	})
 
 	t.Run("watch namespaces", func(t *testing.T) {
-		c := setupCache(flags{watchNamespaces: []string{"default", "envoy-ai-gateway-system"}})
+		c := setupCache(&flags{watchNamespaces: []string{"default", "envoy-ai-gateway-system"}})
 
 		require.NotNil(t, c.DefaultTransform)
 		require.Equal(t, map[string]cache.Config{

@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
@@ -43,7 +43,7 @@ const (
 
 // By default, kind logs are collected when the e2e tests fail. The TEST_KEEP_CLUSTER environment variable
 // can be set to "true" to preserve the logs and the kind cluster even if the tests pass.
-var keepCluster = func() bool {
+var KeepCluster = func() bool {
 	v, _ := os.LookupEnv("TEST_KEEP_CLUSTER")
 	return v == "true"
 }()
@@ -65,6 +65,15 @@ type AIGatewayHelmOption struct {
 	ChartVersion string
 	// AdditionalArgs are additional arguments to pass to the Helm install/upgrade command.
 	AdditionalArgs []string
+	// Namespace where the AI Gateway will be installed. Default is "envoy-ai-gateway-system".
+	Namespace string
+}
+
+func (a *AIGatewayHelmOption) GetNamespace() string {
+	if a.Namespace == "" {
+		return "envoy-ai-gateway-system"
+	}
+	return a.Namespace
 }
 
 // TestMain is the entry point for the e2e tests. It sets up the kind cluster, installs the Envoy Gateway,
@@ -104,7 +113,7 @@ func SetupAll(ctx context.Context, clusterName string, aigwOpts AIGatewayHelmOpt
 			return fmt.Errorf("failed to install inference pool environment: %w", err)
 		}
 	}
-	if err := initEnvoyGateway(ctx, inferenceExtension); err != nil {
+	if err := initEnvoyGateway(ctx, aigwOpts.GetNamespace(), inferenceExtension); err != nil {
 		return fmt.Errorf("failed to initialize Envoy Gateway: %w", err)
 	}
 
@@ -155,6 +164,7 @@ func initKindCluster(ctx context.Context, clusterName string) (err error) {
 		"docker.io/envoyproxy/ai-gateway-extproc:latest",
 		"docker.io/envoyproxy/ai-gateway-testupstream:latest",
 		"docker.io/envoyproxy/ai-gateway-testmcpserver:latest",
+		"docker.io/envoyproxy/ai-gateway-testextauthserver:latest",
 	} {
 		cmd := testsinternal.GoToolCmdContext(ctx, "kind", "load", "docker-image", image, "--name", clusterName)
 		cmd.Stdout = os.Stdout
@@ -332,14 +342,14 @@ spec:
 // Also, if the tests failed or TEST_KEEP_CLUSTER is "true", it collects the kind logs
 // into the ./logs directory.
 func CleanupKindCluster(testsFailed bool, clusterName string) {
-	if testsFailed || keepCluster {
+	if testsFailed || KeepCluster {
 		cleanupLog("Collecting logs from the kind cluster")
 		cmd := testsinternal.GoToolCmd("kind", "export", "logs", "--name", clusterName, kindLogDir)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		_ = cmd.Run()
 	}
-	if !testsFailed && !keepCluster {
+	if !testsFailed && !KeepCluster {
 		cleanupLog("Destroying the kind cluster")
 		cmd := testsinternal.GoToolCmd("kind", "delete", "cluster", "--name", clusterName)
 		cmd.Stdout = os.Stdout
@@ -387,7 +397,7 @@ func installInferencePoolEnvironment(ctx context.Context) (err error) {
 
 // initEnvoyGateway initializes the Envoy Gateway in the kind cluster following the quickstart guide:
 // https://gateway.envoyproxy.io/latest/tasks/quickstart/
-func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) {
+func initEnvoyGateway(ctx context.Context, namespace string, inferenceExtension bool) (err error) {
 	egVersion := cmp.Or(os.Getenv("EG_VERSION"), "v0.0.0-latest")
 	initLog("Installing Envoy Gateway")
 	start := time.Now()
@@ -403,6 +413,7 @@ func initEnvoyGateway(ctx context.Context, inferenceExtension bool) (err error) 
 		"-n", "envoy-gateway-system", "--create-namespace",
 		"-f", "../../manifests/envoy-gateway-values.yaml",
 		"-f", "../../examples/token_ratelimit/envoy-gateway-values-addon.yaml",
+		"--set", fmt.Sprintf("config.envoyGateway.extensionManager.service.fqdn.hostname=ai-gateway-controller.%s.svc.cluster.local", namespace),
 	}
 	if inferenceExtension {
 		helmArgs = append(helmArgs, "-f", "../../examples/inference-pool/envoy-gateway-values-addon.yaml")
@@ -433,7 +444,7 @@ func InstallOrUpgradeAIGateway(ctx context.Context, aigw AIGatewayHelmOption) (e
 	} else {
 		cdrChartArgs = append(cdrChartArgs, "../../manifests/charts/ai-gateway-crds-helm")
 	}
-	cdrChartArgs = append(cdrChartArgs, "-n", "envoy-ai-gateway-system", "--create-namespace")
+	cdrChartArgs = append(cdrChartArgs, "-n", aigw.GetNamespace(), "--create-namespace")
 	crdChart := testsinternal.GoToolCmdContext(ctx, "helm", cdrChartArgs...)
 	crdChart.Stdout = os.Stdout
 	crdChart.Stderr = os.Stderr
@@ -447,7 +458,7 @@ func InstallOrUpgradeAIGateway(ctx context.Context, aigw AIGatewayHelmOption) (e
 	} else {
 		mainChartArgs = append(mainChartArgs, "../../manifests/charts/ai-gateway-helm")
 	}
-	mainChartArgs = append(mainChartArgs, "-n", "envoy-ai-gateway-system", "--create-namespace")
+	mainChartArgs = append(mainChartArgs, "-n", aigw.GetNamespace(), "--create-namespace")
 	mainChartArgs = append(mainChartArgs, aigw.AdditionalArgs...)
 
 	helm := testsinternal.GoToolCmdContext(ctx, "helm", mainChartArgs...)
@@ -458,10 +469,10 @@ func InstallOrUpgradeAIGateway(ctx context.Context, aigw AIGatewayHelmOption) (e
 	}
 	// Restart the controller to pick up the new changes in the AI Gateway.
 	initLog("\tRestart AI Gateway controller")
-	if err = KubectlRestartDeployment(ctx, "envoy-ai-gateway-system", "ai-gateway-controller"); err != nil {
+	if err = KubectlRestartDeployment(ctx, aigw.GetNamespace(), "ai-gateway-controller"); err != nil {
 		return
 	}
-	return kubectlWaitForDeploymentReady(ctx, "envoy-ai-gateway-system", "ai-gateway-controller")
+	return kubectlWaitForDeploymentReady(ctx, aigw.GetNamespace(), "ai-gateway-controller")
 }
 
 func initPrometheus(ctx context.Context) (err error) {

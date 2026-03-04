@@ -177,6 +177,8 @@ type MCPBackendAPIKey struct {
 }
 
 // MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
+//
+// +kubebuilder:validation:XValidation:rule="!(has(self.authorization) && self.authorization.rules.exists(r, has(r.source) && has(r.source.jwt)) && !has(self.oauth))",message="oauth must be configured when any authorization rule uses a jwt source"
 type MCPRouteSecurityPolicy struct {
 	// OAuth defines the configuration for the MCP spec compatible OAuth authentication.
 	//
@@ -187,6 +189,16 @@ type MCPRouteSecurityPolicy struct {
 	//
 	// +optional
 	APIKeyAuth *egv1a1.APIKeyAuth `json:"apiKeyAuth,omitempty"`
+
+	// ExtAuth defines the configuration for External Authorization.
+	//
+	// +optional
+	ExtAuth *egv1a1.ExtAuth `json:"extAuth,omitempty"`
+
+	// Authorization defines the configuration for the MCP spec compatible authorization.
+	//
+	// +optional
+	Authorization *MCPRouteAuthorization `json:"authorization,omitempty"`
 }
 
 // MCPRouteOAuth defines a MCP spec compatible OAuth authentication configuration for a MCPRoute.
@@ -220,6 +232,136 @@ type MCPRouteOAuth struct {
 	//
 	// +kubebuilder:validation:Required
 	ProtectedResourceMetadata ProtectedResourceMetadata `json:"protectedResourceMetadata"`
+}
+
+// MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
+type MCPRouteAuthorization struct {
+	// DefaultAction is the action to take when no rules match. If unspecified, defaults to Deny.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=Deny
+	// +optional
+	DefaultAction *egv1a1.AuthorizationAction `json:"defaultAction,omitempty"`
+
+	// Rules defines a list of authorization rules.
+	// These rules are evaluated in order, the first matching rule will be applied,
+	// and the rest will be skipped.
+	//
+	// If no rules are defined, the default action will be applied to all requests.
+	//
+	// +kubebuilder:validation:MaxItems=32
+	// +optional
+	Rules []MCPRouteAuthorizationRule `json:"rules,omitempty"`
+}
+
+// MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
+// Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
+type MCPRouteAuthorizationRule struct {
+	// Source defines the authorization source for this rule.
+	// If not specified, the rule will match all sources.
+	//
+	// +kubebuilder:validation:Optional
+	Source *MCPAuthorizationSource `json:"source,omitempty"`
+
+	// Target defines the authorization target for this rule.
+	// If not specified, the rule will match all targets.
+	//
+	// +kubebuilder:validation:Optional
+	Target *MCPAuthorizationTarget `json:"target,omitempty"`
+
+	// CEL specifies a Common Expression Language (CEL) expression evaluated for this rule.
+	// The expression must return a boolean; evaluation errors or non-boolean results
+	// are treated as "no match".
+	//
+	// Example CEL expressions:
+	//	* `request.method == "POST"`
+	//	* `request.headers["x-custom-header"] == "AllowedValue"`
+	//	* `request.mcp.tool in ["toolA", "toolB"]`
+	//
+	// Available attributes in the CEL expression:
+	//
+	//	* request.method: HTTP method such as GET or POST. Type: string.
+	//	* request.headers: map of headers with lowercased keys, first value only. Type: map[string]string.
+	//	* request.headers_all: map of headers with lowercased keys, all values. Type: map[string][]string.
+	//	* request.path: request path such as /mcp. Type: string.
+	//	* request.auth.jwt.claims: JWT claims when a bearer JWT is present. Type: map[string]any.
+	//	* request.auth.jwt.scopes: JWT scopes when a bearer JWT is present. Type: []string.
+	//	* request.mcp.method: MCP method such as tools/list or tools/call. Type: string.
+	//	* request.mcp.backend: upstream backend name (for example, "kiwi" or "github"). Type: string.
+	//	* request.mcp.tool: tool name without backend prefix (for example, "list_issues"). Type: string.
+	//	* request.mcp.params: parameters of the MCP method, including keys like "_meta" and "arguments". Type: object.
+	//
+	// Note: The CEL expression support is experimental, and the attributes
+	// available to the expression may change in future releases.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=4096
+	// +optional
+	CEL *string `json:"cel,omitempty"`
+
+	// Action is the authorization decision for matching requests. If unspecified, defaults to Allow.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=Allow
+	// +optional
+	Action *egv1a1.AuthorizationAction `json:"action,omitempty"`
+}
+
+// MCPAuthorizationTarget defines the target of an authorization rule.
+type MCPAuthorizationTarget struct {
+	// Tools defines the list of tools this rule applies to.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	Tools []ToolCall `json:"tools"`
+}
+
+// MCPAuthorizationSource defines the source of an authorization rule.
+type MCPAuthorizationSource struct {
+	// JWT defines the JWT scopes required for this rule to match.
+	//
+	// +kubebuilder:validation:Required
+	JWT JWTSource `json:"jwt"`
+
+	// TODO: JWTSource can be optional in the future when we support more source types.
+}
+
+// JWTSource defines the MCP authorization source for JWT tokens.
+// At least one of scopes or claims must be provided.
+// Scopes and claims are AND-ed: when both are specified, both sets must match.
+//
+// +kubebuilder:validation:XValidation:rule="(has(self.scopes) && size(self.scopes) > 0) || (has(self.claims) && size(self.claims) > 0)",message="either scopes or claims must be specified"
+type JWTSource struct {
+	// Scopes defines the list of JWT scopes required for the rule.
+	// If multiple scopes are specified, all scopes must be present in the JWT for the rule to match.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=16
+	// +optional
+	Scopes []egv1a1.JWTScope `json:"scopes,omitempty"`
+
+	// Claims defines the list of JWT claims required for the rule. Each claim must exist on the token
+	// and have at least one of the expected values. Use to enforce tenant or subject-based access.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=16
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="!self.exists(c, c.name == 'scope')",message="'scope' claim name is reserved for OAuth scopes"
+	Claims []egv1a1.JWTClaim `json:"claims,omitempty"`
+}
+
+// ToolCall represents a tool call in the MCP authorization target.
+type ToolCall struct {
+	// Backend is the name of the backend this tool belongs to.
+	//
+	// +kubebuilder:validation:Required
+	Backend string `json:"backend"`
+
+	// Tool is the name of the tool.
+	//
+	// +kubebuilder:validation:Required
+	Tool string `json:"tool"`
 }
 
 // JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HTTPS endpoint or from a local source.
@@ -257,7 +399,13 @@ type ProtectedResourceMetadata struct {
 	// +optional
 	ResourceName *string `json:"resourceName,omitempty"`
 
-	// ScopesSupported is a list of OAuth 2.0 scopes that the resource server supports.
+	// ScopesSupported defines the minimal set of scopes required for the basic functionality of the MCPRoute.
+	// It should avoid broad or overly permissive scopes to prevent clients from requesting tokens with excessive privileges.
+	//
+	// If an operation requires additional scopes that are not present in the access token, the client will receive a
+	// 403 Forbidden response that includes the required scopes in the `scope` field of the `WWW-Authenticate` header.
+	// This enables incremental privilege elevation through targeted `WWW-Authenticate: scope="..."` challenges when
+	// privileged operations are first attempted.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=32

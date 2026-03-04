@@ -26,6 +26,7 @@ type Options struct {
 	Port                              int
 	ForceJSONResponse, DumbEchoServer bool
 	WriteTimeout                      time.Duration
+	DisableLog                        bool
 }
 
 // NewServer starts a demo MCP server with two tools: echo and sum.
@@ -37,7 +38,7 @@ type Options struct {
 // When dumbEchoServer is true, the server will only implement the echo tool,
 // and will not implement any prompts or resources. This is useful for testing
 // basic routing.
-func NewServer(opts *Options) *http.Server {
+func NewServer(opts *Options) (*http.Server, *mcp.Server) {
 	if opts.DumbEchoServer {
 		return newDumbServer(opts.Port)
 	}
@@ -64,9 +65,18 @@ func NewServer(opts *Options) *http.Server {
 			},
 			CompletionHandler: func(_ context.Context, request *mcp.CompleteRequest) (*mcp.CompleteResult, error) {
 				logger.Printf("Complete request: %+v", request)
+				if request.Params.Ref.Name != "" {
+					return &mcp.CompleteResult{
+						Completion: mcp.CompletionResultDetails{
+							Values: []string{"python", "pytorch", "pyside"},
+						},
+					}, nil
+				}
+
+				updatedURI := strings.Replace(request.Params.Ref.URI, "{id}", request.Params.Argument.Value, 1)
 				return &mcp.CompleteResult{
 					Completion: mcp.CompletionResultDetails{
-						Values: []string{"python", "pytorch", "pyside"},
+						Values: []string{updatedURI},
 					},
 				}, nil
 			},
@@ -121,6 +131,9 @@ func NewServer(opts *Options) *http.Server {
 		WriteTimeout: opts.WriteTimeout,
 		Handler:      handler,
 		ConnState: func(conn net.Conn, state http.ConnState) {
+			if opts.DisableLog {
+				return
+			}
 			log.Printf("MCP SERVER connection [%s] %s -> %s\n", state, conn.RemoteAddr(), conn.LocalAddr())
 		},
 	}
@@ -130,10 +143,10 @@ func NewServer(opts *Options) *http.Server {
 			log.Fatalf("server error: %v", err)
 		}
 	}()
-	return server
+	return server, s
 }
 
-func newDumbServer(port int) *http.Server {
+func newDumbServer(port int) (*http.Server, *mcp.Server) {
 	s := mcp.NewServer(
 		&mcp.Implementation{Name: "dumb-echo-server", Version: "0.1.0"},
 		&mcp.ServerOptions{HasTools: true},
@@ -148,5 +161,5 @@ func newDumbServer(port int) *http.Server {
 			log.Fatalf("server error: %v", err)
 		}
 	}()
-	return server
+	return server, s
 }

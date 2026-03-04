@@ -17,7 +17,7 @@ jobs:
     env:
       # Do not use ${{ github.event.pull_request.body }} directly in run command.
       BODY: ${{ github.event.pull_request.body }}
-    if: ${{ github.actor != 'dependabot[bot]' }}
+    if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }}
     steps:
       - name: Check comment out lines
         run: |
@@ -55,9 +55,9 @@ jobs:
   title:
     name: Title
     runs-on: ubuntu-latest
-    if: ${{ github.actor != 'dependabot[bot]' }}
+    if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }}
     steps:
-      - uses: amannn/action-semantic-pull-request@v5
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -78,6 +78,7 @@ jobs:
             extproc
             controller
             translator
+            tracing
             examples
             blog
             site

@@ -8,10 +8,9 @@
 package testotel
 
 import (
+	"context"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
+	"net"
 	"strings"
 	"time"
 
@@ -19,87 +18,87 @@ import (
 	collecttracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	metricsv1 "go.opentelemetry.io/proto/otlp/metrics/v1"
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
-	"google.golang.org/protobuf/proto"
+	"google.golang.org/grpc"
 )
 
 // otlpTimeout is the timeout for spans to read back.
 const otlpTimeout = 1 * time.Second // OTEL_BSP_SCHEDULE_DELAY + overhead..
 
-// StartOTLPCollector starts a test OTLP collector server that receives trace and metrics data.
+// traceServer implements the OTLP trace service.
+type traceServer struct {
+	collecttracev1.UnimplementedTraceServiceServer
+	spanCh chan *tracev1.ResourceSpans
+}
+
+func (s *traceServer) Export(_ context.Context, req *collecttracev1.ExportTraceServiceRequest) (*collecttracev1.ExportTraceServiceResponse, error) {
+	for _, resourceSpans := range req.ResourceSpans {
+		timeout := time.After(otlpTimeout)
+		select {
+		case s.spanCh <- resourceSpans:
+		case <-timeout:
+			// Avoid blocking if the channel is full. Likely indicates a test issue or spans not being read like
+			// the ones emitted during test shutdown. Otherwise, server shutdown blocks the test indefinitely.
+			fmt.Println("Warning: Dropping spans due to timeout")
+		}
+	}
+	return &collecttracev1.ExportTraceServiceResponse{}, nil
+}
+
+// metricsServer implements the OTLP metrics service.
+type metricsServer struct {
+	collectmetricsv1.UnimplementedMetricsServiceServer
+	metricsCh chan *metricsv1.ResourceMetrics
+}
+
+func (s *metricsServer) Export(_ context.Context, req *collectmetricsv1.ExportMetricsServiceRequest) (*collectmetricsv1.ExportMetricsServiceResponse, error) {
+	for _, resourceMetrics := range req.ResourceMetrics {
+		timeout := time.After(otlpTimeout)
+		select {
+		case s.metricsCh <- resourceMetrics:
+		case <-timeout:
+			// Avoid blocking if the channel is full. Likely indicates a test issue or metrics not being read like
+			// the ones emitted during test shutdown. Otherwise, server shutdown blocks the test indefinitely.
+			fmt.Println("Warning: Dropping metrics due to timeout")
+		}
+	}
+	return &collectmetricsv1.ExportMetricsServiceResponse{}, nil
+}
+
+// StartOTLPCollector starts a test OTLP collector server that receives trace and metrics data via gRPC.
 func StartOTLPCollector() *OTLPCollector {
 	spanCh := make(chan *tracev1.ResourceSpans, 10)
 	metricsCh := make(chan *metricsv1.ResourceMetrics, 10)
-	mux := http.NewServeMux()
 
-	mux.HandleFunc("/v1/traces", func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, "Failed to read body", http.StatusBadRequest)
-			return
-		}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(fmt.Sprintf("failed to listen: %v", err))
+	}
 
-		var traces collecttracev1.ExportTraceServiceRequest
-		if err := proto.Unmarshal(body, &traces); err != nil {
-			http.Error(w, "Failed to parse traces", http.StatusBadRequest)
-			return
-		}
+	server := grpc.NewServer()
+	collecttracev1.RegisterTraceServiceServer(server, &traceServer{spanCh: spanCh})
+	collectmetricsv1.RegisterMetricsServiceServer(server, &metricsServer{metricsCh: metricsCh})
 
-		for _, resourceSpans := range traces.ResourceSpans {
-			timeout := time.After(otlpTimeout)
-			select {
-			case spanCh <- resourceSpans:
-			case <-timeout:
-				// Avoid blocking if the channel is full. Likely indicates a test issue or spans not being read like
-				// the ones emitted during test shutdown. Otherwise, testerver shutdown blocks the test indefinitely.
-				fmt.Println("Warning: Dropping spans due to timeout")
-			}
-		}
+	go func() {
+		// Server.Serve returns error on Stop/GracefulStop which is expected.
+		_ = server.Serve(listener)
+	}()
 
-		w.WriteHeader(http.StatusOK)
-	})
-
-	mux.HandleFunc("/v1/metrics", func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, "Failed to read body", http.StatusBadRequest)
-			return
-		}
-
-		var metrics collectmetricsv1.ExportMetricsServiceRequest
-		if err := proto.Unmarshal(body, &metrics); err != nil {
-			http.Error(w, "Failed to parse metrics", http.StatusBadRequest)
-			return
-		}
-
-		for _, resourceMetrics := range metrics.ResourceMetrics {
-			timeout := time.After(otlpTimeout)
-			select {
-			case metricsCh <- resourceMetrics:
-			case <-timeout:
-				// Avoid blocking if the channel is full. Likely indicates a test issue or metrics not being read like
-				// the ones emitted during test shutdown. Otherwise, testerver shutdown blocks the test indefinitely.
-				fmt.Println("Warning: Dropping metrics due to timeout")
-			}
-		}
-
-		w.WriteHeader(http.StatusOK)
-	})
-
-	s := httptest.NewServer(mux)
+	endpoint := fmt.Sprintf("http://%s", listener.Addr().String())
 	env := []string{
-		fmt.Sprintf("OTEL_EXPORTER_OTLP_ENDPOINT=%s", s.URL),
-		"OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf",
+		fmt.Sprintf("OTEL_EXPORTER_OTLP_ENDPOINT=%s", endpoint),
+		"OTEL_EXPORTER_OTLP_PROTOCOL=grpc",
 		"OTEL_SERVICE_NAME=ai-gateway-extproc",
 		"OTEL_BSP_SCHEDULE_DELAY=100",
 		"OTEL_METRIC_EXPORT_INTERVAL=100",
 		// Use delta temporality to prevent metric accumulation across subtests.
 		"OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta",
 	}
-	return &OTLPCollector{s, env, spanCh, metricsCh}
+	return &OTLPCollector{server, listener, env, spanCh, metricsCh}
 }
 
 type OTLPCollector struct {
-	s         *httptest.Server
+	server    *grpc.Server
+	listener  net.Listener
 	env       []string
 	spanCh    chan *tracev1.ResourceSpans
 	metricsCh chan *metricsv1.ResourceMetrics
@@ -185,5 +184,6 @@ func (o *OTLPCollector) TakeMetrics(expectedCount int) []*metricsv1.ResourceMetr
 
 // Close shuts down the collector and cleans up resources.
 func (o *OTLPCollector) Close() {
-	o.s.Close()
+	o.server.GracefulStop()
+	o.listener.Close()
 }

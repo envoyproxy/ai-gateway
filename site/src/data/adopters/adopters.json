@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Tencent Cloud",
+    "logoUrl": "/img/adopters/tencent-cloud.png",
+    "url": "https://www.tencentcloud.com/"
+  },
+  {
+    "name": "Tetrate",
+    "logoUrl": "/img/adopters/tetrate.svg",
+    "url": "https://tetrate.io/",
+    "description": "Tetrate provides trusted connectivity and control for AI. Empower developers while safeguarding the business. Built atop the proven Envoy proxy & Envoy AI Gateway."
+  },
+  {
+    "name": "Nutanix",
+    "logoUrl": "/img/adopters/nutanix.svg",
+    "url": "https://www.nutanix.com/"
+  },
+  {
+    "name": "Bloomberg",
+    "logoUrl": "/img/adopters/bloomberg.png",
+    "url": "https://www.TechAtBloomberg.com/opensource"
+  },
+  {
+    "name": "Alan by Comma Soft",
+    "logoUrl": "/img/adopters/2026_alan-rbg_320.png",
+    "url": "https://alan.de/"
+  },
+  {
+    "name": "LY Corporation",
+    "logoUrl": "/img/adopters/ly-corporation.png",
+    "url": "https://www.lycorp.co.jp/en/"
+  },
+  {
+    "name": "National Research Platform",
+    "logoUrl": "/img/adopters/nrp.png",
+    "url": "https://nrp.ai"
+  },
+  {
+    "name": "Your Logo Here",
+    "logoUrl": "/img/adopters/placeholder-company.svg",
+    "description": "Add your logo to show support for the project",
+    "url": "https://github.com/envoyproxy/ai-gateway/edit/main/site/src/data/adopters/adopters.json"
+  }
+]

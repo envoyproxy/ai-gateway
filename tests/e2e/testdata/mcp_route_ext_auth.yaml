@@ -1,0 +1,137 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: mcp-gateway-class-ext-auth
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: mcp-gateway-ext-auth
+  namespace: default
+spec:
+  gatewayClassName: mcp-gateway-class-ext-auth
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-mcp-gateway-ext-auth
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-route-ext-auth
+  namespace: default
+spec:
+  parentRefs:
+    - name: mcp-gateway-ext-auth
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  securityPolicy:
+    extAuth:
+      grpc:
+        backendRefs:
+          - name: ext-auth-server
+            port: 1073
+  backendRefs:
+    - name: mcp-backend-ext-auth
+      port: 1063
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-backend-ext-auth
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-backend-ext-auth
+  template:
+    metadata:
+      labels:
+        app: mcp-backend-ext-auth
+    spec:
+      containers:
+        - name: mcp-backend-ext-auth
+          image: docker.io/envoyproxy/ai-gateway-testmcpserver:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 1063
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-backend-ext-auth
+  namespace: default
+spec:
+  selector:
+    app: mcp-backend-ext-auth
+  ports:
+    - protocol: TCP
+      port: 1063
+      targetPort: 1063
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ext-auth-server
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ext-auth-server
+  template:
+    metadata:
+      labels:
+        app: ext-auth-server
+    spec:
+      containers:
+        - name: ext-auth-server
+          image: docker.io/envoyproxy/ai-gateway-testextauthserver:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 1073
+          env:
+            - name: EXT_AUTH_ALLOWED_VALUE
+              value: allowed-value
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ext-auth-server
+  namespace: default
+spec:
+  selector:
+    app: ext-auth-server
+  ports:
+    - protocol: TCP
+      port: 1073
+      targetPort: 1073
+  type: ClusterIP
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-mcp-gateway-ext-auth
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          # Clear the default memory/cpu requirements for local tests.
+          resources: {}

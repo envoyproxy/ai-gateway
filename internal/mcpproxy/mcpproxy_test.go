@@ -11,7 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"regexp"
+	"net/url"
 	"sync"
 	"testing"
 
@@ -21,12 +21,12 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 var (
-	_ tracing.MCPSpan   = (*fakeSpan)(nil)
-	_ tracing.MCPTracer = (*fakeTracer)(nil)
+	_ tracingapi.MCPSpan   = (*fakeSpan)(nil)
+	_ tracingapi.MCPTracer = (*fakeTracer)(nil)
 )
 
 type fakeSpan struct {
@@ -50,18 +50,18 @@ type fakeTracer struct {
 	span *fakeSpan
 }
 
-func (f *fakeTracer) StartSpanAndInjectMeta(context.Context, *jsonrpc.Request, mcp.Params, http.Header) tracing.MCPSpan {
+func (f *fakeTracer) StartSpanAndInjectMeta(context.Context, *jsonrpc.Request, mcp.Params, http.Header) tracingapi.MCPSpan {
 	if f.span == nil {
 		f.span = &fakeSpan{}
 	}
 	return f.span
 }
 
-var noopTracer = tracing.NoopMCPTracer{}
+var noopTracer = tracingapi.NoopMCPTracer{}
 
 func TestNewMCPProxy(t *testing.T) {
 	l := slog.Default()
-	proxy, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, DefaultSessionCrypto("test", ""))
+	proxy, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100), nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, proxy)
@@ -70,7 +70,7 @@ func TestNewMCPProxy(t *testing.T) {
 
 func TestMCPProxy_HTTPMethods(t *testing.T) {
 	l := slog.Default()
-	_, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, DefaultSessionCrypto("test", ""))
+	_, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100), nil)
 	require.NoError(t, err)
 
 	// Test unsupported method.
@@ -83,14 +83,107 @@ func TestMCPProxy_HTTPMethods(t *testing.T) {
 	require.Contains(t, rr.Body.String(), "method not allowed")
 }
 
-func TestLoadConfig_NilMCPConfig(t *testing.T) {
-	proxy, _, err := NewMCPProxy(slog.Default(), stubMetrics{}, noopTracer, DefaultSessionCrypto("test", ""))
+func Test_applyLogHeaderMappings(t *testing.T) {
+	logAttrs := map[string]string{"x-session-id": "session.id"}
+	proxyCfg := &ProxyConfig{logRequestHeaderAttributes: logAttrs}
+
+	t.Run("meta only", func(t *testing.T) {
+		reqCtx := &mcpRequestContext{ProxyConfig: proxyCfg}
+		req, err := http.NewRequest(http.MethodPost, "http://example", nil)
+		require.NoError(t, err)
+
+		id, err := jsonrpc.MakeID("1")
+		require.NoError(t, err)
+		msg := &jsonrpc.Request{
+			ID:     id,
+			Method: "tools/call",
+			Params: []byte(`{"_meta":{"x-session-id":"meta-session"}}`),
+		}
+
+		reqCtx.applyLogHeaderMappings(req, msg)
+		require.Equal(t, "meta-session", req.Header.Get("x-session-id"))
+	})
+
+	t.Run("header fallback", func(t *testing.T) {
+		reqCtx := &mcpRequestContext{
+			ProxyConfig:    proxyCfg,
+			requestHeaders: http.Header{"X-Session-Id": []string{"header-session"}},
+		}
+		req, err := http.NewRequest(http.MethodPost, "http://example", nil)
+		require.NoError(t, err)
+
+		id, err := jsonrpc.MakeID("2")
+		require.NoError(t, err)
+		msg := &jsonrpc.Request{
+			ID:     id,
+			Method: "tools/call",
+			Params: []byte(`{"_meta":{"other":"x"}}`),
+		}
+
+		reqCtx.applyLogHeaderMappings(req, msg)
+		require.Equal(t, "header-session", req.Header.Get("x-session-id"))
+	})
+}
+
+func Test_originalPathForRequest(t *testing.T) {
+	t.Run("request uri preferred", func(t *testing.T) {
+		req := &http.Request{RequestURI: "/mcp?x=1"}
+		require.Equal(t, "/mcp?x=1", originalPathForRequest(req))
+	})
+
+	t.Run("url request uri", func(t *testing.T) {
+		req := &http.Request{URL: mustParseURL(t, "http://example/mcp?x=1")}
+		require.Equal(t, "/mcp?x=1", originalPathForRequest(req))
+	})
+
+	t.Run("url path only", func(t *testing.T) {
+		req := &http.Request{URL: mustParseURL(t, "http://example/mcp")}
+		require.Equal(t, "/mcp", originalPathForRequest(req))
+	})
+}
+
+func Test_applyOriginalPathHeaders(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "http://example/mcp", nil)
 	require.NoError(t, err)
 
-	config := &filterapi.Config{MCPConfig: nil}
+	reqCtx := &mcpRequestContext{originalPath: "/mcp?x=1"}
+	reqCtx.applyOriginalPathHeaders(req)
+	require.Equal(t, "/mcp?x=1", req.Header.Get(internalapi.OriginalPathHeader))
+	require.Equal(t, "/mcp?x=1", req.Header.Get(internalapi.EnvoyOriginalPathHeader))
 
-	err = proxy.LoadConfig(t.Context(), config)
-	require.NoError(t, err)
+	t.Run("does not override", func(t *testing.T) {
+		req2, err := http.NewRequest(http.MethodGet, "http://example/mcp", nil)
+		require.NoError(t, err)
+		req2.Header.Set(internalapi.OriginalPathHeader, "/already")
+		req2.Header.Set(internalapi.EnvoyOriginalPathHeader, "/envoy-already")
+		reqCtx.applyOriginalPathHeaders(req2)
+		require.Equal(t, "/already", req2.Header.Get(internalapi.OriginalPathHeader))
+		require.Equal(t, "/envoy-already", req2.Header.Get(internalapi.EnvoyOriginalPathHeader))
+	})
+}
+
+func Test_extractMetaFromJSONRPCMessage(t *testing.T) {
+	t.Run("non request", func(t *testing.T) {
+		id, err := jsonrpc.MakeID("1")
+		require.NoError(t, err)
+		resp := &jsonrpc.Response{ID: id, Result: []byte(`{}`)}
+		require.Nil(t, extractMetaFromJSONRPCMessage(resp))
+	})
+
+	t.Run("no meta", func(t *testing.T) {
+		id, err := jsonrpc.MakeID("1")
+		require.NoError(t, err)
+		req := &jsonrpc.Request{ID: id, Method: "tools/call", Params: []byte(`{"x":1}`)}
+		require.Nil(t, extractMetaFromJSONRPCMessage(req))
+	})
+
+	t.Run("meta present", func(t *testing.T) {
+		id, err := jsonrpc.MakeID("1")
+		require.NoError(t, err)
+		req := &jsonrpc.Request{ID: id, Method: "tools/call", Params: []byte(`{"_meta":{"x-session-id":"s1"}}`)}
+		meta := extractMetaFromJSONRPCMessage(req)
+		require.Equal(t, "s1", meta["x-session-id"])
+	})
 }
 
 const (
@@ -125,6 +218,13 @@ const (
 type perBackendCallCount struct {
 	mu    sync.Mutex
 	count map[string]int
+}
+
+func mustParseURL(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(raw)
+	require.NoError(t, err)
+	return u
 }
 
 func (p *perBackendCallCount) inc(key string) int {
@@ -351,41 +451,4 @@ func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-}
-
-func Test_toolSelector_Allows(t *testing.T) {
-	reBa := regexp.MustCompile("^ba.*")
-	tests := []struct {
-		name     string
-		selector toolSelector
-		tools    []string
-		want     []bool
-	}{
-		{
-			name:     "no rules allows all",
-			selector: toolSelector{},
-			tools:    []string{"foo", "bar"},
-			want:     []bool{true, true},
-		},
-		{
-			name:     "include specific tool",
-			selector: toolSelector{include: map[string]struct{}{"foo": {}}},
-			tools:    []string{"foo", "bar"},
-			want:     []bool{true, false},
-		},
-		{
-			name:     "include regexp",
-			selector: toolSelector{includeRegexps: []*regexp.Regexp{reBa}},
-			tools:    []string{"bar", "foo"},
-			want:     []bool{true, false},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			for i, tool := range tt.tools {
-				got := tt.selector.allows(tool)
-				require.Equalf(t, tt.want[i], got, "tool: %s", tool)
-			}
-		})
-	}
 }

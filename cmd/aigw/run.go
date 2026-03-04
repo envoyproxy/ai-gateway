@@ -78,6 +78,8 @@ type runCmdContext struct {
 	// fakeClientSet is the fake client set for the k8s resources. The objects are written to this client set and updated
 	// during the translation.
 	fakeClientSet *fake.Clientset
+	// mcpSessionEncryptionIterations is the number of iterations for MCP session encryption key derivation.
+	mcpSessionEncryptionIterations int
 }
 
 // run starts the AI Gateway locally for a given configuration.
@@ -85,13 +87,13 @@ type runCmdContext struct {
 // All files are written to XDG Base Directory locations:
 //  1. State: $AIGW_STATE_HOME/runs/{runID}/ - configs, resources, logs
 //  2. Runtime: $AIGW_RUNTIME_DIR/{runID}/ - ephemeral sockets
-func run(ctx context.Context, c cmdRun, o *runOpts, stdout, stderr io.Writer) error {
+func run(ctx context.Context, c *cmdRun, o *runOpts, stdout, stderr io.Writer) error {
 	start := time.Now()
 
 	// First, we need to create the self-signed certificates used for communication between the EG and Envoy.
 	// Certificates will be placed at ~/.config/envoy-gateway/certs, which is the default location used by Envoy Gateway.
 	certGenOut := &bytes.Buffer{}
-	certGen := root.GetRootCommand()
+	certGen := root.GetRootCommand(nil)
 	certGen.SetOut(certGenOut)
 	certGen.SetErr(certGenOut)
 	certGen.SetArgs([]string{"certgen", "--local"})
@@ -136,14 +138,19 @@ func run(ctx context.Context, c cmdRun, o *runOpts, stdout, stderr io.Writer) er
 	// Do the translation of the given AI Gateway resources Yaml into Envoy Gateway resources and write them to the file.
 	resourcesBuf := &bytes.Buffer{}
 	runCtx := &runCmdContext{
-		isDebug:                  c.Debug,
-		envoyGatewayResourcesOut: resourcesBuf,
-		stderrLogger:             debugLogger,
-		stderr:                   stderr,
-		tmpdir:                   filepath.Dir(o.logPath), // runDir
-		udsPath:                  o.extprocUDSPath,
-		adminPort:                c.AdminPort,
-		extProcLauncher:          o.extProcLauncher,
+		isDebug:                        c.Debug,
+		envoyGatewayResourcesOut:       resourcesBuf,
+		stderrLogger:                   debugLogger,
+		stderr:                         stderr,
+		tmpdir:                         filepath.Dir(o.logPath), // runDir
+		udsPath:                        o.extprocUDSPath,
+		adminPort:                      c.AdminPort,
+		extProcLauncher:                o.extProcLauncher,
+		mcpSessionEncryptionIterations: c.MCPSessionEncryptionIterations,
+	}
+	// If any of the configured MCP servers is using stdio, set up the streamable HTTP proxies for them
+	if err = proxyStdioMCPServers(ctx, debugLogger, c.mcpConfig); err != nil {
+		return fmt.Errorf("failed to proxy stdio for MCP servers: %w", err)
 	}
 	aiGatewayResourcesYaml, err := readConfig(o.configPath, c.mcpConfig, c.Debug)
 	if err != nil {
@@ -167,7 +174,16 @@ func run(ctx context.Context, c cmdRun, o *runOpts, stdout, stderr io.Writer) er
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 	s := grpc.NewServer()
-	extSrv := extensionserver.New(fakeClient, ctrl.Log, o.extprocUDSPath, true)
+	baseLogAttrs, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv("OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES"))
+	if err != nil {
+		return fmt.Errorf("invalid OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES: %w", err)
+	}
+	overrideLogAttrs, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv("OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES"))
+	if err != nil {
+		return fmt.Errorf("invalid OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES: %w", err)
+	}
+	logRequestHeaderAttributes := internalapi.MergeRequestHeaderAttributeMappings(baseLogAttrs, overrideLogAttrs)
+	extSrv := extensionserver.New(fakeClient, ctrl.Log, o.extprocUDSPath, true, logRequestHeaderAttributes)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 
@@ -195,7 +211,7 @@ func run(ctx context.Context, c cmdRun, o *runOpts, stdout, stderr io.Writer) er
 	// Now running the `envoy-gateway` CLI alternative below by passing `--config-path` to `egConfigPath`.
 	// Then the agent will read the resources from the file pointed inside the config and start the Envoy process.
 
-	server := root.GetRootCommand()
+	server := root.GetRootCommand(nil)
 	// TODO: enable the log by default after the issue is resolved: https://github.com/envoyproxy/gateway/issues/6596
 	if c.Debug {
 		server.SetOut(stdout)
@@ -290,31 +306,38 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 	}
 	runCtx.fakeClientSet = _fakeClientSet
 
-	for _, hrf := range httpRouteFilters.Items {
-		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&hrf.TypeMeta, &hrf)
+	for i := range httpRouteFilters.Items {
+		hrf := &httpRouteFilters.Items[i]
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&hrf.TypeMeta, hrf)
 	}
-	for _, hr := range httpRoutes.Items {
-		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&hr.TypeMeta, &hr)
+	for i := range httpRoutes.Items {
+		hr := &httpRoutes.Items[i]
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&hr.TypeMeta, hr)
 	}
-	for _, b := range backends.Items {
-		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&b.TypeMeta, &b)
+	for i := range backends.Items {
+		b := &backends.Items[i]
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&b.TypeMeta, b)
 	}
-	for _, s := range secretList.Items {
-		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&s.TypeMeta, &s)
+	for i := range secretList.Items {
+		s := &secretList.Items[i]
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&s.TypeMeta, s)
 	}
-	for _, btp := range backendTrafficPolicies.Items {
-		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&btp.TypeMeta, &btp)
+	for i := range backendTrafficPolicies.Items {
+		btp := &backendTrafficPolicies.Items[i]
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&btp.TypeMeta, btp)
 	}
-	for _, sp := range securityPolicies.Items {
-		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&sp.TypeMeta, &sp)
+	for i := range securityPolicies.Items {
+		sp := &securityPolicies.Items[i]
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&sp.TypeMeta, sp)
 	}
 	gw := gateways[0]
 	if len(gw.Spec.Listeners) == 0 {
 		return nil, nil, 0, fmt.Errorf("gateway %s has no listeners configured", gw.Name)
 	}
 	runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&gw.TypeMeta, gw)
-	for _, ep := range eps.Items {
-		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&ep.TypeMeta, &ep)
+	for i := range eps.Items {
+		ep := &eps.Items[i]
+		runCtx.mustClearSetOwnerReferencesAndStatusAndWriteObj(&ep.TypeMeta, ep)
 	}
 
 	filterConfigSecret, err := runCtx.fakeClientSet.CoreV1().
@@ -357,6 +380,7 @@ func (runCtx *runCmdContext) mustStartExtProc(
 		"--extProcAddr", fmt.Sprintf("unix://%s", runCtx.udsPath),
 		"--adminPort", fmt.Sprintf("%d", runCtx.adminPort),
 		"--mcpAddr", ":" + strconv.Itoa(internalapi.MCPProxyPort),
+		"--mcpSessionEncryptionIterations", strconv.Itoa(runCtx.mcpSessionEncryptionIterations),
 	}
 	if runCtx.isDebug {
 		args = append(args, "--logLevel", "debug")
@@ -364,11 +388,33 @@ func (runCtx *runCmdContext) mustStartExtProc(
 		args = append(args, "--logLevel", "warn")
 	}
 
-	if metricsAttrs := os.Getenv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES"); metricsAttrs != "" {
+	baseAttrs, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv("OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES"))
+	if err != nil {
+		return errDone(fmt.Errorf("invalid OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES: %w", err))
+	}
+	metricsOverrideAttrs, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv("OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES"))
+	if err != nil {
+		return errDone(fmt.Errorf("invalid OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES: %w", err))
+	}
+	metricsAttrs := internalapi.FormatRequestHeaderAttributeMapping(internalapi.MergeRequestHeaderAttributeMappings(baseAttrs, metricsOverrideAttrs))
+	if metricsAttrs != "" {
 		args = append(args, "-metricsRequestHeaderAttributes", metricsAttrs)
 	}
-	if spanAttrs := os.Getenv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES"); spanAttrs != "" {
+	spanOverrideAttrs, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv("OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES"))
+	if err != nil {
+		return errDone(fmt.Errorf("invalid OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES: %w", err))
+	}
+	spanAttrs := internalapi.FormatRequestHeaderAttributeMapping(internalapi.MergeRequestHeaderAttributeMappings(baseAttrs, spanOverrideAttrs))
+	if spanAttrs != "" {
 		args = append(args, "-spanRequestHeaderAttributes", spanAttrs)
+	}
+	logOverrideAttrs, err := internalapi.ParseRequestHeaderAttributeMapping(os.Getenv("OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES"))
+	if err != nil {
+		return errDone(fmt.Errorf("invalid OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES: %w", err))
+	}
+	logAttrs := internalapi.FormatRequestHeaderAttributeMapping(internalapi.MergeRequestHeaderAttributeMappings(baseAttrs, logOverrideAttrs))
+	if logAttrs != "" {
+		args = append(args, "-logRequestHeaderAttributes", logAttrs)
 	}
 
 	done := make(chan error)
@@ -379,6 +425,13 @@ func (runCtx *runCmdContext) mustStartExtProc(
 		}
 		close(done)
 	}()
+	return done
+}
+
+func errDone(err error) <-chan error {
+	done := make(chan error, 1)
+	done <- err
+	close(done)
 	return done
 }
 

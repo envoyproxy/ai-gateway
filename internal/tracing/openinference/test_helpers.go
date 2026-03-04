@@ -6,13 +6,14 @@
 package openinference
 
 import (
-	"encoding/json"
 	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/trace"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // RequireAttributesEqual compensates for Go not having a reliable JSON field

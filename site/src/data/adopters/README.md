@@ -1,0 +1,88 @@
+# Adopters Data
+
+This directory contains the adopters data for organizations that support Envoy AI Gateway.
+
+## Adding Your Organization
+
+We've made it super easy to add your organization! Just click the "Add Your Organization" button on the [homepage](https://aigateway.envoyproxy.io/) or follow the link below.
+
+### Quick Add (Recommended)
+
+**[Edit adopters.json on GitHub →](https://github.com/envoyproxy/ai-gateway/edit/main/site/src/data/adopters/adopters.json)**
+
+This will open the GitHub editor in your browser where you can:
+
+1. Add your organization's entry to the JSON array
+2. Commit your changes
+3. GitHub will automatically create a pull request for you!
+
+No need to clone the repository or set up a development environment.
+
+### JSON Format
+
+Add your organization to the array in `adopters/adopters.json`:
+
+```json
+{
+  "name": "Your Organization Name",
+  "logoUrl": "https://yoursite.com/logo.svg",
+  "url": "https://yourcompany.com",
+  "description": "Brief description (shown on hover)"
+}
+```
+
+### Fields
+
+- **`name`** (required): Your organization's display name
+- **`logoUrl`** (required): URL to your logo - can be either:
+  - External URL: `https://yoursite.com/logo.svg` (easiest!)
+  - Local path: `/img/adopters/your-logo.svg` (requires uploading logo file)
+- **`url`** (optional): Your organization's website (makes the logo clickable)
+- **`description`** (optional): Brief description shown when users hover over your logo
+
+### Logo Options
+
+#### Option 1: External URL (Easiest)
+
+Simply provide a direct link to your logo hosted anywhere:
+
+```json
+"logoUrl": "https://yourcompany.com/assets/logo.svg"
+```
+
+#### Option 2: Local Logo (Better Performance)
+
+If you prefer to host the logo locally:
+
+1. Add your logo to `site/static/img/adopters/your-company.svg`
+2. Reference it as: `"logoUrl": "/img/adopters/your-company.svg"`
+
+**Logo Specifications:**
+
+- **Format**: SVG preferred (PNG also acceptable)
+- **Dimensions**: 240x160px or similar 3:2 ratio recommended
+- **Background**: Transparent or white background works best
+
+### Example
+
+```json
+{
+  "name": "Acme Corporation",
+  "logoUrl": "https://acme.com/logo.svg",
+  "url": "https://acme.com",
+  "description": "Using Envoy AI Gateway for multi-model AI routing"
+}
+```
+
+### Display Order
+
+Adopters are displayed alphabetically by organization name, so your position will be determined automatically.
+
+### Need Help?
+
+If you have questions about adding your organization:
+
+- Ask in [GitHub Discussions](https://github.com/envoyproxy/ai-gateway/discussions)
+- Join our [Slack community](https://envoyproxy.slack.com/archives/C07Q4N24VAA)
+
+Thank you for supporting Envoy AI Gateway!

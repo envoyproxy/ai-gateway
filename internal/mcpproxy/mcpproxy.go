@@ -8,13 +8,12 @@ package mcpproxy
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -24,82 +23,46 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
+	"github.com/envoyproxy/ai-gateway/internal/lang"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
-type (
-	// ProxyConfig holds the main MCP proxy configuration.
-	ProxyConfig struct {
-		*mcpProxyConfig
-	}
-
-	// MCPProxy serves /mcp endpoint.
-	//
-	// This implements [extproc.ConfigReceiver] to gets the up-to-date configuration.
-	MCPProxy struct {
-		*mcpProxyConfig
-		metrics       metrics.MCPMetrics
-		l             *slog.Logger
-		sessionCrypto SessionCrypto
-		tracer        tracing.MCPTracer
-	}
-
-	mcpProxyConfig struct {
-		backendListenerAddr string
-		routes              map[filterapi.MCPRouteName]*mcpProxyConfigRoute // route name -> backends of that route.
-	}
-
-	mcpProxyConfigRoute struct {
-		backends      map[filterapi.MCPBackendName]filterapi.MCPBackend
-		toolSelectors map[filterapi.MCPBackendName]*toolSelector
-	}
-
-	// toolSelector filters tools using include patterns with exact matches or regular expressions.
-	toolSelector struct {
-		include        map[string]struct{}
-		includeRegexps []*regexp.Regexp
-	}
-)
-
-func (f *toolSelector) allows(tool string) bool {
-	// Check include filters - if no filter, allow all; if filter exists, allow only matches
-	if len(f.include) > 0 {
-		_, ok := f.include[tool]
-		return ok
-	}
-	if len(f.includeRegexps) > 0 {
-		for _, re := range f.includeRegexps {
-			if re.MatchString(tool) {
-				return true
-			}
-		}
-		return false
-	}
-
-	// No filters, allow all
-	return true
+// mcpRequestContext serves /mcp endpoint.
+type mcpRequestContext struct {
+	*ProxyConfig
+	metrics        metrics.MCPMetrics
+	requestHeaders http.Header
+	originalPath   string
 }
 
 // NewMCPProxy creates a new MCPProxy instance.
-func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracing.MCPTracer, sessionCrypto SessionCrypto) (*ProxyConfig, *http.ServeMux, error) {
-	cfg := &ProxyConfig{}
+func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingapi.MCPTracer, sessionCrypto SessionCrypto, logRequestHeaderAttributes map[string]string) (*ProxyConfig, *http.ServeMux, error) {
+	toolChangeSignaler := newMultiWatcherSignaler() // used to signal changes to all active sessions.
+	cfg := &ProxyConfig{
+		toolChangeSignaler:         toolChangeSignaler,
+		tracer:                     tracer,
+		sessionCrypto:              sessionCrypto,
+		l:                          l,
+		client:                     http.Client{}, // No timeout as it's enforced at Envoy level.
+		logRequestHeaderAttributes: maps.Clone(logRequestHeaderAttributes),
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc(
 		// Must match all paths since the route selection happens at Envoy level and the "route" header is already
 		// set when it reaches here. We use that to select the appropriate backends, so we don't need to have different paths here.
 		//
 		// For example, if we mistakenly set /mcp here, only the route with prefix /mcp will be matched, and other routes
-		// with different prefixes will not be matched, which is not what we want.
+		// with different prefixes will not be matched, which is not desired.
 		"/", func(w http.ResponseWriter, r *http.Request) {
-			proxy := &MCPProxy{
-				mcpProxyConfig: cfg.mcpProxyConfig,
-				l:              l,
+			proxy := &mcpRequestContext{
 				metrics:        mcpMetrics.WithRequestAttributes(r),
-				tracer:         tracer,
-				sessionCrypto:  sessionCrypto,
+				ProxyConfig:    cfg,
+				requestHeaders: r.Header,
+				originalPath:   originalPathForRequest(r),
 			}
-
 			switch r.Method {
 			case http.MethodGet:
 				proxy.serveGET(w, r)
@@ -114,57 +77,64 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracing.M
 	return cfg, mux, nil
 }
 
-// LoadConfig implements [extproc.ConfigReceiver.LoadConfig] which will be called
-// when the configuration is updated on the file system.
-func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) error {
-	newConfig := &mcpProxyConfig{}
-	mcpConfig := config.MCPConfig
-	if config.MCPConfig == nil {
+func originalPathForRequest(r *http.Request) string {
+	if r.RequestURI != "" {
+		return r.RequestURI
+	}
+	if r.URL == nil {
+		return ""
+	}
+	return r.URL.RequestURI()
+}
+
+func setHeaderIfMissing(h http.Header, key, value string) {
+	if h.Get(key) != "" {
+		return
+	}
+	h.Set(key, value)
+}
+
+func (m *mcpRequestContext) applyOriginalPathHeaders(req *http.Request) {
+	setHeaderIfMissing(req.Header, internalapi.OriginalPathHeader, m.originalPath)
+	setHeaderIfMissing(req.Header, internalapi.EnvoyOriginalPathHeader, m.originalPath)
+}
+
+func (m *mcpRequestContext) applyLogHeaderMappings(req *http.Request, msg jsonrpc.Message) {
+	if req == nil || len(m.logRequestHeaderAttributes) == 0 {
+		return
+	}
+	meta := extractMetaFromJSONRPCMessage(msg)
+	for header := range m.logRequestHeaderAttributes {
+		if value := lang.CaseInsensitiveValue(meta, header); value != "" {
+			req.Header.Set(header, value)
+			continue
+		}
+		if m.requestHeaders == nil {
+			continue
+		}
+		if value := m.requestHeaders.Get(header); value != "" {
+			req.Header.Set(header, value)
+		}
+	}
+}
+
+func extractMetaFromJSONRPCMessage(msg jsonrpc.Message) map[string]any {
+	req, ok := msg.(*jsonrpc.Request)
+	if !ok || req == nil || len(req.Params) == 0 {
 		return nil
 	}
-
-	// Talk to the backend MCP listener on the local Envoy instance.
-	newConfig.backendListenerAddr = mcpConfig.BackendListenerAddr
-
-	// Build a map of routes to backends.
-	// Each route has its own set of backends. For a given downstream request,
-	// the MCP proxy initializes sessions only with the backends tied to that route.
-	newConfig.routes = make(map[filterapi.MCPRouteName]*mcpProxyConfigRoute, len(mcpConfig.Routes))
-
-	for _, route := range mcpConfig.Routes {
-		r := &mcpProxyConfigRoute{
-			backends:      make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(route.Backends)),
-			toolSelectors: make(map[filterapi.MCPBackendName]*toolSelector, len(route.Backends)),
-		}
-		for _, backend := range route.Backends {
-			r.backends[backend.Name] = backend
-			if s := backend.ToolSelector; s != nil {
-				ts := &toolSelector{
-					include: make(map[string]struct{}),
-				}
-				for _, tool := range s.Include {
-					ts.include[tool] = struct{}{}
-				}
-				for _, expr := range s.IncludeRegex {
-					re, err := regexp.Compile(expr)
-					if err != nil {
-						return fmt.Errorf("failed to compile include regex %q for backend %q in route %q: %w", expr, backend.Name, route.Name, err)
-					}
-					ts.includeRegexps = append(ts.includeRegexps, re)
-				}
-				r.toolSelectors[backend.Name] = ts
-			}
-		}
-		newConfig.routes[route.Name] = r
+	var params struct {
+		Meta map[string]any `json:"_meta"`
 	}
-
-	p.mcpProxyConfig = newConfig // This is racy, but we don't care.
-	return nil
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return nil
+	}
+	return params.Meta
 }
 
 // newSession creates a new session for a downstream client.
 // It multiplexes the initialize request to all backends defined in the MCPRoute associated with the downstream request.
-func (m *MCPProxy) newSession(ctx context.Context, p *mcp.InitializeParams, routeName filterapi.MCPRouteName, subject string, span tracing.MCPSpan) (*session, error) {
+func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializeParams, routeName filterapi.MCPRouteName, subject string, span tracingapi.MCPSpan) (*session, error) {
 	m.l.Debug("creating new MCP session")
 
 	var (
@@ -199,7 +169,7 @@ func (m *MCPProxy) newSession(ctx context.Context, p *mcp.InitializeParams, rout
 				// TODO: should we record a metric for this?
 				return
 			}
-			m.metrics.RecordInitializationDuration(ctx, &startAt, p)
+			m.metrics.RecordInitializationDuration(ctx, startAt, p)
 			if m.l.Enabled(ctx, slog.LevelDebug) {
 				m.l.Debug("created MCP session", slog.String("backend", backend.Name), slog.String("session_id", string(initResult.sessionID)))
 			}
@@ -228,11 +198,11 @@ func (m *MCPProxy) newSession(ctx context.Context, p *mcp.InitializeParams, rout
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt session ID: %w", err)
 	}
-	return &session{proxy: m, id: secureClientToGatewaySessionID(encrypted)}, nil
+	return &session{reqCtx: m, id: secureClientToGatewaySessionID(encrypted)}, nil
 }
 
 // sessionFromID returns the session with the given ID, or error if not found or invalid.
-func (m *MCPProxy) sessionFromID(id secureClientToGatewaySessionID, lastEvent secureClientToGatewayEventID) (*session, error) {
+func (m *mcpRequestContext) sessionFromID(id secureClientToGatewaySessionID, lastEvent secureClientToGatewayEventID) (*session, error) {
 	decrypted, err := m.sessionCrypto.Decrypt(string(id))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt session ID: %w", err)
@@ -256,7 +226,7 @@ func (m *MCPProxy) sessionFromID(id secureClientToGatewaySessionID, lastEvent se
 		}
 	}
 
-	return &session{id: id, route: route, proxy: m, perBackendSessions: perBackendSessionIDs}, nil
+	return &session{id: id, route: route, reqCtx: m, perBackendSessions: perBackendSessionIDs}, nil
 }
 
 type initializeResult struct {
@@ -264,7 +234,7 @@ type initializeResult struct {
 	result    *mcp.InitializeResult
 }
 
-func (m *MCPProxy) initializeSession(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, p *mcp.InitializeParams) (*initializeResult, error) {
+func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, p *mcp.InitializeParams) (*initializeResult, error) {
 	// Send the initialize request to the MCP backend listener.
 	reqID := mustJSONRPCRequestID()
 	var (
@@ -283,7 +253,7 @@ func (m *MCPProxy) initializeSession(ctx context.Context, routeName filterapi.MC
 			return nil, fmt.Errorf("failed to send MCP initialize request: %w", err)
 		}
 		defer func() {
-			_ = resp.Body.Close()
+			ensureHTTPConnectionReused(resp)
 		}()
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -358,7 +328,7 @@ func (m *MCPProxy) initializeSession(ctx context.Context, routeName filterapi.MC
 	// Need to invoke "notifications/initialized" to complete the initialization.
 	{
 		// Send the notifications/initialized request to the MCP backend listener.
-		mcpReq := &jsonrpc.Request{Method: "notifications/initialized", Params: json.RawMessage(`{}`)}
+		mcpReq := &jsonrpc.Request{Method: "notifications/initialized", Params: emptyJSONRPCMessage}
 		resp, err := m.invokeJSONRPCRequest(ctx, routeName, backend, &compositeSessionEntry{
 			sessionID: gatewayToMCPServerSessionID(sessionID),
 		}, mcpReq)
@@ -366,7 +336,7 @@ func (m *MCPProxy) initializeSession(ctx context.Context, routeName filterapi.MC
 			return nil, fmt.Errorf("failed to send MCP notifications/initialized request: %w", err)
 		}
 		defer func() {
-			_ = resp.Body.Close()
+			ensureHTTPConnectionReused(resp)
 		}()
 		if resp.StatusCode != http.StatusAccepted {
 			body, _ := io.ReadAll(resp.Body)
@@ -382,7 +352,7 @@ func (m *MCPProxy) initializeSession(ctx context.Context, routeName filterapi.MC
 	}, nil
 }
 
-func (m *MCPProxy) invokeJSONRPCRequest(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry, msg jsonrpc.Message) (*http.Response, error) {
+func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry, msg jsonrpc.Message) (*http.Response, error) {
 	encoded, err := jsonrpc.EncodeMessage(msg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode MCP message: %w", err)
@@ -392,6 +362,8 @@ func (m *MCPProxy) invokeJSONRPCRequest(ctx context.Context, routeName filterapi
 		return nil, fmt.Errorf("failed to create MCP notifications/initialized request: %w", err)
 	}
 	addMCPHeaders(req, msg, routeName, backend.Name)
+	m.applyLogHeaderMappings(req, msg)
+	m.applyOriginalPathHeaders(req)
 	if cse != nil {
 		if len(cse.sessionID) > 0 {
 			req.Header.Set(sessionIDHeader, string(cse.sessionID))
@@ -402,16 +374,15 @@ func (m *MCPProxy) invokeJSONRPCRequest(ctx context.Context, routeName filterapi
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
-	client := http.Client{Timeout: 10 * time.Second}
 
-	resp, err := client.Do(req)
+	resp, err := m.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send MCP notifications/initialized request: %w", err)
 	}
 	return resp, nil
 }
 
-func (m *MCPProxy) getBackendForRoute(route, backend filterapi.MCPBackendName) (filterapi.MCPBackend, error) {
+func (m *mcpRequestContext) getBackendForRoute(route, backend filterapi.MCPBackendName) (filterapi.MCPBackend, error) {
 	r := m.routes[route]
 	if r == nil {
 		return filterapi.MCPBackend{}, fmt.Errorf("no route found for %q", route)
@@ -429,4 +400,15 @@ func mustJSONRPCRequestID() jsonrpc.ID {
 		panic(err)
 	}
 	return id
+}
+
+// ensureHTTPConnectionReused reads and closes the response body to allow connection reuse.
+// The following comment is on [http.Response.Body]:
+//
+//	The default HTTP client's Transport may not
+//	reuse HTTP/1.x "keep-alive" TCP connections if the Body is
+//	not read to completion and closed.
+func ensureHTTPConnectionReused(resp *http.Response) {
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
 }

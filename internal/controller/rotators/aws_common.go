@@ -66,7 +66,7 @@ type stsClient struct {
 // NewSTSClient creates a new STSClient with the given AWS config.
 // The client is configured with the provided AWS configuration, which should
 // include appropriate credentials and region settings.
-func NewSTSClient(cfg aws.Config) STSClient {
+func NewSTSClient(cfg aws.Config) STSClient { //nolint:gocritic
 	return &stsClient{
 		client: sts.NewFromConfig(cfg),
 	}

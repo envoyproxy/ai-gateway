@@ -20,12 +20,14 @@ import (
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
+	htomv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/header_to_metadata/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	httpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -42,6 +44,17 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
+// mustToAny marshals the provided message to an Any message.
+func mustToAny(t *testing.T, msg proto.Message) *anypb.Any {
+	b, err := proto.Marshal(msg)
+	require.NoError(t, err)
+	const envoyAPIPrefix = "type.googleapis.com/"
+	return &anypb.Any{
+		TypeUrl: envoyAPIPrefix + string(msg.ProtoReflect().Descriptor().FullName()),
+		Value:   b,
+	}
+}
+
 func newFakeClient() client.Client {
 	builder := fake.NewClientBuilder().WithScheme(controller.Scheme).
 		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
@@ -54,20 +67,20 @@ const udsPath = "/tmp/uds/test.sock"
 
 func TestNew(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
+	s := New(newFakeClient(), logger, udsPath, false, nil)
 	require.NotNil(t, s)
 }
 
 func TestCheck(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
+	s := New(newFakeClient(), logger, udsPath, false, nil)
 	_, err := s.Check(t.Context(), nil)
 	require.NoError(t, err)
 }
 
 func TestWatch(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
+	s := New(newFakeClient(), logger, udsPath, false, nil)
 	err := s.Watch(nil, nil)
 	require.Error(t, err)
 	require.Equal(t, "rpc error: code = Unimplemented desc = Watch is not implemented", err.Error())
@@ -75,7 +88,7 @@ func TestWatch(t *testing.T) {
 
 func TestServerPostTranslateModify(t *testing.T) {
 	t.Run("existing", func(t *testing.T) {
-		s := New(newFakeClient(), logr.Discard(), udsPath, false)
+		s := New(newFakeClient(), logr.Discard(), udsPath, false, nil)
 		req := &egextension.PostTranslateModifyRequest{Clusters: []*clusterv3.Cluster{{Name: extProcUDSClusterName}}}
 		res, err := s.PostTranslateModify(t.Context(), req)
 		require.Equal(t, &egextension.PostTranslateModifyResponse{
@@ -84,7 +97,7 @@ func TestServerPostTranslateModify(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("not existing", func(t *testing.T) {
-		s := New(newFakeClient(), logr.Discard(), udsPath, false)
+		s := New(newFakeClient(), logr.Discard(), udsPath, false, nil)
 		res, err := s.PostTranslateModify(t.Context(), &egextension.PostTranslateModifyRequest{
 			Clusters: []*clusterv3.Cluster{{Name: "foo"}},
 		})
@@ -110,6 +123,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 				{
 					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
 						{Name: "aaa", Priority: ptr.To[uint32](0)},
+						{Name: "to-be-ignored", Weight: ptr.To[int32](0)},
 						{Name: "bbb", Priority: ptr.To[uint32](1)},
 					},
 				},
@@ -132,15 +146,12 @@ func Test_maybeModifyCluster(t *testing.T) {
 		{c: &clusterv3.Cluster{
 			Name: "httproute/ns/myroute/rule/0",
 		}, errLog: `LoadAssignment is nil`},
-		{c: &clusterv3.Cluster{
-			Name:           "httproute/ns/myroute/rule/0",
-			LoadAssignment: &endpointv3.ClusterLoadAssignment{},
-		}, errLog: `LoadAssignment endpoints length does not match backend refs length`},
 	} {
 		t.Run("error/"+tc.errLog, func(t *testing.T) {
 			var buf bytes.Buffer
-			s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
-			s.maybeModifyCluster(tc.c)
+			s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil)
+			err = s.maybeModifyCluster(tc.c)
+			require.NoError(t, err)
 			t.Logf("buf: %s", buf.String())
 			require.Contains(t, buf.String(), tc.errLog)
 		})
@@ -164,8 +175,9 @@ func Test_maybeModifyCluster(t *testing.T) {
 			},
 		}
 		var buf bytes.Buffer
-		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
-		s.maybeModifyCluster(cluster)
+		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil)
+		err = s.maybeModifyCluster(cluster)
+		require.NoError(t, err)
 		require.Empty(t, buf.String())
 
 		require.Len(t, cluster.LoadAssignment.Endpoints, 2)
@@ -235,15 +247,16 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 
 	t.Run("AIGatewayRoute not found", func(t *testing.T) {
 		var buf bytes.Buffer
-		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
+		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil)
 		cluster := &clusterv3.Cluster{Name: "httproute/test-ns/nonexistent-route/rule/0", Metadata: &corev3.Metadata{}}
-		s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(cluster)
+		require.NoError(t, err)
 		require.Contains(t, buf.String(), "kipping non-AIGatewayRoute HTTPRoute cluster modification")
 	})
 
 	t.Run("cluster with InferencePool metadata and existing route", func(t *testing.T) {
 		var buf bytes.Buffer
-		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
+		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil)
 
 		cluster := &clusterv3.Cluster{
 			Name: "httproute/test-ns/inference-route/rule/0",
@@ -258,7 +271,8 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(cluster)
+		require.NoError(t, err)
 
 		// Verify InferencePool metadata was added to cluster.
 		require.NotNil(t, cluster.Metadata)
@@ -271,7 +285,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 	})
 
 	t.Run("cluster with existing HttpProtocolOptions", func(t *testing.T) {
-		s := New(c, logr.Discard(), udsPath, false)
+		s := New(c, logr.Discard(), udsPath, false, nil)
 
 		// Create existing HttpProtocolOptions.
 		existingPO := &httpv3.HttpProtocolOptions{
@@ -295,11 +309,12 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 				},
 			},
 			TypedExtensionProtocolOptions: map[string]*anypb.Any{
-				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(existingPO),
+				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, existingPO),
 			},
 		}
 
-		s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(cluster)
+		require.NoError(t, err)
 
 		// Verify filters were added correctly.
 		require.NotNil(t, cluster.TypedExtensionProtocolOptions)
@@ -307,7 +322,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 		// Unmarshal and verify the updated protocol options.
 		updatedPOAny := cluster.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
 		updatedPO := &httpv3.HttpProtocolOptions{}
-		err := updatedPOAny.UnmarshalTo(updatedPO)
+		err = updatedPOAny.UnmarshalTo(updatedPO)
 		require.NoError(t, err)
 
 		// Should have ext_proc + header_mutation + existing_filter (which becomes the last filter).
@@ -318,7 +333,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 	})
 
 	t.Run("cluster with existing ext_proc filter", func(t *testing.T) {
-		s := New(c, logr.Discard(), udsPath, false)
+		s := New(c, logr.Discard(), udsPath, false, nil)
 
 		// Create HttpProtocolOptions with existing ext_proc filter.
 		existingPO := &httpv3.HttpProtocolOptions{
@@ -342,16 +357,17 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 				},
 			},
 			TypedExtensionProtocolOptions: map[string]*anypb.Any{
-				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(existingPO),
+				"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, existingPO),
 			},
 		}
 
-		s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(cluster)
+		require.NoError(t, err)
 
 		// Verify no additional filters were added since ext_proc already exists.
 		updatedPOAny := cluster.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
 		updatedPO := &httpv3.HttpProtocolOptions{}
-		err := updatedPOAny.UnmarshalTo(updatedPO)
+		err = updatedPOAny.UnmarshalTo(updatedPO)
 		require.NoError(t, err)
 
 		// Should still have only the existing filter.
@@ -360,7 +376,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 	})
 
 	t.Run("cluster with no existing HttpFilters", func(t *testing.T) {
-		s := New(c, logr.Discard(), udsPath, false)
+		s := New(c, logr.Discard(), udsPath, false, nil)
 
 		cluster := &clusterv3.Cluster{
 			Name: "httproute/test-ns/inference-route/rule/0",
@@ -373,14 +389,15 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(cluster)
+		require.NoError(t, err)
 
 		// Verify filters were added correctly.
 		require.NotNil(t, cluster.TypedExtensionProtocolOptions)
 
 		updatedPOAny := cluster.TypedExtensionProtocolOptions["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
 		updatedPO := &httpv3.HttpProtocolOptions{}
-		err := updatedPOAny.UnmarshalTo(updatedPO)
+		err = updatedPOAny.UnmarshalTo(updatedPO)
 		require.NoError(t, err)
 
 		// Should have ext_proc + header_mutation + upstream_codec.
@@ -392,7 +409,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 
 	t.Run("invalid HttpProtocolOptions unmarshal", func(t *testing.T) {
 		var buf bytes.Buffer
-		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
+		s := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil)
 
 		// Create invalid Any message.
 		invalidAny := &anypb.Any{
@@ -414,14 +431,15 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(cluster)
+		require.Error(t, err)
 		require.Contains(t, buf.String(), "failed to unmarshal HttpProtocolOptions")
 	})
 }
 
 // TestMaybeModifyListenerAndRoutes tests the maybeModifyListenerAndRoutes function.
 func TestMaybeModifyListenerAndRoutes(t *testing.T) {
-	s := New(newFakeClient(), logr.Discard(), udsPath, false)
+	s := New(newFakeClient(), logr.Discard(), udsPath, false, nil)
 
 	// Helper function to create a basic listener.
 	createListener := func(name, routeConfigName string) *listenerv3.Listener {
@@ -442,7 +460,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 				Filters: []*listenerv3.Filter{
 					{
 						Name:       wellknown.HTTPConnectionManager,
-						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 					},
 				},
 			},
@@ -466,13 +484,14 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 	}
 
 	t.Run("empty listeners and routes", func(_ *testing.T) {
-		s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{}, []*routev3.RouteConfiguration{})
-		// Should not panic or error.
+		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{}, []*routev3.RouteConfiguration{})
+		require.NoError(t, err)
 	})
 
 	t.Run("listener with envoy-gateway prefix is skipped", func(_ *testing.T) {
 		listeners := []*listenerv3.Listener{
-			createListener("envoy-gateway-listener", "route-config"),
+			createListener("envoy-gateway-proxy-stats-", "route-config"),
+			createListener("envoy-gateway-proxy-ready-", "route-config"),
 			createListener("normal-listener", "route-config"),
 		}
 		routes := []*routev3.RouteConfiguration{
@@ -489,7 +508,8 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		require.NoError(t, err)
 		// Should process only normal-listener, not envoy-gateway-listener.
 	})
 
@@ -509,13 +529,14 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 				Filters: []*listenerv3.Filter{
 					{
 						Name:       wellknown.HTTPConnectionManager,
-						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 					},
 				},
 			},
 		}
 
-		s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{})
+		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{})
+		require.NoError(t, err)
 		// Should handle gracefully when no RDS route config name is found.
 	})
 
@@ -525,7 +546,8 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			// No DefaultFilterChain set.
 		}
 
-		s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{})
+		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{})
+		require.NoError(t, err)
 		// Should handle gracefully when no default filter chain exists.
 	})
 
@@ -549,7 +571,8 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		require.NoError(t, err)
 		// Should identify and process InferencePool routes.
 	})
 
@@ -584,7 +607,9 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		require.NoError(t, err)
+
 		// Should handle multiple listeners with different route configurations.
 	})
 
@@ -607,14 +632,15 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		require.NoError(t, err)
 		// Should handle gracefully when referenced route config is not found.
 	})
 }
 
 // TestPatchListenerWithInferencePoolFilters tests the patchListenerWithInferencePoolFilters function.
 func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
-	s := New(newFakeClient(), logr.Discard(), udsPath, false)
+	s := New(newFakeClient(), logr.Discard(), udsPath, false, nil)
 
 	// Helper function to create an InferencePool.
 	createInferencePool := func(name, namespace string) *gwaiev1.InferencePool {
@@ -644,7 +670,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 				Filters: []*listenerv3.Filter{
 					{
 						Name:       wellknown.HTTPConnectionManager,
-						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 					},
 				},
 			},
@@ -663,7 +689,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 
 	t.Run("listener with filter chains but no HCM", func(t *testing.T) {
 		var buf bytes.Buffer
-		server := New(newFakeClient(), logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
+		server := New(newFakeClient(), logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil)
 
 		listener := &listenerv3.Listener{
 			Name: "test-listener",
@@ -755,7 +781,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 					Filters: []*listenerv3.Filter{
 						{
 							Name:       wellknown.HTTPConnectionManager,
-							ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+							ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 						},
 					},
 				},
@@ -764,7 +790,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 				Filters: []*listenerv3.Filter{
 					{
 						Name:       wellknown.HTTPConnectionManager,
-						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(hcm)},
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
 					},
 				},
 			},
@@ -790,7 +816,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 
 	t.Run("error marshaling updated HCM", func(_ *testing.T) {
 		var buf bytes.Buffer
-		server := New(newFakeClient(), logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false)
+		server := New(newFakeClient(), logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil)
 
 		// Create a listener with an HCM that will cause marshaling issues.
 		// This is a bit tricky to test, but we can create a scenario where the HCM is modified
@@ -808,7 +834,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 
 // TestPatchVirtualHostWithInferencePool tests the patchVirtualHostWithInferencePool function.
 func TestPatchVirtualHostWithInferencePool(t *testing.T) {
-	s := New(newFakeClient(), logr.Discard(), udsPath, false)
+	s := New(newFakeClient(), logr.Discard(), udsPath, false, nil)
 
 	// Helper function to create an InferencePool.
 	createInferencePool := func(name, namespace string) *gwaiev1.InferencePool {
@@ -853,7 +879,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 		}
 		pools := []*gwaiev1.InferencePool{createInferencePool("test-pool", "test-ns")}
 
-		s.patchVirtualHostWithInferencePool(vh, pools)
+		err := s.patchVirtualHostWithInferencePool(vh, pools)
+		require.NoError(t, err)
 		// Should handle gracefully when no routes exist.
 	})
 
@@ -867,7 +894,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 		}
 		pools := []*gwaiev1.InferencePool{createInferencePool("test-pool", "test-ns")}
 
-		s.patchVirtualHostWithInferencePool(vh, pools)
+		err := s.patchVirtualHostWithInferencePool(vh, pools)
+		require.NoError(t, err)
 
 		// Verify the route was configured to disable all inference pool filters.
 		require.NotNil(t, normalRoute.TypedPerFilterConfig)
@@ -885,7 +913,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 		}
 		pools := []*gwaiev1.InferencePool{pool}
 
-		s.patchVirtualHostWithInferencePool(vh, pools)
+		err := s.patchVirtualHostWithInferencePool(vh, pools)
+		require.NoError(t, err)
 
 		// Verify the route was not configured to disable its own filter.
 		// It should not have any TypedPerFilterConfig for its own filter.
@@ -908,7 +937,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 		}
 		pools := []*gwaiev1.InferencePool{pool1, pool2}
 
-		s.patchVirtualHostWithInferencePool(vh, pools)
+		err := s.patchVirtualHostWithInferencePool(vh, pools)
+		require.NoError(t, err)
 
 		// Verify the route disables pool2's filter but not pool1's filter.
 		require.NotNil(t, inferenceRoute.TypedPerFilterConfig)
@@ -940,7 +970,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 		}
 		pools := []*gwaiev1.InferencePool{createInferencePool("test-pool", "test-ns")}
 
-		s.patchVirtualHostWithInferencePool(vh, pools)
+		err := s.patchVirtualHostWithInferencePool(vh, pools)
+		require.NoError(t, err)
 
 		// Verify the direct response route was not skipped (And TypedPerFilterConfig added).
 		require.NotNil(t, directResponseRoute.TypedPerFilterConfig)
@@ -966,7 +997,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 		}
 		pools := []*gwaiev1.InferencePool{createInferencePool("test-pool", "test-ns")}
 
-		s.patchVirtualHostWithInferencePool(vh, pools)
+		err := s.patchVirtualHostWithInferencePool(vh, pools)
+		require.NoError(t, err)
 
 		// Verify the direct response route was processed (TypedPerFilterConfig added).
 		require.NotNil(t, directResponseRoute.TypedPerFilterConfig)
@@ -988,7 +1020,8 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 		}
 		pools := []*gwaiev1.InferencePool{pool1, pool2}
 
-		s.patchVirtualHostWithInferencePool(vh, pools)
+		err := s.patchVirtualHostWithInferencePool(vh, pools)
+		require.NoError(t, err)
 
 		// Verify normal route disables both filters.
 		require.NotNil(t, normalRoute.TypedPerFilterConfig)
@@ -1009,7 +1042,7 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 // TestPostClusterModify tests the PostClusterModify method.
 func TestPostClusterModify(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
+	s := New(newFakeClient(), logger, udsPath, false, nil)
 
 	t.Run("nil cluster", func(t *testing.T) {
 		req := &egextension.PostClusterModifyRequest{Cluster: nil}
@@ -1048,7 +1081,7 @@ func TestPostClusterModify(t *testing.T) {
 		// Use a logger that captures output for debugging.
 		var buf bytes.Buffer
 		logger := logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{}))
-		s := New(newFakeClient(), logger, udsPath, false)
+		s := New(newFakeClient(), logger, udsPath, false, nil)
 
 		cluster := &clusterv3.Cluster{
 			Name:     "test-cluster",
@@ -1092,7 +1125,7 @@ func TestPostClusterModify(t *testing.T) {
 // TestPostRouteModify tests the PostRouteModify method.
 func TestPostRouteModify(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
+	s := New(newFakeClient(), logger, udsPath, false, nil)
 
 	t.Run("nil route", func(t *testing.T) {
 		req := &egextension.PostRouteModifyRequest{Route: nil}
@@ -1155,7 +1188,7 @@ func TestPostRouteModify(t *testing.T) {
 // TestConstructInferencePoolsFrom tests the constructInferencePoolsFrom method.
 func TestConstructInferencePoolsFrom(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
+	s := New(newFakeClient(), logger, udsPath, false, nil)
 
 	t.Run("empty resources", func(t *testing.T) {
 		result := s.constructInferencePoolsFrom([]*egextension.ExtensionResource{})
@@ -1578,7 +1611,8 @@ func TestBuildExtProcClusterForInferencePoolEndpointPicker(t *testing.T) {
 	}
 
 	t.Run("valid pool", func(t *testing.T) {
-		cluster := buildExtProcClusterForInferencePoolEndpointPicker(pool)
+		cluster, err := buildExtProcClusterForInferencePoolEndpointPicker(pool)
+		require.NoError(t, err)
 		require.NotNil(t, cluster)
 		require.Equal(t, "envoy.clusters.endpointpicker_test-pool_test-ns_ext_proc", cluster.Name)
 		require.Equal(t, clusterv3.Cluster_STRICT_DNS, cluster.GetType())
@@ -1589,7 +1623,7 @@ func TestBuildExtProcClusterForInferencePoolEndpointPicker(t *testing.T) {
 
 	t.Run("nil pool panics", func(t *testing.T) {
 		require.Panics(t, func() {
-			buildExtProcClusterForInferencePoolEndpointPicker(nil)
+			_, _ = buildExtProcClusterForInferencePoolEndpointPicker(nil)
 		})
 	})
 }
@@ -1612,7 +1646,8 @@ func TestBuildClustersForInferencePoolEndpointPickers(t *testing.T) {
 
 	t.Run("with InferencePool metadata", func(t *testing.T) {
 		clusters := []*clusterv3.Cluster{cluster}
-		result := buildClustersForInferencePoolEndpointPickers(clusters)
+		result, err := buildClustersForInferencePoolEndpointPickers(clusters)
+		require.NoError(t, err)
 		require.Len(t, result, 1)
 		require.Contains(t, result[0].Name, "endpointpicker")
 	})
@@ -1620,25 +1655,16 @@ func TestBuildClustersForInferencePoolEndpointPickers(t *testing.T) {
 	t.Run("without InferencePool metadata", func(t *testing.T) {
 		normalCluster := &clusterv3.Cluster{Name: "normal-cluster"}
 		clusters := []*clusterv3.Cluster{normalCluster}
-		result := buildClustersForInferencePoolEndpointPickers(clusters)
+		result, err := buildClustersForInferencePoolEndpointPickers(clusters)
+		require.NoError(t, err)
 		require.Empty(t, result)
-	})
-}
-
-// TestMustToAny tests the mustToAny helper function.
-func TestMustToAny(t *testing.T) {
-	t.Run("valid message", func(t *testing.T) {
-		cluster := &clusterv3.Cluster{Name: "test"}
-		anyProto := mustToAny(cluster)
-		require.NotNil(t, anyProto)
-		require.Contains(t, anyProto.TypeUrl, "envoy.config.cluster.v3.Cluster")
 	})
 }
 
 // TestPostTranslateModify tests the PostTranslateModify method.
 func TestPostTranslateModify(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
+	s := New(newFakeClient(), logger, udsPath, false, nil)
 
 	t.Run("empty request", func(t *testing.T) {
 		req := &egextension.PostTranslateModifyRequest{}
@@ -1660,12 +1686,128 @@ func TestPostTranslateModify(t *testing.T) {
 		require.Equal(t, "test-cluster", resp.Clusters[0].Name)
 		require.Equal(t, "ai-gateway-extproc-uds", resp.Clusters[1].Name)
 	})
+
+	t.Run("with log header mapping inserts header_to_metadata filter", func(t *testing.T) {
+		s := New(newFakeClient(), logger, udsPath, false, map[string]string{"x-session-id": "session.id"})
+		hcm := &httpconnectionmanagerv3.HttpConnectionManager{
+			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{{Name: wellknown.Router}},
+		}
+		listener := &listenerv3.Listener{
+			Name: "test-listener",
+			DefaultFilterChain: &listenerv3.FilterChain{
+				Filters: []*listenerv3.Filter{
+					{
+						Name:       wellknown.HTTPConnectionManager,
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
+					},
+				},
+			},
+		}
+		req := &egextension.PostTranslateModifyRequest{Listeners: []*listenerv3.Listener{listener}}
+		resp, err := s.PostTranslateModify(context.Background(), req)
+		require.NoError(t, err)
+		require.Len(t, resp.Listeners, 1)
+
+		outHCM := &httpconnectionmanagerv3.HttpConnectionManager{}
+		err = resp.Listeners[0].DefaultFilterChain.Filters[0].GetTypedConfig().UnmarshalTo(outHCM)
+		require.NoError(t, err)
+		require.Len(t, outHCM.HttpFilters, 2)
+		require.Equal(t, headerToMetadataFilterName, outHCM.HttpFilters[0].Name)
+		require.Equal(t, wellknown.Router, outHCM.HttpFilters[1].Name)
+
+		htmCfg := &htomv3.Config{}
+		err = outHCM.HttpFilters[0].GetTypedConfig().UnmarshalTo(htmCfg)
+		require.NoError(t, err)
+		require.Len(t, htmCfg.RequestRules, 1)
+		require.Equal(t, "x-session-id", htmCfg.RequestRules[0].Header)
+		require.Equal(t, "session.id", htmCfg.RequestRules[0].OnHeaderPresent.GetKey())
+	})
+
+	t.Run("with existing header_to_metadata merges log mapping", func(t *testing.T) {
+		s := New(newFakeClient(), logger, udsPath, false, map[string]string{"x-session-id": "session.id"})
+		existingCfg := &htomv3.Config{
+			RequestRules: []*htomv3.Config_Rule{
+				{
+					Header: "x-ai-eg-mcp-backend",
+					OnHeaderPresent: &htomv3.Config_KeyValuePair{
+						MetadataNamespace: aigv1a1.AIGatewayFilterMetadataNamespace,
+						Key:               "mcp_backend",
+						Type:              htomv3.Config_STRING,
+					},
+				},
+			},
+		}
+		existingFilter := &httpconnectionmanagerv3.HttpFilter{
+			Name:       headerToMetadataFilterName,
+			ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: mustToAny(t, existingCfg)},
+		}
+		hcm := &httpconnectionmanagerv3.HttpConnectionManager{
+			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{existingFilter, {Name: wellknown.Router}},
+		}
+		listener := &listenerv3.Listener{
+			Name: "test-listener",
+			DefaultFilterChain: &listenerv3.FilterChain{
+				Filters: []*listenerv3.Filter{
+					{
+						Name:       wellknown.HTTPConnectionManager,
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
+					},
+				},
+			},
+		}
+		req := &egextension.PostTranslateModifyRequest{Listeners: []*listenerv3.Listener{listener}}
+		resp, err := s.PostTranslateModify(context.Background(), req)
+		require.NoError(t, err)
+
+		outHCM := &httpconnectionmanagerv3.HttpConnectionManager{}
+		err = resp.Listeners[0].DefaultFilterChain.Filters[0].GetTypedConfig().UnmarshalTo(outHCM)
+		require.NoError(t, err)
+		require.Len(t, outHCM.HttpFilters, 2)
+		require.Equal(t, headerToMetadataFilterName, outHCM.HttpFilters[0].Name)
+
+		mergedCfg := &htomv3.Config{}
+		err = outHCM.HttpFilters[0].GetTypedConfig().UnmarshalTo(mergedCfg)
+		require.NoError(t, err)
+		var headers []string
+		for _, rule := range mergedCfg.RequestRules {
+			headers = append(headers, rule.Header)
+		}
+		require.ElementsMatch(t, []string{"x-ai-eg-mcp-backend", "x-session-id"}, headers)
+	})
+
+	t.Run("without log header mapping leaves filters untouched", func(t *testing.T) {
+		s := New(newFakeClient(), logger, udsPath, false, nil)
+		hcm := &httpconnectionmanagerv3.HttpConnectionManager{
+			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{{Name: wellknown.Router}},
+		}
+		listener := &listenerv3.Listener{
+			Name: "test-listener",
+			DefaultFilterChain: &listenerv3.FilterChain{
+				Filters: []*listenerv3.Filter{
+					{
+						Name:       wellknown.HTTPConnectionManager,
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
+					},
+				},
+			},
+		}
+		req := &egextension.PostTranslateModifyRequest{Listeners: []*listenerv3.Listener{listener}}
+		resp, err := s.PostTranslateModify(context.Background(), req)
+		require.NoError(t, err)
+		require.Len(t, resp.Listeners, 1)
+
+		outHCM := &httpconnectionmanagerv3.HttpConnectionManager{}
+		err = resp.Listeners[0].DefaultFilterChain.Filters[0].GetTypedConfig().UnmarshalTo(outHCM)
+		require.NoError(t, err)
+		require.Len(t, outHCM.HttpFilters, 1)
+		require.Equal(t, wellknown.Router, outHCM.HttpFilters[0].Name)
+	})
 }
 
 // TestList tests the List method (health check).
 func TestList(t *testing.T) {
 	logger := logr.Discard()
-	s := New(newFakeClient(), logger, udsPath, false)
+	s := New(newFakeClient(), logger, udsPath, false, nil)
 
 	t.Run("list health statuses", func(t *testing.T) {
 		resp, err := s.List(context.Background(), &grpc_health_v1.HealthListRequest{})

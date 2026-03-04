@@ -43,7 +43,7 @@ Documentation for installation, setup, and contribution guidelines is included t
 
 ## **Community Collaboration**
 
-[Weekly community meetings][meeting-notes] are held every Thursday to discuss updates, address issues, and review contributions.
+[Weekly community meetings][meeting-notes] are held every Monday to discuss updates, address issues, and review contributions.
 
 ## **Architecture Overview**
 

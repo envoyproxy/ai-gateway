@@ -11,23 +11,24 @@ RUN python -m pip install --upgrade pip
 RUN pip install openai \
     opentelemetry-sdk \
     opentelemetry-exporter-otlp-proto-http \
+    opentelemetry-exporter-otlp-proto-grpc \
     opentelemetry-distro \
     opentelemetry-instrumentation-httpx \
     openinference-instrumentation-openai
 
 ENTRYPOINT ["sh", "-c"]
 
-# For chat completion, use the OpenAI CLI
+# For chat completion, use the OpenAI SDK to support custom headers
 FROM base AS chat-completion
 # OpenInference only uses spans, not metrics or logs - disable them via CLI args
-CMD ["opentelemetry-instrument --service_name openai-cli --metrics_exporter none --logs_exporter none openai api chat.completions.create -t 0 -m ${CHAT_MODEL} --message user 'Answer in up to 3 words: Which ocean contains Bouvet Island?'"]
+CMD ["opentelemetry-instrument --service_name openai-cli --metrics_exporter none --logs_exporter none python -c 'import os; from openai import OpenAI; headers={f\"x-{k[5:].lower().replace(\"_\",\"-\")}\": v for k, v in os.environ.items() if k.startswith(\"AIGW_\") and v}; client=OpenAI(default_headers=headers if headers else None); print(client.chat.completions.create(model=os.environ[\"CHAT_MODEL\"], messages=[{\"role\":\"user\",\"content\":\"Answer in up to 3 words: Which ocean contains Bouvet Island?\"}]))'"]
 
 # For create embeddings, use the OpenAI SDK because the CLI does not support it
 FROM base AS create-embeddings
 # OpenInference only uses spans, not metrics or logs - disable them via CLI args
-CMD ["opentelemetry-instrument --service_name openai-cli --metrics_exporter none --logs_exporter none python -c 'import os; from openai import OpenAI; print(OpenAI().embeddings.create(input=\"How do I reset my password?\", model=os.environ[\"EMBEDDINGS_MODEL\"]))'"]
+CMD ["opentelemetry-instrument --service_name openai-cli --metrics_exporter none --logs_exporter none python -c 'import os; from openai import OpenAI; headers={f\"x-{k[5:].lower().replace(\"_\",\"-\")}\": v for k, v in os.environ.items() if k.startswith(\"AIGW_\") and v}; client=OpenAI(default_headers=headers if headers else None); print(client.embeddings.create(input=\"How do I reset my password?\", model=os.environ[\"EMBEDDINGS_MODEL\"]))'"]
 
 # For completions, use the OpenAI SDK because the CLI does not support it
 FROM base AS completion
 # OpenInference only uses spans, not metrics or logs - disable them via CLI args
-CMD ["opentelemetry-instrument --service_name openai-cli --metrics_exporter none --logs_exporter none python -c 'import os; from openai import OpenAI; print(OpenAI().completions.create(prompt=\"def fib(n):\\n    if n <= 1:\\n        return n\\n    else:\\n        return fib(n-1) + fib(n-2)\", model=os.environ[\"COMPLETION_MODEL\"], max_tokens=25, temperature=0.4, top_p=0.9))'"]
+CMD ["opentelemetry-instrument --service_name openai-cli --metrics_exporter none --logs_exporter none python -c 'import os; from openai import OpenAI; headers={f\"x-{k[5:].lower().replace(\"_\",\"-\")}\": v for k, v in os.environ.items() if k.startswith(\"AIGW_\") and v}; client=OpenAI(default_headers=headers if headers else None); print(client.completions.create(prompt=\"def fib(n):\\n    if n <= 1:\\n        return n\\n    else:\\n        return fib(n-1) + fib(n-2)\", model=os.environ[\"COMPLETION_MODEL\"], max_tokens=25, temperature=0.4, top_p=0.9))'"]

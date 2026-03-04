@@ -48,18 +48,21 @@ type flags struct {
 	tlsKeyName                     string
 	caBundleName                   string
 	metricsRequestHeaderAttributes string
-	metricsRequestHeaderLabels     string // DEPRECATED: use metricsRequestHeaderAttributes instead.
 	spanRequestHeaderAttributes    string
+	endpointPrefixes               string
 	rootPrefix                     string
 	extProcExtraEnvVars            string
 	extProcImagePullSecrets        string
 	// extProcMaxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
 	extProcMaxRecvMsgSize int
 	// maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive.
-	maxRecvMsgSize           int
-	mcpSessionEncryptionSeed string
-	watchNamespaces          []string
-	cacheSyncTimeout         time.Duration
+	maxRecvMsgSize                         int
+	mcpSessionEncryptionSeed               string
+	mcpFallbackSessionEncryptionSeed       string
+	mcpSessionEncryptionIterations         int
+	mcpFallbackSessionEncryptionIterations int
+	watchNamespaces                        []string
+	cacheSyncTimeout                       time.Duration
 }
 
 // parsePullPolicy parses string into a k8s PullPolicy.
@@ -86,7 +89,7 @@ func parseWatchNamespaces(s string) []string {
 
 // parseAndValidateFlags parses the command-line arguments provided in args,
 // validates them, and returns the parsed configuration.
-func parseAndValidateFlags(args []string) (flags, error) {
+func parseAndValidateFlags(args []string) (*flags, error) {
 	fs := flag.NewFlagSet("AI Gateway Controller", flag.ContinueOnError)
 
 	extProcLogLevelPtr := fs.String(
@@ -144,15 +147,15 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		"",
 		"Comma-separated key-value pairs for mapping HTTP request headers to Otel metric attributes. Format: x-team-id:team.id,x-user-id:user.id.",
 	)
-	metricsRequestHeaderLabels := fs.String(
-		"metricsRequestHeaderLabels",
-		"",
-		"DEPRECATED: Use --metricsRequestHeaderAttributes instead. This flag will be removed in a future release.",
-	)
 	spanRequestHeaderAttributes := fs.String(
 		"spanRequestHeaderAttributes",
 		"",
 		"Comma-separated key-value pairs for mapping HTTP request headers to otel span attributes. Format: x-session-id:session.id,x-user-id:user.id.",
+	)
+	endpointPrefixes := fs.String(
+		"endpointPrefixes",
+		"",
+		"Comma-separated key-value pairs for endpoint prefixes. Format: openai:/,cohere:/cohere,anthropic:/anthropic.",
 	)
 	rootPrefix := fs.String(
 		"rootPrefix",
@@ -189,46 +192,42 @@ func parseAndValidateFlags(args []string) (flags, error) {
 		2*time.Minute, // This is the controller-runtime default
 		"Maximum time to wait for k8s caches to sync",
 	)
-	mcpSessionEncryptionSeed := fs.String(
-		"mcpSessionEncryptionSeed",
-		"seed",
-		"Arbitrary string seed used to derive the MCP session encryption key. "+
-			"Do not include commas as they are used as separators. You can optionally pass \"fallback\" seed after the first one to allow for key rotation. "+
-			"For example: \"new-seed,old-seed-for-fallback\". The fallback seed is only used for decryption.",
-	)
+	mcpSessionEncryptionSeed := fs.String("mcpSessionEncryptionSeed", "default-insecure-seed",
+		"Seed used to derive the MCP session encryption key. This should be changed and set to a secure value.")
+	mcpSessionEncryptionIterations := fs.Int("mcpSessionEncryptionIterations", 100_000,
+		"Number of iterations to use for PBKDF2 key derivation for MCP session encryption.")
+	mcpFallbackSessionEncryptionSeed := fs.String("mcpFallbackSessionEncryptionSeed", "",
+		"Optional fallback seed used for MCP session key rotation")
+	mcpFallbackSessionEncryptionIterations := fs.Int("mcpFallbackSessionEncryptionIterations", 100_000,
+		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
-		return flags{}, err
-	}
-
-	// Handle deprecated flag: fall back to metricsRequestHeaderLabels if metricsRequestHeaderAttributes is not set.
-	if *metricsRequestHeaderAttributes == "" && *metricsRequestHeaderLabels != "" {
-		*metricsRequestHeaderAttributes = *metricsRequestHeaderLabels
+		return nil, err
 	}
 
 	var slogLevel slog.Level
 	if err := slogLevel.UnmarshalText([]byte(*extProcLogLevelPtr)); err != nil {
 		err = fmt.Errorf("invalid external processor log level: %q", *extProcLogLevelPtr)
-		return flags{}, err
+		return nil, err
 	}
 
 	var zapLogLevel zapcore.Level
 	if err := zapLogLevel.UnmarshalText([]byte(*logLevelPtr)); err != nil {
 		err = fmt.Errorf("invalid log level: %q", *logLevelPtr)
-		return flags{}, err
+		return nil, err
 	}
 
 	extProcPullPolicy, err := parsePullPolicy(*extProcImagePullPolicyPtr)
 	if err != nil {
-		return flags{}, err
+		return nil, err
 	}
 
 	// Validate metrics header attributes if provided.
 	if *metricsRequestHeaderAttributes != "" {
 		_, err := internalapi.ParseRequestHeaderAttributeMapping(*metricsRequestHeaderAttributes)
 		if err != nil {
-			return flags{}, fmt.Errorf("invalid metrics header attributes: %w", err)
+			return nil, fmt.Errorf("invalid metrics header attributes: %w", err)
 		}
 	}
 
@@ -236,7 +235,14 @@ func parseAndValidateFlags(args []string) (flags, error) {
 	if *spanRequestHeaderAttributes != "" {
 		_, err := internalapi.ParseRequestHeaderAttributeMapping(*spanRequestHeaderAttributes)
 		if err != nil {
-			return flags{}, fmt.Errorf("invalid tracing header attributes: %w", err)
+			return nil, fmt.Errorf("invalid tracing header attributes: %w", err)
+		}
+	}
+
+	// Validate endpoint prefixes if provided.
+	if *endpointPrefixes != "" {
+		if _, err := internalapi.ParseEndpointPrefixes(*endpointPrefixes); err != nil {
+			return nil, fmt.Errorf("invalid endpoint prefixes: %w", err)
 		}
 	}
 
@@ -244,7 +250,7 @@ func parseAndValidateFlags(args []string) (flags, error) {
 	if *extProcExtraEnvVars != "" {
 		_, err := controller.ParseExtraEnvVars(*extProcExtraEnvVars)
 		if err != nil {
-			return flags{}, fmt.Errorf("invalid extProc extra env vars: %w", err)
+			return nil, fmt.Errorf("invalid extProc extra env vars: %w", err)
 		}
 	}
 
@@ -252,32 +258,42 @@ func parseAndValidateFlags(args []string) (flags, error) {
 	if *extProcImagePullSecrets != "" {
 		_, err := controller.ParseImagePullSecrets(*extProcImagePullSecrets)
 		if err != nil {
-			return flags{}, fmt.Errorf("invalid extProc image pull secrets: %w", err)
+			return nil, fmt.Errorf("invalid extProc image pull secrets: %w", err)
 		}
 	}
 
-	return flags{
-		extProcLogLevel:                *extProcLogLevelPtr,
-		extProcImage:                   *extProcImagePtr,
-		extProcImagePullPolicy:         extProcPullPolicy,
-		enableLeaderElection:           *enableLeaderElectionPtr,
-		logLevel:                       zapLogLevel,
-		extensionServerPort:            *extensionServerPortPtr,
-		tlsCertDir:                     *tlsCertDir,
-		tlsCertName:                    *tlsCertName,
-		tlsKeyName:                     *tlsKeyName,
-		caBundleName:                   *caBundleName,
-		metricsRequestHeaderAttributes: *metricsRequestHeaderAttributes,
-		metricsRequestHeaderLabels:     *metricsRequestHeaderLabels,
-		spanRequestHeaderAttributes:    *spanRequestHeaderAttributes,
-		rootPrefix:                     *rootPrefix,
-		extProcExtraEnvVars:            *extProcExtraEnvVars,
-		extProcImagePullSecrets:        *extProcImagePullSecrets,
-		extProcMaxRecvMsgSize:          *extProcMaxRecvMsgSize,
-		maxRecvMsgSize:                 *maxRecvMsgSize,
-		watchNamespaces:                parseWatchNamespaces(*watchNamespaces),
-		cacheSyncTimeout:               *cacheSyncTimeout,
-		mcpSessionEncryptionSeed:       *mcpSessionEncryptionSeed,
+	if *mcpSessionEncryptionIterations <= 0 {
+		return nil, fmt.Errorf("mcp session encryption iterations must be positive: %d", *mcpSessionEncryptionIterations)
+	}
+	if *mcpFallbackSessionEncryptionSeed != "" && *mcpFallbackSessionEncryptionIterations <= 0 {
+		return nil, fmt.Errorf("mcp fallback session encryption iterations must be positive: %d", *mcpFallbackSessionEncryptionIterations)
+	}
+
+	return &flags{
+		extProcLogLevel:                        *extProcLogLevelPtr,
+		extProcImage:                           *extProcImagePtr,
+		extProcImagePullPolicy:                 extProcPullPolicy,
+		enableLeaderElection:                   *enableLeaderElectionPtr,
+		logLevel:                               zapLogLevel,
+		extensionServerPort:                    *extensionServerPortPtr,
+		tlsCertDir:                             *tlsCertDir,
+		tlsCertName:                            *tlsCertName,
+		tlsKeyName:                             *tlsKeyName,
+		caBundleName:                           *caBundleName,
+		metricsRequestHeaderAttributes:         *metricsRequestHeaderAttributes,
+		spanRequestHeaderAttributes:            *spanRequestHeaderAttributes,
+		endpointPrefixes:                       *endpointPrefixes,
+		rootPrefix:                             *rootPrefix,
+		extProcExtraEnvVars:                    *extProcExtraEnvVars,
+		extProcImagePullSecrets:                *extProcImagePullSecrets,
+		extProcMaxRecvMsgSize:                  *extProcMaxRecvMsgSize,
+		maxRecvMsgSize:                         *maxRecvMsgSize,
+		watchNamespaces:                        parseWatchNamespaces(*watchNamespaces),
+		cacheSyncTimeout:                       *cacheSyncTimeout,
+		mcpSessionEncryptionSeed:               *mcpSessionEncryptionSeed,
+		mcpFallbackSessionEncryptionSeed:       *mcpFallbackSessionEncryptionSeed,
+		mcpSessionEncryptionIterations:         *mcpSessionEncryptionIterations,
+		mcpFallbackSessionEncryptionIterations: *mcpFallbackSessionEncryptionIterations,
 	}, nil
 }
 
@@ -288,11 +304,6 @@ func main() {
 	if err != nil {
 		setupLog.Error(err, "failed to parse and validate flags")
 		os.Exit(1)
-	}
-
-	// Warn if deprecated flag is being used.
-	if parsedFlags.metricsRequestHeaderLabels != "" {
-		setupLog.Info("The --metricsRequestHeaderLabels flag is deprecated and will be removed in a future release. Please use --metricsRequestHeaderAttributes instead.")
 	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: parsedFlags.logLevel})))
@@ -340,7 +351,7 @@ func main() {
 	// Start the extension server running alongside the controller.
 	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
 	s := grpc.NewServer(grpc.MaxRecvMsgSize(parsedFlags.maxRecvMsgSize))
-	extSrv := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false)
+	extSrv := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, nil)
 	egextension.RegisterEnvoyGatewayExtensionServer(s, extSrv)
 	grpc_health_v1.RegisterHealthServer(s, extSrv)
 	go func() {
@@ -354,19 +365,23 @@ func main() {
 	}()
 
 	// Start the controller.
-	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), controller.Options{
-		ExtProcImage:                   parsedFlags.extProcImage,
-		ExtProcImagePullPolicy:         parsedFlags.extProcImagePullPolicy,
-		ExtProcLogLevel:                parsedFlags.extProcLogLevel,
-		EnableLeaderElection:           parsedFlags.enableLeaderElection,
-		UDSPath:                        extProcUDSPath,
-		MetricsRequestHeaderAttributes: parsedFlags.metricsRequestHeaderAttributes,
-		TracingRequestHeaderAttributes: parsedFlags.spanRequestHeaderAttributes,
-		RootPrefix:                     parsedFlags.rootPrefix,
-		ExtProcExtraEnvVars:            parsedFlags.extProcExtraEnvVars,
-		ExtProcImagePullSecrets:        parsedFlags.extProcImagePullSecrets,
-		ExtProcMaxRecvMsgSize:          parsedFlags.extProcMaxRecvMsgSize,
-		MCPSessionEncryptionSeed:       parsedFlags.mcpSessionEncryptionSeed,
+	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), &controller.Options{
+		ExtProcImage:                           parsedFlags.extProcImage,
+		ExtProcImagePullPolicy:                 parsedFlags.extProcImagePullPolicy,
+		ExtProcLogLevel:                        parsedFlags.extProcLogLevel,
+		EnableLeaderElection:                   parsedFlags.enableLeaderElection,
+		UDSPath:                                extProcUDSPath,
+		MetricsRequestHeaderAttributes:         parsedFlags.metricsRequestHeaderAttributes,
+		TracingRequestHeaderAttributes:         parsedFlags.spanRequestHeaderAttributes,
+		EndpointPrefixes:                       parsedFlags.endpointPrefixes,
+		RootPrefix:                             parsedFlags.rootPrefix,
+		ExtProcExtraEnvVars:                    parsedFlags.extProcExtraEnvVars,
+		ExtProcImagePullSecrets:                parsedFlags.extProcImagePullSecrets,
+		ExtProcMaxRecvMsgSize:                  parsedFlags.extProcMaxRecvMsgSize,
+		MCPSessionEncryptionSeed:               parsedFlags.mcpSessionEncryptionSeed,
+		MCPSessionEncryptionIterations:         parsedFlags.mcpSessionEncryptionIterations,
+		MCPFallbackSessionEncryptionSeed:       parsedFlags.mcpFallbackSessionEncryptionSeed,
+		MCPFallbackSessionEncryptionIterations: parsedFlags.mcpFallbackSessionEncryptionIterations,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}
@@ -404,7 +419,7 @@ func maybePatchAdmissionWebhook(ctx context.Context, cli client.Client, bundlePa
 }
 
 // setupCache sets up the cache options based on the provided flags.
-func setupCache(f flags) cache.Options {
+func setupCache(f *flags) cache.Options {
 	var namespaceCacheConfig map[string]cache.Config
 	if len(f.watchNamespaces) > 0 {
 		namespaceCacheConfig = make(map[string]cache.Config, len(f.watchNamespaces))

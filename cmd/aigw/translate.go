@@ -30,7 +30,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gwapiv1a3 "sigs.k8s.io/gateway-api/apis/v1alpha3"
 	kyaml "sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -56,20 +55,25 @@ func translate(ctx context.Context, paths []string, output, stderr io.Writer) er
 	}
 
 	// Emit the translated objects.
-	for _, httpRoute := range httpRoutes.Items {
-		mustWriteObj(&httpRoute.TypeMeta, &httpRoute, output)
+	for i := range httpRoutes.Items {
+		httpRoute := &httpRoutes.Items[i]
+		mustWriteObj(&httpRoute.TypeMeta, httpRoute, output)
 	}
-	for _, extensionPolicy := range extensionPolicies.Items {
-		mustWriteObj(&extensionPolicy.TypeMeta, &extensionPolicy, output)
+	for i := range extensionPolicies.Items {
+		extensionPolicy := &extensionPolicies.Items[i]
+		mustWriteObj(&extensionPolicy.TypeMeta, extensionPolicy, output)
 	}
-	for _, backend := range backends.Items {
-		mustWriteObj(&backend.TypeMeta, &backend, output)
+	for i := range backends.Items {
+		backend := &backends.Items[i]
+		mustWriteObj(&backend.TypeMeta, backend, output)
 	}
-	for _, filter := range httpRouteFilter.Items {
-		mustWriteObj(&filter.TypeMeta, &filter, output)
+	for i := range httpRouteFilter.Items {
+		filter := &httpRouteFilter.Items[i]
+		mustWriteObj(&filter.TypeMeta, filter, output)
 	}
-	for _, secret := range secrets.Items {
-		mustWriteObj(&secret.TypeMeta, &secret, output)
+	for i := range secrets.Items {
+		secret := &secrets.Items[i]
+		mustWriteObj(&secret.TypeMeta, secret, output)
 	}
 	for _, secret := range originalSecrets {
 		mustWriteObj(&secret.TypeMeta, secret, output)
@@ -77,11 +81,13 @@ func translate(ctx context.Context, paths []string, output, stderr io.Writer) er
 	for _, gateway := range originalGateways {
 		mustWriteObj(&gateway.TypeMeta, gateway, output)
 	}
-	for _, btp := range backendTrafficPolicies.Items {
-		mustWriteObj(&btp.TypeMeta, &btp, output)
+	for i := range backendTrafficPolicies.Items {
+		btp := &backendTrafficPolicies.Items[i]
+		mustWriteObj(&btp.TypeMeta, btp, output)
 	}
-	for _, sp := range securityPolicies.Items {
-		mustWriteObj(&sp.TypeMeta, &sp, output)
+	for i := range securityPolicies.Items {
+		sp := &securityPolicies.Items[i]
+		mustWriteObj(&sp.TypeMeta, sp, output)
 	}
 	return nil
 }
@@ -110,7 +116,7 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 	mcpRoutes []*aigv1a1.MCPRoute,
 	aigwBackends []*aigv1a1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
-	backendTLSConfigs []*gwapiv1a3.BackendTLSPolicy,
+	backendTLSConfigs []*gwapiv1.BackendTLSPolicy,
 	gws []*gwapiv1.Gateway,
 	secrets []*corev1.Secret,
 	envoyProxies []*egv1a1.EnvoyProxy,
@@ -169,6 +175,11 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 			// need to reconcile them; just create them as-is.
 			mustExtractAndAppend(obj, &backendTLSConfigs)
 			mustWriteObj(nil, obj, out)
+		case "GatewayConfig":
+			// GatewayConfig is gateway-scoped configuration for extproc containers.
+			// Write it back as-is to the output.
+			logger.Info("Writing GatewayConfig to output as-is", "name", obj.GetName())
+			mustWriteObj(nil, obj, out)
 		default:
 			// Now you can inspect or manipulate the CRD.
 			logger.Info("Writing back non-target object into the output as-is", "kind", obj.GetKind(), "name", obj.GetName())
@@ -184,7 +195,7 @@ func translateCustomResourceObjects(
 	mcpRoutes []*aigv1a1.MCPRoute,
 	aigwBackends []*aigv1a1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1a1.BackendSecurityPolicy,
-	backendTLSPolicies []*gwapiv1a3.BackendTLSPolicy,
+	backendTLSPolicies []*gwapiv1.BackendTLSPolicy,
 	gws []*gwapiv1.Gateway,
 	usedDefinedSecrets []*corev1.Secret,
 	logger *slog.Logger,
@@ -224,7 +235,7 @@ func translateCustomResourceObjects(
 	}
 
 	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
-		make(chan event.GenericEvent))
+		make(chan event.GenericEvent), make(chan event.GenericEvent))
 	aisbC := controller.NewAIServiceBackendController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
 		make(chan event.GenericEvent))
 	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
@@ -234,7 +245,7 @@ func translateCustomResourceObjects(
 		make(chan event.GenericEvent),
 	)
 	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", true, func() string {
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "debug", true, func() string {
 			return "aigw-translate"
 		}, false,
 	)

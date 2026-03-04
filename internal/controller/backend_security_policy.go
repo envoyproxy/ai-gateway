@@ -21,10 +21,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
+)
+
+const (
+	// aiServiceBackendGroup is the API group for AIServiceBackend resources.
+	aiServiceBackendGroup = "aigateway.envoyproxy.io"
+	// aiServiceBackendKind is the kind for AIServiceBackend resources.
+	aiServiceBackendKind = "AIServiceBackend"
+	// inferencePoolGroup is the API group for InferencePool resources.
+	inferencePoolGroup = "inference.networking.k8s.io"
+	// inferencePoolKind is the kind for InferencePool resources.
+	inferencePoolKind = "InferencePool"
 )
 
 const (
@@ -47,14 +59,16 @@ type BackendSecurityPolicyController struct {
 	kube                      kubernetes.Interface
 	logger                    logr.Logger
 	aiServiceBackendEventChan chan event.GenericEvent
+	inferencePoolEventChan    chan event.GenericEvent
 }
 
-func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiServiceBackendEventChan chan event.GenericEvent) *BackendSecurityPolicyController {
+func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.Interface, logger logr.Logger, aiServiceBackendEventChan chan event.GenericEvent, inferencePoolEventChan chan event.GenericEvent) *BackendSecurityPolicyController {
 	return &BackendSecurityPolicyController{
 		client:                    client,
 		kube:                      kube,
 		logger:                    logger,
 		aiServiceBackendEventChan: aiServiceBackendEventChan,
+		inferencePoolEventChan:    inferencePoolEventChan,
 	}
 }
 
@@ -119,11 +133,11 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 
 	switch bsp.Spec.Type {
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
-		oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec)
+		oidc := getBackendSecurityPolicyAuthOIDC(&bsp.Spec)
 		if oidc != nil {
 			region := bsp.Spec.AWSCredentials.Region
 			roleArn := bsp.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn
-			rotator, err = rotators.NewAWSOIDCRotator(ctx, c.client, nil, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, *oidc, roleArn, region)
+			rotator, err = rotators.NewAWSOIDCRotator(ctx, c.client, nil, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, oidc, roleArn, region)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
@@ -136,7 +150,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		var provider tokenprovider.TokenProvider
 		options := policy.TokenRequestOptions{Scopes: []string{azureScopeURL}}
 
-		oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec)
+		oidc := getBackendSecurityPolicyAuthOIDC(&bsp.Spec)
 		if oidc != nil {
 			var oidcProvider tokenprovider.TokenProvider
 			oidcProvider, err = tokenprovider.NewOidcTokenProvider(ctx, c.client, oidc)
@@ -180,7 +194,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		if err = validateGCPCredentialsParams(bsp.Spec.GCPCredentials); err != nil {
 			return ctrl.Result{}, fmt.Errorf("invalid GCP credentials configuration: %w", err)
 		}
-		oidc := getBackendSecurityPolicyAuthOIDC(bsp.Spec)
+		oidc := getBackendSecurityPolicyAuthOIDC(&bsp.Spec)
 		if oidc != nil {
 			// Create the OIDC token provider that will be used to get tokens from the OIDC provider.
 			var oidcProvider tokenprovider.TokenProvider
@@ -188,7 +202,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to initialize OIDC provider: %w", err)
 			}
-			rotator, err = rotators.NewGCPOIDCTokenRotator(c.client, c.logger, *bsp, preRotationWindow, oidcProvider)
+			rotator, err = rotators.NewGCPOIDCTokenRotator(c.client, c.logger, bsp, preRotationWindow, oidcProvider)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
@@ -289,7 +303,7 @@ func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, r
 }
 
 // getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil.
-func getBackendSecurityPolicyAuthOIDC(spec aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
+func getBackendSecurityPolicyAuthOIDC(spec *aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
 	switch spec.Type {
 	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
 		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
@@ -314,30 +328,41 @@ func backendSecurityPolicyKey(namespace, name string) string {
 }
 
 func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) error {
-	// Handle both old and new patterns.
-	var allAIServiceBackends []aigv1a1.AIServiceBackend
-
 	for _, targetRef := range bsp.Spec.TargetRefs {
-		var aiBackend aigv1a1.AIServiceBackend
-		err := c.client.Get(ctx, client.ObjectKey{
-			Name:      string(targetRef.Name),
-			Namespace: bsp.Namespace, // targetRefs are local to the policy's namespace.
-		}, &aiBackend)
-		if err != nil {
-			if client.IgnoreNotFound(err) != nil {
-				return fmt.Errorf("failed to get targeted AIServiceBackend %s: %w", targetRef.Name, err)
+		switch {
+		case targetRef.Group == aiServiceBackendGroup && targetRef.Kind == aiServiceBackendKind:
+			var aiBackend aigv1a1.AIServiceBackend
+			err := c.client.Get(ctx, client.ObjectKey{
+				Name:      string(targetRef.Name),
+				Namespace: bsp.Namespace, // targetRefs are local to the policy's namespace.
+			}, &aiBackend)
+			if err != nil {
+				if client.IgnoreNotFound(err) != nil {
+					return fmt.Errorf("failed to get targeted AIServiceBackend %s: %w", targetRef.Name, err)
+				}
+				c.logger.Info("Targeted AIServiceBackend not found", "name", string(targetRef.Name), "namespace", bsp.Namespace)
+				continue
 			}
-			c.logger.Info("Targeted AIServiceBackend not found", "name", string(targetRef.Name), "namespace", bsp.Namespace)
-			continue
+			c.logger.Info("Syncing AIServiceBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
+			c.aiServiceBackendEventChan <- event.GenericEvent{Object: &aiBackend}
+		case targetRef.Group == inferencePoolGroup && targetRef.Kind == inferencePoolKind:
+			var inferencePool gwaiev1.InferencePool
+			err := c.client.Get(ctx, client.ObjectKey{
+				Name:      string(targetRef.Name),
+				Namespace: bsp.Namespace, // targetRefs are local to the policy's namespace.
+			}, &inferencePool)
+			if err != nil {
+				if client.IgnoreNotFound(err) != nil {
+					return fmt.Errorf("failed to get targeted InferencePool %s: %w", targetRef.Name, err)
+				}
+				c.logger.Info("Targeted InferencePool not found", "name", string(targetRef.Name), "namespace", bsp.Namespace)
+				continue
+			}
+			c.logger.Info("Syncing InferencePool", "namespace", inferencePool.Namespace, "name", inferencePool.Name)
+			c.inferencePoolEventChan <- event.GenericEvent{Object: &inferencePool}
 		}
-		allAIServiceBackends = append(allAIServiceBackends, aiBackend)
 	}
 
-	for i := range allAIServiceBackends {
-		aiBackend := &allAIServiceBackends[i]
-		c.logger.Info("Syncing AIServiceBackend", "namespace", aiBackend.Namespace, "name", aiBackend.Name)
-		c.aiServiceBackendEventChan <- event.GenericEvent{Object: aiBackend}
-	}
 	return nil
 }
 

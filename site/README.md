@@ -37,3 +37,24 @@ npm run start
 - Use npm run start:
   - For consistent and reproducible builds, ensuring you use the local version of Docusaurus.
   - In your development workflow, where the start script is part of your project setup.
+
+### Updating versions
+
+When generating a new version, edit the `versioned_docs/version-{version}/_vars.json` and set the right version values.
+
+### AI Coding Assistants
+
+This directory includes an `AGENTS.md` file with guidelines for AI coding assistants.
+To enable it for your preferred tool, create a symlink:
+
+**Cursor:**
+
+```
+ln -s AGENTS.md .cursorrules
+```
+
+**Claude Code:**
+
+```
+ln -s AGENTS.md CLAUDE.md
+```

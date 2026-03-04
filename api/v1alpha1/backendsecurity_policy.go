@@ -53,13 +53,13 @@ type BackendSecurityPolicy struct {
 // +kubebuilder:validation:XValidation:rule="self.type == 'GCPCredentials' ? (has(self.gcpCredentials) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.azureCredentials) && !has(self.anthropicAPIKey)) : true",message="When type is GCPCredentials, only gcpCredentials field should be set"
 // +kubebuilder:validation:XValidation:rule="self.type == 'AnthropicAPIKey' ? (has(self.anthropicAPIKey) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true",message="When type is AnthropicAPIKey, only anthropicAPIKey field should be set"
 type BackendSecurityPolicySpec struct {
-	// TargetRefs are the names of the AIServiceBackend resources this BackendSecurityPolicy is being attached to.
-	// Attaching multiple BackendSecurityPolicies to the same AIServiceBackend is invalid and will result in an error
-	// during the reconciliation of AIServiceBackend.
+	// TargetRefs are the names of the AIServiceBackend or InferencePool resources this BackendSecurityPolicy is being attached to.
+	// Attaching multiple BackendSecurityPolicies to the same resource is invalid and will result in an error
+	// during the reconciliation of the resource.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=16
-	// +kubebuilder:validation:XValidation:rule="self.all(ref, ref.group == 'aigateway.envoyproxy.io' && ref.kind == 'AIServiceBackend')", message="targetRefs must reference AIServiceBackend resources"
+	// +kubebuilder:validation:XValidation:rule="self.all(ref, (ref.group == 'aigateway.envoyproxy.io' && ref.kind == 'AIServiceBackend') || (ref.group == 'inference.networking.k8s.io' && ref.kind == 'InferencePool'))", message="targetRefs must reference AIServiceBackend or InferencePool resources"
 	TargetRefs []gwapiv1a2.LocalPolicyTargetReference `json:"targetRefs,omitempty"`
 
 	// Type specifies the type of the backend security policy.

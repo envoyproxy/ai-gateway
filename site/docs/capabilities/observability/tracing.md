@@ -4,6 +4,9 @@ title: GenAI Distributed Tracing
 sidebar_position: 7
 ---
 
+import CodeBlock from '@theme/CodeBlock';
+import vars from '../../\_vars.json';
+
 Envoy AI Gateway's router joins and records distributed traces when supplied
 with an [OpenTelemetry](https://opentelemetry.io/) collector endpoint.
 
@@ -44,23 +47,28 @@ helm install phoenix oci://registry-1.docker.io/arizephoenix/phoenix-helm \
   --namespace envoy-ai-gateway-system \
   --set auth.enableAuth=false \
   --set server.port=6006
+
+# Wait for Phoenix to be ready (first run may take a few minutes to pull images)
+kubectl wait --timeout=5m -n envoy-ai-gateway-system \
+  pods -l app.kubernetes.io/name=phoenix --for=condition=Ready
 ```
 
 ### Configure AI Gateway with OpenTelemetry
 
 Upgrade your AI Gateway installation with [OpenTelemetry configuration][otel-config]:
 
-```shell
-helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-ai-gateway-system \
-  --set "extProc.extraEnvVars[0].name=OTEL_EXPORTER_OTLP_ENDPOINT" \
-  --set "extProc.extraEnvVars[0].value=http://phoenix-svc:6006" \
-  --set "extProc.extraEnvVars[1].name=OTEL_METRICS_EXPORTER" \
-  --set "extProc.extraEnvVars[1].value=none"
+<CodeBlock language="shell">
+{`helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \\
+    --version v${vars.aigwVersion} \\
+    --namespace envoy-ai-gateway-system \\
+    --set "extProc.extraEnvVars[0].name=OTEL_EXPORTER_OTLP_ENDPOINT" \\
+    --set "extProc.extraEnvVars[0].value=http://phoenix-svc.envoy-ai-gateway-system:6006" \\
+    --set "extProc.extraEnvVars[1].name=OTEL_METRICS_EXPORTER" \\
+    --set "extProc.extraEnvVars[1].value=none"
 # OTEL_SERVICE_NAME defaults to "ai-gateway" if not set
 # OTEL_METRICS_EXPORTER=none because Phoenix only supports traces, not metrics
-```
+# Note: Use fully-qualified service name because ext-proc runs in envoy-gateway-system namespace`}
+</CodeBlock>
 
 Wait for the gateway pod to be ready:
 
@@ -91,7 +99,7 @@ kubectl logs -n envoy-ai-gateway-system deployment/phoenix | grep "POST /v1/trac
 Port-forward to access the Phoenix dashboard:
 
 ```shell
-kubectl port-forward -n envoy-ai-gateway-system svc/phoenix 6006:6006
+kubectl port-forward -n envoy-ai-gateway-system svc/phoenix-svc 6006:6006
 ```
 
 Then open http://localhost:6006 in your browser to explore the traces.
@@ -163,33 +171,73 @@ is `x-session-id`, you can map it to the standard OpenTelemetry attribute
 Some metrics systems will be able to do fine-grained aggregation, but not all.
 Here's an example of setting the session ID header for spans, but not metrics:
 
-```shell
-helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-ai-gateway-system \
-  --reuse-values \
-  --set "controller.metricsRequestHeaderAttributes=x-user-id:user.id" \
-  --set "controller.spanRequestHeaderAttributes=x-session-id:session.id,x-user-id:user.id"
-```
+<CodeBlock language="shell">
+{`helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \\
+    --version v${vars.aigwVersion} \\
+    --namespace envoy-ai-gateway-system \\
+    --reuse-values \\
+    --set "controller.metricsRequestHeaderAttributes=x-user-id:user.id" \\
+    --set "controller.spanRequestHeaderAttributes=x-session-id:session.id,x-user-id:user.id"`}
+</CodeBlock>
 
 ## Cleanup
 
 To remove Phoenix and disable tracing:
 
-```shell
-# Uninstall Phoenix
+<CodeBlock language="shell">
+{`# Uninstall Phoenix
 helm uninstall phoenix -n envoy-ai-gateway-system
 
 # Disable tracing in AI Gateway
-helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --version v0.0.0-latest \
-  --namespace envoy-ai-gateway-system \
-  --reuse-values \
-  --unset extProc.extraEnvVars
+
+helm upgrade ai-eg oci://docker.io/envoyproxy/ai-gateway-helm \\
+--version v${vars.aigwVersion} \\
+--namespace envoy-ai-gateway-system \\
+--reuse-values \\
+--unset extProc.extraEnvVars`}
+</CodeBlock>
+
+## Per-Gateway Configuration
+
+For deployments with multiple Gateways that need different tracing configurations,
+use the `GatewayConfig` CRD instead of global Helm values. This allows you to:
+
+- Configure different OTEL endpoints for different Gateways
+- Set per-gateway service names for better trace organization
+- Override global tracing settings for specific Gateways
+
+### Example
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: GatewayConfig
+metadata:
+  name: production-tracing
+  namespace: default
+spec:
+  extProc:
+    env:
+      - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: "http://production-collector:4317"
+      - name: OTEL_SERVICE_NAME
+        value: "ai-gateway-production"
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: production-gateway
+  annotations:
+    aigateway.envoyproxy.io/gateway-config: production-tracing
+spec:
+  # ...
 ```
+
+See the [Gateway Configuration](../gateway-config.md) guide for detailed information
+on `GatewayConfig` usage, including environment variable precedence and shared configurations.
 
 ## See Also
 
+- [Gateway Configuration](../gateway-config.md) - Per-gateway configuration using GatewayConfig
 - [OpenInference Specification][openinference] - GenAI Semantic conventions for traces
 - [OpenTelemetry Configuration][otel-config] - Environment variable reference
 - [Arize Phoenix Documentation][phoenix] - LLM observability platform

@@ -21,11 +21,10 @@ var configTemplate string
 // Backend represents a network backend endpoint (OpenAI or MCP server).
 // Backends are rendered as Kubernetes Backend resources with optional TLS policy.
 type Backend struct {
-	Name             string // Backend resource name (e.g., "openai", "github")
-	Hostname         string // Hostname for Backend endpoint (modified from "localhost"/"127.0.0.1" to "127.0.0.1.nip.io" for Docker/K8s compatibility)
-	OriginalHostname string // Original unmodified hostname for TLS certificate validation (e.g., "localhost" when Hostname is "127.0.0.1.nip.io")
-	Port             int    // Port number
-	NeedsTLS         bool   // Whether to generate BackendTLSPolicy resource
+	Name     string // Backend resource name (e.g., "openai", "github")
+	Hostname string // Hostname for Backend endpoint
+	Port     int    // Port number
+	NeedsTLS bool   // Whether to generate BackendTLSPolicy resource
 }
 
 // OpenAIConfig holds OpenAI-specific configuration for generating AIServiceBackend resources.
@@ -85,11 +84,10 @@ func WriteConfig(data *ConfigData) (string, error) {
 
 // parsedURL holds parsed URL components for creating Backend, OpenAIConfig, and AnthropicConfig.
 type parsedURL struct {
-	hostname         string
-	originalHostname string
-	port             int
-	version          string
-	needsTLS         bool
+	hostname string
+	port     int
+	version  string
+	needsTLS bool
 }
 
 // parseURL extracts hostname, port, and version from the base URL.
@@ -103,12 +101,6 @@ func parseURL(baseURL string) (*parsedURL, error) {
 	hostname := u.Hostname()
 	if hostname == "" {
 		return nil, fmt.Errorf("invalid base URL: missing hostname")
-	}
-	originalHostname := hostname
-
-	// Convert localhost/127.0.0.1 to nip.io for Docker/K8s compatibility
-	if hostname == "localhost" || hostname == "127.0.0.1" {
-		hostname = "127.0.0.1.nip.io"
 	}
 
 	// Determine port
@@ -140,10 +132,9 @@ func parseURL(baseURL string) (*parsedURL, error) {
 	}
 
 	return &parsedURL{
-		hostname:         hostname,
-		originalHostname: originalHostname,
-		port:             port,
-		version:          version,
-		needsTLS:         u.Scheme == "https",
+		hostname: hostname,
+		port:     port,
+		version:  version,
+		needsTLS: u.Scheme == "https",
 	}, nil
 }

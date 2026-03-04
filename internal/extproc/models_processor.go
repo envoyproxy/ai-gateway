@@ -7,8 +7,6 @@ package extproc
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -20,7 +18,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // modelsProcessor implements [Processor] for the `/v1/models` endpoint.
@@ -37,7 +35,7 @@ type modelsProcessor struct {
 var _ Processor = (*modelsProcessor)(nil)
 
 // NewModelsProcessor creates a new processor that returns the list of declared models.
-func NewModelsProcessor(config *processorConfig, requestHeaders map[string]string, logger *slog.Logger, _ tracing.Tracing, isUpstreamFilter bool) (Processor, error) {
+func NewModelsProcessor(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool) (Processor, error) {
 	if isUpstreamFilter {
 		return passThroughProcessor{}, nil
 	}
@@ -62,8 +60,6 @@ func NewModelsProcessor(config *processorConfig, requestHeaders map[string]strin
 
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
 func (m *modelsProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
-	m.logger.Info("Serving list of declared models")
-
 	body, err := json.Marshal(m.models)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal body: %w", err)
@@ -83,23 +79,6 @@ func (m *modelsProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.Hea
 			},
 		},
 	}, nil
-}
-
-var errUnexpectedCall = errors.New("unexpected method call")
-
-// ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (m *modelsProcessor) ProcessRequestBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	return nil, fmt.Errorf("%w: ProcessRequestBody", errUnexpectedCall)
-}
-
-// ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
-func (m *modelsProcessor) ProcessResponseHeaders(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
-	return nil, fmt.Errorf("%w: ProcessResponseHeaders", errUnexpectedCall)
-}
-
-// ProcessResponseBody implements [Processor.ProcessResponseBody].
-func (m *modelsProcessor) ProcessResponseBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	return nil, fmt.Errorf("%w: ProcessResponseBody", errUnexpectedCall)
 }
 
 func setHeader(headers *extprocv3.HeaderMutation, key, value string) {
@@ -127,16 +106,16 @@ func requestHost(headers map[string]string) string {
 }
 
 // selectModelsForHost returns the models for the given host, falling back to the global list.
-func selectModelsForHost(host string, cfg *processorConfig) []filterapi.Model {
-	if host == "" || len(cfg.modelsByHost) == 0 {
-		return cfg.declaredModels
+func selectModelsForHost(host string, cfg *filterapi.RuntimeConfig) []filterapi.Model {
+	if host == "" || len(cfg.ModelsByHost) == 0 {
+		return cfg.DeclaredModels
 	}
 
-	if exact, ok := cfg.modelsByHost[host]; ok {
+	if exact, ok := cfg.ModelsByHost[host]; ok {
 		return exact
 	}
 
-	for pattern, models := range cfg.modelsByHost {
+	for pattern, models := range cfg.ModelsByHost {
 		if !strings.HasPrefix(pattern, "*.") {
 			continue
 		}
@@ -146,5 +125,5 @@ func selectModelsForHost(host string, cfg *processorConfig) []filterapi.Model {
 		}
 	}
 
-	return cfg.declaredModels
+	return cfg.DeclaredModels
 }

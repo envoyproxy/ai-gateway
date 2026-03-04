@@ -1,14 +1,8 @@
 {
-  "flags":  256,
+  "flags":  257,
   "name":  "CreateEmbeddings",
   "kind":  "SPAN_KIND_INTERNAL",
   "attributes":  [
-    {
-      "key":  "llm.system",
-      "value":  {
-        "stringValue":  "openai"
-      }
-    },
     {
       "key":  "input.value",
       "value":  {

@@ -200,6 +200,7 @@ stringData:
       name: default/envoy-ai-gateway-basic-openai/route/envoy-ai-gateway-basic/rule/0/ref/0
       schema:
         name: OpenAI
+        prefix: v1
         version: v1
     - auth:
         aws:
@@ -216,9 +217,8 @@ stringData:
       name: default/envoy-ai-gateway-basic-testupstream/route/envoy-ai-gateway-basic/rule/2/ref/0
       schema:
         name: OpenAI
+        prefix: v1
         version: v1
-    metadataNamespace: io.envoy.ai_gateway
-    modelNameHeaderKey: x-ai-eg-model
     models:
     - CreatedAt: "2025-05-23T00:00:00Z"
       Name: gpt-4o-mini
@@ -230,6 +230,7 @@ stringData:
       Name: some-cool-self-hosted-model
       OwnedBy: Envoy AI Gateway
     uuid: aigw-translate
+    version: dev
 ---
 apiVersion: v1
 kind: Secret

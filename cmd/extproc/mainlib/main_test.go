@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -83,6 +84,14 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				logLevel:   slog.LevelDebug,
 			},
 			{
+				name:       "with endpoint prefixes",
+				args:       []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "openai:/,cohere:/cohere,anthropic:/anthropic"},
+				configPath: "/path/to/config.yaml",
+				addr:       ":1063",
+				rootPrefix: "/",
+				logLevel:   slog.LevelInfo,
+			},
+			{
 				name: "with header mapping",
 				args: []string{
 					"-configPath", "/path/to/config.yaml",
@@ -105,11 +114,10 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				logLevel:   slog.LevelInfo,
 			},
 			{
-				name: "with both metrics and tracing headers",
+				name: "with access log header attributes",
 				args: []string{
 					"-configPath", "/path/to/config.yaml",
-					"-metricsRequestHeaderAttributes", "x-user-id:user.id",
-					"-spanRequestHeaderAttributes", "x-session-id:session.id",
+					"-logRequestHeaderAttributes", "x-session-id:session.id,x-user-id:user.id",
 				},
 				configPath: "/path/to/config.yaml",
 				rootPrefix: "/",
@@ -117,10 +125,11 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				logLevel:   slog.LevelInfo,
 			},
 			{
-				name: "with deprecated metricsRequestHeaderLabels flag",
+				name: "with both metrics and tracing headers",
 				args: []string{
 					"-configPath", "/path/to/config.yaml",
-					"-metricsRequestHeaderLabels", "x-team-id:team.id",
+					"-metricsRequestHeaderAttributes", "x-user-id:user.id",
+					"-spanRequestHeaderAttributes", "x-session-id:session.id",
 				},
 				configPath: "/path/to/config.yaml",
 				rootPrefix: "/",
@@ -151,6 +160,16 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				expectedError: "configPath must be provided\nfailed to unmarshal log level: slog: level string \"invalid\": unknown name",
 			},
 			{
+				name:          "invalid endpoint prefixes - unknown key",
+				args:          []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "foo:/x"},
+				expectedError: "failed to parse endpoint prefixes: unknown endpointPrefixes key \"foo\" at position 1 (allowed: openai, cohere, anthropic)",
+			},
+			{
+				name:          "invalid endpoint prefixes - missing colon",
+				args:          []string{"-configPath", "/path/to/config.yaml", "-endpointPrefixes", "openai"},
+				expectedError: "failed to parse endpoint prefixes: invalid endpointPrefixes pair at position 1: \"openai\" (expected format: key:value)",
+			},
+			{
 				name:          "invalid tracing header attributes - missing colon",
 				args:          []string{"-configPath", "/path/to/config.yaml", "-spanRequestHeaderAttributes", "x-session-id"},
 				expectedError: "failed to parse tracing header mapping: invalid header-attribute pair at position 1: \"x-session-id\" (expected format: header:attribute)",
@@ -159,6 +178,16 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				name:          "invalid tracing header attributes - empty header",
 				args:          []string{"-configPath", "/path/to/config.yaml", "-spanRequestHeaderAttributes", ":session.id"},
 				expectedError: "failed to parse tracing header mapping: empty header or attribute at position 1: \":session.id\"",
+			},
+			{
+				name:          "invalid access log header attributes - missing colon",
+				args:          []string{"-configPath", "/path/to/config.yaml", "-logRequestHeaderAttributes", "x-session-id"},
+				expectedError: "failed to parse access log header mapping: invalid header-attribute pair at position 1: \"x-session-id\" (expected format: header:attribute)",
+			},
+			{
+				name:          "invalid access log header attributes - empty header",
+				args:          []string{"-configPath", "/path/to/config.yaml", "-logRequestHeaderAttributes", ":session.id"},
+				expectedError: "failed to parse access log header mapping: empty header or attribute at position 1: \":session.id\"",
 			},
 		}
 
@@ -181,9 +210,9 @@ func TestListenAddress(t *testing.T) {
 	defer lis.Close() //nolint:errcheck
 
 	tests := []struct {
-		addr        string
-		wantNetwork string
-		wantAddress string
+		addr            string
+		expectedNetwork string
+		expectedAddress string
 	}{
 		{lis.Addr().String(), "tcp", lis.Addr().String()},
 		{"unix://" + unixPath, "unix", unixPath},
@@ -192,8 +221,8 @@ func TestListenAddress(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.addr, func(t *testing.T) {
 			network, address := listenAddress(tt.addr)
-			require.Equal(t, tt.wantNetwork, network)
-			require.Equal(t, tt.wantAddress, address)
+			require.Equal(t, tt.expectedNetwork, network)
+			require.Equal(t, tt.expectedAddress, address)
 		})
 	}
 	_, err = os.Stat(unixPath)
@@ -206,6 +235,7 @@ func TestExtProcStartupMessage(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
 	require.NoError(t, os.WriteFile(configPath, []byte(`
+version: dev
 backends:
 - name: openai
   schema:
@@ -244,11 +274,18 @@ backends:
 			"-extProcAddr", ":0",
 			"-adminPort", "0",
 			"-mcpAddr", "unix://" + socketPath,
+			"-logLevel", "info",
 		}
 		errCh <- Main(ctx, args, stderrW)
 	}()
 
-	// block until the context is canceled or an error occurs.
-	err := <-errCh
-	require.NoError(t, err)
+	timeout, cancelTimeout := context.WithTimeout(t.Context(), time.Second*3)
+	defer cancelTimeout()
+	select {
+	case <-ctx.Done():
+	case <-timeout.Done():
+		t.Fatal("timeout waiting for startup message")
+	case err := <-errCh:
+		require.NoError(t, err, "extproc exited with error before startup message")
+	}
 }

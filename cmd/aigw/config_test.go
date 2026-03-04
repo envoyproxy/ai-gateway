@@ -58,16 +58,7 @@ func TestReadConfig(t *testing.T) {
 				"OPENAI_BASE_URL": "http://localhost:11434/v1",
 			},
 			mcpServers:      testMcpServers,
-			expectHostnames: []string{"127.0.0.1.nip.io", "dreamtap.xyz"},
-			expectPort:      "11434",
-		},
-		{
-			name: "generates config from OpenAI env vars for localhost",
-			envVars: map[string]string{
-				"OPENAI_API_KEY":  "test-key",
-				"OPENAI_BASE_URL": "http://localhost:11434/v1",
-			},
-			expectHostnames: []string{"127.0.0.1.nip.io"},
+			expectHostnames: []string{"localhost", "dreamtap.xyz"},
 			expectPort:      "11434",
 		},
 		{

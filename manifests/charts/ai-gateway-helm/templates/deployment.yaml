@@ -24,9 +24,9 @@ spec:
       labels:
         {{- include "ai-gateway-helm.controller.selectorLabels" . | nindent 8 }}
     spec:
-      {{- with .Values.controller.imagePullSecrets }}
+      {{- with (include "ai-gateway-helm.controller.imagePullSecrets" .) }}
       imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
+        {{- . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "ai-gateway-helm.controller.serviceAccountName" . }}
       securityContext:
@@ -46,14 +46,30 @@ spec:
             - --extProcImage={{ .Values.extProc.image.repository }}:{{ .Values.extProc.image.tag | default .Chart.AppVersion }}
             - --extProcImagePullPolicy={{ .Values.extProc.imagePullPolicy }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
-            {{- if .Values.extProc.imagePullSecrets }}
-            - --extProcImagePullSecrets={{ include "ai-gateway-helm.extProc.imagePullSecretsString" . }}
+            {{- with (include "ai-gateway-helm.extProc.imagePullSecretsString" .) }}
+            - --extProcImagePullSecrets={{ . }}
             {{- end }}
-            {{- if or .Values.controller.metricsRequestHeaderAttributes .Values.controller.metricsRequestHeaderLabels }}
-            - --metricsRequestHeaderAttributes={{ .Values.controller.metricsRequestHeaderAttributes | default .Values.controller.metricsRequestHeaderLabels }}
+            {{- if .Values.controller.metricsRequestHeaderAttributes }}
+            - --metricsRequestHeaderAttributes={{ .Values.controller.metricsRequestHeaderAttributes }}
             {{- end }}
             {{- if .Values.controller.spanRequestHeaderAttributes }}
             - --spanRequestHeaderAttributes={{ .Values.controller.spanRequestHeaderAttributes }}
+            {{- end }}
+            {{- $endpointPrefixes := list -}}
+            {{- if hasKey .Values.endpointConfig "openai" -}}
+              {{- $openai := .Values.endpointConfig.openai -}}
+              {{- $endpointPrefixes = append $endpointPrefixes (printf "openai:%s" $openai) -}}
+            {{- end -}}
+            {{- if hasKey .Values.endpointConfig "cohere" -}}
+              {{- $cohere := .Values.endpointConfig.cohere -}}
+              {{- $endpointPrefixes = append $endpointPrefixes (printf "cohere:%s" $cohere) -}}
+            {{- end -}}
+            {{- if hasKey .Values.endpointConfig "anthropic" -}}
+              {{- $anthropic := .Values.endpointConfig.anthropic -}}
+              {{- $endpointPrefixes = append $endpointPrefixes (printf "anthropic:%s" $anthropic) -}}
+            {{- end -}}
+            {{- if $endpointPrefixes }}
+            - --endpointPrefixes={{ join "," $endpointPrefixes }}
             {{- end }}
             {{- if .Values.extProc.extraEnvVars }}
             - --extProcExtraEnvVars={{ include "ai-gateway-helm.extProc.envVarsString" . }}
@@ -70,6 +86,12 @@ spec:
             {{- end }}
             - --cacheSyncTimeout={{ .Values.controller.watch.cacheSyncTimeout }}
             - --watchNamespaces={{ join "," .Values.controller.watch.namespaces }}
+            - --mcpSessionEncryptionSeed={{ .Values.controller.mcp.sessionEncryption.seed }}
+            - --mcpSessionEncryptionIterations={{ .Values.controller.mcp.sessionEncryption.iterations }}
+            {{- if .Values.controller.mcp.sessionEncryption.fallback.seed }}
+            - --mcpFallbackSessionEncryptionSeed={{ .Values.controller.mcp.sessionEncryption.fallback.seed }}
+            - --mcpFallbackSessionEncryptionIterations={{ .Values.controller.mcp.sessionEncryption.fallback.iterations }}
+            {{- end }}
           livenessProbe:
             grpc:
               port: 1063

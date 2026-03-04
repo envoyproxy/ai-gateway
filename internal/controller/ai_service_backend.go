@@ -73,7 +73,8 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 	}
 	if len(backendSecurityPolicyList.Items) > 1 {
 		var names []string
-		for _, bsp := range backendSecurityPolicyList.Items {
+		for i := range backendSecurityPolicyList.Items {
+			bsp := &backendSecurityPolicyList.Items[i]
 			names = append(names, bsp.Name)
 		}
 		return fmt.Errorf("multiple BackendSecurityPolicies found for AIServiceBackend %s: %v",
@@ -88,12 +89,13 @@ func (c *AIBackendController) syncAIServiceBackend(ctx context.Context, aiBacken
 	if err != nil {
 		return fmt.Errorf("failed to list AIGatewayRouteList: %w", err)
 	}
-	for _, aiGatewayRoute := range aiGatewayRoutes.Items {
+	for i := range aiGatewayRoutes.Items {
+		aiGatewayRoute := &aiGatewayRoutes.Items[i]
 		c.logger.Info("syncing AIGatewayRoute",
 			"namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name,
 			"referenced_backend", aiBackend.Name, "referenced_backend_namespace", aiBackend.Namespace,
 		)
-		c.aiGatewayRouteChan <- event.GenericEvent{Object: &aiGatewayRoute}
+		c.aiGatewayRouteChan <- event.GenericEvent{Object: aiGatewayRoute}
 	}
 	return nil
 }

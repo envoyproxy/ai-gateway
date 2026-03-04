@@ -107,11 +107,7 @@ func TestUpgrade(t *testing.T) {
 		{
 			name: "control-plane upgrade",
 			initFunc: func(ctx context.Context) string {
-				// This is the commit hash of the oldest helm chart that we have a proper graceful shutdown logic.
-				// https://github.com/envoyproxy/ai-gateway/commit/bb2a476eeb7fe14495a64ced1396c65a07ea2cd3
-				//
-				// TODO: after the release of v0.4.x, pin to the v0.4.x chart instead.
-				const previousEnvoyAIGatewayVersion = "v0.0.0-bb2a476eeb7fe14495a64ced1396c65a07ea2cd3"
+				const previousEnvoyAIGatewayVersion = "v0.4.0"
 				const kindClusterName = "envoy-ai-gateway-cp-upgrade"
 				require.NoError(t, e2elib.SetupAll(ctx, kindClusterName, e2elib.AIGatewayHelmOption{
 					ChartVersion: previousEnvoyAIGatewayVersion,
@@ -196,6 +192,10 @@ func TestUpgrade(t *testing.T) {
 			t.Log("Making sure multiple requests work after the upgrade")
 			time.Sleep(tc.runningAfterUpgrade)
 			t.Logf("Request count after upgrade: %d", phase.requestCounts.Load())
+
+			t.Log("Breaking filter config secret to simulate config change during control plane upgrade for the future versions")
+			breakFilterConfig(t)
+			time.Sleep(30 * time.Second)
 
 			// Stop request goroutines and wait for clean shutdown before checking failures.
 			cancelRequests()
@@ -300,6 +300,24 @@ func makeRequest(t *testing.T, ipAddress string, phase string) error {
 		return fmt.Errorf("[%s] unexpected status code %d: body=%s", phase, resp.StatusCode, string(body))
 	}
 	return nil
+}
+
+// breakFilterConfig modifies the filter config secret to contain an invalid configuration, which should be
+// ignored by the running pods.
+func breakFilterConfig(t *testing.T) {
+	newEncodedConfig := base64.StdEncoding.EncodeToString([]byte(`
+version: some-nonexistent-version # The version mismatch should cause the filter to ignore this config.
+foo: bar
+`))
+
+	// Patch the secret with the broken config.
+	patch := fmt.Sprintf(`{"data":{"filter-config.yaml":"%s"}}`, newEncodedConfig)
+	patchCmd := e2elib.Kubectl(t.Context(), "patch", "secret",
+		"upgrade-test-default", // The name and namespace of the Gateway in testdata/manifest.yaml.
+		"-n", e2elib.EnvoyGatewayNamespace, "--type=merge", "-p", patch)
+	patchCmd.Stdout = nil
+	patchCmd.Stderr = nil
+	require.NoError(t, patchCmd.Run(), "failed to patch filter config secret")
 }
 
 // monitorPods periodically checks the status of pods with the given label selector

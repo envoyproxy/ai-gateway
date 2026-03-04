@@ -17,7 +17,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
 	cohere "github.com/cohere-ai/cohere-go/v2"
-	cohereoption "github.com/cohere-ai/cohere-go/v2/option"
+	"github.com/cohere-ai/cohere-go/v2/core"
 	coherev2client "github.com/cohere-ai/cohere-go/v2/v2"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -90,7 +90,10 @@ func Test_Examples_Basic(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 				defer cancel()
 
-				client := coherev2client.NewClient(cohereoption.WithBaseURL(fwd.Address()+"/cohere"), cohereoption.WithToken("dummy"))
+				client := coherev2client.NewClient(&core.RequestOptions{
+					BaseURL: fwd.Address() + "/cohere",
+					Token:   "dummy",
+				})
 				topN := 2
 				req := &cohere.V2RerankRequest{
 					Model: "rerank-english-v3.0",
@@ -194,7 +197,8 @@ func (tc examplesBasicChatCompletionsTestCase) run(t *testing.T, egSelector stri
 				return fmt.Errorf("chat completion error: %w", err)
 			}
 			var choiceNonEmpty bool
-			for _, choice := range chatCompletion.Choices {
+			for i := range chatCompletion.Choices {
+				choice := &chatCompletion.Choices[i]
 				t.Logf("choice: %s", choice.Message.Content)
 				if choice.Message.Content != "" {
 					choiceNonEmpty = true

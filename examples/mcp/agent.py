@@ -13,8 +13,8 @@
 #
 # MCP_URL=http://localhost:1975/mcp
 #
-# OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-# OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+# OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+# OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 #
 # /// script
 # dependencies = [

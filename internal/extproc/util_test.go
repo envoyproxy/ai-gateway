@@ -11,6 +11,7 @@ import (
 	"io"
 	"testing"
 
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/require"
 )
@@ -142,4 +143,41 @@ func TestRemoveContentEncodingIfNeeded(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHeaderMutationCarrier(t *testing.T) {
+	t.Run("Get panics", func(t *testing.T) {
+		carrier := &headerMutationCarrier{m: &extprocv3.HeaderMutation{}}
+		require.Panics(t, func() { carrier.Get("test-key") })
+	})
+
+	t.Run("Keys panics", func(t *testing.T) {
+		carrier := &headerMutationCarrier{m: &extprocv3.HeaderMutation{}}
+		require.Panics(t, func() { carrier.Keys() })
+	})
+
+	t.Run("Set headers", func(t *testing.T) {
+		mutation := &extprocv3.HeaderMutation{}
+		carrier := &headerMutationCarrier{m: mutation}
+
+		carrier.Set("trace-id", "12345")
+		carrier.Set("span-id", "67890")
+
+		require.Equal(t, &extprocv3.HeaderMutation{
+			SetHeaders: []*corev3.HeaderValueOption{
+				{
+					Header: &corev3.HeaderValue{
+						Key:      "trace-id",
+						RawValue: []byte("12345"),
+					},
+				},
+				{
+					Header: &corev3.HeaderValue{
+						Key:      "span-id",
+						RawValue: []byte("67890"),
+					},
+				},
+			},
+		}, mutation)
+	})
 }

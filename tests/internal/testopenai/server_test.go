@@ -17,6 +17,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestMain(m *testing.M) {
+	// Unset API keys to ensure tests behave consistently regardless of environment.
+	_ = os.Unsetenv("OPENAI_API_KEY")
+	_ = os.Unsetenv("AZURE_OPENAI_API_KEY")
+	os.Exit(m.Run())
+}
+
 func TestServer_ExistingCassette(t *testing.T) {
 	// Test that an existing cassette (chat-basic) works.
 	server := newTestServer(t)

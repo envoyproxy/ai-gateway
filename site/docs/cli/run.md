@@ -95,7 +95,7 @@ The best way to start customizing the configuration is to start with an [example
 First, download an example configuration to use as a starting point:
 
 ```shell
-curl -o ollama.yaml https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/heads/main/examples/aigw/ollama.yaml
+curl -o ollama.yaml https://raw.githubusercontent.com/envoyproxy/ai-gateway/refs/heads/{vars.aigwGitRef}/examples/aigw/ollama.yaml
 ```
 
 Next, let's say change the model matcher from `.*` (match all) to specifically match `deepseek-r1:1.5b` and save the configuration to `custom.yaml`:
@@ -294,9 +294,11 @@ focused on retrieval and semantic analysis.
   - `OPENINFERENCE_HIDE_EMBEDDINGS_TEXT`: Hide embeddings input (default: `false`)
   - `OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS`: Hide embeddings output (default: `false`)
 
-- **Header Mapping**: Map HTTP request headers to span attributes and metric labels. See [Session Tracking][session-tracking] for more details.
-  - `OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES`: Example: `x-team-id:team.id,x-user-id:user.id`
-  - `OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES`: Example: `x-session-id:session.id,x-user-id:user.id`
+- **Header Mapping**: Map HTTP request headers to span attributes, metric labels, and access log attributes. See [Session Tracking][session-tracking] for more details.
+  - `OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES`: Base mapping applied to metrics, spans, and access logs. Example: `x-user-id:user.id`
+  - `OTEL_AIGW_METRICS_REQUEST_HEADER_ATTRIBUTES`: Metrics-only mapping (merged with base). Example: `x-team-id:team.id`
+  - `OTEL_AIGW_SPAN_REQUEST_HEADER_ATTRIBUTES`: Span-only mapping (merged with base). Example: `x-session-id:session.id`
+  - `OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES`: Access-log-only mapping (merged with base). Example: `x-session-id:session.id`
 
 See [docker-compose-otel.yaml][docker-compose-otel.yaml] for a complete example configuration.
 

@@ -6,9 +6,10 @@
 package testopenai
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // extractModel extracts the Model field from an OpenAI request body using reflection.

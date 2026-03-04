@@ -28,6 +28,11 @@ const (
 // Enabling the pprof server by default helps with debugging performance issues in production.
 // The impact should be negligible when the actual pprof endpoints are not being accessed.
 func Run(ctx context.Context) {
+	run(ctx, log.Default())
+}
+
+// run is the internal implementation of Run that accepts a custom logger for testing purposes.
+func run(ctx context.Context, l *log.Logger) {
 	if _, ok := os.LookupEnv(DisableEnvVarKey); !ok {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -37,20 +42,20 @@ func Run(ctx context.Context) {
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 		server := &http.Server{Addr: ":" + pprofPort, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 		go func() {
-			log.Printf("starting pprof server on port %s", pprofPort)
+			l.Printf("starting pprof server on port %s", pprofPort)
 			if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				log.Printf("pprof server stopped: %v", err)
+				l.Printf("pprof server stopped: %v", err)
 			}
 		}()
 		go func() {
 			<-ctx.Done()
-			log.Printf("shutting down pprof server...")
+			l.Printf("shutting down pprof server...")
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := server.Shutdown(shutdownCtx); err != nil {
-				log.Printf("error shutting down pprof server: %v", err)
+				l.Printf("error shutting down pprof server: %v", err)
 			} else {
-				log.Print("pprof server shut down gracefully")
+				l.Print("pprof server shut down gracefully")
 			}
 		}()
 	}

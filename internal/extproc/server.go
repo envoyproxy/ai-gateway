@@ -19,18 +19,15 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
-	"github.com/google/cel-go/cel"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
 
-	"github.com/envoyproxy/ai-gateway/internal/extproc/backendauth"
+	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
-	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
-	tracing "github.com/envoyproxy/ai-gateway/internal/tracing/api"
 )
 
 var (
@@ -41,8 +38,8 @@ var (
 // Server implements the external processor server.
 type Server struct {
 	logger                        *slog.Logger
-	tracing                       tracing.Tracing
-	config                        *processorConfig
+	debugLogEnabled               bool
+	config                        *filterapi.RuntimeConfig
 	processorFactories            map[string]ProcessorFactory
 	routerProcessorsPerReqID      map[string]Processor
 	routerProcessorsPerReqIDMutex sync.RWMutex
@@ -50,10 +47,11 @@ type Server struct {
 }
 
 // NewServer creates a new external processor server.
-func NewServer(logger *slog.Logger, tracing tracing.Tracing) (*Server, error) {
+func NewServer(logger *slog.Logger) (*Server, error) {
+	debugLogEnabled := logger.Enabled(context.Background(), slog.LevelDebug)
 	srv := &Server{
 		logger:                   logger,
-		tracing:                  tracing,
+		debugLogEnabled:          debugLogEnabled,
 		processorFactories:       make(map[string]ProcessorFactory),
 		routerProcessorsPerReqID: make(map[string]Processor),
 		uuidFn:                   uuid.NewString,
@@ -63,40 +61,9 @@ func NewServer(logger *slog.Logger, tracing tracing.Tracing) (*Server, error) {
 
 // LoadConfig updates the configuration of the external processor.
 func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error {
-	backends := make(map[string]*processorConfigBackend, len(config.Backends))
-	for _, backend := range config.Backends {
-		b := backend
-		var h backendauth.Handler
-		if b.Auth != nil {
-			var err error
-			h, err = backendauth.NewHandler(ctx, b.Auth)
-			if err != nil {
-				return fmt.Errorf("cannot create backend auth handler: %w", err)
-			}
-		}
-		backends[b.Name] = &processorConfigBackend{b: &b, handler: h}
-	}
-
-	costs := make([]processorConfigRequestCost, 0, len(config.LLMRequestCosts))
-	for i := range config.LLMRequestCosts {
-		c := &config.LLMRequestCosts[i]
-		var prog cel.Program
-		if c.CEL != "" {
-			var err error
-			prog, err = llmcostcel.NewProgram(c.CEL)
-			if err != nil {
-				return fmt.Errorf("cannot create CEL program for cost: %w", err)
-			}
-		}
-		costs = append(costs, processorConfigRequestCost{LLMRequestCost: c, celProg: prog})
-	}
-
-	newConfig := &processorConfig{
-		uuid:           config.UUID,
-		backends:       backends,
-		requestCosts:   costs,
-		declaredModels: config.Models,
-		modelsByHost:   config.ModelsByHost,
+	newConfig, err := filterapi.NewRuntimeConfig(ctx, config, backendauth.NewHandler)
+	if err != nil {
+		return fmt.Errorf("cannot create runtime filter config: %w", err)
 	}
 	s.config = newConfig // This is racey, but we don't care.
 	return nil
@@ -128,12 +95,12 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", errNoProcessor, path)
 	}
-	return newProcessor(s.config, requestHeaders, s.logger, s.tracing, isUpstreamFilter)
+	return newProcessor(s.config, requestHeaders, s.logger, isUpstreamFilter)
 }
 
 // originalPathHeader is the header used to pass the original path to the processor.
 // This is used in the upstream filter level to determine the original path of the request on retry.
-const originalPathHeader = internalapi.EnvoyAIGatewayHeaderPrefix + "original-path"
+const originalPathHeader = internalapi.OriginalPathHeader
 
 // internalReqIDHeader is the header used to pass the unique internal request ID to the upstream filter.
 // This ensures that the upstream filter uses the same unique ID as the router filter to avoid race conditions.
@@ -141,8 +108,10 @@ const internalReqIDHeader = internalapi.EnvoyAIGatewayHeaderPrefix + "internal-r
 
 // Process implements [extprocv3.ExternalProcessorServer].
 func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
-	s.logger.Debug("handling a new stream", slog.Any("config_uuid", s.config.uuid))
 	ctx := stream.Context()
+	if s.debugLogEnabled {
+		s.logger.Debug("handling a new stream", slog.Any("config_uuid", s.config.UUID))
+	}
 
 	// The processor will be instantiated when the first message containing the request headers is received.
 	// The :path header is used to determine the processor to use, based on the registered ones.
@@ -289,11 +258,14 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 				)
 			}
 		}
-
-		l.Debug("request headers processed", slog.Any("response", resp))
+		if s.debugLogEnabled {
+			l.Debug("request headers processed", slog.Any("response", resp))
+		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_RequestBody:
-		l.Debug("request body processing", slog.Any("request", req))
+		if s.debugLogEnabled {
+			l.Debug("request body processing", slog.Any("request", req))
+		}
 		resp, err := p.ProcessRequestBody(ctx, value.RequestBody)
 		// If the DEBUG log level is enabled, filter the sensitive body before logging.
 		if l.Enabled(ctx, slog.LevelDebug) {
@@ -306,17 +278,25 @@ func (s *Server) processMsg(ctx context.Context, l *slog.Logger, p Processor, re
 		return resp, nil
 	case *extprocv3.ProcessingRequest_ResponseHeaders:
 		responseHdrs := req.GetResponseHeaders().Headers
-		l.Debug("response headers processing", slog.Any("response_headers", responseHdrs))
+		if s.debugLogEnabled {
+			l.Debug("response headers processing", slog.Any("response_headers", responseHdrs))
+		}
 		resp, err := p.ProcessResponseHeaders(ctx, responseHdrs)
 		if err != nil {
 			return nil, fmt.Errorf("cannot process response headers: %w", err)
 		}
-		l.Debug("response headers processed", slog.Any("response", resp))
+		if s.debugLogEnabled {
+			l.Debug("response headers processed", slog.Any("response", resp))
+		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_ResponseBody:
-		l.Debug("response body processing", slog.Any("request", req))
+		if s.debugLogEnabled {
+			l.Debug("response body processing", slog.Any("request", req))
+		}
 		resp, err := p.ProcessResponseBody(ctx, value.ResponseBody)
-		l.Debug("response body processed", slog.Any("response", resp))
+		if s.debugLogEnabled {
+			l.Debug("response body processed", slog.Any("response", resp))
+		}
 		if err != nil {
 			return nil, fmt.Errorf("cannot process response body: %w", err)
 		}
@@ -334,35 +314,52 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	if attributes == nil || len(attributes.Fields) == 0 { // coverage-ignore
 		return status.Error(codes.Internal, "missing attributes in request")
 	}
-	var metadataFieldKey string
+	// metadataFieldKey is the key for the entire metadata field in the attributes for backward compatibility.
+	// backendNamePath is the path to the backend name in the metadata.
+	var metadataFieldKey, backendNamePath string
 	if isEndpointPicker {
 		metadataFieldKey = internalapi.XDSClusterMetadataKey
+		backendNamePath = internalapi.XDSClusterMetadataBackendNamePath
 	} else {
 		metadataFieldKey = internalapi.XDSUpstreamHostMetadataKey
-	}
-	// This should contain the endpoint metadata.
-	hostMetadata, ok := attributes.Fields[metadataFieldKey]
-	if !ok {
-		return status.Errorf(codes.Internal, "missing %s in request", metadataFieldKey)
-	}
-	// Unmarshal the text into the struct since the metadata is encoded as a proto string.
-	var metadata corev3.Metadata
-	err := prototext.Unmarshal([]byte(hostMetadata.GetStringValue()), &metadata)
-	if err != nil {
-		panic(err)
+		backendNamePath = internalapi.XDSUpstreamHostMetadataBackendNamePath
 	}
 
-	aiGatewayEndpointMetadata, ok := metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
-	if !ok {
-		return status.Errorf(codes.Internal, "missing %s metadata", internalapi.InternalEndpointMetadataNamespace)
+	var backendName string
+	if b, ok := attributes.Fields[backendNamePath]; ok {
+		backendName = b.GetStringValue()
+	} else if hostMetadata, ok := attributes.Fields[metadataFieldKey]; ok {
+		// This is the backward compatible path where we read the full host metadata, which
+		// can be fragile due to how unstable proto text format can be. After v0.5 is release,
+		// we can remove this code path.
+
+		// Unmarshal the text into the struct since the metadata is encoded as a proto string.
+		var metadata corev3.Metadata
+		opt := prototext.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
+		err := opt.Unmarshal([]byte(hostMetadata.GetStringValue()), &metadata)
+		if err != nil {
+			return status.Errorf(codes.Internal,
+				"cannot unmarshal host metadata '%s': %v",
+				hostMetadata.GetStringValue(),
+				err)
+		}
+
+		aiGatewayEndpointMetadata, ok := metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+		if !ok {
+			return status.Errorf(codes.Internal, "missing %s metadata", internalapi.InternalEndpointMetadataNamespace)
+		}
+		b, ok := aiGatewayEndpointMetadata.Fields[internalapi.InternalMetadataBackendNameKey]
+		if !ok {
+			return status.Errorf(codes.Internal, "missing %s in endpoint metadata", internalapi.InternalMetadataBackendNameKey)
+		}
+		backendName = b.GetStringValue()
+	} else {
+		return status.Errorf(codes.Internal, "missing %s in request", metadataFieldKey)
 	}
-	backendName, ok := aiGatewayEndpointMetadata.Fields[internalapi.InternalMetadataBackendNameKey]
+
+	backend, ok := s.config.Backends[backendName]
 	if !ok {
-		return status.Errorf(codes.Internal, "missing %s in endpoint metadata", internalapi.InternalMetadataBackendNameKey)
-	}
-	backend, ok := s.config.backends[backendName.GetStringValue()]
-	if !ok {
-		return status.Errorf(codes.Internal, "unknown backend: %s", backendName.GetStringValue())
+		return status.Errorf(codes.Internal, "unknown backend: %s", backendName)
 	}
 
 	s.routerProcessorsPerReqIDMutex.RLock()
@@ -370,10 +367,10 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	routerProcessor, ok := s.routerProcessorsPerReqID[internalReqID]
 	if !ok {
 		return status.Errorf(codes.Internal, "no router processor found, request_id=%s, backend=%s",
-			internalReqID, backendName.GetStringValue())
+			internalReqID, backendName)
 	}
 
-	if err := p.SetBackend(ctx, backend.b, backend.handler, routerProcessor); err != nil {
+	if err := p.SetBackend(ctx, backend.Backend, backend.Handler, routerProcessor); err != nil {
 		return status.Errorf(codes.Internal, "cannot set backend: %v", err)
 	}
 	return nil

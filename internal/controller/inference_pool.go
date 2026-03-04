@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -29,19 +30,22 @@ import (
 //
 // Exported for testing purposes.
 type InferencePoolController struct {
-	client client.Client
-	kube   kubernetes.Interface
-	logger logr.Logger
+	client                 client.Client
+	kube                   kubernetes.Interface
+	logger                 logr.Logger
+	inferencePoolEventChan chan event.GenericEvent
 }
 
 // NewInferencePoolController creates a new reconcile.TypedReconciler for gwaiev1.InferencePool.
 func NewInferencePoolController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger,
+	inferencePoolEventChan chan event.GenericEvent,
 ) *InferencePoolController {
 	return &InferencePoolController{
-		client: client,
-		kube:   kube,
-		logger: logger,
+		client:                 client,
+		kube:                   kube,
+		logger:                 logger,
+		inferencePoolEventChan: inferencePoolEventChan,
 	}
 }
 
@@ -315,7 +319,8 @@ func (c *InferencePoolController) gatewayEventHandler(ctx context.Context, obj c
 	}
 
 	var requests []reconcile.Request
-	for _, pool := range inferencePools.Items {
+	for i := range inferencePools.Items {
+		pool := &inferencePools.Items[i]
 		// Check if this Gateway references the InferencePool.
 		if c.gatewayReferencesInferencePool(ctx, gateway, pool.Name, pool.Namespace) {
 			requests = append(requests, reconcile.Request{

@@ -1,0 +1,31 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
+package backendauth
+
+import (
+	"context"
+	"strings"
+
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+)
+
+type anthropicAPIKeyHandler struct {
+	apiKey string
+}
+
+func newAnthropicAPIKeyHandler(auth *filterapi.AnthropicAPIKeyAuth) (filterapi.BackendAuthHandler, error) {
+	return &anthropicAPIKeyHandler{apiKey: strings.TrimSpace(auth.Key)}, nil
+}
+
+// Do sets the api-key header for Anthropic API requests.
+// Anthropic uses "x-api-key" header instead of "Authorization: Bearer".
+//
+// https://docs.claude.com/en/api/overview#authentication
+func (a *anthropicAPIKeyHandler) Do(_ context.Context, requestHeaders map[string]string, _ []byte) ([]internalapi.Header, error) {
+	requestHeaders["x-api-key"] = a.apiKey
+	return []internalapi.Header{{"x-api-key", a.apiKey}}, nil
+}

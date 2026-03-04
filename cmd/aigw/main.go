@@ -7,7 +7,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/cmd/extproc/mainlib"
 	"github.com/envoyproxy/ai-gateway/internal/autoconfig"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 	"github.com/envoyproxy/ai-gateway/internal/xdg"
 )
@@ -38,21 +38,30 @@ type (
 		Run cmdRun `cmd:"" help:"Run the AI Gateway locally for given configuration."`
 		// Healthcheck is the sub-command to check if the aigw server is healthy.
 		Healthcheck cmdHealthcheck `cmd:"" help:"Docker HEALTHCHECK command."`
+		// DownloadEnvoy downloads the Envoy binary used by Envoy Gateway.
+		DownloadEnvoy cmdDownloadEnvoy `cmd:"" help:"Download Envoy binary for the Envoy Gateway default version."`
 	}
 	// cmdRun corresponds to `aigw run` command.
 	cmdRun struct {
-		Debug     bool                   `help:"Enable debug logging emitted to stderr."`
-		Path      string                 `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Defaults to $AIGW_CONFIG_HOME/config.yaml if exists, otherwise optional when at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY or ANTHROPIC_API_KEY is set." type:"path"`
-		AdminPort int                    `help:"HTTP port for the admin server (serves /metrics and /health endpoints)." default:"1064"`
-		McpConfig string                 `name:"mcp-config" help:"Path to MCP servers configuration file." type:"path"`
-		McpJSON   string                 `name:"mcp-json" help:"JSON string of MCP servers configuration."`
-		RunID     string                 `name:"run-id" env:"AIGW_RUN_ID" help:"Run identifier for this invocation. Defaults to timestamp-based ID or $AIGW_RUN_ID. Use '0' for Docker/Kubernetes."`
+		Debug     bool   `help:"Enable debug logging emitted to stderr."`
+		Path      string `arg:"" name:"path" optional:"" help:"Path to the AI Gateway configuration yaml file. Defaults to $AIGW_CONFIG_HOME/config.yaml if exists, otherwise optional when at least OPENAI_API_KEY, AZURE_OPENAI_API_KEY or ANTHROPIC_API_KEY is set." type:"path"`
+		AdminPort int    `help:"HTTP port for the admin server (serves /metrics and /health endpoints)." default:"1064"`
+		McpConfig string `name:"mcp-config" help:"Path to MCP servers configuration file." type:"path"`
+		McpJSON   string `name:"mcp-json" help:"JSON string of MCP servers configuration."`
+		RunID     string `name:"run-id" env:"AIGW_RUN_ID" help:"Run identifier for this invocation. Defaults to timestamp-based ID or $AIGW_RUN_ID. Use '0' for Docker/Kubernetes."`
+
+		MCPSessionEncryptionIterations int `name:"mcp-session-encryption-iterations" help:"Number of iterations for MCP session encryption key derivation." default:"100000"`
+
 		mcpConfig *autoconfig.MCPServers `kong:"-"` // Internal field: normalized MCP JSON data
 		dirs      *xdg.Directories       `kong:"-"` // Internal field: XDG directories, set by BeforeApply
 		runOpts   *runOpts               `kong:"-"` // Internal field: run options, set by Validate
 	}
 	// cmdHealthcheck corresponds to `aigw healthcheck` command.
 	cmdHealthcheck struct{}
+	// cmdDownloadEnvoy corresponds to `aigw download-envoy` command.
+	cmdDownloadEnvoy struct {
+		dataHome string `kong:"-"`
+	}
 )
 
 // BeforeApply is called by Kong before applying defaults to set XDG directory defaults.
@@ -86,6 +95,8 @@ func (c *cmd) BeforeApply(_ *kong.Context) error {
 		StateHome:  c.StateHome,
 		RuntimeDir: c.RuntimeDir,
 	}
+	// Populate DownloadEnvoy dataHome with expanded data directory.
+	c.DownloadEnvoy.dataHome = c.DataHome
 
 	return nil
 }
@@ -150,12 +161,13 @@ func (c *cmdRun) Validate() error {
 }
 
 type (
-	runFn         func(context.Context, cmdRun, *runOpts, io.Writer, io.Writer) error
-	healthcheckFn func(context.Context, io.Writer, io.Writer) error
+	runFn           func(context.Context, *cmdRun, *runOpts, io.Writer, io.Writer) error
+	healthcheckFn   func(context.Context, io.Writer, io.Writer) error
+	downloadEnvoyFn func(context.Context, *cmdDownloadEnvoy, io.Writer, io.Writer) error
 )
 
 func main() {
-	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, run, healthcheck)
+	doMain(ctrl.SetupSignalHandler(), os.Stdout, os.Stderr, os.Args[1:], os.Exit, run, healthcheck, downloadEnvoyCmd)
 }
 
 // doMain is the main entry point for the CLI. It parses the command line arguments and executes the appropriate command.
@@ -168,6 +180,7 @@ func main() {
 func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn func(int),
 	rf runFn,
 	hf healthcheckFn,
+	df downloadEnvoyFn,
 ) {
 	var c cmd
 	parser, err := kong.New(&c,
@@ -184,9 +197,9 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 
 	switch parsed.Command() {
 	case "version":
-		_, _ = fmt.Fprintf(stdout, "Envoy AI Gateway CLI: %s\n", version.Version)
+		_, _ = fmt.Fprintf(stdout, "Envoy AI Gateway CLI: %s\n", version.Parse())
 	case "run", "run <path>":
-		err = rf(ctx, c.Run, c.Run.runOpts, stdout, stderr)
+		err = rf(ctx, &c.Run, c.Run.runOpts, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Error running: %v", err)
 		}
@@ -194,6 +207,11 @@ func doMain(ctx context.Context, stdout, stderr io.Writer, args []string, exitFn
 		err = hf(ctx, stdout, stderr)
 		if err != nil {
 			log.Fatalf("Health check failed: %v", err)
+		}
+	case "download-envoy":
+		err = df(ctx, &c.DownloadEnvoy, stdout, stderr)
+		if err != nil {
+			log.Fatalf("Download Envoy failed: %v", err)
 		}
 	default:
 		panic("unreachable")

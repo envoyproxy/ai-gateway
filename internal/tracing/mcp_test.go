@@ -62,6 +62,46 @@ func TestTracer_StartSpanAndInjectMeta(t *testing.T) {
 	require.NotContains(t, actualSpan.Attributes, attribute.String("custom.attr", "custom-value1"))
 }
 
+func TestTracer_StartSpanAndInjectMeta_MetaAndHeaderFallback(t *testing.T) {
+	cases := []struct {
+		name     string
+		meta     map[string]any
+		headers  http.Header
+		expected string
+	}{
+		{
+			name:     "meta only",
+			meta:     map[string]any{"x-session-id": "meta-session"},
+			expected: "meta-session",
+		},
+		{
+			name:     "header fallback",
+			headers:  http.Header{"X-Session-Id": []string{"header-session"}},
+			expected: "header-session",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			exporter := tracetest.NewInMemoryExporter()
+			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
+			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(),
+				map[string]string{"x-session-id": "session.id"})
+
+			reqID, _ := jsonrpc.MakeID("id")
+			r := &jsonrpc.Request{ID: reqID, Method: "initialize"}
+			p := &mcp.InitializeParams{Meta: tc.meta}
+			span := tracer.StartSpanAndInjectMeta(t.Context(), r, p, tc.headers)
+			require.NotNil(t, span)
+			span.EndSpan()
+
+			spans := exporter.GetSpans()
+			require.Len(t, spans, 1)
+			require.Contains(t, spans[0].Attributes, attribute.String("session.id", tc.expected))
+		})
+	}
+}
+
 func Test_getMCPAttributes(t *testing.T) {
 	cases := []struct {
 		p        mcp.Params

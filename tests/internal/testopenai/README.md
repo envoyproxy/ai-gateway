@@ -123,7 +123,7 @@ To record a new cassette, follow these steps:
      go test -run TestNewRequest -v
    ```
 
-4. Use it in tests like [chat_completions_test.go](../../extproc/vcr/chat_completions_test.go)
+4. Use it in tests like [chat_completions_test.go](../../data-plane/vcr/chat_completions_test.go)
 
 ## Flowchart of Request Handling
 

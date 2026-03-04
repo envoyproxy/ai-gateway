@@ -3,6 +3,8 @@ slug: 01-release-announcement
 title: Announcing the first Envoy AI Gateway Release – A Community Milestone!
 authors: [missberg, dansun, mathetake, aaronchoo, yaoweng]
 tags: [news, releases]
+image: /img/blog/0.1-release-image.png
+description: On February 25, 2025 Envoy AI Gateway v0.1 was Released. The first AI gateway built on CNCF Envoy Gateway, delivering unified LLM API access, upstream authorization, and token-based rate limiting to simplify enterprise AI adoption.
 ---
 
 # Announcing the first Envoy AI Gateway Release – A Community Milestone!

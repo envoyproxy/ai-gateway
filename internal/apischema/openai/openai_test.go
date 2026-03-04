@@ -6,7 +6,6 @@
 package openai
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -17,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
 	"k8s.io/utils/ptr"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestOpenAIChatCompletionContentPartUserUnionParamUnmarshal(t *testing.T) {
@@ -369,7 +370,7 @@ func TestOpenAIChatCompletionMessageUnmarshal(t *testing.T) {
 				Stop: openai.ChatCompletionNewParamsStopUnion{
 					OfStringArray: []string{"\n", "stop"},
 				},
-				ServiceTier:     openai.ChatCompletionNewParamsServiceTierFlex,
+				ServiceTier:     "flex",
 				Verbosity:       openai.ChatCompletionNewParamsVerbosityLow,
 				ReasoningEffort: openai.ReasoningEffortLow,
 			},
@@ -1193,6 +1194,133 @@ func TestChatCompletionRequest(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "enterprise search tool",
+			jsonStr: `{
+				"model": "gemini-1.5-pro",
+				"messages": [
+					{
+						"role": "user",
+						"content": "Hello with enterprise search!"
+					}
+				],
+				"tools": [
+					{
+						"type": "enterprise_search"
+					}
+				]
+			}`,
+			expected: &ChatCompletionRequest{
+				Model: "gemini-1.5-pro",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						OfUser: &ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Hello with enterprise search!"},
+						},
+					},
+				},
+				Tools: []Tool{
+					{
+						Type: ToolTypeEnterpriseWebSearch,
+					},
+				},
+			},
+		},
+		{
+			name: "mixed function and enterprise search tools",
+			jsonStr: `{
+				"model": "gemini-1.5-pro",
+				"messages": [
+					{
+						"role": "user",
+						"content": "Mixed tools test"
+					}
+				],
+				"tools": [
+					{
+						"type": "function",
+						"function": {
+							"name": "get_weather",
+							"description": "Get current weather"
+						}
+					},
+					{
+						"type": "enterprise_search"
+					}
+				]
+			}`,
+			expected: &ChatCompletionRequest{
+				Model: "gemini-1.5-pro",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						OfUser: &ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Mixed tools test"},
+						},
+					},
+				},
+				Tools: []Tool{
+					{
+						Type: ToolTypeFunction,
+						Function: &FunctionDefinition{
+							Name:        "get_weather",
+							Description: "Get current weather",
+						},
+					},
+					{
+						Type: ToolTypeEnterpriseWebSearch,
+					},
+				},
+			},
+		},
+		{
+			name: "enterprise search with vendor fields",
+			jsonStr: `{
+				"model": "gemini-1.5-pro",
+				"messages": [
+					{
+						"role": "user",
+						"content": "Combined enterprise search and safety settings"
+					}
+				],
+				"tools": [
+					{
+						"type": "enterprise_search"
+					}
+				],
+				"safetySettings": [
+					{
+						"category": "HARM_CATEGORY_HARASSMENT",
+						"threshold": "BLOCK_ONLY_HIGH"
+					}
+				]
+			}`,
+			expected: &ChatCompletionRequest{
+				Model: "gemini-1.5-pro",
+				Messages: []ChatCompletionMessageParamUnion{
+					{
+						OfUser: &ChatCompletionUserMessageParam{
+							Role:    ChatMessageRoleUser,
+							Content: StringOrUserRoleContentUnion{Value: "Combined enterprise search and safety settings"},
+						},
+					},
+				},
+				Tools: []Tool{
+					{
+						Type: ToolTypeEnterpriseWebSearch,
+					},
+				},
+				GCPVertexAIVendorFields: &GCPVertexAIVendorFields{
+					SafetySettings: []*genai.SafetySetting{
+						{
+							Category:  genai.HarmCategoryHarassment,
+							Threshold: genai.HarmBlockThresholdBlockOnlyHigh,
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1614,26 +1742,30 @@ func TestPromptTokensDetails(t *testing.T) {
 		{
 			name: "with text tokens",
 			details: PromptTokensDetails{
-				TextTokens:   15,
-				AudioTokens:  8,
-				CachedTokens: 384,
+				TextTokens:          15,
+				AudioTokens:         8,
+				CachedTokens:        384,
+				CacheCreationTokens: 10,
 			},
 			expected: `{
 				"text_tokens": 15,
 				"audio_tokens": 8,
-				"cached_tokens": 384
+				"cached_tokens": 384,
+				"cache_creation_input_tokens": 10
 			}`,
 		},
 		{
 			name: "with zero text tokens omitted",
 			details: PromptTokensDetails{
-				TextTokens:   0,
-				AudioTokens:  8,
-				CachedTokens: 384,
+				TextTokens:          0,
+				AudioTokens:         8,
+				CachedTokens:        384,
+				CacheCreationTokens: 10,
 			},
 			expected: `{
 				"audio_tokens": 8,
-				"cached_tokens": 384
+				"cached_tokens": 384,
+				"cache_creation_input_tokens": 10
 			}`,
 		},
 	}
@@ -1690,8 +1822,9 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 					RejectedPredictionTokens: 0,
 				},
 				PromptTokensDetails: &PromptTokensDetails{
-					AudioTokens:  8,
-					CachedTokens: 384,
+					AudioTokens:         8,
+					CachedTokens:        384,
+					CacheCreationTokens: 13,
 				},
 			},
 			expected: `{
@@ -1704,7 +1837,8 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 				},
 				"prompt_tokens_details": {
 					"audio_tokens": 8,
-					"cached_tokens": 384
+					"cached_tokens": 384,
+					"cache_creation_input_tokens": 13
 				}
 			}`,
 		},
@@ -1722,9 +1856,10 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 					RejectedPredictionTokens: 0,
 				},
 				PromptTokensDetails: &PromptTokensDetails{
-					TextTokens:   15,
-					AudioTokens:  8,
-					CachedTokens: 384,
+					TextTokens:          15,
+					AudioTokens:         8,
+					CachedTokens:        384,
+					CacheCreationTokens: 21,
 				},
 			},
 			expected: `{
@@ -1739,7 +1874,8 @@ func TestChatCompletionResponseUsage(t *testing.T) {
 				"prompt_tokens_details": {
 					"text_tokens": 15,
 					"audio_tokens": 8,
-					"cached_tokens": 384
+					"cached_tokens": 384,
+					"cache_creation_input_tokens": 21
 				}
 			}`,
 		},

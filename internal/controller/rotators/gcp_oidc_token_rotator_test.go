@@ -98,7 +98,7 @@ func TestGCPOIDCTokenRotator_Rotate(t *testing.T) {
 		{
 			name:            "failed to get sts token",
 			kubeInitObjects: []runtime.Object{oldSecret},
-			stsTokenFunc: func(_ context.Context, _ string, _ aigv1a1.GCPWorkloadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+			stsTokenFunc: func(_ context.Context, _ string, _ *aigv1a1.GCPWorkloadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 				return nil, fmt.Errorf("fake network failure")
 			},
 			expectErrorMsg: "failed to exchange JWT for STS token (project: test-project-id, pool: test-pool-name): fake network failure",
@@ -200,7 +200,7 @@ func TestGCPOIDCTokenRotator_Rotate(t *testing.T) {
 				}
 			}
 			if tt.stsTokenFunc == nil {
-				tt.stsTokenFunc = func(_ context.Context, _ string, _ aigv1a1.GCPWorkloadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+				tt.stsTokenFunc = func(_ context.Context, _ string, _ *aigv1a1.GCPWorkloadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 					return &tokenprovider.TokenExpiry{Token: dummySTSToken, ExpiresAt: twoHourAfterNow}, nil
 				}
 			}
@@ -475,7 +475,7 @@ func TestExchangeJWTForSTSToken(t *testing.T) {
 			// Create custom HTTP client option that points to our test server.
 			ctx := context.Background()
 			// Call the function being tested.
-			tokenExpiry, err := exchangeJWTForSTSToken(ctx, tc.jwtToken, tc.wifConfig, option.WithEndpoint(server.URL))
+			tokenExpiry, err := exchangeJWTForSTSToken(ctx, tc.jwtToken, &tc.wifConfig, option.WithEndpoint(server.URL))
 
 			if tc.expectedError {
 				require.Error(t, err)
@@ -518,7 +518,7 @@ func TestExchangeJWTForSTSToken_WithoutAuthOption(t *testing.T) {
 	defer server.Close()
 
 	jwtToken := "test-jwt-token" // #nosec G101
-	wifConfig := aigv1a1.GCPWorkloadIdentityFederationConfig{
+	wifConfig := &aigv1a1.GCPWorkloadIdentityFederationConfig{
 		ProjectID:                    "test-project",
 		WorkloadIdentityPoolName:     "test-pool",
 		WorkloadIdentityProviderName: "test-provider",
@@ -736,7 +736,7 @@ func TestNewGCPOIDCTokenRotator(t *testing.T) {
 			var err error
 
 			mockTokenProvider := tokenprovider.NewMockTokenProvider("mock-jwt-token", time.Now().Add(time.Hour), nil)
-			rotator, err = NewGCPOIDCTokenRotator(fakeClient, logger, tt.bsp, preRotationWindow, mockTokenProvider)
+			rotator, err = NewGCPOIDCTokenRotator(fakeClient, logger, &tt.bsp, preRotationWindow, mockTokenProvider)
 
 			if tt.expectedError != "" {
 				require.Error(t, err)

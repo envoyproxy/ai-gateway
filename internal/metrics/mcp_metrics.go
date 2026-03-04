@@ -73,12 +73,13 @@ const (
 	MCPErrorInternal MCPErrorType = "internal_error"
 )
 
-// mcpStatusType defines the status of an MCP request.
-type mcpStatusType string
+// MCPStatusType defines the status of an MCP request.
+type MCPStatusType string
 
 const (
-	mcpStatusSuccess mcpStatusType = "success"
-	mcpStatusError   mcpStatusType = "error"
+	MCPStatusSuccess MCPStatusType = "success"
+	MCPStatusFailed  MCPStatusType = "failed"
+	MCPStatusError   MCPStatusType = "error"
 )
 
 // mcpCapabilityType defines the type of capability that is negotiated between client and server.
@@ -109,15 +110,15 @@ type MCPMetrics interface {
 	// WithRequestAttributes returns a new MCPMetrics instance with default attributes extracted from the HTTP request.
 	WithRequestAttributes(req *http.Request) MCPMetrics
 	// RecordRequestDuration records the duration of a success MCP request.
-	RecordRequestDuration(ctx context.Context, startAt *time.Time, meta mcpsdk.Params)
+	RecordRequestDuration(ctx context.Context, startAt time.Time, meta mcpsdk.Params)
 	// RecordRequestErrorDuration records the duration of an MCP request that resulted in an error.
-	RecordRequestErrorDuration(ctx context.Context, startAt *time.Time, errType MCPErrorType, meta mcpsdk.Params)
+	RecordRequestErrorDuration(ctx context.Context, startAt time.Time, errType MCPErrorType, meta mcpsdk.Params)
 	// RecordMethodCount records the count of method invocations.
 	RecordMethodCount(ctx context.Context, methodName string, meta mcpsdk.Params)
 	// RecordMethodErrorCount records the count of method invocations with error status.
-	RecordMethodErrorCount(ctx context.Context, meta mcpsdk.Params)
+	RecordMethodErrorCount(ctx context.Context, methodName string, meta mcpsdk.Params, status MCPStatusType)
 	// RecordInitializationDuration records the duration of MCP initialization.
-	RecordInitializationDuration(ctx context.Context, startAt *time.Time, meta mcpsdk.Params)
+	RecordInitializationDuration(ctx context.Context, startAt time.Time, meta mcpsdk.Params)
 	// RecordClientCapabilities records the negotiated client capabilities.
 	RecordClientCapabilities(ctx context.Context, capabilities *mcpsdk.ClientCapabilities, meta mcpsdk.Params)
 	// RecordServerCapabilities records the negotiated server capabilities.
@@ -201,45 +202,39 @@ func (m *mcp) RecordMethodCount(ctx context.Context, methodName string, params m
 	m.methodCount.Add(ctx, 1,
 		m.withDefaultAttributes(params,
 			attribute.Key(mcpAttributeMethodName).String(methodName),
-			attribute.String(mcpAttributeStatusName, string(mcpStatusSuccess)),
+			attribute.String(mcpAttributeStatusName, string(MCPStatusSuccess)),
 		))
 }
 
 // RecordMethodErrorCount implements [MCPMetrics.RecordMethodErrorCount].
-func (m *mcp) RecordMethodErrorCount(ctx context.Context, params mcpsdk.Params) {
+func (m *mcp) RecordMethodErrorCount(ctx context.Context, methodName string, params mcpsdk.Params, status MCPStatusType) {
+	if methodName == "" {
+		return
+	}
 	m.methodCount.Add(ctx, 1,
 		m.withDefaultAttributes(params,
-			attribute.String(mcpAttributeStatusName, string(mcpStatusError)),
+			attribute.Key(mcpAttributeMethodName).String(methodName),
+			attribute.String(mcpAttributeStatusName, string(status)),
 		))
 }
 
 // RecordRequestDuration implements [MCPMetrics.RecordRequestDuration].
-func (m *mcp) RecordRequestDuration(ctx context.Context, startAt *time.Time, params mcpsdk.Params) {
-	if startAt == nil {
-		return
-	}
-	duration := time.Since(*startAt).Seconds()
+func (m *mcp) RecordRequestDuration(ctx context.Context, startAt time.Time, params mcpsdk.Params) {
+	duration := time.Since(startAt).Seconds()
 	m.requestDuration.Record(ctx, duration, m.withDefaultAttributes(params))
 }
 
 // RecordRequestErrorDuration implements [MCPMetrics.RecordRequestErrorDuration].
-func (m *mcp) RecordRequestErrorDuration(ctx context.Context, startAt *time.Time, errType MCPErrorType, params mcpsdk.Params) {
-	if startAt == nil {
-		return
-	}
-
-	duration := time.Since(*startAt).Seconds()
+func (m *mcp) RecordRequestErrorDuration(ctx context.Context, startAt time.Time, errType MCPErrorType, params mcpsdk.Params) {
+	duration := time.Since(startAt).Seconds()
 	m.requestDuration.Record(ctx, duration, m.withDefaultAttributes(params,
 		attribute.Key(mcpAttributeErrorType).String(string(errType)),
 	))
 }
 
 // RecordInitializationDuration implements [MCPMetrics.RecordInitializationDuration].
-func (m *mcp) RecordInitializationDuration(ctx context.Context, startAt *time.Time, params mcpsdk.Params) {
-	if startAt == nil {
-		return
-	}
-	duration := time.Since(*startAt).Seconds()
+func (m *mcp) RecordInitializationDuration(ctx context.Context, startAt time.Time, params mcpsdk.Params) {
+	duration := time.Since(startAt).Seconds()
 	m.initializationDuration.Record(ctx, duration, m.withDefaultAttributes(params))
 }
 

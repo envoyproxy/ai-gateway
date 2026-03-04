@@ -17,6 +17,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -39,7 +40,7 @@ func requireNewFakeClientWithIndexesAndInferencePool(t *testing.T) client.Client
 
 func TestInferencePoolController_ExtensionReferenceValidation(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create an InferencePool with ExtensionReference pointing to a non-existent service.
 	inferencePool := &gwaiev1.InferencePool{
@@ -84,7 +85,7 @@ func TestInferencePoolController_ExtensionReferenceValidation(t *testing.T) {
 
 func TestInferencePoolController_ExtensionReferenceValidationSuccess(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create the service that the InferencePool will reference.
 	service := &corev1.Service{
@@ -143,7 +144,7 @@ func TestInferencePoolController_ExtensionReferenceValidationSuccess(t *testing.
 
 func TestInferencePoolController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create the service that the InferencePool will reference.
 	service := &corev1.Service{
@@ -272,7 +273,7 @@ func TestInferencePoolController_Reconcile(t *testing.T) {
 
 func TestInferencePoolController_NoReferencingGateways(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create the service that the InferencePool will reference.
 	service := &corev1.Service{
@@ -379,7 +380,7 @@ func TestBuildResolvedRefsCondition(t *testing.T) {
 
 func TestInferencePoolController_HTTPRouteReferencesInferencePool(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Test HTTPRoute that references InferencePool.
 	httpRoute := &gwapiv1.HTTPRoute{
@@ -443,7 +444,7 @@ func TestInferencePoolController_HTTPRouteReferencesInferencePool(t *testing.T) 
 
 func TestInferencePoolController_RouteReferencesGateway(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Test with matching gateway name and namespace.
 	parentRefs := []gwapiv1.ParentReference{
@@ -481,7 +482,7 @@ func TestInferencePoolController_RouteReferencesGateway(t *testing.T) {
 
 func TestInferencePoolController_GatewayReferencesInferencePool(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create a Gateway.
 	gateway := &gwapiv1.Gateway{
@@ -538,7 +539,7 @@ func TestInferencePoolController_GatewayReferencesInferencePool(t *testing.T) {
 
 func TestInferencePoolController_gatewayEventHandler(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create an InferencePool.
 	inferencePool := &gwaiev1.InferencePool{
@@ -602,7 +603,7 @@ func TestInferencePoolController_gatewayEventHandler(t *testing.T) {
 
 func TestInferencePoolController_aiGatewayRouteEventHandler(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create an AIGatewayRoute that references an InferencePool.
 	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
@@ -635,7 +636,7 @@ func TestInferencePoolController_aiGatewayRouteEventHandler(t *testing.T) {
 
 func TestInferencePoolController_httpRouteEventHandler(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create an HTTPRoute that references an InferencePool.
 	httpRoute := &gwapiv1.HTTPRoute{
@@ -672,7 +673,7 @@ func TestInferencePoolController_httpRouteEventHandler(t *testing.T) {
 
 func TestInferencePoolController_EdgeCases(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Test reconcile with non-existent InferencePool.
 	result, err := c.Reconcile(context.Background(), ctrl.Request{
@@ -715,7 +716,7 @@ func TestInferencePoolController_EdgeCases(t *testing.T) {
 
 func TestInferencePoolController_CrossNamespaceReferences(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create a Gateway in a different namespace.
 	gateway := &gwapiv1.Gateway{
@@ -820,7 +821,7 @@ func TestInferencePoolController_CrossNamespaceReferences(t *testing.T) {
 
 func TestInferencePoolController_UpdateInferencePoolStatus(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create a Gateway.
 	gateway := &gwapiv1.Gateway{
@@ -918,7 +919,7 @@ func TestInferencePoolController_UpdateInferencePoolStatus(t *testing.T) {
 
 func TestInferencePoolController_GetReferencedGateways_ErrorHandling(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create an InferencePool.
 	inferencePool := &gwaiev1.InferencePool{
@@ -968,7 +969,7 @@ func TestInferencePoolController_GetReferencedGateways_ErrorHandling(t *testing.
 
 func TestInferencePoolController_GatewayReferencesInferencePool_HTTPRoute(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create a Gateway.
 	gateway := &gwapiv1.Gateway{
@@ -1031,7 +1032,7 @@ func TestInferencePoolController_GatewayReferencesInferencePool_HTTPRoute(t *tes
 
 func TestInferencePoolController_ValidateExtensionReference_EdgeCases(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 	// Test with service in different namespace (should fail).
 	serviceOtherNS := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1071,7 +1072,7 @@ func TestInferencePoolController_ValidateExtensionReference_EdgeCases(t *testing
 
 func TestInferencePoolController_Reconcile_ErrorHandling(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Test reconcile with InferencePool that has empty ExtensionRef name.
 	inferencePoolEmptyName := &gwaiev1.InferencePool{
@@ -1134,7 +1135,7 @@ func TestInferencePoolController_Reconcile_ErrorHandling(t *testing.T) {
 
 func TestInferencePoolController_SyncInferencePool_EdgeCases(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Test syncInferencePool with InferencePool that has no referenced gateways.
 	inferencePoolNoGateways := &gwaiev1.InferencePool{
@@ -1193,7 +1194,7 @@ func TestInferencePoolController_SyncInferencePool_EdgeCases(t *testing.T) {
 
 func TestInferencePoolController_GetReferencedGateways_ComplexScenarios(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create an InferencePool.
 	inferencePool := &gwaiev1.InferencePool{
@@ -1337,7 +1338,7 @@ func TestInferencePoolController_GetReferencedGateways_ComplexScenarios(t *testi
 
 func TestInferencePoolController_UpdateInferencePoolStatus_MultipleGateways(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create multiple Gateways.
 	gateway1 := &gwapiv1.Gateway{
@@ -1473,7 +1474,7 @@ func TestInferencePoolController_UpdateInferencePoolStatus_MultipleGateways(t *t
 
 func TestInferencePoolController_GatewayReferencesInferencePool_NoRoutes(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create a Gateway.
 	gateway := &gwapiv1.Gateway{
@@ -1552,7 +1553,7 @@ func TestInferencePoolController_GatewayReferencesInferencePool_NoRoutes(t *test
 
 func TestInferencePoolController_UpdateInferencePoolStatus_ExtensionRefError(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log)
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create a Gateway.
 	gateway := &gwapiv1.Gateway{

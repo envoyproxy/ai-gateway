@@ -28,11 +28,10 @@ func TestPopulateAnthropicEnvConfig(t *testing.T) {
 			expected: ConfigData{
 				Backends: []Backend{
 					{
-						Name:             "anthropic",
-						Hostname:         "api.anthropic.com",
-						OriginalHostname: "api.anthropic.com",
-						Port:             443,
-						NeedsTLS:         true,
+						Name:     "anthropic",
+						Hostname: "api.anthropic.com",
+						Port:     443,
+						NeedsTLS: true,
 					},
 				},
 				Anthropic: &AnthropicConfig{
@@ -51,11 +50,10 @@ func TestPopulateAnthropicEnvConfig(t *testing.T) {
 			expected: ConfigData{
 				Backends: []Backend{
 					{
-						Name:             "anthropic",
-						Hostname:         "custom.anthropic.com",
-						OriginalHostname: "custom.anthropic.com",
-						Port:             443,
-						NeedsTLS:         true,
+						Name:     "anthropic",
+						Hostname: "custom.anthropic.com",
+						Port:     443,
+						NeedsTLS: true,
 					},
 				},
 				Anthropic: &AnthropicConfig{
@@ -74,11 +72,10 @@ func TestPopulateAnthropicEnvConfig(t *testing.T) {
 			expected: ConfigData{
 				Backends: []Backend{
 					{
-						Name:             "anthropic",
-						Hostname:         "127.0.0.1.nip.io",
-						OriginalHostname: "localhost",
-						Port:             8080,
-						NeedsTLS:         false,
+						Name:     "anthropic",
+						Hostname: "localhost",
+						Port:     8080,
+						NeedsTLS: false,
 					},
 				},
 				Anthropic: &AnthropicConfig{

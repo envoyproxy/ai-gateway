@@ -8,7 +8,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.20.0
   name: aiservicebackends.aigateway.envoyproxy.io
 spec:
   group: aigateway.envoyproxy.io
@@ -137,6 +137,90 @@ spec:
                 - message: Must have port for Service reference
                   rule: '(size(self.group) == 0 && self.kind == ''Service'') ? has(self.port)
                     : true'
+              bodyMutation:
+                description: |-
+                  BodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request
+                  before sending it to the backend.
+                properties:
+                  remove:
+                    description: |-
+                      Remove the given JSON field(s) from the HTTP request body before sending to the backend.
+                      The value of Remove is a list of top-level field names to remove.
+
+                      Input:
+                        {
+                          "model": "gpt-4",
+                          "service_tier": "default",
+                          "internal_flag": true
+                        }
+
+                      Config:
+                        remove: ["service_tier", "internal_flag"]
+
+                      Output:
+                        {
+                          "model": "gpt-4"
+                        }
+                    items:
+                      type: string
+                    maxItems: 16
+                    type: array
+                    x-kubernetes-list-type: set
+                  set:
+                    description: |-
+                      Set overwrites/adds the request body with the given JSON field (name, value)
+                      before sending to the backend. Only top-level fields are currently supported.
+
+                      Input:
+                        {
+                          "model": "gpt-4",
+                          "service_tier": "default"
+                        }
+
+                      Config:
+                        set:
+                        - path: "service_tier"
+                          value: "scale"
+
+                      Output:
+                        {
+                          "model": "gpt-4",
+                          "service_tier": "scale"
+                        }
+                    items:
+                      description: HTTPBodyField represents a JSON field name and
+                        value for body mutation
+                      properties:
+                        path:
+                          description: |-
+                            Path is the top-level field name to set in the request body.
+                            Examples: "service_tier", "max_tokens", "temperature"
+                          minLength: 1
+                          type: string
+                        value:
+                          description: |-
+                            Value is the JSON value to set at the specified field. This can be any valid JSON value:
+                            string, number, boolean, object, array, or null.
+                            The value will be parsed as JSON and inserted at the specified field.
+
+                            Examples:
+                              - "\"scale\"" (string)
+                              - "42" (number)
+                              - "true" (boolean)
+                              - "{\"key\": \"value\"}" (object)
+                              - "[1, 2, 3]" (array)
+                              - "null" (null)
+                          type: string
+                      required:
+                      - path
+                      - value
+                      type: object
+                    maxItems: 16
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - path
+                    x-kubernetes-list-type: map
+                type: object
               headerMutation:
                 description: |-
                   HeaderMutation defines the mutation of HTTP headers that will be applied to the request
@@ -238,22 +322,32 @@ spec:
                     - Anthropic
                     - AWSAnthropic
                     type: string
+                  prefix:
+                    description: |-
+                      Prefix is the prefix for the API.
+
+                      When the name is set to "OpenAI", "chat completions" API endpoint will be "${this_field}/chat/completions".
+                      It can be with or without a leading slash ("/").
+
+                      This is especially useful when routing to the backend that has an OpenAI compatible API but has a different
+                      prefix. For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses
+                      "/v1beta/openai" prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)
+                      uses "/compatibility/v1" prefix. On the other hand, DeepSeek (https://api-docs.deepseek.com/) doesn't
+                      use prefix, so you can leave this field unset.
+
+                      See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details.
+                    type: string
                   version:
                     description: |-
                       Version is the version of the API schema.
 
-                      When the name is set to "OpenAI", this equals to the prefix of the OpenAI API endpoints. This defaults to "v1"
-                      if not set or empty string. For example, "chat completions" API endpoint will be "/v1/chat/completions"
-                      if the version is set to "v1".
-
-                      This is especially useful when routing to the backend that has an OpenAI compatible API but has a different
-                      versioning scheme. For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses
-                      "/v1beta/openai" version prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)
-                      uses "/compatibility/v1" version prefix. On the other hand, DeepSeek (https://api-docs.deepseek.com/) doesn't
-                      use version prefix, so the version can be set to an empty string.
-
                       When the name is set to AzureOpenAI, this version maps to "API Version" in the
                       Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning).
+
+                      **Deprecated Behavior**: When the name is set to "OpenAI", this version field will behave as the
+                      prefix field. This is to maintain backward compatibility. This will be removed in future releases.
+
+                      See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details.
                     type: string
                 required:
                 - name

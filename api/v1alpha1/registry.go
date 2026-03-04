@@ -17,12 +17,13 @@ func init() {
 	SchemeBuilder.Register(&AIServiceBackend{}, &AIServiceBackendList{})
 	SchemeBuilder.Register(&BackendSecurityPolicy{}, &BackendSecurityPolicyList{})
 	SchemeBuilder.Register(&MCPRoute{}, &MCPRouteList{})
+	SchemeBuilder.Register(&GatewayConfig{}, &GatewayConfigList{})
 }
 
 const GroupName = "aigateway.envoyproxy.io"
 
 var (
-	// schemeGroupVersion is group version used to register these objects.
+	// SchemeGroupVersion is group version used to register these objects.
 	SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1alpha1"}
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme.
@@ -48,6 +49,8 @@ func AddKnownTypes(scheme *runtime.Scheme) error {
 		&BackendSecurityPolicyList{},
 		&MCPRoute{},
 		&MCPRouteList{},
+		&GatewayConfig{},
+		&GatewayConfigList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

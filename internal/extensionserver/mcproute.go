@@ -7,7 +7,6 @@ package extensionserver
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	egextension "github.com/envoyproxy/gateway/proto/extension"
@@ -17,11 +16,9 @@ import (
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
-	custom_responsev3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/custom_response/v3"
 	htomv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/header_to_metadata/v3"
 	routerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
-	local_response_policyv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/http/custom_response/local_response_policy/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -32,14 +29,15 @@ import (
 
 const (
 	mcpBackendListenerName = "aigateway-mcp-backend-listener"
-	jwtAuthnFilterName     = "envoy.filters.http.jwt_authn"
-	apiKeyAuthFilterName   = "envoy.filters.http.api_key_auth" // #nosec G101
+	filterNameJWTAuthn     = "envoy.filters.http.jwt_authn"
+	filterNameAPIKeyAuth   = "envoy.filters.http.api_key_auth" // #nosec G101
+	filterNameExtAuth      = "envoy.filters.http.ext_authz"
 )
 
 // Generate the resources needed to support MCP Gateway functionality.
-func (s *Server) maybeGenerateResourcesForMCPGateway(req *egextension.PostTranslateModifyRequest) {
+func (s *Server) maybeGenerateResourcesForMCPGateway(req *egextension.PostTranslateModifyRequest) error {
 	if len(req.Listeners) == 0 || len(req.Routes) == 0 {
-		return // Nothing to do, mostly for unit tests.
+		return nil // Nothing to do, mostly for unit tests.
 	}
 	// Update existing MCP routes to remove JWT authn filter from non-proxy rules.
 	// Order matters: do this before moving rules to the backend listener.
@@ -51,26 +49,25 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(req *egextension.PostTransl
 	// Only create the backend listener if there are routes for it
 	if mcpBackendRoutes != nil {
 		// Extract MCP backend filters from existing listeners and create the backend listener with those filters.
-		mcpBackendHTTPFilters, accessLogConfig := s.extractMCPBackendFiltersFromMCPProxyListener(req.Listeners)
-		req.Listeners = append(req.Listeners, s.createBackendListener(mcpBackendHTTPFilters, accessLogConfig))
+		mcpBackendHTTPFilters, accessLogConfig, err := s.extractMCPBackendFiltersFromMCPProxyListener(req.Listeners)
+		if err != nil {
+			return fmt.Errorf("failed to extract MCP backend filters from existing listeners: %w", err)
+		}
+		l, err := s.createBackendListener(mcpBackendHTTPFilters, accessLogConfig)
+		if err != nil {
+			return fmt.Errorf("failed to create MCP backend listener: %w", err)
+		}
+		req.Listeners = append(req.Listeners, l)
 		req.Routes = append(req.Routes, mcpBackendRoutes)
 	}
 
 	// Modify routes with mcp-gateway-generated annotation to use mcpproxy-cluster.
 	s.modifyMCPGatewayGeneratedCluster(req.Clusters)
-
-	// Modify OAuth custom response filters to add WWW-Authenticate headers.
-	// TODO: remove this step once Envoy Gateway supports this natively in the BackendTrafficPolicy ResponseOverride.
-	// https://github.com/envoyproxy/gateway/pull/6308
-	s.modifyMCPOAuthCustomResponseFilters(req.Listeners)
-
-	// TODO: remove this step once Envoy Gateway supports this natively in the BackendTrafficPolicy ResponseOverride.
-	// https://github.com/envoyproxy/gateway/pull/6308
-	s.modifyMCPOAuthCustomResponseRoute(req.Routes)
+	return nil
 }
 
 // createBackendListener creates the backend listener for MCP Gateway.
-func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3.HttpFilter, accessLogConfig []*accesslogv3.AccessLog) *listenerv3.Listener {
+func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3.HttpFilter, accessLogConfig []*accesslogv3.AccessLog) (*listenerv3.Listener, error) {
 	httpConManager := &httpconnectionmanagerv3.HttpConnectionManager{
 		StatPrefix: fmt.Sprintf("%s-http", mcpBackendListenerName),
 		AccessLog:  accessLogConfig,
@@ -112,19 +109,29 @@ func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3
 			},
 		)
 	}
+	a, err := toAny(headersToMetadata)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal header to metadata filter config: %w", err)
+	}
 	httpConManager.HttpFilters = append(httpConManager.HttpFilters, &httpconnectionmanagerv3.HttpFilter{
-		Name: "envoy.filters.http.header_to_metadata",
-		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{
-			TypedConfig: mustToAny(headersToMetadata),
-		},
+		Name:       "envoy.filters.http.header_to_metadata",
+		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: a},
 	})
 
 	// Add Router filter as the terminal HTTP filter.
+	a, err = toAny(&routerv3.Router{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal router filter config: %w", err)
+	}
 	httpConManager.HttpFilters = append(httpConManager.HttpFilters, &httpconnectionmanagerv3.HttpFilter{
 		Name:       wellknown.Router,
-		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: mustToAny(&routerv3.Router{})},
+		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: a},
 	})
 
+	a, err = toAny(httpConManager)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal HTTP Connection Manager for backend listener: %w", err)
+	}
 	return &listenerv3.Listener{
 		Name: mcpBackendListenerName,
 		Address: &corev3.Address{
@@ -142,15 +149,13 @@ func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3
 			{
 				Filters: []*listenerv3.Filter{
 					{
-						Name: wellknown.HTTPConnectionManager,
-						ConfigType: &listenerv3.Filter_TypedConfig{
-							TypedConfig: mustToAny(httpConManager),
-						},
+						Name:       wellknown.HTTPConnectionManager,
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: a},
 					},
 				},
 			},
 		},
-	}
+	}, nil
 }
 
 // maybeUpdateMCPRoutes updates the mcp routes with necessary changes for MCP Gateway.
@@ -165,7 +170,7 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 					}
 					// Remove the authn filters from the well-known and backend routes.
 					// TODO: remove this step once the SecurityPolicy can target the MCP proxy route rule only.
-					for _, filterName := range []string{jwtAuthnFilterName, apiKeyAuthFilterName} {
+					for _, filterName := range []string{filterNameJWTAuthn, filterNameAPIKeyAuth, filterNameExtAuth} {
 						if _, ok := route.TypedPerFilterConfig[filterName]; ok {
 							s.log.Info("removing authn filter from well-known and backend routes", "route", route.Name, "filter", filterName)
 							delete(route.TypedPerFilterConfig, filterName)
@@ -289,7 +294,7 @@ func (s *Server) modifyMCPGatewayGeneratedCluster(clusters []*clusterv3.Cluster)
 // When using the envoy Gateway `mergeGateways` feature, this method will receive all the listeners attached to the GatewayClass instead.
 // This is still safe because in the end all Gateway objects will be attached to the same "infrastructure", so it is still safe to assume
 // that all received listeners will have the same access log configuration
-func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*listenerv3.Listener) ([]*httpconnectionmanagerv3.HttpFilter, []*accesslogv3.AccessLog) {
+func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*listenerv3.Listener) ([]*httpconnectionmanagerv3.HttpFilter, []*accesslogv3.AccessLog, error) {
 	var (
 		mcpHTTPFilters  []*httpconnectionmanagerv3.HttpFilter
 		accessLogConfig []*accesslogv3.AccessLog
@@ -336,8 +341,11 @@ func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*liste
 				httpConManager.HttpFilters = remainingFilters
 
 				// Write the updated HCM back to the filter chain.
-				chain.Filters[hcmIndex].ConfigType = &listenerv3.Filter_TypedConfig{
-					TypedConfig: mustToAny(httpConManager),
+				tc := &listenerv3.Filter_TypedConfig{}
+				tc.TypedConfig, err = toAny(httpConManager)
+				chain.Filters[hcmIndex].ConfigType = tc
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to marshal updated HCM for listener %s: %w", listener.Name, err)
 				}
 			}
 		}
@@ -346,7 +354,7 @@ func (s *Server) extractMCPBackendFiltersFromMCPProxyListener(listeners []*liste
 	if len(mcpHTTPFilters) > 0 {
 		s.log.Info("Extracted MCP HTTP filters", "count", len(mcpHTTPFilters))
 	}
-	return mcpHTTPFilters, accessLogConfig
+	return mcpHTTPFilters, accessLogConfig, nil
 }
 
 // isMCPBackendHTTPFilter checks if an HTTP filter is used for MCP backend processing.
@@ -358,228 +366,4 @@ func (s *Server) isMCPBackendHTTPFilter(filter *httpconnectionmanagerv3.HttpFilt
 	}
 
 	return false
-}
-
-// isMCPOAuthCustomResponseFilter checks if an HTTP filter is a CustomResponse filter
-// that handles MCP OAuth resources (contains both MCPHTTPRoutePrefix and oauthProtectedResourceMetadataSuffix).
-func (s *Server) isMCPOAuthCustomResponseFilter(filter *httpconnectionmanagerv3.HttpFilter) bool {
-	return strings.HasPrefix(filter.Name, "envoy.filters.http.custom_response/") &&
-		strings.Contains(filter.Name, internalapi.MCPGeneratedResourceCommonPrefix) &&
-		strings.HasSuffix(filter.Name, "-oauth-protected-resource-metadata")
-}
-
-// modifyMCPOAuthCustomResponseFilter modifies a CustomResponse filter to add WWW-Authenticate header
-// to the response_headers_to_add field in the LocalResponsePolicy.
-func (s *Server) modifyMCPOAuthCustomResponseFilter(filter *httpconnectionmanagerv3.HttpFilter) error {
-	// Unmarshal the CustomResponse configuration.
-	if filter.ConfigType == nil {
-		return fmt.Errorf("CustomResponse filter has no configuration")
-	}
-
-	typedConfig, ok := filter.ConfigType.(*httpconnectionmanagerv3.HttpFilter_TypedConfig)
-	if !ok {
-		return fmt.Errorf("CustomResponse filter configuration is not a TypedConfig")
-	}
-
-	var customResponse custom_responsev3.CustomResponse
-	if err := typedConfig.TypedConfig.UnmarshalTo(&customResponse); err != nil {
-		return fmt.Errorf("failed to unmarshal CustomResponse configuration: %w", err)
-	}
-
-	// Navigate to the LocalResponsePolicy within the matcher.
-	if customResponse.CustomResponseMatcher == nil {
-		return fmt.Errorf("CustomResponse filter has no matcher")
-	}
-
-	matcherList := customResponse.CustomResponseMatcher.GetMatcherList()
-	if matcherList == nil || len(matcherList.Matchers) == 0 {
-		return fmt.Errorf("CustomResponse filter has no matchers")
-	}
-
-	for _, matcher := range matcherList.Matchers {
-		if matcher.OnMatch == nil {
-			continue
-		}
-
-		action := matcher.OnMatch.GetAction()
-		if action == nil {
-			continue
-		}
-
-		// Check if this is a LocalResponsePolicy.
-		var localResponsePolicy local_response_policyv3.LocalResponsePolicy
-		if err := action.TypedConfig.UnmarshalTo(&localResponsePolicy); err != nil {
-			s.log.Info("Skipping non-LocalResponsePolicy action", "error", err.Error())
-			continue
-		}
-
-		// Extract WWW-Authenticate header value from the existing body.
-		// The current implementation stores the header value in the body field.
-		wwwAuthenticateValue := ""
-		if localResponsePolicy.BodyFormat != nil {
-			switch bodyFormat := localResponsePolicy.BodyFormat.Format.(type) {
-			case *corev3.SubstitutionFormatString_TextFormat:
-				wwwAuthenticateValue = bodyFormat.TextFormat
-			case *corev3.SubstitutionFormatString_TextFormatSource:
-				if source := bodyFormat.TextFormatSource; source != nil {
-					switch {
-					case source.GetFilename() != "":
-						content, err := os.ReadFile(source.GetFilename())
-						if err != nil {
-							s.log.Error(err, "reading WWW-Authenticate header value from CustomResponse bod")
-						}
-						wwwAuthenticateValue = string(content)
-					case source.GetEnvironmentVariable() != "":
-						wwwAuthenticateValue = os.Getenv(source.GetEnvironmentVariable())
-					case source.GetInlineBytes() != nil:
-						wwwAuthenticateValue = string(source.GetInlineBytes())
-					case source.GetInlineString() != "":
-						wwwAuthenticateValue = source.GetInlineString()
-					}
-				}
-			}
-		}
-
-		if wwwAuthenticateValue == "" {
-			s.log.Info("No WWW-Authenticate header value found in CustomResponse body")
-			continue
-		}
-
-		// Add the WWW-Authenticate header to response_headers_to_add.
-		wwwAuthHeader := &corev3.HeaderValueOption{
-			Header: &corev3.HeaderValue{
-				Key:   "WWW-Authenticate",
-				Value: wwwAuthenticateValue,
-			},
-			AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
-		}
-
-		// Check if header already exists to avoid duplicates.
-		headerExists := false
-		for _, existingHeader := range localResponsePolicy.ResponseHeadersToAdd {
-			if existingHeader.Header != nil && existingHeader.Header.Key == "WWW-Authenticate" {
-				headerExists = true
-				break
-			}
-		}
-
-		if !headerExists {
-			localResponsePolicy.ResponseHeadersToAdd = append(localResponsePolicy.ResponseHeadersToAdd, wwwAuthHeader)
-			localResponsePolicy.BodyFormat = nil // Clear body format as it's no longer needed.
-			s.log.Info("Added WWW-Authenticate header to CustomResponse filter", "filterName", filter.Name)
-		}
-
-		// Marshal the modified LocalResponsePolicy back.
-		action.TypedConfig = mustToAny(&localResponsePolicy)
-	}
-
-	// Marshal the modified CustomResponse configuration back.
-	typedConfig.TypedConfig = mustToAny(&customResponse)
-
-	return nil
-}
-
-// modifyMCPOAuthCustomResponseFilters finds and modifies OAuth custom response filters
-// in the original listeners to add WWW-Authenticate headers.
-func (s *Server) modifyMCPOAuthCustomResponseFilters(listeners []*listenerv3.Listener) {
-	for _, listener := range listeners {
-		// Skip the backend MCP listener if it already exists.
-		if listener.Name == mcpBackendListenerName {
-			continue
-		}
-
-		// Get filter chains from the listener.
-		filterChains := listener.GetFilterChains()
-		defaultFC := listener.DefaultFilterChain
-		if defaultFC != nil {
-			filterChains = append(filterChains, defaultFC)
-		}
-
-		// Go through all filter chains to find HTTP Connection Managers.
-		for _, chain := range filterChains {
-			httpConManager, hcmIndex, err := findHCM(chain)
-			if err != nil {
-				continue // Skip chains without HCM.
-			}
-
-			// Look for OAuth custom response filters and modify them in place.
-			modified := false
-			for _, filter := range httpConManager.HttpFilters {
-				if s.isMCPOAuthCustomResponseFilter(filter) {
-					s.log.Info("Found MCP OAuth CustomResponse filter, modifying in place", "filterName", filter.Name, "listener", listener.Name)
-					if err := s.modifyMCPOAuthCustomResponseFilter(filter); err != nil {
-						s.log.Error(err, "failed to modify MCP OAuth CustomResponse filter", "filterName", filter.Name)
-					} else {
-						modified = true
-					}
-				}
-			}
-
-			// If we modified any filters, update the HCM in the filter chain.
-			if modified {
-				chain.Filters[hcmIndex].ConfigType = &listenerv3.Filter_TypedConfig{
-					TypedConfig: mustToAny(httpConManager),
-				}
-			}
-		}
-	}
-}
-
-func (s *Server) modifyMCPOAuthCustomResponseRoute(routes []*routev3.RouteConfiguration) {
-	for _, r := range routes {
-		if r == nil {
-			continue
-		}
-
-		for _, vh := range r.VirtualHosts {
-			if vh == nil {
-				continue
-			}
-
-			for _, route := range vh.Routes {
-				if route == nil {
-					continue
-				}
-
-				if route.GetDirectResponse() == nil || route.GetMatch() == nil {
-					continue
-				}
-
-				path := route.GetMatch().GetPath()
-				if isWellKnownOAuthPath(path) {
-					s.log.V(6).Info("Adding CORS headers to MCP OAuth route", "routeName", route.Name, "path", path)
-					// add CORS headers.
-					// CORS filter won't work with direct response, so we add the headers directly to the route.
-					// TODO: remove this step once Envoy Gateway supports this natively in the BackendTrafficPolicy ResponseOverride.
-					route.ResponseHeadersToAdd = append(route.ResponseHeadersToAdd, &corev3.HeaderValueOption{
-						Header: &corev3.HeaderValue{
-							Key:   "Access-Control-Allow-Origin",
-							Value: "*",
-						},
-					})
-					route.ResponseHeadersToAdd = append(route.ResponseHeadersToAdd, &corev3.HeaderValueOption{
-						Header: &corev3.HeaderValue{
-							Key:   "Access-Control-Allow-Methods",
-							Value: "GET",
-						},
-					})
-					route.ResponseHeadersToAdd = append(route.ResponseHeadersToAdd, &corev3.HeaderValueOption{
-						Header: &corev3.HeaderValue{
-							Key:   "Access-Control-Allow-Headers",
-							Value: "mcp-protocol-version",
-						},
-					})
-				}
-			}
-		}
-	}
-}
-
-const (
-	oauthProtectedResourcePath   = "/.well-known/oauth-protected-resource"
-	oauthAuthorizationServerPath = "/.well-known/oauth-authorization-server"
-)
-
-func isWellKnownOAuthPath(path string) bool {
-	return strings.Contains(path, oauthProtectedResourcePath) || strings.Contains(path, oauthAuthorizationServerPath)
 }

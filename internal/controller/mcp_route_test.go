@@ -208,7 +208,7 @@ func Test_newHTTPRoute_MCPOauth(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "mcp-route", Namespace: "ns"},
 		Spec: aigv1a1.MCPRouteSpec{
 			SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{OAuth: &aigv1a1.MCPRouteOAuth{}},
-			Path:           ptr.To("/mcp/"),
+			Path:           ptr.To("/mcp"),
 			ParentRefs:     []gwapiv1.ParentReference{{Name: gwapiv1.ObjectName("gw")}},
 			BackendRefs:    []aigv1a1.MCPRouteBackendRef{{}},
 		},
@@ -217,12 +217,14 @@ func Test_newHTTPRoute_MCPOauth(t *testing.T) {
 	err := ctrlr.newMainHTTPRoute(httpRoute, mcpRoute)
 	require.NoError(t, err)
 
-	require.Len(t, httpRoute.Spec.Rules, 5) // 4 default routes for oauth which begins from index 1.
+	require.Len(t, httpRoute.Spec.Rules, 4) // 3 default routes for oauth which begins from index 1.
 	oauthRules := httpRoute.Spec.Rules[1:]
-	require.Equal(t, "oauth-protected-resource-metadata-root", string(ptr.Deref(oauthRules[0].Name, "")))
-	require.Equal(t, "oauth-protected-resource-metadata-suffix", string(ptr.Deref(oauthRules[1].Name, "")))
-	require.Equal(t, "oauth-authorization-server-metadata-root", string(ptr.Deref(oauthRules[2].Name, "")))
-	require.Equal(t, "oauth-authorization-server-metadata-suffix", string(ptr.Deref(oauthRules[3].Name, "")))
+	require.Equal(t, "oauth-protected-resource-metadata", string(ptr.Deref(oauthRules[0].Name, "")))
+	require.Equal(t, "oauth-authorization-server-metadata", string(ptr.Deref(oauthRules[1].Name, "")))
+	require.Equal(t, "oauth-authorization-server-metadata-oidc", string(ptr.Deref(oauthRules[2].Name, "")))
+	require.Equal(t, "/.well-known/oauth-protected-resource/mcp", ptr.Deref(oauthRules[0].Matches[0].Path.Value, ""))
+	require.Equal(t, "/.well-known/oauth-authorization-server/mcp", ptr.Deref(oauthRules[1].Matches[0].Path.Value, ""))
+	require.Equal(t, "/.well-known/openid-configuration/mcp", ptr.Deref(oauthRules[2].Matches[0].Path.Value, ""))
 }
 
 func TestMCPRouteController_updateMCPRouteStatus(t *testing.T) {
@@ -371,4 +373,45 @@ func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 	err = c.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: filterName}, &httpFilter)
 	require.NoError(t, err)
 	require.Nil(t, httpFilter.Spec.CredentialInjection)
+}
+
+func TestMCPRouteController_syncGateways_NamespaceCrossReference(t *testing.T) {
+	c := requireNewFakeClientWithIndexesForMCP(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+
+	gateway1 := &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "gateway1", Namespace: "default"},
+	}
+	gateway2 := &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "gateway2", Namespace: "other-ns"},
+	}
+
+	err := c.Create(t.Context(), gateway1)
+	require.NoError(t, err)
+	err = c.Create(t.Context(), gateway2)
+	require.NoError(t, err)
+
+	ctrlr := NewMCPRouteController(c, fakekube.NewClientset(), logr.Discard(), eventCh.Ch)
+
+	mcpRoute := &aigv1a1.MCPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
+		Spec: aigv1a1.MCPRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{
+				{Name: gwapiv1.ObjectName("gateway1"), Namespace: ptr.To(gwapiv1.Namespace("default"))},
+				{Name: gwapiv1.ObjectName("gateway2"), Namespace: ptr.To(gwapiv1.Namespace("other-ns"))},
+			},
+		},
+	}
+	err = ctrlr.syncGateways(t.Context(), mcpRoute)
+	require.NoError(t, err)
+
+	// Verify that events were sent for both gateways.
+	// We should receive 2 events (one for each parent reference).
+	gateways := eventCh.RequireItemsEventually(t, 2)
+	require.Len(t, gateways, 2)
+
+	require.Equal(t, "gateway1", gateways[0].Name)
+	require.Equal(t, "default", gateways[0].Namespace)
+	require.Equal(t, "gateway2", gateways[1].Name)
+	require.Equal(t, "other-ns", gateways[1].Namespace)
 }

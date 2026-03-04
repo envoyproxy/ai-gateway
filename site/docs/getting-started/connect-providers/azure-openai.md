@@ -4,6 +4,9 @@ title: Connect Azure OpenAI
 sidebar_position: 3
 ---
 
+import CodeBlock from '@theme/CodeBlock';
+import vars from '../../\_vars.json';
+
 # Connect Azure OpenAI
 
 This guide will help you configure Envoy AI Gateway to work with Azure OpenAI's foundation models.
@@ -34,9 +37,9 @@ Before you begin, you'll need:
 
 ### 1. Download configuration template
 
-```shell
-curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/basic/azure_openai.yaml
-```
+<CodeBlock language="shell">
+{`curl -O https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/basic/azure_openai.yaml`}
+</CodeBlock>
 
 ### 2. Configure Azure Credentials
 

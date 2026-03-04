@@ -9,6 +9,8 @@ package internalapi
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -17,6 +19,10 @@ import (
 const (
 	// EnvoyAIGatewayHeaderPrefix is the prefix for special headers used by AI Gateway, either for internal or external use.
 	EnvoyAIGatewayHeaderPrefix = "x-ai-eg-"
+	// EnvoyOriginalPathHeader is the Envoy header used to preserve the original request path.
+	EnvoyOriginalPathHeader = "x-envoy-original-path"
+	// OriginalPathHeader is the AI Gateway header used to preserve the original request path.
+	OriginalPathHeader = EnvoyAIGatewayHeaderPrefix + "original-path"
 	// InternalEndpointMetadataNamespace is the namespace used for the dynamic metadata for internal use.
 	InternalEndpointMetadataNamespace = "aigateway.envoy.io"
 	// InternalMetadataBackendNameKey is the key used to store the backend name
@@ -64,10 +70,17 @@ const (
 )
 
 const (
+	xdsMetadataBackendNamePath = `.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']`
 	// XDSClusterMetadataKey is the key used to access cluster metadata in xDS attributes
+	// This is for backward compatibility with the older deployment. TODO: remove this after v0.5 is released.
 	XDSClusterMetadataKey = "xds.cluster_metadata"
+	// XDSClusterMetadataBackendNamePath is the full attribute path to access the backend name in cluster metadata in xDS attributes.
+	XDSClusterMetadataBackendNamePath = XDSClusterMetadataKey + xdsMetadataBackendNamePath
 	// XDSUpstreamHostMetadataKey is the key used to access upstream host metadata in xDS attributes
+	// This is for backward compatibility with the older deployment. TODO: remove this after v0.5 is released.
 	XDSUpstreamHostMetadataKey = "xds.upstream_host_metadata"
+	// XDSUpstreamHostMetadataBackendNamePath is the full attribute path to access the backend name in upstream host metadata in xDS attributes.
+	XDSUpstreamHostMetadataBackendNamePath = XDSUpstreamHostMetadataKey + xdsMetadataBackendNamePath
 )
 
 // PerRouteRuleRefBackendName generates a unique backend name for a per-route rule,
@@ -123,6 +136,102 @@ func ParseRequestHeaderAttributeMapping(s string) (map[string]string, error) {
 	}
 
 	return result, nil
+}
+
+// MergeRequestHeaderAttributeMappings merges two header-to-attribute mappings.
+// Keys in override replace keys in base.
+func MergeRequestHeaderAttributeMappings(base, override map[string]string) map[string]string {
+	if len(base) == 0 && len(override) == 0 {
+		return nil
+	}
+	merged := make(map[string]string, len(base)+len(override))
+	maps.Copy(merged, base)
+	maps.Copy(merged, override)
+	return merged
+}
+
+// FormatRequestHeaderAttributeMapping formats a header-to-attribute mapping into a stable, comma-separated string.
+// The output is sorted by header name to make it deterministic for tests and configs.
+func FormatRequestHeaderAttributeMapping(m map[string]string) string {
+	if len(m) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	var b strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		_, _ = b.WriteString(k)
+		b.WriteByte(':')
+		_, _ = b.WriteString(m[k])
+	}
+	return b.String()
+}
+
+// EndpointPrefixes represents well-known endpoint prefixes that AI Gateway supports.
+type EndpointPrefixes struct {
+	// OpenAI defaults to "/"
+	OpenAI string
+	// Cohere defaults to "/cohere"
+	Cohere string
+	// Anthropic defaults to "/anthropic"
+	Anthropic string
+}
+
+// ParseEndpointPrefixes parses a comma-separated list of key:value pairs to populate EndpointPrefixes.
+//
+// Recognized keys (case-sensitive):
+//   - openai
+//   - cohere
+//   - anthropic
+//
+// Format example:
+//
+//	"openai:/,cohere:/cohere,anthropic:/anthropic"
+//
+// Unknown keys cause an error; values must be non-empty.
+func ParseEndpointPrefixes(s string) (EndpointPrefixes, error) {
+	out := EndpointPrefixes{
+		OpenAI:    "/",
+		Cohere:    "/cohere",
+		Anthropic: "/anthropic",
+	}
+	if s == "" {
+		return out, nil
+	}
+
+	pairs := strings.Split(s, ",")
+	for i, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			return EndpointPrefixes{}, fmt.Errorf("empty endpointPrefixes pair at position %d", i+1)
+		}
+
+		parts := strings.SplitN(pair, ":", 2)
+		if len(parts) != 2 {
+			return EndpointPrefixes{}, fmt.Errorf("invalid endpointPrefixes pair at position %d: %q (expected format: key:value)", i+1, pair)
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		switch key {
+		case "openai":
+			out.OpenAI = value
+		case "cohere":
+			out.Cohere = value
+		case "anthropic":
+			out.Anthropic = value
+		default:
+			return EndpointPrefixes{}, fmt.Errorf("unknown endpointPrefixes key %q at position %d (allowed: openai, cohere, anthropic)", key, i+1)
+		}
+	}
+	return out, nil
 }
 
 // ModelNameHeaderKeyDefault is the default header key for the model name.

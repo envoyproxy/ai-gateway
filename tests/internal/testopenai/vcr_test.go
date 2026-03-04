@@ -8,7 +8,6 @@ package testopenai
 import (
 	"bytes"
 	"compress/gzip"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/dnaeon/go-vcr.v4/pkg/cassette"
 	"gopkg.in/yaml.v3" //nolint:depguard // Testing that this specific library works with Duration fields.
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // gzipJSON compresses a JSON string for testing.

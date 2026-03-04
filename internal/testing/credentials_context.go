@@ -71,7 +71,7 @@ type CredentialsContext struct {
 }
 
 // MaybeSkip skips the test if the required credentials are not set.
-func (c CredentialsContext) MaybeSkip(t testing.TB, required RequiredCredential) {
+func (c CredentialsContext) MaybeSkip(t testing.TB, required RequiredCredential) { //nolint:gocritic
 	if required&RequiredCredentialOpenAI != 0 && !c.OpenAIValid {
 		t.Skip("skipping test as OpenAI API key is not set in TEST_OPENAI_API_KEY")
 	}

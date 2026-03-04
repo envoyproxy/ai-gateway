@@ -60,7 +60,7 @@ type serviceAccountTokenGenerator func(
 type stsTokenGenerator func(
 	ctx context.Context,
 	jwtToken string,
-	wifConfig aigv1a1.GCPWorkloadIdentityFederationConfig,
+	wifConfig *aigv1a1.GCPWorkloadIdentityFederationConfig,
 	opts ...option.ClientOption,
 ) (*tokenprovider.TokenExpiry, error)
 
@@ -107,7 +107,7 @@ func init() {
 func NewGCPOIDCTokenRotator(
 	client client.Client,
 	logger logr.Logger,
-	bsp aigv1a1.BackendSecurityPolicy,
+	bsp *aigv1a1.BackendSecurityPolicy,
 	preRotationWindow time.Duration,
 	tokenProvider tokenprovider.TokenProvider,
 ) (Rotator, error) {
@@ -185,7 +185,7 @@ func (r *gcpOIDCTokenRotator) Rotate(ctx context.Context) (time.Time, error) {
 
 	// 2. Exchange the JWT for an STS token.
 	// The OIDC JWT token is exchanged for a Google Cloud STS token.
-	stsToken, err := r.stsTokenFunc(ctx, oidcTokenExpiry.Token, *r.gcpCredentials.WorkloadIdentityFederationConfig)
+	stsToken, err := r.stsTokenFunc(ctx, oidcTokenExpiry.Token, r.gcpCredentials.WorkloadIdentityFederationConfig)
 	if err != nil {
 		wifConfig := r.gcpCredentials.WorkloadIdentityFederationConfig
 		r.logger.Error(err, "failed to exchange JWT for STS token",
@@ -261,7 +261,7 @@ var _ stsTokenGenerator = exchangeJWTForSTSToken
 
 // exchangeJWTForSTSToken implements [stsTokenGenerator]
 // exchangeJWTForSTSToken exchanges a JWT token for a GCP STS (Security Token Service) token.
-func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig aigv1a1.GCPWorkloadIdentityFederationConfig, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig *aigv1a1.GCPWorkloadIdentityFederationConfig, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 	// This step does not pass the token via the auth header.
 	// The empty string implies that the auth header will be skipped.
 	roundTripper, err := newBearerAuthRoundTripper("")

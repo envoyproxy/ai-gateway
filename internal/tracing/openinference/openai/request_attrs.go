@@ -6,13 +6,13 @@
 package openai
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 )
 
@@ -37,8 +37,10 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 	if config.HideInputs {
 		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
 	} else {
-		attrs = append(attrs, attribute.String(openinference.InputValue, body))
-		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+		attrs = append(attrs,
+			attribute.String(openinference.InputValue, body),
+			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+		)
 	}
 
 	if !config.HideLLMInvocationParameters {
@@ -69,12 +71,12 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 					for j, part := range content {
 						switch {
 						case part.OfText != nil:
-							text := part.OfText.Text
+							maybeRedacted := part.OfText.Text
 							if config.HideInputText {
-								text = openinference.RedactedValue
+								maybeRedacted = openinference.RedactedValue
 							}
 							attrs = append(attrs,
-								attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+								attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), maybeRedacted),
 								attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
 							)
 						case part.OfImageURL != nil && part.OfImageURL.ImageURL.URL != "":
@@ -110,12 +112,12 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 				case []openai.ChatCompletionAssistantMessageParamContent:
 					for j, part := range content {
 						if part.Type == "text" && part.Text != nil {
-							text := *part.Text
+							maybeRedacted := *part.Text
 							if config.HideInputText {
-								text = openinference.RedactedValue
+								maybeRedacted = openinference.RedactedValue
 							}
 							attrs = append(attrs,
-								attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+								attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), maybeRedacted),
 								attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
 							)
 						}
@@ -132,12 +134,12 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 					}
 				case []openai.ChatCompletionContentPartTextParam:
 					for j, part := range content {
-						text := part.Text
+						maybeRedacted := part.Text
 						if config.HideInputText {
-							text = openinference.RedactedValue
+							maybeRedacted = openinference.RedactedValue
 						}
 						attrs = append(attrs,
-							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), maybeRedacted),
 							attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
 						)
 					}
@@ -153,12 +155,12 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 					}
 				case []openai.ChatCompletionContentPartTextParam:
 					for j, part := range content {
-						text := part.Text
+						maybeRedacted := part.Text
 						if config.HideInputText {
-							text = openinference.RedactedValue
+							maybeRedacted = openinference.RedactedValue
 						}
 						attrs = append(attrs,
-							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), maybeRedacted),
 							attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
 						)
 					}
@@ -174,12 +176,12 @@ func buildRequestAttributes(chatRequest *openai.ChatCompletionRequest, body stri
 					}
 				case []openai.ChatCompletionContentPartTextParam:
 					for j, part := range content {
-						text := part.Text
+						maybeRedacted := part.Text
 						if config.HideInputText {
-							text = openinference.RedactedValue
+							maybeRedacted = openinference.RedactedValue
 						}
 						attrs = append(attrs,
-							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), text),
+							attribute.String(openinference.InputMessageContentAttribute(i, j, "text"), maybeRedacted),
 							attribute.String(openinference.InputMessageContentAttribute(i, j, "type"), "text"),
 						)
 					}
@@ -217,16 +219,19 @@ type embeddingsInvocationParameters struct {
 
 // buildEmbeddingsRequestAttributes builds OpenInference attributes from the embeddings request.
 func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body []byte, config *openinference.TraceConfig) []attribute.KeyValue {
+	// Note: llm.system and llm.provider are not used in embedding spans per spec.
+	// See: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md#attributes-not-used-in-embedding-spans
 	attrs := []attribute.KeyValue{
-		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
 		attribute.String(openinference.SpanKind, openinference.SpanKindEmbedding),
 	}
 
 	if config.HideInputs {
 		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
 	} else {
-		attrs = append(attrs, attribute.String(openinference.InputValue, string(body)))
-		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+		attrs = append(attrs,
+			attribute.String(openinference.InputValue, string(body)),
+			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+		)
 	}
 
 	if !config.HideLLMInvocationParameters {
@@ -285,8 +290,10 @@ func buildCompletionRequestAttributes(req *openai.CompletionRequest, body []byte
 	if config.HideInputs {
 		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
 	} else {
-		attrs = append(attrs, attribute.String(openinference.InputValue, string(body)))
-		attrs = append(attrs, attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
+		attrs = append(attrs,
+			attribute.String(openinference.InputValue, string(body)),
+			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+		)
 	}
 
 	if !config.HideLLMInvocationParameters {
@@ -314,6 +321,31 @@ func buildCompletionRequestAttributes(req *openai.CompletionRequest, body []byte
 		case [][]int64:
 		}
 	}
+
+	return attrs
+}
+
+// buildResponsesRequestAttributes builds OpenTelemetry attributes for responses requests.
+func buildResponsesRequestAttributes(req *openai.ResponseRequest, body []byte, config *openinference.TraceConfig) []attribute.KeyValue {
+	// TODO: Add more detailed request attributes.
+	attrs := []attribute.KeyValue{
+		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+	}
+
+	if req.Model != "" {
+		attrs = append(attrs, attribute.String(openinference.LLMModelName, req.Model))
+	}
+
+	// TODO: Improve input recording based on actual input type.
+	bodyString := openinference.RedactedValue
+	if !config.HideInputs {
+		bodyString = string(body)
+	}
+	attrs = append(attrs,
+		attribute.String(openinference.InputValue, bodyString),
+		attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+	)
 
 	return attrs
 }
