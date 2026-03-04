@@ -15,12 +15,10 @@ type Talk = {
 };
 
 function formatDate(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
+  const months = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const [year, month, day] = dateString.split('-').map(Number);
+  return `${months[month - 1]} ${day}, ${year}`;
 }
 
 function TalkItem({ talk }: { talk: Talk }) {
