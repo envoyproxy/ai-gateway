@@ -79,3 +79,12 @@ nacx:
   socials:
     github: nacx
     linkedin: https://www.linkedin.com/in/ignasibarrera/
+hrushikeshpatil:
+  name: Hrushikesh Patil
+  title: Member of Technical staff - Nutanix
+  url: https://github.com/PatilHrushikesh
+  image_url: https://github.com/PatilHrushikesh.png
+  page: true
+  socials:
+    github: PatilHrushikesh
+    linkedin: https://www.linkedin.com/in/hrushikesh-patil-345a1219a/

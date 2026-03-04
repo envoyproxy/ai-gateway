@@ -181,12 +181,11 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 	}
 
 	// Update token usage if available.
-	if gcpResp.UsageMetadata != nil {
-		tokenUsage.SetInputTokens(uint32(gcpResp.UsageMetadata.PromptTokenCount))              //nolint:gosec
-		tokenUsage.SetOutputTokens(uint32(gcpResp.UsageMetadata.CandidatesTokenCount))         //nolint:gosec
-		tokenUsage.SetTotalTokens(uint32(gcpResp.UsageMetadata.TotalTokenCount))               //nolint:gosec
-		tokenUsage.SetCachedInputTokens(uint32(gcpResp.UsageMetadata.CachedContentTokenCount)) //nolint:gosec
-		// Gemini does not return cache creation input tokens; Skipping setCacheCreationInputTokens.
+	tokenUsage.SetInputTokens(uint32(openAIResp.Usage.PromptTokens))      //nolint:gosec
+	tokenUsage.SetOutputTokens(uint32(openAIResp.Usage.CompletionTokens)) //nolint:gosec
+	tokenUsage.SetTotalTokens(uint32(openAIResp.Usage.TotalTokens))       //nolint:gosec
+	if openAIResp.Usage.PromptTokensDetails != nil {
+		tokenUsage.SetCachedInputTokens(uint32(openAIResp.Usage.PromptTokensDetails.CachedTokens)) //nolint:gosec
 	}
 
 	if span != nil {
