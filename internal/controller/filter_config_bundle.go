@@ -59,18 +59,22 @@ func (c *GatewayController) writeFilterConfigBundle(ctx context.Context, gateway
 	// Create parts Secrets
 	for i := range maxFilterConfigBundleSlots {
 		partName := filterConfigBundlePartSecretName(gatewayName, gatewayNamespace, i)
-		chunkPayload := ""
-		partSize := 0
-		if i < len(chunks) {
-			chunkPayload = string(chunks[i])
-			partSize = len(chunks[i])
-			index.Parts = append(index.Parts, filterapi.ConfigBundlePart{
-				Name:      partName,
-				Path:      filterapi.ConfigBundlePartPath(i),
-				SizeBytes: partSize,
-			})
+
+		// Delete outdated parts from the previous configBundle
+		if i >= len(chunks) {
+			if err := c.kube.CoreV1().Secrets(configSecretNamespace).Delete(ctx, partName, metav1.DeleteOptions{}); err != nil &&
+				!apierrors.IsNotFound(err) {
+				return fmt.Errorf("failed to delete unused filter config part secret %s: %w", partName, err)
+			}
+			continue
 		}
-		partData := map[string]string{FilterConfigBundlePartKey: chunkPayload}
+
+		index.Parts = append(index.Parts, filterapi.ConfigBundlePart{
+			Name:      partName,
+			Path:      filterapi.ConfigBundlePartPath(i),
+			SizeBytes: len(chunks[i]),
+		})
+		partData := map[string]string{FilterConfigBundlePartKey: string(chunks[i])}
 
 		secret, err := c.kube.CoreV1().Secrets(configSecretNamespace).Get(ctx, partName, metav1.GetOptions{})
 		switch {

@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
@@ -1865,10 +1866,9 @@ func TestGatewayController_writeFilterConfigBundleShards(t *testing.T) {
 		_, partOK := s.StringData[FilterConfigBundlePartKey]
 		require.True(t, partOK)
 	}
-	lastSlot, err := kube.CoreV1().Secrets(namespace).Get(t.Context(),
+	_, err = kube.CoreV1().Secrets(namespace).Get(t.Context(),
 		filterConfigBundlePartSecretName(gatewayName, gatewayNamespace, maxFilterConfigBundleSlots-1), metav1.GetOptions{})
-	require.NoError(t, err)
-	require.Empty(t, lastSlot.StringData[FilterConfigBundlePartKey])
+	require.True(t, apierrors.IsNotFound(err))
 	_, legacyOK := indexSecret.StringData[FilterConfigKeyInSecret]
 	require.False(t, legacyOK)
 }

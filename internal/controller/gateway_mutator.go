@@ -357,12 +357,14 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 				},
 			},
 		}
-		for i := 0; i < maxFilterConfigBundleSlots; i++ {
+		optional := true
+		for i := range maxFilterConfigBundleSlots {
 			projections = append(projections, corev1.VolumeProjection{
 				Secret: &corev1.SecretProjection{
 					LocalObjectReference: corev1.LocalObjectReference{
 						Name: filterConfigBundlePartSecretName(gatewayName, gatewayNamespace, i),
 					},
+					Optional: &optional,
 					Items: []corev1.KeyToPath{
 						{
 							Key:  FilterConfigBundlePartKey,

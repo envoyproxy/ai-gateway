@@ -104,6 +104,14 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 					foundBundle = true
 					require.NotNil(t, v.Projected)
 					require.Len(t, v.Projected.Sources, maxFilterConfigBundleSlots+1) // index + fixed slots
+					for j, src := range v.Projected.Sources {
+						if j == 0 {
+							require.Nil(t, src.Secret.Optional) // index secret is not optional
+							continue
+						}
+						require.NotNil(t, src.Secret.Optional) // parital secrets are optional
+						require.True(t, *src.Secret.Optional)
+					}
 				}
 				require.True(t, foundBundle)
 			},
