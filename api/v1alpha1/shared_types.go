@@ -102,7 +102,7 @@ type LLMRequestCost struct {
 	MetadataKey string `json:"metadataKey"`
 	// Type specifies the type of the request cost. The default is "OutputToken",
 	// and it uses "output token" as the cost. The other types are "InputToken", "TotalToken",
-	// "CachedInputToken", "CacheCreationInputToken", and "CEL".
+	// "CachedInputToken", "CacheCreationInputToken", "ReasoningToken", and "CEL".
 	//
 	// +kubebuilder:validation:Enum=OutputToken;InputToken;CachedInputToken;CacheCreationInputToken;TotalToken;ReasoningToken;CEL
 	Type LLMRequestCostType `json:"type"`

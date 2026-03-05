@@ -135,7 +135,7 @@ func TestOpenAIToOpenAISpeechTranslator_ResponseBody_BinaryAudio(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, hm)
 	require.Nil(t, bm)
-	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), usage)
+	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), usage)
 	require.Equal(t, "tts-1", respModel)
 }
 
@@ -164,7 +164,7 @@ data: [DONE]
 	require.NoError(t, err)
 	require.Nil(t, hm)
 	require.Nil(t, bm)
-	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), usage)
+	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), usage)
 	require.Equal(t, "gpt-4o-mini-tts", respModel)
 }
 
