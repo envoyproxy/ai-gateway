@@ -131,7 +131,7 @@ func (o *openAIToOpenAITranslatorV1Responses) handleNonStreamingResponse(body io
 		tokenUsage.SetTotalTokens(uint32(resp.Usage.TotalTokens))                                         // #nosec G115
 		tokenUsage.SetCachedInputTokens(uint32(resp.Usage.InputTokensDetails.CachedTokens))               // #nosec G115
 		tokenUsage.SetCacheCreationInputTokens(uint32(resp.Usage.InputTokensDetails.CacheCreationTokens)) // #nosec G115
-		tokenUsage.SetReasoningTokens(uint32(resp.Usage.OutputTokensDetails.ReasoningTokens))              // #nosec G115
+		tokenUsage.SetReasoningTokens(uint32(resp.Usage.OutputTokensDetails.ReasoningTokens))             // #nosec G115
 	}
 
 	// Record non-streaming response to span if tracing is enabled.
@@ -179,7 +179,7 @@ func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span t
 				tokenUsage.SetTotalTokens(uint32(respComplEvent.Response.Usage.TotalTokens))                           // #nosec G115
 				tokenUsage.SetCachedInputTokens(uint32(respComplEvent.Response.Usage.InputTokensDetails.CachedTokens)) // #nosec G115
 				// Openai does not support cache creation response.
-				tokenUsage.SetCacheCreationInputTokens(uint32(0))                                                               // #nosec G115
+				tokenUsage.SetCacheCreationInputTokens(uint32(0))                                                        // #nosec G115
 				tokenUsage.SetReasoningTokens(uint32(respComplEvent.Response.Usage.OutputTokensDetails.ReasoningTokens)) // #nosec G115
 			}
 			// Record streaming chunk to span if tracing is enabled.
