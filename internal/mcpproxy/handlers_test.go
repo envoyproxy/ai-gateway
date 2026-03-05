@@ -1226,6 +1226,83 @@ func TestExtractSubject(t *testing.T) {
 	})
 }
 
+func TestExtractForwardHeaders(t *testing.T) {
+	// Test that extractForwardHeaders correctly reads headers from the request.
+	tests := []struct {
+		name           string
+		requestHeaders map[string]string
+		forwardHeaders []string
+		wantHeaders    map[string]string
+	}{
+		{
+			name: "extract configured headers",
+			requestHeaders: map[string]string{
+				"X-User-Id":    "user123",
+				"X-User-Email": "user@example.com",
+			},
+			forwardHeaders: []string{"X-User-Id", "X-User-Email"},
+			wantHeaders: map[string]string{
+				"X-User-Id":    "user123",
+				"X-User-Email": "user@example.com",
+			},
+		},
+		{
+			name: "extract nested claim header",
+			requestHeaders: map[string]string{
+				"X-User-Roles": `["admin","user"]`,
+			},
+			forwardHeaders: []string{"X-User-Roles"},
+			wantHeaders: map[string]string{
+				"X-User-Roles": `["admin","user"]`,
+			},
+		},
+		{
+			name:           "missing header returns nil",
+			requestHeaders: map[string]string{
+				// X-Missing is not set
+			},
+			forwardHeaders: []string{"X-Missing"},
+			wantHeaders:    nil,
+		},
+		{
+			name: "mixed existing and missing headers",
+			requestHeaders: map[string]string{
+				"X-User-Id": "user123",
+				// X-Missing is not set
+			},
+			forwardHeaders: []string{"X-User-Id", "X-Missing"},
+			wantHeaders: map[string]string{
+				"X-User-Id": "user123",
+			},
+		},
+		{
+			name:           "empty forward headers",
+			requestHeaders: map[string]string{"X-User-Id": "user123"},
+			forwardHeaders: []string{},
+			wantHeaders:    nil,
+		},
+		{
+			name:           "no headers on request",
+			requestHeaders: map[string]string{},
+			forwardHeaders: []string{"X-User-Id"},
+			wantHeaders:    nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			headers := make(http.Header)
+			// Set headers (simulating what Envoy's JWT filter does)
+			for header, value := range tt.requestHeaders {
+				headers.Set(header, value)
+			}
+
+			result := extractForwardHeaders(headers, tt.forwardHeaders)
+			require.Equal(t, tt.wantHeaders, result)
+		})
+	}
+}
+
 func secureID(t *testing.T, proxy *mcpRequestContext, sessionID string) string {
 	secure, err := proxy.sessionCrypto.Encrypt(sessionID)
 	require.NoError(t, err)
