@@ -378,6 +378,23 @@ data: [DONE]
 			require.Equal(t, &resp, s.Resp)
 		})
 	})
+	t.Run("valid body with reasoning tokens", func(t *testing.T) {
+		s := &testotel.MockSpan{}
+		var resp openai.ChatCompletionResponse
+		resp.Usage.PromptTokens = 10
+		resp.Usage.CompletionTokens = 20
+		resp.Usage.TotalTokens = 30
+		resp.Usage.CompletionTokensDetails = &openai.CompletionTokensDetails{
+			ReasoningTokens: 8,
+		}
+		body, err := json.Marshal(resp)
+		require.NoError(t, err)
+		o := &openAIToOpenAITranslatorV1ChatCompletion{}
+		_, _, usedToken, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
+		require.NoError(t, err)
+		require.Equal(t, tokenUsageFromWithReasoning(10, -1, -1, 20, 30, 8), usedToken)
+		require.Equal(t, &resp, s.Resp)
+	})
 	t.Run("response reasoning content", func(t *testing.T) {
 		t.Run("valid body", func(t *testing.T) {
 			s := &testotel.MockSpan{}
@@ -441,6 +458,14 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o.buffered = []byte("data: {\"usage\": {\"prompt_tokens\": 5, \"completion_tokens\": 3, \"total_tokens\": 8, \"prompt_tokens_details\": {\"cached_tokens\": 2, \"cache_creation_input_tokens\": 1}}}\n")
 		usedToken := o.extractUsageFromBufferEvent(nil)
 		require.Equal(t, tokenUsageFrom(5, 2, 1, 3, 8), usedToken)
+		require.Empty(t, o.buffered)
+	})
+
+	t.Run("valid usage data with reasoning tokens", func(t *testing.T) {
+		o := &openAIToOpenAITranslatorV1ChatCompletion{}
+		o.buffered = []byte("data: {\"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 20, \"total_tokens\": 30, \"completion_tokens_details\": {\"reasoning_tokens\": 8}}}\n")
+		usedToken := o.extractUsageFromBufferEvent(nil)
+		require.Equal(t, tokenUsageFromWithReasoning(10, -1, -1, 20, 30, 8), usedToken)
 		require.Empty(t, o.buffered)
 	})
 
