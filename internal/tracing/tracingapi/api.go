@@ -38,6 +38,8 @@ type (
 		RerankTracer() RerankTracer
 		// MessageTracer creates spans for Anthropic messages requests.
 		MessageTracer() MessageTracer
+		// CreateFileTracer creates spans for OpenAI create file requests.
+		CreateFileTracer() CreateFileTracer
 		// MCPTracer creates spans for MCP requests.
 		MCPTracer() MCPTracer
 		// Shutdown shuts down the tracer, flushing any buffered spans.
@@ -73,6 +75,8 @@ type (
 	RerankTracer = RequestTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageTracer creates spans for Anthropic messages requests.
 	MessageTracer = RequestTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// CreateFileTracer creates spans for OpenAI create file requests.
+	CreateFileTracer = RequestTracer[openai.FileNewParams, openai.FileObject, struct{}]
 )
 
 type (
@@ -104,6 +108,8 @@ type (
 	RerankSpan = Span[cohere.RerankV2Response, struct{}]
 	// MessageSpan represents an Anthropic messages request span.
 	MessageSpan = Span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// CreateFileSpan represents an OpenAI create file request span.
+	CreateFileSpan = Span[openai.FileObject, struct{}]
 )
 
 type (
@@ -149,6 +155,8 @@ type (
 	RerankRecorder = SpanRecorder[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageRecorder records attributes to a span according to a semantic convention.
 	MessageRecorder = SpanRecorder[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// CreateFileRecorder records attributes to a span according to a semantic convention.
+	CreateFileRecorder = SpanRecorder[openai.FileNewParams, openai.FileObject, struct{}]
 )
 
 // NoopChunkRecorder provides a no-op RecordResponseChunks implementation for recorders that don't emit streaming chunks.
@@ -203,6 +211,10 @@ func (NoopTracing) MessageTracer() MessageTracer {
 	return NoopMessageTracer{}
 }
 
+func (NoopTracing) CreateFileTracer() CreateFileTracer {
+	return NoopCreateFileTracer{}
+}
+
 // Shutdown implements Tracing.Shutdown.
 func (NoopTracing) Shutdown(context.Context) error {
 	return nil
@@ -227,6 +239,8 @@ type (
 	NoopRerankTracer = NoopTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// NoopMessageTracer implements MessageTracer.
 	NoopMessageTracer = NoopTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// NoopCreateFileTracer implements CreateFileTracer.
+	NoopCreateFileTracer = NoopTracer[openai.FileNewParams, openai.FileObject, struct{}]
 )
 
 // StartSpanAndInjectHeaders implements RequestTracer.StartSpanAndInjectHeaders.

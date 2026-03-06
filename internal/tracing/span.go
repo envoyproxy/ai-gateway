@@ -54,4 +54,5 @@ type (
 	speechSpan          = span[[]byte, openai.SpeechStreamChunk]
 	rerankSpan          = span[cohereschema.RerankV2Response, struct{}]
 	messageSpan         = span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	createFileSpan      = span[openai.FileObject, struct{}]
 )
