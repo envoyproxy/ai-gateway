@@ -14,6 +14,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
+	"net/textproto"
+	"path"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -8403,63 +8407,110 @@ type FileNewParams struct {
 	ExpiresAfter FileNewParamsExpiresAfter `json:"expires_after,omitzero"`
 }
 
-// func (r FileNewParams) MarshalMultipart() ([]byte, string, error) {
-// 	buf := &bytes.Buffer{}
-// 	writer := multipart.NewWriter(buf)
+func (f *FileNewParams) UnmarshalMultipart(data []byte, boundary string) error {
+	reader := multipart.NewReader(bytes.NewReader(data), boundary)
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
 
-// 	if r.File == nil {
-// 		return nil, "", fmt.Errorf("file is required")
-// 	}
-// 	filename := "anonymous_file"
-// 	contentType := "application/octet-stream"
-// 	if named, ok := r.File.(interface{ Filename() string }); ok {
-// 		filename = named.Filename()
-// 	} else if named, ok := r.File.(interface{ Name() string }); ok {
-// 		filename = path.Base(named.Name())
-// 	}
-// 	if typed, ok := r.File.(interface{ ContentType() string }); ok {
-// 		contentType = typed.ContentType()
-// 	}
-// 	// part, err := writer.CreateFormFile("file", filename)
-// 	// Below is taken almost 1-for-1 from [multipart.CreateFormFile]
-// 	h := make(textproto.MIMEHeader)
-// 	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, escapeQuotes(key), escapeQuotes(filename)))
-// 	h.Set("Content-Type", contentType)
-// 	part, err := writer.CreatePart(h)
-// 	if err != nil {
-// 		return nil, "",err
-// 	}
+		if part.FormName() == "file" {
+			f.File = part
+		}
 
-// 	if _, err := io.Copy(part, r.File); err != nil {
-// 		return nil, "", err
-// 	}
+		if part.FormName() == "purpose" {
+			purpose, err := io.ReadAll(part)
+			if err != nil {
+				return err
+			}
+			f.Purpose = FilePurpose(purpose)
+		}
 
-// 	if r.Purpose == "" {
-// 		return nil, "", fmt.Errorf("purpose is required")
-// 	}
+		if part.FormName() == "expires_after.anchor" {
+			anchor, err := io.ReadAll(part)
+			if err != nil {
+				return err
+			}
+			f.ExpiresAfter.Anchor = CreatedAt(anchor)
+		}
 
-// 	if err := writer.WriteField("purpose", string(r.Purpose)); err != nil {
-// 		return nil, "", err
-// 	}
+		if part.FormName() == "expires_after.seconds" {
+			seconds, err := io.ReadAll(part)
+			if err != nil {
+				return err
+			}
+			secondsParsed, err := strconv.ParseInt(string(seconds), 10, 64)
+			if err != nil {
+				return err
+			}
+			f.ExpiresAfter.Seconds = secondsParsed
+		}
+	}
+	return nil
+}
 
-// 	// ---- expires_after (optional) ----
-// 	if !reflect.ValueOf(r.ExpiresAfter).IsZero() {
-// 		b, err := json.Marshal(r.ExpiresAfter)
-// 		if err != nil {
-// 			return nil, "", err
-// 		}
+func (r FileNewParams) MarshalMultipart() ([]byte, string, error) {
+	buf := &bytes.Buffer{}
+	writer := multipart.NewWriter(buf)
 
-// 		if err := writer.WriteField("expires_after", string(b)); err != nil {
-// 			return nil, "", err
-// 		}
-// 	}
+	if r.File == nil {
+		return nil, "", fmt.Errorf("file is required")
+	}
+	filename := "anonymous_file"
+	contentType := "application/octet-stream"
+	if named, ok := r.File.(interface{ Filename() string }); ok {
+		filename = named.Filename()
+	} else if named, ok := r.File.(interface{ Name() string }); ok {
+		filename = path.Base(named.Name())
+	}
+	if typed, ok := r.File.(interface{ ContentType() string }); ok {
+		contentType = typed.ContentType()
+	}
+	// part, err := writer.CreateFormFile("file", filename)
+	// Below is taken almost 1-for-1 from [multipart.CreateFormFile]
+	multipart.NewWriter().CreateFormFile()
+	h := make(textproto.MIMEHeader, )
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, escapeQuotes(key), escapeQuotes(filename)))
+	h.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(h)
+	if err != nil {
+		return nil, "",err
+	}
 
-// 	if err := writer.Close(); err != nil {
-// 		return nil, "", err
-// 	}
+	if _, err := io.Copy(part, r.File); err != nil {
+		return nil, "", err
+	}
 
-// 	return buf.Bytes(), writer.FormDataContentType(), nil
-// }
+	if r.Purpose == "" {
+		return nil, "", fmt.Errorf("purpose is required")
+	}
+
+	if err := writer.WriteField("purpose", string(r.Purpose)); err != nil {
+		return nil, "", err
+	}
+
+	// ---- expires_after (optional) ----
+	if !reflect.ValueOf(r.ExpiresAfter).IsZero() {
+		b, err := json.Marshal(r.ExpiresAfter)
+		if err != nil {
+			return nil, "", err
+		}
+
+		if err := writer.WriteField("expires_after", string(b)); err != nil {
+			return nil, "", err
+		}
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, "", err
+	}
+
+	return buf.Bytes(), writer.FormDataContentType(), nil
+}
 
 // The intended purpose of the uploaded file. One of:
 //
