@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 
@@ -115,10 +116,18 @@ func normalizeNewlines(b []byte) []byte {
 	return b
 }
 
+// sseEvent represents a parsed Server-Sent Event.
+// This struct contains only SSE protocol data and the backend it originated from.
 type sseEvent struct {
 	event, id string
 	messages  []jsonrpc.Message
 	backend   filterapi.MCPBackendName
+}
+
+// backendEvent wraps an sseEvent with request timing context for metrics.
+type backendEvent struct {
+	*sseEvent
+	startAt time.Time
 }
 
 func (s *sseEvent) writeAndMaybeFlush(w io.Writer) {

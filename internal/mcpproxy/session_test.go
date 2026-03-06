@@ -31,6 +31,7 @@ import (
 type stubMetrics struct{}
 
 func (s stubMetrics) WithRequestAttributes(_ *http.Request) metrics.MCPMetrics            { return s }
+func (s stubMetrics) WithBackend(_ string) metrics.MCPMetrics                             { return s }
 func (stubMetrics) RecordRequestDuration(_ context.Context, _ time.Time, _ mcpsdk.Params) {}
 func (stubMetrics) RecordRequestErrorDuration(_ context.Context, _ time.Time, _ metrics.MCPErrorType, _ mcpsdk.Params) {
 }
@@ -128,7 +129,7 @@ func TestSendRequestPerBackend_SetsOriginalPathHeaders(t *testing.T) {
 	proxy.originalPath = "/mcp?foo=bar"
 
 	s := &session{reqCtx: proxy}
-	ch := make(chan *sseEvent, 1)
+	ch := make(chan *backendEvent, 1)
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
@@ -175,7 +176,7 @@ func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
 	l := slog.Default()
 	proxy := &mcpRequestContext{metrics: stubMetrics{}, ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l}}
 	s := &session{reqCtx: proxy}
-	ch := make(chan *sseEvent, 10)
+	ch := make(chan *backendEvent, 10)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	err := s.sendRequestPerBackend(ctx, ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
@@ -340,7 +341,7 @@ func TestSendRequestPerBackend_ErrorStatus(t *testing.T) {
 	l := slog.Default()
 	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l}, metrics: stubMetrics{}}
 	s := &session{reqCtx: proxy}
-	ch := make(chan *sseEvent, 1)
+	ch := make(chan *backendEvent, 1)
 	cse := &compositeSessionEntry{
 		sessionID: "sess1",
 	}
@@ -359,7 +360,7 @@ func TestSendRequestPerBackend_EOF(t *testing.T) {
 	l := slog.Default()
 	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{backendListenerAddr: server.URL}, l: l}, metrics: stubMetrics{}}
 	s := &session{reqCtx: proxy}
-	ch := make(chan *sseEvent, 1)
+	ch := make(chan *backendEvent, 1)
 	err2 := s.sendRequestPerBackend(t.Context(), ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
 	}, http.MethodGet, nil)
