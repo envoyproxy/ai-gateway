@@ -38,6 +38,7 @@ var (
 	_ tracingapi.ResponsesTracer       = (*responsesTracer)(nil)
 	_ tracingapi.SpeechTracer          = (*speechTracer)(nil)
 	_ tracingapi.RerankTracer          = (*rerankTracer)(nil)
+	_ tracingapi.CreateFileTracer      = (*createFileTracer)(nil)
 )
 
 type (
@@ -48,6 +49,7 @@ type (
 	responsesTracer       = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	speechTracer          = requestTracerImpl[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
 	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
+	createFileTracer      = requestTracerImpl[openai.FileNewParams, openai.FileObject, struct{}]
 )
 
 func newRequestTracer[ReqT any, RespT any, RespChunkT any](
@@ -196,6 +198,18 @@ func newMessageTracer(tracer trace.Tracer, propagator propagation.TextMapPropaga
 		headerAttributes,
 		func(span trace.Span, recorder tracingapi.MessageRecorder) tracingapi.MessageSpan {
 			return &messageSpan{span: span, recorder: recorder}
+		},
+	)
+}
+
+func newCreateFileTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.CreateFileRecorder, headerAttributes map[string]string) tracingapi.CreateFileTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		headerAttributes,
+		func(span trace.Span, recorder tracingapi.CreateFileRecorder) tracingapi.CreateFileSpan {
+			return &createFileSpan{span: span, recorder: recorder}
 		},
 	)
 }

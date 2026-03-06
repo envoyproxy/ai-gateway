@@ -24,6 +24,11 @@ var (
 	// unsupported features, or doesn't match the expected schema for the target API.
 	// Should return HTTP 422 Unprocessable Entity.
 	ErrInvalidRequestBody = errors.New("invalid request body")
+
+	// ErrUnsupportedContentType indicates the request has an unsupported Content-Type header.
+	// Content-Type header is missing or not one of the expected types.
+	// Should return HTTP 415 Unsupported Media Type.
+	ErrUnsupportedMediaType = errors.New("unsupported media type")
 )
 
 // GetUserFacingError checks if an error is a known user-facing error that's safe to expose.
@@ -34,6 +39,9 @@ func GetUserFacingError(err error) error {
 		return err
 	}
 	if errors.Is(err, ErrInvalidRequestBody) {
+		return err
+	}
+	if errors.Is(err, ErrUnsupportedMediaType) {
 		return err
 	}
 	return nil

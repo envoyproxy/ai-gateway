@@ -114,6 +114,8 @@ type (
 	OpenAIResponsesTranslator = Translator[openai.ResponseRequest, tracingapi.ResponsesSpan]
 	// OpenAISpeechTranslator translates the OpenAI's /v1/audio/speech endpoint.
 	OpenAISpeechTranslator = Translator[openai.SpeechRequest, tracingapi.SpeechSpan]
+	// OpenAICreateFileTranslator translates the OpenAI's /v1/files endpoint.
+	OpenAICreateFileTranslator = Translator[openai.FileNewParams, tracingapi.CreateFileSpan]
 )
 
 var (

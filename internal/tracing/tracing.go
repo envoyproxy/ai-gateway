@@ -36,6 +36,7 @@ type tracingImpl struct {
 	rerankTracer          tracingapi.RerankTracer
 	messageTracer         tracingapi.MessageTracer
 	mcpTracer             tracingapi.MCPTracer
+	createFileTracer      tracingapi.CreateFileTracer
 	// shutdown is nil when we didn't create tp.
 	shutdown func(context.Context) error
 }
@@ -83,6 +84,10 @@ func (t *tracingImpl) MCPTracer() tracingapi.MCPTracer {
 // MessageTracer implements the same method as documented on tracingapi.Tracing.
 func (t *tracingImpl) MessageTracer() tracingapi.MessageTracer {
 	return t.messageTracer
+}
+
+func (t *tracingImpl) CreateFileTracer() tracingapi.CreateFileTracer {
+	return t.createFileTracer
 }
 
 // Shutdown implements the same method as documented on tracingapi.Tracing.
@@ -196,6 +201,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 	speechRecorder := openai.NewSpeechRecorderFromEnv()
 	rerankRecorder := cohere.NewRerankRecorderFromEnv()
 	messageRecorder := anthropic.NewMessageRecorderFromEnv()
+	createFileRecorder := openai.NewCreateFileRecorderFromEnv()
 
 	tracer := tp.Tracer("envoyproxy/ai-gateway")
 	return &tracingImpl{
@@ -244,6 +250,12 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			tracer,
 			propagator,
 			messageRecorder,
+			headerAttrs,
+		),
+		createFileTracer: newCreateFileTracer(
+			tracer,
+			propagator,
+			createFileRecorder,
 			headerAttrs,
 		),
 		mcpTracer: newMCPTracer(tracer, propagator, headerAttrs),
