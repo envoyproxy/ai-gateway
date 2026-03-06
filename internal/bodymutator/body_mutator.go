@@ -6,6 +6,7 @@
 package bodymutator
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -27,6 +28,11 @@ func NewBodyMutator(bodyMutations *filterapi.HTTPBodyMutation, originalBody []by
 		originalBody:  originalBody,
 		bodyMutations: bodyMutations,
 	}
+}
+
+// HasMutations reports whether this mutator has any mutations configured.
+func (b *BodyMutator) HasMutations() bool {
+	return b != nil && b.bodyMutations != nil && len(b.bodyMutations.Remove) > 0
 }
 
 // isJSONValue checks if a string represents a JSON value (not a plain string)
@@ -116,4 +122,55 @@ func (b *BodyMutator) Mutate(requestBody []byte) ([]byte, error) {
 	}
 
 	return mutatedBody, nil
+}
+
+// MutateResponse removes configured fields from a non-streaming response body.
+func (b *BodyMutator) MutateResponse(body []byte) ([]byte, error) {
+	if b.bodyMutations == nil || len(b.bodyMutations.Remove) == 0 {
+		return body, nil
+	}
+	mutated := body
+	var err error
+	for _, fieldName := range b.bodyMutations.Remove {
+		if fieldName != "" {
+			mutated, err = sjson.DeleteBytes(mutated, fieldName)
+			if err != nil {
+				return nil, fmt.Errorf("failed to remove field %s: %w", fieldName, err)
+			}
+		}
+	}
+	return mutated, nil
+}
+
+// MutateResponseSSE removes configured fields from SSE chunk data lines.
+// It processes each line: if it starts with "data: " and contains JSON, the fields are removed.
+// Lines that are not data lines (e.g., "[DONE]", empty lines) are passed through unchanged.
+func (b *BodyMutator) MutateResponseSSE(chunk []byte) ([]byte, error) {
+	if b.bodyMutations == nil || len(b.bodyMutations.Remove) == 0 {
+		return chunk, nil
+	}
+	lines := bytes.Split(chunk, []byte("\n"))
+	for i, line := range lines {
+		if !bytes.HasPrefix(line, []byte("data: ")) {
+			continue
+		}
+		data := bytes.TrimRight(line[len("data: "):], "\r")
+		if bytes.Equal(data, []byte("[DONE]")) {
+			continue
+		}
+		mutated := data
+		var err error
+		for _, fieldName := range b.bodyMutations.Remove {
+			if fieldName != "" {
+				mutated, err = sjson.DeleteBytes(mutated, fieldName)
+				if err != nil {
+					// If we can't parse this line as JSON, leave it unchanged
+					mutated = data
+					break
+				}
+			}
+		}
+		lines[i] = append([]byte("data: "), mutated...)
+	}
+	return bytes.Join(lines, []byte("\n")), nil
 }

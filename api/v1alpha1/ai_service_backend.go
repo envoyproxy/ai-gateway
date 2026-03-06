@@ -75,6 +75,11 @@ type AIServiceBackendSpec struct {
 	// +optional
 	BodyMutation *HTTPBodyMutation `json:"bodyMutation,omitempty"`
 
+	// ResponseBodyMutation defines the mutation of HTTP response body JSON fields that will be applied
+	// to the response from the backend before returning to the client.
+	// +optional
+	ResponseBodyMutation *HTTPBodyMutation `json:"responseBodyMutation,omitempty"`
+
 	// TODO: maybe add backend-level LLMRequestCost configuration that overrides the AIGatewayRoute-level LLMRequestCost.
 	// 	That may be useful for the backend that has a different cost calculation logic.
 }
