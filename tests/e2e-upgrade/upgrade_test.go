@@ -145,12 +145,15 @@ func TestUpgrade(t *testing.T) {
 			// Ensure that first request works.
 			require.NoError(t, makeRequest(t, ipAddress, phase.String()))
 
+			// Two separate error channels so failures are attributed to the correct phase.
+			upgradeFailChan := make(chan error, 100)
+			breakConfigFailChan := make(chan error, 100)
+			activeFailChan := &atomic.Value{}
+			activeFailChan.Store(upgradeFailChan)
+
 			requestLoopCtx, cancelRequests := context.WithCancel(t.Context())
 			defer cancelRequests()
 
-			// Buffered channel prevents blocking when goroutines report errors.
-			failChan := make(chan error, 100)
-			defer close(failChan)
 			var wg sync.WaitGroup
 			wg.Add(100)
 			for range 100 {
@@ -166,9 +169,10 @@ func TestUpgrade(t *testing.T) {
 						phase.requestCounts.Add(1)
 						phaseStr := phase.String()
 						if err := makeRequest(t, ipAddress, phaseStr); err != nil {
+							ch := activeFailChan.Load().(chan error)
 							// Non-blocking send: if channel is full, we've already captured enough failures.
 							select {
-							case failChan <- err:
+							case ch <- err:
 							default:
 								return
 							}
@@ -179,8 +183,8 @@ func TestUpgrade(t *testing.T) {
 
 			t.Logf("Making sure multiple requests work before the upgrade")
 			time.Sleep(30 * time.Second)
-			if len(failChan) > 0 {
-				t.Fatalf("request loop failed: %v", <-failChan)
+			if len(upgradeFailChan) > 0 {
+				t.Fatalf("request loop failed before upgrade: %v", <-upgradeFailChan)
 			}
 			t.Logf("Request count before upgrade: %d", phase.requestCounts.Load())
 			phase.currentPhase.Store(int32(duringUpgrade))
@@ -193,6 +197,21 @@ func TestUpgrade(t *testing.T) {
 			time.Sleep(tc.runningAfterUpgrade)
 			t.Logf("Request count after upgrade: %d", phase.requestCounts.Load())
 
+			// Check for failures during the upgrade phase.
+			var upgradeFailures []error
+			for i := len(upgradeFailChan); i > 0; i-- {
+				upgradeFailures = append(upgradeFailures, <-upgradeFailChan)
+			}
+			if len(upgradeFailures) > 0 {
+				for _, err := range upgradeFailures {
+					t.Logf("upgrade phase error: %v", err)
+				}
+				t.Fatalf("request loop had %d failures during upgrade, first error: %v", len(upgradeFailures), upgradeFailures[0])
+			}
+
+			// Switch to breakConfig channel before breaking the filter config.
+			activeFailChan.Store(breakConfigFailChan)
+
 			t.Log("Breaking filter config secret to simulate config change during control plane upgrade for the future versions")
 			breakFilterConfig(t)
 			time.Sleep(30 * time.Second)
@@ -201,16 +220,16 @@ func TestUpgrade(t *testing.T) {
 			cancelRequests()
 			wg.Wait()
 
-			// Collect and report all failures.
-			var failures []error
-			for i := len(failChan); i > 0; i-- {
-				failures = append(failures, <-failChan)
+			// Check for failures during the breakFilterConfig phase.
+			var breakConfigFailures []error
+			for i := len(breakConfigFailChan); i > 0; i-- {
+				breakConfigFailures = append(breakConfigFailures, <-breakConfigFailChan)
 			}
-			if len(failures) > 0 {
-				for _, err := range failures {
-					t.Logf("request error: %v", err)
+			if len(breakConfigFailures) > 0 {
+				for _, err := range breakConfigFailures {
+					t.Logf("breakFilterConfig phase error: %v", err)
 				}
-				t.Fatalf("request loop had %d failures, first error: %v", len(failures), failures[0])
+				t.Fatalf("request loop had %d failures after breakFilterConfig, first error: %v", len(breakConfigFailures), breakConfigFailures[0])
 			}
 		})
 	}
