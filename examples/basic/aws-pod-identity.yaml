@@ -62,10 +62,8 @@ spec:
   provider:
     type: Kubernetes
     kubernetes:
-      envoyDeployment:
-        pod:
-          # This tells Envoy Gateway to use our AWS-enabled ServiceAccount
-          serviceAccountName: ai-gateway-dataplane-aws
+      envoyServiceAccount:
+        name: ai-gateway-dataplane-aws
 ---
 # Step 4: Create Gateway that references the custom EnvoyProxy
 apiVersion: gateway.networking.k8s.io/v1
