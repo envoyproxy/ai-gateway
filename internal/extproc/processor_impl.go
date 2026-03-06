@@ -210,7 +210,7 @@ func createUserFacingErrorResponse(statusCode int, errorType string, message str
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	costConfigured := len(r.config.RequestCosts) > 0 || len(r.config.GlobalRequestCosts) > 0
-	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body, costConfigured)
+	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body, costConfigured, r.requestHeaders)
 	if err != nil {
 		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
 			// return to user as 400 -  e.g., "malformed request: failed to parse JSON for /v1/chat/completions"

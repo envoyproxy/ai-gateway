@@ -276,6 +276,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create metrics: %w", err)
 	}
+	// TODO: Add Metrics Factory for File API ?
 	chatCompletionMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationChat)
 	messagesMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationMessages)
 	completionMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationCompletion)
@@ -309,6 +310,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/models"), extproc.NewModelsProcessor)
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages"), extproc.NewFactory(
 		messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{}))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files"), extproc.NewFactory(
+		nil, tracing.CreateFileTracer(), endpointspec.CreateFileEndpointSpec{}))
 
 	// Create and register gRPC server with ExternalProcessorServer (the service Envoy calls).
 	if err = filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
