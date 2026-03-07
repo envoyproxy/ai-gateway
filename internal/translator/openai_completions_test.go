@@ -164,6 +164,32 @@ func TestOpenAIToOpenAITranslatorV1CompletionResponseBody(t *testing.T) {
 			expModel:      "gpt-3.5-turbo-instruct",
 		},
 		{
+			name: "valid_response_with_reasoning_tokens",
+			responseBody: `{
+				"id": "cmpl-123",
+				"object": "text_completion",
+				"created": 1677649420,
+				"model": "gpt-3.5-turbo-instruct",
+				"choices": [
+					{
+						"text": "Hello! How can I help you today?",
+						"index": 0,
+						"finish_reason": "stop"
+					}
+				],
+				"usage": {
+					"prompt_tokens": 5,
+					"completion_tokens": 8,
+					"total_tokens": 13,
+					"completion_tokens_details": {
+						"reasoning_tokens": 3
+					}
+				}
+			}`,
+			expTokenUsage: tokenUsageFromWithReasoning(5, -1, -1, 8, 13, 3),
+			expModel:      "gpt-3.5-turbo-instruct",
+		},
+		{
 			name:          "invalid_json",
 			responseBody:  `invalid json`,
 			expError:      true,
@@ -279,6 +305,34 @@ data: [DONE]
 	require.Nil(t, headerMutation)
 	require.Nil(t, bodyMutation)
 	require.Equal(t, tokenUsageFrom(5, -1, -1, 3, 8), tokenUsage)
+	require.Equal(t, "gpt-3.5-turbo-instruct", responseModel)
+}
+
+func TestOpenAIToOpenAITranslatorV1CompletionResponseBodyStreamingWithReasoningTokens(t *testing.T) {
+	translator := NewCompletionOpenAIToOpenAITranslator("v1", "")
+	impl := translator.(*openAIToOpenAITranslatorV1Completion)
+	impl.stream = true
+
+	chunk := `data: {"id":"cmpl-123","object":"text_completion","created":1677649420,"model":"gpt-3.5-turbo-instruct","choices":[{"text":"","index":0,"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{"reasoning_tokens":2}}}
+
+data: [DONE]
+
+`
+
+	respHeaders := map[string]string{
+		"content-type": "text/event-stream",
+	}
+
+	headerMutation, bodyMutation, tokenUsage, responseModel, err := impl.ResponseBody(
+		respHeaders,
+		strings.NewReader(chunk),
+		true,
+		nil,
+	)
+	require.NoError(t, err)
+	require.Nil(t, headerMutation)
+	require.Nil(t, bodyMutation)
+	require.Equal(t, tokenUsageFromWithReasoning(5, -1, -1, 3, 8, 2), tokenUsage)
 	require.Equal(t, "gpt-3.5-turbo-instruct", responseModel)
 }
 
