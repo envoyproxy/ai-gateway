@@ -675,6 +675,19 @@ func TestAWSAnthropicStreamParser_ErrorHandling(t *testing.T) {
 		return err
 	}
 
+	runStreamBodyTest := func(t *testing.T, sseStream string, endOfStream bool) ([]byte, error) {
+		eventStreamData, err := wrapAnthropicSSEInEventStream(sseStream)
+		require.NoError(t, err)
+
+		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
+		translator := NewChatCompletionOpenAIToAWSAnthropicTranslator("", "").(*openAIToAWSAnthropicTranslatorV1ChatCompletion)
+		_, _, err = translator.RequestBody(nil, openAIReq, false)
+		require.NoError(t, err)
+
+		_, body, _, _, err := translator.ResponseBody(map[string]string{}, bytes.NewReader(eventStreamData), endOfStream, nil)
+		return body, err
+	}
+
 	tests := []struct {
 		name          string
 		sseStream     string
@@ -705,6 +718,29 @@ func TestAWSAnthropicStreamParser_ErrorHandling(t *testing.T) {
 			require.Contains(t, err.Error(), tt.expectedError)
 		})
 	}
+
+	t.Run("forwards anthropic error event and continues stream", func(t *testing.T) {
+		sseStream := `event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"before error"}}
+
+event: error
+data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"after error"}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+		body, err := runStreamBodyTest(t, sseStream, true)
+		require.NoError(t, err)
+
+		bodyStr := string(body)
+		require.Contains(t, bodyStr, `"content":"before error"`)
+		require.Contains(t, bodyStr, `"error":{"type":"overloaded_error","message":"Overloaded"}`)
+		require.Contains(t, bodyStr, `"content":"after error"`)
+		require.Contains(t, bodyStr, string(sseDoneMessage))
+	})
 
 	t.Run("body read error", func(t *testing.T) {
 		parser := newAnthropicStreamParser("test-model")

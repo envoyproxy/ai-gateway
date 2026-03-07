@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -736,6 +737,13 @@ func newAnthropicStreamParser(requestModel string) *anthropicStreamParser {
 func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error {
 	chunk, err := p.parseAndHandleEvent(eventBlock)
 	if err != nil {
+		var streamErr anthropicStreamErrorEvent
+		if errors.As(err, &streamErr) {
+			*buf = append(*buf, sseDataPrefix...)
+			*buf = append(*buf, streamErr.payload...)
+			*buf = append(*buf, '\n', '\n')
+			return nil
+		}
 		return err
 	}
 	if chunk != nil {
@@ -843,6 +851,14 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 	}
 	tokenUsage = p.tokenUsage
 	return
+}
+
+type anthropicStreamErrorEvent struct {
+	payload []byte
+}
+
+func (e anthropicStreamErrorEvent) Error() string {
+	return "anthropic stream error event"
 }
 
 func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock []byte) (*openai.ChatCompletionResponseChunk, error) {
@@ -1054,7 +1070,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if err := json.Unmarshal(data, &errEvent); err != nil {
 			return nil, fmt.Errorf("unparsable error event: %s", string(data))
 		}
-		return nil, fmt.Errorf("anthropic stream error: %s - %s", errEvent.Error.Type, errEvent.Error.Message)
+		return nil, anthropicStreamErrorEvent{payload: data}
 
 	case "ping":
 		// Per documentation, ping events can be ignored.
