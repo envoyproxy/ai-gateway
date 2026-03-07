@@ -376,7 +376,6 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 							CachePoint: cachePointBlock,
 						})
 					}
-
 				case string:
 					return nil, fmt.Errorf("%w: redacted_content must be a binary/bytes value in bedrock", internalapi.ErrInvalidRequestBody)
 				default:
@@ -774,7 +773,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 		}
 	}
 
-	// AWS Bedrock does not support N(multiple choices) > 0, so there could be only one choice.
+	// AWS Bedrock Converse API does not support N(multiple choices) > 0, so there could be only one choice.
 	choice := openai.ChatCompletionResponseChoice{
 		Index: (int64)(0),
 		Message: openai.ChatCompletionResponseChoiceMessage{

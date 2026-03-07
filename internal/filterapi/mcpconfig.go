@@ -30,6 +30,9 @@ type MCPRoute struct {
 
 	// Authorization is the authorization configuration for this route.
 	Authorization *MCPRouteAuthorization `json:"authorization,omitempty"`
+
+	// ForwardHeaders specifies HTTP headers to extract from the incoming request and forward to backend MCP servers.
+	ForwardHeaders []string `json:"forwardHeaders,omitempty"`
 }
 
 // MCPBackend is the MCP backend configuration.
@@ -37,9 +40,6 @@ type MCPBackend struct {
 	// Name is the fully qualified identifier of a MCP backend.
 	// This name is set in [internalapi.MCPBackendHeader] header to route the request to the specific backend.
 	Name MCPBackendName `json:"name"`
-
-	// Path is the HTTP endpoint path of the backend MCP server.
-	Path string `json:"path"`
 
 	// ToolSelector filters the tools exposed by this backend. If not set, all tools are exposed.
 	ToolSelector *MCPToolSelector `json:"toolSelector,omitempty"`

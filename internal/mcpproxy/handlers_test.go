@@ -59,13 +59,13 @@ func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *mcpRequestContext {
 							"backend1": {include: map[string]struct{}{"test-tool": {}}},
 						},
 						backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
-							"backend1": {Name: "backend1", Path: "/mcp"},
-							"backend2": {Name: "backend2", Path: "/"},
+							"backend1": {Name: "backend1"},
+							"backend2": {Name: "backend2"},
 						},
 					},
 					"test-route-another": {
 						backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
-							"backend3": {Name: "backend3", Path: "/mcp"},
+							"backend3": {Name: "backend3"},
 						},
 					},
 				},
@@ -1224,6 +1224,83 @@ func TestExtractSubject(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, extractSubject(req))
 	})
+}
+
+func TestExtractForwardHeaders(t *testing.T) {
+	// Test that extractForwardHeaders correctly reads headers from the request.
+	tests := []struct {
+		name           string
+		requestHeaders map[string]string
+		forwardHeaders []string
+		wantHeaders    map[string]string
+	}{
+		{
+			name: "extract configured headers",
+			requestHeaders: map[string]string{
+				"X-User-Id":    "user123",
+				"X-User-Email": "user@example.com",
+			},
+			forwardHeaders: []string{"X-User-Id", "X-User-Email"},
+			wantHeaders: map[string]string{
+				"X-User-Id":    "user123",
+				"X-User-Email": "user@example.com",
+			},
+		},
+		{
+			name: "extract nested claim header",
+			requestHeaders: map[string]string{
+				"X-User-Roles": `["admin","user"]`,
+			},
+			forwardHeaders: []string{"X-User-Roles"},
+			wantHeaders: map[string]string{
+				"X-User-Roles": `["admin","user"]`,
+			},
+		},
+		{
+			name:           "missing header returns nil",
+			requestHeaders: map[string]string{
+				// X-Missing is not set
+			},
+			forwardHeaders: []string{"X-Missing"},
+			wantHeaders:    nil,
+		},
+		{
+			name: "mixed existing and missing headers",
+			requestHeaders: map[string]string{
+				"X-User-Id": "user123",
+				// X-Missing is not set
+			},
+			forwardHeaders: []string{"X-User-Id", "X-Missing"},
+			wantHeaders: map[string]string{
+				"X-User-Id": "user123",
+			},
+		},
+		{
+			name:           "empty forward headers",
+			requestHeaders: map[string]string{"X-User-Id": "user123"},
+			forwardHeaders: []string{},
+			wantHeaders:    nil,
+		},
+		{
+			name:           "no headers on request",
+			requestHeaders: map[string]string{},
+			forwardHeaders: []string{"X-User-Id"},
+			wantHeaders:    nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			headers := make(http.Header)
+			// Set headers (simulating what Envoy's JWT filter does)
+			for header, value := range tt.requestHeaders {
+				headers.Set(header, value)
+			}
+
+			result := extractForwardHeaders(headers, tt.forwardHeaders)
+			require.Equal(t, tt.wantHeaders, result)
+		})
+	}
 }
 
 func secureID(t *testing.T, proxy *mcpRequestContext, sessionID string) string {

@@ -114,7 +114,7 @@ const (
 	APISchemaOpenAI APISchemaName = "OpenAI"
 	// APISchemaCohere represents the Cohere API schema.
 	APISchemaCohere APISchemaName = "Cohere"
-	// APISchemaAWSBedrock represents the AWS Bedrock API schema.
+	// APISchemaAWSBedrock represents the AWS Bedrock Converse API schema.
 	APISchemaAWSBedrock APISchemaName = "AWSBedrock"
 	// APISchemaAzureOpenAI represents the Azure OpenAI API schema.
 	APISchemaAzureOpenAI APISchemaName = "AzureOpenAI"
@@ -127,7 +127,8 @@ const (
 	// APISchemaAnthropic represents the standard Anthropic API schema.
 	APISchemaAnthropic APISchemaName = "Anthropic"
 	// APISchemaAWSAnthropic represents the AWS Bedrock Anthropic API schema.
-	// Used for Claude models hosted on AWS Bedrock using the native Anthropic Messages API.
+	// Used for Claude models hosted on AWS Bedrock. Supports both OpenAI and Anthropic input formats
+	// depending on the endpoint path, similar to APISchemaGCPAnthropic.
 	APISchemaAWSAnthropic APISchemaName = "AWSAnthropic"
 )
 

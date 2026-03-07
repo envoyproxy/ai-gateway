@@ -83,7 +83,11 @@ func NewServer(opts *Options) (*http.Server, *mcp.Server) {
 		},
 	)
 
-	if apiKey := os.Getenv("TEST_API_KEY"); apiKey != "" {
+	// Setup API key auth when environment variable TEST_API_KEY is set.
+	apiKey := os.Getenv("TEST_API_KEY")
+	apiKeyQueryParam := os.Getenv("TEST_API_KEY_QUERY_PARAM")
+	// Query param auth takes precedence over header.
+	if apiKey != "" && apiKeyQueryParam == "" {
 		header := strings.ToLower(cmp.Or(os.Getenv("TEST_API_KEY_HEADER"), "Authorization"))
 		expectedValue := apiKey
 		if header == "authorization" {
@@ -93,6 +97,29 @@ func NewServer(opts *Options) (*http.Server, *mcp.Server) {
 			return func(ctx context.Context, method string, req mcp.Request) (result mcp.Result, err error) {
 				if req.GetExtra().Header.Get(header) != expectedValue {
 					return nil, fmt.Errorf("invalid API key")
+				}
+				return handler(ctx, method, req)
+			}
+		})
+	}
+
+	// Setup claim header validation when environment variable TEST_EXPECTED_CLAIM_HEADERS is set.
+	// Format: "header1=value1,header2=value2"
+	expectedClaimHeaders := os.Getenv("TEST_EXPECTED_CLAIM_HEADERS")
+	if expectedClaimHeaders != "" {
+		expected := map[string]string{}
+		for _, pair := range strings.Split(expectedClaimHeaders, ",") {
+			k, v, ok := strings.Cut(pair, "=")
+			if ok {
+				expected[k] = v
+			}
+		}
+		s.AddReceivingMiddleware(func(handler mcp.MethodHandler) mcp.MethodHandler {
+			return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+				for header, value := range expected {
+					if got := req.GetExtra().Header.Get(header); got != value {
+						return nil, fmt.Errorf("expected header %q=%q, got %q", header, value, got)
+					}
 				}
 				return handler(ctx, method, req)
 			}
@@ -119,7 +146,18 @@ func NewServer(opts *Options) (*http.Server, *mcp.Server) {
 	notificationsCounts := newToolNotificationCounts(handlerCounts)
 	mcp.AddTool(s, notificationsCounts.Tool, notificationsCounts.Handler)
 
-	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		// Check for API key in query param if configured.
+		if apiKey != "" && apiKeyQueryParam != "" {
+			log.Printf("checking for API key in query param %q\n", apiKeyQueryParam)
+			queryParam := r.URL.Query().Get(apiKeyQueryParam)
+			if queryParam != apiKey {
+				// Returning nil will cause 400 response in the current implementation of NewStreamableHTTPHandler.
+				log.Printf("invalid API key in query param %q: %q\n", apiKeyQueryParam, queryParam)
+				return nil
+			}
+			log.Printf("valid API key in query param %q\n", apiKeyQueryParam)
+		}
 		return s
 	}, &mcp.StreamableHTTPOptions{JSONResponse: opts.ForceJSONResponse})
 

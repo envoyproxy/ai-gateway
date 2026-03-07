@@ -51,6 +51,7 @@ type (
 	embeddingsSpan      = span[openai.EmbeddingResponse, struct{}]
 	imageGenerationSpan = span[openai.ImageGenerationResponse, struct{}]
 	responsesSpan       = span[openai.Response, openai.ResponseStreamEventUnion]
+	speechSpan          = span[[]byte, openai.SpeechStreamChunk]
 	rerankSpan          = span[cohereschema.RerankV2Response, struct{}]
 	messageSpan         = span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 )

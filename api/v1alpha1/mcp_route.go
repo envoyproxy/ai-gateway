@@ -152,8 +152,10 @@ type MCPBackendSecurityPolicy struct {
 }
 
 // MCPBackendAPIKey defines the configuration for the API Key Authentication to a backend.
+// When both `header` and `queryParam` are unspecified, the API key will be injected into the "Authorization" header by default.
 //
 // +kubebuilder:validation:XValidation:rule="(has(self.secretRef) && !has(self.inline)) || (!has(self.secretRef) && has(self.inline))", message="exactly one of secretRef or inline must be set"
+// +kubebuilder:validation:XValidation:rule="!(has(self.header) && has(self.queryParam))", message="only one of header or queryParam can be set"
 type MCPBackendAPIKey struct {
 	// secretRef is the Kubernetes secret which contains the API keys.
 	// The key of the secret should be "apiKey".
@@ -170,10 +172,23 @@ type MCPBackendAPIKey struct {
 	// When the header is "Authorization", the injected header value will be
 	// prefixed with "Bearer ".
 	//
+	// Either one of Header or QueryParam can be specified to inject the API key.
+	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinLength=1
 	// +optional
 	Header *string `json:"header,omitempty"`
+
+	// QueryParam is the HTTP query parameter to inject the API key into.
+	// For example, if QueryParam is set to "api_key", and the API key is "mysecretkey", the request URL will be modified to include
+	// "?api_key=mysecretkey".
+	//
+	// Either one of Header or QueryParam can be specified to inject the API key.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	// +optional
+	QueryParam *string `json:"queryParam,omitempty"`
 }
 
 // MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
@@ -232,6 +247,19 @@ type MCPRouteOAuth struct {
 	//
 	// +kubebuilder:validation:Required
 	ProtectedResourceMetadata ProtectedResourceMetadata `json:"protectedResourceMetadata"`
+
+	// ClaimToHeaders specifies JWT claims to extract and forward as HTTP headers to backend MCP servers.
+	// This enables backends to access user identity for authorization, auditing, or personalization.
+	//
+	// Security considerations:
+	// - Any client-provided headers matching the configured header names will be stripped to prevent forgery
+	// - Only the specified claims are extracted; the full JWT is not forwarded to backends
+	// - Consider using a header prefix (e.g., "X-Jwt-Claim-") to avoid conflicts with other headers
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=16
+	// +optional
+	ClaimToHeaders []egv1a1.ClaimToHeader `json:"claimToHeaders,omitempty"`
 }
 
 // MCPRouteAuthorization defines the authorization configuration for a MCPRoute.

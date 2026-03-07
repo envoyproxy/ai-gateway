@@ -1,6 +1,6 @@
 module github.com/envoyproxy/ai-gateway/tools
 
-go 1.25.6
+go 1.25.7
 
 tool (
 	github.com/apache/skywalking-eyes/cmd/license-eye

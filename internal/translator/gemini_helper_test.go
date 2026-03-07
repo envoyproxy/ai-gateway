@@ -1337,9 +1337,22 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 			requestModel:         "gemini-3-pro",
 		},
 		{
-			name: "reasoning effort unsupported",
+			name: "high reasoning effort maps to ThinkingLevelHigh",
 			input: &openai.ChatCompletionRequest{
 				ReasoningEffort: openaigo.ReasoningEffortHigh,
+			},
+			expectedGenerationConfig: &genai.GenerationConfig{
+				ThinkingConfig: &genai.ThinkingConfig{
+					ThinkingLevel: genai.ThinkingLevelHigh,
+				},
+			},
+			expectedResponseMode: responseModeNone,
+			requestModel:         "gemini-3-flash",
+		},
+		{
+			name: "reasoning effort unsupported value",
+			input: &openai.ChatCompletionRequest{
+				ReasoningEffort: "invalid_value",
 			},
 			expectedErrMsg: "unsupported reasoning effort level",
 			requestModel:   "gemini-3-pro",
@@ -2763,44 +2776,63 @@ func TestMapReasoningEffortToThinkingLevel(t *testing.T) {
 	tests := []struct {
 		name             string
 		reasoningEffort  openaigo.ReasoningEffort
+		model            internalapi.RequestModel
 		expectedThinking genai.ThinkingLevel
 		expectedErrorMsg string
 	}{
 		{
+			name:             "none effort on Flash maps to ThinkingLevelMinimal",
+			reasoningEffort:  "none",
+			model:            "gemini-3-flash",
+			expectedThinking: genai.ThinkingLevelMinimal,
+		},
+		{
+			name:             "none effort on Pro returns error",
+			reasoningEffort:  "none",
+			model:            "gemini-3-pro",
+			expectedErrorMsg: "reasoning effort 'none' is only supported for Gemini Flash models",
+		},
+		{
 			name:             "low effort maps to ThinkingLevelLow",
 			reasoningEffort:  openaigo.ReasoningEffortLow,
+			model:            "gemini-3-flash",
 			expectedThinking: genai.ThinkingLevelLow,
 		},
 		{
-			name:             "medium effort maps to ThinkingLevelHigh",
+			name:             "medium effort on Flash maps to ThinkingLevelMedium",
 			reasoningEffort:  openaigo.ReasoningEffortMedium,
+			model:            "gemini-3-flash",
+			expectedThinking: genai.ThinkingLevelMedium,
+		},
+		{
+			name:             "medium effort on Pro maps to ThinkingLevelHigh",
+			reasoningEffort:  openaigo.ReasoningEffortMedium,
+			model:            "gemini-3-pro",
 			expectedThinking: genai.ThinkingLevelHigh,
 		},
 		{
-			name:             "minimal effort - not supported",
-			reasoningEffort:  openaigo.ReasoningEffortMinimal,
-			expectedErrorMsg: "unsupported reasoning effort level",
-		},
-		{
-			name:             "high effort - not supported",
+			name:             "high effort maps to ThinkingLevelHigh",
 			reasoningEffort:  openaigo.ReasoningEffortHigh,
-			expectedErrorMsg: "unsupported reasoning effort level",
+			model:            "gemini-3-flash",
+			expectedThinking: genai.ThinkingLevelHigh,
 		},
 		{
 			name:             "empty effort - not supported",
 			reasoningEffort:  "",
+			model:            "gemini-3-flash",
 			expectedErrorMsg: "unsupported reasoning effort level",
 		},
 		{
 			name:             "unknown effort - not supported",
 			reasoningEffort:  "unknown",
+			model:            "gemini-3-flash",
 			expectedErrorMsg: "unsupported reasoning effort level",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			thinking, err := mapReasoningEffortToThinkingLevel(tc.reasoningEffort)
+			thinking, err := mapReasoningEffortToThinkingLevel(tc.reasoningEffort, tc.model)
 
 			if tc.expectedErrorMsg != "" {
 				require.Error(t, err)

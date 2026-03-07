@@ -1021,10 +1021,6 @@ func (m *mcpRequestContext) recordResponse(ctx context.Context, rawMsg jsonrpc.M
 	}
 }
 
-func (m *mcpRequestContext) mcpEndpointForBackend(backend filterapi.MCPBackend) string {
-	return m.backendListenerAddr + backend.Path
-}
-
 func (m *mcpRequestContext) handleResourceReadRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ReadResourceParams) error {
 	backendName, resourceName, err := upstreamResourceURI(p.URI)
 	if err != nil {
@@ -1186,6 +1182,25 @@ func extractSubject(r *http.Request) string {
 	var claims jwt.RegisteredClaims
 	_, _, _ = jwt.NewParser().ParseUnverified(parts[1], &claims)
 	return claims.Subject
+}
+
+// extractForwardHeaders reads the configured headers from the incoming request to forward to backends.
+func extractForwardHeaders(reqHeaders http.Header, headers []string) map[string]string {
+	if len(headers) == 0 {
+		return nil
+	}
+
+	result := make(map[string]string)
+	for _, header := range headers {
+		if value := reqHeaders.Get(header); value != "" {
+			result[header] = value
+		}
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 // handlePromptGetRequest handles the "prompts/get" JSON-RPC method.

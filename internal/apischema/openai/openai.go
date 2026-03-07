@@ -869,6 +869,7 @@ type WebSearchLocation struct {
 type ThinkingUnion struct {
 	OfEnabled  *ThinkingEnabled  `json:",omitzero,inline"`
 	OfDisabled *ThinkingDisabled `json:",omitzero,inline"`
+	OfAdaptive *ThinkingAdaptive `json:",omitzero,inline"`
 }
 
 type ThinkingEnabled struct {
@@ -887,6 +888,10 @@ type ThinkingDisabled struct {
 	Type string `json:"type,"`
 }
 
+type ThinkingAdaptive struct {
+	Type string `json:"type,"`
+}
+
 // MarshalJSON implements the json.Marshaler interface for ThinkingUnion.
 func (t *ThinkingUnion) MarshalJSON() ([]byte, error) {
 	if t.OfEnabled != nil {
@@ -894,6 +899,9 @@ func (t *ThinkingUnion) MarshalJSON() ([]byte, error) {
 	}
 	if t.OfDisabled != nil {
 		return json.Marshal(t.OfDisabled)
+	}
+	if t.OfAdaptive != nil {
+		return json.Marshal(t.OfAdaptive)
 	}
 	// If both are nil, return an empty object or an error, depending on your desired behavior.
 	return []byte(`{}`), nil
@@ -923,6 +931,12 @@ func (t *ThinkingUnion) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		t.OfDisabled = &disabled
+	case "adaptive":
+		var adaptive ThinkingAdaptive
+		if err := json.Unmarshal(data, &adaptive); err != nil {
+			return err
+		}
+		t.OfAdaptive = &adaptive
 	default:
 		return fmt.Errorf("invalid thinking union type: %s", typeVal)
 	}
@@ -2149,6 +2163,9 @@ type ResponseRequest struct {
 	// [Learn more](https://platform.openai.com/docs/guides/background).
 	Background *bool `json:"background,omitempty"`
 
+	// Context management configuration for this request.
+	ContextManagement []ResponseContextManagement `json:"context_management,omitzero"`
+
 	// A system (or developer) message inserted into the model's context.
 	//
 	// When using along with `previous_response_id`, the instructions from a previous
@@ -2352,6 +2369,14 @@ type ResponseRequest struct {
 	//     [function calling](https://platform.openai.com/docs/guides/function-calling).
 	//     You can also use custom tools to call your own code.
 	Tools []ResponseToolUnion `json:"tools,omitzero"`
+}
+
+// Context management configuration
+type ResponseContextManagement struct {
+	// The context management entry type.
+	Type string `json:"type"`
+	// Token threshold at which compaction should be triggered for this entry.
+	CompactThreshold int64 `json:"compact_threshold,omitzero"`
 }
 
 // Configuration options for a text response from the model. Can be plain text or
@@ -3633,10 +3658,27 @@ func (r ResponseInputItemUnionParam) MarshalJSON() ([]byte, error) { // nolint:g
 
 func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
+
+	// Handle messages without explicit type field (for compatibility with simple message arrays)
+	// This allows arrays like [{"role": "user", "content": "Hello"}] to work without requiring type field
+	if typ.String() == "" {
+		if gjson.GetBytes(data, "role").Exists() && gjson.GetBytes(data, "content").Exists() {
+			// Treat as EasyInputMessageParam
+			var msg EasyInputMessageParam
+			if err := json.Unmarshal(data, &msg); err != nil {
+				return err
+			}
+			r.OfMessage = &msg
+			return nil
+		}
+	}
+
 	switch typ.String() {
 	case "message":
-		// Check for id field to determine which type to unmarshal into
-		// ResponseOutputMessage has id field (required property)
+		// Check for id field or assistant role to determine if this is an output message.
+		// ResponseOutputMessage has id field (required property) and role is always "assistant".
+		// Assistant messages without id (e.g., from multi-turn conversation history) also
+		// contain output_text content that only ResponseOutputMessage can parse.
 		if gjson.GetBytes(data, "id").Exists() {
 			var om ResponseOutputMessage
 			if err := json.Unmarshal(data, &om); err != nil {
@@ -3644,6 +3686,13 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 			}
 			r.OfOutputMessage = &om
 			return nil
+		}
+		if gjson.GetBytes(data, "role").String() == "assistant" {
+			var om ResponseOutputMessage
+			if err := json.Unmarshal(data, &om); err == nil {
+				r.OfOutputMessage = &om
+				return nil
+			}
 		}
 
 		// Try ResponseInputItemMessageParam (has status field for tracking)
@@ -8088,3 +8137,60 @@ type ResponseCustomToolCallInputDoneEvent struct {
 	// The event type identifier. Always response.custom_tool_call_input.done
 	Type string `json:"type"`
 }
+
+// SpeechRequest represents a request to the /v1/audio/speech endpoint
+type SpeechRequest struct {
+	Model          string   `json:"model"`
+	Input          string   `json:"input"`
+	Voice          string   `json:"voice"`
+	Instructions   *string  `json:"instructions,omitempty"`
+	ResponseFormat *string  `json:"response_format,omitempty"`
+	Speed          *float64 `json:"speed,omitempty"`
+	StreamFormat   *string  `json:"stream_format,omitempty"`
+}
+
+// SpeechStreamChunk for SSE streaming responses
+type SpeechStreamChunk struct {
+	Data []byte `json:"data"` // Audio data chunk
+}
+
+// Voice constants
+const (
+	SpeechVoiceAlloy   = "alloy"
+	SpeechVoiceAsh     = "ash"
+	SpeechVoiceBallad  = "ballad"
+	SpeechVoiceCoral   = "coral"
+	SpeechVoiceEcho    = "echo"
+	SpeechVoiceFable   = "fable"
+	SpeechVoiceOnyx    = "onyx"
+	SpeechVoiceNova    = "nova"
+	SpeechVoiceSage    = "sage"
+	SpeechVoiceShimmer = "shimmer"
+	SpeechVoiceVerse   = "verse"
+	SpeechVoiceMarin   = "marin"
+	SpeechVoiceCedar   = "cedar"
+)
+
+// Audio format constants
+const (
+	AudioFormatMP3  = "mp3"
+	AudioFormatOpus = "opus"
+	AudioFormatAAC  = "aac"
+	AudioFormatFLAC = "flac"
+	AudioFormatWAV  = "wav"
+	AudioFormatPCM  = "pcm"
+)
+
+// Stream format constants
+const (
+	StreamFormatSSE   = "sse"
+	StreamFormatAudio = "audio"
+)
+
+// Speech model constants
+const (
+	SpeechModelTTS1                 = "tts-1"
+	SpeechModelTTS1HD               = "tts-1-hd"
+	SpeechModelGPT4oMiniTTS         = "gpt-4o-mini-tts"
+	SpeechModelGPT4oMiniTTS20251215 = "gpt-4o-mini-tts-2025-12-15"
+)

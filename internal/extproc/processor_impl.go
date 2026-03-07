@@ -206,7 +206,7 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 	if err != nil {
 		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
 			// return to user as 400 -  e.g., "malformed request: failed to parse JSON for /v1/chat/completions"
-			r.logger.Info("returning user-facing error for malformed request", slog.String("error", err.Error()))
+			r.logger.Error("returning user-facing error for malformed request", slog.String("error", err.Error()))
 			return createUserFacingErrorResponse(400, "BadRequest", userFacingErr.Error()), nil
 		}
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
