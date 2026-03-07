@@ -8453,49 +8453,55 @@ func (f *FileNewParams) UnmarshalMultipart(data []byte, boundary string) error {
 	return nil
 }
 
-func (r FileNewParams) MarshalMultipart() ([]byte, string, error) {
+var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
+func escapeQuotes(s string) string {
+	return quoteEscaper.Replace(s)
+}
+
+func (f FileNewParams) MarshalMultipart() ([]byte, string, error) {
 	buf := &bytes.Buffer{}
 	writer := multipart.NewWriter(buf)
 
-	if r.File == nil {
+	if f.File == nil {
 		return nil, "", fmt.Errorf("file is required")
 	}
 	filename := "anonymous_file"
 	contentType := "application/octet-stream"
-	if named, ok := r.File.(interface{ Filename() string }); ok {
+	if named, ok := f.File.(interface{ Filename() string }); ok {
 		filename = named.Filename()
-	} else if named, ok := r.File.(interface{ Name() string }); ok {
+	} else if named, ok := f.File.(interface{ Name() string }); ok {
 		filename = path.Base(named.Name())
 	}
-	if typed, ok := r.File.(interface{ ContentType() string }); ok {
+	if typed, ok := f.File.(interface{ ContentType() string }); ok {
 		contentType = typed.ContentType()
 	}
 	// part, err := writer.CreateFormFile("file", filename)
 	// Below is taken almost 1-for-1 from [multipart.CreateFormFile]
-	multipart.NewWriter().CreateFormFile()
-	h := make(textproto.MIMEHeader, )
+	key := "file"
+	h := make(textproto.MIMEHeader)
 	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, escapeQuotes(key), escapeQuotes(filename)))
 	h.Set("Content-Type", contentType)
 	part, err := writer.CreatePart(h)
 	if err != nil {
-		return nil, "",err
-	}
-
-	if _, err := io.Copy(part, r.File); err != nil {
 		return nil, "", err
 	}
 
-	if r.Purpose == "" {
+	if _, err := io.Copy(part, f.File); err != nil {
+		return nil, "", err
+	}
+
+	if f.Purpose == "" {
 		return nil, "", fmt.Errorf("purpose is required")
 	}
 
-	if err := writer.WriteField("purpose", string(r.Purpose)); err != nil {
+	if err := writer.WriteField("purpose", string(f.Purpose)); err != nil {
 		return nil, "", err
 	}
 
 	// ---- expires_after (optional) ----
-	if !reflect.ValueOf(r.ExpiresAfter).IsZero() {
-		b, err := json.Marshal(r.ExpiresAfter)
+	if !reflect.ValueOf(f.ExpiresAfter).IsZero() {
+		b, err := json.Marshal(f.ExpiresAfter)
 		if err != nil {
 			return nil, "", err
 		}
