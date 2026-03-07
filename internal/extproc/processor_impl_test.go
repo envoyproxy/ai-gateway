@@ -253,6 +253,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		p := &chatCompletionProcessorUpstreamFilter{
 			translator: mt,
 			metrics:    mm,
+			parent:     &chatCompletionProcessorRouterFilter{},
 		}
 		mt.retErr = errors.New("test error")
 		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})

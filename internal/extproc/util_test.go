@@ -96,6 +96,72 @@ func TestDecodeContentIfNeeded(t *testing.T) {
 	}
 }
 
+func TestStreamingGzipDecompression(t *testing.T) {
+	// Simulate a gzip-compressed SSE stream split into multiple chunks.
+	// This tests the same accumulate-and-redecode logic used by decodeStreamingContent.
+	messages := []string{
+		"event: message_start\ndata: {\"type\":\"message_start\"}\n\n",
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hello\"}}\n\n",
+		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+	}
+
+	// Produce per-chunk gzip output by flushing after each message.
+	var allCompressed bytes.Buffer
+	gz := gzip.NewWriter(&allCompressed)
+	var chunkBoundaries []int // byte offsets in allCompressed marking each chunk end
+	for _, msg := range messages {
+		_, err := gz.Write([]byte(msg))
+		require.NoError(t, err)
+		require.NoError(t, gz.Flush())
+		chunkBoundaries = append(chunkBoundaries, allCompressed.Len())
+	}
+	require.NoError(t, gz.Close())
+	fullCompressed := allCompressed.Bytes()
+
+	// Split the compressed output into chunks at flush boundaries,
+	// plus a final chunk with the gzip footer.
+	var chunks [][]byte
+	prev := 0
+	for _, boundary := range chunkBoundaries {
+		chunks = append(chunks, fullCompressed[prev:boundary])
+		prev = boundary
+	}
+	if prev < len(fullCompressed) {
+		// Remaining bytes contain the gzip footer.
+		chunks = append(chunks, fullCompressed[prev:])
+	}
+
+	// Simulate the accumulate-and-redecode algorithm from decodeStreamingContent.
+	var compressedBuf []byte
+	decompressedOffset := 0
+	var totalDecompressed string
+
+	for i, chunk := range chunks {
+		endOfStream := i == len(chunks)-1
+		compressedBuf = append(compressedBuf, chunk...)
+
+		result, err := decodeContentIfNeeded(compressedBuf, "gzip")
+		require.NoError(t, err)
+		require.True(t, result.isEncoded)
+
+		allDecompressed, readErr := io.ReadAll(result.reader)
+		if readErr != nil {
+			if endOfStream {
+				t.Fatalf("unexpected error on final chunk: %v", readErr)
+			}
+			// io.ErrUnexpectedEOF is expected for non-final chunks.
+			require.ErrorIs(t, readErr, io.ErrUnexpectedEOF)
+		}
+
+		newData := allDecompressed[decompressedOffset:]
+		decompressedOffset = len(allDecompressed)
+		totalDecompressed += string(newData)
+	}
+
+	expected := messages[0] + messages[1] + messages[2]
+	require.Equal(t, expected, totalDecompressed)
+}
+
 func TestRemoveContentEncodingIfNeeded(t *testing.T) {
 	tests := []struct {
 		name        string

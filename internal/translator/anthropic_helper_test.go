@@ -11,10 +11,12 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
+	openaisdk "github.com/openai/openai-go/v3"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // mockErrorReader is a helper for testing io.Reader failures.
@@ -360,6 +362,77 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			},
 			expectErr: true,
 		},
+		{
+			name: "nested schema in tool's defintions",
+			openAIReq: &openai.ChatCompletionRequest{
+				Tools: []openai.Tool{
+					{
+						Type: "function",
+						Function: &openai.FunctionDefinition{
+							Name:        "get_weather",
+							Description: "Get the weather without type",
+							Parameters: map[string]any{
+								"properties": map[string]any{
+									"location": map[string]any{"type": "string"},
+								},
+								"required": []any{"location"},
+								"$defs": map[string]any{
+									"ReferencePassage": map[string]any{
+										"properties": map[string]any{
+											"url": map[string]any{
+												"title": "Url",
+												"type":  "string",
+											},
+											"passage_id": map[string]any{
+												"title": "Passage Id",
+												"type":  "string",
+											},
+										},
+										"required": []string{"url", "passage_id"},
+										"title":    "ReferencePassage",
+										"type":     "object",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedTools: []anthropic.ToolUnionParam{
+				{
+					OfTool: &anthropic.ToolParam{
+						Name:        "get_weather",
+						Description: anthropic.String("Get the weather without type"),
+						InputSchema: anthropic.ToolInputSchemaParam{
+							Type: "",
+							Properties: map[string]any{
+								"location": map[string]any{"type": "string"},
+							},
+							Required: []string{"location"},
+							ExtraFields: map[string]any{
+								"$defs": map[string]any{
+									"ReferencePassage": map[string]any{
+										"properties": map[string]any{
+											"url": map[string]any{
+												"title": "Url",
+												"type":  "string",
+											},
+											"passage_id": map[string]any{
+												"title": "Passage Id",
+												"type":  "string",
+											},
+										},
+										"required": []string{"url", "passage_id"},
+										"title":    "ReferencePassage",
+										"type":     "object",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -390,6 +463,9 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 					require.Equal(t, tt.expectedTools[0].GetDescription(), tools[0].GetDescription())
 					if tt.expectedTools[0].GetInputSchema().Properties != nil {
 						require.Equal(t, tt.expectedTools[0].GetInputSchema().Properties, tools[0].GetInputSchema().Properties)
+					}
+					if tt.expectedTools[0].GetInputSchema().ExtraFields != nil {
+						require.Equal(t, tt.expectedTools[0].GetInputSchema().ExtraFields, tools[0].GetInputSchema().ExtraFields)
 					}
 				}
 			}
@@ -425,273 +501,6 @@ func TestFinishReasonTranslation(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tt.expectedFinishReason, reason)
-			}
-		})
-	}
-}
-
-// TestToolParameterDereferencing tests the JSON schema dereferencing functionality
-// for tool parameters when translating from OpenAI to GCP Anthropic.
-func TestToolParameterDereferencing(t *testing.T) {
-	tests := []struct {
-		name               string
-		openAIReq          *openai.ChatCompletionRequest
-		expectedTools      []anthropic.ToolUnionParam
-		expectedToolChoice anthropic.ToolChoiceUnionParam
-		expectErr          bool
-		expectedErrMsg     string
-	}{
-		{
-			name: "tool with complex nested $ref - successful dereferencing",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "complex_tool",
-							Description: "Tool with complex nested references",
-							Parameters: map[string]any{
-								"type": "object",
-								"$defs": map[string]any{
-									"BaseType": map[string]any{
-										"type": "object",
-										"properties": map[string]any{
-											"id": map[string]any{
-												"type": "string",
-											},
-											"required": []any{"id"},
-										},
-									},
-									"NestedType": map[string]any{
-										"allOf": []any{
-											map[string]any{"$ref": "#/$defs/BaseType"},
-											map[string]any{
-												"properties": map[string]any{
-													"name": map[string]any{
-														"type": "string",
-													},
-												},
-											},
-										},
-									},
-								},
-								"properties": map[string]any{
-									"nested": map[string]any{
-										"$ref": "#/$defs/NestedType",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "complex_tool",
-						Description: anthropic.String("Tool with complex nested references"),
-						InputSchema: anthropic.ToolInputSchemaParam{
-							Type: "object",
-							Properties: map[string]any{
-								"nested": map[string]any{
-									"allOf": []any{
-										map[string]any{
-											"type": "object",
-											"properties": map[string]any{
-												"id": map[string]any{
-													"type": "string",
-												},
-												"required": []any{"id"},
-											},
-										},
-										map[string]any{
-											"properties": map[string]any{
-												"name": map[string]any{
-													"type": "string",
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "tool with invalid $ref - dereferencing error",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "invalid_ref_tool",
-							Description: "Tool with invalid reference",
-							Parameters: map[string]any{
-								"type": "object",
-								"properties": map[string]any{
-									"location": map[string]any{
-										"$ref": "#/$defs/NonExistent",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			expectErr:      true,
-			expectedErrMsg: "failed to dereference tool parameters",
-		},
-		{
-			name: "tool with circular $ref - dereferencing error",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "circular_ref_tool",
-							Description: "Tool with circular reference",
-							Parameters: map[string]any{
-								"type": "object",
-								"$defs": map[string]any{
-									"A": map[string]any{
-										"type": "object",
-										"properties": map[string]any{
-											"b": map[string]any{
-												"$ref": "#/$defs/B",
-											},
-										},
-									},
-									"B": map[string]any{
-										"type": "object",
-										"properties": map[string]any{
-											"a": map[string]any{
-												"$ref": "#/$defs/A",
-											},
-										},
-									},
-								},
-								"properties": map[string]any{
-									"circular": map[string]any{
-										"$ref": "#/$defs/A",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			expectErr:      true,
-			expectedErrMsg: "failed to dereference tool parameters",
-		},
-		{
-			name: "tool without $ref - no dereferencing needed",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "simple_tool",
-							Description: "Simple tool without references",
-							Parameters: map[string]any{
-								"type": "object",
-								"properties": map[string]any{
-									"location": map[string]any{
-										"type": "string",
-									},
-								},
-								"required": []any{"location"},
-							},
-						},
-					},
-				},
-			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{
-					OfTool: &anthropic.ToolParam{
-						Name:        "simple_tool",
-						Description: anthropic.String("Simple tool without references"),
-						InputSchema: anthropic.ToolInputSchemaParam{
-							Type: "object",
-							Properties: map[string]any{
-								"location": map[string]any{
-									"type": "string",
-								},
-							},
-							Required: []string{"location"},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "tool parameter dereferencing returns non-map type - casting error",
-			openAIReq: &openai.ChatCompletionRequest{
-				Tools: []openai.Tool{
-					{
-						Type: "function",
-						Function: &openai.FunctionDefinition{
-							Name:        "problematic_tool",
-							Description: "Tool with parameters that can't be properly dereferenced to map",
-							// This creates a scenario where jsonSchemaDereference might return a non-map type
-							// though this is a contrived example since normally the function should return map[string]any
-							Parameters: map[string]any{
-								"$ref": "#/$defs/StringType", // This would resolve to a string, not a map
-								"$defs": map[string]any{
-									"StringType": "not-a-map", // This would cause the casting to fail
-								},
-							},
-						},
-					},
-				},
-			},
-			expectErr:      true,
-			expectedErrMsg: "failed to cast dereferenced tool parameters",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tools, toolChoice, err := translateOpenAItoAnthropicTools(tt.openAIReq.Tools, tt.openAIReq.ToolChoice, tt.openAIReq.ParallelToolCalls)
-
-			if tt.expectErr {
-				require.Error(t, err)
-				if tt.expectedErrMsg != "" {
-					require.Contains(t, err.Error(), tt.expectedErrMsg)
-				}
-				return
-			}
-
-			require.NoError(t, err)
-
-			if tt.openAIReq.Tools != nil {
-				require.NotNil(t, tools)
-				require.Len(t, tools, len(tt.expectedTools))
-
-				for i, expectedTool := range tt.expectedTools {
-					actualTool := tools[i]
-					require.Equal(t, expectedTool.GetName(), actualTool.GetName())
-					require.Equal(t, expectedTool.GetType(), actualTool.GetType())
-					require.Equal(t, expectedTool.GetDescription(), actualTool.GetDescription())
-
-					expectedSchema := expectedTool.GetInputSchema()
-					actualSchema := actualTool.GetInputSchema()
-
-					require.Equal(t, expectedSchema.Type, actualSchema.Type)
-					require.Equal(t, expectedSchema.Required, actualSchema.Required)
-
-					// For properties, we'll do a deep comparison to verify dereferencing worked
-					if expectedSchema.Properties != nil {
-						require.NotNil(t, actualSchema.Properties)
-						require.Equal(t, expectedSchema.Properties, actualSchema.Properties)
-					}
-				}
-			}
-
-			if tt.openAIReq.ToolChoice != nil {
-				require.NotNil(t, toolChoice)
-				require.Equal(t, *tt.expectedToolChoice.GetType(), *toolChoice.GetType())
 			}
 		})
 	}
@@ -1066,4 +875,129 @@ func TestBuildAnthropicParamsWithStructuredOutput(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
+	tests := []struct {
+		name           string
+		request        *openai.ChatCompletionRequest
+		expectedEffort anthropic.OutputConfigEffort
+	}{
+		{
+			name: "reasoning_effort low on supported model",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-sonnet-4-5-20250514",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				ReasoningEffort:     openaisdk.ReasoningEffortLow,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+			},
+			expectedEffort: anthropic.OutputConfigEffortLow,
+		},
+		{
+			name: "reasoning_effort medium on supported model",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-sonnet-4-5-20250514",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				ReasoningEffort:     openaisdk.ReasoningEffortMedium,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+			},
+			expectedEffort: anthropic.OutputConfigEffortMedium,
+		},
+		{
+			name: "reasoning_effort high on supported model",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-sonnet-4-5-20250514",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				ReasoningEffort:     openaisdk.ReasoningEffortHigh,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+			},
+			expectedEffort: anthropic.OutputConfigEffortHigh,
+		},
+		{
+			name: "reasoning_effort xhigh on supported model",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-sonnet-4-5-20250514",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				ReasoningEffort:     openaisdk.ReasoningEffortXhigh,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+			},
+			expectedEffort: anthropic.OutputConfigEffortMax,
+		},
+		{
+			name: "reasoning_effort skipped on unsupported model",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-3-sonnet",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				ReasoningEffort:     openaisdk.ReasoningEffortHigh,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+			},
+			expectedEffort: "",
+		},
+		{
+			name: "no reasoning_effort set",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-sonnet-4-5-20250514",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+			},
+			expectedEffort: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params, err := buildAnthropicParams(tt.request, "AWSAnthropic")
+			require.NoError(t, err)
+			require.NotNil(t, params)
+			require.Equal(t, tt.expectedEffort, params.OutputConfig.Effort)
+		})
+	}
+
+	t.Run("unsupported reasoning_effort returns error", func(t *testing.T) {
+		request := &openai.ChatCompletionRequest{
+			Model:               "claude-sonnet-4-5-20250514",
+			MaxCompletionTokens: ptr.To(int64(1024)),
+			ReasoningEffort:     "invalid",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfUser: &openai.ChatCompletionUserMessageParam{
+					Role:    "user",
+					Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+				}},
+			},
+		}
+		_, err := buildAnthropicParams(request, "AWSAnthropic")
+		require.Error(t, err)
+		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
+		require.Contains(t, err.Error(), "unsupported reasoning effort level")
+	})
 }

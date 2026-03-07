@@ -71,6 +71,10 @@ func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3
 	httpConManager := &httpconnectionmanagerv3.HttpConnectionManager{
 		StatPrefix: fmt.Sprintf("%s-http", mcpBackendListenerName),
 		AccessLog:  accessLogConfig,
+		// Match the :scheme pseudo-header to the upstream transport protocol.
+		SchemeHeaderTransformation: &corev3.SchemeHeaderTransformation{
+			MatchUpstream: true,
+		},
 		RouteSpecifier: &httpconnectionmanagerv3.HttpConnectionManager_Rds{
 			Rds: &httpconnectionmanagerv3.Rds{
 				RouteConfigName: fmt.Sprintf("%s-route-config", mcpBackendListenerName),
