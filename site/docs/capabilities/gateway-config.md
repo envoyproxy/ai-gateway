@@ -24,7 +24,7 @@ Use `GatewayConfig` when you need to:
 Create a `GatewayConfig` resource with your desired configuration:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: GatewayConfig
 metadata:
   name: my-gateway-config
@@ -143,7 +143,7 @@ The resulting environment variables will be:
 Multiple Gateways can reference the same `GatewayConfig`:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: GatewayConfig
 metadata:
   name: shared-config
@@ -179,7 +179,7 @@ The route-level resource configuration (`AIGatewayRoute.spec.filterConfig.extern
 ### Before (deprecated)
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: my-route
@@ -196,7 +196,7 @@ spec:
 ### After (recommended)
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: GatewayConfig
 metadata:
   name: my-config

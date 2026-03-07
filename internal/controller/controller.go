@@ -40,11 +40,13 @@ import (
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(Scheme))
 	utilruntime.Must(aigv1a1.AddToScheme(Scheme))
+	utilruntime.Must(aigv1b1.AddToScheme(Scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(Scheme))
 	utilruntime.Must(egv1a1.AddToScheme(Scheme))
 	utilruntime.Must(gwapiv1.Install(Scheme))
@@ -136,7 +138,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	routeC := NewAIGatewayRouteController(c, kubernetes.NewForConfigOrDie(config), logger.WithName("ai-gateway-route"),
 		gatewayEventChan, options.RootPrefix,
 	)
-	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIGatewayRoute{}).
+	if err = TypedControllerBuilderForCRD(mgr, &aigv1b1.AIGatewayRoute{}).
 		Owns(&gwapiv1.HTTPRoute{}).
 		Owns(&egv1a1.HTTPRouteFilter{}).
 		WatchesRawSource(source.Channel(
@@ -150,7 +152,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	aiServiceBackendEventChan := make(chan event.GenericEvent, 100)
 	backendC := NewAIServiceBackendController(c, kubernetes.NewForConfigOrDie(config), logger.
 		WithName("ai-service-backend"), aiGatewayRouteEventChan)
-	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.AIServiceBackend{}).
+	if err = TypedControllerBuilderForCRD(mgr, &aigv1b1.AIServiceBackend{}).
 		WatchesRawSource(source.Channel(
 			aiServiceBackendEventChan,
 			&handler.EnqueueRequestForObject{},
@@ -163,7 +165,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	inferencePoolEventChan := make(chan event.GenericEvent, 100)
 	backendSecurityPolicyC := NewBackendSecurityPolicyController(c, kubernetes.NewForConfigOrDie(config), logger.
 		WithName("backend-security-policy"), aiServiceBackendEventChan, inferencePoolEventChan)
-	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.BackendSecurityPolicy{}).
+	if err = TypedControllerBuilderForCRD(mgr, &aigv1b1.BackendSecurityPolicy{}).
 		WatchesRawSource(source.Channel(
 			backendSecurityPolicyEventChan,
 			&handler.EnqueueRequestForObject{},
@@ -192,7 +194,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			WithName("inference-pool"), inferencePoolEventChan)
 		if err = TypedControllerBuilderForCRD(mgr, &gwaiev1.InferencePool{}).
 			Watches(&gwapiv1.Gateway{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.gatewayEventHandler)).
-			Watches(&aigv1a1.AIGatewayRoute{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.aiGatewayRouteEventHandler)).
+			Watches(&aigv1b1.AIGatewayRoute{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.aiGatewayRouteEventHandler)).
 			Watches(&gwapiv1.HTTPRoute{}, handler.EnqueueRequestsFromMapFunc(inferencePoolC.httpRouteEventHandler)).
 			WatchesRawSource(source.Channel(
 				inferencePoolEventChan,
@@ -228,7 +230,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 
 	// GatewayConfig controller for gateway-scoped configuration.
 	gatewayConfigC := NewGatewayConfigController(c, logger.WithName("gateway-config"), gatewayEventChan)
-	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.GatewayConfig{}).
+	if err = TypedControllerBuilderForCRD(mgr, &aigv1b1.GatewayConfig{}).
 		Complete(gatewayConfigC); err != nil {
 		return fmt.Errorf("failed to create controller for GatewayConfig: %w", err)
 	}
@@ -318,22 +320,22 @@ const (
 
 // ApplyIndexing applies indexing to the given indexer. This is exported for testing purposes.
 func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error) error {
-	err := indexer(ctx, &aigv1a1.AIGatewayRoute{},
+	err := indexer(ctx, &aigv1b1.AIGatewayRoute{},
 		k8sClientIndexBackendToReferencingAIGatewayRoute, aiGatewayRouteIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to create index from Backends to AIGatewayRoute: %w", err)
 	}
-	err = indexer(ctx, &aigv1a1.AIGatewayRoute{},
+	err = indexer(ctx, &aigv1b1.AIGatewayRoute{},
 		k8sClientIndexAIGatewayRouteToAttachedGateway, aiGatewayRouteToAttachedGatewayIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to create index from Gateway to AIGatewayRoute: %w", err)
 	}
-	err = indexer(ctx, &aigv1a1.BackendSecurityPolicy{},
+	err = indexer(ctx, &aigv1b1.BackendSecurityPolicy{},
 		k8sClientIndexSecretToReferencingBackendSecurityPolicy, backendSecurityPolicyIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to create index from Secret to BackendSecurityPolicy: %w", err)
 	}
-	err = indexer(ctx, &aigv1a1.BackendSecurityPolicy{},
+	err = indexer(ctx, &aigv1b1.BackendSecurityPolicy{},
 		k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy, backendSecurityPolicyTargetRefsIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to index field for BackendSecurityPolicy targetRefs: %w", err)
@@ -407,7 +409,7 @@ func gatewayToGatewayConfigIndexFunc(o client.Object) []string {
 }
 
 func aiGatewayRouteToAttachedGatewayIndexFunc(o client.Object) []string {
-	aiGatewayRoute := o.(*aigv1a1.AIGatewayRoute)
+	aiGatewayRoute := o.(*aigv1b1.AIGatewayRoute)
 	var ret []string
 	for _, ref := range aiGatewayRoute.Spec.ParentRefs {
 		// Use the namespace from parentRef if specified, otherwise use the route's namespace.
@@ -421,7 +423,7 @@ func aiGatewayRouteToAttachedGatewayIndexFunc(o client.Object) []string {
 }
 
 func aiGatewayRouteIndexFunc(o client.Object) []string {
-	aiGatewayRoute := o.(*aigv1a1.AIGatewayRoute)
+	aiGatewayRoute := o.(*aigv1b1.AIGatewayRoute)
 	var ret []string
 	for _, rule := range aiGatewayRoute.Spec.Rules {
 		for _, backend := range rule.BackendRefs {
@@ -435,31 +437,31 @@ func aiGatewayRouteIndexFunc(o client.Object) []string {
 }
 
 func backendSecurityPolicyIndexFunc(o client.Object) []string {
-	backendSecurityPolicy := o.(*aigv1a1.BackendSecurityPolicy)
+	backendSecurityPolicy := o.(*aigv1b1.BackendSecurityPolicy)
 	var key string
 	switch backendSecurityPolicy.Spec.Type {
-	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
+	case aigv1b1.BackendSecurityPolicyTypeAPIKey:
 		apiKey := backendSecurityPolicy.Spec.APIKey
 		key = getSecretNameAndNamespace(apiKey.SecretRef, backendSecurityPolicy.Namespace)
-	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
 		awsCreds := backendSecurityPolicy.Spec.AWSCredentials
 		if awsCreds.CredentialsFile != nil {
 			key = getSecretNameAndNamespace(awsCreds.CredentialsFile.SecretRef, backendSecurityPolicy.Namespace)
 		} else if awsCreds.OIDCExchangeToken != nil {
 			key = backendSecurityPolicyKey(backendSecurityPolicy.Namespace, backendSecurityPolicy.Name)
 		}
-	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
 		gcpCreds := backendSecurityPolicy.Spec.GCPCredentials
 		if gcpCreds.CredentialsFile != nil {
 			key = getSecretNameAndNamespace(gcpCreds.CredentialsFile.SecretRef, backendSecurityPolicy.Namespace)
 		}
-	case aigv1a1.BackendSecurityPolicyTypeAzureAPIKey:
+	case aigv1b1.BackendSecurityPolicyTypeAzureAPIKey:
 		apiKey := backendSecurityPolicy.Spec.AzureAPIKey
 		key = getSecretNameAndNamespace(apiKey.SecretRef, backendSecurityPolicy.Namespace)
-	case aigv1a1.BackendSecurityPolicyTypeAnthropicAPIKey:
+	case aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey:
 		apiKey := backendSecurityPolicy.Spec.AnthropicAPIKey
 		key = getSecretNameAndNamespace(apiKey.SecretRef, backendSecurityPolicy.Namespace)
-	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
 		azureCreds := backendSecurityPolicy.Spec.AzureCredentials
 		if azureCreds.ClientSecretRef != nil {
 			key = getSecretNameAndNamespace(azureCreds.ClientSecretRef, backendSecurityPolicy.Namespace)
@@ -471,7 +473,7 @@ func backendSecurityPolicyIndexFunc(o client.Object) []string {
 }
 
 func backendSecurityPolicyTargetRefsIndexFunc(o client.Object) []string {
-	backendSecurityPolicy := o.(*aigv1a1.BackendSecurityPolicy)
+	backendSecurityPolicy := o.(*aigv1b1.BackendSecurityPolicy)
 	var ret []string
 	for _, targetRef := range backendSecurityPolicy.Spec.TargetRefs {
 		ret = append(ret, fmt.Sprintf("%s.%s", targetRef.Name, backendSecurityPolicy.Namespace))
@@ -509,12 +511,12 @@ func newConditions(conditionType, message string) []metav1.Condition {
 	// Note: we use the fixed reason for now since the message is enough to describe the error and
 	// reason doesn't fit the entire message.
 	switch conditionType {
-	case aigv1a1.ConditionTypeAccepted:
-		condition.Type = aigv1a1.ConditionTypeAccepted
+	case aigv1b1.ConditionTypeAccepted:
+		condition.Type = aigv1b1.ConditionTypeAccepted
 		condition.Status = metav1.ConditionTrue
 		condition.Reason = "ReconciliationSucceeded"
-	case aigv1a1.ConditionTypeNotAccepted:
-		condition.Type = aigv1a1.ConditionTypeNotAccepted
+	case aigv1b1.ConditionTypeNotAccepted:
+		condition.Type = aigv1b1.ConditionTypeNotAccepted
 		condition.Status = metav1.ConditionFalse
 		condition.Reason = "ReconciliationFailed"
 	}

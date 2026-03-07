@@ -215,7 +215,7 @@ use the `GatewayConfig` CRD instead of global Helm values. This allows you to:
 ### Example
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: GatewayConfig
 metadata:
   name: production-tracing

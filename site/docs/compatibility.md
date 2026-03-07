@@ -21,3 +21,42 @@ on how we manage releases and support for different versions.
 
 To upgrade to a new Envoy AI Gateway version, make sure upgrade your dependencies accordingly to maintain compatibility, especially make sure that
 Envoy Gateway and Gateway API versions are up-to-date as per the compatibility matrix above. Then, upgrade the AI Gateway using the standard helm upgrade process.
+
+## Upgrading and Migration
+
+### Helm Upgrade Commands
+
+```bash
+# 1. Upgrade CRDs
+helm upgrade aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
+  --version \
+  envoy-ai-gateway-system < NEW_VERSION > -n
+
+# 2. Upgrade application
+helm upgrade aieg oci://docker.io/envoyproxy/ai-gateway-helm \
+  --version \
+  envoy-ai-gateway-system < NEW_VERSION > -n
+```
+
+### Migrating from v1alpha1 to v1beta1
+
+AIGatewayRoute, AIServiceBackend, BackendSecurityPolicy, and GatewayConfig support both v1alpha1 (deprecated) and v1beta1. When you upgrade:
+
+- **Existing v1alpha1 resources** continue to work. The API server migrates stored data to v1beta1 automatically.
+- **No user action required** for existing resources; they remain functional.
+- **New resources** should use `apiVersion: aigateway.envoyproxy.io/v1beta1`.
+- **MCPRoute and QuotaPolicy** remain v1alpha1-only (no v1beta1 available).
+
+To adopt v1beta1 in your manifests, change the `apiVersion` field and re-apply:
+
+```yaml
+# Before (v1alpha1, deprecated)
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+# ...
+
+# After (v1beta1, preferred)
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+# ...
+```
