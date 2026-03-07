@@ -34,6 +34,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/pprof"
+	"github.com/envoyproxy/ai-gateway/internal/ratelimit/runner"
 )
 
 type flags struct {
@@ -412,6 +413,14 @@ func main() {
 		}
 	}()
 
+	// Start the rate limit xDS config server.
+	rlRunner := runner.New(ctrl.Log, runner.DefaultPort)
+	go func() {
+		if err := rlRunner.Start(ctx); err != nil {
+			setupLog.Error(err, "failed to start rate limit xDS server")
+		}
+	}()
+
 	// Start the controller.
 	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), &controller.Options{
 		ExtProcImage:                           parsedFlags.extProcImage,
@@ -433,6 +442,7 @@ func main() {
 		MCPSessionEncryptionIterations:         parsedFlags.mcpSessionEncryptionIterations,
 		MCPFallbackSessionEncryptionSeed:       parsedFlags.mcpFallbackSessionEncryptionSeed,
 		MCPFallbackSessionEncryptionIterations: parsedFlags.mcpFallbackSessionEncryptionIterations,
+		RateLimitRunner:                        rlRunner,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

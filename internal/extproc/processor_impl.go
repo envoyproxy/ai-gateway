@@ -14,6 +14,7 @@ import (
 	"io"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -381,6 +382,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 		dm = buildContentLengthDynamicMetadataOnRequest(len(bm))
 	}
 	dm = mergeDynamicMetadata(dm, buildRequestHeaderDynamicMetadata(u.requestHeaders))
+	dm = mergeDynamicMetadata(dm, buildBackendNameDynamicMetadata(u.backendName))
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
@@ -677,6 +679,45 @@ func buildRequestHeaderDynamicMetadata(requestHeaders map[string]string) *struct
 	}
 }
 
+// buildBackendNameDynamicMetadata builds dynamic metadata containing the backend name.
+// This is emitted during the request headers phase so that downstream filters in the
+// upstream filter chain (e.g. rate limit filter) can read it via a MetaData action
+// with Source: DYNAMIC.
+//
+// The backendName has the PerRouteRuleRefBackendName format:
+//
+//	"{namespace}/{name}/route/{routeName}/rule/{ruleIndex}/ref/{refIndex}"
+//
+// This function extracts the "{namespace}/{name}" prefix to match the rate limit
+// domain format used by the translator.
+func buildBackendNameDynamicMetadata(backendName string) *structpb.Struct {
+	if backendName == "" {
+		return nil
+	}
+	// Extract "namespace/name" from the full PerRouteRuleRefBackendName.
+	// Format: "{namespace}/{name}/route/..."
+	parts := strings.SplitN(backendName, "/", 3)
+	domainName := backendName
+	if len(parts) >= 2 {
+		domainName = parts[0] + "/" + parts[1]
+	}
+	return &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			internalapi.AIGatewayFilterMetadataNamespace: {
+				Kind: &structpb.Value_StructValue{
+					StructValue: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							"backend_name": {
+								Kind: &structpb.Value_StringValue{StringValue: domainName},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func mergeDynamicMetadata(base, extra *structpb.Struct) *structpb.Struct {
 	if base == nil {
 		return extra
@@ -752,6 +793,16 @@ func buildDynamicMetadata(config *filterapi.RuntimeConfig, costs *metrics.TokenU
 
 	if backendName != "" {
 		metadata["backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: backendName}}
+		// ai_service_backend_name stores the short "namespace/name" format extracted
+		// from the full PerRouteRuleRefBackendName ("{namespace}/{name}/route/...").
+		// This is used by the quota rate limit descriptor actions to match the
+		// rate limit service config which keys on "namespace/backendName".
+		parts := strings.SplitN(backendName, "/", 3)
+		shortName := backendName
+		if len(parts) >= 2 {
+			shortName = parts[0] + "/" + parts[1]
+		}
+		metadata["ai_service_backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: shortName}}
 	}
 
 	if len(metadata) == 0 {
