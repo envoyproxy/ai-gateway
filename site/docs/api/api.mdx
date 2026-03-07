@@ -2065,6 +2065,11 @@ Reference: https://modelcontextprotocol.io/specification/2025-06-18/basic/author
   type="[ProtectedResourceMetadata](#protectedresourcemetadata)"
   required="true"
   description="ProtectedResourceMetadata defines the OAuth 2.0 Resource Server Metadata as per RFC 8414.<br />This is used to expose the metadata endpoint for mcp clients to discover the authorization servers,<br />supported scopes, and JWKS URI."
+/><ApiField
+  name="claimToHeaders"
+  type="ClaimToHeader array"
+  required="false"
+  description="ClaimToHeaders specifies JWT claims to extract and forward as HTTP headers to backend MCP servers.<br />This enables backends to access user identity for authorization, auditing, or personalization.<br />Security considerations:<br />- Any client-provided headers matching the configured header names will be stripped to prevent forgery<br />- Only the specified claims are extracted; the full JWT is not forwarded to backends<br />- Consider using a header prefix (e.g., `X-Jwt-Claim-`) to avoid conflicts with other headers"
 />
 
 

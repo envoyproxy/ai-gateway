@@ -247,6 +247,19 @@ type MCPRouteOAuth struct {
 	//
 	// +kubebuilder:validation:Required
 	ProtectedResourceMetadata ProtectedResourceMetadata `json:"protectedResourceMetadata"`
+
+	// ClaimToHeaders specifies JWT claims to extract and forward as HTTP headers to backend MCP servers.
+	// This enables backends to access user identity for authorization, auditing, or personalization.
+	//
+	// Security considerations:
+	// - Any client-provided headers matching the configured header names will be stripped to prevent forgery
+	// - Only the specified claims are extracted; the full JWT is not forwarded to backends
+	// - Consider using a header prefix (e.g., "X-Jwt-Claim-") to avoid conflicts with other headers
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=16
+	// +optional
+	ClaimToHeaders []egv1a1.ClaimToHeader `json:"claimToHeaders,omitempty"`
 }
 
 // MCPRouteAuthorization defines the authorization configuration for a MCPRoute.

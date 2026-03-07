@@ -236,13 +236,14 @@ func TestMessagesEndpointSpec_GetTranslator(t *testing.T) {
 		{Name: filterapi.APISchemaGCPAnthropic},
 		{Name: filterapi.APISchemaAWSAnthropic},
 		{Name: filterapi.APISchemaAnthropic},
+		{Name: filterapi.APISchemaOpenAI}, // This is for OpenAI-schema backends like vLLM that support the /v1/messages endpoint
 	} {
 		translator, err := spec.GetTranslator(schema, "override")
 		require.NoError(t, err)
 		require.NotNil(t, translator)
 	}
 
-	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere}, "override")
 	require.ErrorContains(t, err, "only supports")
 }
 
