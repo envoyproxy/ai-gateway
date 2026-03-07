@@ -547,7 +547,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 
 // decodeStreamingContent handles decompression for streaming responses with content-encoding.
 // It accumulates raw compressed bytes across chunks and re-decompresses from the beginning each time,
-// returning only the newly decompressed data. This is necessary because gzip/brotli streams are stateful
+// returning only the newly decompressed data. This is necessary because gzip streams are stateful
 // and a new decompressor cannot be created mid-stream without the full preceding data.
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) decodeStreamingContent(chunk []byte, endOfStream bool) (contentDecodingResult, error) {
 	u.compressedBuf = append(u.compressedBuf, chunk...)
@@ -557,12 +557,11 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) decodeStream
 	}
 	allDecompressed, readErr := io.ReadAll(decodingResult.reader)
 	if readErr != nil {
-		if !endOfStream && errors.Is(readErr, io.ErrUnexpectedEOF) {
-			// Expected for non-final chunks: the gzip/brotli stream is incomplete
-			// (footer not yet received), but all data up to this point is valid.
-		} else {
+		if endOfStream || !errors.Is(readErr, io.ErrUnexpectedEOF) {
 			return contentDecodingResult{}, fmt.Errorf("failed to decompress streaming content: %w", readErr)
 		}
+		// For non-final chunks, ErrUnexpectedEOF is expected: the gzip stream is incomplete
+		// (footer not yet received), but all data up to this point is valid.
 	}
 	newData := allDecompressed[u.decompressedOffset:]
 	u.decompressedOffset = len(allDecompressed)
