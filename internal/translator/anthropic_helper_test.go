@@ -11,10 +11,12 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
+	openaisdk "github.com/openai/openai-go/v3"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // mockErrorReader is a helper for testing io.Reader failures.
@@ -873,4 +875,129 @@ func TestBuildAnthropicParamsWithStructuredOutput(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
+	tests := []struct {
+		name           string
+		request        *openai.ChatCompletionRequest
+		expectedEffort anthropic.OutputConfigEffort
+	}{
+		{
+			name: "reasoning_effort low on supported model",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-sonnet-4-5-20250514",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				ReasoningEffort:     openaisdk.ReasoningEffortLow,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+			},
+			expectedEffort: anthropic.OutputConfigEffortLow,
+		},
+		{
+			name: "reasoning_effort medium on supported model",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-sonnet-4-5-20250514",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				ReasoningEffort:     openaisdk.ReasoningEffortMedium,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+			},
+			expectedEffort: anthropic.OutputConfigEffortMedium,
+		},
+		{
+			name: "reasoning_effort high on supported model",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-sonnet-4-5-20250514",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				ReasoningEffort:     openaisdk.ReasoningEffortHigh,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+			},
+			expectedEffort: anthropic.OutputConfigEffortHigh,
+		},
+		{
+			name: "reasoning_effort xhigh on supported model",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-sonnet-4-5-20250514",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				ReasoningEffort:     openaisdk.ReasoningEffortXhigh,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+			},
+			expectedEffort: anthropic.OutputConfigEffortMax,
+		},
+		{
+			name: "reasoning_effort skipped on unsupported model",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-3-sonnet",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				ReasoningEffort:     openaisdk.ReasoningEffortHigh,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+			},
+			expectedEffort: "",
+		},
+		{
+			name: "no reasoning_effort set",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-sonnet-4-5-20250514",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+			},
+			expectedEffort: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params, err := buildAnthropicParams(tt.request, "AWSAnthropic")
+			require.NoError(t, err)
+			require.NotNil(t, params)
+			require.Equal(t, tt.expectedEffort, params.OutputConfig.Effort)
+		})
+	}
+
+	t.Run("unsupported reasoning_effort returns error", func(t *testing.T) {
+		request := &openai.ChatCompletionRequest{
+			Model:               "claude-sonnet-4-5-20250514",
+			MaxCompletionTokens: ptr.To(int64(1024)),
+			ReasoningEffort:     "invalid",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfUser: &openai.ChatCompletionUserMessageParam{
+					Role:    "user",
+					Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+				}},
+			},
+		}
+		_, err := buildAnthropicParams(request, "AWSAnthropic")
+		require.Error(t, err)
+		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
+		require.Contains(t, err.Error(), "unsupported reasoning effort level")
+	})
 }
