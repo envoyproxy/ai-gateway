@@ -4698,7 +4698,7 @@ func (r *ResponseFunctionWebSearchActionUnionParam) UnmarshalJSON(data []byte) e
 			return err
 		}
 		r.OfOpenPage = &op
-	case "find":
+	case "find", "find_in_page":
 		var f ResponseFunctionWebSearchActionFindParam
 		if err := json.Unmarshal(data, &f); err != nil {
 			return err
