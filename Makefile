@@ -203,7 +203,7 @@ test-controller: apigen ## Run the integration tests for the controller with env
 
 # This runs the end-to-end tests for the controller and extproc with a local kind cluster.
 .PHONY: test-e2e
-test-e2e: build-e2e ## Run the end-to-end tests with a local kind cluster.
+test-e2e: ## Run the end-to-end tests with a local kind cluster.
 	@echo "Run E2E tests"
 	@go test -v ./tests/e2e/... $(GO_TEST_ARGS) $(GO_TEST_E2E_ARGS)
 

@@ -101,7 +101,7 @@ func (ChatCompletionsEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.ChatCompletionRequest, bool, []byte, error) {
 	var req openai.ChatCompletionRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/chat/completions: %v", internalapi.ErrMalformedRequest, err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/chat/completions: %w", internalapi.ErrMalformedRequest, err)
 	}
 	var mutatedBody []byte
 	if req.Stream && costConfigured && (req.StreamOptions == nil || !req.StreamOptions.IncludeUsage) {
@@ -206,7 +206,7 @@ func (CompletionsEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.CompletionRequest, bool, []byte, error) {
 	var openAIReq openai.CompletionRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/completions: %v", internalapi.ErrMalformedRequest, err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/completions: %w", internalapi.ErrMalformedRequest, err)
 	}
 	return openAIReq.Model, &openAIReq, openAIReq.Stream, nil, nil
 }
@@ -234,7 +234,7 @@ func (EmbeddingsEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.EmbeddingRequest, bool, []byte, error) {
 	var openAIReq openai.EmbeddingRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/embeddings: %v", internalapi.ErrMalformedRequest, err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/embeddings: %w", internalapi.ErrMalformedRequest, err)
 	}
 	return openAIReq.Model, &openAIReq, false, nil, nil
 }
@@ -265,7 +265,7 @@ func (ImageGenerationEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.ImageGenerationRequest, bool, []byte, error) {
 	var openAIReq openai.ImageGenerationRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/images/generations: %v", internalapi.ErrMalformedRequest, err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/images/generations: %w", internalapi.ErrMalformedRequest, err)
 	}
 	return openAIReq.Model, &openAIReq, false, nil, nil
 }
@@ -293,7 +293,7 @@ func (ResponsesEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.ResponseRequest, bool, []byte, error) {
 	var openAIReq openai.ResponseRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/responses: %v", internalapi.ErrMalformedRequest, err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/responses: %w", internalapi.ErrMalformedRequest, err)
 	}
 	return openAIReq.Model, &openAIReq, openAIReq.Stream, nil, nil
 }
@@ -321,7 +321,7 @@ func (MessagesEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *anthropic.MessagesRequest, bool, []byte, error) {
 	var anthropicReq anthropic.MessagesRequest
 	if err := json.Unmarshal(body, &anthropicReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/messages: %v", internalapi.ErrMalformedRequest, err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/messages: %w", internalapi.ErrMalformedRequest, err)
 	}
 
 	model := anthropicReq.Model
@@ -364,7 +364,7 @@ func (RerankEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *cohereschema.RerankV2Request, bool, []byte, error) {
 	var req cohereschema.RerankV2Request
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v2/rerank: %v", internalapi.ErrMalformedRequest, err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v2/rerank: %w", internalapi.ErrMalformedRequest, err)
 	}
 	return req.Model, &req, false, nil, nil
 }
