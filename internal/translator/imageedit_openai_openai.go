@@ -84,6 +84,13 @@ func (o *openAIToOpenAIImageEditTranslator) ResponseBody(_ map[string]string, bo
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to decode response body: %w", err)
 	}
 
+	// Populate token usage if provided (gpt-image-1); otherwise remain zero.
+	if resp.Usage != nil {
+		tokenUsage.SetInputTokens(uint32(resp.Usage.InputTokens))   //nolint:gosec
+		tokenUsage.SetOutputTokens(uint32(resp.Usage.OutputTokens)) //nolint:gosec
+		tokenUsage.SetTotalTokens(uint32(resp.Usage.TotalTokens))   //nolint:gosec
+	}
+
 	// There is no response model field, so use the request one.
 	responseModel = o.requestModel
 

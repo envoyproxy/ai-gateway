@@ -46,7 +46,7 @@ func NewImageEditRecorder(config *openinference.TraceConfig) tracingapi.ImageEdi
 	return &ImageEditRecorder{traceConfig: config}
 }
 
-// startOpts sets trace.SpanKindInternal as that's the span kind used in
+// imageEditStartOpts sets trace.SpanKindInternal as that's the span kind used in
 // OpenInference.
 var imageEditStartOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
 
@@ -99,6 +99,10 @@ func buildImageEditRequestAttributes(_ *openai.ImageEditRequest, body string, co
 			attribute.String(openinference.InputValue, body),
 			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
 		)
+	}
+
+	if !config.HideLLMInvocationParameters {
+		attrs = append(attrs, attribute.String(openinference.LLMInvocationParameters, body))
 	}
 
 	return attrs
