@@ -137,16 +137,18 @@ func extractMetaFromJSONRPCMessage(msg jsonrpc.Message) map[string]any {
 func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializeParams, routeName filterapi.MCPRouteName, subject string, span tracingapi.MCPSpan) (*session, error) {
 	m.l.Debug("creating new MCP session")
 
+	backends := m.routes[routeName]
+	if backends == nil {
+		return nil, fmt.Errorf("no backends found for route %s", routeName)
+	}
+
+	forwardHeaders := extractForwardHeaders(m.requestHeaders, backends.forwardHeaders)
+
 	var (
 		wg      sync.WaitGroup
 		entries []compositeSessionEntry
 		counter int
 	)
-
-	backends := m.routes[routeName]
-	if backends == nil {
-		return nil, fmt.Errorf("no backends found for route %s", routeName)
-	}
 	entries = make([]compositeSessionEntry, len(backends.backends))
 
 	if m.l.Enabled(ctx, slog.LevelDebug) {
@@ -198,7 +200,21 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt session ID: %w", err)
 	}
-	return &session{reqCtx: m, id: secureClientToGatewaySessionID(encrypted)}, nil
+
+	// Build perBackendSessions map from finalEntries
+	perBackendSessions := make(map[filterapi.MCPBackendName]*compositeSessionEntry, len(finalEntries))
+	for i := range finalEntries {
+		entry := &finalEntries[i]
+		perBackendSessions[entry.backendName] = entry
+	}
+
+	return &session{
+		reqCtx:             m,
+		id:                 secureClientToGatewaySessionID(encrypted),
+		route:              routeName,
+		perBackendSessions: perBackendSessions,
+		extraHeaders:       forwardHeaders,
+	}, nil
 }
 
 // sessionFromID returns the session with the given ID, or error if not found or invalid.
@@ -226,7 +242,13 @@ func (m *mcpRequestContext) sessionFromID(id secureClientToGatewaySessionID, las
 		}
 	}
 
-	return &session{id: id, route: route, reqCtx: m, perBackendSessions: perBackendSessionIDs}, nil
+	// Extract forward headers from the current request based on the route's forwardHeaders config.
+	var extraHeaders map[string]string
+	if routeConfig := m.routes[route]; routeConfig != nil {
+		extraHeaders = extractForwardHeaders(m.requestHeaders, routeConfig.forwardHeaders)
+	}
+
+	return &session{id: id, route: route, reqCtx: m, perBackendSessions: perBackendSessionIDs, extraHeaders: extraHeaders}, nil
 }
 
 type initializeResult struct {
@@ -374,6 +396,15 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
+
+	// Forward configured headers to backend.
+	if routeConfig := m.routes[routeName]; routeConfig != nil {
+		for _, header := range routeConfig.forwardHeaders {
+			if value := m.requestHeaders.Get(header); value != "" {
+				req.Header.Set(header, value)
+			}
+		}
+	}
 
 	resp, err := m.client.Do(req)
 	if err != nil {
