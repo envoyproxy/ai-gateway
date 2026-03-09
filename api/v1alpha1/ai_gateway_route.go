@@ -403,7 +403,7 @@ type AIGatewayFilterConfigExternalProcessor struct {
 	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
 	//
 	// Deprecated: Use GatewayConfig for gateway-scoped resource configuration instead.
-	// Configure resources using GatewayConfig.spec.extProc.resources and reference it
+	// Configure resources using GatewayConfig.spec.extProc.kubernetes.resources and reference it
 	// from the Gateway via the "aigateway.envoyproxy.io/gateway-config" annotation.
 	// This field will be removed in a future version.
 	//
