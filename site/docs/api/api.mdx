@@ -661,7 +661,7 @@ QuotaPolicyList contains a list of QuotaPolicy
   name="resources"
   type="[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)"
   required="false"
-  description="Resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/<br />Deprecated: Use GatewayConfig for gateway-scoped resource configuration instead.<br />Configure resources using GatewayConfig.spec.extProc.resources and reference it<br />from the Gateway via the `aigateway.envoyproxy.io/gateway-config` annotation.<br />This field will be removed in a future version.<br />Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each<br />AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them<br />to configure the resource requirements of the external processor container."
+  description="Resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/<br />Deprecated: Use GatewayConfig for gateway-scoped resource configuration instead.<br />Configure resources using GatewayConfig.spec.extProc.kubernetes.resources and reference it<br />from the Gateway via the `aigateway.envoyproxy.io/gateway-config` annotation.<br />This field will be removed in a future version.<br />Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each<br />AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them<br />to configure the resource requirements of the external processor container."
 />
 
 
