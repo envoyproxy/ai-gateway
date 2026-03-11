@@ -6,9 +6,12 @@
 package extproc
 
 import (
+	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strconv"
 
@@ -105,16 +108,18 @@ type (
 	upstreamProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
 		parent *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]
 
-		logger            *slog.Logger
-		requestHeaders    map[string]string
-		responseHeaders   map[string]string
-		responseEncoding  string
-		translator        translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]]
-		modelNameOverride internalapi.ModelNameOverride
-		headerMutator     *headermutator.HeaderMutator
-		bodyMutator       *bodymutator.BodyMutator
-		backendName       string
-		handler           filterapi.BackendAuthHandler
+		logger             *slog.Logger
+		requestHeaders     map[string]string
+		responseHeaders    map[string]string
+		responseEncoding   string
+		compressedBuf      []byte // accumulates raw compressed bytes across streaming chunks
+		decompressedOffset int    // tracks decompressed bytes already returned
+		translator         translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]]
+		modelNameOverride  internalapi.ModelNameOverride
+		headerMutator      *headermutator.HeaderMutator
+		bodyMutator        *bodymutator.BodyMutator
+		backendName        string
+		handler            filterapi.BackendAuthHandler
 		// cost is the cost of the request that is accumulated during the processing of the response.
 		costs metrics.TokenUsage
 		// metrics tracking.
@@ -406,6 +411,9 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	if enc := u.responseHeaders["content-encoding"]; enc != "" {
 		u.responseEncoding = enc
 	}
+	// Reset streaming decompression state for new response (important for retries).
+	u.compressedBuf = nil
+	u.decompressedOffset = 0
 	newHeaders, err := u.translator.ResponseHeaders(u.responseHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response headers: %w", err)
@@ -436,8 +444,15 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		}
 	}()
 
-	// Decompress the body if needed using common utility.
-	decodingResult, err := decodeContentIfNeeded(body.Body, u.responseEncoding)
+	// Decompress the body if needed.
+	// For streaming responses with content-encoding, use stateful decompression
+	// that accumulates compressed bytes across chunks.
+	var decodingResult contentDecodingResult
+	if u.parent.stream && u.responseEncoding != "" {
+		decodingResult, err = u.decodeStreamingContent(body.Body, body.EndOfStream)
+	} else {
+		decodingResult, err = decodeContentIfNeeded(body.Body, u.responseEncoding)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -528,6 +543,29 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		u.parent.span.EndSpan()
 	}
 	return resp, nil
+}
+
+// decodeStreamingContent handles decompression for streaming responses with content-encoding.
+// It accumulates raw compressed bytes across chunks and re-decompresses from the beginning each time,
+// returning only the newly decompressed data. This is necessary because gzip streams are stateful
+// and a new decompressor cannot be created mid-stream without the full preceding data.
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) decodeStreamingContent(chunk []byte, endOfStream bool) (contentDecodingResult, error) {
+	u.compressedBuf = append(u.compressedBuf, chunk...)
+	decodingResult, err := decodeContentIfNeeded(u.compressedBuf, u.responseEncoding)
+	if err != nil {
+		return contentDecodingResult{}, err
+	}
+	allDecompressed, readErr := io.ReadAll(decodingResult.reader)
+	if readErr != nil {
+		if endOfStream || !errors.Is(readErr, io.ErrUnexpectedEOF) {
+			return contentDecodingResult{}, fmt.Errorf("failed to decompress streaming content: %w", readErr)
+		}
+		// For non-final chunks, ErrUnexpectedEOF is expected: the gzip stream is incomplete
+		// (footer not yet received), but all data up to this point is valid.
+	}
+	newData := allDecompressed[u.decompressedOffset:]
+	u.decompressedOffset = len(allDecompressed)
+	return contentDecodingResult{reader: bytes.NewReader(newData), isEncoded: true}, nil
 }
 
 // SetBackend implements [Processor.SetBackend].

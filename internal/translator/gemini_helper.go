@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	openaisdk "github.com/openai/openai-go/v2"
+	openaisdk "github.com/openai/openai-go/v3"
 	"google.golang.org/genai"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"

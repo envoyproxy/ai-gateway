@@ -1085,6 +1085,48 @@ data: {"type":"message_stop"       }
 			expStatus: http.StatusOK,
 		},
 		{
+			name:              "anthropic - /anthropic/v1/messages - streaming with gzip content-encoding",
+			backend:           "anthropic",
+			path:              "/anthropic/v1/messages",
+			method:            http.MethodPost,
+			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key"},
+			responseType:      "sse-gzip",
+			requestBody: `{
+    "model": "foo",
+    "max_tokens": 1000,
+    "messages": [
+      {
+        "role": "user",
+        "content": "say hi"
+      }
+    ], "stream": true
+  }`,
+			expPath: "/v1/messages",
+			responseBody: `
+event: message_start
+data: {"type":"message_start","message":{"model":"foo","id":"msg_gzip_test","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":1}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"! How can I help?"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":9,"output_tokens":10}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`,
+			expStatus: http.StatusOK,
+		},
+		{
 			name:            "aws-anthropic - /anthropic/v1/messages",
 			backend:         "aws-anthropic",
 			path:            "/anthropic/v1/messages",
