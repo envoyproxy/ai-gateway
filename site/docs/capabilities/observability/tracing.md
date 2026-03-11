@@ -222,11 +222,12 @@ metadata:
   namespace: default
 spec:
   extProc:
-    env:
-      - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: "http://production-collector:4317"
-      - name: OTEL_SERVICE_NAME
-        value: "ai-gateway-production"
+    kubernetes:
+      env:
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://production-collector:4317"
+        - name: OTEL_SERVICE_NAME
+          value: "ai-gateway-production"
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
