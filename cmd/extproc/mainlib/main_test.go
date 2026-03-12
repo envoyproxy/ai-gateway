@@ -23,13 +23,14 @@ import (
 func Test_parseAndValidateFlags(t *testing.T) {
 	t.Run("ok extProcFlags", func(t *testing.T) {
 		for _, tc := range []struct {
-			name            string
-			args            []string
-			configPath      string
-			addr            string
-			rootPrefix      string
-			logLevel        slog.Level
-			enableRedaction bool
+			name             string
+			args             []string
+			configPath       string
+			configBundlePath string
+			addr             string
+			rootPrefix       string
+			logLevel         slog.Level
+			enableRedaction  bool
 		}{
 			{
 				name:            "minimal extProcFlags",
@@ -157,11 +158,21 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				logLevel:        slog.LevelInfo,
 				enableRedaction: false,
 			},
+			{
+				name:             "bundle path only",
+				args:             []string{"-configBundlePath", "/path/to/config-bundle"},
+				configBundlePath: "/path/to/config-bundle",
+				rootPrefix:       "/",
+				addr:             ":1063",
+				logLevel:         slog.LevelInfo,
+				enableRedaction:  false,
+			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				flags, err := parseAndValidateFlags(tc.args)
 				require.NoError(t, err)
 				require.Equal(t, tc.configPath, flags.configPath)
+				require.Equal(t, tc.configBundlePath, flags.configBundlePath)
 				require.Equal(t, tc.addr, flags.extProcAddr)
 				require.Equal(t, tc.logLevel, flags.logLevel)
 				require.Equal(t, tc.enableRedaction, flags.enableRedaction)
@@ -179,7 +190,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 			{
 				name:          "invalid log level",
 				args:          []string{"-logLevel", "invalid"},
-				expectedError: "configPath must be provided\nfailed to unmarshal log level: slog: level string \"invalid\": unknown name",
+				expectedError: "either configPath or configBundlePath must be provided\nfailed to unmarshal log level: slog: level string \"invalid\": unknown name",
 			},
 			{
 				name:          "invalid endpoint prefixes - unknown key",

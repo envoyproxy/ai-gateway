@@ -104,10 +104,6 @@ func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	return reconcile.Result{}, nil
 }
 
-func FilterConfigSecretPerGatewayName(gwName, gwNamespace string) string {
-	return fmt.Sprintf("%s-%s", gwName, gwNamespace)
-}
-
 func getHostRewriteFilterName(baseName string) string {
 	return fmt.Sprintf("%s-%s", hostRewriteHTTPFilterName, baseName)
 }
