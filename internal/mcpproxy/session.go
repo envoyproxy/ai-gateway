@@ -511,14 +511,25 @@ func (c clientToGatewaySessionID) String() string { return string(c) }
 // backendSessionIDs parses the SessionID and returns a map of MCP backend name to MCP session ID.
 func (c clientToGatewaySessionID) backendSessionIDs() (map[filterapi.MCPBackendName]*compositeSessionEntry, string, error) {
 	perBackendSessionIDs := make(map[filterapi.MCPBackendName]*compositeSessionEntry)
-	parts := strings.Split(string(c), "@")
-	if len(parts) != 3 {
+	id := string(c)
+	// The format is: {routeName}@{subject}@{backends}
+	// We use LastIndex to find the backends boundary because the subject may contain '@'
+	// (e.g. email addresses). The backends segment uses base64-encoded session IDs which
+	// cannot contain '@', so LastIndex reliably finds the correct separator.
+	lastAt := strings.LastIndex(id, "@")
+	if lastAt < 0 {
 		return nil, "", fmt.Errorf("invalid session ID: missing '@' separator")
 	}
-	route := parts[0]
-	// Ignore strip the subject part for now.
-	_ = parts[1]
-	backendSessions := parts[2]
+	backendSessions := id[lastAt+1:]
+	prefix := id[:lastAt] // "{routeName}@{subject}" — subject may itself contain '@'
+	firstAt := strings.Index(prefix, "@")
+	if firstAt < 0 {
+		return nil, "", fmt.Errorf("invalid session ID: missing '@' separator")
+	}
+	route := prefix[:firstAt]
+	// The subject (prefix[firstAt+1:]) is retained inside the encrypted session ID for
+	// anti-hijacking purposes but is not needed during parsing.
+
 	for _, part := range strings.Split(backendSessions, ",") {
 		colon := strings.Index(part, ":")
 		if colon < 0 {
