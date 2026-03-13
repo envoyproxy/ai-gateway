@@ -55,8 +55,8 @@ type RuntimeRequestCost struct {
 // NewRuntimeConfig creates a new runtime filter configuration from the given filterapi.Config and a function to create backend auth handlers.
 func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHandlerFunc) (*RuntimeConfig, error) {
 	backends := make(map[string]*RuntimeBackend, len(config.Backends))
-	for _, backend := range config.Backends {
-		b := backend
+	for i := range config.Backends {
+		b := &config.Backends[i]
 		var h BackendAuthHandler
 		if b.Auth != nil {
 			var err error
@@ -65,9 +65,11 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 				return nil, fmt.Errorf("cannot create backend auth handler: %w", err)
 			}
 		}
-		backends[b.Name] = &RuntimeBackend{Backend: &b, Handler: h}
+
+		backends[b.Name] = &RuntimeBackend{Backend: b, Handler: h}
 	}
 
+	// Compile CEL programs for global LLMRequestCosts.
 	costs := make([]RuntimeRequestCost, 0, len(config.LLMRequestCosts))
 	for i := range config.LLMRequestCosts {
 		c := &config.LLMRequestCosts[i]

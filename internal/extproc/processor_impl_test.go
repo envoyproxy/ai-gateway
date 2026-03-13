@@ -306,6 +306,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 			requestHeaders:    map[string]string{internalapi.ModelNameHeaderKeyDefault: "ai_gateway_llm"},
 			responseHeaders:   map[string]string{":status": "200"},
 			backendName:       "some_backend",
+			routeName:         "some_route",
 			modelNameOverride: "ai_gateway_llm",
 		}
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
@@ -335,6 +336,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 			GetStructValue().Fields["cel_uint"].GetNumberValue())
 		require.Equal(t, "ai_gateway_llm", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["model_name_override"].GetStringValue())
 		require.Equal(t, "some_backend", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["backend_name"].GetStringValue())
+		require.Equal(t, "some_route", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["route_name"].GetStringValue())
 	})
 
 	// Verify we record failure for non-2xx responses and do it exactly once (defer suppressed).
@@ -423,11 +425,13 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 		metrics:        mm,
 	}
 	r := &chatCompletionProcessorRouterFilter{}
-	err := p.SetBackend(t.Context(), &filterapi.Backend{
-		Name:              "some-backend",
-		Schema:            filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
-		ModelNameOverride: "ai_gateway_llm",
-	}, nil, r)
+	err := p.SetBackend(t.Context(), &filterapi.RuntimeBackend{
+		Backend: &filterapi.Backend{
+			Name:              "some-backend",
+			Schema:            filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+			ModelNameOverride: "ai_gateway_llm",
+		},
+	}, "test-route", r)
 	require.ErrorContains(t, err, "unsupported API schema: backend")
 	mm.RequireRequestFailure(t)
 	require.Zero(t, mm.inputTokenCount)
@@ -1005,7 +1009,10 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 			requestHeaders:         headers,
 		}
 
-		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		err := p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
+			Backend: backend,
+			Handler: &mockBackendAuthHandler{},
+		}, "test-route", rp)
 		require.NoError(t, err)
 
 		p.translator = &translator
@@ -1066,7 +1073,10 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 			upstreamFilterCount:    2,
 		}
 
-		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		err := p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
+			Backend: backend,
+			Handler: &mockBackendAuthHandler{},
+		}, "test-route", rp)
 		require.NoError(t, err)
 
 		require.NotNil(t, p.bodyMutator)
@@ -1162,7 +1172,10 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 			logger:                 slog.Default(),
 		}
 
-		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		err := p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
+			Backend: backend,
+			Handler: &mockBackendAuthHandler{},
+		}, "test-route", rp)
 		require.NoError(t, err)
 
 		// Restore translator after SetBackend
@@ -1256,7 +1269,10 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 			logger:                 slog.Default(),
 		}
 
-		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		err := p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
+			Backend: backend,
+			Handler: &mockBackendAuthHandler{},
+		}, "test-route", rp)
 		require.NoError(t, err)
 
 		p.translator = &translator
@@ -1311,7 +1327,10 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 		}
 
 		// Simulate retry by incrementing upstreamFilterCount
-		err = p.SetBackend(context.Background(), retryBackend, &mockBackendAuthHandler{}, rp)
+		err = p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
+			Backend: retryBackend,
+			Handler: &mockBackendAuthHandler{},
+		}, "test-route", rp)
 		require.NoError(t, err)
 
 		// Restore translator for retry
