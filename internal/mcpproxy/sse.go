@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 
@@ -122,12 +121,6 @@ type sseEvent struct {
 	event, id string
 	messages  []jsonrpc.Message
 	backend   filterapi.MCPBackendName
-}
-
-// backendEvent wraps an sseEvent with request timing context for metrics.
-type backendEvent struct {
-	*sseEvent
-	startAt time.Time
 }
 
 func (s *sseEvent) writeAndMaybeFlush(w io.Writer) {

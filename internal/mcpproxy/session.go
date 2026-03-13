@@ -38,6 +38,12 @@ const (
 	lastEventIDHeader = "Last-Event-Id"
 )
 
+// backendEvent wraps an sseEvent with request timing context for metrics.
+type backendEvent struct {
+	*sseEvent
+	startAt time.Time
+}
+
 // session implements [Session].
 type session struct {
 	id                 secureClientToGatewaySessionID

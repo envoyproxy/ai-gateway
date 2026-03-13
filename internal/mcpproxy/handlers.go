@@ -206,6 +206,10 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 				slog.String("duration", time.Since(startAt).String()))
 		}
 
+		// Some request methods (e.g. notifications/initialized, tools/list) record per-backend
+		// metrics inside their own handlers, or don't involve backends at all. In those cases,
+		// perBackendMetricsRecorded is set to true and we skip the generic metrics recording
+		// below to avoid double-counting. We still need to close the tracing span.
 		if m.perBackendMetricsRecorded {
 			if span != nil {
 				if err != nil {
@@ -359,7 +363,9 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 			// and accepts it, the server MUST return HTTP 202 Accepted with an empty body.
 			// https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#sending-messages-to-the-server
 
-			// Mark that metrics should not be recorded for this notification (it doesn't involve backends).
+			// notifications/initialized is a client acknowledgement that doesn't get forwarded to any
+			// backend, so there are no per-backend metrics to record. Setting perBackendMetricsRecorded
+			// tells the deferred metrics block to skip the generic per-backend metric recording.
 			m.perBackendMetricsRecorded = true
 			w.WriteHeader(http.StatusAccepted)
 			return
