@@ -19,6 +19,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes"
@@ -26,6 +27,7 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -40,6 +42,7 @@ import (
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigwjson "github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func init() {
@@ -522,10 +525,29 @@ func newConditions(conditionType, message string) []metav1.Condition {
 }
 
 // aiGatewayControllerFinalizer is the name of the finalizer added to various AI Gateway resources.
-const aiGatewayControllerFinalizer = "aigateway.envoyproxy.io/finalizer"
+const (
+	aiGatewayControllerFinalizer  = "aigateway.envoyproxy.io/finalizer"
+	aiGatewayControllerFieldOwner = "aigateway-controller"
+)
+
+func patchFinalizersWithServerSideApply(ctx context.Context, c client.Client, o client.Object) error {
+	gvk, err := apiutil.GVKForObject(o, Scheme)
+	if err != nil {
+		return fmt.Errorf("failed to determine gvk for finalizer patch: %w", err)
+	}
+
+	o.GetObjectKind().SetGroupVersionKind(gvk)
+	o.SetManagedFields(nil)
+	data, err := aigwjson.Marshal(o)
+	if err != nil {
+		return fmt.Errorf("failed to marshal finalizer apply patch: %w", err)
+	}
+	return c.Patch(ctx, o, client.RawPatch(types.ApplyPatchType, data), client.ForceOwnership,
+		client.FieldOwner(aiGatewayControllerFieldOwner))
+}
 
 // handleFinalizer checks if the object has a deletion timestamp. If it does, it removes the finalizer and
-// calls the onDeletionFn if provided. Otherwise, it adds the finalizer to the object and updates it
+// calls the onDeletionFn if provided. Otherwise, it adds the finalizer to the object and patches it
 // so that the finalizer is persisted.
 //
 // onDeletionFn can be nil, in which case it will not be called. The function can return an error but should not
@@ -540,7 +562,7 @@ func handleFinalizer[objType client.Object](
 	if o.GetDeletionTimestamp().IsZero() {
 		if !ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
 			ctrlutil.AddFinalizer(o, aiGatewayControllerFinalizer)
-			if err := client.Update(ctx, o); err != nil {
+			if err := patchFinalizersWithServerSideApply(ctx, client, o); err != nil {
 				// This shouldn't happen in normal operation, but if it does, we log the error.
 				logger.Error(err, "Failed to add finalizer to object",
 					"namespace", o.GetNamespace(), "name", o.GetName())
@@ -557,7 +579,7 @@ func handleFinalizer[objType client.Object](
 					"namespace", o.GetNamespace(), "name", o.GetName())
 			}
 		}
-		if err := client.Update(ctx, o); err != nil {
+		if err := patchFinalizersWithServerSideApply(ctx, client, o); err != nil {
 			// This shouldn't happen in normal operation, but if it does, we log the error.
 			logger.Error(err, "Failed to remove finalizer from object",
 				"namespace", o.GetNamespace(), "name", o.GetName())
