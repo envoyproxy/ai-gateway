@@ -537,6 +537,7 @@ func patchFinalizersWithServerSideApply(ctx context.Context, c client.Client, o 
 	}
 
 	o.GetObjectKind().SetGroupVersionKind(gvk)
+	o.SetManagedFields(nil)
 	data, err := aigwjson.Marshal(o)
 	if err != nil {
 		return fmt.Errorf("failed to marshal finalizer apply patch: %w", err)
