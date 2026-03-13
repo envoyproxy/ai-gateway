@@ -7,7 +7,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -43,6 +42,7 @@ import (
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigwjson "github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func init() {
@@ -525,8 +525,10 @@ func newConditions(conditionType, message string) []metav1.Condition {
 }
 
 // aiGatewayControllerFinalizer is the name of the finalizer added to various AI Gateway resources.
-const aiGatewayControllerFinalizer = "aigateway.envoyproxy.io/finalizer"
-const aiGatewayControllerFieldOwner = "aigateway-controller"
+const (
+	aiGatewayControllerFinalizer  = "aigateway.envoyproxy.io/finalizer"
+	aiGatewayControllerFieldOwner = "aigateway-controller"
+)
 
 func patchFinalizersWithServerSideApply(ctx context.Context, c client.Client, o client.Object) error {
 	gvk, err := apiutil.GVKForObject(o, Scheme)
@@ -535,7 +537,7 @@ func patchFinalizersWithServerSideApply(ctx context.Context, c client.Client, o 
 	}
 
 	o.GetObjectKind().SetGroupVersionKind(gvk)
-	data, err := json.Marshal(o)
+	data, err := aigwjson.Marshal(o)
 	if err != nil {
 		return fmt.Errorf("failed to marshal finalizer apply patch: %w", err)
 	}
