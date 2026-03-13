@@ -21,11 +21,12 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func TestSecretController_Reconcile(t *testing.T) {
-	bspCh := internaltesting.NewControllerEventChan[*aigv1a1.BackendSecurityPolicy]()
+	bspCh := internaltesting.NewControllerEventChan[*aigv1b1.BackendSecurityPolicy]()
 	mcpRouteCh := internaltesting.NewControllerEventChan[*aigv1a1.MCPRoute]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	c := NewSecretController(fakeClient, fake2.NewClientset(), ctrl.Log, bspCh.Ch, mcpRouteCh.Ch)
@@ -37,21 +38,21 @@ func TestSecretController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a bsp that references the secret.
-	bsps := []*aigv1a1.BackendSecurityPolicy{
+	bsps := []*aigv1b1.BackendSecurityPolicy{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
-			Spec: aigv1a1.BackendSecurityPolicySpec{
-				Type:   aigv1a1.BackendSecurityPolicyTypeAPIKey,
-				APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "mysecret"}},
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type:   aigv1b1.BackendSecurityPolicyTypeAPIKey,
+				APIKey: &aigv1b1.BackendSecurityPolicyAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "mysecret"}},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "bar", Namespace: "default"},
-			Spec: aigv1a1.BackendSecurityPolicySpec{
-				Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
-				AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+				AWSCredentials: &aigv1b1.BackendSecurityPolicyAWSCredentials{
 					Region:          "us-west-2",
-					CredentialsFile: &aigv1a1.AWSCredentialsFile{SecretRef: &gwapiv1.SecretObjectReference{Name: "mysecret"}},
+					CredentialsFile: &aigv1b1.AWSCredentialsFile{SecretRef: &gwapiv1.SecretObjectReference{Name: "mysecret"}},
 				},
 			},
 		},
@@ -80,10 +81,10 @@ func TestSecretController_Reconcile(t *testing.T) {
 
 	// Verify that both BSP and MCPRoute events are triggered.
 	actual := bspCh.RequireItemsEventually(t, len(bsps))
-	slices.SortFunc(actual, func(a, b *aigv1a1.BackendSecurityPolicy) int {
+	slices.SortFunc(actual, func(a, b *aigv1b1.BackendSecurityPolicy) int {
 		return cmp.Compare(a.Name, b.Name)
 	})
-	slices.SortFunc(bsps, func(a, b *aigv1a1.BackendSecurityPolicy) int {
+	slices.SortFunc(bsps, func(a, b *aigv1b1.BackendSecurityPolicy) int {
 		return cmp.Compare(a.Name, b.Name)
 	})
 	require.Equal(t, bsps, actual)

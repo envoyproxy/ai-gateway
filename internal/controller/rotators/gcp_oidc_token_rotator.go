@@ -22,7 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
@@ -50,7 +50,7 @@ const (
 type serviceAccountTokenGenerator func(
 	ctx context.Context,
 	stsToken string,
-	saConfig aigv1a1.GCPServiceAccountImpersonationConfig,
+	saConfig aigv1b1.GCPServiceAccountImpersonationConfig,
 	projectName string,
 	opts ...option.ClientOption,
 ) (*tokenprovider.TokenExpiry, error)
@@ -60,7 +60,7 @@ type serviceAccountTokenGenerator func(
 type stsTokenGenerator func(
 	ctx context.Context,
 	jwtToken string,
-	wifConfig *aigv1a1.GCPWorkloadIdentityFederationConfig,
+	wifConfig *aigv1b1.GCPWorkloadIdentityFederationConfig,
 	opts ...option.ClientOption,
 ) (*tokenprovider.TokenExpiry, error)
 
@@ -74,7 +74,7 @@ type gcpOIDCTokenRotator struct {
 	client client.Client // Kubernetes client for interacting with the cluster.
 	logger logr.Logger   // Logger for recording rotator activities.
 	// GCP Credentials configuration from BackendSecurityPolicy.
-	gcpCredentials aigv1a1.BackendSecurityPolicyGCPCredentials
+	gcpCredentials aigv1b1.BackendSecurityPolicyGCPCredentials
 	// backendSecurityPolicyName provides name of backend security policy.
 	backendSecurityPolicyName string
 	// backendSecurityPolicyNamespace provides namespace of backend security policy.
@@ -107,7 +107,7 @@ func init() {
 func NewGCPOIDCTokenRotator(
 	client client.Client,
 	logger logr.Logger,
-	bsp *aigv1a1.BackendSecurityPolicy,
+	bsp *aigv1b1.BackendSecurityPolicy,
 	preRotationWindow time.Duration,
 	tokenProvider tokenprovider.TokenProvider,
 ) (Rotator, error) {
@@ -261,7 +261,7 @@ var _ stsTokenGenerator = exchangeJWTForSTSToken
 
 // exchangeJWTForSTSToken implements [stsTokenGenerator]
 // exchangeJWTForSTSToken exchanges a JWT token for a GCP STS (Security Token Service) token.
-func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig *aigv1a1.GCPWorkloadIdentityFederationConfig, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+func exchangeJWTForSTSToken(ctx context.Context, jwtToken string, wifConfig *aigv1b1.GCPWorkloadIdentityFederationConfig, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 	// This step does not pass the token via the auth header.
 	// The empty string implies that the auth header will be skipped.
 	roundTripper, err := newBearerAuthRoundTripper("")
@@ -345,7 +345,7 @@ var _ serviceAccountTokenGenerator = impersonateServiceAccount
 // in the format: <serviceAccountName>@<serviceAccountProjectName>.iam.gserviceaccount.com
 //
 // The resulting token will have the cloud-platform scope.
-func impersonateServiceAccount(ctx context.Context, stsToken string, saConfig aigv1a1.GCPServiceAccountImpersonationConfig, projectName string, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+func impersonateServiceAccount(ctx context.Context, stsToken string, saConfig aigv1b1.GCPServiceAccountImpersonationConfig, projectName string, opts ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 	// Construct the service account email from the configured parameters.
 	saEmail := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", saConfig.ServiceAccountName, projectName)
 

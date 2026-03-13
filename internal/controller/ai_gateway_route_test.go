@@ -26,7 +26,7 @@ import (
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
@@ -37,13 +37,13 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 
 	err := fakeClient.Create(t.Context(), &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: "mytarget", Namespace: "default"}})
 	require.NoError(t, err)
-	err = fakeClient.Create(t.Context(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
+	err = fakeClient.Create(t.Context(), &aigv1b1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
 	require.NoError(t, err)
 
 	// Do it for the second time with a slightly different configuration.
-	var current aigv1a1.AIGatewayRoute
+	var current aigv1b1.AIGatewayRoute
 	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "myroute"}, &current)
 	// Make sure the finalizer is added.
 	require.NoError(t, err)
@@ -54,7 +54,7 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
 	require.NoError(t, err)
 
-	var updated aigv1a1.AIGatewayRoute
+	var updated aigv1b1.AIGatewayRoute
 	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "myroute"}, &updated)
 	require.NoError(t, err)
 
@@ -64,7 +64,7 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	require.Equal(t, "mytarget", string(updated.Spec.ParentRefs[0].Name))
 
 	// Test the case where the AIGatewayRoute is being deleted.
-	err = fakeClient.Delete(t.Context(), &aigv1a1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
+	err = fakeClient.Delete(t.Context(), &aigv1b1.AIGatewayRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
 	require.NoError(t, err)
@@ -77,12 +77,12 @@ func TestAIGatewayRouteController_Reconcile_SyncError(t *testing.T) {
 	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
 
 	// Create a route without creating the filter to cause sync error.
-	route := &aigv1a1.AIGatewayRoute{
+	route := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "errorroute", Namespace: "default"},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "nonexistent", Weight: ptr.To[int32](1)},
 					},
 				},
@@ -97,18 +97,18 @@ func TestAIGatewayRouteController_Reconcile_SyncError(t *testing.T) {
 	require.Error(t, err)
 
 	// Check that status was updated to NotAccepted.
-	var updatedRoute aigv1a1.AIGatewayRoute
+	var updatedRoute aigv1b1.AIGatewayRoute
 	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "errorroute"}, &updatedRoute)
 	require.NoError(t, err)
 	require.Len(t, updatedRoute.Status.Conditions, 1)
-	require.Equal(t, aigv1a1.ConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
+	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
 }
 
 func requireNewFakeClientWithIndexes(t *testing.T) client.Client {
 	builder := fake.NewClientBuilder().WithScheme(Scheme).
-		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
-		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
-		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{})
+		WithStatusSubresource(&aigv1b1.AIGatewayRoute{}).
+		WithStatusSubresource(&aigv1b1.AIServiceBackend{}).
+		WithStatusSubresource(&aigv1b1.BackendSecurityPolicy{})
 	err := ApplyIndexing(t.Context(), func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
 		builder = builder.WithIndex(obj, field, extractValue)
 		return nil
@@ -124,11 +124,11 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), eventCh.Ch, "/")
 	require.NotNil(t, s)
 
-	for _, backend := range []*aigv1a1.AIServiceBackend{
-		{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}, Spec: aigv1a1.AIServiceBackendSpec{
+	for _, backend := range []*aigv1b1.AIServiceBackend{
+		{ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "ns1"}, Spec: aigv1b1.AIServiceBackendSpec{
 			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 		}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: "ns1"}, Spec: aigv1a1.AIServiceBackendSpec{
+		{ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: "ns1"}, Spec: aigv1b1.AIServiceBackendSpec{
 			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace]("ns1")},
 		}},
 	} {
@@ -137,12 +137,12 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 	}
 
 	t.Run("existing", func(t *testing.T) {
-		route := &aigv1a1.AIGatewayRoute{
+		route := &aigv1b1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns1"},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](1)}, {Name: "orange", Weight: ptr.To[int32](1)}},
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](1)}, {Name: "orange", Weight: ptr.To[int32](1)}},
 					},
 				},
 			},
@@ -209,9 +209,9 @@ func Test_newHTTPRoute(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: ns},
 				Spec:       gwapiv1.HTTPRouteSpec{},
 			}
-			aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+			aiGatewayRoute := &aigv1b1.AIGatewayRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: ns},
-				Spec: aigv1a1.AIGatewayRouteSpec{
+				Spec: aigv1b1.AIGatewayRouteSpec{
 					ParentRefs: []gwapiv1a2.ParentReference{
 						{
 							Name:  "gtw",
@@ -219,31 +219,31 @@ func Test_newHTTPRoute(t *testing.T) {
 							Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
 						},
 					},
-					Rules: []aigv1a1.AIGatewayRouteRule{
+					Rules: []aigv1b1.AIGatewayRouteRule{
 						{
-							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](100)}},
-							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+							BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](100)}},
+							Matches: []aigv1b1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{
 									{Name: "x-test", Value: "rule-0"},
 								}},
 							},
 						},
 						{
-							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+							BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 								{Name: "orange", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](0)},
 								{Name: "apple", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](1)},
 								{Name: "pineapple", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](2)},
 							},
-							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+							Matches: []aigv1b1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{
 									{Name: "x-test", Value: "rule-1"},
 								}},
 							},
 						},
 						{
-							BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: ptr.To[int32](1)}},
+							BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "foo", Weight: ptr.To[int32](1)}},
 							Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
-							Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+							Matches: []aigv1b1.AIGatewayRouteRuleMatch{
 								{Headers: []gwapiv1.HTTPHeaderMatch{
 									{Name: "x-test", Value: "rule-2"},
 								}},
@@ -253,28 +253,28 @@ func Test_newHTTPRoute(t *testing.T) {
 				},
 			}
 
-			for _, backend := range []*aigv1a1.AIServiceBackend{
+			for _, backend := range []*aigv1b1.AIServiceBackend{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: ns},
-					Spec: aigv1a1.AIServiceBackendSpec{
+					Spec: aigv1b1.AIServiceBackendSpec{
 						BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: refNs},
 					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: ns},
-					Spec: aigv1a1.AIServiceBackendSpec{
+					Spec: aigv1b1.AIServiceBackendSpec{
 						BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: refNs},
 					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "pineapple", Namespace: ns},
-					Spec: aigv1a1.AIServiceBackendSpec{
+					Spec: aigv1b1.AIServiceBackendSpec{
 						BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: refNs},
 					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: ns},
-					Spec: aigv1a1.AIServiceBackendSpec{
+					Spec: aigv1b1.AIServiceBackendSpec{
 						BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: refNs},
 					},
 				},
@@ -350,7 +350,7 @@ func TestAIGatewayRouteController_updateAIGatewayRouteStatus(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), eventCh.Ch, "/v1")
 
-	r := &aigv1a1.AIGatewayRoute{
+	r := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "route1",
 			Namespace: "default",
@@ -359,27 +359,27 @@ func TestAIGatewayRouteController_updateAIGatewayRouteStatus(t *testing.T) {
 	err := s.client.Create(t.Context(), r, &client.CreateOptions{})
 	require.NoError(t, err)
 
-	s.updateAIGatewayRouteStatus(t.Context(), r, aigv1a1.ConditionTypeNotAccepted, "err")
+	s.updateAIGatewayRouteStatus(t.Context(), r, aigv1b1.ConditionTypeNotAccepted, "err")
 
-	var updatedRoute aigv1a1.AIGatewayRoute
+	var updatedRoute aigv1b1.AIGatewayRoute
 	err = s.client.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "default"}, &updatedRoute)
 	require.NoError(t, err)
 	require.Len(t, updatedRoute.Status.Conditions, 1)
 	require.Equal(t, "err", updatedRoute.Status.Conditions[0].Message)
-	require.Equal(t, aigv1a1.ConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
+	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
 
-	s.updateAIGatewayRouteStatus(t.Context(), &updatedRoute, aigv1a1.ConditionTypeAccepted, "ok")
+	s.updateAIGatewayRouteStatus(t.Context(), &updatedRoute, aigv1b1.ConditionTypeAccepted, "ok")
 	err = s.client.Get(t.Context(), client.ObjectKey{Name: "route1", Namespace: "default"}, &updatedRoute)
 	require.NoError(t, err)
 	require.Len(t, updatedRoute.Status.Conditions, 1)
 	require.Equal(t, "ok", updatedRoute.Status.Conditions[0].Message)
-	require.Equal(t, aigv1a1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
+	require.Equal(t, aigv1b1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
 }
 
 func Test_buildPriorityAnnotation(t *testing.T) {
-	rules := []aigv1a1.AIGatewayRouteRule{
+	rules := []aigv1b1.AIGatewayRouteRule{
 		{
-			BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+			BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 				{Name: "orange", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](0)},
 				{Name: "apple", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](1)},
 				{Name: "pineapple", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](2)},
@@ -397,9 +397,9 @@ func TestAIGatewayRouteController_backend(t *testing.T) {
 	c := NewAIGatewayRouteController(fakeClient, kube, ctrl.Log, eventCh.Ch, "/v1")
 
 	// Test successful backend retrieval.
-	backend := &aigv1a1.AIServiceBackend{
+	backend := &aigv1b1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: "default"},
-		Spec: aigv1a1.AIServiceBackendSpec{
+		Spec: aigv1b1.AIServiceBackendSpec{
 			BackendRef: gwapiv1.BackendObjectReference{Name: "backend1"},
 		},
 	}
@@ -427,15 +427,15 @@ func Test_newHTTPRoute_InferencePool(t *testing.T) {
 	c := requireNewFakeClientWithIndexes(t)
 
 	// Create an AIGatewayRoute with InferencePool backend.
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "inference-route",
 			Namespace: "test-ns",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:   "test-inference-pool",
 							Group:  ptr.To("inference.networking.k8s.io"),
@@ -476,16 +476,16 @@ func Test_newHTTPRoute_LabelAndAnnotationPropagation(t *testing.T) {
 	c := requireNewFakeClientWithIndexes(t)
 
 	// Create test backends.
-	backend := &aigv1a1.AIServiceBackend{
+	backend := &aigv1b1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: "test-ns"},
-		Spec: aigv1a1.AIServiceBackendSpec{
+		Spec: aigv1b1.AIServiceBackendSpec{
 			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To(gwapiv1.Namespace("test-ns"))},
 		},
 	}
 	require.NoError(t, c.Create(context.Background(), backend))
 
 	// Create an AIGatewayRoute with custom labels and annotations.
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-route",
 			Namespace: "test-ns",
@@ -498,10 +498,10 @@ func Test_newHTTPRoute_LabelAndAnnotationPropagation(t *testing.T) {
 				"custom-annotation-2": "ann-value-2",
 			},
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "test-backend", Weight: ptr.To[int32](100)},
 					},
 				},
@@ -576,12 +576,12 @@ func TestAIGatewayRouteController_syncGateways_NamespaceDetermination(t *testing
 	c := NewAIGatewayRouteController(fakeClient, nil, logr.Discard(), eventCh.Ch, "/v1")
 
 	// Test AIGatewayRoute with parent references having different namespace configurations.
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-route",
 			Namespace: "default", // Route's namespace.
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1b1.AIGatewayRouteSpec{
 			ParentRefs: []gwapiv1a2.ParentReference{
 				{
 					Name: "gateway1",
@@ -623,14 +623,14 @@ func TestAIGatewayRouteController_CrossNamespaceBackend_WithReferenceGrant(t *te
 	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
 
 	// Create backend in backend-ns namespace
-	backend := &aigv1a1.AIServiceBackend{
+	backend := &aigv1b1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "cross-ns-backend",
 			Namespace: "backend-ns",
 		},
-		Spec: aigv1a1.AIServiceBackendSpec{
-			APISchema: aigv1a1.VersionedAPISchema{
-				Name:    aigv1a1.APISchemaOpenAI,
+		Spec: aigv1b1.AIServiceBackendSpec{
+			APISchema: aigv1b1.VersionedAPISchema{
+				Name:    aigv1b1.APISchemaOpenAI,
 				Version: ptr.To("v1"),
 			},
 			BackendRef: gwapiv1.BackendObjectReference{
@@ -669,15 +669,15 @@ func TestAIGatewayRouteController_CrossNamespaceBackend_WithReferenceGrant(t *te
 	require.NoError(t, err)
 
 	// Create AIGatewayRoute in route-ns that references backend in backend-ns
-	route := &aigv1a1.AIGatewayRoute{
+	route := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "cross-ns-route",
 			Namespace: "route-ns",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:      "cross-ns-backend",
 							Namespace: ptr.To(gwapiv1.Namespace("backend-ns")),
@@ -706,14 +706,14 @@ func TestAIGatewayRouteController_CrossNamespaceBackend_WithReferenceGrant(t *te
 	require.NoError(t, err)
 
 	// Verify the status is Accepted
-	var updatedRoute aigv1a1.AIGatewayRoute
+	var updatedRoute aigv1b1.AIGatewayRoute
 	err = fakeClient.Get(t.Context(), types.NamespacedName{
 		Namespace: "route-ns",
 		Name:      "cross-ns-route",
 	}, &updatedRoute)
 	require.NoError(t, err)
 	require.Len(t, updatedRoute.Status.Conditions, 1)
-	require.Equal(t, aigv1a1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
+	require.Equal(t, aigv1b1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
 }
 
 func TestAIGatewayRouteController_CrossNamespaceBackend_WithoutReferenceGrant(t *testing.T) {
@@ -722,14 +722,14 @@ func TestAIGatewayRouteController_CrossNamespaceBackend_WithoutReferenceGrant(t 
 	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
 
 	// Create backend in backend-ns namespace
-	backend := &aigv1a1.AIServiceBackend{
+	backend := &aigv1b1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "cross-ns-backend",
 			Namespace: "backend-ns",
 		},
-		Spec: aigv1a1.AIServiceBackendSpec{
-			APISchema: aigv1a1.VersionedAPISchema{
-				Name:    aigv1a1.APISchemaOpenAI,
+		Spec: aigv1b1.AIServiceBackendSpec{
+			APISchema: aigv1b1.VersionedAPISchema{
+				Name:    aigv1b1.APISchemaOpenAI,
 				Version: ptr.To("v1"),
 			},
 			BackendRef: gwapiv1.BackendObjectReference{
@@ -744,15 +744,15 @@ func TestAIGatewayRouteController_CrossNamespaceBackend_WithoutReferenceGrant(t 
 
 	// Create AIGatewayRoute in route-ns that references backend in backend-ns
 	// WITHOUT creating a ReferenceGrant
-	route := &aigv1a1.AIGatewayRoute{
+	route := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "cross-ns-route",
 			Namespace: "route-ns",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:      "cross-ns-backend",
 							Namespace: ptr.To(gwapiv1.Namespace("backend-ns")),
@@ -775,14 +775,14 @@ func TestAIGatewayRouteController_CrossNamespaceBackend_WithoutReferenceGrant(t 
 	require.Contains(t, err.Error(), "no valid ReferenceGrant found")
 
 	// Verify the status is NotAccepted
-	var updatedRoute aigv1a1.AIGatewayRoute
+	var updatedRoute aigv1b1.AIGatewayRoute
 	err = fakeClient.Get(t.Context(), types.NamespacedName{
 		Namespace: "route-ns",
 		Name:      "cross-ns-route",
 	}, &updatedRoute)
 	require.NoError(t, err)
 	require.Len(t, updatedRoute.Status.Conditions, 1)
-	require.Equal(t, aigv1a1.ConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
+	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
 }
 
 func TestAIGatewayRouteController_SameNamespaceBackend_NoReferenceGrantNeeded(t *testing.T) {
@@ -791,14 +791,14 @@ func TestAIGatewayRouteController_SameNamespaceBackend_NoReferenceGrantNeeded(t 
 	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
 
 	// Create backend in same namespace as route
-	backend := &aigv1a1.AIServiceBackend{
+	backend := &aigv1b1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "same-ns-backend",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIServiceBackendSpec{
-			APISchema: aigv1a1.VersionedAPISchema{
-				Name:    aigv1a1.APISchemaOpenAI,
+		Spec: aigv1b1.AIServiceBackendSpec{
+			APISchema: aigv1b1.VersionedAPISchema{
+				Name:    aigv1b1.APISchemaOpenAI,
 				Version: ptr.To("v1"),
 			},
 			BackendRef: gwapiv1.BackendObjectReference{
@@ -812,15 +812,15 @@ func TestAIGatewayRouteController_SameNamespaceBackend_NoReferenceGrantNeeded(t 
 	require.NoError(t, err)
 
 	// Create AIGatewayRoute in same namespace
-	route := &aigv1a1.AIGatewayRoute{
+	route := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "same-ns-route",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:   "same-ns-backend",
 							Weight: ptr.To[int32](1),
@@ -841,12 +841,12 @@ func TestAIGatewayRouteController_SameNamespaceBackend_NoReferenceGrantNeeded(t 
 	require.NoError(t, err)
 
 	// Verify the status is Accepted
-	var updatedRoute aigv1a1.AIGatewayRoute
+	var updatedRoute aigv1b1.AIGatewayRoute
 	err = fakeClient.Get(t.Context(), types.NamespacedName{
 		Namespace: "default",
 		Name:      "same-ns-route",
 	}, &updatedRoute)
 	require.NoError(t, err)
 	require.Len(t, updatedRoute.Status.Conditions, 1)
-	require.Equal(t, aigv1a1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
+	require.Equal(t, aigv1b1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
 }
