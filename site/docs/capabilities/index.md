@@ -36,6 +36,7 @@ Comprehensive traffic handling and routing capabilities:
 - **[Model Virtualization](./traffic/model-virtualization.md)**: Abstract and virtualize AI models
 - **[Provider Fallback](./traffic/provider-fallback.md)**: Automatic failover between AI providers
 - **[Usage-based Rate Limiting](./traffic/usage-based-ratelimiting.md)**: Token-aware rate limiting for AI workloads
+- **[Header and Body Mutations](./traffic/header-body-mutations.md)**: Customize HTTP headers and JSON body fields per backend or route
 
 ## Security
 
