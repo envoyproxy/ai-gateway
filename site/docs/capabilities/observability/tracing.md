@@ -50,7 +50,7 @@ helm install phoenix oci://registry-1.docker.io/arizephoenix/phoenix-helm \
 
 # Wait for Phoenix to be ready (first run may take a few minutes to pull images)
 kubectl wait --timeout=5m -n envoy-ai-gateway-system \
-  pods -l app.kubernetes.io/name=phoenix --for=condition=Ready
+  pods -l app=phoenix --for=condition=Ready
 ```
 
 ### Configure AI Gateway with OpenTelemetry
@@ -222,11 +222,12 @@ metadata:
   namespace: default
 spec:
   extProc:
-    env:
-      - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: "http://production-collector:4317"
-      - name: OTEL_SERVICE_NAME
-        value: "ai-gateway-production"
+    kubernetes:
+      env:
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://production-collector:4317"
+        - name: OTEL_SERVICE_NAME
+          value: "ai-gateway-production"
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway

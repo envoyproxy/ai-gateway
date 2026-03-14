@@ -100,7 +100,11 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
 		require.True(t, ok, "Response should be an immediate response")
 		require.Equal(t, typev3.StatusCode(400), immediateResp.ImmediateResponse.Status.Code)
-		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"malformed request: failed to parse JSON for /v1/chat/completions"}}`, string(immediateResp.ImmediateResponse.Body))
+		body := string(immediateResp.ImmediateResponse.Body)
+		require.Contains(t, body, `"type":"error"`)
+		require.Contains(t, body, `"type":"BadRequest"`)
+		require.Contains(t, body, `"code":"400"`)
+		require.Contains(t, body, "malformed request: failed to parse JSON for /v1/chat/completions:")
 	})
 
 	t.Run("ok", func(t *testing.T) {
@@ -253,6 +257,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		p := &chatCompletionProcessorUpstreamFilter{
 			translator: mt,
 			metrics:    mm,
+			parent:     &chatCompletionProcessorRouterFilter{},
 		}
 		mt.retErr = errors.New("test error")
 		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})

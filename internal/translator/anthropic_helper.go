@@ -18,6 +18,7 @@ import (
 	anthropicParam "github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
+	openaisdk "github.com/openai/openai-go/v3"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
@@ -598,6 +599,27 @@ func outputConfigAvailable(model internalapi.RequestModel) bool {
 		strings.Contains(modelLower, "4-6")
 }
 
+// mapReasoningEffortToOutputConfigEffort converts OpenAI reasoning effort levels to Anthropic output config effort levels.
+// Currently supports:
+// - "low" → OutputConfigEffortLow
+// - "medium" → OutputConfigEffortMedium
+// - "high" → OutputConfigEffortHigh
+// - "xhigh" → OutputConfigEffortMax
+func mapReasoningEffortToOutputConfigEffort(reasonEffort openaisdk.ReasoningEffort) (anthropic.OutputConfigEffort, error) {
+	switch reasonEffort {
+	case openaisdk.ReasoningEffortLow:
+		return anthropic.OutputConfigEffortLow, nil
+	case openaisdk.ReasoningEffortMedium:
+		return anthropic.OutputConfigEffortMedium, nil
+	case openaisdk.ReasoningEffortHigh:
+		return anthropic.OutputConfigEffortHigh, nil
+	case openaisdk.ReasoningEffortXhigh:
+		return anthropic.OutputConfigEffortMax, nil
+	default:
+		return "", fmt.Errorf("%w: unsupported reasoning effort level: %q (supported: low, medium, high, xhigh)", internalapi.ErrInvalidRequestBody, reasonEffort)
+	}
+}
+
 // buildAnthropicParams is a helper function that translates an OpenAI request
 // into the parameter struct required by the Anthropic SDK.
 // The apiSchema parameter indicates the backend API schema (e.g., "AWSAnthropic", "GCPAnthropic").
@@ -647,6 +669,15 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 				Schema: schemaMap,
 			},
 		}
+	}
+
+	// Map OpenAI reasoning_effort to Anthropic output_config.effort.
+	if openAIReq.ReasoningEffort != "" && outputConfigAvailable(openAIReq.Model) {
+		effort, effortErr := mapReasoningEffortToOutputConfigEffort(openAIReq.ReasoningEffort)
+		if effortErr != nil {
+			return nil, effortErr
+		}
+		params.OutputConfig.Effort = effort
 	}
 
 	if openAIReq.Temperature != nil {

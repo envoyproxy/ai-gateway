@@ -8,6 +8,7 @@ package testupstreamlib
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -605,6 +606,72 @@ func Test_main(t *testing.T) {
 			require.NoError(t, err)
 		}
 	})
+	t.Run("sse-gzip compresses each event", func(t *testing.T) {
+		t.Parallel()
+		// Disable automatic decompression so the response body contains raw gzip bytes.
+		client := &http.Client{
+			Transport: &http.Transport{
+				DisableCompression: true,
+			},
+		}
+
+		events := []string{"event1", "event2", "event3"}
+		request, err := http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/sse-gzip", strings.NewReader("some-body"))
+		require.NoError(t, err)
+		request.Header.Set(ResponseTypeKey, "sse-gzip")
+		request.Header.Set(ResponseBodyHeaderKey,
+			base64.StdEncoding.EncodeToString([]byte(strings.Join(events, "\n"))))
+
+		response, err := client.Do(request)
+		require.NoError(t, err)
+		defer func() {
+			_ = response.Body.Close()
+		}()
+
+		require.Equal(t, http.StatusOK, response.StatusCode)
+		require.Equal(t, "text/event-stream", response.Header.Get("Content-Type"))
+		require.Equal(t, "gzip", response.Header.Get("Content-Encoding"))
+
+		// Decompress on the fly via gzip.NewReader. If the server did not actually
+		// gzip-compress the body, NewReader would fail with "invalid header".
+		gz, err := gzip.NewReader(response.Body)
+		require.NoError(t, err)
+		defer gz.Close()
+
+		// Read through the decompressor event by event. Because the server calls
+		// gz.Flush() after writing each SSE event, each event is available to the
+		// reader as soon as it is sent, proving per-event compression and flushing.
+		reader := bufio.NewReader(gz)
+
+		// Read the first event separately: gzip.NewReader's internal bufio.Reader
+		// reads ahead, so the first event's data is already buffered when NewReader
+		// returns. Timing verification starts from the second event onward.
+		dataLine, err := reader.ReadString('\n')
+		require.NoError(t, err, "failed reading data line for event 0")
+		require.Equal(t, "data: event1\n", dataLine)
+		blankLine, err := reader.ReadString('\n')
+		require.NoError(t, err, "failed reading blank line for event 0")
+		require.Equal(t, "\n", blankLine)
+
+		// For subsequent events, verify that each arrives with ~200ms interval,
+		// confirming the gzip writer is flushed per event (not buffered until close).
+		now := time.Now()
+		for i, expected := range events[1:] {
+			dataLine, err := reader.ReadString('\n')
+			require.NoError(t, err, "failed reading data line for event %d", i+1)
+			require.Equal(t, fmt.Sprintf("data: %s\n", expected), dataLine)
+
+			require.Greater(t, time.Since(now), 100*time.Millisecond, time.Since(now).String())
+			require.Less(t, time.Since(now), 300*time.Millisecond, time.Since(now).String())
+			now = time.Now()
+
+			// Read the trailing blank line that terminates the SSE event.
+			blankLine, err := reader.ReadString('\n')
+			require.NoError(t, err, "failed reading blank line for event %d", i+1)
+			require.Equal(t, "\n", blankLine)
+		}
+	})
+
 	t.Run("sse with empty block should be skipped", func(t *testing.T) {
 		t.Parallel()
 		request, err := http.NewRequestWithContext(t.Context(), "GET", "http://"+l.Addr().String()+"/sse", strings.NewReader("some-body"))

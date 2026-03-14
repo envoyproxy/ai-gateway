@@ -47,11 +47,13 @@ var (
 					ID:   "msg_01",
 					Type: "message",
 					Role: "assistant",
-					Content: []openai.ResponseOutputMessageContentUnion{
-						{
-							OfOutputText: &openai.ResponseOutputTextParam{
-								Type: "output_text",
-								Text: "Hello, how can I help?",
+					Content: openai.ResponseOutputMessageContentUnion{
+						OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+							{
+								OfOutputText: &openai.ResponseOutputTextParam{
+									Type: "output_text",
+									Text: "Hello, how can I help?",
+								},
 							},
 						},
 					},
@@ -87,11 +89,13 @@ var (
 					ID:   "msg_02",
 					Type: "message",
 					Role: "assistant",
-					Content: []openai.ResponseOutputMessageContentUnion{
-						{
-							OfOutputText: &openai.ResponseOutputTextParam{
-								Type: "output_text",
-								Text: "This response includes cache write tokens.",
+					Content: openai.ResponseOutputMessageContentUnion{
+						OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+							{
+								OfOutputText: &openai.ResponseOutputTextParam{
+									Type: "output_text",
+									Text: "This response includes cache write tokens.",
+								},
 							},
 						},
 					},
@@ -232,7 +236,7 @@ func TestResponsesRecorder_RecordResponse(t *testing.T) {
 				attribute.String(openinference.OutputValue, string(basicResponseRespBody)),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
 				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
-				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), basicResponseResp.Output[0].OfOutputMessage.Content[0].OfOutputText.Text),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), basicResponseResp.Output[0].OfOutputMessage.Content.OfContentArray[0].OfOutputText.Text),
 			},
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
@@ -251,7 +255,7 @@ func TestResponsesRecorder_RecordResponse(t *testing.T) {
 				attribute.String(openinference.OutputValue, string(responseWithCacheWriteBody)),
 				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
 				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
-				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), responseWithCacheWrite.Output[0].OfOutputMessage.Content[0].OfOutputText.Text),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), responseWithCacheWrite.Output[0].OfOutputMessage.Content.OfContentArray[0].OfOutputText.Text),
 			},
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
