@@ -59,7 +59,9 @@ type flags struct {
 	// extProcMaxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
 	extProcMaxRecvMsgSize int
 	// maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive.
-	maxRecvMsgSize                         int
+	maxRecvMsgSize int
+	// extProcMaxRequests is the circuit breaker max_requests for the ext_proc UDS cluster.
+	extProcMaxRequests                     uint32
 	mcpSessionEncryptionSeed               string
 	mcpFallbackSessionEncryptionSeed       string
 	mcpSessionEncryptionIterations         int
@@ -207,6 +209,11 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		4*1024*1024,
 		"Maximum message size in bytes that the gRPC extension server can receive. Default is 4MB.",
 	)
+	extProcMaxRequests := fs.Int(
+		"extProcMaxRequests",
+		int(extensionserver.DefaultExtProcMaxRequests),
+		"Circuit breaker max_requests for the ext_proc UDS cluster. Controls how many concurrent gRPC streams are allowed before Envoy returns overflow errors. Default is 1024.",
+	)
 	watchNamespaces := fs.String(
 		"watchNamespaces",
 		"",
@@ -303,6 +310,10 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		}
 	}
 
+	if *extProcMaxRequests < 0 {
+		return nil, fmt.Errorf("extProcMaxRequests must be non-negative: %d", *extProcMaxRequests)
+	}
+
 	if *mcpSessionEncryptionIterations <= 0 {
 		return nil, fmt.Errorf("mcp session encryption iterations must be positive: %d", *mcpSessionEncryptionIterations)
 	}
@@ -332,6 +343,7 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		extProcImagePullSecrets:                *extProcImagePullSecrets,
 		extProcMaxRecvMsgSize:                  *extProcMaxRecvMsgSize,
 		maxRecvMsgSize:                         *maxRecvMsgSize,
+		extProcMaxRequests:                     uint32(*extProcMaxRequests), //nolint:gosec // validated non-negative above
 		watchNamespaces:                        parseWatchNamespaces(*watchNamespaces),
 		cacheSyncTimeout:                       *cacheSyncTimeout,
 		mcpSessionEncryptionSeed:               *mcpSessionEncryptionSeed,
@@ -395,7 +407,7 @@ func main() {
 	// Start the extension server running alongside the controller.
 	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
 	s := grpc.NewServer(grpc.MaxRecvMsgSize(parsedFlags.maxRecvMsgSize))
-	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes)
+	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes, parsedFlags.extProcMaxRequests)
 	if err != nil {
 		setupLog.Error(err, "failed to create extension server")
 		os.Exit(1)
