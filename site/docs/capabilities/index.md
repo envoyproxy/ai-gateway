@@ -35,6 +35,7 @@ Comprehensive traffic handling and routing capabilities:
 
 - **[Model Virtualization](./traffic/model-virtualization.md)**: Abstract and virtualize AI models
 - **[Provider Fallback](./traffic/provider-fallback.md)**: Automatic failover between AI providers
+- **[Quota Policy](./traffic/quota-policy.md)**: Token-based quota management for controlling total consumption budgets
 - **[Usage-based Rate Limiting](./traffic/usage-based-ratelimiting.md)**: Token-aware rate limiting for AI workloads
 
 ## Security
