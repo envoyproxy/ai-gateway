@@ -86,6 +86,7 @@ spec:
             - --tlsCertDir=/certs
             - --tlsCertName={{ .Values.controller.mutatingWebhook.tlsCertName }}
             - --tlsKeyName={{ .Values.controller.mutatingWebhook.tlsKeyName }}
+            - --webhookPort={{ .Values.controller.mutatingWebhook.port }}
             {{- if .Values.controller.leaderElection.enabled }}
             - --enableLeaderElection=true
             {{- end }}
