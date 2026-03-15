@@ -27,7 +27,7 @@ import (
 // NewAnthropicToChatCompletionOpenAITranslator implements [Factory] for Anthropic to OpenAI ChatCompletion translation.
 // This translator converts Anthropic API format to OpenAI ChatCompletion API requests.
 // The prefix parameter is the prefix field set in the OpenAI VersionAPISchema used to construct the translated path
-// (e.g., "v1" produces "/v1/chat/completions", "enterpriseai/v1" produces "/enterpriseai/v1/chat/completions").
+// (e.g., "v1" produces "/v1/chat/completions", "gateway/v1" produces "/gateway/v1/chat/completions").
 func NewAnthropicToChatCompletionOpenAITranslator(prefix string, modelNameOverride internalapi.ModelNameOverride) AnthropicMessagesTranslator {
 	passthroughTranslator := NewAnthropicToAnthropicTranslator(prefix, modelNameOverride)
 	return &anthropicToOpenAIV1ChatCompletionTranslator{

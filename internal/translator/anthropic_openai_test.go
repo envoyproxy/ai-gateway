@@ -117,7 +117,7 @@ func TestAnthropicToOpenAITranslator_RequestBody_CustomPrefix(t *testing.T) {
 		wantPath string
 	}{
 		{name: "standard v1 prefix", prefix: "v1", wantPath: "/v1/chat/completions"},
-		{name: "custom prefix with namespace", prefix: "enterpriseai/v1", wantPath: "/enterpriseai/v1/chat/completions"},
+		{name: "custom prefix with namespace", prefix: "gateway/v1", wantPath: "/gateway/v1/chat/completions"},
 		{name: "empty prefix", prefix: "", wantPath: "/chat/completions"},
 	}
 	for _, tt := range tests {
