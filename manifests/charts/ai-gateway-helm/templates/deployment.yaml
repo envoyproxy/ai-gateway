@@ -29,6 +29,10 @@ spec:
         {{- . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "ai-gateway-helm.controller.serviceAccountName" . }}
+      hostNetwork: {{ .Values.controller.hostNetwork }}
+      {{- if .Values.controller.hostNetwork }}
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- end }}
       securityContext:
         {{- toYaml .Values.controller.podSecurityContext | nindent 8 }}
       containers:
