@@ -107,3 +107,45 @@ type Prediction struct {
 type PredictResponse struct {
 	Predictions []*Prediction `json:"predictions"`
 }
+
+// ImagePredictRequest is the request body for the Imagen predict endpoint.
+// See: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/imagen-api#generate_images
+type ImagePredictRequest struct {
+	Instances  []*ImageInstance `json:"instances"`
+	Parameters *ImageParameters `json:"parameters,omitempty"`
+}
+
+// ImageInstance holds the prompt for a single image generation request.
+type ImageInstance struct {
+	Prompt string `json:"prompt"`
+}
+
+// ImageParameters controls the image generation settings for Imagen.
+// See: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/imagen-api#generate_images
+type ImageParameters struct {
+	SampleCount     int                 `json:"sampleCount"`
+	AspectRatio     string              `json:"aspectRatio,omitempty"`
+	SampleImageSize string              `json:"sampleImageSize,omitempty"`
+	OutputOptions   *ImageOutputOptions `json:"outputOptions,omitempty"`
+}
+
+// ImageOutputOptions specifies the output format and compression for generated images.
+type ImageOutputOptions struct {
+	MIMEType           string `json:"mimeType,omitempty"`
+	CompressionQuality *int    `json:"compressionQuality,omitempty"`
+}
+
+// ImagePrediction is a single image in the Imagen predict response.
+// If BytesBase64Encoded is empty, the image was filtered by Responsible AI safety policies.
+// If the model supports prompt enhancement, Prompt contains the enhanced prompt used for generation.
+// See: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/imagen-api#generate_images
+type ImagePrediction struct {
+	MIMEType           string `json:"mimeType,omitempty"`
+	Prompt             string `json:"prompt,omitempty"`
+	BytesBase64Encoded string `json:"bytesBase64Encoded"`
+}
+
+// ImagePredictionResponse is the response body from the Imagen predict endpoint.
+type ImagePredictionResponse struct {
+	Predictions []*ImagePrediction `json:"predictions"`
+}

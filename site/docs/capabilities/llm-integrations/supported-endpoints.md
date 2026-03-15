@@ -177,9 +177,10 @@ curl -H "Content-Type: application/json" \
 **Supported Providers:**
 
 - OpenAI
+- GCP VertexAI (with automatic translation, supports Imagen and Gemini image models)
 - Any OpenAI-compatible provider that supports image generations
 
-**Example:**
+**Example (OpenAI):**
 
 ```bash
 curl -H "Content-Type: application/json" \
@@ -187,6 +188,31 @@ curl -H "Content-Type: application/json" \
     "model": "gpt-image-1",
     "prompt": "a serene mountain landscape at sunrise in watercolor",
     "size": "1024x1024",
+    "n": 1
+  }' \
+  $GATEWAY_URL/v1/images/generations
+```
+
+**Example (GCP VertexAI - Imagen):**
+
+```bash
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "imagen-4.0-generate-001",
+    "prompt": "a serene mountain landscape at sunrise in watercolor",
+    "size": "1024x1024",
+    "n": 2
+  }' \
+  $GATEWAY_URL/v1/images/generations
+```
+
+**Example (GCP VertexAI - Gemini):**
+
+```bash
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-2.0-flash-preview-image-generation",
+    "prompt": "a serene mountain landscape at sunrise in watercolor",
     "n": 1
   }' \
   $GATEWAY_URL/v1/images/generations
