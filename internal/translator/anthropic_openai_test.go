@@ -110,6 +110,33 @@ func TestAnthropicToOpenAITranslator_RequestBody(t *testing.T) {
 	}
 }
 
+func TestAnthropicToOpenAITranslator_RequestBody_CustomPrefix(t *testing.T) {
+	tests := []struct {
+		name     string
+		prefix   string
+		wantPath string
+	}{
+		{name: "standard v1 prefix", prefix: "v1", wantPath: "/v1/chat/completions"},
+		{name: "custom prefix with namespace", prefix: "enterpriseai/v1", wantPath: "/enterpriseai/v1/chat/completions"},
+		{name: "empty prefix", prefix: "", wantPath: "/chat/completions"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			translator := NewAnthropicToChatCompletionOpenAITranslator(tt.prefix, "")
+			headers, body, err := translator.RequestBody(nil, &anthropic.MessagesRequest{
+				Model:     "claude-3",
+				MaxTokens: 100,
+				Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
+			}, false)
+			require.NoError(t, err)
+			require.NotNil(t, body)
+			require.Len(t, headers, 2)
+			assert.Equal(t, pathHeaderName, headers[0].Key())
+			assert.Equal(t, tt.wantPath, headers[0].Value())
+		})
+	}
+}
+
 func TestAnthropicToOpenAITranslator_ResponseHeaders(t *testing.T) {
 	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
 	headers, err := translator.ResponseHeaders(map[string]string{
