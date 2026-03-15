@@ -625,11 +625,10 @@ func mapReasoningEffortToOutputConfigEffort(reasonEffort openaisdk.ReasoningEffo
 // The apiSchema parameter indicates the backend API schema (e.g., "AWSAnthropic", "GCPAnthropic").
 func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string) (params *anthropic.MessageNewParams, err error) {
 	// 1. Handle simple parameters and defaults.
-	maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
-	if maxTokens == nil {
-		err = fmt.Errorf("%w: max_tokens or max_completion_tokens is required", internalapi.ErrInvalidRequestBody)
-		return
-	}
+	// max_tokens is required by the Anthropic API but optional in the OpenAI API.
+	// Use a default when neither is provided.
+	const defaultMaxTokens = int64(4096)
+	maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens, ptr.To(defaultMaxTokens))
 
 	// Translate openAI contents to anthropic params.
 	// 2. Translate messages and system prompts.
