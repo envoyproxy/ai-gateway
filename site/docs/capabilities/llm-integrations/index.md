@@ -15,6 +15,7 @@ Envoy AI Gateway provides integration to multiple LLM Providers. This section pr
 ## Advanced Features
 
 - **[Vendor-Specific Fields](./vendor-specific-fields.md)** - Use backend-specific parameters and access provider-unique capabilities in your OpenAI-compatible requests
+- **[Prompt Caching](./prompt-caching.md)** - Provider-agnostic prompt caching using unified cache_control API
 
 ## Getting Started with Provider Connectivity
 
