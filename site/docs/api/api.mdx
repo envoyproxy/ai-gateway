@@ -661,7 +661,7 @@ QuotaPolicyList contains a list of QuotaPolicy
   name="resources"
   type="[ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#resourcerequirements-v1-core)"
   required="false"
-  description="Resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/<br />Deprecated: Use GatewayConfig for gateway-scoped resource configuration instead.<br />Configure resources using GatewayConfig.spec.extProc.resources and reference it<br />from the Gateway via the `aigateway.envoyproxy.io/gateway-config` annotation.<br />This field will be removed in a future version.<br />Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each<br />AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them<br />to configure the resource requirements of the external processor container."
+  description="Resources required by the external processor container.<br />More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/<br />Deprecated: Use GatewayConfig for gateway-scoped resource configuration instead.<br />Configure resources using GatewayConfig.spec.extProc.kubernetes.resources and reference it<br />from the Gateway via the `aigateway.envoyproxy.io/gateway-config` annotation.<br />This field will be removed in a future version.<br />Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each<br />AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them<br />to configure the resource requirements of the external processor container."
 />
 
 
@@ -2065,6 +2065,11 @@ Reference: https://modelcontextprotocol.io/specification/2025-06-18/basic/author
   type="[ProtectedResourceMetadata](#protectedresourcemetadata)"
   required="true"
   description="ProtectedResourceMetadata defines the OAuth 2.0 Resource Server Metadata as per RFC 8414.<br />This is used to expose the metadata endpoint for mcp clients to discover the authorization servers,<br />supported scopes, and JWKS URI."
+/><ApiField
+  name="claimToHeaders"
+  type="ClaimToHeader array"
+  required="false"
+  description="ClaimToHeaders specifies JWT claims to extract and forward as HTTP headers to backend MCP servers.<br />This enables backends to access user identity for authorization, auditing, or personalization.<br />Security considerations:<br />- Any client-provided headers matching the configured header names will be stripped to prevent forgery<br />- Only the specified claims are extracted; the full JWT is not forwarded to backends<br />- Consider using a header prefix (e.g., `X-Jwt-Claim-`) to avoid conflicts with other headers"
 />
 
 
@@ -2519,12 +2524,12 @@ the ai-gateway, but by the vendor via proper versioning.
 /><ApiField
   name="version"
   type="string"
-  required="true"
+  required="false"
   description="Version is the version of the API schema.<br />When the name is set to AzureOpenAI, this version maps to `API Version` in the<br />Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning).<br />**Deprecated Behavior**: When the name is set to `OpenAI`, this version field will behave as the<br />prefix field. This is to maintain backward compatibility. This will be removed in future releases.<br />See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details."
 /><ApiField
   name="prefix"
   type="string"
-  required="true"
+  required="false"
   description="Prefix is the prefix for the API.<br />When the name is set to `OpenAI`, `chat completions` API endpoint will be `$\{this_field\}/chat/completions`.<br />It can be with or without a leading slash (`/`).<br />This is especially useful when routing to the backend that has an OpenAI compatible API but has a different<br />prefix. For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses<br />`/v1beta/openai` prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)<br />uses `/compatibility/v1` prefix. On the other hand, DeepSeek (https://api-docs.deepseek.com/) doesn't<br />use prefix, so you can leave this field unset.<br />See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details."
 />
 

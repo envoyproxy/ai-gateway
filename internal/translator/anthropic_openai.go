@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path"
 	"strconv"
 	"strings"
 
@@ -25,13 +26,15 @@ import (
 
 // NewAnthropicToChatCompletionOpenAITranslator implements [Factory] for Anthropic to OpenAI ChatCompletion translation.
 // This translator converts Anthropic API format to OpenAI ChatCompletion API requests.
-func NewAnthropicToChatCompletionOpenAITranslator(version string, modelNameOverride internalapi.ModelNameOverride) AnthropicMessagesTranslator {
-	// TODO: use "version" in APISchema struct to set the specific prefix if needed like OpenAI does. However, two questions:
-	// 	* Is there any "Anthropic compatible" API that uses a different prefix like OpenAI does?
-	// 	* Even if there is, we should refactor the APISchema struct to have "prefix" field instead of abusing "version" field.
-	_ = version
-	passthroughTranslator := NewAnthropicToAnthropicTranslator(version, modelNameOverride)
-	return &anthropicToOpenAIV1ChatCompletionTranslator{passthroughTranslator: &passthroughTranslator, modelNameOverride: modelNameOverride}
+// The prefix parameter is the prefix field set in the OpenAI VersionAPISchema used to construct the translated path
+// (e.g., "v1" produces "/v1/chat/completions", "gateway/v1" produces "/gateway/v1/chat/completions").
+func NewAnthropicToChatCompletionOpenAITranslator(prefix string, modelNameOverride internalapi.ModelNameOverride) AnthropicMessagesTranslator {
+	passthroughTranslator := NewAnthropicToAnthropicTranslator(prefix, modelNameOverride)
+	return &anthropicToOpenAIV1ChatCompletionTranslator{
+		passthroughTranslator: &passthroughTranslator,
+		modelNameOverride:     modelNameOverride,
+		path:                  path.Join("/", prefix, "chat/completions"),
+	}
 }
 
 type anthropicToOpenAIV1ChatCompletionTranslator struct {
@@ -40,6 +43,8 @@ type anthropicToOpenAIV1ChatCompletionTranslator struct {
 	requestModel          internalapi.RequestModel
 	stream                bool
 	streamState           *openAIStreamToAnthropicState
+	// The path of the chat completions endpoint, prefixed with the OpenAI path prefix.
+	path string
 	// Redaction configuration for debug logging
 	debugLogEnabled bool
 	enableRedaction bool
@@ -80,7 +85,7 @@ func (a *anthropicToOpenAIV1ChatCompletionTranslator) RequestBody(_ []byte, body
 	}
 
 	newHeaders = []internalapi.Header{
-		{pathHeaderName, "/v1/chat/completions"},
+		{pathHeaderName, a.path},
 		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
 	}
 	return

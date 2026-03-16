@@ -38,6 +38,12 @@ const (
 	lastEventIDHeader = "Last-Event-Id"
 )
 
+// backendEvent wraps an sseEvent with request timing context for metrics.
+type backendEvent struct {
+	*sseEvent
+	startAt time.Time
+}
+
 // session implements [Session].
 type session struct {
 	id                 secureClientToGatewaySessionID
@@ -45,6 +51,11 @@ type session struct {
 	reqCtx             *mcpRequestContext
 	mu                 sync.RWMutex
 	perBackendSessions map[filterapi.MCPBackendName]*compositeSessionEntry
+	// extraHeaders contains header values extracted from the current HTTP request to be forwarded to backends.
+	// These are derived from the route's configured forward headers and the current request's headers.
+	// The key is the HTTP header name, the value is the header value.
+	// Note: extraHeaders is NOT encoded in the session ID. It is re-extracted from each incoming request.
+	extraHeaders map[string]string
 }
 
 // Close implements [io.Closer.Close].
@@ -266,10 +277,10 @@ func getHeartbeatInterval(def time.Duration) time.Duration {
 
 // sendToAllBackends sends an HTTP request to all backends in this session and returns a channel that streams
 // the response events from all backends.
-func (s *session) sendToAllBackends(ctx context.Context, httpMethod string, request *jsonrpc.Request, span tracingapi.MCPSpan) <-chan *sseEvent {
+func (s *session) sendToAllBackends(ctx context.Context, httpMethod string, request *jsonrpc.Request, span tracingapi.MCPSpan) <-chan *backendEvent {
 	var (
 		logger      = s.reqCtx.l
-		backendMsgs = make(chan *sseEvent, 200)
+		backendMsgs = make(chan *backendEvent, 200)
 		wg          sync.WaitGroup
 	)
 
@@ -312,7 +323,7 @@ func (s *session) sendToAllBackends(ctx context.Context, httpMethod string, requ
 }
 
 // sendRequestPerBackend sends an HTTP request to the given backend and streams the response events to eventChan.
-func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *sseEvent, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry,
+func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *backendEvent, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry,
 	httpMethod string, request *jsonrpc.Request,
 ) error {
 	var body io.Reader
@@ -340,6 +351,14 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 	req.Header.Set("Accept", "text/event-stream, application/json")
 	req.Header.Set("Accept-encoding", "gzip, br, zstd, deflate")
 
+	// Forward configured headers to the backend.
+	// First, strip any client-provided headers that match configured forward headers to prevent forgery.
+	// Then set the values extracted from the original request.
+	for header, value := range s.extraHeaders {
+		req.Header.Del(header) // Prevent forgery by stripping client-provided headers.
+		req.Header.Set(header, value)
+	}
+
 	if lastEventID := cse.lastEventID; lastEventID != "" {
 		req.Header.Set(lastEventIDHeader, lastEventID)
 	}
@@ -363,6 +382,7 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 		}
 		s.reqCtx.l.Debug("sending MCP request", args...)
 	}
+	startAt := time.Now()
 	httpResp, err := s.reqCtx.client.Do(req)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -400,11 +420,14 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 		if err != nil {
 			return fmt.Errorf("failed to decode jsonrpc message from MCP response body: %w", err)
 		}
-		eventChan <- &sseEvent{
-			backend:  backend.Name,
-			event:    "message",
-			id:       "", // No event ID in this case.
-			messages: []jsonrpc.Message{msg},
+		eventChan <- &backendEvent{
+			sseEvent: &sseEvent{
+				backend:  backend.Name,
+				event:    "message",
+				id:       "", // No event ID in this case.
+				messages: []jsonrpc.Message{msg},
+			},
+			startAt: startAt,
 		}
 		return nil
 	}
@@ -423,7 +446,7 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *s
 		//
 		// In any case, the reconnect support here must be in line with proxyResponseBody's reconnect logic when that happens.
 		if event != nil {
-			eventChan <- event
+			eventChan <- &backendEvent{sseEvent: event, startAt: startAt}
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) ||
@@ -498,14 +521,25 @@ func (c clientToGatewaySessionID) String() string { return string(c) }
 // backendSessionIDs parses the SessionID and returns a map of MCP backend name to MCP session ID.
 func (c clientToGatewaySessionID) backendSessionIDs() (map[filterapi.MCPBackendName]*compositeSessionEntry, string, error) {
 	perBackendSessionIDs := make(map[filterapi.MCPBackendName]*compositeSessionEntry)
-	parts := strings.Split(string(c), "@")
-	if len(parts) != 3 {
+	id := string(c)
+	// The format is: {routeName}@{subject}@{backends}
+	// We use LastIndex to find the backends boundary because the subject may contain '@'
+	// (e.g. email addresses). The backends segment uses base64-encoded session IDs which
+	// cannot contain '@', so LastIndex reliably finds the correct separator.
+	lastAt := strings.LastIndex(id, "@")
+	if lastAt < 0 {
 		return nil, "", fmt.Errorf("invalid session ID: missing '@' separator")
 	}
-	route := parts[0]
-	// Ignore strip the subject part for now.
-	_ = parts[1]
-	backendSessions := parts[2]
+	backendSessions := id[lastAt+1:]
+	prefix := id[:lastAt] // "{routeName}@{subject}" — subject may itself contain '@'
+	firstAt := strings.Index(prefix, "@")
+	if firstAt < 0 {
+		return nil, "", fmt.Errorf("invalid session ID: missing '@' separator")
+	}
+	route := prefix[:firstAt]
+	// The subject (prefix[firstAt+1:]) is retained inside the encrypted session ID for
+	// anti-hijacking purposes but is not needed during parsing.
+
 	for _, part := range strings.Split(backendSessions, ",") {
 		colon := strings.Index(part, ":")
 		if colon < 0 {

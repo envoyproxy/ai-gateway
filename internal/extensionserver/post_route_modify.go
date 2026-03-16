@@ -31,21 +31,25 @@ func (s *Server) PostRouteModify(_ context.Context, req *egextension.PostRouteMo
 	inferencePools := s.constructInferencePoolsFrom(req.PostRouteContext.ExtensionResources)
 
 	// If we found an InferencePool, configure the route with the ext_proc per-route config.
+	// InferencePool configuration only applies to forwarding routes (RouteAction).
+	// Non-forwarding routes (e.g. DirectResponse, Redirect) cannot route to an InferencePool.
 	if inferencePools != nil {
 		if len(inferencePools) != 1 {
 			return nil, fmt.Errorf("BUG: at most one inferencepool can be referenced per route rule but found %d", len(inferencePools))
 		}
-		// Disable auto host rewrite to prevent Envoy from overriding the host header
-		// set by the endpoint picker. The endpoint picker sets the destination via
-		// x-gateway-destination-endpoint header and we need to preserve the original
-		// host for proper routing to the selected endpoint.
-		req.Route.GetRoute().HostRewriteSpecifier = &routev3.RouteAction_AutoHostRewrite{
-			AutoHostRewrite: wrapperspb.Bool(false),
+		if routeAction := req.Route.GetRoute(); routeAction != nil {
+			// Disable auto host rewrite to prevent Envoy from overriding the host header
+			// set by the endpoint picker. The endpoint picker sets the destination via
+			// x-gateway-destination-endpoint header and we need to preserve the original
+			// host for proper routing to the selected endpoint.
+			routeAction.HostRewriteSpecifier = &routev3.RouteAction_AutoHostRewrite{
+				AutoHostRewrite: wrapperspb.Bool(false),
+			}
+			if req.Route.TypedPerFilterConfig == nil {
+				req.Route.TypedPerFilterConfig = make(map[string]*anypb.Any)
+			}
+			buildEPPMetadataForRoute(req.Route, inferencePools[0])
 		}
-		if req.Route.TypedPerFilterConfig == nil {
-			req.Route.TypedPerFilterConfig = make(map[string]*anypb.Any)
-		}
-		buildEPPMetadataForRoute(req.Route, inferencePools[0])
 	}
 
 	return &egextension.PostRouteModifyResponse{Route: req.Route}, nil

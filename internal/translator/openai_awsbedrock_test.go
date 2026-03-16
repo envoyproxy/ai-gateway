@@ -21,7 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	openaigo "github.com/openai/openai-go/v2"
+	openaigo "github.com/openai/openai-go/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	"k8s.io/utils/ptr"

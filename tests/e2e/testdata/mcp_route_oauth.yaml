@@ -50,6 +50,11 @@ spec:
             group: ""
             kind: ConfigMap
             name: jwks-configmap
+      claimToHeaders:
+        - claim: sub
+          header: x-jwt-claim-sub
+        - claim: name
+          header: x-jwt-claim-name
       protectedResourceMetadata:
         resource: "https://foo.bar.com/mcp"
         resourceName: "example-resource"
@@ -109,6 +114,9 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 1063
+          env:
+            - name: TEST_EXPECTED_CLAIM_HEADERS
+              value: "x-jwt-claim-sub=1234567890,x-jwt-claim-name=John Doe"
 ---
 apiVersion: v1
 kind: Service
