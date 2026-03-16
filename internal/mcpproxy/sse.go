@@ -115,6 +115,8 @@ func normalizeNewlines(b []byte) []byte {
 	return b
 }
 
+// sseEvent represents a parsed Server-Sent Event.
+// This struct contains only SSE protocol data and the backend it originated from.
 type sseEvent struct {
 	event, id string
 	messages  []jsonrpc.Message
