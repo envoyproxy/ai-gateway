@@ -143,6 +143,8 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 	var internalReqID string
 	var originalReqID string
 	var logger *slog.Logger
+	// Seed the context with the server-level logger as a fallback so that loggerFromContext never returns nil in processMsg.
+	ctx = context.WithValue(ctx, loggerContextKey, s.logger)
 	defer func() {
 		if !isUpstreamFilter {
 			s.routerProcessorsPerReqIDMutex.Lock()

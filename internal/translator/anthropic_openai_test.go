@@ -110,6 +110,33 @@ func TestAnthropicToOpenAITranslator_RequestBody(t *testing.T) {
 	}
 }
 
+func TestAnthropicToOpenAITranslator_RequestBody_CustomPrefix(t *testing.T) {
+	tests := []struct {
+		name     string
+		prefix   string
+		wantPath string
+	}{
+		{name: "standard v1 prefix", prefix: "v1", wantPath: "/v1/chat/completions"},
+		{name: "custom prefix with namespace", prefix: "gateway/v1", wantPath: "/gateway/v1/chat/completions"},
+		{name: "empty prefix", prefix: "", wantPath: "/chat/completions"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			translator := NewAnthropicToChatCompletionOpenAITranslator(tt.prefix, "")
+			headers, body, err := translator.RequestBody(nil, &anthropic.MessagesRequest{
+				Model:     "claude-3",
+				MaxTokens: 100,
+				Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
+			}, false)
+			require.NoError(t, err)
+			require.NotNil(t, body)
+			require.Len(t, headers, 2)
+			assert.Equal(t, pathHeaderName, headers[0].Key())
+			assert.Equal(t, tt.wantPath, headers[0].Value())
+		})
+	}
+}
+
 func TestAnthropicToOpenAITranslator_ResponseHeaders(t *testing.T) {
 	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
 	headers, err := translator.ResponseHeaders(map[string]string{
@@ -696,6 +723,154 @@ func TestAnthropicToOpenAITranslator_ResponseBody_SpanRecording(t *testing.T) {
 			nil,
 		)
 		require.NoError(t, err)
+	})
+}
+
+func TestAnthropicMessagesToOpenAI_ToolConversation(t *testing.T) {
+	t.Run("tool_use in assistant message becomes tool_calls", func(t *testing.T) {
+		body := &anthropic.MessagesRequest{
+			Model:     "claude-3",
+			MaxTokens: 100,
+			Messages: []anthropic.MessageParam{
+				{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "write hello to file"}},
+				{
+					Role: anthropic.MessageRoleAssistant,
+					Content: anthropic.MessageContent{
+						Array: []anthropic.ContentBlockParam{
+							{ToolUse: &anthropic.ToolUseBlockParam{
+								Type: "tool_use", ID: "tool-1", Name: "Write",
+								Input: map[string]any{"file_path": "test.txt", "content": "hello"},
+							}},
+						},
+					},
+				},
+				{
+					Role: anthropic.MessageRoleUser,
+					Content: anthropic.MessageContent{
+						Array: []anthropic.ContentBlockParam{
+							{ToolResult: &anthropic.ToolResultBlockParam{
+								Type: "tool_result", ToolUseID: "tool-1",
+								Content: &anthropic.ToolResultContent{Text: "File written successfully"},
+							}},
+						},
+					},
+				},
+			},
+		}
+		msgs := anthropicMessagesToOpenAI(body)
+		// system (none), user, assistant with tool_calls, tool result
+		require.Len(t, msgs, 3)
+
+		// First message: user
+		require.NotNil(t, msgs[0].OfUser)
+		assert.Equal(t, "write hello to file", msgs[0].OfUser.Content.Value)
+
+		// Second message: assistant with tool_calls
+		require.NotNil(t, msgs[1].OfAssistant)
+		require.Len(t, msgs[1].OfAssistant.ToolCalls, 1)
+		assert.Equal(t, "Write", msgs[1].OfAssistant.ToolCalls[0].Function.Name)
+		assert.Equal(t, "tool-1", *msgs[1].OfAssistant.ToolCalls[0].ID)
+		assert.Contains(t, msgs[1].OfAssistant.ToolCalls[0].Function.Arguments, `"file_path"`)
+
+		// Third message: tool result
+		require.NotNil(t, msgs[2].OfTool)
+		assert.Equal(t, "tool-1", msgs[2].OfTool.ToolCallID)
+		assert.Equal(t, "File written successfully", msgs[2].OfTool.Content.Value)
+	})
+
+	t.Run("tool_result with error preserves error text", func(t *testing.T) {
+		body := &anthropic.MessagesRequest{
+			Model:     "claude-3",
+			MaxTokens: 100,
+			Messages: []anthropic.MessageParam{
+				{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "do something"}},
+				{
+					Role: anthropic.MessageRoleAssistant,
+					Content: anthropic.MessageContent{
+						Array: []anthropic.ContentBlockParam{
+							{ToolUse: &anthropic.ToolUseBlockParam{
+								Type: "tool_use", ID: "tool-2", Name: "Bash",
+								Input: map[string]any{"command": "ls"},
+							}},
+						},
+					},
+				},
+				{
+					Role: anthropic.MessageRoleUser,
+					Content: anthropic.MessageContent{
+						Array: []anthropic.ContentBlockParam{
+							{ToolResult: &anthropic.ToolResultBlockParam{
+								Type: "tool_result", ToolUseID: "tool-2",
+								Content: &anthropic.ToolResultContent{Text: "permission denied"},
+								IsError: true,
+							}},
+							{Text: &anthropic.TextBlockParam{Type: "text", Text: "try again"}},
+						},
+					},
+				},
+			},
+		}
+		msgs := anthropicMessagesToOpenAI(body)
+		// user, assistant, tool result, user text
+		require.Len(t, msgs, 4)
+
+		require.NotNil(t, msgs[2].OfTool)
+		assert.Equal(t, "tool-2", msgs[2].OfTool.ToolCallID)
+		assert.Equal(t, "permission denied", msgs[2].OfTool.Content.Value)
+
+		require.NotNil(t, msgs[3].OfUser)
+		assert.Equal(t, "try again", msgs[3].OfUser.Content.Value)
+	})
+
+	t.Run("assistant message with text and tool_use", func(t *testing.T) {
+		body := &anthropic.MessagesRequest{
+			Model:     "claude-3",
+			MaxTokens: 100,
+			Messages: []anthropic.MessageParam{
+				{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "help"}},
+				{
+					Role: anthropic.MessageRoleAssistant,
+					Content: anthropic.MessageContent{
+						Array: []anthropic.ContentBlockParam{
+							{Text: &anthropic.TextBlockParam{Type: "text", Text: "I'll write that for you."}},
+							{ToolUse: &anthropic.ToolUseBlockParam{
+								Type: "tool_use", ID: "tool-3", Name: "Write",
+								Input: map[string]any{"file_path": "out.txt", "content": "data"},
+							}},
+						},
+					},
+				},
+			},
+		}
+		msgs := anthropicMessagesToOpenAI(body)
+		require.Len(t, msgs, 2)
+
+		assistantMsg := msgs[1].OfAssistant
+		require.NotNil(t, assistantMsg)
+		assert.Equal(t, "I'll write that for you.", assistantMsg.Content.Value)
+		require.Len(t, assistantMsg.ToolCalls, 1)
+		assert.Equal(t, "Write", assistantMsg.ToolCalls[0].Function.Name)
+	})
+
+	t.Run("plain text messages still work", func(t *testing.T) {
+		body := &anthropic.MessagesRequest{
+			Model:     "claude-3",
+			MaxTokens: 100,
+			System:    &anthropic.SystemPrompt{Text: "You are helpful."},
+			Messages: []anthropic.MessageParam{
+				{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "hi"}},
+				{Role: anthropic.MessageRoleAssistant, Content: anthropic.MessageContent{Text: "hello!"}},
+				{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "bye"}},
+			},
+		}
+		msgs := anthropicMessagesToOpenAI(body)
+		// system + 3 messages
+		require.Len(t, msgs, 4)
+		require.NotNil(t, msgs[0].OfSystem)
+		require.NotNil(t, msgs[1].OfUser)
+		require.NotNil(t, msgs[2].OfAssistant)
+		assert.Equal(t, "hello!", msgs[2].OfAssistant.Content.Value)
+		require.NotNil(t, msgs[3].OfUser)
 	})
 }
 
