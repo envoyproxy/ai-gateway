@@ -590,13 +590,13 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	if u.modelNameOverride != "" {
 		u.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = u.modelNameOverride
 	}
-	rp.upstreamFilter = u
-	u.parent = rp
+	u.parent = rp // Set parent before GetTranslator so it can access rp.eh
 
 	u.translator, err = u.parent.eh.GetTranslator(b.Schema, u.modelNameOverride)
 	if err != nil {
 		return fmt.Errorf("failed to create translator for backend %s: %w", b.Name, err)
 	}
+	rp.upstreamFilter = u // Only assign after translator is confirmed valid
 
 	switch redactor := u.translator.(type) {
 	case translator.ResponseRedactor:
