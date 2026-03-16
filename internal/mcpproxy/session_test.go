@@ -60,6 +60,33 @@ func TestBackendSessionIDs_Success(t *testing.T) {
 	require.Equal(t, idB, string(m[backendB].sessionID))
 }
 
+func TestBackendSessionIDs_EmailSubject(t *testing.T) {
+	t.Parallel()
+	backendA := "backendA"
+	backendB := "backendB"
+	idA := "session-a"
+	idB := "session-b"
+	routeName := "some-route"
+	for _, subject := range []string{
+		"user@example.com",
+		"",
+	} {
+		t.Run(subject, func(t *testing.T) {
+			t.Parallel()
+			composite := clientToGatewaySessionID(
+				routeName + "@" + subject + "@" +
+					backendA + ":" + base64.StdEncoding.EncodeToString([]byte(idA)) + "," +
+					backendB + ":" + base64.StdEncoding.EncodeToString([]byte(idB)),
+			)
+			m, route, err := composite.backendSessionIDs()
+			require.NoError(t, err)
+			require.Equal(t, routeName, route)
+			require.Equal(t, idA, string(m[backendA].sessionID))
+			require.Equal(t, idB, string(m[backendB].sessionID))
+		})
+	}
+}
+
 func TestBackendSessionIDs_Errors(t *testing.T) {
 	for _, tc := range []struct {
 		input  clientToGatewaySessionID
