@@ -33,9 +33,10 @@ import (
 // mcpRequestContext serves /mcp endpoint.
 type mcpRequestContext struct {
 	*ProxyConfig
-	metrics        metrics.MCPMetrics
-	requestHeaders http.Header
-	originalPath   string
+	metrics                   metrics.MCPMetrics
+	requestHeaders            http.Header
+	originalPath              string
+	perBackendMetricsRecorded bool
 }
 
 // NewMCPProxy creates a new MCPProxy instance.
@@ -134,7 +135,8 @@ func extractMetaFromJSONRPCMessage(msg jsonrpc.Message) map[string]any {
 
 // newSession creates a new session for a downstream client.
 // It multiplexes the initialize request to all backends defined in the MCPRoute associated with the downstream request.
-func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializeParams, routeName filterapi.MCPRouteName, subject string, span tracingapi.MCPSpan) (*session, error) {
+// startAt is the time when the overall HTTP request started, used for recording request duration metrics.
+func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializeParams, routeName filterapi.MCPRouteName, subject string, span tracingapi.MCPSpan, startAt time.Time) (*session, error) {
 	m.l.Debug("creating new MCP session")
 
 	backends := m.routes[routeName]
@@ -162,8 +164,8 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 			if m.l.Enabled(ctx, slog.LevelDebug) {
 				m.l.Debug("creating MCP session", slog.String("backend", backend.Name))
 			}
-			startAt := time.Now()
-			initResult, err := m.initializeSession(ctx, routeName, backend, p)
+			backendStartAt := time.Now()
+			initResult, err := m.initializeSession(ctx, routeName, backend, p, startAt)
 			if err != nil {
 				m.l.Error("failed to create MCP session", slog.String("backend", backend.Name), slog.String("error", err.Error()))
 				// If one backend fails, don't fail the overall connection. Create a session to the rest of the backends, as they
@@ -171,7 +173,7 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 				// TODO: should we record a metric for this?
 				return
 			}
-			m.metrics.RecordInitializationDuration(ctx, startAt, p)
+			m.metrics.WithBackend(backend.Name).RecordInitializationDuration(ctx, backendStartAt, p)
 			if m.l.Enabled(ctx, slog.LevelDebug) {
 				m.l.Debug("created MCP session", slog.String("backend", backend.Name), slog.String("session_id", string(initResult.sessionID)))
 			}
@@ -256,7 +258,7 @@ type initializeResult struct {
 	result    *mcp.InitializeResult
 }
 
-func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, p *mcp.InitializeParams) (*initializeResult, error) {
+func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, p *mcp.InitializeParams, startAt time.Time) (*initializeResult, error) {
 	// Send the initialize request to the MCP backend listener.
 	reqID := mustJSONRPCRequestID()
 	var (
@@ -344,7 +346,10 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 		if m.l.Enabled(ctx, slog.LevelDebug) {
 			m.l.Debug("MCP session initialized", slog.Any("capabilities", initResult.Capabilities))
 		}
-		m.metrics.RecordServerCapabilities(ctx, initResult.Capabilities, p)
+		backendMetrics := m.metrics.WithBackend(backend.Name)
+		backendMetrics.RecordServerCapabilities(ctx, initResult.Capabilities, p)
+		backendMetrics.RecordMethodCount(ctx, "initialize", p)
+		backendMetrics.RecordRequestDuration(ctx, startAt, p)
 	}
 
 	// Need to invoke "notifications/initialized" to complete the initialization.
@@ -364,6 +369,7 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 			body, _ := io.ReadAll(resp.Body)
 			return nil, fmt.Errorf("MCP notifications/initialized request failed with status code %d, body=%s", resp.StatusCode, string(body))
 		}
+		m.metrics.WithBackend(backend.Name).RecordMethodCount(ctx, "notifications/initialized", p)
 	}
 	if m.l.Enabled(ctx, slog.LevelDebug) {
 		m.l.Debug("sent MCP notifications/initialized", slog.String("backend", backend.Name), slog.String("session_id", sessionID))
