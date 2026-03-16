@@ -57,6 +57,8 @@ func buildOpenAIChatCompletionRequest(body *anthropic.MessagesRequest, modelName
 }
 
 // anthropicMessagesToOpenAI converts Anthropic messages (including the system prompt) to OpenAI message format.
+// It preserves tool_use blocks in assistant messages as OpenAI tool_calls, and converts
+// tool_result blocks in user messages into separate OpenAI tool-role messages.
 func anthropicMessagesToOpenAI(body *anthropic.MessagesRequest) []openai.ChatCompletionMessageParamUnion {
 	var messages []openai.ChatCompletionMessageParamUnion
 
@@ -76,23 +78,103 @@ func anthropicMessagesToOpenAI(body *anthropic.MessagesRequest) []openai.ChatCom
 	for _, msg := range body.Messages {
 		switch msg.Role {
 		case anthropic.MessageRoleUser:
-			messages = append(messages, openai.ChatCompletionMessageParamUnion{
-				OfUser: &openai.ChatCompletionUserMessageParam{
-					Content: openai.StringOrUserRoleContentUnion{Value: anthropicContentToText(msg.Content)},
-					Role:    openai.ChatMessageRoleUser,
-				},
-			})
+			messages = appendAnthropicUserMessage(messages, msg)
 		case anthropic.MessageRoleAssistant:
-			messages = append(messages, openai.ChatCompletionMessageParamUnion{
-				OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-					Content: openai.StringOrAssistantRoleContentUnion{Value: anthropicContentToText(msg.Content)},
-					Role:    openai.ChatMessageRoleAssistant,
-				},
-			})
+			messages = appendAnthropicAssistantMessage(messages, msg)
 		}
 	}
 
 	return messages
+}
+
+// appendAnthropicAssistantMessage converts an Anthropic assistant message to OpenAI format.
+// It extracts tool_use blocks as OpenAI tool_calls on the assistant message, and preserves
+// any text content alongside them.
+func appendAnthropicAssistantMessage(messages []openai.ChatCompletionMessageParamUnion, msg anthropic.MessageParam) []openai.ChatCompletionMessageParamUnion {
+	text := anthropicContentToText(msg.Content)
+	var toolCalls []openai.ChatCompletionMessageToolCallParam
+
+	for _, block := range msg.Content.Array {
+		if block.ToolUse == nil {
+			continue
+		}
+		args, _ := json.Marshal(block.ToolUse.Input)
+		if args == nil {
+			args = []byte("{}")
+		}
+		id := block.ToolUse.ID
+		toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
+			ID:   &id,
+			Type: openai.ChatCompletionMessageToolCallTypeFunction,
+			Function: openai.ChatCompletionMessageToolCallFunctionParam{
+				Name:      block.ToolUse.Name,
+				Arguments: string(args),
+			},
+		})
+	}
+
+	assistantMsg := &openai.ChatCompletionAssistantMessageParam{
+		Role: openai.ChatMessageRoleAssistant,
+	}
+	if text != "" {
+		assistantMsg.Content = openai.StringOrAssistantRoleContentUnion{Value: text}
+	}
+	if len(toolCalls) > 0 {
+		assistantMsg.ToolCalls = toolCalls
+	}
+	return append(messages, openai.ChatCompletionMessageParamUnion{OfAssistant: assistantMsg})
+}
+
+// appendAnthropicUserMessage converts an Anthropic user message to OpenAI format.
+// It splits tool_result blocks into separate OpenAI tool-role messages and keeps
+// text content as a user message.
+func appendAnthropicUserMessage(messages []openai.ChatCompletionMessageParamUnion, msg anthropic.MessageParam) []openai.ChatCompletionMessageParamUnion {
+	// Emit tool-role messages for each tool_result block first, since OpenAI
+	// expects tool results to immediately follow the assistant message that
+	// generated the tool calls.
+	for _, block := range msg.Content.Array {
+		if block.ToolResult == nil {
+			continue
+		}
+		content := toolResultToText(block.ToolResult)
+		messages = append(messages, openai.ChatCompletionMessageParamUnion{
+			OfTool: &openai.ChatCompletionToolMessageParam{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: block.ToolResult.ToolUseID,
+				Content:    openai.ContentUnion{Value: content},
+			},
+		})
+	}
+
+	// Emit user text if there is any non-tool-result content.
+	text := anthropicContentToText(msg.Content)
+	if text != "" {
+		messages = append(messages, openai.ChatCompletionMessageParamUnion{
+			OfUser: &openai.ChatCompletionUserMessageParam{
+				Content: openai.StringOrUserRoleContentUnion{Value: text},
+				Role:    openai.ChatMessageRoleUser,
+			},
+		})
+	}
+
+	return messages
+}
+
+// toolResultToText extracts text from a ToolResultBlockParam.
+func toolResultToText(tr *anthropic.ToolResultBlockParam) string {
+	if tr.Content == nil {
+		return ""
+	}
+	if tr.Content.Text != "" {
+		return tr.Content.Text
+	}
+	var sb strings.Builder
+	for _, item := range tr.Content.Array {
+		if item.Text != nil {
+			sb.WriteString(item.Text.Text)
+		}
+	}
+	return sb.String()
 }
 
 // anthropicSystemPromptToText extracts a plain string from an Anthropic system prompt,

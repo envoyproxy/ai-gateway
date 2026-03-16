@@ -735,9 +735,20 @@ func TestToolUnion_UnmarshalJSON(t *testing.T) {
 			want:    ToolUnion{WebSearchTool: &WebSearchTool{Type: "web_search_20250305", Name: "web_search"}},
 		},
 		{
-			name:    "missing type",
-			jsonStr: `{"name":"my_tool"}`,
-			wantErr: true,
+			name:    "missing type defaults to custom",
+			jsonStr: `{"name":"my_tool","description":"A tool","input_schema":{"type":"object"}}`,
+			want: ToolUnion{Tool: &Tool{
+				Name: "my_tool", Description: "A tool",
+				InputSchema: ToolInputSchema{Type: "object"},
+			}},
+		},
+		{
+			name:    "empty type defaults to custom",
+			jsonStr: `{"type":"","name":"my_tool","input_schema":{"type":"object"}}`,
+			want: ToolUnion{Tool: &Tool{
+				Type: "", Name: "my_tool",
+				InputSchema: ToolInputSchema{Type: "object"},
+			}},
 		},
 		{
 			name:    "unknown type ignored",

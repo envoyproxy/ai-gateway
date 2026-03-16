@@ -344,8 +344,7 @@ func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 	case filterapi.APISchemaAnthropic:
 		return translator.NewAnthropicToAnthropicTranslator(schema.Version, modelNameOverride), nil
 	case filterapi.APISchemaOpenAI:
-		// The Anthropic prefix can be altered using values.yaml if necessary
-		return translator.NewAnthropicToChatCompletionOpenAITranslator(schema.Version, modelNameOverride), nil
+		return translator.NewAnthropicToChatCompletionOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("/v1/messages endpoint only supports backends that return native Anthropic format (Anthropic, GCPAnthropic, AWSAnthropic). OpenAI translation is also supported. Backend %s uses different model format", schema.Name)
 	}
