@@ -45,7 +45,7 @@ type GenerateContentRequest struct {
 // used only to extract usageMetadata for token accounting. The full response body is passed
 // through to the client unchanged.
 //
-// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerateContentResponse
+// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/GenerateContentResponse
 type GenerateContentResponse struct {
 	UsageMetadata *GenerateContentUsageMetadata `json:"usageMetadata,omitempty"`
 }
