@@ -112,11 +112,20 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) (sets []
 // This should be safe since these headers are managed by Envoy AI Gateway itself, not expected to be
 // modified by users via header mutation API.
 //
+// Exception: the model name header (x-ai-eg-model by default) is a user-facing header that
+// represents the effective model for a request. It can be legitimately overridden via headerMutation
+// to control what model name is forwarded to the backend.
+//
 // Also, skip Envoy pseudo-headers beginning with ':', such as ":method", ":path", etc.
 // This is important because these headers are not only sensitive to our implementation detail as well as
 // it can cause unexpected behavior if they are modified unexpectedly. User shouldn't need to
 // modify these headers via header mutation API.
 func shouldIgnoreHeader(key string) bool {
+	// Allow the model name header to be overridden via headerMutation.
+	// This is a documented user-facing header used for routing and backend model selection.
+	if strings.EqualFold(key, internalapi.ModelNameHeaderKeyDefault) {
+		return false
+	}
 	return strings.HasPrefix(key, ":") ||
 		strings.HasPrefix(key, internalapi.EnvoyAIGatewayHeaderPrefix) ||
 		strings.EqualFold(key, internalapi.EnvoyOriginalPathHeader)
