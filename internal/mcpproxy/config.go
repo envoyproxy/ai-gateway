@@ -45,10 +45,13 @@ type (
 		forwardHeaders []string
 	}
 
-	// toolSelector filters tools using include patterns with exact matches or regular expressions.
+	// toolSelector filters tools using include and exclude patterns with exact matches or regular expressions.
+	// Exclude rules take precedence over include rules (deny-wins).
 	toolSelector struct {
 		include        map[string]struct{}
 		includeRegexps []*regexp.Regexp
+		exclude        map[string]struct{}
+		excludeRegexps []*regexp.Regexp
 	}
 
 	// changeSignaler is an interface for signaling configuration changes to multiple
@@ -102,16 +105,41 @@ func (t *toolSelector) sameTools(other *toolSelector) bool {
 	if !equalKeys(t.include, other.include) {
 		return false
 	}
+	if !equalKeys(t.exclude, other.exclude) {
+		return false
+	}
 	slices.SortFunc(t.includeRegexps, sortRegexpAsString)
 	slices.SortFunc(other.includeRegexps, sortRegexpAsString)
-	return slices.EqualFunc(t.includeRegexps, other.includeRegexps,
+	if !slices.EqualFunc(t.includeRegexps, other.includeRegexps,
+		func(a, b *regexp.Regexp) bool {
+			return a.String() == b.String()
+		}) {
+		return false
+	}
+	slices.SortFunc(t.excludeRegexps, sortRegexpAsString)
+	slices.SortFunc(other.excludeRegexps, sortRegexpAsString)
+	return slices.EqualFunc(t.excludeRegexps, other.excludeRegexps,
 		func(a, b *regexp.Regexp) bool {
 			return a.String() == b.String()
 		})
 }
 
 func (t *toolSelector) allows(tool string) bool {
-	// Check include filters - if no filter, allow all; if filter exists, allow only matches
+	// Check exclude filters first (deny-wins).
+	if len(t.exclude) > 0 {
+		if _, ok := t.exclude[tool]; ok {
+			return false
+		}
+	}
+	if len(t.excludeRegexps) > 0 {
+		for _, re := range t.excludeRegexps {
+			if re.MatchString(tool) {
+				return false
+			}
+		}
+	}
+
+	// Check include filters - if no filter, allow all; if filter exists, allow only matches.
 	if len(t.include) > 0 {
 		_, ok := t.include[tool]
 		return ok
@@ -124,7 +152,7 @@ func (t *toolSelector) allows(tool string) bool {
 		}
 		return false
 	}
-	// No filters, allow all
+	// No include filters, allow all (that passed exclude checks).
 	return true
 }
 
@@ -162,6 +190,7 @@ func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) er
 			if s := backend.ToolSelector; s != nil {
 				ts := &toolSelector{
 					include: make(map[string]struct{}),
+					exclude: make(map[string]struct{}),
 				}
 				for _, tool := range s.Include {
 					ts.include[tool] = struct{}{}
@@ -172,6 +201,16 @@ func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) er
 						return fmt.Errorf("failed to compile include regex %q for backend %q in route %q: %w", expr, backend.Name, route.Name, err)
 					}
 					ts.includeRegexps = append(ts.includeRegexps, re)
+				}
+				for _, tool := range s.Exclude {
+					ts.exclude[tool] = struct{}{}
+				}
+				for _, expr := range s.ExcludeRegex {
+					re, err := regexp.Compile(expr)
+					if err != nil {
+						return fmt.Errorf("failed to compile exclude regex %q for backend %q in route %q: %w", expr, backend.Name, route.Name, err)
+					}
+					ts.excludeRegexps = append(ts.excludeRegexps, re)
 				}
 				r.toolSelectors[backend.Name] = ts
 			}

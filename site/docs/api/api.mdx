@@ -2179,7 +2179,9 @@ MCPRouteStatus contains the conditions by the reconciliation result.
 **Appears in:**
 - [MCPRouteBackendRef](#mcproutebackendref)
 
-MCPToolFilter filters tools using include patterns with exact matches or regular expressions.
+MCPToolFilter filters tools using include and exclude patterns with exact matches or regular expressions.
+Exclude rules take precedence over include rules (deny-wins). When both include and exclude are specified,
+a tool must match an include rule AND not match any exclude rule to be allowed.
 
 ##### Fields
 
@@ -2195,6 +2197,16 @@ MCPToolFilter filters tools using include patterns with exact matches or regular
   type="string array"
   required="false"
   description="IncludeRegex is a list of RE2-compatible regular expressions that, when matched, include the tool.<br />Only tools matching these patterns will be available."
+/><ApiField
+  name="exclude"
+  type="string array"
+  required="false"
+  description="Exclude is a list of tool names to exclude. The specified tools will not be available.<br />Exclude rules take precedence over include rules."
+/><ApiField
+  name="excludeRegex"
+  type="string array"
+  required="false"
+  description="ExcludeRegex is a list of RE2-compatible regular expressions that, when matched, exclude the tool.<br />Tools matching these patterns will not be available. Exclude rules take precedence over include rules."
 />
 
 

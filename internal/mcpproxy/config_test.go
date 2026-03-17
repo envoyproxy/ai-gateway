@@ -43,6 +43,36 @@ func Test_toolSelector_Allows(t *testing.T) {
 			tools:    []string{"bar", "foo"},
 			expected: []bool{true, false},
 		},
+		{
+			name:     "exclude specific tool",
+			selector: toolSelector{exclude: map[string]struct{}{"foo": {}}},
+			tools:    []string{"foo", "bar"},
+			expected: []bool{false, true},
+		},
+		{
+			name:     "exclude regexp",
+			selector: toolSelector{excludeRegexps: []*regexp.Regexp{reBa}},
+			tools:    []string{"bar", "foo"},
+			expected: []bool{false, true},
+		},
+		{
+			name: "include + exclude where exclude wins",
+			selector: toolSelector{
+				include: map[string]struct{}{"foo": {}, "bar": {}},
+				exclude: map[string]struct{}{"bar": {}},
+			},
+			tools:    []string{"foo", "bar", "baz"},
+			expected: []bool{true, false, false},
+		},
+		{
+			name: "include + excludeRegex where exclude wins",
+			selector: toolSelector{
+				include:        map[string]struct{}{"foo": {}, "bar": {}},
+				excludeRegexps: []*regexp.Regexp{reBa},
+			},
+			tools:    []string{"foo", "bar", "baz"},
+			expected: []bool{true, false, false},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -214,6 +244,48 @@ func TestLoadConfig_NoToolsChangedNotification(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_ExcludeConfiguration(t *testing.T) {
+	proxy := &ProxyConfig{
+		mcpProxyConfig:     &mcpProxyConfig{},
+		toolChangeSignaler: newMultiWatcherSignaler(),
+	}
+
+	config := &filterapi.Config{
+		MCPConfig: &filterapi.MCPConfig{
+			BackendListenerAddr: "http://localhost:8080",
+			Routes: []filterapi.MCPRoute{
+				{
+					Name: "route1",
+					Backends: []filterapi.MCPBackend{
+						{
+							Name: "backend1",
+							ToolSelector: &filterapi.MCPToolSelector{
+								Include:      []string{"tool1", "tool2", "tool3"},
+								Exclude:      []string{"tool3"},
+								ExcludeRegex: []string{"^secret.*"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	err := proxy.LoadConfig(t.Context(), config)
+	require.NoError(t, err)
+	selector := proxy.routes["route1"].toolSelectors["backend1"]
+	require.NotNil(t, selector)
+	require.Contains(t, selector.include, "tool1")
+	require.Contains(t, selector.include, "tool2")
+	require.Contains(t, selector.include, "tool3")
+	require.Contains(t, selector.exclude, "tool3")
+	require.Len(t, selector.excludeRegexps, 1)
+	require.True(t, selector.allows("tool1"))
+	require.True(t, selector.allows("tool2"))
+	require.False(t, selector.allows("tool3"))       // excluded by exact match
+	require.False(t, selector.allows("secret_tool")) // excluded by regex
+}
+
 func TestLoadConfig_InvalidRegex(t *testing.T) {
 	proxy := &ProxyConfig{
 		mcpProxyConfig:     &mcpProxyConfig{},
@@ -242,6 +314,36 @@ func TestLoadConfig_InvalidRegex(t *testing.T) {
 	err := proxy.LoadConfig(t.Context(), config)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to compile include regex")
+}
+
+func TestLoadConfig_InvalidExcludeRegex(t *testing.T) {
+	proxy := &ProxyConfig{
+		mcpProxyConfig:     &mcpProxyConfig{},
+		toolChangeSignaler: newMultiWatcherSignaler(),
+	}
+
+	config := &filterapi.Config{
+		MCPConfig: &filterapi.MCPConfig{
+			BackendListenerAddr: "http://localhost:8080",
+			Routes: []filterapi.MCPRoute{
+				{
+					Name: "route1",
+					Backends: []filterapi.MCPBackend{
+						{
+							Name: "backend1",
+							ToolSelector: &filterapi.MCPToolSelector{
+								ExcludeRegex: []string{"[invalid"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	err := proxy.LoadConfig(t.Context(), config)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to compile exclude regex")
 }
 
 func TestLoadConfig_ToolSelectorChange(t *testing.T) {
