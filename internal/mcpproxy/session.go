@@ -393,18 +393,6 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 		return fmt.Errorf("failed to send GET request: %w", err)
 	}
 
-	switch httpResp.StatusCode {
-	case http.StatusNoContent, http.StatusMethodNotAllowed, http.StatusAccepted:
-		// No notifications.
-		_ = httpResp.Body.Close()
-		return nil
-	case http.StatusOK:
-	default:
-		body, _ := io.ReadAll(httpResp.Body)
-		_ = httpResp.Body.Close()
-		return fmt.Errorf("MCP GET request failed with status code %d, body=%s", httpResp.StatusCode, string(body))
-	}
-
 	defer func() {
 		_ = httpResp.Body.Close()
 	}()
@@ -423,6 +411,16 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 		bodyReader = gr
 	case "br":
 		bodyReader = brotli.NewReader(httpResp.Body)
+	}
+
+	switch httpResp.StatusCode {
+	case http.StatusNoContent, http.StatusMethodNotAllowed, http.StatusAccepted:
+		// No notifications.
+		return nil
+	case http.StatusOK:
+	default:
+		body, _ := io.ReadAll(bodyReader)
+		return fmt.Errorf("MCP GET request failed with status code %d, body=%s", httpResp.StatusCode, string(body))
 	}
 
 	if httpResp.Header.Get("Content-Type") == "application/json" {

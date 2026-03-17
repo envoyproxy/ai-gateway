@@ -7,6 +7,7 @@ package mcpproxy
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -206,6 +207,49 @@ func TestSendRequestPerBackend_AcceptEncoding(t *testing.T) {
 	}
 }
 
+func TestSendRequestPerBackend_GzipDecompression(t *testing.T) {
+	id1, _ := jsonrpc.MakeID("1")
+	msg1, _ := jsonrpc.EncodeMessage(&jsonrpc.Request{Method: "ping", ID: id1})
+	sseBody := "event: message\ndata: " + string(msg1) + "\n\n"
+
+	// Compress the SSE body with gzip.
+	var compressed bytes.Buffer
+	gw := gzip.NewWriter(&compressed)
+	_, err := gw.Write([]byte(sseBody))
+	require.NoError(t, err)
+	require.NoError(t, gw.Close())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Encoding", "gzip")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(compressed.Bytes())
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	s := &session{reqCtx: proxy}
+	ch := make(chan *backendEvent, 10)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	err = s.sendRequestPerBackend(ctx, ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+		sessionID: "sess1",
+	}, http.MethodGet, nil)
+	require.NoError(t, err)
+	close(ch)
+	var events []*backendEvent
+	for e := range ch {
+		events = append(events, e)
+	}
+	require.Len(t, events, 1, "expected 1 event from gzip-compressed response")
+	require.Equal(t, "message", events[0].event)
+	require.Len(t, events[0].messages, 1)
+	req, ok := events[0].messages[0].(*jsonrpc.Request)
+	require.True(t, ok)
+	require.Equal(t, "ping", req.Method)
+}
+
 func TestSendRequestPerBackend_BrotliDecompression(t *testing.T) {
 	id1, _ := jsonrpc.MakeID("1")
 	msg1, _ := jsonrpc.EncodeMessage(&jsonrpc.Request{Method: "ping", ID: id1})
@@ -237,11 +281,16 @@ func TestSendRequestPerBackend_BrotliDecompression(t *testing.T) {
 	}, http.MethodGet, nil)
 	require.NoError(t, err)
 	close(ch)
-	count := 0
-	for range ch {
-		count++
+	var events []*backendEvent
+	for e := range ch {
+		events = append(events, e)
 	}
-	require.Equal(t, 1, count, "expected 1 event from Brotli-compressed response")
+	require.Len(t, events, 1, "expected 1 event from Brotli-compressed response")
+	require.Equal(t, "message", events[0].event)
+	require.Len(t, events[0].messages, 1)
+	req, ok := events[0].messages[0].(*jsonrpc.Request)
+	require.True(t, ok)
+	require.Equal(t, "ping", req.Method)
 }
 
 func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
