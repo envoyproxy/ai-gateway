@@ -1418,6 +1418,36 @@ func TestPostRouteModify(t *testing.T) {
 		require.Equal(t, wrapperspb.Bool(false), route.GetRoute().GetAutoHostRewrite())
 		require.NotNil(t, route.TypedPerFilterConfig)
 	})
+
+	t.Run("with InferencePool extension and DirectResponse route action", func(t *testing.T) {
+		// When a route has a DirectResponse action (not Route_Route), GetRoute() returns nil.
+		// This should not cause a panic. Regression test for https://github.com/envoyproxy/ai-gateway/issues/1889.
+		route := &routev3.Route{
+			Name: "test-route-direct-response",
+			Action: &routev3.Route_DirectResponse{
+				DirectResponse: &routev3.DirectResponseAction{
+					Status: 403,
+				},
+			},
+		}
+		inferencePool := createInferencePoolExtensionResource("test-pool", "default")
+		req := &egextension.PostRouteModifyRequest{
+			Route: route,
+			PostRouteContext: &egextension.PostRouteExtensionContext{
+				ExtensionResources: []*egextension.ExtensionResource{inferencePool},
+			},
+		}
+		resp, err := s.PostRouteModify(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, route, resp.Route)
+
+		// Verify that GetRoute() is still nil (DirectResponse, not Route_Route).
+		require.Nil(t, route.GetRoute())
+		// Verify that no InferencePool configuration was applied to the non-forwarding route.
+		require.Nil(t, route.TypedPerFilterConfig)
+		require.Nil(t, route.Metadata)
+	})
 }
 
 // TestConstructInferencePoolsFrom tests the constructInferencePoolsFrom method.
