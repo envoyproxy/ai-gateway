@@ -14,6 +14,7 @@ import (
 	"io"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -101,6 +102,7 @@ type (
 		stream              bool
 		debugLogEnabled     bool
 		enableRedaction     bool
+		requestInitialized  bool
 	}
 	// upstreamProcessor implements [Processor] for the upstream filter for the standard LLM endpoints.
 	//
@@ -179,6 +181,56 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespons
 	return
 }
 
+// ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestHeaders(ctx context.Context, _ *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
+	if r.requestInitialized {
+		return r.passThroughProcessor.ProcessRequestHeaders(ctx, nil)
+	}
+
+	if !r.shouldInitializeFromHeaders() {
+		return r.passThroughProcessor.ProcessRequestHeaders(ctx, nil)
+	}
+
+	headerMutation, immediateResp, err := r.initRequest(ctx, nil)
+	if immediateResp != nil {
+		return immediateResp, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation:  headerMutation,
+					ClearRouteCache: true,
+				},
+			},
+		},
+	}, nil
+}
+
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) shouldInitializeFromHeaders() bool {
+	method := strings.ToUpper(r.requestHeaders[":method"])
+	switch method {
+	case "GET", "DELETE", "HEAD":
+		// These methods typically have no body. Only initialize here if no body is expected.
+	default:
+		return false
+	}
+
+	if te := strings.TrimSpace(r.requestHeaders["transfer-encoding"]); te != "" && !strings.EqualFold(te, "identity") {
+		return false
+	}
+	if cl := strings.TrimSpace(r.requestHeaders["content-length"]); cl != "" {
+		if n, err := strconv.Atoi(cl); err == nil && n > 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // formatUserFacingErrorJSON formats a user-facing error as a JSON response body.
 // Returns JSON in format: {"type":"error","error":{"type":"<errorType>","code":"<statusCode>","message":"<message>"}}
 func formatUserFacingErrorJSON(errorType string, statusCode int, message string) []byte {
@@ -207,14 +259,42 @@ func createUserFacingErrorResponse(statusCode int, errorType string, message str
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body, len(r.config.RequestCosts) > 0, r.requestHeaders)
+	if r.requestInitialized {
+		return r.passThroughProcessor.ProcessRequestBody(ctx, rawBody)
+	}
+
+	headerMutation, immediateResp, err := r.initRequest(ctx, rawBody.Body)
+	if immediateResp != nil {
+		return immediateResp, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestBody{
+			RequestBody: &extprocv3.BodyResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation:  headerMutation,
+					ClearRouteCache: true,
+				},
+			},
+		},
+	}, nil
+}
+
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) initRequest(ctx context.Context, rawBody []byte) (*extprocv3.HeaderMutation, *extprocv3.ProcessingResponse, error) {
+	if rawBody == nil {
+		rawBody = []byte{}
+	}
+	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody, len(r.config.RequestCosts) > 0, r.requestHeaders)
 	if err != nil {
 		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
 			// return to user as 400 -  e.g., "malformed request: failed to parse JSON for /v1/chat/completions"
 			r.logger.Error("returning user-facing error for malformed request", slog.String("error", err.Error()))
-			return createUserFacingErrorResponse(400, "BadRequest", userFacingErr.Error()), nil
+			return nil, createUserFacingErrorResponse(400, "BadRequest", userFacingErr.Error()), nil
 		}
-		return nil, fmt.Errorf("failed to parse request body: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 
 	// Use the request-scoped logger from context if available, otherwise fall back to processor logger
@@ -240,7 +320,7 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 		r.originalRequestBodyRaw = mutatedOriginalBody
 		r.forceBodyMutation = true
 	} else {
-		r.originalRequestBodyRaw = rawBody.Body
+		r.originalRequestBodyRaw = rawBody
 	}
 
 	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = originalModel
@@ -276,19 +356,10 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 		r.requestHeaders,
 		&headerMutationCarrier{m: headerMutation},
 		body,
-		rawBody.Body,
+		rawBody,
 	)
-
-	return &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_RequestBody{
-			RequestBody: &extprocv3.BodyResponse{
-				Response: &extprocv3.CommonResponse{
-					HeaderMutation:  headerMutation,
-					ClearRouteCache: true,
-				},
-			},
-		},
-	}, nil
+	r.requestInitialized = true
+	return headerMutation, nil, nil
 }
 
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) onRetry() bool {

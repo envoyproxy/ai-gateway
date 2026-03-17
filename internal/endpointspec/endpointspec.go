@@ -96,6 +96,12 @@ type (
 	SpeechEndpointSpec struct{}
 	// CreateFileEndpointSpec implements EndpointSpec for /v1/files.
 	CreateFileEndpointSpec struct{}
+	// RetrieveFileEndpointSpec implements EndpointSpec for GET /v1/files/{file_id}.
+	RetrieveFileEndpointSpec struct{}
+	// RetrieveFileEndpointSpec implements EndpointSpec for /v1/files/{file_id}/content.
+	RetrieveFileContentEndpointSpec struct{}
+	// DeleteFileEndpointSpce implements EndpointSpec for DELETE /v1/files/{file_id}.
+	DeleteFileEndpointSpec struct{}
 )
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -430,6 +436,84 @@ func (CreateFileEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema,
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (CreateFileEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.FileNewParams) (redactedReq *openai.FileNewParams, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (RetrieveFileEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+	requestHeaders map[string]string,
+) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	// RetrieveFile endpoint does not have a body.
+	return "", &struct{}{}, false, body, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (RetrieveFileEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIRetrieveFileTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewRetrieveFileOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (RetrieveFileEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (redactedReq *struct{}, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (RetrieveFileContentEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+	requestHeaders map[string]string,
+) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	// RetrieveFile endpoint does not have a body.
+	return "", &struct{}{}, false, body, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (RetrieveFileContentEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIRetrieveFileContentTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewRetrieveFileContentOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (RetrieveFileContentEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (redactedReq *struct{}, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (DeleteFileEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+	requestHeaders map[string]string,
+) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	// RetrieveFile endpoint does not have a body.
+	return "", &struct{}{}, false, body, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (DeleteFileEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIDeleteFileTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewDeleteFileOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (DeleteFileEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (redactedReq *struct{}, err error) {
 	// Placeholder if redaction is required in future
 	return req, nil
 }

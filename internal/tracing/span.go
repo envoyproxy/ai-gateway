@@ -46,13 +46,16 @@ func (s *span[RespT, ChunkT]) EndSpanOnError(statusCode int, body []byte) {
 
 // Type aliases tying generic implementations to concrete recorder contracts.
 type (
-	chatCompletionSpan  = span[openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
-	completionSpan      = span[openai.CompletionResponse, openai.CompletionResponse]
-	embeddingsSpan      = span[openai.EmbeddingResponse, struct{}]
-	imageGenerationSpan = span[openai.ImageGenerationResponse, struct{}]
-	responsesSpan       = span[openai.Response, openai.ResponseStreamEventUnion]
-	speechSpan          = span[[]byte, openai.SpeechStreamChunk]
-	rerankSpan          = span[cohereschema.RerankV2Response, struct{}]
-	messageSpan         = span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
-	createFileSpan      = span[openai.FileObject, struct{}]
+	chatCompletionSpan      = span[openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
+	completionSpan          = span[openai.CompletionResponse, openai.CompletionResponse]
+	embeddingsSpan          = span[openai.EmbeddingResponse, struct{}]
+	imageGenerationSpan     = span[openai.ImageGenerationResponse, struct{}]
+	responsesSpan           = span[openai.Response, openai.ResponseStreamEventUnion]
+	speechSpan              = span[[]byte, openai.SpeechStreamChunk]
+	rerankSpan              = span[cohereschema.RerankV2Response, struct{}]
+	messageSpan             = span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	createFileSpan          = span[openai.FileObject, struct{}]
+	retrieveFileSpan        = span[openai.FileObject, struct{}]
+	retrieveFileContentSpan = span[struct{}, struct{}]
+	deleteFileSpan          = span[openai.FileDeleted, struct{}]
 )
