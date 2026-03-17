@@ -22,11 +22,12 @@ var configTemplate string
 // Backend represents a network backend endpoint (OpenAI or MCP server).
 // Backends are rendered as Kubernetes Backend resources with optional TLS policy.
 type Backend struct {
-	Name     string // Backend resource name (e.g., "openai", "github")
-	Hostname string // Hostname for Backend endpoint (FQDN only)
-	IP       string // IP address for Backend endpoint (IPv4/IPv6 literal)
-	Port     int    // Port number
-	NeedsTLS bool   // Whether TLS is required for this backend.
+	Name        string // Backend resource name (e.g., "openai", "github")
+	Hostname    string // Hostname for Backend endpoint (FQDN only)
+	IP          string // IP address for Backend endpoint (IPv4/IPv6 literal)
+	Port        int    // Port number
+	NeedsTLS    bool   // Whether TLS is required for this backend.
+	IsTelemetry bool   // Whether this is a telemetry backend (e.g., OTLP collector).
 }
 
 // OpenAIConfig holds OpenAI-specific configuration for generating AIServiceBackend resources.
