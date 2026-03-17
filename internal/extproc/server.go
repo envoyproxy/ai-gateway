@@ -51,6 +51,12 @@ func loggerFromContext(ctx context.Context) *slog.Logger {
 	return nil
 }
 
+// prefixFactory pairs a URL path prefix with its ProcessorFactory.
+type prefixFactory struct {
+	prefix  string
+	factory ProcessorFactory
+}
+
 // Server implements the external processor server.
 type Server struct {
 	logger                        *slog.Logger
@@ -58,6 +64,7 @@ type Server struct {
 	enableRedaction               bool
 	config                        *filterapi.RuntimeConfig
 	processorFactories            map[string]ProcessorFactory
+	prefixFactories               []prefixFactory
 	routerProcessorsPerReqID      map[string]Processor
 	routerProcessorsPerReqIDMutex sync.RWMutex
 	uuidFn                        func() string
@@ -93,6 +100,14 @@ func (s *Server) Register(path string, newProcessor ProcessorFactory) {
 	s.processorFactories[path] = newProcessor
 }
 
+// RegisterPrefix registers a ProcessorFactory for all paths that have the given prefix.
+// When processorForPath cannot find an exact match, it performs a longest-prefix match
+// among all registered prefix factories.
+func (s *Server) RegisterPrefix(prefix string, factory ProcessorFactory) {
+	s.logger.Info("Registering prefix processor", slog.String("prefix", prefix))
+	s.prefixFactories = append(s.prefixFactories, prefixFactory{prefix: prefix, factory: factory})
+}
+
 var errNoProcessor = errors.New("no processor registered for the given path")
 
 // processorForPath returns the processor for the given path.
@@ -111,7 +126,17 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 
 	newProcessor, ok := s.processorFactories[path]
 	if !ok {
-		return nil, fmt.Errorf("%w: %s", errNoProcessor, path)
+		var best *prefixFactory
+		for i := range s.prefixFactories {
+			pf := &s.prefixFactories[i]
+			if strings.HasPrefix(path, pf.prefix) && (best == nil || len(pf.prefix) > len(best.prefix)) {
+				best = pf
+			}
+		}
+		if best == nil {
+			return nil, fmt.Errorf("%w: %s", errNoProcessor, path)
+		}
+		return best.factory(s.config, requestHeaders, logger, isUpstreamFilter, s.enableRedaction)
 	}
 	return newProcessor(s.config, requestHeaders, logger, isUpstreamFilter, s.enableRedaction)
 }
