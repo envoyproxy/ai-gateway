@@ -4,11 +4,11 @@ title: Supported API Endpoints
 sidebar_position: 9
 ---
 
-The Envoy AI Gateway provides OpenAI-compatible API endpoints as well as the Anthropic-compatible API for routing and managing LLM/AI traffic. This page documents which OpenAI API endpoints and Anthropic-compatible API endpoints are currently supported and their capabilities.
+The Envoy AI Gateway provides OpenAI-compatible API endpoints, the Anthropic-compatible API, and the native Gemini API for routing and managing LLM/AI traffic. This page documents which endpoints are currently supported and their capabilities.
 
 ## Overview
 
-The Envoy AI Gateway acts as a proxy that accepts OpenAI-compatible and Anthropic-compatible requests and routes them to various AI providers. While it maintains compatibility with the OpenAI API specification, it currently supports a subset of the full OpenAI API.
+The Envoy AI Gateway acts as a proxy that accepts OpenAI-compatible, Anthropic-compatible, and native Gemini API requests and routes them to various AI providers. While it maintains compatibility with these API specifications, it currently supports a subset of each full API.
 
 ## Supported Endpoints
 
@@ -275,6 +275,80 @@ curl -H "Content-Type: application/json" \
     ]
   }' \
   $GATEWAY_URL/cohere/v2/rerank
+```
+
+### Gemini Generate Content
+
+**Endpoint:** `POST /v1beta/models/{model}:generateContent`
+
+**Status:** ✅ Fully Supported
+
+**Description:** Generate content using the native Gemini API format. Clients such as Gemini CLI or the Google Generative AI SDK that target the Gemini API directly (not the OpenAI-compatible shim) can be pointed at the gateway without modification.
+
+**Features:**
+
+- ✅ Non-streaming responses
+- ✅ Function calling
+- ✅ Token usage tracking and cost calculation
+- ✅ System instructions
+- ✅ Safety settings
+- ✅ Model selection from URL path
+
+**Supported Providers:**
+
+- Google Vertex AI (with automatic path rewriting)
+
+**Example:**
+
+```bash
+curl -s -H "Content-Type: application/json" \
+  -H "x-goog-api-key: $X_GOOG_API_KEY" \
+  -d '{
+    "contents": [
+      {
+        "role": "user",
+        "parts": [{"text": "Hello, how are you?"}]
+      }
+    ]
+  }' \
+  $GATEWAY_URL/v1beta/models/gemini-3-flash-preview:generateContent
+```
+
+### Gemini Stream Generate Content
+
+**Endpoint:** `POST /v1beta/models/{model}:streamGenerateContent`
+
+**Status:** ✅ Fully Supported
+
+**Description:** Stream generated content using the native Gemini API format. Returns Server-Sent Events (SSE).
+
+**Features:**
+
+- ✅ Streaming responses (SSE)
+- ✅ Function calling
+- ✅ Token usage tracking and cost calculation
+- ✅ System instructions
+- ✅ Safety settings
+- ✅ Model selection from URL path
+
+**Supported Providers:**
+
+- Google Vertex AI (with automatic path rewriting)
+
+**Example:**
+
+```bash
+curl -s -H "Content-Type: application/json" \
+  -H "x-goog-api-key: $X_GOOG_API_KEY" \
+  -d '{
+    "contents": [
+      {
+        "role": "user",
+        "parts": [{"text": "Tell me a story."}]
+      }
+    ]
+  }' \
+  $GATEWAY_URL/v1beta/models/gemini-3-flash-preview:streamGenerateContent
 ```
 
 ### Models
