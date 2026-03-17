@@ -187,6 +187,10 @@ spec:
     - fqdn:
         hostname: otel-collector.monitoring
         port: 443
+  # TODO: Use BackendTLSPolicy once EG processBackendRefs supports BackendTLSPolicy for telemetry backends.
+  tls:
+    wellKnownCACertificates: System
+    sni: otel-collector.monitoring
 ---
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIServiceBackend
@@ -217,20 +221,6 @@ spec:
   validation:
     wellKnownCACertificates: "System"
     hostname: api.openai.com
----
-apiVersion: gateway.networking.k8s.io/v1alpha3
-kind: BackendTLSPolicy
-metadata:
-  name: otel-tls
-  namespace: default
-spec:
-  targetRefs:
-    - group: 'gateway.envoyproxy.io'
-      kind: Backend
-      name: otel
-  validation:
-    wellKnownCACertificates: "System"
-    hostname: otel-collector.monitoring
 ---
 # By default, Envoy Gateway sets the buffer limit to 32kiB which is not
 # sufficient for AI workloads. This ClientTrafficPolicy sets the buffer limit
