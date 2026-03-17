@@ -8405,6 +8405,8 @@ type FileNewParams struct {
 	Purpose FilePurpose `json:"purpose,omitzero"`
 	// The expiration policy for a file.
 	ExpiresAfter FileNewParamsExpiresAfter `json:"expires_after,omitzero"`
+	// Used for providing extra parameters like model_name that is not part of the standard OpenAI Files API.
+	ExtraBody map[string]any `json:"extra_body,omitzero"`
 }
 
 func (f *FileNewParams) UnmarshalMultipart(data []byte, boundary string) error {
@@ -8418,27 +8420,22 @@ func (f *FileNewParams) UnmarshalMultipart(data []byte, boundary string) error {
 			return err
 		}
 
-		if part.FormName() == "file" {
+		switch part.FormName() {
+		case "file":
 			f.File = part
-		}
-
-		if part.FormName() == "purpose" {
+		case "purpose":
 			purpose, err := io.ReadAll(part)
 			if err != nil {
 				return err
 			}
 			f.Purpose = FilePurpose(purpose)
-		}
-
-		if part.FormName() == "expires_after.anchor" {
+		case "expires_after.anchor":
 			anchor, err := io.ReadAll(part)
 			if err != nil {
 				return err
 			}
 			f.ExpiresAfter.Anchor = CreatedAt(anchor)
-		}
-
-		if part.FormName() == "expires_after.seconds" {
+		case "expires_after.seconds":
 			seconds, err := io.ReadAll(part)
 			if err != nil {
 				return err
@@ -8448,6 +8445,19 @@ func (f *FileNewParams) UnmarshalMultipart(data []byte, boundary string) error {
 				return err
 			}
 			f.ExpiresAfter.Seconds = secondsParsed
+		default:
+			// handles any non standard extra parameters. e.g we are using
+			// model_name for routing information.
+			extraBodyBytes, err := io.ReadAll(part)
+			if err != nil {
+				return err
+			}
+			extraBodyVal := any(extraBodyBytes)
+			if f.ExtraBody == nil {
+				f.ExtraBody = map[string]any{part.FormName(): extraBodyVal}
+			} else {
+				f.ExtraBody[part.FormName()] = extraBodyVal
+			}
 		}
 	}
 	return nil
