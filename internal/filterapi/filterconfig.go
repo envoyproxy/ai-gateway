@@ -114,7 +114,9 @@ const (
 	APISchemaOpenAI APISchemaName = "OpenAI"
 	// APISchemaCohere represents the Cohere API schema.
 	APISchemaCohere APISchemaName = "Cohere"
-	// APISchemaAWSBedrock represents the AWS Bedrock Converse API schema.
+	// APISchemaAWSBedrock represents the AWS Bedrock API schema.
+	// Used for models hosted on AWS Bedrock. Chat completions use the Converse API,
+	// while embeddings use the InvokeModel API.
 	APISchemaAWSBedrock APISchemaName = "AWSBedrock"
 	// APISchemaAzureOpenAI represents the Azure OpenAI API schema.
 	APISchemaAzureOpenAI APISchemaName = "AzureOpenAI"
