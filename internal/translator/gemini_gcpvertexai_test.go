@@ -269,17 +269,44 @@ func TestGeminiToGCPVertexAITranslator_ResponseBody(t *testing.T) {
 		require.Len(t, headers, 1)
 		require.Equal(t, "content-length", headers[0][0])
 		require.Equal(t, "gemini-flash", responseModel)
-		require.Equal(t, metrics.TokenUsage{}, tokenUsage, "token usage not extracted in passthrough mode")
+		var expectedUsage metrics.TokenUsage
+		expectedUsage.SetInputTokens(10)
+		expectedUsage.SetOutputTokens(8)
+		expectedUsage.SetTotalTokens(18)
+		require.Equal(t, expectedUsage, tokenUsage)
 	})
 
-	t.Run("passes through streaming response", func(t *testing.T) {
+	t.Run("extracts cached token count from non-streaming response", func(t *testing.T) {
+		translator := NewGeminiToGCPVertexAITranslator("gemini-flash", false)
+
+		responseBody := `{
+			"candidates": [{"content": {"parts": [{"text": "Hi"}], "role": "model"}}],
+			"usageMetadata": {
+				"promptTokenCount": 100,
+				"candidatesTokenCount": 10,
+				"totalTokenCount": 110,
+				"cachedContentTokenCount": 80
+			}
+		}`
+
+		_, _, tokenUsage, _, err := translator.ResponseBody(nil, bytes.NewReader([]byte(responseBody)), false, nil)
+		require.NoError(t, err)
+
+		var expectedUsage metrics.TokenUsage
+		expectedUsage.SetInputTokens(100)
+		expectedUsage.SetOutputTokens(10)
+		expectedUsage.SetTotalTokens(110)
+		expectedUsage.SetCachedInputTokens(80)
+		require.Equal(t, expectedUsage, tokenUsage)
+	})
+
+	t.Run("passes through streaming response and extracts usage from final event", func(t *testing.T) {
 		translator := NewGeminiToGCPVertexAITranslator("gemini-pro-1.5", true)
 
 		sseData := `data: {"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"}}]}
 
-data: {"candidates":[{"content":{"parts":[{"text":" world"}],"role":"model"}}]}
+data: {"candidates":[{"content":{"parts":[{"text":" world"}],"role":"model"}}],"usageMetadata":{"promptTokenCount":20,"candidatesTokenCount":5,"totalTokenCount":25}}
 
-data: [DONE]
 `
 
 		headers, mutatedBody, tokenUsage, responseModel, err := translator.ResponseBody(
@@ -294,7 +321,11 @@ data: [DONE]
 		require.Len(t, headers, 1)
 		require.Equal(t, "content-length", headers[0][0])
 		require.Equal(t, "gemini-pro-1.5", responseModel)
-		require.Equal(t, metrics.TokenUsage{}, tokenUsage)
+		var expectedUsage metrics.TokenUsage
+		expectedUsage.SetInputTokens(20)
+		expectedUsage.SetOutputTokens(5)
+		expectedUsage.SetTotalTokens(25)
+		require.Equal(t, expectedUsage, tokenUsage)
 	})
 
 	t.Run("handles empty response body", func(t *testing.T) {

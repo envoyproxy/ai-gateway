@@ -6,11 +6,13 @@
 package translator
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"strconv"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/gcp"
+	internaljson "github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
@@ -80,12 +82,10 @@ func (g *geminiToGCPVertexAITranslator) ResponseHeaders(_ map[string]string) (ne
 }
 
 // ResponseBody implements [GeminiGenerateContentTranslator.ResponseBody].
-// Passes the response through unchanged; token usage is not extracted (passthrough).
+// Passes the response through unchanged and extracts token usage from usageMetadata.
 func (g *geminiToGCPVertexAITranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracingapi.Span[struct{}, struct{}]) (
 	newHeaders []internalapi.Header, mutatedBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
-	// Read to drain the body so the upstream processor can continue, but return
-	// nil mutatedBody so the original bytes are passed through untouched.
 	mutatedBody, err = io.ReadAll(body)
 	if err != nil {
 		return nil, nil, metrics.TokenUsage{}, "", err
@@ -94,6 +94,52 @@ func (g *geminiToGCPVertexAITranslator) ResponseBody(_ map[string]string, body i
 		{contentLengthHeaderName, strconv.Itoa(len(mutatedBody))},
 	}
 	responseModel = g.model
+
+	// Extract token counts from usageMetadata for cost accounting and rate limiting.
+	// The response body is passed through to the client unchanged.
+	if g.streaming {
+		tokenUsage = extractUsageFromSSE(mutatedBody)
+	} else {
+		var resp gcp.GenerateContentResponse
+		if jsonErr := internaljson.Unmarshal(mutatedBody, &resp); jsonErr == nil && resp.UsageMetadata != nil {
+			applyUsageMetadata(resp.UsageMetadata, &tokenUsage)
+		}
+	}
+	return
+}
+
+// applyUsageMetadata populates a TokenUsage from a Gemini UsageMetadata response field.
+func applyUsageMetadata(u *gcp.GenerateContentUsageMetadata, usage *metrics.TokenUsage) {
+	usage.SetInputTokens(u.PromptTokenCount)
+	usage.SetOutputTokens(u.CandidatesTokenCount)
+	usage.SetTotalTokens(u.TotalTokenCount)
+	if u.CachedContentTokenCount > 0 {
+		usage.SetCachedInputTokens(u.CachedContentTokenCount)
+	}
+}
+
+// extractUsageFromSSE scans a Gemini SSE response body for the usageMetadata field.
+// Vertex AI includes usageMetadata in the final data event of a streamGenerateContent response.
+func extractUsageFromSSE(body []byte) (usage metrics.TokenUsage) {
+	const dataPrefix = "data: "
+	for line, rest, ok := bytes.Cut(body, []byte("\n")); ok || len(line) > 0; line, rest, ok = bytes.Cut(rest, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		if !bytes.HasPrefix(line, []byte(dataPrefix)) {
+			if !ok {
+				break
+			}
+			continue
+		}
+		payload := line[len(dataPrefix):]
+		var resp gcp.GenerateContentResponse
+		if internaljson.Unmarshal(payload, &resp) == nil && resp.UsageMetadata != nil {
+			applyUsageMetadata(resp.UsageMetadata, &usage)
+			// Don't break — take the last event that carries usageMetadata.
+		}
+		if !ok {
+			break
+		}
+	}
 	return
 }
 

@@ -41,6 +41,27 @@ type GenerateContentRequest struct {
 	SafetySettings []*genai.SafetySetting `json:"safetySettings,omitempty"`
 }
 
+// GenerateContentResponse is a minimal representation of the Gemini generateContent response,
+// used only to extract usageMetadata for token accounting. The full response body is passed
+// through to the client unchanged.
+//
+// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/GenerateContentResponse
+type GenerateContentResponse struct {
+	UsageMetadata *GenerateContentUsageMetadata `json:"usageMetadata,omitempty"`
+}
+
+// GenerateContentUsageMetadata holds the token counts reported by the Gemini API.
+//
+// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/GenerateContentResponse#UsageMetadata
+type GenerateContentUsageMetadata struct {
+	PromptTokenCount        uint32 `json:"promptTokenCount"`
+	CandidatesTokenCount    uint32 `json:"candidatesTokenCount"`
+	TotalTokenCount         uint32 `json:"totalTokenCount"`
+	CachedContentTokenCount uint32 `json:"cachedContentTokenCount,omitempty"`
+	ToolUsePromptTokenCount uint32 `json:"toolUsePromptTokenCount,omitempty"`
+	ThoughtsTokenCount      uint32 `json:"thoughtsTokenCount,omitempty"`
+}
+
 // https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings-api#syntax
 type Instance struct {
 	// The text that you want to generate embeddings for.
