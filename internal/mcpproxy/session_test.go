@@ -173,6 +173,36 @@ func TestSendRequestPerBackend_SetsOriginalPathHeaders(t *testing.T) {
 	}
 }
 
+func TestSendRequestPerBackend_NoUnsupportedAcceptEncoding(t *testing.T) {
+	headersCh := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- r.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+
+	s := &session{reqCtx: proxy}
+	ch := make(chan *backendEvent, 1)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+		sessionID: "sess1",
+	}, http.MethodGet, nil)
+	require.NoError(t, err)
+
+	select {
+	case hdr := <-headersCh:
+		ae := hdr.Get("Accept-Encoding")
+		require.NotContains(t, ae, "br", "Accept-Encoding must not advertise Brotli")
+		require.NotContains(t, ae, "zstd", "Accept-Encoding must not advertise zstd")
+	case <-ctx.Done():
+		require.Fail(t, "timed out waiting for backend request")
+	}
+}
+
 func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
 	// Provide two SSE events with valid JSON-RPC requests then close.
 	id1, _ := jsonrpc.MakeID("1")

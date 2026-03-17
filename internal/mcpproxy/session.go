@@ -349,7 +349,6 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 		req.Header.Set("Content-type", "application/json")
 	}
 	req.Header.Set("Accept", "text/event-stream, application/json")
-	req.Header.Set("Accept-encoding", "gzip, br, zstd, deflate")
 
 	// Forward configured headers to the backend.
 	// First, strip any client-provided headers that match configured forward headers to prevent forgery.
