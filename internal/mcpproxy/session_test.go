@@ -219,7 +219,7 @@ func TestSendRequestPerBackend_GzipDecompression(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, gw.Close())
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Content-Encoding", "gzip")
 		w.WriteHeader(http.StatusOK)
@@ -262,7 +262,7 @@ func TestSendRequestPerBackend_BrotliDecompression(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, bw.Close())
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Content-Encoding", "br")
 		w.WriteHeader(http.StatusOK)
