@@ -116,6 +116,12 @@ type (
 	OpenAISpeechTranslator = Translator[openai.SpeechRequest, tracingapi.SpeechSpan]
 	// OpenAICreateFileTranslator translates the OpenAI's /v1/files endpoint.
 	OpenAICreateFileTranslator = Translator[openai.FileNewParams, tracingapi.CreateFileSpan]
+	// OpenAIRetrieveFileTranslator translates the OpenAI's GET /v1/files/{file_id} endpoint.
+	OpenAIRetrieveFileTranslator = Translator[struct{}, tracingapi.RetrieveFileSpan]
+	// OpenAiRetrieveFileContentTranslator translates the OpenAI's /v1/files/{file_id}/content endpoint.
+	OpenAIRetrieveFileContentTranslator = Translator[struct{}, tracingapi.RetrieveFileContentSpan]
+	// OpenAIDeleteFileTranslator translates the OpenAI's DELETE /v1/files/{file_id} endpoint.
+	OpenAIDeleteFileTranslator = Translator[struct{}, tracingapi.DeleteFileSpan]
 )
 
 var (

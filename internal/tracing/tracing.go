@@ -28,16 +28,19 @@ import (
 var _ tracingapi.Tracing = (*tracingImpl)(nil)
 
 type tracingImpl struct {
-	chatCompletionTracer  tracingapi.ChatCompletionTracer
-	completionTracer      tracingapi.CompletionTracer
-	imageGenerationTracer tracingapi.ImageGenerationTracer
-	embeddingsTracer      tracingapi.EmbeddingsTracer
-	responsesTracer       tracingapi.ResponsesTracer
-	speechTracer          tracingapi.SpeechTracer
-	rerankTracer          tracingapi.RerankTracer
-	messageTracer         tracingapi.MessageTracer
-	mcpTracer             tracingapi.MCPTracer
-	createFileTracer      tracingapi.CreateFileTracer
+	chatCompletionTracer      tracingapi.ChatCompletionTracer
+	completionTracer          tracingapi.CompletionTracer
+	imageGenerationTracer     tracingapi.ImageGenerationTracer
+	embeddingsTracer          tracingapi.EmbeddingsTracer
+	responsesTracer           tracingapi.ResponsesTracer
+	speechTracer              tracingapi.SpeechTracer
+	rerankTracer              tracingapi.RerankTracer
+	messageTracer             tracingapi.MessageTracer
+	mcpTracer                 tracingapi.MCPTracer
+	createFileTracer          tracingapi.CreateFileTracer
+	retrieveFileTracer        tracingapi.RetrieveFileTracer
+	retrieveFileContentTracer tracingapi.RetrieveFileContentTracer
+	deleteFileTracer          tracingapi.DeleteFileTracer
 	// shutdown is nil when we didn't create tp.
 	shutdown func(context.Context) error
 }
@@ -89,6 +92,18 @@ func (t *tracingImpl) MessageTracer() tracingapi.MessageTracer {
 
 func (t *tracingImpl) CreateFileTracer() tracingapi.CreateFileTracer {
 	return t.createFileTracer
+}
+
+func (t *tracingImpl) RetrieveFileTracer() tracingapi.RetrieveFileTracer {
+	return t.retrieveFileTracer
+}
+
+func (t *tracingImpl) RetrieveFileContentTracer() tracingapi.RetrieveFileContentTracer {
+	return t.retrieveFileContentTracer
+}
+
+func (t *tracingImpl) DeleteFileTracer() tracingapi.DeleteFileTracer {
+	return t.deleteFileTracer
 }
 
 // Shutdown implements the same method as documented on tracingapi.Tracing.
@@ -213,6 +228,9 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 	rerankRecorder := cohere.NewRerankRecorderFromEnv()
 	messageRecorder := anthropic.NewMessageRecorderFromEnv()
 	createFileRecorder := openai.NewCreateFileRecorderFromEnv()
+	retrieveFileRecorder := openai.NewRetrieveFileRecorderFromEnv()
+	retrieveFileContentRecorder := openai.NewRetrieveFileContentRecorderFromEnv()
+	deleteFileRecorder := openai.NewDeleteFileRecorderFromEnv()
 
 	tracer := tp.Tracer("envoyproxy/ai-gateway")
 	return &tracingImpl{
@@ -267,6 +285,24 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			tracer,
 			propagator,
 			createFileRecorder,
+			headerAttrs,
+		),
+		retrieveFileTracer: newRetrieveFileTracer(
+			tracer,
+			propagator,
+			retrieveFileRecorder,
+			headerAttrs,
+		),
+		retrieveFileContentTracer: newRetrieveFileContentTracer(
+			tracer,
+			propagator,
+			retrieveFileContentRecorder,
+			headerAttrs,
+		),
+		deleteFileTracer: newDeleteFileTracer(
+			tracer,
+			propagator,
+			deleteFileRecorder,
 			headerAttrs,
 		),
 		mcpTracer: newMCPTracer(tracer, propagator, headerAttrs),

@@ -40,6 +40,12 @@ type (
 		MessageTracer() MessageTracer
 		// CreateFileTracer creates spans for OpenAI create file requests.
 		CreateFileTracer() CreateFileTracer
+		// RetrieveFileTracer creates spans for OpenAI retrieve file requests.
+		RetrieveFileTracer() RetrieveFileTracer
+		// RetrieveFileContentTracer creates spans for OpenAI retrieve file content requests.
+		RetrieveFileContentTracer() RetrieveFileContentTracer
+		// DeleteFileTracer creates spans for OpenAI delete file requests.
+		DeleteFileTracer() DeleteFileTracer
 		// MCPTracer creates spans for MCP requests.
 		MCPTracer() MCPTracer
 		// Shutdown shuts down the tracer, flushing any buffered spans.
@@ -77,6 +83,12 @@ type (
 	MessageTracer = RequestTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// CreateFileTracer creates spans for OpenAI create file requests.
 	CreateFileTracer = RequestTracer[openai.FileNewParams, openai.FileObject, struct{}]
+	// RetrieveFileTracer creates spans for OpenAI retrieve file requests.
+	RetrieveFileTracer = RequestTracer[struct{}, openai.FileObject, struct{}]
+	// RetrieveFileContentTracer creates spans for OpenAI retrieve file content requests.
+	RetrieveFileContentTracer = RequestTracer[struct{}, struct{}, struct{}]
+	// DeleteFileTracer creates spans for OpenAI delete file requests.
+	DeleteFileTracer = RequestTracer[struct{}, openai.FileDeleted, struct{}]
 )
 
 type (
@@ -110,6 +122,12 @@ type (
 	MessageSpan = Span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// CreateFileSpan represents an OpenAI create file request span.
 	CreateFileSpan = Span[openai.FileObject, struct{}]
+	// RetrieveFileSpan represents an OpenAI retrieve file request span.
+	RetrieveFileSpan = Span[openai.FileObject, struct{}]
+	// RetrieveFileContentSpan represents an OpenAI retrieve file content request span.
+	RetrieveFileContentSpan = Span[struct{}, struct{}]
+	// DeleteFileSpan represents an OpenAI delete file request span.
+	DeleteFileSpan = Span[openai.FileDeleted, struct{}]
 )
 
 type (
@@ -157,6 +175,12 @@ type (
 	MessageRecorder = SpanRecorder[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// CreateFileRecorder records attributes to a span according to a semantic convention.
 	CreateFileRecorder = SpanRecorder[openai.FileNewParams, openai.FileObject, struct{}]
+	// RetrieveFileRecorder records attributes to a span according to a semantic convention.
+	RetrieveFileRecorder = SpanRecorder[struct{}, openai.FileObject, struct{}]
+	// RetrieveFileContentRecorder records attributes to a span according to a semantic convention.
+	RetrieveFileContentRecorder = SpanRecorder[struct{}, struct{}, struct{}]
+	// DeleteFileRecorder records attributes to a span according to a semantic convention.
+	DeleteFileRecorder = SpanRecorder[struct{}, openai.FileDeleted, struct{}]
 )
 
 // NoopChunkRecorder provides a no-op RecordResponseChunks implementation for recorders that don't emit streaming chunks.
@@ -215,6 +239,18 @@ func (NoopTracing) CreateFileTracer() CreateFileTracer {
 	return NoopCreateFileTracer{}
 }
 
+func (NoopTracing) RetrieveFileTracer() RetrieveFileTracer {
+	return NoopRetrieveFileTracer{}
+}
+
+func (NoopTracing) RetrieveFileContentTracer() RetrieveFileContentTracer {
+	return NoopRetrieveFileContentTracer{}
+}
+
+func (NoopTracing) DeleteFileTracer() DeleteFileTracer {
+	return NoopDeleteFileTracer{}
+}
+
 // Shutdown implements Tracing.Shutdown.
 func (NoopTracing) Shutdown(context.Context) error {
 	return nil
@@ -241,6 +277,12 @@ type (
 	NoopMessageTracer = NoopTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// NoopCreateFileTracer implements CreateFileTracer.
 	NoopCreateFileTracer = NoopTracer[openai.FileNewParams, openai.FileObject, struct{}]
+	// NoopRetrieveFileTracer implements RetrieveFileTracer.
+	NoopRetrieveFileTracer = NoopTracer[struct{}, openai.FileObject, struct{}]
+	// NoopRetrieveFileContentTracer implements RetrieveFileContentTracer.
+	NoopRetrieveFileContentTracer = NoopTracer[struct{}, struct{}, struct{}]
+	// NoopDeleteFileTracer implements DeleteFileTracer.
+	NoopDeleteFileTracer = NoopTracer[struct{}, openai.FileDeleted, struct{}]
 )
 
 // StartSpanAndInjectHeaders implements RequestTracer.StartSpanAndInjectHeaders.
