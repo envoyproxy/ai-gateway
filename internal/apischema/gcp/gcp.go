@@ -132,7 +132,7 @@ type ImageParameters struct {
 // ImageOutputOptions specifies the output format and compression for generated images.
 type ImageOutputOptions struct {
 	MIMEType           string `json:"mimeType,omitempty"`
-	CompressionQuality *int    `json:"compressionQuality,omitempty"`
+	CompressionQuality *int   `json:"compressionQuality,omitempty"`
 }
 
 // ImagePrediction is a single image in the Imagen predict response.

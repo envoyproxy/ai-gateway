@@ -13,13 +13,14 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/genai"
+
 	"github.com/envoyproxy/ai-gateway/internal/apischema/gcp"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
-	"google.golang.org/genai"
 )
 
 // NewImageGenerationOpenAIToGCPVertexAITranslator implements [Factory] for OpenAI to GCP Vertex AI
@@ -41,7 +42,7 @@ type openAIToGCPVertexAIImageGenerationTranslator struct {
 	isImagenModel bool
 }
 
-func (o *openAIToGCPVertexAIImageGenerationTranslator) RequestBody(original []byte, openAIReq *openai.ImageGenerationRequest, forceBodyMutation bool) (
+func (o *openAIToGCPVertexAIImageGenerationTranslator) RequestBody(_ []byte, openAIReq *openai.ImageGenerationRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	o.requestModel = cmp.Or(o.modelNameOverride, openAIReq.Model)
@@ -58,7 +59,7 @@ func (o *openAIToGCPVertexAIImageGenerationTranslator) RequestBody(original []by
 			return
 		}
 		newBody, err = json.Marshal(imgGenReq)
-		path = buildGCPModelPathSuffix(gcpModelPublisherGoogle, string(o.requestModel), gcpMethodPredict)
+		path = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodPredict)
 	} else {
 		var geminiReq *gcp.GenerateContentRequest
 		geminiReq, err = openAIToGeminiRequest(openAIReq)
@@ -66,7 +67,7 @@ func (o *openAIToGCPVertexAIImageGenerationTranslator) RequestBody(original []by
 			return
 		}
 		newBody, err = json.Marshal(geminiReq)
-		path = buildGCPModelPathSuffix(gcpModelPublisherGoogle, string(o.requestModel), gcpMethodGenerateContent)
+		path = buildGCPModelPathSuffix(gcpModelPublisherGoogle, o.requestModel, gcpMethodGenerateContent)
 	}
 	if err != nil {
 		err = fmt.Errorf("failed to encode request: %w", err)
@@ -148,7 +149,7 @@ func openAIToImagenRequest(req *openai.ImageGenerationRequest) (*gcp.ImagePredic
 			{Prompt: req.Prompt},
 		},
 		Parameters: &gcp.ImageParameters{
-			SampleCount:     int(cmp.Or(req.N, 1)),
+			SampleCount:     cmp.Or(req.N, 1),
 			AspectRatio:     aspectRatio,
 			SampleImageSize: sampleImageSize,
 			OutputOptions:   outputOptions,
@@ -183,7 +184,7 @@ func openAIToGeminiRequest(req *openai.ImageGenerationRequest) (*gcp.GenerateCon
 			},
 		},
 		GenerationConfig: &genai.GenerationConfig{
-			CandidateCount: int32(cmp.Or(req.N, 1)),
+			CandidateCount: int32(cmp.Or(req.N, 1)), //nolint:gosec
 		},
 	}, nil
 }
@@ -254,9 +255,9 @@ func geminiToOpenAIResponse(resp *genai.GenerateContentResponse, tokenUsage *met
 			InputTokens:  int(inputTokens),
 			OutputTokens: int(outputTokens),
 		}
-		tokenUsage.SetInputTokens(uint32(inputTokens))
-		tokenUsage.SetOutputTokens(uint32(outputTokens))
-		tokenUsage.SetTotalTokens(uint32(totalTokens))
+		tokenUsage.SetInputTokens(uint32(inputTokens))   //nolint:gosec
+		tokenUsage.SetOutputTokens(uint32(outputTokens)) //nolint:gosec
+		tokenUsage.SetTotalTokens(uint32(totalTokens))   //nolint:gosec
 	}
 
 	return &openai.ImageGenerationResponse{

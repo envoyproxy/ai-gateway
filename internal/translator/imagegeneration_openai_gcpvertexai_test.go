@@ -266,7 +266,7 @@ func TestGCPVertexAIImageGeneration_ResponseBody_Imagen(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, headers)
 	require.Equal(t, contentLengthHeaderName, headers[0].Key())
-	require.Equal(t, "imagen-4.0-generate-001", string(responseModel))
+	require.Equal(t, "imagen-4.0-generate-001", responseModel)
 
 	var got openai.ImageGenerationResponse
 	require.NoError(t, json.Unmarshal(body, &got))
@@ -275,7 +275,7 @@ func TestGCPVertexAIImageGeneration_ResponseBody_Imagen(t *testing.T) {
 	require.Equal(t, "enhanced prompt", got.Data[0].RevisedPrompt)
 	require.Equal(t, "aW1hZ2VkYXRhMg==", got.Data[1].B64JSON)
 	require.Equal(t, "png", got.OutputFormat)
-	require.True(t, got.Created > 0)
+	require.Positive(t, got.Created)
 
 	// Imagen has no token usage.
 	inputTokens, inputOk := tokenUsage.InputTokens()
@@ -340,7 +340,7 @@ func TestGCPVertexAIImageGeneration_ResponseBody_Gemini(t *testing.T) {
 
 	_, body, tokenUsage, responseModel, err := tr.ResponseBody(nil, bytes.NewReader(respBody), false, nil)
 	require.NoError(t, err)
-	require.Equal(t, "gemini-2.0-flash-exp", string(responseModel))
+	require.Equal(t, "gemini-2.0-flash-exp", responseModel)
 
 	var got openai.ImageGenerationResponse
 	require.NoError(t, json.Unmarshal(body, &got))

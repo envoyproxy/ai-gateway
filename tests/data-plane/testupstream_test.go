@@ -190,7 +190,7 @@ func TestWithTestUpstream(t *testing.T) {
 				require.Equal(t, "aW1hZ2VkYXRh", resp.Data[0].B64JSON)
 				require.Equal(t, "aW1hZ2VkYXRhMg==", resp.Data[1].B64JSON)
 				require.Equal(t, "png", resp.OutputFormat)
-				require.True(t, resp.Created > 0)
+				require.Positive(t, resp.Created)
 			},
 		},
 		{
