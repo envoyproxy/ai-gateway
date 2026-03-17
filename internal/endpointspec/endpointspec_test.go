@@ -213,7 +213,7 @@ func TestMessagesEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(map[string]any{"stream": true})
 		require.NoError(t, err)
 
-		_, _, _, _, err = spec.ParseBody(body, false)
+		_, _, _, _, err = spec.ParseBody(body, false, map[string]string{})
 		require.ErrorContains(t, err, "model field is required")
 	})
 
@@ -259,7 +259,7 @@ func TestRerankEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "rerank-v3.5", model)
 		require.False(t, stream)
@@ -281,7 +281,7 @@ func TestRerankEndpointSpec_GetTranslator(t *testing.T) {
 func TestResponsesEndpointSpec_ParseBody(t *testing.T) {
 	spec := ResponsesEndpointSpec{}
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
+		_, _, _, _, err := spec.ParseBody([]byte("{"), false, map[string]string{})
 		require.ErrorContains(t, err, "malformed request")
 	})
 
