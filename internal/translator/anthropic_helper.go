@@ -624,11 +624,13 @@ func mapReasoningEffortToOutputConfigEffort(reasonEffort openaisdk.ReasoningEffo
 // into the parameter struct required by the Anthropic SDK.
 // The apiSchema parameter indicates the backend API schema (e.g., "AWSAnthropic", "GCPAnthropic").
 func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string) (params *anthropic.MessageNewParams, err error) {
-	// 1. Handle simple parameters and defaults.
+	// 1. Handle simple parameters.
 	// max_tokens is required by the Anthropic API but optional in the OpenAI API.
-	// Use a default when neither is provided.
-	const defaultMaxTokens = int64(4096)
-	maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens, ptr.To(defaultMaxTokens))
+	// If not set, pass 0 and let the Anthropic API reject the request.
+	var maxTokensVal int64
+	if maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens); maxTokens != nil {
+		maxTokensVal = *maxTokens
+	}
 
 	// Translate openAI contents to anthropic params.
 	// 2. Translate messages and system prompts.
@@ -646,7 +648,7 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 	// 4. Construct the final struct in one place.
 	params = &anthropic.MessageNewParams{
 		Messages:   messages,
-		MaxTokens:  *maxTokens,
+		MaxTokens:  maxTokensVal,
 		System:     systemBlocks,
 		Tools:      tools,
 		ToolChoice: toolChoice,

@@ -284,7 +284,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
 	})
 
-	t.Run("Missing MaxTokens Uses Default", func(t *testing.T) {
+	t.Run("Missing MaxTokens Passes With Zero", func(t *testing.T) {
 		missingTokensReq := &openai.ChatCompletionRequest{
 			Model:    claudeTestModel,
 			Messages: []openai.ChatCompletionMessageParamUnion{},

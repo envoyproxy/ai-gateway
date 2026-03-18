@@ -284,7 +284,7 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.Contains(t, err.Error(), fmt.Sprintf(tempNotSupportedError, *invalidTempReq.Temperature))
 	})
 
-	t.Run("Missing MaxTokens Uses Default", func(t *testing.T) {
+	t.Run("Missing MaxTokens Passes With Zero", func(t *testing.T) {
 		missingTokensReq := &openai.ChatCompletionRequest{
 			Model:    "anthropic.claude-3-opus-20240229-v1:0",
 			Messages: []openai.ChatCompletionMessageParamUnion{},
