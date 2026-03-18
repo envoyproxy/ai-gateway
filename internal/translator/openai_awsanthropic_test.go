@@ -290,8 +290,9 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			Messages: []openai.ChatCompletionMessageParamUnion{},
 		}
 		translator := NewChatCompletionOpenAIToAWSAnthropicTranslator("", "")
-		_, _, err := translator.RequestBody(nil, missingTokensReq, false)
+		_, body, err := translator.RequestBody(nil, missingTokensReq, false)
 		require.NoError(t, err)
+		require.Equal(t, int64(0), gjson.GetBytes(body, "max_tokens").Int())
 	})
 }
 
