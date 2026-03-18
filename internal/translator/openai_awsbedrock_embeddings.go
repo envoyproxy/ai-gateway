@@ -141,9 +141,9 @@ func (o *openAIToAWSBedrockTranslatorV1Embedding) ResponseError(
 		return nil, nil, fmt.Errorf("read error body: %w", err)
 	}
 
-	// Already OpenAI-style error. passthrough
+	// Already OpenAI-style error — return nil headers to preserve original response headers.
 	if isJSON(contentType) && awsErrorType == "" {
-		return buildHeaders(rawBody), rawBody, nil
+		return nil, rawBody, nil
 	}
 
 	var openaiErr openai.Error

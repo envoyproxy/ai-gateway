@@ -6,9 +6,11 @@
 package translator
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
@@ -16,6 +18,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
+	tracingapi "github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 func TestEmbeddingOpenAIToAWSBedrockTranslator_RequestBody(t *testing.T) {
@@ -152,6 +155,62 @@ func TestEmbeddingOpenAIToAWSBedrockTranslator_RequestBody(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEmbeddingOpenAIToAWSBedrockTranslator_RequestBody_MarshalError(t *testing.T) {
+	orig := json.Marshal
+	t.Cleanup(func() { json.Marshal = orig })
+	json.Marshal = func(any) ([]byte, error) { return nil, fmt.Errorf("injected marshal error") }
+
+	translator := NewEmbeddingOpenAIToAWSBedrockTranslator("")
+	req := openai.EmbeddingRequest{
+		Model: "amazon.titan-embed-text-v2:0",
+		Input: openai.EmbeddingRequestInput{Value: "test"},
+	}
+	_, _, err := translator.RequestBody(nil, &req, false)
+	require.ErrorContains(t, err, "failed to marshal body")
+}
+
+func TestEmbeddingOpenAIToAWSBedrockTranslator_ResponseBody_MarshalError(t *testing.T) {
+	orig := json.Marshal
+	t.Cleanup(func() { json.Marshal = orig })
+	json.Marshal = func(any) ([]byte, error) { return nil, errors.New("injected marshal error") }
+
+	translator := NewEmbeddingOpenAIToAWSBedrockTranslator("").(*openAIToAWSBedrockTranslatorV1Embedding)
+	translator.requestModel = "amazon.titan-embed-text-v2:0"
+
+	_, _, _, _, err := translator.ResponseBody(
+		map[string]string{"content-type": "application/json"},
+		strings.NewReader(`{"embedding":[0.1],"inputTextTokenCount":1}`),
+		false,
+		nil,
+	)
+	require.ErrorContains(t, err, "failed to marshal OpenAI embedding response")
+}
+
+func TestEmbeddingOpenAIToAWSBedrockTranslator_ResponseError_ReadError(t *testing.T) {
+	translator := NewEmbeddingOpenAIToAWSBedrockTranslator("").(*openAIToAWSBedrockTranslatorV1Embedding)
+
+	_, _, err := translator.ResponseError(
+		map[string]string{statusHeaderName: "500"},
+		iotest.ErrReader(errors.New("injected read error")),
+	)
+	require.ErrorContains(t, err, "read error body")
+}
+
+func TestEmbeddingOpenAIToAWSBedrockTranslator_ResponseError_MarshalError(t *testing.T) {
+	orig := json.Marshal
+	t.Cleanup(func() { json.Marshal = orig })
+	json.Marshal = func(any) ([]byte, error) { return nil, errors.New("injected marshal error") }
+
+	translator := NewEmbeddingOpenAIToAWSBedrockTranslator("").(*openAIToAWSBedrockTranslatorV1Embedding)
+
+	// non-JSON body with no content-type → buildGenericError → json.Marshal fails
+	_, _, err := translator.ResponseError(
+		map[string]string{statusHeaderName: "503"},
+		strings.NewReader("Service Unavailable"),
+	)
+	require.ErrorContains(t, err, "marshal error body")
 }
 
 func TestEmbeddingOpenAIToAWSBedrockTranslator_ResponseHeaders(t *testing.T) {
@@ -320,13 +379,42 @@ func TestEmbeddingOpenAIToAWSBedrockTranslator_ResponseBody(t *testing.T) {
 	}
 }
 
+// mockEmbeddingsSpan is a test implementation of tracingapi.EmbeddingsSpan.
+type mockEmbeddingsSpan struct {
+	recordedResponse *openai.EmbeddingResponse
+}
+
+func (m *mockEmbeddingsSpan) RecordResponseChunk(_ *struct{})               {}
+func (m *mockEmbeddingsSpan) RecordResponse(resp *openai.EmbeddingResponse) { m.recordedResponse = resp }
+func (m *mockEmbeddingsSpan) EndSpanOnError(_ int, _ []byte)                {}
+func (m *mockEmbeddingsSpan) EndSpan()                                      {}
+
+var _ tracingapi.EmbeddingsSpan = (*mockEmbeddingsSpan)(nil)
+
+func TestEmbeddingOpenAIToAWSBedrockTranslator_ResponseBody_SpanRecorded(t *testing.T) {
+	translator := NewEmbeddingOpenAIToAWSBedrockTranslator("").(*openAIToAWSBedrockTranslatorV1Embedding)
+	translator.requestModel = "amazon.titan-embed-text-v2:0"
+
+	span := &mockEmbeddingsSpan{}
+	_, _, _, _, err := translator.ResponseBody(
+		map[string]string{"content-type": "application/json"},
+		strings.NewReader(`{"embedding":[0.1,0.2],"inputTextTokenCount":2}`),
+		true,
+		span,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, span.recordedResponse)
+	require.Equal(t, "amazon.titan-embed-text-v2:0", span.recordedResponse.Model)
+}
+
 func TestEmbeddingOpenAIToAWSBedrockTranslator_ResponseError(t *testing.T) {
 	tests := []struct {
-		name      string
-		headers   map[string]string
-		body      string
-		wantErr   bool
-		wantError openai.Error
+		name           string
+		headers        map[string]string
+		body           string
+		wantErr        bool
+		wantNilHeaders bool
+		wantError      openai.Error
 	}{
 		{
 			name: "JSON Bedrock error with x-amzn-errortype",
@@ -410,7 +498,8 @@ func TestEmbeddingOpenAIToAWSBedrockTranslator_ResponseError(t *testing.T) {
 				statusHeaderName:      "422",
 				contentTypeHeaderName: "application/json",
 			},
-			body: `{"type":"error","error":{"type":"UnprocessableEntity","code":"422","message":"invalid request body: AWS Bedrock Titan does not support batch embeddings (got 2 inputs)"}}`,
+			body:           `{"type":"error","error":{"type":"UnprocessableEntity","code":"422","message":"invalid request body: AWS Bedrock Titan does not support batch embeddings (got 2 inputs)"}}`,
+			wantNilHeaders: true,
 			wantError: openai.Error{
 				Type: "error",
 				Error: openai.ErrorType{
@@ -433,11 +522,15 @@ func TestEmbeddingOpenAIToAWSBedrockTranslator_ResponseError(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.Len(t, headers, 2)
-			require.Equal(t, contentTypeHeaderName, headers[0].Key())
-			require.Equal(t, jsonContentType, headers[0].Value()) //nolint:testifylint
-			require.Equal(t, contentLengthHeaderName, headers[1].Key())
-			require.Equal(t, fmt.Sprintf("%d", len(body)), headers[1].Value())
+			if tc.wantNilHeaders {
+				require.Nil(t, headers)
+			} else {
+				require.Len(t, headers, 2)
+				require.Equal(t, contentTypeHeaderName, headers[0].Key())
+				require.Equal(t, jsonContentType, headers[0].Value()) //nolint:testifylint
+				require.Equal(t, contentLengthHeaderName, headers[1].Key())
+				require.Equal(t, fmt.Sprintf("%d", len(body)), headers[1].Value())
+			}
 
 			var actualErr openai.Error
 			require.NoError(t, json.Unmarshal(body, &actualErr))
