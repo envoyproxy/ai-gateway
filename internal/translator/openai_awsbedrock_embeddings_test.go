@@ -384,10 +384,12 @@ type mockEmbeddingsSpan struct {
 	recordedResponse *openai.EmbeddingResponse
 }
 
-func (m *mockEmbeddingsSpan) RecordResponseChunk(_ *struct{})               {}
-func (m *mockEmbeddingsSpan) RecordResponse(resp *openai.EmbeddingResponse) { m.recordedResponse = resp }
-func (m *mockEmbeddingsSpan) EndSpanOnError(_ int, _ []byte)                {}
-func (m *mockEmbeddingsSpan) EndSpan()                                      {}
+func (m *mockEmbeddingsSpan) RecordResponseChunk(_ *struct{}) {}
+func (m *mockEmbeddingsSpan) RecordResponse(resp *openai.EmbeddingResponse) {
+	m.recordedResponse = resp
+}
+func (m *mockEmbeddingsSpan) EndSpanOnError(_ int, _ []byte) {}
+func (m *mockEmbeddingsSpan) EndSpan()                       {}
 
 var _ tracingapi.EmbeddingsSpan = (*mockEmbeddingsSpan)(nil)
 
