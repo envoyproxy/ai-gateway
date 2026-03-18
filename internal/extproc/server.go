@@ -143,6 +143,8 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 	var internalReqID string
 	var originalReqID string
 	var logger *slog.Logger
+	// Seed the context with the server-level logger as a fallback so that loggerFromContext never returns nil in processMsg.
+	ctx = context.WithValue(ctx, loggerContextKey, s.logger)
 	defer func() {
 		if !isUpstreamFilter {
 			s.routerProcessorsPerReqIDMutex.Lock()
@@ -283,11 +285,15 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 				)
 			}
 		}
-		if s.debugLogEnabled {
+		if s.debugLogEnabled && resp != nil && resp.Response != nil {
 			var logContent any
 			if s.enableRedaction {
-				rh := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
-				logContent = redactProcessingResponseRequestHeaders(rh, s.logger, sensitiveHeaderKeys)
+				switch val := resp.Response.(type) {
+				case *extprocv3.ProcessingResponse_RequestHeaders:
+					logContent = redactProcessingResponseRequestHeaders(val, s.logger, sensitiveHeaderKeys)
+				case *extprocv3.ProcessingResponse_ImmediateResponse:
+					logContent = val
+				}
 			} else {
 				logContent = resp
 			}

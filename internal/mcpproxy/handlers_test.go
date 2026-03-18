@@ -20,6 +20,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
@@ -255,11 +256,15 @@ func TestServePOST_InitializeRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.ElementsMatch(t, []filterapi.MCPBackendName{"backend1"}, slices.Collect(maps.Keys(perBackendSessions)))
 
-	count, sum := testotel.GetHistogramValues(t, mr, "mcp.initialization.duration", attribute.NewSet())
+	// backend1 is the only backend that successfully initialized.
+	count, sum := testotel.GetHistogramValues(t, mr, "mcp.initialization.duration", attribute.NewSet(
+		attribute.String("mcp.backend", "backend1"),
+	))
 	require.Equal(t, 1, int(count)) // nolint: gosec
 	require.Greater(t, sum, 0.0)
 
 	capaCount := testotel.GetCounterValue(t, mr, "mcp.capabilities.negotiated", attribute.NewSet(
+		attribute.String("mcp.backend", "backend1"),
 		attribute.String("capability.type", "tools"),
 		attribute.String("capability.side", "server")))
 	require.Equal(t, 1, int(capaCount))
@@ -616,16 +621,23 @@ func TestServePOST_ToolsCallRequest(t *testing.T) {
 			var countAttrs, durationAttrs attribute.Set
 			if tt.wantStatus == http.StatusOK {
 				countAttrs = attribute.NewSet(
+					attribute.String("mcp.backend", tt.wantBackend),
 					attribute.String("mcp.method.name", "tools/call"),
 					attribute.String("status", "success"),
 				)
-				durationAttrs = attribute.NewSet()
+				durationAttrs = attribute.NewSet(
+					attribute.String("mcp.backend", tt.wantBackend),
+				)
 			} else {
 				countAttrs = attribute.NewSet(
+					attribute.String("mcp.backend", tt.wantBackend),
 					attribute.String("mcp.method.name", "tools/call"),
 					attribute.String("status", "error"),
 				)
-				durationAttrs = attribute.NewSet(attribute.String("error.type", string(metrics.MCPErrorInvalidParam)))
+				durationAttrs = attribute.NewSet(
+					attribute.String("mcp.backend", tt.wantBackend),
+					attribute.String("error.type", string(metrics.MCPErrorInvalidParam)),
+				)
 			}
 
 			methodCount := testotel.GetCounterValue(t, mr, "mcp.method.count", countAttrs)
@@ -688,7 +700,7 @@ func TestHandleToolCallRequest_UnknownBackend(t *testing.T) {
 	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	rr := httptest.NewRecorder()
 
-	err := proxy.handleToolCallRequest(t.Context(), s, rr, &jsonrpc.Request{}, params, nil, httpReq)
+	_, err := proxy.handleToolCallRequest(t.Context(), s, rr, &jsonrpc.Request{}, params, nil, httpReq)
 	require.Error(t, err)
 
 	require.Equal(t, http.StatusNotFound, rr.Code)
@@ -719,7 +731,7 @@ func TestHandleToolCallRequest_BackendError(t *testing.T) {
 	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	rr := httptest.NewRecorder()
 
-	err := proxy.handleToolCallRequest(t.Context(), s, rr, &jsonrpc.Request{}, params, nil, httpReq)
+	_, err := proxy.handleToolCallRequest(t.Context(), s, rr, &jsonrpc.Request{}, params, nil, httpReq)
 	require.Error(t, err)
 
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -776,7 +788,7 @@ func TestHandleToolCallRequest_InvalidToolName(t *testing.T) {
 	id := mustJSONRPCRequestID()
 	req := &jsonrpc.Request{ID: id, Method: "tools/call"}
 
-	err := reqCtx.handleToolCallRequest(t.Context(), s, rr, req, params, nil, httpReq)
+	_, err := reqCtx.handleToolCallRequest(t.Context(), s, rr, req, params, nil, httpReq)
 	// JSON-RPC errors are application-level errors that should be returned for proper metrics tracking,
 	// but they're not treated as span exceptions since the protocol worked correctly.
 	require.Error(t, err)
@@ -840,7 +852,7 @@ func TestHandleToolCallRequest_ToolResultWithIsError(t *testing.T) {
 	id := mustJSONRPCRequestID()
 	req := &jsonrpc.Request{ID: id, Method: "tools/call"}
 
-	err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil, httpReq)
+	_, err := proxy.handleToolCallRequest(t.Context(), s, rr, req, params, nil, httpReq)
 	// isError: true means the tool executed successfully but returned an error result.
 	// An error is returned for proper metrics tracking, but it's treated as an application-level
 	// error (not a span exception) since the protocol worked correctly and the LLM needs to see these errors.
@@ -1365,7 +1377,7 @@ func TestMCPProxy_handleCompletionComplete(t *testing.T) {
 		},
 	} {
 		rr := httptest.NewRecorder()
-		err := proxy.handleCompletionComplete(t.Context(), &session{
+		_, err := proxy.handleCompletionComplete(t.Context(), &session{
 			reqCtx: proxy,
 			perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
 				"backend1": {sessionID: "test-session"},
@@ -1392,36 +1404,73 @@ func TestMCPProxy_handlePing(t *testing.T) {
 }
 
 func TestMCPPRoxy_handleSetLoggingLevel(t *testing.T) {
-	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"id","result":{}}`))
-	}))
-	t.Cleanup(testServer.Close)
+	t.Run("backend with logging capability", func(t *testing.T) {
+		var callCount atomic.Int32
+		testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			callCount.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"id","result":{}}`))
+		}))
+		t.Cleanup(testServer.Close)
 
-	reqID, _ := jsonrpc.MakeID("id")
+		reqID, _ := jsonrpc.MakeID("id")
 
-	proxy := newTestMCPProxy()
-	proxy.backendListenerAddr = testServer.URL
-	rr := httptest.NewRecorder()
-	s := &session{
-		reqCtx: proxy,
-		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
-			"backend": {sessionID: "test-session"},
-		},
-	}
-	err := proxy.handleSetLoggingLevel(t.Context(), s, rr, &jsonrpc.Request{ID: reqID, Method: "logging/setLevel"}, &mcp.SetLoggingLevelParams{}, nil)
-	require.NoError(t, err)
+		proxy := newTestMCPProxy()
+		proxy.backendListenerAddr = testServer.URL
+		rr := httptest.NewRecorder()
+		s := &session{
+			reqCtx: proxy,
+			route:  "test-route",
+			perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"backend1": {
+					sessionID:    "test-session",
+					capabilities: &mcp.ServerCapabilities{Logging: &mcp.LoggingCapabilities{}},
+				},
+			},
+		}
+		err := proxy.handleSetLoggingLevel(t.Context(), s, rr, &jsonrpc.Request{ID: reqID, Method: "logging/setLevel"}, &mcp.SetLoggingLevelParams{}, nil)
+		require.NoError(t, err)
 
-	require.Equal(t, http.StatusOK, rr.Code)
-	require.Contains(t, rr.Body.String(), `data: {"jsonrpc":"2.0","id":"id","result":{}}`)
+		require.Equal(t, http.StatusOK, rr.Code)
+		require.Contains(t, rr.Body.String(), `data: {"jsonrpc":"2.0","id":"id","result":{}}`)
+		require.Equal(t, int32(1), callCount.Load(), "backend with logging capability should be called")
+	})
+
+	t.Run("backend without logging capability is not called", func(t *testing.T) {
+		testServer := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			t.Fatal("backend without logging capability should not be called")
+		}))
+		t.Cleanup(testServer.Close)
+
+		reqID, _ := jsonrpc.MakeID("id")
+
+		proxy := newTestMCPProxy()
+		proxy.backendListenerAddr = testServer.URL
+		rr := httptest.NewRecorder()
+		s := &session{
+			reqCtx: proxy,
+			route:  "test-route",
+			perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"backend1": {
+					sessionID: "test-session-1",
+					capabilities: &mcp.ServerCapabilities{
+						Tools: &mcp.ToolCapabilities{ListChanged: true},
+					},
+				},
+			},
+		}
+		err := proxy.handleSetLoggingLevel(t.Context(), s, rr, &jsonrpc.Request{ID: reqID, Method: "logging/setLevel"}, &mcp.SetLoggingLevelParams{}, nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, rr.Code)
+	})
 }
 
 func TestMCPPRoxy_handleResourceReadRequest(t *testing.T) {
 	t.Run("invalid resource name", func(t *testing.T) {
 		proxy := newTestMCPProxy()
 		rr := httptest.NewRecorder()
-		err := proxy.handleResourceReadRequest(t.Context(), nil, rr,
+		_, err := proxy.handleResourceReadRequest(t.Context(), nil, rr,
 			&jsonrpc.Request{Method: "resources/subscribe"}, &mcp.ReadResourceParams{
 				URI: "invalid-form",
 			},
@@ -1450,7 +1499,7 @@ func TestMCPPRoxy_handleResourceReadRequest(t *testing.T) {
 		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "test-session"}},
 		route:              "test-route",
 	}
-	err := proxy.handleResourceReadRequest(t.Context(), s, rr, &jsonrpc.Request{ID: reqID, Method: "resources/read"}, &mcp.ReadResourceParams{
+	_, err := proxy.handleResourceReadRequest(t.Context(), s, rr, &jsonrpc.Request{ID: reqID, Method: "resources/read"}, &mcp.ReadResourceParams{
 		URI: downstreamResourceURI("file://foo-resource", "backend1"),
 	})
 	require.NoError(t, err)
@@ -1535,7 +1584,7 @@ func TestMCPProxy_handleClientToServerNotificationsProgress(t *testing.T) {
 				route:              "test-route",
 			}
 			params := &mcp.ProgressNotificationParams{ProgressToken: tc.inputProgressToken}
-			err := proxy.handleClientToServerNotificationsProgress(t.Context(), s, rr,
+			_, err := proxy.handleClientToServerNotificationsProgress(t.Context(), s, rr,
 				&jsonrpc.Request{Method: "notifications/progress"}, params, nil)
 			if rr.Code != http.StatusOK {
 				require.Error(t, err)
@@ -1632,7 +1681,7 @@ func TestMCPProxy_handleClientToServerResponse(t *testing.T) {
 	t.Run("invalid IDs", func(t *testing.T) {
 		proxy := newTestMCPProxy()
 		rr := httptest.NewRecorder()
-		err := proxy.handleClientToServerResponse(t.Context(), nil, rr, &jsonrpc.Response{})
+		_, err := proxy.handleClientToServerResponse(t.Context(), nil, rr, &jsonrpc.Response{})
 		require.Error(t, err)
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 		require.Contains(t, rr.Body.String(), "invalid response ID type: <nil>")
@@ -1640,7 +1689,7 @@ func TestMCPProxy_handleClientToServerResponse(t *testing.T) {
 		invalidID, err := jsonrpc.MakeID("invalidformatid")
 		require.NoError(t, err)
 		rr = httptest.NewRecorder()
-		err = proxy.handleClientToServerResponse(t.Context(), nil, rr, &jsonrpc.Response{ID: invalidID})
+		_, err = proxy.handleClientToServerResponse(t.Context(), nil, rr, &jsonrpc.Response{ID: invalidID})
 		require.Error(t, err)
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 		require.Contains(t, rr.Body.String(), "invalid response ID format: invalidformatid")
@@ -1648,7 +1697,7 @@ func TestMCPProxy_handleClientToServerResponse(t *testing.T) {
 		invalidID2, err := jsonrpc.MakeID("__foo__")
 		require.NoError(t, err)
 		rr = httptest.NewRecorder()
-		err = proxy.handleClientToServerResponse(t.Context(), nil, rr, &jsonrpc.Response{ID: invalidID2})
+		_, err = proxy.handleClientToServerResponse(t.Context(), nil, rr, &jsonrpc.Response{ID: invalidID2})
 		require.ErrorContains(t, err, `invalid response ID type identifier: foo`)
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 		require.Contains(t, rr.Body.String(), `invalid response ID type identifier`)
@@ -1719,7 +1768,7 @@ func TestMCPProxy_handleClientToServerResponse(t *testing.T) {
 			proxy.backendListenerAddr = testServer.URL
 
 			rr := httptest.NewRecorder()
-			err := proxy.handleClientToServerResponse(t.Context(), &session{
+			_, err := proxy.handleClientToServerResponse(t.Context(), &session{
 				reqCtx:             proxy,
 				perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "test-session"}},
 				route:              "test-route",
@@ -1818,9 +1867,9 @@ func TestMCPServer_handleResourcesSubscriptionRequest(t *testing.T) {
 			}
 			switch pp := tc.p.(type) {
 			case *mcp.SubscribeParams:
-				err = proxy.handleResourcesSubscribeRequest(t.Context(), s, rr, req, pp, nil)
+				_, err = proxy.handleResourcesSubscribeRequest(t.Context(), s, rr, req, pp, nil)
 			case *mcp.UnsubscribeParams:
-				err = proxy.handleResourcesUnsubscribeRequest(t.Context(), s, rr, req, pp, nil)
+				_, err = proxy.handleResourcesUnsubscribeRequest(t.Context(), s, rr, req, pp, nil)
 			}
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, rr.Code)
@@ -1837,7 +1886,7 @@ func Test_sendToAllBackendsAndAggregateResponsesImpl(t *testing.T) {
 	type testData struct {
 		Value string `json:"value"`
 	}
-	events := make(chan *sseEvent)
+	events := make(chan *backendEvent)
 	go func() {
 		for _, msg := range []jsonrpc.Message{
 			&jsonrpc.Response{ID: reqID, Result: []byte(`{"value": "foo"}`)},
@@ -1850,13 +1899,15 @@ func Test_sendToAllBackendsAndAggregateResponsesImpl(t *testing.T) {
 			// Error should be logged and ignored, not blocking the response.
 			&jsonrpc.Response{ID: reqID, Error: errors.New("some error")},
 		} {
-			events <- &sseEvent{backend: "a", messages: []jsonrpc.Message{msg}}
+			events <- &backendEvent{sseEvent: &sseEvent{backend: "a", messages: []jsonrpc.Message{msg}}}
 		}
 		close(events)
 	}()
 
 	rr := httptest.NewRecorder()
+	var testParams *mcp.ListToolsParams
 	err = sendToAllBackendsAndAggregateResponsesImpl(t.Context(), events, proxy, rr, s, &jsonrpc.Request{ID: reqID, Method: "test"},
+		testParams,
 		func(_ *session, res []broadCastResponse[testData]) testData {
 			var combined testData
 			for _, r := range res {

@@ -78,7 +78,7 @@ spec:
               {{- $endpointPrefixes = append $endpointPrefixes (printf "anthropic:%s" $anthropic) -}}
             {{- end -}}
             {{- if $endpointPrefixes }}
-            - --endpointPrefixes={{ join "," $endpointPrefixes }}
+            - "--endpointPrefixes={{ join "," $endpointPrefixes }}"
             {{- end }}
             {{- if .Values.extProc.extraEnvVars }}
             - --extProcExtraEnvVars={{ include "ai-gateway-helm.extProc.envVarsString" . }}

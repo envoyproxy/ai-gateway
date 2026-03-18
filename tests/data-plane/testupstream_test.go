@@ -179,13 +179,19 @@ func TestWithTestUpstream(t *testing.T) {
 			expResponseBody: `unsupported path: /unknown`,
 		},
 		{
-			name:            "openai - /v1/chat/completions - malformed JSON request",
-			backend:         "openai",
-			path:            "/v1/chat/completions",
-			method:          http.MethodPost,
-			requestBody:     `{"model": "something", "messages": [invalid json`,
-			expStatus:       http.StatusBadRequest,
-			expResponseBody: `{"type":"error","error":{"type":"BadRequest","code":"400","message":"malformed request: failed to parse JSON for /v1/chat/completions"}}`,
+			name:        "openai - /v1/chat/completions - malformed JSON request",
+			backend:     "openai",
+			path:        "/v1/chat/completions",
+			method:      http.MethodPost,
+			requestBody: `{"model": "something", "messages": [invalid json`,
+			expStatus:   http.StatusBadRequest,
+			expResponseBodyFunc: func(t require.TestingT, body []byte) {
+				bodyStr := string(body)
+				require.Contains(t, bodyStr, `"type":"error"`)
+				require.Contains(t, bodyStr, `"type":"BadRequest"`)
+				require.Contains(t, bodyStr, `"code":"400"`)
+				require.Contains(t, bodyStr, `malformed request: failed to parse JSON for /v1/chat/completions:`)
+			},
 		},
 		{
 			name:            "gcp-anthropicai - /v1/chat/completions - missing max_tokens",

@@ -14,6 +14,7 @@ In this getting started guide you'll find quickstart setups to connect to the fo
 
 - [Tetrate Agent Router Service (TARS)](./tars.md) - Connect to Tetrate Agent Router Service's models
 - [OpenAI](./openai.md) - Connect to OpenAI's GPT models
+- [Anthropic](./anthropic.md) - Connect to Anthropic's Claude models
 - [AWS Bedrock](./aws-bedrock.md) - Access AWS Bedrock's suite of foundation models
 - [Azure OpenAI](./azure-openai.md) - Access Azure OpenAI's suite of foundation models
 - [GCP VertexAI](./gcp-vertexai.md) - Access GCP Gemini and Anthropic models on VertexAI
@@ -42,6 +43,7 @@ Choose your provider to get started:
 
 - [Connect Tetrate Agent Router Service (TARS)](./tars.md)
 - [Connect OpenAI](./openai.md)
+- [Connect Anthropic](./anthropic.md)
 - [Connect AWS Bedrock](./aws-bedrock.md)
 - [Connect Azure OpenAI](./azure-openai.md)
 - [Connect GCP VertexAI](./gcp-vertexai.md)
