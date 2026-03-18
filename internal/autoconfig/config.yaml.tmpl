@@ -298,6 +298,12 @@ spec:
         hostname: {{ .Hostname }}
         port: {{ .Port }}
     {{- end }}
+{{- if and .IsTelemetry .NeedsTLS }}
+  # TODO: Use BackendTLSPolicy once EG processBackendRefs supports BackendTLSPolicy for telemetry backends.
+  tls:
+    wellKnownCACertificates: System
+    sni: {{ .Hostname }}
+{{- end }}
 ---
 {{- end }}
 {{- if .OpenAI }}
@@ -355,7 +361,7 @@ spec:
 ---
 {{- end }}
 {{- range .Backends }}
-{{- if .NeedsTLS }}
+{{- if and .NeedsTLS (not .IsTelemetry) }}
 apiVersion: gateway.networking.k8s.io/v1alpha3
 kind: BackendTLSPolicy
 metadata:
