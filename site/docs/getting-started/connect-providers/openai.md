@@ -130,7 +130,7 @@ To use more models, add more [AIGatewayRouteRule]s to the `openai.yaml` file wit
 For example, let's add [o1] as a chat completion model, and [text-embedding-ada-002](https://platform.openai.com/docs/models/text-embedding-ada-002) as embedding models:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: envoy-ai-gateway-basic-openai

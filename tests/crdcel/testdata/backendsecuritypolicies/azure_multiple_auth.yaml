@@ -3,7 +3,7 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: azure-multiple-auth-provider-policy

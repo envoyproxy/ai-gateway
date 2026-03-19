@@ -25,7 +25,7 @@ Envoy AI Gateway supports provider fallback to ensure high availability and reli
 Below is an example configuration that demonstrates provider fallback from a failing upstream to AWS Bedrock:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: provider-fallback

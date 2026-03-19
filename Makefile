@@ -96,28 +96,37 @@ editorconfig:
 	@echo "running editorconfig-checker"
 	@$(GO_TOOL) editorconfig-checker
 
-# This re-generates the CRDs for the API defined in the api/v1alpha1 directory.
+# This re-generates the CRDs for the API defined in the api directory.
+# Both v1alpha1 and v1beta1 are included for multi-version CRD support.
+# Object (deepcopy) generation runs separately per package to output to correct dirs.
 .PHONY: apigen
 apigen: ## Generate CRDs for the API defined in the api directory.
-	@echo "apigen => ./api/v1alpha1/..."
-	@$(GO_TOOL) controller-gen object crd paths="./api/v1alpha1/..." output:dir=./api/v1alpha1 output:crd:dir=./manifests/charts/ai-gateway-crds-helm/templates
+	@echo "apigen => ./api/v1alpha1/... (object)"
+	@$(GO_TOOL) controller-gen object paths="./api/v1alpha1/..." output:dir=./api/v1alpha1
+	@echo "apigen => ./api/v1beta1/... (object)"
+	@$(GO_TOOL) controller-gen object paths="./api/v1beta1/..." output:dir=./api/v1beta1
+	@echo "apigen => ./api/... (crd)"
+	@$(GO_TOOL) controller-gen crd paths="./api/v1alpha1/..." paths="./api/v1beta1/..." output:crd:dir=./manifests/charts/ai-gateway-crds-helm/templates
 
-# This generates the API documentation for the API defined in the api/v1alpha1 directory.
+# This generates the API documentation for the API defined in the api directory.
+# Generates merged docs for all API versions (v1beta1 and v1alpha1).
 .PHONY: apidoc
 apidoc: ## Generate API documentation for the API defined in the api directory.
+	@echo "apidoc => generating API reference for all versions..."
 	@$(GO_TOOL) crd-ref-docs \
-		--source-path=api/v1alpha1 \
+		--source-path=api \
 		--config=site/crd-ref-docs/config-core.yaml \
 		--templates-dir=site/crd-ref-docs/templates \
 		--max-depth 20 \
 		--output-path site/docs/api/api.mdx \
 		--renderer=markdown
+	@echo "apidoc => API documentation generated at site/docs/api/api.mdx"
 
 # This generates typed client, listers, and informers for the API.
 .PHONY: codegen
 codegen: ## Generate typed client, listers, and informers for the API.
 	@echo "codegen => generating kubernetes clients..."
-	@echo "codegen => generating clientset..."
+	@echo "codegen => generating clientset for v1alpha1..."
 	@$(GO_TOOL) client-gen \
 		--clientset-name="versioned" \
 		--input-base="" \
@@ -126,14 +135,14 @@ codegen: ## Generate typed client, listers, and informers for the API.
 		--output-dir="./api/v1alpha1/client/clientset" \
 		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/clientset" \
 		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies"
-	@echo "codegen => generating listers..."
+	@echo "codegen => generating listers for v1alpha1..."
 	@$(GO_TOOL) lister-gen \
 		--go-header-file=/dev/null \
 		--output-dir="./api/v1alpha1/client/listers" \
 		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/listers" \
 		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies" \
 		"github.com/envoyproxy/ai-gateway/api/v1alpha1"
-	@echo "codegen => generating informers..."
+	@echo "codegen => generating informers for v1alpha1..."
 	@$(GO_TOOL) informer-gen \
 		--go-header-file=/dev/null \
 		--versioned-clientset-package="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/clientset/versioned" \
@@ -142,6 +151,31 @@ codegen: ## Generate typed client, listers, and informers for the API.
 		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1alpha1/client/informers" \
 		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies" \
 		"github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	@echo "codegen => generating clientset for v1beta1..."
+	@$(GO_TOOL) client-gen \
+		--clientset-name="versioned" \
+		--input-base="" \
+		--input="github.com/envoyproxy/ai-gateway/api/v1beta1" \
+		--go-header-file=/dev/null \
+		--output-dir="./api/v1beta1/client/clientset" \
+		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1beta1/client/clientset" \
+		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies"
+	@echo "codegen => generating listers for v1beta1..."
+	@$(GO_TOOL) lister-gen \
+		--go-header-file=/dev/null \
+		--output-dir="./api/v1beta1/client/listers" \
+		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1beta1/client/listers" \
+		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies" \
+		"github.com/envoyproxy/ai-gateway/api/v1beta1"
+	@echo "codegen => generating informers for v1beta1..."
+	@$(GO_TOOL) informer-gen \
+		--go-header-file=/dev/null \
+		--versioned-clientset-package="github.com/envoyproxy/ai-gateway/api/v1beta1/client/clientset/versioned" \
+		--listers-package="github.com/envoyproxy/ai-gateway/api/v1beta1/client/listers" \
+		--output-dir="./api/v1beta1/client/informers" \
+		--output-pkg="github.com/envoyproxy/ai-gateway/api/v1beta1/client/informers" \
+		--plural-exceptions="BackendSecurityPolicy:BackendSecurityPolicies" \
+		"github.com/envoyproxy/ai-gateway/api/v1beta1"
 	@echo "codegen => complete"
 
 ##@ Testing

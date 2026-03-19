@@ -21,7 +21,7 @@ import (
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
 
 // InferencePoolController implements [reconcile.TypedReconciler] for [gwaiev1.InferencePool].
@@ -89,7 +89,7 @@ func (c *InferencePoolController) syncInferencePool(ctx context.Context, inferen
 }
 
 // routeReferencesInferencePool checks if an AIGatewayRoute references the given InferencePool.
-func (c *InferencePoolController) routeReferencesInferencePool(route *aigv1a1.AIGatewayRoute, inferencePoolName string) bool {
+func (c *InferencePoolController) routeReferencesInferencePool(route *aigv1b1.AIGatewayRoute, inferencePoolName string) bool {
 	for _, rule := range route.Spec.Rules {
 		for _, backendRef := range rule.BackendRefs {
 			if backendRef.IsInferencePool() && backendRef.Name == inferencePoolName {
@@ -151,7 +151,7 @@ func (c *InferencePoolController) validateExtensionReference(ctx context.Context
 // gatewayReferencesInferencePool checks if a Gateway references the given InferencePool through any routes.
 func (c *InferencePoolController) gatewayReferencesInferencePool(ctx context.Context, gateway *gwapiv1.Gateway, inferencePoolName string, inferencePoolNamespace string) bool {
 	// Check AIGatewayRoutes in the same namespace as the InferencePool that reference this Gateway.
-	var aiGatewayRoutes aigv1a1.AIGatewayRouteList
+	var aiGatewayRoutes aigv1b1.AIGatewayRouteList
 	if err := c.client.List(ctx, &aiGatewayRoutes, client.InNamespace(inferencePoolNamespace)); err != nil {
 		c.logger.Error(err, "failed to list AIGatewayRoutes", "gateway", gateway.Name, "namespace", inferencePoolNamespace)
 		return false
@@ -337,7 +337,7 @@ func (c *InferencePoolController) gatewayEventHandler(ctx context.Context, obj c
 
 // aiGatewayRouteEventHandler returns an event handler for AIGatewayRoute resources.
 func (c *InferencePoolController) aiGatewayRouteEventHandler(_ context.Context, obj client.Object) []reconcile.Request {
-	route, ok := obj.(*aigv1a1.AIGatewayRoute)
+	route, ok := obj.(*aigv1b1.AIGatewayRoute)
 	if !ok {
 		return nil
 	}

@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
@@ -85,7 +85,7 @@ func NewAIGatewayRouteController(
 func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
 	c.logger.Info("Reconciling AIGatewayRoute", "namespace", req.Namespace, "name", req.Name)
 
-	var aiGatewayRoute aigv1a1.AIGatewayRoute
+	var aiGatewayRoute aigv1b1.AIGatewayRoute
 	if err := c.client.Get(ctx, req.NamespacedName, &aiGatewayRoute); err != nil {
 		if client.IgnoreNotFound(err) == nil {
 			c.logger.Info("Deleting AIGatewayRoute",
@@ -97,10 +97,10 @@ func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 
 	if err := c.syncAIGatewayRoute(ctx, &aiGatewayRoute); err != nil {
 		c.logger.Error(err, "failed to sync AIGatewayRoute")
-		c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, aigv1a1.ConditionTypeNotAccepted, err.Error())
+		c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, aigv1b1.ConditionTypeNotAccepted, err.Error())
 		return ctrl.Result{}, err
 	}
-	c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, aigv1a1.ConditionTypeAccepted, "AI Gateway Route reconciled successfully")
+	c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, aigv1b1.ConditionTypeAccepted, "AI Gateway Route reconciled successfully")
 	return reconcile.Result{}, nil
 }
 
@@ -117,7 +117,7 @@ func getRouteNotFoundFilterName(baseName string) string {
 }
 
 // generateHTTPRouteFilters returns two HTTPRouteFilter with the given AIGatewayRoute.
-func generateHTTPRouteFilters(aiGatewayRoute *aigv1a1.AIGatewayRoute) []*egv1a1.HTTPRouteFilter {
+func generateHTTPRouteFilters(aiGatewayRoute *aigv1b1.AIGatewayRoute) []*egv1a1.HTTPRouteFilter {
 	ns := aiGatewayRoute.Namespace
 	baseName := aiGatewayRoute.Name
 
@@ -160,7 +160,7 @@ func generateHTTPRouteFilters(aiGatewayRoute *aigv1a1.AIGatewayRoute) []*egv1a1.
 
 // syncAIGatewayRoute is the main logic for reconciling the AIGatewayRoute resource.
 // This is decoupled from the Reconcile method to centralize the error handling and status updates.
-func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
+func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGatewayRoute *aigv1b1.AIGatewayRoute) error {
 	if handleFinalizer(ctx, c.client, c.logger, aiGatewayRoute, c.syncGateways) { // Propagate the AIGatewayRoute deletion all the way up to relevant Gateways.
 		return nil
 	}
@@ -243,7 +243,7 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 }
 
 // newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
-func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
+func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1b1.AIGatewayRoute) error {
 	rewriteFilters := []gwapiv1.HTTPRouteFilter{{
 		Type: gwapiv1.HTTPRouteFilterExtensionRef,
 		ExtensionRef: &gwapiv1.LocalObjectReference{
@@ -359,7 +359,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 }
 
 // syncGateways synchronizes the gateways referenced by the AIGatewayRoute by sending events to the gateway controller.
-func (c *AIGatewayRouteController) syncGateways(ctx context.Context, aiGatewayRoute *aigv1a1.AIGatewayRoute) error {
+func (c *AIGatewayRouteController) syncGateways(ctx context.Context, aiGatewayRoute *aigv1b1.AIGatewayRoute) error {
 	for _, p := range aiGatewayRoute.Spec.ParentRefs {
 		gwNamespace := aiGatewayRoute.Namespace
 		if p.Namespace != nil {
@@ -385,8 +385,8 @@ func (c *AIGatewayRouteController) syncGateway(ctx context.Context, namespace, n
 	c.gatewayEventChan <- event.GenericEvent{Object: &gw}
 }
 
-func (c *AIGatewayRouteController) backend(ctx context.Context, namespace, name string) (*aigv1a1.AIServiceBackend, error) {
-	backend := &aigv1a1.AIServiceBackend{}
+func (c *AIGatewayRouteController) backend(ctx context.Context, namespace, name string) (*aigv1b1.AIServiceBackend, error) {
+	backend := &aigv1b1.AIServiceBackend{}
 	if err := c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backend); err != nil {
 		return nil, err
 	}
@@ -397,9 +397,9 @@ func (c *AIGatewayRouteController) backend(ctx context.Context, namespace, name 
 // and returns the AIServiceBackend if valid.
 func (c *AIGatewayRouteController) validateAndGetBackend(
 	ctx context.Context,
-	aiGatewayRoute *aigv1a1.AIGatewayRoute,
-	backendRef *aigv1a1.AIGatewayRouteRuleBackendRef,
-) (*aigv1a1.AIServiceBackend, error) {
+	aiGatewayRoute *aigv1b1.AIGatewayRoute,
+	backendRef *aigv1b1.AIGatewayRouteRuleBackendRef,
+) (*aigv1b1.AIServiceBackend, error) {
 	backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
 
 	// Validate cross-namespace reference if applicable
@@ -424,7 +424,7 @@ func (c *AIGatewayRouteController) validateAndGetBackend(
 }
 
 // updateAIGatewayRouteStatus updates the status of the AIGatewayRoute.
-func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Context, route *aigv1a1.AIGatewayRoute, conditionType string, message string) {
+func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Context, route *aigv1b1.AIGatewayRoute, conditionType string, message string) {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if err := c.client.Get(ctx, client.ObjectKey{Name: route.Name, Namespace: route.Namespace}, route); err != nil {
 			if apierrors.IsNotFound(err) {
@@ -443,7 +443,7 @@ func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Contex
 
 // Build an annotation that contains the priority of each backend ref. This is used to ensure Envoy Gateway reconciles the
 // HTTP route when the priorities change.
-func buildPriorityAnnotation(rules []aigv1a1.AIGatewayRouteRule) string {
+func buildPriorityAnnotation(rules []aigv1b1.AIGatewayRouteRule) string {
 	priorities := make([]string, 0, len(rules))
 	for i, rule := range rules {
 		for _, br := range rule.BackendRefs {
