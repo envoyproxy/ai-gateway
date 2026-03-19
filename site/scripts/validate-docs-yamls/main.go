@@ -1,5 +1,5 @@
 // validate-docs-yamls validates all Kubernetes YAML example files under
-// docs/*/examples/ using kubeconform.
+// docs/*/examples/ and the top-level examples/ directory using kubeconform.
 //
 // CRD schemas are extracted directly from manifests/charts/ai-gateway-crds-helm/templates/
 // so that custom resources (AIGatewayRoute, MCPRoute, etc.) are fully validated against the
@@ -13,6 +13,7 @@
 //
 //	-kubernetes-version  Kubernetes version to validate against (default: 1.31.0)
 //	-docs-dir            Path to the docs directory (auto-detected if empty)
+//	-examples-dir        Path to the top-level examples directory (auto-detected if empty)
 //	-crds-dir            Path to the CRD templates directory (auto-detected if empty)
 //	-verbose             Print status for all resources, not just failures
 package main
@@ -32,6 +33,7 @@ import (
 func main() {
 	k8sVersion := flag.String("kubernetes-version", "1.31.0", "Kubernetes version to validate against")
 	docsDir := flag.String("docs-dir", "", "Path to the docs directory (auto-detected if empty)")
+	examplesDir := flag.String("examples-dir", "", "Path to the top-level examples directory (auto-detected if empty)")
 	crdsDir := flag.String("crds-dir", "", "Path to CRD templates directory (auto-detected if empty)")
 	verbose := flag.Bool("verbose", false, "Print status for all resources, not just failures")
 	flag.Parse()
@@ -39,6 +41,11 @@ func main() {
 	// Auto-detect docs dir.
 	if *docsDir == "" {
 		*docsDir = mustFindDir("docs")
+	}
+
+	// Auto-detect top-level examples dir.
+	if *examplesDir == "" {
+		*examplesDir = mustFindDir("examples")
 	}
 
 	// Auto-detect CRDs dir.
@@ -53,19 +60,27 @@ func main() {
 		fatalf("extracting CRD schemas: %v", err)
 	}
 
-	exitCode := run(*docsDir, schemaDir, *k8sVersion, *verbose)
+	exitCode := run(*docsDir, *examplesDir, schemaDir, *k8sVersion, *verbose)
 	os.RemoveAll(schemaDir)
 	os.Exit(exitCode)
 }
 
-func run(docsDir, schemaDir, k8sVersion string, verbose bool) int {
+func run(docsDir, examplesDir, schemaDir, k8sVersion string, verbose bool) int {
 	yamlFiles, err := findExampleYAMLs(docsDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: finding YAML files: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error: finding YAML files in docs: %v\n", err)
 		return 1
 	}
+
+	repoExamples, err := findAllYAMLs(examplesDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: finding YAML files in examples: %v\n", err)
+		return 1
+	}
+	yamlFiles = append(yamlFiles, repoExamples...)
+
 	if len(yamlFiles) == 0 {
-		fmt.Fprintf(os.Stderr, "error: no YAML files found under %s\n", docsDir)
+		fmt.Fprintf(os.Stderr, "error: no YAML files found\n")
 		return 1
 	}
 
@@ -229,6 +244,41 @@ func findExampleYAMLs(docsDir string) ([]string, error) {
 		return nil
 	})
 	return files, err
+}
+
+// findAllYAMLs returns all .yaml/.yml files recursively under dir that
+// contain at least one Kubernetes resource (identified by having both
+// "apiVersion:" and "kind:" keys).
+func findAllYAMLs(dir string) ([]string, error) {
+	var files []string
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		if ext != ".yaml" && ext != ".yml" {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if hasKubernetesResources(data) {
+			files = append(files, path)
+		}
+		return nil
+	})
+	return files, err
+}
+
+// hasKubernetesResources reports whether the YAML content contains at least
+// one document with top-level "apiVersion:" and "kind:" keys.
+func hasKubernetesResources(data []byte) bool {
+	return strings.Contains(string(data), "apiVersion:") &&
+		strings.Contains(string(data), "kind:")
 }
 
 // mustFindDir walks up from the working directory looking for a directory
