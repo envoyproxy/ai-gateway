@@ -23,7 +23,7 @@ func TestOpenAIToAzureOpenAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				originalReq := &openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: stream}
 
 				o := &openAIToAzureOpenAITranslatorV1ChatCompletion{apiVersion: "some-version"}
-				hm, bm, err := o.RequestBody(nil, originalReq, false)
+				hm, bm, err := o.RequestBody(map[string]string{}, nil, originalReq, false)
 				require.Nil(t, bm)
 				require.NoError(t, err)
 				require.Equal(t, stream, o.stream)
@@ -43,7 +43,7 @@ func TestOpenAIToAzureOpenAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 				modelNameOverride: modelName,
 			},
 		}
-		hm, bm, err := o.RequestBody(nil, originalReq, false)
+		hm, bm, err := o.RequestBody(map[string]string{}, nil, originalReq, false)
 		require.Nil(t, bm)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
@@ -85,7 +85,7 @@ func TestResponseModel_AzureOpenAIStreaming(t *testing.T) {
 		Model:  "gpt-4o", // This is ignored by Azure
 		Stream: true,
 	}
-	_, _, err := translator.RequestBody(nil, req, false)
+	_, _, err := translator.RequestBody(map[string]string{}, nil, req, false)
 	require.NoError(t, err)
 	require.True(t, translator.stream)
 

@@ -76,7 +76,7 @@ func (r *CreateFileRecorder) RecordResponseOnError(span trace.Span, statusCode i
 }
 
 // buildCreateFileRequestAttributes builds OpenInference attributes from the speech request.
-func buildCreateFileRequestAttributes(req *openai.FileNewParams, body string, config *openinference.TraceConfig) []attribute.KeyValue {
+func buildCreateFileRequestAttributes(_ *openai.FileNewParams, body string, config *openinference.TraceConfig) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
@@ -134,10 +134,6 @@ func NewRetrieveFileRecorder(config *openinference.TraceConfig) tracingapi.Retri
 	return &RetrieveFileRecorder{traceConfig: config}
 }
 
-// retrieveFileStartOpts sets trace.SpanKindInternal as that's the span kind used in
-// OpenInference.
-var retrieveFileStartOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
-
 // StartParams implements the same method as defined in tracingapi.RetrieveFileRecorder.
 func (r *RetrieveFileRecorder) StartParams(*struct{}, []byte) (spanName string, opts []trace.SpanStartOption) {
 	return "CreateFile", createFileStartOpts
@@ -170,7 +166,7 @@ func (r *RetrieveFileRecorder) RecordResponseOnError(span trace.Span, statusCode
 }
 
 // buildRetrieveFileRequestAttributes builds OpenInference attributes from the speech request.
-func buildRetrieveFileRequestAttributes(req *struct{}, body string, config *openinference.TraceConfig) []attribute.KeyValue {
+func buildRetrieveFileRequestAttributes(_ *struct{}, _ string, _ *openinference.TraceConfig) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
@@ -204,10 +200,6 @@ func NewRetrieveFileContentRecorder(config *openinference.TraceConfig) tracingap
 	return &RetrieveFileContentRecorder{traceConfig: config}
 }
 
-// retrieveFileContentStartOpts sets trace.SpanKindInternal as that's the span kind used in
-// OpenInference.
-var retrieveFileContentStartOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
-
 // StartParams implements the same method as defined in tracingapi.RetrieveFileContentRecorder.
 func (r *RetrieveFileContentRecorder) StartParams(*struct{}, []byte) (spanName string, opts []trace.SpanStartOption) {
 	return "CreateFile", createFileStartOpts
@@ -219,7 +211,7 @@ func (r *RetrieveFileContentRecorder) RecordRequest(span trace.Span, req *struct
 }
 
 // RecordResponse implements the same method as defined in tracingapi.RetrieveFileContentRecorder.
-func (r *RetrieveFileContentRecorder) RecordResponse(span trace.Span, resp *struct{}) {
+func (r *RetrieveFileContentRecorder) RecordResponse(span trace.Span, _ *struct{}) {
 	var attrs []attribute.KeyValue
 
 	span.SetAttributes(attrs...)
@@ -232,7 +224,7 @@ func (r *RetrieveFileContentRecorder) RecordResponseOnError(span trace.Span, sta
 }
 
 // buildRetrieveFileContentRequestAttributes builds OpenInference attributes from the retrieve file content request.
-func buildRetrieveFileContentRequestAttributes(req *struct{}, body string, config *openinference.TraceConfig) []attribute.KeyValue {
+func buildRetrieveFileContentRequestAttributes(_ *struct{}, _ string, _ *openinference.TraceConfig) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
@@ -302,7 +294,7 @@ func (r *DeleteFileRecorder) RecordResponseOnError(span trace.Span, statusCode i
 }
 
 // buildDeleteFileRequestAttributes builds OpenInference attributes from the delete file request.
-func buildDeleteFileRequestAttributes(req *struct{}, body string, config *openinference.TraceConfig) []attribute.KeyValue {
+func buildDeleteFileRequestAttributes(_ *struct{}, _ string, _ *openinference.TraceConfig) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),

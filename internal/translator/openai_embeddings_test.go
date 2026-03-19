@@ -55,7 +55,7 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingRequestBody(t *testing.T) {
 			var req openai.EmbeddingRequest
 			require.NoError(t, json.Unmarshal([]byte(originalBody), &req))
 
-			headerMutation, bodyMutation, err := translator.RequestBody([]byte(originalBody), &req, tc.onRetry)
+			headerMutation, bodyMutation, err := translator.RequestBody(nil, []byte(originalBody), &req, tc.onRetry)
 			require.NoError(t, err)
 			require.NotNil(t, headerMutation)
 			require.GreaterOrEqual(t, len(headerMutation), 1)

@@ -1433,7 +1433,6 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 		require.Contains(t, retryResult, "messages", "Bedrock 'messages' field should be present on retry")
 	})
 }
-
 func TestBuildDynamicMetadata_routeScoped(t *testing.T) {
 	hdr := map[string]string{internalapi.ModelNameHeaderKeyDefault: "m"}
 

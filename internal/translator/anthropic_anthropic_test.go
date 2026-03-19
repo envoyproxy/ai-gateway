@@ -60,7 +60,7 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 			translator := NewAnthropicToAnthropicTranslator("", tc.modelNameOverride)
 			require.NotNil(t, translator)
 
-			headerMutation, bodyMutation, err := translator.RequestBody(tc.original, &tc.body, tc.forceBodyMutation)
+			headerMutation, bodyMutation, err := translator.RequestBody(nil, tc.original, &tc.body, tc.forceBodyMutation)
 			require.NoError(t, err)
 			expHeaders := []internalapi.Header{
 				{pathHeaderName, "/v1/messages"},
