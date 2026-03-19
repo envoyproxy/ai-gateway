@@ -1,0 +1,18 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: multi-provider-fallback
+spec:
+  parentRefs:
+    - name: my-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gpt-4o-mini
+      backendRefs:
+        - name: openai-backend
+        - name: groq-backend # Fallback provider

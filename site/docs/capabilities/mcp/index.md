@@ -4,6 +4,12 @@ title: Model Context Protocol (MCP) Gateway
 sidebar_position: 8
 ---
 
+import CodeBlock from '@theme/CodeBlock';
+import McpRouteBasic from '!!raw-loader!./examples/mcp-route-basic.yaml';
+import McpRouteToolFiltering from '!!raw-loader!./examples/mcp-route-tool-filtering.yaml';
+import McpRouteMultiplexing from '!!raw-loader!./examples/mcp-route-multiplexing.yaml';
+import McpRouteOAuth from '!!raw-loader!./examples/mcp-route-oauth.yaml';
+
 Envoy AI Gateway provides first-class support for [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), enabling AI agents to securely connect to external tools and data sources.
 
 This guide provides an overview of the MCP Gateway capabilities and how to configure routing to MCP servers using the `MCPRoute` API.
@@ -77,48 +83,7 @@ Before you begin, you'll need to complete the basic setup from the [Basic Usage]
 
 The following example demonstrates a basic `MCPRoute` that proxies the GitHub MCP server:
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: MCPRoute
-metadata:
-  name: mcp-route
-  namespace: default
-spec:
-  parentRefs:
-    - name: aigw-run
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  path: "/mcp" # Clients connect to http://gateway-address/mcp
-  backendRefs:
-    - name: github
-      kind: Backend
-      group: gateway.envoyproxy.io
-      path: "/mcp/x/issues/readonly"
-      securityPolicy:
-        apiKey:
-          secretRef:
-            name: github-token
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  name: github
-  namespace: default
-spec:
-  endpoints:
-    - fqdn:
-        hostname: api.githubcopilot.com
-        port: 443
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: github-token
-  namespace: default
-type: Opaque
-stringData:
-  apiKey: ghp_your_token_here
-```
+<CodeBlock language="yaml">{McpRouteBasic}</CodeBlock>
 
 Apply this configuration:
 
@@ -132,41 +97,7 @@ Now clients can connect to `http://<gateway-address>/mcp` and access GitHub tool
 
 Control which tools are exposed using the `toolSelector` field. You can use exact matches or regular expressions:
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: MCPRoute
-metadata:
-  name: mcp-route
-  namespace: default
-spec:
-  parentRefs:
-    - name: aigw-run
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  backendRefs:
-    # GitHub: only expose issue-related tools
-    - name: github
-      kind: Backend
-      group: gateway.envoyproxy.io
-      path: "/mcp/x/issues/readonly"
-      toolSelector:
-        includeRegex:
-          - .*issues?.* # Matches issue_read, list_issues, etc.
-      securityPolicy:
-        apiKey:
-          secretRef:
-            name: github-token
-
-    # Context7: expose specific tools by exact name
-    - name: context7
-      kind: Backend
-      group: gateway.envoyproxy.io
-      path: "/mcp"
-      toolSelector:
-        include:
-          - resolve-library-id
-          - query-docs
-```
+<CodeBlock language="yaml">{McpRouteToolFiltering}</CodeBlock>
 
 :::note
 The `toolSelector` field requires exactly one of `include` or `includeRegex` to be specified. If not specified, all tools from the MCP server are exposed.
@@ -176,32 +107,7 @@ The `toolSelector` field requires exactly one of `include` or `includeRegex` to 
 
 The gateway automatically aggregates tools from multiple MCP servers into a single unified interface:
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: MCPRoute
-metadata:
-  name: mcp-unified
-  namespace: default
-spec:
-  parentRefs:
-    - name: aigw-run
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  path: "/mcp"
-  backendRefs:
-    - name: github
-      kind: Backend
-      group: gateway.envoyproxy.io
-      path: "/mcp/x/issues/readonly"
-      securityPolicy:
-        apiKey:
-          secretRef:
-            name: github-token
-    - name: context7
-      kind: Backend
-      group: gateway.envoyproxy.io
-      path: "/mcp"
-```
+<CodeBlock language="yaml">{McpRouteMultiplexing}</CodeBlock>
 
 Clients will see all tools with prefixed names:
 
@@ -214,33 +120,7 @@ Clients will see all tools with prefixed names:
 
 Protect your MCP Gateway with OAuth authentication following the [MCP Authorization specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization):
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: MCPRoute
-metadata:
-  name: mcp-route
-  namespace: default
-spec:
-  parentRefs:
-    - name: aigw-run
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  backendRefs:
-    - name: github
-      kind: Backend
-      group: gateway.envoyproxy.io
-      path: "/mcp/readonly"
-  securityPolicy:
-    oauth:
-      issuer: "https://keycloak.example.com/realms/master"
-      audiences:
-        - "https://api.example.com/mcp"
-      protectedResourceMetadata:
-        resource: "https://api.example.com/mcp"
-        scopesSupported:
-          - "profile"
-          - "email"
-```
+<CodeBlock language="yaml">{McpRouteOAuth}</CodeBlock>
 
 The OAuth flow follows the MCP specification's authorization code flow with PKCE:
 

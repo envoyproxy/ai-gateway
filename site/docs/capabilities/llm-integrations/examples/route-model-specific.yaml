@@ -1,0 +1,31 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: model-specific-routing
+spec:
+  parentRefs:
+    - name: my-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gpt-4o-mini
+      backendRefs:
+        - name: openai-backend
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: claude-3-sonnet
+      backendRefs:
+        - name: bedrock-backend
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: text-embedding-ada-002
+      backendRefs:
+        - name: openai-embeddings-backend

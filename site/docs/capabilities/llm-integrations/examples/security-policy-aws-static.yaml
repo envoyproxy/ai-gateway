@@ -1,0 +1,13 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: bedrock-auth
+spec:
+  type: AWSCredentials
+  awsCredentials:
+    region: us-east-1
+    credentialsFile:
+      secretRef:
+        name: aws-secret
+        namespace: default
+      profile: default # Optional, defaults to "default"

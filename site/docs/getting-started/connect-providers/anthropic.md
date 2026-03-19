@@ -6,6 +6,7 @@ sidebar_position: 6
 
 import CodeBlock from '@theme/CodeBlock';
 import vars from '../../\_vars.json';
+import AnthropicMoreModels from '!!raw-loader!./examples/anthropic-more-models.yaml';
 
 # Connect Anthropic
 
@@ -113,31 +114,7 @@ To use more models, add more [AIGatewayRouteRule]s to the `anthropic.yaml` file 
 
 For example, let's add [claude-haiku-3-5](https://docs.anthropic.com/en/docs/about-claude/models#claude-3.5-haiku) as a chat completion model:
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
-metadata:
-  name: envoy-ai-gateway-basic-anthropic
-  namespace: default
-spec:
-  parentRefs:
-    - name: envoy-ai-gateway-basic
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  rules:
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: claude-sonnet-4-5
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: claude-haiku-3-5
-      backendRefs:
-        - name: envoy-ai-gateway-basic-anthropic
-```
+<CodeBlock language="yaml">{AnthropicMoreModels}</CodeBlock>
 
 ## Next Steps
 

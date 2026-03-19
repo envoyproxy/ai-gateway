@@ -31,6 +31,40 @@ site/
 
 ## Documentation Conventions
 
+### Kubernetes YAML Examples
+
+Complete, deployable Kubernetes resource examples must live in separate `.yaml` files rather than inline code blocks. They are then embedded into markdown via Docusaurus's `raw-loader` import mechanism.
+
+**Where to put example files:**
+
+Place them in an `examples/` subdirectory next to the `.md` file that uses them:
+
+```
+docs/capabilities/traffic/examples/provider-fallback-route.yaml
+docs/capabilities/traffic/provider-fallback.md
+```
+
+**How to embed them:**
+
+```mdx
+import CodeBlock from "@theme/CodeBlock";
+import MyExample from "!!raw-loader!./examples/my-example.yaml";
+
+<CodeBlock language="yaml">{MyExample}</CodeBlock>
+```
+
+**What counts as a "complete, deployable" resource:**
+
+Extract a YAML block if it has all three of `apiVersion:`, `kind:`, and `metadata.name:`. Leave it inline if it:
+
+- Contains placeholder text (`[...]`, `(...)`, `spec: # ...`)
+- Is a partial spec fragment (shows only one field, not a full resource)
+- Is illustrative/conceptual (intentionally missing required fields)
+
+**Validation:**
+
+Run `make validate-docs` from the repo root to validate all extracted YAML files using kubeconform. Validation uses only schemas from this repo: built-in Kubernetes types plus the `aigateway.envoyproxy.io` CRDs from `manifests/charts/ai-gateway-crds-helm/templates/`. External CRDs (Gateway API, Envoy Gateway, etc.) are skipped. No network access is required.
+
 ### Frontmatter
 
 All documentation files require frontmatter:

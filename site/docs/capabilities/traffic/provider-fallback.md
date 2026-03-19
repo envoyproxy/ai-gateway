@@ -4,6 +4,11 @@ title: Provider Fallback
 sidebar_position: 6
 ---
 
+import CodeBlock from '@theme/CodeBlock';
+import ProviderFallbackRoute from '!!raw-loader!./examples/provider-fallback-route.yaml';
+import ProviderFallbackBackends from '!!raw-loader!./examples/provider-fallback-backends.yaml';
+import ProviderFallbackPolicy from '!!raw-loader!./examples/provider-fallback-policy.yaml';
+
 # Provider Fallback
 
 Envoy AI Gateway supports provider fallback to ensure high availability and reliability for AI/LLM workloads. With fallback, you can configure multiple upstream providers for a single route, so that if the primary provider fails (due to network errors, 5xx responses, or other health check failures), traffic is automatically routed to a healthy fallback provider.
@@ -24,87 +29,17 @@ Envoy AI Gateway supports provider fallback to ensure high availability and reli
 
 Below is an example configuration that demonstrates provider fallback from a failing upstream to AWS Bedrock:
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
-metadata:
-  name: provider-fallback
-  namespace: default
-spec:
-  parentRefs:
-    - name: provider-fallback
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  rules:
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: us.meta.llama3-2-1b-instruct-v1:0
-      backendRefs:
-        - name: provider-fallback-always-failing-upstream # Primary backend (expected to fail)
-          priority: 0
-        - name: provider-fallback-aws # Fallback backend
-          priority: 1
-```
+<CodeBlock language="yaml">{ProviderFallbackRoute}</CodeBlock>
 
 The corresponding `Backend` resources:
 
-```yaml
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  name: provider-fallback-always-failing-upstream
-  namespace: default
-spec:
-  endpoints:
-    - fqdn:
-        hostname: provider-fallback-always-failing-upstream.default.svc.cluster.local
-        port: 443
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  name: provider-fallback-aws
-  namespace: default
-spec:
-  endpoints:
-    - fqdn:
-        hostname: bedrock-runtime.us-east-1.amazonaws.com
-        port: 443
-```
+<CodeBlock language="yaml">{ProviderFallbackBackends}</CodeBlock>
 
 ## Configuring Fallback Behavior
 
 Attach a `BackendTrafficPolicy` to the generated `HTTPRoute` to control retry behavior:
 
-```yaml
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: BackendTrafficPolicy
-metadata:
-  name: provider-fallback
-spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: provider-fallback # HTTPRoute is created with the same name as AIGatewayRoute
-  retry:
-    # This ensures that only one attempt is made per priority.
-    # For example, if the primary backend fails, it will not retry on the same backend.
-    numAttemptsPerPriority: 1
-    numRetries: 5
-    perRetry:
-      backOff:
-        baseInterval: 100ms
-        maxInterval: 10s
-      timeout: 30s
-    retryOn:
-      httpStatusCodes:
-        - 500
-      triggers:
-        - connect-failure
-        - retriable-status-codes
-```
+<CodeBlock language="yaml">{ProviderFallbackPolicy}</CodeBlock>
 
 ## References
 

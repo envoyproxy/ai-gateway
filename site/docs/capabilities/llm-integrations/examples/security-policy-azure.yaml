@@ -1,0 +1,12 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: azure-auth
+spec:
+  type: AzureCredentials
+  azureCredentials:
+    clientID: "your-azure-client-id"
+    tenantID: "your-azure-tenant-id"
+    clientSecretRef:
+      name: azure-secret
+      namespace: default

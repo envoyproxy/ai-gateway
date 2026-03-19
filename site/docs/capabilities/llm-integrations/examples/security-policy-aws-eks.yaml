@@ -1,0 +1,11 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: bedrock-auth
+spec:
+  type: AWSCredentials
+  awsCredentials:
+    region: us-east-1
+    # No credentialsFile needed - automatically uses:
+    # - EKS Pod Identity (if Pod Identity association exists)
+    # - IRSA (if ServiceAccount has eks.amazonaws.com/role-arn annotation)

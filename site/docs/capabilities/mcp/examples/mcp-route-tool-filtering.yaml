@@ -1,0 +1,33 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: aigw-run
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  backendRefs:
+    # GitHub: only expose issue-related tools
+    - name: github
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/mcp/x/issues/readonly"
+      toolSelector:
+        includeRegex:
+          - .*issues?.* # Matches issue_read, list_issues, etc.
+      securityPolicy:
+        apiKey:
+          secretRef:
+            name: github-token
+
+    # Context7: expose specific tools by exact name
+    - name: context7
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/mcp"
+      toolSelector:
+        include:
+          - resolve-library-id
+          - query-docs

@@ -4,6 +4,10 @@ title: Header and Body Mutations
 sidebar_position: 7
 ---
 
+import CodeBlock from '@theme/CodeBlock';
+import HeaderBodyMutationsBackend from '!!raw-loader!./examples/header-body-mutations-backend.yaml';
+import HeaderBodyMutationsRoute from '!!raw-loader!./examples/header-body-mutations-route.yaml';
+
 # Header and Body Mutations
 
 Envoy AI Gateway allows you to mutate HTTP headers and JSON request body fields before requests are sent to backends. This is useful for adding provider-specific headers, setting service tiers, or removing internal fields before forwarding to upstream providers.
@@ -116,61 +120,13 @@ bodyMutation:
 
 This example configures an `AIServiceBackend` that adds a custom organization header and sets `service_tier` while removing an internal tracking field for all requests routed to this backend:
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIServiceBackend
-metadata:
-  name: my-openai-backend
-spec:
-  schema:
-    name: OpenAI
-  backendRef:
-    name: my-openai-backend
-    kind: Backend
-    group: gateway.envoyproxy.io
-  headerMutation:
-    set:
-      - name: "x-custom-org"
-        value: "my-org-id"
-  bodyMutation:
-    set:
-      - path: "service_tier"
-        value: '"scale"'
-    remove:
-      - "internal_tracking_id"
-```
+<CodeBlock language="yaml">{HeaderBodyMutationsBackend}</CodeBlock>
 
 ### Example 2: AIGatewayRoute backendRef with Mutations
 
 This example configures route-level mutations that apply only when requests match a specific route rule. Here, requests for `gpt-4` get a premium header and an increased `max_tokens` value:
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
-metadata:
-  name: my-route
-spec:
-  parentRefs:
-    - name: my-gateway
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  rules:
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: gpt-4
-      backendRefs:
-        - name: my-openai-backend
-          headerMutation:
-            set:
-              - name: "x-route-specific"
-                value: "premium"
-          bodyMutation:
-            set:
-              - path: "max_tokens"
-                value: "8192"
-```
+<CodeBlock language="yaml">{HeaderBodyMutationsRoute}</CodeBlock>
 
 ## Precedence Rules
 

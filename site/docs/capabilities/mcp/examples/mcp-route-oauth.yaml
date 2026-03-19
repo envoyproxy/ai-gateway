@@ -1,0 +1,25 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: aigw-run
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  backendRefs:
+    - name: github
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/mcp/readonly"
+  securityPolicy:
+    oauth:
+      issuer: "https://keycloak.example.com/realms/master"
+      audiences:
+        - "https://api.example.com/mcp"
+      protectedResourceMetadata:
+        resource: "https://api.example.com/mcp"
+        scopesSupported:
+          - "profile"
+          - "email"

@@ -6,6 +6,7 @@ sidebar_position: 3
 
 import CodeBlock from '@theme/CodeBlock';
 import vars from '../../\_vars.json';
+import GCPMoreModels from '!!raw-loader!./examples/gcp-more-models.yaml';
 
 # Connect GCP VertexAI
 
@@ -162,28 +163,7 @@ If you encounter issues:
 
 To use more models, add more [AIGatewayRouteRule]s to the `gcp_vertex.yaml` file with the [model ID] in the `value` field. For example, to use [Claude 3 Sonnet]
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
-metadata:
-  name: envoy-ai-gateway-basic-gcp-gemini
-  namespace: default
-spec:
-  schema:
-    name: OpenAI
-  parentRefs:
-    - name: envoy-ai-gateway-basic
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  rules:
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: gemini-2.5-flash-pro
-      backendRefs:
-        - name: envoy-ai-gateway-basic-gcp
-```
+<CodeBlock language="yaml">{GCPMoreModels}</CodeBlock>
 
 [AIGatewayRouteRule]: ../../api/api.mdx#aigatewayrouterule
 [model ID]: https://cloud.google.com/vertex-ai/generative-ai/docs/models

@@ -4,6 +4,20 @@ title: Connecting to AI Providers
 sidebar_position: 10
 ---
 
+import CodeBlock from '@theme/CodeBlock';
+import BackendOpenAI from '!!raw-loader!./examples/backend-openai.yaml';
+import SecurityPolicyAPIKey from '!!raw-loader!./examples/security-policy-apikey.yaml';
+import SecurityPolicyAWSEKS from '!!raw-loader!./examples/security-policy-aws-eks.yaml';
+import SecurityPolicyAWSStatic from '!!raw-loader!./examples/security-policy-aws-static.yaml';
+import SecurityPolicyAzure from '!!raw-loader!./examples/security-policy-azure.yaml';
+import SecurityPolicyGCPSA from '!!raw-loader!./examples/security-policy-gcp-sa.yaml';
+import SecurityPolicyGCPWIF from '!!raw-loader!./examples/security-policy-gcp-wif.yaml';
+import RouteBasic from '!!raw-loader!./examples/route-basic.yaml';
+import RouteSingleProvider from '!!raw-loader!./examples/route-single-provider.yaml';
+import RouteFallback from '!!raw-loader!./examples/route-fallback.yaml';
+import RouteModelSpecific from '!!raw-loader!./examples/route-model-specific.yaml';
+import RouteModelMetadata from '!!raw-loader!./examples/route-model-metadata.yaml';
+
 # Connecting to AI Providers
 
 Envoy AI Gateway provides a unified interface for connecting to multiple AI providers through a standardized configuration approach. This page explains the fundamental concepts, resources, and relationships required to establish connectivity with any supported AI provider.
@@ -32,23 +46,7 @@ The `AIServiceBackend` resource represents an individual AI service backend and 
 
 #### Key Fields
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIServiceBackend
-metadata:
-  name: my-provider-backend
-spec:
-  # API schema the backend expects
-  schema:
-    name: OpenAI # Provider API format
-    version: "v1" # API version (optional for OpenAI, defaults to "v1")
-
-  # Reference to the Envoy Gateway Backend resource
-  backendRef:
-    name: my-provider-backend
-    kind: Backend
-    group: gateway.envoyproxy.io
-```
+<CodeBlock language="yaml">{BackendOpenAI}</CodeBlock>
 
 #### Schema Configuration Examples
 
@@ -82,18 +80,7 @@ The `BackendSecurityPolicy` resource configures authentication credentials neede
 
 Commonly used across many providers
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: BackendSecurityPolicy
-metadata:
-  name: openai-auth
-spec:
-  type: APIKey
-  apiKey:
-    secretRef:
-      name: openai-secret
-      namespace: default
-```
+<CodeBlock language="yaml">{SecurityPolicyAPIKey}</CodeBlock>
 
 :::note
 The secret must contain the API key with the key name `"apiKey"`.
@@ -107,39 +94,13 @@ Used when connecting to AWS Bedrock. Supports three authentication methods:
 
 When running on EKS, the AWS SDK automatically uses the default credential chain, which includes EKS Pod Identity and IRSA. Simply configure the region:
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: BackendSecurityPolicy
-metadata:
-  name: bedrock-auth
-spec:
-  type: AWSCredentials
-  awsCredentials:
-    region: us-east-1
-    # No credentialsFile needed - automatically uses:
-    # - EKS Pod Identity (if Pod Identity association exists)
-    # - IRSA (if ServiceAccount has eks.amazonaws.com/role-arn annotation)
-```
+<CodeBlock language="yaml">{SecurityPolicyAWSEKS}</CodeBlock>
 
 See the [Connect AWS Bedrock guide](../../getting-started/connect-providers/aws-bedrock.md) for detailed setup instructions.
 
 **Option 2: Static Credentials (Development/Testing)**
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: BackendSecurityPolicy
-metadata:
-  name: bedrock-auth
-spec:
-  type: AWSCredentials
-  awsCredentials:
-    region: us-east-1
-    credentialsFile:
-      secretRef:
-        name: aws-secret
-        namespace: default
-      profile: default # Optional, defaults to "default"
-```
+<CodeBlock language="yaml">{SecurityPolicyAWSStatic}</CodeBlock>
 
 :::note
 When using static credentials, the secret must contain the AWS credentials file with the key name `"credentials"`.
@@ -149,20 +110,7 @@ When using static credentials, the secret must contain the AWS credentials file 
 
 Used for connecting to Azure OpenAI
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: BackendSecurityPolicy
-metadata:
-  name: azure-auth
-spec:
-  type: AzureCredentials
-  azureCredentials:
-    clientID: "your-azure-client-id"
-    tenantID: "your-azure-tenant-id"
-    clientSecretRef:
-      name: azure-secret
-      namespace: default
-```
+<CodeBlock language="yaml">{SecurityPolicyAzure}</CodeBlock>
 
 :::note
 The secret must contain the Azure client secret with the key name `"client-secret"`.
@@ -177,51 +125,13 @@ Used for connecting to GCP Vertex AI and Anthropic on GCP
    You create a service account in GCP, generate a key file, download it, and then store it in the k8s secret referenced by BackendSecurityPolicy.
    Envoy AI Gateway uses this key file to generate an access token and authenticate with GCP Vertex AI.
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: BackendSecurityPolicy
-metadata:
-  name: gcp-auth-service-account-key
-  namespace: default
-spec:
-  type: GCPCredentials
-  gcpCredentials:
-    projectName: GCP_PROJECT_NAME # Replace with your GCP project name
-    region: GCP_REGION # Replace with your GCP region
-    credentialsFile:
-      secretRef:
-        name: envoy-ai-gateway-basic-gcp-service-account-key-file
-```
+<CodeBlock language="yaml">{SecurityPolicyGCPSA}</CodeBlock>
 
 2. Workload Identity Federation:
    Workload Identity Federation is a modern, keyless authentication method that allows workloads running outside of GCP to impersonate a service account using their own native identity.
    It leverages a trust relationship between GCP and an external identity provider such as OIDC.
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: BackendSecurityPolicy
-metadata:
-  name: gcp-auth
-spec:
-  type: GCPCredentials
-  gcpCredentials:
-    projectName: "your-gcp-project"
-    region: "us-central1"
-    workloadIdentityFederationConfig:
-      projectID: "your-gcp-project-id"
-      workloadIdentityPoolName: "your-workload-identity-pool"
-      workloadIdentityProviderName: "your-identity-provider"
-      serviceAccountImpersonation:
-        serviceAccountName: "your-service-account"
-      oidcExchangeToken:
-        oidc:
-          provider:
-            issuer: "https://your-oidc-provider.com"
-          clientID: "your-oidc-client-id"
-          clientSecret:
-            name: "gcp-client-secret"
-            namespace: default
-```
+<CodeBlock language="yaml">{SecurityPolicyGCPWIF}</CodeBlock>
 
 #### Security Best Practices
 
@@ -243,35 +153,7 @@ The `AIGatewayRoute` resource defines how client requests are routed to appropri
 
 #### Basic Configuration
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
-metadata:
-  name: multi-provider-route
-spec:
-  # Gateway to attach to
-  parentRefs:
-    - name: my-gateway
-      kind: Gateway
-      group: gateway.networking.k8s.io
-
-  # Routing rules
-  rules:
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: gpt-4o-mini
-      backendRefs:
-        - name: openai-backend
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: claude-3-sonnet
-      backendRefs:
-        - name: bedrock-backend
-```
+<CodeBlock language="yaml">{RouteBasic}</CodeBlock>
 
 ## Resource Relationships and Data Flow
 
@@ -313,140 +195,23 @@ graph TD
 
 For a simple single-provider setup:
 
-```yaml
-# Backend configuration
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIServiceBackend
-metadata:
-  name: openai-backend
-spec:
-  schema:
-    name: OpenAI
-    version: v1
-  backendRef:
-    name: openai-backend
-    kind: Backend
-    group: gateway.envoyproxy.io
-
----
-# Security configuration
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: BackendSecurityPolicy
-metadata:
-  name: openai-auth
-spec:
-  targetRefs:
-    - group: aigateway.envoyproxy.io
-      kind: AIServiceBackend
-      name: openai-backend
-  type: APIKey
-  apiKey:
-    secretRef:
-      name: openai-secret
-      namespace: default
-
----
-# Routing configuration
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
-metadata:
-  name: openai-route
-spec:
-  parentRefs:
-    - name: my-gateway
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  rules:
-    - backendRefs:
-        - name: openai-backend
-```
+<CodeBlock language="yaml">{RouteSingleProvider}</CodeBlock>
 
 ### Multi-Provider Setup with Fallback
 
 For high availability with multiple providers:
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
-metadata:
-  name: multi-provider-fallback
-spec:
-  parentRefs:
-    - name: my-gateway
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  rules:
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: gpt-4o-mini
-      backendRefs:
-        - name: openai-backend
-        - name: groq-backend # Fallback provider
-```
+<CodeBlock language="yaml">{RouteFallback}</CodeBlock>
 
 ### Model-Specific Routing
 
 For routing different models to specialized providers:
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
-metadata:
-  name: model-specific-routing
-spec:
-  parentRefs:
-    - name: my-gateway
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  rules:
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: gpt-4o-mini
-      backendRefs:
-        - name: openai-backend
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: claude-3-sonnet
-      backendRefs:
-        - name: bedrock-backend
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: text-embedding-ada-002
-      backendRefs:
-        - name: openai-embeddings-backend
-```
+<CodeBlock language="yaml">{RouteModelSpecific}</CodeBlock>
 
 Configure model ownership and creation information for the `/models` endpoint:
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
-metadata:
-  name: model-metadata
-spec:
-  parentRefs:
-    - name: my-gateway
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  rules:
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: gpt-4o-mini
-      modelsOwnedBy: "OpenAI"
-      modelsCreatedAt: "2024-01-01T00:00:00Z"
-      backendRefs:
-        - name: openai-backend
-```
+<CodeBlock language="yaml">{RouteModelMetadata}</CodeBlock>
 
 ## Provider-Specific Considerations
 

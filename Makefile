@@ -43,7 +43,7 @@ help:
 # This runs all necessary steps to prepare for a commit.
 .PHONY: precommit
 precommit: ## Run all necessary steps to prepare for a commit.
-precommit: tidy spellcheck apigen codegen apidoc format lint editorconfig helm-test
+precommit: tidy spellcheck apigen codegen apidoc format lint editorconfig helm-test validate-docs
 
 .PHONY: lint
 lint: ## This runs the linter on the codebase.
@@ -354,3 +354,12 @@ helm-push: helm-package ## Push envoy ai gateway relevant helm charts to OCI reg
 	@echo "helm-push => .${HELM_DIR}"
 	@$(GO_TOOL) helm push ${OUTPUT_DIR}/ai-gateway-crds-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
 	@$(GO_TOOL) helm push ${OUTPUT_DIR}/ai-gateway-helm-${HELM_CHART_VERSION}.tgz oci://${OCI_REGISTRY}
+
+##@ Documentation
+
+# Validates that all YAML example files embedded in docs (via raw-loader) are valid Kubernetes resources.
+# Uses kubeconform with built-in k8s schemas and local CRD schemas from manifests/ only (no network access).
+.PHONY: validate-docs
+validate-docs: ## Validate Kubernetes YAML example files embedded in the documentation.
+	@echo "validate-docs => site/docs/**"
+	@cd site/scripts/validate-docs-yamls && go run .

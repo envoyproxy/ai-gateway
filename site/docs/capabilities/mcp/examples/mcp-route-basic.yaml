@@ -1,0 +1,40 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: aigw-run
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  path: "/mcp" # Clients connect to http://gateway-address/mcp
+  backendRefs:
+    - name: github
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/mcp/x/issues/readonly"
+      securityPolicy:
+        apiKey:
+          secretRef:
+            name: github-token
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: github
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: api.githubcopilot.com
+        port: 443
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-token
+  namespace: default
+type: Opaque
+stringData:
+  apiKey: ghp_your_token_here

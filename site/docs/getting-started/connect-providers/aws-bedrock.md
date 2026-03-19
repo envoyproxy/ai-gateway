@@ -6,6 +6,7 @@ sidebar_position: 3
 
 import CodeBlock from '@theme/CodeBlock';
 import vars from '../../\_vars.json';
+import AWSMoreModels from '!!raw-loader!./examples/aws-more-models.yaml';
 
 # Connect AWS Bedrock
 
@@ -250,26 +251,7 @@ For more details on AWS authentication, see:
 
 To use additional models, add more [AIGatewayRouteRule]s to your configuration with the [model ID] in the `value` field. For example, to use [Claude 3 Sonnet]:
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
-metadata:
-  name: envoy-ai-gateway-basic-aws
-  namespace: default
-spec:
-  parentRefs:
-    - name: envoy-ai-gateway-basic
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  rules:
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: anthropic.claude-3-sonnet-20240229-v1:0
-      backendRefs:
-        - name: envoy-ai-gateway-basic-aws
-```
+<CodeBlock language="yaml">{AWSMoreModels}</CodeBlock>
 
 ## Using Anthropic Native API
 

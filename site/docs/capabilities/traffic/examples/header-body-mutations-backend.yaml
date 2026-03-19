@@ -1,0 +1,21 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: my-openai-backend
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: my-openai-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+  headerMutation:
+    set:
+      - name: "x-custom-org"
+        value: "my-org-id"
+  bodyMutation:
+    set:
+      - path: "service_tier"
+        value: '"scale"'
+    remove:
+      - "internal_tracking_id"

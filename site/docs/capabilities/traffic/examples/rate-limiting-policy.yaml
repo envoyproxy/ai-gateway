@@ -1,0 +1,56 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: model-specific-token-limit-policy
+  namespace: default
+spec:
+  targetRefs:
+    - name: envoy-ai-gateway-token-ratelimit
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rateLimit:
+    type: Global
+    global:
+      rules:
+        # Rate limit rule for GPT-4: 1000 total tokens per hour per user
+        # Stricter limit due to higher cost per token
+        - clientSelectors:
+            - headers:
+                - name: x-tenant-id
+                  type: Distinct
+                - name: x-ai-eg-model
+                  type: Exact
+                  value: gpt-4
+          limit:
+            requests: 1000 # 1000 total tokens per hour
+            unit: Hour
+          cost:
+            request:
+              from: Number
+              number: 0 # Set to 0 so only token usage counts
+            response:
+              from: Metadata
+              metadata:
+                namespace: io.envoy.ai_gateway
+                key: llm_total_token # Uses total tokens from the responses
+        # Rate limit rule for GPT-3.5: 5000 total tokens per hour per user
+        # Higher limit since the model is more cost-effective
+        - clientSelectors:
+            - headers:
+                - name: x-tenant-id
+                  type: Distinct
+                - name: x-ai-eg-model
+                  type: Exact
+                  value: gpt-3.5-turbo
+          limit:
+            requests: 5000 # 5000 total tokens per hour (higher limit for less expensive model)
+            unit: Hour
+          cost:
+            request:
+              from: Number
+              number: 0 # Set to 0 so only token usage counts
+            response:
+              from: Metadata
+              metadata:
+                namespace: io.envoy.ai_gateway
+                key: llm_total_token # Uses total tokens from the response

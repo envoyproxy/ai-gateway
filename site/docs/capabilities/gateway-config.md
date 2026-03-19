@@ -4,6 +4,10 @@ title: Gateway Configuration
 sidebar_position: 2
 ---
 
+import CodeBlock from '@theme/CodeBlock';
+import GatewayConfigBasic from '!!raw-loader!./examples/gateway-config-basic.yaml';
+import GatewayConfigGatewayRef from '!!raw-loader!./examples/gateway-config-gateway-ref.yaml';
+
 # Gateway Configuration
 
 The `GatewayConfig` CRD provides gateway-scoped configuration for the AI Gateway external processor container. This allows you to configure environment variables and resource requirements at the Gateway level, rather than at the route level.
@@ -23,48 +27,13 @@ Use `GatewayConfig` when you need to:
 
 Create a `GatewayConfig` resource with your desired configuration:
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: GatewayConfig
-metadata:
-  name: my-gateway-config
-  namespace: default
-spec:
-  extProc:
-    kubernetes:
-      env:
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://otel-collector:4317"
-        - name: OTEL_SERVICE_NAME
-          value: "my-ai-gateway"
-      resources:
-        requests:
-          cpu: "100m"
-          memory: "128Mi"
-        limits:
-          cpu: "500m"
-          memory: "512Mi"
-```
+<CodeBlock language="yaml">{GatewayConfigBasic}</CodeBlock>
 
 ### Referencing from a Gateway
 
 Reference the `GatewayConfig` from your Gateway using an annotation:
 
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: my-gateway
-  namespace: default
-  annotations:
-    aigateway.envoyproxy.io/gateway-config: my-gateway-config
-spec:
-  gatewayClassName: envoy-gateway
-  listeners:
-    - name: http
-      protocol: HTTP
-      port: 8080
-```
+<CodeBlock language="yaml">{GatewayConfigGatewayRef}</CodeBlock>
 
 :::note
 The `GatewayConfig` must be in the same namespace as the Gateway that references it.

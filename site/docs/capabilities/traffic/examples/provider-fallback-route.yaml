@@ -1,0 +1,21 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: provider-fallback
+  namespace: default
+spec:
+  parentRefs:
+    - name: provider-fallback
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: us.meta.llama3-2-1b-instruct-v1:0
+      backendRefs:
+        - name: provider-fallback-always-failing-upstream # Primary backend (expected to fail)
+          priority: 0
+        - name: provider-fallback-aws # Fallback backend
+          priority: 1

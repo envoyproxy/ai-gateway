@@ -1,0 +1,25 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: provider-fallback
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: provider-fallback # HTTPRoute is created with the same name as AIGatewayRoute
+  retry:
+    # This ensures that only one attempt is made per priority.
+    # For example, if the primary backend fails, it will not retry on the same backend.
+    numAttemptsPerPriority: 1
+    numRetries: 5
+    perRetry:
+      backOff:
+        baseInterval: 100ms
+        maxInterval: 10s
+      timeout: 30s
+    retryOn:
+      httpStatusCodes:
+        - 500
+      triggers:
+        - connect-failure
+        - retriable-status-codes

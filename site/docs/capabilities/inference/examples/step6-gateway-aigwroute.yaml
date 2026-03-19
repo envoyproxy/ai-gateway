@@ -1,0 +1,58 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: inference-pool-with-aigwroute
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: inference-pool-with-aigwroute
+  namespace: default
+spec:
+  gatewayClassName: inference-pool-with-aigwroute
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: inference-pool-with-aigwroute
+  namespace: default
+spec:
+  parentRefs:
+    - name: inference-pool-with-aigwroute
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    # Route for vLLM Llama model via InferencePool
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: meta-llama/Llama-3.1-8B-Instruct
+      backendRefs:
+        - group: inference.networking.k8s.io
+          kind: InferencePool
+          name: vllm-llama3-8b-instruct
+    # Route for Mistral model via InferencePool
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: mistral:latest
+      backendRefs:
+        - group: inference.networking.k8s.io
+          kind: InferencePool
+          name: mistral
+    # Route for traditional backend (non-InferencePool)
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: some-cool-self-hosted-model
+      backendRefs:
+        - name: envoy-ai-gateway-basic-testupstream

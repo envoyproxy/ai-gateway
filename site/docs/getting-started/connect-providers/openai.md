@@ -6,6 +6,7 @@ sidebar_position: 2
 
 import CodeBlock from '@theme/CodeBlock';
 import vars from '../../\_vars.json';
+import OpenAIMoreModels from '!!raw-loader!./examples/openai-more-models.yaml';
 
 # Connect OpenAI
 
@@ -129,31 +130,7 @@ To use more models, add more [AIGatewayRouteRule]s to the `openai.yaml` file wit
 
 For example, let's add [o1] as a chat completion model, and [text-embedding-ada-002](https://platform.openai.com/docs/models/text-embedding-ada-002) as embedding models:
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
-metadata:
-  name: envoy-ai-gateway-basic-openai
-  namespace: default
-spec:
-  parentRefs:
-    - name: envoy-ai-gateway-basic
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  rules:
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: o1
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: text-embedding-ada-002
-      backendRefs:
-        - name: envoy-ai-gateway-basic-openai
-```
+<CodeBlock language="yaml">{OpenAIMoreModels}</CodeBlock>
 
 ## Next Steps
 

@@ -1,0 +1,21 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: provider-fallback-always-failing-upstream
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: provider-fallback-always-failing-upstream.default.svc.cluster.local
+        port: 443
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: provider-fallback-aws
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: bedrock-runtime.us-east-1.amazonaws.com
+        port: 443

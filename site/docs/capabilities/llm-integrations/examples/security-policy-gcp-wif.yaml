@@ -1,0 +1,23 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: gcp-auth
+spec:
+  type: GCPCredentials
+  gcpCredentials:
+    projectName: "your-gcp-project"
+    region: "us-central1"
+    workloadIdentityFederationConfig:
+      projectID: "your-gcp-project-id"
+      workloadIdentityPoolName: "your-workload-identity-pool"
+      workloadIdentityProviderName: "your-identity-provider"
+      serviceAccountImpersonation:
+        serviceAccountName: "your-service-account"
+      oidcExchangeToken:
+        oidc:
+          provider:
+            issuer: "https://your-oidc-provider.com"
+          clientID: "your-oidc-client-id"
+          clientSecret:
+            name: "gcp-client-secret"
+            namespace: default

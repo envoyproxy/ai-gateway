@@ -6,6 +6,7 @@ sidebar_position: 2
 
 import CodeBlock from '@theme/CodeBlock';
 import vars from '../../\_vars.json';
+import Step6GatewayHttproute from '!!raw-loader!./examples/step6-gateway-httproute.yaml';
 
 # HTTPRoute + InferencePool Guide
 
@@ -81,53 +82,10 @@ This creates:
 
 Create a Gateway and HTTPRoute that uses the InferencePool:
 
-```yaml
-cat <<EOF | kubectl apply -f -
-apiVersion: gateway.networking.k8s.io/v1
-kind: GatewayClass
-metadata:
-  name: inference-pool-with-httproute
-spec:
-  controllerName: gateway.envoyproxy.io/gatewayclass-controller
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: inference-pool-with-httproute
-  namespace: default
-spec:
-  gatewayClassName: inference-pool-with-httproute
-  listeners:
-    - name: http
-      protocol: HTTP
-      port: 80
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: inference-pool-with-httproute
-  namespace: default
-spec:
-  parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: inference-pool-with-httproute
-      namespace: default
-  rules:
-    - backendRefs:
-        - group: inference.networking.k8s.io
-          kind: InferencePool
-          name: vllm-llama3-8b-instruct
-          namespace: default
-          port: 8080
-          weight: 1
-      matches:
-        - path:
-            type: PathPrefix
-            value: /
-      timeouts:
-        request: 60s
-EOF
+<CodeBlock language="yaml">{Step6GatewayHttproute}</CodeBlock>
+
+```shell
+kubectl apply -f examples/step6-gateway-httproute.yaml
 ```
 
 ## Step 7: Test the Configuration

@@ -1,0 +1,23 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-basic-anthropic
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-basic
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: claude-sonnet-4-5
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: claude-haiku-3-5
+      backendRefs:
+        - name: envoy-ai-gateway-basic-anthropic

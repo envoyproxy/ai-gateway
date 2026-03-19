@@ -1,0 +1,20 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: GatewayConfig
+metadata:
+  name: my-gateway-config
+  namespace: default
+spec:
+  extProc:
+    kubernetes:
+      env:
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector:4317"
+        - name: OTEL_SERVICE_NAME
+          value: "my-ai-gateway"
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"

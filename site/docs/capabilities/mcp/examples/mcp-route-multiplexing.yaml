@@ -1,0 +1,24 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-unified
+  namespace: default
+spec:
+  parentRefs:
+    - name: aigw-run
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  path: "/mcp"
+  backendRefs:
+    - name: github
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/mcp/x/issues/readonly"
+      securityPolicy:
+        apiKey:
+          secretRef:
+            name: github-token
+    - name: context7
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/mcp"

@@ -1,0 +1,15 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: my-provider-backend
+spec:
+  # API schema the backend expects
+  schema:
+    name: OpenAI # Provider API format
+    version: "v1" # API version (optional for OpenAI, defaults to "v1")
+
+  # Reference to the Envoy Gateway Backend resource
+  backendRef:
+    name: my-provider-backend
+    kind: Backend
+    group: gateway.envoyproxy.io

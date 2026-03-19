@@ -1,0 +1,13 @@
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: gcp-auth-service-account-key
+  namespace: default
+spec:
+  type: GCPCredentials
+  gcpCredentials:
+    projectName: GCP_PROJECT_NAME # Replace with your GCP project name
+    region: GCP_REGION # Replace with your GCP region
+    credentialsFile:
+      secretRef:
+        name: envoy-ai-gateway-basic-gcp-service-account-key-file

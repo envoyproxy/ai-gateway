@@ -6,6 +6,7 @@ sidebar_position: 3
 
 import CodeBlock from '@theme/CodeBlock';
 import vars from '../../\_vars.json';
+import AzureMoreModels from '!!raw-loader!./examples/azure-more-models.yaml';
 
 # Connect Azure OpenAI
 
@@ -112,26 +113,7 @@ kubectl logs -n envoy-ai-gateway-system deployment/ai-gateway-controller
 
 To use more models, add more [AIGatewayRouteRule]s to the `azure_openai.yaml` file with the [model ID] in the `value` field. For example, to use [GPT-4.5 Preview]
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: AIGatewayRoute
-metadata:
-  name: envoy-ai-gateway-basic-azure
-  namespace: default
-spec:
-  parentRefs:
-    - name: envoy-ai-gateway-basic
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  rules:
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: gpt-4.5-preview
-      backendRefs:
-        - name: envoy-ai-gateway-basic-azure
-```
+<CodeBlock language="yaml">{AzureMoreModels}</CodeBlock>
 
 [AIGatewayRouteRule]: ../../api/api.mdx#aigatewayrouterule
 [model ID]: https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models

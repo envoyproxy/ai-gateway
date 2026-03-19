@@ -6,6 +6,8 @@ sidebar_position: 5
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import CodeBlock from '@theme/CodeBlock';
+import RateLimitingPolicy from '!!raw-loader!./examples/rate-limiting-policy.yaml';
 
 This guide focuses on AI Gateway's specific capabilities for token-based rate limiting in LLM requests. For general rate limiting concepts and configurations, refer to [Envoy Gateway's Rate Limiting documentation](https://gateway.envoyproxy.io/docs/tasks/traffic/global-rate-limit/).
 
@@ -96,64 +98,7 @@ The following example demonstrates a common use case where different models have
 - You need to implement different quotas for different tiers of service
 - You want to prevent cost overruns while still allowing flexibility with cheaper models
 
-```yaml
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: BackendTrafficPolicy
-metadata:
-  name: model-specific-token-limit-policy
-  namespace: default
-spec:
-  targetRefs:
-    - name: envoy-ai-gateway-token-ratelimit
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  rateLimit:
-    type: Global
-    global:
-      rules:
-        # Rate limit rule for GPT-4: 1000 total tokens per hour per user
-        # Stricter limit due to higher cost per token
-        - clientSelectors:
-            - headers:
-                - name: x-tenant-id
-                  type: Distinct
-                - name: x-ai-eg-model
-                  type: Exact
-                  value: gpt-4
-          limit:
-            requests: 1000 # 1000 total tokens per hour
-            unit: Hour
-          cost:
-            request:
-              from: Number
-              number: 0 # Set to 0 so only token usage counts
-            response:
-              from: Metadata
-              metadata:
-                namespace: io.envoy.ai_gateway
-                key: llm_total_token # Uses total tokens from the responses
-        # Rate limit rule for GPT-3.5: 5000 total tokens per hour per user
-        # Higher limit since the model is more cost-effective
-        - clientSelectors:
-            - headers:
-                - name: x-tenant-id
-                  type: Distinct
-                - name: x-ai-eg-model
-                  type: Exact
-                  value: gpt-3.5-turbo
-          limit:
-            requests: 5000 # 5000 total tokens per hour (higher limit for less expensive model)
-            unit: Hour
-          cost:
-            request:
-              from: Number
-              number: 0 # Set to 0 so only token usage counts
-            response:
-              from: Metadata
-              metadata:
-                namespace: io.envoy.ai_gateway
-                key: llm_total_token # Uses total tokens from the response
-```
+<CodeBlock language="yaml">{RateLimitingPolicy}</CodeBlock>
 
 :::warning
 When configuring rate limits:
