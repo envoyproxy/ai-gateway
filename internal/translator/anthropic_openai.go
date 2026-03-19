@@ -52,7 +52,7 @@ type anthropicToOpenAIV1ChatCompletionTranslator struct {
 }
 
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody].
-func (a *anthropicToOpenAIV1ChatCompletionTranslator) RequestBody(_ []byte, body *anthropic.MessagesRequest, _ bool) (
+func (a *anthropicToOpenAIV1ChatCompletionTranslator) RequestBody(_ map[string]string, _ []byte, body *anthropic.MessagesRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Set translator config based on Anthropic message request

@@ -20,7 +20,7 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_ModelOverrideAndPath(t *testi
 	req := &openai.ImageGenerationRequest{Model: "dall-e-3", Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 
-	hm, bm, err := tr.RequestBody(original, req, false)
+	hm, bm, err := tr.RequestBody(nil, original, req, false)
 	require.NoError(t, err)
 	require.NotNil(t, hm)
 	require.Len(t, hm, 2) // path and content-length headers
@@ -39,7 +39,7 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_ForceMutation(t *testing.T) {
 	req := &openai.ImageGenerationRequest{Model: "dall-e-2", Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 
-	hm, bm, err := tr.RequestBody(original, req, true)
+	hm, bm, err := tr.RequestBody(nil, original, req, true)
 	require.NoError(t, err)
 	require.NotNil(t, hm)
 	// Content-Length is set only when body mutated; with force it should be mutated to original.
@@ -88,7 +88,7 @@ func TestOpenAIToOpenAIImageTranslator_RequestBody_NoOverrideNoForce(t *testing.
 	req := &openai.ImageGenerationRequest{Model: "dall-e-2", Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 
-	hm, bm, err := tr.RequestBody(original, req, false)
+	hm, bm, err := tr.RequestBody(nil, original, req, false)
 	require.NoError(t, err)
 	require.NotNil(t, hm)
 	// Only path header present; content-length should not be set when no mutation
@@ -113,7 +113,7 @@ func TestOpenAIToOpenAIImageTranslator_ResponseBody_ModelPropagatesFromRequest(t
 	req := &openai.ImageGenerationRequest{Model: "dall-e-3", Prompt: "a cat"}
 	original, _ := json.Marshal(req)
 	// Call RequestBody first to set requestModel inside translator
-	_, _, err := tr.RequestBody(original, req, false)
+	_, _, err := tr.RequestBody(nil, original, req, false)
 	require.NoError(t, err)
 
 	resp := &openai.ImageGenerationResponse{

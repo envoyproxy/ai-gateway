@@ -32,7 +32,7 @@ func TestResponseModel_OpenAIStreaming(t *testing.T) {
 		Model:  "gpt-4o",
 		Stream: true,
 	}
-	_, _, err := translator.RequestBody(nil, req, false)
+	_, _, err := translator.RequestBody(map[string]string{}, nil, req, false)
 	require.NoError(t, err)
 	require.True(t, translator.stream)
 
@@ -64,7 +64,7 @@ func TestResponseModel_EmptyFallback(t *testing.T) {
 			Model:  "gpt-4o",
 			Stream: false,
 		}
-		_, _, err := translator.RequestBody(nil, req, false)
+		_, _, err := translator.RequestBody(map[string]string{}, nil, req, false)
 		require.NoError(t, err)
 		require.False(t, translator.stream)
 
@@ -95,7 +95,7 @@ func TestResponseModel_EmptyFallback(t *testing.T) {
 			Model:  "gpt-4o-mini",
 			Stream: true,
 		}
-		_, _, err := translator.RequestBody(nil, req, false)
+		_, _, err := translator.RequestBody(map[string]string{}, nil, req, false)
 		require.NoError(t, err)
 		require.True(t, translator.stream)
 
@@ -128,7 +128,7 @@ data: [DONE]
 			Stream: false,
 		}
 		original := []byte(`{"model":"gpt-4o"}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4o-2024-11-20", translator.requestModel) // Override is stored
 
@@ -160,7 +160,7 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 				originalReq := &openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: stream}
 
 				o := NewChatCompletionOpenAIToOpenAITranslator("foo/v1", "").(*openAIToOpenAITranslatorV1ChatCompletion)
-				hm, bm, err := o.RequestBody(nil, originalReq, false)
+				hm, bm, err := o.RequestBody(map[string]string{}, nil, originalReq, false)
 				require.Nil(t, bm)
 				require.NoError(t, err)
 				require.Equal(t, stream, o.stream)
@@ -178,7 +178,7 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 			require.NoError(t, err)
 			modelName := "gpt-4o-mini-2024-07-18" // Example model name override.
 			o := &openAIToOpenAITranslatorV1ChatCompletion{modelNameOverride: modelName, path: "/v1/chat/completions"}
-			hm, body, err := o.RequestBody(rawReq, originalReq, forcedMutation)
+			hm, body, err := o.RequestBody(nil, rawReq, originalReq, forcedMutation)
 			require.NoError(t, err)
 			require.NotNil(t, body)
 			var newReq openai.ChatCompletionRequest
@@ -197,7 +197,7 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 		originalReq := &openai.ChatCompletionRequest{Model: "foo-bar-ai", Stream: true}
 		original := []byte("whatever")
 		o := NewChatCompletionOpenAIToOpenAITranslator("foo/v1", "").(*openAIToOpenAITranslatorV1ChatCompletion)
-		hm, body, err := o.RequestBody(original, originalReq, true)
+		hm, body, err := o.RequestBody(nil, original, originalReq, true)
 		require.NoError(t, err)
 		require.True(t, o.stream)
 		require.NotNil(t, body)

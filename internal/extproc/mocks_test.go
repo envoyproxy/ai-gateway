@@ -87,7 +87,7 @@ type mockTranslator struct {
 }
 
 // RequestBody implements [translator.OpenAIChatCompletionTranslator].
-func (m *mockTranslator) RequestBody(_ []byte, body *openai.ChatCompletionRequest, forceRequestBodyMutation bool) (newHeaders []internalapi.Header, newBody []byte, err error) {
+func (m *mockTranslator) RequestBody(_ map[string]string, _ []byte, body *openai.ChatCompletionRequest, forceRequestBodyMutation bool) (newHeaders []internalapi.Header, newBody []byte, err error) {
 	require.Equal(m.t, m.expRequestBody, body)
 	require.Equal(m.t, m.expForceRequestBodyMutation, forceRequestBodyMutation)
 	return m.retHeaderMutation, m.retBodyMutation, m.retErr
