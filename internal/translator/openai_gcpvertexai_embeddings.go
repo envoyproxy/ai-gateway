@@ -147,7 +147,7 @@ func openAIEmbeddingToGeminiMessage(openAIReq *openai.EmbeddingRequest) (*gcp.Pr
 
 // RequestBody implements [OpenAIEmbeddingTranslator.RequestBody] for GCP Gemini.
 // This method translates an OpenAI Embedding request to a GCP Gemini Embeddings API request.
-func (o *openAIToGCPVertexAITranslatorV1Embedding) RequestBody(_ []byte, req *openai.EmbeddingRequest, _ bool) (
+func (o *openAIToGCPVertexAITranslatorV1Embedding) RequestBody(_ map[string]string, _ []byte, req *openai.EmbeddingRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	o.requestModel = req.Model

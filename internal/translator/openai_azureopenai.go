@@ -34,7 +34,7 @@ type openAIToAzureOpenAITranslatorV1ChatCompletion struct {
 	openAIToOpenAITranslatorV1ChatCompletion
 }
 
-func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, req *openai.ChatCompletionRequest, forceBodyMutation bool) (
+func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(_ map[string]string, raw []byte, req *openai.ChatCompletionRequest, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	modelName := req.Model

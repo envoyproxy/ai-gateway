@@ -84,7 +84,7 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_ModelNameOverride(t *test
 			rawBody, err := json.Marshal(originalReq)
 			require.NoError(t, err)
 
-			headerMutation, bodyMutation, err := translator.RequestBody(rawBody, originalReq, false)
+			headerMutation, bodyMutation, err := translator.RequestBody(nil, rawBody, originalReq, false)
 			require.NoError(t, err)
 			require.NotNil(t, headerMutation)
 			require.NotNil(t, bodyMutation)
@@ -165,7 +165,7 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_StreamingPaths(t *testing
 			rawBody, err := json.Marshal(parsedReq)
 			require.NoError(t, err)
 
-			headerMutation, _, err := translator.RequestBody(rawBody, parsedReq, false)
+			headerMutation, _, err := translator.RequestBody(nil, rawBody, parsedReq, false)
 			require.NoError(t, err)
 			require.NotNil(t, headerMutation)
 
@@ -222,7 +222,7 @@ func TestAnthropicToAWSAnthropicTranslator_URLEncoding(t *testing.T) {
 			rawBody, err := json.Marshal(originalReq)
 			require.NoError(t, err)
 
-			headerMutation, _, err := translator.RequestBody(rawBody, originalReq, false)
+			headerMutation, _, err := translator.RequestBody(nil, rawBody, originalReq, false)
 			require.NoError(t, err)
 			require.NotNil(t, headerMutation)
 

@@ -36,7 +36,7 @@ type openAIToOpenAIImageGenerationTranslator struct {
 }
 
 // RequestBody implements [ImageGenerationTranslator.RequestBody].
-func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(original []byte, p *openai.ImageGenerationRequest, forceBodyMutation bool) (
+func (o *openAIToOpenAIImageGenerationTranslator) RequestBody(_ map[string]string, original []byte, p *openai.ImageGenerationRequest, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	if o.modelNameOverride != "" {

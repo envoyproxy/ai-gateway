@@ -59,7 +59,7 @@ func TestCohereToCohereTranslatorV2Rerank_RequestBody(t *testing.T) {
 			var req cohereschema.RerankV2Request
 			require.NoError(t, json.Unmarshal([]byte(originalBody), &req))
 
-			headerMutation, bodyMutation, err := translator.RequestBody([]byte(originalBody), &req, tc.onRetry)
+			headerMutation, bodyMutation, err := translator.RequestBody(nil, []byte(originalBody), &req, tc.onRetry)
 			require.NoError(t, err)
 			require.NotNil(t, headerMutation)
 			require.GreaterOrEqual(t, len(headerMutation), 1)
@@ -90,7 +90,7 @@ func TestCohereToCohereTranslatorV2Rerank_RequestBody_InvalidJSONCreatesBodyWith
 	// Provide invalid JSON; sjson with Optimistic mode can still produce a body with the override.
 	originalBody := []byte("not-json")
 	var req cohereschema.RerankV2Request
-	headerMutation, bodyMutation, err := translator.RequestBody(originalBody, &req, false)
+	headerMutation, bodyMutation, err := translator.RequestBody(nil, originalBody, &req, false)
 	require.NoError(t, err)
 	require.NotNil(t, headerMutation)
 	require.NotNil(t, bodyMutation)
@@ -113,7 +113,7 @@ func TestCohereToCohereTranslatorV2Rerank_RequestBody_SetModelNameError(t *testi
 	originalBody := []byte("[]")
 	var req cohereschema.RerankV2Request
 
-	headerMutation, bodyMutation, err := translator.RequestBody(originalBody, &req, false)
+	headerMutation, bodyMutation, err := translator.RequestBody(nil, originalBody, &req, false)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "failed to set model name")
 	require.Nil(t, headerMutation)

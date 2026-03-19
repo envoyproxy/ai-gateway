@@ -38,7 +38,7 @@ type cohereToCohereTranslatorV2Rerank struct {
 }
 
 // RequestBody implements [CohereRerankTranslator.RequestBody].
-func (t *cohereToCohereTranslatorV2Rerank) RequestBody(original []byte, req *cohereschema.RerankV2Request, onRetry bool) (
+func (t *cohereToCohereTranslatorV2Rerank) RequestBody(_ map[string]string, original []byte, req *cohereschema.RerankV2Request, onRetry bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Store the request model to use as fallback for response model
