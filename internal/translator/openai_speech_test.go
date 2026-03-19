@@ -24,7 +24,7 @@ func TestOpenAIToOpenAISpeechTranslator_RequestBody_ModelOverrideAndPath(t *test
 	}
 	original, _ := json.Marshal(req)
 
-	hm, bm, err := tr.RequestBody(original, req, false)
+	hm, bm, err := tr.RequestBody(map[string]string{}, original, req, false)
 	require.NoError(t, err)
 	require.NotNil(t, hm)
 	require.Len(t, hm, 2) // path and content-length headers
@@ -47,7 +47,7 @@ func TestOpenAIToOpenAISpeechTranslator_RequestBody_ForceMutation(t *testing.T) 
 	}
 	original, _ := json.Marshal(req)
 
-	hm, bm, err := tr.RequestBody(original, req, true)
+	hm, bm, err := tr.RequestBody(map[string]string{}, original, req, true)
 	require.NoError(t, err)
 	require.NotNil(t, hm)
 	// Content-Length is set only when body mutated; with force it should be mutated to original.
@@ -72,7 +72,7 @@ func TestOpenAIToOpenAISpeechTranslator_RequestBody_NoOverrideNoForce(t *testing
 	}
 	original, _ := json.Marshal(req)
 
-	hm, bm, err := tr.RequestBody(original, req, false)
+	hm, bm, err := tr.RequestBody(map[string]string{}, original, req, false)
 	require.NoError(t, err)
 	require.NotNil(t, hm)
 	// Only path header present; content-length should not be set when no mutation
@@ -93,7 +93,7 @@ func TestOpenAIToOpenAISpeechTranslator_RequestBody_StreamingDetection(t *testin
 	}
 	original, _ := json.Marshal(req)
 
-	_, _, err := tr.RequestBody(original, req, false)
+	_, _, err := tr.RequestBody(nil, original, req, false)
 	require.NoError(t, err)
 	require.True(t, tr.stream, "Should detect SSE streaming mode")
 }
@@ -108,7 +108,7 @@ func TestOpenAIToOpenAISpeechTranslator_RequestBody_NonStreamingDetection(t *tes
 	}
 	original, _ := json.Marshal(req)
 
-	_, _, err := tr.RequestBody(original, req, false)
+	_, _, err := tr.RequestBody(nil, original, req, false)
 	require.NoError(t, err)
 	require.False(t, tr.stream, "Should detect binary mode")
 }
@@ -126,7 +126,7 @@ func TestOpenAIToOpenAISpeechTranslator_ResponseBody_BinaryAudio(t *testing.T) {
 	// Set up translator state (simulate RequestBody call)
 	req := &openai.SpeechRequest{Model: "tts-1", Input: "Test", Voice: "alloy"}
 	original, _ := json.Marshal(req)
-	_, _, _ = tr.RequestBody(original, req, false)
+	_, _, _ = tr.RequestBody(nil, original, req, false)
 
 	// Simulate binary MP3 response
 	audioData := []byte{0xFF, 0xFB, 0x90, 0x00} // MP3 header
@@ -151,7 +151,7 @@ func TestOpenAIToOpenAISpeechTranslator_ResponseBody_StreamingSSE(t *testing.T) 
 		StreamFormat: &sseFormat,
 	}
 	original, _ := json.Marshal(req)
-	_, _, _ = tr.RequestBody(original, req, false)
+	_, _, _ = tr.RequestBody(nil, original, req, false)
 
 	// Simulate SSE response
 	sseData := `data: {"data":"dGVzdA=="}
@@ -175,7 +175,7 @@ func TestOpenAIToOpenAISpeechTranslator_ResponseBody_RecordsSpan_Binary(t *testi
 	// Set up translator state
 	req := &openai.SpeechRequest{Model: "tts-1", Input: "Test", Voice: "alloy"}
 	original, _ := json.Marshal(req)
-	_, _, _ = tr.RequestBody(original, req, false)
+	_, _, _ = tr.RequestBody(nil, original, req, false)
 
 	audioData := []byte{0xFF, 0xFB, 0x90, 0x00}
 
@@ -198,7 +198,7 @@ func TestOpenAIToOpenAISpeechTranslator_ResponseBody_RecordsSpan_Streaming(t *te
 		StreamFormat: &sseFormat,
 	}
 	original, _ := json.Marshal(req)
-	_, _, _ = tr.RequestBody(original, req, false)
+	_, _, _ = tr.RequestBody(nil, original, req, false)
 
 	sseData := `data: {"data":"dGVzdA=="}
 
@@ -246,7 +246,7 @@ func TestOpenAIToOpenAISpeechTranslator_ResponseBody_ModelPropagatesFromRequest(
 	}
 	original, _ := json.Marshal(req)
 	// Call RequestBody first to set requestModel inside translator
-	_, _, err := tr.RequestBody(original, req, false)
+	_, _, err := tr.RequestBody(nil, original, req, false)
 	require.NoError(t, err)
 
 	audioData := []byte{0xFF, 0xFB, 0x90, 0x00}
@@ -261,7 +261,7 @@ func TestOpenAIToOpenAISpeechTranslator_ResponseBody_ReadError(t *testing.T) {
 	// Set up translator state
 	req := &openai.SpeechRequest{Model: "tts-1", Input: "Test", Voice: "alloy"}
 	original, _ := json.Marshal(req)
-	_, _, _ = tr.RequestBody(original, req, false)
+	_, _, _ = tr.RequestBody(nil, original, req, false)
 
 	// Use an erroring reader
 	_, _, _, _, err := tr.ResponseBody(map[string]string{}, &errorReader{}, true, nil)

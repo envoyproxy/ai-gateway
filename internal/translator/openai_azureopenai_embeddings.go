@@ -33,7 +33,7 @@ type openAIToAzureOpenAITranslatorV1Embedding struct {
 }
 
 // RequestBody implements [OpenAIEmbeddingTranslator.RequestBody].
-func (o *openAIToAzureOpenAITranslatorV1Embedding) RequestBody(original []byte, req *openai.EmbeddingRequest, onRetry bool) (
+func (o *openAIToAzureOpenAITranslatorV1Embedding) RequestBody(_ map[string]string, original []byte, req *openai.EmbeddingRequest, onRetry bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	modelName := req.Model

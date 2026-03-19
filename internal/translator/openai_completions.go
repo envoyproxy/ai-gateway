@@ -42,7 +42,7 @@ type openAIToOpenAITranslatorV1Completion struct {
 }
 
 // RequestBody implements [OpenAICompletionTranslator.RequestBody].
-func (o *openAIToOpenAITranslatorV1Completion) RequestBody(original []byte, req *openai.CompletionRequest, onRetry bool) (
+func (o *openAIToOpenAITranslatorV1Completion) RequestBody(_ map[string]string, original []byte, req *openai.CompletionRequest, onRetry bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Track if this is a streaming request.

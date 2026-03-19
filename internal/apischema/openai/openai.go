@@ -8486,7 +8486,7 @@ func (f FileNewParams) MarshalMultipart() ([]byte, string, error) {
 	if typed, ok := f.File.(interface{ ContentType() string }); ok {
 		contentType = typed.ContentType()
 	}
-	// part, err := writer.CreateFormFile("file", filename)
+
 	// Below is taken almost 1-for-1 from [multipart.CreateFormFile]
 	key := "file"
 	h := make(textproto.MIMEHeader)

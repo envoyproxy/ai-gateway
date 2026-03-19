@@ -90,7 +90,7 @@ type openAIToGCPVertexAITranslatorV1ChatCompletion struct {
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP Gemini.
 // This method translates an OpenAI ChatCompletion request to a GCP Gemini API request.
-func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
+func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) RequestBody(_ map[string]string, _ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	o.requestModel = openAIReq.Model

@@ -75,7 +75,7 @@ func TestAnthropicToOpenAITranslator_RequestBody(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			translator := NewAnthropicToChatCompletionOpenAITranslator("v1", tt.modelOverride)
-			headers, body, err := translator.RequestBody(nil, tt.body, false)
+			headers, body, err := translator.RequestBody(map[string]string{}, nil, tt.body, false)
 			require.NoError(t, err)
 			require.NotNil(t, headers)
 			require.NotNil(t, body)
@@ -123,7 +123,7 @@ func TestAnthropicToOpenAITranslator_RequestBody_CustomPrefix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			translator := NewAnthropicToChatCompletionOpenAITranslator(tt.prefix, "")
-			headers, body, err := translator.RequestBody(nil, &anthropic.MessagesRequest{
+			headers, body, err := translator.RequestBody(map[string]string{}, nil, &anthropic.MessagesRequest{
 				Model:     "claude-3",
 				MaxTokens: 100,
 				Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
@@ -155,7 +155,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_NonStreaming(t *testing.T) {
 			MaxTokens: 100,
 			Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
 		}
-		_, _, err := translator.RequestBody(nil, reqBody, false)
+		_, _, err := translator.RequestBody(map[string]string{}, nil, reqBody, false)
 		require.NoError(t, err)
 
 		content := "Hello from OpenAI!"
@@ -219,7 +219,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_NonStreaming(t *testing.T) {
 			MaxTokens: 100,
 			Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
 		}
-		_, _, err := translator.RequestBody(nil, reqBody, false)
+		_, _, err := translator.RequestBody(map[string]string{}, nil, reqBody, false)
 		require.NoError(t, err)
 
 		content := "Hi!"
@@ -252,7 +252,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_NonStreaming(t *testing.T) {
 			MaxTokens: 100,
 			Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
 		}
-		_, _, err := translator.RequestBody(nil, reqBody, false)
+		_, _, err := translator.RequestBody(map[string]string{}, nil, reqBody, false)
 		require.NoError(t, err)
 
 		// OpenAI response with no model field.
@@ -282,7 +282,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_NonStreaming(t *testing.T) {
 			MaxTokens: 100,
 			Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Get weather"}}},
 		}
-		_, _, err := translator.RequestBody(nil, reqBody, false)
+		_, _, err := translator.RequestBody(map[string]string{}, nil, reqBody, false)
 		require.NoError(t, err)
 
 		toolID := "call-abc"
@@ -340,7 +340,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_Streaming(t *testing.T) {
 		Stream:    true,
 		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hello"}}},
 	}
-	_, _, err := translator.RequestBody(nil, reqBody, false)
+	_, _, err := translator.RequestBody(map[string]string{}, nil, reqBody, false)
 	require.NoError(t, err)
 
 	// Feed all OpenAI SSE chunks at once.
@@ -398,7 +398,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_StreamingRequestModelFallback(
 		Stream:    true,
 		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
 	}
-	_, _, err := translator.RequestBody(nil, reqBody, false)
+	_, _, err := translator.RequestBody(map[string]string{}, nil, reqBody, false)
 	require.NoError(t, err)
 
 	// Usage-only chunk with no model information at all.
@@ -609,7 +609,7 @@ func initNonStreamingTranslator(t *testing.T, modelOverride string) *anthropicTo
 		MaxTokens: 100,
 		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
 	}
-	_, _, err := tr.RequestBody(nil, req, false)
+	_, _, err := tr.RequestBody(map[string]string{}, nil, req, false)
 	require.NoError(t, err)
 	return tr
 }

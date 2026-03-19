@@ -52,7 +52,7 @@ type openAIToOpenAITranslatorV1ChatCompletion struct {
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
-func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(original []byte, req *openai.ChatCompletionRequest, forceBodyMutation bool) (
+func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(_ map[string]string, original []byte, req *openai.ChatCompletionRequest, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	if req.Stream {

@@ -1240,7 +1240,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 		t.Run(tt.name, func(t *testing.T) {
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			originalReq := tt.input
-			hm, newBody, err := o.RequestBody(nil, &originalReq, false)
+			hm, newBody, err := o.RequestBody(map[string]string{}, nil, &originalReq, false)
 			var expPath string
 			require.Equal(t, tt.input.Stream, o.stream)
 			encodedModel := url.PathEscape(tt.input.Model)
@@ -1274,7 +1274,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			Model:    "claude-3-5-sonnet",
 			Messages: []openai.ChatCompletionMessageParamUnion{},
 		}
-		hm, _, err := o.RequestBody(nil, &originalReq, false)
+		hm, _, err := o.RequestBody(map[string]string{}, nil, &originalReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
 		require.NotNil(t, hm)
@@ -1798,7 +1798,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBodyURLEncoding(t *
 				},
 			}
 
-			hm, _, err := o.RequestBody(nil, &req, false)
+			hm, _, err := o.RequestBody(map[string]string{}, nil, &req, false)
 			require.NoError(t, err)
 			require.NotNil(t, hm)
 			require.NotNil(t, hm)
@@ -1847,7 +1847,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBodyErr(t *testing.
 		t.Run(tt.name, func(t *testing.T) {
 			o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
 			originalReq := tt.input
-			_, _, err := o.RequestBody(nil, &originalReq, false)
+			_, _, err := o.RequestBody(map[string]string{}, nil, &originalReq, false)
 			require.ErrorIs(t, err, tt.err)
 		})
 	}
@@ -2323,7 +2323,7 @@ func TestResponseModel_AWSBedrock(t *testing.T) {
 		Model: "claude-3-5-sonnet",
 	}
 	reqBody, _ := json.Marshal(req)
-	_, _, err := translator.RequestBody(reqBody, req, false)
+	_, _, err := translator.RequestBody(nil, reqBody, req, false)
 	require.NoError(t, err)
 
 	// AWS Bedrock response doesn't have model field
@@ -2471,7 +2471,7 @@ func TestOpenAIToAWSBedrockTranslator_CacheControl(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			translator := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
-			_, body, err := translator.RequestBody(nil, &test.input, false)
+			_, body, err := translator.RequestBody(map[string]string{}, nil, &test.input, false)
 			require.NoError(t, err)
 			require.Equal(t, test.expectedJSON, string(body))
 		})

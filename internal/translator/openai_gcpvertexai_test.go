@@ -47,7 +47,7 @@ func TestResponseModel_GCPVertexAIStreaming(t *testing.T) {
 		},
 	}
 	reqBody, _ := json.Marshal(req)
-	_, _, err := translator.RequestBody(reqBody, req, false)
+	_, _, err := translator.RequestBody(nil, reqBody, req, false)
 	require.NoError(t, err)
 	require.True(t, translator.stream)
 
@@ -794,7 +794,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			translator := NewChatCompletionOpenAIToGCPVertexAITranslator(tc.modelNameOverride)
-			headerMut, bodyMut, err := translator.RequestBody(nil, &tc.input, tc.onRetry)
+			headerMut, bodyMut, err := translator.RequestBody(map[string]string{}, nil, &tc.input, tc.onRetry)
 			if tc.wantError {
 				assert.Error(t, err)
 				return
@@ -2478,7 +2478,7 @@ func TestResponseModel_GCPVertexAI(t *testing.T) {
 		Model: "gemini-1.5-pro",
 	}
 	reqBody, _ := json.Marshal(req)
-	_, _, err := translator.RequestBody(reqBody, req, false)
+	_, _, err := translator.RequestBody(nil, reqBody, req, false)
 	require.NoError(t, err)
 
 	// Vertex AI response doesn't have model field
