@@ -8,6 +8,7 @@
 package endpointspec
 
 import (
+	"errors"
 	"fmt"
 	"mime"
 
@@ -421,7 +422,11 @@ func (CreateFileEndpointSpec) ParseBody(
 	if err := req.UnmarshalMultipart(body, params["boundary"]); err != nil {
 		return "", nil, false, nil, fmt.Errorf("%w: failed to parse multipart form-data for /v1/files", internalapi.ErrMalformedRequest)
 	}
-	return "", &req, false, body, nil
+	modelName, ok := req.ExtraBody["model_name"]
+	if !ok {
+		return "", nil, false, nil, errors.New("model_name should be passed as extra field for file upload")
+	}
+	return string(modelName.([]byte)), &req, false, body, nil
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].

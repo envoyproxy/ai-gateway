@@ -88,7 +88,7 @@ func getCachePoint(fields *openai.AnthropicContentFields) *awsbedrock.CachePoint
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody].
-func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
+func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ map[string]string, _ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	var pathTemplate string

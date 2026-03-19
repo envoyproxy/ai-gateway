@@ -53,7 +53,7 @@ type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP.
-func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
+func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ map[string]string, _ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	params, err := buildAnthropicParams(openAIReq, "GCPAnthropic")
