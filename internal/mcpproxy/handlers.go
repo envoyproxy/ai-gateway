@@ -547,13 +547,7 @@ func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.
 	result := mcp.InitializeResult{ProtocolVersion: protocolVersion20250618, ServerInfo: &mcp.Implementation{}}
 	result.ServerInfo.Name = "envoy-ai-gateway"
 	result.ServerInfo.Version = version.Parse()
-	result.Capabilities = &mcp.ServerCapabilities{
-		Tools:       &mcp.ToolCapabilities{ListChanged: true},
-		Prompts:     &mcp.PromptCapabilities{ListChanged: true},
-		Logging:     &mcp.LoggingCapabilities{},
-		Resources:   &mcp.ResourceCapabilities{ListChanged: true, Subscribe: true},
-		Completions: &mcp.CompletionCapabilities{},
-	}
+	result.Capabilities = s.mergedCapabilities()
 
 	marshal, err := json.Marshal(result)
 	if err != nil {
@@ -1447,14 +1441,14 @@ type (
 // JSON-RPC methods that require sending the request to all backends and aggregating the responses.
 //
 // The mergeFn is used to merge the responses from all backends into a single response that will be sent back to the client.
-func sendToAllBackendsAndAggregateResponses[responseType any, paramsType mcp.Params](ctx context.Context, m *mcpRequestContext, w http.ResponseWriter, s *session, request *jsonrpc.Request, p paramsType, mergeFn broadCastResponseMergeFn[responseType], span tracingapi.MCPSpan) error {
+func sendToAllBackendsAndAggregateResponses[responseType any, paramsType mcp.Params](ctx context.Context, m *mcpRequestContext, w http.ResponseWriter, s *session, request *jsonrpc.Request, p paramsType, mergeFn broadCastResponseMergeFn[responseType], span tracingapi.MCPSpan, filter func(*compositeSessionEntry) bool) error {
 	// Mark that per-backend metrics will be recorded to avoid duplicate recording in defer.
 	// This must be set early to handle any early returns that might occur.
 	m.perBackendMetricsRecorded = true
 
 	encoded, _ := json.Marshal(p)
 	request.Params = encoded
-	backendMsgs := s.sendToAllBackends(ctx, http.MethodPost, request, span)
+	backendMsgs := s.sendToBackendsFiltered(ctx, http.MethodPost, request, span, filter)
 	return sendToAllBackendsAndAggregateResponsesImpl(ctx, backendMsgs, m, w, s, request, p, mergeFn)
 }
 
@@ -1565,35 +1559,46 @@ func parseParamsAndMaybeStartSpan[paramType mcp.Params](ctx context.Context, m *
 // This aggregates and returns the list of tools from all backends.
 func (m *mcpRequestContext) handleToolsListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListToolsParams, span tracingapi.MCPSpan) error {
 	// TODO: use cursor for pagination, but in spec it's "SHOULD" not "MUST".
-	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeToolsList, span)
+	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeToolsList, span,
+		func(cse *compositeSessionEntry) bool { return cse.capabilities != nil && cse.capabilities.Tools != nil })
 }
 
 // handleResourceListRequest handles the "resources/list" JSON-RPC method.
 // This aggregates and returns the list of resources from all backends.
 func (m *mcpRequestContext) handleResourceListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListResourcesParams, span tracingapi.MCPSpan) error {
 	// TODO: use cursor for pagination, but in spec it's "SHOULD" not "MUST".
-	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeResourceList, span)
+	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeResourceList, span,
+		func(cse *compositeSessionEntry) bool {
+			return cse.capabilities != nil && cse.capabilities.Resources != nil
+		})
 }
 
 // handleResourcesTemplatesListRequest handles the "resources/templates/list" JSON-RPC method.
 func (m *mcpRequestContext) handleResourcesTemplatesListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListResourceTemplatesParams, span tracingapi.MCPSpan) error {
 	// TODO: use cursor for pagination, but in spec it's "SHOULD" not "MUST".
-	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeResourcesTemplateList, span)
+	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeResourcesTemplateList, span,
+		func(cse *compositeSessionEntry) bool {
+			return cse.capabilities != nil && cse.capabilities.Resources != nil
+		})
 }
 
 // handlePromptListRequest handles the "prompts/list" JSON-RPC method.
 // This aggregates and returns the list of prompts from all backends.
 func (m *mcpRequestContext) handlePromptListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListPromptsParams, span tracingapi.MCPSpan) error {
 	// TODO: use cursor for pagination, but in spec it's "SHOULD" not "MUST".
-	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergePromptsList, span)
+	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergePromptsList, span,
+		func(cse *compositeSessionEntry) bool {
+			return cse.capabilities != nil && cse.capabilities.Prompts != nil
+		})
 }
 
 // handleSetLoggingLevel handles the "logging/setLevel" JSON-RPC method.
 func (m *mcpRequestContext) handleSetLoggingLevel(ctx context.Context, s *session, w http.ResponseWriter, originalRequest *jsonrpc.Request, p *mcp.SetLoggingLevelParams, span tracingapi.MCPSpan) error {
-	// TODO: maybe some backend doesn't support set logging level, so filter out such backends.
 	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, originalRequest, p, func(*session, []broadCastResponse[any]) any {
 		return struct{}{}
-	}, span)
+	}, span, func(cse *compositeSessionEntry) bool {
+		return cse.capabilities != nil && cse.capabilities.Logging != nil
+	})
 }
 
 // mergeToolsList merges the list of tools from all backends and prepare the response message to be sent back to the client.
