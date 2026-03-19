@@ -98,6 +98,18 @@ func equalKeys[K comparable, V any](m1, m2 map[K]V) bool {
 	return maps.EqualFunc(m1, m2, func(_, _ V) bool { return true })
 }
 
+func compileRegexps(exprs []string, kind string, backendName filterapi.MCPBackendName, routeName filterapi.MCPRouteName) ([]*regexp.Regexp, error) {
+	var regexps []*regexp.Regexp
+	for _, expr := range exprs {
+		re, err := regexp.Compile(expr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to compile %s regex %q for backend %q in route %q: %w", kind, expr, backendName, routeName, err)
+		}
+		regexps = append(regexps, re)
+	}
+	return regexps, nil
+}
+
 func (t *toolSelector) sameTools(other *toolSelector) bool {
 	if t == nil || other == nil {
 		return t == other
@@ -108,17 +120,21 @@ func (t *toolSelector) sameTools(other *toolSelector) bool {
 	if !equalKeys(t.exclude, other.exclude) {
 		return false
 	}
-	slices.SortFunc(t.includeRegexps, sortRegexpAsString)
-	slices.SortFunc(other.includeRegexps, sortRegexpAsString)
-	if !slices.EqualFunc(t.includeRegexps, other.includeRegexps,
+	tIncludeRegexps := slices.Clone(t.includeRegexps)
+	otherIncludeRegexps := slices.Clone(other.includeRegexps)
+	slices.SortFunc(tIncludeRegexps, sortRegexpAsString)
+	slices.SortFunc(otherIncludeRegexps, sortRegexpAsString)
+	if !slices.EqualFunc(tIncludeRegexps, otherIncludeRegexps,
 		func(a, b *regexp.Regexp) bool {
 			return a.String() == b.String()
 		}) {
 		return false
 	}
-	slices.SortFunc(t.excludeRegexps, sortRegexpAsString)
-	slices.SortFunc(other.excludeRegexps, sortRegexpAsString)
-	return slices.EqualFunc(t.excludeRegexps, other.excludeRegexps,
+	tExcludeRegexps := slices.Clone(t.excludeRegexps)
+	otherExcludeRegexps := slices.Clone(other.excludeRegexps)
+	slices.SortFunc(tExcludeRegexps, sortRegexpAsString)
+	slices.SortFunc(otherExcludeRegexps, sortRegexpAsString)
+	return slices.EqualFunc(tExcludeRegexps, otherExcludeRegexps,
 		func(a, b *regexp.Regexp) bool {
 			return a.String() == b.String()
 		})
@@ -195,23 +211,19 @@ func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) er
 				for _, tool := range s.Include {
 					ts.include[tool] = struct{}{}
 				}
-				for _, expr := range s.IncludeRegex {
-					re, err := regexp.Compile(expr)
-					if err != nil {
-						return fmt.Errorf("failed to compile include regex %q for backend %q in route %q: %w", expr, backend.Name, route.Name, err)
-					}
-					ts.includeRegexps = append(ts.includeRegexps, re)
+				includeRegexps, err := compileRegexps(s.IncludeRegex, "include", backend.Name, route.Name)
+				if err != nil {
+					return err
 				}
+				ts.includeRegexps = includeRegexps
 				for _, tool := range s.Exclude {
 					ts.exclude[tool] = struct{}{}
 				}
-				for _, expr := range s.ExcludeRegex {
-					re, err := regexp.Compile(expr)
-					if err != nil {
-						return fmt.Errorf("failed to compile exclude regex %q for backend %q in route %q: %w", expr, backend.Name, route.Name, err)
-					}
-					ts.excludeRegexps = append(ts.excludeRegexps, re)
+				excludeRegexps, err := compileRegexps(s.ExcludeRegex, "exclude", backend.Name, route.Name)
+				if err != nil {
+					return err
 				}
+				ts.excludeRegexps = excludeRegexps
 				r.toolSelectors[backend.Name] = ts
 			}
 		}
