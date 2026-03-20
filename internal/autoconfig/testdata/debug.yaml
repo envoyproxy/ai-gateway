@@ -121,7 +121,7 @@ spec:
               downstream_remote_address: "%DOWNSTREAM_REMOTE_ADDRESS%"
 
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: aigw-run
@@ -161,7 +161,7 @@ spec:
         hostname: api.openai.com
         port: 443
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: openai
@@ -217,7 +217,7 @@ type: Opaque
 stringData:
   apiKey: ${OPENAI_API_KEY}
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: openai-apikey

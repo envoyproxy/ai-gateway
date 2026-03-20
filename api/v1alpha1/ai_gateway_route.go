@@ -6,7 +6,6 @@
 package v1alpha1
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -34,6 +33,7 @@ import (
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
+// +kubebuilder:deprecatedversion:warning="aigateway.envoyproxy.io/v1alpha1 is deprecated; use aigateway.envoyproxy.io/v1beta1 instead"
 type AIGatewayRoute struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -81,17 +81,6 @@ type AIGatewayRouteSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MaxItems=128
 	Rules []AIGatewayRouteRule `json:"rules"`
-
-	// FilterConfig is the configuration for the AI Gateway filter inserted in the generated HTTPRoute.
-	//
-	// An AI Gateway filter is responsible for the transformation of the request and response
-	// as well as the routing behavior based on the model name extracted from the request content, etc.
-	//
-	// Currently, the filter is only implemented as an external processor filter, which might be
-	// extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
-	//
-	// +optional
-	FilterConfig *AIGatewayFilterConfig `json:"filterConfig,omitempty"`
 
 	// LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.
 	// The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic
@@ -371,48 +360,6 @@ type AIGatewayRouteRuleMatch struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=16
 	Headers []gwapiv1.HTTPHeaderMatch `json:"headers,omitempty"`
-}
-
-type AIGatewayFilterConfig struct {
-	// Type specifies the type of the filter configuration.
-	//
-	// Currently, only ExternalProcessor is supported, and default is ExternalProcessor.
-	//
-	// +kubebuilder:default=ExternalProcessor
-	Type AIGatewayFilterConfigType `json:"type"`
-
-	// ExternalProcessor is the configuration for the external processor filter.
-	// This is optional, and if not set, the default values of Deployment spec will be used.
-	//
-	// +optional
-	ExternalProcessor *AIGatewayFilterConfigExternalProcessor `json:"externalProcessor,omitempty"`
-}
-
-// AIGatewayFilterConfigType specifies the type of the filter configuration.
-//
-// +kubebuilder:validation:Enum=ExternalProcessor;DynamicModule
-type AIGatewayFilterConfigType string
-
-const (
-	AIGatewayFilterConfigTypeExternalProcessor AIGatewayFilterConfigType = "ExternalProcessor"
-	AIGatewayFilterConfigTypeDynamicModule     AIGatewayFilterConfigType = "DynamicModule" // Reserved for https://github.com/envoyproxy/ai-gateway/issues/90
-)
-
-type AIGatewayFilterConfigExternalProcessor struct {
-	// Resources required by the external processor container.
-	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
-	//
-	// Deprecated: Use GatewayConfig for gateway-scoped resource configuration instead.
-	// Configure resources using GatewayConfig.spec.extProc.kubernetes.resources and reference it
-	// from the Gateway via the "aigateway.envoyproxy.io/gateway-config" annotation.
-	// This field will be removed in a future version.
-	//
-	// Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each
-	// AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them
-	// to configure the resource requirements of the external processor container.
-	//
-	// +optional
-	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request

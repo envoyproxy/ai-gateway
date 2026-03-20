@@ -163,7 +163,7 @@ If you encounter issues:
 To use more models, add more [AIGatewayRouteRule]s to the `gcp_vertex.yaml` file with the [model ID] in the `value` field. For example, to use [Claude 3 Sonnet]
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: envoy-ai-gateway-basic-gcp-gemini

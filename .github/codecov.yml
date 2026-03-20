@@ -15,6 +15,7 @@ ignore:
   - "cmd"
   - "examples"
   - "api/v1alpha1/client"
+  - "api/v1beta1/client"
   - "**/zz_generated.*.go"
   - "internal/testing"
   - "tests/internal"

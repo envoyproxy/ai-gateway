@@ -23,7 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 )
@@ -51,7 +51,7 @@ const (
 	preRotationWindow = 5 * time.Minute
 )
 
-// BackendSecurityPolicyController implements [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
+// BackendSecurityPolicyController implements [reconcile.TypedReconciler] for [aigv1b1.BackendSecurityPolicy].
 //
 // Exported for testing purposes.
 type BackendSecurityPolicyController struct {
@@ -72,9 +72,9 @@ func NewBackendSecurityPolicyController(client client.Client, kube kubernetes.In
 	}
 }
 
-// Reconcile implements the [reconcile.TypedReconciler] for [aigv1a1.BackendSecurityPolicy].
+// Reconcile implements the [reconcile.TypedReconciler] for [aigv1b1.BackendSecurityPolicy].
 func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctrl.Request) (res ctrl.Result, err error) {
-	var bsp aigv1a1.BackendSecurityPolicy
+	var bsp aigv1b1.BackendSecurityPolicy
 	if err = c.client.Get(ctx, req.NamespacedName, &bsp); err != nil {
 		if apierrors.IsNotFound(err) {
 			c.logger.Info("Deleting backend security policy",
@@ -88,26 +88,26 @@ func (c *BackendSecurityPolicyController) Reconcile(ctx context.Context, req ctr
 	res, err = c.reconcile(ctx, &bsp)
 	if err != nil {
 		c.logger.Error(err, "failed to reconcile backend security policy", "namespace", req.Namespace, "name", req.Name)
-		c.updateBackendSecurityPolicyStatus(ctx, &bsp, aigv1a1.ConditionTypeNotAccepted, err.Error())
+		c.updateBackendSecurityPolicyStatus(ctx, &bsp, aigv1b1.ConditionTypeNotAccepted, err.Error())
 	} else {
-		c.updateBackendSecurityPolicyStatus(ctx, &bsp, aigv1a1.ConditionTypeAccepted, "BackendSecurityPolicy reconciled successfully")
+		c.updateBackendSecurityPolicyStatus(ctx, &bsp, aigv1b1.ConditionTypeAccepted, "BackendSecurityPolicy reconciled successfully")
 	}
 	return
 }
 
 // reconcile reconciles BackendSecurityPolicy but extracted from Reconcile to centralize error handling.
-func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
+func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *aigv1b1.BackendSecurityPolicy) (res ctrl.Result, err error) {
 	if handleFinalizer(ctx, c.client, c.logger, bsp, c.syncBackendSecurityPolicy) { // Propagate the bsp deletion all the way to relevant Gateways.
 		return res, nil
 	}
 	// Determine if credential rotation is needed
-	requiresRotation := bsp.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAPIKey &&
-		bsp.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAzureAPIKey &&
-		bsp.Spec.Type != aigv1a1.BackendSecurityPolicyTypeAnthropicAPIKey
+	requiresRotation := bsp.Spec.Type != aigv1b1.BackendSecurityPolicyTypeAPIKey &&
+		bsp.Spec.Type != aigv1b1.BackendSecurityPolicyTypeAzureAPIKey &&
+		bsp.Spec.Type != aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey
 
 	// Skip rotation for AWS when neither credentials file nor OIDC exchange is configured
 	// This allows IRSA/Pod Identity to work via the default credential chain
-	if bsp.Spec.Type == aigv1a1.BackendSecurityPolicyTypeAWSCredentials {
+	if bsp.Spec.Type == aigv1b1.BackendSecurityPolicyTypeAWSCredentials {
 		if bsp.Spec.AWSCredentials != nil &&
 			bsp.Spec.AWSCredentials.CredentialsFile == nil &&
 			bsp.Spec.AWSCredentials.OIDCExchangeToken == nil {
@@ -128,11 +128,11 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 }
 
 // rotateCredential rotates the credentials using the access token from OIDC provider and return the requeue time for next rotation.
-func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
+func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, bsp *aigv1b1.BackendSecurityPolicy) (res ctrl.Result, err error) {
 	var rotator rotators.Rotator
 
 	switch bsp.Spec.Type {
-	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
 		oidc := getBackendSecurityPolicyAuthOIDC(&bsp.Spec)
 		if oidc != nil {
 			region := bsp.Spec.AWSCredentials.Region
@@ -144,7 +144,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		} else {
 			return ctrl.Result{}, nil
 		}
-	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
 		clientID := bsp.Spec.AzureCredentials.ClientID
 		tenantID := bsp.Spec.AzureCredentials.TenantID
 		var provider tokenprovider.TokenProvider
@@ -190,7 +190,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
 		if err = validateGCPCredentialsParams(bsp.Spec.GCPCredentials); err != nil {
 			return ctrl.Result{}, fmt.Errorf("invalid GCP credentials configuration: %w", err)
 		}
@@ -269,7 +269,7 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 	return res, nil
 }
 
-func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, rotator rotators.Rotator, bsp *aigv1a1.BackendSecurityPolicy) (res ctrl.Result, err error) {
+func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, rotator rotators.Rotator, bsp *aigv1b1.BackendSecurityPolicy) (res ctrl.Result, err error) {
 	requeue := time.Minute
 	var rotationTime time.Time
 	rotationTime, err = rotator.GetPreRotationTime(ctx)
@@ -303,18 +303,18 @@ func (c *BackendSecurityPolicyController) executeRotation(ctx context.Context, r
 }
 
 // getBackendSecurityPolicyAuthOIDC returns the backendSecurityPolicy's OIDC pointer or nil.
-func getBackendSecurityPolicyAuthOIDC(spec *aigv1a1.BackendSecurityPolicySpec) *egv1a1.OIDC {
+func getBackendSecurityPolicyAuthOIDC(spec *aigv1b1.BackendSecurityPolicySpec) *egv1a1.OIDC {
 	switch spec.Type {
-	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
 		if spec.AWSCredentials != nil && spec.AWSCredentials.OIDCExchangeToken != nil {
 			return &spec.AWSCredentials.OIDCExchangeToken.OIDC
 		}
-	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
 		if spec.AzureCredentials != nil && spec.AzureCredentials.OIDCExchangeToken != nil {
 			return &spec.AzureCredentials.OIDCExchangeToken.OIDC
 		}
 		return nil
-	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
 		if spec.GCPCredentials != nil && spec.GCPCredentials.WorkloadIdentityFederationConfig != nil {
 			return &spec.GCPCredentials.WorkloadIdentityFederationConfig.OIDCExchangeToken.OIDC
 		}
@@ -327,11 +327,11 @@ func backendSecurityPolicyKey(namespace, name string) string {
 	return fmt.Sprintf("%s.%s", name, namespace)
 }
 
-func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy) error {
+func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.Context, bsp *aigv1b1.BackendSecurityPolicy) error {
 	for _, targetRef := range bsp.Spec.TargetRefs {
 		switch {
 		case targetRef.Group == aiServiceBackendGroup && targetRef.Kind == aiServiceBackendKind:
-			var aiBackend aigv1a1.AIServiceBackend
+			var aiBackend aigv1b1.AIServiceBackend
 			err := c.client.Get(ctx, client.ObjectKey{
 				Name:      string(targetRef.Name),
 				Namespace: bsp.Namespace, // targetRefs are local to the policy's namespace.
@@ -367,7 +367,7 @@ func (c *BackendSecurityPolicyController) syncBackendSecurityPolicy(ctx context.
 }
 
 // updateBackendSecurityPolicyStatus updates the status of the BackendSecurityPolicy.
-func (c *BackendSecurityPolicyController) updateBackendSecurityPolicyStatus(ctx context.Context, bsp *aigv1a1.BackendSecurityPolicy, conditionType string, message string) {
+func (c *BackendSecurityPolicyController) updateBackendSecurityPolicyStatus(ctx context.Context, bsp *aigv1b1.BackendSecurityPolicy, conditionType string, message string) {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if err := c.client.Get(ctx, client.ObjectKey{Name: bsp.Name, Namespace: bsp.Namespace}, bsp); err != nil {
 			if apierrors.IsNotFound(err) {
@@ -385,7 +385,7 @@ func (c *BackendSecurityPolicyController) updateBackendSecurityPolicyStatus(ctx 
 	}
 }
 
-func validateGCPCredentialsParams(gcpCreds *aigv1a1.BackendSecurityPolicyGCPCredentials) error {
+func validateGCPCredentialsParams(gcpCreds *aigv1b1.BackendSecurityPolicyGCPCredentials) error {
 	if gcpCreds == nil {
 		return fmt.Errorf("invalid backend security policy, gcp credentials cannot be nil")
 	}
@@ -413,23 +413,23 @@ func validateGCPCredentialsParams(gcpCreds *aigv1a1.BackendSecurityPolicyGCPCred
 
 // getBSPGeneratedSecretName returns a secret's name generated by the input bsp
 // if there's any. This returns an empty string if there's no generated secret.
-func getBSPGeneratedSecretName(bsp *aigv1a1.BackendSecurityPolicy) string {
+func getBSPGeneratedSecretName(bsp *aigv1b1.BackendSecurityPolicy) string {
 	switch bsp.Spec.Type {
-	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
 		if bsp.Spec.AWSCredentials.OIDCExchangeToken == nil {
 			return ""
 		}
-	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
 		if bsp.Spec.AzureCredentials.OIDCExchangeToken == nil {
 			return ""
 		}
-	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
 		if bsp.Spec.GCPCredentials.WorkloadIdentityFederationConfig == nil {
 			return ""
 		}
-	case aigv1a1.BackendSecurityPolicyTypeAPIKey,
-		aigv1a1.BackendSecurityPolicyTypeAzureAPIKey,
-		aigv1a1.BackendSecurityPolicyTypeAnthropicAPIKey:
+	case aigv1b1.BackendSecurityPolicyTypeAPIKey,
+		aigv1b1.BackendSecurityPolicyTypeAzureAPIKey,
+		aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey:
 		return "" // APIKey does not require rotation.
 	default:
 		panic("BUG: unsupported backend security policy type: " + string(bsp.Spec.Type))

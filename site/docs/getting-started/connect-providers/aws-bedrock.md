@@ -251,7 +251,7 @@ For more details on AWS authentication, see:
 To use additional models, add more [AIGatewayRouteRule]s to your configuration with the [model ID] in the `value` field. For example, to use [Claude 3 Sonnet]:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: envoy-ai-gateway-basic-aws
