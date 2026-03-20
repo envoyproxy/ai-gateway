@@ -40,8 +40,6 @@ func NewCreateFileRecorder(config *openinference.TraceConfig) tracingapi.CreateF
 	return &CreateFileRecorder{traceConfig: config}
 }
 
-// createFileStartOpts sets trace.SpanKindInternal as that's the span kind used in
-// OpenInference.
 var createFileStartOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
 
 // StartParams implements the same method as defined in tracingapi.CreateFileRecorder.
@@ -75,35 +73,11 @@ func (r *CreateFileRecorder) RecordResponseOnError(span trace.Span, statusCode i
 	openinference.RecordResponseError(span, statusCode, string(body))
 }
 
-// buildCreateFileRequestAttributes builds OpenInference attributes from the speech request.
+// buildCreateFileRequestAttributes builds OpenInference attributes from the file request.
 func buildCreateFileRequestAttributes(_ *openai.FileNewParams, body string, config *openinference.TraceConfig) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
-	}
-
-	// if req.Model != "" {
-	// 	attrs = append(attrs, attribute.String(openinference.LLMModelName, req.Model))
-	// }
-
-	if config.HideInputs {
-		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
-	} else {
-		// For speech, we want to record the text input and other parameters
-		// inputJSON, err := json.Marshal(map[string]interface{}{
-		// 	"purpose": req.Purpose,
-		// 	"expiry": req.ExpiresAfter.
-		// })
-		// if err == nil {
-		attrs = append(attrs,
-			attribute.String(openinference.InputValue, body),
-			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
-		)
-		// }
-	}
-
-	if !config.HideLLMInvocationParameters {
-		attrs = append(attrs, attribute.String(openinference.LLMInvocationParameters, body))
 	}
 
 	return attrs
@@ -134,9 +108,11 @@ func NewRetrieveFileRecorder(config *openinference.TraceConfig) tracingapi.Retri
 	return &RetrieveFileRecorder{traceConfig: config}
 }
 
+var retrieveFileStartOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
+
 // StartParams implements the same method as defined in tracingapi.RetrieveFileRecorder.
 func (r *RetrieveFileRecorder) StartParams(*struct{}, []byte) (spanName string, opts []trace.SpanStartOption) {
-	return "CreateFile", createFileStartOpts
+	return "RetrieveFile", retrieveFileStartOpts
 }
 
 // RecordRequest implements the same method as defined in tracingapi.RetrieveFileRecorder.
@@ -155,7 +131,6 @@ func (r *RetrieveFileRecorder) RecordResponse(span trace.Span, resp *openai.File
 			attribute.String("output.file_id", resp.ID),
 		)
 	}
-
 	span.SetAttributes(attrs...)
 	span.SetStatus(codes.Ok, "")
 }
@@ -165,7 +140,7 @@ func (r *RetrieveFileRecorder) RecordResponseOnError(span trace.Span, statusCode
 	openinference.RecordResponseError(span, statusCode, string(body))
 }
 
-// buildRetrieveFileRequestAttributes builds OpenInference attributes from the speech request.
+// buildRetrieveFileRequestAttributes builds OpenInference attributes from the retrieve file request.
 func buildRetrieveFileRequestAttributes(_ *struct{}, _ string, _ *openinference.TraceConfig) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
@@ -200,9 +175,11 @@ func NewRetrieveFileContentRecorder(config *openinference.TraceConfig) tracingap
 	return &RetrieveFileContentRecorder{traceConfig: config}
 }
 
+var retrieveFileContentStartOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindInternal)}
+
 // StartParams implements the same method as defined in tracingapi.RetrieveFileContentRecorder.
 func (r *RetrieveFileContentRecorder) StartParams(*struct{}, []byte) (spanName string, opts []trace.SpanStartOption) {
-	return "CreateFile", createFileStartOpts
+	return "RetrieveFileContent", retrieveFileContentStartOpts
 }
 
 // RecordRequest implements the same method as defined in tracingapi.RetrieveFileContentRecorder.
