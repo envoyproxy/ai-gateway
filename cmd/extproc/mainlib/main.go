@@ -295,55 +295,55 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
 	server.Register(
-		*regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/chat/completions") + "$"),
+		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/chat/completions") + "$"),
 		http.MethodPost,
 		extproc.NewFactory(chatCompletionMetricsFactory, tracing.ChatCompletionTracer(), endpointspec.ChatCompletionsEndpointSpec{}))
 	server.Register(
-		*regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/completions") + "$"),
+		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/completions") + "$"),
 		http.MethodPost,
 		extproc.NewFactory(completionMetricsFactory, tracing.CompletionTracer(), endpointspec.CompletionsEndpointSpec{}))
 	server.Register(
-		*regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/embeddings") + "$"),
+		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/embeddings") + "$"),
 		http.MethodPost,
 		extproc.NewFactory(embeddingsMetricsFactory, tracing.EmbeddingsTracer(), endpointspec.EmbeddingsEndpointSpec{}))
 	server.Register(
-		*regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/responses") + "$"),
+		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/responses") + "$"),
 		http.MethodPost,
 		extproc.NewFactory(responsesMetricsFactory, tracing.ResponsesTracer(), endpointspec.ResponsesEndpointSpec{}))
 	server.Register(
-		*regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/speech") + "$"),
+		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/speech") + "$"),
 		http.MethodPost,
 		extproc.NewFactory(speechMetricsFactory, tracing.SpeechTracer(), endpointspec.SpeechEndpointSpec{}))
 	server.Register(
-		*regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/images/generations") + "$"),
+		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/images/generations") + "$"),
 		http.MethodPost,
 		extproc.NewFactory(imageGenerationMetricsFactory, tracing.ImageGenerationTracer(), endpointspec.ImageGenerationEndpointSpec{}))
 	server.Register(
-		*regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.Cohere, "/v2/rerank") + "$"),
+		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.Cohere, "/v2/rerank") + "$"),
 		http.MethodPost,
 		extproc.NewFactory(rerankMetricsFactory, tracing.RerankTracer(), endpointspec.RerankEndpointSpec{}))
 	server.Register(
-		*regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/models") + "$"),
+		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/models") + "$"),
 		http.MethodGet,
 		extproc.NewModelsProcessor)
 	server.Register(
-		*regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages") + "$"),
+		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages") + "$"),
 		http.MethodPost,
 		extproc.NewFactory(messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{}))
 	server.Register(
-		*regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files") + "$"),
+		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files") + "$"),
 		http.MethodPost,
 		extproc.NewFactory(metrics.NewNoopMetricsFactory(), tracing.CreateFileTracer(), endpointspec.CreateFileEndpointSpec{}))
 	server.Register(
-		*regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files") + "/([^/]+)/?$"),
+		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files") + "/([^/]+)/?$"),
 		http.MethodGet,
 		extproc.NewFactory(metrics.NewNoopMetricsFactory(), tracing.RetrieveFileTracer(), endpointspec.RetrieveFileEndpointSpec{}))
 	server.Register(
-		*regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files") + "/([^/]+)/content$"),
+		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files") + "/([^/]+)/content$"),
 		http.MethodGet,
 		extproc.NewFactory(metrics.NewNoopMetricsFactory(), tracing.RetrieveFileContentTracer(), endpointspec.RetrieveFileContentEndpointSpec{}))
 	server.Register(
-		*regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files") + "/([^/]+)/?$"),
+		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files") + "/([^/]+)/?$"),
 		http.MethodDelete,
 		extproc.NewFactory(metrics.NewNoopMetricsFactory(), tracing.DeleteFileTracer(), endpointspec.DeleteFileEndpointSpec{}))
 
