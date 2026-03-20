@@ -9,30 +9,43 @@ import (
 	"context"
 	"fmt"
 
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 type gcpHandler struct {
-	gcpAccessToken string // The GCP access token used for authentication.
-	region         string // The GCP region to use for requests.
-	projectName    string // The GCP project to use for requests.
+	gcpAccessToken string             // The GCP access token used for authentication (static token).
+	tokenSource    oauth2.TokenSource // Token source for ADC (auto-refreshing).
+	region         string             // The GCP region to use for requests.
+	projectName    string             // The GCP project to use for requests.
 }
 
-func newGCPHandler(gcpAuth *filterapi.GCPAuth) (filterapi.BackendAuthHandler, error) {
+func newGCPHandler(ctx context.Context, gcpAuth *filterapi.GCPAuth) (filterapi.BackendAuthHandler, error) {
 	if gcpAuth == nil {
 		return nil, fmt.Errorf("GCP auth configuration cannot be nil")
 	}
 
-	if gcpAuth.AccessToken == "" {
-		return nil, fmt.Errorf("GCP access token cannot be empty")
+	handler := &gcpHandler{
+		region:      gcpAuth.Region,
+		projectName: gcpAuth.ProjectName,
 	}
 
-	return &gcpHandler{
-		gcpAccessToken: gcpAuth.AccessToken,
-		region:         gcpAuth.Region,
-		projectName:    gcpAuth.ProjectName,
-	}, nil
+	if gcpAuth.AccessToken != "" {
+		// Use provided static token
+		handler.gcpAccessToken = gcpAuth.AccessToken
+	} else {
+		// Use Application Default Credentials (ADC) - supports GKE Workload Identity
+		creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
+		if err != nil {
+			return nil, fmt.Errorf("failed to find GCP default credentials: %w", err)
+		}
+		handler.tokenSource = creds.TokenSource
+	}
+
+	return handler, nil
 }
 
 // Do implements [Handler.Do].
@@ -48,15 +61,27 @@ func (g *gcpHandler) Do(_ context.Context, requestHeaders map[string]string, _ [
 	prefixPath := fmt.Sprintf("/v1/projects/%s/locations/%s", g.projectName, g.region)
 	// Find and update the ":path" header by prepending the prefix.
 	path := requestHeaders[":path"]
-	// Update the raw byte value if present.
-	newPath := fmt.Sprintf("%s/%s", prefixPath, path)
 
 	if path == "" {
 		return nil, fmt.Errorf("missing ':path' header in the request")
 	}
 
+	newPath := fmt.Sprintf("%s/%s", prefixPath, path)
+
+	// Get the access token
+	var accessToken string
+	if g.tokenSource != nil {
+		token, err := g.tokenSource.Token()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get GCP access token: %w", err)
+		}
+		accessToken = token.AccessToken
+	} else {
+		accessToken = g.gcpAccessToken
+	}
+
 	// Add the Authorization header with the GCP access token.
 	requestHeaders[":path"] = newPath
-	requestHeaders["Authorization"] = fmt.Sprintf("Bearer %s", g.gcpAccessToken)
-	return []internalapi.Header{{":path", newPath}, {"Authorization", fmt.Sprintf("Bearer %s", g.gcpAccessToken)}}, nil
+	requestHeaders["Authorization"] = fmt.Sprintf("Bearer %s", accessToken)
+	return []internalapi.Header{{":path", newPath}, {"Authorization", fmt.Sprintf("Bearer %s", accessToken)}}, nil
 }
