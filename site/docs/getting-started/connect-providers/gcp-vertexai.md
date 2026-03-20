@@ -19,16 +19,46 @@ Before you begin, you'll need:
 - Basic setup completed from the [Basic Usage](../basic-usage.md) guide
 - Basic configuration removed as described in the [Advanced Configuration](./index.md) overview
 
-## GCP Credentials Setup
+## Authentication Options
 
-Ensure you have:
+Envoy AI Gateway supports three authentication methods for GCP VertexAI:
+
+1. **Application Default Credentials (ADC)** - Recommended for GKE with Workload Identity
+2. **Service Account Key Files** - For explicit JSON credentials
+3. **Workload Identity Federation** - For cross-cloud authentication
+
+### Option 1: Application Default Credentials (Recommended for GKE)
+
+When running on GKE with Workload Identity, configure only `projectName` and `region`:
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: gcp-credentials
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: your-backend
+  type: GCPCredentials
+  gcpCredentials:
+    projectName: YOUR_PROJECT_NAME
+    region: us-central1
+```
+
+ADC automatically handles credential rotation via GKE Workload Identity.
+
+### Option 2: Service Account Key Files
+
+For non-GKE environments, use a service account key file:
 
 1. Your GCP project id and name.
 2. In your GCP project, enable VertexAI API access.
 3. Create a GCP service account and generate the JSON key file.
 
-:::tip GCP Best Practices
-Consider using GCP Workload Identity (Federation)/IAM roles and limited-scope credentials for production environments.
+:::caution Security Note
+Service account key files should be avoided in production when possible. Use ADC/Workload Identity instead.
 :::
 
 ## Configuration Steps

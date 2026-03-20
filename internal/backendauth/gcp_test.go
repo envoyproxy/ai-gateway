@@ -122,9 +122,13 @@ func TestGCPHandler_Do(t *testing.T) {
 
 type mockTokenSource struct {
 	token string
+	err   error
 }
 
 func (m *mockTokenSource) Token() (*oauth2.Token, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
 	return &oauth2.Token{
 		AccessToken: m.token,
 		Expiry:      time.Now().Add(time.Hour),
@@ -148,4 +152,19 @@ func TestGCPHandler_Do_WithTokenSource(t *testing.T) {
 	hdrsMap := stringPairsToMap(hdrs)
 	require.Equal(t, "Bearer adc-token", hdrsMap["Authorization"])
 	require.Equal(t, "/v1/projects/test-project/locations/us-central1/publishers/google/models/gemini-pro:generateContent", hdrsMap[":path"])
+}
+
+func TestGCPHandler_Do_TokenSourceError(t *testing.T) {
+	handler := &gcpHandler{
+		tokenSource: &mockTokenSource{err: fmt.Errorf("token refresh failed")},
+		region:      "us-central1",
+		projectName: "test-project",
+	}
+
+	requestHeaders := map[string]string{
+		":path": "publishers/google/models/gemini-pro:generateContent",
+	}
+
+	_, err := handler.Do(context.Background(), requestHeaders, nil)
+	require.ErrorContains(t, err, "failed to get GCP access token")
 }
