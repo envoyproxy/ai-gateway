@@ -892,6 +892,16 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 			expectSuccess: true,
 		},
 		{
+			name: "path_with_method_mismatch",
+			requestHeaders: map[string]string{
+				":path":   "/v1/messages",
+				":method": "GET",
+			},
+			isUpstream:    false,
+			expectSuccess: false,
+			expectedError: "no processor registered for the given path: /v1/messages",
+		},
+		{
 			name: "unknown_path_without_query_params",
 			requestHeaders: map[string]string{
 				":path":   "/unknown/path",
