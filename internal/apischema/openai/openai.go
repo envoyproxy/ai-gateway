@@ -17,7 +17,6 @@ import (
 	"mime/multipart"
 	"net/textproto"
 	"path"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -8509,14 +8508,14 @@ func (f FileNewParams) MarshalMultipart() ([]byte, string, error) {
 		return nil, "", err
 	}
 
-	// ---- expires_after (optional) ----
-	if !reflect.ValueOf(f.ExpiresAfter).IsZero() {
-		b, err := json.Marshal(f.ExpiresAfter)
-		if err != nil {
+	if f.ExpiresAfter.Anchor != "" {
+		if err := writer.WriteField("expires_after.anchor", string(f.ExpiresAfter.Anchor)); err != nil {
 			return nil, "", err
 		}
+	}
 
-		if err := writer.WriteField("expires_after", string(b)); err != nil {
+	if f.ExpiresAfter.Seconds != 0 {
+		if err := writer.WriteField("expires_after.seconds", strconv.FormatInt(f.ExpiresAfter.Seconds, 10)); err != nil {
 			return nil, "", err
 		}
 	}
