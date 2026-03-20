@@ -58,7 +58,7 @@ type Server struct {
 	debugLogEnabled               bool
 	enableRedaction               bool
 	config                        *filterapi.RuntimeConfig
-	processorFactories            []Route
+	processorFactories            []*Route
 	routerProcessorsPerReqID      map[string]Processor
 	routerProcessorsPerReqIDMutex sync.RWMutex
 	uuidFn                        func() string
@@ -66,7 +66,7 @@ type Server struct {
 
 type Route struct {
 	Method           string
-	Path             regexp.Regexp
+	Path             *regexp.Regexp
 	ProcessorFactory ProcessorFactory
 }
 
@@ -77,7 +77,7 @@ func NewServer(logger *slog.Logger, enableRedaction bool) (*Server, error) {
 		logger:                   logger,
 		debugLogEnabled:          debugLogEnabled,
 		enableRedaction:          enableRedaction,
-		processorFactories:       make([]Route, 0, 20),
+		processorFactories:       make([]*Route, 0, 20),
 		routerProcessorsPerReqID: make(map[string]Processor),
 		uuidFn:                   uuid.NewString,
 	}
@@ -95,9 +95,9 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 }
 
 // Register a new processor for the given request path.
-func (s *Server) Register(path regexp.Regexp, method string, newProcessor ProcessorFactory) {
+func (s *Server) Register(path *regexp.Regexp, method string, newProcessor ProcessorFactory) {
 	s.logger.Info("Registering processor", slog.String("path", path.String()), slog.String("method", method))
-	s.processorFactories = append(s.processorFactories, Route{
+	s.processorFactories = append(s.processorFactories, &Route{
 		Path:             path,
 		Method:           method,
 		ProcessorFactory: newProcessor,
