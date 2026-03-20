@@ -38,7 +38,7 @@ func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
 	s.config = &filterapi.RuntimeConfig{}
 
 	m := newMockProcessor(s.config, s.logger)
-	s.Register(*regexp.MustCompile("^/$"), "POST", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
+	s.Register(regexp.MustCompile("^/$"), "POST", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
 		return m, nil
 	})
 
@@ -263,7 +263,7 @@ func TestServer_Process(t *testing.T) {
 	t.Run("upstream filter", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
 
-		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: originalPathHeader, Value: "/"}, {Key: internalReqIDHeader, Value: "test-req-id-123"}, {Key: "foo", Value: "bar"}}}
+		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: originalPathHeader, Value: "/"}, {Key: ":method", Value: "POST"}, {Key: internalReqIDHeader, Value: "test-req-id-123"}, {Key: "foo", Value: "bar"}}}
 		p.t = t
 		p.expHeaderMap = hm
 		req := &extprocv3.ProcessingRequest{
@@ -282,7 +282,7 @@ func TestServer_Process(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 		defer cancel()
 
-		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/"}, {Key: "foo", Value: "bar"}}}
+		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/"}, {Key: ":method", Value: "POST"}, {Key: "foo", Value: "bar"}}}
 		expResponse := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
 		p.t = t
 		p.expHeaderMap = hm
@@ -405,14 +405,14 @@ func TestServer_ProcessorSelection(t *testing.T) {
 	require.NotNil(t, s)
 
 	s.config = &filterapi.RuntimeConfig{}
-	s.Register(*regexp.MustCompile("^/one$"), "POST", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
+	s.Register(regexp.MustCompile("^/one$"), "POST", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
 		// Returning nil guarantees that the test will fail if this processor is selected.
 		return nil, nil
 	})
-	s.Register(*regexp.MustCompile("^/two$"), "POST", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
+	s.Register(regexp.MustCompile("^/two$"), "POST", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
 		return &mockProcessor{
 			t:                     t,
-			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}, {Key: "x-request-id", Value: "original-req-id"}}},
+			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}, {Key: ":method", Value: "POST"}, {Key: "x-request-id", Value: "original-req-id"}}},
 			retProcessingResponse: &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}},
 		}, nil
 	})
@@ -451,6 +451,7 @@ func TestServer_ProcessorSelection(t *testing.T) {
 				RequestHeaders: &extprocv3.HttpHeaders{
 					Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
 						{Key: ":path", Value: "/two"},
+						{Key: ":method", Value: "POST"},
 						{Key: "x-request-id", Value: "original-req-id"},
 					}},
 				},
@@ -840,10 +841,10 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 
 	// Register processors for different base paths.
 	mockProc := &mockProcessor{}
-	s.Register(*regexp.MustCompile("^/v1/messages"), "POST", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
+	s.Register(regexp.MustCompile("^/v1/messages$"), "POST", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
 		return mockProc, nil
 	})
-	s.Register(*regexp.MustCompile("^/anthropic/v1/messages"), "POST", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
+	s.Register(regexp.MustCompile("^/anthropic/v1/messages$"), "POST", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
 		return mockProc, nil
 	})
 
@@ -857,7 +858,8 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 		{
 			name: "path_without_query_params",
 			requestHeaders: map[string]string{
-				":path": "/v1/messages",
+				":path":   "/v1/messages",
+				":method": "POST",
 			},
 			isUpstream:    false,
 			expectSuccess: true,
@@ -865,7 +867,8 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 		{
 			name: "path_with_beta_query_param",
 			requestHeaders: map[string]string{
-				":path": "/v1/messages?beta=true",
+				":path":   "/v1/messages?beta=true",
+				":method": "POST",
 			},
 			isUpstream:    false,
 			expectSuccess: true,
@@ -873,7 +876,8 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 		{
 			name: "path_with_multiple_query_params",
 			requestHeaders: map[string]string{
-				":path": "/v1/messages?beta=true&stream=false&version=2",
+				":path":   "/v1/messages?beta=true&stream=false&version=2",
+				":method": "POST",
 			},
 			isUpstream:    false,
 			expectSuccess: true,
@@ -881,7 +885,8 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 		{
 			name: "anthropic_path_with_beta_param",
 			requestHeaders: map[string]string{
-				":path": "/anthropic/v1/messages?beta=true",
+				":path":   "/anthropic/v1/messages?beta=true",
+				":method": "POST",
 			},
 			isUpstream:    false,
 			expectSuccess: true,
@@ -889,7 +894,8 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 		{
 			name: "unknown_path_without_query_params",
 			requestHeaders: map[string]string{
-				":path": "/unknown/path",
+				":path":   "/unknown/path",
+				":method": "POST",
 			},
 			isUpstream:    false,
 			expectSuccess: false,
@@ -898,7 +904,8 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 		{
 			name: "unknown_path_with_query_params",
 			requestHeaders: map[string]string{
-				":path": "/unknown/path?param=value",
+				":path":   "/unknown/path?param=value",
+				":method": "POST",
 			},
 			isUpstream:    false,
 			expectSuccess: false,
@@ -908,6 +915,7 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 			name: "upstream_filter_with_original_path_header",
 			requestHeaders: map[string]string{
 				originalPathHeader: "/v1/messages?beta=true&other=param",
+				":method":          "POST",
 			},
 			isUpstream:    true,
 			expectSuccess: true,
@@ -915,7 +923,8 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 		{
 			name: "empty_path",
 			requestHeaders: map[string]string{
-				":path": "",
+				":path":   "",
+				":method": "POST",
 			},
 			isUpstream:    false,
 			expectSuccess: false,
@@ -924,7 +933,8 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 		{
 			name: "path_with_only_query_params",
 			requestHeaders: map[string]string{
-				":path": "?beta=true",
+				":path":   "?beta=true",
+				":method": "POST",
 			},
 			isUpstream:    false,
 			expectSuccess: false,
@@ -933,7 +943,8 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 		{
 			name: "path_with_fragment_and_query",
 			requestHeaders: map[string]string{
-				":path": "/v1/messages?beta=true#fragment",
+				":path":   "/v1/messages?beta=true#fragment",
+				":method": "POST",
 			},
 			isUpstream:    false,
 			expectSuccess: true,
