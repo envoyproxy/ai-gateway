@@ -368,6 +368,82 @@ func TestResponsesTracer_BuildsGenericRequestTracer(t *testing.T) {
 	require.IsType(t, (*responsesSpan)(nil), s)
 }
 
+func TestNewCreateFileTracer_BuildsGenericRequestTracer(t *testing.T) {
+	tp := trace.NewTracerProvider()
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+
+	headerAttrs := map[string]string{"agent-session-id": "session.id"}
+
+	tracer := newCreateFileTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testCreateFileRecorder{}, headerAttrs)
+	impl, ok := tracer.(*requestTracerImpl[
+		openai.FileNewParams,
+		openai.FileObject,
+		struct{},
+	])
+	require.True(t, ok)
+	require.Equal(t, headerAttrs, impl.headerAttributes)
+	require.NotNil(t, impl.newSpan)
+	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, propagation.MapCarrier{}, &openai.FileNewParams{}, []byte("{}"))
+	require.IsType(t, (*createFileSpan)(nil), s)
+}
+
+func TestNewRetrieveFileTracer_BuildsGenericRequestTracer(t *testing.T) {
+	tp := trace.NewTracerProvider()
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+
+	headerAttrs := map[string]string{"agent-session-id": "session.id"}
+
+	tracer := newRetrieveFileTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testRetrieveFileRecorder{}, headerAttrs)
+	impl, ok := tracer.(*requestTracerImpl[
+		struct{},
+		openai.FileObject,
+		struct{},
+	])
+	require.True(t, ok)
+	require.Equal(t, headerAttrs, impl.headerAttributes)
+	require.NotNil(t, impl.newSpan)
+	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, propagation.MapCarrier{}, &struct{}{}, []byte("{}"))
+	require.IsType(t, (*retrieveFileSpan)(nil), s)
+}
+
+func TestNewRetrieveFileContentTracer_BuildsGenericRequestTracer(t *testing.T) {
+	tp := trace.NewTracerProvider()
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+
+	headerAttrs := map[string]string{"agent-session-id": "session.id"}
+
+	tracer := newRetrieveFileContentTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testRetrieveFileContentRecorder{}, headerAttrs)
+	impl, ok := tracer.(*requestTracerImpl[
+		struct{},
+		struct{},
+		struct{},
+	])
+	require.True(t, ok)
+	require.Equal(t, headerAttrs, impl.headerAttributes)
+	require.NotNil(t, impl.newSpan)
+	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, propagation.MapCarrier{}, &struct{}{}, []byte("{}"))
+	require.IsType(t, (*retrieveFileContentSpan)(nil), s)
+}
+
+func TestNewDeleteFileTracer_BuildsGenericRequestTracer(t *testing.T) {
+	tp := trace.NewTracerProvider()
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+
+	headerAttrs := map[string]string{"agent-session-id": "session.id"}
+
+	tracer := newDeleteFileTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testDeleteFileRecorder{}, headerAttrs)
+	impl, ok := tracer.(*requestTracerImpl[
+		struct{},
+		openai.FileDeleted,
+		struct{},
+	])
+	require.True(t, ok)
+	require.Equal(t, headerAttrs, impl.headerAttributes)
+	require.NotNil(t, impl.newSpan)
+	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, propagation.MapCarrier{}, &struct{}{}, []byte("{}"))
+	require.IsType(t, (*deleteFileSpan)(nil), s)
+}
+
 type testChatCompletionRecorder struct{}
 
 func (r testChatCompletionRecorder) RecordResponseChunks(span oteltrace.Span, chunks []*openai.ChatCompletionResponseChunk) {
@@ -553,6 +629,119 @@ func (r testResponsesRecorder) RecordResponseChunks(span oteltrace.Span, chunks 
 }
 
 func (r testResponsesRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
+	span.SetAttributes(
+		attribute.Int("statusCode", statusCode),
+		attribute.String("errorBody", string(body)),
+	)
+}
+
+type testCreateFileRecorder struct {
+	tracingapi.NoopChunkRecorder[struct{}]
+}
+
+func (testCreateFileRecorder) StartParams(*openai.FileNewParams, []byte) (string, []oteltrace.SpanStartOption) {
+	return "CreateFile", startOpts
+}
+
+func (testCreateFileRecorder) RecordRequest(span oteltrace.Span, _ *openai.FileNewParams, body []byte) {
+	span.SetAttributes(attribute.Int("reqBodyLen", len(body)))
+}
+
+func (testCreateFileRecorder) RecordResponse(span oteltrace.Span, resp *openai.FileObject) {
+	b, err := json.Marshal(resp)
+	if err != nil {
+		panic(err)
+	}
+	span.SetAttributes(
+		attribute.Int("statusCode", 200),
+		attribute.Int("respBodyLen", len(b)),
+	)
+}
+
+func (testCreateFileRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
+	span.SetAttributes(
+		attribute.Int("statusCode", statusCode),
+		attribute.String("errorBody", string(body)),
+	)
+}
+
+type testRetrieveFileRecorder struct {
+	tracingapi.NoopChunkRecorder[struct{}]
+}
+
+func (testRetrieveFileRecorder) StartParams(*struct{}, []byte) (string, []oteltrace.SpanStartOption) {
+	return "RetrieveFile", startOpts
+}
+
+func (testRetrieveFileRecorder) RecordRequest(span oteltrace.Span, _ *struct{}, body []byte) {
+	span.SetAttributes(attribute.Int("reqBodyLen", len(body)))
+}
+
+func (testRetrieveFileRecorder) RecordResponse(span oteltrace.Span, resp *openai.FileObject) {
+	b, err := json.Marshal(resp)
+	if err != nil {
+		panic(err)
+	}
+	span.SetAttributes(
+		attribute.Int("statusCode", 200),
+		attribute.Int("respBodyLen", len(b)),
+	)
+}
+
+func (testRetrieveFileRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
+	span.SetAttributes(
+		attribute.Int("statusCode", statusCode),
+		attribute.String("errorBody", string(body)),
+	)
+}
+
+type testRetrieveFileContentRecorder struct {
+	tracingapi.NoopChunkRecorder[struct{}]
+}
+
+func (testRetrieveFileContentRecorder) StartParams(*struct{}, []byte) (string, []oteltrace.SpanStartOption) {
+	return "RetrieveFileContent", startOpts
+}
+
+func (testRetrieveFileContentRecorder) RecordRequest(span oteltrace.Span, _ *struct{}, body []byte) {
+	span.SetAttributes(attribute.Int("reqBodyLen", len(body)))
+}
+
+func (testRetrieveFileContentRecorder) RecordResponse(span oteltrace.Span, _ *struct{}) {
+	span.SetAttributes(attribute.Int("statusCode", 200))
+}
+
+func (testRetrieveFileContentRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
+	span.SetAttributes(
+		attribute.Int("statusCode", statusCode),
+		attribute.String("errorBody", string(body)),
+	)
+}
+
+type testDeleteFileRecorder struct {
+	tracingapi.NoopChunkRecorder[struct{}]
+}
+
+func (testDeleteFileRecorder) StartParams(*struct{}, []byte) (string, []oteltrace.SpanStartOption) {
+	return "DeleteFile", startOpts
+}
+
+func (testDeleteFileRecorder) RecordRequest(span oteltrace.Span, _ *struct{}, body []byte) {
+	span.SetAttributes(attribute.Int("reqBodyLen", len(body)))
+}
+
+func (testDeleteFileRecorder) RecordResponse(span oteltrace.Span, resp *openai.FileDeleted) {
+	b, err := json.Marshal(resp)
+	if err != nil {
+		panic(err)
+	}
+	span.SetAttributes(
+		attribute.Int("statusCode", 200),
+		attribute.Int("respBodyLen", len(b)),
+	)
+}
+
+func (testDeleteFileRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
 	span.SetAttributes(
 		attribute.Int("statusCode", statusCode),
 		attribute.String("errorBody", string(body)),
