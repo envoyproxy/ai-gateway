@@ -475,7 +475,7 @@ func (RetrieveFileEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (r
 func (RetrieveFileContentEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-	requestHeaders map[string]string,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
 	// RetrieveFile endpoint does not have a body.
 	return "", &struct{}{}, false, body, nil
@@ -498,10 +498,9 @@ func (RetrieveFileContentEndpointSpec) RedactSensitiveInfoFromRequest(req *struc
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
-func (DeleteFileEndpointSpec) ParseBody(
-	body []byte,
+func (DeleteFileEndpointSpec) ParseBody(body []byte,
 	_ bool,
-	requestHeaders map[string]string,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
 	// RetrieveFile endpoint does not have a body.
 	return "", &struct{}{}, false, body, nil
