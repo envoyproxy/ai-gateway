@@ -216,8 +216,12 @@ func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter
 		// events received from the upstream MCP backends
 		case event, ok := <-backendMsgs:
 			if !ok {
-				// Channel closed, all backends have finished.
-				return nil
+				// All backend notification streams have ended (e.g. backends returned 405
+				// or closed their SSE connections). Nil out the channel to disable this
+				// select case, but keep the SSE connection alive for heartbeats and
+				// gateway-level tool change notifications.
+				backendMsgs = nil
+				continue
 			}
 
 			prev := event.id
