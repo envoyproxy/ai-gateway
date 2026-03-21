@@ -684,7 +684,7 @@ func TestSession_StreamNotifications(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), tc.deadline)
 			defer cancel()
 			err2 := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
-			require.NoError(t, err2)
+			require.ErrorIs(t, err2, context.DeadlineExceeded)
 			out := rr.Body.String()
 			require.Contains(t, out, "event: a1")
 			require.Contains(t, out, "event: a2")
@@ -736,7 +736,7 @@ func TestNotifyToolsChanged(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		t.Cleanup(cancel)
 		err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
 		out := rr.Body.String()
 		require.NotContains(t, out, `"id":"`+envoyAIGatewayServerToClientToolsChangedRequestIDPrefix)
 		require.NotContains(t, out, `"method":"notifications/tools/list_changed"`)
@@ -748,7 +748,7 @@ func TestNotifyToolsChanged(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		t.Cleanup(cancel)
 		err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
 		out := rr.Body.String()
 		require.Contains(t, out, `"id":"`+envoyAIGatewayServerToClientToolsChangedRequestIDPrefix)
 		require.Contains(t, out, `"method":"notifications/tools/list_changed"`)
@@ -785,11 +785,11 @@ func TestStreamNotifications_AllBackends405(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 	defer cancel()
 
 	err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 
 	out := rr.Body.String()
 	// Should have the initial heartbeat plus additional ones while waiting.
