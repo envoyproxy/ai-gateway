@@ -26,6 +26,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
@@ -254,7 +255,7 @@ func ParseImagePullSecrets(s string) ([]corev1.LocalObjectReference, error) {
 }
 
 func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gatewayName, gatewayNamespace string) error {
-	var routes aigv1a1.AIGatewayRouteList
+	var routes aigv1b1.AIGatewayRouteList
 	err := g.c.List(ctx, &routes, client.MatchingFields{
 		k8sClientIndexAIGatewayRouteToAttachedGateway: fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace),
 	})
@@ -292,7 +293,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 
 	gatewayConfig := g.fetchGatewayConfig(ctx, gatewayName, gatewayNamespace)
 	var (
-		extProcSpec       *aigv1a1.GatewayConfigExtProc
+		extProcSpec       *aigv1b1.GatewayConfigExtProc
 		kubernetesExtProc *egv1a1.KubernetesContainerSpec
 	)
 	if gatewayConfig != nil {
@@ -326,16 +327,8 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		podspec.ImagePullSecrets = append(podspec.ImagePullSecrets, g.extProcImagePullSecrets...)
 	}
 
-	// TODO: remove after the next release v0.5.
+	// Use resources from GatewayConfig if present.
 	var resources corev1.ResourceRequirements
-	for i := range routes.Items {
-		fc := routes.Items[i].Spec.FilterConfig
-		if fc != nil && fc.ExternalProcessor != nil && fc.ExternalProcessor.Resources != nil {
-			resources = *fc.ExternalProcessor.Resources
-		}
-	}
-
-	// GatewayConfig resources override route-scoped values when present.
 	if kubernetesExtProc != nil && kubernetesExtProc.Resources != nil {
 		resources = *kubernetesExtProc.Resources
 		g.logger.Info("using resources from GatewayConfig",
@@ -435,7 +428,7 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 }
 
 // fetchGatewayConfig returns the referenced GatewayConfig (if present).
-func (g *gatewayMutator) fetchGatewayConfig(ctx context.Context, gatewayName, gatewayNamespace string) *aigv1a1.GatewayConfig {
+func (g *gatewayMutator) fetchGatewayConfig(ctx context.Context, gatewayName, gatewayNamespace string) *aigv1b1.GatewayConfig {
 	// Fetch the Gateway object.
 	var gateway gwapiv1.Gateway
 	if err := g.c.Get(ctx, client.ObjectKey{Name: gatewayName, Namespace: gatewayNamespace}, &gateway); err != nil {
@@ -455,7 +448,7 @@ func (g *gatewayMutator) fetchGatewayConfig(ctx context.Context, gatewayName, ga
 	}
 
 	// Fetch the GatewayConfig (must be in same namespace as Gateway).
-	var gatewayConfig aigv1a1.GatewayConfig
+	var gatewayConfig aigv1b1.GatewayConfig
 	if err := g.c.Get(ctx, client.ObjectKey{Name: configName, Namespace: gatewayNamespace}, &gatewayConfig); err != nil {
 		if apierrors.IsNotFound(err) {
 			g.logger.Info("GatewayConfig referenced by Gateway not found, using global defaults",
@@ -473,7 +466,7 @@ func (g *gatewayMutator) fetchGatewayConfig(ctx context.Context, gatewayName, ga
 }
 
 // mergeEnvVars merges env vars; GatewayConfig overrides global while preserving order.
-func (g *gatewayMutator) mergeEnvVars(gatewayConfig *aigv1a1.GatewayConfig) []corev1.EnvVar {
+func (g *gatewayMutator) mergeEnvVars(gatewayConfig *aigv1b1.GatewayConfig) []corev1.EnvVar {
 	result := make([]corev1.EnvVar, 0, len(g.extProcExtraEnvVars))
 	index := make(map[string]int, len(g.extProcExtraEnvVars))
 
@@ -500,7 +493,7 @@ func (g *gatewayMutator) mergeEnvVars(gatewayConfig *aigv1a1.GatewayConfig) []co
 }
 
 // resolveExtProcImage chooses the extProc image honoring GatewayConfig overrides.
-func (g *gatewayMutator) resolveExtProcImage(extProc *aigv1a1.GatewayConfigExtProc) string {
+func (g *gatewayMutator) resolveExtProcImage(extProc *aigv1b1.GatewayConfigExtProc) string {
 	if extProc == nil || extProc.Kubernetes == nil {
 		return g.extProcImage
 	}

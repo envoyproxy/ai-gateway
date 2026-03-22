@@ -21,14 +21,14 @@ import (
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
 
 func requireNewFakeClientWithIndexesAndInferencePool(t *testing.T) client.Client {
 	builder := fake.NewClientBuilder().WithScheme(Scheme).
-		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
-		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
-		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{}).
+		WithStatusSubresource(&aigv1b1.AIGatewayRoute{}).
+		WithStatusSubresource(&aigv1b1.AIServiceBackend{}).
+		WithStatusSubresource(&aigv1b1.BackendSecurityPolicy{}).
 		WithStatusSubresource(&gwaiev1.InferencePool{})
 	err := ApplyIndexing(t.Context(), func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
 		builder = builder.WithIndex(obj, field, extractValue)
@@ -175,20 +175,20 @@ func TestInferencePoolController_Reconcile(t *testing.T) {
 	require.NoError(t, fakeClient.Create(context.Background(), gateway))
 
 	// Create an AIGatewayRoute that references an InferencePool.
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-route",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1b1.AIGatewayRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
 				{
 					Name: "test-gateway",
 				},
 			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:   "test-inference-pool",
 							Group:  ptr.To("inference.networking.k8s.io"),
@@ -497,21 +497,21 @@ func TestInferencePoolController_GatewayReferencesInferencePool(t *testing.T) {
 	require.NoError(t, fakeClient.Create(context.Background(), gateway))
 
 	// Create an AIGatewayRoute that references the Gateway and InferencePool.
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-route",
 			Namespace: "test-namespace",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1b1.AIGatewayRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
 				{
 					Name:      "test-gateway",
 					Namespace: ptr.To(gwapiv1.Namespace("default")),
 				},
 			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:  "test-inference-pool",
 							Group: ptr.To("inference.networking.k8s.io"),
@@ -557,20 +557,20 @@ func TestInferencePoolController_gatewayEventHandler(t *testing.T) {
 	require.NoError(t, fakeClient.Create(context.Background(), inferencePool))
 
 	// Create an AIGatewayRoute that references the InferencePool.
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-route",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1b1.AIGatewayRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
 				{
 					Name: "test-gateway",
 				},
 			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:  "test-inference-pool",
 							Group: ptr.To("inference.networking.k8s.io"),
@@ -606,15 +606,15 @@ func TestInferencePoolController_aiGatewayRouteEventHandler(t *testing.T) {
 	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
 
 	// Create an AIGatewayRoute that references an InferencePool.
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-route",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:  "test-inference-pool",
 							Group: ptr.To("inference.networking.k8s.io"),
@@ -627,7 +627,7 @@ func TestInferencePoolController_aiGatewayRouteEventHandler(t *testing.T) {
 	}
 
 	require.Empty(t, c.aiGatewayRouteEventHandler(t.Context(), nil))
-	require.Empty(t, c.aiGatewayRouteEventHandler(t.Context(), &aigv1a1.AIGatewayRoute{}))
+	require.Empty(t, c.aiGatewayRouteEventHandler(t.Context(), &aigv1b1.AIGatewayRoute{}))
 	res := c.aiGatewayRouteEventHandler(t.Context(), aiGatewayRoute)
 	require.Len(t, res, 1, "Should return one InferencePool for AIGatewayRoute with BackendRef")
 	require.Equal(t, "test-inference-pool", res[0].Name, "Should return the correct InferencePool name")
@@ -664,7 +664,7 @@ func TestInferencePoolController_httpRouteEventHandler(t *testing.T) {
 	}
 
 	require.Empty(t, c.aiGatewayRouteEventHandler(t.Context(), nil))
-	require.Empty(t, c.aiGatewayRouteEventHandler(t.Context(), &aigv1a1.AIGatewayRoute{}))
+	require.Empty(t, c.aiGatewayRouteEventHandler(t.Context(), &aigv1b1.AIGatewayRoute{}))
 	res := c.httpRouteEventHandler(t.Context(), httpRoute)
 	require.Len(t, res, 1, "Should return one InferencePool for HTTPRoute with BackendRef")
 	require.Equal(t, "test-inference-pool", res[0].Name, "Should return the correct InferencePool name")
@@ -731,21 +731,21 @@ func TestInferencePoolController_CrossNamespaceReferences(t *testing.T) {
 	require.NoError(t, fakeClient.Create(context.Background(), gateway))
 
 	// Create an AIGatewayRoute in the InferencePool namespace that references the Gateway in a different namespace.
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-route",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1b1.AIGatewayRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
 				{
 					Name:      "test-gateway",
 					Namespace: ptr.To(gwapiv1.Namespace("gateway-namespace")),
 				},
 			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:  "test-inference-pool",
 							Group: ptr.To("inference.networking.k8s.io"),
@@ -836,20 +836,20 @@ func TestInferencePoolController_UpdateInferencePoolStatus(t *testing.T) {
 	require.NoError(t, fakeClient.Create(context.Background(), gateway))
 
 	// Create an AIGatewayRoute that references an InferencePool.
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-route",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1b1.AIGatewayRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
 				{
 					Name: "test-gateway",
 				},
 			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:  "test-inference-pool",
 							Group: ptr.To("inference.networking.k8s.io"),
@@ -941,15 +941,15 @@ func TestInferencePoolController_GetReferencedGateways_ErrorHandling(t *testing.
 	require.Empty(t, gateways, "Should return empty list when no routes reference the InferencePool")
 
 	// Create an AIGatewayRoute that references the InferencePool but no Gateway.
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-route-no-gateway",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:  "test-inference-pool",
 							Group: ptr.To("inference.networking.k8s.io"),
@@ -1234,20 +1234,20 @@ func TestInferencePoolController_GetReferencedGateways_ComplexScenarios(t *testi
 	require.NoError(t, fakeClient.Create(context.Background(), gateway2))
 
 	// Create AIGatewayRoutes that reference different gateways.
-	aiGatewayRoute1 := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute1 := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "route-1",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1b1.AIGatewayRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
 				{
 					Name: "gateway-1",
 				},
 			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:  "test-inference-pool-complex",
 							Group: ptr.To("inference.networking.k8s.io"),
@@ -1260,21 +1260,21 @@ func TestInferencePoolController_GetReferencedGateways_ComplexScenarios(t *testi
 	}
 	require.NoError(t, fakeClient.Create(context.Background(), aiGatewayRoute1))
 
-	aiGatewayRoute2 := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute2 := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "route-2",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1b1.AIGatewayRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
 				{
 					Name:      "gateway-2",
 					Namespace: ptr.To(gwapiv1.Namespace("other-namespace")),
 				},
 			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:  "test-inference-pool-complex",
 							Group: ptr.To("inference.networking.k8s.io"),
@@ -1364,20 +1364,20 @@ func TestInferencePoolController_UpdateInferencePoolStatus_MultipleGateways(t *t
 	require.NoError(t, fakeClient.Create(context.Background(), gateway2))
 
 	// Create AIGatewayRoutes that reference different gateways.
-	aiGatewayRoute1 := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute1 := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "route-1",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1b1.AIGatewayRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
 				{
 					Name: "gateway-1",
 				},
 			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:  "test-inference-pool-multi",
 							Group: ptr.To("inference.networking.k8s.io"),
@@ -1390,20 +1390,20 @@ func TestInferencePoolController_UpdateInferencePoolStatus_MultipleGateways(t *t
 	}
 	require.NoError(t, fakeClient.Create(context.Background(), aiGatewayRoute1))
 
-	aiGatewayRoute2 := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute2 := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "route-2",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1b1.AIGatewayRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
 				{
 					Name: "gateway-2",
 				},
 			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:  "test-inference-pool-multi",
 							Group: ptr.To("inference.networking.k8s.io"),
@@ -1493,20 +1493,20 @@ func TestInferencePoolController_GatewayReferencesInferencePool_NoRoutes(t *test
 	require.False(t, result, "Should return false when there are no routes")
 
 	// Test gatewayReferencesInferencePool when there are routes but they don't reference the gateway.
-	aiGatewayRouteNoRef := &aigv1a1.AIGatewayRoute{
+	aiGatewayRouteNoRef := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "route-no-ref",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1b1.AIGatewayRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
 				{
 					Name: "different-gateway", // Different gateway.
 				},
 			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:  "test-inference-pool",
 							Group: ptr.To("inference.networking.k8s.io"),
@@ -1523,20 +1523,20 @@ func TestInferencePoolController_GatewayReferencesInferencePool_NoRoutes(t *test
 	require.False(t, result, "Should return false when routes don't reference the gateway")
 
 	// Test gatewayReferencesInferencePool when routes reference the gateway but not the InferencePool.
-	aiGatewayRouteNoPool := &aigv1a1.AIGatewayRoute{
+	aiGatewayRouteNoPool := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "route-no-pool",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1b1.AIGatewayRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
 				{
 					Name: "test-gateway-no-routes", // Correct gateway.
 				},
 			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name: "different-pool", // Different pool.
 						},
@@ -1568,20 +1568,20 @@ func TestInferencePoolController_UpdateInferencePoolStatus_ExtensionRefError(t *
 	require.NoError(t, fakeClient.Create(context.Background(), gateway))
 
 	// Create an AIGatewayRoute that references the InferencePool.
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "route-ext-error",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1b1.AIGatewayRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
 				{
 					Name: "test-gateway-ext-error",
 				},
 			},
-			Rules: []aigv1a1.AIGatewayRouteRule{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{
 							Name:  "test-inference-pool-ext-error",
 							Group: ptr.To("inference.networking.k8s.io"),

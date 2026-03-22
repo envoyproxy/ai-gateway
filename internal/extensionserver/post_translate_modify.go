@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
@@ -183,7 +183,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 	// Check if this rule has InferencePool backends.
 	pool := getInferencePoolByMetadata(cluster.Metadata)
 	// Get the HTTPRoute object from the cluster name.
-	var aigwRoute aigv1a1.AIGatewayRoute
+	var aigwRoute aigv1b1.AIGatewayRoute
 	err = s.k8sClient.Get(context.Background(), client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &aigwRoute)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -288,7 +288,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 	extProcConfig := &extprocv3.ExternalProcessor{}
 	extProcConfig.MetadataOptions = &extprocv3.MetadataOptions{
 		ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
-			Untyped: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
+			Untyped: []string{aigv1b1.AIGatewayFilterMetadataNamespace},
 		},
 	}
 	extProcConfig.AllowModeOverride = true
@@ -333,7 +333,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 							AppendAction: corev3.HeaderValueOption_ADD_IF_ABSENT,
 							Header: &corev3.HeaderValue{
 								Key:   "content-length",
-								Value: `%DYNAMIC_METADATA(` + aigv1a1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
+								Value: `%DYNAMIC_METADATA(` + aigv1b1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
 							},
 						},
 					},
@@ -630,7 +630,7 @@ func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener
 			},
 			MetadataOptions: &extprocv3.MetadataOptions{
 				ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
-					Untyped: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
+					Untyped: []string{aigv1b1.AIGatewayFilterMetadataNamespace},
 				},
 			},
 			ProcessingMode: &extprocv3.ProcessingMode{

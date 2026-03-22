@@ -87,7 +87,7 @@ spec:
       port: 80
 ---
 # Step 5: Create AIGatewayRoute for routing to Bedrock
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: envoy-ai-gateway-basic-aws
@@ -107,7 +107,7 @@ spec:
         - name: envoy-ai-gateway-basic-aws
 ---
 # Step 6: Create AIServiceBackend for AWS Bedrock
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: envoy-ai-gateway-basic-aws
@@ -122,7 +122,7 @@ spec:
 ---
 # Step 7: Create BackendSecurityPolicy using AWS credential chain
 # This automatically uses IRSA credentials from the ServiceAccount annotation!
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: envoy-ai-gateway-basic-aws

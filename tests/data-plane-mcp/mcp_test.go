@@ -433,10 +433,16 @@ func testLoggingSetLevel(t *testing.T, m *mcpEnv) {
 		Level: "debug",
 	})
 	require.NoError(t, err)
-	requireMCPSpan(t, m.collector.TakeSpan(), "SetLoggingLevel", map[string]string{
+
+	span := m.collector.TakeSpan()
+	requireMCPSpan(t, span, "SetLoggingLevel", map[string]string{
 		"mcp.method.name":   "logging/setLevel",
 		"mcp.logging.level": "debug",
 	})
+	// Verify that the request was not routed to the MCP server that does not support logging
+	routedBackends := backendsFromSpan(t, span)
+	require.Contains(t, routedBackends, "default-mcp-backend")
+	require.NotContains(t, routedBackends, "dumb-mcp-backend")
 }
 
 func testListPrompts(t *testing.T, m *mcpEnv) {
