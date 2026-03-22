@@ -33,7 +33,7 @@ The `AIServiceBackend` resource represents an individual AI service backend and 
 #### Key Fields
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: my-provider-backend
@@ -83,7 +83,7 @@ The `BackendSecurityPolicy` resource configures authentication credentials neede
 Commonly used across many providers
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: openai-auth
@@ -108,7 +108,7 @@ Used when connecting to AWS Bedrock. Supports three authentication methods:
 When running on EKS, the AWS SDK automatically uses the default credential chain, which includes EKS Pod Identity and IRSA. Simply configure the region:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: bedrock-auth
@@ -126,7 +126,7 @@ See the [Connect AWS Bedrock guide](../../getting-started/connect-providers/aws-
 **Option 2: Static Credentials (Development/Testing)**
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: bedrock-auth
@@ -150,7 +150,7 @@ When using static credentials, the secret must contain the AWS credentials file 
 Used for connecting to Azure OpenAI
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: azure-auth
@@ -178,7 +178,7 @@ Used for connecting to GCP Vertex AI and Anthropic on GCP
    Envoy AI Gateway uses this key file to generate an access token and authenticate with GCP Vertex AI.
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: gcp-auth-service-account-key
@@ -198,7 +198,7 @@ spec:
    It leverages a trust relationship between GCP and an external identity provider such as OIDC.
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: gcp-auth
@@ -244,7 +244,7 @@ The `AIGatewayRoute` resource defines how client requests are routed to appropri
 #### Basic Configuration
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: multi-provider-route
@@ -315,7 +315,7 @@ For a simple single-provider setup:
 
 ```yaml
 # Backend configuration
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: openai-backend
@@ -330,7 +330,7 @@ spec:
 
 ---
 # Security configuration
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: openai-auth
@@ -347,7 +347,7 @@ spec:
 
 ---
 # Routing configuration
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: openai-route
@@ -366,7 +366,7 @@ spec:
 For high availability with multiple providers:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: multi-provider-fallback
@@ -391,7 +391,7 @@ spec:
 For routing different models to specialized providers:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: model-specific-routing
@@ -427,7 +427,7 @@ spec:
 Configure model ownership and creation information for the `/models` endpoint:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: model-metadata

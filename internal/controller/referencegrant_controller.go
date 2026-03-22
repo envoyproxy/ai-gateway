@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
 
 // ReferenceGrantController implements [reconcile.TypedReconciler] for ReferenceGrant.
@@ -85,8 +85,8 @@ func (c *ReferenceGrantController) Reconcile(ctx context.Context, req reconcile.
 func (c *ReferenceGrantController) getAffectedAIGatewayRoutes(
 	ctx context.Context,
 	grant *gwapiv1b1.ReferenceGrant,
-) ([]*aigv1a1.AIGatewayRoute, error) {
-	var affectedRoutes []*aigv1a1.AIGatewayRoute
+) ([]*aigv1b1.AIGatewayRoute, error) {
+	var affectedRoutes []*aigv1b1.AIGatewayRoute
 
 	// For each "from" reference in the grant, find AIGatewayRoutes in that namespace
 	// that might reference AIServiceBackends in the grant's namespace
@@ -95,7 +95,7 @@ func (c *ReferenceGrantController) getAffectedAIGatewayRoutes(
 			continue
 		}
 
-		var routes aigv1a1.AIGatewayRouteList
+		var routes aigv1b1.AIGatewayRouteList
 		if err := c.client.List(ctx, &routes, client.InNamespace(string(from.Namespace))); err != nil {
 			return nil, fmt.Errorf("failed to list AIGatewayRoutes in namespace %s: %w", from.Namespace, err)
 		}
@@ -113,7 +113,7 @@ func (c *ReferenceGrantController) getAffectedAIGatewayRoutes(
 }
 
 // routeReferencesNamespace checks if an AIGatewayRoute has any backend references to a specific namespace.
-func (c *ReferenceGrantController) routeReferencesNamespace(route *aigv1a1.AIGatewayRoute, namespace string) bool {
+func (c *ReferenceGrantController) routeReferencesNamespace(route *aigv1b1.AIGatewayRoute, namespace string) bool {
 	for _, rule := range route.Spec.Rules {
 		for _, backendRef := range rule.BackendRefs {
 			// Only check AIServiceBackend references

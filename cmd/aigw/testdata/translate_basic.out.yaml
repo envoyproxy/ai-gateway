@@ -70,7 +70,7 @@ metadata:
     gateway.envoyproxy.io/backend-ref-priority: 0:envoy-ai-gateway-basic-openai:0,1:envoy-ai-gateway-basic-aws:0,2:envoy-ai-gateway-basic-testupstream:0
     gateway.envoyproxy.io/ai-gateway-generated: "true"
   ownerReferences:
-    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+    - apiVersion: aigateway.envoyproxy.io/v1beta1
       blockOwnerDeletion: true
       controller: true
       kind: AIGatewayRoute
@@ -156,7 +156,7 @@ metadata:
   name: ai-eg-host-rewrite-envoy-ai-gateway-basic
   namespace: default
   ownerReferences:
-    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+    - apiVersion: aigateway.envoyproxy.io/v1beta1
       kind: AIGatewayRoute
       name: envoy-ai-gateway-basic
       uid: ""
@@ -173,7 +173,7 @@ metadata:
   name: ai-eg-route-not-found-response-envoy-ai-gateway-basic
   namespace: default
   ownerReferences:
-    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+    - apiVersion: aigateway.envoyproxy.io/v1beta1
       kind: AIGatewayRoute
       name: envoy-ai-gateway-basic
       uid: ""

@@ -18,6 +18,7 @@ exclude:
     - zz_generated.deepcopy.go
     # Generated Kubernetes client code.
     - api/v1alpha1/client/
+    - api/v1beta1/client/
     # They are test-only libraries.
     - tests/internal/
     - internal/testing/

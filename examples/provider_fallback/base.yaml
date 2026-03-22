@@ -27,7 +27,7 @@ spec:
       kind: EnvoyProxy
       name: provider-fallback
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: provider-fallback
@@ -49,7 +49,7 @@ spec:
         - name: provider-fallback-aws
           priority: 1
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: provider-fallback-aws
@@ -62,7 +62,7 @@ spec:
     kind: Backend
     group: gateway.envoyproxy.io
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: provider-fallback-aws-credentials
@@ -117,7 +117,7 @@ stringData:
     aws_access_key_id = AWS_ACCESS_KEY_ID
     aws_secret_access_key = AWS_SECRET_ACCESS_KEY
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: provider-fallback-always-failing-upstream
