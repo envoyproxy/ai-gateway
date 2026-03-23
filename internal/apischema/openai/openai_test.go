@@ -1510,6 +1510,22 @@ func TestChatCompletionResponseChunk(t *testing.T) {
 			},
 			expected: `{"id":"chatcmpl-456","object":"chat.completion.chunk","created":1755137934,"model":"gpt-5-nano","choices":[{"index":0,"delta":{"content":"World"}}]}`,
 		},
+		{
+			name: "usage-only chunk with empty choices must serialize choices as empty array",
+			chunk: ChatCompletionResponseChunk{
+				ID:      "chatcmpl-789",
+				Object:  "chat.completion.chunk",
+				Created: JSONUNIXTime(time.Unix(1755137935, 0)),
+				Model:   "gpt-5-nano",
+				Choices: []ChatCompletionResponseChunkChoice{},
+				Usage: &Usage{
+					PromptTokens:     20,
+					CompletionTokens: 10,
+					TotalTokens:      30,
+				},
+			},
+			expected: `{"id":"chatcmpl-789","object":"chat.completion.chunk","created":1755137935,"model":"gpt-5-nano","choices":[],"usage":{"prompt_tokens":20,"completion_tokens":10,"total_tokens":30}}`,
+		},
 	}
 
 	for _, tc := range testCases {

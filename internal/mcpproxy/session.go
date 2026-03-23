@@ -7,6 +7,7 @@ package mcpproxy
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -20,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/andybalholm/brotli"
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -360,7 +362,7 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 		req.Header.Set("Content-type", "application/json")
 	}
 	req.Header.Set("Accept", "text/event-stream, application/json")
-	req.Header.Set("Accept-encoding", "gzip, br, zstd, deflate")
+	req.Header.Set("Accept-Encoding", "gzip, br")
 
 	// Forward configured headers to the backend.
 	// First, strip any client-provided headers that match configured forward headers to prevent forgery.
@@ -402,27 +404,41 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 		return fmt.Errorf("failed to send GET request: %w", err)
 	}
 
-	switch httpResp.StatusCode {
-	case http.StatusNoContent, http.StatusMethodNotAllowed, http.StatusAccepted:
-		// No notifications.
-		_ = httpResp.Body.Close()
-		return nil
-	case http.StatusOK:
-	default:
-		body, _ := io.ReadAll(httpResp.Body)
-		_ = httpResp.Body.Close()
-		return fmt.Errorf("MCP GET request failed with status code %d, body=%s", httpResp.StatusCode, string(body))
-	}
-
 	defer func() {
 		_ = httpResp.Body.Close()
 	}()
+
+	// Decompress the response body based on Content-Encoding.
+	// We explicitly set Accept-Encoding: gzip, br so Go's http.Transport will not
+	// auto-decompress, and we handle it here for both gzip and Brotli.
+	var bodyReader io.Reader = httpResp.Body
+	switch httpResp.Header.Get("Content-Encoding") {
+	case "gzip":
+		gr, gzErr := gzip.NewReader(httpResp.Body)
+		if gzErr != nil {
+			return fmt.Errorf("failed to create gzip decompressor: %w", gzErr)
+		}
+		defer gr.Close()
+		bodyReader = gr
+	case "br":
+		bodyReader = brotli.NewReader(httpResp.Body)
+	}
+
+	switch httpResp.StatusCode {
+	case http.StatusNoContent, http.StatusMethodNotAllowed, http.StatusAccepted:
+		// No notifications.
+		return nil
+	case http.StatusOK:
+	default:
+		body, _ := io.ReadAll(bodyReader)
+		return fmt.Errorf("MCP GET request failed with status code %d, body=%s", httpResp.StatusCode, string(body))
+	}
 
 	if httpResp.Header.Get("Content-Type") == "application/json" {
 		// This is not an SSE response, but only a single JSON response. Convert it as an event and
 		// send it to the channel.
 		var respBody []byte
-		respBody, err = io.ReadAll(httpResp.Body)
+		respBody, err = io.ReadAll(bodyReader)
 		if err != nil {
 			return fmt.Errorf("failed to read MCP response body: %w", err)
 		}
@@ -445,7 +461,7 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 
 	// io.Copy won't flush until the end, which doesn't happen for streaming responses.
 	// So we need to read the body in chunks and flush after each chunk.
-	parser := newSSEEventParser(httpResp.Body, backend.Name)
+	parser := newSSEEventParser(bodyReader, backend.Name)
 	for {
 		var event *sseEvent
 		event, err = parser.next()

@@ -4,7 +4,7 @@
 # the root of the repo.
 
 # Valid InferencePool backend reference
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: inference-pool-basic

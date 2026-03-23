@@ -21,13 +21,13 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
 
 func TestReferenceGrantController_Reconcile(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = gwapiv1b1.Install(scheme)
-	_ = aigv1a1.AddToScheme(scheme)
+	_ = aigv1b1.AddToScheme(scheme)
 
 	t.Run("ReferenceGrant created - triggers affected AIGatewayRoutes", func(t *testing.T) {
 		referenceGrant := &gwapiv1b1.ReferenceGrant{
@@ -52,15 +52,15 @@ func TestReferenceGrantController_Reconcile(t *testing.T) {
 			},
 		}
 
-		affectedRoute := &aigv1a1.AIGatewayRoute{
+		affectedRoute := &aigv1b1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "affected-route",
 				Namespace: "route-ns",
 			},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 							{
 								Name:      "backend",
 								Namespace: ptr.To(gwapiv1.Namespace("backend-ns")),
@@ -191,15 +191,15 @@ func TestReferenceGrantController_Reconcile(t *testing.T) {
 			},
 		}
 
-		route1 := &aigv1a1.AIGatewayRoute{
+		route1 := &aigv1b1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "route-1",
 				Namespace: "route-ns",
 			},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 							{
 								Name:      "backend-1",
 								Namespace: ptr.To(gwapiv1.Namespace("backend-ns")),
@@ -210,15 +210,15 @@ func TestReferenceGrantController_Reconcile(t *testing.T) {
 			},
 		}
 
-		route2 := &aigv1a1.AIGatewayRoute{
+		route2 := &aigv1b1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "route-2",
 				Namespace: "route-ns",
 			},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 							{
 								Name:      "backend-2",
 								Namespace: ptr.To(gwapiv1.Namespace("backend-ns")),
@@ -265,7 +265,7 @@ func TestReferenceGrantController_Reconcile(t *testing.T) {
 func TestNewReferenceGrantController(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = gwapiv1b1.Install(scheme)
-	_ = aigv1a1.AddToScheme(scheme)
+	_ = aigv1b1.AddToScheme(scheme)
 
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
@@ -286,7 +286,7 @@ func TestNewReferenceGrantController(t *testing.T) {
 func TestReferenceGrantController_Reconcile_GetError(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = gwapiv1b1.Install(scheme)
-	_ = aigv1a1.AddToScheme(scheme)
+	_ = aigv1b1.AddToScheme(scheme)
 
 	// Create a fake client that will return an error for Get operations
 	fakeClient := fake.NewClientBuilder().
@@ -361,12 +361,12 @@ func TestReferenceGrantController_Reconcile_GetAffectedRoutesError(t *testing.T)
 func TestReferenceGrantController_GetAffectedAIGatewayRoutes(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = gwapiv1b1.Install(scheme)
-	_ = aigv1a1.AddToScheme(scheme)
+	_ = aigv1b1.AddToScheme(scheme)
 
 	tests := []struct {
 		name           string
 		referenceGrant gwapiv1b1.ReferenceGrant
-		routes         []aigv1a1.AIGatewayRoute
+		routes         []aigv1b1.AIGatewayRoute
 		expectedRoutes []string // route names that should be affected
 	}{
 		{
@@ -392,16 +392,16 @@ func TestReferenceGrantController_GetAffectedAIGatewayRoutes(t *testing.T) {
 					},
 				},
 			},
-			routes: []aigv1a1.AIGatewayRoute{
+			routes: []aigv1b1.AIGatewayRoute{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "affected-route",
 						Namespace: "route-ns",
 					},
-					Spec: aigv1a1.AIGatewayRouteSpec{
-						Rules: []aigv1a1.AIGatewayRouteRule{
+					Spec: aigv1b1.AIGatewayRouteSpec{
+						Rules: []aigv1b1.AIGatewayRouteRule{
 							{
-								BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+								BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 									{
 										Name:      "backend",
 										Namespace: ptr.To(gwapiv1.Namespace("backend-ns")),
@@ -416,10 +416,10 @@ func TestReferenceGrantController_GetAffectedAIGatewayRoutes(t *testing.T) {
 						Name:      "unaffected-route",
 						Namespace: "route-ns",
 					},
-					Spec: aigv1a1.AIGatewayRouteSpec{
-						Rules: []aigv1a1.AIGatewayRouteRule{
+					Spec: aigv1b1.AIGatewayRouteSpec{
+						Rules: []aigv1b1.AIGatewayRouteRule{
 							{
-								BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+								BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 									{
 										Name: "local-backend",
 										// No namespace specified, uses local namespace
@@ -455,16 +455,16 @@ func TestReferenceGrantController_GetAffectedAIGatewayRoutes(t *testing.T) {
 					},
 				},
 			},
-			routes: []aigv1a1.AIGatewayRoute{
+			routes: []aigv1b1.AIGatewayRoute{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "route-in-different-ns",
 						Namespace: "other-ns",
 					},
-					Spec: aigv1a1.AIGatewayRouteSpec{
-						Rules: []aigv1a1.AIGatewayRouteRule{
+					Spec: aigv1b1.AIGatewayRouteSpec{
+						Rules: []aigv1b1.AIGatewayRouteRule{
 							{
-								BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+								BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 									{
 										Name:      "backend",
 										Namespace: ptr.To(gwapiv1.Namespace("backend-ns")),
@@ -500,16 +500,16 @@ func TestReferenceGrantController_GetAffectedAIGatewayRoutes(t *testing.T) {
 					},
 				},
 			},
-			routes: []aigv1a1.AIGatewayRoute{
+			routes: []aigv1b1.AIGatewayRoute{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "route",
 						Namespace: "route-ns",
 					},
-					Spec: aigv1a1.AIGatewayRouteSpec{
-						Rules: []aigv1a1.AIGatewayRouteRule{
+					Spec: aigv1b1.AIGatewayRouteSpec{
+						Rules: []aigv1b1.AIGatewayRouteRule{
 							{
-								BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+								BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 									{
 										Name:      "backend",
 										Namespace: ptr.To(gwapiv1.Namespace("backend-ns")),
@@ -601,7 +601,7 @@ func TestReferenceGrantController_GetAffectedAIGatewayRoutes(t *testing.T) {
 func TestReferenceGrantController_GetAffectedAIGatewayRoutes_WithNonMatchingFrom(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = gwapiv1b1.Install(scheme)
-	_ = aigv1a1.AddToScheme(scheme)
+	_ = aigv1b1.AddToScheme(scheme)
 
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	aiGatewayRouteChan := make(chan event.GenericEvent, 10)
