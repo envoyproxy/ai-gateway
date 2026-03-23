@@ -6,6 +6,8 @@
 package mcpproxy
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -18,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/andybalholm/brotli"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
@@ -30,21 +33,229 @@ import (
 // stubMetrics implements metrics.MCPMetrics with no-ops.
 type stubMetrics struct{}
 
-func (s stubMetrics) WithRequestAttributes(_ *http.Request) metrics.MCPMetrics            { return s }
-func (s stubMetrics) WithBackend(_ string) metrics.MCPMetrics                             { return s }
-func (stubMetrics) RecordRequestDuration(_ context.Context, _ time.Time, _ mcpsdk.Params) {}
-func (stubMetrics) RecordRequestErrorDuration(_ context.Context, _ time.Time, _ metrics.MCPErrorType, _ mcpsdk.Params) {
+func (s stubMetrics) WithRequestAttributes(*http.Request) metrics.MCPMetrics        { return s }
+func (s stubMetrics) WithBackend(string) metrics.MCPMetrics                         { return s }
+func (stubMetrics) RecordRequestDuration(context.Context, time.Time, mcpsdk.Params) {}
+func (stubMetrics) RecordRequestErrorDuration(context.Context, time.Time, metrics.MCPErrorType, mcpsdk.Params) {
 }
-func (stubMetrics) RecordMethodCount(_ context.Context, _ string, _ mcpsdk.Params) {}
-func (stubMetrics) RecordMethodErrorCount(_ context.Context, _ string, _ mcpsdk.Params, _ metrics.MCPStatusType) {
+func (stubMetrics) RecordMethodCount(context.Context, string, mcpsdk.Params) {}
+func (stubMetrics) RecordMethodErrorCount(context.Context, string, mcpsdk.Params, metrics.MCPStatusType) {
 }
-func (stubMetrics) RecordInitializationDuration(_ context.Context, _ time.Time, _ mcpsdk.Params) {}
-func (stubMetrics) RecordClientCapabilities(_ context.Context, _ *mcpsdk.ClientCapabilities, _ mcpsdk.Params) {
+func (stubMetrics) RecordInitializationDuration(context.Context, time.Time, mcpsdk.Params) {}
+func (stubMetrics) RecordClientCapabilities(context.Context, *mcpsdk.ClientCapabilities, mcpsdk.Params) {
 }
 
-func (stubMetrics) RecordServerCapabilities(_ context.Context, _ *mcpsdk.ServerCapabilities, _ mcpsdk.Params) {
+func (stubMetrics) RecordServerCapabilities(context.Context, *mcpsdk.ServerCapabilities, mcpsdk.Params) {
 }
-func (stubMetrics) RecordProgress(_ context.Context, _ mcpsdk.Params) {}
+func (stubMetrics) RecordProgress(context.Context, mcpsdk.Params) {}
+
+func TestEncodeCapabilityFlags(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		caps *mcpsdk.ServerCapabilities
+		want string
+	}{
+		{name: "nil capabilities", caps: nil, want: "000"},
+		{name: "empty capabilities", caps: &mcpsdk.ServerCapabilities{}, want: "000"},
+		{name: "tools only", caps: &mcpsdk.ServerCapabilities{
+			Tools: &mcpsdk.ToolCapabilities{},
+		}, want: "001"},
+		{name: "tools with list changed", caps: &mcpsdk.ServerCapabilities{
+			Tools: &mcpsdk.ToolCapabilities{ListChanged: true},
+		}, want: "003"},
+		{name: "logging only", caps: &mcpsdk.ServerCapabilities{
+			Logging: &mcpsdk.LoggingCapabilities{},
+		}, want: "010"},
+		{name: "resources with subscribe", caps: &mcpsdk.ServerCapabilities{
+			Resources: &mcpsdk.ResourceCapabilities{Subscribe: true},
+		}, want: "0a0"},
+		{name: "completions only", caps: &mcpsdk.ServerCapabilities{
+			Completions: &mcpsdk.CompletionCapabilities{},
+		}, want: "100"},
+		{name: "all capabilities", caps: &mcpsdk.ServerCapabilities{
+			Tools:       &mcpsdk.ToolCapabilities{ListChanged: true},
+			Prompts:     &mcpsdk.PromptCapabilities{ListChanged: true},
+			Logging:     &mcpsdk.LoggingCapabilities{},
+			Resources:   &mcpsdk.ResourceCapabilities{ListChanged: true, Subscribe: true},
+			Completions: &mcpsdk.CompletionCapabilities{},
+		}, want: "1ff"},
+		{name: "prompts without list changed", caps: &mcpsdk.ServerCapabilities{
+			Prompts: &mcpsdk.PromptCapabilities{},
+		}, want: "004"},
+		{name: "resources with list changed only", caps: &mcpsdk.ServerCapabilities{
+			Resources: &mcpsdk.ResourceCapabilities{ListChanged: true},
+		}, want: "060"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := encodeCapabilityFlags(tc.caps)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestDecodeCapabilityFlags(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		hex  string
+		want *mcpsdk.ServerCapabilities
+	}{
+		{name: "zero", hex: "000", want: &mcpsdk.ServerCapabilities{}},
+		{name: "tools only", hex: "001", want: &mcpsdk.ServerCapabilities{
+			Tools: &mcpsdk.ToolCapabilities{},
+		}},
+		{name: "tools with list changed", hex: "003", want: &mcpsdk.ServerCapabilities{
+			Tools: &mcpsdk.ToolCapabilities{ListChanged: true},
+		}},
+		{name: "logging only", hex: "010", want: &mcpsdk.ServerCapabilities{
+			Logging: &mcpsdk.LoggingCapabilities{},
+		}},
+		{name: "all capabilities", hex: "1ff", want: &mcpsdk.ServerCapabilities{
+			Tools:       &mcpsdk.ToolCapabilities{ListChanged: true},
+			Prompts:     &mcpsdk.PromptCapabilities{ListChanged: true},
+			Logging:     &mcpsdk.LoggingCapabilities{},
+			Resources:   &mcpsdk.ResourceCapabilities{ListChanged: true, Subscribe: true},
+			Completions: &mcpsdk.CompletionCapabilities{},
+		}},
+		{name: "invalid hex defaults to all", hex: "zzz", want: &mcpsdk.ServerCapabilities{
+			Tools:       &mcpsdk.ToolCapabilities{ListChanged: true},
+			Prompts:     &mcpsdk.PromptCapabilities{ListChanged: true},
+			Logging:     &mcpsdk.LoggingCapabilities{},
+			Resources:   &mcpsdk.ResourceCapabilities{ListChanged: true, Subscribe: true},
+			Completions: &mcpsdk.CompletionCapabilities{},
+		}},
+		{name: "empty string defaults to all", hex: "", want: &mcpsdk.ServerCapabilities{
+			Tools:       &mcpsdk.ToolCapabilities{ListChanged: true},
+			Prompts:     &mcpsdk.PromptCapabilities{ListChanged: true},
+			Logging:     &mcpsdk.LoggingCapabilities{},
+			Resources:   &mcpsdk.ResourceCapabilities{ListChanged: true, Subscribe: true},
+			Completions: &mcpsdk.CompletionCapabilities{},
+		}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := decodeCapabilityFlags(tc.hex)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestEncodeDecodeCapabilityFlags_RoundTrip(t *testing.T) {
+	t.Parallel()
+	cases := []*mcpsdk.ServerCapabilities{
+		nil,
+		{},
+		{Tools: &mcpsdk.ToolCapabilities{ListChanged: true}},
+		{Logging: &mcpsdk.LoggingCapabilities{}},
+		{Resources: &mcpsdk.ResourceCapabilities{Subscribe: true, ListChanged: true}},
+		{Completions: &mcpsdk.CompletionCapabilities{}},
+		{
+			Tools:       &mcpsdk.ToolCapabilities{ListChanged: true},
+			Prompts:     &mcpsdk.PromptCapabilities{ListChanged: true},
+			Logging:     &mcpsdk.LoggingCapabilities{},
+			Resources:   &mcpsdk.ResourceCapabilities{ListChanged: true, Subscribe: true},
+			Completions: &mcpsdk.CompletionCapabilities{},
+		},
+	}
+
+	for _, caps := range cases {
+		hex := encodeCapabilityFlags(caps)
+		decoded := decodeCapabilityFlags(hex)
+		// nil input encodes as "000" which decodes to empty (non-nil) ServerCapabilities.
+		if caps == nil {
+			require.Equal(t, &mcpsdk.ServerCapabilities{}, decoded)
+		} else {
+			require.Equal(t, caps, decoded)
+		}
+	}
+}
+
+func TestMergedCapabilities(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		backends map[filterapi.MCPBackendName]*compositeSessionEntry
+		want     *mcpsdk.ServerCapabilities
+	}{
+		{
+			name:     "no backends",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{},
+			want:     &mcpsdk.ServerCapabilities{},
+		},
+		{
+			name: "single backend with all capabilities",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {capabilities: &mcpsdk.ServerCapabilities{
+					Tools:   &mcpsdk.ToolCapabilities{ListChanged: true},
+					Logging: &mcpsdk.LoggingCapabilities{},
+				}},
+			},
+			want: &mcpsdk.ServerCapabilities{
+				Tools:   &mcpsdk.ToolCapabilities{ListChanged: true},
+				Logging: &mcpsdk.LoggingCapabilities{},
+			},
+		},
+		{
+			name: "backend with nil capabilities is skipped",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {capabilities: nil},
+				"b2": {capabilities: &mcpsdk.ServerCapabilities{
+					Logging: &mcpsdk.LoggingCapabilities{},
+				}},
+			},
+			want: &mcpsdk.ServerCapabilities{
+				Logging: &mcpsdk.LoggingCapabilities{},
+			},
+		},
+		{
+			name: "union of different capabilities",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {capabilities: &mcpsdk.ServerCapabilities{
+					Tools:   &mcpsdk.ToolCapabilities{ListChanged: false},
+					Logging: &mcpsdk.LoggingCapabilities{},
+				}},
+				"b2": {capabilities: &mcpsdk.ServerCapabilities{
+					Tools:     &mcpsdk.ToolCapabilities{ListChanged: true},
+					Resources: &mcpsdk.ResourceCapabilities{Subscribe: true},
+				}},
+			},
+			want: &mcpsdk.ServerCapabilities{
+				Tools:     &mcpsdk.ToolCapabilities{ListChanged: true},
+				Logging:   &mcpsdk.LoggingCapabilities{},
+				Resources: &mcpsdk.ResourceCapabilities{Subscribe: true},
+			},
+		},
+		{
+			name: "sub-fields are OR'd",
+			backends: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"b1": {capabilities: &mcpsdk.ServerCapabilities{
+					Resources: &mcpsdk.ResourceCapabilities{ListChanged: true, Subscribe: false},
+				}},
+				"b2": {capabilities: &mcpsdk.ServerCapabilities{
+					Resources: &mcpsdk.ResourceCapabilities{ListChanged: false, Subscribe: true},
+				}},
+			},
+			want: &mcpsdk.ServerCapabilities{
+				Resources: &mcpsdk.ResourceCapabilities{ListChanged: true, Subscribe: true},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := &session{perBackendSessions: tc.backends}
+			got := s.mergedCapabilities()
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
 
 func TestBackendSessionIDs_Success(t *testing.T) {
 	backendA := "backendA"
@@ -58,6 +269,74 @@ func TestBackendSessionIDs_Success(t *testing.T) {
 	require.Equal(t, routeName, route)
 	require.Equal(t, idA, string(m[backendA].sessionID))
 	require.Equal(t, idB, string(m[backendB].sessionID))
+	// Old format without capability hex should default to all capabilities.
+	require.NotNil(t, m[backendA].capabilities)
+	require.NotNil(t, m[backendA].capabilities.Tools)
+	require.NotNil(t, m[backendA].capabilities.Logging)
+	require.NotNil(t, m[backendA].capabilities.Prompts)
+	require.NotNil(t, m[backendA].capabilities.Resources)
+	require.NotNil(t, m[backendA].capabilities.Completions)
+}
+
+func TestBackendSessionIDs_WithCapabilities(t *testing.T) {
+	t.Parallel()
+	routeName := "some-route"
+	caps := &mcpsdk.ServerCapabilities{
+		Tools:   &mcpsdk.ToolCapabilities{ListChanged: true},
+		Logging: &mcpsdk.LoggingCapabilities{},
+	}
+	capHex := encodeCapabilityFlags(caps)
+	// New format: backendName:base64SessionID:capHex
+	composite := clientToGatewaySessionID(
+		routeName + "@subject@" +
+			"backendA:" + base64.StdEncoding.EncodeToString([]byte("sid-a")) + ":" + capHex + "," +
+			"backendB:" + base64.StdEncoding.EncodeToString([]byte("sid-b")) + ":000",
+	)
+	m, route, err := composite.backendSessionIDs()
+	require.NoError(t, err)
+	require.Equal(t, routeName, route)
+	require.Equal(t, "sid-a", string(m["backendA"].sessionID))
+	require.Equal(t, "sid-b", string(m["backendB"].sessionID))
+	// backendA should have tools + logging.
+	require.NotNil(t, m["backendA"].capabilities.Tools)
+	require.True(t, m["backendA"].capabilities.Tools.ListChanged)
+	require.NotNil(t, m["backendA"].capabilities.Logging)
+	require.Nil(t, m["backendA"].capabilities.Resources)
+	// backendB has "000" = no capabilities.
+	require.Nil(t, m["backendB"].capabilities.Tools)
+	require.Nil(t, m["backendB"].capabilities.Logging)
+}
+
+func TestClientToGatewaySessionIDFromEntries_WithCapabilities(t *testing.T) {
+	t.Parallel()
+	caps := &mcpsdk.ServerCapabilities{
+		Tools:   &mcpsdk.ToolCapabilities{ListChanged: true},
+		Logging: &mcpsdk.LoggingCapabilities{},
+	}
+	entries := []compositeSessionEntry{
+		{backendName: "b1", sessionID: "sid-1", capabilities: caps},
+		{backendName: "b2", sessionID: "sid-2", capabilities: nil},
+	}
+	id := clientToGatewaySessionIDFromEntries("subj", entries, "route1")
+
+	// Parse it back.
+	m, route, err := id.backendSessionIDs()
+	require.NoError(t, err)
+	require.Equal(t, "route1", route)
+	require.Equal(t, "sid-1", string(m["b1"].sessionID))
+	require.Equal(t, "sid-2", string(m["b2"].sessionID))
+
+	// b1 should have tools + logging from round-trip.
+	require.NotNil(t, m["b1"].capabilities.Tools)
+	require.True(t, m["b1"].capabilities.Tools.ListChanged)
+	require.NotNil(t, m["b1"].capabilities.Logging)
+	require.Nil(t, m["b1"].capabilities.Prompts)
+	require.Nil(t, m["b1"].capabilities.Resources)
+	require.Nil(t, m["b1"].capabilities.Completions)
+
+	// b2 had nil capabilities, encoded as "000", decoded as empty.
+	require.Nil(t, m["b2"].capabilities.Tools)
+	require.Nil(t, m["b2"].capabilities.Logging)
 }
 
 func TestBackendSessionIDs_EmailSubject(t *testing.T) {
@@ -171,6 +450,123 @@ func TestSendRequestPerBackend_SetsOriginalPathHeaders(t *testing.T) {
 	case <-ctx.Done():
 		require.Fail(t, "timed out waiting for backend request")
 	}
+}
+
+func TestSendRequestPerBackend_AcceptEncoding(t *testing.T) {
+	headersCh := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- r.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+
+	s := &session{reqCtx: proxy}
+	ch := make(chan *backendEvent, 1)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+		sessionID: "sess1",
+	}, http.MethodGet, nil)
+	require.NoError(t, err)
+
+	select {
+	case hdr := <-headersCh:
+		ae := hdr.Get("Accept-Encoding")
+		require.Contains(t, ae, "gzip", "Accept-Encoding must advertise gzip")
+		require.Contains(t, ae, "br", "Accept-Encoding must advertise Brotli")
+		require.NotContains(t, ae, "zstd", "Accept-Encoding must not advertise zstd")
+	case <-ctx.Done():
+		require.Fail(t, "timed out waiting for backend request")
+	}
+}
+
+func TestSendRequestPerBackend_GzipDecompression(t *testing.T) {
+	id1, _ := jsonrpc.MakeID("1")
+	msg1, _ := jsonrpc.EncodeMessage(&jsonrpc.Request{Method: "ping", ID: id1})
+	sseBody := "event: message\ndata: " + string(msg1) + "\n\n"
+
+	// Compress the SSE body with gzip.
+	var compressed bytes.Buffer
+	gw := gzip.NewWriter(&compressed)
+	_, err := gw.Write([]byte(sseBody))
+	require.NoError(t, err)
+	require.NoError(t, gw.Close())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Encoding", "gzip")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(compressed.Bytes())
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	s := &session{reqCtx: proxy}
+	ch := make(chan *backendEvent, 10)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	err = s.sendRequestPerBackend(ctx, ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+		sessionID: "sess1",
+	}, http.MethodGet, nil)
+	require.NoError(t, err)
+	close(ch)
+	var events []*backendEvent
+	for e := range ch {
+		events = append(events, e)
+	}
+	require.Len(t, events, 1, "expected 1 event from gzip-compressed response")
+	require.Equal(t, "message", events[0].event)
+	require.Len(t, events[0].messages, 1)
+	req, ok := events[0].messages[0].(*jsonrpc.Request)
+	require.True(t, ok)
+	require.Equal(t, "ping", req.Method)
+}
+
+func TestSendRequestPerBackend_BrotliDecompression(t *testing.T) {
+	id1, _ := jsonrpc.MakeID("1")
+	msg1, _ := jsonrpc.EncodeMessage(&jsonrpc.Request{Method: "ping", ID: id1})
+	sseBody := "event: message\ndata: " + string(msg1) + "\n\n"
+
+	// Compress the SSE body with Brotli.
+	var compressed bytes.Buffer
+	bw := brotli.NewWriter(&compressed)
+	_, err := bw.Write([]byte(sseBody))
+	require.NoError(t, err)
+	require.NoError(t, bw.Close())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Encoding", "br")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(compressed.Bytes())
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	s := &session{reqCtx: proxy}
+	ch := make(chan *backendEvent, 10)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	err = s.sendRequestPerBackend(ctx, ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+		sessionID: "sess1",
+	}, http.MethodGet, nil)
+	require.NoError(t, err)
+	close(ch)
+	var events []*backendEvent
+	for e := range ch {
+		events = append(events, e)
+	}
+	require.Len(t, events, 1, "expected 1 event from Brotli-compressed response")
+	require.Equal(t, "message", events[0].event)
+	require.Len(t, events[0].messages, 1)
+	req, ok := events[0].messages[0].(*jsonrpc.Request)
+	require.True(t, ok)
+	require.Equal(t, "ping", req.Method)
 }
 
 func TestHandleNotificationsPerBackend_SSE(t *testing.T) {

@@ -94,7 +94,7 @@ spec:
 ---
 # AIGatewayRoute in route-ns namespace referencing Gateway in gateway-ns
 # and AIServiceBackend in backend-ns (cross-namespace backend reference)
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: cross-namespace-route
@@ -116,7 +116,7 @@ spec:
           namespace: backend-ns # Cross-namespace AIServiceBackend reference
 ---
 # AIServiceBackend in backend-ns namespace (different from AIGatewayRoute)
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: cross-namespace-backend
@@ -130,7 +130,7 @@ spec:
     group: gateway.envoyproxy.io
 ---
 # BackendSecurityPolicy for the AIServiceBackend
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: cross-namespace-backend-api-key

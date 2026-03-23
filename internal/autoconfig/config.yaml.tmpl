@@ -186,7 +186,7 @@ spec:
 {{ end }}
 ---
 {{- if .OpenAI }}
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: aigw-run
@@ -217,7 +217,7 @@ spec:
 ---
 {{- end }}
 {{- if .Anthropic }}
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: aigw-run
@@ -307,7 +307,7 @@ spec:
 ---
 {{- end }}
 {{- if .OpenAI }}
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: {{ .OpenAI.BackendName }}
@@ -340,7 +340,7 @@ spec:
 ---
 {{- end }}
 {{- if .Anthropic }}
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: {{ .Anthropic.BackendName }}
@@ -409,7 +409,7 @@ stringData:
   apiKey: ${OPENAI_API_KEY}
 {{- end }}
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: openai-apikey
@@ -442,7 +442,7 @@ type: Opaque
 stringData:
   apiKey: ${ANTHROPIC_API_KEY}
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: anthropic-apikey

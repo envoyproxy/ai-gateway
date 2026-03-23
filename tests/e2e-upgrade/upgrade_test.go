@@ -117,6 +117,8 @@ func TestUpgrade(t *testing.T) {
 			runningAfterUpgrade: 2 * time.Minute, // Control plane pods take longer to restart and roll out new Envoy pods.
 			upgradeFunc: func(ctx context.Context) {
 				require.NoError(t, e2elib.InstallOrUpgradeAIGateway(ctx, e2elib.AIGatewayHelmOption{}))
+				// Verify CRD storage version migration after upgrade
+				verifyCRDStorageVersions(ctx, t)
 			},
 		},
 	} {
@@ -389,4 +391,135 @@ func monitorPods(ctx context.Context, labelSelector string, p *phase) error {
 			}
 		}
 	}
+}
+
+// verifyCRDStorageVersions checks that CRDs have been properly migrated to v1beta1 storage version.
+// It verifies that:
+//  1. The stored versions include v1beta1
+//  2. For CRDs that were migrated (AIGatewayRoute, AIServiceBackend, BackendSecurityPolicy, GatewayConfig),
+//     both v1alpha1 and v1beta1 may be present during/after upgrade
+//  3. The storage flag is set correctly for v1beta1
+func verifyCRDStorageVersions(ctx context.Context, t *testing.T) {
+	t.Log("Verifying CRD storage version migration")
+
+	// CRDs that should have v1beta1 as storage version
+	crdsToCheck := []string{
+		"aigatewayroutes.aigateway.envoyproxy.io",
+		"aiservicebackends.aigateway.envoyproxy.io",
+		"backendsecuritypolicies.aigateway.envoyproxy.io",
+		"gatewayconfigs.aigateway.envoyproxy.io",
+	}
+
+	for _, crdName := range crdsToCheck {
+		t.Run(crdName, func(t *testing.T) {
+			// Check stored versions
+			storedVersionsCmd := e2elib.Kubectl(ctx, "get", "crd", crdName,
+				"-o", "jsonpath={.status.storedVersions}")
+			storedVersionsCmd.Stdout = nil
+			storedVersionsCmd.Stderr = nil
+			output, err := storedVersionsCmd.CombinedOutput()
+			require.NoError(t, err, "failed to get stored versions for %s: %s", crdName, string(output))
+
+			storedVersions := strings.TrimSpace(string(output))
+			t.Logf("CRD %s stored versions: %s", crdName, storedVersions)
+
+			// Verify v1beta1 is in stored versions (it may have both v1alpha1 and v1beta1 during upgrade)
+			require.Contains(t, storedVersions, "v1beta1", "CRD %s should have v1beta1 in stored versions", crdName)
+
+			// Verify v1beta1 is marked as storage version
+			storageVersionCmd := e2elib.Kubectl(ctx, "get", "crd", crdName,
+				"-o", "jsonpath={.spec.versions[?(@.name==\"v1beta1\")].storage}")
+			storageVersionCmd.Stdout = nil
+			storageVersionCmd.Stderr = nil
+			storageOutput, err := storageVersionCmd.CombinedOutput()
+			require.NoError(t, err, "failed to get storage flag for v1beta1 in %s: %s", crdName, string(storageOutput))
+
+			storageFlag := strings.TrimSpace(string(storageOutput))
+			require.Equal(t, "true", storageFlag, "CRD %s should have v1beta1.storage=true", crdName)
+			t.Logf("CRD %s has v1beta1 as storage version: %s", crdName, storageFlag)
+
+			// Verify v1alpha1 is NOT marked as storage version
+			v1alpha1StorageCmd := e2elib.Kubectl(ctx, "get", "crd", crdName,
+				"-o", "jsonpath={.spec.versions[?(@.name==\"v1alpha1\")].storage}")
+			v1alpha1StorageCmd.Stdout = nil
+			v1alpha1StorageCmd.Stderr = nil
+			v1alpha1Output, err := v1alpha1StorageCmd.CombinedOutput()
+			require.NoError(t, err, "failed to get storage flag for v1alpha1 in %s: %s", crdName, string(v1alpha1Output))
+
+			v1alpha1Storage := strings.TrimSpace(string(v1alpha1Output))
+			require.Equal(t, "false", v1alpha1Storage, "CRD %s should have v1alpha1.storage=false", crdName)
+		})
+	}
+
+	t.Log("CRD storage version migration verification completed successfully")
+}
+
+// TestCRDVersionUpgrade tests the upgrade path from v1alpha1 to v1beta1 API versions.
+// It verifies that:
+// 1. Resources created with v1alpha1 work correctly (inference calls succeed)
+// 2. After upgrade, inference calls continue to work
+// 3. Resources are successfully migrated to v1beta1 storage version
+func TestCRDVersionUpgrade(t *testing.T) {
+	ctx := t.Context()
+	const kindClusterName = "envoy-ai-gateway-crd-version-upgrade"
+	const previousEnvoyAIGatewayVersion = "v0.5.0"
+
+	// Step 1: Setup cluster with v0.5.0 (v1alpha1 only)
+	t.Log("Step 1: Setting up cluster with v0.5.0 (v1alpha1 CRDs)")
+	require.NoError(t, e2elib.SetupAll(ctx, kindClusterName, e2elib.AIGatewayHelmOption{
+		ChartVersion: previousEnvoyAIGatewayVersion,
+	}, false, false))
+	defer func() {
+		e2elib.CleanupKindCluster(t.Failed(), kindClusterName)
+	}()
+
+	// Step 2: Apply test manifest (v1alpha1 resources) and wait for Gateway to be ready
+	t.Log("Step 2: Applying test manifest with v1alpha1 resources")
+	const manifest = "testdata/manifest.yaml"
+	require.NoError(t, e2elib.KubectlApplyManifest(ctx, manifest))
+	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
+	ipAddress := e2elib.RequireGatewayListenerAddressViaMetalLB(t, "default", "upgrade-test")
+
+	// Step 3: Verify inference calls work with v1alpha1
+	t.Log("Step 3: Verifying inference calls work with v1alpha1 resources")
+	require.NoError(t, makeRequest(t, ipAddress, "before upgrade"))
+	t.Log("Inference calls successful with v1alpha1")
+
+	// Step 4: Upgrade to latest version (with v1beta1 CRDs)
+	t.Log("Step 4: Upgrading to latest version with v1beta1 CRDs")
+	require.NoError(t, e2elib.InstallOrUpgradeAIGateway(ctx, e2elib.AIGatewayHelmOption{}))
+
+	// Wait for controller to restart and reconcile
+	time.Sleep(30 * time.Second)
+	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
+
+	// Step 5: Verify CRD storage versions are v1beta1
+	t.Log("Step 5: Verifying CRD storage versions migrated to v1beta1")
+	verifyCRDStorageVersions(ctx, t)
+
+	// Step 6: Verify inference calls still work after upgrade
+	t.Log("Step 6: Verifying inference calls work after upgrade to v1beta1")
+	require.NoError(t, makeRequest(t, ipAddress, "after upgrade"))
+	t.Log("Inference calls successful after upgrade")
+
+	// Step 7: Verify resources are accessible via v1beta1 API
+	t.Log("Step 7: Verifying resources are accessible via v1beta1 API")
+	resources := []struct {
+		kind string
+		name string
+	}{
+		{"aigatewayroute", "upgrade-test"},
+		{"aiservicebackend", "upgrade-test-cool-model-backend"},
+	}
+
+	for _, r := range resources {
+		cmd := e2elib.Kubectl(ctx, "get", r.kind+".v1beta1.aigateway.envoyproxy.io", r.name, "-n", "default")
+		cmd.Stdout = nil
+		cmd.Stderr = nil
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "failed to get %s/%s via v1beta1: %s", r.kind, r.name, string(output))
+		t.Logf("Resource %s/%s accessible via v1beta1 API", r.kind, r.name)
+	}
+
+	t.Log("CRD version upgrade test completed successfully!")
 }

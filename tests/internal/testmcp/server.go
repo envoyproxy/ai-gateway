@@ -187,8 +187,26 @@ func NewServer(opts *Options) (*http.Server, *mcp.Server) {
 func newDumbServer(port int) (*http.Server, *mcp.Server) {
 	s := mcp.NewServer(
 		&mcp.Implementation{Name: "dumb-echo-server", Version: "0.1.0"},
-		&mcp.ServerOptions{HasTools: true},
+		&mcp.ServerOptions{
+			// Explicitly set empty capabilities so the server does NOT advertise logging support.
+			// The default (nil) would advertise logging for historical reasons in the SDK.
+			Capabilities: &mcp.ServerCapabilities{
+				Tools: &mcp.ToolCapabilities{ListChanged: true},
+			},
+		},
 	)
+
+	// Add a middleware that rejects logging/setLevel requests with an error.
+	// The dumb server does not advertise logging capability, so the gateway should never
+	// forward logging/setLevel to it. If it does, this middleware will cause a test-visible error.
+	s.AddReceivingMiddleware(func(handler mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			if method == "logging/setLevel" {
+				return nil, fmt.Errorf("logging/setLevel is not supported by dumb-echo-server")
+			}
+			return handler(ctx, method, req)
+		}
+	})
 
 	mcp.AddTool(s, ToolDumbEcho.Tool, ToolDumbEcho.Handler)
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s }, &mcp.StreamableHTTPOptions{})
