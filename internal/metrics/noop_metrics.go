@@ -7,51 +7,54 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-type noopMetrics struct{}
+type noOpMetrics struct{}
 
-func (n *noopMetrics) StartRequest(headers map[string]string) {}
+func (n *noOpMetrics) StartRequest(headers map[string]string) {}
 
-func (n *noopMetrics) SetOriginalModel(originalModel internalapi.OriginalModel) {}
+func (n *noOpMetrics) SetOriginalModel(originalModel internalapi.OriginalModel) {}
 
-func (n *noopMetrics) SetRequestModel(requestModel internalapi.RequestModel) {}
+func (n *noOpMetrics) SetRequestModel(requestModel internalapi.RequestModel) {}
 
-func (n *noopMetrics) SetResponseModel(responseModel internalapi.ResponseModel) {}
+func (n *noOpMetrics) SetResponseModel(responseModel internalapi.ResponseModel) {}
 
-func (n *noopMetrics) SetBackend(backend *filterapi.Backend) {}
+func (n *noOpMetrics) SetBackend(backend *filterapi.Backend) {}
 
-func (n *noopMetrics) RecordRequestCompletion(
-	ctx context.Context,
-	success bool,
-	requestHeaders map[string]string,
-) {}
+func (n *noOpMetrics) RecordRequestCompletion(
+	_ context.Context,
+	_ bool,
+	_ map[string]string,
+) {
+}
 
-func (n *noopMetrics) RecordTokenUsage(
-	ctx context.Context,
-	usage TokenUsage,
-	requestHeaders map[string]string,
-) {}
+func (n *noOpMetrics) RecordTokenUsage(
+	_ context.Context,
+	_ TokenUsage,
+	_ map[string]string,
+) {
+}
 
-func (n *noopMetrics) GetTimeToFirstTokenMs() float64 {
+func (n *noOpMetrics) GetTimeToFirstTokenMs() float64 {
 	return 0
 }
 
-func (n *noopMetrics) GetInterTokenLatencyMs() float64 {
+func (n *noOpMetrics) GetInterTokenLatencyMs() float64 {
 	return 0
 }
 
-func (n *noopMetrics) RecordTokenLatency(
-	ctx context.Context,
-	accumulatedOutputToken uint32,
-	endOfStream bool,
-	requestHeaders map[string]string,
-) {}
-
-type noopFactory struct{}
-
-func (f *noopFactory) NewMetrics() Metrics {
-	return &noopMetrics{}
+func (n *noOpMetrics) RecordTokenLatency(
+	_ context.Context,
+	_ uint32,
+	_ bool,
+	_ map[string]string,
+) {
 }
 
-func NewNoopMetricsFactory() Factory {
-	return &noopFactory{}
+type noOpFactory struct{}
+
+func (f *noOpFactory) NewMetrics() Metrics {
+	return &noOpMetrics{}
+}
+
+func NewNoOpMetricsFactory() Factory {
+	return &noOpFactory{}
 }

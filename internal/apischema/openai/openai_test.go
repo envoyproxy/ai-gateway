@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"io"
 	"mime/multipart"
-	"strings"
 	"testing"
 	"time"
 
