@@ -333,19 +333,19 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(
 		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files") + "$"),
 		http.MethodPost,
-		extproc.NewFactory(metrics.NewNoopMetricsFactory(), tracing.CreateFileTracer(), endpointspec.CreateFileEndpointSpec{}))
+		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.CreateFileTracer(), endpointspec.CreateFileEndpointSpec{}))
 	server.Register(
 		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files") + "/([^/]+)/?$"),
 		http.MethodGet,
-		extproc.NewFactory(metrics.NewNoopMetricsFactory(), tracing.RetrieveFileTracer(), endpointspec.RetrieveFileEndpointSpec{}))
+		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.RetrieveFileTracer(), endpointspec.RetrieveFileEndpointSpec{}))
 	server.Register(
 		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files") + "/([^/]+)/content$"),
 		http.MethodGet,
-		extproc.NewFactory(metrics.NewNoopMetricsFactory(), tracing.RetrieveFileContentTracer(), endpointspec.RetrieveFileContentEndpointSpec{}))
+		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.RetrieveFileContentTracer(), endpointspec.RetrieveFileContentEndpointSpec{}))
 	server.Register(
 		regexp.MustCompile("^" + path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files") + "/([^/]+)/?$"),
 		http.MethodDelete,
-		extproc.NewFactory(metrics.NewNoopMetricsFactory(), tracing.DeleteFileTracer(), endpointspec.DeleteFileEndpointSpec{}))
+		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.DeleteFileTracer(), endpointspec.DeleteFileEndpointSpec{}))
 
 	// Create and register gRPC server with ExternalProcessorServer (the service Envoy calls).
 	if err = filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
