@@ -21,10 +21,12 @@ import (
 )
 
 // Interface conformance checks.
-var _ tracingapi.CreateFileRecorder = (*CreateFileRecorder)(nil)
-var _ tracingapi.RetrieveFileRecorder = (*RetrieveFileRecorder)(nil)
-var _ tracingapi.RetrieveFileContentRecorder = (*RetrieveFileContentRecorder)(nil)
-var _ tracingapi.DeleteFileRecorder = (*DeleteFileRecorder)(nil)
+var (
+	_ tracingapi.CreateFileRecorder          = (*CreateFileRecorder)(nil)
+	_ tracingapi.RetrieveFileRecorder        = (*RetrieveFileRecorder)(nil)
+	_ tracingapi.RetrieveFileContentRecorder = (*RetrieveFileContentRecorder)(nil)
+	_ tracingapi.DeleteFileRecorder          = (*DeleteFileRecorder)(nil)
+)
 
 var (
 	basicFileObject = &openai.FileObject{
@@ -122,10 +124,10 @@ func TestCreateFileRecorder_RecordResponse(t *testing.T) {
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
 		{
-			name:   "hidden outputs",
-			resp:   basicFileObject,
-			config: &openinference.TraceConfig{HideOutputs: true},
-			expectedAttrs: []attribute.KeyValue{},
+			name:           "hidden outputs",
+			resp:           basicFileObject,
+			config:         &openinference.TraceConfig{HideOutputs: true},
+			expectedAttrs:  []attribute.KeyValue{},
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
 		{
@@ -295,10 +297,10 @@ func TestRetrieveFileRecorder_RecordResponse(t *testing.T) {
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
 		{
-			name:   "hidden outputs",
-			resp:   basicFileObject,
-			config: &openinference.TraceConfig{HideOutputs: true},
-			expectedAttrs: []attribute.KeyValue{},
+			name:           "hidden outputs",
+			resp:           basicFileObject,
+			config:         &openinference.TraceConfig{HideOutputs: true},
+			expectedAttrs:  []attribute.KeyValue{},
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
 		{
@@ -608,10 +610,10 @@ func TestDeleteFileRecorder_RecordResponse(t *testing.T) {
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
 		{
-			name:   "hidden outputs",
-			resp:   basicFileDeleted,
-			config: &openinference.TraceConfig{HideOutputs: true},
-			expectedAttrs: []attribute.KeyValue{},
+			name:           "hidden outputs",
+			resp:           basicFileDeleted,
+			config:         &openinference.TraceConfig{HideOutputs: true},
+			expectedAttrs:  []attribute.KeyValue{},
 			expectedStatus: trace.Status{Code: codes.Ok, Description: ""},
 		},
 		{

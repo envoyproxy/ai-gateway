@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -23,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	openaischema "github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
@@ -215,7 +215,7 @@ func TestWithTestUpstream(t *testing.T) {
 				}
 
 				var fileObj openaischema.FileObject
-				if err := json.Unmarshal(body, &fileObj); err != nil {
+				if err = json.Unmarshal(body, &fileObj); err != nil {
 					t.Logf("error unmarshalling create file response: %v, body: %s", err, body)
 					return false
 				}
@@ -272,7 +272,7 @@ func TestWithTestUpstream(t *testing.T) {
 				}
 
 				var fileObj openaischema.FileObject
-				if err := json.Unmarshal(body, &fileObj); err != nil {
+				if err = json.Unmarshal(body, &fileObj); err != nil {
 					t.Logf("error unmarshalling retrieve file response: %v, body: %s", err, body)
 					return false
 				}

@@ -45,17 +45,17 @@ var (
 )
 
 type (
-	chatCompletionTracer       = requestTracerImpl[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
-	embeddingsTracer           = requestTracerImpl[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
-	completionTracer           = requestTracerImpl[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
-	imageGenerationTracer      = requestTracerImpl[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
-	responsesTracer            = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
-	speechTracer               = requestTracerImpl[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
-	rerankTracer               = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
-	createFileTracer           = requestTracerImpl[openai.FileNewParams, openai.FileObject, struct{}]
-	retrieveFileTracer         = requestTracerImpl[struct{}, openai.FileObject, struct{}]
+	chatCompletionTracer      = requestTracerImpl[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
+	embeddingsTracer          = requestTracerImpl[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
+	completionTracer          = requestTracerImpl[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
+	imageGenerationTracer     = requestTracerImpl[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
+	responsesTracer           = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
+	speechTracer              = requestTracerImpl[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
+	rerankTracer              = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
+	createFileTracer          = requestTracerImpl[openai.FileNewParams, openai.FileObject, struct{}]
+	retrieveFileTracer        = requestTracerImpl[struct{}, openai.FileObject, struct{}]
 	retrieveFileContentTracer = requestTracerImpl[struct{}, struct{}, struct{}]
-	deleteFileTracer           = requestTracerImpl[struct{}, openai.FileDeleted, struct{}]
+	deleteFileTracer          = requestTracerImpl[struct{}, openai.FileDeleted, struct{}]
 )
 
 func newRequestTracer[ReqT any, RespT any, RespChunkT any](
@@ -226,7 +226,7 @@ func newRetrieveFileTracer(tracer trace.Tracer, propagator propagation.TextMapPr
 		propagator,
 		recorder,
 		headerAttributes,
-		func(span trace.Span, sr tracingapi.RetrieveFileRecorder) tracingapi.RetrieveFileSpan {
+		func(span trace.Span, recorder tracingapi.RetrieveFileRecorder) tracingapi.RetrieveFileSpan {
 			return &retrieveFileSpan{span: span, recorder: recorder}
 		},
 	)
@@ -238,7 +238,7 @@ func newRetrieveFileContentTracer(tracer trace.Tracer, propagator propagation.Te
 		propagator,
 		recorder,
 		headerAttributes,
-		func(span trace.Span, sr tracingapi.RetrieveFileContentRecorder) tracingapi.RetrieveFileContentSpan {
+		func(span trace.Span, recorder tracingapi.RetrieveFileContentRecorder) tracingapi.RetrieveFileContentSpan {
 			return &retrieveFileContentSpan{span: span, recorder: recorder}
 		},
 	)
@@ -250,7 +250,7 @@ func newDeleteFileTracer(tracer trace.Tracer, propagator propagation.TextMapProp
 		propagator,
 		recorder,
 		headerAttributes,
-		func(span trace.Span, sr tracingapi.DeleteFileRecorder) tracingapi.DeleteFileSpan {
+		func(span trace.Span, recorder tracingapi.DeleteFileRecorder) tracingapi.DeleteFileSpan {
 			return &deleteFileSpan{span: span, recorder: recorder}
 		},
 	)

@@ -1,3 +1,8 @@
+// Copyright Envoy AI Gateway Authors
+// SPDX-License-Identifier: Apache-2.0
+// The full text of the Apache license is available in the LICENSE file at
+// the root of the repo.
+
 package metrics
 
 import (
@@ -9,15 +14,15 @@ import (
 
 type noOpMetrics struct{}
 
-func (n *noOpMetrics) StartRequest(headers map[string]string) {}
+func (n *noOpMetrics) StartRequest(_ map[string]string) {}
 
-func (n *noOpMetrics) SetOriginalModel(originalModel internalapi.OriginalModel) {}
+func (n *noOpMetrics) SetOriginalModel(_ internalapi.OriginalModel) {}
 
-func (n *noOpMetrics) SetRequestModel(requestModel internalapi.RequestModel) {}
+func (n *noOpMetrics) SetRequestModel(_ internalapi.RequestModel) {}
 
-func (n *noOpMetrics) SetResponseModel(responseModel internalapi.ResponseModel) {}
+func (n *noOpMetrics) SetResponseModel(_ internalapi.ResponseModel) {}
 
-func (n *noOpMetrics) SetBackend(backend *filterapi.Backend) {}
+func (n *noOpMetrics) SetBackend(_ *filterapi.Backend) {}
 
 func (n *noOpMetrics) RecordRequestCompletion(
 	_ context.Context,
