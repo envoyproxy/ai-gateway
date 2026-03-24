@@ -215,7 +215,10 @@ func TestWithTestUpstream(t *testing.T) {
 			responseBody:    "{\"custom_id\": \"request-1\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}\n{\"custom_id\": \"request-2\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are an helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}",
 			expStatus:       http.StatusOK,
 			expResponseBodyFunc: func(t require.TestingT, body []byte) {
-				require.JSONEq(t, "{\"custom_id\": \"request-1\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}\n{\"custom_id\": \"request-2\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}", string(body))
+				lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+				require.Len(t, lines, 2)
+				require.JSONEq(t, "{\"custom_id\": \"request-1\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}", lines[0])
+				require.JSONEq(t, "{\"custom_id\": \"request-2\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are an helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}", lines[1])
 			},
 		},
 		{
