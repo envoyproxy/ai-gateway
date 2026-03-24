@@ -768,6 +768,25 @@ func TestNewGCPOIDCTokenRotator(t *testing.T) {
 	}
 }
 
+// TestNewGCPOIDCTokenRotatorInvalidProxyURL tests that NewGCPOIDCTokenRotator returns an error
+// when the GCP transport was not initialized (e.g., due to a malformed proxy URL at startup).
+func TestNewGCPOIDCTokenRotatorInvalidProxyURL(t *testing.T) {
+	// Simulate init() failing to set sharedGCPTransport due to a bad proxy URL.
+	original := sharedGCPTransport
+	sharedGCPTransport = nil
+	defer func() { sharedGCPTransport = original }()
+
+	bsp := &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-policy", Namespace: "default"},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{},
+		},
+	}
+	mockTokenProvider := tokenprovider.NewMockTokenProvider("mock-jwt-token", time.Now().Add(time.Hour), nil)
+	_, err := NewGCPOIDCTokenRotator(fake.NewFakeClient(), logr.Logger{}, bsp, 30*time.Minute, mockTokenProvider)
+	require.ErrorContains(t, err, "GCP transport is not initialized")
+}
+
 // errorOnCreateClient is a client that returns an error on Create.
 type errorOnCreateClient struct {
 	client.Client

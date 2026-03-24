@@ -8,6 +8,7 @@ package rotators
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -90,16 +91,14 @@ type gcpOIDCTokenRotator struct {
 
 // sharedGCPTransport is a shared HTTP transport used for GCP API calls.
 // It is initialized with the GCP proxy URL if provided in the environment variable.
-var (
-	sharedGCPTransport http.RoundTripper
-)
+var sharedGCPTransport http.RoundTripper
 
 func init() {
 	gcpProxyURL, err := getGCPProxyURL()
 	if err != nil {
-		panic(fmt.Errorf("error getting GCP proxy URL: %w", err))
+		log.Printf("error getting GCP proxy URL: %v", err)
+		return
 	}
-
 	sharedGCPTransport = &http.Transport{Proxy: http.ProxyURL(gcpProxyURL)}
 }
 
@@ -112,6 +111,10 @@ func NewGCPOIDCTokenRotator(
 	tokenProvider tokenprovider.TokenProvider,
 ) (Rotator, error) {
 	logger = logger.WithName("gcp-token-rotator")
+
+	if sharedGCPTransport == nil {
+		return nil, fmt.Errorf("GCP transport is not initialized")
+	}
 
 	if bsp.Spec.GCPCredentials == nil {
 		return nil, fmt.Errorf("GCP credentials are not configured in BackendSecurityPolicy %s/%s", bsp.Namespace, bsp.Name)
