@@ -74,7 +74,7 @@ func (r *CreateFileRecorder) RecordResponseOnError(span trace.Span, statusCode i
 }
 
 // buildCreateFileRequestAttributes builds OpenInference attributes from the file request.
-func buildCreateFileRequestAttributes(_ *openai.FileNewParams, body string, config *openinference.TraceConfig) []attribute.KeyValue {
+func buildCreateFileRequestAttributes(_ *openai.FileNewParams, _ string, _ *openinference.TraceConfig) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),

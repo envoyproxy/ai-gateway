@@ -276,7 +276,7 @@ func (EmbeddingsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Embeddi
 func (ImageGenerationEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-	_  map[string]string,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.ImageGenerationRequest, bool, []byte, error) {
 	var openAIReq openai.ImageGenerationRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
@@ -410,7 +410,7 @@ func (CreateFileEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.FileNewParams, bool, []byte, error) {
 	mediaType, params, err := mime.ParseMediaType(requestHeaders["content-type"])
 	if err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse Content-Type header: %v", internalapi.ErrUnsupportedMediaType, err)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse Content-Type header: %w", internalapi.ErrUnsupportedMediaType, err)
 	}
 	if mediaType != "multipart/form-data" {
 		return "", nil, false, nil, fmt.Errorf("%w: only multipart/form-data is supported for /v1/files endpoint", internalapi.ErrUnsupportedMediaType)
@@ -449,7 +449,7 @@ func (CreateFileEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.FileNew
 func (RetrieveFileEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-	requestHeaders map[string]string,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
 	// RetrieveFile endpoint does not have a body.
 	return "", &struct{}{}, false, body, nil
@@ -521,7 +521,6 @@ func (DeleteFileEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (red
 	// Placeholder if redaction is required in future
 	return req, nil
 }
-
 
 // redactMessage redacts sensitive content from a chat message while preserving its type and structure.
 // This dispatches to role-specific redaction functions based on the message type.

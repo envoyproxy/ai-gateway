@@ -68,8 +68,8 @@ func TestNewFactory(t *testing.T) {
 }
 
 type (
-	chatCompletionProcessorRouterFilter   = routerProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
-	chatCompletionProcessorUpstreamFilter = upstreamProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
+	chatCompletionProcessorRouterFilter      = routerProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
+	chatCompletionProcessorUpstreamFilter    = upstreamProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
 	retrieveFileContentProcessorRouterFilter = routerProcessor[struct{}, struct{}, struct{}, endpointspec.RetrieveFileContentEndpointSpec]
 	// filesProcessorUpstreamFilter = upstreamProcessor[openai.FileRequest, openai.FileResponse, openai.FileResponseChunk, endpointspec.FilesEndpointSpec]
 )
