@@ -576,15 +576,18 @@ func getThinkingConfigParamUnion(tu *openai.ThinkingUnion) *anthropic.ThinkingCo
 
 	result := &anthropic.ThinkingConfigParamUnion{}
 
-	if tu.OfEnabled != nil {
+	switch {
+	case tu.OfEnabled != nil:
 		result.OfEnabled = &anthropic.ThinkingConfigEnabledParam{
 			BudgetTokens: tu.OfEnabled.BudgetTokens,
 			Type:         constant.Enabled(tu.OfEnabled.Type),
 		}
-	} else if tu.OfDisabled != nil {
+	case tu.OfDisabled != nil:
 		result.OfDisabled = &anthropic.ThinkingConfigDisabledParam{
 			Type: constant.Disabled(tu.OfDisabled.Type),
 		}
+	case tu.OfAdaptive != nil:
+		result.OfAdaptive = &anthropic.ThinkingConfigAdaptiveParam{}
 	}
 
 	return result
@@ -597,6 +600,17 @@ func outputConfigAvailable(model internalapi.RequestModel) bool {
 	modelLower := strings.ToLower(model)
 	return strings.Contains(modelLower, "4-5") ||
 		strings.Contains(modelLower, "4-6")
+}
+
+// effortAvailable checks if the model supports the output_config.effort parameter.
+// The effort parameter is supported by Claude Opus 4.6, Claude Sonnet 4.6, and Claude Opus 4.5.
+// See: https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#adaptive-thinking
+func effortAvailable(model internalapi.RequestModel) bool {
+	modelLower := strings.ToLower(model)
+	if strings.Contains(modelLower, "4-6") {
+		return true
+	}
+	return strings.Contains(modelLower, "4-5") && strings.Contains(modelLower, "opus")
 }
 
 // mapReasoningEffortToOutputConfigEffort converts OpenAI reasoning effort levels to Anthropic output config effort levels.
@@ -672,7 +686,7 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 	}
 
 	// Map OpenAI reasoning_effort to Anthropic output_config.effort.
-	if openAIReq.ReasoningEffort != "" && outputConfigAvailable(openAIReq.Model) {
+	if openAIReq.ReasoningEffort != "" && effortAvailable(openAIReq.Model) {
 		effort, effortErr := mapReasoningEffortToOutputConfigEffort(openAIReq.ReasoningEffort)
 		if effortErr != nil {
 			return nil, effortErr
