@@ -483,3 +483,62 @@ func TestLoadConfig_ToolOrderDoesNotMatter(t *testing.T) {
 	require.Contains(t, selector.include, "tool-c")
 	require.Len(t, selector.includeRegexps, 3)
 }
+
+func Test_toolSelector_sameTools(t *testing.T) {
+	reA := regexp.MustCompile("^a.*")
+	reB := regexp.MustCompile("^b.*")
+
+	tests := []struct {
+		name     string
+		a, b     *toolSelector
+		expected bool
+	}{
+		{
+			name:     "both nil",
+			a:        nil,
+			b:        nil,
+			expected: true,
+		},
+		{
+			name:     "one nil",
+			a:        &toolSelector{},
+			b:        nil,
+			expected: false,
+		},
+		{
+			name:     "same empty",
+			a:        &toolSelector{},
+			b:        &toolSelector{},
+			expected: true,
+		},
+		{
+			name: "different exclude keys",
+			a:    &toolSelector{exclude: map[string]struct{}{"foo": {}}},
+			b:    &toolSelector{exclude: map[string]struct{}{"bar": {}}},
+			expected: false,
+		},
+		{
+			name: "different include regexps",
+			a:    &toolSelector{includeRegexps: []*regexp.Regexp{reA}},
+			b:    &toolSelector{includeRegexps: []*regexp.Regexp{reB}},
+			expected: false,
+		},
+		{
+			name: "same exclude regexps different order",
+			a:    &toolSelector{excludeRegexps: []*regexp.Regexp{reA, reB}},
+			b:    &toolSelector{excludeRegexps: []*regexp.Regexp{reB, reA}},
+			expected: true,
+		},
+		{
+			name: "different exclude regexps",
+			a:    &toolSelector{excludeRegexps: []*regexp.Regexp{reA}},
+			b:    &toolSelector{excludeRegexps: []*regexp.Regexp{reB}},
+			expected: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.a.sameTools(tt.b))
+		})
+	}
+}
