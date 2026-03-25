@@ -8386,7 +8386,7 @@ const (
 	SpeechModelGPT4oMiniTTS20251215 = "gpt-4o-mini-tts-2025-12-15"
 )
 
-// File API
+// OpenAI Files API
 
 type FileNewParams struct {
 	// The File object (not file name) to be uploaded.
