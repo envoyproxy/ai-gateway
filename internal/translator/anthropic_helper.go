@@ -587,30 +587,55 @@ func getThinkingConfigParamUnion(tu *openai.ThinkingUnion) *anthropic.ThinkingCo
 			Type: constant.Disabled(tu.OfDisabled.Type),
 		}
 	case tu.OfAdaptive != nil:
-		result.OfAdaptive = &anthropic.ThinkingConfigAdaptiveParam{}
+		result.OfAdaptive = &anthropic.ThinkingConfigAdaptiveParam{
+			Type: constant.Adaptive(tu.OfAdaptive.Type),
+		}
 	}
 
 	return result
 }
 
-// outputConfigAvailable checks if the model supports structured outputs (OutputConfig).
-// Structured outputs are available on Claude Opus 4.6, Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
-// See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
-func outputConfigAvailable(model internalapi.RequestModel) bool {
+// modelContainsAny checks if the model string contains any of the given identifiers (case-insensitive).
+func modelContainsAny(model internalapi.RequestModel, identifiers []string) bool {
 	modelLower := strings.ToLower(model)
-	return strings.Contains(modelLower, "4-5") ||
-		strings.Contains(modelLower, "4-6")
+	for _, id := range identifiers {
+		if strings.Contains(modelLower, id) {
+			return true
+		}
+	}
+	return false
 }
 
-// effortAvailable checks if the model supports the output_config.effort parameter.
+// outputConfigModels lists model identifiers that support structured outputs (OutputConfig).
+// The model checked here is the original gateway-facing model name from the user's request,
+// not the upstream provider's model name (which is applied separately via modelNameOverride).
+// Structured outputs are available on Claude Opus 4.6, Claude Sonnet 4.6, Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
+// See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+var outputConfigModels = []string{
+	"opus-4-5",   // Claude Opus 4.5
+	"sonnet-4-5", // Claude Sonnet 4.5
+	"haiku-4-5",  // Claude Haiku 4.5
+	"opus-4-6",   // Claude Opus 4.6
+	"sonnet-4-6", // Claude Sonnet 4.6
+}
+
+func outputConfigAvailable(model internalapi.RequestModel) bool {
+	return modelContainsAny(model, outputConfigModels)
+}
+
+// effortModels lists model identifiers that support the output_config.effort parameter.
+// The model checked here is the original gateway-facing model name from the user's request,
+// not the upstream provider's model name (which is applied separately via modelNameOverride).
 // The effort parameter is supported by Claude Opus 4.6, Claude Sonnet 4.6, and Claude Opus 4.5.
 // See: https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#adaptive-thinking
+var effortModels = []string{
+	"opus-4-5",   // Claude Opus 4.5
+	"opus-4-6",   // Claude Opus 4.6
+	"sonnet-4-6", // Claude Sonnet 4.6
+}
+
 func effortAvailable(model internalapi.RequestModel) bool {
-	modelLower := strings.ToLower(model)
-	if strings.Contains(modelLower, "4-6") {
-		return true
-	}
-	return strings.Contains(modelLower, "4-5") && strings.Contains(modelLower, "opus")
+	return modelContainsAny(model, effortModels)
 }
 
 // mapReasoningEffortToOutputConfigEffort converts OpenAI reasoning effort levels to Anthropic output config effort levels.

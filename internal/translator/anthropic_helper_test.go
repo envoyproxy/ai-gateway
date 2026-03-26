@@ -719,8 +719,8 @@ func TestOutputConfigAvailable(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "anthropic.claude-4-5-sonnet-v1 supported",
-			model:    "anthropic.claude-4-5-sonnet-v1",
+			name:     "claude-sonnet-4-6-20250514 supported",
+			model:    "claude-sonnet-4-6-20250514",
 			expected: true,
 		},
 		{
@@ -775,18 +775,8 @@ func TestEffortAvailable(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "anthropic.claude-4-5-opus-v1 supported",
-			model:    "anthropic.claude-4-5-opus-v1",
-			expected: true,
-		},
-		{
 			name:     "claude-sonnet-4-5-20250514 not supported",
 			model:    "claude-sonnet-4-5-20250514",
-			expected: false,
-		},
-		{
-			name:     "anthropic.claude-4-5-sonnet-v1 not supported",
-			model:    "anthropic.claude-4-5-sonnet-v1",
 			expected: false,
 		},
 		{
