@@ -2098,7 +2098,7 @@ func TestQuotaRateLimitConfiguration(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, s)
 		require.Equal(t, int64(5), s.quotaRateLimitTimeout)
-		require.Equal(t, false, s.quotaRateLimitFailureModeDeny)
+		require.False(t, s.quotaRateLimitFailureModeDeny)
 		require.Equal(t, "envoy-ai-gateway-ratelimit.envoy-gateway-system", s.quotaRateLimitServiceHost)
 	})
 
@@ -2107,7 +2107,7 @@ func TestQuotaRateLimitConfiguration(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, s)
 		require.Equal(t, int64(10), s.quotaRateLimitTimeout)
-		require.Equal(t, false, s.quotaRateLimitFailureModeDeny)
+		require.False(t, s.quotaRateLimitFailureModeDeny)
 		require.Equal(t, "custom-ratelimit-service", s.quotaRateLimitServiceHost)
 	})
 
@@ -2116,7 +2116,7 @@ func TestQuotaRateLimitConfiguration(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, s)
 		require.Equal(t, int64(5), s.quotaRateLimitTimeout)
-		require.Equal(t, true, s.quotaRateLimitFailureModeDeny)
+		require.True(t, s.quotaRateLimitFailureModeDeny)
 		require.Equal(t, "envoy-ai-gateway-ratelimit.envoy-gateway-system", s.quotaRateLimitServiceHost)
 	})
 
@@ -2125,7 +2125,7 @@ func TestQuotaRateLimitConfiguration(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, s)
 		require.Equal(t, int64(30), s.quotaRateLimitTimeout)
-		require.Equal(t, true, s.quotaRateLimitFailureModeDeny)
+		require.True(t, s.quotaRateLimitFailureModeDeny)
 		require.Equal(t, "my-custom-ratelimit", s.quotaRateLimitServiceHost)
 	})
 }
