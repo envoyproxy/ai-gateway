@@ -785,12 +785,21 @@ func TestNewGCPOIDCTokenRotator(t *testing.T) {
 // when initSharedGCPTransport fails due to a malformed proxy URL.
 func TestNewGCPOIDCTokenRotatorInvalidProxyURL(t *testing.T) {
 	// Save and restore all shared transport state so this test is isolated.
+<<<<<<< HEAD
 	origTransport := sharedGCPTransport
 	origOnce := sharedGCPTransportOnce
 	origErr := sharedGCPTransportErr
 	defer func() {
 		sharedGCPTransport = origTransport
 		sharedGCPTransportOnce = origOnce
+=======
+	// sync.Once cannot be copied, so reset it to a fresh value in the defer.
+	origTransport := sharedGCPTransport
+	origErr := sharedGCPTransportErr
+	defer func() {
+		sharedGCPTransport = origTransport
+		sharedGCPTransportOnce = sync.Once{}
+>>>>>>> 5e2ce805 (Formatting gcp_oidc_token_rotator)
 		sharedGCPTransportErr = origErr
 	}()
 
@@ -998,12 +1007,21 @@ func TestInitSharedGCPTransport(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Save and restore all shared transport state so each sub-test is isolated.
+<<<<<<< HEAD
 			origTransport := sharedGCPTransport
 			origOnce := sharedGCPTransportOnce
 			origErr := sharedGCPTransportErr
 			defer func() {
 				sharedGCPTransport = origTransport
 				sharedGCPTransportOnce = origOnce
+=======
+			// sync.Once cannot be copied, so reset it to a fresh value in the defer.
+			origTransport := sharedGCPTransport
+			origErr := sharedGCPTransportErr
+			defer func() {
+				sharedGCPTransport = origTransport
+				sharedGCPTransportOnce = sync.Once{}
+>>>>>>> 5e2ce805 (Formatting gcp_oidc_token_rotator)
 				sharedGCPTransportErr = origErr
 			}()
 
@@ -1035,12 +1053,21 @@ func TestInitSharedGCPTransport(t *testing.T) {
 // even if the environment variable has changed between calls.
 func TestInitSharedGCPTransport_Idempotency(t *testing.T) {
 	// Save and restore all shared transport state.
+<<<<<<< HEAD
 	origTransport := sharedGCPTransport
 	origOnce := sharedGCPTransportOnce
 	origErr := sharedGCPTransportErr
 	defer func() {
 		sharedGCPTransport = origTransport
 		sharedGCPTransportOnce = origOnce
+=======
+	// sync.Once cannot be copied, so reset it to a fresh value in the defer.
+	origTransport := sharedGCPTransport
+	origErr := sharedGCPTransportErr
+	defer func() {
+		sharedGCPTransport = origTransport
+		sharedGCPTransportOnce = sync.Once{}
+>>>>>>> 5e2ce805 (Formatting gcp_oidc_token_rotator)
 		sharedGCPTransportErr = origErr
 	}()
 
