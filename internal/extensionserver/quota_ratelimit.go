@@ -112,7 +112,7 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 			}
 		}
 		if hasQuotaRoute {
-			if err := injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain); err != nil {
+			if err := s.injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain); err != nil {
 				s.log.Error(err, "failed to inject quota rate limit filter into listener", "listener", ln.Name)
 			}
 		}
@@ -184,7 +184,7 @@ func (s *Server) buildQuotaRateLimitCluster() *clusterv3.Cluster {
 // injectQuotaRateLimitFilterIntoListener adds the quota rate limit HTTP filter
 // into the HCM filter chain of the given listener. The filter is inserted before the
 // router filter. It is a no-op on routes without per-route RateLimitPerRoute config.
-func injectQuotaRateLimitFilterIntoListener(ln *listenerv3.Listener, domain string) error {
+func (s *Server) injectQuotaRateLimitFilterIntoListener(ln *listenerv3.Listener, domain string) error {
 	filterChains := ln.GetFilterChains()
 	if ln.DefaultFilterChain != nil {
 		filterChains = append(filterChains, ln.DefaultFilterChain)
@@ -207,7 +207,7 @@ func injectQuotaRateLimitFilterIntoListener(ln *listenerv3.Listener, domain stri
 			continue
 		}
 
-		rateLimitFilter, err := buildQuotaRateLimitFilter(domain)
+		rateLimitFilter, err := s.buildQuotaRateLimitFilter(domain)
 		if err != nil {
 			return fmt.Errorf("failed to build quota rate limit filter: %w", err)
 		}
@@ -245,7 +245,7 @@ func injectQuotaRateLimitFilterIntoListener(ln *listenerv3.Listener, domain stri
 
 // buildQuotaRateLimitFilter creates the envoy.filters.http.ratelimit filter
 // for QuotaPolicy enforcement in the HCM filter chain.
-func buildQuotaRateLimitFilter(domain string) (*httpconnectionmanagerv3.HttpFilter, error) {
+func (s *Server) buildQuotaRateLimitFilter(domain string) (*httpconnectionmanagerv3.HttpFilter, error) {
 	rateLimitCfg := &ratelimitfilterv3.RateLimit{
 		Domain: domain,
 		RateLimitService: &ratelimitv3.RateLimitServiceConfig{
@@ -258,8 +258,8 @@ func buildQuotaRateLimitFilter(domain string) (*httpconnectionmanagerv3.HttpFilt
 			},
 			TransportApiVersion: corev3.ApiVersion_V3,
 		},
-		Timeout:                        &durationpb.Duration{Seconds: 5},
-		FailureModeDeny:                false,
+		Timeout:                        &durationpb.Duration{Seconds: s.quotaRateLimitTimeout},
+		FailureModeDeny:                s.quotaRateLimitFailureModeDeny,
 		DisableXEnvoyRatelimitedHeader: true,
 		EnableXRatelimitHeaders:        ratelimitfilterv3.RateLimit_DRAFT_VERSION_03,
 		RateLimitedAsResourceExhausted: false,

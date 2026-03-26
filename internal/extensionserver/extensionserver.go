@@ -34,24 +34,30 @@ type Server struct {
 	logRequestHeaderAttributes map[string]string
 	// quotaRateLimitServiceHost is the hostname for the AI Gateway quota rate limit service.
 	quotaRateLimitServiceHost string
+	// quotaRateLimitTimeout is the timeout for the rate limit service.
+	quotaRateLimitTimeout int64
+	// quotaRateLimitFailureModeDeny sets the failure mode for the rate limit filter.
+	quotaRateLimitFailureModeDeny bool
 }
 
 const serverName = "envoy-gateway-extension-server"
 
 // New creates a new instance of the extension server that implements the EnvoyGatewayExtensionServer interface.
-func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, requestHeaderAttributes, logRequestHeaderAttributes *string, quotaRateLimitServiceHost string) (*Server, error) {
+func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, requestHeaderAttributes, logRequestHeaderAttributes *string, quotaRateLimitServiceHost string, quotaRateLimitTimeout int64, quotaRateLimitFailureModeDeny bool) (*Server, error) {
 	logger = logger.WithName(serverName)
 	logAttrs, err := requestheaderattrs.ResolveLog(requestHeaderAttributes, logRequestHeaderAttributes)
 	if err != nil {
 		return nil, err
 	}
 	return &Server{
-		log:                        logger,
-		k8sClient:                  k8sClient,
-		udsPath:                    udsPath,
-		isStandAloneMode:           isStandAloneMode,
-		logRequestHeaderAttributes: logAttrs,
-		quotaRateLimitServiceHost:  quotaRateLimitServiceHost,
+		log:                           logger,
+		k8sClient:                     k8sClient,
+		udsPath:                       udsPath,
+		isStandAloneMode:              isStandAloneMode,
+		logRequestHeaderAttributes:    logAttrs,
+		quotaRateLimitServiceHost:     quotaRateLimitServiceHost,
+		quotaRateLimitTimeout:         quotaRateLimitTimeout,
+		quotaRateLimitFailureModeDeny: quotaRateLimitFailureModeDeny,
 	}, nil
 }
 
