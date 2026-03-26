@@ -8,10 +8,10 @@ package rotators
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -92,16 +92,21 @@ type gcpOIDCTokenRotator struct {
 // sharedGCPTransport is a shared HTTP transport used for GCP API calls.
 // It is initialized with the GCP proxy URL if provided in the environment variable.
 var (
-	sharedGCPTransport http.RoundTripper
+	sharedGCPTransport     http.RoundTripper
+	sharedGCPTransportOnce sync.Once
+	sharedGCPTransportErr  error
 )
 
-func init() {
-	gcpProxyURL, err := getGCPProxyURL()
-	if err != nil {
-		log.Printf("error getting GCP proxy URL: %v", err)
-		return
-	}
-	sharedGCPTransport = &http.Transport{Proxy: http.ProxyURL(gcpProxyURL)}
+func initSharedGCPTransport() error {
+	sharedGCPTransportOnce.Do(func() {
+		gcpProxyURL, err := getGCPProxyURL()
+		if err != nil {
+			sharedGCPTransportErr = err
+			return
+		}
+		sharedGCPTransport = &http.Transport{Proxy: http.ProxyURL(gcpProxyURL)}
+	})
+	return sharedGCPTransportErr
 }
 
 // NewGCPOIDCTokenRotator creates a new gcpOIDCTokenRotator with the given parameters.
@@ -114,8 +119,8 @@ func NewGCPOIDCTokenRotator(
 ) (Rotator, error) {
 	logger = logger.WithName("gcp-token-rotator")
 
-	if sharedGCPTransport == nil {
-		return nil, fmt.Errorf("GCP transport is not initialized")
+	if err := initSharedGCPTransport(); err != nil {
+		return nil, fmt.Errorf("error initializing GCP transport: %w", err)
 	}
 
 	if bsp.Spec.GCPCredentials == nil {
