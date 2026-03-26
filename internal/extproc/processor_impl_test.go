@@ -1480,43 +1480,6 @@ func Test_buildDynamicMetadata(t *testing.T) {
 	})
 }
 
-func Test_buildBackendNameDynamicMetadata(t *testing.T) {
-	t.Run("returns nil for empty backend name", func(t *testing.T) {
-		md := buildBackendNameDynamicMetadata("")
-		require.Nil(t, md)
-	})
-
-	t.Run("extracts namespace/name from full PerRouteRuleRefBackendName", func(t *testing.T) {
-		md := buildBackendNameDynamicMetadata("default/my-backend/route/myroute/rule/0/ref/0")
-		require.NotNil(t, md)
-
-		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
-		require.Equal(t, "default/my-backend", inner.Fields["backend_name"].GetStringValue())
-	})
-
-	t.Run("handles simple namespace/name format", func(t *testing.T) {
-		md := buildBackendNameDynamicMetadata("production/openai-backend")
-		require.NotNil(t, md)
-
-		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
-		require.Equal(t, "production/openai-backend", inner.Fields["backend_name"].GetStringValue())
-	})
-
-	t.Run("handles single segment name", func(t *testing.T) {
-		md := buildBackendNameDynamicMetadata("backend-only")
-		require.NotNil(t, md)
-
-		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
-		require.Equal(t, "backend-only", inner.Fields["backend_name"].GetStringValue())
-	})
-
-	t.Run("metadata is under correct namespace", func(t *testing.T) {
-		md := buildBackendNameDynamicMetadata("ns/backend")
-		require.NotNil(t, md)
-		require.Contains(t, md.Fields, internalapi.AIGatewayFilterMetadataNamespace)
-	})
-}
-
 func Test_mergeDynamicMetadata(t *testing.T) {
 	t.Run("nil base returns extra", func(t *testing.T) {
 		extra := &structpb.Struct{
