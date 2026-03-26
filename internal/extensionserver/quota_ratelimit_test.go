@@ -33,8 +33,12 @@ import (
 )
 
 func TestBuildQuotaRateLimitFilter(t *testing.T) {
+	srv := &Server{
+		quotaRateLimitTimeout:         5,
+		quotaRateLimitFailureModeDeny: false,
+	}
 	domain := "test-domain"
-	filter, err := buildQuotaRateLimitFilter(domain)
+	filter, err := srv.buildQuotaRateLimitFilter(domain)
 	require.NoError(t, err)
 	require.NotNil(t, filter)
 	require.Equal(t, quotaRateLimitFilterName, filter.Name)
@@ -71,6 +75,11 @@ func TestBuildQuotaRateLimitCluster(t *testing.T) {
 }
 
 func TestInjectQuotaRateLimitFilterIntoListeners(t *testing.T) {
+	srv := &Server{
+		quotaRateLimitTimeout:         5,
+		quotaRateLimitFailureModeDeny: false,
+	}
+
 	buildTestListener := func(t *testing.T, httpFilters []*httpconnectionmanagerv3.HttpFilter) *listenerv3.Listener {
 		t.Helper()
 		hcm := &httpconnectionmanagerv3.HttpConnectionManager{
@@ -105,7 +114,7 @@ func TestInjectQuotaRateLimitFilterIntoListeners(t *testing.T) {
 			{Name: wellknown.Router},
 		})
 
-		require.NoError(t, injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
+		require.NoError(t, srv.injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
 
 		filters := getHCMFilters(t, ln)
 		require.Len(t, filters, 3)
@@ -123,7 +132,7 @@ func TestInjectQuotaRateLimitFilterIntoListeners(t *testing.T) {
 	})
 
 	t.Run("filter already exists is a no-op", func(t *testing.T) {
-		existingFilter, err := buildQuotaRateLimitFilter(translator.QuotaDomain)
+		existingFilter, err := srv.buildQuotaRateLimitFilter(translator.QuotaDomain)
 		require.NoError(t, err)
 
 		ln := buildTestListener(t, []*httpconnectionmanagerv3.HttpFilter{
@@ -131,7 +140,7 @@ func TestInjectQuotaRateLimitFilterIntoListeners(t *testing.T) {
 			{Name: wellknown.Router},
 		})
 
-		require.NoError(t, injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
+		require.NoError(t, srv.injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
 
 		filters := getHCMFilters(t, ln)
 		require.Len(t, filters, 2)
@@ -142,7 +151,7 @@ func TestInjectQuotaRateLimitFilterIntoListeners(t *testing.T) {
 			{Name: "envoy.filters.http.health_check"},
 		})
 
-		require.NoError(t, injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
+		require.NoError(t, srv.injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
 
 		filters := getHCMFilters(t, ln)
 		require.Len(t, filters, 2)
@@ -154,10 +163,10 @@ func TestInjectQuotaRateLimitFilterIntoListeners(t *testing.T) {
 			{Name: wellknown.Router},
 		})
 
-		require.NoError(t, injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
+		require.NoError(t, srv.injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
 		require.Len(t, getHCMFilters(t, ln), 2)
 
-		require.NoError(t, injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
+		require.NoError(t, srv.injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
 		require.Len(t, getHCMFilters(t, ln), 2)
 	})
 
@@ -172,7 +181,7 @@ func TestInjectQuotaRateLimitFilterIntoListeners(t *testing.T) {
 				},
 			},
 		}
-		require.NoError(t, injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
+		require.NoError(t, srv.injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
 	})
 }
 
@@ -441,6 +450,11 @@ func TestEnableQuotaRateLimitOnRoute_HitsAddend(t *testing.T) {
 }
 
 func TestInjectQuotaRateLimitFilterIntoListeners_FullHCMChain(t *testing.T) {
+	srv := &Server{
+		quotaRateLimitTimeout:         5,
+		quotaRateLimitFailureModeDeny: false,
+	}
+
 	// Simulate the typical HCM filter chain: health_check, header_to_metadata, router.
 	// After injection, the ratelimit filter should be inserted before the router.
 	hcm := &httpconnectionmanagerv3.HttpConnectionManager{
@@ -465,7 +479,7 @@ func TestInjectQuotaRateLimitFilterIntoListeners_FullHCMChain(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
+	require.NoError(t, srv.injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain))
 
 	updatedHCM, _, err := findHCM(ln.FilterChains[0])
 	require.NoError(t, err)
@@ -1294,7 +1308,7 @@ func newTestServerWithRoute(t *testing.T, route *aigv1a1.AIGatewayRoute, policie
 	for i := range policies {
 		require.NoError(t, c.Create(t.Context(), &policies[i]))
 	}
-	s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system")
+	s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 	return s
 }
