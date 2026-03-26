@@ -91,7 +91,9 @@ type gcpOIDCTokenRotator struct {
 
 // sharedGCPTransport is a shared HTTP transport used for GCP API calls.
 // It is initialized with the GCP proxy URL if provided in the environment variable.
-var sharedGCPTransport http.RoundTripper
+var (
+	sharedGCPTransport http.RoundTripper
+)
 
 func init() {
 	gcpProxyURL, err := getGCPProxyURL()
