@@ -32,12 +32,14 @@ type Server struct {
 	isStandAloneMode bool
 	// logRequestHeaderAttributes maps request headers to dynamic metadata keys for access logs.
 	logRequestHeaderAttributes map[string]string
+	// quotaRateLimitServiceHost is the hostname for the AI Gateway quota rate limit service.
+	quotaRateLimitServiceHost string
 }
 
 const serverName = "envoy-gateway-extension-server"
 
 // New creates a new instance of the extension server that implements the EnvoyGatewayExtensionServer interface.
-func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, requestHeaderAttributes, logRequestHeaderAttributes *string) (*Server, error) {
+func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, requestHeaderAttributes, logRequestHeaderAttributes *string, quotaRateLimitServiceHost string) (*Server, error) {
 	logger = logger.WithName(serverName)
 	logAttrs, err := requestheaderattrs.ResolveLog(requestHeaderAttributes, logRequestHeaderAttributes)
 	if err != nil {
@@ -49,6 +51,7 @@ func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAlo
 		udsPath:                    udsPath,
 		isStandAloneMode:           isStandAloneMode,
 		logRequestHeaderAttributes: logAttrs,
+		quotaRateLimitServiceHost:  quotaRateLimitServiceHost,
 	}, nil
 }
 

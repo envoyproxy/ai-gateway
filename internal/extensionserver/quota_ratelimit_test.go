@@ -53,7 +53,10 @@ func TestBuildQuotaRateLimitFilter(t *testing.T) {
 }
 
 func TestBuildQuotaRateLimitCluster(t *testing.T) {
-	cluster := buildQuotaRateLimitCluster()
+	srv := &Server{
+		quotaRateLimitServiceHost: defaultQuotaRateLimitServiceHost,
+	}
+	cluster := srv.buildQuotaRateLimitCluster()
 	require.Equal(t, quotaRateLimitClusterName, cluster.Name)
 	require.Equal(t, clusterv3.Cluster_STRICT_DNS, cluster.GetType())
 	require.Equal(t, &durationpb.Duration{Seconds: 5}, cluster.ConnectTimeout)
@@ -1291,7 +1294,7 @@ func newTestServerWithRoute(t *testing.T, route *aigv1a1.AIGatewayRoute, policie
 	for i := range policies {
 		require.NoError(t, c.Create(t.Context(), &policies[i]))
 	}
-	s, err := New(c, logr.Discard(), udsPath, false, nil, nil)
+	s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system")
 	require.NoError(t, err)
 	return s
 }
@@ -2007,7 +2010,7 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 		}
 		s := newTestServerWithRoute(t, aigwRoute, qp)
 
-		existingRLCluster := buildQuotaRateLimitCluster()
+		existingRLCluster := s.buildQuotaRateLimitCluster()
 		clusters := []*clusterv3.Cluster{existingRLCluster}
 
 		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, nil, nil)
