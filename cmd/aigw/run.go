@@ -176,7 +176,8 @@ func run(ctx context.Context, c *cmdRun, o *runOpts, stdout, stderr io.Writer) e
 	s := grpc.NewServer()
 	requestHeaderAttributes := envOptional("OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES")
 	logRequestHeaderAttributes := envOptional("OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES")
-	extSrv, err := extensionserver.New(fakeClient, ctrl.Log, o.extprocUDSPath, true, requestHeaderAttributes, logRequestHeaderAttributes)
+	quotaRateLimitServiceHost := "envoy-ai-gateway-ratelimit.envoy-gateway-system"
+	extSrv, err := extensionserver.New(fakeClient, ctrl.Log, o.extprocUDSPath, true, requestHeaderAttributes, logRequestHeaderAttributes, quotaRateLimitServiceHost)
 	if err != nil {
 		return err
 	}

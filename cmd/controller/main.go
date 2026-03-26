@@ -69,6 +69,7 @@ type flags struct {
 	mcpFallbackSessionEncryptionIterations int
 	watchNamespaces                        []string
 	cacheSyncTimeout                       time.Duration
+	quotaRateLimitServiceHost              string
 }
 
 func setOptionalString(dst **string) func(string) error {
@@ -233,6 +234,8 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		"Optional fallback seed used for MCP session key rotation")
 	mcpFallbackSessionEncryptionIterations := fs.Int("mcpFallbackSessionEncryptionIterations", 100_000,
 		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
+	quotaRateLimitServiceHost := fs.String("quotaRateLimitServiceHost", "envoy-ai-gateway-ratelimit.envoy-gateway-system",
+		"Hostname for the AI Gateway quota rate limit service.")
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -347,6 +350,7 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		mcpFallbackSessionEncryptionSeed:       *mcpFallbackSessionEncryptionSeed,
 		mcpSessionEncryptionIterations:         *mcpSessionEncryptionIterations,
 		mcpFallbackSessionEncryptionIterations: *mcpFallbackSessionEncryptionIterations,
+		quotaRateLimitServiceHost:              *quotaRateLimitServiceHost,
 	}, nil
 }
 
@@ -404,7 +408,7 @@ func main() {
 	// Start the extension server running alongside the controller.
 	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
 	s := grpc.NewServer(grpc.MaxRecvMsgSize(parsedFlags.maxRecvMsgSize))
-	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes)
+	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes, parsedFlags.quotaRateLimitServiceHost)
 	if err != nil {
 		setupLog.Error(err, "failed to create extension server")
 		os.Exit(1)

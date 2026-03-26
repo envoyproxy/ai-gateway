@@ -82,7 +82,7 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 		}
 	}
 	if !clusterExists {
-		rlCluster := buildQuotaRateLimitCluster()
+		rlCluster := s.buildQuotaRateLimitCluster()
 		clusters = append(clusters, rlCluster)
 		s.log.Info("Added quota rate limit cluster", "cluster", quotaRateLimitClusterName)
 	}
@@ -147,7 +147,7 @@ func buildQuotaBackendPolicies(policies []aigv1a1.QuotaPolicy) map[string][]aigv
 }
 
 // buildQuotaRateLimitCluster creates the Envoy cluster for the AI Gateway rate limit service.
-func buildQuotaRateLimitCluster() *clusterv3.Cluster {
+func (s *Server) buildQuotaRateLimitCluster() *clusterv3.Cluster {
 	return &clusterv3.Cluster{
 		Name:                 quotaRateLimitClusterName,
 		ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_STRICT_DNS},
@@ -164,7 +164,7 @@ func buildQuotaRateLimitCluster() *clusterv3.Cluster {
 									Address: &corev3.Address{
 										Address: &corev3.Address_SocketAddress{
 											SocketAddress: &corev3.SocketAddress{
-												Address: defaultQuotaRateLimitServiceHost,
+												Address: s.quotaRateLimitServiceHost,
 												PortSpecifier: &corev3.SocketAddress_PortValue{
 													PortValue: defaultQuotaRateLimitServicePort,
 												},
