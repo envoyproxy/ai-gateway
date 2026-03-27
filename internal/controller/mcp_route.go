@@ -202,6 +202,7 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 	// This routes incoming MCP client requests to the MCP proxy in the ext proc.
 	servingPath := ptr.Deref(mcpRoute.Spec.Path, defaultMCPPath)
 	rules := []gwapiv1.HTTPRouteRule{{
+		Name: ptr.To(gwapiv1.SectionName(internalapi.MCPProxyRuleName)),
 		Matches: []gwapiv1.HTTPRouteMatch{
 			{
 				Path: &gwapiv1.HTTPPathMatch{

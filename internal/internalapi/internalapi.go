@@ -43,6 +43,9 @@ const (
 	MCPPerBackendRefHTTPRoutePrefix = MCPGeneratedResourceCommonPrefix + "br-"
 	// MCPPerBackendHTTPRouteFilterPrefix is the prefix for the HTTP route filter names for per-backend resources.
 	MCPPerBackendHTTPRouteFilterPrefix = MCPGeneratedResourceCommonPrefix + "brf-"
+	// MCPProxyRuleName is the name of the MCP proxy HTTPRouteRule (rule/0).
+	// Used as sectionName to scope SecurityPolicy and BackendTrafficPolicy to only the /mcp endpoint.
+	MCPProxyRuleName = "mcp-proxy"
 
 	// MCPMetadataHeaderPrefix is the prefix for special headers used to pass metadata in the filter metadata.
 	// These headers are added internally to the requests to the upstream servers so they can be populated in the filter
