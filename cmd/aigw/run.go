@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/envoyproxy/gateway/cmd/envoy-gateway/root"
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	"github.com/go-logr/logr"
@@ -206,8 +207,15 @@ func run(ctx context.Context, c *cmdRun, o *runOpts, stdout, stderr io.Writer) e
 	//
 	// Now running the `envoy-gateway` CLI alternative below by passing `--config-path` to `egConfigPath`.
 	// Then the agent will read the resources from the file pointed inside the config and start the Envoy process.
+	runnerErrorHandler := func(runner string, err error) {
+		if runner == string(egv1a1.LogComponentProviderRunner) ||
+			runner == string(egv1a1.LogComponentInfrastructureRunner) {
+			_, _ = fmt.Fprintf(os.Stderr, "exiting on %s runner error: %v\n", runner, err)
+			serverCancel()
+		}
+	}
+	server := root.GetRootCommand(runnerErrorHandler)
 
-	server := root.GetRootCommand(nil)
 	// TODO: enable the log by default after the issue is resolved: https://github.com/envoyproxy/gateway/issues/6596
 	if c.Debug {
 		server.SetOut(stdout)
