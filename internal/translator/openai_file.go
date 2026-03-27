@@ -45,10 +45,10 @@ type openAIToOpenAITranslatorV1CreateFile struct {
 func (o *openAIToOpenAITranslatorV1CreateFile) RequestBody(_ map[string]string, original []byte, req *openai.FileNewParams, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	if modelName, ok := req.ExtraBody["model_name"]; ok {
+	if modelName, ok := req.ExtraBody["model"]; ok {
 		o.requestModel = string(modelName.([]byte))
 	} else {
-		return nil, nil, errors.New("model_name should be passed as extra field for file upload")
+		return nil, nil, errors.New("'model' parameter should be passed as extra field for file upload")
 	}
 	// Always set the path header to the files endpoint so that the request is routed correctly.
 	newHeaders = []internalapi.Header{{pathHeaderName, o.path}}

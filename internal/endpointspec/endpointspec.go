@@ -422,9 +422,9 @@ func (CreateFileEndpointSpec) ParseBody(
 	if err := req.UnmarshalMultipart(body, params["boundary"]); err != nil {
 		return "", nil, false, nil, fmt.Errorf("%w: failed to parse multipart form-data for /v1/files", internalapi.ErrMalformedRequest)
 	}
-	modelName, ok := req.ExtraBody["model_name"]
+	modelName, ok := req.ExtraBody["model"]
 	if !ok {
-		return "", nil, false, nil, errors.New("model_name should be passed as extra field for file upload")
+		return "", nil, false, nil, errors.New("'model' parameter should be passed as extra field for file upload operations")
 	}
 	return string(modelName.([]byte)), &req, false, body, nil
 }

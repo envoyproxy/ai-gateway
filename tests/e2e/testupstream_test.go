@@ -173,7 +173,7 @@ func TestWithTestUpstream(t *testing.T) {
 			_, err = fw.Write([]byte("hello from ai gateway file e2e"))
 			require.NoError(t, err)
 			require.NoError(t, w.WriteField("purpose", "assistants"))
-			require.NoError(t, w.WriteField("model_name", modelName))
+			require.NoError(t, w.WriteField("model", modelName))
 			require.NoError(t, w.Close())
 			return buf.Bytes(), w.FormDataContentType()
 		}
