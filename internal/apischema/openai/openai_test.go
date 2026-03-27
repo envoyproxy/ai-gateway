@@ -13900,7 +13900,7 @@ func TestFileNewParamsUnmarshalMultipart(t *testing.T) {
 				fw, _ := writer.CreateFormField("file")
 				_, _ = fw.Write([]byte("file content"))
 
-				fw, _ = writer.CreateFormField("model_name")
+				fw, _ = writer.CreateFormField("model")
 				_, _ = fw.Write([]byte("gpt-4"))
 
 				boundary := writer.Boundary()
@@ -13912,7 +13912,7 @@ func TestFileNewParamsUnmarshalMultipart(t *testing.T) {
 				require.NoError(t, err)
 				require.NotNil(t, f.File)
 				require.NotNil(t, f.ExtraBody)
-				require.Equal(t, []byte("gpt-4"), f.ExtraBody["model_name"])
+				require.Equal(t, []byte("gpt-4"), f.ExtraBody["model"])
 			},
 		},
 		{
@@ -13924,7 +13924,7 @@ func TestFileNewParamsUnmarshalMultipart(t *testing.T) {
 				fw, _ := writer.CreateFormField("file")
 				_, _ = fw.Write([]byte("file content"))
 
-				fw, _ = writer.CreateFormField("model_name")
+				fw, _ = writer.CreateFormField("model")
 				_, _ = fw.Write([]byte("gpt-4"))
 
 				fw, _ = writer.CreateFormField("custom_param")
@@ -13942,7 +13942,7 @@ func TestFileNewParamsUnmarshalMultipart(t *testing.T) {
 				require.NoError(t, err)
 				require.NotNil(t, f.File)
 				require.Len(t, f.ExtraBody, 3)
-				require.Equal(t, []byte("gpt-4"), f.ExtraBody["model_name"])
+				require.Equal(t, []byte("gpt-4"), f.ExtraBody["model"])
 				require.Equal(t, []byte("custom_value"), f.ExtraBody["custom_param"])
 				require.Equal(t, []byte("another_value"), f.ExtraBody["another_param"])
 			},
@@ -13965,7 +13965,7 @@ func TestFileNewParamsUnmarshalMultipart(t *testing.T) {
 				fw, _ = writer.CreateFormField("expires_after.seconds")
 				_, _ = fw.Write([]byte("86400"))
 
-				fw, _ = writer.CreateFormField("model_name")
+				fw, _ = writer.CreateFormField("model")
 				_, _ = fw.Write([]byte("gpt-3.5-turbo"))
 
 				fw, _ = writer.CreateFormField("routing_param")
@@ -13983,7 +13983,7 @@ func TestFileNewParamsUnmarshalMultipart(t *testing.T) {
 				require.Equal(t, CreatedAt("created_at"), f.ExpiresAfter.Anchor)
 				require.Equal(t, int64(86400), f.ExpiresAfter.Seconds)
 				require.Len(t, f.ExtraBody, 2)
-				require.Equal(t, []byte("gpt-3.5-turbo"), f.ExtraBody["model_name"])
+				require.Equal(t, []byte("gpt-3.5-turbo"), f.ExtraBody["model"])
 				require.Equal(t, []byte("value123"), f.ExtraBody["routing_param"])
 			},
 		},
