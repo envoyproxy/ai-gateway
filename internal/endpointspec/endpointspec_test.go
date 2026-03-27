@@ -1006,7 +1006,7 @@ func TestSpeechEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 }
 
 // buildFileUploadBody constructs a multipart/form-data body for /v1/files endpoint tests.
-// When includeModelName is true, a model_name field is added to ExtraBody.
+// When includeModelName is true, a model field is added to ExtraBody.
 func buildFileUploadBody(t *testing.T, includeModelName bool, modelName string) ([]byte, string) {
 	t.Helper()
 	var buf bytes.Buffer
@@ -1017,7 +1017,7 @@ func buildFileUploadBody(t *testing.T, includeModelName bool, modelName string) 
 	require.NoError(t, err)
 	require.NoError(t, writer.WriteField("purpose", "assistants"))
 	if includeModelName {
-		require.NoError(t, writer.WriteField("model_name", modelName))
+		require.NoError(t, writer.WriteField("model", modelName))
 	}
 	require.NoError(t, writer.Close())
 	return buf.Bytes(), writer.FormDataContentType()
@@ -1053,7 +1053,7 @@ func TestCreateFileEndpointSpec_ParseBody(t *testing.T) {
 	t.Run("missing_model_name", func(t *testing.T) {
 		body, contentType := buildFileUploadBody(t, false, "")
 		_, _, _, _, err := spec.ParseBody(body, false, map[string]string{"content-type": contentType})
-		require.ErrorContains(t, err, "model_name should be passed as extra field")
+		require.ErrorContains(t, err, "'model' parameter should be passed as extra field for file upload operations")
 	})
 
 	t.Run("success", func(t *testing.T) {

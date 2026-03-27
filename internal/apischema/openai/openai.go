@@ -8404,7 +8404,7 @@ type FileNewParams struct {
 	Purpose FilePurpose `json:"purpose,omitzero"`
 	// The expiration policy for a file.
 	ExpiresAfter FileNewParamsExpiresAfter `json:"expires_after,omitzero"`
-	// Used for providing extra parameters like model_name that is not part of the standard OpenAI Files API.
+	// Used for providing extra parameters like model that is not part of the standard OpenAI Files API.
 	ExtraBody map[string]any `json:"extra_body,omitzero"`
 }
 
@@ -8446,7 +8446,7 @@ func (f *FileNewParams) UnmarshalMultipart(data []byte, boundary string) error {
 			f.ExpiresAfter.Seconds = secondsParsed
 		default:
 			// handles any non standard extra parameters. e.g we are using
-			// model_name for routing information.
+			// model field for routing information.
 			extraBodyBytes, err := io.ReadAll(part)
 			if err != nil {
 				return err

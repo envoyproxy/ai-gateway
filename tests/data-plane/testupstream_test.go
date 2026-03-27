@@ -123,7 +123,7 @@ func TestWithTestUpstream(t *testing.T) {
 		"",
 		"assistants",
 		"--" + fileUploadBoundary,
-		`Content-Disposition: form-data; name="model_name"`,
+		`Content-Disposition: form-data; name="model"`,
 		"",
 		openAIFileModelName,
 		"--" + fileUploadBoundary + "--",
