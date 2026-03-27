@@ -228,6 +228,7 @@ func buildBucketRuleDescriptors(modelName string, ruleIndex int, rule *aigv1a1.Q
 				Value:      key,
 				RateLimit:  policy,
 				ShadowMode: shadowMode,
+				QuotaMode:  true,
 			},
 		}, nil
 	}
@@ -241,6 +242,7 @@ func buildBucketRuleDescriptors(modelName string, ruleIndex int, rule *aigv1a1.Q
 			Value:      key,
 			RateLimit:  policy,
 			ShadowMode: shadowMode,
+			QuotaMode:  true,
 		})
 	}
 
