@@ -20,7 +20,6 @@ import (
 	openaisdk "github.com/openai/openai-go/v3"
 	"google.golang.org/genai"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
@@ -31,7 +30,6 @@ const (
 	gcpModelPublisherAnthropic     = "anthropic"
 	gcpMethodGenerateContent       = "generateContent"
 	gcpMethodStreamGenerateContent = "streamGenerateContent"
-	gcpMethodRawPredict            = "rawPredict"
 )
 
 // geminiResponseMode represents the type of response mode for Gemini requests
@@ -760,64 +758,24 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 				Role: openai.ChatMessageRoleAssistant,
 			}
 			// Extract thought summary and text from parts.
-			thoughtSummary, content, signature := extractTextAndThoughtSummaryFromGeminiParts(candidate.Content.Parts, responseMode)
-			if thoughtSummary != "" {
-				message.ReasoningContent = &openai.ReasoningContentUnion{
-					Value: &openai.ReasoningContent{
-						ReasoningContent: &awsbedrock.ReasoningContentBlock{
-							ReasoningText: &awsbedrock.ReasoningTextBlock{
-								Text: thoughtSummary,
-							},
-						},
-					},
-				}
-			}
-			if signature != "" {
-				if message.ReasoningContent != nil {
-					if rc, ok := message.ReasoningContent.Value.(*openai.ReasoningContent); ok && rc != nil && rc.ReasoningContent != nil && rc.ReasoningContent.ReasoningText != nil {
-						rc.ReasoningContent.ReasoningText.Signature = signature
-					}
-				} else {
-					message.ReasoningContent = &openai.ReasoningContentUnion{
-						Value: &openai.ReasoningContent{
-							ReasoningContent: &awsbedrock.ReasoningContentBlock{
-								ReasoningText: &awsbedrock.ReasoningTextBlock{
-									Signature: signature,
-								},
-							},
-						},
-					}
-				}
-			}
+			thoughtSummary, content, _ := extractTextAndThoughtSummaryFromGeminiParts(candidate.Content.Parts, responseMode)
+
 			if content != "" {
 				message.Content = &content
 			}
 
 			// Extract tool calls if any.
-			var toolCallSignature string
-			toolCalls, toolCallSignature, err = extractToolCallsFromGeminiParts(toolCalls, candidate.Content.Parts, json.Marshal)
+			// NOTE: Tool call signatures are also ignored for the reason -
+			// they are not representable in OpenAI's schema.
+			toolCalls, _, err = extractToolCallsFromGeminiParts(toolCalls, candidate.Content.Parts, json.Marshal)
 			if err != nil {
 				return nil, fmt.Errorf("error extracting tool calls: %w", err)
 			}
 			message.ToolCalls = toolCalls
-
-			// when the model responds with tool calls, it should not respond with a text at the same time. Thus, we do not need to merge them together
-			if toolCallSignature != "" {
-				signature = toolCallSignature
-				if message.ReasoningContent != nil {
-					if rc, ok := message.ReasoningContent.Value.(*openai.ReasoningContent); ok && rc != nil && rc.ReasoningContent != nil && rc.ReasoningContent.ReasoningText != nil {
-						rc.ReasoningContent.ReasoningText.Signature = signature
-					}
-				} else {
-					message.ReasoningContent = &openai.ReasoningContentUnion{
-						Value: &openai.ReasoningContent{
-							ReasoningContent: &awsbedrock.ReasoningContentBlock{
-								ReasoningText: &awsbedrock.ReasoningTextBlock{
-									Signature: signature,
-								},
-							},
-						},
-					}
+			// Map Gemini thoughtSummary to OpenAI reasoning_content.
+			if thoughtSummary != "" {
+				message.ReasoningContent = &openai.ReasoningContentUnion{
+					Value: thoughtSummary,
 				}
 			}
 
