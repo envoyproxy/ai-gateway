@@ -41,7 +41,7 @@ func TestCreateFileOpenAIToOpenAITranslatorRequestBody(t *testing.T) {
 			expPath:     "/v1/files",
 			requestBody: `{}`,
 			expError:    true,
-			expErrorMsg: "model_name should be passed as extra field",
+			expErrorMsg: "'model' parameter should be passed as extra field for file upload",
 		},
 		{
 			name:              "with_force_body_mutation",
@@ -55,12 +55,12 @@ func TestCreateFileOpenAIToOpenAITranslatorRequestBody(t *testing.T) {
 			translator := NewCreateFileOpenAIToOpenAITranslator("v1", tc.modelNameOverride)
 			impl := translator.(*openAIToOpenAITranslatorV1CreateFile)
 
-			// Create params with model_name in ExtraBody (except for missing_model_name test)
+			// Create params with model in ExtraBody (except for missing_model_name test)
 			params := &openai.FileNewParams{
-				ExtraBody: map[string]interface{}{},
+				ExtraBody: map[string]any{},
 			}
 			if tc.name != "missing_model_name" {
-				params.ExtraBody["model_name"] = []byte("test-model")
+				params.ExtraBody["model"] = []byte("test-model")
 			}
 
 			headerMutation, _, err := translator.RequestBody(nil, []byte(tc.requestBody), params, tc.forceBodyMutation)
