@@ -8,13 +8,18 @@ package backendauth
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/gcpauth"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
+
+// gcpHTTPClient is used for GCP ADC token operations, with proxy support if configured.
+var gcpHTTPClient = &http.Client{Transport: gcpauth.MustNewTransport()}
 
 type gcpHandler struct {
 	gcpAccessToken string             // The GCP access token used for authentication (static token).
@@ -37,7 +42,9 @@ func newGCPHandler(ctx context.Context, gcpAuth *filterapi.GCPAuth) (filterapi.B
 		// Use provided static token
 		handler.gcpAccessToken = gcpAuth.AccessToken
 	} else {
-		// Use Application Default Credentials (ADC) - supports GKE Workload Identity
+		// Use ADC for GKE Workload Identity. TokenSource auto-refreshes in Do().
+		// Inject HTTP client with proxy support into context for token operations.
+		ctx = context.WithValue(ctx, oauth2.HTTPClient, gcpHTTPClient)
 		creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
 		if err != nil {
 			return nil, fmt.Errorf("failed to find GCP default credentials: %w", err)

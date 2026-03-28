@@ -9,8 +9,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
-	"os"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -25,6 +23,7 @@ import (
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/gcpauth"
 )
 
 const (
@@ -90,18 +89,7 @@ type gcpOIDCTokenRotator struct {
 
 // sharedGCPTransport is a shared HTTP transport used for GCP API calls.
 // It is initialized with the GCP proxy URL if provided in the environment variable.
-var (
-	sharedGCPTransport http.RoundTripper
-)
-
-func init() {
-	gcpProxyURL, err := getGCPProxyURL()
-	if err != nil {
-		panic(fmt.Errorf("error getting GCP proxy URL: %w", err))
-	}
-
-	sharedGCPTransport = &http.Transport{Proxy: http.ProxyURL(gcpProxyURL)}
-}
+var sharedGCPTransport = gcpauth.MustNewTransport()
 
 // NewGCPOIDCTokenRotator creates a new gcpOIDCTokenRotator with the given parameters.
 func NewGCPOIDCTokenRotator(
@@ -393,17 +381,4 @@ func populateInSecret(secret *corev1.Secret, gcpAuth filterapi.GCPAuth, expiryTi
 		GCPProjectNameKey: []byte(gcpAuth.ProjectName),
 		GCPRegionKey:      []byte(gcpAuth.Region),
 	}
-}
-
-func getGCPProxyURL() (*url.URL, error) {
-	proxyURL := os.Getenv("AI_GATEWAY_GCP_AUTH_PROXY_URL")
-	if proxyURL == "" {
-		return nil, nil
-	}
-
-	parsedURL, err := url.Parse(proxyURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid proxy URL: %w", err)
-	}
-	return parsedURL, nil
 }

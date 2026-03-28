@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -821,74 +820,22 @@ func (c *errorOnGetClient) Get(_ context.Context, _ client.ObjectKey, _ client.O
 
 func TestNewBearerAuthRoundTripper(t *testing.T) {
 	tests := []struct {
-		name        string
-		token       string
-		proxyURL    string
-		setProxyEnv bool
-		wantErr     bool
+		name  string
+		token string
 	}{
 		{
-			name:        "no proxy, no token",
-			token:       "",
-			setProxyEnv: false,
-			wantErr:     false,
+			name:  "empty token",
+			token: "",
 		},
 		{
-			name:        "no proxy, with token",
-			token:       "test-token",
-			setProxyEnv: false,
-			wantErr:     false,
-		},
-		{
-			name:        "empty proxy, with token",
-			token:       "test-token",
-			proxyURL:    "",
-			setProxyEnv: true,
-			wantErr:     false,
-		},
-		{
-			name:        "with valid proxy, no token",
-			token:       "",
-			proxyURL:    "http://proxy.example.com:3128",
-			setProxyEnv: true,
-			wantErr:     false,
-		},
-		{
-			name:        "with valid proxy and token",
-			token:       "test-token",
-			proxyURL:    "https://secure-proxy.example.com:8443",
-			setProxyEnv: true,
-			wantErr:     false,
+			name:  "with token",
+			token: "test-token",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save original environment variable.
-			originalProxyURL := os.Getenv("AI_GATEWAY_GCP_AUTH_PROXY_URL")
-			defer func() {
-				if originalProxyURL != "" {
-					os.Setenv("AI_GATEWAY_GCP_AUTH_PROXY_URL", originalProxyURL)
-				} else {
-					os.Unsetenv("AI_GATEWAY_GCP_AUTH_PROXY_URL")
-				}
-			}()
-
-			if tt.setProxyEnv {
-				os.Setenv("AI_GATEWAY_GCP_AUTH_PROXY_URL", tt.proxyURL)
-			} else {
-				os.Unsetenv("AI_GATEWAY_GCP_AUTH_PROXY_URL")
-			}
-
-			// Call the function under test.
 			roundTripper, err := newBearerAuthRoundTripper(tt.token)
-
-			// Validate error expectation.
-			if tt.wantErr {
-				require.Error(t, err)
-				require.Nil(t, roundTripper)
-				return
-			}
 
 			require.NoError(t, err)
 			require.NotNil(t, roundTripper)
