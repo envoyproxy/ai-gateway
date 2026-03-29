@@ -207,13 +207,7 @@ func run(ctx context.Context, c *cmdRun, o *runOpts, stdout, stderr io.Writer) e
 	//
 	// Now running the `envoy-gateway` CLI alternative below by passing `--config-path` to `egConfigPath`.
 	// Then the agent will read the resources from the file pointed inside the config and start the Envoy process.
-	runnerErrorHandler := func(runner string, err error) {
-		if runner == string(egv1a1.LogComponentProviderRunner) ||
-			runner == string(egv1a1.LogComponentInfrastructureRunner) {
-			_, _ = fmt.Fprintf(os.Stderr, "exiting on %s runner error: %v\n", runner, err)
-			serverCancel()
-		}
-	}
+	runnerErrorHandler := newRunnerErrorHandler(os.Stderr, serverCancel)
 	server := root.GetRootCommand(runnerErrorHandler)
 
 	// TODO: enable the log by default after the issue is resolved: https://github.com/envoyproxy/gateway/issues/6596
@@ -497,6 +491,18 @@ func (runCtx *runCmdContext) tryFindEnvoyListenerPort(gw *gwapiv1.Gateway) int {
 		return 0
 	}
 	return int(gw.Spec.Listeners[0].Port)
+}
+
+// newRunnerErrorHandler returns a callback that triggers a graceful shutdown
+// (via cancelFunc) when a critical Envoy Gateway runner fails.
+func newRunnerErrorHandler(stderr io.Writer, cancelFunc context.CancelFunc) func(string, error) {
+	return func(runner string, err error) {
+		if runner == string(egv1a1.LogComponentProviderRunner) ||
+			runner == string(egv1a1.LogComponentInfrastructureRunner) {
+			_, _ = fmt.Fprintf(stderr, "exiting on %s runner error: %v\n", runner, err)
+			cancelFunc()
+		}
+	}
 }
 
 func maybeResolveHome(p string) string {
