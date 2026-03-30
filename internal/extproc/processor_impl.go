@@ -706,7 +706,7 @@ func mergeDynamicMetadata(base, extra *structpb.Struct) *structpb.Struct {
 // when the response is successfully completed. It is not called for failed requests or partial responses.
 // The metadata includes token usage costs and model information for downstream processing.
 func buildDynamicMetadata(requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (*structpb.Struct, error) {
-	metadata := make(map[string]*structpb.Value, len(requestCosts)+2)
+	metadata := make(map[string]*structpb.Value, len(requestCosts)+3)
 	for i := range requestCosts {
 		rc := &requestCosts[i]
 		var cost uint32
