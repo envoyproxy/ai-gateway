@@ -17,7 +17,7 @@ webhooks:
       service:
         name:  {{ include "ai-gateway-helm.controller.fullname" . }}
         namespace: {{ .Release.Namespace }}
-        port: 9443
+        port: {{ .Values.controller.mutatingWebhook.port }}
         path: /mutate
     rules:
       - apiGroups: [""]
