@@ -1021,7 +1021,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantHeaderMut: nil,
 			wantBodyMut: []byte(`data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+data: {"choices":[],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `),
@@ -1232,7 +1232,7 @@ data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}],"usageMetadata":{
 
 data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+data: {"choices":[],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `),
@@ -1254,7 +1254,7 @@ data: {"candidates":[{"content":{"parts":[{"text":"The answer is 42.", "thoughtS
 
 data: {"choices":[{"index":0,"delta":{"content":"The answer is 42.","role":"assistant","reasoning_content":{"signature":"dGVzdHNpZ25hdHVyZQ=="}}}],"object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":8,"total_tokens":18,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+data: {"choices":[],"object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":8,"total_tokens":18,"completion_tokens_details":{},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `),

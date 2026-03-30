@@ -24,25 +24,26 @@ Use `GatewayConfig` when you need to:
 Create a `GatewayConfig` resource with your desired configuration:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: GatewayConfig
 metadata:
   name: my-gateway-config
   namespace: default
 spec:
   extProc:
-    env:
-      - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: "http://otel-collector:4317"
-      - name: OTEL_SERVICE_NAME
-        value: "my-ai-gateway"
-    resources:
-      requests:
-        cpu: "100m"
-        memory: "128Mi"
-      limits:
-        cpu: "500m"
-        memory: "512Mi"
+    kubernetes:
+      env:
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector:4317"
+        - name: OTEL_SERVICE_NAME
+          value: "my-ai-gateway"
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
 ```
 
 ### Referencing from a Gateway
@@ -73,34 +74,36 @@ The `GatewayConfig` must be in the same namespace as the Gateway that references
 
 ### Environment Variables
 
-The `spec.extProc.env` field accepts a list of Kubernetes `EnvVar` objects:
+The `spec.extProc.kubernetes.env` field accepts a list of Kubernetes `EnvVar` objects:
 
 ```yaml
 spec:
   extProc:
-    env:
-      - name: OTEL_EXPORTER_OTLP_ENDPOINT
-        value: "http://otel-collector:4317"
-      - name: OTEL_EXPORTER_OTLP_HEADERS
-        value: "api-key=your-secret"
-      - name: LOG_LEVEL
-        value: "debug"
+    kubernetes:
+      env:
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector:4317"
+        - name: OTEL_EXPORTER_OTLP_HEADERS
+          value: "api-key=your-secret"
+        - name: LOG_LEVEL
+          value: "debug"
 ```
 
 ### Resource Requirements
 
-The `spec.extProc.resources` field configures compute resources for the external processor container:
+The `spec.extProc.kubernetes.resources` field configures compute resources for the external processor container:
 
 ```yaml
 spec:
   extProc:
-    resources:
-      requests:
-        cpu: "100m"
-        memory: "128Mi"
-      limits:
-        cpu: "500m"
-        memory: "512Mi"
+    kubernetes:
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
 ```
 
 If not specified, Kubernetes default resource allocations are used.
@@ -109,7 +112,7 @@ If not specified, Kubernetes default resource allocations are used.
 
 Environment variables can be configured at multiple levels. The precedence order is (highest to lowest):
 
-1. **GatewayConfig.spec.extProc.env** - Highest priority
+1. **GatewayConfig.spec.extProc.kubernetes.env** - Highest priority
 2. **Global controller flags** (`--extproc-extra-env-vars`) - Lower priority
 
 When the same environment variable is defined at multiple levels, the higher precedence value is used.
@@ -143,15 +146,16 @@ The resulting environment variables will be:
 Multiple Gateways can reference the same `GatewayConfig`:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: GatewayConfig
 metadata:
   name: shared-config
 spec:
   extProc:
-    env:
-      - name: OTEL_SERVICE_NAME
-        value: "ai-gateway-cluster"
+    kubernetes:
+      env:
+        - name: OTEL_SERVICE_NAME
+          value: "ai-gateway-cluster"
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -179,7 +183,7 @@ The route-level resource configuration (`AIGatewayRoute.spec.filterConfig.extern
 ### Before (deprecated)
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: my-route
@@ -196,16 +200,17 @@ spec:
 ### After (recommended)
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: GatewayConfig
 metadata:
   name: my-config
 spec:
   extProc:
-    resources:
-      requests:
-        cpu: "100m"
-        memory: "128Mi"
+    kubernetes:
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway

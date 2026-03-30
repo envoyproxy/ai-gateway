@@ -27,7 +27,7 @@ spec:
       kind: EnvoyProxy
       name: envoy-ai-gateway-token-ratelimit
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: envoy-ai-gateway-token-ratelimit
@@ -64,7 +64,7 @@ spec:
       type: CEL
       cel: "input_tokens == uint(3) ? 100000000 : 0"
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: envoy-ai-gateway-token-ratelimit-testupstream

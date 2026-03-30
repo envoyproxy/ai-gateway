@@ -1477,7 +1477,7 @@ type ChatCompletionResponseChunk struct {
 	ID string `json:"id,omitempty"`
 	// Choices are described in the OpenAI API documentation:
 	// https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-choices
-	Choices []ChatCompletionResponseChunkChoice `json:"choices,omitempty"`
+	Choices []ChatCompletionResponseChunkChoice `json:"choices"`
 
 	// Created is the Unix timestamp (in seconds) of when the chat completion was created.
 	Created JSONUNIXTime `json:"created,omitzero"`
@@ -4698,7 +4698,7 @@ func (r *ResponseFunctionWebSearchActionUnionParam) UnmarshalJSON(data []byte) e
 			return err
 		}
 		r.OfOpenPage = &op
-	case "find":
+	case "find", "find_in_page":
 		var f ResponseFunctionWebSearchActionFindParam
 		if err := json.Unmarshal(data, &f); err != nil {
 			return err

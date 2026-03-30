@@ -58,7 +58,7 @@ spec:
         hostname: api.openai.com
         port: 443
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: otel-test-backend
@@ -72,7 +72,7 @@ spec:
     kind: Backend
     group: gateway.envoyproxy.io
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: otel-console-tracing

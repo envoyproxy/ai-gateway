@@ -27,6 +27,7 @@ type VersionedAPISchema struct {
 	// prefix field. This is to maintain backward compatibility. This will be removed in future releases.
 	//
 	// See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details.
+	// +optional
 	Version *string `json:"version,omitempty"`
 
 	// Prefix is the prefix for the API.
@@ -41,6 +42,7 @@ type VersionedAPISchema struct {
 	// use prefix, so you can leave this field unset.
 	//
 	// See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details.
+	// +optional
 	Prefix *string `json:"prefix,omitempty"`
 }
 

@@ -14,7 +14,7 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/stretchr/testify/require"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
 
 func TestBuildHeaderToMetadataFilter(t *testing.T) {
@@ -37,9 +37,9 @@ func TestBuildHeaderToMetadataFilter(t *testing.T) {
 		require.Len(t, cfg.RequestRules, 2)
 		require.Equal(t, "agent-session-id", cfg.RequestRules[0].GetHeader())
 		require.Equal(t, "x-tenant-id", cfg.RequestRules[1].GetHeader())
-		require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, cfg.RequestRules[0].GetOnHeaderPresent().MetadataNamespace)
+		require.Equal(t, aigv1b1.AIGatewayFilterMetadataNamespace, cfg.RequestRules[0].GetOnHeaderPresent().MetadataNamespace)
 		require.Equal(t, "session.id", cfg.RequestRules[0].GetOnHeaderPresent().Key)
-		require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, cfg.RequestRules[1].GetOnHeaderPresent().MetadataNamespace)
+		require.Equal(t, aigv1b1.AIGatewayFilterMetadataNamespace, cfg.RequestRules[1].GetOnHeaderPresent().MetadataNamespace)
 		require.Equal(t, "tenant.id", cfg.RequestRules[1].GetOnHeaderPresent().Key)
 	})
 }
@@ -119,8 +119,8 @@ func TestMergeHeaderToMetadataRules(t *testing.T) {
 		require.Equal(t, "x-forwarded-proto", cfg.RequestRules[2].GetHeader())
 		require.Equal(t, "session.id", cfg.RequestRules[1].GetOnHeaderPresent().Key)
 		require.Equal(t, "url.scheme", cfg.RequestRules[2].GetOnHeaderPresent().Key)
-		require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, cfg.RequestRules[1].GetOnHeaderPresent().MetadataNamespace)
-		require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, cfg.RequestRules[2].GetOnHeaderPresent().MetadataNamespace)
+		require.Equal(t, aigv1b1.AIGatewayFilterMetadataNamespace, cfg.RequestRules[1].GetOnHeaderPresent().MetadataNamespace)
+		require.Equal(t, aigv1b1.AIGatewayFilterMetadataNamespace, cfg.RequestRules[2].GetOnHeaderPresent().MetadataNamespace)
 	})
 }
 

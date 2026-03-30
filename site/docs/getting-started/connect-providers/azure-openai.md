@@ -113,7 +113,7 @@ kubectl logs -n envoy-ai-gateway-system deployment/ai-gateway-controller
 To use more models, add more [AIGatewayRouteRule]s to the `azure_openai.yaml` file with the [model ID] in the `value` field. For example, to use [GPT-4.5 Preview]
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: envoy-ai-gateway-basic-azure
