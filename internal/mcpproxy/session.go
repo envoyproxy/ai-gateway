@@ -442,8 +442,8 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 		if err != nil {
 			return fmt.Errorf("failed to read MCP response body: %w", err)
 		}
-		var msg jsonrpc.Message
-		msg, err = jsonrpc.DecodeMessage(respBody)
+		var msgs []jsonrpc.Message
+		msgs, err = decodeJSONRPCMessagesFromBackendBody(respBody, backend.Name)
 		if err != nil {
 			return fmt.Errorf("failed to decode jsonrpc message from MCP response body: %w", err)
 		}
@@ -452,7 +452,7 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 				backend:  backend.Name,
 				event:    "message",
 				id:       "", // No event ID in this case.
-				messages: []jsonrpc.Message{msg},
+				messages: msgs,
 			},
 			startAt: startAt,
 		}

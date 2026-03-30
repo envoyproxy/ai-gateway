@@ -7,6 +7,7 @@ package mcpproxy
 
 import (
 	"bytes"
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +27,10 @@ var (
 	sseLF   = []byte{'\n'}
 	sseCRLF = []byte{'\r', '\n'}
 	sseLFLF = []byte{'\n', '\n'}
+
+	// utf8BOM is the UTF-8 Byte Order Mark (U+FEFF). Some backends prepend this
+	// invisible sequence to response bodies, which breaks JSON decoding.
+	utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 )
 
 // sseEventParser reads bytes from a reader and parses the SSE Events gracefully
@@ -39,6 +44,66 @@ type sseEventParser struct {
 
 func newSSEEventParser(r io.Reader, backend filterapi.MCPBackendName) sseEventParser {
 	return sseEventParser{r: r, backend: backend}
+}
+
+// decodeJSONRPCMessagesFromBackendBody decodes JSON-RPC messages from an MCP backend HTTP response body.
+//
+// Some servers (e.g. Slack MCP) return SSE (lines starting with "data: ") while advertising
+// Content-Type: application/json, or send gzip-compressed JSON without a reliable Content-Encoding
+// header. This helper tries plain JSON first, then gzip-sniffed decompression, then SSE framing.
+func decodeJSONRPCMessagesFromBackendBody(body []byte, backend filterapi.MCPBackendName) ([]jsonrpc.Message, error) {
+	body = trimMCPResponseBodyPrefix(body)
+	msg, err := jsonrpc.DecodeMessage(body)
+	if err == nil {
+		return []jsonrpc.Message{msg}, nil
+	}
+	firstErr := err
+	if len(body) >= 2 && body[0] == 0x1f && body[1] == 0x8b {
+		gr, gzErr := gzip.NewReader(bytes.NewReader(body))
+		if gzErr == nil {
+			decompressed, rdErr := io.ReadAll(gr)
+			_ = gr.Close()
+			if rdErr == nil {
+				return decodeJSONRPCMessagesFromBackendBody(decompressed, backend)
+			}
+		}
+	}
+	if bytes.Contains(body, sseDataPrefix) {
+		msgs, sseErr := decodeJSONRPCMessagesFromSSEBody(body, backend)
+		if sseErr == nil && len(msgs) > 0 {
+			return msgs, nil
+		}
+	}
+	return nil, firstErr
+}
+
+func trimMCPResponseBodyPrefix(body []byte) []byte {
+	body = bytes.TrimSpace(body)
+	return bytes.TrimPrefix(body, utf8BOM)
+}
+
+func decodeJSONRPCMessagesFromSSEBody(body []byte, backend filterapi.MCPBackendName) ([]jsonrpc.Message, error) {
+	parser := newSSEEventParser(bytes.NewReader(body), backend)
+	var all []jsonrpc.Message
+	for {
+		ev, err := parser.next()
+		if ev != nil {
+			all = append(all, ev.messages...)
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if len(all) > 0 {
+				return all, nil
+			}
+			return nil, err
+		}
+	}
+	if len(all) == 0 {
+		return nil, fmt.Errorf("sse parse produced no jsonrpc messages")
+	}
+	return all, nil
 }
 
 // next reads the next SSE event from the stream.

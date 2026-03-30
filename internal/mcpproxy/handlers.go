@@ -774,19 +774,30 @@ func (m *mcpRequestContext) proxyResponseBody(ctx context.Context, s *session, w
 			m.l.Error("failed to read response body", slog.String("error", err.Error()))
 			return err
 		}
-		_msg, err := jsonrpc.DecodeMessage(body)
+		msgs, err := decodeJSONRPCMessagesFromBackendBody(body, backend.Name)
 		if err != nil {
 			m.l.Error("failed to decode JSON-RPC message from response body", slog.String("error", err.Error()))
 			return err
 		}
+		if len(msgs) == 0 {
+			return fmt.Errorf("no JSON-RPC messages in MCP response body")
+		}
+		for _, mmsg := range msgs {
+			if reqMsg, ok := mmsg.(*jsonrpc.Request); ok {
+				if err = m.maybeServerToClientRequestModify(ctx, reqMsg, backend.Name); err != nil {
+					m.l.Error("failed to modify server->client request", slog.String("error", err.Error()))
+					return err
+				}
+			}
+		}
+
+		// if there are multiple messages, we need to use the last one for the response body since 
+		// in many streams the final chunk is the reply that matches the client's request
+		_msg := msgs[len(msgs)-1]
 
 		var responseError error
 		switch msg := _msg.(type) {
 		case *jsonrpc.Request:
-			if err = m.maybeServerToClientRequestModify(ctx, msg, backend.Name); err != nil {
-				m.l.Error("failed to modify server->client request", slog.String("error", err.Error()))
-				return err
-			}
 			body, _ = jsonrpc.EncodeMessage(msg)
 		case *jsonrpc.Response:
 			if req != nil {
@@ -806,7 +817,6 @@ func (m *mcpRequestContext) proxyResponseBody(ctx context.Context, s *session, w
 
 				body, _ = jsonrpc.EncodeMessage(msg)
 			}
-			m.recordResponse(ctx, msg)
 		}
 
 		// We need to update the content length since we might have modified the ID.
@@ -1603,7 +1613,8 @@ func (m *mcpRequestContext) handleSetLoggingLevel(ctx context.Context, s *sessio
 
 // mergeToolsList merges the list of tools from all backends and prepare the response message to be sent back to the client.
 func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResponse[mcp.ListToolsResult]) mcp.ListToolsResult {
-	resp := mcp.ListToolsResult{}
+	// Use a non-nil empty slice so JSON encodes as [] not null; some clients reject tools:null.
+	resp := mcp.ListToolsResult{Tools: make([]*mcp.Tool, 0)}
 	route := m.routes[s.route]
 	if route == nil {
 		// This should never happen as the route must have been validated when the session is created.

@@ -896,6 +896,29 @@ func TestProxyResponseBody_JSONResponse(t *testing.T) {
 	require.Contains(t, rr.Body.String(), id.Raw())
 }
 
+func TestProxyResponseBody_JSONResponseWithBOM(t *testing.T) {
+	proxy := newTestMCPProxy()
+
+	id := mustJSONRPCRequestID()
+	resp := &jsonrpc.Response{ID: id, Result: []byte(`{"test": "bom"}`)}
+	body, err := jsonrpc.EncodeMessage(resp)
+	require.NoError(t, err)
+
+	bomBody := append([]byte{0xEF, 0xBB, 0xBF}, body...)
+	httpResp := &http.Response{
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(bomBody)),
+		StatusCode: http.StatusOK,
+	}
+
+	rr := httptest.NewRecorder()
+
+	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
+
+	require.Contains(t, rr.Body.String(), "bom")
+	require.Contains(t, rr.Body.String(), id.Raw())
+}
+
 func TestProxyResponseBody_SSEResponse(t *testing.T) {
 	proxy := newTestMCPProxy()
 
