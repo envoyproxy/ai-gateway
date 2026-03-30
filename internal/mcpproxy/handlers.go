@@ -791,7 +791,7 @@ func (m *mcpRequestContext) proxyResponseBody(ctx context.Context, s *session, w
 			}
 		}
 
-		// if there are multiple messages, we need to use the last one for the response body since 
+		// if there are multiple messages, we need to use the last one for the response body since
 		// in many streams the final chunk is the reply that matches the client's request
 		_msg := msgs[len(msgs)-1]
 
