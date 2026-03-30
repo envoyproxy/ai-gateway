@@ -6,6 +6,7 @@
 package mcpproxy
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/base64"
@@ -768,63 +769,60 @@ func copyProxyHeaders(resp *http.Response, w http.ResponseWriter) {
 func (m *mcpRequestContext) proxyResponseBody(ctx context.Context, s *session, w http.ResponseWriter, resp *http.Response,
 	req *jsonrpc.Request, backend filterapi.MCPBackend,
 ) error {
+	// Some backends (e.g. Slack MCP) send SSE data despite Content-Type: application/json.
+	// Try to decode as a single JSON-RPC message first; if that fails, fall through to the
+	// SSE parser using the already-read bytes.
+	var sseReader io.Reader = resp.Body
 	if resp.Header.Get("Content-Type") == "application/json" {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			m.l.Error("failed to read response body", slog.String("error", err.Error()))
 			return err
 		}
-		msgs, err := decodeJSONRPCMessagesFromBackendBody(body, backend.Name)
-		if err != nil {
-			m.l.Error("failed to decode JSON-RPC message from response body", slog.String("error", err.Error()))
-			return err
-		}
-		if len(msgs) == 0 {
-			return fmt.Errorf("no JSON-RPC messages in MCP response body")
-		}
-		for _, mmsg := range msgs {
-			if reqMsg, ok := mmsg.(*jsonrpc.Request); ok {
-				if err = m.maybeServerToClientRequestModify(ctx, reqMsg, backend.Name); err != nil {
+		_msg, ok := tryDecodeJSONRPCMessage(body)
+		if ok {
+			var responseError error
+			switch msg := _msg.(type) {
+			case *jsonrpc.Request:
+				if err = m.maybeServerToClientRequestModify(ctx, msg, backend.Name); err != nil {
 					m.l.Error("failed to modify server->client request", slog.String("error", err.Error()))
 					return err
 				}
-			}
-		}
-
-		// if there are multiple messages, we need to use the last one for the response body since
-		// in many streams the final chunk is the reply that matches the client's request
-		_msg := msgs[len(msgs)-1]
-
-		var responseError error
-		switch msg := _msg.(type) {
-		case *jsonrpc.Request:
-			body, _ = jsonrpc.EncodeMessage(msg)
-		case *jsonrpc.Response:
-			if req != nil {
-				if err = m.maybeResponseModify(ctx, req, msg, backend.Name); err != nil {
-					m.l.Error("failed to modify response", slog.String("error", err.Error()))
-					return err
-				}
-				msg.ID = req.ID
-
-				// Check if this is a JSON-RPC error response
-				if msg.Error != nil {
-					responseError = msg.Error
-				} else if toolErr := checkToolCallError(req, msg, backend.Name); toolErr != nil {
-					// Check if this is a tools/call response with isError=true
-					responseError = toolErr
-				}
-
 				body, _ = jsonrpc.EncodeMessage(msg)
+			case *jsonrpc.Response:
+				if req != nil {
+					if err = m.maybeResponseModify(ctx, req, msg, backend.Name); err != nil {
+						m.l.Error("failed to modify response", slog.String("error", err.Error()))
+						return err
+					}
+					msg.ID = req.ID
+
+					// Check if this is a JSON-RPC error response
+					if msg.Error != nil {
+						responseError = msg.Error
+					} else if toolErr := checkToolCallError(req, msg, backend.Name); toolErr != nil {
+						// Check if this is a tools/call response with isError=true
+						responseError = toolErr
+					}
+
+					body, _ = jsonrpc.EncodeMessage(msg)
+				}
+				m.recordResponse(ctx, msg)
 			}
+
+			// We need to update the content length since we might have modified the ID.
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
+			w.WriteHeader(resp.StatusCode)
+			_, _ = w.Write(body)
+
+			return responseError
 		}
-
-		// We need to update the content length since we might have modified the ID.
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
-		w.WriteHeader(resp.StatusCode)
-		_, _ = w.Write(body)
-
-		return responseError
+		// Body claimed application/json but isn't valid JSON-RPC (e.g. some backends
+		// send SSE data despite the content type). Fall through to the SSE parser
+		// using the already-read body bytes since resp.Body is now drained.
+		m.l.Info("response Content-Type is application/json but body is not valid JSON-RPC, falling back to SSE parsing",
+			slog.String("backend", string(backend.Name)))
+		sseReader = bytes.NewReader(body)
 	}
 
 	// io.Copy won't flush until the end, which doesn't happen for streaming responses.
@@ -835,7 +833,7 @@ func (m *mcpRequestContext) proxyResponseBody(ctx context.Context, s *session, w
 	w.WriteHeader(resp.StatusCode)
 	// For single-backend operations, metrics are recorded in the defer of servePOST,
 	// so we don't need to track startAt in events here.
-	parser := newSSEEventParser(resp.Body, backend.Name)
+	parser := newSSEEventParser(sseReader, backend.Name)
 
 	// Collect errors from multiple events to return them all to the caller
 	var responseErrors []error

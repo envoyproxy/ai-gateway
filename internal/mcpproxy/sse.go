@@ -7,7 +7,6 @@ package mcpproxy
 
 import (
 	"bytes"
-	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
@@ -46,64 +45,18 @@ func newSSEEventParser(r io.Reader, backend filterapi.MCPBackendName) sseEventPa
 	return sseEventParser{r: r, backend: backend}
 }
 
-// decodeJSONRPCMessagesFromBackendBody decodes JSON-RPC messages from an MCP backend HTTP response body.
-//
-// Some servers (e.g. Slack MCP) return SSE (lines starting with "data: ") while advertising
-// Content-Type: application/json, or send gzip-compressed JSON without a reliable Content-Encoding
-// header. This helper tries plain JSON first, then gzip-sniffed decompression, then SSE framing.
-func decodeJSONRPCMessagesFromBackendBody(body []byte, backend filterapi.MCPBackendName) ([]jsonrpc.Message, error) {
-	body = trimMCPResponseBodyPrefix(body)
-	msg, err := jsonrpc.DecodeMessage(body)
-	if err == nil {
-		return []jsonrpc.Message{msg}, nil
-	}
-	firstErr := err
-	if len(body) >= 2 && body[0] == 0x1f && body[1] == 0x8b {
-		gr, gzErr := gzip.NewReader(bytes.NewReader(body))
-		if gzErr == nil {
-			decompressed, rdErr := io.ReadAll(gr)
-			_ = gr.Close()
-			if rdErr == nil {
-				return decodeJSONRPCMessagesFromBackendBody(decompressed, backend)
-			}
-		}
-	}
-	if bytes.Contains(body, sseDataPrefix) {
-		msgs, sseErr := decodeJSONRPCMessagesFromSSEBody(body, backend)
-		if sseErr == nil && len(msgs) > 0 {
-			return msgs, nil
-		}
-	}
-	return nil, firstErr
-}
-
-func trimMCPResponseBodyPrefix(body []byte) []byte {
+// tryDecodeJSONRPCMessage attempts to decode the body as a single JSON-RPC message.
+// It strips a leading UTF-8 BOM and whitespace before decoding.
+// Returns the decoded message and true on success, or nil and false if the body
+// is not valid JSON-RPC (e.g. the backend sent SSE despite a JSON content type).
+func tryDecodeJSONRPCMessage(body []byte) (jsonrpc.Message, bool) {
 	body = bytes.TrimSpace(body)
-	return bytes.TrimPrefix(body, utf8BOM)
-}
-
-func decodeJSONRPCMessagesFromSSEBody(body []byte, backend filterapi.MCPBackendName) ([]jsonrpc.Message, error) {
-	parser := newSSEEventParser(bytes.NewReader(body), backend)
-	var all []jsonrpc.Message
-	for {
-		ev, err := parser.next()
-		if ev != nil {
-			all = append(all, ev.messages...)
-		}
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			if len(all) > 0 {
-				return all, nil
-			}
-			return nil, err
-		}
+	body = bytes.TrimPrefix(body, utf8BOM)
+	msg, err := jsonrpc.DecodeMessage(body)
+	if err != nil {
+		return nil, false
 	}
-	if len(all) == 0 {
-		return nil, fmt.Errorf("sse parse produced no jsonrpc messages")
-	}
-	return all, nil
+	return msg, true
 }
 
 // next reads the next SSE event from the stream.
