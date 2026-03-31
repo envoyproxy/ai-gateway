@@ -36,9 +36,10 @@ const (
 	// quotaRateLimitClusterName is the Envoy cluster name for the AI Gateway rate limit service.
 	quotaRateLimitClusterName = "ai_gateway_ratelimit_cluster"
 	// quotaRateLimitFilterName is the name of the rate limit HTTP filter inserted into the
-	// HCM filter chain for QuotaPolicy enforcement. The filter is disabled by default and
-	// enabled per-route via TypedPerFilterConfig on routes with quota backends.
-	quotaRateLimitFilterName = "envoy.filters.http.ratelimit"
+	// HCM filter chain for QuotaPolicy enforcement. The name uses a suffix to avoid
+	// conflicting with Envoy Gateway's own rate limit filter (e.g., from BackendTrafficPolicy).
+	// The per-route TypedPerFilterConfig keys on this name to target the quota filter specifically.
+	quotaRateLimitFilterName = "envoy.filters.http.ratelimit/ai-gateway-quota"
 	// defaultQuotaRateLimitServiceHost is the default hostname for the AI Gateway rate limit service.
 	defaultQuotaRateLimitServiceHost = "envoy-ai-gateway-ratelimit.envoy-gateway-system"
 	// defaultQuotaRateLimitServicePort is the default gRPC port for the rate limit service.

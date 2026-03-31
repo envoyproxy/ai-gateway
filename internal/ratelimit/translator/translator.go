@@ -178,6 +178,7 @@ func buildPerModelDescriptor(modelName string, quota *aigv1a1.QuotaDefinition) (
 			Key:       defaultKey,
 			Value:     defaultKey,
 			RateLimit: defaultPolicy,
+			QuotaMode: true,
 		})
 	}
 
@@ -291,31 +292,6 @@ func parseDuration(s string) (uint32, rlsconfv3.RateLimitUnit, error) {
 	default:
 		return uint32(d / time.Second), rlsconfv3.RateLimitUnit_SECOND, nil //nolint:gosec
 	}
-}
-
-// parseDurationSimple returns the best-fit unit and adjusts the limit accordingly.
-// For example, a duration of "5m" with limit 100 means 100 requests per 5 minutes.
-// The rate limit service only supports per-unit rates (per second, minute, hour, day),
-// so we express this as: requests_per_unit = limit, unit = closest match.
-//
-// Note: The rate limit service's sliding window is per-unit, so "100 per 5m" is
-// approximated as "100 per MINUTE" with the understanding that the window resets
-// each minute. For exact multi-unit windows, the limit should be divided.
-func ParseDurationAndAdjustLimit(limit uint, duration string) (uint32, rlsconfv3.RateLimitUnit, error) {
-	multiplier, unit, err := parseDuration(duration)
-	if err != nil {
-		return 0, 0, err
-	}
-	if multiplier <= 1 {
-		return uint32(limit), unit, nil //nolint:gosec
-	}
-	// The rate limit service doesn't support "per N units", only "per unit".
-	// We keep the limit as-is and use the base unit. The semantics become
-	// "limit requests per 1 unit" which is the closest approximation.
-	// For exact behavior, users should use standard durations (1s, 1m, 1h, 1d).
-	perUnit, baseUnit := flattenToBaseUnit(multiplier, unit)
-	_ = perUnit
-	return uint32(limit), baseUnit, nil //nolint:gosec
 }
 
 // flattenToBaseUnit converts a multiplied unit to a lower base unit.
