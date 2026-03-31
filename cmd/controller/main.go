@@ -437,6 +437,7 @@ func main() {
 	rlRunner := runner.New(ctrl.Log, runner.DefaultPort)
 	go func() {
 		if err := rlRunner.Start(ctx); err != nil {
+
 			setupLog.Error(err, "failed to start rate limit xDS server")
 		}
 	}()
