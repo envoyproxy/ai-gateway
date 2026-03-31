@@ -197,6 +197,7 @@ func buildServiceQuotaDescriptor(sq *aigv1a1.ServiceQuotaDefinition) (*rlsconfv3
 	return &rlsconfv3.RateLimitDescriptor{
 		Key:       ModelNameDescriptorKey,
 		RateLimit: policy,
+		QuotaMode: true,
 	}, nil
 }
 
