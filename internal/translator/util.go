@@ -25,10 +25,9 @@ const (
 	mimeTypeApplicationEnum = "text/x.enum"
 )
 
-// File and Batch ID prefixes used for encoding routing information.
+// File ID prefix used for encoding routing information.
 const (
-	FileIDPrefix  = "file-"
-	BatchIDPrefix = "batch_"
+	FileIDPrefix = "file-"
 )
 
 var (
@@ -87,10 +86,10 @@ func serializeOpenAIChatCompletionChunk(chunk *openai.ChatCompletionResponseChun
 //
 // Args:
 //
-//	id: Original file/batch ID from the provider (e.g., "file-abc123", "batch_xyz")
+//	id: Original file ID from the provider (e.g., "file-abc123")
 //	modelName: Model name (e.g., "gpt-4o-mini")
 //	idType: Type of ID being encoded. Used to determine the correct prefix.
-//	       Defaults to "file". Supported values are "file" and "batch".
+//	       Defaults to "file". Supported values are "file".
 //
 // Returns:
 //
@@ -100,25 +99,19 @@ func serializeOpenAIChatCompletionChunk(chunk *openai.ChatCompletionResponseChun
 //
 //	EncodeIDWithModel("file-abc123", "gpt-4o-mini", "file")
 //	-> "file-aWQ6ZmlsZS1hYmMxMjM7bW9kZWw6Z3B0LTRvLW1pbmk"
-//
-//	EncodeIDWithModel("3814889423749775360", "gemini-2.5-pro", "batch")
-//	-> "batch_aWQ6MzgxNDg4OTQyMzc0OTc3NTM2MDttb2RlbDpnZW1pbmktMi41LXBybw"
-func EncodeIDWithModel(id, modelName, idType string) string {
+func EncodeIDWithModel(id, modelName, _ string) string {
 	prefix := FileIDPrefix
-	if idType == "batch" {
-		prefix = BatchIDPrefix
-	}
 	return prefix + base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, "id:%s;model:%s", id, modelName))
 }
 
-// DecodeFileID extracts the model name and original batch / file id from an encoded file/batch ID.
+// DecodeFileID extracts the model name and original file id from an encoded file ID.
 //
-// It expects the encoded ID to be in the format produced by EncodeIDWithModel, which includes a prefix (file- or batch_)
+// It expects the encoded ID to be in the format produced by EncodeIDWithModel, which includes a prefix (file-)
 // followed by a base64-encoded string containing the original ID and model name.
 //
 // Args:
 //
-//	encodedID: The encoded file/batch ID containing routing information.
+//	encodedID: The encoded file ID containing routing information.
 //
 // Returns:
 //
@@ -128,16 +121,11 @@ func EncodeIDWithModel(id, modelName, idType string) string {
 //
 //	DecodeFileID("file-aWQ6ZmlsZS1hYmMxMjM7bW9kZWw6Z3B0LTRvLW1pbmk")
 //	-> "gpt-4o-mini", "file-abc123", nil
-//
-//	DecodeFileID("batch_aWQ6MzgxNDg4OTQyMzc0OTc3NTM2MDttb2RlbDpnZW1pbmktMi41LXBybw")
-//	-> "gemini-2.5-pro", "3814889423749775360", nil
 func DecodeFileID(encodedID string) (modelName string, id string, err error) {
 	var base64Part string
 	switch {
 	case strings.HasPrefix(encodedID, FileIDPrefix):
 		base64Part = strings.TrimPrefix(encodedID, FileIDPrefix)
-	case strings.HasPrefix(encodedID, BatchIDPrefix):
-		base64Part = strings.TrimPrefix(encodedID, BatchIDPrefix)
 	default:
 		return "", "", fmt.Errorf("invalid encoded ID format: missing expected prefix")
 	}
@@ -158,7 +146,7 @@ func DecodeFileID(encodedID string) (modelName string, id string, err error) {
 	}
 	id, found = strings.CutPrefix(parts[0], "id:")
 	if !found || id == "" {
-		return "", "", fmt.Errorf("file/batch id not found in decoded Id ")
+		return "", "", fmt.Errorf("file id not found in decoded Id ")
 	}
 	return
 }

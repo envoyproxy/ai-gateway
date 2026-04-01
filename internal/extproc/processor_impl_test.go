@@ -193,7 +193,6 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 
 func Test_filesProcessorRouterFilter_shouldGetModelFromID(t *testing.T) {
 	fileID := translator.EncodeIDWithModel("file-abc123", "gpt-4o-mini", "file")
-	batchID := translator.EncodeIDWithModel("3814889423749775360", "gemini-2.5-pro", "batch")
 
 	for _, tc := range []struct {
 		name    string
@@ -203,7 +202,6 @@ func Test_filesProcessorRouterFilter_shouldGetModelFromID(t *testing.T) {
 	}{
 		{name: "get file request", method: "GET", path: "/v1/files/" + fileID, expects: true},
 		{name: "delete file request", method: "DELETE", path: "/v1/files/" + fileID + "/content", expects: true},
-		{name: "post batch request", method: "POST", path: "/v1/batches/" + batchID + "/cancel", expects: true},
 		{name: "put file request unsupported", method: "PUT", path: "/v1/files/" + fileID, expects: false},
 		{name: "regular chat path", method: "GET", path: "/v1/chat/completions", expects: false},
 	} {
@@ -216,7 +214,6 @@ func Test_filesProcessorRouterFilter_shouldGetModelFromID(t *testing.T) {
 
 func Test_extractFileIDFromPath(t *testing.T) {
 	fileID := translator.EncodeIDWithModel("file-abc123", "gpt-4o-mini", "file")
-	batchID := translator.EncodeIDWithModel("3814889423749775360", "gemini-2.5-pro", "batch")
 
 	for _, tc := range []struct {
 		name       string
@@ -226,7 +223,6 @@ func Test_extractFileIDFromPath(t *testing.T) {
 	}{
 		{name: "file id", path: "/v1/files/" + fileID, expectedID: fileID, expectsOK: true},
 		{name: "file id with suffix and query", path: "/v1/files/" + fileID + "/content?download=1", expectedID: fileID, expectsOK: true},
-		{name: "batch id with action", path: "/v1/batches/" + batchID + "/cancel", expectedID: batchID, expectsOK: true},
 		{name: "empty path", path: "", expectsOK: false},
 		{name: "missing id", path: "/v1/files/", expectsOK: false},
 		{name: "non file path", path: "/v1/chat/completions", expectsOK: false},
@@ -271,37 +267,6 @@ func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *test
 		require.Equal(t, fileID, p.requestHeaders[internalapi.OriginalFileIDHeaderKey])
 		require.Equal(t, path, p.requestHeaders[internalapi.OriginalPathHeader])
 		require.Equal(t, path, p.requestHeaders[internalapi.EnvoyOriginalPathHeader])
-	})
-
-	t.Run("batch request preserves existing original path headers", func(t *testing.T) {
-		batchID := translator.EncodeIDWithModel("3814889423749775360", "gemini-2.5-pro", "batch")
-		requestHeaders := map[string]string{
-			":method":                           "POST",
-			":path":                             "/v1/batches/" + batchID + "/cancel",
-			internalapi.OriginalPathHeader:      "/already-present",
-			internalapi.EnvoyOriginalPathHeader: "/envoy-already-present",
-		}
-
-		p := &retrieveFileContentProcessorRouterFilter{
-			requestHeaders: requestHeaders,
-			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-		}
-
-		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-
-		headersResp := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
-		mutatedHeaders := headerValueOptionsToMap(headersResp.RequestHeaders.Response.HeaderMutation.SetHeaders)
-		require.Len(t, mutatedHeaders, 3)
-		require.Equal(t, "gemini-2.5-pro", mutatedHeaders[internalapi.ModelNameHeaderKeyDefault])
-		require.Equal(t, "3814889423749775360", mutatedHeaders[internalapi.DecodedFileIDHeaderKey])
-		require.Equal(t, batchID, mutatedHeaders[internalapi.OriginalFileIDHeaderKey])
-		require.NotContains(t, mutatedHeaders, internalapi.OriginalPathHeader)
-		require.NotContains(t, mutatedHeaders, internalapi.EnvoyOriginalPathHeader)
-
-		require.Equal(t, "/already-present", p.requestHeaders[internalapi.OriginalPathHeader])
-		require.Equal(t, "/envoy-already-present", p.requestHeaders[internalapi.EnvoyOriginalPathHeader])
 	})
 
 	t.Run("path without encoded prefix falls through to pass-through", func(t *testing.T) {
