@@ -40,10 +40,9 @@ import (
 // This is configured at the startup of the extproc server.
 var LogRequestHeaderAttributes map[string]string
 
-// Precomputed path prefixes for file and batch operations to avoid string concatenation on every request.
+// Precomputed path prefixes for file operations to avoid string concatenation on every request.
 const (
-	filePathPrefix  = "/v1/files/" + translator.FileIDPrefix
-	batchPathPrefix = "/v1/batches/" + translator.BatchIDPrefix
+	filePathPrefix = "/v1/files/" + translator.FileIDPrefix
 )
 
 // NewFactory creates a ProcessorFactory with the given parameters.
@@ -194,9 +193,8 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) shouldGetModel
 	path := r.requestHeaders[":path"]
 	switch method {
 	case "GET", "DELETE", "POST":
-		// These methods can be header-only for file/batch retrieval or actions.
-		return strings.Contains(path, filePathPrefix) ||
-			strings.Contains(path, batchPathPrefix)
+		// These methods can be header-only for file operations.
+		return strings.Contains(path, filePathPrefix)
 	default:
 		return false
 	}
@@ -210,7 +208,7 @@ func extractFileIDFromPath(path string) (string, bool) {
 	if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
 		path = path[:queryIndex]
 	}
-	segments := []string{"/v1/files/", "/v1/batches/"}
+	segments := []string{"/v1/files/"}
 	for _, segment := range segments {
 		_, after, found := strings.Cut(path, segment)
 		if !found {
