@@ -321,44 +321,44 @@ func TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostA
 	const gwNamespace = "ns"
 	// Create two routes with DIFFERENT CEL expressions for the SAME metadataKey.
 	// This is the core scenario of Issue #1688.
-	routes := []aigv1a1.AIGatewayRoute{
+	routes := []aigv1b1.AIGatewayRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "free-model-route", Namespace: gwNamespace},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
-					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "free-backend"}}},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "free-backend"}}},
 				},
-				LLMRequestCosts: []aigv1a1.LLMRequestCost{
+				LLMRequestCosts: []aigv1b1.LLMRequestCost{
 					// Free model: cost is always 0
-					{MetadataKey: "billing_charges", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To("0")},
+					{MetadataKey: "billing_charges", Type: aigv1b1.LLMRequestCostTypeCEL, CEL: ptr.To("0")},
 				},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "paid-model-route", Namespace: gwNamespace},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
-					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "paid-backend"}}},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "paid-backend"}}},
 				},
-				LLMRequestCosts: []aigv1a1.LLMRequestCost{
+				LLMRequestCosts: []aigv1b1.LLMRequestCost{
 					// Paid model: cost calculation based on tokens
-					{MetadataKey: "billing_charges", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To("input_tokens + output_tokens")},
+					{MetadataKey: "billing_charges", Type: aigv1b1.LLMRequestCostTypeCEL, CEL: ptr.To("input_tokens + output_tokens")},
 				},
 			},
 		},
 	}
 
 	// Create corresponding AIServiceBackends.
-	for _, backend := range []*aigv1a1.AIServiceBackend{
+	for _, backend := range []*aigv1b1.AIServiceBackend{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "free-backend", Namespace: gwNamespace},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1b1.AIServiceBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "paid-backend", Namespace: gwNamespace},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1b1.AIServiceBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
 			},
 		},
@@ -413,24 +413,24 @@ func TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostA
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const gwNamespace = "ns"
-	routes := []aigv1a1.AIGatewayRoute{
+	routes := []aigv1b1.AIGatewayRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route-with-duplicate-metadata", Namespace: gwNamespace},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
-					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "test-backend"}}},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "test-backend"}}},
 				},
-				LLMRequestCosts: []aigv1a1.LLMRequestCost{
-					{MetadataKey: "billing_charges", Type: aigv1a1.LLMRequestCostTypeInputToken},
-					{MetadataKey: "billing_charges", Type: aigv1a1.LLMRequestCostTypeOutputToken},
+				LLMRequestCosts: []aigv1b1.LLMRequestCost{
+					{MetadataKey: "billing_charges", Type: aigv1b1.LLMRequestCostTypeInputToken},
+					{MetadataKey: "billing_charges", Type: aigv1b1.LLMRequestCostTypeOutputToken},
 				},
 			},
 		},
 	}
 
-	err := fakeClient.Create(t.Context(), &aigv1a1.AIServiceBackend{
+	err := fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: gwNamespace},
-		Spec: aigv1a1.AIServiceBackendSpec{
+		Spec: aigv1b1.AIServiceBackendSpec{
 			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
 		},
 	})
@@ -467,25 +467,25 @@ func TestGatewayController_reconcileFilterConfigSecret_InvalidCELExpression(t *t
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const gwNamespace = "ns"
-	routes := []aigv1a1.AIGatewayRoute{
+	routes := []aigv1b1.AIGatewayRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route-with-invalid-cel", Namespace: gwNamespace},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
-					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "test-backend"}}},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "test-backend"}}},
 				},
-				LLMRequestCosts: []aigv1a1.LLMRequestCost{
+				LLMRequestCosts: []aigv1b1.LLMRequestCost{
 					// Invalid CEL expression - syntax error
-					{MetadataKey: "cost", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To("invalid syntax (((")},
+					{MetadataKey: "cost", Type: aigv1b1.LLMRequestCostTypeCEL, CEL: ptr.To("invalid syntax (((")},
 				},
 			},
 		},
 	}
 
 	// Create the backend
-	err := fakeClient.Create(t.Context(), &aigv1a1.AIServiceBackend{
+	err := fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: gwNamespace},
-		Spec: aigv1a1.AIServiceBackendSpec{
+		Spec: aigv1b1.AIServiceBackendSpec{
 			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
 		},
 	})
