@@ -8404,7 +8404,12 @@ type FileNewParams struct {
 	Purpose FilePurpose `json:"purpose,omitzero"`
 	// The expiration policy for a file.
 	ExpiresAfter FileNewParamsExpiresAfter `json:"expires_after,omitzero"`
-	// Used for providing extra parameters like model that is not part of the standard OpenAI Files API.
+	// Used for providing extra parameters that are not part of the standard OpenAI Files API.
+	// The ExtraBody field serves a special purpose in the AI Gateway context:
+	// it can carry a "model" field that the gateway uses to:
+	//   - Route the file upload request to the appropriate backend provider
+	//   - Encode/translate the returned file ID to a gateway-specific format,
+	//     ensuring the file can be referenced correctly in subsequent API calls
 	ExtraBody map[string]any `json:"extra_body,omitzero"`
 }
 
