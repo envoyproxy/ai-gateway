@@ -48,7 +48,7 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }
 
-var defaultSchema = aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaOpenAI, Version: ptr.To("v1")}
+var defaultSchema = aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaOpenAI, Prefix: ptr.To("v1")}
 
 // TestStartControllers tests the [controller.StartControllers] function.
 func TestStartControllers(t *testing.T) {
