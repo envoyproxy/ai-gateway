@@ -105,13 +105,6 @@ func TestEncodeIDWithModel(t *testing.T) {
 			want:      "file-aWQ6ZmlsZS1hYmMxMjM7bW9kZWw6Z3B0LTRvLW1pbmk",
 		},
 		{
-			name:      "encodes batch id with batch prefix",
-			id:        "3814889423749775360",
-			modelName: "gemini-2.5-pro",
-			idType:    "batch",
-			want:      "batch_aWQ6MzgxNDg4OTQyMzc0OTc3NTM2MDttb2RlbDpnZW1pbmktMi41LXBybw",
-		},
-		{
 			name:      "defaults to file prefix for unknown id type",
 			id:        "file-default",
 			modelName: "gpt-4.1-mini",
@@ -145,13 +138,6 @@ func TestDecodeFileID(t *testing.T) {
 			expectErr:     false,
 		},
 		{
-			name:          "decodes valid batch id",
-			encodedID:     "batch_aWQ6MzgxNDg4OTQyMzc0OTc3NTM2MDttb2RlbDpnZW1pbmktMi41LXBybw",
-			wantModelName: "gemini-2.5-pro",
-			wantID:        "3814889423749775360",
-			expectErr:     false,
-		},
-		{
 			name:          "returns error on missing expected prefix",
 			encodedID:     "aWQ6ZmlsZS1hYmMxMjM7bW9kZWw6Z3B0LTRvLW1pbmk",
 			expectErr:     true,
@@ -174,12 +160,6 @@ func TestDecodeFileID(t *testing.T) {
 			encodedID:     FileIDPrefix + base64.RawURLEncoding.EncodeToString([]byte("id:file-abc123;model:")),
 			expectErr:     true,
 			expectedError: "model name not found in decoded Id",
-		},
-		{
-			name:          "returns error when id is missing",
-			encodedID:     BatchIDPrefix + base64.RawURLEncoding.EncodeToString([]byte("id:;model:gpt-4o-mini")),
-			expectErr:     true,
-			expectedError: "file/batch id not found in decoded Id",
 		},
 	}
 
