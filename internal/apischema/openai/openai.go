@@ -8537,6 +8537,7 @@ func (f FileNewParams) MarshalMultipart() ([]byte, string, error) {
 // - `evals`: Used for eval data sets
 type FilePurpose string
 
+// https://github.com/openai/openai-go/blob/cbf83a69541f646ec84071a0040f3ca524c2238f/file.go#L247-L254
 const (
 	FilePurposeAssistants FilePurpose = "assistants"
 	FilePurposeBatch      FilePurpose = "batch"
@@ -8597,6 +8598,7 @@ type FileObject struct {
 // `vision`, and `user_data`.
 type FileObjectPurpose string
 
+// https://github.com/openai/openai-go/blob/da6db3bace003b42c2465545f47401c1fb40c646/file.go#L217-L224
 const (
 	FileObjectPurposeAssistants       FileObjectPurpose = "assistants"
 	FileObjectPurposeAssistantsOutput FileObjectPurpose = "assistants_output"
