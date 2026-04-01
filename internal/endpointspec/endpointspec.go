@@ -435,7 +435,7 @@ func (CreateFileEndpointSpec) ParseBody(
 func (CreateFileEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAICreateFileTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
-		return translator.NewCreateFileOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+		return translator.NewCreateFileOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
@@ -461,7 +461,7 @@ func (RetrieveFileEndpointSpec) ParseBody(
 func (RetrieveFileEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIRetrieveFileTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
-		return translator.NewRetrieveFileOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+		return translator.NewRetrieveFileOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
@@ -487,7 +487,7 @@ func (RetrieveFileContentEndpointSpec) ParseBody(
 func (RetrieveFileContentEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIRetrieveFileContentTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
-		return translator.NewRetrieveFileContentOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+		return translator.NewRetrieveFileContentOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
@@ -512,7 +512,7 @@ func (DeleteFileEndpointSpec) ParseBody(body []byte,
 func (DeleteFileEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIDeleteFileTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
-		return translator.NewDeleteFileOpenAIToOpenAITranslator(schema.Version, modelNameOverride), nil
+		return translator.NewDeleteFileOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
