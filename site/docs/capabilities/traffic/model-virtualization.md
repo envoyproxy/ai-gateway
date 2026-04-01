@@ -89,7 +89,7 @@ This feature is primarily designed for scenarios where you want to dynamically c
 The example configuration looks like this:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: test-route
@@ -124,7 +124,7 @@ More concretely, if the request to `gpt-5-nano` fails, we want to retry it with 
 `modelNameOverride` can also be used in this scenario to achieve the desired behavior. The configuration would look like this:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: test-route
