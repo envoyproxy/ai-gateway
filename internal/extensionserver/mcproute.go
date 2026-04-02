@@ -173,7 +173,8 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 						continue
 					}
 					// Remove the authn filters from the well-known and backend routes.
-					// TODO: remove this step once the SecurityPolicy can target the MCP proxy route rule only.
+					// NOTE: with sectionName set on SecurityPolicy/BackendTrafficPolicy, EG should no longer
+					// add auth filters to well-known routes. This remains as a safety net for edge cases.
 					for _, filterName := range []string{filterNameJWTAuthn, filterNameAPIKeyAuth, filterNameExtAuth} {
 						if _, ok := route.TypedPerFilterConfig[filterName]; ok {
 							s.log.Info("removing authn filter from well-known and backend routes", "route", route.Name, "filter", filterName)

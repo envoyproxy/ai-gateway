@@ -102,12 +102,7 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	require.Equal(t, route.Spec.Headers, mainHTTPRoute.Spec.Rules[0].Matches[0].Headers)
 	require.Len(t, mainHTTPRoute.Spec.Rules[0].BackendRefs, 1)
 	require.Equal(t, gwapiv1.ObjectName("default-myroute-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
-	// Since HTTPRouteRule name is experimental in Gateway API, and some vendors (e.g. GKE Gateway) do not
-	// support it yet, we currently do not set the sectionName to avoid compatibility issues.
-	// The jwt filter will be removed from backend routes in the extension server.
-	// TODO: set the rule name and target the SecurityPolicy with jwt authn to the mcp-proxy rule only when the
-	// HTTPRouteRule name is in stable channel.
-	require.Nil(t, mainHTTPRoute.Spec.Rules[0].Name)
+	require.Equal(t, ptr.To(gwapiv1.SectionName(internalapi.MCPProxyRuleName)), mainHTTPRoute.Spec.Rules[0].Name)
 
 	// Labels/annotations propagated.
 	require.Equal(t, "v1", mainHTTPRoute.Labels["l1"])

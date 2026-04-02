@@ -382,12 +382,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 					require.Nil(t, securityPolicy.Spec.ExtAuth)
 				}
 
-				// The SecurityPolicy should only apply to the HTTPRoute MCP proxy rule.
-				// However, since HTTPRouteRule name is experimental in Gateway API, and some vendors (e.g. GKE Gateway) do not
-				// support it yet, we currently do not set the sectionName to avoid compatibility issues.
-				// The authn filters will be removed from backend routes in the extension server.
-				// TODO: use sectionName to target the MCP proxy rule only when the HTTPRouteRule name is in stable channel.
-				require.Nil(t, securityPolicy.Spec.TargetRefs[0].SectionName)
+				require.Equal(t, ptr.To(gwapiv1.SectionName(internalapi.MCPProxyRuleName)), securityPolicy.Spec.TargetRefs[0].SectionName)
 
 			} else {
 				require.Error(t, secPolErr, "SecurityPolicy should not exist")

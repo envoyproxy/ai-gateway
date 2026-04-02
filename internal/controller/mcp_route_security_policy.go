@@ -166,11 +166,8 @@ func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute 
 		securityPolicySpec.ExtAuth = extAuth.DeepCopy()
 	}
 
-	// The SecurityPolicy should only apply to the HTTPRoute MCP proxy rule.
-	// However, since HTTPRouteRule name is experimental in Gateway API, and some vendors (e.g. GKE Gateway) do not
-	// support it yet, we currently do not set the sectionName to avoid compatibility issues.
-	// The jwt and API key auth filter will be removed from backend routes in the extension server.
-	// TODO: use sectionName to target the MCP proxy rule only when the HTTPRouteRule name is in stable channel.
+	// Target only the MCP proxy rule via sectionName so that auth filters are not applied
+	// to the .well-known OAuth discovery endpoints which must be publicly accessible (RFC 9728).
 	securityPolicySpec.TargetRefs = []gwapiv1.LocalPolicyTargetReferenceWithSectionName{
 		{
 			LocalPolicyTargetReference: gwapiv1.LocalPolicyTargetReference{
@@ -178,6 +175,7 @@ func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute 
 				Kind:  "HTTPRoute",
 				Name:  gwapiv1.ObjectName(httpRouteName),
 			},
+			SectionName: ptr.To(gwapiv1.SectionName(internalapi.MCPProxyRuleName)),
 		},
 	}
 
@@ -254,7 +252,7 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context
 
 	ensureCORSHeaders(backendTrafficPolicy.Spec.ResponseOverride[0].Response.Header)
 
-	// Target the HTTPRoute MCP proxy rule only.
+	// Target only the MCP proxy rule so the WWW-Authenticate response override applies to /mcp, not .well-known endpoints.
 	backendTrafficPolicy.Spec.TargetRefs = []gwapiv1.LocalPolicyTargetReferenceWithSectionName{
 		{
 			LocalPolicyTargetReference: gwapiv1.LocalPolicyTargetReference{
@@ -262,8 +260,7 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context
 				Kind:  "HTTPRoute",
 				Name:  gwapiv1.ObjectName(httpRouteName),
 			},
-			// TODO: this filter should be applied to the MCP proxy rule only, enable sectionName when supported in Envoy Gateway.
-			// SectionName: ptr.To(gwapiv1a2.SectionName(mcpProxyRuleName)).
+			SectionName: ptr.To(gwapiv1.SectionName(internalapi.MCPProxyRuleName)),
 		},
 	}
 
