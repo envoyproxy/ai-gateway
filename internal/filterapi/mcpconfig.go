@@ -48,7 +48,7 @@ type MCPBackend struct {
 // MCPBackendName is the name of the MCP backend.
 type MCPBackendName = string
 
-// MCPToolSelector filters tools using include patterns with exact matches or regular expressions.
+// MCPToolSelector filters tools using include and exclude patterns with exact matches or regular expressions.
 type MCPToolSelector struct {
 	// Include is a list of tool names to include. Only the specified tools will be available.
 	Include []string `json:"include,omitempty"`
@@ -57,6 +57,14 @@ type MCPToolSelector struct {
 	// Only tools matching these patterns will be available.
 	// TODO: regex is almost completely absent in the MCP ecosystem, consider removing this for simplicity.
 	IncludeRegex []string `json:"includeRegex,omitempty"`
+
+	// Exclude is a list of tool names to exclude. The specified tools will not be available.
+	// Exclude rules take precedence over include rules.
+	Exclude []string `json:"exclude,omitempty"`
+
+	// ExcludeRegex is a list of RE2-compatible regular expressions that, when matched, exclude the tool.
+	// Tools matching these patterns will not be available. Exclude rules take precedence over include rules.
+	ExcludeRegex []string `json:"excludeRegex,omitempty"`
 }
 
 // MCPRouteName is the name of the MCP route.
