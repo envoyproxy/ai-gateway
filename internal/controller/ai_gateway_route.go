@@ -355,6 +355,8 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	dst.Annotations[httpRouteAnnotationForAIGatewayGeneratedIndication] = "true"
 
 	dst.Spec.ParentRefs = aiGatewayRoute.Spec.ParentRefs
+
+	dst.Spec.Hostnames = append(dst.Spec.Hostnames, aiGatewayRoute.Spec.Hostnames...)
 	return nil
 }
 
