@@ -830,6 +830,51 @@ func Test_headersToMap(t *testing.T) {
 	require.Equal(t, map[string]string{"foo": "bar", "dog": "cat"}, m)
 }
 
+func TestServer_ProcessorForPath_PrefixMatch(t *testing.T) {
+	s, err := NewServer(slog.Default(), false)
+	require.NoError(t, err)
+	s.config = &filterapi.RuntimeConfig{}
+
+	exactProc := &mockProcessor{}
+	longerPrefixProc := &mockProcessor{}  // /v1beta/models/ (longer)
+	shorterPrefixProc := &mockProcessor{} // /v1beta/ (shorter)
+
+	s.Register("/v1beta/models/exact-model:generateContent", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
+		return exactProc, nil
+	})
+	s.RegisterPrefix("/v1beta/models/", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
+		return longerPrefixProc, nil
+	})
+	s.RegisterPrefix("/v1beta/", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
+		return shorterPrefixProc, nil
+	})
+
+	t.Run("exact match wins over prefix", func(t *testing.T) {
+		proc, err := s.processorForPath(map[string]string{":path": "/v1beta/models/exact-model:generateContent"}, false, slog.Default())
+		require.NoError(t, err)
+		require.Equal(t, exactProc, proc)
+	})
+
+	t.Run("longest prefix wins", func(t *testing.T) {
+		proc, err := s.processorForPath(map[string]string{":path": "/v1beta/models/gemini-flash:generateContent"}, false, slog.Default())
+		require.NoError(t, err)
+		require.Equal(t, longerPrefixProc, proc)
+	})
+
+	t.Run("shorter prefix matches when longer does not", func(t *testing.T) {
+		proc, err := s.processorForPath(map[string]string{":path": "/v1beta/other-path"}, false, slog.Default())
+		require.NoError(t, err)
+		require.Equal(t, shorterPrefixProc, proc)
+	})
+
+	t.Run("unknown path returns errNoProcessor", func(t *testing.T) {
+		proc, err := s.processorForPath(map[string]string{":path": "/unknown/path"}, false, slog.Default())
+		require.Error(t, err)
+		require.ErrorIs(t, err, errNoProcessor)
+		require.Nil(t, proc)
+	})
+}
+
 func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 	s, err := NewServer(slog.Default(), false)
 	require.NoError(t, err)

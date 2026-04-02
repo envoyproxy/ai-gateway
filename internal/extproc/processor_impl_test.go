@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/gcp"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -1385,5 +1386,169 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 		require.NotContains(t, retryResult, "stream", "OpenAI 'stream' field should NOT be present on retry")
 		require.NotContains(t, retryResult, "model", "OpenAI 'model' field should NOT be present on retry")
 		require.Contains(t, retryResult, "messages", "Bedrock 'messages' field should be present on retry")
+	})
+}
+
+func TestExtractGeminiModelFromPath(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		path      string
+		model     string
+		streaming bool
+	}{
+		{
+			name:      "generateContent",
+			path:      "/v1beta/models/gemini-flash:generateContent",
+			model:     "gemini-flash",
+			streaming: false,
+		},
+		{
+			name:      "streamGenerateContent",
+			path:      "/v1beta/models/gemini-pro-1.5:streamGenerateContent",
+			model:     "gemini-pro-1.5",
+			streaming: true,
+		},
+		{
+			name:      "with root prefix",
+			path:      "/prefix/v1beta/models/gemini-nano:generateContent",
+			model:     "gemini-nano",
+			streaming: false,
+		},
+		{
+			name:      "missing colon",
+			path:      "/v1beta/models/gemini-flash/generateContent",
+			model:     "",
+			streaming: false,
+		},
+		{
+			name:      "empty string",
+			path:      "",
+			model:     "",
+			streaming: false,
+		},
+		{
+			name:      "model with version suffix",
+			path:      "/v1beta/models/gemini-1.5-pro-001:generateContent",
+			model:     "gemini-1.5-pro-001",
+			streaming: false,
+		},
+		{
+			name:      "model with dashes",
+			path:      "/v1beta/models/gemini-ultra-2.0-preview:streamGenerateContent",
+			model:     "gemini-ultra-2.0-preview",
+			streaming: true,
+		},
+		{
+			name:      "wrong action suffix",
+			path:      "/v1beta/models/gemini-flash:wrongAction",
+			model:     "gemini-flash",
+			streaming: false,
+		},
+		{
+			name:      "missing /models/ segment",
+			path:      "/v1beta/gemini-flash:generateContent",
+			model:     "",
+			streaming: false,
+		},
+		{
+			name:      "multiple /models/ in path uses last",
+			path:      "/models/prefix/v1beta/models/gemini-flash:generateContent",
+			model:     "gemini-flash",
+			streaming: false,
+		},
+		{
+			name:      "trailing slash",
+			path:      "/v1beta/models/gemini-flash:generateContent/",
+			model:     "gemini-flash",
+			streaming: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			model, streaming := extractGeminiModelFromPath(tc.path)
+			require.Equal(t, tc.model, model)
+			require.Equal(t, tc.streaming, streaming)
+		})
+	}
+}
+
+func TestNewGeminiProcessorFactory(t *testing.T) {
+	cfg := &filterapi.RuntimeConfig{}
+
+	t.Run("router", func(t *testing.T) {
+		factory := NewGeminiProcessorFactory(&mockMetricsFactory{})
+		headers := map[string]string{":path": "/v1beta/models/gemini-flash:generateContent"}
+		proc, err := factory(cfg, headers, slog.Default(), false, false)
+		require.NoError(t, err)
+		rp, ok := proc.(*routerProcessor[gcp.GenerateContentRequest, struct{}, struct{}, endpointspec.GenerateContentEndpointSpec])
+		require.True(t, ok)
+		require.Equal(t, "gemini-flash", rp.eh.ModelFromPath)
+		require.False(t, rp.eh.Streaming)
+	})
+
+	t.Run("router streaming", func(t *testing.T) {
+		factory := NewGeminiProcessorFactory(&mockMetricsFactory{})
+		headers := map[string]string{":path": "/v1beta/models/gemini-pro:streamGenerateContent"}
+		proc, err := factory(cfg, headers, slog.Default(), false, false)
+		require.NoError(t, err)
+		rp, ok := proc.(*routerProcessor[gcp.GenerateContentRequest, struct{}, struct{}, endpointspec.GenerateContentEndpointSpec])
+		require.True(t, ok)
+		require.Equal(t, "gemini-pro", rp.eh.ModelFromPath)
+		require.True(t, rp.eh.Streaming)
+	})
+
+	t.Run("router with query parameters", func(t *testing.T) {
+		factory := NewGeminiProcessorFactory(&mockMetricsFactory{})
+		headers := map[string]string{":path": "/v1beta/models/gemini-flash:generateContent?key=api_key&foo=bar"}
+		proc, err := factory(cfg, headers, slog.Default(), false, false)
+		require.NoError(t, err)
+		rp, ok := proc.(*routerProcessor[gcp.GenerateContentRequest, struct{}, struct{}, endpointspec.GenerateContentEndpointSpec])
+		require.True(t, ok)
+		require.Equal(t, "gemini-flash", rp.eh.ModelFromPath, "query params should be stripped before model extraction")
+		require.False(t, rp.eh.Streaming)
+	})
+
+	t.Run("router with empty model name", func(t *testing.T) {
+		factory := NewGeminiProcessorFactory(&mockMetricsFactory{})
+		headers := map[string]string{":path": "/v1beta/generateContent"}
+		proc, err := factory(cfg, headers, slog.Default(), false, false)
+		require.NoError(t, err)
+		rp, ok := proc.(*routerProcessor[gcp.GenerateContentRequest, struct{}, struct{}, endpointspec.GenerateContentEndpointSpec])
+		require.True(t, ok)
+		require.Empty(t, rp.eh.ModelFromPath, "malformed path should result in empty model")
+		require.False(t, rp.eh.Streaming)
+	})
+
+	t.Run("upstream", func(t *testing.T) {
+		factory := NewGeminiProcessorFactory(&mockMetricsFactory{})
+		headers := map[string]string{
+			":path":                        "/v1beta/models/gemini-flash:generateContent",
+			internalapi.OriginalPathHeader: "/v1beta/models/gemini-ultra:streamGenerateContent",
+		}
+		proc, err := factory(cfg, headers, slog.Default(), true, false)
+		require.NoError(t, err)
+		_, ok := proc.(*upstreamProcessor[gcp.GenerateContentRequest, struct{}, struct{}, endpointspec.GenerateContentEndpointSpec])
+		require.True(t, ok)
+	})
+
+	t.Run("upstream with query parameters", func(t *testing.T) {
+		factory := NewGeminiProcessorFactory(&mockMetricsFactory{})
+		headers := map[string]string{
+			":path":                        "/v1beta/models/gemini-flash:generateContent?key=downstream_key",
+			internalapi.OriginalPathHeader: "/v1beta/models/gemini-ultra:streamGenerateContent?key=original_key",
+		}
+		proc, err := factory(cfg, headers, slog.Default(), true, false)
+		require.NoError(t, err)
+		_, ok := proc.(*upstreamProcessor[gcp.GenerateContentRequest, struct{}, struct{}, endpointspec.GenerateContentEndpointSpec])
+		require.True(t, ok, "upstream should use original path header and strip query params")
+	})
+
+	t.Run("router with redaction enabled", func(t *testing.T) {
+		factory := NewGeminiProcessorFactory(&mockMetricsFactory{})
+		headers := map[string]string{":path": "/v1beta/models/gemini-flash:generateContent"}
+		proc, err := factory(cfg, headers, slog.Default(), false, true)
+		require.NoError(t, err)
+		rp, ok := proc.(*routerProcessor[gcp.GenerateContentRequest, struct{}, struct{}, endpointspec.GenerateContentEndpointSpec])
+		require.True(t, ok)
+		require.True(t, rp.enableRedaction, "redaction flag should be propagated to router processor")
 	})
 }

@@ -9,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genai"
 	"k8s.io/utils/ptr"
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/gcp"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
@@ -1000,5 +1002,238 @@ func TestSpeechEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 		require.Equal(t, 1.5, *redacted.Speed)
 		require.NotNil(t, redacted.StreamFormat)
 		require.Equal(t, "sse", *redacted.StreamFormat)
+	})
+}
+
+func TestGenerateContentEndpointSpec_ParseBody(t *testing.T) {
+	t.Run("invalid json", func(t *testing.T) {
+		spec := GenerateContentEndpointSpec{ModelFromPath: "gemini-flash", Streaming: false}
+		_, _, _, _, err := spec.ParseBody([]byte("not-json"), false)
+		require.ErrorContains(t, err, "malformed request")
+	})
+
+	t.Run("non-streaming model from path", func(t *testing.T) {
+		spec := GenerateContentEndpointSpec{ModelFromPath: "gemini-flash", Streaming: false}
+		req := gcp.GenerateContentRequest{
+			Contents: []genai.Content{
+				{
+					Parts: []*genai.Part{{Text: "Hello"}},
+					Role:  "user",
+				},
+			},
+		}
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gemini-flash", model, "model should come from path")
+		require.False(t, stream)
+		require.NotNil(t, parsed)
+		require.Nil(t, mutated)
+	})
+
+	t.Run("streaming model from path", func(t *testing.T) {
+		spec := GenerateContentEndpointSpec{ModelFromPath: "gemini-pro-1.5", Streaming: true}
+		req := gcp.GenerateContentRequest{
+			Contents: []genai.Content{
+				{
+					Parts: []*genai.Part{{Text: "Stream me!"}},
+					Role:  "user",
+				},
+			},
+		}
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gemini-pro-1.5", model)
+		require.True(t, stream)
+		require.NotNil(t, parsed)
+		require.Nil(t, mutated)
+	})
+
+	t.Run("empty model from path", func(t *testing.T) {
+		spec := GenerateContentEndpointSpec{ModelFromPath: "", Streaming: false}
+		req := gcp.GenerateContentRequest{
+			Contents: []genai.Content{
+				{
+					Parts: []*genai.Part{{Text: "Test"}},
+					Role:  "user",
+				},
+			},
+		}
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Empty(t, model, "model should be empty when path parsing failed")
+		require.False(t, stream)
+		require.NotNil(t, parsed)
+		require.Nil(t, mutated)
+	})
+
+	t.Run("complex request with tools and system instruction", func(t *testing.T) {
+		spec := GenerateContentEndpointSpec{ModelFromPath: "gemini-ultra", Streaming: false}
+		req := gcp.GenerateContentRequest{
+			Contents: []genai.Content{
+				{
+					Parts: []*genai.Part{{Text: "What's the weather?"}},
+					Role:  "user",
+				},
+			},
+			SystemInstruction: &genai.Content{
+				Parts: []*genai.Part{{Text: "You are a helpful assistant."}},
+				Role:  "system",
+			},
+			Tools: []genai.Tool{
+				{
+					FunctionDeclarations: []*genai.FunctionDeclaration{
+						{
+							Name:        "get_weather",
+							Description: "Get weather information",
+							Parameters: &genai.Schema{
+								Type: genai.TypeObject,
+								Properties: map[string]*genai.Schema{
+									"location": {Type: genai.TypeString},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gemini-ultra", model)
+		require.False(t, stream)
+		require.NotNil(t, parsed)
+		require.NotNil(t, parsed.SystemInstruction)
+		require.Len(t, parsed.Tools, 1)
+		require.Nil(t, mutated)
+	})
+}
+
+func TestGenerateContentEndpointSpec_GetTranslator(t *testing.T) {
+	t.Run("GCPVertexAI supported", func(t *testing.T) {
+		spec := GenerateContentEndpointSpec{ModelFromPath: "gemini-flash", Streaming: false}
+		translator, err := spec.GetTranslator(
+			filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPVertexAI},
+			"",
+		)
+		require.NoError(t, err)
+		require.NotNil(t, translator)
+	})
+
+	t.Run("GCPVertexAI with model override", func(t *testing.T) {
+		spec := GenerateContentEndpointSpec{ModelFromPath: "gemini-flash", Streaming: false}
+		translator, err := spec.GetTranslator(
+			filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPVertexAI},
+			"gemini-pro-override",
+		)
+		require.NoError(t, err)
+		require.NotNil(t, translator, "override model should take precedence")
+	})
+
+	t.Run("GCPVertexAI streaming", func(t *testing.T) {
+		spec := GenerateContentEndpointSpec{ModelFromPath: "gemini-flash", Streaming: true}
+		translator, err := spec.GetTranslator(
+			filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPVertexAI},
+			"",
+		)
+		require.NoError(t, err)
+		require.NotNil(t, translator)
+	})
+
+	t.Run("unsupported schema", func(t *testing.T) {
+		spec := GenerateContentEndpointSpec{ModelFromPath: "gemini-flash", Streaming: false}
+		translator, err := spec.GetTranslator(
+			filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			"",
+		)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "only supports GCPVertexAI backend")
+		require.Nil(t, translator)
+	})
+
+	t.Run("unsupported Anthropic schema", func(t *testing.T) {
+		spec := GenerateContentEndpointSpec{ModelFromPath: "gemini-flash", Streaming: false}
+		translator, err := spec.GetTranslator(
+			filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic},
+			"",
+		)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "only supports GCPVertexAI backend")
+		require.Nil(t, translator)
+	})
+
+	t.Run("empty model from path uses override", func(t *testing.T) {
+		spec := GenerateContentEndpointSpec{ModelFromPath: "", Streaming: false}
+		translator, err := spec.GetTranslator(
+			filterapi.VersionedAPISchema{Name: filterapi.APISchemaGCPVertexAI},
+			"gemini-override",
+		)
+		require.NoError(t, err)
+		require.NotNil(t, translator, "override should be used when path model is empty")
+	})
+}
+
+func TestGenerateContentEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := GenerateContentEndpointSpec{ModelFromPath: "gemini-flash", Streaming: false}
+
+	t.Run("placeholder redaction", func(t *testing.T) {
+		req := &gcp.GenerateContentRequest{
+			Contents: []genai.Content{
+				{
+					Parts: []*genai.Part{{Text: "Sensitive user data"}},
+					Role:  "user",
+				},
+			},
+		}
+
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.NotNil(t, redacted, "placeholder redaction should return the request as-is")
+		require.Len(t, redacted.Contents, 1)
+		// Placeholder: content is NOT redacted in current implementation
+		require.Equal(t, "Sensitive user data", redacted.Contents[0].Parts[0].Text)
+	})
+
+	t.Run("complex request not redacted", func(t *testing.T) {
+		req := &gcp.GenerateContentRequest{
+			Contents: []genai.Content{
+				{
+					Parts: []*genai.Part{{Text: "User message"}},
+					Role:  "user",
+				},
+			},
+			SystemInstruction: &genai.Content{
+				Parts: []*genai.Part{{Text: "System instruction"}},
+				Role:  "system",
+			},
+			Tools: []genai.Tool{
+				{
+					FunctionDeclarations: []*genai.FunctionDeclaration{
+						{
+							Name:        "get_weather",
+							Description: "Get weather information",
+						},
+					},
+				},
+			},
+		}
+
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.NotNil(t, redacted)
+		// Verify placeholder implementation returns unmodified request
+		require.Equal(t, "User message", redacted.Contents[0].Parts[0].Text)
+		require.Equal(t, "System instruction", redacted.SystemInstruction.Parts[0].Text)
+		require.Equal(t, "Get weather information", redacted.Tools[0].FunctionDeclarations[0].Description)
 	})
 }

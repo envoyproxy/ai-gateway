@@ -14,6 +14,7 @@ import (
 	"io"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -22,6 +23,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/gcp"
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -61,7 +63,8 @@ func NewFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.
 	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool, enableRedaction bool) (Processor, error) {
 		logger = logger.With("isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
-			return newRouterProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer, enableRedaction), nil
+			var eh EndpointSpecT
+			return newRouterProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer, enableRedaction, eh), nil
 		}
 		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](requestHeaders, f.NewMetrics(), logger), nil
 	}
@@ -133,9 +136,11 @@ func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.
 	logger *slog.Logger,
 	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
 	enableRedaction bool,
+	eh EndpointSpecT,
 ) *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT] {
 	debugLogEnabled := logger.Enabled(context.Background(), slog.LevelDebug)
 	return &routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]{
+		eh:                eh,
 		config:            config,
 		requestHeaders:    requestHeaders,
 		logger:            logger,
@@ -609,6 +614,50 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 		}
 	}
 
+	return
+}
+
+// NewGeminiProcessorFactory returns a ProcessorFactory for the Gemini native
+// generateContent / streamGenerateContent endpoints. The model name and
+// streaming flag are extracted from the URL path rather than the request body.
+func NewGeminiProcessorFactory(f metrics.Factory) ProcessorFactory {
+	noopTracer := tracingapi.NoopTracer[gcp.GenerateContentRequest, struct{}, struct{}]{}
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string,
+		logger *slog.Logger, isUpstreamFilter bool, enableRedaction bool,
+	) (Processor, error) {
+		path := requestHeaders[":path"]
+		if isUpstreamFilter {
+			path = requestHeaders[internalapi.OriginalPathHeader]
+		}
+		// Strip query parameters before parsing the model from the path.
+		if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
+			path = path[:queryIndex]
+		}
+		model, streaming := extractGeminiModelFromPath(path)
+		spec := endpointspec.GenerateContentEndpointSpec{ModelFromPath: model, Streaming: streaming}
+		logger = logger.With("isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
+		if !isUpstreamFilter {
+			return newRouterProcessor[gcp.GenerateContentRequest, struct{}, struct{},
+				endpointspec.GenerateContentEndpointSpec](
+				config, requestHeaders, logger, noopTracer, enableRedaction, spec), nil
+		}
+		return newUpstreamProcessor[gcp.GenerateContentRequest, struct{}, struct{},
+			endpointspec.GenerateContentEndpointSpec](
+			requestHeaders, f.NewMetrics(), logger), nil
+	}
+}
+
+// extractGeminiModelFromPath parses /…/models/{model}:(generateContent|streamGenerateContent)
+// and returns the model name and whether the request is a streaming request.
+func extractGeminiModelFromPath(path string) (model string, streaming bool) {
+	const modelsSegment = "/models/"
+	if i := strings.LastIndex(path, modelsSegment); i != -1 {
+		rest := path[i+len(modelsSegment):]
+		if j := strings.LastIndex(rest, ":"); j != -1 {
+			model = rest[:j]
+			streaming = rest[j+1:] == "streamGenerateContent"
+		}
+	}
 	return
 }
 
