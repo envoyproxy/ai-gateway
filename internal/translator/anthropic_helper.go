@@ -607,8 +607,6 @@ func modelContainsAny(model internalapi.RequestModel, identifiers []string) bool
 }
 
 // outputConfigModels lists model identifiers that support structured outputs (OutputConfig).
-// The model checked here is the original gateway-facing model name from the user's request,
-// not the upstream provider's model name (which is applied separately via modelNameOverride).
 // Structured outputs are available on Claude Opus 4.6, Claude Sonnet 4.6, Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
 // See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
 var outputConfigModels = []string{
@@ -624,10 +622,8 @@ func outputConfigAvailable(model internalapi.RequestModel) bool {
 }
 
 // effortModels lists model identifiers that support the output_config.effort parameter.
-// The model checked here is the original gateway-facing model name from the user's request,
-// not the upstream provider's model name (which is applied separately via modelNameOverride).
 // The effort parameter is supported by Claude Opus 4.6, Claude Sonnet 4.6, and Claude Opus 4.5.
-// See: https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#adaptive-thinking
+// See: https://platform.claude.com/docs/en/build-with-claude/effort
 var effortModels = []string{
 	"opus-4-5",   // Claude Opus 4.5
 	"opus-4-6",   // Claude Opus 4.6
@@ -662,7 +658,7 @@ func mapReasoningEffortToOutputConfigEffort(reasonEffort openaisdk.ReasoningEffo
 // buildAnthropicParams is a helper function that translates an OpenAI request
 // into the parameter struct required by the Anthropic SDK.
 // The apiSchema parameter indicates the backend API schema (e.g., "AWSAnthropic", "GCPAnthropic").
-func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string) (params *anthropic.MessageNewParams, err error) {
+func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string, modelNameOverride internalapi.ModelNameOverride) (params *anthropic.MessageNewParams, err error) {
 	// 1. Handle simple parameters and defaults.
 	maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
 	if maxTokens == nil {
@@ -695,8 +691,14 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 	// 5. Handle structured outputs (ResponseFormat -> OutputConfig).
 	// See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
 	// Currently, GCP Vertex AI does not support output_config.
+	// Use modelNameOverride for feature checks when available, as it is more
+	// reliable than the user-provided model name which may be arbitrarily set.
+	featureCheckModel := openAIReq.Model
+	if modelNameOverride != "" {
+		featureCheckModel = modelNameOverride
+	}
 	isGCPBackend := strings.HasPrefix(apiSchema, "GCP")
-	if !isGCPBackend && openAIReq.ResponseFormat != nil && openAIReq.ResponseFormat.OfJSONSchema != nil && outputConfigAvailable(openAIReq.Model) {
+	if !isGCPBackend && openAIReq.ResponseFormat != nil && openAIReq.ResponseFormat.OfJSONSchema != nil && outputConfigAvailable(featureCheckModel) {
 		// Convert OpenAI JSON schema to Anthropic OutputConfig format
 		var schemaMap map[string]any
 		if err = json.Unmarshal(openAIReq.ResponseFormat.OfJSONSchema.JSONSchema.Schema, &schemaMap); err != nil {
@@ -711,7 +713,7 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 	}
 
 	// Map OpenAI reasoning_effort to Anthropic output_config.effort.
-	if openAIReq.ReasoningEffort != "" && effortAvailable(openAIReq.Model) {
+	if openAIReq.ReasoningEffort != "" && effortAvailable(featureCheckModel) {
 		effort, effortErr := mapReasoningEffortToOutputConfigEffort(openAIReq.ReasoningEffort)
 		if effortErr != nil {
 			return nil, effortErr
