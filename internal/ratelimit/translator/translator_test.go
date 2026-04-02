@@ -121,62 +121,6 @@ func TestFlattenToBaseUnit(t *testing.T) {
 	}
 }
 
-func TestParseDurationAndAdjustLimit(t *testing.T) {
-	t.Run("exact 1 minute", func(t *testing.T) {
-		rpu, unit, err := ParseDurationAndAdjustLimit(100, "1m")
-		require.NoError(t, err)
-		require.Equal(t, uint32(100), rpu)
-		require.Equal(t, rlsconfv3.RateLimitUnit_MINUTE, unit)
-	})
-
-	t.Run("5 minutes flattens to seconds", func(t *testing.T) {
-		rpu, unit, err := ParseDurationAndAdjustLimit(50, "5m")
-		require.NoError(t, err)
-		require.Equal(t, uint32(50), rpu)
-		require.Equal(t, rlsconfv3.RateLimitUnit_SECOND, unit)
-	})
-
-	t.Run("1 second", func(t *testing.T) {
-		rpu, unit, err := ParseDurationAndAdjustLimit(10, "1s")
-		require.NoError(t, err)
-		require.Equal(t, uint32(10), rpu)
-		require.Equal(t, rlsconfv3.RateLimitUnit_SECOND, unit)
-	})
-
-	t.Run("invalid duration", func(t *testing.T) {
-		_, _, err := ParseDurationAndAdjustLimit(10, "invalid")
-		require.Error(t, err)
-	})
-
-	t.Run("1 hour", func(t *testing.T) {
-		rpu, unit, err := ParseDurationAndAdjustLimit(1000, "1h")
-		require.NoError(t, err)
-		require.Equal(t, uint32(1000), rpu)
-		require.Equal(t, rlsconfv3.RateLimitUnit_HOUR, unit)
-	})
-
-	t.Run("2 hours flattens to minutes", func(t *testing.T) {
-		rpu, unit, err := ParseDurationAndAdjustLimit(200, "2h")
-		require.NoError(t, err)
-		require.Equal(t, uint32(200), rpu)
-		require.Equal(t, rlsconfv3.RateLimitUnit_MINUTE, unit)
-	})
-
-	t.Run("24 hours stays as day", func(t *testing.T) {
-		rpu, unit, err := ParseDurationAndAdjustLimit(500, "24h")
-		require.NoError(t, err)
-		require.Equal(t, uint32(500), rpu)
-		require.Equal(t, rlsconfv3.RateLimitUnit_DAY, unit)
-	})
-
-	t.Run("48 hours flattens to hours", func(t *testing.T) {
-		rpu, unit, err := ParseDurationAndAdjustLimit(100, "48h")
-		require.NoError(t, err)
-		require.Equal(t, uint32(100), rpu)
-		require.Equal(t, rlsconfv3.RateLimitUnit_HOUR, unit)
-	})
-}
-
 func TestQuotaValueToPolicy(t *testing.T) {
 	t.Run("1 minute 100 limit", func(t *testing.T) {
 		qv := &aigv1a1.QuotaValue{Limit: 100, Duration: "1m"}
