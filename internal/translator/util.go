@@ -21,6 +21,7 @@ const (
 	mimeTypeImageWEBP       = "image/webp"
 	mimeTypeTextPlain       = "text/plain"
 	mimeTypeApplicationJSON = "application/json"
+	mimeTypeApplicationPDF  = "application/pdf"
 	mimeTypeApplicationEnum = "text/x.enum"
 )
 
