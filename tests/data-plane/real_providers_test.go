@@ -133,7 +133,7 @@ func TestWithRealProviders(t *testing.T) {
 		t.Run("messages", func(t *testing.T) {
 			for _, tc := range []realProvidersTestCase{
 				{name: "anthropic", modelName: "claude-sonnet-4-5", required: internaltesting.RequiredCredentialAnthropic},
-				{name: "anthropic-aws-bedrock", modelName: "global.anthropic.claude-sonnet-4-20250514-v1:0", required: internaltesting.RequiredCredentialAWS},
+				{name: "anthropic-aws-bedrock", modelName: "global.anthropic.claude-sonnet-4-5-20250929-v1:0", required: internaltesting.RequiredCredentialAWS},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					cc.MaybeSkip(t, tc.required)
@@ -239,7 +239,7 @@ func TestWithRealProviders(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress+"/v1/"), option.WithMaxRetries(0))
 		for _, tc := range []realProvidersTestCase{
 			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
-			{name: "aws-bedrock", modelName: "us.anthropic.claude-sonnet-4-20250514-v1:0", required: internaltesting.RequiredCredentialAWS},
+			{name: "aws-bedrock", modelName: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", required: internaltesting.RequiredCredentialAWS},
 			{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
