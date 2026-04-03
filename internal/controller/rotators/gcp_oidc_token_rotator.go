@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -89,7 +90,18 @@ type gcpOIDCTokenRotator struct {
 
 // sharedGCPTransport is a shared HTTP transport used for GCP API calls.
 // It is initialized with the GCP proxy URL if provided in the environment variable.
-var sharedGCPTransport = gcpauth.MustNewTransport()
+var (
+	sharedGCPTransport     http.RoundTripper
+	sharedGCPTransportOnce sync.Once
+	sharedGCPTransportErr  error
+)
+
+func initSharedGCPTransport() error {
+	sharedGCPTransportOnce.Do(func() {
+		sharedGCPTransport, sharedGCPTransportErr = gcpauth.NewTransport()
+	})
+	return sharedGCPTransportErr
+}
 
 // NewGCPOIDCTokenRotator creates a new gcpOIDCTokenRotator with the given parameters.
 func NewGCPOIDCTokenRotator(
@@ -100,6 +112,10 @@ func NewGCPOIDCTokenRotator(
 	tokenProvider tokenprovider.TokenProvider,
 ) (Rotator, error) {
 	logger = logger.WithName("gcp-token-rotator")
+
+	if err := initSharedGCPTransport(); err != nil {
+		return nil, fmt.Errorf("error initializing GCP transport: %w", err)
+	}
 
 	if bsp.Spec.GCPCredentials == nil {
 		return nil, fmt.Errorf("GCP credentials are not configured in BackendSecurityPolicy %s/%s", bsp.Namespace, bsp.Name)

@@ -187,6 +187,9 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) ResponseBody(_ map[strin
 	if openAIResp.Usage.PromptTokensDetails != nil {
 		tokenUsage.SetCachedInputTokens(uint32(openAIResp.Usage.PromptTokensDetails.CachedTokens)) //nolint:gosec
 	}
+	if openAIResp.Usage.CompletionTokensDetails != nil {
+		tokenUsage.SetReasoningTokens(uint32(openAIResp.Usage.CompletionTokensDetails.ReasoningTokens)) //nolint:gosec
+	}
 
 	if span != nil {
 		span.RecordResponse(openAIResp)
@@ -257,6 +260,9 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 			}
 			if chunk.UsageMetadata.CachedContentTokenCount >= 0 {
 				tokenUsage.SetCachedInputTokens(uint32(chunk.UsageMetadata.CachedContentTokenCount)) //nolint:gosec
+			}
+			if chunk.UsageMetadata.ThoughtsTokenCount >= 0 {
+				tokenUsage.SetReasoningTokens(uint32(chunk.UsageMetadata.ThoughtsTokenCount)) //nolint:gosec
 			}
 		}
 	}
