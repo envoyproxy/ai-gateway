@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"path"
 	"strconv"
+	"strings"
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -21,6 +23,107 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
+
+// NewListFilesOpenAIToOpenAITranslator implements [OpenAIListFilesTranslator] for OpenAI to OpenAI translation for File API.
+func NewListFilesOpenAIToOpenAITranslator(prefix string, modelNameOverride internalapi.ModelNameOverride) OpenAIListFilesTranslator {
+	return &openAIToOpenAITranslatorV1ListFiles{
+		modelNameOverride: modelNameOverride,
+		path:              path.Join("/", prefix, "files"),
+	}
+}
+
+// openAIToOpenAITranslatorV1ListFiles is a passthrough translator for OpenAI List Files API.
+// https://platform.openai.com/docs/api-reference/files/list
+type openAIToOpenAITranslatorV1ListFiles struct {
+	modelNameOverride internalapi.ModelNameOverride
+	requestModel      internalapi.RequestModel
+	// The path of the files endpoint to be used for the request. It is prefixed with the OpenAI path prefix.
+	path string
+}
+
+func extractListFilesModelFromHeaders(reqHeaders map[string]string) internalapi.RequestModel {
+	originalPath := reqHeaders[internalapi.OriginalPathHeader]
+	if originalPath == "" {
+		originalPath = reqHeaders[pathHeaderName]
+	}
+	_, rawQuery, found := strings.Cut(originalPath, "?")
+	if !found || rawQuery == "" {
+		return ""
+	}
+	query, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return ""
+	}
+	return internalapi.RequestModel(query.Get("model"))
+}
+
+// RequestBody implements [OpenAIListFilesTranslator.RequestBody].
+func (o *openAIToOpenAITranslatorV1ListFiles) RequestBody(reqHeaders map[string]string, original []byte, _ *struct{}, forceBodyMutation bool) (
+	newHeaders []internalapi.Header, newBody []byte, err error,
+) {
+	o.requestModel = extractListFilesModelFromHeaders(reqHeaders)
+	if o.requestModel == "" {
+		return nil, nil, errors.New("missing required 'model' query parameter for /v1/files")
+	}
+
+	upstreamPath := o.path
+	if originalPath, ok := reqHeaders[pathHeaderName]; ok {
+		if _, query, found := strings.Cut(originalPath, "?"); found && query != "" {
+			upstreamPath += "?" + query
+		}
+	}
+
+	// Always set the path header to the files endpoint so that the request is routed correctly.
+	newHeaders = []internalapi.Header{{pathHeaderName, upstreamPath}}
+
+	if forceBodyMutation && len(newBody) == 0 {
+		newBody = original
+	}
+
+	if len(newBody) > 0 {
+		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
+	}
+	return
+}
+
+// ResponseHeaders implements [OpenAIListFilesTranslator.ResponseHeaders].
+func (o *openAIToOpenAITranslatorV1ListFiles) ResponseHeaders(map[string]string) (newHeaders []internalapi.Header, err error) {
+	// For OpenAI to OpenAI translation, we don't need to mutate the response headers.
+	return nil, nil
+}
+
+// ResponseBody implements [OpenAIListFilesTranslator.ResponseBody].
+func (o *openAIToOpenAITranslatorV1ListFiles) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracingapi.RetrieveFileSpan) (
+	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
+) {
+	bodyBytes, err := io.ReadAll(body)
+	if err != nil {
+		return nil, nil, tokenUsage, "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	newBody = bodyBytes
+	data := gjson.GetBytes(bodyBytes, "data")
+	if data.IsArray() {
+		for i, item := range data.Array() {
+			id := item.Get("id").String()
+			if id == "" {
+				continue
+			}
+			newBody, err = sjson.SetBytes(newBody, fmt.Sprintf("data.%d.id", i), EncodeIDWithModel(id, o.requestModel, "file"))
+			if err != nil {
+				return nil, nil, tokenUsage, "", fmt.Errorf("failed to set file ID for list item %d: %w", i, err)
+			}
+		}
+	}
+
+	newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
+	return
+}
+
+// ResponseError implements [OpenAIListFilesTranslator.ResponseError].
+func (o *openAIToOpenAITranslatorV1ListFiles) ResponseError(respHeaders map[string]string, body io.Reader) ([]internalapi.Header, []byte, error) {
+	return convertErrorOpenAIToOpenAIError(respHeaders, body)
+}
 
 // NewCreateFileOpenAIToOpenAITranslator implements [OpenAICreateFileTranslator] for OpenAI to OpenAI translation for File API.
 func NewCreateFileOpenAIToOpenAITranslator(prefix string, modelNameOverride internalapi.ModelNameOverride) OpenAICreateFileTranslator {

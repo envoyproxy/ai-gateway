@@ -6,14 +6,120 @@
 package translator
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
+
+func TestListFilesOpenAIToOpenAITranslatorRequestBody(t *testing.T) {
+	translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
+
+	headers, body, err := translator.RequestBody(
+		map[string]string{pathHeaderName: "/v1/files?model=gpt-4o-mini&purpose=assistants&limit=2", internalapi.OriginalPathHeader: "/v1/files?model=gpt-4o-mini&purpose=assistants&limit=2"},
+		nil,
+		&struct{}{},
+		false,
+	)
+	require.NoError(t, err)
+	require.Nil(t, body)
+	require.Len(t, headers, 1)
+	require.Equal(t, pathHeaderName, headers[0].Key())
+	require.Equal(t, "/v1/files?model=gpt-4o-mini&purpose=assistants&limit=2", headers[0].Value())
+}
+
+func TestListFilesOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
+	translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
+
+	_, _, err := translator.RequestBody(
+		map[string]string{pathHeaderName: "/v1/files?model=gpt-4o-mini", internalapi.OriginalPathHeader: "/v1/files?model=gpt-4o-mini"},
+		nil,
+		&struct{}{},
+		false,
+	)
+	require.NoError(t, err)
+
+	_, body, usage, _, err := translator.ResponseBody(
+		map[string]string{"content-type": "application/json"},
+		strings.NewReader(`{"object":"list","data":[{"id":"file-123"},{"id":"file-456"}]}`),
+		true,
+		nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), usage)
+
+	encoded1 := gjson.GetBytes(body, "data.0.id").String()
+	encoded2 := gjson.GetBytes(body, "data.1.id").String()
+	require.NotEqual(t, "file-123", encoded1)
+	require.NotEqual(t, "file-456", encoded2)
+
+	model1, id1, err := DecodeFileID(encoded1)
+	require.NoError(t, err)
+	require.Equal(t, internalapi.OriginalModel("gpt-4o-mini"), model1)
+	require.Equal(t, "file-123", id1)
+
+	model2, id2, err := DecodeFileID(encoded2)
+	require.NoError(t, err)
+	require.Equal(t, internalapi.OriginalModel("gpt-4o-mini"), model2)
+	require.Equal(t, "file-456", id2)
+}
+
+func TestListFilesOpenAIToOpenAITranslatorResponseBody_EncodesEachFileIDUniquely(t *testing.T) {
+	translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
+
+	_, _, err := translator.RequestBody(
+		map[string]string{pathHeaderName: "/v1/files?model=openai/gpt-oss-20b", internalapi.OriginalPathHeader: "/v1/files?model=openai/gpt-oss-20b"},
+		nil,
+		&struct{}{},
+		false,
+	)
+	require.NoError(t, err)
+
+	const responseBody = `{
+		"data": [
+			{"id": "file-1775547086445804698"},
+			{"id": "file-1775547089989603753"},
+			{"id": "file-1775548393817282850"}
+		],
+		"has_more": false
+	}`
+
+	_, body, usage, _, err := translator.ResponseBody(
+		map[string]string{"content-type": "application/json"},
+		strings.NewReader(responseBody),
+		true,
+		nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), usage)
+
+	expectedOriginalIDs := []string{
+		"file-1775547086445804698",
+		"file-1775547089989603753",
+		"file-1775548393817282850",
+	}
+
+	seenEncodedIDs := map[string]struct{}{}
+	for i, expectedID := range expectedOriginalIDs {
+		encodedID := gjson.GetBytes(body, fmt.Sprintf("data.%d.id", i)).String()
+		require.NotEmpty(t, encodedID)
+		require.NotEqual(t, expectedID, encodedID)
+
+		_, exists := seenEncodedIDs[encodedID]
+		require.False(t, exists, "encoded ID duplicated across list items: %s", encodedID)
+		seenEncodedIDs[encodedID] = struct{}{}
+
+		model, decodedID, decodeErr := DecodeFileID(encodedID)
+		require.NoError(t, decodeErr)
+		require.Equal(t, internalapi.OriginalModel("openai/gpt-oss-20b"), model)
+		require.Equal(t, expectedID, decodedID)
+	}
+}
 
 func TestCreateFileOpenAIToOpenAITranslatorRequestBody(t *testing.T) {
 	for _, tc := range []struct {
@@ -147,7 +253,7 @@ func TestCreateFileOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), tokenUsage)
+			require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), tokenUsage)
 
 			// Verify body was mutated with encoded ID
 			require.NotNil(t, bodyMutation)
@@ -289,7 +395,7 @@ func TestRetrieveFileOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), tokenUsage)
+			require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), tokenUsage)
 
 			// bodyMutation may be nil if requestFileID is not set
 		})
@@ -382,7 +488,7 @@ func TestRetrieveFileContentOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
 		require.NoError(t, err)
 		require.Nil(t, headerMutation)
 		require.Nil(t, bodyMutation)
-		require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), tokenUsage)
+		require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), tokenUsage)
 	})
 }
 
@@ -494,7 +600,7 @@ func TestDeleteFileOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), tokenUsage)
+			require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), tokenUsage)
 			require.NotNil(t, bodyMutation)
 		})
 	}
