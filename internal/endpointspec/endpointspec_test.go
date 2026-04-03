@@ -16,6 +16,7 @@ import (
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/redaction"
 )
@@ -1080,6 +1081,38 @@ func TestCreateFileEndpointSpec_GetTranslator(t *testing.T) {
 func TestCreateFileEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 	spec := CreateFileEndpointSpec{}
 	req := &openai.FileNewParams{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestListFilesEndpointSpec_ParseBody(t *testing.T) {
+	spec := ListFilesEndpointSpec{}
+	body := []byte("irrelevant")
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{":path": "/v1/files?model=gpt-4o-mini&limit=2"})
+	require.NoError(t, err)
+	require.Equal(t, internalapi.OriginalModel("gpt-4o-mini"), model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+
+	_, _, _, _, err = spec.ParseBody(body, false, map[string]string{":path": "/v1/files?limit=2"})
+	require.ErrorContains(t, err, "missing required 'model' query parameter")
+}
+
+func TestListFilesEndpointSpec_GetTranslator(t *testing.T) {
+	spec := ListFilesEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestListFilesEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := ListFilesEndpointSpec{}
+	req := &struct{}{}
 	result, err := spec.RedactSensitiveInfoFromRequest(req)
 	require.NoError(t, err)
 	require.Equal(t, req, result)

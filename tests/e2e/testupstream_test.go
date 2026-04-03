@@ -238,6 +238,62 @@ func TestWithTestUpstream(t *testing.T) {
 			}, 10*time.Second, 1*time.Second)
 		})
 
+		t.Run("GET /v1/files", func(t *testing.T) {
+			require.Eventually(t, func() bool {
+				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+				defer fwd.Kill()
+
+				req, err := http.NewRequest(http.MethodGet, fwd.Address()+"/v1/files?model="+modelName, nil)
+				require.NoError(t, err)
+				req.Header.Set(testupstreamlib.ExpectedHostKey, upstreamHost)
+				req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, testUpstreamID)
+				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/files")))
+				req.Header.Set(testupstreamlib.ExpectedHeadersKey, base64.StdEncoding.EncodeToString([]byte("Authorization:Bearer "+dummyToken)))
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(
+					fmt.Sprintf(`{"object":"list","data":[{"id":"%s","object":"file","bytes":29,"created_at":1741382147,"filename":"test.txt","purpose":"assistants"}]}`, upstreamFileID),
+				)))
+
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Logf("error: %v", err)
+					return false
+				}
+				defer func() { _ = resp.Body.Close() }()
+
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					t.Logf("error reading response body: %v", err)
+					return false
+				}
+				if resp.StatusCode != http.StatusOK {
+					t.Logf("unexpected status code: %d (expected %d), body: %s", resp.StatusCode, http.StatusOK, body)
+					return false
+				}
+
+				var listResp struct {
+					Object string
+					Data   []openaischema.FileObject
+				}
+				if err = json.Unmarshal(body, &listResp); err != nil {
+					t.Logf("error unmarshalling list files response: %v, body: %s", err, body)
+					return false
+				}
+				if listResp.Object != "list" {
+					t.Logf("unexpected object type in response: %q", listResp.Object)
+					return false
+				}
+				if len(listResp.Data) == 0 {
+					t.Logf("unexpected empty data in list response: %s", body)
+					return false
+				}
+				if listResp.Data[0].ID != encodedFileID {
+					t.Logf("unexpected file id in list response: got %q, expected %q", listResp.Data[0].ID, encodedFileID)
+					return false
+				}
+				return true
+			}, 10*time.Second, 1*time.Second)
+		})
+
 		t.Run("GET /v1/files/{file_id}", func(t *testing.T) {
 			require.NotEmpty(t, encodedFileID)
 			require.Eventually(t, func() bool {

@@ -335,6 +335,10 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		http.MethodPost,
 		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.CreateFileTracer(), endpointspec.CreateFileEndpointSpec{}))
 	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files")+"$"),
+		http.MethodGet,
+		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.RetrieveFileTracer(), endpointspec.ListFilesEndpointSpec{}))
+	server.Register(
 		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files")+"/([^/]+)/?$"),
 		http.MethodGet,
 		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.RetrieveFileTracer(), endpointspec.RetrieveFileEndpointSpec{}))

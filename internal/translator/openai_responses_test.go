@@ -266,7 +266,7 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 			},
 		}
 		original := []byte(`{"model":"o1","input":"Hi"}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 
 		respJSON := []byte(`{
@@ -446,7 +446,7 @@ data: [DONE]
 			},
 		}
 		original := []byte(`{"model":"o1","input":"Hi","stream":true}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 		require.True(t, translator.stream)
 

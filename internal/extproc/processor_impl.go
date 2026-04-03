@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -42,6 +43,7 @@ var LogRequestHeaderAttributes map[string]string
 // Precomputed path prefixes for file operations to avoid string concatenation on every request.
 const (
 	filePathPrefix = "/v1/files/" + translator.FileIDPrefix
+	fileListPath   = "/v1/files"
 )
 
 // NewFactory creates a ProcessorFactory with the given parameters.
@@ -189,6 +191,9 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespons
 func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) shouldGetModelFromID() bool {
 	method := r.requestHeaders[":method"]
 	path := r.requestHeaders[":path"]
+	if method == "GET" && isListFilesPath(path) {
+		return true
+	}
 	switch method {
 	case "GET", "DELETE", "POST":
 		// These methods can be header-only for file operations.
@@ -196,6 +201,36 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) shouldGetModel
 	default:
 		return false
 	}
+}
+
+func isListFilesPath(path string) bool {
+	if path == "" {
+		return false
+	}
+	// Remove query params.
+	if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
+		path = path[:queryIndex]
+	}
+	return path == fileListPath
+}
+
+func extractListFilesModelFromPath(path string) (internalapi.OriginalModel, bool) {
+	if path == "" {
+		return "", false
+	}
+	_, rawQuery, found := strings.Cut(path, "?")
+	if !found || rawQuery == "" {
+		return "", false
+	}
+	query, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return "", false
+	}
+	modelName := query.Get("model")
+	if modelName == "" {
+		return "", false
+	}
+	return internalapi.OriginalModel(modelName), true
 }
 
 func extractFileIDFromPath(path string) (string, bool) {
@@ -234,26 +269,44 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 		logger = r.logger
 	}
 
-	fileID, ok := extractFileIDFromPath(r.requestHeaders[":path"])
-	if !ok {
-		logger.Error("failed to extract file_id from path", slog.String("path", r.requestHeaders[":path"]))
-		return createUserFacingErrorResponse(400, "BadRequest", "failed to extract file id / batch id from path"), nil
+	modelName := internalapi.OriginalModel("")
+	decodedID := ""
+	fileID := ""
+	if isListFilesPath(r.requestHeaders[":path"]) {
+		var ok bool
+		modelName, ok = extractListFilesModelFromPath(r.requestHeaders[":path"])
+		if !ok {
+			logger.Error("missing model query parameter for list files request", slog.String("path", r.requestHeaders[":path"]))
+			return createUserFacingErrorResponse(400, "BadRequest", "missing required 'model' query parameter for /v1/files"), nil
+		}
+	} else {
+		var ok bool
+		fileID, ok = extractFileIDFromPath(r.requestHeaders[":path"])
+		if !ok {
+			logger.Error("failed to extract file_id from path", slog.String("path", r.requestHeaders[":path"]))
+			return createUserFacingErrorResponse(400, "BadRequest", "failed to extract file id / batch id from path"), nil
+		}
+		var err error
+		modelName, decodedID, err = translator.DecodeFileID(fileID)
+		if err != nil {
+			logger.Error("failed to decode model name from file_id", slog.String("file_id", fileID), slog.String("error", err.Error()))
+			return createUserFacingErrorResponse(400, "BadRequest", "failed to decode model name from file id / batch id"), nil
+		}
+		r.requestHeaders[internalapi.OriginalFileIDHeaderKey] = fileID
+		r.requestHeaders[internalapi.DecodedFileIDHeaderKey] = decodedID
 	}
-	modelName, decodedID, err := translator.DecodeFileID(fileID)
-	if err != nil {
-		logger.Error("failed to decode model name from file_id", slog.String("file_id", fileID), slog.String("error", err.Error()))
-		return createUserFacingErrorResponse(400, "BadRequest", "failed to decode model name from file id / batch id"), nil
-	}
+
 	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = modelName
 	r.originalModel = modelName
 
-	r.requestHeaders[internalapi.OriginalFileIDHeaderKey] = fileID
-	r.requestHeaders[internalapi.DecodedFileIDHeaderKey] = decodedID
-
 	headerMutation := &extprocv3.HeaderMutation{}
 	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, modelName)
-	setHeader(headerMutation, internalapi.DecodedFileIDHeaderKey, decodedID)
-	setHeader(headerMutation, internalapi.OriginalFileIDHeaderKey, fileID)
+	if decodedID != "" {
+		setHeader(headerMutation, internalapi.DecodedFileIDHeaderKey, decodedID)
+	}
+	if fileID != "" {
+		setHeader(headerMutation, internalapi.OriginalFileIDHeaderKey, fileID)
+	}
 
 	originalPath := r.requestHeaders[":path"]
 	if r.requestHeaders[originalPathHeader] == "" {

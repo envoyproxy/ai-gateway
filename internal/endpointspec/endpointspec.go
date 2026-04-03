@@ -11,6 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"mime"
+	"net/url"
+	"strings"
 
 	"github.com/tidwall/sjson"
 
@@ -97,6 +99,8 @@ type (
 	SpeechEndpointSpec struct{}
 	// CreateFileEndpointSpec implements EndpointSpec for /v1/files.
 	CreateFileEndpointSpec struct{}
+	// ListFilesEndpointSpec implements EndpointSpec for GET /v1/files.
+	ListFilesEndpointSpec struct{}
 	// RetrieveFileEndpointSpec implements EndpointSpec for GET /v1/files/{file_id}.
 	RetrieveFileEndpointSpec struct{}
 	// RetrieveFileEndpointSpec implements EndpointSpec for /v1/files/{file_id}/content.
@@ -441,6 +445,48 @@ func (CreateFileEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema,
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (CreateFileEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.FileNewParams) (redactedReq *openai.FileNewParams, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (ListFilesEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+	requestHeaders map[string]string,
+) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	originalPath := requestHeaders[internalapi.OriginalPathHeader]
+	if originalPath == "" {
+		originalPath = requestHeaders[":path"]
+	}
+	_, rawQuery, found := strings.Cut(originalPath, "?")
+	if !found || rawQuery == "" {
+		return "", nil, false, nil, fmt.Errorf("%w: missing required 'model' query parameter for /v1/files", internalapi.ErrInvalidRequestBody)
+	}
+	query, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse query parameters for /v1/files: %w", internalapi.ErrMalformedRequest, err)
+	}
+	modelName := query.Get("model")
+	if modelName == "" {
+		return "", nil, false, nil, fmt.Errorf("%w: missing required 'model' query parameter for /v1/files", internalapi.ErrInvalidRequestBody)
+	}
+	// ListFiles endpoint does not have a body.
+	return internalapi.OriginalModel(modelName), &struct{}{}, false, body, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (ListFilesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIListFilesTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewListFilesOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (ListFilesEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (redactedReq *struct{}, err error) {
 	// Placeholder if redaction is required in future
 	return req, nil
 }

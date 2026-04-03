@@ -200,6 +200,8 @@ func Test_filesProcessorRouterFilter_shouldGetModelFromID(t *testing.T) {
 		path    string
 		expects bool
 	}{
+		{name: "get files list request", method: "GET", path: "/v1/files", expects: true},
+		{name: "get files list request with query", method: "GET", path: "/v1/files?limit=2", expects: true},
 		{name: "get file request", method: "GET", path: "/v1/files/" + fileID, expects: true},
 		{name: "delete file request", method: "DELETE", path: "/v1/files/" + fileID + "/content", expects: true},
 		{name: "put file request unsupported", method: "PUT", path: "/v1/files/" + fileID, expects: false},
@@ -236,6 +238,50 @@ func Test_extractFileIDFromPath(t *testing.T) {
 }
 
 func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *testing.T) {
+	t.Run("list files request sets query model and clears route cache", func(t *testing.T) {
+		path := "/v1/files?model=gpt-4o-mini&limit=10"
+		p := &retrieveFileContentProcessorRouterFilter{
+			requestHeaders: map[string]string{":method": "GET", ":path": path},
+			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		}
+
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		headersResp, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
+		require.True(t, ok)
+		require.True(t, headersResp.RequestHeaders.Response.ClearRouteCache)
+
+		mutatedHeaders := headerValueOptionsToMap(headersResp.RequestHeaders.Response.HeaderMutation.SetHeaders)
+		require.Equal(t, "gpt-4o-mini", mutatedHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.NotContains(t, mutatedHeaders, internalapi.DecodedFileIDHeaderKey)
+		require.NotContains(t, mutatedHeaders, internalapi.OriginalFileIDHeaderKey)
+		require.Equal(t, path, mutatedHeaders[internalapi.OriginalPathHeader])
+		require.Equal(t, path, mutatedHeaders[internalapi.EnvoyOriginalPathHeader])
+
+		require.Equal(t, "gpt-4o-mini", string(p.originalModel))
+		require.Equal(t, "gpt-4o-mini", p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.NotContains(t, p.requestHeaders, internalapi.DecodedFileIDHeaderKey)
+		require.NotContains(t, p.requestHeaders, internalapi.OriginalFileIDHeaderKey)
+	})
+
+	t.Run("list files request without model returns user-facing error", func(t *testing.T) {
+		p := &retrieveFileContentProcessorRouterFilter{
+			requestHeaders: map[string]string{":method": "GET", ":path": "/v1/files?limit=10"},
+			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		}
+
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+		require.True(t, ok)
+		require.Equal(t, typev3.StatusCode(400), immediateResp.ImmediateResponse.Status.Code)
+		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"missing required 'model' query parameter for /v1/files"}}`, string(immediateResp.ImmediateResponse.Body))
+	})
+
 	t.Run("file request resolves model and path metadata", func(t *testing.T) {
 		fileID := translator.EncodeIDWithModel("file-abc123", "gpt-4o-mini", "file")
 		path := "/v1/files/" + fileID + "/content?download=1"
