@@ -701,49 +701,70 @@ func mergeDynamicMetadata(base, extra *structpb.Struct) *structpb.Struct {
 	return base
 }
 
+// evalRuntimeRequestCost computes the cost value for a single runtime cost rule.
+func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint32, error) {
+	var cost uint32
+	switch rc.Type {
+	case filterapi.LLMRequestCostTypeInputToken:
+		cost, _ = costs.InputTokens()
+	case filterapi.LLMRequestCostTypeCachedInputToken:
+		cost, _ = costs.CachedInputTokens()
+	case filterapi.LLMRequestCostTypeCacheCreationInputToken:
+		cost, _ = costs.CacheCreationInputTokens()
+	case filterapi.LLMRequestCostTypeOutputToken:
+		cost, _ = costs.OutputTokens()
+	case filterapi.LLMRequestCostTypeTotalToken:
+		cost, _ = costs.TotalTokens()
+	case filterapi.LLMRequestCostTypeCEL:
+		in, _ := costs.InputTokens()
+		cachedIn, _ := costs.CachedInputTokens()
+		cacheCreation, _ := costs.CacheCreationInputTokens()
+		out, _ := costs.OutputTokens()
+		total, _ := costs.TotalTokens()
+		costU64, err := llmcostcel.EvaluateProgram(
+			rc.CELProg,
+			requestHeaders[internalapi.ModelNameHeaderKeyDefault],
+			backendName,
+			routeName,
+			in,
+			cachedIn,
+			cacheCreation,
+			out,
+			total,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("failed to evaluate CEL expression: %w", err)
+		}
+		cost = uint32(costU64) //nolint:gosec
+	default:
+		return 0, fmt.Errorf("unknown request cost kind: %s", rc.Type)
+	}
+	return cost, nil
+}
+
+// routeMatchesCost returns true if the cost rule applies to this request (wildcard or same route).
+func routeMatchesCost(costRouteName, requestRouteName string) bool {
+	return costRouteName == "" || costRouteName == requestRouteName
+}
+
 // buildDynamicMetadata creates metadata for rate limiting and cost tracking.
 // This function is called by the upstream filter only at the end of the stream (body.EndOfStream=true)
 // when the response is successfully completed. It is not called for failed requests or partial responses.
 // The metadata includes token usage costs and model information for downstream processing.
+//
+// The controller guarantees at most one entry per (metadataKey, routeName) pair, so a simple
+// forward scan suffices: for each row that matches the request route, evaluate and write.
+// Rows scoped to a different route are skipped entirely.
 func buildDynamicMetadata(requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (*structpb.Struct, error) {
 	metadata := make(map[string]*structpb.Value, len(requestCosts)+3)
 	for i := range requestCosts {
 		rc := &requestCosts[i]
-		var cost uint32
-		switch rc.Type {
-		case filterapi.LLMRequestCostTypeInputToken:
-			cost, _ = costs.InputTokens()
-		case filterapi.LLMRequestCostTypeCachedInputToken:
-			cost, _ = costs.CachedInputTokens()
-		case filterapi.LLMRequestCostTypeCacheCreationInputToken:
-			cost, _ = costs.CacheCreationInputTokens()
-		case filterapi.LLMRequestCostTypeOutputToken:
-			cost, _ = costs.OutputTokens()
-		case filterapi.LLMRequestCostTypeTotalToken:
-			cost, _ = costs.TotalTokens()
-		case filterapi.LLMRequestCostTypeCEL:
-			in, _ := costs.InputTokens()
-			cachedIn, _ := costs.CachedInputTokens()
-			cacheCreation, _ := costs.CacheCreationInputTokens()
-			out, _ := costs.OutputTokens()
-			total, _ := costs.TotalTokens()
-			costU64, err := llmcostcel.EvaluateProgram(
-				rc.CELProg,
-				requestHeaders[internalapi.ModelNameHeaderKeyDefault],
-				backendName,
-				routeName,
-				in,
-				cachedIn,
-				cacheCreation,
-				out,
-				total,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
-			}
-			cost = uint32(costU64) //nolint:gosec
-		default:
-			return nil, fmt.Errorf("unknown request cost kind: %s", rc.Type)
+		if !routeMatchesCost(rc.RouteName, routeName) {
+			continue
+		}
+		cost, err := evalRuntimeRequestCost(rc, costs, requestHeaders, backendName, routeName)
+		if err != nil {
+			return nil, err
 		}
 		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
 	}

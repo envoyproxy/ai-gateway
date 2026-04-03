@@ -69,7 +69,7 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 		backends[b.Name] = &RuntimeBackend{Backend: b, Handler: h}
 	}
 
-	// Compile CEL programs for global LLMRequestCosts.
+	// Compile CEL programs for LLMRequestCosts (including per-route rows).
 	costs := make([]RuntimeRequestCost, 0, len(config.LLMRequestCosts))
 	for i := range config.LLMRequestCosts {
 		c := &config.LLMRequestCosts[i]

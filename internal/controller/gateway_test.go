@@ -35,6 +35,14 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
 
+// requireLLMRequestCostsEqual asserts two LLMRequestCost slices are equal, printing a go-cmp diff on failure.
+func requireLLMRequestCostsEqual(t *testing.T, want, got []filterapi.LLMRequestCost) {
+	t.Helper()
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Fatalf("LLMRequestCosts not equal (-want +got):\n%s", diff)
+	}
+}
+
 func TestGatewayController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	fakeKube := fake2.NewClientset()
@@ -204,7 +212,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "orange"}}},
 				},
 				LLMRequestCosts: []aigv1b1.LLMRequestCost{
-					{MetadataKey: "foo", Type: aigv1b1.LLMRequestCostTypeInputToken}, // This should be ignored as it has the duplicate key.
+					{MetadataKey: "foo", Type: aigv1b1.LLMRequestCostTypeInputToken}, // Same metadataKey as route1; scoped to this route in filter config.
 					{MetadataKey: "cat", Type: aigv1b1.LLMRequestCostTypeCEL, CEL: ptr.To(`backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`)},
 				},
 			},
@@ -272,32 +280,28 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		var fc filterapi.Config
 		require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
 		require.Equal(t, "dev", fc.Version)
-		require.Len(t, fc.LLMRequestCosts, 6)
-		costByMetadata := map[string]filterapi.LLMRequestCost{}
-		for _, cost := range fc.LLMRequestCosts {
-			costByMetadata[cost.MetadataKey] = cost
+		wantLLMRequestCosts := []filterapi.LLMRequestCost{
+			{MetadataKey: "foo", RouteName: "ns/route1", Type: filterapi.LLMRequestCostTypeInputToken},
+			{MetadataKey: "bar", RouteName: "ns/route1", Type: filterapi.LLMRequestCostTypeOutputToken},
+			{MetadataKey: "baz", RouteName: "ns/route1", Type: filterapi.LLMRequestCostTypeTotalToken},
+			{MetadataKey: "qux", RouteName: "ns/route1", Type: filterapi.LLMRequestCostTypeCachedInputToken},
+			{MetadataKey: "zoo", RouteName: "ns/route1", Type: filterapi.LLMRequestCostTypeCacheCreationInputToken},
+			{MetadataKey: "foo", RouteName: "ns/route2", Type: filterapi.LLMRequestCostTypeInputToken},
+			{
+				MetadataKey: "cat",
+				RouteName:   "ns/route2",
+				Type:        filterapi.LLMRequestCostTypeCEL,
+				CEL:         `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`,
+			},
 		}
-		require.Len(t, costByMetadata, 6)
-		fooCost := costByMetadata["foo"]
-		require.Equal(t, filterapi.LLMRequestCostTypeCEL, fooCost.Type)
-		require.Contains(t, fooCost.CEL, "route_name == 'ns/route1' ? (uint(input_tokens))")
-		require.Contains(t, fooCost.CEL, "route_name == 'ns/route2' ? (uint(input_tokens))")
-		fooProg, err := llmcostcel.NewProgram(fooCost.CEL)
-		require.NoError(t, err)
-		fooVal, err := llmcostcel.EvaluateProgram(fooProg, "model", "any-backend", "ns/route1", 3, 0, 0, 4, 7)
-		require.NoError(t, err)
-		require.Equal(t, uint64(3), fooVal)
-		fooVal, err = llmcostcel.EvaluateProgram(fooProg, "model", "any-backend", "ns/route2", 3, 0, 0, 4, 7)
-		require.NoError(t, err)
-		require.Equal(t, uint64(3), fooVal)
-		fooVal, err = llmcostcel.EvaluateProgram(fooProg, "model", "unknown-backend", "unknown-route", 3, 0, 0, 4, 7)
-		require.NoError(t, err)
-		require.Equal(t, uint64(0), fooVal)
+		requireLLMRequestCostsEqual(t, wantLLMRequestCosts, fc.LLMRequestCosts)
 
-		catCost := costByMetadata["cat"]
-		require.Equal(t, filterapi.LLMRequestCostTypeCEL, catCost.Type)
-		require.Contains(t, catCost.CEL, "route_name == 'ns/route2'")
-		require.Contains(t, catCost.CEL, "backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens")
+		catProg, err := llmcostcel.NewProgram(wantLLMRequestCosts[6].CEL)
+		require.NoError(t, err)
+		catVal, err := llmcostcel.EvaluateProgram(catProg, "model", "foo.default", "ns/route2", 3, 0, 0, 4, 7)
+		require.NoError(t, err)
+		require.Equal(t, uint64(7), catVal)
+
 		require.Len(t, fc.Models, 1)
 		require.Equal(t, "mymodel", fc.Models[0].Name)
 
@@ -310,7 +314,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 }
 
 // TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostAggregation verifies that
-// route-level costs are aggregated into a single route-level expression per metadata key.
+// routes sharing the same metadataKey each get their own filter-config row (scoped by routeName).
 func TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostAggregation(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
@@ -380,27 +384,34 @@ func TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostA
 	var fc filterapi.Config
 	require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
 
-	// Verify we have two backends and route-level costs only.
+	// Verify we have two backends and one filter-config row per route (same metadataKey).
 	require.Len(t, fc.Backends, 2, "expected 2 backends")
-	require.Len(t, fc.LLMRequestCosts, 1, "global costs should have a single aggregated entry")
-	require.Equal(t, "billing_charges", fc.LLMRequestCosts[0].MetadataKey)
-	require.Equal(t, filterapi.LLMRequestCostTypeCEL, fc.LLMRequestCosts[0].Type)
-	aggregatedExpr := fc.LLMRequestCosts[0].CEL
+	wantLLMRequestCosts := []filterapi.LLMRequestCost{
+		{
+			MetadataKey: "billing_charges",
+			RouteName:   "ns/free-model-route",
+			Type:        filterapi.LLMRequestCostTypeCEL,
+			CEL:         "0",
+		},
+		{
+			MetadataKey: "billing_charges",
+			RouteName:   "ns/paid-model-route",
+			Type:        filterapi.LLMRequestCostTypeCEL,
+			CEL:         "input_tokens + output_tokens",
+		},
+	}
+	requireLLMRequestCostsEqual(t, wantLLMRequestCosts, fc.LLMRequestCosts)
 
-	require.Contains(t, aggregatedExpr, "route_name == 'ns/free-model-route' ? (uint(0))")
-	require.Contains(t, aggregatedExpr, "route_name == 'ns/paid-model-route' ? (uint(input_tokens + output_tokens))")
-
-	prog, err := llmcostcel.NewProgram(aggregatedExpr)
+	freeProg, err := llmcostcel.NewProgram(wantLLMRequestCosts[0].CEL)
 	require.NoError(t, err)
-	val, err := llmcostcel.EvaluateProgram(prog, "model", "free-backend", "ns/free-model-route", 10, 0, 0, 5, 15)
+	val, err := llmcostcel.EvaluateProgram(freeProg, "model", "free-backend", "ns/free-model-route", 10, 0, 0, 5, 15)
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), val)
-	val, err = llmcostcel.EvaluateProgram(prog, "model", "paid-backend", "ns/paid-model-route", 10, 0, 0, 5, 15)
+	paidProg, err := llmcostcel.NewProgram(wantLLMRequestCosts[1].CEL)
+	require.NoError(t, err)
+	val, err = llmcostcel.EvaluateProgram(paidProg, "model", "paid-backend", "ns/paid-model-route", 10, 0, 0, 5, 15)
 	require.NoError(t, err)
 	require.Equal(t, uint64(15), val)
-	val, err = llmcostcel.EvaluateProgram(prog, "model", "other-backend", "other-route", 10, 0, 0, 5, 15)
-	require.NoError(t, err)
-	require.Equal(t, uint64(0), val)
 }
 
 // TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostAggregation_DuplicateMetadataKey
@@ -448,13 +459,15 @@ func TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostA
 	require.True(t, ok)
 	var fc filterapi.Config
 	require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
-	require.Len(t, fc.LLMRequestCosts, 1)
-
-	prog, err := llmcostcel.NewProgram(fc.LLMRequestCosts[0].CEL)
-	require.NoError(t, err)
-	val, err := llmcostcel.EvaluateProgram(prog, "model", "test-backend", "ns/route-with-duplicate-metadata", 10, 0, 0, 5, 15)
-	require.NoError(t, err)
-	require.Equal(t, uint64(5), val, "duplicate metadata key should use the last definition (OutputToken)")
+	// Controller deduplicates same (metadataKey, routeName): last definition wins.
+	wantLLMRequestCosts := []filterapi.LLMRequestCost{
+		{
+			MetadataKey: "billing_charges",
+			RouteName:   "ns/route-with-duplicate-metadata",
+			Type:        filterapi.LLMRequestCostTypeOutputToken,
+		},
+	}
+	requireLLMRequestCostsEqual(t, wantLLMRequestCosts, fc.LLMRequestCosts)
 }
 
 // TestGatewayController_reconcileFilterConfigSecret_InvalidCELExpression tests that invalid CEL

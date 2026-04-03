@@ -1408,3 +1408,80 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 		require.Contains(t, retryResult, "messages", "Bedrock 'messages' field should be present on retry")
 	})
 }
+
+func TestBuildDynamicMetadata_routeScoped(t *testing.T) {
+	hdr := map[string]string{internalapi.ModelNameHeaderKeyDefault: "m"}
+
+	tests := []struct {
+		name           string
+		requestCosts   []filterapi.RuntimeRequestCost
+		setupUsage     func(*metrics.TokenUsage)
+		requestHeaders map[string]string
+		backendName    string
+		routeName      string
+		wantCostValues map[string]float64
+		wantAbsent     []string
+	}{
+		{
+			name: "route name mismatch key absent",
+			requestCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "k", RouteName: "ns/other", Type: filterapi.LLMRequestCostTypeInputToken}},
+			},
+			setupUsage: func(u *metrics.TokenUsage) {
+				u.SetInputTokens(10)
+			},
+			requestHeaders: hdr,
+			backendName:    "be",
+			routeName:      "ns/this",
+			wantAbsent:     []string{"k"},
+		},
+		{
+			name: "wildcard route name matches",
+			requestCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "k", Type: filterapi.LLMRequestCostTypeInputToken}},
+			},
+			setupUsage: func(u *metrics.TokenUsage) {
+				u.SetInputTokens(7)
+			},
+			requestHeaders: hdr,
+			backendName:    "be",
+			routeName:      "ns/any",
+			wantCostValues: map[string]float64{"k": 7},
+		},
+		{
+			name: "two routes same key different route names",
+			requestCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "billing", RouteName: "ns/free", Type: filterapi.LLMRequestCostTypeTotalToken}},
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "billing", RouteName: "ns/paid", Type: filterapi.LLMRequestCostTypeInputToken}},
+			},
+			setupUsage: func(u *metrics.TokenUsage) {
+				u.SetInputTokens(3)
+				u.SetTotalTokens(99)
+			},
+			requestHeaders: hdr,
+			backendName:    "be",
+			routeName:      "ns/paid",
+			wantCostValues: map[string]float64{"billing": 3},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tu metrics.TokenUsage
+			if tt.setupUsage != nil {
+				tt.setupUsage(&tu)
+			}
+			md, err := buildDynamicMetadata(tt.requestCosts, &tu, tt.requestHeaders, tt.backendName, tt.routeName)
+			require.NoError(t, err)
+
+			ns := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
+			for k, want := range tt.wantCostValues {
+				require.Equal(t, want, ns[k].GetNumberValue(), "key %q", k)
+			}
+			for _, k := range tt.wantAbsent {
+				_, exists := ns[k]
+				require.False(t, exists, "key %q should be absent from metadata", k)
+			}
+		})
+	}
+}

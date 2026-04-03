@@ -63,6 +63,9 @@ type Model struct {
 type LLMRequestCost struct {
 	// MetadataKey is the key of the metadata storing the request cost.
 	MetadataKey string `json:"metadataKey"`
+	// RouteName scopes this cost to a single AIGatewayRoute (format "namespace/name").
+	// When empty, the cost applies to any request (wildcard). The controller sets this for each route.
+	RouteName string `json:"routeName,omitempty"`
 	// Type is the kind of the request cost calculation.
 	Type LLMRequestCostType `json:"type"`
 	// CEL is the CEL expression to calculate the cost of the request.

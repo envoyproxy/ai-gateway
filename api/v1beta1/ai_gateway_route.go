@@ -178,8 +178,9 @@ type AIGatewayRouteSpec struct {
 	// ```
 	//
 	// Note that when multiple AIGatewayRoute resources are attached to the same Gateway, and
-	// different costs are configured for the same metadata key, the ai-gateway will pick one of them
-	// to configure the metadata key in the generated HTTPRoute, and ignore the rest.
+	// different costs are configured for the same metadata key, each route's rule is carried in
+	// the filter configuration with the route identity; the data plane selects the matching rule
+	// per request (by route), so each route can define its own cost for the same metadata key.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=36
