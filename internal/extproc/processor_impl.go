@@ -719,12 +719,15 @@ func buildDynamicMetadata(config *filterapi.RuntimeConfig, costs *metrics.TokenU
 			cost, _ = costs.OutputTokens()
 		case filterapi.LLMRequestCostTypeTotalToken:
 			cost, _ = costs.TotalTokens()
+		case filterapi.LLMRequestCostTypeReasoningToken:
+			cost, _ = costs.ReasoningTokens()
 		case filterapi.LLMRequestCostTypeCEL:
 			in, _ := costs.InputTokens()
 			cachedIn, _ := costs.CachedInputTokens()
 			cacheCreation, _ := costs.CacheCreationInputTokens()
 			out, _ := costs.OutputTokens()
 			total, _ := costs.TotalTokens()
+			reasoning, _ := costs.ReasoningTokens()
 			costU64, err := llmcostcel.EvaluateProgram(
 				rc.CELProg,
 				requestHeaders[internalapi.ModelNameHeaderKeyDefault],
@@ -734,6 +737,7 @@ func buildDynamicMetadata(config *filterapi.RuntimeConfig, costs *metrics.TokenU
 				cacheCreation,
 				out,
 				total,
+				reasoning,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)

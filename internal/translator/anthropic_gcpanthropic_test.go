@@ -463,7 +463,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_ZeroTokenUsage(t *testin
 	_, _, tokenUsage, _, err := translator.ResponseBody(respHeaders, bodyReader, true, nil)
 	require.NoError(t, err)
 
-	expected := tokenUsageFrom(0, 0, 0, 0, 0)
+	expected := tokenUsageFrom(0, 0, 0, 0, 0, -1)
 	assert.Equal(t, expected, tokenUsage)
 }
 
@@ -478,31 +478,31 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingTokenUsage(t *t
 			name:          "regular streaming chunk without usage",
 			chunk:         "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" to me.\"}}\n\n",
 			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(-1, -1, -1, -1, -1),
+			expectedUsage: tokenUsageFrom(-1, -1, -1, -1, -1, -1),
 		},
 		{
 			name:          "message_delta chunk with token usage",
 			chunk:         "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":84}}\n\n",
 			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(0, 0, 0, 84, 84),
+			expectedUsage: tokenUsageFrom(0, 0, 0, 84, 84, -1),
 		},
 		{
 			name:          "message_stop chunk without usage",
 			chunk:         "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(-1, -1, -1, -1, -1),
+			expectedUsage: tokenUsageFrom(-1, -1, -1, -1, -1, -1),
 		},
 		{
 			name:          "invalid json chunk",
 			chunk:         "event: invalid\ndata: {\"invalid\": \"json\"}\n\n",
 			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(-1, -1, -1, -1, -1),
+			expectedUsage: tokenUsageFrom(-1, -1, -1, -1, -1, -1),
 		},
 		{
 			name:          "message_delta with decimal output_tokens",
 			chunk:         "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":42.0}}\n\n",
 			endOfStream:   false,
-			expectedUsage: tokenUsageFrom(0, 0, 0, 42, 42),
+			expectedUsage: tokenUsageFrom(0, 0, 0, 42, 42, -1),
 		},
 	}
 
@@ -541,12 +541,12 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 		{
 			name:          "message_delta without usage field",
 			chunk:         "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n",
-			expectedUsage: tokenUsageFrom(0, 0, 0, 0, 0),
+			expectedUsage: tokenUsageFrom(0, 0, 0, 0, 0, -1),
 		},
 		{
 			name:          "invalid json in data",
 			chunk:         "event: message_start\ndata: {invalid json}\n\n",
-			expectedUsage: tokenUsageFrom(-1, -1, -1, -1, -1),
+			expectedUsage: tokenUsageFrom(-1, -1, -1, -1, -1, -1),
 		},
 	}
 
@@ -566,7 +566,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases(t *te
 	}
 }
 
-func tokenUsageFrom(in, cachedInput, cacheCreationInput, out, total int32) metrics.TokenUsage {
+func tokenUsageFrom(in, cachedInput, cacheCreationInput, out, total, reasoning int32) metrics.TokenUsage {
 	var usage metrics.TokenUsage
 	if in >= 0 {
 		usage.SetInputTokens(uint32(in))
@@ -582,6 +582,9 @@ func tokenUsageFrom(in, cachedInput, cacheCreationInput, out, total int32) metri
 	}
 	if total >= 0 {
 		usage.SetTotalTokens(uint32(total))
+	}
+	if reasoning >= 0 {
+		usage.SetReasoningTokens(uint32(reasoning))
 	}
 	return usage
 }

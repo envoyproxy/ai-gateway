@@ -913,7 +913,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 35
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(10, 10, -1, 25, 35),
+			wantTokenUsage: tokenUsageFrom(10, 10, -1, 25, 35, 10),
 		},
 		{
 			name: "response with safety ratings",
@@ -993,7 +993,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 20
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(8, 0, -1, 12, 20),
+			wantTokenUsage: tokenUsageFrom(8, 0, -1, 12, 20, 0),
 		},
 		{
 			name: "empty response",
@@ -1005,7 +1005,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantError:      false,
 			wantHeaderMut:  []internalapi.Header{{contentLengthHeaderName, "28"}},
 			wantBodyMut:    []byte(`{"object":"chat.completion"}`),
-			wantTokenUsage: tokenUsageFrom(0, -1, -1, 0, 0),
+			wantTokenUsage: tokenUsageFrom(0, -1, -1, 0, 0, -1),
 		},
 		{
 			name: "single stream chunk response",
@@ -1025,7 +1025,7 @@ data: {"choices":[],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8), // Does not support cache creation.
+			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8, 0), // Does not support cache creation.
 		},
 		{
 			name: "response with model version field",
@@ -1080,7 +1080,7 @@ data: [DONE]
         "total_tokens": 14
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(6, 0, -1, 8, 14), // Does not support Cache Creation.
+			wantTokenUsage: tokenUsageFrom(6, 0, -1, 8, 14, 0), // Does not support Cache Creation.
 		},
 
 		{
@@ -1149,7 +1149,7 @@ data: [DONE]
         "total_tokens": 20
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(8, 0, -1, 12, 20), // Does not support Cache Creation.
+			wantTokenUsage: tokenUsageFrom(8, 0, -1, 12, 20, 0), // Does not support Cache Creation.
 		},
 		{
 			name: "response with thought summary",
@@ -1214,7 +1214,7 @@ data: [DONE]
     }
 }`),
 
-			wantTokenUsage: tokenUsageFrom(10, 10, -1, 25, 35), // Does not support Cache Creation.
+			wantTokenUsage: tokenUsageFrom(10, 10, -1, 25, 35, 10), // Does not support Cache Creation.
 		},
 		{
 			name: "stream chunks with thought summary",
@@ -1236,7 +1236,7 @@ data: {"choices":[],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8), // Does not support Cache Creation.
+			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8, 0), // Does not support Cache Creation.
 		},
 		{
 			name: "stream chunks with thought signature on text part",
@@ -1258,7 +1258,7 @@ data: {"choices":[],"object":"chat.completion.chunk","usage":{"prompt_tokens":10
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(10, 0, -1, 8, 18),
+			wantTokenUsage: tokenUsageFrom(10, 0, -1, 8, 18, 0),
 		},
 	}
 
@@ -1377,7 +1377,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 			print(bodyStr)
 			require.Contains(t, bodyStr, "data: ")
 			require.Contains(t, bodyStr, "chat.completion.chunk")
-			require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), tokenUsage) // No usage in this test chunk.
+			require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), tokenUsage) // No usage in this test chunk.
 		})
 	}
 }

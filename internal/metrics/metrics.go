@@ -151,8 +151,10 @@ type TokenUsage struct {
 	cachedInputTokens uint32
 	// CacheCreationInputTokens is the total number of tokens written to cache.
 	cacheCreationInputTokens uint32
+	// ReasoningTokens is the number of reasoning tokens consumed.
+	reasoningTokens uint32
 
-	inputTokenSet, outputTokenSet, totalTokenSet, cachedInputTokenSet, cacheCreationInputTokenSet bool
+	inputTokenSet, outputTokenSet, totalTokenSet, cachedInputTokenSet, cacheCreationInputTokenSet, reasoningTokenSet bool
 }
 
 // InputTokens returns the number of input tokens and whether it was set.
@@ -210,6 +212,17 @@ func (u *TokenUsage) SetCacheCreationInputTokens(tokens uint32) {
 	u.cacheCreationInputTokenSet = true
 }
 
+// ReasoningTokens returns the number of reasoning tokens and whether it was set.
+func (u *TokenUsage) ReasoningTokens() (uint32, bool) {
+	return u.reasoningTokens, u.reasoningTokenSet
+}
+
+// SetReasoningTokens sets the number of reasoning tokens and marks the field as set.
+func (u *TokenUsage) SetReasoningTokens(tokens uint32) {
+	u.reasoningTokens = tokens
+	u.reasoningTokenSet = true
+}
+
 // AddInputTokens increments the recorded input tokens and marks the field as set.
 func (u *TokenUsage) AddInputTokens(tokens uint32) {
 	u.inputTokenSet = true
@@ -234,6 +247,12 @@ func (u *TokenUsage) AddCacheCreationInputTokens(tokens uint32) {
 	u.cacheCreationInputTokens += tokens
 }
 
+// AddReasoningTokens increments the recorded reasoning tokens and marks the field as set.
+func (u *TokenUsage) AddReasoningTokens(tokens uint32) {
+	u.reasoningTokenSet = true
+	u.reasoningTokens += tokens
+}
+
 // Override updates the TokenUsage fields with values from another TokenUsage instance.
 // Only fields that are marked as set in the other instance will override the current values.
 func (u *TokenUsage) Override(other TokenUsage) {
@@ -256,6 +275,10 @@ func (u *TokenUsage) Override(other TokenUsage) {
 	if other.cacheCreationInputTokenSet {
 		u.cacheCreationInputTokens = other.cacheCreationInputTokens
 		u.cacheCreationInputTokenSet = true
+	}
+	if other.reasoningTokenSet {
+		u.reasoningTokens = other.reasoningTokens
+		u.reasoningTokenSet = true
 	}
 }
 
