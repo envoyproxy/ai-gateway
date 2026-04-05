@@ -821,7 +821,7 @@ func (m *mcpRequestContext) proxyResponseBody(ctx context.Context, s *session, w
 		// send SSE data despite the content type). Fall through to the SSE parser
 		// using the already-read body bytes since resp.Body is now drained.
 		m.l.Info("response Content-Type is application/json but body is not valid JSON-RPC, falling back to SSE parsing",
-			slog.String("backend", string(backend.Name)))
+			slog.String("backend", backend.Name))
 		sseReader = bytes.NewReader(body)
 	}
 
