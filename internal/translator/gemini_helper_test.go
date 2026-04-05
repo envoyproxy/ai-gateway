@@ -2845,3 +2845,89 @@ func TestMapReasoningEffortToThinkingLevel(t *testing.T) {
 		})
 	}
 }
+
+func TestGeminiCandidatesToOpenAIChoices_ReasoningContent(t *testing.T) {
+	tests := []struct {
+		name                     string
+		candidates               []*genai.Candidate
+		expectedReasoningContent any
+		expectContentNil         bool
+	}{
+		{
+			name: "reasoning_content is a plain string not a nested struct",
+			candidates: []*genai.Candidate{
+				{
+					Content: &genai.Content{
+						Parts: []*genai.Part{
+							{Text: "let me think...", Thought: true},
+							{Text: "the answer is 42"},
+						},
+					},
+				},
+			},
+			expectedReasoningContent: "let me think...",
+		},
+		{
+			name: "no thought parts means no reasoning content",
+			candidates: []*genai.Candidate{
+				{
+					Content: &genai.Content{
+						Parts: []*genai.Part{
+							{Text: "the answer is 42"},
+						},
+					},
+				},
+			},
+			expectedReasoningContent: nil,
+		},
+		{
+			name: "tool calls do not break reasoning_content and content is nil",
+			candidates: []*genai.Candidate{
+				{
+					Content: &genai.Content{
+						Parts: []*genai.Part{
+							{Text: "thinking...", Thought: true},
+							// mock tool call part depending on your structure
+							{
+								FunctionCall: &genai.FunctionCall{
+									Name: "testFunc",
+									Args: map[string]any{"x": 1},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedReasoningContent: "thinking...",
+			expectContentNil:         true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			choices, err := geminiCandidatesToOpenAIChoices(tc.candidates, responseModeNone)
+			require.NoError(t, err)
+			require.Len(t, choices, 1)
+
+			msg := choices[0].Message
+
+			// Check reasoning_content
+			if tc.expectedReasoningContent == nil {
+				assert.Nil(t, msg.ReasoningContent)
+			} else {
+				require.NotNil(t, msg.ReasoningContent)
+
+				// Ensuring it's a string (not struct)
+				str, ok := msg.ReasoningContent.Value.(string)
+				require.True(t, ok, "reasoning_content should be a string")
+
+				assert.Equal(t, tc.expectedReasoningContent, str)
+			}
+
+			// Check content behavior with tool calls
+			if tc.expectContentNil {
+				assert.Nil(t, msg.Content)
+			}
+		})
+	}
+}
