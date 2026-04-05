@@ -14,6 +14,7 @@ import (
 	"io"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -756,6 +757,16 @@ func buildDynamicMetadata(config *filterapi.RuntimeConfig, costs *metrics.TokenU
 
 	if backendName != "" {
 		metadata["backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: backendName}}
+		// ai_service_backend_name stores the short "namespace/name" format extracted
+		// from the full PerRouteRuleRefBackendName ("{namespace}/{name}/route/...").
+		// This is used by the quota rate limit descriptor actions to match the
+		// rate limit service config which keys on "namespace/backendName".
+		parts := strings.SplitN(backendName, "/", 3)
+		shortName := backendName
+		if len(parts) >= 2 {
+			shortName = parts[0] + "/" + parts[1]
+		}
+		metadata["ai_service_backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: shortName}}
 	}
 
 	if len(metadata) == 0 {
