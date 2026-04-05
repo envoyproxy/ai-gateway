@@ -24,6 +24,44 @@ func mustEncode(t *testing.T, m jsonrpc.Message) []byte {
 	return b
 }
 
+func TestTryDecodeJSONRPCMessage(t *testing.T) {
+	id, err := jsonrpc.MakeID("1")
+	require.NoError(t, err)
+	want := &jsonrpc.Response{ID: id, Result: []byte(`{"tools":[]}`)}
+	raw, err := jsonrpc.EncodeMessage(want)
+	require.NoError(t, err)
+
+	t.Run("valid JSON-RPC", func(t *testing.T) {
+		msg, ok := tryDecodeJSONRPCMessage(raw)
+		require.True(t, ok)
+		got, isResp := msg.(*jsonrpc.Response)
+		require.True(t, isResp)
+		require.Equal(t, want.ID, got.ID)
+	})
+	t.Run("BOM prefix stripped", func(t *testing.T) {
+		bomBody := append(append([]byte{}, utf8BOM...), raw...)
+		msg, ok := tryDecodeJSONRPCMessage(bomBody)
+		require.True(t, ok)
+		got, isResp := msg.(*jsonrpc.Response)
+		require.True(t, isResp)
+		require.Equal(t, want.ID, got.ID)
+	})
+	t.Run("leading whitespace stripped", func(t *testing.T) {
+		msg, ok := tryDecodeJSONRPCMessage(append([]byte("  \n"), raw...))
+		require.True(t, ok)
+		require.NotNil(t, msg)
+	})
+	t.Run("SSE body returns false", func(t *testing.T) {
+		sseBody := append(append([]byte("data: "), raw...), []byte("\n\n")...)
+		_, ok := tryDecodeJSONRPCMessage(sseBody)
+		require.False(t, ok)
+	})
+	t.Run("binary garbage returns false", func(t *testing.T) {
+		_, ok := tryDecodeJSONRPCMessage([]byte{0x13, 0x65, 0x70, 0x8c})
+		require.False(t, ok)
+	})
+}
+
 func TestSSEEventParser_SingleEvent(t *testing.T) {
 	id, err := jsonrpc.MakeID("1")
 	require.NoError(t, err)
