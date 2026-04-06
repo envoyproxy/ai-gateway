@@ -56,7 +56,7 @@ func (a *anthropicToAWSAnthropicTranslator) ResponseHeaders(headers map[string]s
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody] for Anthropic to AWS Bedrock Anthropic translation.
 // This handles the transformation from native Anthropic format to AWS Bedrock format.
 // https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-anthropic-claude-messages-request-response.html
-func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *anthropicschema.MessagesRequest, _ bool) (
+func (a *anthropicToAWSAnthropicTranslator) RequestBody(_ map[string]string, rawBody []byte, body *anthropicschema.MessagesRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	a.stream = body.Stream

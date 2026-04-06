@@ -13,6 +13,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
+	"net/textproto"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -8381,3 +8385,249 @@ const (
 	SpeechModelGPT4oMiniTTS         = "gpt-4o-mini-tts"
 	SpeechModelGPT4oMiniTTS20251215 = "gpt-4o-mini-tts-2025-12-15"
 )
+
+// OpenAI Files API
+
+type FileNewParams struct {
+	// The File object (not file name) to be uploaded.
+	File io.Reader `json:"file,omitzero"`
+	// The intended purpose of the uploaded file. One of:
+	//
+	// - `assistants`: Used in the Assistants API
+	// - `batch`: Used in the Batch API
+	// - `fine-tune`: Used for fine-tuning
+	// - `vision`: Images used for vision fine-tuning
+	// - `user_data`: Flexible file type for any purpose
+	// - `evals`: Used for eval data sets
+	//
+	// Any of "assistants", "batch", "fine-tune", "vision", "user_data", "evals".
+	Purpose FilePurpose `json:"purpose,omitzero"`
+	// The expiration policy for a file.
+	ExpiresAfter FileNewParamsExpiresAfter `json:"expires_after,omitzero"`
+	// Used for providing extra parameters that are not part of the standard OpenAI Files API.
+	// The ExtraBody field serves a special purpose in the AI Gateway context:
+	// it can carry a "model" field that the gateway uses to:
+	//   - Route the file upload request to the appropriate backend provider
+	//   - Encode/translate the returned file ID to a gateway-specific format,
+	//     ensuring the file can be referenced correctly in subsequent API calls
+	ExtraBody map[string]any `json:"extra_body,omitzero"`
+}
+
+func (f *FileNewParams) UnmarshalMultipart(data []byte, boundary string) error {
+	reader := multipart.NewReader(bytes.NewReader(data), boundary)
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		switch part.FormName() {
+		case "file":
+			f.File = part
+		case "purpose":
+			purpose, err := io.ReadAll(part)
+			if err != nil {
+				return err
+			}
+			f.Purpose = FilePurpose(purpose)
+		case "expires_after.anchor":
+			anchor, err := io.ReadAll(part)
+			if err != nil {
+				return err
+			}
+			f.ExpiresAfter.Anchor = CreatedAt(anchor)
+		case "expires_after.seconds":
+			seconds, err := io.ReadAll(part)
+			if err != nil {
+				return err
+			}
+			secondsParsed, err := strconv.ParseInt(string(seconds), 10, 64)
+			if err != nil {
+				return err
+			}
+			f.ExpiresAfter.Seconds = secondsParsed
+		default:
+			// handles any non standard extra parameters. e.g we are using
+			// model field for routing information.
+			extraBodyBytes, err := io.ReadAll(part)
+			if err != nil {
+				return err
+			}
+			extraBodyVal := any(extraBodyBytes)
+			if f.ExtraBody == nil {
+				f.ExtraBody = map[string]any{part.FormName(): extraBodyVal}
+			} else {
+				f.ExtraBody[part.FormName()] = extraBodyVal
+			}
+		}
+	}
+	return nil
+}
+
+var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
+func escapeQuotes(s string) string {
+	return quoteEscaper.Replace(s)
+}
+
+func (f FileNewParams) MarshalMultipart() ([]byte, string, error) {
+	buf := &bytes.Buffer{}
+	writer := multipart.NewWriter(buf)
+
+	if f.File == nil {
+		return nil, "", fmt.Errorf("file is required")
+	}
+	filename := "anonymous_file"
+	contentType := "application/octet-stream"
+	if named, ok := f.File.(interface{ Filename() string }); ok {
+		filename = named.Filename()
+	} else if named, ok := f.File.(interface{ Name() string }); ok {
+		filename = path.Base(named.Name())
+	}
+	if typed, ok := f.File.(interface{ ContentType() string }); ok {
+		contentType = typed.ContentType()
+	}
+
+	// Below is taken almost 1-for-1 from [multipart.CreateFormFile]
+	key := "file"
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, escapeQuotes(key), escapeQuotes(filename)))
+	h.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(h)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if _, err := io.Copy(part, f.File); err != nil {
+		return nil, "", err
+	}
+
+	if f.Purpose == "" {
+		return nil, "", fmt.Errorf("purpose is required")
+	}
+
+	if err := writer.WriteField("purpose", string(f.Purpose)); err != nil {
+		return nil, "", err
+	}
+
+	if f.ExpiresAfter.Anchor != "" {
+		if err := writer.WriteField("expires_after.anchor", string(f.ExpiresAfter.Anchor)); err != nil {
+			return nil, "", err
+		}
+	}
+
+	if f.ExpiresAfter.Seconds != 0 {
+		if err := writer.WriteField("expires_after.seconds", strconv.FormatInt(f.ExpiresAfter.Seconds, 10)); err != nil {
+			return nil, "", err
+		}
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, "", err
+	}
+
+	return buf.Bytes(), writer.FormDataContentType(), nil
+}
+
+// The intended purpose of the uploaded file. One of:
+//
+// - `assistants`: Used in the Assistants API
+// - `batch`: Used in the Batch API
+// - `fine-tune`: Used for fine-tuning
+// - `vision`: Images used for vision fine-tuning
+// - `user_data`: Flexible file type for any purpose
+// - `evals`: Used for eval data sets
+type FilePurpose string
+
+// https://github.com/openai/openai-go/blob/cbf83a69541f646ec84071a0040f3ca524c2238f/file.go#L247-L254
+const (
+	FilePurposeAssistants FilePurpose = "assistants"
+	FilePurposeBatch      FilePurpose = "batch"
+	FilePurposeFineTune   FilePurpose = "fine-tune"
+	FilePurposeVision     FilePurpose = "vision"
+	FilePurposeUserData   FilePurpose = "user_data"
+	FilePurposeEvals      FilePurpose = "evals"
+)
+
+type CreatedAt string
+
+// The expiration policy for a file.
+// The properties Anchor, Seconds are required.
+type FileNewParamsExpiresAfter struct {
+	// The number of seconds after the anchor time that the file will expire.
+	Seconds int64 `json:"seconds"`
+	// Anchor timestamp after which the expiration policy applies. Supported anchors:
+	// `created_at`.
+	Anchor CreatedAt `json:"anchor"`
+}
+
+// The `File` object represents a document that has been uploaded to upstream.
+type FileObject struct {
+	// The file identifier, which can be referenced in the API endpoints.
+	ID string `json:"id"`
+	// The size of the file, in bytes.
+	Bytes int64 `json:"bytes"`
+	// The Unix timestamp (in seconds) for when the file was created.
+	CreatedAt JSONUNIXTime `json:"created_at"`
+	// The name of the file.
+	Filename string `json:"filename"`
+	// The object type, which is always `file`.
+	Object string `json:"object"`
+	// The intended purpose of the file. Supported values are `assistants`,
+	// `assistants_output`, `batch`, `batch_output`, `fine-tune`, `fine-tune-results`,
+	// `vision`, and `user_data`.
+	//
+	// Any of "assistants", "assistants_output", "batch", "batch_output", "fine-tune",
+	// "fine-tune-results", "vision", "user_data".
+	Purpose FileObjectPurpose `json:"purpose"`
+	// Deprecated. The current status of the file, which can be either `uploaded`,
+	// `processed`, or `error`.
+	//
+	// Any of "uploaded", "processed", "error".
+	//
+	// Deprecated: deprecated
+	Status FileObjectStatus `json:"status"`
+	// The Unix timestamp (in seconds) for when the file will expire.
+	ExpiresAt JSONUNIXTime `json:"expires_at,omitzero"`
+	// Deprecated.
+	//
+	// Deprecated: deprecated
+	StatusDetails string `json:"status_details"`
+}
+
+// The intended purpose of the file. Supported values are `assistants`,
+// `assistants_output`, `batch`, `batch_output`, `fine-tune`, `fine-tune-results`,
+// `vision`, and `user_data`.
+type FileObjectPurpose string
+
+// https://github.com/openai/openai-go/blob/da6db3bace003b42c2465545f47401c1fb40c646/file.go#L217-L224
+const (
+	FileObjectPurposeAssistants       FileObjectPurpose = "assistants"
+	FileObjectPurposeAssistantsOutput FileObjectPurpose = "assistants_output"
+	FileObjectPurposeBatch            FileObjectPurpose = "batch"
+	FileObjectPurposeBatchOutput      FileObjectPurpose = "batch_output"
+	FileObjectPurposeFineTune         FileObjectPurpose = "fine-tune"
+	FileObjectPurposeFineTuneResults  FileObjectPurpose = "fine-tune-results"
+	FileObjectPurposeVision           FileObjectPurpose = "vision"
+	FileObjectPurposeUserData         FileObjectPurpose = "user_data"
+)
+
+// Deprecated. The current status of the file, which can be either `uploaded`,
+// `processed`, or `error`.
+type FileObjectStatus string
+
+const (
+	FileObjectStatusUploaded  FileObjectStatus = "uploaded"
+	FileObjectStatusProcessed FileObjectStatus = "processed"
+	FileObjectStatusError     FileObjectStatus = "error"
+)
+
+// The `FileDeleted` object represents the response from the API when a file is deleted.
+type FileDeleted struct {
+	ID      string `json:"id"`
+	Deleted bool   `json:"deleted"`
+	Object  string `json:"object"`
+}

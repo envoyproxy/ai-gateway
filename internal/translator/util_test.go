@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"encoding/base64"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -86,4 +87,96 @@ func TestSystemMsgToDeveloperMsg(t *testing.T) {
 	require.Equal(t, "test-system", developerMsg.Name)
 	require.Equal(t, openai.ChatMessageRoleDeveloper, developerMsg.Role)
 	require.Equal(t, openai.ContentUnion{Value: "You are a helpful assistant."}, developerMsg.Content)
+}
+
+func TestEncodeIDWithModel(t *testing.T) {
+	tests := []struct {
+		name      string
+		id        string
+		modelName string
+		idType    string
+		want      string
+	}{
+		{
+			name:      "encodes file id with file prefix",
+			id:        "file-abc123",
+			modelName: "gpt-4o-mini",
+			idType:    "file",
+			want:      "file-aWQ6ZmlsZS1hYmMxMjM7bW9kZWw6Z3B0LTRvLW1pbmk",
+		},
+		{
+			name:      "defaults to file prefix for unknown id type",
+			id:        "file-default",
+			modelName: "gpt-4.1-mini",
+			idType:    "unknown",
+			want:      "file-aWQ6ZmlsZS1kZWZhdWx0O21vZGVsOmdwdC00LjEtbWluaQ",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := EncodeIDWithModel(tc.id, tc.modelName, tc.idType)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestDecodeFileID(t *testing.T) {
+	tests := []struct {
+		name          string
+		encodedID     string
+		wantModelName string
+		wantID        string
+		expectErr     bool
+		expectedError string
+	}{
+		{
+			name:          "decodes valid file id",
+			encodedID:     "file-aWQ6ZmlsZS1hYmMxMjM7bW9kZWw6Z3B0LTRvLW1pbmk",
+			wantModelName: "gpt-4o-mini",
+			wantID:        "file-abc123",
+			expectErr:     false,
+		},
+		{
+			name:          "returns error on missing expected prefix",
+			encodedID:     "aWQ6ZmlsZS1hYmMxMjM7bW9kZWw6Z3B0LTRvLW1pbmk",
+			expectErr:     true,
+			expectedError: "invalid encoded ID format: missing expected prefix",
+		},
+		{
+			name:          "returns error on malformed base64",
+			encodedID:     "file-not@base64",
+			expectErr:     true,
+			expectedError: "failed to decode base64 part of the ID",
+		},
+		{
+			name:          "returns error on invalid decoded format",
+			encodedID:     FileIDPrefix + base64.RawURLEncoding.EncodeToString([]byte("id:file-abc123")),
+			expectErr:     true,
+			expectedError: "invalid decoded ID format: expected format 'id:<original_id>;model:<model_name>'",
+		},
+		{
+			name:          "returns error when model is missing",
+			encodedID:     FileIDPrefix + base64.RawURLEncoding.EncodeToString([]byte("id:file-abc123;model:")),
+			expectErr:     true,
+			expectedError: "model name not found in decoded Id",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			modelName, id, err := DecodeFileID(tc.encodedID)
+
+			if tc.expectErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedError)
+				require.Empty(t, modelName)
+				require.Empty(t, id)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.wantModelName, modelName)
+				require.Equal(t, tc.wantID, id)
+			}
+		})
+	}
 }

@@ -48,7 +48,7 @@ type anthropicToAnthropicTranslator struct {
 }
 
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody].
-func (a *anthropicToAnthropicTranslator) RequestBody(original []byte, body *anthropic.MessagesRequest, forceBodyMutation bool) (
+func (a *anthropicToAnthropicTranslator) RequestBody(_ map[string]string, original []byte, body *anthropic.MessagesRequest, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	a.stream = body.Stream

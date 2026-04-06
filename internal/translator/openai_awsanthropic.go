@@ -51,7 +51,7 @@ type openAIToAWSAnthropicTranslatorV1ChatCompletion struct {
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for AWS Anthropic.
-func (o *openAIToAWSAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
+func (o *openAIToAWSAnthropicTranslatorV1ChatCompletion) RequestBody(_ map[string]string, _ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	o.requestModel = openAIReq.Model

@@ -53,6 +53,10 @@ const (
 	MCPMetadataHeaderRequestID = MCPMetadataHeaderPrefix + "request-id"
 	// MCPMetadataHeaderMethod is the special header key used to pass the MCP method in the filter metadata.
 	MCPMetadataHeaderMethod = MCPMetadataHeaderPrefix + "method"
+	// OriginalFileIDHeaderKey is the header key used to store the original request file or batch id for openai files/batch api.
+	OriginalFileIDHeaderKey = EnvoyAIGatewayHeaderPrefix + "original-file-id"
+	// DecodedFileIDHeaderKey is the header key used to store the decoded file or batch id for openai files/batch api.
+	DecodedFileIDHeaderKey = EnvoyAIGatewayHeaderPrefix + "decoded-file-id"
 )
 
 // MCPInternalHeadersToMetadata maps special MCP headers to metadata keys.
