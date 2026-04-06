@@ -485,7 +485,7 @@ func (c *MCPRouteController) ensureMCPProxyBackend(ctx context.Context, mcpRoute
 }
 
 func mcpProxyBackendName(mcpRoute *aigv1a1.MCPRoute) string {
-	return fmt.Sprintf("%s-%s-mcp-proxy", mcpRoute.Namespace, mcpRoute.Name)
+	return fmt.Sprintf("%s%s-%s-mcp-proxy", internalapi.MCPGeneratedResourceCommonPrefix, mcpRoute.Namespace, mcpRoute.Name)
 }
 
 func mcpBackendRefFilterName(mcpRoute *aigv1a1.MCPRoute, backendName gwapiv1.ObjectName) string {
