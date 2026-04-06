@@ -117,11 +117,14 @@ func (c *QuotaPolicyController) syncQuotaPolicy(ctx context.Context, policy *aig
 	}
 
 	// Update cache and push merged configs to xDS.
+	// Hold the lock across both cache update and UpdateConfigs to prevent
+	// out-of-order execution where a later reconcile's UpdateConfigs could
+	// be overwritten by an earlier one completing after it.
 	cacheKey := fmt.Sprintf("%s/%s", policy.Namespace, policy.Name)
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.configCache[cacheKey] = configs
 	allConfigs := c.getMergedConfigsLocked()
-	c.mu.Unlock()
 
 	return c.rateLimitRunner.UpdateConfigs(ctx, allConfigs)
 }
@@ -131,9 +134,9 @@ func (c *QuotaPolicyController) syncQuotaPolicy(ctx context.Context, policy *aig
 func (c *QuotaPolicyController) deleteQuotaPolicyConfig(ctx context.Context, key client.ObjectKey) error {
 	cacheKey := fmt.Sprintf("%s/%s", key.Namespace, key.Name)
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	delete(c.configCache, cacheKey)
 	allConfigs := c.getMergedConfigsLocked()
-	c.mu.Unlock()
 
 	return c.rateLimitRunner.UpdateConfigs(ctx, allConfigs)
 }
