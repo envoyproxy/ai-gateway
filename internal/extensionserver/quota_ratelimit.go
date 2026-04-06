@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/ratelimit/translator"
 )
 
@@ -367,7 +368,7 @@ func (s *Server) clusterHasQuotaBackend(clusterName string, quotaBackendPolicies
 	}
 
 	// Fetch the AIGatewayRoute to get the actual backend refs.
-	var aigwRoute aigv1a1.AIGatewayRoute
+	var aigwRoute aigv1b1.AIGatewayRoute
 	if err := s.k8sClient.Get(context.Background(), client.ObjectKey{
 		Namespace: namespace,
 		Name:      routeName,
@@ -446,7 +447,7 @@ func (s *Server) backendKeysForCluster(clusterName string) []string {
 		return nil
 	}
 
-	var aigwRoute aigv1a1.AIGatewayRoute
+	var aigwRoute aigv1b1.AIGatewayRoute
 	if err := s.k8sClient.Get(context.Background(), client.ObjectKey{
 		Namespace: namespace,
 		Name:      routeName,
@@ -529,7 +530,7 @@ func baseDescriptorActions() []*routev3.RateLimit_Action {
 				Metadata: &routev3.RateLimit_Action_MetaData{
 					DescriptorKey: translator.BackendNameDescriptorKey,
 					MetadataKey: &metadatav3.MetadataKey{
-						Key: aigv1a1.AIGatewayFilterMetadataNamespace,
+						Key: aigv1b1.AIGatewayFilterMetadataNamespace,
 						Path: []*metadatav3.MetadataKey_PathSegment{{
 							Segment: &metadatav3.MetadataKey_PathSegment_Key{
 								Key: "ai_service_backend_name",
@@ -545,7 +546,7 @@ func baseDescriptorActions() []*routev3.RateLimit_Action {
 				Metadata: &routev3.RateLimit_Action_MetaData{
 					DescriptorKey: translator.ModelNameDescriptorKey,
 					MetadataKey: &metadatav3.MetadataKey{
-						Key: aigv1a1.AIGatewayFilterMetadataNamespace,
+						Key: aigv1b1.AIGatewayFilterMetadataNamespace,
 						Path: []*metadatav3.MetadataKey_PathSegment{{
 							Segment: &metadatav3.MetadataKey_PathSegment_Key{
 								Key: "model_name_override",
@@ -565,7 +566,7 @@ func baseDescriptorActions() []*routev3.RateLimit_Action {
 func quotaHitsAddend() *routev3.RateLimit_HitsAddend {
 	return &routev3.RateLimit_HitsAddend{
 		Format: fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s)%%",
-			aigv1a1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey),
+			aigv1b1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey),
 	}
 }
 

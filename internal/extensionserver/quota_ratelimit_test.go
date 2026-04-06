@@ -28,6 +28,7 @@ import (
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/ratelimit/translator"
 )
@@ -214,7 +215,7 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 		md := backendAction.GetMetadata()
 		require.NotNil(t, md)
 		require.Equal(t, translator.BackendNameDescriptorKey, md.DescriptorKey)
-		require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, md.MetadataKey.Key)
+		require.Equal(t, aigv1b1.AIGatewayFilterMetadataNamespace, md.MetadataKey.Key)
 		require.Len(t, md.MetadataKey.Path, 1)
 		require.Equal(t, "ai_service_backend_name", md.MetadataKey.Path[0].GetKey())
 		require.Equal(t, routev3.RateLimit_Action_MetaData_DYNAMIC, md.Source)
@@ -231,7 +232,7 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 		md := modelAction.GetMetadata()
 		require.NotNil(t, md, "model_name action should be a Metadata action, not RequestHeaders")
 		require.Equal(t, translator.ModelNameDescriptorKey, md.DescriptorKey)
-		require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, md.MetadataKey.Key)
+		require.Equal(t, aigv1b1.AIGatewayFilterMetadataNamespace, md.MetadataKey.Key)
 		require.Len(t, md.MetadataKey.Path, 1)
 		require.Equal(t, "model_name_override", md.MetadataKey.Path[0].GetKey())
 		require.Equal(t, routev3.RateLimit_Action_MetaData_DYNAMIC, md.Source)
@@ -260,7 +261,7 @@ func TestEnableQuotaRateLimitOnRoute(t *testing.T) {
 		for _, action := range perRoute.RateLimits[0].Actions {
 			md := action.GetMetadata()
 			require.NotNil(t, md)
-			require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, md.MetadataKey.Key)
+			require.Equal(t, aigv1b1.AIGatewayFilterMetadataNamespace, md.MetadataKey.Key)
 			require.Equal(t, routev3.RateLimit_Action_MetaData_DYNAMIC, md.Source)
 		}
 	})
@@ -349,7 +350,7 @@ func verifyMetadataAction(t *testing.T, action *routev3.RateLimit_Action, descri
 	md := action.GetMetadata()
 	require.NotNil(t, md, "expected Metadata action specifier")
 	require.Equal(t, descriptorKey, md.DescriptorKey)
-	require.Equal(t, aigv1a1.AIGatewayFilterMetadataNamespace, md.MetadataKey.Key)
+	require.Equal(t, aigv1b1.AIGatewayFilterMetadataNamespace, md.MetadataKey.Key)
 	require.Len(t, md.MetadataKey.Path, 1)
 	require.Equal(t, metadataPathKey, md.MetadataKey.Path[0].GetKey())
 	require.Equal(t, routev3.RateLimit_Action_MetaData_DYNAMIC, md.Source)
@@ -382,7 +383,7 @@ func TestEnableQuotaRateLimitOnRoute_DescriptorChain(t *testing.T) {
 func TestQuotaHitsAddend(t *testing.T) {
 	ha := quotaHitsAddend()
 	require.NotNil(t, ha)
-	expectedFormat := fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s)%%", aigv1a1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey)
+	expectedFormat := fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s)%%", aigv1b1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey)
 	require.Equal(t, expectedFormat, ha.Format)
 }
 
@@ -402,7 +403,7 @@ func TestEnableQuotaRateLimitOnRoute_HitsAddend(t *testing.T) {
 		// Stream-done entry: has HitsAddend and ApplyOnStreamDone.
 		streamDone := perRoute.RateLimits[1]
 		require.NotNil(t, streamDone.HitsAddend)
-		require.Equal(t, fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s)%%", aigv1a1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey), streamDone.HitsAddend.Format)
+		require.Equal(t, fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s)%%", aigv1b1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey), streamDone.HitsAddend.Format)
 		require.True(t, streamDone.ApplyOnStreamDone)
 	})
 
@@ -1299,7 +1300,7 @@ func aiGatewayRouteMetadata(t *testing.T) *corev3.Metadata {
 
 // newTestServerWithRoute creates a Server backed by a fake k8s client that contains
 // the given AIGatewayRoute and QuotaPolicy objects.
-func newTestServerWithRoute(t *testing.T, route *aigv1a1.AIGatewayRoute, policies ...aigv1a1.QuotaPolicy) *Server {
+func newTestServerWithRoute(t *testing.T, route *aigv1b1.AIGatewayRoute, policies ...aigv1a1.QuotaPolicy) *Server {
 	t.Helper()
 	c := newFakeClient()
 	if route != nil {
@@ -1314,18 +1315,18 @@ func newTestServerWithRoute(t *testing.T, route *aigv1a1.AIGatewayRoute, policie
 }
 
 func TestBackendKeysForCluster(t *testing.T) {
-	route := &aigv1a1.AIGatewayRoute{
+	route := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "backend-a"},
 						{Name: "backend-b"},
 					},
 				},
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "backend-c"},
 					},
 				},
@@ -1371,12 +1372,12 @@ func TestBackendKeysForCluster(t *testing.T) {
 }
 
 func TestClusterHasQuotaBackend(t *testing.T) {
-	route := &aigv1a1.AIGatewayRoute{
+	route := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "backend-a"},
 						{Name: "backend-b"},
 					},
@@ -1425,12 +1426,12 @@ func TestClusterHasQuotaBackend(t *testing.T) {
 }
 
 func TestRouteHasQuotaBackend(t *testing.T) {
-	aigwRoute := &aigv1a1.AIGatewayRoute{
+	aigwRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "backend-a"},
 					},
 				},
@@ -1520,17 +1521,17 @@ func TestRouteHasQuotaBackend(t *testing.T) {
 }
 
 func TestPoliciesForRoute(t *testing.T) {
-	aigwRoute := &aigv1a1.AIGatewayRoute{
+	aigwRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "backend-a"},
 					},
 				},
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "backend-b"},
 					},
 				},
@@ -1637,12 +1638,12 @@ func TestPoliciesForRoute(t *testing.T) {
 }
 
 func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
-	aigwRoute := &aigv1a1.AIGatewayRoute{
+	aigwRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "backend-a"},
 					},
 				},
@@ -1875,12 +1876,12 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 	})
 
 	t.Run("adds rate limit cluster and injects filter into listener", func(t *testing.T) {
-		aigwRoute := &aigv1a1.AIGatewayRoute{
+		aigwRoute := &aigv1b1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 							{Name: "backend-a"},
 						},
 					},
@@ -1947,12 +1948,12 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 	})
 
 	t.Run("does not inject filter into listener without quota routes", func(t *testing.T) {
-		aigwRoute := &aigv1a1.AIGatewayRoute{
+		aigwRoute := &aigv1b1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 							{Name: "backend-a"},
 						},
 					},
@@ -2002,12 +2003,12 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 	})
 
 	t.Run("does not duplicate rate limit cluster", func(t *testing.T) {
-		aigwRoute := &aigv1a1.AIGatewayRoute{
+		aigwRoute := &aigv1b1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 							{Name: "backend-a"},
 						},
 					},

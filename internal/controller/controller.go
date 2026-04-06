@@ -245,7 +245,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	if options.RateLimitRunner != nil {
 		quotaPolicyC := NewQuotaPolicyController(c, kube, logger.WithName("quota-policy"), options.RateLimitRunner)
 		if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.QuotaPolicy{}).
-			Watches(&aigv1a1.AIServiceBackend{}, handler.EnqueueRequestsFromMapFunc(quotaPolicyC.BackendToQuotaPolicy)).
+			Watches(&aigv1b1.AIServiceBackend{}, handler.EnqueueRequestsFromMapFunc(quotaPolicyC.BackendToQuotaPolicy)).
 			Complete(quotaPolicyC); err != nil {
 			return fmt.Errorf("failed to create controller for QuotaPolicy: %w", err)
 		}
