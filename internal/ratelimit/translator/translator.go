@@ -252,28 +252,31 @@ func buildBucketRuleDescriptors(modelName string, ruleIndex int, rule *aigv1a1.Q
 }
 
 // quotaValueToPolicy converts a QuotaValue to a rate limit policy protobuf.
+// Since Envoy rate limit only supports standard units (SECOND, MINUTE, HOUR, DAY),
+// non-standard durations like "5m" are approximated by dividing the limit by the
+// number of base units. For example, limit=20 with duration="5m" becomes 4 per MINUTE.
 func quotaValueToPolicy(qv *aigv1a1.QuotaValue) (*rlsconfv3.RateLimitPolicy, error) {
-	rpu, unit, err := parseDuration(qv.Duration)
+	divisor, unit, err := parseDuration(qv.Duration)
 	if err != nil {
 		return nil, fmt.Errorf("invalid duration %q: %w", qv.Duration, err)
 	}
 	return &rlsconfv3.RateLimitPolicy{
-		RequestsPerUnit: uint32(qv.Limit) * rpu, //nolint:gosec
+		RequestsPerUnit: uint32(qv.Limit) / divisor, //nolint:gosec
 		Unit:            unit,
 	}, nil
 }
 
 // parseDuration converts a duration string (e.g. "10s", "5m", "1h") into a
-// (multiplier, RateLimitUnit) pair. The multiplier adjusts the requests_per_unit
-// when the duration does not map exactly to a standard unit.
+// (divisor, RateLimitUnit) pair. The divisor is used to divide the limit
+// when the duration spans multiple base units, approximating the rate.
 //
 // Examples:
 //
-//	"1s"   → (1, SECOND)
-//	"60s"  → (1, MINUTE)
-//	"5m"   → (1, MINUTE) with limit multiplied by 5 at the caller
-//	"1h"   → (1, HOUR)
-//	"120s" → (1, SECOND) — kept as seconds, limit multiplied by 1
+//	"1s"   → (1, SECOND)   — limit / 1 per second
+//	"60s"  → (1, MINUTE)   — limit / 1 per minute
+//	"5m"   → (5, MINUTE)   — limit / 5 per minute
+//	"1h"   → (1, HOUR)     — limit / 1 per hour
+//	"90s"  → (90, SECOND)  — limit / 90 per second
 func parseDuration(s string) (uint32, rlsconfv3.RateLimitUnit, error) {
 	d, err := time.ParseDuration(s)
 	if err != nil {

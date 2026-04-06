@@ -130,12 +130,12 @@ func TestQuotaValueToPolicy(t *testing.T) {
 		require.Equal(t, rlsconfv3.RateLimitUnit_MINUTE, policy.Unit)
 	})
 
-	t.Run("5 minutes multiplies limit", func(t *testing.T) {
+	t.Run("5 minutes divides limit", func(t *testing.T) {
 		qv := &aigv1a1.QuotaValue{Limit: 20, Duration: "5m"}
 		policy, err := quotaValueToPolicy(qv)
 		require.NoError(t, err)
-		// 20 * 5 = 100 requests per MINUTE
-		require.Equal(t, uint32(100), policy.RequestsPerUnit)
+		// 20 / 5 = 4 requests per MINUTE
+		require.Equal(t, uint32(4), policy.RequestsPerUnit)
 		require.Equal(t, rlsconfv3.RateLimitUnit_MINUTE, policy.Unit)
 	})
 
