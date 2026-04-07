@@ -132,10 +132,17 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	uid := c.uuidFn()
 
+	// Fetch GatewayConfig to get global LLM request cost defaults.
+	gwConfig := c.fetchGatewayConfig(ctx, gw)
+	var defaultLLMCosts []aigv1b1.LLMRequestCost
+	if gwConfig != nil {
+		defaultLLMCosts = gwConfig.Spec.GlobalLLMRequestCosts
+	}
+
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	var hasEffectiveRoutes bool // indicates whether the filter config is effective (i.e., there is at least one active route).
-	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, aiRoutes.Items, mcpRoutes.Items, uid)
+	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, aiRoutes.Items, mcpRoutes.Items, uid, defaultLLMCosts)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -195,6 +202,33 @@ func bodyMutationToFilterAPI(m *aigv1b1.HTTPBodyMutation) *filterapi.HTTPBodyMut
 
 // aigwLLMRequestCostToFilterAPI converts an API LLMRequestCost to filter API form for the given
 // AIGatewayRoute (routeName is "namespace/name").
+func aigwGlobalLLMRequestCostToFilterAPI(cost aigv1b1.LLMRequestCost) (filterapi.GlobalLLMRequestCost, error) {
+	out := filterapi.GlobalLLMRequestCost{
+		MetadataKey: cost.MetadataKey,
+		Type:        filterapi.LLMRequestCostType(cost.Type),
+	}
+	switch cost.Type {
+	case aigv1b1.LLMRequestCostTypeInputToken,
+		aigv1b1.LLMRequestCostTypeCachedInputToken,
+		aigv1b1.LLMRequestCostTypeCacheCreationInputToken,
+		aigv1b1.LLMRequestCostTypeOutputToken,
+		aigv1b1.LLMRequestCostTypeTotalToken:
+		return out, nil
+	case aigv1b1.LLMRequestCostTypeCEL:
+		if cost.CEL == nil {
+			return filterapi.GlobalLLMRequestCost{}, fmt.Errorf("missing CEL expression")
+		}
+		expr := *cost.CEL
+		if _, err := llmcostcel.NewProgram(expr); err != nil {
+			return filterapi.GlobalLLMRequestCost{}, fmt.Errorf("invalid CEL expression: %w", err)
+		}
+		out.CEL = expr
+		return out, nil
+	default:
+		return filterapi.GlobalLLMRequestCost{}, fmt.Errorf("unknown request cost type: %s", cost.Type)
+	}
+}
+
 func aigwLLMRequestCostToFilterAPI(cost aigv1b1.LLMRequestCost, routeName string) (filterapi.LLMRequestCost, error) {
 	out := filterapi.LLMRequestCost{
 		MetadataKey: cost.MetadataKey,
@@ -325,10 +359,24 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	aiGatewayRoutes []aigv1b1.AIGatewayRoute,
 	mcpRoutes []aigv1a1.MCPRoute,
 	uuid string,
+	defaultLLMCosts []aigv1b1.LLMRequestCost,
 ) (hasEffectiveRoute bool, _ error) {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	ec := &filterapi.Config{UUID: uuid, Version: version.Parse()}
 	var err error
+
+	// Process global LLM request costs from GatewayConfig.
+	// These have no RouteName and serve as defaults.
+	// Note: The CRD enforces uniqueness via +listType=map and +listMapKey=metadataKey,
+	// so we don't need to deduplicate here.
+	for _, cost := range defaultLLMCosts {
+		fc, convErr := aigwGlobalLLMRequestCostToFilterAPI(cost)
+		if convErr != nil {
+			return false, fmt.Errorf("failed to convert global LLMRequestCosts: %w", convErr)
+		}
+		ec.GlobalLLMRequestCosts = append(ec.GlobalLLMRequestCosts, fc)
+	}
+
 	for i := range aiGatewayRoutes {
 		aiGatewayRoute := &aiGatewayRoutes[i]
 		if !aiGatewayRoute.GetDeletionTimestamp().IsZero() {
@@ -436,7 +484,8 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				if convErr != nil {
 					return false, fmt.Errorf("failed to convert LLMRequestCosts for route %s: %w", aiGatewayRoute.Name, convErr)
 				}
-				dedup[fc.MetadataKey+"\x00"+fc.RouteName] = fc
+				key := fc.MetadataKey + "\x00" + fc.RouteName
+				dedup[key] = fc
 			}
 			for _, fc := range dedup {
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
@@ -993,4 +1042,30 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 		namespace = daemonSets[0].Namespace
 	}
 	return
+}
+
+// fetchGatewayConfig returns the referenced GatewayConfig (if present) for the given Gateway.
+// Returns nil if no GatewayConfig is referenced or if it cannot be found.
+func (c *GatewayController) fetchGatewayConfig(ctx context.Context, gw *gwapiv1.Gateway) *aigv1b1.GatewayConfig {
+	configName, ok := gw.Annotations[GatewayConfigAnnotationKey]
+	if !ok || configName == "" {
+		return nil
+	}
+
+	// Fetch the GatewayConfig (must be in same namespace as Gateway).
+	var gatewayConfig aigv1b1.GatewayConfig
+	if err := c.client.Get(ctx, client.ObjectKey{Name: configName, Namespace: gw.Namespace}, &gatewayConfig); err != nil {
+		if apierrors.IsNotFound(err) {
+			c.logger.Info("GatewayConfig referenced by Gateway not found, using defaults",
+				"gateway_name", gw.Name, "gateway_namespace", gw.Namespace, "gatewayconfig_name", configName)
+		} else {
+			c.logger.Error(err, "failed to get GatewayConfig, using defaults",
+				"gateway_name", gw.Name, "gateway_namespace", gw.Namespace, "gatewayconfig_name", configName)
+		}
+		return nil
+	}
+
+	c.logger.Info("found GatewayConfig for Gateway",
+		"gateway_name", gw.Name, "gateway_namespace", gw.Namespace, "gatewayconfig_name", configName)
+	return &gatewayConfig
 }

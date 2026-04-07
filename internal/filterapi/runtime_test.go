@@ -21,8 +21,8 @@ func TestServer_LoadConfig(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		config := &Config{
 			LLMRequestCosts: []LLMRequestCost{
-				{MetadataKey: "key", Type: LLMRequestCostTypeOutputToken},
-				{MetadataKey: "cel_key", Type: LLMRequestCostTypeCEL, CEL: "1 + 1"},
+				{MetadataKey: "key", RouteName: "ns/test-route", Type: LLMRequestCostTypeOutputToken},
+				{MetadataKey: "cel_key", RouteName: "ns/test-route", Type: LLMRequestCostTypeCEL, CEL: "1 + 1"},
 			},
 			Backends: []Backend{
 				{Name: "kserve", Schema: VersionedAPISchema{Name: APISchemaOpenAI}},

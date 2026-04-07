@@ -528,8 +528,8 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		u.metrics.RecordTokenUsage(ctx, u.costs, u.requestHeaders)
 	}
 
-	if body.EndOfStream && len(u.parent.config.RequestCosts) > 0 {
-		metadata, err := buildDynamicMetadata(u.parent.config.RequestCosts, &u.costs, u.requestHeaders, u.backendName, u.routeName)
+	if body.EndOfStream && (len(u.parent.config.GlobalRequestCosts) > 0 || len(u.parent.config.RequestCosts) > 0) {
+		metadata, err := buildDynamicMetadata(u.parent.config.GlobalRequestCosts, u.parent.config.RequestCosts, &u.costs, u.requestHeaders, u.backendName, u.routeName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
@@ -702,6 +702,46 @@ func mergeDynamicMetadata(base, extra *structpb.Struct) *structpb.Struct {
 }
 
 // evalRuntimeRequestCost computes the cost value for a single runtime cost rule.
+func evalRuntimeGlobalRequestCost(rc *filterapi.RuntimeGlobalRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint32, error) {
+	var cost uint32
+	switch rc.Type {
+	case filterapi.LLMRequestCostTypeInputToken:
+		cost, _ = costs.InputTokens()
+	case filterapi.LLMRequestCostTypeCachedInputToken:
+		cost, _ = costs.CachedInputTokens()
+	case filterapi.LLMRequestCostTypeCacheCreationInputToken:
+		cost, _ = costs.CacheCreationInputTokens()
+	case filterapi.LLMRequestCostTypeOutputToken:
+		cost, _ = costs.OutputTokens()
+	case filterapi.LLMRequestCostTypeTotalToken:
+		cost, _ = costs.TotalTokens()
+	case filterapi.LLMRequestCostTypeCEL:
+		in, _ := costs.InputTokens()
+		cachedIn, _ := costs.CachedInputTokens()
+		cacheCreation, _ := costs.CacheCreationInputTokens()
+		out, _ := costs.OutputTokens()
+		total, _ := costs.TotalTokens()
+		costU64, err := llmcostcel.EvaluateProgram(
+			rc.CELProg,
+			requestHeaders[internalapi.ModelNameHeaderKeyDefault],
+			backendName,
+			routeName,
+			in,
+			cachedIn,
+			cacheCreation,
+			out,
+			total,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("failed to evaluate CEL expression: %w", err)
+		}
+		cost = uint32(costU64) //nolint:gosec
+	default:
+		return 0, fmt.Errorf("unknown cost type: %s", rc.Type)
+	}
+	return cost, nil
+}
+
 func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint32, error) {
 	var cost uint32
 	switch rc.Type {
@@ -742,27 +782,41 @@ func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.Tok
 	return cost, nil
 }
 
-// routeMatchesCost returns true if the cost rule applies to this request (wildcard or same route).
-func routeMatchesCost(costRouteName, requestRouteName string) bool {
-	return costRouteName == "" || costRouteName == requestRouteName
-}
-
 // buildDynamicMetadata creates metadata for rate limiting and cost tracking.
 // This function is called by the upstream filter only at the end of the stream (body.EndOfStream=true)
 // when the response is successfully completed. It is not called for failed requests or partial responses.
 // The metadata includes token usage costs and model information for downstream processing.
 //
-// The controller guarantees at most one entry per (metadataKey, routeName) pair, so a simple
-// forward scan suffices: for each row that matches the request route, evaluate and write.
-// Rows scoped to a different route are skipped entirely.
-func buildDynamicMetadata(requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (*structpb.Struct, error) {
-	metadata := make(map[string]*structpb.Value, len(requestCosts)+3)
+// Two-tier precedence: for each metadataKey, check route-scoped requestCosts first (matching RouteName == routeName).
+// If found, use it. Otherwise, fall back to globalRequestCosts. If neither exists, the key is not emitted.
+func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCost, requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (*structpb.Struct, error) {
+	metadata := make(map[string]*structpb.Value, len(requestCosts)+len(globalRequestCosts)+3)
+
+	// Track which metadata keys have been populated by route-scoped costs.
+	populatedKeys := make(map[string]struct{})
+
+	// First, process route-scoped costs that match this route.
+	// Route-scoped costs must have a RouteName set (validated at runtime config creation).
 	for i := range requestCosts {
 		rc := &requestCosts[i]
-		if !routeMatchesCost(rc.RouteName, routeName) {
+		if rc.RouteName != routeName {
 			continue
 		}
 		cost, err := evalRuntimeRequestCost(rc, costs, requestHeaders, backendName, routeName)
+		if err != nil {
+			return nil, err
+		}
+		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
+		populatedKeys[rc.MetadataKey] = struct{}{}
+	}
+
+	// Then, process global costs for keys not already populated.
+	for i := range globalRequestCosts {
+		rc := &globalRequestCosts[i]
+		if _, exists := populatedKeys[rc.MetadataKey]; exists {
+			continue // Route-scoped cost already set this key.
+		}
+		cost, err := evalRuntimeGlobalRequestCost(rc, costs, requestHeaders, backendName, routeName)
 		if err != nil {
 			return nil, err
 		}

@@ -31,6 +31,9 @@ type Config struct {
 	Version string `json:"version,omitempty"`
 	// UUID is the unique identifier of the filter configuration assigned by the AI Gateway when the configuration is updated.
 	UUID string `json:"uuid,omitempty"`
+	// GlobalLLMRequestCosts configures gateway-level default costs for LLM requests.
+	// These costs apply to all routes unless overridden by route-specific LLMRequestCosts.
+	GlobalLLMRequestCosts []GlobalLLMRequestCost `json:"globalLLMRequestCosts,omitempty"`
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
@@ -51,6 +54,19 @@ type Model struct {
 	OwnedBy string
 	// createdAt will be exported as the field of "Created" in OpenAI-compatible API "/models".
 	CreatedAt time.Time
+}
+
+// GlobalLLMRequestCost specifies gateway-level default request cost configuration.
+// This is identical to LLMRequestCost but without the RouteName field, as global costs
+// apply to all routes and are not scoped to a specific route.
+type GlobalLLMRequestCost struct {
+	// MetadataKey is the key of the metadata storing the request cost.
+	MetadataKey string `json:"metadataKey"`
+	// Type is the kind of the request cost calculation.
+	Type LLMRequestCostType `json:"type"`
+	// CEL is the CEL expression to calculate the cost of the request.
+	// This is not empty when the Type is LLMRequestCostTypeCEL.
+	CEL string `json:"cel,omitempty"`
 }
 
 // LLMRequestCost specifies "where" the request cost is stored in the filter metadata as well as
