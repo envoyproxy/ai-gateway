@@ -37,6 +37,8 @@ var (
 	_ tracingapi.ImageGenerationTracer = (*imageGenerationTracer)(nil)
 	_ tracingapi.ResponsesTracer       = (*responsesTracer)(nil)
 	_ tracingapi.SpeechTracer          = (*speechTracer)(nil)
+	_ tracingapi.TranscriptionTracer   = (*transcriptionTracer)(nil)
+	_ tracingapi.TranslationTracer     = (*translationTracer)(nil)
 	_ tracingapi.RerankTracer          = (*rerankTracer)(nil)
 )
 
@@ -47,6 +49,8 @@ type (
 	imageGenerationTracer = requestTracerImpl[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
 	responsesTracer       = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	speechTracer          = requestTracerImpl[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
+	transcriptionTracer   = requestTracerImpl[openai.TranscriptionRequest, openai.TranscriptionResponse, struct{}]
+	translationTracer     = requestTracerImpl[openai.TranslationRequest, openai.TranslationResponse, struct{}]
 	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
 )
 
@@ -172,6 +176,30 @@ func newSpeechTracer(tracer trace.Tracer, propagator propagation.TextMapPropagat
 		headerAttributes,
 		func(span trace.Span, recorder tracingapi.SpeechRecorder) tracingapi.SpeechSpan {
 			return &speechSpan{span: span, recorder: recorder}
+		},
+	)
+}
+
+func newTranscriptionTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.TranscriptionRecorder, headerAttributes map[string]string) tracingapi.TranscriptionTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		headerAttributes,
+		func(span trace.Span, recorder tracingapi.TranscriptionRecorder) tracingapi.TranscriptionSpan {
+			return &transcriptionSpan{span: span, recorder: recorder}
+		},
+	)
+}
+
+func newTranslationTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.TranslationRecorder, headerAttributes map[string]string) tracingapi.TranslationTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		headerAttributes,
+		func(span trace.Span, recorder tracingapi.TranslationRecorder) tracingapi.TranslationSpan {
+			return &translationSpan{span: span, recorder: recorder}
 		},
 	)
 }
