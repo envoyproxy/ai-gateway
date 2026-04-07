@@ -44,6 +44,7 @@ import (
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	aigwjson "github.com/envoyproxy/ai-gateway/internal/json"
+	"github.com/envoyproxy/ai-gateway/internal/ratelimit/runner"
 )
 
 func init() {
@@ -106,6 +107,8 @@ type Options struct {
 	MCPFallbackSessionEncryptionIterations int
 	// EndpointPrefixes is the comma-separated key-value pairs for endpoint prefixes.
 	EndpointPrefixes string
+	// RateLimitRunner is the xDS runner that serves rate limit configs to the rate limit service.
+	RateLimitRunner *runner.Runner
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -238,6 +241,16 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 		return fmt.Errorf("failed to create controller for GatewayConfig: %w", err)
 	}
 
+	// QuotaPolicy controller for backend quota rate limiting.
+	if options.RateLimitRunner != nil {
+		quotaPolicyC := NewQuotaPolicyController(c, kube, logger.WithName("quota-policy"), options.RateLimitRunner)
+		if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.QuotaPolicy{}).
+			Watches(&aigv1b1.AIServiceBackend{}, handler.EnqueueRequestsFromMapFunc(quotaPolicyC.BackendToQuotaPolicy)).
+			Complete(quotaPolicyC); err != nil {
+			return fmt.Errorf("failed to create controller for QuotaPolicy: %w", err)
+		}
+	}
+
 	// ReferenceGrant controller for cross-namespace access validation
 	referenceGrantC := NewReferenceGrantController(c, logger.WithName("reference-grant"), aiGatewayRouteEventChan)
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1b1.ReferenceGrant{}).
@@ -307,6 +320,9 @@ const (
 	// k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy is the index name that maps from an AIServiceBackend
 	// to the BackendSecurityPolicy whose targetRefs contains the AIServiceBackend.
 	k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy = "AIServiceBackendToTargetingBackendSecurityPolicy"
+	// k8sClientIndexAIServiceBackendToTargetingQuotaPolicy is the index name that maps from an AIServiceBackend
+	// to the QuotaPolicy whose targetRefs contains the AIServiceBackend.
+	k8sClientIndexAIServiceBackendToTargetingQuotaPolicy = "AIServiceBackendToTargetingQuotaPolicy"
 	// k8sClientIndexGatewayToGatewayConfig maps from a GatewayConfig name to Gateways referencing it.
 	k8sClientIndexGatewayToGatewayConfig = "GatewayToGatewayConfig"
 
@@ -342,6 +358,12 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 		k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy, backendSecurityPolicyTargetRefsIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to index field for BackendSecurityPolicy targetRefs: %w", err)
+	}
+
+	err = indexer(ctx, &aigv1a1.QuotaPolicy{},
+		k8sClientIndexAIServiceBackendToTargetingQuotaPolicy, quotaPolicyTargetRefsIndexFunc)
+	if err != nil {
+		return fmt.Errorf("failed to index field for QuotaPolicy targetRefs: %w", err)
 	}
 
 	err = indexer(ctx, &gwapiv1.Gateway{},
@@ -480,6 +502,15 @@ func backendSecurityPolicyTargetRefsIndexFunc(o client.Object) []string {
 	var ret []string
 	for _, targetRef := range backendSecurityPolicy.Spec.TargetRefs {
 		ret = append(ret, fmt.Sprintf("%s.%s", targetRef.Name, backendSecurityPolicy.Namespace))
+	}
+	return ret
+}
+
+func quotaPolicyTargetRefsIndexFunc(o client.Object) []string {
+	quotaPolicy := o.(*aigv1a1.QuotaPolicy)
+	var ret []string
+	for _, targetRef := range quotaPolicy.Spec.TargetRefs {
+		ret = append(ret, fmt.Sprintf("%s.%s", targetRef.Name, quotaPolicy.Namespace))
 	}
 	return ret
 }

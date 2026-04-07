@@ -176,6 +176,11 @@ controller:
         appProtocol: http
         port: 8080
         targetPort: 8080
+      - name: ratelimit-xds
+        protocol: TCP
+        appProtocol: grpc
+        port: 18002
+        targetPort: 18002
 
   mutatingWebhook:
     # The port on which the mutating webhook server listens. Must match the service port defined in service.ports.
