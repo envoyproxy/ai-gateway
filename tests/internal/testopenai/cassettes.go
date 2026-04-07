@@ -141,6 +141,16 @@ const (
 	// CassetteImageGenerationBasic is a basic image generation request with model and prompt.
 	CassetteImageGenerationBasic
 
+	// Cassettes for the OpenAI /v1/audio/transcriptions endpoint.
+
+	// CassetteAudioTranscriptionBasic is a basic audio transcription request with a short WAV file.
+	CassetteAudioTranscriptionBasic
+
+	// Cassettes for the OpenAI /v1/audio/translations endpoint.
+
+	// CassetteAudioTranslationBasic is a basic audio translation request with a short WAV file.
+	CassetteAudioTranslationBasic
+
 	// Cassettes for Azure OpenAI Service.
 
 	// CassetteAzureChatBasic is the same as CassetteChatBasic, except using
@@ -197,6 +207,9 @@ var stringValues = map[Cassette]string{
 	CassetteEmbeddingsBadRequest:   "embeddings-bad-request",
 
 	CassetteImageGenerationBasic: "image-generation-basic",
+
+	CassetteAudioTranscriptionBasic: "audio-transcription-basic",
+	CassetteAudioTranslationBasic:   "audio-translation-basic",
 }
 
 // String returns the string representation of the cassette name.
@@ -224,6 +237,10 @@ func NewRequest(ctx context.Context, baseURL string, cassette Cassette) (*http.R
 	} else if r, ok := imageRequests[cassette]; ok {
 		path := buildPath(cassette, "/images/generations", baseURL, r)
 		return newRequest(ctx, cassette, path, r)
+	} else if r, ok := audioTranscriptionRequests[cassette]; ok {
+		return newAudioRequest(ctx, baseURL, cassette, r)
+	} else if r, ok := audioTranslationRequests[cassette]; ok {
+		return newAudioRequest(ctx, baseURL, cassette, r)
 	}
 	return nil, fmt.Errorf("unknown cassette: %s", cassette)
 }

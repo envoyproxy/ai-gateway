@@ -1,0 +1,52 @@
+{
+  "flags": 256,
+  "name": "Transcription",
+  "kind": "SPAN_KIND_INTERNAL",
+  "attributes": [
+    {
+      "key": "llm.system",
+      "value": {
+        "stringValue": "openai"
+      }
+    },
+    {
+      "key": "input.value",
+      "value": {
+        "stringValue": "{\"model\": \"whisper-1\", \"language\": \"en\", \"response_format\": \"json\"}"
+      }
+    },
+    {
+      "key": "input.mime_type",
+      "value": {
+        "stringValue": "application/json"
+      }
+    },
+    {
+      "key": "output.value",
+      "value": {
+        "stringValue": "{\"text\":\"The sun rises in the east and sets in the west. This simple fact has been observed by humans for thousands of years.\",\"usage\":{\"seconds\":7.0,\"type\":\"duration\"}}"
+      }
+    },
+    {
+      "key": "output.mime_type",
+      "value": {
+        "stringValue": "application/json"
+      }
+    },
+    {
+      "key": "llm.invocation_parameters",
+      "value": {
+        "stringValue": "{\"model\": \"whisper-1\", \"language\": \"en\", \"response_format\": \"json\"}"
+      }
+    },
+    {
+      "key": "openinference.span.kind",
+      "value": {
+        "stringValue": "LLM"
+      }
+    }
+  ],
+  "status": {
+    "code": "STATUS_CODE_OK"
+  }
+}

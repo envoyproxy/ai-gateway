@@ -19,11 +19,14 @@ func TestGetAllSpans(t *testing.T) {
 	tests := []struct {
 		name      string
 		cassettes []testopenai.Cassette
+		spanName  string
 	}{
-		{"ChatCompletion", testopenai.ChatCassettes()},
-		{"Completion", testopenai.CompletionCassettes()},
-		{"CreateEmbeddings", testopenai.EmbeddingsCassettes()},
-		{"ImagesResponse", testopenai.ImageCassettes()},
+		{"ChatCompletion", testopenai.ChatCassettes(), "ChatCompletion"},
+		{"Completion", testopenai.CompletionCassettes(), "Completion"},
+		{"CreateEmbeddings", testopenai.EmbeddingsCassettes(), "CreateEmbeddings"},
+		{"ImagesResponse", testopenai.ImageCassettes(), "ImagesResponse"},
+		{"AudioTranscription", testopenai.AudioTranscriptionCassettes(), "Transcription"},
+		{"AudioTranslation", testopenai.AudioTranslationCassettes(), "Translation"},
 	}
 
 	for _, tc := range tests {
@@ -37,7 +40,7 @@ func TestGetAllSpans(t *testing.T) {
 					require.NotEmpty(t, span.Attributes, "span has no attributes for %s", cassette)
 
 					// Basic validation that this looks like an OpenInference span.
-					require.Equal(t, tc.name, span.Name, "unexpected span name for %s", cassette)
+					require.Equal(t, tc.spanName, span.Name, "unexpected span name for %s", cassette)
 				})
 			}
 		})
