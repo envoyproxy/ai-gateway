@@ -2428,6 +2428,33 @@ func TestGeminiCandidatesToOpenAIChoices(t *testing.T) {
 			},
 		},
 		{
+			name: "no thought text but signature on text part still creates thinking_block",
+			candidates: []*genai.Candidate{
+				{
+					Content: &genai.Content{
+						Parts: []*genai.Part{
+							{Text: "just an answer", ThoughtSignature: []byte("sig-only")},
+						},
+					},
+					FinishReason: genai.FinishReasonStop,
+				},
+			},
+			responseMode: responseModeNone,
+			want: []openai.ChatCompletionResponseChoice{
+				{
+					Index: 0,
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role: openai.ChatMessageRoleAssistant,
+						ThinkingBlocks: []openai.ThinkingBlock{
+							{Type: "thinking", Signature: base64.StdEncoding.EncodeToString([]byte("sig-only"))},
+						},
+						Content: ptr.To("just an answer"),
+					},
+					FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
+				},
+			},
+		},
+		{
 			name: "thought summary and answer set reasoning_content and thinking_blocks",
 			candidates: []*genai.Candidate{
 				{

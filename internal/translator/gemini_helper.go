@@ -760,12 +760,15 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 			}
 			// Extract thought summary and text from parts.
 			thoughtSummary, content, signature := extractTextAndThoughtSummaryFromGeminiParts(candidate.Content.Parts, responseMode)
-			if thoughtSummary != "" {
-				message.ReasoningContent = &openai.ReasoningContentUnion{Value: thoughtSummary}
+			if thoughtSummary != "" || signature != "" {
+				if thoughtSummary != "" {
+					message.ReasoningContent = &openai.ReasoningContentUnion{Value: thoughtSummary}
+				}
 				message.ThinkingBlocks = append(message.ThinkingBlocks, openai.ThinkingBlock{
 					Type: "thinking", Thinking: thoughtSummary, Signature: signature,
 				})
 			}
+
 			if content != "" {
 				message.Content = &content
 			}
