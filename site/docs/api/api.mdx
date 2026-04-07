@@ -1675,12 +1675,12 @@ LLMRequestCost configures each request cost.
   name="type"
   type="[LLMRequestCostType](#llmrequestcosttype)"
   required="true"
-  description="Type specifies the type of the request cost. The default is `OutputToken`,<br />and it uses `output token` as the cost. The other types are `InputToken`, `TotalToken`,<br />`CachedInputToken`, `CacheCreationInputToken`, and `CEL`."
+  description="Type specifies the type of the request cost. The default is `OutputToken`,<br />and it uses `output token` as the cost. The other types are `InputToken`, `TotalToken`,<br />`CachedInputToken`, `CacheCreationInputToken`, `ReasoningToken`, and `CEL`."
 /><ApiField
   name="cel"
   type="string"
   required="false"
-  description="CEL is the CEL expression to calculate the cost of the request.<br />The CEL expression must return a signed or unsigned integer. If the<br />return value is negative, it will be error.<br />The expression can use the following variables:<br />	* model: the model name extracted from the request content. Type: string.<br />	* backend: the backend name in the form of `name.namespace`. Type: string.<br />	* input_tokens: the number of input tokens. Type: unsigned integer.<br />	* cached_input_tokens: the number of cached read input tokens. Type: unsigned integer.<br />	* cache_creation_input_tokens: the number of cache creation input tokens. Type: unsigned integer.<br />	* output_tokens: the number of output tokens. Type: unsigned integer.<br />	* total_tokens: the total number of tokens. Type: unsigned integer.<br />For example, the following expressions are valid:<br />	* `model == 'llama' ?  input_tokens + output_token * 0.5 : total_tokens`<br />	* `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`<br />	* `backend == 'bar.default' ?  (input_tokens - cached_input_tokens) + cached_input_tokens * 0.1 + cache_creation_input_tokens * 1.25 + output_tokens : total_tokens`<br />	* `input_tokens + output_tokens + total_tokens`<br />	* `input_tokens * output_tokens`"
+  description="CEL is the CEL expression to calculate the cost of the request.<br />The CEL expression must return a signed or unsigned integer. If the<br />return value is negative, it will be error.<br />The expression can use the following variables:<br />	* model: the model name extracted from the request content. Type: string.<br />	* backend: the backend name in the form of `name.namespace`. Type: string.<br />	* input_tokens: the number of input tokens. Type: unsigned integer.<br />	* cached_input_tokens: the number of cached read input tokens. Type: unsigned integer.<br />	* cache_creation_input_tokens: the number of cache creation input tokens. Type: unsigned integer.<br />	* output_tokens: the number of output tokens. Type: unsigned integer.<br />	* total_tokens: the total number of tokens. Type: unsigned integer.<br />	* reasoning_tokens: the number of reasoning tokens. Type: unsigned integer.<br />For example, the following expressions are valid:<br />	* `model == 'llama' ?  input_tokens + output_token * 0.5 : total_tokens`<br />	* `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`<br />	* `backend == 'bar.default' ?  (input_tokens - cached_input_tokens) + cached_input_tokens * 0.1 + cache_creation_input_tokens * 1.25 + output_tokens : total_tokens`<br />	* `input_tokens + output_tokens + total_tokens`<br />	* `input_tokens * output_tokens`"
 />
 
 
@@ -1722,6 +1722,11 @@ LLMRequestCostType specifies the type of the LLMRequestCost.
   type="enum"
   required="false"
   description="LLMRequestCostTypeTotalToken is the cost type of the total token.<br />"
+/><ApiField
+  name="ReasoningToken"
+  type="enum"
+  required="false"
+  description="LLMRequestCostTypeReasoningToken is the cost type of the reasoning token.<br />"
 /><ApiField
   name="CEL"
   type="enum"
@@ -2445,7 +2450,7 @@ the ai-gateway, but by the vendor via proper versioning.
   name="version"
   type="string"
   required="false"
-  description="Version is the version of the API schema.<br />When the name is set to AzureOpenAI, this version maps to `API Version` in the<br />Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning).<br />**Deprecated Behavior**: When the name is set to `OpenAI`, this version field will behave as the<br />prefix field. This is to maintain backward compatibility. This will be removed in future releases.<br />See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details."
+  description="Version is the version of the API schema.<br />When the name is set to AzureOpenAI, this version maps to `API Version` in the<br />Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning).<br />See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details."
 /><ApiField
   name="prefix"
   type="string"
@@ -3879,12 +3884,12 @@ LLMRequestCost configures each request cost.
   name="type"
   type="[LLMRequestCostType](#llmrequestcosttype)"
   required="true"
-  description="Type specifies the type of the request cost. The default is `OutputToken`,<br />and it uses `output token` as the cost. The other types are `InputToken`, `TotalToken`,<br />`CachedInputToken`, `CacheCreationInputToken`, and `CEL`."
+  description="Type specifies the type of the request cost. The default is `OutputToken`,<br />and it uses `output token` as the cost. The other types are `InputToken`, `TotalToken`,<br />`CachedInputToken`, `CacheCreationInputToken`, `ReasoningToken`, and `CEL`."
 /><ApiField
   name="cel"
   type="string"
   required="false"
-  description="CEL is the CEL expression to calculate the cost of the request.<br />The CEL expression must return a signed or unsigned integer. If the<br />return value is negative, it will be error.<br />The expression can use the following variables:<br />	* model: the model name extracted from the request content. Type: string.<br />	* backend: the backend name in the form of `name.namespace`. Type: string.<br />	* input_tokens: the number of input tokens. Type: unsigned integer.<br />	* cached_input_tokens: the number of cached read input tokens. Type: unsigned integer.<br />	* cache_creation_input_tokens: the number of cache creation input tokens. Type: unsigned integer.<br />	* output_tokens: the number of output tokens. Type: unsigned integer.<br />	* total_tokens: the total number of tokens. Type: unsigned integer.<br />For example, the following expressions are valid:<br />	* `model == 'llama' ?  input_tokens + output_token * 0.5 : total_tokens`<br />	* `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`<br />	* `backend == 'bar.default' ?  (input_tokens - cached_input_tokens) + cached_input_tokens * 0.1 + cache_creation_input_tokens * 1.25 + output_tokens : total_tokens`<br />	* `input_tokens + output_tokens + total_tokens`<br />	* `input_tokens * output_tokens`"
+  description="CEL is the CEL expression to calculate the cost of the request.<br />The CEL expression must return a signed or unsigned integer. If the<br />return value is negative, it will be error.<br />The expression can use the following variables:<br />	* model: the model name extracted from the request content. Type: string.<br />	* backend: the backend name in the form of `name.namespace`. Type: string.<br />	* input_tokens: the number of input tokens. Type: unsigned integer.<br />	* cached_input_tokens: the number of cached read input tokens. Type: unsigned integer.<br />	* cache_creation_input_tokens: the number of cache creation input tokens. Type: unsigned integer.<br />	* output_tokens: the number of output tokens. Type: unsigned integer.<br />	* total_tokens: the total number of tokens. Type: unsigned integer.<br />	* reasoning_tokens: the number of reasoning tokens. Type: unsigned integer.<br />For example, the following expressions are valid:<br />	* `model == 'llama' ?  input_tokens + output_token * 0.5 : total_tokens`<br />	* `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`<br />	* `backend == 'bar.default' ?  (input_tokens - cached_input_tokens) + cached_input_tokens * 0.1 + cache_creation_input_tokens * 1.25 + output_tokens : total_tokens`<br />	* `input_tokens + output_tokens + total_tokens`<br />	* `input_tokens * output_tokens`"
 />
 
 
@@ -3927,6 +3932,11 @@ LLMRequestCostType specifies the type of the LLMRequestCost.
   required="false"
   description="LLMRequestCostTypeTotalToken is the cost type of the total token.<br />"
 /><ApiField
+  name="ReasoningToken"
+  type="enum"
+  required="false"
+  description="LLMRequestCostTypeReasoningToken is the cost type of the reasoning token.<br />"
+/><ApiField
   name="CEL"
   type="enum"
   required="false"
@@ -3960,7 +3970,7 @@ the ai-gateway, but by the vendor via proper versioning.
   name="version"
   type="string"
   required="false"
-  description="Version is the version of the API schema.<br />When the name is set to AzureOpenAI, this version maps to `API Version` in the<br />Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning).<br />**Deprecated Behavior**: When the name is set to `OpenAI`, this version field will behave as the<br />prefix field. This is to maintain backward compatibility. This will be removed in future releases.<br />See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details."
+  description="Version is the version of the API schema.<br />When the name is set to AzureOpenAI, this version maps to `API Version` in the<br />Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning).<br />See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details."
 /><ApiField
   name="prefix"
   type="string"

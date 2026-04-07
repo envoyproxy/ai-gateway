@@ -50,7 +50,7 @@ data: [DONE]
 	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(sseChunks)), true, nil)
 	require.NoError(t, err)
 	require.Equal(t, "gpt-4o-2024-11-20", responseModel) // Returns actual versioned model
-	require.Equal(t, tokenUsageFrom(10, -1, -1, 5, 15), tokenUsage)
+	require.Equal(t, tokenUsageFrom(10, -1, -1, 5, 15, -1), tokenUsage)
 }
 
 // TestResponseModel_EmptyFallback tests the fallback to request model when response model is empty
@@ -84,7 +84,7 @@ func TestResponseModel_EmptyFallback(t *testing.T) {
 		_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(responseJSON)), false, nil)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4o", responseModel) // Falls back to request model
-		require.Equal(t, tokenUsageFrom(10, -1, -1, 5, 15), tokenUsage)
+		require.Equal(t, tokenUsageFrom(10, -1, -1, 5, 15, -1), tokenUsage)
 	})
 
 	t.Run("streaming", func(t *testing.T) {
@@ -113,7 +113,7 @@ data: [DONE]
 		_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(sseChunks)), true, nil)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4o-mini", responseModel) // Falls back to request model
-		require.Equal(t, tokenUsageFrom(10, -1, -1, 5, 15), tokenUsage)
+		require.Equal(t, tokenUsageFrom(10, -1, -1, 5, 15, -1), tokenUsage)
 	})
 
 	t.Run("with model override", func(t *testing.T) {
@@ -149,7 +149,7 @@ data: [DONE]
 		_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(responseJSON)), false, nil)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4o-2024-11-20", responseModel) // Falls back to overridden model
-		require.Equal(t, tokenUsageFrom(10, -1, -1, 5, 15), tokenUsage)
+		require.Equal(t, tokenUsageFrom(10, -1, -1, 5, 15, -1), tokenUsage)
 	})
 }
 
@@ -359,7 +359,7 @@ data: [DONE]
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
 			_, _, usedToken, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
 			require.NoError(t, err)
-			require.Equal(t, tokenUsageFrom(0, -1, -1, 0, 42), usedToken)
+			require.Equal(t, tokenUsageFrom(0, -1, -1, 0, 42, -1), usedToken)
 			require.Equal(t, &resp, s.Resp)
 		})
 		t.Run("valid body with different response model", func(t *testing.T) {
@@ -374,9 +374,26 @@ data: [DONE]
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
 			_, _, usedToken, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
 			require.NoError(t, err)
-			require.Equal(t, tokenUsageFrom(10, -1, -1, 20, 30), usedToken)
+			require.Equal(t, tokenUsageFrom(10, -1, -1, 20, 30, -1), usedToken)
 			require.Equal(t, &resp, s.Resp)
 		})
+	})
+	t.Run("valid body with reasoning tokens", func(t *testing.T) {
+		s := &testotel.MockSpan{}
+		var resp openai.ChatCompletionResponse
+		resp.Usage.PromptTokens = 10
+		resp.Usage.CompletionTokens = 20
+		resp.Usage.TotalTokens = 30
+		resp.Usage.CompletionTokensDetails = &openai.CompletionTokensDetails{
+			ReasoningTokens: 8,
+		}
+		body, err := json.Marshal(resp)
+		require.NoError(t, err)
+		o := &openAIToOpenAITranslatorV1ChatCompletion{}
+		_, _, usedToken, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
+		require.NoError(t, err)
+		require.Equal(t, tokenUsageFrom(10, -1, -1, 20, 30, 8), usedToken)
+		require.Equal(t, &resp, s.Resp)
 	})
 	t.Run("response reasoning content", func(t *testing.T) {
 		t.Run("valid body", func(t *testing.T) {
@@ -398,7 +415,7 @@ data: [DONE]
 			o := &openAIToOpenAITranslatorV1ChatCompletion{}
 			_, _, usedToken, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
 			require.NoError(t, err)
-			require.Equal(t, tokenUsageFrom(0, -1, -1, 0, 42), usedToken)
+			require.Equal(t, tokenUsageFrom(0, -1, -1, 0, 42, -1), usedToken)
 			require.Equal(t, &resp, s.Resp)
 		})
 	})
@@ -410,7 +427,7 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: {\"usage\": {\"total_tokens\": 42}}\n")
 		usedToken := o.extractUsageFromBufferEvent(s)
-		require.Equal(t, tokenUsageFrom(0, -1, -1, 0, 42), usedToken)
+		require.Equal(t, tokenUsageFrom(0, -1, -1, 0, 42, -1), usedToken)
 		require.Empty(t, o.buffered)
 		require.Len(t, s.RespChunks, 1)
 	})
@@ -419,7 +436,7 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: invalid\ndata: {\"usage\": {\"total_tokens\": 42}}\n")
 		usedToken := o.extractUsageFromBufferEvent(nil)
-		require.Equal(t, tokenUsageFrom(0, -1, -1, 0, 42), usedToken)
+		require.Equal(t, tokenUsageFrom(0, -1, -1, 0, 42, -1), usedToken)
 		require.Empty(t, o.buffered)
 	})
 
@@ -427,12 +444,12 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: {}\n\ndata: ")
 		usedToken := o.extractUsageFromBufferEvent(nil)
-		require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), usedToken)
+		require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), usedToken)
 		require.GreaterOrEqual(t, len(o.buffered), 1)
 
 		o.buffered = append(o.buffered, []byte("{\"usage\": {\"total_tokens\": 42}}\n")...)
 		usedToken = o.extractUsageFromBufferEvent(nil)
-		require.Equal(t, tokenUsageFrom(0, -1, -1, 0, 42), usedToken)
+		require.Equal(t, tokenUsageFrom(0, -1, -1, 0, 42, -1), usedToken)
 		require.Empty(t, o.buffered)
 	})
 
@@ -440,7 +457,15 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: {\"usage\": {\"prompt_tokens\": 5, \"completion_tokens\": 3, \"total_tokens\": 8, \"prompt_tokens_details\": {\"cached_tokens\": 2, \"cache_creation_input_tokens\": 1}}}\n")
 		usedToken := o.extractUsageFromBufferEvent(nil)
-		require.Equal(t, tokenUsageFrom(5, 2, 1, 3, 8), usedToken)
+		require.Equal(t, tokenUsageFrom(5, 2, 1, 3, 8, -1), usedToken)
+		require.Empty(t, o.buffered)
+	})
+
+	t.Run("valid usage data with reasoning tokens", func(t *testing.T) {
+		o := &openAIToOpenAITranslatorV1ChatCompletion{}
+		o.buffered = []byte("data: {\"usage\": {\"prompt_tokens\": 10, \"completion_tokens\": 20, \"total_tokens\": 30, \"completion_tokens_details\": {\"reasoning_tokens\": 8}}}\n")
+		usedToken := o.extractUsageFromBufferEvent(nil)
+		require.Equal(t, tokenUsageFrom(10, -1, -1, 20, 30, 8), usedToken)
 		require.Empty(t, o.buffered)
 	})
 
@@ -448,7 +473,7 @@ func TestExtractUsageFromBufferEvent(t *testing.T) {
 		o := &openAIToOpenAITranslatorV1ChatCompletion{}
 		o.buffered = []byte("data: invalid\n")
 		usedToken := o.extractUsageFromBufferEvent(nil)
-		require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), usedToken)
+		require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), usedToken)
 		require.Empty(t, o.buffered)
 	})
 }
@@ -470,7 +495,7 @@ func TestResponseModel_OpenAI(t *testing.T) {
 	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewBuffer(body), true, nil)
 	require.NoError(t, err)
 	require.Equal(t, "gpt-4o-2024-08-06", responseModel)
-	require.Equal(t, tokenUsageFrom(10, -1, -1, 5, 15), tokenUsage)
+	require.Equal(t, tokenUsageFrom(10, -1, -1, 5, 15, -1), tokenUsage)
 }
 
 // TestResponseModel_OpenAIEmbeddings tests OpenAI embeddings (not virtualized but has response field)
@@ -489,7 +514,7 @@ func TestResponseModel_OpenAIEmbeddings(t *testing.T) {
 	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(body), true, nil)
 	require.NoError(t, err)
 	require.Equal(t, "text-embedding-ada-002", responseModel) // Uses response field as authoritative
-	require.Equal(t, tokenUsageFrom(10, -1, -1, -1, 10), tokenUsage)
+	require.Equal(t, tokenUsageFrom(10, -1, -1, -1, 10, -1), tokenUsage)
 }
 
 func TestRedactBody(t *testing.T) {

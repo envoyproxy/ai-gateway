@@ -12,7 +12,6 @@
 package filterapi
 
 import (
-	"cmp"
 	"os"
 	"time"
 
@@ -85,6 +84,8 @@ const (
 	LLMRequestCostTypeCacheCreationInputToken LLMRequestCostType = "CacheCreationInputToken"
 	// LLMRequestCostTypeTotalToken specifies that the request cost is calculated from the total token.
 	LLMRequestCostTypeTotalToken LLMRequestCostType = "TotalToken"
+	// LLMRequestCostTypeReasoningToken specifies that the request cost is calculated from the reasoning token.
+	LLMRequestCostTypeReasoningToken LLMRequestCostType = "ReasoningToken"
 	// LLMRequestCostTypeCEL specifies that the request cost is calculated from the CEL expression.
 	LLMRequestCostTypeCEL LLMRequestCostType = "CEL"
 )
@@ -100,10 +101,8 @@ type VersionedAPISchema struct {
 }
 
 // OpenAIPrefix returns the OpenAI API prefix for the VersionedAPISchema.
-// This is for backwards compatibility with existing users. This won't be
-// necessary after v0.5 release when we can use Prefix directly.
 func (v VersionedAPISchema) OpenAIPrefix() string {
-	return cmp.Or(v.Version, v.Prefix)
+	return v.Prefix
 }
 
 // APISchemaName corresponds to APISchemaName in api/v1alpha1/api.go.
