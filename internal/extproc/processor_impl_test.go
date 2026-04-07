@@ -100,7 +100,11 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
 		require.True(t, ok, "Response should be an immediate response")
 		require.Equal(t, typev3.StatusCode(400), immediateResp.ImmediateResponse.Status.Code)
-		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"malformed request: failed to parse JSON for /v1/chat/completions"}}`, string(immediateResp.ImmediateResponse.Body))
+		body := string(immediateResp.ImmediateResponse.Body)
+		require.Contains(t, body, `"type":"error"`)
+		require.Contains(t, body, `"type":"BadRequest"`)
+		require.Contains(t, body, `"code":"400"`)
+		require.Contains(t, body, "malformed request: failed to parse JSON for /v1/chat/completions:")
 	})
 
 	t.Run("ok", func(t *testing.T) {
@@ -253,6 +257,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		p := &chatCompletionProcessorUpstreamFilter{
 			translator: mt,
 			metrics:    mm,
+			parent:     &chatCompletionProcessorRouterFilter{},
 		}
 		mt.retErr = errors.New("test error")
 		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
@@ -428,6 +433,43 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	require.Zero(t, mm.inputTokenCount)
 	mm.RequireSelectedBackend(t, "some-backend")
 	require.Equal(t, r, p.parent)
+	// Verify upstreamFilter is NOT set when translator creation fails.
+	// This prevents a nil-translator panic when the router processes the response
+	// (the nil check on upstreamFilter at ProcessResponseHeaders/ProcessResponseBody
+	// must fall through to passThroughProcessor).
+	require.Nil(t, r.upstreamFilter, "upstreamFilter must remain nil when SetBackend fails")
+}
+
+// Test_chatCompletionProcessorUpstreamFilter_SetBackend_unsupportedSchema_noResponsePanic
+// verifies that when SetBackend fails due to an unsupported schema, subsequent
+// response processing does not panic. Before the fix for #1941, upstreamFilter
+// was assigned before the translator was created, so the router's nil check on
+// upstreamFilter would pass but the nil translator would cause a panic.
+func Test_chatCompletionProcessorUpstreamFilter_SetBackend_unsupportedSchema_noResponsePanic(t *testing.T) {
+	headers := map[string]string{":path": "/foo"}
+	mm := &mockMetrics{}
+	p := &chatCompletionProcessorUpstreamFilter{
+		requestHeaders: headers,
+		metrics:        mm,
+	}
+	r := &chatCompletionProcessorRouterFilter{}
+
+	err := p.SetBackend(t.Context(), &filterapi.Backend{
+		Name:   "bad-backend",
+		Schema: filterapi.VersionedAPISchema{Name: "unsupported-schema", Version: "v1"},
+	}, nil, r)
+	require.Error(t, err)
+	require.Nil(t, r.upstreamFilter, "upstreamFilter must remain nil on translator creation failure")
+
+	// Simulate response arriving after the failed SetBackend.
+	// This must NOT panic; it should fall through to passThroughProcessor.
+	resp, err := r.ProcessResponseHeaders(t.Context(), nil)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	resp, err = r.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{Body: []byte("error"), EndOfStream: true})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
 }
 
 func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing.T) {

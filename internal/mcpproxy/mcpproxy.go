@@ -33,9 +33,10 @@ import (
 // mcpRequestContext serves /mcp endpoint.
 type mcpRequestContext struct {
 	*ProxyConfig
-	metrics        metrics.MCPMetrics
-	requestHeaders http.Header
-	originalPath   string
+	metrics                   metrics.MCPMetrics
+	requestHeaders            http.Header
+	originalPath              string
+	perBackendMetricsRecorded bool
 }
 
 // NewMCPProxy creates a new MCPProxy instance.
@@ -134,19 +135,22 @@ func extractMetaFromJSONRPCMessage(msg jsonrpc.Message) map[string]any {
 
 // newSession creates a new session for a downstream client.
 // It multiplexes the initialize request to all backends defined in the MCPRoute associated with the downstream request.
-func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializeParams, routeName filterapi.MCPRouteName, subject string, span tracingapi.MCPSpan) (*session, error) {
+// startAt is the time when the overall HTTP request started, used for recording request duration metrics.
+func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializeParams, routeName filterapi.MCPRouteName, subject string, span tracingapi.MCPSpan, startAt time.Time) (*session, error) {
 	m.l.Debug("creating new MCP session")
+
+	backends := m.routes[routeName]
+	if backends == nil {
+		return nil, fmt.Errorf("no backends found for route %s", routeName)
+	}
+
+	forwardHeaders := extractForwardHeaders(m.requestHeaders, backends.forwardHeaders)
 
 	var (
 		wg      sync.WaitGroup
 		entries []compositeSessionEntry
 		counter int
 	)
-
-	backends := m.routes[routeName]
-	if backends == nil {
-		return nil, fmt.Errorf("no backends found for route %s", routeName)
-	}
 	entries = make([]compositeSessionEntry, len(backends.backends))
 
 	if m.l.Enabled(ctx, slog.LevelDebug) {
@@ -160,8 +164,8 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 			if m.l.Enabled(ctx, slog.LevelDebug) {
 				m.l.Debug("creating MCP session", slog.String("backend", backend.Name))
 			}
-			startAt := time.Now()
-			initResult, err := m.initializeSession(ctx, routeName, backend, p)
+			backendStartAt := time.Now()
+			initResult, err := m.initializeSession(ctx, routeName, backend, p, startAt)
 			if err != nil {
 				m.l.Error("failed to create MCP session", slog.String("backend", backend.Name), slog.String("error", err.Error()))
 				// If one backend fails, don't fail the overall connection. Create a session to the rest of the backends, as they
@@ -169,14 +173,18 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 				// TODO: should we record a metric for this?
 				return
 			}
-			m.metrics.RecordInitializationDuration(ctx, startAt, p)
+			m.metrics.WithBackend(backend.Name).RecordInitializationDuration(ctx, backendStartAt, p)
 			if m.l.Enabled(ctx, slog.LevelDebug) {
 				m.l.Debug("created MCP session", slog.String("backend", backend.Name), slog.String("session_id", string(initResult.sessionID)))
 			}
 			if span != nil {
 				span.RecordRouteToBackend(backend.Name, string(initResult.sessionID), true)
 			}
-			entries[entryIndex] = compositeSessionEntry{sessionID: initResult.sessionID, backendName: backend.Name}
+			entries[entryIndex] = compositeSessionEntry{
+				sessionID:    initResult.sessionID,
+				backendName:  backend.Name,
+				capabilities: initResult.result.Capabilities,
+			}
 		})
 	}
 	wg.Wait()
@@ -198,7 +206,21 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt session ID: %w", err)
 	}
-	return &session{reqCtx: m, id: secureClientToGatewaySessionID(encrypted)}, nil
+
+	// Build perBackendSessions map from finalEntries
+	perBackendSessions := make(map[filterapi.MCPBackendName]*compositeSessionEntry, len(finalEntries))
+	for i := range finalEntries {
+		entry := &finalEntries[i]
+		perBackendSessions[entry.backendName] = entry
+	}
+
+	return &session{
+		reqCtx:             m,
+		id:                 secureClientToGatewaySessionID(encrypted),
+		route:              routeName,
+		perBackendSessions: perBackendSessions,
+		extraHeaders:       forwardHeaders,
+	}, nil
 }
 
 // sessionFromID returns the session with the given ID, or error if not found or invalid.
@@ -226,7 +248,13 @@ func (m *mcpRequestContext) sessionFromID(id secureClientToGatewaySessionID, las
 		}
 	}
 
-	return &session{id: id, route: route, reqCtx: m, perBackendSessions: perBackendSessionIDs}, nil
+	// Extract forward headers from the current request based on the route's forwardHeaders config.
+	var extraHeaders map[string]string
+	if routeConfig := m.routes[route]; routeConfig != nil {
+		extraHeaders = extractForwardHeaders(m.requestHeaders, routeConfig.forwardHeaders)
+	}
+
+	return &session{id: id, route: route, reqCtx: m, perBackendSessions: perBackendSessionIDs, extraHeaders: extraHeaders}, nil
 }
 
 type initializeResult struct {
@@ -234,7 +262,7 @@ type initializeResult struct {
 	result    *mcp.InitializeResult
 }
 
-func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, p *mcp.InitializeParams) (*initializeResult, error) {
+func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, p *mcp.InitializeParams, startAt time.Time) (*initializeResult, error) {
 	// Send the initialize request to the MCP backend listener.
 	reqID := mustJSONRPCRequestID()
 	var (
@@ -322,7 +350,10 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 		if m.l.Enabled(ctx, slog.LevelDebug) {
 			m.l.Debug("MCP session initialized", slog.Any("capabilities", initResult.Capabilities))
 		}
-		m.metrics.RecordServerCapabilities(ctx, initResult.Capabilities, p)
+		backendMetrics := m.metrics.WithBackend(backend.Name)
+		backendMetrics.RecordServerCapabilities(ctx, initResult.Capabilities, p)
+		backendMetrics.RecordMethodCount(ctx, "initialize", p)
+		backendMetrics.RecordRequestDuration(ctx, startAt, p)
 	}
 
 	// Need to invoke "notifications/initialized" to complete the initialization.
@@ -342,6 +373,7 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 			body, _ := io.ReadAll(resp.Body)
 			return nil, fmt.Errorf("MCP notifications/initialized request failed with status code %d, body=%s", resp.StatusCode, string(body))
 		}
+		m.metrics.WithBackend(backend.Name).RecordMethodCount(ctx, "notifications/initialized", p)
 	}
 	if m.l.Enabled(ctx, slog.LevelDebug) {
 		m.l.Debug("sent MCP notifications/initialized", slog.String("backend", backend.Name), slog.String("session_id", sessionID))
@@ -374,6 +406,15 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
+
+	// Forward configured headers to backend.
+	if routeConfig := m.routes[routeName]; routeConfig != nil {
+		for _, header := range routeConfig.forwardHeaders {
+			if value := m.requestHeaders.Get(header); value != "" {
+				req.Header.Set(header, value)
+			}
+		}
+	}
 
 	resp, err := m.client.Do(req)
 	if err != nil {

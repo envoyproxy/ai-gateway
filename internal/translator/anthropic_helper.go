@@ -18,6 +18,7 @@ import (
 	anthropicParam "github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
+	openaisdk "github.com/openai/openai-go/v3"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
@@ -32,6 +33,14 @@ const (
 	anthropicVersionKey   = "anthropic_version"
 	tempNotSupportedError = "temperature %.2f is not supported by Anthropic (must be between 0.0 and 1.0)"
 )
+
+// anthropicInputSchemaKeysToSkip defines the keys from an OpenAI function parameter map
+// that are handled explicitly and should not go into the ExtraFields map.
+var anthropicInputSchemaKeysToSkip = map[string]struct{}{
+	"required":   {},
+	"type":       {},
+	"properties": {},
+}
 
 func anthropicToOpenAIFinishReason(stopReason anthropic.StopReason) (openai.ChatCompletionChoicesFinishReason, error) {
 	switch stopReason {
@@ -147,16 +156,6 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 
 				inputSchema := anthropic.ToolInputSchemaParam{}
 
-				// Dereference json schema
-				// If the paramsMap contains $refs we need to dereference them
-				var dereferencedParamsMap any
-				if dereferencedParamsMap, err = jsonSchemaDereference(paramsMap); err != nil {
-					return nil, anthropic.ToolChoiceUnionParam{}, fmt.Errorf("failed to dereference tool parameters: %w", err)
-				}
-				if paramsMap, ok = dereferencedParamsMap.(map[string]any); !ok {
-					return nil, anthropic.ToolChoiceUnionParam{}, fmt.Errorf("failed to cast dereferenced tool parameters to map[string]interface{}")
-				}
-
 				var typeVal string
 				if typeVal, ok = paramsMap["type"].(string); ok {
 					inputSchema.Type = constant.Object(typeVal)
@@ -177,6 +176,21 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 					}
 					inputSchema.Required = requiredSlice
 				}
+
+				// ExtraFieldsMap to construct
+				ExtraFieldsMap := make(map[string]any)
+
+				// Iterate over the original map from openai
+				for key, value := range paramsMap {
+					// Check if the current key should be skipped
+					if _, found := anthropicInputSchemaKeysToSkip[key]; found {
+						continue
+					}
+
+					// If not skipped, add the key-value pair to extra field map
+					ExtraFieldsMap[key] = value
+				}
+				inputSchema.ExtraFields = ExtraFieldsMap
 
 				toolParam.InputSchema = inputSchema
 			}
@@ -585,6 +599,27 @@ func outputConfigAvailable(model internalapi.RequestModel) bool {
 		strings.Contains(modelLower, "4-6")
 }
 
+// mapReasoningEffortToOutputConfigEffort converts OpenAI reasoning effort levels to Anthropic output config effort levels.
+// Currently supports:
+// - "low" → OutputConfigEffortLow
+// - "medium" → OutputConfigEffortMedium
+// - "high" → OutputConfigEffortHigh
+// - "xhigh" → OutputConfigEffortMax
+func mapReasoningEffortToOutputConfigEffort(reasonEffort openaisdk.ReasoningEffort) (anthropic.OutputConfigEffort, error) {
+	switch reasonEffort {
+	case openaisdk.ReasoningEffortLow:
+		return anthropic.OutputConfigEffortLow, nil
+	case openaisdk.ReasoningEffortMedium:
+		return anthropic.OutputConfigEffortMedium, nil
+	case openaisdk.ReasoningEffortHigh:
+		return anthropic.OutputConfigEffortHigh, nil
+	case openaisdk.ReasoningEffortXhigh:
+		return anthropic.OutputConfigEffortMax, nil
+	default:
+		return "", fmt.Errorf("%w: unsupported reasoning effort level: %q (supported: low, medium, high, xhigh)", internalapi.ErrInvalidRequestBody, reasonEffort)
+	}
+}
+
 // buildAnthropicParams is a helper function that translates an OpenAI request
 // into the parameter struct required by the Anthropic SDK.
 // The apiSchema parameter indicates the backend API schema (e.g., "AWSAnthropic", "GCPAnthropic").
@@ -634,6 +669,15 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 				Schema: schemaMap,
 			},
 		}
+	}
+
+	// Map OpenAI reasoning_effort to Anthropic output_config.effort.
+	if openAIReq.ReasoningEffort != "" && outputConfigAvailable(openAIReq.Model) {
+		effort, effortErr := mapReasoningEffortToOutputConfigEffort(openAIReq.ReasoningEffort)
+		if effortErr != nil {
+			return nil, effortErr
+		}
+		params.OutputConfig.Effort = effort
 	}
 
 	if openAIReq.Temperature != nil {

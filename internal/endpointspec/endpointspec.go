@@ -101,7 +101,7 @@ func (ChatCompletionsEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.ChatCompletionRequest, bool, []byte, error) {
 	var req openai.ChatCompletionRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/chat/completions", internalapi.ErrMalformedRequest)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/chat/completions: %w", internalapi.ErrMalformedRequest, err)
 	}
 	var mutatedBody []byte
 	if req.Stream && costConfigured && (req.StreamOptions == nil || !req.StreamOptions.IncludeUsage) {
@@ -206,7 +206,7 @@ func (CompletionsEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.CompletionRequest, bool, []byte, error) {
 	var openAIReq openai.CompletionRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/completions", internalapi.ErrMalformedRequest)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/completions: %w", internalapi.ErrMalformedRequest, err)
 	}
 	return openAIReq.Model, &openAIReq, openAIReq.Stream, nil, nil
 }
@@ -234,7 +234,7 @@ func (EmbeddingsEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.EmbeddingRequest, bool, []byte, error) {
 	var openAIReq openai.EmbeddingRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/embeddings", internalapi.ErrMalformedRequest)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/embeddings: %w", internalapi.ErrMalformedRequest, err)
 	}
 	return openAIReq.Model, &openAIReq, false, nil, nil
 }
@@ -265,7 +265,7 @@ func (ImageGenerationEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.ImageGenerationRequest, bool, []byte, error) {
 	var openAIReq openai.ImageGenerationRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/images/generations", internalapi.ErrMalformedRequest)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/images/generations: %w", internalapi.ErrMalformedRequest, err)
 	}
 	return openAIReq.Model, &openAIReq, false, nil, nil
 }
@@ -293,7 +293,7 @@ func (ResponsesEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *openai.ResponseRequest, bool, []byte, error) {
 	var openAIReq openai.ResponseRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/responses", internalapi.ErrMalformedRequest)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/responses: %w", internalapi.ErrMalformedRequest, err)
 	}
 	return openAIReq.Model, &openAIReq, openAIReq.Stream, nil, nil
 }
@@ -321,7 +321,7 @@ func (MessagesEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *anthropic.MessagesRequest, bool, []byte, error) {
 	var anthropicReq anthropic.MessagesRequest
 	if err := json.Unmarshal(body, &anthropicReq); err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/messages", internalapi.ErrMalformedRequest)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/messages: %w", internalapi.ErrMalformedRequest, err)
 	}
 
 	model := anthropicReq.Model
@@ -343,8 +343,10 @@ func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 		return translator.NewAnthropicToAWSAnthropicTranslator(schema.Version, modelNameOverride), nil
 	case filterapi.APISchemaAnthropic:
 		return translator.NewAnthropicToAnthropicTranslator(schema.Version, modelNameOverride), nil
+	case filterapi.APISchemaOpenAI:
+		return translator.NewAnthropicToChatCompletionOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("/v1/messages endpoint only supports backends that return native Anthropic format (Anthropic, GCPAnthropic, AWSAnthropic). Backend %s uses different model format", schema.Name)
+		return nil, fmt.Errorf("/v1/messages endpoint only supports backends that return native Anthropic format (Anthropic, GCPAnthropic, AWSAnthropic). OpenAI translation is also supported. Backend %s uses different model format", schema.Name)
 	}
 }
 
@@ -361,7 +363,7 @@ func (RerankEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *cohereschema.RerankV2Request, bool, []byte, error) {
 	var req cohereschema.RerankV2Request
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v2/rerank", internalapi.ErrMalformedRequest)
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v2/rerank: %w", internalapi.ErrMalformedRequest, err)
 	}
 	return req.Model, &req, false, nil, nil
 }

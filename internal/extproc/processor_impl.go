@@ -6,9 +6,12 @@
 package extproc
 
 import (
+	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strconv"
 
@@ -105,16 +108,18 @@ type (
 	upstreamProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]] struct {
 		parent *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]
 
-		logger            *slog.Logger
-		requestHeaders    map[string]string
-		responseHeaders   map[string]string
-		responseEncoding  string
-		translator        translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]]
-		modelNameOverride internalapi.ModelNameOverride
-		headerMutator     *headermutator.HeaderMutator
-		bodyMutator       *bodymutator.BodyMutator
-		backendName       string
-		handler           filterapi.BackendAuthHandler
+		logger             *slog.Logger
+		requestHeaders     map[string]string
+		responseHeaders    map[string]string
+		responseEncoding   string
+		compressedBuf      []byte // accumulates raw compressed bytes across streaming chunks
+		decompressedOffset int    // tracks decompressed bytes already returned
+		translator         translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]]
+		modelNameOverride  internalapi.ModelNameOverride
+		headerMutator      *headermutator.HeaderMutator
+		bodyMutator        *bodymutator.BodyMutator
+		backendName        string
+		handler            filterapi.BackendAuthHandler
 		// cost is the cost of the request that is accumulated during the processing of the response.
 		costs metrics.TokenUsage
 		// metrics tracking.
@@ -406,6 +411,9 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	if enc := u.responseHeaders["content-encoding"]; enc != "" {
 		u.responseEncoding = enc
 	}
+	// Reset streaming decompression state for new response (important for retries).
+	u.compressedBuf = nil
+	u.decompressedOffset = 0
 	newHeaders, err := u.translator.ResponseHeaders(u.responseHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response headers: %w", err)
@@ -436,8 +444,15 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		}
 	}()
 
-	// Decompress the body if needed using common utility.
-	decodingResult, err := decodeContentIfNeeded(body.Body, u.responseEncoding)
+	// Decompress the body if needed.
+	// For streaming responses with content-encoding, use stateful decompression
+	// that accumulates compressed bytes across chunks.
+	var decodingResult contentDecodingResult
+	if u.parent.stream && u.responseEncoding != "" {
+		decodingResult, err = u.decodeStreamingContent(body.Body, body.EndOfStream)
+	} else {
+		decodingResult, err = decodeContentIfNeeded(body.Body, u.responseEncoding)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -530,6 +545,29 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	return resp, nil
 }
 
+// decodeStreamingContent handles decompression for streaming responses with content-encoding.
+// It accumulates raw compressed bytes across chunks and re-decompresses from the beginning each time,
+// returning only the newly decompressed data. This is necessary because gzip streams are stateful
+// and a new decompressor cannot be created mid-stream without the full preceding data.
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) decodeStreamingContent(chunk []byte, endOfStream bool) (contentDecodingResult, error) {
+	u.compressedBuf = append(u.compressedBuf, chunk...)
+	decodingResult, err := decodeContentIfNeeded(u.compressedBuf, u.responseEncoding)
+	if err != nil {
+		return contentDecodingResult{}, err
+	}
+	allDecompressed, readErr := io.ReadAll(decodingResult.reader)
+	if readErr != nil {
+		if endOfStream || !errors.Is(readErr, io.ErrUnexpectedEOF) {
+			return contentDecodingResult{}, fmt.Errorf("failed to decompress streaming content: %w", readErr)
+		}
+		// For non-final chunks, ErrUnexpectedEOF is expected: the gzip stream is incomplete
+		// (footer not yet received), but all data up to this point is valid.
+	}
+	newData := allDecompressed[u.decompressedOffset:]
+	u.decompressedOffset = len(allDecompressed)
+	return contentDecodingResult{reader: bytes.NewReader(newData), isEncoded: true}, nil
+}
+
 // SetBackend implements [Processor.SetBackend].
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler filterapi.BackendAuthHandler, routeProcessor Processor) (err error) {
 	defer func() {
@@ -552,13 +590,13 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	if u.modelNameOverride != "" {
 		u.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = u.modelNameOverride
 	}
-	rp.upstreamFilter = u
-	u.parent = rp
+	u.parent = rp // Set parent before GetTranslator so it can access rp.eh
 
 	u.translator, err = u.parent.eh.GetTranslator(b.Schema, u.modelNameOverride)
 	if err != nil {
 		return fmt.Errorf("failed to create translator for backend %s: %w", b.Name, err)
 	}
+	rp.upstreamFilter = u // Only assign after translator is confirmed valid
 
 	switch redactor := u.translator.(type) {
 	case translator.ResponseRedactor:
@@ -681,12 +719,15 @@ func buildDynamicMetadata(config *filterapi.RuntimeConfig, costs *metrics.TokenU
 			cost, _ = costs.OutputTokens()
 		case filterapi.LLMRequestCostTypeTotalToken:
 			cost, _ = costs.TotalTokens()
+		case filterapi.LLMRequestCostTypeReasoningToken:
+			cost, _ = costs.ReasoningTokens()
 		case filterapi.LLMRequestCostTypeCEL:
 			in, _ := costs.InputTokens()
 			cachedIn, _ := costs.CachedInputTokens()
 			cacheCreation, _ := costs.CacheCreationInputTokens()
 			out, _ := costs.OutputTokens()
 			total, _ := costs.TotalTokens()
+			reasoning, _ := costs.ReasoningTokens()
 			costU64, err := llmcostcel.EvaluateProgram(
 				rc.CELProg,
 				requestHeaders[internalapi.ModelNameHeaderKeyDefault],
@@ -696,6 +737,7 @@ func buildDynamicMetadata(config *filterapi.RuntimeConfig, costs *metrics.TokenU
 				cacheCreation,
 				out,
 				total,
+				reasoning,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)

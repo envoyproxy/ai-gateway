@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -92,7 +93,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	var aiRoutes aigv1a1.AIGatewayRouteList
+	var aiRoutes aigv1b1.AIGatewayRouteList
 	err := c.client.List(ctx, &aiRoutes, client.MatchingFields{
 		k8sClientIndexAIGatewayRouteToAttachedGateway: fmt.Sprintf("%s.%s", req.Name, req.Namespace),
 	})
@@ -142,38 +143,28 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Finally, we need to annotate the pods of the gateway deployment with the new uuid to propagate the filter config Secret update faster.
 	// If the pod doesn't have the extproc container, it will roll out the deployment altogether which eventually ends up
 	// the mutation hook invoked.
-	if err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uid, hasEffectiveRoutes, len(mcpRoutes.Items) > 0); err != nil {
+	result, err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uid, hasEffectiveRoutes, len(mcpRoutes.Items) > 0)
+	if err != nil {
 		c.logger.Error(err, "Failed to annotate gateway pods", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, err
 	}
-	return ctrl.Result{}, nil
+	return result, nil
 }
 
-// schemaToFilterAPI converts an aigv1a1.VersionedAPISchema to filterapi.VersionedAPISchema.
-func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema, l logr.Logger) filterapi.VersionedAPISchema {
+// schemaToFilterAPI converts an aigv1b1.VersionedAPISchema to filterapi.VersionedAPISchema.
+func schemaToFilterAPI(schema aigv1b1.VersionedAPISchema) filterapi.VersionedAPISchema {
 	ret := filterapi.VersionedAPISchema{}
 	ret.Name = filterapi.APISchemaName(schema.Name)
-	if schema.Name == aigv1a1.APISchemaOpenAI {
-		if schema.Prefix != nil {
-			ret.Prefix = *schema.Prefix
-		} else {
-			// We default to the v1 version if not specified or nil for the legacy use of "version" field.
-			// TODO: This is to maintain backward compatibility, delete this in future releases.
-			ret.Prefix = cmp.Or(ptr.Deref(schema.Version, "v1"), "v1")
-			l.Info("Warning: 'prefix' field is not set for OpenAI schema, using 'version' field as prefix for backward compatibility. " +
-				"Please set 'prefix' field explicitly as this use of 'version' field will be removed in future releases.",
-			)
-		}
-		// This is for backward compatibility. TODO: remove this after v0.5.0 release.
-		ret.Version = ret.Prefix
+	if schema.Name == aigv1b1.APISchemaOpenAI {
+		ret.Prefix = cmp.Or(ptr.Deref(schema.Prefix, ""), "v1")
 	} else {
 		ret.Version = ptr.Deref(schema.Version, "")
 	}
 	return ret
 }
 
-// headerMutationToFilterAPI converts an aigv1a1.HTTPHeaderMutation to filterapi.HTTPHeaderMutation.
-func headerMutationToFilterAPI(m *aigv1a1.HTTPHeaderMutation) *filterapi.HTTPHeaderMutation {
+// headerMutationToFilterAPI converts an aigv1b1.HTTPHeaderMutation to filterapi.HTTPHeaderMutation.
+func headerMutationToFilterAPI(m *aigv1b1.HTTPHeaderMutation) *filterapi.HTTPHeaderMutation {
 	if m == nil {
 		return nil
 	}
@@ -188,8 +179,8 @@ func headerMutationToFilterAPI(m *aigv1a1.HTTPHeaderMutation) *filterapi.HTTPHea
 	return ret
 }
 
-// bodyMutationToFilterAPI converts an aigv1a1.HTTPBodyMutation to filterapi.HTTPBodyMutation.
-func bodyMutationToFilterAPI(m *aigv1a1.HTTPBodyMutation) *filterapi.HTTPBodyMutation {
+// bodyMutationToFilterAPI converts an aigv1b1.HTTPBodyMutation to filterapi.HTTPBodyMutation.
+func bodyMutationToFilterAPI(m *aigv1b1.HTTPBodyMutation) *filterapi.HTTPBodyMutation {
 	if m == nil {
 		return nil
 	}
@@ -204,7 +195,7 @@ func bodyMutationToFilterAPI(m *aigv1a1.HTTPBodyMutation) *filterapi.HTTPBodyMut
 
 // mergeBodyMutations merges route-level and backend-level BodyMutation with route-level taking precedence.
 // Returns the merged BodyMutation where route-level operations override backend-level operations for conflicting body fields.
-func mergeBodyMutations(routeLevel, backendLevel *aigv1a1.HTTPBodyMutation) *aigv1a1.HTTPBodyMutation {
+func mergeBodyMutations(routeLevel, backendLevel *aigv1b1.HTTPBodyMutation) *aigv1b1.HTTPBodyMutation {
 	if routeLevel == nil {
 		return backendLevel
 	}
@@ -212,10 +203,10 @@ func mergeBodyMutations(routeLevel, backendLevel *aigv1a1.HTTPBodyMutation) *aig
 		return routeLevel
 	}
 
-	result := &aigv1a1.HTTPBodyMutation{}
+	result := &aigv1b1.HTTPBodyMutation{}
 
 	// Merge Set operations (route-level wins conflicts)
-	fieldMap := make(map[string]aigv1a1.HTTPBodyField)
+	fieldMap := make(map[string]aigv1b1.HTTPBodyField)
 
 	// Add backend-level fields first
 	for _, f := range backendLevel.Set {
@@ -251,7 +242,7 @@ func mergeBodyMutations(routeLevel, backendLevel *aigv1a1.HTTPBodyMutation) *aig
 
 // mergeHeaderMutations merges route-level and backend-level HeaderMutation with route-level taking precedence.
 // Returns the merged HeaderMutation where route-level operations override backend-level operations for conflicting headers.
-func mergeHeaderMutations(routeLevel, backendLevel *aigv1a1.HTTPHeaderMutation) *aigv1a1.HTTPHeaderMutation {
+func mergeHeaderMutations(routeLevel, backendLevel *aigv1b1.HTTPHeaderMutation) *aigv1b1.HTTPHeaderMutation {
 	if routeLevel == nil {
 		return backendLevel
 	}
@@ -259,7 +250,7 @@ func mergeHeaderMutations(routeLevel, backendLevel *aigv1a1.HTTPHeaderMutation) 
 		return routeLevel
 	}
 
-	result := &aigv1a1.HTTPHeaderMutation{}
+	result := &aigv1b1.HTTPHeaderMutation{}
 
 	// Merge Set operations (route-level wins conflicts)
 	headerMap := make(map[string]gwapiv1.HTTPHeader)
@@ -301,7 +292,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	ctx context.Context,
 	configSecretName,
 	configSecretNamespace string,
-	aiGatewayRoutes []aigv1a1.AIGatewayRoute,
+	aiGatewayRoutes []aigv1b1.AIGatewayRoute,
 	mcpRoutes []aigv1a1.MCPRoute,
 	uuid string,
 ) (hasEffectiveRoute bool, _ error) {
@@ -341,7 +332,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				b.Name = internalapi.PerRouteRuleRefBackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, ruleIndex, backendRefIndex)
 				b.ModelNameOverride = backendRef.ModelNameOverride
 
-				var bsp *aigv1a1.BackendSecurityPolicy
+				var bsp *aigv1b1.BackendSecurityPolicy
 				backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
 
 				if backendRef.IsInferencePool() {
@@ -360,7 +351,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 						continue
 					}
 				} else {
-					var backendObj *aigv1a1.AIServiceBackend
+					var backendObj *aigv1b1.AIServiceBackend
 					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, backendNamespace, backendRef.Name)
 					if err != nil {
 						c.logger.Error(err, "failed to get backend or backend security policy. Skipping this backend.",
@@ -385,7 +376,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					mergedBodyMutation := mergeBodyMutations(routeBodyMutation, backendBodyMutation)
 					b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
 
-					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema, c.logger)
+					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
 				}
 
 				if bsp != nil {
@@ -410,17 +401,17 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					continue
 				}
 				switch cost.Type {
-				case aigv1a1.LLMRequestCostTypeInputToken:
+				case aigv1b1.LLMRequestCostTypeInputToken:
 					fc.Type = filterapi.LLMRequestCostTypeInputToken
-				case aigv1a1.LLMRequestCostTypeCachedInputToken:
+				case aigv1b1.LLMRequestCostTypeCachedInputToken:
 					fc.Type = filterapi.LLMRequestCostTypeCachedInputToken
-				case aigv1a1.LLMRequestCostTypeCacheCreationInputToken:
+				case aigv1b1.LLMRequestCostTypeCacheCreationInputToken:
 					fc.Type = filterapi.LLMRequestCostTypeCacheCreationInputToken
-				case aigv1a1.LLMRequestCostTypeOutputToken:
+				case aigv1b1.LLMRequestCostTypeOutputToken:
 					fc.Type = filterapi.LLMRequestCostTypeOutputToken
-				case aigv1a1.LLMRequestCostTypeTotalToken:
+				case aigv1b1.LLMRequestCostTypeTotalToken:
 					fc.Type = filterapi.LLMRequestCostTypeTotalToken
-				case aigv1a1.LLMRequestCostTypeCEL:
+				case aigv1b1.LLMRequestCostTypeCEL:
 					fc.Type = filterapi.LLMRequestCostTypeCEL
 					expr := *cost.CEL
 					// Sanity check the CEL expression.
@@ -565,36 +556,42 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 				mcpRoute.Authorization.Rules = append(mcpRoute.Authorization.Rules, mcpRule)
 			}
 		}
+		// Add headers to forward from the incoming request to backend MCP servers.
+		if route.Spec.SecurityPolicy != nil && route.Spec.SecurityPolicy.OAuth != nil {
+			for _, ctoh := range route.Spec.SecurityPolicy.OAuth.ClaimToHeaders {
+				mcpRoute.ForwardHeaders = append(mcpRoute.ForwardHeaders, ctoh.Header)
+			}
+		}
 		mc.Routes = append(mc.Routes, mcpRoute)
 	}
 	return mc, hasEffectiveRoute
 }
 
-func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backendSecurityPolicy *aigv1a1.BackendSecurityPolicy) (*filterapi.BackendAuth, error) {
+func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backendSecurityPolicy *aigv1b1.BackendSecurityPolicy) (*filterapi.BackendAuth, error) {
 	namespace := backendSecurityPolicy.Namespace
 	switch backendSecurityPolicy.Spec.Type {
-	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
+	case aigv1b1.BackendSecurityPolicyTypeAPIKey:
 		secretName := string(backendSecurityPolicy.Spec.APIKey.SecretRef.Name)
 		apiKey, err := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
 		}
 		return &filterapi.BackendAuth{APIKey: &filterapi.APIKeyAuth{Key: apiKey}}, nil
-	case aigv1a1.BackendSecurityPolicyTypeAzureAPIKey:
+	case aigv1b1.BackendSecurityPolicyTypeAzureAPIKey:
 		secretName := string(backendSecurityPolicy.Spec.AzureAPIKey.SecretRef.Name)
 		apiKey, err := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
 		}
 		return &filterapi.BackendAuth{AzureAPIKey: &filterapi.AzureAPIKeyAuth{Key: apiKey}}, nil
-	case aigv1a1.BackendSecurityPolicyTypeAnthropicAPIKey:
+	case aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey:
 		secretName := string(backendSecurityPolicy.Spec.AnthropicAPIKey.SecretRef.Name)
 		apiKey, err := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
 		}
 		return &filterapi.BackendAuth{AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: apiKey}}, nil
-	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
 		awsCred := backendSecurityPolicy.Spec.AWSCredentials
 
 		// If no credentials file or OIDC token is configured, use default credential chain
@@ -624,7 +621,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 				Region:                awsCred.Region,
 			},
 		}, nil
-	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		azureAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.AzureAccessTokenKey)
 		if err != nil {
@@ -633,7 +630,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		return &filterapi.BackendAuth{
 			AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken},
 		}, nil
-	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		gcpAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
 		if err != nil {
@@ -671,20 +668,20 @@ func (c *GatewayController) getSecretData(ctx context.Context, namespace, name, 
 }
 
 // backendWithMaybeBSP retrieves the AIServiceBackend and its associated BackendSecurityPolicy if it exists.
-func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, name string) (backend *aigv1a1.AIServiceBackend, bsp *aigv1a1.BackendSecurityPolicy, err error) {
-	backend = &aigv1a1.AIServiceBackend{}
+func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, name string) (backend *aigv1b1.AIServiceBackend, bsp *aigv1b1.BackendSecurityPolicy, err error) {
+	backend = &aigv1b1.AIServiceBackend{}
 	if err = c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backend); err != nil {
 		return
 	}
 
-	var backendSecurityPolicyList aigv1a1.BackendSecurityPolicyList
+	var backendSecurityPolicyList aigv1b1.BackendSecurityPolicyList
 	key := fmt.Sprintf("%s.%s", name, namespace)
 	if err := c.client.List(ctx, &backendSecurityPolicyList, client.InNamespace(namespace),
 		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
 		return nil, nil, fmt.Errorf("failed to list BackendSecurityPolicies for backend %s: %w", name, err)
 	}
 
-	var matchingBSPs []*aigv1a1.BackendSecurityPolicy
+	var matchingBSPs []*aigv1b1.BackendSecurityPolicy
 	for i := range backendSecurityPolicyList.Items {
 		policy := &backendSecurityPolicyList.Items[i]
 		for _, target := range policy.Spec.TargetRefs {
@@ -714,15 +711,15 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 }
 
 // getBSPForInferencePool retrieves the BackendSecurityPolicy for a given InferencePool if it exists.
-func (c *GatewayController) getBSPForInferencePool(ctx context.Context, namespace, name string) (*aigv1a1.BackendSecurityPolicy, error) {
-	var bspList aigv1a1.BackendSecurityPolicyList
+func (c *GatewayController) getBSPForInferencePool(ctx context.Context, namespace, name string) (*aigv1b1.BackendSecurityPolicy, error) {
+	var bspList aigv1b1.BackendSecurityPolicyList
 	key := fmt.Sprintf("%s.%s", name, namespace)
 	if err := c.client.List(ctx, &bspList, client.InNamespace(namespace),
 		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
 		return nil, fmt.Errorf("failed to list BackendSecurityPolicies for inference pool %s: %w", name, err)
 	}
 
-	var matchingBSPs []*aigv1a1.BackendSecurityPolicy
+	var matchingBSPs []*aigv1b1.BackendSecurityPolicy
 	for i := range bspList.Items {
 		bsp := &bspList.Items[i]
 		for _, target := range bsp.Spec.TargetRefs {
@@ -743,9 +740,103 @@ func (c *GatewayController) getBSPForInferencePool(ctx context.Context, namespac
 	return matchingBSPs[0], nil
 }
 
+// checkPodHasSideCar checks if a pod has the extproc sidecar container with correct configuration.
+func (c *GatewayController) checkPodHasSideCar(pod *corev1.Pod, needMCP bool) bool {
+	podSpec := pod.Spec
+	hasSideCar := false
+
+	if c.extProcAsSideCar {
+		for i := range podSpec.InitContainers {
+			// If there's an extproc sidecar container with the current target image, we don't need to roll out the deployment.
+			if podSpec.InitContainers[i].Name == extProcContainerName && podSpec.InitContainers[i].Image == c.extProcImage {
+				hasSideCar = true
+				hasMCPAddr := false
+				for j := range podSpec.InitContainers[i].Args {
+					// logLevel arg should be indexed 2 based on gateway_mutator.go, but we check all args to be safe.
+					if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-logLevel" && podSpec.InitContainers[i].Args[j] != c.extProcLogLevel {
+						hasSideCar = false
+						break
+					}
+					// Check if the -mcpAddr argument is present
+					if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-mcpAddr" {
+						hasMCPAddr = true
+					}
+				}
+				// If MCPRoutes exist but the sidecar doesn't have -mcpAddr, we need to roll out
+				if needMCP && !hasMCPAddr {
+					c.logger.Info("MCPRoutes exist but sidecar is missing -mcpAddr argument, triggering rollout",
+						"pod", pod.Name, "namespace", pod.Namespace)
+					hasSideCar = false
+				}
+				break
+			}
+		}
+	} else {
+		for i := range podSpec.Containers {
+			// If there's an extproc container with the current target image, we don't need to roll out the deployment.
+			if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == c.extProcImage {
+				hasSideCar = true
+				hasMCPAddr := false
+				for j := range podSpec.Containers[i].Args {
+					if j > 0 && podSpec.Containers[i].Args[j-1] == "-logLevel" && podSpec.Containers[i].Args[j] != c.extProcLogLevel {
+						hasSideCar = false
+						break
+					}
+					// Check if the -mcpAddr argument is present
+					if j > 0 && podSpec.Containers[i].Args[j-1] == "-mcpAddr" {
+						hasMCPAddr = true
+					}
+				}
+				// If MCPRoutes exist but the sidecar doesn't have -mcpAddr, we need to roll out
+				if needMCP && !hasMCPAddr {
+					c.logger.Info("MCPRoutes exist but sidecar is missing -mcpAddr argument, triggering rollout",
+						"pod", pod.Name, "namespace", pod.Namespace)
+					hasSideCar = false
+				}
+				break
+			}
+		}
+	}
+
+	return hasSideCar
+}
+
+// isRolloutInProgress checks whether any Deployment or DaemonSet is currently rolling out.
+func isRolloutInProgress(deployments []appsv1.Deployment, daemonSets []appsv1.DaemonSet) bool {
+	for i := range deployments {
+		dep := &deployments[i]
+		if dep.Status.ObservedGeneration < dep.Generation {
+			return true
+		}
+		// Rollout is still converging while total pods exceed updated pods, which
+		// indicates at least one old-template pod is still present.
+		if dep.Status.Replicas > dep.Status.UpdatedReplicas {
+			return true
+		}
+	}
+	for i := range daemonSets {
+		ds := &daemonSets[i]
+		// Ignore status-based checks until the controller observed this generation.
+		if ds.Status.ObservedGeneration == 0 {
+			continue
+		}
+		if ds.Status.ObservedGeneration < ds.Generation {
+			return true
+		}
+		// Rollout is still converging while total pods exceed updated pods, which
+		// indicates at least one old-template pod is still present.
+		if ds.Status.CurrentNumberScheduled > ds.Status.UpdatedNumberScheduled {
+			return true
+		}
+	}
+	return false
+}
+
 // annotateGatewayPods annotates the pods of GW with the new uuid to propagate the filter config Secret update faster.
 // If the pod doesn't have the extproc container, it will roll out the deployment altogether, which eventually ends up
 // the mutation hook invoked.
+//
+// Returns a ctrl.Result that may indicate requeue is needed (e.g., when rollout is in progress).
 //
 // See https://neonmirrors.net/post/2022-12/reducing-pod-volume-update-times/ for explanation.
 func (c *GatewayController) annotateGatewayPods(ctx context.Context,
@@ -755,80 +846,61 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	uuid string,
 	hasEffectiveRoute bool,
 	needMCP bool,
-) error {
-	hasSideCar := false
+) (ctrl.Result, error) {
+	if isRolloutInProgress(deployments, daemonSets) {
+		const requeueAfter = 5 * time.Second
+		c.logger.Info("rollout in progress - requeueing", "requeueAfter", requeueAfter.String())
+		return ctrl.Result{RequeueAfter: requeueAfter}, nil
+	}
+
+	// Detect sidecar state in one pass with early exit on inconsistent state (e.g., some pods have sidecar, some don't).
+	// If inconsistent state exists while rollout is not in progress, force rollout to self-heal.
+	seenWithSidecar := false
+	seenWithoutSidecar := false
+	for i := range pods {
+		if !pods[i].GetDeletionTimestamp().IsZero() {
+			continue
+		}
+		if c.checkPodHasSideCar(&pods[i], needMCP) {
+			seenWithSidecar = true
+		} else {
+			seenWithoutSidecar = true
+		}
+		if seenWithSidecar && seenWithoutSidecar {
+			break
+		}
+	}
+	forceRollout := seenWithSidecar && seenWithoutSidecar
+	if forceRollout {
+		c.logger.Info("pods are inconsistent while rollout is stable, forcing rollout",
+			"podsWithSidecarSeen", seenWithSidecar, "podsWithoutSidecarSeen", seenWithoutSidecar)
+	}
+	// When not mixed, "all have sidecar" is equivalent to seeing at least one pod with sidecar
+	// and none without sidecar. For zero pods this remains false.
+	hasSideCar := seenWithSidecar && !seenWithoutSidecar
+
 	for i := range pods {
 		pod := &pods[i]
-		// Get the pod spec and check if it has the extproc container.
-		podSpec := pod.Spec
-		if c.extProcAsSideCar {
-			for i := range podSpec.InitContainers {
-				// If there's an extproc sidecar container with the current target image, we don't need to roll out the deployment.
-				if podSpec.InitContainers[i].Name == extProcContainerName && podSpec.InitContainers[i].Image == c.extProcImage {
-					hasSideCar = true
-					hasMCPAddr := false
-					for j := range podSpec.InitContainers[i].Args {
-						// logLevel arg should be indexed 2 based on gateway_mutator.go, but we check all args to be safe.
-						if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-logLevel" && podSpec.InitContainers[i].Args[j] != c.extProcLogLevel {
-							hasSideCar = false
-							break
-						}
-						// Check if the -mcpAddr argument is present
-						if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-mcpAddr" {
-							hasMCPAddr = true
-						}
-					}
-					// If MCPRoutes exist but the sidecar doesn't have -mcpAddr, we need to roll out
-					if needMCP && !hasMCPAddr {
-						c.logger.Info("MCPRoutes exist but sidecar is missing -mcpAddr argument, triggering rollout",
-							"pod", pod.Name, "namespace", pod.Namespace)
-						hasSideCar = false
-					}
-					break
-				}
-			}
-		} else {
-			for i := range podSpec.Containers {
-				// If there's an extproc container with the current target image, we don't need to roll out the deployment.
-				if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == c.extProcImage {
-					hasSideCar = true
-					hasMCPAddr := false
-					for j := range podSpec.Containers[i].Args {
-						if j > 0 && podSpec.Containers[i].Args[j-1] == "-logLevel" && podSpec.Containers[i].Args[j] != c.extProcLogLevel {
-							hasSideCar = false
-							break
-						}
-						// Check if the -mcpAddr argument is present
-						if j > 0 && podSpec.Containers[i].Args[j-1] == "-mcpAddr" {
-							hasMCPAddr = true
-						}
-					}
-					// If MCPRoutes exist but the sidecar doesn't have -mcpAddr, we need to roll out
-					if needMCP && !hasMCPAddr {
-						c.logger.Info("MCPRoutes exist but sidecar is missing -mcpAddr argument, triggering rollout",
-							"pod", pod.Name, "namespace", pod.Namespace)
-						hasSideCar = false
-					}
-					break
-				}
-			}
+		if !pod.GetDeletionTimestamp().IsZero() {
+			c.logger.Info("skipping terminating pod", "namespace", pod.Namespace, "name", pod.Name)
+			continue
 		}
-
 		c.logger.Info("annotating pod", "namespace", pod.Namespace, "name", pod.Name)
 		_, err := c.kube.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.MergePatchType,
 			fmt.Appendf(nil,
 				`{"metadata":{"annotations":{"%s":"%s"}}}`, aigatewayUUIDAnnotationKey, uuid),
 			metav1.PatchOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to patch pod %s: %w", pod.Name, err)
+			return ctrl.Result{}, fmt.Errorf("failed to patch pod %s: %w", pod.Name, err)
 		}
 	}
 
-	// We annotate the deployments and daemonsets only under two scenarios:
+	// We annotate the deployments and daemonsets under three scenarios:
 	// 1. If there's an effective route but no sidecar container, we need to add the sidecar container.
 	// 2. If there's no effective route but has sidecar container,
 	//    we need to roll out the deployment to trigger the mutation webhook to remove the sidecar container.
-	if hasEffectiveRoute != hasSideCar {
+	// 3. If pods are inconsistent even when rollout isn't in progress, force rollout to self-heal.
+	if hasEffectiveRoute != hasSideCar || forceRollout {
 		for i := range deployments {
 			dep := &deployments[i]
 			c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name)
@@ -837,7 +909,7 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
 				metav1.PatchOptions{})
 			if err != nil {
-				return fmt.Errorf("failed to patch deployment %s: %w", dep.Name, err)
+				return ctrl.Result{}, fmt.Errorf("failed to patch deployment %s: %w", dep.Name, err)
 			}
 		}
 
@@ -849,11 +921,11 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
 				metav1.PatchOptions{})
 			if err != nil {
-				return fmt.Errorf("failed to patch daemonset %s: %w", daemonSet.Name, err)
+				return ctrl.Result{}, fmt.Errorf("failed to patch daemonset %s: %w", daemonSet.Name, err)
 			}
 		}
 	}
-	return nil
+	return ctrl.Result{}, nil
 }
 
 // getObjectsForGateway retrieves the pods, deployments, and daemonsets for a given Gateway.

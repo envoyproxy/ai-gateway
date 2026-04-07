@@ -106,8 +106,8 @@ func verifyPrometheusRequestDuration(t *testing.T, metric *dto.MetricFamily, exp
 func verifyPrometheusTokenUsage(t *testing.T, metric *dto.MetricFamily, expectedModel string) {
 	t.Helper()
 	require.NotNil(t, metric)
-	require.Len(t, metric.Metric, 4)
-	var inputMetric, cachedInputMetric, cacheCreationInputMetric, outputMetric *dto.Metric
+	require.Len(t, metric.Metric, 5)
+	var inputMetric, cachedInputMetric, cacheCreationInputMetric, outputMetric, reasoningMetric *dto.Metric
 	for _, m := range metric.Metric {
 		for _, label := range m.Label {
 			if *label.Name == "gen_ai_token_type" {
@@ -120,6 +120,8 @@ func verifyPrometheusTokenUsage(t *testing.T, metric *dto.MetricFamily, expected
 					cacheCreationInputMetric = m
 				case "output":
 					outputMetric = m
+				case "reasoning":
+					reasoningMetric = m
 				}
 				break
 			}
@@ -129,6 +131,7 @@ func verifyPrometheusTokenUsage(t *testing.T, metric *dto.MetricFamily, expected
 	require.NotNil(t, cachedInputMetric, "Cached Input metric not found")
 	require.NotNil(t, cacheCreationInputMetric, "Cache Creation Input metric not found")
 	require.NotNil(t, outputMetric, "Output metric not found")
+	require.NotNil(t, reasoningMetric, "Reasoning metric not found")
 
 	type testCase struct {
 		metric      *dto.Metric
@@ -141,6 +144,7 @@ func verifyPrometheusTokenUsage(t *testing.T, metric *dto.MetricFamily, expected
 		{cachedInputMetric, "cached_input", 0},
 		{cacheCreationInputMetric, "cache_creation_input", 0},
 		{outputMetric, "output", 377},
+		{reasoningMetric, "reasoning", 320},
 	}
 
 	for _, tc := range cases {

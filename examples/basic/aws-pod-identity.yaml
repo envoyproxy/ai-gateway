@@ -62,10 +62,8 @@ spec:
   provider:
     type: Kubernetes
     kubernetes:
-      envoyDeployment:
-        pod:
-          # This tells Envoy Gateway to use our AWS-enabled ServiceAccount
-          serviceAccountName: ai-gateway-dataplane-aws
+      envoyServiceAccount:
+        name: ai-gateway-dataplane-aws
 ---
 # Step 4: Create Gateway that references the custom EnvoyProxy
 apiVersion: gateway.networking.k8s.io/v1
@@ -84,7 +82,7 @@ spec:
       port: 80
 ---
 # Step 5: Create AIGatewayRoute for routing to Bedrock
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: envoy-ai-gateway-basic-aws
@@ -104,7 +102,7 @@ spec:
         - name: envoy-ai-gateway-basic-aws
 ---
 # Step 6: Create AIServiceBackend for AWS Bedrock
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: envoy-ai-gateway-basic-aws
@@ -119,7 +117,7 @@ spec:
 ---
 # Step 7: Create BackendSecurityPolicy using AWS credential chain
 # This automatically detects and uses EKS Pod Identity credentials!
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: envoy-ai-gateway-basic-aws
