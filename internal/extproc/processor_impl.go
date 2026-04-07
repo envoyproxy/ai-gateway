@@ -715,12 +715,15 @@ func evalRuntimeGlobalRequestCost(rc *filterapi.RuntimeGlobalRequestCost, costs 
 		cost, _ = costs.OutputTokens()
 	case filterapi.LLMRequestCostTypeTotalToken:
 		cost, _ = costs.TotalTokens()
+	case filterapi.LLMRequestCostTypeReasoningToken:
+		cost, _ = costs.ReasoningTokens()
 	case filterapi.LLMRequestCostTypeCEL:
 		in, _ := costs.InputTokens()
 		cachedIn, _ := costs.CachedInputTokens()
 		cacheCreation, _ := costs.CacheCreationInputTokens()
 		out, _ := costs.OutputTokens()
 		total, _ := costs.TotalTokens()
+		reasoning, _ := costs.ReasoningTokens()
 		costU64, err := llmcostcel.EvaluateProgram(
 			rc.CELProg,
 			requestHeaders[internalapi.ModelNameHeaderKeyDefault],
@@ -731,6 +734,7 @@ func evalRuntimeGlobalRequestCost(rc *filterapi.RuntimeGlobalRequestCost, costs 
 			cacheCreation,
 			out,
 			total,
+			reasoning,
 		)
 		if err != nil {
 			return 0, fmt.Errorf("failed to evaluate CEL expression: %w", err)
@@ -755,12 +759,15 @@ func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.Tok
 		cost, _ = costs.OutputTokens()
 	case filterapi.LLMRequestCostTypeTotalToken:
 		cost, _ = costs.TotalTokens()
+	case filterapi.LLMRequestCostTypeReasoningToken:
+		cost, _ = costs.ReasoningTokens()
 	case filterapi.LLMRequestCostTypeCEL:
 		in, _ := costs.InputTokens()
 		cachedIn, _ := costs.CachedInputTokens()
 		cacheCreation, _ := costs.CacheCreationInputTokens()
 		out, _ := costs.OutputTokens()
 		total, _ := costs.TotalTokens()
+		reasoning, _ := costs.ReasoningTokens()
 		costU64, err := llmcostcel.EvaluateProgram(
 			rc.CELProg,
 			requestHeaders[internalapi.ModelNameHeaderKeyDefault],
@@ -771,6 +778,7 @@ func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.Tok
 			cacheCreation,
 			out,
 			total,
+			reasoning,
 		)
 		if err != nil {
 			return 0, fmt.Errorf("failed to evaluate CEL expression: %w", err)
