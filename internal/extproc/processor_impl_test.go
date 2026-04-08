@@ -301,7 +301,7 @@ func Test_extractModelFromQueryParam(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			model, ok := extractModelFromQueryParam(tc.path)
 			require.Equal(t, tc.expectsOK, ok)
-			require.Equal(t, tc.expectModel, string(model))
+			require.Equal(t, tc.expectModel, model)
 		})
 	}
 }
