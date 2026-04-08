@@ -11,7 +11,7 @@ require (
 	github.com/andybalholm/brotli v1.2.0
 	github.com/anthropics/anthropic-sdk-go v1.27.1
 	github.com/aws/aws-sdk-go-v2 v1.41.4
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.7
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8
 	github.com/aws/aws-sdk-go-v2/config v1.32.12
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.9
 	github.com/bytedance/sonic v1.15.0

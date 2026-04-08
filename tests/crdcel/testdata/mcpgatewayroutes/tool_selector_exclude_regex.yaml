@@ -3,11 +3,11 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-# This should fail validation: toolSelector must specify at least one of include, includeRegex, exclude, or excludeRegex
+# This should pass validation: toolSelector with only excludeRegex
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: MCPRoute
 metadata:
-  name: tool-selector-missing
+  name: tool-selector-exclude-regex
   namespace: default
 spec:
   parentRefs:
@@ -18,4 +18,6 @@ spec:
     - name: mcp-service
       kind: Service
       port: 80
-      toolSelector: {}
+      toolSelector:
+        excludeRegex:
+          - "^internal_.*"

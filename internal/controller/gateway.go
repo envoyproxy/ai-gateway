@@ -555,6 +555,8 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 				mcpBackend.ToolSelector = &filterapi.MCPToolSelector{
 					Include:      b.ToolSelector.Include,
 					IncludeRegex: b.ToolSelector.IncludeRegex,
+					Exclude:      b.ToolSelector.Exclude,
+					ExcludeRegex: b.ToolSelector.ExcludeRegex,
 				}
 			}
 			mcpRoute.Backends = append(
