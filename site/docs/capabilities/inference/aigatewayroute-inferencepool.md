@@ -310,7 +310,7 @@ Create an AIServiceBackend for traditional backend routing alongside InferencePo
 
 ```yaml
 cat <<EOF | kubectl apply -f -
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: envoy-ai-gateway-basic-testupstream
@@ -406,7 +406,7 @@ spec:
       protocol: HTTP
       port: 80
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: inference-pool-with-aigwroute
@@ -520,7 +520,7 @@ AIGatewayRoute automatically extracts the model name from the request body and r
 Configure token-based rate limiting for InferencePool backends:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: inference-pool-with-rate-limiting

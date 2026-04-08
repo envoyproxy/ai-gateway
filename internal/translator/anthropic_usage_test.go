@@ -117,6 +117,7 @@ func TestExtractLLMTokenUsage(t *testing.T) {
 				int32(tt.expectedCacheCreationTokens), // nolint:gosec
 				int32(tt.expectedOutputTokens),        // nolint:gosec
 				int32(tt.expectedTotalTokens),         // nolint:gosec
+				-1,
 			)
 			assert.Equal(t, expected, result)
 		})
@@ -184,7 +185,7 @@ func TestExtractLLMTokenUsageFromUsage(t *testing.T) {
 				&tt.usage.CacheReadInputTokens,
 				&tt.usage.CacheCreationInputTokens,
 			)
-			expected := tokenUsageFrom(tt.expectedInputTokens, int32(tt.expectedCachedTokens), int32(tt.expectedCacheCreationTokens), tt.expectedOutputTokens, tt.expectedTotalTokens) // nolint:gosec
+			expected := tokenUsageFrom(tt.expectedInputTokens, int32(tt.expectedCachedTokens), int32(tt.expectedCacheCreationTokens), tt.expectedOutputTokens, tt.expectedTotalTokens, -1) // nolint:gosec
 			assert.Equal(t, expected, result)
 		})
 	}
@@ -251,7 +252,7 @@ func TestExtractLLMTokenUsageFromDeltaUsage(t *testing.T) {
 				&tt.usage.CacheReadInputTokens,
 				&tt.usage.CacheCreationInputTokens,
 			)
-			expected := tokenUsageFrom(tt.expectedInputTokens, int32(tt.expectedCachedTokens), int32(tt.expectedCacheCreationTokens), tt.expectedOutputTokens, tt.expectedTotalTokens) // nolint:gosec
+			expected := tokenUsageFrom(tt.expectedInputTokens, int32(tt.expectedCachedTokens), int32(tt.expectedCacheCreationTokens), tt.expectedOutputTokens, tt.expectedTotalTokens, -1) // nolint:gosec
 			assert.Equal(t, expected, result)
 		})
 	}

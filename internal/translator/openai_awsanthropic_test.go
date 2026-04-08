@@ -420,6 +420,7 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				int32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CacheCreationTokens), // nolint:gosec
 				int32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                        // nolint:gosec
 				int32(tt.expectedOpenAIResponse.Usage.TotalTokens),                             // nolint:gosec
+				-1,
 			)
 			require.Equal(t, expectedTokenUsage, usedToken)
 
@@ -771,7 +772,7 @@ func TestOpenAIToAWSAnthropicTranslator_EdgeCases(t *testing.T) {
 		_, _, _, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(body), true, nil)
 		require.NoError(t, err)
 		// Should use model from response when available
-		assert.Equal(t, string(anthropicResp.Model), responseModel)
+		assert.Equal(t, anthropicResp.Model, responseModel)
 	})
 
 	t.Run("response without model field", func(t *testing.T) {

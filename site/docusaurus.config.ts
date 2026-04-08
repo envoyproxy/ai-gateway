@@ -40,6 +40,8 @@ const config: Config = {
       "data-answer-cta-button-text": "Need more help? Ask a human!",
       "data-modal-disclaimer": "This AI assistant can help you find information about **Envoy AI Gateway**, **Envoy Gateway** and **Proxy**. Please verify important information from our official documentation. If you need more help you can always [ask a human](https://github.com/envoyproxy/ai-gateway/discussions/new?category=q-a).",
       "data-modal-override-open-id": "custom-ask-ai-button",
+      "data-mcp-enabled": "true",
+      "data-mcp-server-url": "https://envoy-gateway.mcp.kapa.ai",
       "data-user-analytics-fingerprint-enabled": "true",
       "data-modal-full-screen": "true",
       "data-modal-z-index": "2000",
