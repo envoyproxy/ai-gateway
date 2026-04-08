@@ -1757,6 +1757,37 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 	require.Equal(t, "http://127.0.0.1:"+strconv.Itoa(internalapi.MCPBackendListenerPort), fc.MCPConfig.BackendListenerAddr)
 }
 
+func Test_mcpConfig_ToolSelectorExclude(t *testing.T) {
+	mcpRoutes := []aigv1a1.MCPRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "ns"},
+			Spec: aigv1a1.MCPRouteSpec{
+				BackendRefs: []aigv1a1.MCPRouteBackendRef{{
+					BackendObjectReference: gwapiv1.BackendObjectReference{
+						Name: gwapiv1.ObjectName("backend"),
+					},
+					ToolSelector: &aigv1a1.MCPToolFilter{
+						Include:      []string{"toolA"},
+						Exclude:      []string{"toolB"},
+						ExcludeRegex: []string{"^secret.*"},
+					},
+				}},
+			},
+		},
+	}
+
+	mc, effective := mcpConfig(mcpRoutes)
+	require.True(t, effective)
+	require.NotNil(t, mc)
+	require.Len(t, mc.Routes, 1)
+	require.Len(t, mc.Routes[0].Backends, 1)
+	ts := mc.Routes[0].Backends[0].ToolSelector
+	require.NotNil(t, ts)
+	require.Equal(t, []string{"toolA"}, ts.Include)
+	require.Equal(t, []string{"toolB"}, ts.Exclude)
+	require.Equal(t, []string{"^secret.*"}, ts.ExcludeRegex)
+}
+
 func Test_mergeHeaderMutations(t *testing.T) {
 	tests := []struct {
 		name         string
