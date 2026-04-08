@@ -8,6 +8,7 @@ package mcpproxy
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -109,7 +111,9 @@ func TestServeGET_InvalidSessionID(t *testing.T) {
 
 func TestServeGET_OK(t *testing.T) {
 	proxy := newTestMCPProxy()
-	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil).WithContext(ctx)
 	sessionID := secureID(t, proxy, "@@backend1:dGVzdC1zZXNzaW9u") // "test-session" base64 encoded.
 	req.Header.Set(sessionIDHeader, sessionID)
 	rr := httptest.NewRecorder()
