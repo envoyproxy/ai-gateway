@@ -512,19 +512,19 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 				var toolContent []anthropic.ToolResultBlockParamContentUnion
 				var cacheControl *anthropic.CacheControlEphemeralParam
 
-				for _, c := range contentBlocks {
+				for i := range contentBlocks {
 					var trb anthropic.ToolResultBlockParamContentUnion
 					// Check if the translated part has caching enabled.
 					switch {
-					case c.OfText != nil:
-						trb.OfText = c.OfText
-						cacheControl = &c.OfText.CacheControl
-					case c.OfImage != nil:
-						trb.OfImage = c.OfImage
-						cacheControl = &c.OfImage.CacheControl
-					case c.OfDocument != nil:
-						trb.OfDocument = c.OfDocument
-						cacheControl = &c.OfDocument.CacheControl
+					case contentBlocks[i].OfText != nil:
+						trb.OfText = contentBlocks[i].OfText
+						cacheControl = &contentBlocks[i].OfText.CacheControl
+					case contentBlocks[i].OfImage != nil:
+						trb.OfImage = contentBlocks[i].OfImage
+						cacheControl = &contentBlocks[i].OfImage.CacheControl
+					case contentBlocks[i].OfDocument != nil:
+						trb.OfDocument = contentBlocks[i].OfDocument
+						cacheControl = &contentBlocks[i].OfDocument.CacheControl
 					}
 					toolContent = append(toolContent, trb)
 				}
