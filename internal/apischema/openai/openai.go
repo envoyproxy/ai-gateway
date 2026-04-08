@@ -8413,6 +8413,19 @@ type FileNewParams struct {
 	ExtraBody map[string]any `json:"extra_body,omitzero"`
 }
 
+const fileNewParamsMultipartFieldMaxBytes int64 = 1 << 20 // 1 MiB
+
+func readMultipartFieldWithLimit(part *multipart.Part, fieldName string, maxBytes int64) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(part, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > maxBytes {
+		return nil, fmt.Errorf("multipart field %q exceeds maximum allowed size of %d bytes", fieldName, maxBytes)
+	}
+	return b, nil
+}
+
 func (f *FileNewParams) UnmarshalMultipart(data []byte, boundary string) error {
 	reader := multipart.NewReader(bytes.NewReader(data), boundary)
 	for {
@@ -8428,19 +8441,19 @@ func (f *FileNewParams) UnmarshalMultipart(data []byte, boundary string) error {
 		case "file":
 			f.File = part
 		case "purpose":
-			purpose, err := io.ReadAll(part)
+			purpose, err := readMultipartFieldWithLimit(part, "purpose", fileNewParamsMultipartFieldMaxBytes)
 			if err != nil {
 				return err
 			}
 			f.Purpose = FilePurpose(purpose)
 		case "expires_after.anchor":
-			anchor, err := io.ReadAll(part)
+			anchor, err := readMultipartFieldWithLimit(part, "expires_after.anchor", fileNewParamsMultipartFieldMaxBytes)
 			if err != nil {
 				return err
 			}
 			f.ExpiresAfter.Anchor = CreatedAt(anchor)
 		case "expires_after.seconds":
-			seconds, err := io.ReadAll(part)
+			seconds, err := readMultipartFieldWithLimit(part, "expires_after.seconds", fileNewParamsMultipartFieldMaxBytes)
 			if err != nil {
 				return err
 			}
@@ -8452,15 +8465,16 @@ func (f *FileNewParams) UnmarshalMultipart(data []byte, boundary string) error {
 		default:
 			// handles any non standard extra parameters. e.g we are using
 			// model field for routing information.
-			extraBodyBytes, err := io.ReadAll(part)
+			fieldName := part.FormName()
+			extraBodyBytes, err := readMultipartFieldWithLimit(part, fieldName, fileNewParamsMultipartFieldMaxBytes)
 			if err != nil {
 				return err
 			}
 			extraBodyVal := any(extraBodyBytes)
 			if f.ExtraBody == nil {
-				f.ExtraBody = map[string]any{part.FormName(): extraBodyVal}
+				f.ExtraBody = map[string]any{fieldName: extraBodyVal}
 			} else {
-				f.ExtraBody[part.FormName()] = extraBodyVal
+				f.ExtraBody[fieldName] = extraBodyVal
 			}
 		}
 	}

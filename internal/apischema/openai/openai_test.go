@@ -13944,6 +13944,50 @@ func TestFileNewParamsUnmarshalMultipart(t *testing.T) {
 			},
 		},
 		{
+			name: "extra body field exceeds size limit",
+			builder: func() ([]byte, string) {
+				var buf bytes.Buffer
+				writer := multipart.NewWriter(&buf)
+
+				fw, _ := writer.CreateFormField("file")
+				_, _ = fw.Write([]byte("file content"))
+
+				fw, _ = writer.CreateFormField("model")
+				_, _ = fw.Write(bytes.Repeat([]byte("a"), int(fileNewParamsMultipartFieldMaxBytes+1)))
+
+				boundary := writer.Boundary()
+				writer.Close()
+
+				return buf.Bytes(), boundary
+			},
+			validate: func(t *testing.T, _ *FileNewParams, err error) {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "multipart field \"model\" exceeds maximum allowed size")
+			},
+		},
+		{
+			name: "purpose field exceeds size limit",
+			builder: func() ([]byte, string) {
+				var buf bytes.Buffer
+				writer := multipart.NewWriter(&buf)
+
+				fw, _ := writer.CreateFormField("file")
+				_, _ = fw.Write([]byte("file content"))
+
+				fw, _ = writer.CreateFormField("purpose")
+				_, _ = fw.Write(bytes.Repeat([]byte("a"), int(fileNewParamsMultipartFieldMaxBytes+1)))
+
+				boundary := writer.Boundary()
+				writer.Close()
+
+				return buf.Bytes(), boundary
+			},
+			validate: func(t *testing.T, _ *FileNewParams, err error) {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "multipart field \"purpose\" exceeds maximum allowed size")
+			},
+		},
+		{
 			name: "invalid seconds format",
 			builder: func() ([]byte, string) {
 				var buf bytes.Buffer
