@@ -42,7 +42,7 @@ var translationStartOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.Span
 
 // StartParams implements the same method as defined in tracingapi.TranslationRecorder.
 func (r *TranslationRecorder) StartParams(*openai.TranslationRequest, []byte) (spanName string, opts []trace.SpanStartOption) {
-	return "AudioTranslation", translationStartOpts
+	return "Translation", translationStartOpts
 }
 
 // RecordRequest implements the same method as defined in tracingapi.TranslationRecorder.

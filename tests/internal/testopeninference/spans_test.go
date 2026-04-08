@@ -25,8 +25,8 @@ func TestGetAllSpans(t *testing.T) {
 		{"Completion", testopenai.CompletionCassettes(), "Completion"},
 		{"CreateEmbeddings", testopenai.EmbeddingsCassettes(), "CreateEmbeddings"},
 		{"ImagesResponse", testopenai.ImageCassettes(), "ImagesResponse"},
-		{"AudioTranscription", testopenai.AudioTranscriptionCassettes(), "Transcription"},
-		{"AudioTranslation", testopenai.AudioTranslationCassettes(), "Translation"},
+		{"Transcription", testopenai.AudioTranscriptionCassettes(), "Transcription"},
+		{"Translation", testopenai.AudioTranslationCassettes(), "Translation"},
 	}
 
 	for _, tc := range tests {

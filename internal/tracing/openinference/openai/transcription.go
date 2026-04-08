@@ -42,7 +42,7 @@ var transcriptionStartOpts = []trace.SpanStartOption{trace.WithSpanKind(trace.Sp
 
 // StartParams implements the same method as defined in tracingapi.TranscriptionRecorder.
 func (r *TranscriptionRecorder) StartParams(*openai.TranscriptionRequest, []byte) (spanName string, opts []trace.SpanStartOption) {
-	return "AudioTranscription", transcriptionStartOpts
+	return "Transcription", transcriptionStartOpts
 }
 
 // RecordRequest implements the same method as defined in tracingapi.TranscriptionRecorder.
