@@ -101,7 +101,7 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	require.Equal(t, "/mcp", *mainHTTPRoute.Spec.Rules[0].Matches[0].Path.Value)
 	require.Equal(t, route.Spec.Headers, mainHTTPRoute.Spec.Rules[0].Matches[0].Headers)
 	require.Len(t, mainHTTPRoute.Spec.Rules[0].BackendRefs, 1)
-	require.Equal(t, gwapiv1.ObjectName("ai-eg-mcp-default-myroute-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
+	require.Equal(t, gwapiv1.ObjectName("default-myroute-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
 	// Since HTTPRouteRule name is experimental in Gateway API, and some vendors (e.g. GKE Gateway) do not
 	// support it yet, we currently do not set the sectionName to avoid compatibility issues.
 	// The jwt filter will be removed from backend routes in the extension server.
@@ -153,7 +153,7 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	require.Len(t, mainHTTPRoute.Spec.Rules, 1)
 	require.Equal(t, "/custom/", *mainHTTPRoute.Spec.Rules[0].Matches[0].Path.Value)
 	require.Len(t, mainHTTPRoute.Spec.Rules[0].BackendRefs, 1)
-	require.Equal(t, gwapiv1.ObjectName("ai-eg-mcp-default-myroute-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
+	require.Equal(t, gwapiv1.ObjectName("default-myroute-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
 
 	// Delete flow shouldn't error.
 	err = fakeClient.Delete(t.Context(), &aigv1a1.MCPRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
@@ -188,7 +188,7 @@ func Test_newHTTPRoute_MCP_PathAndBackendsAndMetadata(t *testing.T) {
 	require.Len(t, httpRoute.Spec.Rules, 1)
 	require.Equal(t, "/custom/", *httpRoute.Spec.Rules[0].Matches[0].Path.Value)
 	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
-	require.Equal(t, gwapiv1.ObjectName("ai-eg-mcp-ns-mcp-route-mcp-proxy"), httpRoute.Spec.Rules[0].BackendRefs[0].Name)
+	require.Equal(t, gwapiv1.ObjectName("ns-mcp-route-mcp-proxy"), httpRoute.Spec.Rules[0].BackendRefs[0].Name)
 
 	// Metadata propagated.
 	require.Equal(t, "v1", httpRoute.Labels["k1"])
