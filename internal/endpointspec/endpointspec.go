@@ -472,7 +472,7 @@ func (ListFilesEndpointSpec) ParseBody(
 		return "", nil, false, nil, fmt.Errorf("%w: missing required 'model' query parameter for /v1/files", internalapi.ErrInvalidRequestBody)
 	}
 	// ListFiles endpoint does not have a body.
-	return internalapi.OriginalModel(modelName), &struct{}{}, false, body, nil
+	return modelName, &struct{}{}, false, body, nil
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].

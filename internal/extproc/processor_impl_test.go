@@ -200,16 +200,15 @@ func Test_filesProcessorRouterFilter_shouldGetModelFromID(t *testing.T) {
 		path    string
 		expects bool
 	}{
-		{name: "get files list request", method: "GET", path: "/v1/files", expects: true},
-		{name: "get files list request with query", method: "GET", path: "/v1/files?limit=2", expects: true},
+		{name: "get files list request", method: "GET", path: "/v1/files", expects: false},
+		{name: "get files list request with query", method: "GET", path: "/v1/files?limit=2", expects: false},
 		{name: "get file request", method: "GET", path: "/v1/files/" + fileID, expects: true},
 		{name: "delete file request", method: "DELETE", path: "/v1/files/" + fileID + "/content", expects: true},
 		{name: "put file request unsupported", method: "PUT", path: "/v1/files/" + fileID, expects: false},
 		{name: "regular chat path", method: "GET", path: "/v1/chat/completions", expects: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := &chatCompletionProcessorRouterFilter{requestHeaders: map[string]string{":method": tc.method, ":path": tc.path}}
-			require.Equal(t, tc.expects, p.shouldGetModelFromID())
+			require.Equal(t, tc.expects, shouldGetModelFromID(tc.method, tc.path))
 		})
 	}
 }
@@ -237,6 +236,53 @@ func Test_extractFileIDFromPath(t *testing.T) {
 	}
 }
 
+func Test_isListFilesEndpoint(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		method  string
+		path    string
+		expects bool
+	}{
+		{name: "exact path", method: "GET", path: "/v1/files", expects: true},
+		{name: "trailing slash", method: "GET", path: "/v1/files/", expects: true},
+		{name: "with query params", method: "GET", path: "/v1/files?model=gpt-4o-mini", expects: true},
+		{name: "with query params and trailing slash", method: "GET", path: "/v1/files/?model=gpt-4o-mini", expects: true},
+		{name: "not GET method", method: "POST", path: "/v1/files", expects: false},
+		{name: "DELETE method", method: "DELETE", path: "/v1/files", expects: false},
+		{name: "file id path", method: "GET", path: "/v1/files/file-abc123", expects: false},
+		{name: "empty path", method: "GET", path: "", expects: false},
+		{name: "different path", method: "GET", path: "/v1/chat/completions", expects: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expects, isListFilesEndpoint(tc.method, tc.path))
+		})
+	}
+}
+
+func Test_extractModelFromQueryParam(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		path        string
+		expectModel string
+		expectsOK   bool
+	}{
+		{name: "model present", path: "/v1/files?model=gpt-4o-mini", expectModel: "gpt-4o-mini", expectsOK: true},
+		{name: "model with other params", path: "/v1/files?limit=10&model=text-davinci-003", expectModel: "text-davinci-003", expectsOK: true},
+		{name: "model first with other params", path: "/v1/files?model=claude-3&after=abc", expectModel: "claude-3", expectsOK: true},
+		{name: "no query string", path: "/v1/files", expectModel: "", expectsOK: false},
+		{name: "empty query string", path: "/v1/files?", expectModel: "", expectsOK: false},
+		{name: "query without model key", path: "/v1/files?limit=10&order=asc", expectModel: "", expectsOK: false},
+		{name: "model key with empty value", path: "/v1/files?model=", expectModel: "", expectsOK: false},
+		{name: "empty path", path: "", expectModel: "", expectsOK: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			model, ok := extractModelFromQueryParam(tc.path)
+			require.Equal(t, tc.expectsOK, ok)
+			require.Equal(t, tc.expectModel, string(model))
+		})
+	}
+}
+
 func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *testing.T) {
 	t.Run("list files request sets query model and clears route cache", func(t *testing.T) {
 		path := "/v1/files?model=gpt-4o-mini&limit=10"
@@ -260,7 +306,7 @@ func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *test
 		require.Equal(t, path, mutatedHeaders[internalapi.OriginalPathHeader])
 		require.Equal(t, path, mutatedHeaders[internalapi.EnvoyOriginalPathHeader])
 
-		require.Equal(t, "gpt-4o-mini", string(p.originalModel))
+		require.Equal(t, "gpt-4o-mini", p.originalModel)
 		require.Equal(t, "gpt-4o-mini", p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
 		require.NotContains(t, p.requestHeaders, internalapi.DecodedFileIDHeaderKey)
 		require.NotContains(t, p.requestHeaders, internalapi.OriginalFileIDHeaderKey)
@@ -325,8 +371,10 @@ func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *test
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 
-		_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
+		immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
 		require.True(t, ok)
+		require.Equal(t, typev3.StatusCode(400), immediateResp.ImmediateResponse.Status.Code)
+		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"missing required 'model' query parameter for /v1/files"}}`, string(immediateResp.ImmediateResponse.Body))
 		require.Empty(t, p.originalModel)
 		require.NotContains(t, p.requestHeaders, internalapi.ModelNameHeaderKeyDefault)
 	})

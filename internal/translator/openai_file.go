@@ -41,35 +41,21 @@ type openAIToOpenAITranslatorV1ListFiles struct {
 	path string
 }
 
-func extractListFilesModelFromHeaders(reqHeaders map[string]string) internalapi.RequestModel {
-	originalPath := reqHeaders[internalapi.OriginalPathHeader]
-	if originalPath == "" {
-		originalPath = reqHeaders[pathHeaderName]
-	}
-	_, rawQuery, found := strings.Cut(originalPath, "?")
-	if !found || rawQuery == "" {
-		return ""
-	}
-	query, err := url.ParseQuery(rawQuery)
-	if err != nil {
-		return ""
-	}
-	return internalapi.RequestModel(query.Get("model"))
-}
-
 // RequestBody implements [OpenAIListFilesTranslator.RequestBody].
 func (o *openAIToOpenAITranslatorV1ListFiles) RequestBody(reqHeaders map[string]string, original []byte, _ *struct{}, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	o.requestModel = extractListFilesModelFromHeaders(reqHeaders)
-	if o.requestModel == "" {
-		return nil, nil, errors.New("missing required 'model' query parameter for /v1/files")
-	}
-
+	o.requestModel = reqHeaders[internalapi.ModelNameHeaderKeyDefault]
 	upstreamPath := o.path
 	if originalPath, ok := reqHeaders[pathHeaderName]; ok {
 		if _, query, found := strings.Cut(originalPath, "?"); found && query != "" {
-			upstreamPath += "?" + query
+			query, err := url.ParseQuery(query)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to parse query parameters from original path: %w", err)
+			}
+			// Remove the model query parameter from the upstream request since it is only used for routing and is not expected by the OpenAI API.
+			query.Del("model")
+			upstreamPath += "?" + query.Encode()
 		}
 	}
 
