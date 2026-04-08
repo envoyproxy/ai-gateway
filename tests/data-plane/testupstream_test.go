@@ -195,10 +195,10 @@ func TestWithTestUpstream(t *testing.T) {
 		{
 			name:         "openai - GET /v1/files",
 			backend:      "openai",
-			path:         "/v1/files?model=" + openAIFileModelName,
+			path:         "/v1/files?purpose=assistants&limit=2&model=" + openAIFileModelName,
 			method:       http.MethodGet,
 			expPath:      "/v1/files",
-			expRawQuery:  "model=" + openAIFileModelName,
+			expRawQuery:  "limit=2&purpose=assistants",
 			responseBody: `{"object":"list","data":[{"id":"file-123","object":"file","bytes":29,"created_at":1741382147,"filename":"test.txt","purpose":"batch"}],"has_more":false}`,
 			expStatus:    http.StatusOK,
 			expResponseBody: fmt.Sprintf(
