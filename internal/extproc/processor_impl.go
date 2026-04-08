@@ -216,7 +216,7 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 		err                 error
 	)
 	contentType := r.requestHeaders["content-type"]
-	if strings.HasPrefix(contentType, "multipart/form-data") {
+	if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
 		originalModel, body, stream, mutatedOriginalBody, err = r.eh.ParseMultipartBody(rawBody.Body, contentType, len(r.config.RequestCosts) > 0)
 	} else {
 		originalModel, body, stream, mutatedOriginalBody, err = r.eh.ParseBody(rawBody.Body, len(r.config.RequestCosts) > 0)
