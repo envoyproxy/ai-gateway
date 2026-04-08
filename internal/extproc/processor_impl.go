@@ -577,7 +577,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	}()
 	rp, ok := routeProcessor.(*routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT])
 	if !ok {
-		panic("BUG: expected routeProcessor to be of type *chatCompletionProcessorRouterFilter")
+		panic(fmt.Sprintf("BUG: expected routeProcessor to be of type *routerProcessor[%T], got %T", rp, routeProcessor))
 	}
 	rp.upstreamFilterCount++
 	u.metrics.SetBackend(b)
