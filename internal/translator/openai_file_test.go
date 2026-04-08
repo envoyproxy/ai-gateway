@@ -7,6 +7,7 @@ package translator
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -30,14 +31,25 @@ func TestListFilesOpenAIToOpenAITranslatorRequestBody(t *testing.T) {
 	require.Nil(t, body)
 	require.Len(t, headers, 1)
 	require.Equal(t, pathHeaderName, headers[0].Key())
-	require.Equal(t, "/v1/files?model=gpt-4o-mini&purpose=assistants&limit=2", headers[0].Value())
+	require.True(t, strings.HasPrefix(headers[0].Value(), "/v1/files?"))
+	_, rawQuery, found := strings.Cut(headers[0].Value(), "?")
+	require.True(t, found)
+	query, err := url.ParseQuery(rawQuery)
+	require.NoError(t, err)
+	require.False(t, query.Has("model"))
+	require.Equal(t, "assistants", query.Get("purpose"))
+	require.Equal(t, "2", query.Get("limit"))
 }
 
 func TestListFilesOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
 	translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
 
 	_, _, err := translator.RequestBody(
-		map[string]string{pathHeaderName: "/v1/files?model=gpt-4o-mini", internalapi.OriginalPathHeader: "/v1/files?model=gpt-4o-mini"},
+		map[string]string{
+			pathHeaderName:                        "/v1/files?model=gpt-4o-mini",
+			internalapi.OriginalPathHeader:        "/v1/files?model=gpt-4o-mini",
+			internalapi.ModelNameHeaderKeyDefault: "gpt-4o-mini",
+		},
 		nil,
 		&struct{}{},
 		false,
@@ -69,11 +81,16 @@ func TestListFilesOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
 	require.Equal(t, "file-456", id2)
 }
 
-func TestListFilesOpenAIToOpenAITranslatorResponseBody_EncodesEachFileIDUniquely(t *testing.T) {
+func TestListFilesOpenAIToOpenAITranslatorResponseBody_ListFiles(t *testing.T) {
 	translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
 
 	_, _, err := translator.RequestBody(
-		map[string]string{pathHeaderName: "/v1/files?model=openai/gpt-oss-20b", internalapi.OriginalPathHeader: "/v1/files?model=openai/gpt-oss-20b"},
+		map[string]string{
+			pathHeaderName:                        "/v1/files?model=openai/gpt-oss-20b",
+			internalapi.OriginalPathHeader:        "/v1/files?model=openai/gpt-oss-20b",
+			internalapi.ModelNameHeaderKeyDefault: "openai/gpt-oss-20b",
+			":method":                             "GET",
+		},
 		nil,
 		&struct{}{},
 		false,
