@@ -34,11 +34,15 @@ func proxyURL() (*url.URL, error) {
 // if AI_GATEWAY_GCP_AUTH_PROXY_URL is set. If the environment variable is not set,
 // it returns a default http.Transport.
 func NewTransport() (http.RoundTripper, error) {
-	proxyURL, err := proxyURL()
+	u, err := proxyURL()
 	if err != nil {
 		return nil, err
 	}
-	return &http.Transport{Proxy: http.ProxyURL(proxyURL)}, nil
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	if u != nil {
+		t.Proxy = http.ProxyURL(u)
+	}
+	return t, nil
 }
 
 // MustNewTransport is like NewTransport but panics on error.

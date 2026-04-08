@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -19,7 +20,10 @@ import (
 )
 
 // gcpHTTPClient is used for GCP ADC token operations, with proxy support if configured.
-var gcpHTTPClient = &http.Client{Transport: gcpauth.MustNewTransport()}
+var gcpHTTPClient = &http.Client{
+	Transport: gcpauth.MustNewTransport(),
+	Timeout:   10 * time.Second,
+}
 
 type gcpHandler struct {
 	gcpAccessToken string             // The GCP access token used for authentication (static token).
