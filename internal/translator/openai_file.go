@@ -162,7 +162,6 @@ func (o *openAIToOpenAITranslatorV1CreateFile) ResponseHeaders(map[string]string
 func (o *openAIToOpenAITranslatorV1CreateFile) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracingapi.CreateFileSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
-	var resp openai.FileObject
 	bodyBytes, err := io.ReadAll(body)
 	if err != nil {
 		return nil, nil, tokenUsage, "", fmt.Errorf("failed to read response body: %w", err)
@@ -171,9 +170,6 @@ func (o *openAIToOpenAITranslatorV1CreateFile) ResponseBody(_ map[string]string,
 	newBody, err = sjson.SetBytes(bodyBytes, "id", EncodeIDWithModel(gjson.GetBytes(bodyBytes, "id").String(), o.requestModel, "file"))
 	if err != nil {
 		return nil, nil, tokenUsage, "", fmt.Errorf("failed to set file ID: %w", err)
-	}
-	if err := json.Unmarshal(newBody, &resp); err != nil {
-		return nil, nil, tokenUsage, "", fmt.Errorf("failed to unmarshal response body: %w", err)
 	}
 	if len(newBody) > 0 {
 		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
@@ -234,13 +230,9 @@ func (o *openAIToOpenAITranslatorV1RetrieveFile) ResponseHeaders(map[string]stri
 func (o *openAIToOpenAITranslatorV1RetrieveFile) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracingapi.RetrieveFileSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
-	var resp openai.FileObject
 	bodyBytes, err := io.ReadAll(body)
 	if err != nil {
 		return nil, nil, tokenUsage, "", fmt.Errorf("failed to read response body: %w", err)
-	}
-	if err = json.Unmarshal(bodyBytes, &resp); err != nil {
-		return nil, nil, tokenUsage, "", fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 	bodyBytes, err = sjson.SetBytes(bodyBytes, "id", o.requestFileID)
 	if err != nil {
