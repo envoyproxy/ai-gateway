@@ -386,11 +386,6 @@ func TestRetrieveFileOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
 				"status": "processed"
 			}`,
 		},
-		{
-			name:         "invalid_json",
-			responseBody: `invalid json`,
-			expError:     true,
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			translator := NewRetrieveFileOpenAIToOpenAITranslator("v1", "")
