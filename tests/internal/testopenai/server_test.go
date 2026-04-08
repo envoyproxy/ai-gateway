@@ -17,12 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// savedOpenAIKey holds the original OPENAI_API_KEY before TestMain clears it.
-// Recording tests use t.Setenv to restore it so the server can forward to the real API.
-var savedOpenAIKey string
-
 func TestMain(m *testing.M) {
-	savedOpenAIKey = os.Getenv("OPENAI_API_KEY")
 	// Unset API keys to ensure tests behave consistently regardless of environment.
 	_ = os.Unsetenv("OPENAI_API_KEY")
 	_ = os.Unsetenv("AZURE_OPENAI_API_KEY")

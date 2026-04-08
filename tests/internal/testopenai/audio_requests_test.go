@@ -22,10 +22,6 @@ func TestAudioTranslationCassettes(t *testing.T) {
 }
 
 func TestNewRequestAudioTranscription(t *testing.T) {
-	if savedOpenAIKey != "" {
-		t.Setenv("OPENAI_API_KEY", savedOpenAIKey)
-	}
-
 	server, err := NewServer(os.Stdout, 0)
 	require.NoError(t, err)
 	defer server.Close()
@@ -47,10 +43,6 @@ func TestNewRequestAudioTranscription(t *testing.T) {
 }
 
 func TestNewRequestAudioTranslation(t *testing.T) {
-	if savedOpenAIKey != "" {
-		t.Setenv("OPENAI_API_KEY", savedOpenAIKey)
-	}
-
 	server, err := NewServer(os.Stdout, 0)
 	require.NoError(t, err)
 	defer server.Close()
