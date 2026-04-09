@@ -909,7 +909,9 @@ func (TranslationEndpointSpec) GetTranslator(
 
 // RedactSensitiveInfoFromRequest implements [Spec.RedactSensitiveInfoFromRequest].
 func (TranslationEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.TranslationRequest) (*openai.TranslationRequest, error) {
-	return req, nil
+	redacted := *req
+	redacted.Prompt = redaction.RedactString(req.Prompt)
+	return &redacted, nil
 }
 
 // readFormField reads the entire value of a multipart form field as a string.
