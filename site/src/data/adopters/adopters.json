@@ -41,6 +41,12 @@
     "url": "https://papercompute.com"
   },
   {
+    "name": "Simplifai",
+    "logoUrl": "/img/adopters/Simplifai.png",
+    "url": "https://simplifai.ai",
+    "description": "Agentic AI platform for insurance"
+  },
+  {
     "name": "Your Logo Here",
     "logoUrl": "/img/adopters/placeholder-company.svg",
     "description": "Add your logo to show support for the project",
