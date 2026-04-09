@@ -219,6 +219,7 @@ func Test_newHTTPRoute(t *testing.T) {
 							Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
 						},
 					},
+					Hostnames: []gwapiv1.Hostname{"ai-llm.example.com", "ai-api.example.com"},
 					Rules: []aigv1b1.AIGatewayRouteRule{
 						{
 							BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](100)}},
@@ -340,6 +341,9 @@ func Test_newHTTPRoute(t *testing.T) {
 				},
 			}
 			require.Equal(t, expRules, httpRoute.Spec.Rules)
+
+			// Verify Hostnames are passed through to HTTPRoute.
+			require.Equal(t, []gwapiv1.Hostname{"ai-llm.example.com", "ai-api.example.com"}, httpRoute.Spec.Hostnames)
 		})
 	}
 }
