@@ -6,7 +6,7 @@
 package openai
 
 import (
-	"fmt"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -59,10 +59,22 @@ func (r *TranslationRecorder) RecordRequest(span trace.Span, req *openai.Transla
 	if r.traceConfig.HideInputs {
 		attrs = append(attrs, attribute.String(openinference.InputValue, openinference.RedactedValue))
 	} else {
+		inputValue := openinference.RedactedValue
+		if b, err := json.Marshal(struct {
+			Model          string `json:"model"`
+			FileName       string `json:"file_name"`
+			FileSize       int64  `json:"file_size"`
+			ResponseFormat string `json:"response_format"`
+		}{
+			Model:          req.Model,
+			FileName:       req.FileName,
+			FileSize:       req.FileSize,
+			ResponseFormat: req.ResponseFormat,
+		}); err == nil {
+			inputValue = string(b)
+		}
 		attrs = append(attrs,
-			attribute.String(openinference.InputValue,
-				fmt.Sprintf(`{"model":"%s","file_name":"%s","file_size":%d,"response_format":"%s"}`,
-					req.Model, req.FileName, req.FileSize, req.ResponseFormat)),
+			attribute.String(openinference.InputValue, inputValue),
 			attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON))
 	}
 

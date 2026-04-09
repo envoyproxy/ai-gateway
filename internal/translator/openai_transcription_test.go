@@ -116,6 +116,19 @@ func TestTranscriptionTranslator_ResponseBody_WithSpan(t *testing.T) {
 	require.Equal(t, "hello world", mockSpan.recordedResponse.Text)
 }
 
+func TestTranscriptionTranslator_ResponseBody_WithSpan_NonJSON(t *testing.T) {
+	mockSpan := &mockTranscriptionSpan{}
+	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
+	req := &openai.TranscriptionRequest{Model: "whisper-1"}
+	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+
+	rawResponse := "hello world\nwith new line and \"quotes\""
+	_, _, _, _, err := tr.ResponseBody(nil, bytes.NewReader([]byte(rawResponse)), true, mockSpan)
+	require.NoError(t, err)
+	require.NotNil(t, mockSpan.recordedResponse)
+	require.Equal(t, rawResponse, mockSpan.recordedResponse.Text)
+}
+
 func TestTranscriptionTranslator_ResponseError(t *testing.T) {
 	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
 	headers := map[string]string{contentTypeHeaderName: "text/plain", statusHeaderName: "400"}

@@ -6,7 +6,6 @@
 package openai
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,6 +15,7 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/testing/testotel"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
@@ -105,6 +105,24 @@ func TestTranscriptionRecorder_StartParams(t *testing.T) {
 }
 
 func TestTranscriptionRecorder_RecordRequest(t *testing.T) {
+	marshalRequestInput := func(req *openai.TranscriptionRequest) string {
+		inputBytes, err := json.Marshal(struct {
+			Model          string `json:"model"`
+			FileName       string `json:"file_name"`
+			FileSize       int64  `json:"file_size"`
+			Language       string `json:"language"`
+			ResponseFormat string `json:"response_format"`
+		}{
+			Model:          req.Model,
+			FileName:       req.FileName,
+			FileSize:       req.FileSize,
+			Language:       req.Language,
+			ResponseFormat: req.ResponseFormat,
+		})
+		require.NoError(t, err)
+		return string(inputBytes)
+	}
+
 	tests := []struct {
 		name          string
 		req           *openai.TranscriptionRequest
@@ -120,8 +138,7 @@ func TestTranscriptionRecorder_RecordRequest(t *testing.T) {
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
 				attribute.String(openinference.LLMModelName, "whisper-1"),
 				attribute.String(openinference.InputValue,
-					fmt.Sprintf(`{"model":"%s","file_name":"%s","file_size":%d,"language":"%s","response_format":"%s"}`,
-						"whisper-1", "test.wav", int64(44100), "en", "json")),
+					marshalRequestInput(basicTranscriptionReq)),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
 			},
 		},
@@ -133,8 +150,26 @@ func TestTranscriptionRecorder_RecordRequest(t *testing.T) {
 				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
 				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
 				attribute.String(openinference.InputValue,
-					fmt.Sprintf(`{"model":"%s","file_name":"%s","file_size":%d,"language":"%s","response_format":"%s"}`,
-						"", "test.wav", int64(44100), "en", "json")),
+					marshalRequestInput(transcriptionReqNoModel)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+			},
+		},
+		{
+			name:   "request with quote characters",
+			req:    &openai.TranscriptionRequest{Model: "whisper-1", Language: "en\"US", ResponseFormat: "json", FileName: `audio "quoted".wav`, FileSize: 44100},
+			config: &openinference.TraceConfig{},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindLLM),
+				attribute.String(openinference.LLMSystem, openinference.LLMSystemOpenAI),
+				attribute.String(openinference.LLMModelName, "whisper-1"),
+				attribute.String(openinference.InputValue,
+					marshalRequestInput(&openai.TranscriptionRequest{
+						Model:          "whisper-1",
+						Language:       "en\"US",
+						ResponseFormat: "json",
+						FileName:       `audio "quoted".wav`,
+						FileSize:       44100,
+					})),
 				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
 			},
 		},

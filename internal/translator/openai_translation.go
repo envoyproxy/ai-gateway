@@ -82,6 +82,10 @@ func (o *openAIToOpenAITranslatorV1Translation) ResponseBody(_ map[string]string
 			var resp openai.TranslationResponse
 			if jsonErr := json.Unmarshal(data, &resp); jsonErr == nil {
 				span.RecordResponse(&resp)
+			} else {
+				span.RecordResponse(&openai.TranslationResponse{
+					Text: string(data),
+				})
 			}
 		}
 	}
