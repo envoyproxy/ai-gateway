@@ -809,7 +809,9 @@ func (TranscriptionEndpointSpec) GetTranslator(
 
 // RedactSensitiveInfoFromRequest implements [Spec.RedactSensitiveInfoFromRequest].
 func (TranscriptionEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.TranscriptionRequest) (*openai.TranscriptionRequest, error) {
-	return req, nil
+	redacted := *req
+	redacted.Prompt = redaction.RedactString(req.Prompt)
+	return &redacted, nil
 }
 
 // --- TranslationEndpointSpec ---
