@@ -75,7 +75,7 @@ func TestServer_LoadConfig(t *testing.T) {
 				{MetadataKey: "route_output", RouteName: "ns/route1", Type: LLMRequestCostTypeOutputToken},
 			},
 		}
-		rc, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, b *BackendAuth) (BackendAuthHandler, error) {
+		rc, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
 			return nil, nil
 		})
 		require.NoError(t, err)
@@ -98,7 +98,7 @@ func TestServer_LoadConfig(t *testing.T) {
 				{MetadataKey: "bad_cel", Type: LLMRequestCostTypeCEL, CEL: "invalid syntax ++"},
 			},
 		}
-		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, b *BackendAuth) (BackendAuthHandler, error) {
+		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
 			return nil, nil
 		})
 		require.Error(t, err)
@@ -111,7 +111,7 @@ func TestServer_LoadConfig(t *testing.T) {
 				{MetadataKey: "bad_cel", RouteName: "ns/route1", Type: LLMRequestCostTypeCEL, CEL: "bad syntax @@"},
 			},
 		}
-		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, b *BackendAuth) (BackendAuthHandler, error) {
+		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
 			return nil, nil
 		})
 		require.Error(t, err)
@@ -124,7 +124,7 @@ func TestServer_LoadConfig(t *testing.T) {
 				{MetadataKey: "missing_route", RouteName: "", Type: LLMRequestCostTypeInputToken},
 			},
 		}
-		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, b *BackendAuth) (BackendAuthHandler, error) {
+		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
 			return nil, nil
 		})
 		require.Error(t, err)
