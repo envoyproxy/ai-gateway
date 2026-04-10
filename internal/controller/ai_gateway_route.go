@@ -356,7 +356,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 
 	dst.Spec.ParentRefs = aiGatewayRoute.Spec.ParentRefs
 
-	dst.Spec.Hostnames = append(dst.Spec.Hostnames, aiGatewayRoute.Spec.Hostnames...)
+	dst.Spec.Hostnames = aiGatewayRoute.Spec.Hostnames
 	return nil
 }
 
