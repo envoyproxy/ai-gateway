@@ -558,24 +558,23 @@ func Test_newHTTPRoute_LabelAndAnnotationPropagation(t *testing.T) {
 func Test_newHTTPRoute_Hostnames_NotSet(t *testing.T) {
 	c := requireNewFakeClientWithIndexes(t)
 
-	// Minimal backend to satisfy newHTTPRoute validation.
-	backend := &aigv1a1.AIServiceBackend{
+	backend := &aigv1b1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: "test-ns"},
-		Spec: aigv1a1.AIServiceBackendSpec{
+		Spec: aigv1b1.AIServiceBackendSpec{
 			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To(gwapiv1.Namespace("test-ns"))},
 		},
 	}
 	require.NoError(t, c.Create(context.Background(), backend))
 
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-route",
 			Namespace: "test-ns",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "test-backend", Weight: ptr.To[int32](100)},
 					},
 				},
@@ -594,32 +593,30 @@ func Test_newHTTPRoute_Hostnames_NotSet(t *testing.T) {
 	err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
 	require.NoError(t, err)
 
-	// Without spec.hostnames, Hostnames should remain empty.
 	require.Empty(t, httpRoute.Spec.Hostnames)
 }
 
 func Test_newHTTPRoute_Hostnames_Set(t *testing.T) {
 	c := requireNewFakeClientWithIndexes(t)
 
-	// Minimal backend to satisfy newHTTPRoute validation.
-	backend := &aigv1a1.AIServiceBackend{
+	backend := &aigv1b1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: "test-ns"},
-		Spec: aigv1a1.AIServiceBackendSpec{
+		Spec: aigv1b1.AIServiceBackendSpec{
 			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To(gwapiv1.Namespace("test-ns"))},
 		},
 	}
 	require.NoError(t, c.Create(context.Background(), backend))
 
-	aiGatewayRoute := &aigv1a1.AIGatewayRoute{
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-route",
 			Namespace: "test-ns",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
+		Spec: aigv1b1.AIGatewayRouteSpec{
 			Hostnames: []gwapiv1.Hostname{"api.example.com", "*.example.net", "sub.example.com"},
-			Rules: []aigv1a1.AIGatewayRouteRule{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "test-backend", Weight: ptr.To[int32](100)},
 					},
 				},
