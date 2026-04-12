@@ -124,9 +124,13 @@ type MCPRouteBackendRef struct {
 	// TODO: add fancy per-MCP server config. For example, Rate Limit, etc.
 }
 
-// MCPToolFilter filters tools using include patterns with exact matches or regular expressions.
+// MCPToolFilter filters tools using include and exclude patterns with exact matches or regular expressions.
+// Exclude rules take precedence over include rules (deny-wins). When both include and exclude are specified,
+// a tool must match an include rule AND not match any exclude rule to be allowed.
 //
-// +kubebuilder:validation:XValidation:rule="(has(self.include) && !has(self.includeRegex)) || (!has(self.include) && has(self.includeRegex))", message="exactly one of include or includeRegex must be specified"
+// +kubebuilder:validation:XValidation:rule="!(has(self.include) && has(self.includeRegex))", message="include and includeRegex are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="!(has(self.exclude) && has(self.excludeRegex))", message="exclude and excludeRegex are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="has(self.include) || has(self.includeRegex) || has(self.exclude) || has(self.excludeRegex)", message="at least one of include, includeRegex, exclude, or excludeRegex must be specified"
 type MCPToolFilter struct {
 	// Include is a list of tool names to include. Only the specified tools will be available.
 	//
@@ -142,6 +146,22 @@ type MCPToolFilter struct {
 	// +kubebuilder:validation:MaxItems=32
 	// +optional
 	IncludeRegex []string `json:"includeRegex,omitempty"`
+
+	// Exclude is a list of tool names to exclude. The specified tools will not be available.
+	// Exclude rules take precedence over include rules.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=32
+	// +optional
+	Exclude []string `json:"exclude,omitempty"`
+
+	// ExcludeRegex is a list of RE2-compatible regular expressions that, when matched, exclude the tool.
+	// Tools matching these patterns will not be available. Exclude rules take precedence over include rules.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=32
+	// +optional
+	ExcludeRegex []string `json:"excludeRegex,omitempty"`
 }
 
 // MCPBackendSecurityPolicy defines the security policy for a sp

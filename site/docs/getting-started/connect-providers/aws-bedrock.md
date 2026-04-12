@@ -275,7 +275,7 @@ spec:
 
 When using Anthropic models on AWS Bedrock, you have two options:
 
-1. **OpenAI-compatible format** (`/v1/chat/completions`) - Works with most models but may not support all Anthropic-specific features
+1. **OpenAI-compatible format** (`/v1/chat/completions`) - Works with most models but may not support all Anthropic-specific features. Note that `max_tokens` is required by the Anthropic API — if your clients do not include it, you must inject it via a request body mutation.
 2. **Native Anthropic API** (`/anthropic/v1/messages`) - Provides full access to Anthropic-specific features (only for Anthropic models)
 
 ### Streaming with Native Anthropic API
