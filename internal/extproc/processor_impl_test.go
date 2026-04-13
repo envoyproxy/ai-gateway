@@ -187,6 +187,28 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 			require.Contains(t, string(p.originalRequestBodyRaw), `"stream_options":{"include_usage":true}`)
 		}
 	})
+
+	t.Run("ok_stream_without_include_usage_global_costs_only", func(t *testing.T) {
+		for _, opt := range []*openai.StreamOptions{nil, {IncludeUsage: false}} {
+			headers := map[string]string{":path": "/foo"}
+			p := &chatCompletionProcessorRouterFilter{
+				config: &filterapi.RuntimeConfig{
+					// Gateway-level defaults alone must still force include_usage for streaming token accounting.
+					GlobalRequestCosts: []filterapi.RuntimeGlobalRequestCost{{}},
+				},
+				requestHeaders: headers,
+				logger:         slog.Default(),
+				tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+			}
+			resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", true, opt)})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			require.NotNil(t, p.originalRequestBody.StreamOptions)
+			require.True(t, p.forceBodyMutation)
+			require.True(t, p.originalRequestBody.StreamOptions.IncludeUsage)
+			require.Contains(t, string(p.originalRequestBodyRaw), `"stream_options":{"include_usage":true}`)
+		}
+	})
 }
 
 func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseHeaders(t *testing.T) {
