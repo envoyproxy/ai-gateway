@@ -1169,7 +1169,7 @@ func TestTranscriptionEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) 
 		req := &openai.TranscriptionRequest{Model: "whisper-1"}
 		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
 		require.NoError(t, err)
-		require.Equal(t, "", redacted.Prompt)
+		require.Empty(t, redacted.Prompt)
 	})
 
 	t.Run("with prompt", func(t *testing.T) {
@@ -1266,7 +1266,7 @@ func TestTranslationEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 		req := &openai.TranslationRequest{Model: "whisper-1"}
 		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
 		require.NoError(t, err)
-		require.Equal(t, "", redacted.Prompt)
+		require.Empty(t, redacted.Prompt)
 	})
 
 	t.Run("with prompt", func(t *testing.T) {
