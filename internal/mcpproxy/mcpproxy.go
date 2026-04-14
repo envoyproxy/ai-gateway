@@ -146,6 +146,16 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 
 	forwardHeaders := extractForwardHeaders(m.requestHeaders, backends.forwardHeaders)
 
+	// Extract per-backend forward headers.
+	perBackendHeaders := make(map[filterapi.MCPBackendName]map[string]string)
+	for _, backend := range backends.backends {
+		if len(backend.ForwardHeaders) > 0 {
+			if h := extractPerBackendForwardHeaders(m.requestHeaders, backend.ForwardHeaders); h != nil {
+				perBackendHeaders[backend.Name] = h
+			}
+		}
+	}
+
 	var (
 		wg      sync.WaitGroup
 		entries []compositeSessionEntry
@@ -215,11 +225,12 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 	}
 
 	return &session{
-		reqCtx:             m,
-		id:                 secureClientToGatewaySessionID(encrypted),
-		route:              routeName,
-		perBackendSessions: perBackendSessions,
-		extraHeaders:       forwardHeaders,
+		reqCtx:                 m,
+		id:                     secureClientToGatewaySessionID(encrypted),
+		route:                  routeName,
+		perBackendSessions:     perBackendSessions,
+		extraHeaders:           forwardHeaders,
+		perBackendExtraHeaders: perBackendHeaders,
 	}, nil
 }
 
@@ -250,11 +261,21 @@ func (m *mcpRequestContext) sessionFromID(id secureClientToGatewaySessionID, las
 
 	// Extract forward headers from the current request based on the route's forwardHeaders config.
 	var extraHeaders map[string]string
+	var perBackendHeaders map[filterapi.MCPBackendName]map[string]string
 	if routeConfig := m.routes[route]; routeConfig != nil {
 		extraHeaders = extractForwardHeaders(m.requestHeaders, routeConfig.forwardHeaders)
+		// Extract per-backend forward headers.
+		perBackendHeaders = make(map[filterapi.MCPBackendName]map[string]string)
+		for _, backend := range routeConfig.backends {
+			if len(backend.ForwardHeaders) > 0 {
+				if h := extractPerBackendForwardHeaders(m.requestHeaders, backend.ForwardHeaders); h != nil {
+					perBackendHeaders[backend.Name] = h
+				}
+			}
+		}
 	}
 
-	return &session{id: id, route: route, reqCtx: m, perBackendSessions: perBackendSessionIDs, extraHeaders: extraHeaders}, nil
+	return &session{id: id, route: route, reqCtx: m, perBackendSessions: perBackendSessionIDs, extraHeaders: extraHeaders, perBackendExtraHeaders: perBackendHeaders}, nil
 }
 
 type initializeResult struct {
@@ -410,9 +431,18 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 
 	// Forward configured headers to backend.
 	if routeConfig := m.routes[routeName]; routeConfig != nil {
+		// Route-level headers (e.g., OAuth claimToHeaders).
 		for _, header := range routeConfig.forwardHeaders {
 			if value := m.requestHeaders.Get(header); value != "" {
 				req.Header.Set(header, value)
+			}
+		}
+		// Per-backend headers (from MCPRouteBackendRef.forwardHeaders) with optional renaming.
+		if b, ok := routeConfig.backends[backend.Name]; ok {
+			for _, fh := range b.ForwardHeaders {
+				if value := m.requestHeaders.Get(fh.Name); value != "" {
+					req.Header.Set(fh.ForwardName(), value)
+				}
 			}
 		}
 	}

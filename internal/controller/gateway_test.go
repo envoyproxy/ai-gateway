@@ -1788,6 +1788,49 @@ func Test_mcpConfig_ToolSelectorExclude(t *testing.T) {
 	require.Equal(t, []string{"^secret.*"}, ts.ExcludeRegex)
 }
 
+func Test_mcpConfig_ForwardHeaders(t *testing.T) {
+	renamed := "X-Backend-Auth"
+	mcpRoutes := []aigv1a1.MCPRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "ns"},
+			Spec: aigv1a1.MCPRouteSpec{
+				BackendRefs: []aigv1a1.MCPRouteBackendRef{
+					{
+						BackendObjectReference: gwapiv1.BackendObjectReference{
+							Name: gwapiv1.ObjectName("backendA"),
+						},
+						ForwardHeaders: []aigv1a1.MCPHeaderForward{
+							{Name: "X-Api-Key"},
+							{Name: "Authorization", BackendHeader: &renamed},
+						},
+					},
+					{
+						BackendObjectReference: gwapiv1.BackendObjectReference{
+							Name: gwapiv1.ObjectName("backendB"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	mc, effective := mcpConfig(mcpRoutes)
+	require.True(t, effective)
+	require.NotNil(t, mc)
+	require.Len(t, mc.Routes, 1)
+	require.Len(t, mc.Routes[0].Backends, 2)
+
+	backendA := mc.Routes[0].Backends[0]
+	require.Equal(t, "backendA", backendA.Name)
+	require.Len(t, backendA.ForwardHeaders, 2)
+	require.Equal(t, filterapi.MCPHeaderForward{Name: "X-Api-Key"}, backendA.ForwardHeaders[0])
+	require.Equal(t, filterapi.MCPHeaderForward{Name: "Authorization", BackendHeader: "X-Backend-Auth"}, backendA.ForwardHeaders[1])
+
+	backendB := mc.Routes[0].Backends[1]
+	require.Equal(t, "backendB", backendB.Name)
+	require.Empty(t, backendB.ForwardHeaders)
+}
+
 func Test_mergeHeaderMutations(t *testing.T) {
 	tests := []struct {
 		name         string
