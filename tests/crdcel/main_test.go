@@ -231,11 +231,18 @@ func TestMCPRoutes(t *testing.T) {
 		},
 		{
 			name:   "tool_selector_missing.yaml",
-			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": exactly one of include or includeRegex must be specified",
+			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": at least one of include, includeRegex, exclude, or excludeRegex must be specified",
 		},
 		{
 			name:   "tool_selector_both.yaml",
-			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": exactly one of include or includeRegex must be specified",
+			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": include and includeRegex are mutually exclusive",
+		},
+		{name: "tool_selector_exclude.yaml"},
+		{name: "tool_selector_exclude_regex.yaml"},
+		{name: "tool_selector_include_and_exclude.yaml"},
+		{
+			name:   "tool_selector_exclude_both.yaml",
+			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": exclude and excludeRegex are mutually exclusive",
 		},
 		{
 			name:   "backend_api_key_inline_and_secret.yaml",

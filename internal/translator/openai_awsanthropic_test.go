@@ -284,15 +284,15 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.Contains(t, err.Error(), fmt.Sprintf(tempNotSupportedError, *invalidTempReq.Temperature))
 	})
 
-	t.Run("Missing MaxTokens Throws Error", func(t *testing.T) {
+	t.Run("Missing MaxTokens Passes With Zero", func(t *testing.T) {
 		missingTokensReq := &openai.ChatCompletionRequest{
-			Model:     "anthropic.claude-3-opus-20240229-v1:0",
-			Messages:  []openai.ChatCompletionMessageParamUnion{},
-			MaxTokens: nil,
+			Model:    "anthropic.claude-3-opus-20240229-v1:0",
+			Messages: []openai.ChatCompletionMessageParamUnion{},
 		}
 		translator := NewChatCompletionOpenAIToAWSAnthropicTranslator("", "")
-		_, _, err := translator.RequestBody(nil, missingTokensReq, false)
-		require.ErrorContains(t, err, "max_tokens or max_completion_tokens is required")
+		_, body, err := translator.RequestBody(nil, missingTokensReq, false)
+		require.NoError(t, err)
+		require.Equal(t, int64(0), gjson.GetBytes(body, "max_tokens").Int())
 	})
 }
 
@@ -420,6 +420,7 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				int32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CacheCreationTokens), // nolint:gosec
 				int32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                        // nolint:gosec
 				int32(tt.expectedOpenAIResponse.Usage.TotalTokens),                             // nolint:gosec
+				-1,
 			)
 			require.Equal(t, expectedTokenUsage, usedToken)
 
@@ -771,7 +772,7 @@ func TestOpenAIToAWSAnthropicTranslator_EdgeCases(t *testing.T) {
 		_, _, _, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(body), true, nil)
 		require.NoError(t, err)
 		// Should use model from response when available
-		assert.Equal(t, string(anthropicResp.Model), responseModel)
+		assert.Equal(t, anthropicResp.Model, responseModel)
 	})
 
 	t.Run("response without model field", func(t *testing.T) {
