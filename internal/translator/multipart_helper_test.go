@@ -58,6 +58,21 @@ func TestRewriteMultipartModel(t *testing.T) {
 	})
 }
 
+func TestRewriteMultipartModel_CorruptBody(t *testing.T) {
+	t.Run("corrupt multipart body", func(t *testing.T) {
+		ct := "multipart/form-data; boundary=myboundary"
+		_, _, err := rewriteMultipartModel([]byte("this is not a valid multipart body"), ct, "new-model")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to read multipart part")
+	})
+
+	t.Run("unparseable content type", func(t *testing.T) {
+		_, _, err := rewriteMultipartModel([]byte("data"), ";;;invalid", "new-model")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to parse content-type")
+	})
+}
+
 func TestParseMultipartBoundary(t *testing.T) {
 	t.Run("valid content type", func(t *testing.T) {
 		b, err := parseMultipartBoundary("multipart/form-data; boundary=----WebKitFormBoundary")
@@ -68,11 +83,19 @@ func TestParseMultipartBoundary(t *testing.T) {
 	t.Run("missing boundary", func(t *testing.T) {
 		_, err := parseMultipartBoundary("multipart/form-data")
 		require.Error(t, err)
+		require.Contains(t, err.Error(), "missing boundary")
 	})
 
 	t.Run("not multipart", func(t *testing.T) {
 		_, err := parseMultipartBoundary("application/json")
 		require.Error(t, err)
+		require.Contains(t, err.Error(), "missing boundary")
+	})
+
+	t.Run("unparseable content type", func(t *testing.T) {
+		_, err := parseMultipartBoundary(";;;invalid")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to parse content-type")
 	})
 }
 

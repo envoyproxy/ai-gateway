@@ -729,3 +729,16 @@ func TestTracingImpl_Getters_ImageGenerationAndRerank(t *testing.T) {
 	require.Equal(t, ig, ti.ImageGenerationTracer())
 	require.Equal(t, rr, ti.RerankTracer())
 }
+
+func TestTracingImpl_Getters_TranscriptionAndTranslation(t *testing.T) {
+	tr := tracingapi.NoopTracer[openai.TranscriptionRequest, openai.TranscriptionResponse, struct{}]{}
+	tl := tracingapi.NoopTracer[openai.TranslationRequest, openai.TranslationResponse, struct{}]{}
+
+	ti := &tracingImpl{
+		transcriptionTracer: tr,
+		translationTracer:   tl,
+	}
+
+	require.Equal(t, tr, ti.TranscriptionTracer())
+	require.Equal(t, tl, ti.TranslationTracer())
+}

@@ -1083,6 +1083,73 @@ func TestTranscriptionEndpointSpec_ParseMultipartBody(t *testing.T) {
 		require.Equal(t, 0.5, *req.Temperature)
 		require.Equal(t, "verbose_json", req.ResponseFormat)
 	})
+
+	t.Run("stream field true", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":  "whisper-1",
+			"stream": "true",
+		}, "test.mp3", []byte("audio-data"))
+
+		_, req, stream, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.NoError(t, err)
+		require.True(t, req.Stream)
+		require.False(t, stream)
+	})
+
+	t.Run("stream field false", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":  "whisper-1",
+			"stream": "false",
+		}, "test.mp3", []byte("audio-data"))
+
+		_, req, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.NoError(t, err)
+		require.False(t, req.Stream)
+	})
+
+	t.Run("timestamp_granularities", func(t *testing.T) {
+		var buf bytes.Buffer
+		writer := multipart.NewWriter(&buf)
+		require.NoError(t, writer.WriteField("model", "whisper-1"))
+		require.NoError(t, writer.WriteField("timestamp_granularities[]", "word"))
+		require.NoError(t, writer.WriteField("timestamp_granularities[]", "segment"))
+		part, err := writer.CreateFormFile("file", "test.mp3")
+		require.NoError(t, err)
+		_, err = part.Write([]byte("audio"))
+		require.NoError(t, err)
+		require.NoError(t, writer.Close())
+
+		_, req, _, _, err := spec.ParseMultipartBody(buf.Bytes(), writer.FormDataContentType(), false)
+		require.NoError(t, err)
+		require.Equal(t, []string{"word", "segment"}, req.TimestampGranularities)
+	})
+
+	t.Run("missing boundary in content-type", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseMultipartBody([]byte("data"), "multipart/form-data", false)
+		require.ErrorContains(t, err, "missing boundary")
+	})
+
+	t.Run("prompt field", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":  "whisper-1",
+			"prompt": "This is a transcription prompt",
+		}, "test.mp3", []byte("audio"))
+
+		_, req, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.NoError(t, err)
+		require.Equal(t, "This is a transcription prompt", req.Prompt)
+	})
+
+	t.Run("language field", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":    "whisper-1",
+			"language": "fr",
+		}, "test.mp3", []byte("audio"))
+
+		_, req, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.NoError(t, err)
+		require.Equal(t, "fr", req.Language)
+	})
 }
 
 func TestTranscriptionEndpointSpec_GetTranslator(t *testing.T) {
@@ -1097,10 +1164,23 @@ func TestTranscriptionEndpointSpec_GetTranslator(t *testing.T) {
 
 func TestTranscriptionEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 	spec := TranscriptionEndpointSpec{}
-	req := &openai.TranscriptionRequest{Model: "whisper-1"}
-	redacted, err := spec.RedactSensitiveInfoFromRequest(req)
-	require.NoError(t, err)
-	require.Equal(t, req, redacted)
+
+	t.Run("no prompt", func(t *testing.T) {
+		req := &openai.TranscriptionRequest{Model: "whisper-1"}
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.Equal(t, "", redacted.Prompt)
+	})
+
+	t.Run("with prompt", func(t *testing.T) {
+		req := &openai.TranscriptionRequest{Model: "whisper-1", Prompt: "sensitive transcription context"}
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.Contains(t, redacted.Prompt, "[REDACTED LENGTH=")
+		require.Contains(t, redacted.Prompt, "HASH=")
+		require.NotContains(t, redacted.Prompt, "sensitive transcription context")
+		require.Equal(t, "whisper-1", redacted.Model)
+	})
 }
 
 // --- Translation endpoint spec tests ---
@@ -1143,6 +1223,30 @@ func TestTranslationEndpointSpec_ParseMultipartBody(t *testing.T) {
 		_, _, _, _, err := spec.ParseMultipartBody(body, ct, false)
 		require.ErrorContains(t, err, "missing required field 'file'")
 	})
+
+	t.Run("temperature and response_format", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":           "whisper-1",
+			"temperature":     "0.3",
+			"response_format": "srt",
+		}, "test.mp3", []byte("audio-data"))
+
+		_, req, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.NoError(t, err)
+		require.NotNil(t, req.Temperature)
+		require.Equal(t, 0.3, *req.Temperature)
+		require.Equal(t, "srt", req.ResponseFormat)
+	})
+
+	t.Run("invalid content type", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseMultipartBody([]byte("data"), "text/plain", false)
+		require.ErrorContains(t, err, "failed to parse multipart form data")
+	})
+
+	t.Run("missing boundary in content-type", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseMultipartBody([]byte("data"), "multipart/form-data", false)
+		require.ErrorContains(t, err, "missing boundary")
+	})
 }
 
 func TestTranslationEndpointSpec_GetTranslator(t *testing.T) {
@@ -1157,10 +1261,23 @@ func TestTranslationEndpointSpec_GetTranslator(t *testing.T) {
 
 func TestTranslationEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 	spec := TranslationEndpointSpec{}
-	req := &openai.TranslationRequest{Model: "whisper-1"}
-	redacted, err := spec.RedactSensitiveInfoFromRequest(req)
-	require.NoError(t, err)
-	require.Equal(t, req, redacted)
+
+	t.Run("no prompt", func(t *testing.T) {
+		req := &openai.TranslationRequest{Model: "whisper-1"}
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.Equal(t, "", redacted.Prompt)
+	})
+
+	t.Run("with prompt", func(t *testing.T) {
+		req := &openai.TranslationRequest{Model: "whisper-1", Prompt: "sensitive translation context"}
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.Contains(t, redacted.Prompt, "[REDACTED LENGTH=")
+		require.Contains(t, redacted.Prompt, "HASH=")
+		require.NotContains(t, redacted.Prompt, "sensitive translation context")
+		require.Equal(t, "whisper-1", redacted.Model)
+	})
 }
 
 // --- ParseMultipartBody defaults for JSON-only endpoints ---
