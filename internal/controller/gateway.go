@@ -200,6 +200,18 @@ func bodyMutationToFilterAPI(m *aigv1b1.HTTPBodyMutation) *filterapi.HTTPBodyMut
 	return ret
 }
 
+// validateCELExpression validates and returns a CEL expression for cost calculation.
+func validateCELExpression(cost aigv1b1.LLMRequestCost) (string, error) {
+	if cost.CEL == nil {
+		return "", fmt.Errorf("missing CEL expression")
+	}
+	expr := *cost.CEL
+	if _, err := llmcostcel.NewProgram(expr); err != nil {
+		return "", fmt.Errorf("invalid CEL expression: %w", err)
+	}
+	return expr, nil
+}
+
 // aigwLLMRequestCostToFilterAPI converts an API LLMRequestCost to filter API form for the given
 // AIGatewayRoute (routeName is "namespace/name").
 func aigwGlobalLLMRequestCostToFilterAPI(cost aigv1b1.LLMRequestCost) (filterapi.GlobalLLMRequestCost, error) {
@@ -207,26 +219,14 @@ func aigwGlobalLLMRequestCostToFilterAPI(cost aigv1b1.LLMRequestCost) (filterapi
 		MetadataKey: cost.MetadataKey,
 		Type:        filterapi.LLMRequestCostType(cost.Type),
 	}
-	switch cost.Type {
-	case aigv1b1.LLMRequestCostTypeInputToken,
-		aigv1b1.LLMRequestCostTypeCachedInputToken,
-		aigv1b1.LLMRequestCostTypeCacheCreationInputToken,
-		aigv1b1.LLMRequestCostTypeOutputToken,
-		aigv1b1.LLMRequestCostTypeTotalToken:
-		return out, nil
-	case aigv1b1.LLMRequestCostTypeCEL:
-		if cost.CEL == nil {
-			return filterapi.GlobalLLMRequestCost{}, fmt.Errorf("missing CEL expression")
+	if cost.Type == aigv1b1.LLMRequestCostTypeCEL {
+		celExpr, err := validateCELExpression(cost)
+		if err != nil {
+			return filterapi.GlobalLLMRequestCost{}, err
 		}
-		expr := *cost.CEL
-		if _, err := llmcostcel.NewProgram(expr); err != nil {
-			return filterapi.GlobalLLMRequestCost{}, fmt.Errorf("invalid CEL expression: %w", err)
-		}
-		out.CEL = expr
-		return out, nil
-	default:
-		return filterapi.GlobalLLMRequestCost{}, fmt.Errorf("unknown request cost type: %s", cost.Type)
+		out.CEL = celExpr
 	}
+	return out, nil
 }
 
 func aigwLLMRequestCostToFilterAPI(cost aigv1b1.LLMRequestCost, routeName string) (filterapi.LLMRequestCost, error) {
@@ -235,26 +235,14 @@ func aigwLLMRequestCostToFilterAPI(cost aigv1b1.LLMRequestCost, routeName string
 		RouteName:   routeName,
 		Type:        filterapi.LLMRequestCostType(cost.Type),
 	}
-	switch cost.Type {
-	case aigv1b1.LLMRequestCostTypeInputToken,
-		aigv1b1.LLMRequestCostTypeCachedInputToken,
-		aigv1b1.LLMRequestCostTypeCacheCreationInputToken,
-		aigv1b1.LLMRequestCostTypeOutputToken,
-		aigv1b1.LLMRequestCostTypeTotalToken:
-		return out, nil
-	case aigv1b1.LLMRequestCostTypeCEL:
-		if cost.CEL == nil {
-			return filterapi.LLMRequestCost{}, fmt.Errorf("missing CEL expression")
+	if cost.Type == aigv1b1.LLMRequestCostTypeCEL {
+		celExpr, err := validateCELExpression(cost)
+		if err != nil {
+			return filterapi.LLMRequestCost{}, err
 		}
-		expr := *cost.CEL
-		if _, err := llmcostcel.NewProgram(expr); err != nil {
-			return filterapi.LLMRequestCost{}, fmt.Errorf("invalid CEL expression: %w", err)
-		}
-		out.CEL = expr
-		return out, nil
-	default:
-		return filterapi.LLMRequestCost{}, fmt.Errorf("unknown request cost type: %s", cost.Type)
+		out.CEL = celExpr
 	}
+	return out, nil
 }
 
 // mergeBodyMutations merges route-level and backend-level BodyMutation with route-level taking precedence.
