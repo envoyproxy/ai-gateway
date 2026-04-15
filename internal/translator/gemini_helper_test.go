@@ -2455,7 +2455,7 @@ func TestGeminiCandidatesToOpenAIChoices(t *testing.T) {
 			},
 		},
 		{
-			name: "thought summary and answer set reasoning_content and thinking_blocks",
+			name: "thought summary without signature sets reasoning_content only",
 			candidates: []*genai.Candidate{
 				{
 					Content: &genai.Content{
@@ -2474,10 +2474,7 @@ func TestGeminiCandidatesToOpenAIChoices(t *testing.T) {
 					Message: openai.ChatCompletionResponseChoiceMessage{
 						Role:             openai.ChatMessageRoleAssistant,
 						ReasoningContent: &openai.ReasoningContentUnion{Value: "Let me reason"},
-						ThinkingBlocks: []openai.ThinkingBlock{
-							{Type: "thinking", Thinking: "Let me reason"},
-						},
-						Content: ptr.To("final answer"),
+						Content:          ptr.To("final answer"),
 					},
 					FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
 				},
@@ -2526,7 +2523,36 @@ func TestGeminiCandidatesToOpenAIChoices(t *testing.T) {
 			},
 		},
 		{
-			name: "thought plus tool merges tool signature into first thinking block",
+			name: "thought with text-part signature sets reasoning_content and thinking_blocks",
+			candidates: []*genai.Candidate{
+				{
+					Content: &genai.Content{
+						Parts: []*genai.Part{
+							{Text: "internal reasoning", Thought: true},
+							{Text: "visible answer", ThoughtSignature: []byte("text-sig")},
+						},
+					},
+					FinishReason: genai.FinishReasonStop,
+				},
+			},
+			responseMode: responseModeNone,
+			want: []openai.ChatCompletionResponseChoice{
+				{
+					Index: 0,
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role:             openai.ChatMessageRoleAssistant,
+						ReasoningContent: &openai.ReasoningContentUnion{Value: "internal reasoning"},
+						ThinkingBlocks: []openai.ThinkingBlock{
+							{Type: "thinking", Thinking: "internal reasoning", Signature: base64.StdEncoding.EncodeToString([]byte("text-sig"))},
+						},
+						Content: ptr.To("visible answer"),
+					},
+					FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
+				},
+			},
+		},
+		{
+			name: "thought plus tool creates thinking block from tool signature only",
 			candidates: []*genai.Candidate{
 				{
 					Content:      &genai.Content{Parts: thoughtThenTool},
@@ -2541,7 +2567,7 @@ func TestGeminiCandidatesToOpenAIChoices(t *testing.T) {
 						Role:             openai.ChatMessageRoleAssistant,
 						ReasoningContent: &openai.ReasoningContentUnion{Value: "planning step"},
 						ThinkingBlocks: []openai.ThinkingBlock{
-							{Type: "thinking", Thinking: "planning step", Signature: toolSigB64},
+							{Type: "thinking", Signature: toolSigB64},
 						},
 						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
 							{
@@ -2550,6 +2576,82 @@ func TestGeminiCandidatesToOpenAIChoices(t *testing.T) {
 								Function: openai.ChatCompletionMessageToolCallFunctionParam{
 									Name:      "get_weather",
 									Arguments: `{"city":"NYC"}`,
+								},
+							},
+						},
+					},
+					FinishReason: openai.ChatCompletionChoicesFinishReasonToolCalls,
+				},
+			},
+		},
+		{
+			name: "thought plus text-sig plus tool-sig merges tool sig into existing block",
+			candidates: []*genai.Candidate{
+				{
+					Content: &genai.Content{
+						Parts: []*genai.Part{
+							{Text: "deep reasoning", Thought: true},
+							{Text: "visible", ThoughtSignature: []byte("text-sig")},
+							{FunctionCall: &genai.FunctionCall{Name: "fn", Args: map[string]any{"a": 1}}, ThoughtSignature: []byte("tool-sig")},
+						},
+					},
+					FinishReason: genai.FinishReasonStop,
+				},
+			},
+			responseMode: responseModeNone,
+			want: []openai.ChatCompletionResponseChoice{
+				{
+					Index: 0,
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role:             openai.ChatMessageRoleAssistant,
+						ReasoningContent: &openai.ReasoningContentUnion{Value: "deep reasoning"},
+						ThinkingBlocks: []openai.ThinkingBlock{
+							{Type: "thinking", Thinking: "deep reasoning", Signature: toolSigB64},
+						},
+						Content: ptr.To("visible"),
+						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+							{
+								ID:   ptr.To("id-0"),
+								Type: openai.ChatCompletionMessageToolCallTypeFunction,
+								Function: openai.ChatCompletionMessageToolCallFunctionParam{
+									Name: "fn", Arguments: `{"a":1}`,
+								},
+							},
+						},
+					},
+					FinishReason: openai.ChatCompletionChoicesFinishReasonToolCalls,
+				},
+			},
+		},
+		{
+			name: "no thought but text-sig plus tool-sig merges tool sig into existing block",
+			candidates: []*genai.Candidate{
+				{
+					Content: &genai.Content{
+						Parts: []*genai.Part{
+							{Text: "answer", ThoughtSignature: []byte("text-sig")},
+							{FunctionCall: &genai.FunctionCall{Name: "fn", Args: map[string]any{"b": 2}}, ThoughtSignature: []byte("tool-sig")},
+						},
+					},
+					FinishReason: genai.FinishReasonStop,
+				},
+			},
+			responseMode: responseModeNone,
+			want: []openai.ChatCompletionResponseChoice{
+				{
+					Index: 0,
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role: openai.ChatMessageRoleAssistant,
+						ThinkingBlocks: []openai.ThinkingBlock{
+							{Type: "thinking", Signature: toolSigB64},
+						},
+						Content: ptr.To("answer"),
+						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+							{
+								ID:   ptr.To("id-0"),
+								Type: openai.ChatCompletionMessageToolCallTypeFunction,
+								Function: openai.ChatCompletionMessageToolCallFunctionParam{
+									Name: "fn", Arguments: `{"b":2}`,
 								},
 							},
 						},
