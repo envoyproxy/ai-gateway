@@ -52,12 +52,12 @@ const (
 //
 // For InferencePool support, this method creates additional STRICT_DNS clusters that
 // connect to the endpoint picker services specified in InferencePool resources.
-func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
+func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
 	var extProcUDSExist bool
 
 	// Process existing clusters - may add metadata or modify configurations.
 	for _, cluster := range req.Clusters {
-		if err := s.maybeModifyCluster(cluster); err != nil {
+		if err := s.maybeModifyCluster(ctx, cluster); err != nil {
 			return nil, fmt.Errorf("failed to modify cluster %s: %w", cluster.Name, err)
 		}
 		extProcUDSExist = extProcUDSExist || cluster.Name == extProcUDSClusterName
@@ -161,7 +161,7 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 //
 // The resulting configuration is similar to the envoy.yaml files in tests/data-plane/.
 // Only clusters with names matching the AIGatewayRoute pattern are modified.
-func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
+func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Cluster) error {
 	// Parse cluster name to extract AIGatewayRoute information.
 	// Expected format: "httproute/<namespace>/<name>/rule/<index_of_rule>".
 	parts := strings.Split(cluster.Name, "/")
@@ -184,7 +184,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 	pool := getInferencePoolByMetadata(cluster.Metadata)
 	// Get the HTTPRoute object from the cluster name.
 	var aigwRoute aigv1b1.AIGatewayRoute
-	err = s.k8sClient.Get(context.Background(), client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &aigwRoute)
+	err = s.k8sClient.Get(ctx, client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &aigwRoute)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			s.log.Info("Skipping non-AIGatewayRoute HTTPRoute cluster modification",
