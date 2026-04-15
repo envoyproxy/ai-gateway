@@ -749,7 +749,7 @@ func (s *Server) isRouteGeneratedByAIGateway(route *routev3.Route) bool {
 
 func routeNameFromRouteConfigName(routeConfigName string) string {
 	// Envoy Gateway generated route config names follow:
-	// httproute/<namespace>/<name>/rule/<index>.
+	// httproute/<namespace>/<route_name>/rule/<index>.
 	// We rely on this format for the fallback route name extraction when
 	// resource metadata does not carry the route name explicitly.
 	parts := strings.Split(routeConfigName, "/")

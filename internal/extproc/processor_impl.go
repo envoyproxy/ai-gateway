@@ -704,29 +704,37 @@ func mergeDynamicMetadata(base, extra *structpb.Struct) *structpb.Struct {
 }
 
 // evalCost is a helper function that computes the cost value based on the cost type and CEL program.
-func evalCost(costType filterapi.LLMRequestCostType, celProg cel.Program, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint32, error) {
-	var cost uint32
+func evalCost(costType filterapi.LLMRequestCostType, celProg cel.Program, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint64, error) {
+	var cost uint64
 	switch costType {
 	case filterapi.LLMRequestCostTypeInputToken:
-		cost, _ = costs.InputTokens()
+		v, _ := costs.InputTokens()
+		cost = uint64(v)
 	case filterapi.LLMRequestCostTypeCachedInputToken:
-		cost, _ = costs.CachedInputTokens()
+		v, _ := costs.CachedInputTokens()
+		cost = uint64(v)
 	case filterapi.LLMRequestCostTypeCacheCreationInputToken:
-		cost, _ = costs.CacheCreationInputTokens()
+		v, _ := costs.CacheCreationInputTokens()
+		cost = uint64(v)
 	case filterapi.LLMRequestCostTypeOutputToken:
-		cost, _ = costs.OutputTokens()
+		v, _ := costs.OutputTokens()
+		cost = uint64(v)
 	case filterapi.LLMRequestCostTypeTotalToken:
-		cost, _ = costs.TotalTokens()
+		v, _ := costs.TotalTokens()
+		cost = uint64(v)
 	case filterapi.LLMRequestCostTypeReasoningToken:
-		cost, _ = costs.ReasoningTokens()
+		v, _ := costs.ReasoningTokens()
+		cost = uint64(v)
 	case filterapi.LLMRequestCostTypeCEL:
+		var err error
+
 		in, _ := costs.InputTokens()
 		cachedIn, _ := costs.CachedInputTokens()
 		cacheCreation, _ := costs.CacheCreationInputTokens()
 		out, _ := costs.OutputTokens()
 		total, _ := costs.TotalTokens()
 		reasoning, _ := costs.ReasoningTokens()
-		costU64, err := llmcostcel.EvaluateProgram(
+		cost, err = llmcostcel.EvaluateProgram(
 			celProg,
 			requestHeaders[internalapi.ModelNameHeaderKeyDefault],
 			backendName,
@@ -741,7 +749,6 @@ func evalCost(costType filterapi.LLMRequestCostType, celProg cel.Program, costs 
 		if err != nil {
 			return 0, fmt.Errorf("failed to evaluate CEL expression: %w", err)
 		}
-		cost = uint32(costU64) //nolint:gosec
 	default:
 		return 0, fmt.Errorf("unknown cost type: %s", costType)
 	}
@@ -749,12 +756,12 @@ func evalCost(costType filterapi.LLMRequestCostType, celProg cel.Program, costs 
 }
 
 // evalRuntimeGlobalRequestCost computes the cost value for a single global runtime cost rule.
-func evalRuntimeGlobalRequestCost(rc *filterapi.RuntimeGlobalRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint32, error) {
+func evalRuntimeGlobalRequestCost(rc *filterapi.RuntimeGlobalRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint64, error) {
 	return evalCost(rc.Type, rc.CELProg, costs, requestHeaders, backendName, routeName)
 }
 
 // evalRuntimeRequestCost computes the cost value for a single route-scoped runtime cost rule.
-func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint32, error) {
+func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint64, error) {
 	return evalCost(rc.Type, rc.CELProg, costs, requestHeaders, backendName, routeName)
 }
 

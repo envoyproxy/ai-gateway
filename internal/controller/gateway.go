@@ -484,7 +484,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				if convErr != nil {
 					return false, fmt.Errorf("failed to convert LLMRequestCosts for route %s: %w", aiGatewayRoute.Name, convErr)
 				}
-				key := fc.MetadataKey + "\x00" + fc.RouteName
+				key := fc.MetadataKey
 				dedup[key] = fc
 			}
 			for _, fc := range dedup {
