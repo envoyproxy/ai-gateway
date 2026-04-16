@@ -5142,6 +5142,189 @@ func TestHandleInputItemUnionAttrs(t *testing.T) {
 				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), `{"q":"go"}`),
 			},
 		},
+		// HideInputText=true cases for all new handler functions.
+		{
+			name: "compaction case with HideInputText",
+			item: &openai.ResponseInputItemUnionParam{
+				OfCompaction: &openai.ResponseCompactionItemParam{ID: "c-1", Type: "compaction"},
+			},
+			config: &openinference.TraceConfig{HideInputText: true},
+			index:  0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "image generation call with HideInputText",
+			item: &openai.ResponseInputItemUnionParam{
+				OfImageGenerationCall: &openai.ResponseInputItemImageGenerationCallParam{ID: "img-1", Type: "image_generation_call"},
+			},
+			config: &openinference.TraceConfig{HideInputText: true},
+			index:  0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "code interpreter call with HideInputText",
+			item: &openai.ResponseInputItemUnionParam{
+				OfCodeInterpreterCall: &openai.ResponseCodeInterpreterToolCallParam{ID: "ci-1", Code: "print(1)", Type: "code_interpreter_call"},
+			},
+			config: &openinference.TraceConfig{HideInputText: true},
+			index:  0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "local shell call with HideInputText",
+			item: &openai.ResponseInputItemUnionParam{
+				OfLocalShellCall: &openai.ResponseInputItemLocalShellCallParam{
+					CallID: "lsc-1",
+					Type:   "local_shell_call",
+					Action: openai.ResponseInputItemLocalShellCallActionParam{Command: []string{"ls"}},
+				},
+			},
+			config: &openinference.TraceConfig{HideInputText: true},
+			index:  0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "local shell call output with HideInputText",
+			item: &openai.ResponseInputItemUnionParam{
+				OfLocalShellCallOutput: &openai.ResponseInputItemLocalShellCallOutputParam{ID: "lsco-1", Output: "hello", Type: "local_shell_call_output"},
+			},
+			config: &openinference.TraceConfig{HideInputText: true},
+			index:  0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "tool"),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "shell call with HideInputText",
+			item: &openai.ResponseInputItemUnionParam{
+				OfShellCall: &openai.ResponseInputItemShellCallParam{
+					CallID: "sc-1",
+					Type:   "shell_call",
+					Action: openai.ResponseInputItemShellCallActionParam{Commands: []string{"echo hi"}},
+				},
+			},
+			config: &openinference.TraceConfig{HideInputText: true},
+			index:  0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "shell call output with HideInputText",
+			item: &openai.ResponseInputItemUnionParam{
+				OfShellCallOutput: &openai.ResponseInputItemShellCallOutputParam{CallID: "sc-1", Type: "shell_call_output"},
+			},
+			config: &openinference.TraceConfig{HideInputText: true},
+			index:  0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "tool"),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "apply patch call with HideInputText",
+			item: &openai.ResponseInputItemUnionParam{
+				OfApplyPatchCall: &openai.ResponseInputItemApplyPatchCallParam{CallID: "apc-1", Type: "apply_patch_call"},
+			},
+			config: &openinference.TraceConfig{HideInputText: true},
+			index:  0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "apply patch call output with HideInputText",
+			item: &openai.ResponseInputItemUnionParam{
+				OfApplyPatchCallOutput: &openai.ResponseInputItemApplyPatchCallOutputParam{CallID: "apc-1", Output: "patched", Type: "apply_patch_call_output"},
+			},
+			config: &openinference.TraceConfig{HideInputText: true},
+			index:  0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "tool"),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "mcp list tools with HideInputText",
+			item: &openai.ResponseInputItemUnionParam{
+				OfMcpListTools: &openai.ResponseMcpListTools{ID: "mlt-1", Type: "mcp_list_tools"},
+			},
+			config: &openinference.TraceConfig{HideInputText: true},
+			index:  0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "mcp approval request with HideInputText",
+			item: &openai.ResponseInputItemUnionParam{
+				OfMcpApprovalRequest: &openai.ResponseMcpApprovalRequest{ID: "mar-1", Name: "delete", Arguments: `{}`, Type: "mcp_approval_request"},
+			},
+			config: &openinference.TraceConfig{HideInputText: true},
+			index:  0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "mcp approval response with HideInputText",
+			item: &openai.ResponseInputItemUnionParam{
+				OfMcpApprovalResponse: &openai.ResponseInputItemMcpApprovalResponseParam{ApprovalRequestID: "mar-1", Reason: "approved", Type: "mcp_approval_response"},
+			},
+			config: &openinference.TraceConfig{HideInputText: true},
+			index:  0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "tool"),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageContent), openinference.RedactedValue),
+			},
+		},
+		{
+			name: "mcp call with HideInputText",
+			item: &openai.ResponseInputItemUnionParam{
+				OfMcpCall: &openai.ResponseMcpCall{ID: "mc-1", Name: "search", Arguments: `{"q":"go"}`, Type: "mcp_call"},
+			},
+			config: &openinference.TraceConfig{HideInputText: true},
+			index:  0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.InputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+				attribute.String(openinference.InputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+			},
+		},
 	}
 
 	for _, tc := range tests {
