@@ -1700,3 +1700,355 @@ func TestBuildResponsesResponseAttributes(t *testing.T) {
 		})
 	}
 }
+
+func TestSetResponseImageGenerationCallAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          *openai.ResponseOutputItemImageGenerationCall
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "image generation call",
+			call: &openai.ResponseOutputItemImageGenerationCall{
+				ID:     "img-123",
+				Result: "base64encodedimage",
+				Status: "completed",
+				Type:   "image_generation_call",
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "img-123"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "image_generation_call"),
+			},
+		},
+		{
+			name: "image generation call with hidden output",
+			call: &openai.ResponseOutputItemImageGenerationCall{
+				ID:   "img-456",
+				Type: "image_generation_call",
+			},
+			config:       &openinference.TraceConfig{HideOutputText: true},
+			messageIndex: 1,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(1, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseImageGenerationCallAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseCodeInterpreterCallAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          *openai.ResponseCodeInterpreterToolCall
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "code interpreter call with code",
+			call: &openai.ResponseCodeInterpreterToolCall{
+				ID:          "ci-123",
+				Code:        "print('hello')",
+				ContainerID: "container-abc",
+				Status:      "completed",
+				Type:        "code_interpreter_call",
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "ci-123"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "code_interpreter_call"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), "print('hello')"),
+			},
+		},
+		{
+			name: "code interpreter call with hidden output",
+			call: &openai.ResponseCodeInterpreterToolCall{
+				ID:   "ci-456",
+				Code: "secret code",
+				Type: "code_interpreter_call",
+			},
+			config:       &openinference.TraceConfig{HideOutputText: true},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseCodeInterpreterCallAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseMcpCallAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          *openai.ResponseMcpCall
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "mcp call with arguments",
+			call: &openai.ResponseMcpCall{
+				ID:          "mcp-123",
+				Name:        "search_web",
+				Arguments:   `{"query":"golang testing"}`,
+				ServerLabel: "my-mcp-server",
+				Status:      "completed",
+				Type:        "mcp_call",
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "mcp-123"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "search_web"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), `{"query":"golang testing"}`),
+			},
+		},
+		{
+			name: "mcp call with hidden output",
+			call: &openai.ResponseMcpCall{
+				ID:        "mcp-456",
+				Name:      "run_query",
+				Arguments: `{"sql":"SELECT * FROM users"}`,
+				Type:      "mcp_call",
+			},
+			config:       &openinference.TraceConfig{HideOutputText: true},
+			messageIndex: 1,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(1, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(1, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseMcpCallAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseMcpListToolsAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          *openai.ResponseMcpListTools
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "mcp list tools",
+			call: &openai.ResponseMcpListTools{
+				ID:          "list-123",
+				ServerLabel: "my-mcp-server",
+				Type:        "mcp_list_tools",
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "list-123"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "mcp_list_tools"),
+			},
+		},
+		{
+			name: "mcp list tools with hidden output",
+			call: &openai.ResponseMcpListTools{
+				ID:   "list-456",
+				Type: "mcp_list_tools",
+			},
+			config:       &openinference.TraceConfig{HideOutputText: true},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseMcpListToolsAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseMcpApprovalRequestAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          *openai.ResponseMcpApprovalRequest
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "mcp approval request",
+			call: &openai.ResponseMcpApprovalRequest{
+				ID:          "apr-123",
+				Name:        "delete_file",
+				Arguments:   `{"path":"/etc/passwd"}`,
+				ServerLabel: "my-mcp-server",
+				Type:        "mcp_approval_request",
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "apr-123"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "delete_file"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), `{"path":"/etc/passwd"}`),
+			},
+		},
+		{
+			name: "mcp approval request with hidden output",
+			call: &openai.ResponseMcpApprovalRequest{
+				ID:   "apr-456",
+				Name: "drop_table",
+				Type: "mcp_approval_request",
+			},
+			config:       &openinference.TraceConfig{HideOutputText: true},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseMcpApprovalRequestAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseShellCallAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          *openai.ResponseFunctionShellToolCall
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "shell call with commands",
+			call: &openai.ResponseFunctionShellToolCall{
+				ID:     "shell-123",
+				CallID: "call_shell_abc",
+				Action: openai.ResponseFunctionShellToolCallAction{
+					Commands: []string{"ls", "-la"},
+				},
+				Status: "completed",
+				Type:   "shell_call",
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "call_shell_abc"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "shell_call"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), `["ls","-la"]`),
+			},
+		},
+		{
+			name: "shell call with hidden output",
+			call: &openai.ResponseFunctionShellToolCall{
+				ID:     "shell-456",
+				CallID: "call_shell_xyz",
+				Action: openai.ResponseFunctionShellToolCallAction{
+					Commands: []string{"rm", "-rf", "/"},
+				},
+				Type: "shell_call",
+			},
+			config:       &openinference.TraceConfig{HideOutputText: true},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseShellCallAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseApplyPatchCallAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          *openai.ResponseApplyPatchToolCall
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "apply patch call",
+			call: &openai.ResponseApplyPatchToolCall{
+				ID:     "patch-123",
+				CallID: "call_patch_abc",
+				Status: "completed",
+				Type:   "apply_patch_call",
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "call_patch_abc"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "apply_patch_call"),
+			},
+		},
+		{
+			name: "apply patch call with hidden output",
+			call: &openai.ResponseApplyPatchToolCall{
+				ID:     "patch-456",
+				CallID: "call_patch_xyz",
+				Type:   "apply_patch_call",
+			},
+			config:       &openinference.TraceConfig{HideOutputText: true},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseApplyPatchCallAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
