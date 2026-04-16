@@ -133,7 +133,10 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	uid := c.uuidFn()
 
 	// Fetch GatewayConfig to get global LLM request cost defaults.
-	gwConfig := c.fetchGatewayConfig(ctx, gw)
+	gwConfig, err := c.fetchGatewayConfig(ctx, gw)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	var defaultLLMCosts []aigv1b1.LLMRequestCost
 	if gwConfig != nil {
 		defaultLLMCosts = gwConfig.Spec.GlobalLLMRequestCosts
@@ -1036,10 +1039,13 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 
 // fetchGatewayConfig returns the referenced GatewayConfig (if present) for the given Gateway.
 // Returns nil if no GatewayConfig is referenced or if it cannot be found.
-func (c *GatewayController) fetchGatewayConfig(ctx context.Context, gw *gwapiv1.Gateway) *aigv1b1.GatewayConfig {
+// fetchGatewayConfig returns the referenced GatewayConfig (if present) for the given Gateway.
+// Returns (nil, nil) if: no annotation, empty annotation, or GatewayConfig not found.
+// Returns (nil, error) for transient failures (API errors) to trigger reconciliation retry.
+func (c *GatewayController) fetchGatewayConfig(ctx context.Context, gw *gwapiv1.Gateway) (*aigv1b1.GatewayConfig, error) {
 	configName, ok := gw.Annotations[GatewayConfigAnnotationKey]
 	if !ok || configName == "" {
-		return nil
+		return nil, nil
 	}
 
 	// Fetch the GatewayConfig (must be in same namespace as Gateway).
@@ -1048,14 +1054,13 @@ func (c *GatewayController) fetchGatewayConfig(ctx context.Context, gw *gwapiv1.
 		if apierrors.IsNotFound(err) {
 			c.logger.Info("GatewayConfig referenced by Gateway not found, using defaults",
 				"gateway_name", gw.Name, "gateway_namespace", gw.Namespace, "gatewayconfig_name", configName)
-		} else {
-			c.logger.Error(err, "failed to get GatewayConfig, using defaults",
-				"gateway_name", gw.Name, "gateway_namespace", gw.Namespace, "gatewayconfig_name", configName)
+			return nil, nil
 		}
-		return nil
+		// Return error for transient failures (e.g., API errors) to trigger retry.
+		return nil, fmt.Errorf("failed to get GatewayConfig: %w", err)
 	}
 
 	c.logger.Info("found GatewayConfig for Gateway",
 		"gateway_name", gw.Name, "gateway_namespace", gw.Namespace, "gatewayconfig_name", configName)
-	return &gatewayConfig
+	return &gatewayConfig, nil
 }
