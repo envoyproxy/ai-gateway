@@ -8,6 +8,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"math"
 	"testing"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -849,4 +850,108 @@ func TestAIGatewayRouteController_SameNamespaceBackend_NoReferenceGrantNeeded(t 
 	require.NoError(t, err)
 	require.Len(t, updatedRoute.Status.Conditions, 1)
 	require.Equal(t, aigv1b1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
+}
+
+func TestAIGatewayRouteController_validateCostRateLimitBudgets(t *testing.T) {
+	const ns = "default"
+	const routeName = "my-route"
+
+	newRoute := func() *aigv1b1.AIGatewayRoute {
+		return &aigv1b1.AIGatewayRoute{
+			ObjectMeta: metav1.ObjectMeta{Name: routeName, Namespace: ns},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				LLMRequestCosts: []aigv1b1.LLMRequestCost{
+					{MetadataKey: "llm_input_token", Type: aigv1b1.LLMRequestCostTypeInputToken},
+				},
+			},
+		}
+	}
+
+	newBTP := func(name, targetName string, requests uint, metaNS string) *egv1a1.BackendTrafficPolicy {
+		return &egv1a1.BackendTrafficPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+			Spec: egv1a1.BackendTrafficPolicySpec{
+				PolicyTargetReferences: egv1a1.PolicyTargetReferences{
+					TargetRef: &gwapiv1.LocalPolicyTargetReferenceWithSectionName{
+						LocalPolicyTargetReference: gwapiv1.LocalPolicyTargetReference{
+							Group: "gateway.networking.k8s.io",
+							Kind:  "HTTPRoute",
+							Name:  gwapiv1.ObjectName(targetName),
+						},
+					},
+				},
+				RateLimit: &egv1a1.RateLimitSpec{
+					Global: &egv1a1.GlobalRateLimit{
+						Rules: []egv1a1.RateLimitRule{
+							{
+								Limit: egv1a1.RateLimitValue{Requests: requests, Unit: egv1a1.RateLimitUnitHour},
+								Cost: &egv1a1.RateLimitCost{
+									Response: &egv1a1.RateLimitCostSpecifier{
+										From: egv1a1.RateLimitCostFromMetadata,
+										Metadata: &egv1a1.RateLimitCostMetadata{
+											Namespace: metaNS,
+											Key:       "llm_input_token",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name      string
+		btps      []*egv1a1.BackendTrafficPolicy
+		wantErr   bool
+		errSubstr string
+	}{
+		{
+			name:    "no BackendTrafficPolicies",
+			wantErr: false,
+		},
+		{
+			name:    "BTP targets a different route",
+			btps:    []*egv1a1.BackendTrafficPolicy{newBTP("btp1", "other-route", math.MaxUint32+1, "io.envoy.ai_gateway")},
+			wantErr: false,
+		},
+		{
+			name:    "BTP targets this route with non-AI-Gateway metadata namespace",
+			btps:    []*egv1a1.BackendTrafficPolicy{newBTP("btp1", routeName, math.MaxUint32+1, "custom.namespace")},
+			wantErr: false,
+		},
+		{
+			name:    "BTP targets this route with requests at uint32 max",
+			btps:    []*egv1a1.BackendTrafficPolicy{newBTP("btp1", routeName, math.MaxUint32, "io.envoy.ai_gateway")},
+			wantErr: false,
+		},
+		{
+			name:      "BTP targets this route with requests exceeding uint32 max",
+			btps:      []*egv1a1.BackendTrafficPolicy{newBTP("btp1", routeName, math.MaxUint32+1, "io.envoy.ai_gateway")},
+			wantErr:   true,
+			errSubstr: "exceeds uint32 max",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeClient := requireNewFakeClientWithIndexes(t)
+			eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+			c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), logr.Discard(), eventCh.Ch, "/v1")
+
+			for _, btp := range tt.btps {
+				require.NoError(t, fakeClient.Create(t.Context(), btp))
+			}
+
+			err := c.validateCostRateLimitBudgets(t.Context(), newRoute())
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errSubstr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
