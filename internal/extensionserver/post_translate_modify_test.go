@@ -77,6 +77,16 @@ func TestInsertAIGatewayExtProcFilter(t *testing.T) {
 			expectedFilterCount: 4,
 		},
 		{
+			name: "insert before lua filter",
+			existingFilters: []*httpconnectionmanagerv3.HttpFilter{
+				{Name: "envoy.filters.http.fault"},
+				{Name: "envoy.filters.http.lua"},
+				{Name: "envoy.filters.http.router"},
+			},
+			expectedPosition:    1,
+			expectedFilterCount: 4,
+		},
+		{
 			name: "insert before rbac filter",
 			existingFilters: []*httpconnectionmanagerv3.HttpFilter{
 				{Name: "envoy.filters.http.fault"},
