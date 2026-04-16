@@ -24,7 +24,7 @@ The Envoy AI Gateway acts as a proxy that accepts OpenAI-compatible and Anthropi
 
 - ✅ Streaming and non-streaming responses
 - ✅ Function calling
-- ✅ Response format specification (including JSON schema)
+- ✅ Response format specification (including JSON schema; see provider notes below)
 - ✅ Temperature, top_p, and other sampling parameters
 - ✅ System and user messages
 - ✅ Model selection via request body or `x-ai-eg-model` header
@@ -34,9 +34,9 @@ The Envoy AI Gateway acts as a proxy that accepts OpenAI-compatible and Anthropi
 **Supported Providers:**
 
 - OpenAI
-- AWS Bedrock (with automatic translation)
+- AWS Bedrock (with automatic translation; `response_format.json_schema` is **not supported** — returns HTTP 400)
 - Azure OpenAI (with automatic translation)
-- GCP VertexAI (with automatic translation)
+- GCP VertexAI (with automatic translation; `response_format.json_schema` mapped to `responseSchema`)
 - GCP Anthropic (with automatic translation)
 - Any OpenAI-compatible provider (Groq, Together AI, Mistral, Tetrate Agent Router Service, etc.)
 
