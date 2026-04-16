@@ -1254,69 +1254,125 @@ func TestSetResponseOutputAttrs(t *testing.T) {
 		// The rest are TODO branches, just check passthrough (should not panic or add attrs)
 		{
 			name:   "OfImageGenerationCall",
-			union:  openai.ResponseOutputItemUnion{OfImageGenerationCall: &openai.ResponseOutputItemImageGenerationCall{}},
+			union:  openai.ResponseOutputItemUnion{OfImageGenerationCall: &openai.ResponseOutputItemImageGenerationCall{ID: "ig-1", Type: "image_generation_call"}},
 			config: defaultConfig,
-			want:   nil,
+			want: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "ig-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "image_generation_call"),
+			},
 		},
 		{
 			name:   "OfCodeInterpreterCall",
-			union:  openai.ResponseOutputItemUnion{OfCodeInterpreterCall: &openai.ResponseCodeInterpreterToolCall{}},
+			union:  openai.ResponseOutputItemUnion{OfCodeInterpreterCall: &openai.ResponseCodeInterpreterToolCall{ID: "ci-1", Type: "code_interpreter_call", Code: "print(1)"}},
 			config: defaultConfig,
-			want:   nil,
+			want: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "ci-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "code_interpreter_call"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), "print(1)"),
+			},
 		},
 		{
-			name:   "OfLocalShellCall",
-			union:  openai.ResponseOutputItemUnion{OfLocalShellCall: &openai.ResponseOutputItemLocalShellCall{}},
+			name: "OfLocalShellCall",
+			union: openai.ResponseOutputItemUnion{OfLocalShellCall: &openai.ResponseOutputItemLocalShellCall{
+				CallID: "lsc-1", Type: "local_shell_call",
+				Action: openai.ResponseOutputItemLocalShellCallAction{Command: []string{"ls"}},
+			}},
 			config: defaultConfig,
-			want:   nil,
+			want: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "lsc-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "local_shell_call"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), `["ls"]`),
+			},
 		},
 		{
 			name:   "OfMcpCall",
-			union:  openai.ResponseOutputItemUnion{OfMcpCall: &openai.ResponseMcpCall{}},
+			union:  openai.ResponseOutputItemUnion{OfMcpCall: &openai.ResponseMcpCall{ID: "mc-1", Name: "search", Arguments: `{"q":"go"}`, Type: "mcp_call"}},
 			config: defaultConfig,
-			want:   nil,
+			want: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "mc-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "search"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), `{"q":"go"}`),
+			},
 		},
 		{
 			name:   "OfMcpListTools",
-			union:  openai.ResponseOutputItemUnion{OfMcpListTools: &openai.ResponseMcpListTools{}},
+			union:  openai.ResponseOutputItemUnion{OfMcpListTools: &openai.ResponseMcpListTools{ID: "mlt-1", Type: "mcp_list_tools"}},
 			config: defaultConfig,
-			want:   nil,
+			want: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "mlt-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "mcp_list_tools"),
+			},
 		},
 		{
 			name:   "OfMcpApprovalRequest",
-			union:  openai.ResponseOutputItemUnion{OfMcpApprovalRequest: &openai.ResponseMcpApprovalRequest{}},
+			union:  openai.ResponseOutputItemUnion{OfMcpApprovalRequest: &openai.ResponseMcpApprovalRequest{ID: "mar-1", Name: "delete", Arguments: `{}`, Type: "mcp_approval_request"}},
 			config: defaultConfig,
-			want:   nil,
+			want: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "mar-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "delete"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), `{}`),
+			},
 		},
 		{
-			name:   "OfShellCall",
-			union:  openai.ResponseOutputItemUnion{OfShellCall: &openai.ResponseFunctionShellToolCall{}},
+			name: "OfShellCall",
+			union: openai.ResponseOutputItemUnion{OfShellCall: &openai.ResponseFunctionShellToolCall{
+				CallID: "sc-1", Type: "shell_call",
+				Action: openai.ResponseFunctionShellToolCallAction{Commands: []string{"echo hi"}},
+			}},
 			config: defaultConfig,
-			want:   nil,
+			want: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "sc-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "shell_call"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), `["echo hi"]`),
+			},
 		},
 		{
 			name:   "OfShellCallOutput",
-			union:  openai.ResponseOutputItemUnion{OfShellCallOutput: &openai.ResponseFunctionShellToolCallOutput{}},
+			union:  openai.ResponseOutputItemUnion{OfShellCallOutput: &openai.ResponseFunctionShellToolCallOutput{CallID: "sc-1", Type: "shell_call_output"}},
 			config: defaultConfig,
-			want:   nil,
+			want: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "tool"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "sc-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "shell_call_output"),
+			},
 		},
 		{
 			name:   "OfApplyPatchCall",
-			union:  openai.ResponseOutputItemUnion{OfApplyPatchCall: &openai.ResponseApplyPatchToolCall{}},
+			union:  openai.ResponseOutputItemUnion{OfApplyPatchCall: &openai.ResponseApplyPatchToolCall{CallID: "apc-1", Type: "apply_patch_call"}},
 			config: defaultConfig,
-			want:   nil,
+			want: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "apc-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "apply_patch_call"),
+			},
 		},
 		{
 			name:   "OfApplyPatchCallOutput",
-			union:  openai.ResponseOutputItemUnion{OfApplyPatchCallOutput: &openai.ResponseApplyPatchToolCallOutput{}},
+			union:  openai.ResponseOutputItemUnion{OfApplyPatchCallOutput: &openai.ResponseApplyPatchToolCallOutput{CallID: "apc-1", Type: "apply_patch_call_output", Output: "patched"}},
 			config: defaultConfig,
-			want:   nil,
+			want: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "tool"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "apc-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "apply_patch_call_output"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), "patched"),
+			},
 		},
 		{
 			name:   "OfCompaction",
-			union:  openai.ResponseOutputItemUnion{OfCompaction: &openai.ResponseCompactionItem{}},
+			union:  openai.ResponseOutputItemUnion{OfCompaction: &openai.ResponseCompactionItem{ID: "c-1", Type: "compaction"}},
 			config: defaultConfig,
-			want:   nil,
+			want: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "c-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "compaction"),
+			},
 		},
 	}
 
@@ -2048,6 +2104,174 @@ func TestSetResponseApplyPatchCallAttrs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			attrs := setResponseApplyPatchCallAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseLocalShellCallAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          *openai.ResponseOutputItemLocalShellCall
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name: "local shell call with command",
+			call: &openai.ResponseOutputItemLocalShellCall{
+				CallID: "lsc-1",
+				Type:   "local_shell_call",
+				Action: openai.ResponseOutputItemLocalShellCallAction{Command: []string{"ls", "-la"}},
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "lsc-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "local_shell_call"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), `["ls","-la"]`),
+			},
+		},
+		{
+			name: "local shell call with HideOutputText",
+			call: &openai.ResponseOutputItemLocalShellCall{
+				CallID: "lsc-2",
+				Type:   "local_shell_call",
+				Action: openai.ResponseOutputItemLocalShellCallAction{Command: []string{"rm", "-rf", "/"}},
+			},
+			config:       &openinference.TraceConfig{HideOutputText: true},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseLocalShellCallAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseShellCallOutputAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          *openai.ResponseFunctionShellToolCallOutput
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name:         "shell call output",
+			call:         &openai.ResponseFunctionShellToolCallOutput{CallID: "sc-1", Type: "shell_call_output"},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "tool"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "sc-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "shell_call_output"),
+			},
+		},
+		{
+			name:         "shell call output with HideOutputText",
+			call:         &openai.ResponseFunctionShellToolCallOutput{CallID: "sc-2", Type: "shell_call_output"},
+			config:       &openinference.TraceConfig{HideOutputText: true},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "tool"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseShellCallOutputAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseApplyPatchCallOutputAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          *openai.ResponseApplyPatchToolCallOutput
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name:         "apply patch call output",
+			call:         &openai.ResponseApplyPatchToolCallOutput{CallID: "apc-1", Type: "apply_patch_call_output", Output: "patched"},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "tool"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "apc-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "apply_patch_call_output"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), "patched"),
+			},
+		},
+		{
+			name:         "apply patch call output with HideOutputText",
+			call:         &openai.ResponseApplyPatchToolCallOutput{CallID: "apc-2", Type: "apply_patch_call_output", Output: "secret"},
+			config:       &openinference.TraceConfig{HideOutputText: true},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "tool"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionArguments), openinference.RedactedValue),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseApplyPatchCallOutputAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
+		})
+	}
+}
+
+func TestSetResponseCompactionAttrs(t *testing.T) {
+	tests := []struct {
+		name          string
+		call          *openai.ResponseCompactionItem
+		config        *openinference.TraceConfig
+		messageIndex  int
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name:         "compaction",
+			call:         &openai.ResponseCompactionItem{ID: "c-1", Type: "compaction"},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), "c-1"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), "compaction"),
+			},
+		},
+		{
+			name:         "compaction with HideOutputText",
+			call:         &openai.ResponseCompactionItem{ID: "c-2", Type: "compaction"},
+			config:       &openinference.TraceConfig{HideOutputText: true},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallID), openinference.RedactedValue),
+				attribute.String(openinference.OutputMessageToolCallAttribute(0, 0, openinference.ToolCallFunctionName), openinference.RedactedValue),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := setResponseCompactionAttrs(tt.call, []attribute.KeyValue{}, tt.config, tt.messageIndex)
 			openinference.RequireAttributesEqual(t, tt.expectedAttrs, attrs)
 		})
 	}
