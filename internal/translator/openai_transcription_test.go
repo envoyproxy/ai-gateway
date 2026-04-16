@@ -74,7 +74,13 @@ func TestTranscriptionTranslator_RequestBody_ModelOverride(t *testing.T) {
 	require.True(t, foundPath)
 
 	// Verify the rewritten body has the new model.
-	fields := parseMultipartFields(t, bm, hm[0].Value())
+	var newCT string
+	for _, h := range hm {
+		if h.Key() == contentTypeHeaderName {
+			newCT = h.Value()
+		}
+	}
+	fields := parseMultipartFields(t, bm, newCT)
 	require.Equal(t, "whisper-large-v3", fields["model"])
 }
 

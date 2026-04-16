@@ -92,10 +92,10 @@ func (r *TranscriptionRecorder) RecordResponse(span trace.Span, resp *openai.Tra
 			attribute.String(openinference.OutputMimeType, "text/plain"),
 		)
 		if resp.Duration > 0 {
-			attrs = append(attrs, attribute.Float64("output.audio_duration", resp.Duration))
+			attrs = append(attrs, attribute.Float64(openinference.OutputAudioDuration, resp.Duration))
 		}
 		if resp.Language != "" {
-			attrs = append(attrs, attribute.String("output.language", resp.Language))
+			attrs = append(attrs, attribute.String(openinference.OutputLanguage, resp.Language))
 		}
 	}
 

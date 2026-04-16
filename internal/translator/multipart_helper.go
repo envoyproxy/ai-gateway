@@ -17,13 +17,9 @@ import (
 // with newModel. All other parts (including the file upload) are copied verbatim.
 // Returns the new body bytes and the new Content-Type header value (with updated boundary).
 func rewriteMultipartModel(original []byte, contentType string, newModel string) ([]byte, string, error) {
-	_, params, err := mime.ParseMediaType(contentType)
+	boundary, err := parseMultipartBoundary(contentType)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to parse content-type: %w", err)
-	}
-	boundary := params["boundary"]
-	if boundary == "" {
-		return nil, "", fmt.Errorf("missing boundary in content-type")
+		return nil, "", err
 	}
 
 	reader := multipart.NewReader(bytes.NewReader(original), boundary)
