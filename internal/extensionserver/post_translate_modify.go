@@ -797,6 +797,7 @@ outer:
 var afterExtProcFilterPrefixes = []string{
 	egv1a1.EnvoyFilterExtProc.String(),
 	egv1a1.EnvoyFilterWasm.String(),
+	egv1a1.EnvoyFilterLua.String(),
 	egv1a1.EnvoyFilterRBAC.String(),
 	egv1a1.EnvoyFilterLocalRateLimit.String(),
 	egv1a1.EnvoyFilterRateLimit.String(),
