@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -595,6 +596,180 @@ func TestNewTracingFromEnv_HeaderAttributeMapping(t *testing.T) {
 	}
 	require.Equal(t, "abc123", attrs["session.id"])
 	require.Equal(t, "user456", attrs["tenant.id"])
+}
+
+// TestNewTracingFromEnv_HeaderAttributeMapping_LargeContext verifies that header
+// attributes are preserved even when the conversation has many messages (large
+// context window). Regression test for https://github.com/envoyproxy/ai-gateway/issues/2051.
+func TestNewTracingFromEnv_HeaderAttributeMapping_LargeContext(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
+	collector := testotel.StartOTLPCollector()
+	t.Cleanup(collector.Close)
+	collector.SetEnv(t.Setenv)
+
+	mapping := map[string]string{
+		"agent-session-id": "session.id",
+		"x-user-email":     "user.email",
+	}
+
+	result, err := NewTracingFromEnv(t.Context(), io.Discard, mapping)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = result.Shutdown(context.Background()) })
+
+	// 200 messages × ~2 attributes each = ~400, well above the OTEL SDK default of 128.
+	messages := make([]openai.ChatCompletionMessageParamUnion, 200)
+	for i := range messages {
+		messages[i] = openai.ChatCompletionMessageParamUnion{
+			OfUser: &openai.ChatCompletionUserMessageParam{
+				Role: openai.ChatMessageRoleUser,
+				Content: openai.StringOrUserRoleContentUnion{
+					Value: fmt.Sprintf("message %d", i),
+				},
+			},
+		}
+	}
+
+	headers := map[string]string{
+		"agent-session-id": "sess-large-ctx",
+		"x-user-email":     "user@example.com",
+	}
+
+	tr := result.ChatCompletionTracer()
+	req := &openai.ChatCompletionRequest{
+		Model:    openai.ModelGPT5Nano,
+		Messages: messages,
+	}
+	span := tr.StartSpanAndInjectHeaders(t.Context(), headers, propagation.MapCarrier{}, req, []byte("{}"))
+	require.NotNil(t, span)
+	span.RecordResponse(&openai.ChatCompletionResponse{
+		Model: openai.ModelGPT5Nano,
+		Choices: []openai.ChatCompletionResponseChoice{{
+			Message: openai.ChatCompletionResponseChoiceMessage{
+				Role:    "assistant",
+				Content: ptr.To("response"),
+			},
+		}},
+	})
+	span.EndSpan()
+
+	v1Span := collector.TakeSpan()
+	require.NotNil(t, v1Span)
+
+	attrs := make(map[string]string)
+	for _, kv := range v1Span.Attributes {
+		attrs[kv.Key] = kv.Value.GetStringValue()
+	}
+
+	require.Equal(t, "sess-large-ctx", attrs["session.id"])
+	require.Equal(t, "user@example.com", attrs["user.email"])
+	require.Equal(t, openai.ChatMessageRoleUser, attrs[openinference.InputMessageAttribute(0, openinference.MessageRole)])
+	require.Equal(t, "message 0", attrs[openinference.InputMessageAttribute(0, openinference.MessageContent)])
+	require.Equal(t, openai.ChatMessageRoleUser, attrs[openinference.InputMessageAttribute(199, openinference.MessageRole)])
+	require.Equal(t, "message 199", attrs[openinference.InputMessageAttribute(199, openinference.MessageContent)])
+	require.Equal(t, "assistant", attrs[openinference.OutputMessageAttribute(0, openinference.MessageRole)])
+	require.Greater(t, len(v1Span.Attributes), 128)
+}
+
+// TestNewTracingFromEnv_LargeContextMixedMessages tests mixed message sizes
+// (~60k tokens total, including ~14k-token messages) with a large request body.
+// Regression test for https://github.com/envoyproxy/ai-gateway/issues/2051.
+func TestNewTracingFromEnv_LargeContextMixedMessages(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
+	collector := testotel.StartOTLPCollector()
+	t.Cleanup(collector.Close)
+	collector.SetEnv(t.Setenv)
+
+	mapping := map[string]string{
+		"agent-session-id": "session.id",
+		"x-user-email":     "user.email",
+	}
+
+	result, err := NewTracingFromEnv(t.Context(), io.Discard, mapping)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = result.Shutdown(context.Background()) })
+
+	// Mix of small and large messages simulating a real conversation (~60k tokens).
+	messages := make([]openai.ChatCompletionMessageParamUnion, 0, 100)
+	for i := 0; i < 100; i++ {
+		var content string
+		switch {
+		case i%20 == 0:
+			content = strings.Repeat("x", 56000) // ~14k tokens
+		case i%5 == 0:
+			content = strings.Repeat("y", 8000) // ~2k tokens
+		default:
+			content = fmt.Sprintf("short message %d with some content", i)
+		}
+
+		msg := openai.ChatCompletionMessageParamUnion{}
+		if i%2 == 0 {
+			msg.OfUser = &openai.ChatCompletionUserMessageParam{
+				Role:    openai.ChatMessageRoleUser,
+				Content: openai.StringOrUserRoleContentUnion{Value: content},
+			}
+		} else {
+			msg.OfAssistant = &openai.ChatCompletionAssistantMessageParam{
+				Role:    "assistant",
+				Content: openai.StringOrAssistantRoleContentUnion{Value: content},
+			}
+		}
+		messages = append(messages, msg)
+	}
+
+	headers := map[string]string{
+		"agent-session-id": "sess-60k-mixed",
+		"x-user-email":     "dev@example.com",
+	}
+
+	tr := result.ChatCompletionTracer()
+	req := &openai.ChatCompletionRequest{
+		Model:    openai.ModelGPT5Nano,
+		Messages: messages,
+	}
+	largeBody := []byte(fmt.Sprintf(`{"model":"gpt-4.1-nano","messages":[{"role":"user","content":"%s"}]}`,
+		strings.Repeat("z", 56000)))
+	span := tr.StartSpanAndInjectHeaders(t.Context(), headers, propagation.MapCarrier{}, req, largeBody)
+	require.NotNil(t, span)
+	span.RecordResponse(&openai.ChatCompletionResponse{
+		Model: openai.ModelGPT5Nano,
+		Choices: []openai.ChatCompletionResponseChoice{{
+			Message: openai.ChatCompletionResponseChoiceMessage{
+				Role:    "assistant",
+				Content: ptr.To("final response"),
+			},
+		}},
+		Usage: openai.Usage{
+			PromptTokens:     60000,
+			CompletionTokens: 500,
+			TotalTokens:      60500,
+		},
+	})
+	span.EndSpan()
+
+	v1Span := collector.TakeSpan()
+	require.NotNil(t, v1Span)
+
+	attrs := make(map[string]string)
+	intAttrs := make(map[string]int64)
+	for _, kv := range v1Span.Attributes {
+		attrs[kv.Key] = kv.Value.GetStringValue()
+		intAttrs[kv.Key] = kv.Value.GetIntValue()
+	}
+
+	require.Greater(t, len(attrs[openinference.InputValue]), 50000)
+	require.Equal(t, "sess-60k-mixed", attrs["session.id"])
+	require.Equal(t, "dev@example.com", attrs["user.email"])
+
+	for i := 0; i < 100; i++ {
+		require.NotEmpty(t, attrs[openinference.InputMessageAttribute(i, openinference.MessageRole)], "message %d role", i)
+		require.NotEmpty(t, attrs[openinference.InputMessageAttribute(i, openinference.MessageContent)], "message %d content", i)
+	}
+
+	require.Equal(t, "assistant", attrs[openinference.OutputMessageAttribute(0, openinference.MessageRole)])
+	require.Equal(t, "final response", attrs[openinference.OutputMessageAttribute(0, openinference.MessageContent)])
+	require.Equal(t, int64(60000), intAttrs[openinference.LLMTokenCountPrompt])
+	require.Equal(t, int64(500), intAttrs[openinference.LLMTokenCountCompletion])
+	require.Equal(t, int64(60500), intAttrs[openinference.LLMTokenCountTotal])
 }
 
 // TestNewTracingFromEnv_Embeddings_Redaction tests that the OpenInference
