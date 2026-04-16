@@ -250,7 +250,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 
 	responseModel = o.requestModel
 	if anthropicResp.Model != "" {
-		responseModel = string(anthropicResp.Model)
+		responseModel = anthropicResp.Model
 	}
 
 	openAIResp, tokenUsage, err := messageToChatCompletion(&anthropicResp, responseModel)

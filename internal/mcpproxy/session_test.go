@@ -569,6 +569,42 @@ func TestSendRequestPerBackend_BrotliDecompression(t *testing.T) {
 	require.Equal(t, "ping", req.Method)
 }
 
+func TestSendRequestPerBackend_BOMPrefixedJSON(t *testing.T) {
+	id1, _ := jsonrpc.MakeID("1")
+	msg1, _ := jsonrpc.EncodeMessage(&jsonrpc.Response{ID: id1, Result: []byte(`{"ok":true}`)})
+
+	bomBody := append([]byte{0xEF, 0xBB, 0xBF}, msg1...)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(bomBody)
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	s := &session{reqCtx: proxy}
+	ch := make(chan *backendEvent, 10)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	err := s.sendRequestPerBackend(ctx, ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+		sessionID: "sess1",
+	}, http.MethodGet, nil)
+	require.NoError(t, err)
+	close(ch)
+	var events []*backendEvent
+	for e := range ch {
+		events = append(events, e)
+	}
+	require.Len(t, events, 1, "expected 1 event from BOM-prefixed JSON response")
+	require.Equal(t, "message", events[0].event)
+	require.Len(t, events[0].messages, 1)
+	resp, ok := events[0].messages[0].(*jsonrpc.Response)
+	require.True(t, ok)
+	require.Equal(t, id1, resp.ID)
+}
+
 func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
 	// Provide two SSE events with valid JSON-RPC requests then close.
 	id1, _ := jsonrpc.MakeID("1")
@@ -624,11 +660,11 @@ func TestSession_StreamNotifications(t *testing.T) {
 	}{
 		// the default heartbeat interval is 1 second, but the events will come faster, so
 		// we don't expect any heartbeats.
-		{"fast events", 10 * time.Millisecond, 5 * time.Second, 10 * time.Second, false},
+		{"fast events", 10 * time.Millisecond, 500 * time.Millisecond, 10 * time.Second, false},
 		// configure a heartbeat interval faster than the event interval, so we expect heartbeats.
-		{"slow events", 20 * time.Millisecond, 5 * time.Second, 10 * time.Millisecond, true},
+		{"slow events", 20 * time.Millisecond, 500 * time.Millisecond, 10 * time.Millisecond, true},
 		// disable heartbeats. Even though events come in slowly, we don't expect heartbeats.
-		{"no heartbeats", 20 * time.Millisecond, 5 * time.Second, 0, false},
+		{"no heartbeats", 20 * time.Millisecond, 500 * time.Millisecond, 0, false},
 	}
 
 	for _, tc := range tests {
@@ -684,7 +720,7 @@ func TestSession_StreamNotifications(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), tc.deadline)
 			defer cancel()
 			err2 := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
-			require.NoError(t, err2)
+			require.ErrorIs(t, err2, context.DeadlineExceeded)
 			out := rr.Body.String()
 			require.Contains(t, out, "event: a1")
 			require.Contains(t, out, "event: a2")
@@ -736,7 +772,7 @@ func TestNotifyToolsChanged(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		t.Cleanup(cancel)
 		err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
 		out := rr.Body.String()
 		require.NotContains(t, out, `"id":"`+envoyAIGatewayServerToClientToolsChangedRequestIDPrefix)
 		require.NotContains(t, out, `"method":"notifications/tools/list_changed"`)
@@ -748,11 +784,53 @@ func TestNotifyToolsChanged(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		t.Cleanup(cancel)
 		err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
 		out := rr.Body.String()
 		require.Contains(t, out, `"id":"`+envoyAIGatewayServerToClientToolsChangedRequestIDPrefix)
 		require.Contains(t, out, `"method":"notifications/tools/list_changed"`)
 	})
+}
+
+func TestStreamNotifications_AllBackends405(t *testing.T) {
+	// When all backends return 405 for GET, streamNotifications should NOT return
+	// immediately. It should keep the SSE connection alive with heartbeats until the
+	// context is cancelled. This prevents a rapid reconnection loop when backends
+	// don't support the GET SSE notification stream.
+	originalHeartbeatInterval := heartbeatInterval
+	heartbeatInterval = 20 * time.Millisecond
+	t.Cleanup(func() { heartbeatInterval = originalHeartbeatInterval })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = srv.URL
+
+	s := &session{
+		reqCtx: proxy,
+		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+			"backend1": {backendName: "backend1", sessionID: "s1"},
+		},
+		route: "test-route",
+	}
+
+	rr := httptest.NewRecorder()
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+
+	err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	out := rr.Body.String()
+	// Should have the initial heartbeat plus additional ones while waiting.
+	heartbeatCount := strings.Count(out, `"method":"ping"`)
+	require.Greater(t, heartbeatCount, 1, "expected heartbeats while waiting; got output: %s", out)
 }
 
 func TestSendRequestPerBackend_ErrorStatus(t *testing.T) {

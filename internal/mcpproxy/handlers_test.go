@@ -8,6 +8,7 @@ package mcpproxy
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -109,7 +111,9 @@ func TestServeGET_InvalidSessionID(t *testing.T) {
 
 func TestServeGET_OK(t *testing.T) {
 	proxy := newTestMCPProxy()
-	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil).WithContext(ctx)
 	sessionID := secureID(t, proxy, "@@backend1:dGVzdC1zZXNzaW9u") // "test-session" base64 encoded.
 	req.Header.Set(sessionIDHeader, sessionID)
 	rr := httptest.NewRecorder()
@@ -896,6 +900,29 @@ func TestProxyResponseBody_JSONResponse(t *testing.T) {
 	require.Contains(t, rr.Body.String(), id.Raw())
 }
 
+func TestProxyResponseBody_JSONResponseWithBOM(t *testing.T) {
+	proxy := newTestMCPProxy()
+
+	id := mustJSONRPCRequestID()
+	resp := &jsonrpc.Response{ID: id, Result: []byte(`{"test": "bom"}`)}
+	body, err := jsonrpc.EncodeMessage(resp)
+	require.NoError(t, err)
+
+	bomBody := append([]byte{0xEF, 0xBB, 0xBF}, body...)
+	httpResp := &http.Response{
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(bomBody)),
+		StatusCode: http.StatusOK,
+	}
+
+	rr := httptest.NewRecorder()
+
+	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
+
+	require.Contains(t, rr.Body.String(), "bom")
+	require.Contains(t, rr.Body.String(), id.Raw())
+}
+
 func TestProxyResponseBody_SSEResponse(t *testing.T) {
 	proxy := newTestMCPProxy()
 
@@ -1234,6 +1261,13 @@ func TestExtractSubject(t *testing.T) {
 		req, err := http.NewRequest("GET", "/mcp", nil)
 		req.Header.Set("Authorization", "basic foobar")
 		require.NoError(t, err)
+		require.Empty(t, extractSubject(req))
+	})
+
+	t.Run("bearer with no token", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "/mcp", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "bearer")
 		require.Empty(t, extractSubject(req))
 	})
 }

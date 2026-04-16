@@ -397,7 +397,7 @@ func requireEventuallyMessagesRequestOK(t *testing.T, listenerAddress, modelName
 				Messages: []anthropic.MessageParam{
 					anthropic.NewUserMessage(anthropic.NewTextBlock("Say hi!")),
 				},
-				Model: anthropic.Model(modelName),
+				Model: modelName,
 			})
 			var contentBuilder strings.Builder
 			for stream.Next() {
@@ -423,7 +423,7 @@ func requireEventuallyMessagesRequestOK(t *testing.T, listenerAddress, modelName
 			Messages: []anthropic.MessageParam{
 				anthropic.NewUserMessage(anthropic.NewTextBlock("Say hi!")),
 			},
-			Model: anthropic.Model(modelName),
+			Model: modelName,
 		})
 		if err != nil {
 			t.Logf("messages error: %v", err)

@@ -216,8 +216,12 @@ func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter
 		// events received from the upstream MCP backends
 		case event, ok := <-backendMsgs:
 			if !ok {
-				// Channel closed, all backends have finished.
-				return nil
+				// All backend notification streams have ended (e.g. backends returned 405
+				// or closed their SSE connections). Nil out the channel to disable this
+				// select case, but keep the SSE connection alive for heartbeats and
+				// gateway-level tool change notifications.
+				backendMsgs = nil
+				continue
 			}
 
 			prev := event.id
@@ -435,28 +439,29 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 	}
 
 	if httpResp.Header.Get("Content-Type") == "application/json" {
-		// This is not an SSE response, but only a single JSON response. Convert it as an event and
-		// send it to the channel.
+		// Try to decode as a single JSON-RPC message first.
 		var respBody []byte
 		respBody, err = io.ReadAll(bodyReader)
 		if err != nil {
 			return fmt.Errorf("failed to read MCP response body: %w", err)
 		}
-		var msg jsonrpc.Message
-		msg, err = jsonrpc.DecodeMessage(respBody)
-		if err != nil {
-			return fmt.Errorf("failed to decode jsonrpc message from MCP response body: %w", err)
+		msg, ok := tryDecodeJSONRPCMessage(respBody)
+		if ok {
+			eventChan <- &backendEvent{
+				sseEvent: &sseEvent{
+					backend:  backend.Name,
+					event:    "message",
+					id:       "", // No event ID in this case.
+					messages: []jsonrpc.Message{msg},
+				},
+				startAt: startAt,
+			}
+			return nil
 		}
-		eventChan <- &backendEvent{
-			sseEvent: &sseEvent{
-				backend:  backend.Name,
-				event:    "message",
-				id:       "", // No event ID in this case.
-				messages: []jsonrpc.Message{msg},
-			},
-			startAt: startAt,
-		}
-		return nil
+		// Body claimed application/json but isn't valid JSON-RPC (e.g. some backends
+		// send SSE data despite the content type). Fall through to the SSE parser
+		// using the already-read body bytes.
+		bodyReader = bytes.NewReader(respBody)
 	}
 
 	// io.Copy won't flush until the end, which doesn't happen for streaming responses.
