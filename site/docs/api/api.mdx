@@ -3431,6 +3431,10 @@ neither are set.
 
 BackendSecurityPolicyGCPCredentials contains the supported authentication mechanisms to access GCP.
 
+When neither CredentialsFile nor WorkloadIdentityFederationConfig is specified, Application Default
+Credentials (ADC) will be used. This supports GKE Workload Identity, environment variables, and
+default service account credentials when running on GCP.
+
 ##### Fields
 
 
