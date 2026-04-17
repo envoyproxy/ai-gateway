@@ -116,7 +116,7 @@ func Test_selectModelsForHost(t *testing.T) {
 			want: wildcardComModels,
 		},
 		{
-			name: "fallback to default when no match",
+			name: "returns empty list when host has no match",
 			host: "localhost",
 			want: []filterapi.Model{},
 		},
