@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-      - uses: dorny/paths-filter@61f87a10cd2c304679af17bb73ef192addf33c1c
+      - uses: dorny/paths-filter@f3ceefdc7ef57bc2d8560787d4b6c33e44044cec
         id: changes
         with:
           filters: |
@@ -71,7 +71,7 @@ jobs:
       - run: make test-coverage GO_TEST_ARGS='-race'
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest'
-        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
           fail_ci_if_error: true
           files: ./out/go-test-coverage.out
@@ -395,7 +395,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
       - name: Login into DockerHub
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
