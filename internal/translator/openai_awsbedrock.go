@@ -134,6 +134,13 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 		bedrockReq.AdditionalModelRequestFields = getAwsBedrockThinkingMap(openAIReq.Thinking)
 	}
 
+	// response_format.json_schema is not supported by the Bedrock Converse API.
+	// Return a clear error rather than silently dropping the field, which would
+	// result in the model producing unstructured output against the caller's intent.
+	if openAIReq.ResponseFormat != nil && openAIReq.ResponseFormat.OfJSONSchema != nil {
+		return nil, nil, fmt.Errorf("%w: response_format json_schema is not supported for AWS Bedrock", internalapi.ErrInvalidRequestBody)
+	}
+
 	// Convert Chat Completion messages.
 	err = o.openAIMessageToBedrockMessage(openAIReq, &bedrockReq)
 	if err != nil {
