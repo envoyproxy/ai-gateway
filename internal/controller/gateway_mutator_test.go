@@ -97,6 +97,18 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 			},
 		},
 		{
+			name: "default security context does not set RunAsUser or RunAsGroup",
+			extprocTest: func(t *testing.T, container corev1.Container) {
+				require.NotNil(t, container.SecurityContext)
+				require.Nil(t, container.SecurityContext.RunAsUser,
+					"RunAsUser must not be hardcoded so platforms like OpenShift can assign their own UID")
+				require.Nil(t, container.SecurityContext.RunAsGroup,
+					"RunAsGroup must not be hardcoded so platforms like OpenShift can assign their own GID")
+				require.Equal(t, ptr.To(true), container.SecurityContext.RunAsNonRoot)
+				require.Equal(t, ptr.To(false), container.SecurityContext.AllowPrivilegeEscalation)
+			},
+		},
+		{
 			name:    "basic extproc container with MCPRoute",
 			needMCP: true,
 			extprocTest: func(t *testing.T, container corev1.Container) {
