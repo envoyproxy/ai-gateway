@@ -68,3 +68,68 @@ func headers(in []*corev3.HeaderValueOption) map[string]string {
 	}
 	return h
 }
+
+func Test_selectModelsForHost(t *testing.T) {
+	defaultModels := []filterapi.Model{{Name: "default"}}
+	exactModels := []filterapi.Model{{Name: "exact"}}
+	wildcardComModels := []filterapi.Model{{Name: "wildcard-com"}}
+	wildcardBentomlModels := []filterapi.Model{{Name: "wildcard-bentoml"}}
+
+	cfg := &filterapi.RuntimeConfig{
+		DeclaredModels: defaultModels,
+		ModelsByHost: map[string][]filterapi.Model{
+			"api.bentoml.com":   exactModels,
+			"*.com":             wildcardComModels,
+			"*.bentoml.com":     wildcardBentomlModels,
+			"not-a-pattern.com": {{Name: "ignored"}},
+		},
+	}
+
+	tests := []struct {
+		name string
+		host string
+		want []filterapi.Model
+	}{
+		{
+			name: "exact match wins",
+			host: "api.bentoml.com",
+			want: exactModels,
+		},
+		{
+			name: "wildcard match with label boundary",
+			host: "chat.bentoml.com",
+			want: wildcardBentomlModels,
+		},
+		{
+			name: "more specific wildcard wins",
+			host: "foo.bentoml.com",
+			want: wildcardBentomlModels,
+		},
+		{
+			name: "wildcard does not match apex",
+			host: "bentoml.com",
+			want: wildcardComModels,
+		},
+		{
+			name: "wildcard does not match missing boundary",
+			host: "evilbentoml.com",
+			want: wildcardComModels,
+		},
+		{
+			name: "returns empty list when host has no match",
+			host: "localhost",
+			want: []filterapi.Model{},
+		},
+		{
+			name: "empty host falls back to default",
+			host: "",
+			want: defaultModels,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, selectModelsForHost(tt.host, cfg))
+		})
+	}
+}
