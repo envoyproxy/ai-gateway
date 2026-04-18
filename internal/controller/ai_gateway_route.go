@@ -8,6 +8,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -235,9 +236,78 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 		}
 	}
 
+	if len(aiGatewayRoute.Spec.LLMRequestCosts) > 0 {
+		if err = c.validateCostRateLimitBudgets(ctx, aiGatewayRoute); err != nil {
+			return err
+		}
+	}
+
 	err = c.syncGateways(ctx, aiGatewayRoute)
 	if err != nil {
 		return fmt.Errorf("failed to sync gw pods: %w", err)
+	}
+	return nil
+}
+
+// validateCostRateLimitBudgets checks BackendTrafficPolicies in the same namespace that target the
+// HTTPRoute generated for aiGatewayRoute. If any global rate limit rule uses AI Gateway cost metadata
+// and has a limit.requests value exceeding uint32 max, it returns an error. This prevents silent
+// truncation by the rate limit service (which stores requests_per_unit as uint32 in its proto).
+func (c *AIGatewayRouteController) validateCostRateLimitBudgets(ctx context.Context, aiGatewayRoute *aigv1b1.AIGatewayRoute) error {
+	const aiGatewayMetadataNamespace = "io.envoy.ai_gateway"
+
+	var btpList egv1a1.BackendTrafficPolicyList
+	if err := c.client.List(ctx, &btpList, client.InNamespace(aiGatewayRoute.Namespace)); err != nil {
+		return fmt.Errorf("failed to list BackendTrafficPolicies: %w", err)
+	}
+
+	httpRouteName := aiGatewayRoute.Name
+	for i := range btpList.Items {
+		btp := &btpList.Items[i]
+		if btp.Spec.RateLimit == nil || btp.Spec.RateLimit.Global == nil {
+			continue
+		}
+		// Check if this BTP targets the HTTPRoute generated for this AIGatewayRoute (same name).
+		targets := false
+		for _, ref := range btp.Spec.TargetRefs {
+			if string(ref.Name) == httpRouteName {
+				targets = true
+				break
+			}
+		}
+		if btp.Spec.TargetRef != nil && string(btp.Spec.TargetRef.Name) == httpRouteName {
+			targets = true
+		}
+		if !targets {
+			continue
+		}
+		for _, rule := range btp.Spec.RateLimit.Global.Rules {
+			if rule.Limit.Requests <= math.MaxUint32 {
+				continue
+			}
+			// Check if this rule uses AI Gateway cost metadata in either request or response cost.
+			usesCostMetadata := false
+			if rule.Cost != nil {
+				if rule.Cost.Request != nil && rule.Cost.Request.Metadata != nil &&
+					rule.Cost.Request.Metadata.Namespace == aiGatewayMetadataNamespace {
+					usesCostMetadata = true
+				}
+				if rule.Cost.Response != nil && rule.Cost.Response.Metadata != nil &&
+					rule.Cost.Response.Metadata.Namespace == aiGatewayMetadataNamespace {
+					usesCostMetadata = true
+				}
+			}
+			if usesCostMetadata {
+				return fmt.Errorf(
+					"BackendTrafficPolicy %s/%s: rate limit rule has limit.requests=%d which exceeds uint32 max (%d); "+
+						"the rate limit service will silently truncate this value — "+
+						"use a value of %d or less",
+					btp.Namespace, btp.Name,
+					rule.Limit.Requests, uint(math.MaxUint32),
+					uint(math.MaxUint32),
+				)
+			}
+		}
 	}
 	return nil
 }
