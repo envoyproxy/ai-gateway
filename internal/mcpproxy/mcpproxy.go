@@ -276,7 +276,7 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 			return nil, fmt.Errorf("failed to marshal MCP initialize params: %w", err)
 		}
 		mcpReq := &jsonrpc.Request{Method: "initialize", Params: initializeReq, ID: reqID}
-		resp, err := m.invokeJSONRPCRequest(ctx, routeName, backend, nil, mcpReq)
+		resp, err := m.invokeJSONRPCRequest(ctx, routeName, backend, nil, mcpReq, p)
 		if err != nil {
 			return nil, fmt.Errorf("failed to send MCP initialize request: %w", err)
 		}
@@ -363,7 +363,7 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 		mcpReq := &jsonrpc.Request{Method: "notifications/initialized", Params: emptyJSONRPCMessage}
 		resp, err := m.invokeJSONRPCRequest(ctx, routeName, backend, &compositeSessionEntry{
 			sessionID: gatewayToMCPServerSessionID(sessionID),
-		}, mcpReq)
+		}, mcpReq, p)
 		if err != nil {
 			return nil, fmt.Errorf("failed to send MCP notifications/initialized request: %w", err)
 		}
@@ -385,7 +385,7 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 	}, nil
 }
 
-func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry, msg jsonrpc.Message) (*http.Response, error) {
+func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry, msg jsonrpc.Message, params mcp.Params) (*http.Response, error) {
 	encoded, err := jsonrpc.EncodeMessage(msg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode MCP message: %w", err)
@@ -394,7 +394,7 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create MCP notifications/initialized request: %w", err)
 	}
-	addMCPHeaders(req, msg, routeName, backend.Name)
+	addMCPHeaders(req, msg, params, routeName, backend.Name)
 	m.applyLogHeaderMappings(req, msg)
 	m.applyOriginalPathHeaders(req)
 	if cse != nil {
