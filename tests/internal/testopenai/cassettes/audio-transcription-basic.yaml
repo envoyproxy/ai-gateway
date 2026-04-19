@@ -1,0 +1,77 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 29
+        host: api.openai.com
+        body: '[multipart form data omitted]'
+        headers:
+            Accept-Encoding:
+                - gzip
+            Content-Length:
+                - "29"
+            Content-Type:
+                - multipart/form-data; boundary=9b8b041cd77e16c0d4fd01f835bff6da73ed4c6f65cf9bc3d9793f35ee38
+            User-Agent:
+                - Go-http-client/1.1
+        url: https://api.openai.com/v1/audio/transcriptions
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 191
+        body: |-
+            {
+              "text": "The sun rises in the east and sets in the west. This simple fact has been observed by humans for thousands of years.",
+              "usage": {
+                "type": "duration",
+                "seconds": 7
+              }
+            }
+        headers:
+            Access-Control-Expose-Headers:
+                - X-Request-ID
+            Alt-Svc:
+                - h3=":443"; ma=86400
+            Cf-Cache-Status:
+                - DYNAMIC
+            Cf-Ray:
+                - 9e89518a6d242ab0-LAX
+            Content-Length:
+                - "191"
+            Content-Type:
+                - application/json
+            Date:
+                - Tue, 07 Apr 2026 13:18:31 GMT
+            Openai-Processing-Ms:
+                - "1534"
+            Openai-Project:
+                - proj_iDVN2qKUWgjCn5caMdHLmSHH
+            Openai-Version:
+                - "2020-10-01"
+            Server:
+                - cloudflare
+            Strict-Transport-Security:
+                - max-age=31536000; includeSubDomains; preload
+            Via:
+                - envoy-router-75fc447df8-wh8jc
+            X-Content-Type-Options:
+                - nosniff
+            X-Openai-Proxy-Wasm:
+                - v0.1
+            X-Ratelimit-Limit-Requests:
+                - "500"
+            X-Ratelimit-Remaining-Requests:
+                - "499"
+            X-Ratelimit-Reset-Requests:
+                - 120ms
+            X-Request-Id:
+                - req_32e2312be05c406c8f0d5ee4f2ce9353
+        status: 200 OK
+        code: 200
+        duration: 2.311390387s

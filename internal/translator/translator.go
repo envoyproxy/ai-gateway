@@ -75,6 +75,14 @@ type Translator[ReqT any, SpanT any] interface {
 	)
 }
 
+// ContentTypeSetter is an optional interface that translators can implement
+// to receive the original request Content-Type header. This is needed for
+// multipart/form-data endpoints where the translator needs the boundary
+// to re-encode the body during model name override.
+type ContentTypeSetter interface {
+	SetContentType(ct string)
+}
+
 // ResponseRedactor is an optional interface that translators can implement
 // to support response body redaction for debug logging.
 type ResponseRedactor interface {
@@ -114,6 +122,10 @@ type (
 	OpenAIResponsesTranslator = Translator[openai.ResponseRequest, tracingapi.ResponsesSpan]
 	// OpenAISpeechTranslator translates the OpenAI's /v1/audio/speech endpoint.
 	OpenAISpeechTranslator = Translator[openai.SpeechRequest, tracingapi.SpeechSpan]
+	// OpenAIAudioTranscriptionTranslator translates the OpenAI's /v1/audio/transcriptions endpoint.
+	OpenAIAudioTranscriptionTranslator = Translator[openai.TranscriptionRequest, tracingapi.TranscriptionSpan]
+	// OpenAIAudioTranslationTranslator translates the OpenAI's /v1/audio/translations endpoint.
+	OpenAIAudioTranslationTranslator = Translator[openai.TranslationRequest, tracingapi.TranslationSpan]
 )
 
 var (

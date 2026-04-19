@@ -368,6 +368,11 @@ func (h *cassetteHandler) matchRequest(r *http.Request, i cassette.Request, body
 		return matchJSONBodies(string(body), i.Body)
 	}
 
+	// For multipart requests, skip body comparison since boundaries differ between runs.
+	if isMultipart(r.Header.Get("Content-Type")) || isMultipart(getHeaderValue(i.Headers, "Content-Type")) {
+		return true
+	}
+
 	// For non-JSON, exact match.
 	return string(body) == i.Body
 }
@@ -382,6 +387,11 @@ func (h *cassetteHandler) normalizeCassetteURL(cassetteURL string, _ []byte, _ s
 // isJSON checks if a content type indicates JSON.
 func isJSON(contentType string) bool {
 	return strings.Contains(contentType, "application/json")
+}
+
+// isMultipart checks if a content type indicates multipart form data.
+func isMultipart(contentType string) bool {
+	return strings.Contains(contentType, "multipart/form-data")
 }
 
 // getHeaderValue gets the first value for a header key from a map.
