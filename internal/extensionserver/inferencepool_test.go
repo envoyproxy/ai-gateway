@@ -7,7 +7,7 @@ package extensionserver
 
 import (
 	"testing"
-     
+
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -155,19 +155,19 @@ func TestBuildHTTPFilterForInferencePool_Defaults(t *testing.T) {
 }
 
 func TestBuildEPPMetadataForCluster_NilMetadata(t *testing.T) {
-    cluster := &clusterv3.Cluster{
-        Metadata: nil,
-    }
+	cluster := &clusterv3.Cluster{
+		Metadata: nil,
+	}
 
-    pool := &gwaiev1.InferencePool{
-        ObjectMeta: metav1.ObjectMeta{
-            Name:      "test-pool",
-            Namespace: "default",
-        },
-    }
+	pool := &gwaiev1.InferencePool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pool",
+			Namespace: "default",
+		},
+	}
 
-    buildEPPMetadataForCluster(cluster, pool)
+	buildEPPMetadataForCluster(cluster, pool)
 
-    assert.NotNil(t, cluster.Metadata)
-    assert.NotNil(t, cluster.Metadata.FilterMetadata)
+	assert.NotNil(t, cluster.Metadata)
+	assert.NotNil(t, cluster.Metadata.FilterMetadata)
 }
