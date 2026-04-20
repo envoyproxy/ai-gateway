@@ -157,6 +157,9 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 		return nil, fmt.Errorf("failed to merge env resource: %w", err)
 	}
 
+	spanLimits := sdktrace.NewSpanLimits()
+	spanLimits.AttributeCountLimit = -1
+
 	// Create the tracer provider, special casing console for sync and tests.
 	var tp *sdktrace.TracerProvider
 	if exporter == "console" {
@@ -167,6 +170,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 		tp = sdktrace.NewTracerProvider(
 			sdktrace.WithSyncer(stdoutExporter),
 			sdktrace.WithResource(res),
+			sdktrace.WithRawSpanLimits(spanLimits),
 		)
 
 	} else { // Configure exporter via ENV variables like OTEL_TRACES_EXPORTER.
@@ -178,6 +182,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 		tp = sdktrace.NewTracerProvider(
 			sdktrace.WithBatcher(autoExporter),
 			sdktrace.WithResource(res),
+			sdktrace.WithRawSpanLimits(spanLimits),
 		)
 	}
 
