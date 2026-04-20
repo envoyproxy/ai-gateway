@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
+	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/openinference/openai"
@@ -157,8 +158,13 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 		return nil, fmt.Errorf("failed to merge env resource: %w", err)
 	}
 
+	// Indexed message attributes scale with conversation length and exceed
+	// OTEL's default cap of 128, silently truncating spans. Lift the cap only
+	// when message capture is on, so capture-off retains OTEL defaults.
 	spanLimits := sdktrace.NewSpanLimits()
-	spanLimits.AttributeCountLimit = -1
+	if openinference.NewTraceConfigFromEnv().CapturesMessages() {
+		spanLimits.AttributeCountLimit = -1
+	}
 
 	// Create the tracer provider, special casing console for sync and tests.
 	var tp *sdktrace.TracerProvider

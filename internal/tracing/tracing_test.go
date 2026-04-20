@@ -669,6 +669,69 @@ func TestNewTracingFromEnv_HeaderAttributeMapping_LargeContext(t *testing.T) {
 	require.Greater(t, len(v1Span.Attributes), 128)
 }
 
+// TestNewTracingFromEnv_CaptureDisabled verifies that when the OpenInference
+// hide flags are set, no indexed message attributes are emitted, so the
+// AttributeCountLimit lift is correctly skipped while header attributes still arrive.
+func TestNewTracingFromEnv_CaptureDisabled(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
+	t.Setenv(openinference.EnvHideInputs, "true")
+	t.Setenv(openinference.EnvHideOutputs, "true")
+	t.Setenv(openinference.EnvHideInputMessages, "true")
+	t.Setenv(openinference.EnvHideOutputMessages, "true")
+
+	collector := testotel.StartOTLPCollector()
+	t.Cleanup(collector.Close)
+	collector.SetEnv(t.Setenv)
+
+	mapping := map[string]string{"agent-session-id": "session.id"}
+	result, err := NewTracingFromEnv(t.Context(), io.Discard, mapping)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = result.Shutdown(context.Background()) })
+
+	messages := make([]openai.ChatCompletionMessageParamUnion, 200)
+	for i := range messages {
+		messages[i] = openai.ChatCompletionMessageParamUnion{
+			OfUser: &openai.ChatCompletionUserMessageParam{
+				Role: openai.ChatMessageRoleUser,
+				Content: openai.StringOrUserRoleContentUnion{
+					Value: fmt.Sprintf("message %d", i),
+				},
+			},
+		}
+	}
+
+	tr := result.ChatCompletionTracer()
+	req := &openai.ChatCompletionRequest{Model: openai.ModelGPT5Nano, Messages: messages}
+	span := tr.StartSpanAndInjectHeaders(
+		t.Context(),
+		map[string]string{"agent-session-id": "sess-hidden"},
+		propagation.MapCarrier{},
+		req,
+		[]byte("{}"),
+	)
+	require.NotNil(t, span)
+	span.RecordResponse(&openai.ChatCompletionResponse{
+		Model: openai.ModelGPT5Nano,
+		Choices: []openai.ChatCompletionResponseChoice{{
+			Message: openai.ChatCompletionResponseChoiceMessage{
+				Role: "assistant", Content: ptr.To("response"),
+			},
+		}},
+	})
+	span.EndSpan()
+
+	v1Span := collector.TakeSpan()
+	require.NotNil(t, v1Span)
+
+	attrs := make(map[string]string)
+	for _, kv := range v1Span.Attributes {
+		require.NotContains(t, kv.Key, "llm.input_messages.")
+		require.NotContains(t, kv.Key, "llm.output_messages.")
+		attrs[kv.Key] = kv.Value.GetStringValue()
+	}
+	require.Equal(t, "sess-hidden", attrs["session.id"])
+}
+
 // TestNewTracingFromEnv_Embeddings_Redaction tests that the OpenInference
 // environment variables (OPENINFERENCE_HIDE_EMBEDDINGS_TEXT and OPENINFERENCE_HIDE_EMBEDDINGS_VECTORS)
 // work correctly to redact sensitive data from embeddings spans, following the OpenInference

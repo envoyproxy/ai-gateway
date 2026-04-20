@@ -128,6 +128,52 @@ func TestNewTraceConfigFromEnv(t *testing.T) {
 	}
 }
 
+func TestTraceConfig_CapturesMessages(t *testing.T) {
+	tests := []struct {
+		name   string
+		config TraceConfig
+		want   bool
+	}{
+		{
+			name:   "defaults capture both sides",
+			config: TraceConfig{},
+			want:   true,
+		},
+		{
+			name:   "input side hidden, output side still captured",
+			config: TraceConfig{HideInputs: true, HideInputMessages: true},
+			want:   true,
+		},
+		{
+			name:   "output side hidden, input side still captured",
+			config: TraceConfig{HideOutputs: true, HideOutputMessages: true},
+			want:   true,
+		},
+		{
+			name: "HideInputs and HideOutputs alone suppress both sides",
+			config: TraceConfig{
+				HideInputs:  true,
+				HideOutputs: true,
+			},
+			want: false,
+		},
+		{
+			name: "all four message hides suppress both sides",
+			config: TraceConfig{
+				HideInputs: true, HideInputMessages: true,
+				HideOutputs: true, HideOutputMessages: true,
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.config.CapturesMessages())
+		})
+	}
+}
+
 func TestGetBoolEnv(t *testing.T) {
 	// We use strconv.ParseBool, so only test a few cases for coverage.
 	tests := []struct {
