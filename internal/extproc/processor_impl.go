@@ -704,7 +704,7 @@ func mergeDynamicMetadata(base, extra *structpb.Struct) *structpb.Struct {
 }
 
 // evalCost is a helper function that computes the cost value based on the cost type and CEL program.
-func evalCost(costType filterapi.LLMRequestCostType, celProg cel.Program, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string) (uint64, error) {
+func evalCost(costType filterapi.LLMRequestCostType, celProg cel.Program, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint64, error) {
 	var cost uint64
 	switch costType {
 	case filterapi.LLMRequestCostTypeInputToken:
@@ -748,7 +748,6 @@ func evalCost(costType filterapi.LLMRequestCostType, celProg cel.Program, costs 
 		)
 		if err != nil {
 			return 0, fmt.Errorf("failed to evaluate CEL expression: %w", err)
-			}
 		}
 	default:
 		return 0, fmt.Errorf("unknown cost type: %s", costType)
@@ -757,13 +756,13 @@ func evalCost(costType filterapi.LLMRequestCostType, celProg cel.Program, costs 
 }
 
 // evalRuntimeGlobalRequestCost computes the cost value for a single global runtime cost rule.
-func evalRuntimeGlobalRequestCost(rc *filterapi.RuntimeGlobalRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string) (uint64, error) {
-	return evalCost(rc.Type, rc.CELProg, costs, requestHeaders, backendName, routeName, responseModel)
+func evalRuntimeGlobalRequestCost(rc *filterapi.RuntimeGlobalRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint64, error) {
+	return evalCost(rc.Type, rc.CELProg, costs, requestHeaders, backendName, routeName)
 }
 
 // evalRuntimeRequestCost computes the cost value for a single route-scoped runtime cost rule.
-func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string) (uint64, error) {
-	return evalCost(rc.Type, rc.CELProg, costs, requestHeaders, backendName, routeName, responseModel)
+func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint64, error) {
+	return evalCost(rc.Type, rc.CELProg, costs, requestHeaders, backendName, routeName)
 }
 
 // buildDynamicMetadata creates metadata for rate limiting and cost tracking.

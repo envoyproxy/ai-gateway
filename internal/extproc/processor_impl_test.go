@@ -1480,7 +1480,7 @@ func TestBuildDynamicMetadata_routeScoped(t *testing.T) {
 			tu.SetInputTokens(tt.inputTokens)
 			tu.SetTotalTokens(tt.totalTokens)
 
-			md, err := buildDynamicMetadata(nil, tt.requestCosts, &tu, tt.requestHeaders, tt.backendName, tt.routeName)
+			md, err := buildDynamicMetadata(nil, tt.requestCosts, &tu, tt.requestHeaders, tt.backendName, tt.routeName, "")
 			require.NoError(t, err)
 
 			ns := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
@@ -1649,7 +1649,7 @@ func TestBuildDynamicMetadata_GlobalAndRouteScoped(t *testing.T) {
 			tu.SetOutputTokens(tt.outputTokens)
 			tu.SetTotalTokens(tt.totalTokens)
 
-			md, err := buildDynamicMetadata(tt.globalCosts, tt.routeCosts, &tu, tt.requestHeaders, tt.backendName, tt.routeName)
+			md, err := buildDynamicMetadata(tt.globalCosts, tt.routeCosts, &tu, tt.requestHeaders, tt.backendName, tt.routeName, "")
 			require.NoError(t, err)
 
 			ns := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
