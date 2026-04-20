@@ -408,6 +408,156 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 	require.Equal(t, "2023-06-01", modifiedReq["anthropic_version"])
 }
 
+func TestAnthropicToGCPAnthropicTranslator_RequestBody_StripsOutputConfigFormat(t *testing.T) {
+	tests := []struct {
+		name                string
+		rawBody             string
+		expectFormatRemoved bool
+		expectEffortKept    bool
+	}{
+		{
+			name:                "strips output_config.format from body",
+			rawBody:             `{"model":"claude-3-haiku-20240307","messages":[{"role":"user","content":"hi"}],"max_tokens":100,"output_config":{"format":{"type":"json_schema","schema":{"type":"object"}}}}`,
+			expectFormatRemoved: true,
+		},
+		{
+			name:                "preserves output_config.effort when stripping format",
+			rawBody:             `{"model":"claude-3-haiku-20240307","messages":[{"role":"user","content":"hi"}],"max_tokens":100,"output_config":{"effort":"high","format":{"type":"json_schema","schema":{"type":"object"}}}}`,
+			expectFormatRemoved: true,
+			expectEffortKept:    true,
+		},
+		{
+			name:                "no output_config is fine",
+			rawBody:             `{"model":"claude-3-haiku-20240307","messages":[{"role":"user","content":"hi"}],"max_tokens":100}`,
+			expectFormatRemoved: false,
+		},
+		{
+			name:                "output_config without format is preserved",
+			rawBody:             `{"model":"claude-3-haiku-20240307","messages":[{"role":"user","content":"hi"}],"max_tokens":100,"output_config":{"effort":"high"}}`,
+			expectFormatRemoved: false,
+			expectEffortKept:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
+
+			parsedReq := &anthropic.MessagesRequest{
+				Model: "claude-3-haiku-20240307",
+				Messages: []anthropic.MessageParam{
+					{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "hi"}},
+				},
+				MaxTokens: 100,
+			}
+
+			_, bodyMutation, err := translator.RequestBody([]byte(tt.rawBody), parsedReq, false)
+			require.NoError(t, err)
+
+			var modifiedReq map[string]any
+			err = json.Unmarshal(bodyMutation, &modifiedReq)
+			require.NoError(t, err)
+
+			outputConfig, hasOutputConfig := modifiedReq["output_config"]
+			if tt.expectFormatRemoved || tt.expectEffortKept {
+				if tt.expectEffortKept {
+					require.True(t, hasOutputConfig, "output_config should be present")
+					oc := outputConfig.(map[string]any)
+					_, hasFormat := oc["format"]
+					assert.False(t, hasFormat, "output_config.format should be removed")
+					assert.Equal(t, "high", oc["effort"], "output_config.effort should be preserved")
+				} else if tt.expectFormatRemoved {
+					if hasOutputConfig {
+						oc := outputConfig.(map[string]any)
+						_, hasFormat := oc["format"]
+						assert.False(t, hasFormat, "output_config.format should be removed")
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestAnthropicToGCPAnthropicTranslator_RequestBody_StripsStructuredOutputsBeta(t *testing.T) {
+	tests := []struct {
+		name               string
+		requestHeaders     map[string]string
+		expectBetaInOutput bool   // whether anthropic-beta should appear in returned headers
+		expectedBetaValue  string // expected value if present
+	}{
+		{
+			name:               "no anthropic-beta header in request",
+			requestHeaders:     map[string]string{},
+			expectBetaInOutput: false,
+		},
+		{
+			name:               "only structured-outputs beta is stripped, result is empty",
+			requestHeaders:     map[string]string{"anthropic-beta": "structured-outputs-2025-12-15"},
+			expectBetaInOutput: true,
+			expectedBetaValue:  "",
+		},
+		{
+			name:               "structured-outputs stripped, other betas preserved",
+			requestHeaders:     map[string]string{"anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15,structured-outputs-2025-12-15"},
+			expectBetaInOutput: true,
+			expectedBetaValue:  "max-tokens-3-5-sonnet-2024-07-15",
+		},
+		{
+			name:               "structured-outputs in middle stripped, others preserved",
+			requestHeaders:     map[string]string{"anthropic-beta": "beta-a,structured-outputs-2025-12-15,beta-b"},
+			expectBetaInOutput: true,
+			expectedBetaValue:  "beta-a,beta-b",
+		},
+		{
+			name:               "unrelated beta passes through unchanged",
+			requestHeaders:     map[string]string{"anthropic-beta": "max-tokens-3-5-sonnet-2024-07-15"},
+			expectBetaInOutput: true,
+			expectedBetaValue:  "max-tokens-3-5-sonnet-2024-07-15",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
+
+			translator.(RequestHeadersAware).SetRequestHeaders(tt.requestHeaders)
+
+			parsedReq := &anthropic.MessagesRequest{
+				Model: "claude-3-haiku-20240307",
+				Messages: []anthropic.MessageParam{
+					{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "hi"}},
+				},
+				MaxTokens: 100,
+			}
+
+			headers, _, err := translator.RequestBody([]byte(`{"model":"claude-3-haiku-20240307","messages":[{"role":"user","content":"hi"}],"max_tokens":100}`), parsedReq, false)
+			require.NoError(t, err)
+
+			var foundBeta bool
+			var betaValue string
+			for _, h := range headers {
+				if h.Key() == anthropicBetaHeaderName {
+					foundBeta = true
+					betaValue = h.Value()
+				}
+			}
+
+			if tt.expectBetaInOutput {
+				require.True(t, foundBeta, "expected anthropic-beta in returned headers")
+				assert.Equal(t, tt.expectedBetaValue, betaValue)
+			} else {
+				assert.False(t, foundBeta, "no anthropic-beta in request, so none in output")
+			}
+		})
+	}
+}
+
+func TestAnthropicToGCPAnthropicTranslator_ImplementsRequestHeadersAware(t *testing.T) {
+	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
+	_, ok := translator.(RequestHeadersAware)
+	assert.True(t, ok, "anthropicToGCPAnthropicTranslator should implement RequestHeadersAware")
+}
+
 func TestAnthropicToGCPAnthropicTranslator_ResponseHeaders(t *testing.T) {
 	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
 
