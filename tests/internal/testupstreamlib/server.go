@@ -171,9 +171,11 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Logger.Printf("Request body (%d bytes)", len(requestBody))
 
-	// At least for the endpoints we want to support, all requests should have a Content-Length header
-	// and should not use chunked transfer encoding.
-	if r.Header.Get("Content-Length") == "" {
+	// For requests with bodies, we expect a Content-Length header and no chunked transfer encoding.
+	// For bodyless methods, Go's net/http client omits Content-Length: 0 by default.
+	missingContentLength := r.Header.Get("Content-Length") == ""
+	isBodylessMethod := len(requestBody) == 0 && (r.Method == http.MethodGet || r.Method == http.MethodDelete || r.Method == http.MethodHead)
+	if missingContentLength && !isBodylessMethod {
 		// Endpoint pickers mutate the request body by sending them back to the client (due to the use of DUPLEX mode),
 		// and it will clear the Content-Length header. It should be fine to assume that these locally hosted endpoints
 		// are capable of reading the chunked transfer encoding unlike the GCP Anthropic.
@@ -182,7 +184,6 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
 	if expectedReqBody := r.Header.Get(ExpectedRequestBodyHeaderKey); expectedReqBody != "" {
 		var expectedBody []byte
 		expectedBody, err = base64.StdEncoding.DecodeString(expectedReqBody)

@@ -77,7 +77,7 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 			fakeResponseBody = fmt.Sprintf(fakeResponseBodyTemplate, input, output, total)
 		}
 
-		req, err := http.NewRequest(http.MethodPut, fwd.Address()+"/v1/chat/completions", strings.NewReader(requestBody))
+		req, err := http.NewRequest(http.MethodPost, fwd.Address()+"/v1/chat/completions", strings.NewReader(requestBody))
 		require.NoError(t, err)
 		req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(fakeResponseBody)))
 		req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))

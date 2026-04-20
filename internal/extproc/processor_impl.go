@@ -13,7 +13,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"strconv"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -37,6 +39,12 @@ import (
 // LogRequestHeaderAttributes is the mapping of request headers to log as dynamic metadata attributes.
 // This is configured at the startup of the extproc server.
 var LogRequestHeaderAttributes map[string]string
+
+// Precomputed path prefixes for file operations to avoid string concatenation on every request.
+const (
+	filePathPrefix = "/v1/files/" + translator.FileIDPrefix
+	fileListPath   = "/v1/files"
+)
 
 // NewFactory creates a ProcessorFactory with the given parameters.
 //
@@ -179,6 +187,182 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespons
 	return
 }
 
+// Whether to Get model name from resource id in the path for OpenAI Files API requests that usually don't have request body.
+func shouldGetModelFromID(method, path string) bool {
+	switch method {
+	case "GET":
+		// These methods can be header-only for file operations.
+		// e.g GET /v1/files/{file_id}, GET /v1/files?model={model_name}, GET /v1/files/{file_id}/content
+		return strings.Contains(path, filePathPrefix)
+	case "DELETE":
+		// These methods can be header-only for file operations. e.g DELETE /v1/files/{file_id}
+		return strings.Contains(path, filePathPrefix)
+	default:
+		return false
+	}
+}
+
+func isListFilesEndpoint(method, path string) bool {
+	if method != "GET" {
+		return false
+	}
+	if path == "" {
+		return false
+	}
+	// Remove query params.
+	if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
+		path = path[:queryIndex]
+	}
+	path = strings.TrimSuffix(path, "/")
+	return path == fileListPath
+}
+
+// Extract the model name from the query parameter for list files request, e.g. GET /v1/files?model={model_name}.
+// Returns the model name and whether the extraction was successful.
+func extractModelFromQueryParam(path string) (internalapi.OriginalModel, bool) {
+	if path == "" {
+		return "", false
+	}
+	_, rawQuery, found := strings.Cut(path, "?")
+	if !found || rawQuery == "" {
+		return "", false
+	}
+	query, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return "", false
+	}
+	modelName := query.Get("model")
+	if modelName == "" {
+		return "", false
+	}
+	return modelName, true
+}
+
+func extractFileIDFromPath(path string) (string, bool) {
+	if path == "" {
+		return "", false
+	}
+	// Remove query params
+	if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
+		path = path[:queryIndex]
+	}
+	segments := []string{"/v1/files/"}
+	for _, segment := range segments {
+		_, after, found := strings.Cut(path, segment)
+		if !found {
+			continue
+		}
+		id, _, _ := strings.Cut(after, "/")
+		if id == "" {
+			return "", false
+		}
+		return id, true
+	}
+	return "", false
+}
+
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processListFilesRequestHeaders(ctx context.Context) (*extprocv3.ProcessingResponse, error) {
+	// Use the request-scoped logger from context if available, otherwise fall back to processor logger
+	logger := loggerFromContext(ctx)
+	if logger == nil {
+		logger = r.logger
+	}
+	modelName, ok := extractModelFromQueryParam(r.requestHeaders[":path"])
+	if !ok {
+		logger.Error("missing model query parameter for list files request", slog.String("path", r.requestHeaders[":path"]))
+		return createUserFacingErrorResponse(400, "BadRequest", "missing required 'model' query parameter for /v1/files"), nil
+	}
+	headerMutation := &extprocv3.HeaderMutation{}
+	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, modelName)
+
+	originalPath := r.requestHeaders[":path"]
+	if r.requestHeaders[originalPathHeader] == "" {
+		r.requestHeaders[originalPathHeader] = originalPath
+		setHeader(headerMutation, originalPathHeader, originalPath)
+	}
+	if r.requestHeaders[internalapi.EnvoyOriginalPathHeader] == "" {
+		r.requestHeaders[internalapi.EnvoyOriginalPathHeader] = originalPath
+		setHeader(headerMutation, internalapi.EnvoyOriginalPathHeader, originalPath)
+	}
+
+	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = modelName
+	r.originalModel = modelName
+
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation:  headerMutation,
+					ClearRouteCache: true,
+				},
+			},
+		},
+	}, nil
+}
+
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processFileIDInPathRequestHeaders(ctx context.Context) (*extprocv3.ProcessingResponse, error) {
+	// Use the request-scoped logger from context if available, otherwise fall back to processor logger
+	logger := loggerFromContext(ctx)
+	if logger == nil {
+		logger = r.logger
+	}
+	fileID, ok := extractFileIDFromPath(r.requestHeaders[":path"])
+	if !ok {
+		logger.Error("failed to extract file_id from path", slog.String("path", r.requestHeaders[":path"]))
+		return createUserFacingErrorResponse(400, "BadRequest", "failed to extract file id / batch id from path"), nil
+	}
+	modelName, decodedID, err := translator.DecodeFileID(fileID)
+	if err != nil {
+		logger.Error("failed to decode model name from file_id", slog.String("file_id", fileID), slog.String("error", err.Error()))
+		return createUserFacingErrorResponse(400, "BadRequest", "failed to decode model name from file id / batch id"), nil
+	}
+	r.requestHeaders[internalapi.OriginalFileIDHeaderKey] = fileID
+	r.requestHeaders[internalapi.DecodedFileIDHeaderKey] = decodedID
+	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = modelName
+	r.originalModel = modelName
+
+	headerMutation := &extprocv3.HeaderMutation{}
+	setHeader(headerMutation, internalapi.OriginalFileIDHeaderKey, fileID)
+	setHeader(headerMutation, internalapi.DecodedFileIDHeaderKey, decodedID)
+	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, modelName)
+
+	originalPath := r.requestHeaders[":path"]
+	if r.requestHeaders[originalPathHeader] == "" {
+		r.requestHeaders[originalPathHeader] = originalPath
+		setHeader(headerMutation, originalPathHeader, originalPath)
+	}
+	if r.requestHeaders[internalapi.EnvoyOriginalPathHeader] == "" {
+		r.requestHeaders[internalapi.EnvoyOriginalPathHeader] = originalPath
+		setHeader(headerMutation, internalapi.EnvoyOriginalPathHeader, originalPath)
+	}
+
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation:  headerMutation,
+					ClearRouteCache: true,
+				},
+			},
+		},
+	}, nil
+}
+
+// ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestHeaders(ctx context.Context, requestHeaders *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
+	switch {
+	case isListFilesEndpoint(r.requestHeaders[":method"], r.requestHeaders[":path"]):
+		// For list files endpoint, we need to extract the model name from the query parameter and set it to the request header since there is no request body.
+		return r.processListFilesRequestHeaders(ctx)
+	case shouldGetModelFromID(r.requestHeaders[":method"], r.requestHeaders[":path"]):
+		// For file endpoints with file_id in the path, we need to extract the model name from the file_id and set it to the request header since there is no request body.
+		return r.processFileIDInPathRequestHeaders(ctx)
+	default:
+		// Keep the default behaviour for other endpoints.
+		return r.passThroughProcessor.ProcessRequestHeaders(ctx, requestHeaders)
+	}
+}
+
 // formatUserFacingErrorJSON formats a user-facing error as a JSON response body.
 // Returns JSON in format: {"type":"error","error":{"type":"<errorType>","code":"<statusCode>","message":"<message>"}}
 func formatUserFacingErrorJSON(errorType string, statusCode int, message string) []byte {
@@ -207,7 +391,7 @@ func createUserFacingErrorResponse(statusCode int, errorType string, message str
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body, len(r.config.RequestCosts) > 0)
+	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body, len(r.config.RequestCosts) > 0, r.requestHeaders)
 	if err != nil {
 		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
 			// return to user as 400 -  e.g., "malformed request: failed to parse JSON for /v1/chat/completions"
@@ -321,7 +505,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 	// * The request is a streaming request, and the IncludeUsage option is set to false since we need to ensure that
 	//	the token usage is calculated correctly without being bypassed.
 	forceBodyMutation := u.onRetry() || u.parent.forceBodyMutation
-	newHeaders, newBody, err := u.translator.RequestBody(u.parent.originalRequestBodyRaw, u.parent.originalRequestBody, forceBodyMutation)
+	newHeaders, newBody, err := u.translator.RequestBody(u.requestHeaders, u.parent.originalRequestBodyRaw, u.parent.originalRequestBody, forceBodyMutation)
 	if err != nil {
 		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
 			// return to user as 422 -  e.g., "invalid request body: tool_choice type not supported"

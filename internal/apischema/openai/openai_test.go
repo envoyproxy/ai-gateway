@@ -6,6 +6,9 @@
 package openai
 
 import (
+	"bytes"
+	"io"
+	"mime/multipart"
 	"testing"
 	"time"
 
@@ -13727,6 +13730,538 @@ func TestResponseContentPartDoneEventPartUnionUnmarshalJSON(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tc.expect, result)
+		})
+	}
+}
+
+func TestFileNewParamsUnmarshalMultipart(t *testing.T) {
+	tests := []struct {
+		name     string
+		builder  func() ([]byte, string) // returns data and boundary
+		validate func(*testing.T, *FileNewParams, error)
+	}{
+		{
+			name: "all fields present",
+			builder: func() ([]byte, string) {
+				var buf bytes.Buffer
+				writer := multipart.NewWriter(&buf)
+
+				// Add file field
+				fw, _ := writer.CreateFormField("file")
+				_, _ = fw.Write([]byte("file content"))
+
+				// Add purpose field
+				fw, _ = writer.CreateFormField("purpose")
+				_, _ = fw.Write([]byte("batch"))
+
+				// Add expires_after.anchor field
+				fw, _ = writer.CreateFormField("expires_after.anchor")
+				_, _ = fw.Write([]byte("created_at"))
+
+				// Add expires_after.seconds field
+				fw, _ = writer.CreateFormField("expires_after.seconds")
+				_, _ = fw.Write([]byte("3600"))
+
+				boundary := writer.Boundary()
+				writer.Close()
+
+				return buf.Bytes(), boundary
+			},
+			validate: func(t *testing.T, f *FileNewParams, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, f.File)
+				require.Equal(t, FilePurpose("batch"), f.Purpose)
+				require.Equal(t, CreatedAt("created_at"), f.ExpiresAfter.Anchor)
+				require.Equal(t, int64(3600), f.ExpiresAfter.Seconds)
+			},
+		},
+		{
+			name: "only file field",
+			builder: func() ([]byte, string) {
+				var buf bytes.Buffer
+				writer := multipart.NewWriter(&buf)
+
+				fw, _ := writer.CreateFormField("file")
+				_, _ = fw.Write([]byte("file content"))
+
+				boundary := writer.Boundary()
+				writer.Close()
+
+				return buf.Bytes(), boundary
+			},
+			validate: func(t *testing.T, f *FileNewParams, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, f.File)
+				require.Equal(t, FilePurpose(""), f.Purpose)
+				require.Equal(t, CreatedAt(""), f.ExpiresAfter.Anchor)
+				require.Equal(t, int64(0), f.ExpiresAfter.Seconds)
+			},
+		},
+		{
+			name: "file with purpose",
+			builder: func() ([]byte, string) {
+				var buf bytes.Buffer
+				writer := multipart.NewWriter(&buf)
+
+				fw, _ := writer.CreateFormField("file")
+				_, _ = fw.Write([]byte("file content"))
+
+				fw, _ = writer.CreateFormField("purpose")
+				_, _ = fw.Write([]byte("batch"))
+
+				boundary := writer.Boundary()
+				writer.Close()
+
+				return buf.Bytes(), boundary
+			},
+			validate: func(t *testing.T, f *FileNewParams, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, f.File)
+				require.Equal(t, FilePurpose("batch"), f.Purpose)
+			},
+		},
+		{
+			name: "file with expires_after fields",
+			builder: func() ([]byte, string) {
+				var buf bytes.Buffer
+				writer := multipart.NewWriter(&buf)
+
+				fw, _ := writer.CreateFormField("file")
+				_, _ = fw.Write([]byte("file content"))
+
+				fw, _ = writer.CreateFormField("expires_after.anchor")
+				_, _ = fw.Write([]byte("created_at"))
+
+				fw, _ = writer.CreateFormField("expires_after.seconds")
+				_, _ = fw.Write([]byte("7200"))
+
+				boundary := writer.Boundary()
+				writer.Close()
+
+				return buf.Bytes(), boundary
+			},
+			validate: func(t *testing.T, f *FileNewParams, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, f.File)
+				require.Equal(t, CreatedAt("created_at"), f.ExpiresAfter.Anchor)
+				require.Equal(t, int64(7200), f.ExpiresAfter.Seconds)
+			},
+		},
+		{
+			name: "file with extra body fields",
+			builder: func() ([]byte, string) {
+				var buf bytes.Buffer
+				writer := multipart.NewWriter(&buf)
+
+				fw, _ := writer.CreateFormField("file")
+				_, _ = fw.Write([]byte("file content"))
+
+				fw, _ = writer.CreateFormField("model")
+				_, _ = fw.Write([]byte("gpt-4"))
+
+				boundary := writer.Boundary()
+				writer.Close()
+
+				return buf.Bytes(), boundary
+			},
+			validate: func(t *testing.T, f *FileNewParams, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, f.File)
+				require.NotNil(t, f.ExtraBody)
+				require.Equal(t, []byte("gpt-4"), f.ExtraBody["model"])
+			},
+		},
+		{
+			name: "multiple extra body fields",
+			builder: func() ([]byte, string) {
+				var buf bytes.Buffer
+				writer := multipart.NewWriter(&buf)
+
+				fw, _ := writer.CreateFormField("file")
+				_, _ = fw.Write([]byte("file content"))
+
+				fw, _ = writer.CreateFormField("model")
+				_, _ = fw.Write([]byte("gpt-4"))
+
+				fw, _ = writer.CreateFormField("custom_param")
+				_, _ = fw.Write([]byte("custom_value"))
+
+				fw, _ = writer.CreateFormField("another_param")
+				_, _ = fw.Write([]byte("another_value"))
+
+				boundary := writer.Boundary()
+				writer.Close()
+
+				return buf.Bytes(), boundary
+			},
+			validate: func(t *testing.T, f *FileNewParams, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, f.File)
+				require.Len(t, f.ExtraBody, 3)
+				require.Equal(t, []byte("gpt-4"), f.ExtraBody["model"])
+				require.Equal(t, []byte("custom_value"), f.ExtraBody["custom_param"])
+				require.Equal(t, []byte("another_value"), f.ExtraBody["another_param"])
+			},
+		},
+		{
+			name: "all fields with extra body",
+			builder: func() ([]byte, string) {
+				var buf bytes.Buffer
+				writer := multipart.NewWriter(&buf)
+
+				fw, _ := writer.CreateFormField("file")
+				_, _ = fw.Write([]byte("file content"))
+
+				fw, _ = writer.CreateFormField("purpose")
+				_, _ = fw.Write([]byte("fine-tune"))
+
+				fw, _ = writer.CreateFormField("expires_after.anchor")
+				_, _ = fw.Write([]byte("created_at"))
+
+				fw, _ = writer.CreateFormField("expires_after.seconds")
+				_, _ = fw.Write([]byte("86400"))
+
+				fw, _ = writer.CreateFormField("model")
+				_, _ = fw.Write([]byte("gpt-3.5-turbo"))
+
+				fw, _ = writer.CreateFormField("routing_param")
+				_, _ = fw.Write([]byte("value123"))
+
+				boundary := writer.Boundary()
+				writer.Close()
+
+				return buf.Bytes(), boundary
+			},
+			validate: func(t *testing.T, f *FileNewParams, err error) {
+				require.NoError(t, err)
+				require.NotNil(t, f.File)
+				require.Equal(t, FilePurpose("fine-tune"), f.Purpose)
+				require.Equal(t, CreatedAt("created_at"), f.ExpiresAfter.Anchor)
+				require.Equal(t, int64(86400), f.ExpiresAfter.Seconds)
+				require.Len(t, f.ExtraBody, 2)
+				require.Equal(t, []byte("gpt-3.5-turbo"), f.ExtraBody["model"])
+				require.Equal(t, []byte("value123"), f.ExtraBody["routing_param"])
+			},
+		},
+		{
+			name: "extra body field exceeds size limit",
+			builder: func() ([]byte, string) {
+				var buf bytes.Buffer
+				writer := multipart.NewWriter(&buf)
+
+				fw, _ := writer.CreateFormField("file")
+				_, _ = fw.Write([]byte("file content"))
+
+				fw, _ = writer.CreateFormField("model")
+				_, _ = fw.Write(bytes.Repeat([]byte("a"), int(fileNewParamsMultipartFieldMaxBytes+1)))
+
+				boundary := writer.Boundary()
+				writer.Close()
+
+				return buf.Bytes(), boundary
+			},
+			validate: func(t *testing.T, _ *FileNewParams, err error) {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "multipart field \"model\" exceeds maximum allowed size")
+			},
+		},
+		{
+			name: "purpose field exceeds size limit",
+			builder: func() ([]byte, string) {
+				var buf bytes.Buffer
+				writer := multipart.NewWriter(&buf)
+
+				fw, _ := writer.CreateFormField("file")
+				_, _ = fw.Write([]byte("file content"))
+
+				fw, _ = writer.CreateFormField("purpose")
+				_, _ = fw.Write(bytes.Repeat([]byte("a"), int(fileNewParamsMultipartFieldMaxBytes+1)))
+
+				boundary := writer.Boundary()
+				writer.Close()
+
+				return buf.Bytes(), boundary
+			},
+			validate: func(t *testing.T, _ *FileNewParams, err error) {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "multipart field \"purpose\" exceeds maximum allowed size")
+			},
+		},
+		{
+			name: "invalid seconds format",
+			builder: func() ([]byte, string) {
+				var buf bytes.Buffer
+				writer := multipart.NewWriter(&buf)
+
+				fw, _ := writer.CreateFormField("file")
+				_, _ = fw.Write([]byte("file content"))
+
+				fw, _ = writer.CreateFormField("expires_after.seconds")
+				_, _ = fw.Write([]byte("not_a_number"))
+
+				boundary := writer.Boundary()
+				writer.Close()
+
+				return buf.Bytes(), boundary
+			},
+			validate: func(t *testing.T, _ *FileNewParams, err error) {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "invalid syntax")
+			},
+		},
+		{
+			name: "empty multipart",
+			builder: func() ([]byte, string) {
+				var buf bytes.Buffer
+				writer := multipart.NewWriter(&buf)
+
+				boundary := writer.Boundary()
+				writer.Close()
+
+				return buf.Bytes(), boundary
+			},
+			validate: func(t *testing.T, f *FileNewParams, err error) {
+				require.NoError(t, err)
+				require.Nil(t, f.File)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			data, boundary := tc.builder()
+			f := &FileNewParams{}
+			err := f.UnmarshalMultipart(data, boundary)
+			tc.validate(t, f, err)
+		})
+	}
+}
+
+// mockFile implements various file interfaces for testing
+type mockFile struct {
+	content     []byte
+	filename    string
+	contentType string
+}
+
+func (m *mockFile) Read(p []byte) (n int, err error) {
+	if len(m.content) == 0 {
+		return 0, io.EOF
+	}
+
+	n = copy(p, m.content)
+	m.content = m.content[n:]
+	return n, nil
+}
+
+func (m *mockFile) Filename() string {
+	if m.filename != "" {
+		return m.filename
+	}
+	return "anonymous_file"
+}
+
+func (m *mockFile) ContentType() string {
+	if m.contentType != "" {
+		return m.contentType
+	}
+	return "application/octet-stream"
+}
+
+// mockFileWithName implements the Name() interface instead of Filename()
+type mockFileWithName struct {
+	content     []byte
+	name        string
+	contentType string
+}
+
+func (m *mockFileWithName) Read(p []byte) (n int, err error) {
+	if len(m.content) == 0 {
+		return 0, io.EOF
+	}
+
+	n = copy(p, m.content)
+	m.content = m.content[n:]
+	return n, nil
+}
+
+func (m *mockFileWithName) Name() string {
+	return m.name
+}
+
+func (m *mockFileWithName) ContentType() string {
+	if m.contentType != "" {
+		return m.contentType
+	}
+	return "application/octet-stream"
+}
+
+func TestFileNewParamsMarshalMultipart(t *testing.T) {
+	tests := []struct {
+		name     string
+		params   *FileNewParams
+		validate func(*testing.T, []byte, string, error)
+	}{
+		{
+			name: "all fields present",
+			params: &FileNewParams{
+				File:    &mockFile{content: []byte("test file content"), filename: "test.txt", contentType: "text/plain"},
+				Purpose: FilePurpose("batch"),
+				ExpiresAfter: FileNewParamsExpiresAfter{
+					Anchor:  CreatedAt("created_at"),
+					Seconds: 3600,
+				},
+			},
+			validate: func(t *testing.T, data []byte, contentType string, err error) {
+				require.NoError(t, err)
+				require.NotEmpty(t, data)
+				require.Contains(t, contentType, "multipart/form-data")
+				// Verify boundary is present
+				require.Contains(t, contentType, "boundary=")
+				// Verify content contains expected fields
+				content := string(data)
+				require.Contains(t, content, "test.txt")
+				require.Contains(t, content, "batch")
+				require.Contains(t, content, "created_at")
+				require.Contains(t, content, "3600")
+			},
+		},
+		{
+			name: "only required fields",
+			params: &FileNewParams{
+				File:    &mockFile{content: []byte("file data")},
+				Purpose: FilePurpose("batch"),
+			},
+			validate: func(t *testing.T, data []byte, contentType string, err error) {
+				require.NoError(t, err)
+				require.NotEmpty(t, data)
+				require.Contains(t, contentType, "multipart/form-data")
+				content := string(data)
+				require.Contains(t, content, "batch")
+				require.Contains(t, content, "file data")
+			},
+		},
+		{
+			name: "with custom filename and content type",
+			params: &FileNewParams{
+				File:    &mockFile{content: []byte("binary data"), filename: "data.bin", contentType: "application/binary"},
+				Purpose: FilePurpose("fine-tune"),
+			},
+			validate: func(t *testing.T, data []byte, contentType string, err error) {
+				require.NoError(t, err)
+				content := string(data)
+				require.Contains(t, content, "data.bin")
+				require.Contains(t, content, "application/binary")
+				require.Contains(t, content, "fine-tune")
+				require.Contains(t, contentType, "multipart/form-data")
+			},
+		},
+		{
+			name: "with Name() interface instead of Filename()",
+			params: &FileNewParams{
+				File:    &mockFileWithName{content: []byte("test"), name: "/path/to/file.txt"},
+				Purpose: FilePurpose("vision"),
+			},
+			validate: func(t *testing.T, data []byte, contentType string, err error) {
+				require.NoError(t, err)
+				// Should extract just the filename from path
+				content := string(data)
+				require.Contains(t, content, "file.txt")
+				require.Contains(t, contentType, "multipart/form-data")
+			},
+		},
+		{
+			name: "with only seconds in expires_after",
+			params: &FileNewParams{
+				File:    &mockFile{content: []byte("data")},
+				Purpose: FilePurpose("user_data"),
+				ExpiresAfter: FileNewParamsExpiresAfter{
+					Seconds: 7200,
+				},
+			},
+			validate: func(t *testing.T, data []byte, contentType string, err error) {
+				require.NoError(t, err)
+				content := string(data)
+				require.Contains(t, content, "7200")
+				require.Contains(t, contentType, "multipart/form-data")
+			},
+		},
+		{
+			name: "with only anchor in expires_after",
+			params: &FileNewParams{
+				File:    &mockFile{content: []byte("data")},
+				Purpose: FilePurpose("evals"),
+				ExpiresAfter: FileNewParamsExpiresAfter{
+					Anchor: CreatedAt("created_at"),
+				},
+			},
+			validate: func(t *testing.T, data []byte, contentType string, err error) {
+				require.NoError(t, err)
+				content := string(data)
+				require.Contains(t, content, "created_at")
+				require.Contains(t, contentType, "multipart/form-data")
+			},
+		},
+		{
+			name: "nil file should error",
+			params: &FileNewParams{
+				File:    nil,
+				Purpose: FilePurpose("batch"),
+			},
+			validate: func(t *testing.T, data []byte, contentType string, err error) {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "file is required")
+				require.Nil(t, data)
+				require.Empty(t, contentType)
+			},
+		},
+		{
+			name: "empty purpose should error",
+			params: &FileNewParams{
+				File:    &mockFile{content: []byte("data")},
+				Purpose: FilePurpose(""),
+			},
+			validate: func(t *testing.T, data []byte, contentType string, err error) {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "purpose is required")
+				require.Nil(t, data)
+				require.Empty(t, contentType)
+			},
+		},
+		{
+			name: "special characters in filename",
+			params: &FileNewParams{
+				File:    &mockFile{content: []byte("data"), filename: "file with spaces & special-chars.txt"},
+				Purpose: FilePurpose("vision"),
+			},
+			validate: func(t *testing.T, data []byte, _ string, err error) {
+				require.NoError(t, err)
+				content := string(data)
+				// Filename should be properly escaped
+				require.Contains(t, content, "file with spaces")
+			},
+		},
+		{
+			name: "all required and optional fields with zero expires_after",
+			params: &FileNewParams{
+				File:         &mockFile{content: []byte("test")},
+				Purpose:      FilePurpose("user_data"),
+				ExpiresAfter: FileNewParamsExpiresAfter{}, // Zero value, should be omitted
+			},
+			validate: func(t *testing.T, data []byte, _ string, err error) {
+				require.NoError(t, err)
+				content := string(data)
+				require.Contains(t, content, "user_data")
+				// Should not contain expires_after field since it's zero-valued
+				require.NotContains(t, content, "expires_after")
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			data, contentType, err := tc.params.MarshalMultipart()
+			tc.validate(t, data, contentType, err)
 		})
 	}
 }

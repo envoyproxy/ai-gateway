@@ -25,6 +25,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
+	"github.com/envoyproxy/ai-gateway/internal/translator"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
@@ -103,6 +104,32 @@ func TestWithTestUpstream(t *testing.T) {
 	}
 
 	was5xx := false
+	const (
+		openAIFileUpstreamID = "file-123"
+		openAIFileModelName  = "some-model1"
+		fileUploadBoundary   = "----aigw-test-boundary"
+	)
+	encodedOpenAIFileID := translator.EncodeIDWithModel(openAIFileUpstreamID, openAIFileModelName, "file")
+	fileUploadBody := strings.Join([]string{
+		"--" + fileUploadBoundary,
+		`Content-Disposition: form-data; name="file"; filename="test.txt"`,
+		"Content-Type: application/octet-stream",
+		"",
+		`{"custom_id": "request-1", "method": "POST", "url": "/v1/chat/completions", "body": {"model": "gpt-3.5-turbo-0125", "messages": [{"role": "system", "content": "You are a helpful assistant."},{"role": "user", "content": "Hello world!"}],"max_tokens": 1000}}`,
+		"",
+		`{"custom_id": "request-2", "method": "POST", "url": "/v1/chat/completions", "body": {"model": "gpt-3.5-turbo-0125", "messages": [{"role": "system", "content": "You are an helpful assistant."},{"role": "user", "content": "Hello world!"}],"max_tokens": 1000}}`,
+		"--" + fileUploadBoundary,
+		`Content-Disposition: form-data; name="purpose"`,
+		"",
+		"assistants",
+		"--" + fileUploadBoundary,
+		`Content-Disposition: form-data; name="model"`,
+		"",
+		openAIFileModelName,
+		"--" + fileUploadBoundary + "--",
+		"",
+	}, "\r\n")
+
 	for _, tc := range []struct {
 		// name is the name of the test case.
 		name,
@@ -137,6 +164,8 @@ func TestWithTestUpstream(t *testing.T) {
 		// expRequestBody is the expected body to be sent to the test upstream.
 		// This can be used to test the request body translation.
 		expRequestBody string
+		// reqHeaders are the request headers to be sent to the gateway.
+		reqHeaders map[string]string
 		// expStatus is the expected status code from the gateway.
 		expStatus int
 		// expResponseHeaders are the expected headers from the gateway.
@@ -147,6 +176,78 @@ func TestWithTestUpstream(t *testing.T) {
 		// expResponseBodyFunc is a function to check the response body. This can be used instead of the expResponseBody field.
 		expResponseBodyFunc func(require.TestingT, []byte)
 	}{
+		{
+			name:           "openai - POST /v1/files",
+			backend:        "openai",
+			path:           "/v1/files",
+			method:         http.MethodPost,
+			requestBody:    fileUploadBody,
+			reqHeaders:     map[string]string{"Content-Type": "multipart/form-data; boundary=" + fileUploadBoundary},
+			expPath:        "/v1/files",
+			expRequestBody: fileUploadBody,
+			responseBody:   `{"id":"file-123","object":"file","bytes":29,"created_at":1741382147,"filename":"test.txt","purpose":"batch"}`,
+			expStatus:      http.StatusOK,
+			expResponseBody: fmt.Sprintf(
+				`{"id":"%s","object":"file","bytes":29,"created_at":1741382147,"filename":"test.txt","purpose":"batch"}`,
+				encodedOpenAIFileID,
+			),
+		},
+		{
+			name:         "openai - GET /v1/files",
+			backend:      "openai",
+			path:         "/v1/files?purpose=assistants&limit=2&model=" + openAIFileModelName,
+			method:       http.MethodGet,
+			expPath:      "/v1/files",
+			expRawQuery:  "limit=2&purpose=assistants",
+			responseBody: `{"object":"list","data":[{"id":"file-123","object":"file","bytes":29,"created_at":1741382147,"filename":"test.txt","purpose":"batch"}],"has_more":false}`,
+			expStatus:    http.StatusOK,
+			expResponseBody: fmt.Sprintf(
+				`{"object":"list","data":[{"id":"%s","object":"file","bytes":29,"created_at":1741382147,"filename":"test.txt","purpose":"batch"}],"has_more":false}`,
+				encodedOpenAIFileID,
+			),
+		},
+		{
+			name:         "openai - GET /v1/files/{file_id}",
+			backend:      "openai",
+			path:         fmt.Sprintf("/v1/files/%s", encodedOpenAIFileID),
+			method:       http.MethodGet,
+			expPath:      "/v1/files/" + openAIFileUpstreamID,
+			responseBody: `{"id":"file-123","object":"file","bytes":29,"created_at":1741382147,"filename":"test.txt","purpose":"batch"}`,
+			expStatus:    http.StatusOK,
+			expResponseBody: fmt.Sprintf(
+				`{"id":"%s","object":"file","bytes":29,"created_at":1741382147,"filename":"test.txt","purpose":"batch"}`,
+				encodedOpenAIFileID,
+			),
+		},
+		{
+			name:            "openai - GET /v1/files/{file_id}/content",
+			backend:         "openai",
+			path:            fmt.Sprintf("/v1/files/%s/content", encodedOpenAIFileID),
+			method:          http.MethodGet,
+			expPath:         "/v1/files/" + openAIFileUpstreamID + "/content",
+			responseHeaders: "content-type:application/octet-stream",
+			responseBody:    "{\"custom_id\": \"request-1\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}\n{\"custom_id\": \"request-2\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are an helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}",
+			expStatus:       http.StatusOK,
+			expResponseBodyFunc: func(t require.TestingT, body []byte) {
+				lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+				require.Len(t, lines, 2)
+				require.JSONEq(t, "{\"custom_id\": \"request-1\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}", lines[0])
+				require.JSONEq(t, "{\"custom_id\": \"request-2\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are an helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}", lines[1])
+			},
+		},
+		{
+			name:         "openai - DELETE /v1/files/{file_id}",
+			backend:      "openai",
+			path:         fmt.Sprintf("/v1/files/%s", encodedOpenAIFileID),
+			method:       http.MethodDelete,
+			expPath:      "/v1/files/" + openAIFileUpstreamID,
+			responseBody: `{"id":"file-123","object":"file","deleted":true}`,
+			expStatus:    http.StatusOK,
+			expResponseBody: fmt.Sprintf(
+				`{"id":"%s","object":"file","deleted":true}`,
+				encodedOpenAIFileID,
+			),
+		},
 		{
 			name:            "openai - /v1/images/generations",
 			backend:         "openai",
@@ -224,6 +325,7 @@ func TestWithTestUpstream(t *testing.T) {
 			name:            "aws system role - /v1/chat/completions",
 			backend:         "aws-bedrock",
 			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
 			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
 			expPath:         "/model/something/converse",
 			responseBody:    `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
@@ -1468,6 +1570,9 @@ data: {"type":"message_stop"}`,
 			listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
 			req, err := http.NewRequestWithContext(t.Context(), tc.method, listenerAddress+tc.path, strings.NewReader(tc.requestBody))
 			require.NoError(t, err)
+			for k, v := range tc.reqHeaders {
+				req.Header.Set(k, v)
+			}
 			req.Header.Set("x-test-backend", tc.backend)
 			req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
 			req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expPath)))

@@ -67,7 +67,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_ModelNameOverride(t *test
 				},
 			}
 
-			headerMutation, bodyMutation, err := translator.RequestBody(nil, originalReq, false)
+			headerMutation, bodyMutation, err := translator.RequestBody(map[string]string{}, nil, originalReq, false)
 			require.NoError(t, err)
 			require.NotNil(t, headerMutation)
 			require.NotNil(t, bodyMutation)
@@ -144,7 +144,7 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 	raw, err := json.Marshal(originalReq)
 	require.NoError(t, err)
 
-	headerMutation, bodyMutation, err := translator.RequestBody(raw, originalReq, false)
+	headerMutation, bodyMutation, err := translator.RequestBody(nil, raw, originalReq, false)
 	require.NoError(t, err)
 	require.NotNil(t, headerMutation)
 	require.NotNil(t, bodyMutation)
@@ -236,7 +236,7 @@ func TestAnthropicToGCPAnthropicTranslator_BackendVersionHandling(t *testing.T) 
 				MaxTokens: 100,
 			}
 
-			_, bodyMutation, err := translator.RequestBody(nil, originalReq, false)
+			_, bodyMutation, err := translator.RequestBody(map[string]string{}, nil, originalReq, false)
 
 			if tt.shouldError {
 				require.Error(t, err)
@@ -304,7 +304,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_StreamingPaths(t *testing
 				}
 			}
 
-			headerMutation, _, err := translator.RequestBody(nil, parsedReq, false)
+			headerMutation, _, err := translator.RequestBody(map[string]string{}, nil, parsedReq, false)
 			require.NoError(t, err)
 			require.NotNil(t, headerMutation)
 
@@ -365,7 +365,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 	raw, err := json.Marshal(parsedReq)
 	require.NoError(t, err)
 
-	_, bodyMutation, err := translator.RequestBody(raw, parsedReq, false)
+	_, bodyMutation, err := translator.RequestBody(nil, raw, parsedReq, false)
 	require.NoError(t, err)
 	require.NotNil(t, bodyMutation)
 
@@ -601,7 +601,7 @@ func TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingFullScenario(t 
 		Stream: true,
 		Model:  "claude-3-sonnet-20240229",
 	}
-	_, _, err := translator.RequestBody([]byte(`{"stream":true}`), &reqBody, false)
+	_, _, err := translator.RequestBody(nil, []byte(`{"stream":true}`), &reqBody, false)
 	require.NoError(t, err)
 
 	// Sample streaming response from Anthropic with realistic flow:
