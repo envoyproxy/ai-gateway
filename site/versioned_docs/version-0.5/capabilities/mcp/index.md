@@ -235,7 +235,7 @@ spec:
         - name: X-Atlassian-Jira-Personal-Token
         - name: X-Atlassian-Jira-Url
         - name: Authorization
-          backendHeader: X-Original-Auth  # optional: rename the header
+          backendHeader: X-Original-Auth # optional: rename the header
     - name: github
       kind: Backend
       group: gateway.envoyproxy.io

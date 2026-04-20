@@ -1386,8 +1386,8 @@ func TestExtractPerBackendForwardHeaders(t *testing.T) {
 		{
 			name: "mixed rename and passthrough",
 			requestHeaders: map[string]string{
-				"Authorization":  "Bearer tok",
-				"X-Jira-Token":   "jira-secret",
+				"Authorization":   "Bearer tok",
+				"X-Jira-Token":    "jira-secret",
 				"X-Not-Forwarded": "should-not-appear",
 			},
 			mappings: []filterapi.MCPHeaderForward{
@@ -1396,7 +1396,7 @@ func TestExtractPerBackendForwardHeaders(t *testing.T) {
 			},
 			wantHeaders: map[string]string{
 				"X-Backend-Auth": "Bearer tok",
-				"X-Jira-Token":  "jira-secret",
+				"X-Jira-Token":   "jira-secret",
 			},
 		},
 		{
