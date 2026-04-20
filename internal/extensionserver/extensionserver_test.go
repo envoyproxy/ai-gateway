@@ -155,7 +155,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 			var buf bytes.Buffer
 			s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
 			require.NoError(t, err)
-			err = s.maybeModifyCluster(tc.c)
+			err = s.maybeModifyCluster(t.Context(), tc.c)
 			require.NoError(t, err)
 			t.Logf("buf: %s", buf.String())
 			require.Contains(t, buf.String(), tc.errLog)
@@ -408,7 +408,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 			})
 			s, err := New(c, logr.FromSlogHandler(handler), udsPath, false, nil, nil)
 			require.NoError(t, err)
-			err = s.maybeModifyCluster(tc.cluster)
+			err = s.maybeModifyCluster(t.Context(), tc.cluster)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expectedLog, buf.String())
@@ -473,7 +473,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
 		require.NoError(t, err)
 		cluster := &clusterv3.Cluster{Name: "httproute/test-ns/nonexistent-route/rule/0", Metadata: &corev3.Metadata{}}
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 		require.Contains(t, buf.String(), "kipping non-AIGatewayRoute HTTPRoute cluster modification")
 	})
@@ -496,7 +496,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify InferencePool metadata was added to cluster.
@@ -539,7 +539,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify filters were added correctly.
@@ -588,7 +588,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify no additional filters were added since ext_proc already exists.
@@ -617,7 +617,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify filters were added correctly.
@@ -660,7 +660,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.Error(t, err)
 		require.Contains(t, buf.String(), "failed to unmarshal HttpProtocolOptions")
 	})

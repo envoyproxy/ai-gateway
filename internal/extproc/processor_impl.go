@@ -531,7 +531,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	}
 
 	if body.EndOfStream && (len(u.parent.config.GlobalRequestCosts) > 0 || len(u.parent.config.RequestCosts) > 0) {
-		metadata, err := buildDynamicMetadata(u.parent.config.GlobalRequestCosts, u.parent.config.RequestCosts, &u.costs, u.requestHeaders, u.backendName, u.routeName)
+		metadata, err := buildDynamicMetadata(u.parent.config.GlobalRequestCosts, u.parent.config.RequestCosts, &u.costs, u.requestHeaders, u.backendName, u.routeName, responseModel)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
@@ -704,7 +704,7 @@ func mergeDynamicMetadata(base, extra *structpb.Struct) *structpb.Struct {
 }
 
 // evalCost is a helper function that computes the cost value based on the cost type and CEL program.
-func evalCost(costType filterapi.LLMRequestCostType, celProg cel.Program, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint64, error) {
+func evalCost(costType filterapi.LLMRequestCostType, celProg cel.Program, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string) (uint64, error) {
 	var cost uint64
 	switch costType {
 	case filterapi.LLMRequestCostTypeInputToken:
@@ -748,6 +748,7 @@ func evalCost(costType filterapi.LLMRequestCostType, celProg cel.Program, costs 
 		)
 		if err != nil {
 			return 0, fmt.Errorf("failed to evaluate CEL expression: %w", err)
+			}
 		}
 	default:
 		return 0, fmt.Errorf("unknown cost type: %s", costType)
@@ -756,13 +757,13 @@ func evalCost(costType filterapi.LLMRequestCostType, celProg cel.Program, costs 
 }
 
 // evalRuntimeGlobalRequestCost computes the cost value for a single global runtime cost rule.
-func evalRuntimeGlobalRequestCost(rc *filterapi.RuntimeGlobalRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint64, error) {
-	return evalCost(rc.Type, rc.CELProg, costs, requestHeaders, backendName, routeName)
+func evalRuntimeGlobalRequestCost(rc *filterapi.RuntimeGlobalRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string) (uint64, error) {
+	return evalCost(rc.Type, rc.CELProg, costs, requestHeaders, backendName, routeName, responseModel)
 }
 
 // evalRuntimeRequestCost computes the cost value for a single route-scoped runtime cost rule.
-func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint64, error) {
-	return evalCost(rc.Type, rc.CELProg, costs, requestHeaders, backendName, routeName)
+func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string) (uint64, error) {
+	return evalCost(rc.Type, rc.CELProg, costs, requestHeaders, backendName, routeName, responseModel)
 }
 
 // buildDynamicMetadata creates metadata for rate limiting and cost tracking.
@@ -772,7 +773,7 @@ func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.Tok
 //
 // Two-tier precedence: for each metadataKey, check route-scoped requestCosts first (matching RouteName == routeName).
 // If found, use it. Otherwise, fall back to globalRequestCosts. If neither exists, the key is not emitted.
-func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCost, requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (*structpb.Struct, error) {
+func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCost, requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string) (*structpb.Struct, error) {
 	metadata := make(map[string]*structpb.Value, len(requestCosts)+len(globalRequestCosts)+3)
 
 	// Track which metadata keys have been populated by route-scoped costs.
@@ -816,6 +817,11 @@ func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCos
 	}
 	if routeName != "" {
 		metadata["route_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: routeName}}
+	}
+
+	// responseModel is the actual model that served the request.
+	if responseModel != "" {
+		metadata["response_model"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: responseModel}}
 	}
 
 	if len(metadata) == 0 {
