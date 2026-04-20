@@ -602,3 +602,38 @@ type CachePointBlock struct {
 	// The type of cache point. Currently only "default" is supported.
 	Type string `json:"type"`
 }
+
+// TitanEmbeddingRequest is the request body for the Amazon Titan Embed Text models
+// via the AWS Bedrock InvokeModel API.
+//
+// v1 (amazon.titan-embed-text-v1): only InputText is supported.
+// v2 (amazon.titan-embed-text-v2:0): Dimensions, Normalize, and EmbeddingTypes are also supported.
+//
+// See https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-titan-embed-text.html
+type TitanEmbeddingRequest struct {
+	// InputText is the text to embed. Required.
+	InputText string `json:"inputText"`
+
+	// Dimensions is the number of dimensions for the output embedding.
+	// Accepted values: 256, 512, 1024 (default). Only supported by v2.
+	Dimensions *int `json:"dimensions,omitempty"`
+
+	// Normalize indicates whether to normalize the output embedding vector.
+	// Defaults to true. Only supported by v2.
+	Normalize *bool `json:"normalize,omitempty"`
+
+	// EmbeddingTypes specifies the output embedding types.
+	// Accepted values: "float" (default), "binary". Only supported by v2.
+	EmbeddingTypes []string `json:"embeddingTypes,omitempty"`
+}
+
+// TitanEmbeddingResponse is the response body returned by the Amazon Titan Embed Text models.
+//
+// See https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-titan-embed-text.html
+type TitanEmbeddingResponse struct {
+	// Embedding is the embedding vector for the input text.
+	Embedding []float64 `json:"embedding"`
+
+	// InputTextTokenCount is the number of tokens in the input text.
+	InputTextTokenCount int `json:"inputTextTokenCount"`
+}
