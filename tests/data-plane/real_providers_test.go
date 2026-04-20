@@ -41,7 +41,8 @@ func TestWithRealProviders(t *testing.T) {
 
 	config := &filterapi.Config{
 		Version: version.Parse(),
-		LLMRequestCosts: []filterapi.LLMRequestCost{
+		// Dataplane Envoy does not set per-route xDS route_name metadata; use gateway defaults so costs still emit.
+		GlobalLLMRequestCosts: []filterapi.GlobalLLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 			{MetadataKey: "some_cel", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1+1"},
 		},

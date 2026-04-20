@@ -72,8 +72,14 @@ spec:
                 description: "LLMRequestCosts specifies how to capture the cost of
                   the LLM-related request, notably the token usage.\nThe AI Gateway
                   filter will capture each specified number and store it in the Envoy's
-                  dynamic\nmetadata per HTTP request. The namespaced key is \"io.envoy.ai_gateway\",\n\nFor
-                  example, let's say we have the following LLMRequestCosts configuration:\n```yaml\n\tllmRequestCosts:\n\t-
+                  dynamic\nmetadata per HTTP request. The namespaced key is \"io.envoy.ai_gateway\".\n\nThese
+                  route-level costs override any global defaults defined in GatewayConfig.Spec.GlobalLLMRequestCosts\nfor
+                  the same metadataKey. If a metadataKey is not defined in either
+                  place, no cost is calculated for it.\n\nThis allows you to define
+                  common cost formulas once at the gateway level (e.g., via GatewayConfig)\nand
+                  only override them in specific routes when needed (e.g., premium
+                  routes with different pricing).\n\nFor example, let's say we have
+                  the following LLMRequestCosts configuration:\n```yaml\n\tllmRequestCosts:\n\t-
                   metadataKey: llm_input_token\n\t  type: InputToken\n\t- metadataKey:
                   llm_output_token\n\t  type: OutputToken\n\t- metadataKey: llm_total_token\n\t
                   \ type: TotalToken\n\t- metadataKey: llm_cached_input_token\n\t
@@ -119,8 +125,10 @@ spec:
                   io.envoy.ai_gateway\n\t                key: llm_total_token\n```\n\nNote
                   that when multiple AIGatewayRoute resources are attached to the
                   same Gateway, and\ndifferent costs are configured for the same metadata
-                  key, the ai-gateway will pick one of them\nto configure the metadata
-                  key in the generated HTTPRoute, and ignore the rest."
+                  key, each route's rule is carried in\nthe filter configuration with
+                  the route identity; the data plane selects the matching rule\nper
+                  request (by route), so each route can define its own cost for the
+                  same metadata key."
                 items:
                   description: LLMRequestCost configures each request cost.
                   properties:
@@ -917,8 +925,14 @@ spec:
                 description: "LLMRequestCosts specifies how to capture the cost of
                   the LLM-related request, notably the token usage.\nThe AI Gateway
                   filter will capture each specified number and store it in the Envoy's
-                  dynamic\nmetadata per HTTP request. The namespaced key is \"io.envoy.ai_gateway\",\n\nFor
-                  example, let's say we have the following LLMRequestCosts configuration:\n```yaml\n\tllmRequestCosts:\n\t-
+                  dynamic\nmetadata per HTTP request. The namespaced key is \"io.envoy.ai_gateway\".\n\nThese
+                  route-level costs override any global defaults defined in GatewayConfig.Spec.GlobalLLMRequestCosts\nfor
+                  the same metadataKey. If a metadataKey is not defined in either
+                  place, no cost is calculated for it.\n\nThis allows you to define
+                  common cost formulas once at the gateway level (e.g., via GatewayConfig)\nand
+                  only override them in specific routes when needed (e.g., premium
+                  routes with different pricing).\n\nFor example, let's say we have
+                  the following LLMRequestCosts configuration:\n```yaml\n\tllmRequestCosts:\n\t-
                   metadataKey: llm_input_token\n\t  type: InputToken\n\t- metadataKey:
                   llm_output_token\n\t  type: OutputToken\n\t- metadataKey: llm_total_token\n\t
                   \ type: TotalToken\n\t- metadataKey: llm_cached_input_token\n\t
@@ -964,8 +978,10 @@ spec:
                   io.envoy.ai_gateway\n\t                key: llm_total_token\n```\n\nNote
                   that when multiple AIGatewayRoute resources are attached to the
                   same Gateway, and\ndifferent costs are configured for the same metadata
-                  key, the ai-gateway will pick one of them\nto configure the metadata
-                  key in the generated HTTPRoute, and ignore the rest."
+                  key, each route's rule is carried in\nthe filter configuration with
+                  the route identity; the data plane selects the matching rule\nper
+                  request (by route), so each route can define its own cost for the
+                  same metadata key."
                 items:
                   description: LLMRequestCost configures each request cost.
                   properties:
