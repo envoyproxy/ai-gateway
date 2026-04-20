@@ -1228,6 +1228,9 @@ func extractSubject(r *http.Request) string {
 	if !strings.EqualFold(parts[0], "bearer") {
 		return ""
 	}
+	if len(parts) < 2 {
+		return ""
+	}
 
 	var claims jwt.RegisteredClaims
 	_, _, _ = jwt.NewParser().ParseUnverified(parts[1], &claims)

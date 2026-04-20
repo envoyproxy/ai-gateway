@@ -479,6 +479,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		mt := &mockTranslator{
 			t: t, expResponseBody: inBody,
 			retHeaderMutation: []internalapi.Header{{"foo", "bar"}},
+			retResponseModel:  internalapi.ResponseModel("some_model"),
 		}
 		mt.retUsedToken.SetOutputTokens(123)
 		mt.retUsedToken.SetInputTokens(1)
@@ -543,6 +544,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 			GetStructValue().Fields["cel_uint"].GetNumberValue())
 		require.Equal(t, "ai_gateway_llm", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["model_name_override"].GetStringValue())
 		require.Equal(t, "some_backend", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["backend_name"].GetStringValue())
+		require.Equal(t, "some_model", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["response_model"].GetStringValue())
 	})
 
 	// Verify we record failure for non-2xx responses and do it exactly once (defer suppressed).
