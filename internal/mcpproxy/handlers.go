@@ -1256,6 +1256,26 @@ func extractForwardHeaders(reqHeaders http.Header, headers []string) map[string]
 	return result
 }
 
+// extractPerBackendForwardHeaders reads per-backend header forwarding config from the incoming request.
+// It supports header renaming: each entry maps a source header to an optional destination header name.
+func extractPerBackendForwardHeaders(reqHeaders http.Header, mappings []filterapi.MCPHeaderForward) map[string]string {
+	if len(mappings) == 0 {
+		return nil
+	}
+
+	result := make(map[string]string)
+	for _, m := range mappings {
+		if value := reqHeaders.Get(m.Name); value != "" {
+			result[m.ForwardName()] = value
+		}
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
 // handlePromptGetRequest handles the "prompts/get" JSON-RPC method.
 func (m *mcpRequestContext) handlePromptGetRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.GetPromptParams) (handlerResult, error) {
 	backendName, promptName, err := upstreamResourceName(p.Name)

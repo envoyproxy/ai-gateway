@@ -452,6 +452,95 @@ func TestSendRequestPerBackend_SetsOriginalPathHeaders(t *testing.T) {
 	}
 }
 
+func TestSendRequestPerBackend_PerBackendHeaders(t *testing.T) {
+	headersCh := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- r.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+
+	t.Run("per-backend headers are forwarded to the matching backend", func(t *testing.T) {
+		s := &session{
+			reqCtx: proxy,
+			perBackendExtraHeaders: map[filterapi.MCPBackendName]map[string]string{
+				"backend1": {
+					"X-Api-Key":      "secret123",
+					"X-Backend-Auth": "Bearer tok",
+				},
+			},
+		}
+		ch := make(chan *backendEvent, 1)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		defer cancel()
+		err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+			sessionID: "sess1",
+		}, http.MethodGet, nil)
+		require.NoError(t, err)
+
+		select {
+		case hdr := <-headersCh:
+			require.Equal(t, "secret123", hdr.Get("X-Api-Key"))
+			require.Equal(t, "Bearer tok", hdr.Get("X-Backend-Auth"))
+		case <-ctx.Done():
+			require.Fail(t, "timed out waiting for backend request")
+		}
+	})
+
+	t.Run("per-backend headers are NOT sent to a different backend", func(t *testing.T) {
+		s := &session{
+			reqCtx: proxy,
+			perBackendExtraHeaders: map[filterapi.MCPBackendName]map[string]string{
+				"backend1": {
+					"X-Api-Key": "secret123",
+				},
+			},
+		}
+		ch := make(chan *backendEvent, 1)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		defer cancel()
+		err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend2"}, &compositeSessionEntry{
+			sessionID: "sess2",
+		}, http.MethodGet, nil)
+		require.NoError(t, err)
+
+		select {
+		case hdr := <-headersCh:
+			require.Empty(t, hdr.Get("X-Api-Key"), "per-backend header should NOT be sent to a different backend")
+		case <-ctx.Done():
+			require.Fail(t, "timed out waiting for backend request")
+		}
+	})
+
+	t.Run("route-level and per-backend headers are both applied", func(t *testing.T) {
+		s := &session{
+			reqCtx:       proxy,
+			extraHeaders: map[string]string{"X-Route-Header": "route-val"},
+			perBackendExtraHeaders: map[filterapi.MCPBackendName]map[string]string{
+				"backend1": {"X-Backend-Header": "backend-val"},
+			},
+		}
+		ch := make(chan *backendEvent, 1)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		defer cancel()
+		err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+			sessionID: "sess1",
+		}, http.MethodGet, nil)
+		require.NoError(t, err)
+
+		select {
+		case hdr := <-headersCh:
+			require.Equal(t, "route-val", hdr.Get("X-Route-Header"))
+			require.Equal(t, "backend-val", hdr.Get("X-Backend-Header"))
+		case <-ctx.Done():
+			require.Fail(t, "timed out waiting for backend request")
+		}
+	})
+}
+
 func TestSendRequestPerBackend_AcceptEncoding(t *testing.T) {
 	headersCh := make(chan http.Header, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
