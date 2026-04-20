@@ -1769,6 +1769,12 @@ type Model struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// CountTokensResponse represents a response from the Anthropic Count Tokens API.
+// https://docs.anthropic.com/en/api/counting-tokens
+type CountTokensResponse struct {
+	InputTokens int64 `json:"input_tokens"`
+}
+
 // ErrorResponse represents an error response from the Anthropic API.
 // https://platform.claude.com/docs/en/api/errors
 type ErrorResponse struct {

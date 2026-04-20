@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
+	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
@@ -41,6 +42,7 @@ var (
 	_ tracingapi.TranslationTracer          = (*translationTracer)(nil)
 	_ tracingapi.RerankTracer               = (*rerankTracer)(nil)
 	_ tracingapi.ResponsesInputTokensTracer = (*responsesInputTokensTracer)(nil)
+	_ tracingapi.CountTokensTracer          = (*countTokensTracer)(nil)
 )
 
 type (
@@ -54,6 +56,7 @@ type (
 	translationTracer          = requestTracerImpl[openai.TranslationRequest, openai.TranslationResponse, struct{}]
 	rerankTracer               = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
 	responsesInputTokensTracer = requestTracerImpl[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
+	countTokensTracer          = requestTracerImpl[anthropicschema.MessagesRequest, anthropicschema.CountTokensResponse, struct{}]
 )
 
 func newRequestTracer[ReqT any, RespT any, RespChunkT any](
@@ -250,6 +253,18 @@ func newResponsesInputTokensTracer(tracer trace.Tracer, propagator propagation.T
 		headerAttributes,
 		func(span trace.Span, recorder tracingapi.ResponsesInputTokensRecorder) tracingapi.ResponsesInputTokensSpan {
 			return &responsesInputTokensSpan{span: span, recorder: recorder}
+		},
+	)
+}
+
+func newCountTokensTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.CountTokensRecorder, headerAttributes map[string]string) tracingapi.CountTokensTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		headerAttributes,
+		func(span trace.Span, recorder tracingapi.CountTokensRecorder) tracingapi.CountTokensSpan {
+			return &countTokensSpan{span: span, recorder: recorder}
 		},
 	)
 }
