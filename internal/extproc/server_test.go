@@ -408,12 +408,10 @@ func TestResolveRouteName(t *testing.T) {
 			internalapi.XDSRouteMetadataRouteNamePath: structpb.NewStringValue(routeName),
 		},
 	}
-	actual, err := resolveRouteName(attributes)
-	require.NoError(t, err)
+	actual := resolveRouteName(attributes)
 	require.Equal(t, routeName, actual)
 
-	actual, err = resolveRouteName(&structpb.Struct{Fields: map[string]*structpb.Value{}})
-	require.NoError(t, err)
+	actual = resolveRouteName(&structpb.Struct{Fields: map[string]*structpb.Value{}})
 	require.Empty(t, actual)
 }
 
