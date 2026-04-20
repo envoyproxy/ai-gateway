@@ -1263,6 +1263,13 @@ func TestExtractSubject(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, extractSubject(req))
 	})
+
+	t.Run("bearer with no token", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "/mcp", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "bearer")
+		require.Empty(t, extractSubject(req))
+	})
 }
 
 func TestExtractForwardHeaders(t *testing.T) {
