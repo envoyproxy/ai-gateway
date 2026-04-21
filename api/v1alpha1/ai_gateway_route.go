@@ -84,7 +84,13 @@ type AIGatewayRouteSpec struct {
 
 	// LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.
 	// The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic
-	// metadata per HTTP request. The namespaced key is "io.envoy.ai_gateway",
+	// metadata per HTTP request. The namespaced key is "io.envoy.ai_gateway".
+	//
+	// These route-level costs override any global defaults defined in GatewayConfig.Spec.GlobalLLMRequestCosts
+	// for the same metadataKey. If a metadataKey is not defined in either place, no cost is calculated for it.
+	//
+	// This allows you to define common cost formulas once at the gateway level (e.g., via GatewayConfig)
+	// and only override them in specific routes when needed (e.g., premium routes with different pricing).
 	//
 	// For example, let's say we have the following LLMRequestCosts configuration:
 	// ```yaml
@@ -178,8 +184,9 @@ type AIGatewayRouteSpec struct {
 	// ```
 	//
 	// Note that when multiple AIGatewayRoute resources are attached to the same Gateway, and
-	// different costs are configured for the same metadata key, the ai-gateway will pick one of them
-	// to configure the metadata key in the generated HTTPRoute, and ignore the rest.
+	// different costs are configured for the same metadata key, each route's rule is carried in
+	// the filter configuration with the route identity; the data plane selects the matching rule
+	// per request (by route), so each route can define its own cost for the same metadata key.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=36
