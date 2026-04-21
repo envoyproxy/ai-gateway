@@ -181,27 +181,9 @@ func (c *MCPRouteController) getOrNewHTTPRouteRoute(ctx context.Context, mcpRout
 	existing := err == nil
 	if apierrors.IsNotFound(err) {
 		// This means that this MCPRoute is a new one.
-		httpRoute = &gwapiv1.HTTPRoute{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        routeName,
-				Namespace:   mcpRoute.Namespace,
-				Labels:      make(map[string]string),
-				Annotations: make(map[string]string),
-			},
-			Spec: gwapiv1.HTTPRouteSpec{},
-		}
-
-		// Copy labels from MCPRoute to HTTPRoute.
-		for k, v := range mcpRoute.Labels {
-			httpRoute.Labels[k] = v
-		}
-
-		// Copy non-controller annotations from MCPRoute to HTTPRoute.
-		for k, v := range mcpRoute.Annotations {
-			httpRoute.Annotations[k] = v
-		}
-		if err = ctrlutil.SetControllerReference(mcpRoute, httpRoute, c.client.Scheme()); err != nil {
-			return nil, false, fmt.Errorf("failed to set controller reference for HTTPRoute: %w", err)
+		httpRoute, err = c.newHTTPRoute(mcpRoute, routeName)
+		if err != nil {
+			return nil, false, err
 		}
 	} else if err != nil {
 		return nil, false, fmt.Errorf("failed to get HTTPRoute: %w", err)
@@ -219,14 +201,16 @@ func (c *MCPRouteController) newHTTPRoute(mcpRoute *aigv1a1.MCPRoute, routeName 
 		},
 		Spec: gwapiv1.HTTPRouteSpec{},
 	}
+	// Copy labels from MCPRoute to HTTPRoute.
 	for k, v := range mcpRoute.Labels {
 		httpRoute.Labels[k] = v
 	}
+	// Copy non-controller annotations from MCPRoute to HTTPRoute.
 	for k, v := range mcpRoute.Annotations {
 		httpRoute.Annotations[k] = v
 	}
 	if err := ctrlutil.SetControllerReference(mcpRoute, httpRoute, c.client.Scheme()); err != nil {
-		return nil, fmt.Errorf("failed to set controller reference for per-backend HTTPRoute: %w", err)
+		return nil, fmt.Errorf("failed to set controller reference for HTTPRoute: %w", err)
 	}
 	return httpRoute, nil
 }
