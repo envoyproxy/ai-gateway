@@ -104,7 +104,9 @@ func TestConstants(t *testing.T) {
 	// Test that constants have expected values
 	require.Equal(t, "aigateway.envoy.io", InternalEndpointMetadataNamespace)
 	require.Equal(t, "per_route_rule_backend_name", InternalMetadataBackendNameKey)
+	require.Equal(t, "aigw_route_name", InternalMetadataRouteNameKey)
 	require.Equal(t, "x-gateway-destination-endpoint", EndpointPickerHeaderKey)
+	require.Equal(t, "xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']", XDSRouteMetadataRouteNamePath)
 }
 
 func TestParseRequestHeaderAttributeMapping(t *testing.T) {
