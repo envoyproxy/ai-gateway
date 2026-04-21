@@ -319,6 +319,12 @@ const (
 	// k8sClientIndexMCPRouteToAttachedGateway is the index name that maps from a Gateway to the
 	// MCPRoute that attaches to it.
 	k8sClientIndexMCPRouteToAttachedGateway = "GWAPIGatewayToReferencingMCPRoute"
+
+	// Indexes for MCPRoute
+	//
+	// k8sClientIndexMCPRouteToOwnedHTTPRoute is the index name that maps from an MCPRoute to the
+	// HTTPRoutes it owns, enabling efficient lookup of child HTTPRoutes for orphan cleanup.
+	k8sClientIndexMCPRouteToOwnedHTTPRoute = "MCPRouteToOwnedHTTPRoute"
 )
 
 // ApplyIndexing applies indexing to the given indexer. This is exported for testing purposes.
@@ -366,6 +372,11 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 	if err != nil {
 		return fmt.Errorf("failed to create index from Gateway to MCPRoute: %w", err)
 	}
+	err = indexer(ctx, &gwapiv1.HTTPRoute{},
+		k8sClientIndexMCPRouteToOwnedHTTPRoute, httpRouteToOwnerMCPRouteIndexFunc)
+	if err != nil {
+		return fmt.Errorf("failed to create index from MCPRoute to owned HTTPRoutes: %w", err)
+	}
 	return nil
 }
 
@@ -399,6 +410,14 @@ func mcpRouteToReferencedSecret(o client.Object) []string {
 		ret = append(ret, fmt.Sprintf("%s.%s", apiKeyRef.Name, namespace))
 	}
 	return ret
+}
+
+func httpRouteToOwnerMCPRouteIndexFunc(o client.Object) []string {
+	owner := metav1.GetControllerOf(o)
+	if owner == nil || owner.Kind != "MCPRoute" {
+		return nil
+	}
+	return []string{fmt.Sprintf("%s.%s", owner.Name, o.GetNamespace())}
 }
 
 func gatewayToGatewayConfigIndexFunc(o client.Object) []string {
