@@ -719,8 +719,8 @@ func TestOutputConfigAvailable(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "anthropic.claude-4-5-sonnet-v1 supported",
-			model:    "anthropic.claude-4-5-sonnet-v1",
+			name:     "claude-sonnet-4-6-20250514 supported",
+			model:    "claude-sonnet-4-6-20250514",
 			expected: true,
 		},
 		{
@@ -748,6 +748,57 @@ func TestOutputConfigAvailable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := outputConfigAvailable(tt.model)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestEffortAvailable(t *testing.T) {
+	tests := []struct {
+		name     string
+		model    string
+		expected bool
+	}{
+		{
+			name:     "claude-opus-4-6-20250514 supported",
+			model:    "claude-opus-4-6-20250514",
+			expected: true,
+		},
+		{
+			name:     "claude-sonnet-4-6-20250514 supported",
+			model:    "claude-sonnet-4-6-20250514",
+			expected: true,
+		},
+		{
+			name:     "claude-opus-4-5-20250514 supported",
+			model:    "claude-opus-4-5-20250514",
+			expected: true,
+		},
+		{
+			name:     "claude-sonnet-4-5-20250514 not supported",
+			model:    "claude-sonnet-4-5-20250514",
+			expected: false,
+		},
+		{
+			name:     "claude-haiku-4-5-20250514 not supported",
+			model:    "claude-haiku-4-5-20250514",
+			expected: false,
+		},
+		{
+			name:     "claude-3-sonnet not supported",
+			model:    "claude-3-sonnet",
+			expected: false,
+		},
+		{
+			name:     "empty model not supported",
+			model:    "",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := effortAvailable(tt.model)
 			require.Equal(t, tt.expected, result)
 		})
 	}
@@ -856,7 +907,7 @@ func TestBuildAnthropicParamsWithStructuredOutput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			params, err := buildAnthropicParams(tt.request, "AWSAnthropic")
+			params, err := buildAnthropicParams(tt.request, "AWSAnthropic", "")
 
 			if tt.expectErr {
 				require.Error(t, err)
@@ -875,6 +926,34 @@ func TestBuildAnthropicParamsWithStructuredOutput(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("structured output enabled via modelNameOverride when request model is custom", func(t *testing.T) {
+		request := &openai.ChatCompletionRequest{
+			Model:               "my-custom-model", // User-defined name that doesn't match outputConfigModels.
+			MaxCompletionTokens: ptr.To(int64(1024)),
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfUser: &openai.ChatCompletionUserMessageParam{
+					Role:    "user",
+					Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+				}},
+			},
+			ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
+				OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+					Type: "json_schema",
+					JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
+						Name:   "test_schema",
+						Schema: []byte(`{"type": "object", "properties": {"name": {"type": "string"}}}`),
+					},
+				},
+			},
+		}
+		// The modelNameOverride contains a recognized model identifier.
+		params, err := buildAnthropicParams(request, "AWSAnthropic", "us.anthropic.claude-sonnet-4-5-20250514-v1:0")
+		require.NoError(t, err)
+		require.NotNil(t, params)
+		require.NotNil(t, params.OutputConfig.Format.Schema)
+		require.Equal(t, constant.JSONSchema("json_schema"), params.OutputConfig.Format.Type)
+	})
 }
 
 func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
@@ -886,7 +965,7 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 		{
 			name: "reasoning_effort low on supported model",
 			request: &openai.ChatCompletionRequest{
-				Model:               "claude-sonnet-4-5-20250514",
+				Model:               "claude-opus-4-5-20250514",
 				MaxCompletionTokens: ptr.To(int64(1024)),
 				ReasoningEffort:     openaisdk.ReasoningEffortLow,
 				Messages: []openai.ChatCompletionMessageParamUnion{
@@ -901,7 +980,7 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 		{
 			name: "reasoning_effort medium on supported model",
 			request: &openai.ChatCompletionRequest{
-				Model:               "claude-sonnet-4-5-20250514",
+				Model:               "claude-opus-4-5-20250514",
 				MaxCompletionTokens: ptr.To(int64(1024)),
 				ReasoningEffort:     openaisdk.ReasoningEffortMedium,
 				Messages: []openai.ChatCompletionMessageParamUnion{
@@ -916,7 +995,7 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 		{
 			name: "reasoning_effort high on supported model",
 			request: &openai.ChatCompletionRequest{
-				Model:               "claude-sonnet-4-5-20250514",
+				Model:               "claude-opus-4-5-20250514",
 				MaxCompletionTokens: ptr.To(int64(1024)),
 				ReasoningEffort:     openaisdk.ReasoningEffortHigh,
 				Messages: []openai.ChatCompletionMessageParamUnion{
@@ -931,7 +1010,7 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 		{
 			name: "reasoning_effort xhigh on supported model",
 			request: &openai.ChatCompletionRequest{
-				Model:               "claude-sonnet-4-5-20250514",
+				Model:               "claude-opus-4-5-20250514",
 				MaxCompletionTokens: ptr.To(int64(1024)),
 				ReasoningEffort:     openaisdk.ReasoningEffortXhigh,
 				Messages: []openai.ChatCompletionMessageParamUnion{
@@ -944,7 +1023,7 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 			expectedEffort: anthropic.OutputConfigEffortMax,
 		},
 		{
-			name: "reasoning_effort skipped on unsupported model",
+			name: "reasoning_effort skipped on unsupported model claude-3-sonnet",
 			request: &openai.ChatCompletionRequest{
 				Model:               "claude-3-sonnet",
 				MaxCompletionTokens: ptr.To(int64(1024)),
@@ -959,9 +1038,24 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 			expectedEffort: "",
 		},
 		{
-			name: "no reasoning_effort set",
+			name: "reasoning_effort skipped on unsupported model claude-sonnet-4-5",
 			request: &openai.ChatCompletionRequest{
 				Model:               "claude-sonnet-4-5-20250514",
+				MaxCompletionTokens: ptr.To(int64(1024)),
+				ReasoningEffort:     openaisdk.ReasoningEffortHigh,
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{OfUser: &openai.ChatCompletionUserMessageParam{
+						Role:    "user",
+						Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+					}},
+				},
+			},
+			expectedEffort: "",
+		},
+		{
+			name: "no reasoning_effort set",
+			request: &openai.ChatCompletionRequest{
+				Model:               "claude-opus-4-5-20250514",
 				MaxCompletionTokens: ptr.To(int64(1024)),
 				Messages: []openai.ChatCompletionMessageParamUnion{
 					{OfUser: &openai.ChatCompletionUserMessageParam{
@@ -976,7 +1070,7 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			params, err := buildAnthropicParams(tt.request, "AWSAnthropic")
+			params, err := buildAnthropicParams(tt.request, "AWSAnthropic", "")
 			require.NoError(t, err)
 			require.NotNil(t, params)
 			require.Equal(t, tt.expectedEffort, params.OutputConfig.Effort)
@@ -985,7 +1079,7 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 
 	t.Run("unsupported reasoning_effort returns error", func(t *testing.T) {
 		request := &openai.ChatCompletionRequest{
-			Model:               "claude-sonnet-4-5-20250514",
+			Model:               "claude-opus-4-5-20250514",
 			MaxCompletionTokens: ptr.To(int64(1024)),
 			ReasoningEffort:     "invalid",
 			Messages: []openai.ChatCompletionMessageParamUnion{
@@ -995,9 +1089,47 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 				}},
 			},
 		}
-		_, err := buildAnthropicParams(request, "AWSAnthropic")
+		_, err := buildAnthropicParams(request, "AWSAnthropic", "")
 		require.Error(t, err)
 		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
 		require.Contains(t, err.Error(), "unsupported reasoning effort level")
+	})
+
+	t.Run("reasoning_effort enabled via modelNameOverride when request model is custom", func(t *testing.T) {
+		request := &openai.ChatCompletionRequest{
+			Model:               "my-custom-model", // User-defined name that doesn't match effort models.
+			MaxCompletionTokens: ptr.To(int64(1024)),
+			ReasoningEffort:     openaisdk.ReasoningEffortHigh,
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfUser: &openai.ChatCompletionUserMessageParam{
+					Role:    "user",
+					Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+				}},
+			},
+		}
+		// The modelNameOverride contains a recognized model identifier.
+		params, err := buildAnthropicParams(request, "AWSAnthropic", "us.anthropic.claude-opus-4-5-20250514-v1:0")
+		require.NoError(t, err)
+		require.NotNil(t, params)
+		require.Equal(t, anthropic.OutputConfigEffortHigh, params.OutputConfig.Effort)
+	})
+
+	t.Run("reasoning_effort skipped when modelNameOverride is unsupported model", func(t *testing.T) {
+		request := &openai.ChatCompletionRequest{
+			Model:               "claude-opus-4-5-20250514", // Request model matches, but override doesn't.
+			MaxCompletionTokens: ptr.To(int64(1024)),
+			ReasoningEffort:     openaisdk.ReasoningEffortHigh,
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfUser: &openai.ChatCompletionUserMessageParam{
+					Role:    "user",
+					Content: openai.StringOrUserRoleContentUnion{Value: "test"},
+				}},
+			},
+		}
+		// The modelNameOverride points to an unsupported model.
+		params, err := buildAnthropicParams(request, "AWSAnthropic", "us.anthropic.claude-3-sonnet-20240229-v1:0")
+		require.NoError(t, err)
+		require.NotNil(t, params)
+		require.Equal(t, anthropic.OutputConfigEffort(""), params.OutputConfig.Effort)
 	})
 }

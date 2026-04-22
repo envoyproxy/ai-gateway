@@ -593,6 +593,7 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [MCPAuthorizationTarget](#mcpauthorizationtarget)
 - [MCPBackendAPIKey](#mcpbackendapikey)
 - [MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)
+- [MCPHeaderForward](#mcpheaderforward)
 - [MCPRouteAuthorization](#mcprouteauthorization)
 - [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
 - [MCPRouteBackendRef](#mcproutebackendref)
@@ -1839,6 +1840,32 @@ MCPBackendSecurityPolicy defines the security policy for a sp
 />
 
 
+#### MCPHeaderForward
+
+
+
+**Appears in:**
+- [MCPRouteBackendRef](#mcproutebackendref)
+
+MCPHeaderForward specifies a header to extract from the incoming request and forward to a backend.
+
+##### Fields
+
+
+
+<ApiField
+  name="name"
+  type="string"
+  required="true"
+  description="Name is the header name to extract from the incoming client request."
+/><ApiField
+  name="backendHeader"
+  type="string"
+  required="false"
+  description="BackendHeader is the header name to use when forwarding to the backend.<br />If not specified, the original header name is used."
+/>
+
+
 #### MCPRouteAuthorization
 
 
@@ -1959,6 +1986,11 @@ MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP serve
   type="[MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)"
   required="false"
   description="SecurityPolicy is the security policy to apply to this MCP server."
+/><ApiField
+  name="forwardHeaders"
+  type="[MCPHeaderForward](#mcpheaderforward) array"
+  required="false"
+  description="ForwardHeaders specifies HTTP headers to extract from the incoming client request<br />and forward to this backend MCP server.<br />This enables per-user authentication passthrough (e.g., personal access tokens)<br />without requiring OAuth configuration.<br />Each entry specifies a header name to extract and an optional rename for the backend."
 />
 
 
@@ -3436,6 +3468,10 @@ neither are set.
 - [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
 
 BackendSecurityPolicyGCPCredentials contains the supported authentication mechanisms to access GCP.
+
+When neither CredentialsFile nor WorkloadIdentityFederationConfig is specified, Application Default
+Credentials (ADC) will be used. This supports GKE Workload Identity, environment variables, and
+default service account credentials when running on GCP.
 
 ##### Fields
 
