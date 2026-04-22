@@ -584,6 +584,73 @@ spec:
                     - message: Either image or imageRepository can be set.
                       rule: '!has(self.image) || !has(self.imageRepository)'
                 type: object
+              globalLLMRequestCosts:
+                description: |-
+                  GlobalLLMRequestCosts defines default LLM request costs that apply to all
+                  routes referencing this GatewayConfig. These costs can be overridden on a
+                  per-route basis via AIGatewayRoute.Spec.LLMRequestCosts.
+
+                  When a request matches a route, the cost calculation proceeds as follows:
+                   1. If the route defines LLMRequestCosts with a matching metadataKey, use that.
+                   2. Otherwise, fall back to the global cost with that metadataKey (if defined here).
+                   3. If neither exists, the cost is not calculated for that metadataKey.
+
+                  This allows you to define common cost formulas once at the gateway level
+                  (e.g., billing_charges = input_tokens + output_tokens) and only override
+                  them in specific routes when needed (e.g., premium routes with different pricing).
+                items:
+                  description: LLMRequestCost configures each request cost.
+                  properties:
+                    cel:
+                      description: "CEL is the CEL expression to calculate the cost
+                        of the request.\nThe CEL expression must return a signed or
+                        unsigned integer. If the\nreturn value is negative, it will
+                        be error.\n\nThe expression can use the following variables:\n\n\t*
+                        model: the model name extracted from the request content.
+                        Type: string.\n\t* backend: the backend name in the form of
+                        \"name.namespace\". Type: string.\n\t* input_tokens: the number
+                        of input tokens. Type: unsigned integer.\n\t* cached_input_tokens:
+                        the number of cached read input tokens. Type: unsigned integer.\n\t*
+                        cache_creation_input_tokens: the number of cache creation
+                        input tokens. Type: unsigned integer.\n\t* output_tokens:
+                        the number of output tokens. Type: unsigned integer.\n\t*
+                        total_tokens: the total number of tokens. Type: unsigned integer.\n\t*
+                        reasoning_tokens: the number of reasoning tokens. Type: unsigned
+                        integer.\n\nFor example, the following expressions are valid:\n\n\t*
+                        \"model == 'llama' ?  input_tokens + output_token * 0.5 :
+                        total_tokens\"\n\t* \"backend == 'foo.default' ?  input_tokens
+                        + output_tokens : total_tokens\"\n\t* \"backend == 'bar.default'
+                        ?  (input_tokens - cached_input_tokens) + cached_input_tokens
+                        * 0.1 + cache_creation_input_tokens * 1.25 + output_tokens
+                        : total_tokens\"\n\t* \"input_tokens + output_tokens + total_tokens\"\n\t*
+                        \"input_tokens * output_tokens\""
+                      type: string
+                    metadataKey:
+                      description: MetadataKey is the key of the metadata to store
+                        this cost of the request.
+                      type: string
+                    type:
+                      description: |-
+                        Type specifies the type of the request cost. The default is "OutputToken",
+                        and it uses "output token" as the cost. The other types are "InputToken", "TotalToken",
+                        "CachedInputToken", "CacheCreationInputToken", "ReasoningToken", and "CEL".
+                      enum:
+                      - OutputToken
+                      - InputToken
+                      - CachedInputToken
+                      - CacheCreationInputToken
+                      - TotalToken
+                      - ReasoningToken
+                      - CEL
+                      type: string
+                  required:
+                  - metadataKey
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - metadataKey
+                x-kubernetes-list-type: map
             type: object
           status:
             description: Status defines the status of the GatewayConfig.
@@ -1215,6 +1282,73 @@ spec:
                     - message: Either image or imageRepository can be set.
                       rule: '!has(self.image) || !has(self.imageRepository)'
                 type: object
+              globalLLMRequestCosts:
+                description: |-
+                  GlobalLLMRequestCosts defines default LLM request costs that apply to all
+                  routes referencing this GatewayConfig. These costs can be overridden on a
+                  per-route basis via AIGatewayRoute.Spec.LLMRequestCosts.
+
+                  When a request matches a route, the cost calculation proceeds as follows:
+                   1. If the route defines LLMRequestCosts with a matching metadataKey, use that.
+                   2. Otherwise, fall back to the global cost with that metadataKey (if defined here).
+                   3. If neither exists, the cost is not calculated for that metadataKey.
+
+                  This allows you to define common cost formulas once at the gateway level
+                  (e.g., billing_charges = input_tokens + output_tokens) and only override
+                  them in specific routes when needed (e.g., premium routes with different pricing).
+                items:
+                  description: LLMRequestCost configures each request cost.
+                  properties:
+                    cel:
+                      description: "CEL is the CEL expression to calculate the cost
+                        of the request.\nThe CEL expression must return a signed or
+                        unsigned integer. If the\nreturn value is negative, it will
+                        be error.\n\nThe expression can use the following variables:\n\n\t*
+                        model: the model name extracted from the request content.
+                        Type: string.\n\t* backend: the backend name in the form of
+                        \"name.namespace\". Type: string.\n\t* input_tokens: the number
+                        of input tokens. Type: unsigned integer.\n\t* cached_input_tokens:
+                        the number of cached read input tokens. Type: unsigned integer.\n\t*
+                        cache_creation_input_tokens: the number of cache creation
+                        input tokens. Type: unsigned integer.\n\t* output_tokens:
+                        the number of output tokens. Type: unsigned integer.\n\t*
+                        total_tokens: the total number of tokens. Type: unsigned integer.\n\t*
+                        reasoning_tokens: the number of reasoning tokens. Type: unsigned
+                        integer.\n\nFor example, the following expressions are valid:\n\n\t*
+                        \"model == 'llama' ?  input_tokens + output_token * 0.5 :
+                        total_tokens\"\n\t* \"backend == 'foo.default' ?  input_tokens
+                        + output_tokens : total_tokens\"\n\t* \"backend == 'bar.default'
+                        ?  (input_tokens - cached_input_tokens) + cached_input_tokens
+                        * 0.1 + cache_creation_input_tokens * 1.25 + output_tokens
+                        : total_tokens\"\n\t* \"input_tokens + output_tokens + total_tokens\"\n\t*
+                        \"input_tokens * output_tokens\""
+                      type: string
+                    metadataKey:
+                      description: MetadataKey is the key of the metadata to store
+                        this cost of the request.
+                      type: string
+                    type:
+                      description: |-
+                        Type specifies the type of the request cost. The default is "OutputToken",
+                        and it uses "output token" as the cost. The other types are "InputToken", "TotalToken",
+                        "CachedInputToken", "CacheCreationInputToken", "ReasoningToken", and "CEL".
+                      enum:
+                      - OutputToken
+                      - InputToken
+                      - CachedInputToken
+                      - CacheCreationInputToken
+                      - TotalToken
+                      - ReasoningToken
+                      - CEL
+                      type: string
+                  required:
+                  - metadataKey
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - metadataKey
+                x-kubernetes-list-type: map
             type: object
           status:
             description: Status defines the status of the GatewayConfig.
