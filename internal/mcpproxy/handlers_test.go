@@ -1942,7 +1942,7 @@ func TestMCPServer_handleNotificationsRootsListChanged(t *testing.T) {
 	err = proxy.handleNotificationsRootsListChanged(t.Context(), &session{
 		reqCtx:             proxy,
 		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"test-backend": {sessionID: ""}},
-	}, rr, req, nil)
+	}, rr, req, nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusAccepted, rr.Code)
 }

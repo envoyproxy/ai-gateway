@@ -9,8 +9,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
-	"os"
 	"sync"
 	"time"
 
@@ -26,6 +24,7 @@ import (
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/gcpauth"
 )
 
 const (
@@ -99,12 +98,7 @@ var (
 
 func initSharedGCPTransport() error {
 	sharedGCPTransportOnce.Do(func() {
-		gcpProxyURL, err := getGCPProxyURL()
-		if err != nil {
-			sharedGCPTransportErr = err
-			return
-		}
-		sharedGCPTransport = &http.Transport{Proxy: http.ProxyURL(gcpProxyURL)}
+		sharedGCPTransport, sharedGCPTransportErr = gcpauth.NewTransport()
 	})
 	return sharedGCPTransportErr
 }
@@ -403,17 +397,4 @@ func populateInSecret(secret *corev1.Secret, gcpAuth filterapi.GCPAuth, expiryTi
 		GCPProjectNameKey: []byte(gcpAuth.ProjectName),
 		GCPRegionKey:      []byte(gcpAuth.Region),
 	}
-}
-
-func getGCPProxyURL() (*url.URL, error) {
-	proxyURL := os.Getenv("AI_GATEWAY_GCP_AUTH_PROXY_URL")
-	if proxyURL == "" {
-		return nil, nil
-	}
-
-	parsedURL, err := url.Parse(proxyURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid proxy URL: %w", err)
-	}
-	return parsedURL, nil
 }

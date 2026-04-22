@@ -377,6 +377,7 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	if err != nil {
 		return err
 	}
+	routeName := resolveRouteName(attributes)
 
 	backend, ok := s.config.Backends[backendName]
 	if !ok {
@@ -391,7 +392,7 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 			internalReqID, backendName)
 	}
 
-	if err := p.SetBackend(ctx, backend.Backend, backend.Handler, routerProcessor); err != nil {
+	if err := p.SetBackend(ctx, backend, routeName, routerProcessor); err != nil {
 		return status.Errorf(codes.Internal, "cannot set backend: %v", err)
 	}
 	return nil
@@ -418,6 +419,16 @@ func resolveBackendName(isEndpointPicker bool, attributes *structpb.Struct) (str
 	}
 
 	return "", status.Errorf(codes.Internal, "missing backend name in attributes at path: %s", backendNamePath)
+}
+
+func resolveRouteName(attributes *structpb.Struct) string {
+	if routeName, ok := attributes.Fields[internalapi.XDSRouteMetadataRouteNamePath]; ok {
+		return routeName.GetStringValue()
+	}
+	// Route metadata is not always available (e.g. legacy dataplane configs).
+	// Keep request processing working and let CEL expressions decide behavior
+	// when route_name is empty.
+	return ""
 }
 
 // Check implements [grpc_health_v1.HealthServer].
