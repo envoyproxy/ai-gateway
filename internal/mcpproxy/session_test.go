@@ -478,7 +478,7 @@ func TestSendRequestPerBackend_PerBackendHeaders(t *testing.T) {
 		defer cancel()
 		err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 			sessionID: "sess1",
-		}, http.MethodGet, nil)
+		}, http.MethodGet, nil, nil)
 		require.NoError(t, err)
 
 		select {
@@ -504,7 +504,7 @@ func TestSendRequestPerBackend_PerBackendHeaders(t *testing.T) {
 		defer cancel()
 		err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend2"}, &compositeSessionEntry{
 			sessionID: "sess2",
-		}, http.MethodGet, nil)
+		}, http.MethodGet, nil, nil)
 		require.NoError(t, err)
 
 		select {
@@ -528,7 +528,7 @@ func TestSendRequestPerBackend_PerBackendHeaders(t *testing.T) {
 		defer cancel()
 		err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 			sessionID: "sess1",
-		}, http.MethodGet, nil)
+		}, http.MethodGet, nil, nil)
 		require.NoError(t, err)
 
 		select {
