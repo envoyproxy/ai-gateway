@@ -695,6 +695,19 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken},
 		}, nil
 	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
+		gcpCreds := backendSecurityPolicy.Spec.GCPCredentials
+
+		// If no credentials file or WIF is configured, use ADC (handled by extproc)
+		if gcpCreds.CredentialsFile == nil && gcpCreds.WorkloadIdentityFederationConfig == nil {
+			return &filterapi.BackendAuth{
+				GCPAuth: &filterapi.GCPAuth{
+					Region:      gcpCreds.Region,
+					ProjectName: gcpCreds.ProjectName,
+				},
+			}, nil
+		}
+
+		// Otherwise, fetch token from rotated secret
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		gcpAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
 		if err != nil {
@@ -703,8 +716,8 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		return &filterapi.BackendAuth{
 			GCPAuth: &filterapi.GCPAuth{
 				AccessToken: gcpAccessToken,
-				Region:      backendSecurityPolicy.Spec.GCPCredentials.Region,
-				ProjectName: backendSecurityPolicy.Spec.GCPCredentials.ProjectName,
+				Region:      gcpCreds.Region,
+				ProjectName: gcpCreds.ProjectName,
 			},
 		}, nil
 	default:

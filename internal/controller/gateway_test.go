@@ -708,6 +708,16 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			},
 		},
 		{
+			ObjectMeta: metav1.ObjectMeta{Name: "gcp-adc", Namespace: namespace},
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+				GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{
+					ProjectName: "test-project",
+					Region:      "us-central1",
+				},
+			},
+		},
+		{
 			ObjectMeta: metav1.ObjectMeta{Name: "bsp-anthropic-apikey", Namespace: namespace},
 			Spec: aigv1b1.BackendSecurityPolicySpec{
 				Type: aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey,
@@ -790,6 +800,15 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			bspName: "gcp-wif",
 			exp: &filterapi.BackendAuth{
 				GCPAuth: &filterapi.GCPAuth{AccessToken: "thisisgcpcredentials"},
+			},
+		},
+		{
+			bspName: "gcp-adc",
+			exp: &filterapi.BackendAuth{
+				GCPAuth: &filterapi.GCPAuth{
+					Region:      "us-central1",
+					ProjectName: "test-project",
+				},
 			},
 		},
 		{
