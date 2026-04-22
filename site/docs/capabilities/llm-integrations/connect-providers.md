@@ -170,9 +170,27 @@ The secret must contain the Azure client secret with the key name `"client-secre
 
 ##### GCP Credentials
 
-Used for connecting to GCP Vertex AI and Anthropic on GCP
+Used for connecting to GCP Vertex AI and Anthropic on GCP. Supports three authentication methods:
 
-1. Service Account Key Files:
+1. Application Default Credentials (Recommended for GKE):
+   When running on GKE with Workload Identity configured, you can use Application Default Credentials (ADC) without managing service account keys. Simply specify the project and region:
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: gcp-auth-adc
+  namespace: default
+spec:
+  type: GCPCredentials
+  gcpCredentials:
+    projectName: "your-gcp-project"
+    region: "us-central1"
+```
+
+ADC automatically supports GKE Workload Identity, the `GOOGLE_APPLICATION_CREDENTIALS` environment variable, and default service account credentials when running on GCP.
+
+2. Service Account Key Files:
    A service account key file is a JSON file containing a private key that authenticates as a service account.
    You create a service account in GCP, generate a key file, download it, and then store it in the k8s secret referenced by BackendSecurityPolicy.
    Envoy AI Gateway uses this key file to generate an access token and authenticate with GCP Vertex AI.
@@ -193,7 +211,7 @@ spec:
         name: envoy-ai-gateway-basic-gcp-service-account-key-file
 ```
 
-2. Workload Identity Federation:
+3. Workload Identity Federation:
    Workload Identity Federation is a modern, keyless authentication method that allows workloads running outside of GCP to impersonate a service account using their own native identity.
    It leverages a trust relationship between GCP and an external identity provider such as OIDC.
 
