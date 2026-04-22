@@ -41,6 +41,10 @@ AI Gateway has specific behavior for token tracking and rate limiting:
    - Separate limits for input and output tokens
    - Custom limits using CEL expressions
 
+5. **Per Route Custom Token Calculation**: The `llmRequestCosts` defined in your `AIGatewayRoute` spec are scoped exclusively to that specific route. This means multiple `AIGatewayRoute` resources can define the exact same metadata keys, but the gateway will independently apply the correct calculations based on the route's name and namespace.
+
+To map the request to the correct calculation, the AI Gateway parses the route from the Envoy Gateway Metadata. If that metadata is not present, it falls back to parsing the route name from the route configuration, assuming Envoy Gateway has generated the name in the following format: `httproute/<namespace>/<name>/rule/<index>`.
+
 :::note
 For model providers with OpenAI schema transformations (like AWS Bedrock), AI Gateway automatically captures token usage through its request/response transformer. This enables consistent token tracking and rate limiting across different AI services using a unified OpenAI-compatible format.
 :::
@@ -83,6 +87,8 @@ spec:
       type: CEL
       cel: "(input_tokens - cached_input_tokens) + (cached_input_tokens * 0.1) + output_tokens * 1.5" # Example: Weight cached tokens less and weight output tokens more heavily
 ```
+
+LLMRequestCosts can be defined on a per-route level.
 
 ### 2. Configure Rate Limits
 

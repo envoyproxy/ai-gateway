@@ -576,27 +576,62 @@ func getThinkingConfigParamUnion(tu *openai.ThinkingUnion) *anthropic.ThinkingCo
 
 	result := &anthropic.ThinkingConfigParamUnion{}
 
-	if tu.OfEnabled != nil {
+	switch {
+	case tu.OfEnabled != nil:
 		result.OfEnabled = &anthropic.ThinkingConfigEnabledParam{
 			BudgetTokens: tu.OfEnabled.BudgetTokens,
 			Type:         constant.Enabled(tu.OfEnabled.Type),
 		}
-	} else if tu.OfDisabled != nil {
+	case tu.OfDisabled != nil:
 		result.OfDisabled = &anthropic.ThinkingConfigDisabledParam{
 			Type: constant.Disabled(tu.OfDisabled.Type),
+		}
+	case tu.OfAdaptive != nil:
+		result.OfAdaptive = &anthropic.ThinkingConfigAdaptiveParam{
+			Type: constant.Adaptive(tu.OfAdaptive.Type),
 		}
 	}
 
 	return result
 }
 
-// outputConfigAvailable checks if the model supports structured outputs (OutputConfig).
-// Structured outputs are available on Claude Opus 4.6, Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
-// See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
-func outputConfigAvailable(model internalapi.RequestModel) bool {
+// modelContainsAny checks if the model string contains any of the given identifiers (case-insensitive).
+func modelContainsAny(model internalapi.RequestModel, identifiers []string) bool {
 	modelLower := strings.ToLower(model)
-	return strings.Contains(modelLower, "4-5") ||
-		strings.Contains(modelLower, "4-6")
+	for _, id := range identifiers {
+		if strings.Contains(modelLower, id) {
+			return true
+		}
+	}
+	return false
+}
+
+// outputConfigModels lists model identifiers that support structured outputs (OutputConfig).
+// Structured outputs are available on Claude Opus 4.6, Claude Sonnet 4.6, Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
+// See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+var outputConfigModels = []string{
+	"opus-4-5",   // Claude Opus 4.5
+	"sonnet-4-5", // Claude Sonnet 4.5
+	"haiku-4-5",  // Claude Haiku 4.5
+	"opus-4-6",   // Claude Opus 4.6
+	"sonnet-4-6", // Claude Sonnet 4.6
+}
+
+func outputConfigAvailable(model internalapi.RequestModel) bool {
+	return modelContainsAny(model, outputConfigModels)
+}
+
+// effortModels lists model identifiers that support the output_config.effort parameter.
+// The effort parameter is supported by Claude Opus 4.6, Claude Sonnet 4.6, and Claude Opus 4.5.
+// See: https://platform.claude.com/docs/en/build-with-claude/effort
+var effortModels = []string{
+	"opus-4-5",   // Claude Opus 4.5
+	"opus-4-6",   // Claude Opus 4.6
+	"sonnet-4-6", // Claude Sonnet 4.6
+}
+
+func effortAvailable(model internalapi.RequestModel) bool {
+	return modelContainsAny(model, effortModels)
 }
 
 // mapReasoningEffortToOutputConfigEffort converts OpenAI reasoning effort levels to Anthropic output config effort levels.
@@ -623,7 +658,7 @@ func mapReasoningEffortToOutputConfigEffort(reasonEffort openaisdk.ReasoningEffo
 // buildAnthropicParams is a helper function that translates an OpenAI request
 // into the parameter struct required by the Anthropic SDK.
 // The apiSchema parameter indicates the backend API schema (e.g., "AWSAnthropic", "GCPAnthropic").
-func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string) (params *anthropic.MessageNewParams, err error) {
+func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string, modelNameOverride internalapi.ModelNameOverride) (params *anthropic.MessageNewParams, err error) {
 	// 1. Handle simple parameters.
 	// max_tokens is required by the Anthropic API but optional in the OpenAI API.
 	// If not set, pass 0 and let the Anthropic API reject the request.
@@ -656,9 +691,15 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 
 	// 5. Handle structured outputs (ResponseFormat -> OutputConfig).
 	// See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
-	// Currently, GCP Vertex AI does not support output_config.
+	// Currently, GCP Vertex AI does not support structured output.
+	// Use modelNameOverride for feature checks when available, as it is more
+	// reliable than the user-provided model name which may be arbitrarily set.
+	featureCheckModel := openAIReq.Model
+	if modelNameOverride != "" {
+		featureCheckModel = modelNameOverride
+	}
 	isGCPBackend := strings.HasPrefix(apiSchema, "GCP")
-	if !isGCPBackend && openAIReq.ResponseFormat != nil && openAIReq.ResponseFormat.OfJSONSchema != nil && outputConfigAvailable(openAIReq.Model) {
+	if !isGCPBackend && openAIReq.ResponseFormat != nil && openAIReq.ResponseFormat.OfJSONSchema != nil && outputConfigAvailable(featureCheckModel) {
 		// Convert OpenAI JSON schema to Anthropic OutputConfig format
 		var schemaMap map[string]any
 		if err = json.Unmarshal(openAIReq.ResponseFormat.OfJSONSchema.JSONSchema.Schema, &schemaMap); err != nil {
@@ -673,7 +714,7 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 	}
 
 	// Map OpenAI reasoning_effort to Anthropic output_config.effort.
-	if openAIReq.ReasoningEffort != "" && outputConfigAvailable(openAIReq.Model) {
+	if openAIReq.ReasoningEffort != "" && effortAvailable(featureCheckModel) {
 		effort, effortErr := mapReasoningEffortToOutputConfigEffort(openAIReq.ReasoningEffort)
 		if effortErr != nil {
 			return nil, effortErr
