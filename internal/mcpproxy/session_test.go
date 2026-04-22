@@ -440,7 +440,7 @@ func TestSendRequestPerBackend_SetsOriginalPathHeaders(t *testing.T) {
 	defer cancel()
 	err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
-	}, http.MethodGet, nil)
+	}, http.MethodGet, nil, nil)
 	require.NoError(t, err)
 
 	select {
@@ -469,7 +469,7 @@ func TestSendRequestPerBackend_AcceptEncoding(t *testing.T) {
 	defer cancel()
 	err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
-	}, http.MethodGet, nil)
+	}, http.MethodGet, nil, nil)
 	require.NoError(t, err)
 
 	select {
@@ -511,7 +511,7 @@ func TestSendRequestPerBackend_GzipDecompression(t *testing.T) {
 	defer cancel()
 	err = s.sendRequestPerBackend(ctx, ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
-	}, http.MethodGet, nil)
+	}, http.MethodGet, nil, nil)
 	require.NoError(t, err)
 	close(ch)
 	var events []*backendEvent
@@ -554,7 +554,7 @@ func TestSendRequestPerBackend_BrotliDecompression(t *testing.T) {
 	defer cancel()
 	err = s.sendRequestPerBackend(ctx, ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
-	}, http.MethodGet, nil)
+	}, http.MethodGet, nil, nil)
 	require.NoError(t, err)
 	close(ch)
 	var events []*backendEvent
@@ -590,7 +590,7 @@ func TestSendRequestPerBackend_BOMPrefixedJSON(t *testing.T) {
 	defer cancel()
 	err := s.sendRequestPerBackend(ctx, ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
-	}, http.MethodGet, nil)
+	}, http.MethodGet, nil, nil)
 	require.NoError(t, err)
 	close(ch)
 	var events []*backendEvent
@@ -640,7 +640,7 @@ func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
 	defer cancel()
 	err := s.sendRequestPerBackend(ctx, ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
-	}, http.MethodGet, nil)
+	}, http.MethodGet, nil, nil)
 	require.NoError(t, err)
 	close(ch)
 	count := 0
@@ -846,7 +846,7 @@ func TestSendRequestPerBackend_ErrorStatus(t *testing.T) {
 	cse := &compositeSessionEntry{
 		sessionID: "sess1",
 	}
-	err2 := s.sendRequestPerBackend(t.Context(), ch, "route1", filterapi.MCPBackend{Name: "backend1"}, cse, http.MethodGet, nil)
+	err2 := s.sendRequestPerBackend(t.Context(), ch, "route1", filterapi.MCPBackend{Name: "backend1"}, cse, http.MethodGet, nil, nil)
 	require.Error(t, err2)
 	require.Contains(t, err2.Error(), "failed with status code")
 }
@@ -864,7 +864,7 @@ func TestSendRequestPerBackend_EOF(t *testing.T) {
 	ch := make(chan *backendEvent, 1)
 	err2 := s.sendRequestPerBackend(t.Context(), ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
-	}, http.MethodGet, nil)
+	}, http.MethodGet, nil, nil)
 	require.True(t, err2 == nil || errors.Is(err2, io.EOF), "unexpected error: %v", err2)
 }
 
