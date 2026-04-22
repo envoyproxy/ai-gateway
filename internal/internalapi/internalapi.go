@@ -55,6 +55,8 @@ const (
 	MCPMetadataHeaderRequestID = MCPMetadataHeaderPrefix + "request-id"
 	// MCPMetadataHeaderMethod is the special header key used to pass the MCP method in the filter metadata.
 	MCPMetadataHeaderMethod = MCPMetadataHeaderPrefix + "method"
+	// MCPMetadataHeaderToolName is the special header key used to pass the MCP tool name in the filter metadata.
+	MCPMetadataHeaderToolName = MCPMetadataHeaderPrefix + "tool-name"
 )
 
 // MCPInternalHeadersToMetadata maps special MCP headers to metadata keys.
@@ -62,6 +64,7 @@ var MCPInternalHeadersToMetadata = map[string]string{
 	MCPBackendHeader:           "mcp_backend",
 	MCPMetadataHeaderMethod:    "mcp_method",
 	MCPMetadataHeaderRequestID: "mcp_request_id",
+	MCPMetadataHeaderToolName:  "mcp_tool_name",
 }
 
 const (
