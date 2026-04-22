@@ -52,12 +52,12 @@ const (
 //
 // For InferencePool support, this method creates additional STRICT_DNS clusters that
 // connect to the endpoint picker services specified in InferencePool resources.
-func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
+func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
 	var extProcUDSExist bool
 
 	// Process existing clusters - may add metadata or modify configurations.
 	for _, cluster := range req.Clusters {
-		if err := s.maybeModifyCluster(cluster); err != nil {
+		if err := s.maybeModifyCluster(ctx, cluster); err != nil {
 			return nil, fmt.Errorf("failed to modify cluster %s: %w", cluster.Name, err)
 		}
 		extProcUDSExist = extProcUDSExist || cluster.Name == extProcUDSClusterName
@@ -161,7 +161,7 @@ func (s *Server) PostTranslateModify(_ context.Context, req *egextension.PostTra
 //
 // The resulting configuration is similar to the envoy.yaml files in tests/data-plane/.
 // Only clusters with names matching the AIGatewayRoute pattern are modified.
-func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
+func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Cluster) error {
 	// Parse cluster name to extract AIGatewayRoute information.
 	// Expected format: "httproute/<namespace>/<name>/rule/<index_of_rule>".
 	parts := strings.Split(cluster.Name, "/")
@@ -184,7 +184,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 	pool := getInferencePoolByMetadata(cluster.Metadata)
 	// Get the HTTPRoute object from the cluster name.
 	var aigwRoute aigv1b1.AIGatewayRoute
-	err = s.k8sClient.Get(context.Background(), client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &aigwRoute)
+	err = s.k8sClient.Get(ctx, client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &aigwRoute)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			s.log.Info("Skipping non-AIGatewayRoute HTTPRoute cluster modification",
@@ -295,6 +295,7 @@ func (s *Server) maybeModifyCluster(cluster *clusterv3.Cluster) error {
 	extProcConfig.RequestAttributes = []string{
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
 		internalapi.XDSClusterMetadataBackendNamePath,
+		internalapi.XDSRouteMetadataRouteNamePath,
 	}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
 		RequestHeaderMode: extprocv3.ProcessingMode_SEND,
@@ -596,6 +597,15 @@ func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.R
 				}
 				// Enable the extproc filter for this route.
 				route.TypedPerFilterConfig[aiGatewayExtProcName] = fcAny
+
+				routeName := routeNameFromEnvoyGatewayMetadata(route)
+				if routeName == "" {
+					routeName = routeNameFromRouteConfigName(routeConfig.Name)
+				}
+				if routeName == "" {
+					routeName = route.Name
+				}
+				ensureRouteInternalMetadata(route).Fields[internalapi.InternalMetadataRouteNameKey] = structpb.NewStringValue(routeName)
 			}
 		}
 	}
@@ -737,6 +747,68 @@ func (s *Server) isRouteGeneratedByAIGateway(route *routev3.Route) bool {
 	return false
 }
 
+func routeNameFromRouteConfigName(routeConfigName string) string {
+	// Envoy Gateway generated route config names follow:
+	// httproute/<namespace>/<route_name>/rule/<index>.
+	// We rely on this format for the fallback route name extraction when
+	// resource metadata does not carry the route name explicitly.
+	parts := strings.Split(routeConfigName, "/")
+	if len(parts) >= 3 && parts[0] == "httproute" {
+		return fmt.Sprintf("%s/%s", parts[1], parts[2])
+	}
+	return ""
+}
+
+func routeNameFromEnvoyGatewayMetadata(route *routev3.Route) string {
+	if route.Metadata == nil || route.Metadata.FilterMetadata == nil {
+		return ""
+	}
+	eg, ok := route.Metadata.FilterMetadata["envoy-gateway"]
+	if !ok || eg == nil || eg.Fields == nil {
+		return ""
+	}
+	resources, ok := eg.Fields["resources"]
+	if !ok || resources.GetListValue() == nil {
+		return ""
+	}
+	for _, resource := range resources.GetListValue().Values {
+		resourceStruct := resource.GetStructValue()
+		if resourceStruct == nil || resourceStruct.Fields == nil {
+			continue
+		}
+		namespace, ok := resourceStruct.Fields["namespace"]
+		if ok && namespace.GetStringValue() != "" {
+			name, nameOK := resourceStruct.Fields["name"]
+			if nameOK && name.GetStringValue() != "" {
+				return fmt.Sprintf("%s/%s", namespace.GetStringValue(), name.GetStringValue())
+			}
+		}
+		name, ok := resourceStruct.Fields["name"]
+		if ok && name.GetStringValue() != "" {
+			return name.GetStringValue()
+		}
+	}
+	return ""
+}
+
+func ensureRouteInternalMetadata(route *routev3.Route) *structpb.Struct {
+	if route.Metadata == nil {
+		route.Metadata = &corev3.Metadata{}
+	}
+	if route.Metadata.FilterMetadata == nil {
+		route.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
+	}
+	m, ok := route.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+	if !ok || m == nil {
+		m = &structpb.Struct{}
+		route.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
+	}
+	if m.Fields == nil {
+		m.Fields = make(map[string]*structpb.Value)
+	}
+	return m
+}
+
 // setClusterMetadataBackendName sets the backend name on cluster-level metadata.
 // This is used when endpoint-level metadata is unavailable (e.g. LoadAssignment is nil)
 // or for InferencePool backends where cluster-level metadata is preferred.
@@ -797,6 +869,7 @@ outer:
 var afterExtProcFilterPrefixes = []string{
 	egv1a1.EnvoyFilterExtProc.String(),
 	egv1a1.EnvoyFilterWasm.String(),
+	egv1a1.EnvoyFilterLua.String(),
 	egv1a1.EnvoyFilterRBAC.String(),
 	egv1a1.EnvoyFilterLocalRateLimit.String(),
 	egv1a1.EnvoyFilterRateLimit.String(),

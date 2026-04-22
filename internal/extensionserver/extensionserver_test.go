@@ -155,7 +155,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 			var buf bytes.Buffer
 			s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
 			require.NoError(t, err)
-			err = s.maybeModifyCluster(tc.c)
+			err = s.maybeModifyCluster(t.Context(), tc.c)
 			require.NoError(t, err)
 			t.Logf("buf: %s", buf.String())
 			require.Contains(t, buf.String(), tc.errLog)
@@ -208,6 +208,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 										RequestAttributes: []string{
 											internalapi.XDSUpstreamHostMetadataBackendNamePath,
 											internalapi.XDSClusterMetadataBackendNamePath,
+											internalapi.XDSRouteMetadataRouteNamePath,
 										},
 										ProcessingMode: &extprocv3.ProcessingMode{
 											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
@@ -341,6 +342,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 										RequestAttributes: []string{
 											internalapi.XDSUpstreamHostMetadataBackendNamePath,
 											internalapi.XDSClusterMetadataBackendNamePath,
+											internalapi.XDSRouteMetadataRouteNamePath,
 										},
 										ProcessingMode: &extprocv3.ProcessingMode{
 											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
@@ -406,7 +408,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 			})
 			s, err := New(c, logr.FromSlogHandler(handler), udsPath, false, nil, nil)
 			require.NoError(t, err)
-			err = s.maybeModifyCluster(tc.cluster)
+			err = s.maybeModifyCluster(t.Context(), tc.cluster)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expectedLog, buf.String())
@@ -471,7 +473,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
 		require.NoError(t, err)
 		cluster := &clusterv3.Cluster{Name: "httproute/test-ns/nonexistent-route/rule/0", Metadata: &corev3.Metadata{}}
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 		require.Contains(t, buf.String(), "kipping non-AIGatewayRoute HTTPRoute cluster modification")
 	})
@@ -494,7 +496,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify InferencePool metadata was added to cluster.
@@ -537,7 +539,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify filters were added correctly.
@@ -586,7 +588,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify no additional filters were added since ext_proc already exists.
@@ -615,7 +617,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify filters were added correctly.
@@ -658,7 +660,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.Error(t, err)
 		require.Contains(t, buf.String(), "failed to unmarshal HttpProtocolOptions")
 	})
@@ -2086,5 +2088,64 @@ func TestList(t *testing.T) {
 		require.NotNil(t, resp)
 		require.NotEmpty(t, resp.Statuses)
 		require.Contains(t, resp.Statuses, "envoy-gateway-extension-server")
+	})
+}
+
+func TestRouteNameFromRouteConfigName(t *testing.T) {
+	t.Run("extract namespaced route name", func(t *testing.T) {
+		require.Equal(t, "ns/myroute", routeNameFromRouteConfigName("httproute/ns/myroute/rule/0"))
+	})
+
+	t.Run("ignore unexpected format", func(t *testing.T) {
+		require.Empty(t, routeNameFromRouteConfigName("not-a-route-config-name"))
+	})
+}
+
+func TestRouteNameFromEnvoyGatewayMetadata(t *testing.T) {
+	t.Run("prefer namespaced resource identity", func(t *testing.T) {
+		route := &routev3.Route{
+			Metadata: &corev3.Metadata{
+				FilterMetadata: map[string]*structpb.Struct{
+					"envoy-gateway": {
+						Fields: map[string]*structpb.Value{
+							"resources": structpb.NewListValue(&structpb.ListValue{
+								Values: []*structpb.Value{
+									structpb.NewStructValue(&structpb.Struct{
+										Fields: map[string]*structpb.Value{
+											"name":      structpb.NewStringValue("myroute"),
+											"namespace": structpb.NewStringValue("default"),
+										},
+									}),
+								},
+							}),
+						},
+					},
+				},
+			},
+		}
+		require.Equal(t, "default/myroute", routeNameFromEnvoyGatewayMetadata(route))
+	})
+
+	t.Run("fallback to legacy name-only metadata", func(t *testing.T) {
+		route := &routev3.Route{
+			Metadata: &corev3.Metadata{
+				FilterMetadata: map[string]*structpb.Struct{
+					"envoy-gateway": {
+						Fields: map[string]*structpb.Value{
+							"resources": structpb.NewListValue(&structpb.ListValue{
+								Values: []*structpb.Value{
+									structpb.NewStructValue(&structpb.Struct{
+										Fields: map[string]*structpb.Value{
+											"name": structpb.NewStringValue("legacy-route"),
+										},
+									}),
+								},
+							}),
+						},
+					},
+				},
+			},
+		}
+		require.Equal(t, "legacy-route", routeNameFromEnvoyGatewayMetadata(route))
 	})
 }

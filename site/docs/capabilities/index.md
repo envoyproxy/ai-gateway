@@ -29,6 +29,7 @@ Advanced inference optimization capabilities for AI/LLM workloads:
 ## Gateway Configuration
 
 - **[GatewayConfig](./gateway-config.md)**: Gateway-scoped configuration for the external processor (env vars, resources, shared settings)
+- **[Scaling](./scaling.md)**: Configure multiple controller replicas and horizontal pod autoscaling for production deployments
 
 ## Traffic Management
 

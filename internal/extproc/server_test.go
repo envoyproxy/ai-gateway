@@ -328,6 +328,9 @@ func TestServer_setBackend(t *testing.T) {
 						attributeKey: {Kind: &structpb.Value_StringValue{
 							StringValue: "openai",
 						}},
+						internalapi.XDSRouteMetadataRouteNamePath: {Kind: &structpb.Value_StringValue{
+							StringValue: "route-a",
+						}},
 					}},
 				},
 				Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{}},
@@ -396,6 +399,20 @@ func TestResolveBackendName(t *testing.T) {
 			require.Equal(t, tc.expected, actual)
 		})
 	}
+}
+
+func TestResolveRouteName(t *testing.T) {
+	const routeName = "my-route"
+	attributes := &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			internalapi.XDSRouteMetadataRouteNamePath: structpb.NewStringValue(routeName),
+		},
+	}
+	actual := resolveRouteName(attributes)
+	require.Equal(t, routeName, actual)
+
+	actual = resolveRouteName(&structpb.Struct{Fields: map[string]*structpb.Value{}})
+	require.Empty(t, actual)
 }
 
 func TestServer_ProcessorSelection(t *testing.T) {
