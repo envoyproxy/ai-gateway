@@ -54,11 +54,15 @@ type session struct {
 	reqCtx             *mcpRequestContext
 	mu                 sync.RWMutex
 	perBackendSessions map[filterapi.MCPBackendName]*compositeSessionEntry
-	// extraHeaders contains header values extracted from the current HTTP request to be forwarded to backends.
-	// These are derived from the route's configured forward headers and the current request's headers.
-	// The key is the HTTP header name, the value is the header value.
+	// extraHeaders contains header values extracted from the current HTTP request to be forwarded to ALL backends.
+	// These are derived from the route's configured forward headers (e.g., OAuth claimToHeaders) and the current request's headers.
 	// Note: extraHeaders is NOT encoded in the session ID. It is re-extracted from each incoming request.
 	extraHeaders map[string]string
+	// perBackendExtraHeaders contains per-backend header values extracted from the current HTTP request.
+	// Key is the backend name; value is a map of destination header name -> value.
+	// These are derived from each MCPRouteBackendRef's forwardHeaders config.
+	// Note: perBackendExtraHeaders is NOT encoded in the session ID. It is re-extracted from each incoming request.
+	perBackendExtraHeaders map[filterapi.MCPBackendName]map[string]string
 }
 
 // Close implements [io.Closer.Close].
@@ -78,7 +82,7 @@ func (s *session) Close() error {
 			)
 			continue
 		}
-		addMCPHeaders(req, nil, s.route, backendName)
+		addMCPHeaders(req, nil, nil, s.route, backendName)
 		s.reqCtx.applyOriginalPathHeaders(req)
 		req.Header.Set(sessionIDHeader, sessionID.String())
 		resp, err := s.reqCtx.client.Do(req)
@@ -188,7 +192,7 @@ func newToolListChangedMessage() *jsonrpc.Request {
 
 // streamNotifications streams notifications from all backends in this session to the given writer.
 func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter, toolChangeSignaler changeSignaler) error {
-	backendMsgs := s.sendToAllBackends(ctx, http.MethodGet, nil, nil)
+	backendMsgs := s.sendToAllBackends(ctx, http.MethodGet, nil, nil, nil)
 
 	// Create a ticker for periodic heartbeat events to avoid HTTP timeouts.
 	// This also helps unblock Goose at startup - it looks like Goose is waiting for the first SSE event before proceeding.
@@ -216,8 +220,12 @@ func (s *session) streamNotifications(ctx context.Context, w http.ResponseWriter
 		// events received from the upstream MCP backends
 		case event, ok := <-backendMsgs:
 			if !ok {
-				// Channel closed, all backends have finished.
-				return nil
+				// All backend notification streams have ended (e.g. backends returned 405
+				// or closed their SSE connections). Nil out the channel to disable this
+				// select case, but keep the SSE connection alive for heartbeats and
+				// gateway-level tool change notifications.
+				backendMsgs = nil
+				continue
 			}
 
 			prev := event.id
@@ -280,14 +288,14 @@ func getHeartbeatInterval(def time.Duration) time.Duration {
 
 // sendToAllBackends sends an HTTP request to all backends in this session and returns a channel that streams
 // the response events from all backends.
-func (s *session) sendToAllBackends(ctx context.Context, httpMethod string, request *jsonrpc.Request, span tracingapi.MCPSpan) <-chan *backendEvent {
-	return s.sendToBackendsFiltered(ctx, httpMethod, request, span, nil)
+func (s *session) sendToAllBackends(ctx context.Context, httpMethod string, request *jsonrpc.Request, params mcpsdk.Params, span tracingapi.MCPSpan) <-chan *backendEvent {
+	return s.sendToBackendsFiltered(ctx, httpMethod, request, params, span, nil)
 }
 
 // sendToBackendsFiltered sends an HTTP request to backends in this session that pass the given filter,
 // and returns a channel that streams the response events from those backends.
 // If filter is nil, all backends are included.
-func (s *session) sendToBackendsFiltered(ctx context.Context, httpMethod string, request *jsonrpc.Request, span tracingapi.MCPSpan, filter func(*compositeSessionEntry) bool) <-chan *backendEvent {
+func (s *session) sendToBackendsFiltered(ctx context.Context, httpMethod string, request *jsonrpc.Request, params mcpsdk.Params, span tracingapi.MCPSpan, filter func(*compositeSessionEntry) bool) <-chan *backendEvent {
 	var (
 		logger      = s.reqCtx.l
 		backendMsgs = make(chan *backendEvent, 200)
@@ -311,7 +319,7 @@ func (s *session) sendToBackendsFiltered(ctx context.Context, httpMethod string,
 				)
 				return
 			}
-			err = s.sendRequestPerBackend(ctx, backendMsgs, s.route, backend, cse, httpMethod, request)
+			err = s.sendRequestPerBackend(ctx, backendMsgs, s.route, backend, cse, httpMethod, request, params)
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
 					return
@@ -337,7 +345,7 @@ func (s *session) sendToBackendsFiltered(ctx context.Context, httpMethod string,
 
 // sendRequestPerBackend sends an HTTP request to the given backend and streams the response events to eventChan.
 func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *backendEvent, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry,
-	httpMethod string, request *jsonrpc.Request,
+	httpMethod string, request *jsonrpc.Request, params mcpsdk.Params,
 ) error {
 	var body io.Reader
 	if request != nil {
@@ -353,7 +361,7 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 		return fmt.Errorf("failed to create GET request: %w", err)
 	}
 	sessionID := cse.sessionID.String()
-	addMCPHeaders(req, request, routeName, backend.Name)
+	addMCPHeaders(req, request, params, routeName, backend.Name)
 	s.reqCtx.applyLogHeaderMappings(req, request)
 	s.reqCtx.applyOriginalPathHeaders(req)
 	req.Header.Set(protocolVersionHeader, protocolVersion20250618)
@@ -364,12 +372,17 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 	req.Header.Set("Accept", "text/event-stream, application/json")
 	req.Header.Set("Accept-Encoding", "gzip, br")
 
-	// Forward configured headers to the backend.
-	// First, strip any client-provided headers that match configured forward headers to prevent forgery.
-	// Then set the values extracted from the original request.
+	// Forward route-level headers (e.g., OAuth claimToHeaders) to the backend.
 	for header, value := range s.extraHeaders {
-		req.Header.Del(header) // Prevent forgery by stripping client-provided headers.
+		req.Header.Del(header)
 		req.Header.Set(header, value)
+	}
+	// Forward per-backend headers (from MCPRouteBackendRef.forwardHeaders) with optional renaming.
+	if perBackend, ok := s.perBackendExtraHeaders[backend.Name]; ok {
+		for header, value := range perBackend {
+			req.Header.Del(header)
+			req.Header.Set(header, value)
+		}
 	}
 
 	if lastEventID := cse.lastEventID; lastEventID != "" {
@@ -435,28 +448,29 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 	}
 
 	if httpResp.Header.Get("Content-Type") == "application/json" {
-		// This is not an SSE response, but only a single JSON response. Convert it as an event and
-		// send it to the channel.
+		// Try to decode as a single JSON-RPC message first.
 		var respBody []byte
 		respBody, err = io.ReadAll(bodyReader)
 		if err != nil {
 			return fmt.Errorf("failed to read MCP response body: %w", err)
 		}
-		var msg jsonrpc.Message
-		msg, err = jsonrpc.DecodeMessage(respBody)
-		if err != nil {
-			return fmt.Errorf("failed to decode jsonrpc message from MCP response body: %w", err)
+		msg, ok := tryDecodeJSONRPCMessage(respBody)
+		if ok {
+			eventChan <- &backendEvent{
+				sseEvent: &sseEvent{
+					backend:  backend.Name,
+					event:    "message",
+					id:       "", // No event ID in this case.
+					messages: []jsonrpc.Message{msg},
+				},
+				startAt: startAt,
+			}
+			return nil
 		}
-		eventChan <- &backendEvent{
-			sseEvent: &sseEvent{
-				backend:  backend.Name,
-				event:    "message",
-				id:       "", // No event ID in this case.
-				messages: []jsonrpc.Message{msg},
-			},
-			startAt: startAt,
-		}
-		return nil
+		// Body claimed application/json but isn't valid JSON-RPC (e.g. some backends
+		// send SSE data despite the content type). Fall through to the SSE parser
+		// using the already-read body bytes.
+		bodyReader = bytes.NewReader(respBody)
 	}
 
 	// io.Copy won't flush until the end, which doesn't happen for streaming responses.

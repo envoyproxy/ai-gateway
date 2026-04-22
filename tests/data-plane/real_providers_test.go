@@ -41,7 +41,8 @@ func TestWithRealProviders(t *testing.T) {
 
 	config := &filterapi.Config{
 		Version: version.Parse(),
-		LLMRequestCosts: []filterapi.LLMRequestCost{
+		// Dataplane Envoy does not set per-route xDS route_name metadata; use gateway defaults so costs still emit.
+		GlobalLLMRequestCosts: []filterapi.GlobalLLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 			{MetadataKey: "some_cel", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1+1"},
 		},
@@ -397,7 +398,7 @@ func requireEventuallyMessagesRequestOK(t *testing.T, listenerAddress, modelName
 				Messages: []anthropic.MessageParam{
 					anthropic.NewUserMessage(anthropic.NewTextBlock("Say hi!")),
 				},
-				Model: anthropic.Model(modelName),
+				Model: modelName,
 			})
 			var contentBuilder strings.Builder
 			for stream.Next() {
@@ -423,7 +424,7 @@ func requireEventuallyMessagesRequestOK(t *testing.T, listenerAddress, modelName
 			Messages: []anthropic.MessageParam{
 				anthropic.NewUserMessage(anthropic.NewTextBlock("Say hi!")),
 			},
-			Model: anthropic.Model(modelName),
+			Model: modelName,
 		})
 		if err != nil {
 			t.Logf("messages error: %v", err)

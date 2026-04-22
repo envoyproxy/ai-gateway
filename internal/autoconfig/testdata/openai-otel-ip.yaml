@@ -58,7 +58,7 @@ spec:
               # the ones defined in the AIGatewayRoute llmRequestCosts field or
               # header-mapped attributes via OTEL_*_REQUEST_HEADER_ATTRIBUTES.
               gen_ai.request.model: "%REQ(X-AI-EG-MODEL)%"
-              gen_ai.response.model: "%DYNAMIC_METADATA(io.envoy.ai_gateway:model_name_override)%"
+              gen_ai.response.model: "%DYNAMIC_METADATA(io.envoy.ai_gateway:response_model)%"
               gen_ai.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:backend_name)%"
               gen_ai.usage.input_tokens: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%"
               gen_ai.usage.output_tokens: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
@@ -93,12 +93,13 @@ spec:
                     kind: Backend
                     name: otel
           format:
-            text: "[%START_TIME%] %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% mcp_method=%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)% mcp_backend=%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)% %RESPONSE_CODE% %DURATION%ms"
+            text: "[%START_TIME%] %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% mcp_method=%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)% mcp_tool_name=%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_tool_name)% mcp_backend=%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)% %RESPONSE_CODE% %DURATION%ms"
             json:
               # MCP specific fields
               jsonrpc.request.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
               mcp.session.id: "%REQ(MCP-SESSION-ID)%"
               mcp.method.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
+              mcp.tool.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_tool_name)%"
               session.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:session.id)%"
               mcp.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
               # Common fields

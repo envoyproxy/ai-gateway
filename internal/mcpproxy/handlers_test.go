@@ -8,6 +8,7 @@ package mcpproxy
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -109,7 +111,9 @@ func TestServeGET_InvalidSessionID(t *testing.T) {
 
 func TestServeGET_OK(t *testing.T) {
 	proxy := newTestMCPProxy()
-	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil).WithContext(ctx)
 	sessionID := secureID(t, proxy, "@@backend1:dGVzdC1zZXNzaW9u") // "test-session" base64 encoded.
 	req.Header.Set(sessionIDHeader, sessionID)
 	rr := httptest.NewRecorder()
@@ -896,6 +900,29 @@ func TestProxyResponseBody_JSONResponse(t *testing.T) {
 	require.Contains(t, rr.Body.String(), id.Raw())
 }
 
+func TestProxyResponseBody_JSONResponseWithBOM(t *testing.T) {
+	proxy := newTestMCPProxy()
+
+	id := mustJSONRPCRequestID()
+	resp := &jsonrpc.Response{ID: id, Result: []byte(`{"test": "bom"}`)}
+	body, err := jsonrpc.EncodeMessage(resp)
+	require.NoError(t, err)
+
+	bomBody := append([]byte{0xEF, 0xBB, 0xBF}, body...)
+	httpResp := &http.Response{
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(bomBody)),
+		StatusCode: http.StatusOK,
+	}
+
+	rr := httptest.NewRecorder()
+
+	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
+
+	require.Contains(t, rr.Body.String(), "bom")
+	require.Contains(t, rr.Body.String(), id.Raw())
+}
+
 func TestProxyResponseBody_SSEResponse(t *testing.T) {
 	proxy := newTestMCPProxy()
 
@@ -1236,6 +1263,13 @@ func TestExtractSubject(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, extractSubject(req))
 	})
+
+	t.Run("bearer with no token", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "/mcp", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "bearer")
+		require.Empty(t, extractSubject(req))
+	})
 }
 
 func TestExtractForwardHeaders(t *testing.T) {
@@ -1310,6 +1344,104 @@ func TestExtractForwardHeaders(t *testing.T) {
 			}
 
 			result := extractForwardHeaders(headers, tt.forwardHeaders)
+			require.Equal(t, tt.wantHeaders, result)
+		})
+	}
+}
+
+func TestExtractPerBackendForwardHeaders(t *testing.T) {
+	tests := []struct {
+		name           string
+		requestHeaders map[string]string
+		mappings       []filterapi.MCPHeaderForward
+		wantHeaders    map[string]string
+	}{
+		{
+			name: "basic forwarding without rename",
+			requestHeaders: map[string]string{
+				"X-Api-Key": "secret123",
+				"X-User-Id": "user456",
+			},
+			mappings: []filterapi.MCPHeaderForward{
+				{Name: "X-Api-Key"},
+				{Name: "X-User-Id"},
+			},
+			wantHeaders: map[string]string{
+				"X-Api-Key": "secret123",
+				"X-User-Id": "user456",
+			},
+		},
+		{
+			name: "header renaming via BackendHeader",
+			requestHeaders: map[string]string{
+				"Authorization": "Bearer tok123",
+			},
+			mappings: []filterapi.MCPHeaderForward{
+				{Name: "Authorization", BackendHeader: "X-Original-Auth"},
+			},
+			wantHeaders: map[string]string{
+				"X-Original-Auth": "Bearer tok123",
+			},
+		},
+		{
+			name: "mixed rename and passthrough",
+			requestHeaders: map[string]string{
+				"Authorization":   "Bearer tok",
+				"X-Jira-Token":    "jira-secret",
+				"X-Not-Forwarded": "should-not-appear",
+			},
+			mappings: []filterapi.MCPHeaderForward{
+				{Name: "Authorization", BackendHeader: "X-Backend-Auth"},
+				{Name: "X-Jira-Token"},
+			},
+			wantHeaders: map[string]string{
+				"X-Backend-Auth": "Bearer tok",
+				"X-Jira-Token":   "jira-secret",
+			},
+		},
+		{
+			name:           "missing header returns nil",
+			requestHeaders: map[string]string{},
+			mappings: []filterapi.MCPHeaderForward{
+				{Name: "X-Missing"},
+			},
+			wantHeaders: nil,
+		},
+		{
+			name: "mixed existing and missing headers",
+			requestHeaders: map[string]string{
+				"X-Present": "val",
+			},
+			mappings: []filterapi.MCPHeaderForward{
+				{Name: "X-Present"},
+				{Name: "X-Missing"},
+			},
+			wantHeaders: map[string]string{
+				"X-Present": "val",
+			},
+		},
+		{
+			name:           "empty mappings returns nil",
+			requestHeaders: map[string]string{"X-Foo": "bar"},
+			mappings:       []filterapi.MCPHeaderForward{},
+			wantHeaders:    nil,
+		},
+		{
+			name:           "nil mappings returns nil",
+			requestHeaders: map[string]string{"X-Foo": "bar"},
+			mappings:       nil,
+			wantHeaders:    nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			headers := make(http.Header)
+			for header, value := range tt.requestHeaders {
+				headers.Set(header, value)
+			}
+
+			result := extractPerBackendForwardHeaders(headers, tt.mappings)
 			require.Equal(t, tt.wantHeaders, result)
 		})
 	}
@@ -1810,7 +1942,7 @@ func TestMCPServer_handleNotificationsRootsListChanged(t *testing.T) {
 	err = proxy.handleNotificationsRootsListChanged(t.Context(), &session{
 		reqCtx:             proxy,
 		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"test-backend": {sessionID: ""}},
-	}, rr, req, nil)
+	}, rr, req, nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusAccepted, rr.Code)
 }

@@ -32,10 +32,13 @@ import (
 
 // gatewayMutator implements [admission.CustomDefaulter].
 type gatewayMutator struct {
-	codec  serializer.CodecFactory
-	c      client.Client
-	kube   kubernetes.Interface
-	logger logr.Logger
+	codec serializer.CodecFactory
+	c     client.Client
+	// noCacheReader bypasses the informer cache during admission to avoid
+	// cache sync races that can cause extProc sidecar injection to be skipped.
+	noCacheReader client.Reader
+	kube          kubernetes.Interface
+	logger        logr.Logger
 
 	extProcImage                   string
 	extProcImagePullPolicy         corev1.PullPolicy
@@ -66,7 +69,7 @@ type gatewayMutator struct {
 	extProcAsSideCar bool
 }
 
-func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.Logger,
+func newGatewayMutator(c client.Client, noCacheReader client.Reader, kube kubernetes.Interface, logger logr.Logger,
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel string, extProcEnableRedaction bool,
 	udsPath string, requestHeaderAttributes, spanRequestHeaderAttributes, metricsRequestHeaderAttributes, logRequestHeaderAttributes *string, rootPrefix, endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets string, extProcMaxRecvMsgSize int,
 	extProcAsSideCar bool,
@@ -94,6 +97,7 @@ func newGatewayMutator(c client.Client, kube kubernetes.Interface, logger logr.L
 
 	return &gatewayMutator{
 		c: c, codec: serializer.NewCodecFactory(Scheme),
+		noCacheReader:                          noCacheReader,
 		kube:                                   kube,
 		extProcImage:                           extProcImage,
 		extProcImagePullPolicy:                 extProcImagePullPolicy,
@@ -254,21 +258,94 @@ func ParseImagePullSecrets(s string) ([]corev1.LocalObjectReference, error) {
 	return result, nil
 }
 
-func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gatewayName, gatewayNamespace string) error {
+func (g *gatewayMutator) listAIGatewayRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1b1.AIGatewayRouteList, error) {
 	var routes aigv1b1.AIGatewayRouteList
-	err := g.c.List(ctx, &routes, client.MatchingFields{
-		k8sClientIndexAIGatewayRouteToAttachedGateway: fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace),
+	key := fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace)
+	cacheErr := g.c.List(ctx, &routes, client.MatchingFields{
+		k8sClientIndexAIGatewayRouteToAttachedGateway: key,
 	})
+	if cacheErr == nil && len(routes.Items) > 0 {
+		return routes, nil
+	}
+	if g.noCacheReader == nil {
+		return routes, cacheErr
+	}
+	// noCacheReader doesn't have access to cache indexes, so list then filter.
+	var all aigv1b1.AIGatewayRouteList
+	if err := g.noCacheReader.List(ctx, &all); err != nil {
+		return routes, fmt.Errorf("failed to list routes: %w", err)
+	}
+	routes.Items = filterAIGatewayRoutesForGateway(all.Items, gatewayName, gatewayNamespace)
+	return routes, nil
+}
+
+func (g *gatewayMutator) listMCPRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1a1.MCPRouteList, error) {
+	var routes aigv1a1.MCPRouteList
+	key := fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace)
+	cacheErr := g.c.List(ctx, &routes, client.MatchingFields{
+		k8sClientIndexMCPRouteToAttachedGateway: key,
+	})
+	if cacheErr == nil && len(routes.Items) > 0 {
+		return routes, nil
+	}
+	if g.noCacheReader == nil {
+		return routes, cacheErr
+	}
+	// noCacheReader doesn't have access to cache indexes, so list then filter.
+	var all aigv1a1.MCPRouteList
+	if err := g.noCacheReader.List(ctx, &all); err != nil {
+		return routes, fmt.Errorf("failed to list MCP routes: %w", err)
+	}
+	routes.Items = filterMCPRoutesForGateway(all.Items, gatewayName, gatewayNamespace)
+	return routes, nil
+}
+
+func filterAIGatewayRoutesForGateway(routes []aigv1b1.AIGatewayRoute, gatewayName, gatewayNamespace string) []aigv1b1.AIGatewayRoute {
+	var filtered []aigv1b1.AIGatewayRoute
+	for i := range routes {
+		if parentRefsMatchGateway(routes[i].Namespace, routes[i].Spec.ParentRefs, gatewayName, gatewayNamespace) {
+			filtered = append(filtered, routes[i])
+		}
+	}
+	return filtered
+}
+
+func filterMCPRoutesForGateway(routes []aigv1a1.MCPRoute, gatewayName, gatewayNamespace string) []aigv1a1.MCPRoute {
+	var filtered []aigv1a1.MCPRoute
+	for i := range routes {
+		if parentRefsMatchGateway(routes[i].Namespace, routes[i].Spec.ParentRefs, gatewayName, gatewayNamespace) {
+			filtered = append(filtered, routes[i])
+		}
+	}
+	return filtered
+}
+
+// parentRefsMatchGateway replicates the namespace resolution logic used in
+// aiGatewayRouteToAttachedGatewayIndexFunc and mcpRouteToAttachedGatewayIndexFunc.
+// If the index key format or namespace resolution logic changes, this function
+// must be updated to match.
+func parentRefsMatchGateway(routeNamespace string, parentRefs []gwapiv1.ParentReference, gatewayName, gatewayNamespace string) bool {
+	for _, ref := range parentRefs {
+		namespace := routeNamespace
+		if ref.Namespace != nil && *ref.Namespace != "" {
+			namespace = string(*ref.Namespace)
+		}
+		if string(ref.Name) == gatewayName && namespace == gatewayNamespace {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gatewayName, gatewayNamespace string) error {
+	routes, err := g.listAIGatewayRoutesForGateway(ctx, gatewayName, gatewayNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to list routes: %w", err)
 	}
 
-	var mcpRoutes aigv1a1.MCPRouteList
-	err = g.c.List(ctx, &mcpRoutes, client.MatchingFields{
-		k8sClientIndexMCPRouteToAttachedGateway: fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace),
-	})
+	mcpRoutes, err := g.listMCPRoutesForGateway(ctx, gatewayName, gatewayNamespace)
 	if err != nil {
-		return fmt.Errorf("failed to list routes: %w", err)
+		return fmt.Errorf("failed to list MCP routes: %w", err)
 	}
 	if len(routes.Items) == 0 && len(mcpRoutes.Items) == 0 {
 		g.logger.Info("no AIGatewayRoutes or MCPRoutes found for gateway", "name", gatewayName, "namespace", gatewayNamespace)
@@ -291,7 +368,10 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		return fmt.Errorf("failed to get filter config secret: %w", err)
 	}
 
-	gatewayConfig := g.fetchGatewayConfig(ctx, gatewayName, gatewayNamespace)
+	gatewayConfig, err := g.fetchGatewayConfig(ctx, gatewayName, gatewayNamespace)
+	if err != nil {
+		return fmt.Errorf("failed to fetch GatewayConfig: %w", err)
+	}
 	var (
 		extProcSpec       *aigv1b1.GatewayConfigExtProc
 		kubernetesExtProc *egv1a1.KubernetesContainerSpec
@@ -427,24 +507,25 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	return nil
 }
 
-// fetchGatewayConfig returns the referenced GatewayConfig (if present).
-func (g *gatewayMutator) fetchGatewayConfig(ctx context.Context, gatewayName, gatewayNamespace string) *aigv1b1.GatewayConfig {
+// fetchGatewayConfig returns the referenced GatewayConfig (if present) for the given Gateway.
+// Returns (nil, nil) if: Gateway not found, no annotation, empty annotation, or GatewayConfig not found.
+// Returns (nil, error) for transient failures (API errors) to trigger mutation retry.
+func (g *gatewayMutator) fetchGatewayConfig(ctx context.Context, gatewayName, gatewayNamespace string) (*aigv1b1.GatewayConfig, error) {
 	// Fetch the Gateway object.
 	var gateway gwapiv1.Gateway
 	if err := g.c.Get(ctx, client.ObjectKey{Name: gatewayName, Namespace: gatewayNamespace}, &gateway); err != nil {
 		if apierrors.IsNotFound(err) {
 			g.logger.Info("Gateway not found, using global default configuration",
 				"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
-		} else {
-			g.logger.Error(err, "failed to get Gateway, using global default configuration",
-				"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
+			return nil, nil
 		}
-		return nil
+		// Return error for transient failures (e.g., API errors) to trigger retry.
+		return nil, fmt.Errorf("failed to get Gateway: %w", err)
 	}
 
 	configName, ok := gateway.Annotations[GatewayConfigAnnotationKey]
 	if !ok || configName == "" {
-		return nil
+		return nil, nil
 	}
 
 	// Fetch the GatewayConfig (must be in same namespace as Gateway).
@@ -453,16 +534,15 @@ func (g *gatewayMutator) fetchGatewayConfig(ctx context.Context, gatewayName, ga
 		if apierrors.IsNotFound(err) {
 			g.logger.Info("GatewayConfig referenced by Gateway not found, using global defaults",
 				"gateway_name", gatewayName, "gatewayconfig_name", configName)
-		} else {
-			g.logger.Error(err, "failed to get GatewayConfig, using global defaults",
-				"gateway_name", gatewayName, "gatewayconfig_name", configName)
+			return nil, nil
 		}
-		return nil
+		// Return error for transient failures (e.g., API errors) to trigger retry.
+		return nil, fmt.Errorf("failed to get GatewayConfig: %w", err)
 	}
 
 	g.logger.Info("found GatewayConfig for Gateway",
 		"gateway_name", gatewayName, "gatewayconfig_name", configName)
-	return &gatewayConfig
+	return &gatewayConfig, nil
 }
 
 // mergeEnvVars merges env vars; GatewayConfig overrides global while preserving order.

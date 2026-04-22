@@ -68,6 +68,7 @@ spec:
               # AI specific fields. The properties in the dynamic metadata expressions must match the ones
               # defined in the AIGatewayRoute llmRequestCosts field.
               gen_ai.request.model: "%REQ(X-AI-EG-MODEL)%"
+              gen_ai.response.model: "%DYNAMIC_METADATA(io.envoy.ai_gateway:response_model)%"
               gen_ai.request.model_override: "%DYNAMIC_METADATA(io.envoy.ai_gateway:model_name_override)%"
               gen_ai.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:backend_name)%"
               gen_ai.usage.total_tokens: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_total_token)%"
@@ -202,6 +203,7 @@ spec:
               jsonrpc.request.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
               mcp.session.id: "%REQ(MCP-SESSION-ID)%"
               mcp.method.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
+              mcp.tool.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_tool_name)%"
               mcp.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
               # Common fields
               start_time: "%START_TIME%"

@@ -146,6 +146,16 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 
 	forwardHeaders := extractForwardHeaders(m.requestHeaders, backends.forwardHeaders)
 
+	// Extract per-backend forward headers.
+	perBackendHeaders := make(map[filterapi.MCPBackendName]map[string]string)
+	for _, backend := range backends.backends {
+		if len(backend.ForwardHeaders) > 0 {
+			if h := extractPerBackendForwardHeaders(m.requestHeaders, backend.ForwardHeaders); h != nil {
+				perBackendHeaders[backend.Name] = h
+			}
+		}
+	}
+
 	var (
 		wg      sync.WaitGroup
 		entries []compositeSessionEntry
@@ -215,11 +225,12 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 	}
 
 	return &session{
-		reqCtx:             m,
-		id:                 secureClientToGatewaySessionID(encrypted),
-		route:              routeName,
-		perBackendSessions: perBackendSessions,
-		extraHeaders:       forwardHeaders,
+		reqCtx:                 m,
+		id:                     secureClientToGatewaySessionID(encrypted),
+		route:                  routeName,
+		perBackendSessions:     perBackendSessions,
+		extraHeaders:           forwardHeaders,
+		perBackendExtraHeaders: perBackendHeaders,
 	}, nil
 }
 
@@ -250,11 +261,21 @@ func (m *mcpRequestContext) sessionFromID(id secureClientToGatewaySessionID, las
 
 	// Extract forward headers from the current request based on the route's forwardHeaders config.
 	var extraHeaders map[string]string
+	var perBackendHeaders map[filterapi.MCPBackendName]map[string]string
 	if routeConfig := m.routes[route]; routeConfig != nil {
 		extraHeaders = extractForwardHeaders(m.requestHeaders, routeConfig.forwardHeaders)
+		// Extract per-backend forward headers.
+		perBackendHeaders = make(map[filterapi.MCPBackendName]map[string]string)
+		for _, backend := range routeConfig.backends {
+			if len(backend.ForwardHeaders) > 0 {
+				if h := extractPerBackendForwardHeaders(m.requestHeaders, backend.ForwardHeaders); h != nil {
+					perBackendHeaders[backend.Name] = h
+				}
+			}
+		}
 	}
 
-	return &session{id: id, route: route, reqCtx: m, perBackendSessions: perBackendSessionIDs, extraHeaders: extraHeaders}, nil
+	return &session{id: id, route: route, reqCtx: m, perBackendSessions: perBackendSessionIDs, extraHeaders: extraHeaders, perBackendExtraHeaders: perBackendHeaders}, nil
 }
 
 type initializeResult struct {
@@ -276,7 +297,7 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 			return nil, fmt.Errorf("failed to marshal MCP initialize params: %w", err)
 		}
 		mcpReq := &jsonrpc.Request{Method: "initialize", Params: initializeReq, ID: reqID}
-		resp, err := m.invokeJSONRPCRequest(ctx, routeName, backend, nil, mcpReq)
+		resp, err := m.invokeJSONRPCRequest(ctx, routeName, backend, nil, mcpReq, p)
 		if err != nil {
 			return nil, fmt.Errorf("failed to send MCP initialize request: %w", err)
 		}
@@ -301,9 +322,19 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 		}
 
 		var rawMsg jsonrpc.Message
-		switch resp.Header.Get("Content-Type") {
-		case "text/event-stream":
-			parser := newSSEEventParser(resp.Body, backend.Name)
+		var sseReader io.Reader = resp.Body
+		if resp.Header.Get("Content-Type") != "text/event-stream" {
+			body, _ := io.ReadAll(resp.Body)
+			msg, ok := tryDecodeJSONRPCMessage(body)
+			if ok {
+				rawMsg = msg
+			} else {
+				// Not valid JSON-RPC; fall through to SSE parser with the already-read bytes.
+				sseReader = bytes.NewReader(body)
+			}
+		}
+		if rawMsg == nil {
+			parser := newSSEEventParser(sseReader, backend.Name)
 			for {
 				event, parseErr := parser.next()
 				// TODO: handle reconnect. We need to re-arrange the event ID so that it will also contain the backend name and the original session ID.
@@ -323,15 +354,6 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 					m.l.Error("failed to read MCP GET response body", slog.String("error", parseErr.Error()))
 					break
 				}
-			}
-		default:
-			// Handle JSON response.
-			body, _ := io.ReadAll(resp.Body)
-			// Decode the JSON-RPC message.
-			rawMsg, err = jsonrpc.DecodeMessage(body)
-			if err != nil {
-				m.l.Warn("Failed to decode MCP message", slog.String("error", err.Error()))
-				return nil, fmt.Errorf("failed to decode MCP message: %w", err)
 			}
 		}
 
@@ -362,7 +384,7 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 		mcpReq := &jsonrpc.Request{Method: "notifications/initialized", Params: emptyJSONRPCMessage}
 		resp, err := m.invokeJSONRPCRequest(ctx, routeName, backend, &compositeSessionEntry{
 			sessionID: gatewayToMCPServerSessionID(sessionID),
-		}, mcpReq)
+		}, mcpReq, p)
 		if err != nil {
 			return nil, fmt.Errorf("failed to send MCP notifications/initialized request: %w", err)
 		}
@@ -384,7 +406,7 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 	}, nil
 }
 
-func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry, msg jsonrpc.Message) (*http.Response, error) {
+func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry, msg jsonrpc.Message, params mcp.Params) (*http.Response, error) {
 	encoded, err := jsonrpc.EncodeMessage(msg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode MCP message: %w", err)
@@ -393,7 +415,7 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create MCP notifications/initialized request: %w", err)
 	}
-	addMCPHeaders(req, msg, routeName, backend.Name)
+	addMCPHeaders(req, msg, params, routeName, backend.Name)
 	m.applyLogHeaderMappings(req, msg)
 	m.applyOriginalPathHeaders(req)
 	if cse != nil {
@@ -409,9 +431,18 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 
 	// Forward configured headers to backend.
 	if routeConfig := m.routes[routeName]; routeConfig != nil {
+		// Route-level headers (e.g., OAuth claimToHeaders).
 		for _, header := range routeConfig.forwardHeaders {
 			if value := m.requestHeaders.Get(header); value != "" {
 				req.Header.Set(header, value)
+			}
+		}
+		// Per-backend headers (from MCPRouteBackendRef.forwardHeaders) with optional renaming.
+		if b, ok := routeConfig.backends[backend.Name]; ok {
+			for _, fh := range b.ForwardHeaders {
+				if value := m.requestHeaders.Get(fh.Name); value != "" {
+					req.Header.Set(fh.ForwardName(), value)
+				}
 			}
 		}
 	}

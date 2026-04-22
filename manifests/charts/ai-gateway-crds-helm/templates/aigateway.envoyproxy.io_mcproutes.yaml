@@ -66,6 +66,33 @@ spec:
                   description: MCPRouteBackendRef wraps a EG's BackendObjectReference
                     to reference an MCP server.
                   properties:
+                    forwardHeaders:
+                      description: |-
+                        ForwardHeaders specifies HTTP headers to extract from the incoming client request
+                        and forward to this backend MCP server.
+                        This enables per-user authentication passthrough (e.g., personal access tokens)
+                        without requiring OAuth configuration.
+                        Each entry specifies a header name to extract and an optional rename for the backend.
+                      items:
+                        description: MCPHeaderForward specifies a header to extract
+                          from the incoming request and forward to a backend.
+                        properties:
+                          backendHeader:
+                            description: |-
+                              BackendHeader is the header name to use when forwarding to the backend.
+                              If not specified, the original header name is used.
+                            minLength: 1
+                            type: string
+                          name:
+                            description: Name is the header name to extract from the
+                              incoming client request.
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      maxItems: 32
+                      type: array
                     group:
                       default: ""
                       description: |-
@@ -222,6 +249,22 @@ spec:
                         Supports exact matches and RE2-compatible regular expressions for both include and exclude patterns.
                         If not specified, all tools from the MCP server are exposed.
                       properties:
+                        exclude:
+                          description: |-
+                            Exclude is a list of tool names to exclude. The specified tools will not be available.
+                            Exclude rules take precedence over include rules.
+                          items:
+                            type: string
+                          maxItems: 32
+                          type: array
+                        excludeRegex:
+                          description: |-
+                            ExcludeRegex is a list of RE2-compatible regular expressions that, when matched, exclude the tool.
+                            Tools matching these patterns will not be available. Exclude rules take precedence over include rules.
+                          items:
+                            type: string
+                          maxItems: 32
+                          type: array
                         include:
                           description: Include is a list of tool names to include.
                             Only the specified tools will be available.
@@ -239,9 +282,14 @@ spec:
                           type: array
                       type: object
                       x-kubernetes-validations:
-                      - message: exactly one of include or includeRegex must be specified
-                        rule: (has(self.include) && !has(self.includeRegex)) || (!has(self.include)
-                          && has(self.includeRegex))
+                      - message: include and includeRegex are mutually exclusive
+                        rule: '!(has(self.include) && has(self.includeRegex))'
+                      - message: exclude and excludeRegex are mutually exclusive
+                        rule: '!(has(self.exclude) && has(self.excludeRegex))'
+                      - message: at least one of include, includeRegex, exclude, or
+                          excludeRegex must be specified
+                        rule: has(self.include) || has(self.includeRegex) || has(self.exclude)
+                          || has(self.excludeRegex)
                   required:
                   - name
                   type: object

@@ -144,6 +144,12 @@ func NewTraceConfig() *TraceConfig {
 	}
 }
 
+// CapturesMessages reports whether either input or output messages will be
+// emitted as span attributes given the current hide flags.
+func (c *TraceConfig) CapturesMessages() bool {
+	return (!c.HideInputs && !c.HideInputMessages) || (!c.HideOutputs && !c.HideOutputMessages)
+}
+
 // NewTraceConfigFromEnv creates a new TraceConfig with values from environment
 // variables or their corresponding defaults.
 //
