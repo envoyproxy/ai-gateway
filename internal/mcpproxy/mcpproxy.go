@@ -180,7 +180,11 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 			if span != nil {
 				span.RecordRouteToBackend(backend.Name, string(initResult.sessionID), true)
 			}
-			entries[entryIndex] = compositeSessionEntry{sessionID: initResult.sessionID, backendName: backend.Name}
+			entries[entryIndex] = compositeSessionEntry{
+				sessionID:    initResult.sessionID,
+				backendName:  backend.Name,
+				capabilities: initResult.result.Capabilities,
+			}
 		})
 	}
 	wg.Wait()
@@ -297,9 +301,19 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 		}
 
 		var rawMsg jsonrpc.Message
-		switch resp.Header.Get("Content-Type") {
-		case "text/event-stream":
-			parser := newSSEEventParser(resp.Body, backend.Name)
+		var sseReader io.Reader = resp.Body
+		if resp.Header.Get("Content-Type") != "text/event-stream" {
+			body, _ := io.ReadAll(resp.Body)
+			msg, ok := tryDecodeJSONRPCMessage(body)
+			if ok {
+				rawMsg = msg
+			} else {
+				// Not valid JSON-RPC; fall through to SSE parser with the already-read bytes.
+				sseReader = bytes.NewReader(body)
+			}
+		}
+		if rawMsg == nil {
+			parser := newSSEEventParser(sseReader, backend.Name)
 			for {
 				event, parseErr := parser.next()
 				// TODO: handle reconnect. We need to re-arrange the event ID so that it will also contain the backend name and the original session ID.
@@ -319,15 +333,6 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 					m.l.Error("failed to read MCP GET response body", slog.String("error", parseErr.Error()))
 					break
 				}
-			}
-		default:
-			// Handle JSON response.
-			body, _ := io.ReadAll(resp.Body)
-			// Decode the JSON-RPC message.
-			rawMsg, err = jsonrpc.DecodeMessage(body)
-			if err != nil {
-				m.l.Warn("Failed to decode MCP message", slog.String("error", err.Error()))
-				return nil, fmt.Errorf("failed to decode MCP message: %w", err)
 			}
 		}
 

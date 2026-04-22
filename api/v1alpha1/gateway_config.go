@@ -36,6 +36,7 @@ import (
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=gwconfig
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
+// +kubebuilder:deprecatedversion:warning="aigateway.envoyproxy.io/v1alpha1 is deprecated; use aigateway.envoyproxy.io/v1beta1 instead"
 type GatewayConfig struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -61,6 +62,24 @@ type GatewayConfigSpec struct {
 	//
 	// +optional
 	ExtProc *GatewayConfigExtProc `json:"extProc,omitempty"`
+
+	// GlobalLLMRequestCosts defines default LLM request costs that apply to all
+	// routes referencing this GatewayConfig. These costs can be overridden on a
+	// per-route basis via AIGatewayRoute.Spec.LLMRequestCosts.
+	//
+	// When a request matches a route, the cost calculation proceeds as follows:
+	//  1. If the route defines LLMRequestCosts with a matching metadataKey, use that.
+	//  2. Otherwise, fall back to the global cost with that metadataKey (if defined here).
+	//  3. If neither exists, the cost is not calculated for that metadataKey.
+	//
+	// This allows you to define common cost formulas once at the gateway level
+	// (e.g., billing_charges = input_tokens + output_tokens) and only override
+	// them in specific routes when needed (e.g., premium routes with different pricing).
+	//
+	// +optional
+	// +listType=map
+	// +listMapKey=metadataKey
+	GlobalLLMRequestCosts []LLMRequestCost `json:"globalLLMRequestCosts,omitempty"`
 }
 
 // GatewayConfigExtProc holds runtime-specific configuration for the external processor.

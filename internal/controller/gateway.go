@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -92,7 +93,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	var aiRoutes aigv1a1.AIGatewayRouteList
+	var aiRoutes aigv1b1.AIGatewayRouteList
 	err := c.client.List(ctx, &aiRoutes, client.MatchingFields{
 		k8sClientIndexAIGatewayRouteToAttachedGateway: fmt.Sprintf("%s.%s", req.Name, req.Namespace),
 	})
@@ -131,10 +132,20 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	uid := c.uuidFn()
 
+	// Fetch GatewayConfig to get global LLM request cost defaults.
+	gwConfig, err := c.fetchGatewayConfig(ctx, gw)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	var defaultLLMCosts []aigv1b1.LLMRequestCost
+	if gwConfig != nil {
+		defaultLLMCosts = gwConfig.Spec.GlobalLLMRequestCosts
+	}
+
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	var hasEffectiveRoutes bool // indicates whether the filter config is effective (i.e., there is at least one active route).
-	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, aiRoutes.Items, mcpRoutes.Items, uid)
+	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, aiRoutes.Items, mcpRoutes.Items, uid, defaultLLMCosts)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -150,31 +161,20 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	return result, nil
 }
 
-// schemaToFilterAPI converts an aigv1a1.VersionedAPISchema to filterapi.VersionedAPISchema.
-func schemaToFilterAPI(schema aigv1a1.VersionedAPISchema, l logr.Logger) filterapi.VersionedAPISchema {
+// schemaToFilterAPI converts an aigv1b1.VersionedAPISchema to filterapi.VersionedAPISchema.
+func schemaToFilterAPI(schema aigv1b1.VersionedAPISchema) filterapi.VersionedAPISchema {
 	ret := filterapi.VersionedAPISchema{}
 	ret.Name = filterapi.APISchemaName(schema.Name)
-	if schema.Name == aigv1a1.APISchemaOpenAI {
-		if schema.Prefix != nil {
-			ret.Prefix = *schema.Prefix
-		} else {
-			// We default to the v1 version if not specified or nil for the legacy use of "version" field.
-			// TODO: This is to maintain backward compatibility, delete this in future releases.
-			ret.Prefix = cmp.Or(ptr.Deref(schema.Version, "v1"), "v1")
-			l.Info("Warning: 'prefix' field is not set for OpenAI schema, using 'version' field as prefix for backward compatibility. " +
-				"Please set 'prefix' field explicitly as this use of 'version' field will be removed in future releases.",
-			)
-		}
-		// This is for backward compatibility. TODO: remove this after v0.5.0 release.
-		ret.Version = ret.Prefix
+	if schema.Name == aigv1b1.APISchemaOpenAI {
+		ret.Prefix = cmp.Or(ptr.Deref(schema.Prefix, ""), "v1")
 	} else {
 		ret.Version = ptr.Deref(schema.Version, "")
 	}
 	return ret
 }
 
-// headerMutationToFilterAPI converts an aigv1a1.HTTPHeaderMutation to filterapi.HTTPHeaderMutation.
-func headerMutationToFilterAPI(m *aigv1a1.HTTPHeaderMutation) *filterapi.HTTPHeaderMutation {
+// headerMutationToFilterAPI converts an aigv1b1.HTTPHeaderMutation to filterapi.HTTPHeaderMutation.
+func headerMutationToFilterAPI(m *aigv1b1.HTTPHeaderMutation) *filterapi.HTTPHeaderMutation {
 	if m == nil {
 		return nil
 	}
@@ -189,8 +189,8 @@ func headerMutationToFilterAPI(m *aigv1a1.HTTPHeaderMutation) *filterapi.HTTPHea
 	return ret
 }
 
-// bodyMutationToFilterAPI converts an aigv1a1.HTTPBodyMutation to filterapi.HTTPBodyMutation.
-func bodyMutationToFilterAPI(m *aigv1a1.HTTPBodyMutation) *filterapi.HTTPBodyMutation {
+// bodyMutationToFilterAPI converts an aigv1b1.HTTPBodyMutation to filterapi.HTTPBodyMutation.
+func bodyMutationToFilterAPI(m *aigv1b1.HTTPBodyMutation) *filterapi.HTTPBodyMutation {
 	if m == nil {
 		return nil
 	}
@@ -203,9 +203,54 @@ func bodyMutationToFilterAPI(m *aigv1a1.HTTPBodyMutation) *filterapi.HTTPBodyMut
 	return ret
 }
 
+// validateCELExpression validates and returns a CEL expression for cost calculation.
+func validateCELExpression(cost aigv1b1.LLMRequestCost) (string, error) {
+	if cost.CEL == nil {
+		return "", fmt.Errorf("missing CEL expression")
+	}
+	expr := *cost.CEL
+	if _, err := llmcostcel.NewProgram(expr); err != nil {
+		return "", fmt.Errorf("invalid CEL expression: %w", err)
+	}
+	return expr, nil
+}
+
+// aigwLLMRequestCostToFilterAPI converts an API LLMRequestCost to filter API form for the given
+// AIGatewayRoute (routeName is "namespace/name").
+func aigwGlobalLLMRequestCostToFilterAPI(cost aigv1b1.LLMRequestCost) (filterapi.GlobalLLMRequestCost, error) {
+	out := filterapi.GlobalLLMRequestCost{
+		MetadataKey: cost.MetadataKey,
+		Type:        filterapi.LLMRequestCostType(cost.Type),
+	}
+	if cost.Type == aigv1b1.LLMRequestCostTypeCEL {
+		celExpr, err := validateCELExpression(cost)
+		if err != nil {
+			return filterapi.GlobalLLMRequestCost{}, err
+		}
+		out.CEL = celExpr
+	}
+	return out, nil
+}
+
+func aigwLLMRequestCostToFilterAPI(cost aigv1b1.LLMRequestCost, routeName string) (filterapi.LLMRequestCost, error) {
+	out := filterapi.LLMRequestCost{
+		MetadataKey: cost.MetadataKey,
+		RouteName:   routeName,
+		Type:        filterapi.LLMRequestCostType(cost.Type),
+	}
+	if cost.Type == aigv1b1.LLMRequestCostTypeCEL {
+		celExpr, err := validateCELExpression(cost)
+		if err != nil {
+			return filterapi.LLMRequestCost{}, err
+		}
+		out.CEL = celExpr
+	}
+	return out, nil
+}
+
 // mergeBodyMutations merges route-level and backend-level BodyMutation with route-level taking precedence.
 // Returns the merged BodyMutation where route-level operations override backend-level operations for conflicting body fields.
-func mergeBodyMutations(routeLevel, backendLevel *aigv1a1.HTTPBodyMutation) *aigv1a1.HTTPBodyMutation {
+func mergeBodyMutations(routeLevel, backendLevel *aigv1b1.HTTPBodyMutation) *aigv1b1.HTTPBodyMutation {
 	if routeLevel == nil {
 		return backendLevel
 	}
@@ -213,10 +258,10 @@ func mergeBodyMutations(routeLevel, backendLevel *aigv1a1.HTTPBodyMutation) *aig
 		return routeLevel
 	}
 
-	result := &aigv1a1.HTTPBodyMutation{}
+	result := &aigv1b1.HTTPBodyMutation{}
 
 	// Merge Set operations (route-level wins conflicts)
-	fieldMap := make(map[string]aigv1a1.HTTPBodyField)
+	fieldMap := make(map[string]aigv1b1.HTTPBodyField)
 
 	// Add backend-level fields first
 	for _, f := range backendLevel.Set {
@@ -252,7 +297,7 @@ func mergeBodyMutations(routeLevel, backendLevel *aigv1a1.HTTPBodyMutation) *aig
 
 // mergeHeaderMutations merges route-level and backend-level HeaderMutation with route-level taking precedence.
 // Returns the merged HeaderMutation where route-level operations override backend-level operations for conflicting headers.
-func mergeHeaderMutations(routeLevel, backendLevel *aigv1a1.HTTPHeaderMutation) *aigv1a1.HTTPHeaderMutation {
+func mergeHeaderMutations(routeLevel, backendLevel *aigv1b1.HTTPHeaderMutation) *aigv1b1.HTTPHeaderMutation {
 	if routeLevel == nil {
 		return backendLevel
 	}
@@ -260,7 +305,7 @@ func mergeHeaderMutations(routeLevel, backendLevel *aigv1a1.HTTPHeaderMutation) 
 		return routeLevel
 	}
 
-	result := &aigv1a1.HTTPHeaderMutation{}
+	result := &aigv1b1.HTTPHeaderMutation{}
 
 	// Merge Set operations (route-level wins conflicts)
 	headerMap := make(map[string]gwapiv1.HTTPHeader)
@@ -302,14 +347,27 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	ctx context.Context,
 	configSecretName,
 	configSecretNamespace string,
-	aiGatewayRoutes []aigv1a1.AIGatewayRoute,
+	aiGatewayRoutes []aigv1b1.AIGatewayRoute,
 	mcpRoutes []aigv1a1.MCPRoute,
 	uuid string,
+	defaultLLMCosts []aigv1b1.LLMRequestCost,
 ) (hasEffectiveRoute bool, _ error) {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	ec := &filterapi.Config{UUID: uuid, Version: version.Parse()}
 	var err error
-	llmCosts := map[string]struct{}{}
+
+	// Process global LLM request costs from GatewayConfig.
+	// These have no RouteName and serve as defaults.
+	// Note: The CRD enforces uniqueness via +listType=map and +listMapKey=metadataKey,
+	// so we don't need to deduplicate here.
+	for _, cost := range defaultLLMCosts {
+		fc, convErr := aigwGlobalLLMRequestCostToFilterAPI(cost)
+		if convErr != nil {
+			return false, fmt.Errorf("failed to convert global LLMRequestCosts: %w", convErr)
+		}
+		ec.GlobalLLMRequestCosts = append(ec.GlobalLLMRequestCosts, fc)
+	}
+
 	for i := range aiGatewayRoutes {
 		aiGatewayRoute := &aiGatewayRoutes[i]
 		if !aiGatewayRoute.GetDeletionTimestamp().IsZero() {
@@ -317,7 +375,10 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			continue
 		}
 		hasEffectiveRoute = true
+		routeName := fmt.Sprintf("%s/%s", aiGatewayRoute.Namespace, aiGatewayRoute.Name)
 		spec := aiGatewayRoute.Spec
+		routeBackendNamesSet := map[string]struct{}{}
+		routeBackendNames := []string{}
 		for ruleIndex := range spec.Rules {
 			rule := &spec.Rules[ruleIndex]
 			for _, m := range rule.Matches {
@@ -342,7 +403,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				b.Name = internalapi.PerRouteRuleRefBackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, ruleIndex, backendRefIndex)
 				b.ModelNameOverride = backendRef.ModelNameOverride
 
-				var bsp *aigv1a1.BackendSecurityPolicy
+				var bsp *aigv1b1.BackendSecurityPolicy
 				backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
 
 				if backendRef.IsInferencePool() {
@@ -361,7 +422,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 						continue
 					}
 				} else {
-					var backendObj *aigv1a1.AIServiceBackend
+					var backendObj *aigv1b1.AIServiceBackend
 					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, backendNamespace, backendRef.Name)
 					if err != nil {
 						c.logger.Error(err, "failed to get backend or backend security policy. Skipping this backend.",
@@ -386,7 +447,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					mergedBodyMutation := mergeBodyMutations(routeBodyMutation, backendBodyMutation)
 					b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
 
-					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema, c.logger)
+					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
 				}
 
 				if bsp != nil {
@@ -400,41 +461,25 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				}
 
 				ec.Backends = append(ec.Backends, b)
+				if _, exists := routeBackendNamesSet[b.Name]; !exists {
+					routeBackendNamesSet[b.Name] = struct{}{}
+					routeBackendNames = append(routeBackendNames, b.Name)
+				}
 			}
-
+		}
+		if len(routeBackendNames) > 0 {
+			// Dedup per (metadataKey, routeName): last definition wins.
+			dedup := map[string]filterapi.LLMRequestCost{}
 			for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
-				fc := filterapi.LLMRequestCost{MetadataKey: cost.MetadataKey}
-				_, ok := llmCosts[cost.MetadataKey]
-				if ok {
-					c.logger.Info("LLMRequestCost with the same metadata key already exists, skipping",
-						"metadataKey", cost.MetadataKey, "route", aiGatewayRoute.Name)
-					continue
+				fc, convErr := aigwLLMRequestCostToFilterAPI(cost, routeName)
+				if convErr != nil {
+					return false, fmt.Errorf("failed to convert LLMRequestCosts for route %s: %w", aiGatewayRoute.Name, convErr)
 				}
-				switch cost.Type {
-				case aigv1a1.LLMRequestCostTypeInputToken:
-					fc.Type = filterapi.LLMRequestCostTypeInputToken
-				case aigv1a1.LLMRequestCostTypeCachedInputToken:
-					fc.Type = filterapi.LLMRequestCostTypeCachedInputToken
-				case aigv1a1.LLMRequestCostTypeCacheCreationInputToken:
-					fc.Type = filterapi.LLMRequestCostTypeCacheCreationInputToken
-				case aigv1a1.LLMRequestCostTypeOutputToken:
-					fc.Type = filterapi.LLMRequestCostTypeOutputToken
-				case aigv1a1.LLMRequestCostTypeTotalToken:
-					fc.Type = filterapi.LLMRequestCostTypeTotalToken
-				case aigv1a1.LLMRequestCostTypeCEL:
-					fc.Type = filterapi.LLMRequestCostTypeCEL
-					expr := *cost.CEL
-					// Sanity check the CEL expression.
-					_, err = llmcostcel.NewProgram(expr)
-					if err != nil {
-						return false, fmt.Errorf("invalid CEL expression: %w", err)
-					}
-					fc.CEL = expr
-				default:
-					return false, fmt.Errorf("unknown request cost type: %s", cost.Type)
-				}
+				key := fc.MetadataKey
+				dedup[key] = fc
+			}
+			for _, fc := range dedup {
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
-				llmCosts[cost.MetadataKey] = struct{}{}
 			}
 		}
 	}
@@ -501,6 +546,8 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 				mcpBackend.ToolSelector = &filterapi.MCPToolSelector{
 					Include:      b.ToolSelector.Include,
 					IncludeRegex: b.ToolSelector.IncludeRegex,
+					Exclude:      b.ToolSelector.Exclude,
+					ExcludeRegex: b.ToolSelector.ExcludeRegex,
 				}
 			}
 			mcpRoute.Backends = append(
@@ -577,31 +624,31 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 	return mc, hasEffectiveRoute
 }
 
-func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backendSecurityPolicy *aigv1a1.BackendSecurityPolicy) (*filterapi.BackendAuth, error) {
+func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backendSecurityPolicy *aigv1b1.BackendSecurityPolicy) (*filterapi.BackendAuth, error) {
 	namespace := backendSecurityPolicy.Namespace
 	switch backendSecurityPolicy.Spec.Type {
-	case aigv1a1.BackendSecurityPolicyTypeAPIKey:
+	case aigv1b1.BackendSecurityPolicyTypeAPIKey:
 		secretName := string(backendSecurityPolicy.Spec.APIKey.SecretRef.Name)
 		apiKey, err := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
 		}
 		return &filterapi.BackendAuth{APIKey: &filterapi.APIKeyAuth{Key: apiKey}}, nil
-	case aigv1a1.BackendSecurityPolicyTypeAzureAPIKey:
+	case aigv1b1.BackendSecurityPolicyTypeAzureAPIKey:
 		secretName := string(backendSecurityPolicy.Spec.AzureAPIKey.SecretRef.Name)
 		apiKey, err := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
 		}
 		return &filterapi.BackendAuth{AzureAPIKey: &filterapi.AzureAPIKeyAuth{Key: apiKey}}, nil
-	case aigv1a1.BackendSecurityPolicyTypeAnthropicAPIKey:
+	case aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey:
 		secretName := string(backendSecurityPolicy.Spec.AnthropicAPIKey.SecretRef.Name)
 		apiKey, err := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
 		}
 		return &filterapi.BackendAuth{AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: apiKey}}, nil
-	case aigv1a1.BackendSecurityPolicyTypeAWSCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
 		awsCred := backendSecurityPolicy.Spec.AWSCredentials
 
 		// If no credentials file or OIDC token is configured, use default credential chain
@@ -631,7 +678,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 				Region:                awsCred.Region,
 			},
 		}, nil
-	case aigv1a1.BackendSecurityPolicyTypeAzureCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		azureAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.AzureAccessTokenKey)
 		if err != nil {
@@ -640,7 +687,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		return &filterapi.BackendAuth{
 			AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken},
 		}, nil
-	case aigv1a1.BackendSecurityPolicyTypeGCPCredentials:
+	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		gcpAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
 		if err != nil {
@@ -678,20 +725,20 @@ func (c *GatewayController) getSecretData(ctx context.Context, namespace, name, 
 }
 
 // backendWithMaybeBSP retrieves the AIServiceBackend and its associated BackendSecurityPolicy if it exists.
-func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, name string) (backend *aigv1a1.AIServiceBackend, bsp *aigv1a1.BackendSecurityPolicy, err error) {
-	backend = &aigv1a1.AIServiceBackend{}
+func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, name string) (backend *aigv1b1.AIServiceBackend, bsp *aigv1b1.BackendSecurityPolicy, err error) {
+	backend = &aigv1b1.AIServiceBackend{}
 	if err = c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, backend); err != nil {
 		return
 	}
 
-	var backendSecurityPolicyList aigv1a1.BackendSecurityPolicyList
+	var backendSecurityPolicyList aigv1b1.BackendSecurityPolicyList
 	key := fmt.Sprintf("%s.%s", name, namespace)
 	if err := c.client.List(ctx, &backendSecurityPolicyList, client.InNamespace(namespace),
 		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
 		return nil, nil, fmt.Errorf("failed to list BackendSecurityPolicies for backend %s: %w", name, err)
 	}
 
-	var matchingBSPs []*aigv1a1.BackendSecurityPolicy
+	var matchingBSPs []*aigv1b1.BackendSecurityPolicy
 	for i := range backendSecurityPolicyList.Items {
 		policy := &backendSecurityPolicyList.Items[i]
 		for _, target := range policy.Spec.TargetRefs {
@@ -721,15 +768,15 @@ func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, 
 }
 
 // getBSPForInferencePool retrieves the BackendSecurityPolicy for a given InferencePool if it exists.
-func (c *GatewayController) getBSPForInferencePool(ctx context.Context, namespace, name string) (*aigv1a1.BackendSecurityPolicy, error) {
-	var bspList aigv1a1.BackendSecurityPolicyList
+func (c *GatewayController) getBSPForInferencePool(ctx context.Context, namespace, name string) (*aigv1b1.BackendSecurityPolicy, error) {
+	var bspList aigv1b1.BackendSecurityPolicyList
 	key := fmt.Sprintf("%s.%s", name, namespace)
 	if err := c.client.List(ctx, &bspList, client.InNamespace(namespace),
 		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingBackendSecurityPolicy: key}); err != nil {
 		return nil, fmt.Errorf("failed to list BackendSecurityPolicies for inference pool %s: %w", name, err)
 	}
 
-	var matchingBSPs []*aigv1a1.BackendSecurityPolicy
+	var matchingBSPs []*aigv1b1.BackendSecurityPolicy
 	for i := range bspList.Items {
 		bsp := &bspList.Items[i]
 		for _, target := range bsp.Spec.TargetRefs {
@@ -988,4 +1035,32 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 		namespace = daemonSets[0].Namespace
 	}
 	return
+}
+
+// fetchGatewayConfig returns the referenced GatewayConfig (if present) for the given Gateway.
+// Returns nil if no GatewayConfig is referenced or if it cannot be found.
+// fetchGatewayConfig returns the referenced GatewayConfig (if present) for the given Gateway.
+// Returns (nil, nil) if: no annotation, empty annotation, or GatewayConfig not found.
+// Returns (nil, error) for transient failures (API errors) to trigger reconciliation retry.
+func (c *GatewayController) fetchGatewayConfig(ctx context.Context, gw *gwapiv1.Gateway) (*aigv1b1.GatewayConfig, error) {
+	configName, ok := gw.Annotations[GatewayConfigAnnotationKey]
+	if !ok || configName == "" {
+		return nil, nil
+	}
+
+	// Fetch the GatewayConfig (must be in same namespace as Gateway).
+	var gatewayConfig aigv1b1.GatewayConfig
+	if err := c.client.Get(ctx, client.ObjectKey{Name: configName, Namespace: gw.Namespace}, &gatewayConfig); err != nil {
+		if apierrors.IsNotFound(err) {
+			c.logger.Info("GatewayConfig referenced by Gateway not found, using defaults",
+				"gateway_name", gw.Name, "gateway_namespace", gw.Namespace, "gatewayconfig_name", configName)
+			return nil, nil
+		}
+		// Return error for transient failures (e.g., API errors) to trigger retry.
+		return nil, fmt.Errorf("failed to get GatewayConfig: %w", err)
+	}
+
+	c.logger.Info("found GatewayConfig for Gateway",
+		"gateway_name", gw.Name, "gateway_namespace", gw.Namespace, "gatewayconfig_name", configName)
+	return &gatewayConfig, nil
 }

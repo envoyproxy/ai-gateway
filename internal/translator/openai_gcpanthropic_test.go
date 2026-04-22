@@ -284,16 +284,15 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
 	})
 
-	// Test for missing required parameter.
-	t.Run("Missing MaxTokens Throws Error", func(t *testing.T) {
+	t.Run("Missing MaxTokens Passes With Zero", func(t *testing.T) {
 		missingTokensReq := &openai.ChatCompletionRequest{
-			Model:     claudeTestModel,
-			Messages:  []openai.ChatCompletionMessageParamUnion{},
-			MaxTokens: nil,
+			Model:    claudeTestModel,
+			Messages: []openai.ChatCompletionMessageParamUnion{},
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, _, err := translator.RequestBody(nil, missingTokensReq, false)
-		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
+		_, body, err := translator.RequestBody(nil, missingTokensReq, false)
+		require.NoError(t, err)
+		require.Equal(t, int64(0), gjson.GetBytes(body, "max_tokens").Int())
 	})
 	t.Run("API Version Override", func(t *testing.T) {
 		customAPIVersion := "bedrock-2023-05-31"
@@ -605,6 +604,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				int32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CacheCreationTokens), // nolint:gosec
 				int32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                        // nolint:gosec
 				int32(tt.expectedOpenAIResponse.Usage.TotalTokens),                             // nolint:gosec
+				-1,
 			)
 			require.Equal(t, expectedTokenUsage, usedToken)
 

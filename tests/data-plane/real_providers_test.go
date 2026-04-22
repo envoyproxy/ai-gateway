@@ -41,7 +41,8 @@ func TestWithRealProviders(t *testing.T) {
 
 	config := &filterapi.Config{
 		Version: version.Parse(),
-		LLMRequestCosts: []filterapi.LLMRequestCost{
+		// Dataplane Envoy does not set per-route xDS route_name metadata; use gateway defaults so costs still emit.
+		GlobalLLMRequestCosts: []filterapi.GlobalLLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 			{MetadataKey: "some_cel", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1+1"},
 		},
@@ -240,7 +241,7 @@ func TestWithRealProviders(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress+"/v1/"), option.WithMaxRetries(0))
 		for _, tc := range []realProvidersTestCase{
 			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
-			{name: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0", required: internaltesting.RequiredCredentialAWS},
+			{name: "aws-bedrock", modelName: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", required: internaltesting.RequiredCredentialAWS},
 			{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
@@ -398,7 +399,7 @@ func requireEventuallyMessagesRequestOK(t *testing.T, listenerAddress, modelName
 				Messages: []anthropic.MessageParam{
 					anthropic.NewUserMessage(anthropic.NewTextBlock("Say hi!")),
 				},
-				Model: anthropic.Model(modelName),
+				Model: modelName,
 			})
 			var contentBuilder strings.Builder
 			for stream.Next() {
@@ -424,7 +425,7 @@ func requireEventuallyMessagesRequestOK(t *testing.T, listenerAddress, modelName
 			Messages: []anthropic.MessageParam{
 				anthropic.NewUserMessage(anthropic.NewTextBlock("Say hi!")),
 			},
-			Model: anthropic.Model(modelName),
+			Model: modelName,
 		})
 		if err != nil {
 			t.Logf("messages error: %v", err)

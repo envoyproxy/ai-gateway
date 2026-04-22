@@ -3,7 +3,7 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-# This should fail validation: toolSelector must specify exactly one of include or includeRegex
+# This should fail validation: toolSelector must specify at least one of include, includeRegex, exclude, or excludeRegex
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: MCPRoute
 metadata:

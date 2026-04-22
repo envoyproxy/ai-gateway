@@ -8,7 +8,7 @@
 # The AIServiceBackend schema is set to OpenAI so the gateway passes through
 # the Anthropic request format with translation.
 
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: envoy-ai-gateway-basic-anthropic-openai
@@ -27,7 +27,7 @@ spec:
       backendRefs:
         - name: envoy-ai-gateway-basic-anthropic-openai
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: envoy-ai-gateway-basic-anthropic-openai

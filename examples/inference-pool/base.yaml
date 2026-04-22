@@ -242,7 +242,7 @@ roleRef:
   kind: ClusterRole
   name: auth-reviewer
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: envoy-ai-gateway-basic-testupstream

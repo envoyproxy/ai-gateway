@@ -29,7 +29,11 @@ type NewBackendAuthHandlerFunc func(ctx context.Context, auth *BackendAuth) (Bac
 type RuntimeConfig struct {
 	// UUID is the unique identifier of the filter configuration, inherited from filterapi.Config.
 	UUID string
-	// RequestCosts is the list of request costs.
+	// GlobalRequestCosts is the list of gateway-level default request costs.
+	// These have no RouteName and apply to all routes unless overridden.
+	GlobalRequestCosts []RuntimeGlobalRequestCost
+	// RequestCosts is the list of route-scoped request costs.
+	// Each entry has a RouteName identifying the route it applies to.
 	RequestCosts []RuntimeRequestCost
 	// DeclaredModels is the list of declared models.
 	DeclaredModels []Model
@@ -45,7 +49,14 @@ type RuntimeBackend struct {
 	Handler BackendAuthHandler
 }
 
-// RuntimeRequestCost is the configuration for the request cost, optionally with a CEL program.
+// RuntimeGlobalRequestCost is the configuration for gateway-level default request costs.
+// This is derived from the filterapi.GlobalLLMRequestCost configuration, and includes the compiled CEL program if provided.
+type RuntimeGlobalRequestCost struct {
+	*GlobalLLMRequestCost
+	CELProg cel.Program
+}
+
+// RuntimeRequestCost is the configuration for route-scoped request costs, optionally with a CEL program.
 // This is derived from the filterapi.LLMRequestCost configuration, and includes the compiled CEL program if provided.
 type RuntimeRequestCost struct {
 	*LLMRequestCost
@@ -55,8 +66,8 @@ type RuntimeRequestCost struct {
 // NewRuntimeConfig creates a new runtime filter configuration from the given filterapi.Config and a function to create backend auth handlers.
 func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHandlerFunc) (*RuntimeConfig, error) {
 	backends := make(map[string]*RuntimeBackend, len(config.Backends))
-	for _, backend := range config.Backends {
-		b := backend
+	for i := range config.Backends {
+		b := &config.Backends[i]
 		var h BackendAuthHandler
 		if b.Auth != nil {
 			var err error
@@ -65,12 +76,36 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 				return nil, fmt.Errorf("cannot create backend auth handler: %w", err)
 			}
 		}
-		backends[b.Name] = &RuntimeBackend{Backend: &b, Handler: h}
+
+		backends[b.Name] = &RuntimeBackend{Backend: b, Handler: h}
 	}
 
+	// Compile CEL programs for GlobalLLMRequestCosts (gateway-level defaults).
+	globalCosts := make([]RuntimeGlobalRequestCost, 0, len(config.GlobalLLMRequestCosts))
+	for i := range config.GlobalLLMRequestCosts {
+		c := &config.GlobalLLMRequestCosts[i]
+		var prog cel.Program
+		if c.CEL != "" {
+			var err error
+			prog, err = llmcostcel.NewProgram(c.CEL)
+			if err != nil {
+				return nil, fmt.Errorf("cannot create CEL program for global cost: %w", err)
+			}
+		}
+		globalCosts = append(globalCosts, RuntimeGlobalRequestCost{
+			GlobalLLMRequestCost: c,
+			CELProg:              prog,
+		})
+	}
+
+	// Compile CEL programs for LLMRequestCosts (route-scoped).
+	// Validate that all route-scoped costs have a non-empty RouteName.
 	costs := make([]RuntimeRequestCost, 0, len(config.LLMRequestCosts))
 	for i := range config.LLMRequestCosts {
 		c := &config.LLMRequestCosts[i]
+		if c.RouteName == "" {
+			return nil, fmt.Errorf("route-scoped LLMRequestCost with metadataKey=%q must have non-empty RouteName", c.MetadataKey)
+		}
 		var prog cel.Program
 		if c.CEL != "" {
 			var err error
@@ -83,9 +118,10 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 	}
 
 	return &RuntimeConfig{
-		UUID:           config.UUID,
-		Backends:       backends,
-		RequestCosts:   costs,
-		DeclaredModels: config.Models,
+		UUID:               config.UUID,
+		Backends:           backends,
+		GlobalRequestCosts: globalCosts,
+		RequestCosts:       costs,
+		DeclaredModels:     config.Models,
 	}, nil
 }

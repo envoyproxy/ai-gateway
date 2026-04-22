@@ -55,7 +55,7 @@ spec:
               # the ones defined in the AIGatewayRoute llmRequestCosts field or
               # header-mapped attributes via OTEL_*_REQUEST_HEADER_ATTRIBUTES.
               gen_ai.request.model: "%REQ(X-AI-EG-MODEL)%"
-              gen_ai.response.model: "%DYNAMIC_METADATA(io.envoy.ai_gateway:model_name_override)%"
+              gen_ai.response.model: "%DYNAMIC_METADATA(io.envoy.ai_gateway:response_model)%"
               gen_ai.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:backend_name)%"
               gen_ai.usage.input_tokens: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%"
               gen_ai.usage.output_tokens: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
@@ -117,7 +117,7 @@ spec:
               downstream_remote_address: "%DOWNSTREAM_REMOTE_ADDRESS%"
 
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: aigw-run
@@ -157,7 +157,7 @@ spec:
         hostname: localhost
         port: 8321
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: openai
@@ -200,7 +200,7 @@ type: Opaque
 stringData:
   apiKey: ${OPENAI_API_KEY}
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: openai-apikey

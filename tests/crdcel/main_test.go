@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
 
@@ -58,7 +59,7 @@ func TestAIGatewayRoutes(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/aigatewayroutes", tc.name))
 			require.NoError(t, err)
 
-			aiGatewayRoute := &aigv1a1.AIGatewayRoute{}
+			aiGatewayRoute := &aigv1b1.AIGatewayRoute{}
 			err = yaml.UnmarshalStrict(data, aiGatewayRoute)
 			require.NoError(t, err)
 
@@ -94,7 +95,7 @@ func TestAIServiceBackends(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/aiservicebackends", tc.name))
 			require.NoError(t, err)
 
-			aiBackend := &aigv1a1.AIServiceBackend{}
+			aiBackend := &aigv1b1.AIServiceBackend{}
 			err = yaml.UnmarshalStrict(data, aiBackend)
 			require.NoError(t, err)
 
@@ -197,7 +198,7 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/backendsecuritypolicies", tc.name))
 			require.NoError(t, err)
 
-			backendSecurityPolicy := &aigv1a1.BackendSecurityPolicy{}
+			backendSecurityPolicy := &aigv1b1.BackendSecurityPolicy{}
 			err = yaml.UnmarshalStrict(data, backendSecurityPolicy)
 			require.NoError(t, err)
 
@@ -230,11 +231,18 @@ func TestMCPRoutes(t *testing.T) {
 		},
 		{
 			name:   "tool_selector_missing.yaml",
-			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": exactly one of include or includeRegex must be specified",
+			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": at least one of include, includeRegex, exclude, or excludeRegex must be specified",
 		},
 		{
 			name:   "tool_selector_both.yaml",
-			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": exactly one of include or includeRegex must be specified",
+			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": include and includeRegex are mutually exclusive",
+		},
+		{name: "tool_selector_exclude.yaml"},
+		{name: "tool_selector_exclude_regex.yaml"},
+		{name: "tool_selector_include_and_exclude.yaml"},
+		{
+			name:   "tool_selector_exclude_both.yaml",
+			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": exclude and excludeRegex are mutually exclusive",
 		},
 		{
 			name:   "backend_api_key_inline_and_secret.yaml",

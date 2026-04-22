@@ -6,6 +6,7 @@
 package mcpproxy
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/base64"
@@ -547,13 +548,7 @@ func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.
 	result := mcp.InitializeResult{ProtocolVersion: protocolVersion20250618, ServerInfo: &mcp.Implementation{}}
 	result.ServerInfo.Name = "envoy-ai-gateway"
 	result.ServerInfo.Version = version.Parse()
-	result.Capabilities = &mcp.ServerCapabilities{
-		Tools:       &mcp.ToolCapabilities{ListChanged: true},
-		Prompts:     &mcp.PromptCapabilities{ListChanged: true},
-		Logging:     &mcp.LoggingCapabilities{},
-		Resources:   &mcp.ResourceCapabilities{ListChanged: true, Subscribe: true},
-		Completions: &mcp.CompletionCapabilities{},
-	}
+	result.Capabilities = s.mergedCapabilities()
 
 	marshal, err := json.Marshal(result)
 	if err != nil {
@@ -774,53 +769,60 @@ func copyProxyHeaders(resp *http.Response, w http.ResponseWriter) {
 func (m *mcpRequestContext) proxyResponseBody(ctx context.Context, s *session, w http.ResponseWriter, resp *http.Response,
 	req *jsonrpc.Request, backend filterapi.MCPBackend,
 ) error {
+	// Some backends (e.g. Slack MCP) send SSE data despite Content-Type: application/json.
+	// Try to decode as a single JSON-RPC message first; if that fails, fall through to the
+	// SSE parser using the already-read bytes.
+	var sseReader io.Reader = resp.Body
 	if resp.Header.Get("Content-Type") == "application/json" {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			m.l.Error("failed to read response body", slog.String("error", err.Error()))
 			return err
 		}
-		_msg, err := jsonrpc.DecodeMessage(body)
-		if err != nil {
-			m.l.Error("failed to decode JSON-RPC message from response body", slog.String("error", err.Error()))
-			return err
-		}
-
-		var responseError error
-		switch msg := _msg.(type) {
-		case *jsonrpc.Request:
-			if err = m.maybeServerToClientRequestModify(ctx, msg, backend.Name); err != nil {
-				m.l.Error("failed to modify server->client request", slog.String("error", err.Error()))
-				return err
-			}
-			body, _ = jsonrpc.EncodeMessage(msg)
-		case *jsonrpc.Response:
-			if req != nil {
-				if err = m.maybeResponseModify(ctx, req, msg, backend.Name); err != nil {
-					m.l.Error("failed to modify response", slog.String("error", err.Error()))
+		_msg, ok := tryDecodeJSONRPCMessage(body)
+		if ok {
+			var responseError error
+			switch msg := _msg.(type) {
+			case *jsonrpc.Request:
+				if err = m.maybeServerToClientRequestModify(ctx, msg, backend.Name); err != nil {
+					m.l.Error("failed to modify server->client request", slog.String("error", err.Error()))
 					return err
 				}
-				msg.ID = req.ID
-
-				// Check if this is a JSON-RPC error response
-				if msg.Error != nil {
-					responseError = msg.Error
-				} else if toolErr := checkToolCallError(req, msg, backend.Name); toolErr != nil {
-					// Check if this is a tools/call response with isError=true
-					responseError = toolErr
-				}
-
 				body, _ = jsonrpc.EncodeMessage(msg)
+			case *jsonrpc.Response:
+				if req != nil {
+					if err = m.maybeResponseModify(ctx, req, msg, backend.Name); err != nil {
+						m.l.Error("failed to modify response", slog.String("error", err.Error()))
+						return err
+					}
+					msg.ID = req.ID
+
+					// Check if this is a JSON-RPC error response
+					if msg.Error != nil {
+						responseError = msg.Error
+					} else if toolErr := checkToolCallError(req, msg, backend.Name); toolErr != nil {
+						// Check if this is a tools/call response with isError=true
+						responseError = toolErr
+					}
+
+					body, _ = jsonrpc.EncodeMessage(msg)
+				}
+				m.recordResponse(ctx, msg)
 			}
-			m.recordResponse(ctx, msg)
+
+			// We need to update the content length since we might have modified the ID.
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
+			w.WriteHeader(resp.StatusCode)
+			_, _ = w.Write(body)
+
+			return responseError
 		}
-
-		// We need to update the content length since we might have modified the ID.
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
-		w.WriteHeader(resp.StatusCode)
-		_, _ = w.Write(body)
-
-		return responseError
+		// Body claimed application/json but isn't valid JSON-RPC (e.g. some backends
+		// send SSE data despite the content type). Fall through to the SSE parser
+		// using the already-read body bytes since resp.Body is now drained.
+		m.l.Info("response Content-Type is application/json but body is not valid JSON-RPC, falling back to SSE parsing",
+			slog.String("backend", backend.Name))
+		sseReader = bytes.NewReader(body)
 	}
 
 	// io.Copy won't flush until the end, which doesn't happen for streaming responses.
@@ -831,7 +833,7 @@ func (m *mcpRequestContext) proxyResponseBody(ctx context.Context, s *session, w
 	w.WriteHeader(resp.StatusCode)
 	// For single-backend operations, metrics are recorded in the defer of servePOST,
 	// so we don't need to track startAt in events here.
-	parser := newSSEEventParser(resp.Body, backend.Name)
+	parser := newSSEEventParser(sseReader, backend.Name)
 
 	// Collect errors from multiple events to return them all to the caller
 	var responseErrors []error
@@ -1226,6 +1228,9 @@ func extractSubject(r *http.Request) string {
 	if !strings.EqualFold(parts[0], "bearer") {
 		return ""
 	}
+	if len(parts) < 2 {
+		return ""
+	}
 
 	var claims jwt.RegisteredClaims
 	_, _, _ = jwt.NewParser().ParseUnverified(parts[1], &claims)
@@ -1447,14 +1452,14 @@ type (
 // JSON-RPC methods that require sending the request to all backends and aggregating the responses.
 //
 // The mergeFn is used to merge the responses from all backends into a single response that will be sent back to the client.
-func sendToAllBackendsAndAggregateResponses[responseType any, paramsType mcp.Params](ctx context.Context, m *mcpRequestContext, w http.ResponseWriter, s *session, request *jsonrpc.Request, p paramsType, mergeFn broadCastResponseMergeFn[responseType], span tracingapi.MCPSpan) error {
+func sendToAllBackendsAndAggregateResponses[responseType any, paramsType mcp.Params](ctx context.Context, m *mcpRequestContext, w http.ResponseWriter, s *session, request *jsonrpc.Request, p paramsType, mergeFn broadCastResponseMergeFn[responseType], span tracingapi.MCPSpan, filter func(*compositeSessionEntry) bool) error {
 	// Mark that per-backend metrics will be recorded to avoid duplicate recording in defer.
 	// This must be set early to handle any early returns that might occur.
 	m.perBackendMetricsRecorded = true
 
 	encoded, _ := json.Marshal(p)
 	request.Params = encoded
-	backendMsgs := s.sendToAllBackends(ctx, http.MethodPost, request, span)
+	backendMsgs := s.sendToBackendsFiltered(ctx, http.MethodPost, request, span, filter)
 	return sendToAllBackendsAndAggregateResponsesImpl(ctx, backendMsgs, m, w, s, request, p, mergeFn)
 }
 
@@ -1565,40 +1570,52 @@ func parseParamsAndMaybeStartSpan[paramType mcp.Params](ctx context.Context, m *
 // This aggregates and returns the list of tools from all backends.
 func (m *mcpRequestContext) handleToolsListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListToolsParams, span tracingapi.MCPSpan) error {
 	// TODO: use cursor for pagination, but in spec it's "SHOULD" not "MUST".
-	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeToolsList, span)
+	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeToolsList, span,
+		func(cse *compositeSessionEntry) bool { return cse.capabilities != nil && cse.capabilities.Tools != nil })
 }
 
 // handleResourceListRequest handles the "resources/list" JSON-RPC method.
 // This aggregates and returns the list of resources from all backends.
 func (m *mcpRequestContext) handleResourceListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListResourcesParams, span tracingapi.MCPSpan) error {
 	// TODO: use cursor for pagination, but in spec it's "SHOULD" not "MUST".
-	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeResourceList, span)
+	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeResourceList, span,
+		func(cse *compositeSessionEntry) bool {
+			return cse.capabilities != nil && cse.capabilities.Resources != nil
+		})
 }
 
 // handleResourcesTemplatesListRequest handles the "resources/templates/list" JSON-RPC method.
 func (m *mcpRequestContext) handleResourcesTemplatesListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListResourceTemplatesParams, span tracingapi.MCPSpan) error {
 	// TODO: use cursor for pagination, but in spec it's "SHOULD" not "MUST".
-	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeResourcesTemplateList, span)
+	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergeResourcesTemplateList, span,
+		func(cse *compositeSessionEntry) bool {
+			return cse.capabilities != nil && cse.capabilities.Resources != nil
+		})
 }
 
 // handlePromptListRequest handles the "prompts/list" JSON-RPC method.
 // This aggregates and returns the list of prompts from all backends.
 func (m *mcpRequestContext) handlePromptListRequest(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, p *mcp.ListPromptsParams, span tracingapi.MCPSpan) error {
 	// TODO: use cursor for pagination, but in spec it's "SHOULD" not "MUST".
-	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergePromptsList, span)
+	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, req, p, m.mergePromptsList, span,
+		func(cse *compositeSessionEntry) bool {
+			return cse.capabilities != nil && cse.capabilities.Prompts != nil
+		})
 }
 
 // handleSetLoggingLevel handles the "logging/setLevel" JSON-RPC method.
 func (m *mcpRequestContext) handleSetLoggingLevel(ctx context.Context, s *session, w http.ResponseWriter, originalRequest *jsonrpc.Request, p *mcp.SetLoggingLevelParams, span tracingapi.MCPSpan) error {
-	// TODO: maybe some backend doesn't support set logging level, so filter out such backends.
 	return sendToAllBackendsAndAggregateResponses(ctx, m, w, s, originalRequest, p, func(*session, []broadCastResponse[any]) any {
 		return struct{}{}
-	}, span)
+	}, span, func(cse *compositeSessionEntry) bool {
+		return cse.capabilities != nil && cse.capabilities.Logging != nil
+	})
 }
 
 // mergeToolsList merges the list of tools from all backends and prepare the response message to be sent back to the client.
 func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResponse[mcp.ListToolsResult]) mcp.ListToolsResult {
-	resp := mcp.ListToolsResult{}
+	// Use a non-nil empty slice so JSON encodes as [] not null; some clients reject tools:null.
+	resp := mcp.ListToolsResult{Tools: make([]*mcp.Tool, 0)}
 	route := m.routes[s.route]
 	if route == nil {
 		// This should never happen as the route must have been validated when the session is created.

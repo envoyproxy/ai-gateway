@@ -42,7 +42,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
@@ -60,9 +60,9 @@ func mustToAny(t *testing.T, msg proto.Message) *anypb.Any {
 
 func newFakeClient() client.Client {
 	builder := fake.NewClientBuilder().WithScheme(controller.Scheme).
-		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
-		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
-		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{})
+		WithStatusSubresource(&aigv1b1.AIGatewayRoute{}).
+		WithStatusSubresource(&aigv1b1.AIServiceBackend{}).
+		WithStatusSubresource(&aigv1b1.BackendSecurityPolicy{})
 	return builder.Build()
 }
 
@@ -118,15 +118,15 @@ func Test_maybeModifyCluster(t *testing.T) {
 	c := newFakeClient()
 
 	// Create some fake AIGatewayRoute objects.
-	require.NoError(t, c.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+	require.NoError(t, c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "myroute",
 			Namespace: "ns",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "aaa", Priority: ptr.To[uint32](0)},
 						{Name: "to-be-ignored", Weight: ptr.To[int32](0)},
 						{Name: "bbb", Priority: ptr.To[uint32](1)},
@@ -155,7 +155,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 			var buf bytes.Buffer
 			s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
 			require.NoError(t, err)
-			err = s.maybeModifyCluster(tc.c)
+			err = s.maybeModifyCluster(t.Context(), tc.c)
 			require.NoError(t, err)
 			t.Logf("buf: %s", buf.String())
 			require.Contains(t, buf.String(), tc.errLog)
@@ -201,13 +201,14 @@ func Test_maybeModifyCluster(t *testing.T) {
 									TypedConfig: mustToAny(t, &extprocv3.ExternalProcessor{
 										MetadataOptions: &extprocv3.MetadataOptions{
 											ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
-												Untyped: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
+												Untyped: []string{aigv1b1.AIGatewayFilterMetadataNamespace},
 											},
 										},
 										AllowModeOverride: true,
 										RequestAttributes: []string{
 											internalapi.XDSUpstreamHostMetadataBackendNamePath,
 											internalapi.XDSClusterMetadataBackendNamePath,
+											internalapi.XDSRouteMetadataRouteNamePath,
 										},
 										ProcessingMode: &extprocv3.ProcessingMode{
 											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
@@ -239,7 +240,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 															AppendAction: corev3.HeaderValueOption_ADD_IF_ABSENT,
 															Header: &corev3.HeaderValue{
 																Key:   "content-length",
-																Value: `%DYNAMIC_METADATA(` + aigv1a1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
+																Value: `%DYNAMIC_METADATA(` + aigv1b1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
 															},
 														},
 													},
@@ -334,13 +335,14 @@ func Test_maybeModifyCluster(t *testing.T) {
 									TypedConfig: mustToAny(t, &extprocv3.ExternalProcessor{
 										MetadataOptions: &extprocv3.MetadataOptions{
 											ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
-												Untyped: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
+												Untyped: []string{aigv1b1.AIGatewayFilterMetadataNamespace},
 											},
 										},
 										AllowModeOverride: true,
 										RequestAttributes: []string{
 											internalapi.XDSUpstreamHostMetadataBackendNamePath,
 											internalapi.XDSClusterMetadataBackendNamePath,
+											internalapi.XDSRouteMetadataRouteNamePath,
 										},
 										ProcessingMode: &extprocv3.ProcessingMode{
 											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
@@ -372,7 +374,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 															AppendAction: corev3.HeaderValueOption_ADD_IF_ABSENT,
 															Header: &corev3.HeaderValue{
 																Key:   "content-length",
-																Value: `%DYNAMIC_METADATA(` + aigv1a1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
+																Value: `%DYNAMIC_METADATA(` + aigv1b1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
 															},
 														},
 													},
@@ -406,7 +408,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 			})
 			s, err := New(c, logr.FromSlogHandler(handler), udsPath, false, nil, nil)
 			require.NoError(t, err)
-			err = s.maybeModifyCluster(tc.cluster)
+			err = s.maybeModifyCluster(t.Context(), tc.cluster)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expectedLog, buf.String())
@@ -449,15 +451,15 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 	c := newFakeClient()
 
 	// Create AIGatewayRoute with InferencePool backend.
-	err := c.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+	err := c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "inference-route",
 			Namespace: "test-ns",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "inference-backend"},
 					},
 				},
@@ -471,7 +473,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
 		require.NoError(t, err)
 		cluster := &clusterv3.Cluster{Name: "httproute/test-ns/nonexistent-route/rule/0", Metadata: &corev3.Metadata{}}
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 		require.Contains(t, buf.String(), "kipping non-AIGatewayRoute HTTPRoute cluster modification")
 	})
@@ -494,7 +496,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify InferencePool metadata was added to cluster.
@@ -537,7 +539,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify filters were added correctly.
@@ -586,7 +588,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify no additional filters were added since ext_proc already exists.
@@ -615,7 +617,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify filters were added correctly.
@@ -658,7 +660,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.Error(t, err)
 		require.Contains(t, buf.String(), "failed to unmarshal HttpProtocolOptions")
 	})
@@ -1999,7 +2001,7 @@ func TestPostTranslateModify(t *testing.T) {
 				{
 					Header: "x-ai-eg-mcp-backend",
 					OnHeaderPresent: &htomv3.Config_KeyValuePair{
-						MetadataNamespace: aigv1a1.AIGatewayFilterMetadataNamespace,
+						MetadataNamespace: aigv1b1.AIGatewayFilterMetadataNamespace,
 						Key:               "mcp_backend",
 						Type:              htomv3.Config_STRING,
 					},
@@ -2086,5 +2088,64 @@ func TestList(t *testing.T) {
 		require.NotNil(t, resp)
 		require.NotEmpty(t, resp.Statuses)
 		require.Contains(t, resp.Statuses, "envoy-gateway-extension-server")
+	})
+}
+
+func TestRouteNameFromRouteConfigName(t *testing.T) {
+	t.Run("extract namespaced route name", func(t *testing.T) {
+		require.Equal(t, "ns/myroute", routeNameFromRouteConfigName("httproute/ns/myroute/rule/0"))
+	})
+
+	t.Run("ignore unexpected format", func(t *testing.T) {
+		require.Empty(t, routeNameFromRouteConfigName("not-a-route-config-name"))
+	})
+}
+
+func TestRouteNameFromEnvoyGatewayMetadata(t *testing.T) {
+	t.Run("prefer namespaced resource identity", func(t *testing.T) {
+		route := &routev3.Route{
+			Metadata: &corev3.Metadata{
+				FilterMetadata: map[string]*structpb.Struct{
+					"envoy-gateway": {
+						Fields: map[string]*structpb.Value{
+							"resources": structpb.NewListValue(&structpb.ListValue{
+								Values: []*structpb.Value{
+									structpb.NewStructValue(&structpb.Struct{
+										Fields: map[string]*structpb.Value{
+											"name":      structpb.NewStringValue("myroute"),
+											"namespace": structpb.NewStringValue("default"),
+										},
+									}),
+								},
+							}),
+						},
+					},
+				},
+			},
+		}
+		require.Equal(t, "default/myroute", routeNameFromEnvoyGatewayMetadata(route))
+	})
+
+	t.Run("fallback to legacy name-only metadata", func(t *testing.T) {
+		route := &routev3.Route{
+			Metadata: &corev3.Metadata{
+				FilterMetadata: map[string]*structpb.Struct{
+					"envoy-gateway": {
+						Fields: map[string]*structpb.Value{
+							"resources": structpb.NewListValue(&structpb.ListValue{
+								Values: []*structpb.Value{
+									structpb.NewStructValue(&structpb.Struct{
+										Fields: map[string]*structpb.Value{
+											"name": structpb.NewStringValue("legacy-route"),
+										},
+									}),
+								},
+							}),
+						},
+					},
+				},
+			},
+		}
+		require.Equal(t, "legacy-route", routeNameFromEnvoyGatewayMetadata(route))
 	})
 }
