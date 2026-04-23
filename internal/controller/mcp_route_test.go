@@ -13,6 +13,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	fakekube "k8s.io/client-go/kubernetes/fake"
@@ -154,6 +155,22 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	require.Equal(t, "/custom/", *mainHTTPRoute.Spec.Rules[0].Matches[0].Path.Value)
 	require.Len(t, mainHTTPRoute.Spec.Rules[0].BackendRefs, 1)
 	require.Equal(t, gwapiv1.ObjectName("default-myroute-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
+
+	// svc-a (still in BackendRefs) per-backend HTTPRoute should still exist.
+	var keptRoute gwapiv1.HTTPRoute
+	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: mcpPerBackendRefHTTPRouteName(route.Name, "svc-a"), Namespace: "default"}, &keptRoute)
+	require.NoError(t, err)
+
+	// svc-b (removed from BackendRefs) per-backend HTTPRoute should have been deleted (orphan cleanup).
+	var orphanedRoute gwapiv1.HTTPRoute
+	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: mcpPerBackendRefHTTPRouteName(route.Name, "svc-b"), Namespace: "default"}, &orphanedRoute)
+	require.True(t, apierrors.IsNotFound(err), "orphaned per-backend HTTPRoute for svc-b should have been deleted")
+
+	// The corresponding HTTPRouteFilter for svc-b should also have been deleted.
+	var orphanedFilter egv1a1.HTTPRouteFilter
+	filterName := mcpBackendRefFilterName(route, "svc-b")
+	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: filterName, Namespace: "default"}, &orphanedFilter)
+	require.True(t, apierrors.IsNotFound(err), "orphaned HTTPRouteFilter for svc-b should have been deleted")
 
 	// Delete flow shouldn't error.
 	err = fakeClient.Delete(t.Context(), &aigv1a1.MCPRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
