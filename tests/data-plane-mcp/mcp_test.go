@@ -37,6 +37,7 @@ type accessLogLine struct {
 	SessionID        any    `json:"session.id"`
 	MCPProviderName  any    `json:"mcp.provider.name"`
 	MCPMethodName    any    `json:"mcp.method.name"`
+	MCPToolName      any    `json:"mcp.tool.name"`
 	JSONRPCRequestID any    `json:"jsonrpc.request.id"`
 }
 
@@ -140,6 +141,9 @@ func TestMCPAccessLogMetadata(t *testing.T) {
 				return false
 			}
 			if line.MCPMethodName != "tools/call" {
+				return false
+			}
+			if line.MCPToolName != testmcp.ToolEcho.Tool.Name {
 				return false
 			}
 			return line.JSONRPCRequestID != nil

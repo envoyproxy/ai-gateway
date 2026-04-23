@@ -550,6 +550,13 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 					ExcludeRegex: b.ToolSelector.ExcludeRegex,
 				}
 			}
+			for _, fh := range b.ForwardHeaders {
+				hf := filterapi.MCPHeaderForward{Name: fh.Name}
+				if fh.BackendHeader != nil {
+					hf.BackendHeader = *fh.BackendHeader
+				}
+				mcpBackend.ForwardHeaders = append(mcpBackend.ForwardHeaders, hf)
+			}
 			mcpRoute.Backends = append(
 				mcpRoute.Backends, mcpBackend)
 		}
@@ -613,7 +620,7 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 				mcpRoute.Authorization.Rules = append(mcpRoute.Authorization.Rules, mcpRule)
 			}
 		}
-		// Add headers to forward from the incoming request to backend MCP servers.
+		// Forward OAuth claim-to-header mappings to all backends in this route.
 		if route.Spec.SecurityPolicy != nil && route.Spec.SecurityPolicy.OAuth != nil {
 			for _, ctoh := range route.Spec.SecurityPolicy.OAuth.ClaimToHeaders {
 				mcpRoute.ForwardHeaders = append(mcpRoute.ForwardHeaders, ctoh.Header)
@@ -688,6 +695,19 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken},
 		}, nil
 	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
+		gcpCreds := backendSecurityPolicy.Spec.GCPCredentials
+
+		// If no credentials file or WIF is configured, use ADC (handled by extproc)
+		if gcpCreds.CredentialsFile == nil && gcpCreds.WorkloadIdentityFederationConfig == nil {
+			return &filterapi.BackendAuth{
+				GCPAuth: &filterapi.GCPAuth{
+					Region:      gcpCreds.Region,
+					ProjectName: gcpCreds.ProjectName,
+				},
+			}, nil
+		}
+
+		// Otherwise, fetch token from rotated secret
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		gcpAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
 		if err != nil {
@@ -696,8 +716,8 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		return &filterapi.BackendAuth{
 			GCPAuth: &filterapi.GCPAuth{
 				AccessToken: gcpAccessToken,
-				Region:      backendSecurityPolicy.Spec.GCPCredentials.Region,
-				ProjectName: backendSecurityPolicy.Spec.GCPCredentials.ProjectName,
+				Region:      gcpCreds.Region,
+				ProjectName: gcpCreds.ProjectName,
 			},
 		}, nil
 	default:
