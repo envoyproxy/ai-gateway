@@ -52,6 +52,8 @@ type (
 	imageGenerationSpan = span[openai.ImageGenerationResponse, struct{}]
 	responsesSpan       = span[openai.Response, openai.ResponseStreamEventUnion]
 	speechSpan          = span[[]byte, openai.SpeechStreamChunk]
+	transcriptionSpan   = span[openai.TranscriptionResponse, struct{}]
+	translationSpan     = span[openai.TranslationResponse, struct{}]
 	rerankSpan          = span[cohereschema.RerankV2Response, struct{}]
 	messageSpan         = span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 )

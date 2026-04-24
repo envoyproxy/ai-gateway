@@ -6,6 +6,8 @@
 package endpointspec
 
 import (
+	"bytes"
+	"mime/multipart"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -1013,4 +1015,298 @@ func TestSpeechEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 		require.NotNil(t, redacted.StreamFormat)
 		require.Equal(t, "sse", *redacted.StreamFormat)
 	})
+}
+
+// --- Transcription endpoint spec tests ---
+
+func buildMultipartBody(t *testing.T, fields map[string]string, fileName string, fileData []byte) ([]byte, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		require.NoError(t, writer.WriteField(k, v))
+	}
+	if fileName != "" {
+		part, err := writer.CreateFormFile("file", fileName)
+		require.NoError(t, err)
+		_, err = part.Write(fileData)
+		require.NoError(t, err)
+	}
+	require.NoError(t, writer.Close())
+	return buf.Bytes(), writer.FormDataContentType()
+}
+
+func TestTranscriptionEndpointSpec_ParseBody_RejectsJSON(t *testing.T) {
+	spec := TranscriptionEndpointSpec{}
+	_, _, _, _, err := spec.ParseBody([]byte(`{"model":"whisper-1"}`), false)
+	require.ErrorContains(t, err, "expected multipart/form-data")
+}
+
+func TestTranscriptionEndpointSpec_ParseMultipartBody(t *testing.T) {
+	spec := TranscriptionEndpointSpec{}
+
+	t.Run("valid request", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":    "whisper-1",
+			"language": "en",
+			"prompt":   "test prompt",
+		}, "test.mp3", []byte("audio-data"))
+
+		model, req, stream, mutated, err := spec.ParseMultipartBody(body, ct, false)
+		require.NoError(t, err)
+		require.Equal(t, "whisper-1", model)
+		require.NotNil(t, req)
+		require.Equal(t, "whisper-1", req.Model)
+		require.Equal(t, "en", req.Language)
+		require.Equal(t, "test prompt", req.Prompt)
+		require.Equal(t, "test.mp3", req.FileName)
+		require.Equal(t, int64(10), req.FileSize)
+		require.False(t, stream)
+		require.Nil(t, mutated)
+	})
+
+	t.Run("missing model", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{}, "test.mp3", []byte("audio"))
+		_, _, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.ErrorContains(t, err, "missing required field 'model'")
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{"model": "whisper-1"}, "", nil)
+		_, _, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.ErrorContains(t, err, "missing required field 'file'")
+	})
+
+	t.Run("invalid content type", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseMultipartBody([]byte("data"), "text/plain", false)
+		require.ErrorContains(t, err, "failed to parse multipart form data")
+	})
+
+	t.Run("temperature and response_format", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":           "whisper-1",
+			"temperature":     "0.5",
+			"response_format": "verbose_json",
+		}, "test.wav", []byte("wav-data"))
+
+		_, req, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.NoError(t, err)
+		require.NotNil(t, req.Temperature)
+		require.Equal(t, 0.5, *req.Temperature)
+		require.Equal(t, "verbose_json", req.ResponseFormat)
+	})
+
+	t.Run("stream field true", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":  "whisper-1",
+			"stream": "true",
+		}, "test.mp3", []byte("audio-data"))
+
+		_, req, stream, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.NoError(t, err)
+		require.True(t, req.Stream)
+		require.False(t, stream)
+	})
+
+	t.Run("stream field false", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":  "whisper-1",
+			"stream": "false",
+		}, "test.mp3", []byte("audio-data"))
+
+		_, req, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.NoError(t, err)
+		require.False(t, req.Stream)
+	})
+
+	t.Run("timestamp_granularities", func(t *testing.T) {
+		var buf bytes.Buffer
+		writer := multipart.NewWriter(&buf)
+		require.NoError(t, writer.WriteField("model", "whisper-1"))
+		require.NoError(t, writer.WriteField("timestamp_granularities[]", "word"))
+		require.NoError(t, writer.WriteField("timestamp_granularities[]", "segment"))
+		part, err := writer.CreateFormFile("file", "test.mp3")
+		require.NoError(t, err)
+		_, err = part.Write([]byte("audio"))
+		require.NoError(t, err)
+		require.NoError(t, writer.Close())
+
+		_, req, _, _, err := spec.ParseMultipartBody(buf.Bytes(), writer.FormDataContentType(), false)
+		require.NoError(t, err)
+		require.Equal(t, []string{"word", "segment"}, req.TimestampGranularities)
+	})
+
+	t.Run("missing boundary in content-type", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseMultipartBody([]byte("data"), "multipart/form-data", false)
+		require.ErrorContains(t, err, "missing boundary")
+	})
+
+	t.Run("prompt field", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":  "whisper-1",
+			"prompt": "This is a transcription prompt",
+		}, "test.mp3", []byte("audio"))
+
+		_, req, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.NoError(t, err)
+		require.Equal(t, "This is a transcription prompt", req.Prompt)
+	})
+
+	t.Run("language field", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":    "whisper-1",
+			"language": "fr",
+		}, "test.mp3", []byte("audio"))
+
+		_, req, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.NoError(t, err)
+		require.Equal(t, "fr", req.Language)
+	})
+}
+
+func TestTranscriptionEndpointSpec_GetTranslator(t *testing.T) {
+	spec := TranscriptionEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
+	require.ErrorContains(t, err, "unsupported API schema for audio transcription")
+}
+
+func TestTranscriptionEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := TranscriptionEndpointSpec{}
+
+	t.Run("no prompt", func(t *testing.T) {
+		req := &openai.TranscriptionRequest{Model: "whisper-1"}
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.Empty(t, redacted.Prompt)
+	})
+
+	t.Run("with prompt", func(t *testing.T) {
+		req := &openai.TranscriptionRequest{Model: "whisper-1", Prompt: "sensitive transcription context"}
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.Contains(t, redacted.Prompt, "[REDACTED LENGTH=")
+		require.Contains(t, redacted.Prompt, "HASH=")
+		require.NotContains(t, redacted.Prompt, "sensitive transcription context")
+		require.Equal(t, "whisper-1", redacted.Model)
+	})
+}
+
+// --- Translation endpoint spec tests ---
+
+func TestTranslationEndpointSpec_ParseBody_RejectsJSON(t *testing.T) {
+	spec := TranslationEndpointSpec{}
+	_, _, _, _, err := spec.ParseBody([]byte(`{"model":"whisper-1"}`), false)
+	require.ErrorContains(t, err, "expected multipart/form-data")
+}
+
+func TestTranslationEndpointSpec_ParseMultipartBody(t *testing.T) {
+	spec := TranslationEndpointSpec{}
+
+	t.Run("valid request", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":  "whisper-1",
+			"prompt": "translate this",
+		}, "test.mp3", []byte("audio-data"))
+
+		model, req, stream, mutated, err := spec.ParseMultipartBody(body, ct, false)
+		require.NoError(t, err)
+		require.Equal(t, "whisper-1", model)
+		require.NotNil(t, req)
+		require.Equal(t, "whisper-1", req.Model)
+		require.Equal(t, "translate this", req.Prompt)
+		require.Equal(t, "test.mp3", req.FileName)
+		require.Equal(t, int64(10), req.FileSize)
+		require.False(t, stream)
+		require.Nil(t, mutated)
+	})
+
+	t.Run("missing model", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{}, "test.mp3", []byte("audio"))
+		_, _, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.ErrorContains(t, err, "missing required field 'model'")
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{"model": "whisper-1"}, "", nil)
+		_, _, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.ErrorContains(t, err, "missing required field 'file'")
+	})
+
+	t.Run("temperature and response_format", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":           "whisper-1",
+			"temperature":     "0.3",
+			"response_format": "srt",
+		}, "test.mp3", []byte("audio-data"))
+
+		_, req, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.NoError(t, err)
+		require.NotNil(t, req.Temperature)
+		require.Equal(t, 0.3, *req.Temperature)
+		require.Equal(t, "srt", req.ResponseFormat)
+	})
+
+	t.Run("invalid content type", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseMultipartBody([]byte("data"), "text/plain", false)
+		require.ErrorContains(t, err, "failed to parse multipart form data")
+	})
+
+	t.Run("missing boundary in content-type", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseMultipartBody([]byte("data"), "multipart/form-data", false)
+		require.ErrorContains(t, err, "missing boundary")
+	})
+}
+
+func TestTranslationEndpointSpec_GetTranslator(t *testing.T) {
+	spec := TranslationEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
+	require.ErrorContains(t, err, "unsupported API schema for audio translation")
+}
+
+func TestTranslationEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := TranslationEndpointSpec{}
+
+	t.Run("no prompt", func(t *testing.T) {
+		req := &openai.TranslationRequest{Model: "whisper-1"}
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.Empty(t, redacted.Prompt)
+	})
+
+	t.Run("with prompt", func(t *testing.T) {
+		req := &openai.TranslationRequest{Model: "whisper-1", Prompt: "sensitive translation context"}
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.Contains(t, redacted.Prompt, "[REDACTED LENGTH=")
+		require.Contains(t, redacted.Prompt, "HASH=")
+		require.NotContains(t, redacted.Prompt, "sensitive translation context")
+		require.Equal(t, "whisper-1", redacted.Model)
+	})
+}
+
+// --- ParseMultipartBody defaults for JSON-only endpoints ---
+
+func TestParseMultipartBody_RejectsJSONOnlyEndpoints(t *testing.T) {
+	_, _, _, _, err := ChatCompletionsEndpointSpec{}.ParseMultipartBody(nil, "", false)
+	require.ErrorContains(t, err, "multipart body not supported")
+
+	_, _, _, _, err = CompletionsEndpointSpec{}.ParseMultipartBody(nil, "", false)
+	require.ErrorContains(t, err, "multipart body not supported")
+
+	_, _, _, _, err = EmbeddingsEndpointSpec{}.ParseMultipartBody(nil, "", false)
+	require.ErrorContains(t, err, "multipart body not supported")
+
+	_, _, _, _, err = ImageGenerationEndpointSpec{}.ParseMultipartBody(nil, "", false)
+	require.ErrorContains(t, err, "multipart body not supported")
+
+	_, _, _, _, err = SpeechEndpointSpec{}.ParseMultipartBody(nil, "", false)
+	require.ErrorContains(t, err, "multipart body not supported")
 }

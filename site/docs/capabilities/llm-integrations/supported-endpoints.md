@@ -193,6 +193,66 @@ curl -H "Content-Type: application/json" \
   $GATEWAY_URL/v1/images/generations
 ```
 
+### Audio Transcriptions
+
+**Endpoint:** `POST /v1/audio/transcriptions`
+
+**Status:** ✅ Supported
+
+**Description:** Transcribe audio into text in the language of the audio.
+
+**Features:**
+
+- ✅ Multipart/form-data file upload (OpenAI-compatible)
+- ✅ Model selection via form field `model` or `x-ai-eg-model` header
+- ✅ Optional parameters: `language`, `prompt`, `response_format`, `temperature`, `timestamp_granularities[]`
+- ✅ JSON and verbose JSON response formats
+- ✅ Provider fallback and load balancing
+- ✅ Model name virtualization (override model names for backends)
+
+**Supported Providers:**
+
+- OpenAI
+- Any OpenAI-compatible provider that supports audio transcriptions
+
+**Example:**
+
+```bash
+curl -F "model=whisper-1" \
+  -F "file=@audio.mp3" \
+  -F "language=en" \
+  $GATEWAY_URL/v1/audio/transcriptions
+```
+
+### Audio Translations
+
+**Endpoint:** `POST /v1/audio/translations`
+
+**Status:** ✅ Supported
+
+**Description:** Translate audio into English text.
+
+**Features:**
+
+- ✅ Multipart/form-data file upload (OpenAI-compatible)
+- ✅ Model selection via form field `model` or `x-ai-eg-model` header
+- ✅ Optional parameters: `prompt`, `response_format`, `temperature`
+- ✅ Provider fallback and load balancing
+- ✅ Model name virtualization (override model names for backends)
+
+**Supported Providers:**
+
+- OpenAI
+- Any OpenAI-compatible provider that supports audio translations
+
+**Example:**
+
+```bash
+curl -F "model=whisper-1" \
+  -F "file=@audio.mp3" \
+  $GATEWAY_URL/v1/audio/translations
+```
+
 ### Responses
 
 **Endpoint:** `POST /v1/responses`

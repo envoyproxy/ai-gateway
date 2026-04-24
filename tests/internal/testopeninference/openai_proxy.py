@@ -9,6 +9,7 @@
 import json
 import logging
 import os
+
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse
 from openai import AsyncOpenAI, AsyncAzureOpenAI
@@ -99,6 +100,89 @@ async def azure_images_generations(deployment: str, request: Request) -> Respons
         request,
         client.images.generate
     )
+
+@app.post("/v1/audio/transcriptions")
+async def audio_transcriptions(request: Request) -> Response:
+    return await handle_openai_audio_request(
+        request,
+        client.audio.transcriptions.create
+    )
+
+@app.post("/openai/deployments/{deployment}/audio/transcriptions")
+async def azure_audio_transcriptions(deployment: str, request: Request) -> Response:
+    return await handle_openai_audio_request(
+        request,
+        client.audio.transcriptions.create
+    )
+
+@app.post("/v1/audio/translations")
+async def audio_translations(request: Request) -> Response:
+    return await handle_openai_audio_request(
+        request,
+        client.audio.translations.create
+    )
+
+@app.post("/openai/deployments/{deployment}/audio/translations")
+async def azure_audio_translations(deployment: str, request: Request) -> Response:
+    return await handle_openai_audio_request(
+        request,
+        client.audio.translations.create
+    )
+
+async def handle_openai_audio_request(
+    request: Request,
+    client_method
+) -> Response:
+    try:
+        form = await request.form()
+        file = form.get("file")
+        if file is None:
+            return Response(
+                content=json.dumps({"error": "missing multipart file field"}),
+                status_code=400,
+                media_type="application/json"
+            )
+
+        if not hasattr(file, "read"):
+            logger.warning(
+                "Unexpected file type for multipart field 'file': %s",
+                type(file).__name__
+            )
+            return Response(
+                content=json.dumps({"error": "invalid multipart file field"}),
+                status_code=400,
+                media_type="application/json"
+            )
+
+        request_data = {}
+        for field, value in form.multi_items():
+            if field == "file":
+                continue
+            if hasattr(value, "read"):
+                continue
+            request_data[field] = value
+
+        filename = file.filename or "audio.wav"
+        cassette_name = request.headers.get("X-Cassette-Name")
+        extra_headers = {"X-Cassette-Name": cassette_name} if cassette_name else {}
+        file_content = await file.read()
+        response = await client_method(
+            file=(filename, file_content),
+            extra_headers=extra_headers,
+            **request_data
+        )
+        response_json = response.model_dump_json()
+        return Response(content=response_json, media_type="application/json")
+    except Exception as e:
+        logger.exception("Error processing request")
+        if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+            return Response(
+                content=e.response.content,
+                status_code=e.response.status_code,
+                headers=dict(e.response.headers)
+            )
+        error_response = json.dumps({"error": str(e)})
+        return Response(content=error_response, status_code=500, media_type="application/json")
 
 async def handle_openai_request(
     request: Request,
