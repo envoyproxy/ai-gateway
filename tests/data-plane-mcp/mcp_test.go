@@ -321,9 +321,11 @@ func testToolCallError(t *testing.T, m *mcpEnv) {
 			Name:      defaultMCPBackendResourcePrefix + testmcp.ToolError.Tool.Name,
 			Arguments: testmcp.ToolErrorArgs{Error: "a"},
 		})
-		require.Error(t, err)
-		require.Nil(t, res)
-		require.Contains(t, err.Error(), "minLength")
+		require.NoError(t, err)
+		require.True(t, res.IsError)
+		require.Len(t, res.Content, 1)
+		require.IsType(t, &mcp.TextContent{}, res.Content[0])
+		require.Contains(t, res.Content[0].(*mcp.TextContent).Text, "minLength")
 		requireToolSpanWithExceptionType(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolError.Tool.Name, false, "minLength", "invalid_param")
 	})
 }
