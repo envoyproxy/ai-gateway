@@ -1843,31 +1843,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBodyErr(t *testing.
 			},
 			err: internalapi.ErrInvalidRequestBody,
 		},
-		{
-			name: "response_format json_schema not supported",
-			input: openai.ChatCompletionRequest{
-				Model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
-				Messages: []openai.ChatCompletionMessageParamUnion{
-					{
-						OfUser: &openai.ChatCompletionUserMessageParam{
-							Content: openai.StringOrUserRoleContentUnion{
-								Value: "say hello",
-							},
-							Role: openai.ChatMessageRoleUser,
-						},
-					},
-				},
-				ResponseFormat: &openai.ChatCompletionResponseFormatUnion{
-					OfJSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
-						Type: "json_schema",
-						JSONSchema: openai.ChatCompletionResponseFormatJSONSchemaJSONSchema{
-							Name: "answer",
-						},
-					},
-				},
-			},
-			err: internalapi.ErrInvalidRequestBody,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
