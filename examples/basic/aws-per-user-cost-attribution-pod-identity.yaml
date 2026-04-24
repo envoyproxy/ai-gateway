@@ -1,0 +1,325 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This example demonstrates AWS Bedrock with per-user cost attribution using EKS Pod Identity.
+# This is the recommended approach for EKS 1.24+ clusters.
+#
+# Key difference from IRSA version: Uses EKS Pod Identity instead of OIDC-based IRSA.
+# The per-request credentials feature works identically with both methods.
+#
+# Architecture:
+# 1. AI Gateway pod uses EKS Pod Identity for fallback credentials
+# 2. ext-auth service calls STS AssumeRole with per-user session tags
+# 3. ext-auth injects temporary credentials as headers
+# 4. AI Gateway uses per-request credentials (with session tags) when present
+# 5. AI Gateway falls back to Pod Identity credentials when headers not present
+#
+# Prerequisites:
+# 1. EKS cluster v1.24+
+# 2. EKS Pod Identity Agent installed (DaemonSet)
+# 3. Pod Identity association for AI Gateway ServiceAccount → fallback IAM role
+# 4. Pod Identity association for ext-auth ServiceAccount → IAM role with sts:AssumeRole
+# 5. Target IAM role for per-user sessions with Bedrock permissions
+# 6. CUR 2.0 enabled for session tag cost attribution
+#
+# Setup Pod Identity Associations:
+# aws eks create-pod-identity-association \
+#   --cluster-name my-cluster \
+#   --namespace envoy-gateway-system \
+#   --service-account ai-gateway-dataplane-aws \
+#   --role-arn arn:aws:iam::ACCOUNT_ID:role/ai-gateway-bedrock-default-role
+#
+# aws eks create-pod-identity-association \
+#   --cluster-name my-cluster \
+#   --namespace default \
+#   --service-account ext-auth \
+#   --role-arn arn:aws:iam::ACCOUNT_ID:role/ext-auth-assume-role
+
+---
+# Step 1: Create ServiceAccount for AI Gateway (no annotations needed for Pod Identity)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ai-gateway-dataplane-aws
+  namespace: envoy-gateway-system
+---
+# Step 2: Create RBAC for AI Gateway ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ai-gateway-dataplane-aws
+  namespace: envoy-gateway-system
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ai-gateway-dataplane-aws
+  namespace: envoy-gateway-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ai-gateway-dataplane-aws
+subjects:
+  - kind: ServiceAccount
+    name: ai-gateway-dataplane-aws
+    namespace: envoy-gateway-system
+---
+# Step 3: Create ServiceAccount for ext-auth service
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ext-auth
+  namespace: default
+---
+# Step 4: Create custom EnvoyProxy using the ServiceAccount with Pod Identity
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: ai-gateway-with-aws
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        pod:
+          serviceAccountName: ai-gateway-dataplane-aws
+---
+# Step 5: Create Gateway
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-cost-attribution
+  namespace: default
+spec:
+  gatewayClassName: envoy-ai-gateway
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: ai-gateway-with-aws
+---
+# Step 6: Create SecurityPolicy for external authentication
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: ext-auth-policy
+  namespace: default
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-ai-gateway-cost-attribution
+  extAuth:
+    http:
+      backendRef:
+        name: ext-auth-service
+        port: 8080
+      headersToBackend:
+        - authorization
+        - x-api-key
+      failOpen: false
+---
+# Step 7: Create ext-auth Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: ext-auth-service
+  namespace: default
+spec:
+  selector:
+    app: ext-auth
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+# Step 8: Create ext-auth Deployment (uses Pod Identity to call STS AssumeRole)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ext-auth
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ext-auth
+  template:
+    metadata:
+      labels:
+        app: ext-auth
+    spec:
+      serviceAccountName: ext-auth # Uses Pod Identity to assume roles
+      containers:
+        - name: ext-auth
+          image: your-registry/ext-auth:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: AWS_REGION
+              value: us-east-1
+            - name: TARGET_ROLE_ARN
+              value: arn:aws:iam::ACCOUNT_ID:role/ai-gateway-bedrock-tagging
+            - name: REDIS_HOST
+              value: redis
+---
+# Step 9: Create AIGatewayRoute
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-cost-attribution
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: anthropic.claude-v2
+      backendRefs:
+        - name: envoy-ai-gateway-aws-cost-attr
+---
+# Step 10: Create AIServiceBackend
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr
+  namespace: default
+spec:
+  schema:
+    name: AWSBedrock
+  backendRef:
+    name: envoy-ai-gateway-aws-cost-attr
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+# Step 11: Create BackendSecurityPolicy
+# AI Gateway will:
+# 1. Check for x-aws-* headers (per-user credentials from ext-auth)
+# 2. If present: Use those credentials (with session tags)
+# 3. If not present: Use Pod Identity credentials (fallback)
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-aws-cost-attr
+  type: AWSCredentials
+  awsCredentials:
+    region: us-east-1
+    # No configuration needed! Automatically supports:
+    # - Per-request credentials from x-aws-* headers (priority)
+    # - EKS Pod Identity (fallback)
+---
+# Step 12: Create Backend
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: bedrock-runtime.us-east-1.amazonaws.com
+        port: 443
+---
+# Step 13: Create BackendTLSPolicy
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: "gateway.envoyproxy.io"
+      kind: Backend
+      name: envoy-ai-gateway-aws-cost-attr
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: bedrock-runtime.us-east-1.amazonaws.com
+
+---
+# IAM Trust Policy for AI Gateway fallback role (ai-gateway-bedrock-default-role):
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Principal": {
+#         "Service": "pods.eks.amazonaws.com"
+#       },
+#       "Action": [
+#         "sts:AssumeRole",
+#         "sts:TagSession"
+#       ]
+#     }
+#   ]
+# }
+#
+# IAM Trust Policy for ext-auth role (ext-auth-assume-role):
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Principal": {
+#         "Service": "pods.eks.amazonaws.com"
+#       },
+#       "Action": [
+#         "sts:AssumeRole",
+#         "sts:TagSession"
+#       ]
+#     }
+#   ]
+# }
+#
+# IAM Policy for ext-auth role:
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Action": [
+#         "sts:AssumeRole",
+#         "sts:TagSession"
+#       ],
+#       "Resource": "arn:aws:iam::ACCOUNT_ID:role/ai-gateway-bedrock-tagging"
+#     }
+#   ]
+# }
+#
+# IAM Trust Policy for target role (ai-gateway-bedrock-tagging):
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Principal": {
+#         "AWS": "arn:aws:iam::ACCOUNT_ID:role/ext-auth-assume-role"
+#       },
+#       "Action": [
+#         "sts:AssumeRole",
+#         "sts:TagSession"
+#       ]
+#     }
+#   ]
+# }

@@ -82,6 +82,15 @@ func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (filterapi.B
 //
 // This assumes that during the transformation, the path is set in the header mutation as well as
 // the body in the body mutation.
+//
+// Supports per-request AWS credentials via headers for cost attribution:
+// - x-aws-access-key-id: AWS access key ID
+// - x-aws-secret-access-key: AWS secret access key
+// - x-aws-session-token: AWS session token (for temporary credentials)
+//
+// If these headers are present, they will be used instead of the default AWS credential chain.
+// This enables per-user cost attribution when used with STS AssumeRole session tags.
+// Works with any platform (EKS/IRSA, EC2 instance roles, ECS task roles, Lambda, etc.).
 func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, mutatedBody []byte) ([]internalapi.Header, error) {
 	method := requestHeaders[":method"]
 	path := requestHeaders[":path"]
@@ -107,9 +116,37 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 	// https://github.com/envoyproxy/envoy/blob/60b2b5187cf99db79ecfc54675354997af4765ea/source/extensions/filters/http/ext_proc/processor_state.cc#L180-L183
 	req.ContentLength = -1
 
-	credentials, err := a.credentialsProvider.Retrieve(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve AWS credentials: %w", err)
+	var credentials aws.Credentials
+
+	// Check for per-request credentials from headers (for cost attribution)
+	accessKeyID := requestHeaders["x-aws-access-key-id"]
+	secretAccessKey := requestHeaders["x-aws-secret-access-key"]
+	sessionToken := requestHeaders["x-aws-session-token"]
+
+	if accessKeyID != "" && secretAccessKey != "" {
+		// Use per-request credentials from headers (typically from ext-auth service)
+		credentials = aws.Credentials{
+			AccessKeyID:     accessKeyID,
+			SecretAccessKey: secretAccessKey,
+			SessionToken:    sessionToken,
+			Source:          "RequestHeaders",
+		}
+
+		// Remove credential headers to prevent leakage to downstream services
+		delete(requestHeaders, "x-aws-access-key-id")
+		delete(requestHeaders, "x-aws-secret-access-key")
+		delete(requestHeaders, "x-aws-session-token")
+	} else if accessKeyID != "" || secretAccessKey != "" {
+		// Partial credentials provided - this is an error
+		return nil, fmt.Errorf("incomplete AWS credentials in headers: both x-aws-access-key-id and x-aws-secret-access-key are required")
+	} else {
+		// Fall back to default AWS credential chain
+		// Supports: IRSA, EKS Pod Identity, EC2 instance roles, ECS task roles,
+		// Lambda execution roles, environment variables, shared credentials file, etc.
+		credentials, err = a.credentialsProvider.Retrieve(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("cannot retrieve AWS credentials: %w", err)
+		}
 	}
 
 	err = a.signer.SignHTTP(ctx, credentials, req,

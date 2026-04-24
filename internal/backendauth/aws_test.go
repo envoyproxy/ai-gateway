@@ -230,4 +230,189 @@ func TestAWSHandler_Do(t *testing.T) {
 			require.NoError(t, err, "Failed for region: %s", region)
 		}
 	})
+
+	t.Run("per-request credentials from headers", func(t *testing.T) {
+		// Set up handler with default IRSA credentials
+		t.Setenv("AWS_ACCESS_KEY_ID", "AKIADEFAULTKEY")
+		t.Setenv("AWS_SECRET_ACCESS_KEY", "default-secret-key")
+
+		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
+			Region: "us-east-1",
+		})
+		require.NoError(t, err)
+
+		// Test with per-request credentials that should override IRSA
+		requestHeaders := map[string]string{
+			":method":                 "POST",
+			":path":                   "/model/anthropic.claude-v2/converse",
+			"x-aws-access-key-id":     "ASIAPERUSERKEY",
+			"x-aws-secret-access-key": "per-user-secret-key",
+			"x-aws-session-token":     "per-user-session-token-xyz",
+		}
+
+		hdrs, err := handler.Do(t.Context(), requestHeaders, []byte(`{"messages": [{"role": "user", "content": "test"}]}`))
+		require.NoError(t, err)
+
+		headers := stringPairsToMap(hdrs)
+		require.Contains(t, headers, "Authorization")
+		require.Contains(t, headers, "X-Amz-Date")
+		require.Contains(t, headers, "X-Amz-Security-Token")
+
+		// Verify the per-request credentials were used (not the default ones)
+		require.Contains(t, headers["Authorization"], "Credential=ASIAPERUSERKEY")
+		require.Equal(t, "per-user-session-token-xyz", headers["X-Amz-Security-Token"])
+
+		// Verify credential headers were removed from requestHeaders map
+		require.NotContains(t, requestHeaders, "x-aws-access-key-id")
+		require.NotContains(t, requestHeaders, "x-aws-secret-access-key")
+		require.NotContains(t, requestHeaders, "x-aws-session-token")
+	})
+
+	t.Run("per-request credentials without session token", func(t *testing.T) {
+		// Test with permanent credentials (no session token)
+		t.Setenv("AWS_ACCESS_KEY_ID", "AKIADEFAULTKEY")
+		t.Setenv("AWS_SECRET_ACCESS_KEY", "default-secret-key")
+
+		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
+			Region: "eu-central-1",
+		})
+		require.NoError(t, err)
+
+		requestHeaders := map[string]string{
+			":method":                 "POST",
+			":path":                   "/model/test/invoke",
+			"x-aws-access-key-id":     "AKIAPERUSERKEY",
+			"x-aws-secret-access-key": "per-user-secret",
+		}
+
+		hdrs, err := handler.Do(t.Context(), requestHeaders, nil)
+		require.NoError(t, err)
+
+		headers := stringPairsToMap(hdrs)
+		require.Contains(t, headers, "Authorization")
+		require.Contains(t, headers["Authorization"], "Credential=AKIAPERUSERKEY")
+		// Should NOT have session token header when not provided
+		require.NotContains(t, headers, "X-Amz-Security-Token")
+	})
+
+	t.Run("incomplete per-request credentials - only access key", func(t *testing.T) {
+		t.Setenv("AWS_ACCESS_KEY_ID", "AKIADEFAULTKEY")
+		t.Setenv("AWS_SECRET_ACCESS_KEY", "default-secret-key")
+
+		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
+			Region: "us-west-2",
+		})
+		require.NoError(t, err)
+
+		requestHeaders := map[string]string{
+			":method":             "POST",
+			":path":               "/model/test/invoke",
+			"x-aws-access-key-id": "ASIAPERUSERKEY",
+			// Missing x-aws-secret-access-key
+		}
+
+		_, err = handler.Do(t.Context(), requestHeaders, nil)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "incomplete AWS credentials in headers")
+	})
+
+	t.Run("incomplete per-request credentials - only secret key", func(t *testing.T) {
+		t.Setenv("AWS_ACCESS_KEY_ID", "AKIADEFAULTKEY")
+		t.Setenv("AWS_SECRET_ACCESS_KEY", "default-secret-key")
+
+		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
+			Region: "us-west-2",
+		})
+		require.NoError(t, err)
+
+		requestHeaders := map[string]string{
+			":method":                 "POST",
+			":path":                   "/model/test/invoke",
+			"x-aws-secret-access-key": "per-user-secret",
+			// Missing x-aws-access-key-id
+		}
+
+		_, err = handler.Do(t.Context(), requestHeaders, nil)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "incomplete AWS credentials in headers")
+	})
+
+	t.Run("fallback to IRSA when no header credentials", func(t *testing.T) {
+		// Verify backward compatibility - when no header credentials, use IRSA
+		t.Setenv("AWS_ACCESS_KEY_ID", "AKIADEFAULTKEY")
+		t.Setenv("AWS_SECRET_ACCESS_KEY", "default-secret-key")
+		t.Setenv("AWS_SESSION_TOKEN", "default-session-token")
+
+		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
+			Region: "ap-southeast-1",
+		})
+		require.NoError(t, err)
+
+		requestHeaders := map[string]string{
+			":method": "POST",
+			":path":   "/model/test/invoke",
+			// No x-aws-* headers
+		}
+
+		hdrs, err := handler.Do(t.Context(), requestHeaders, nil)
+		require.NoError(t, err)
+
+		headers := stringPairsToMap(hdrs)
+		require.Contains(t, headers, "Authorization")
+		// Should use default/IRSA credentials
+		require.Contains(t, headers["Authorization"], "Credential=AKIADEFAULTKEY")
+		require.Equal(t, "default-session-token", headers["X-Amz-Security-Token"])
+	})
+
+	t.Run("concurrent requests with mixed credential sources", func(t *testing.T) {
+		// Test thread safety with both IRSA and per-request credentials
+		t.Setenv("AWS_ACCESS_KEY_ID", "AKIADEFAULTKEY")
+		t.Setenv("AWS_SECRET_ACCESS_KEY", "default-secret-key")
+
+		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
+			Region: "us-east-1",
+		})
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+		wg.Add(100)
+
+		for i := range 100 {
+			go func(idx int) {
+				defer wg.Done()
+
+				var headers map[string]string
+				if idx%2 == 0 {
+					// Even requests use per-request credentials
+					headers = map[string]string{
+						":method":                 "POST",
+						":path":                   "/model/test/converse",
+						"x-aws-access-key-id":     "ASIAPERUSERKEY",
+						"x-aws-secret-access-key": "per-user-secret",
+						"x-aws-session-token":     "per-user-token",
+					}
+				} else {
+					// Odd requests use IRSA
+					headers = map[string]string{
+						":method": "POST",
+						":path":   "/model/test/converse",
+					}
+				}
+
+				hdrs, err := handler.Do(t.Context(), headers, []byte(`{"test": "data"}`))
+				require.NoError(t, err)
+				headerMap := stringPairsToMap(hdrs)
+				require.Contains(t, headerMap, "Authorization")
+
+				if idx%2 == 0 {
+					// Verify per-request creds were used
+					require.Contains(t, headerMap["Authorization"], "Credential=ASIAPERUSERKEY")
+				} else {
+					// Verify IRSA creds were used
+					require.Contains(t, headerMap["Authorization"], "Credential=AKIADEFAULTKEY")
+				}
+			}(i)
+		}
+		wg.Wait()
+	})
 }
