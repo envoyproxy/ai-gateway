@@ -66,6 +66,33 @@ spec:
                   description: MCPRouteBackendRef wraps a EG's BackendObjectReference
                     to reference an MCP server.
                   properties:
+                    forwardHeaders:
+                      description: |-
+                        ForwardHeaders specifies HTTP headers to extract from the incoming client request
+                        and forward to this backend MCP server.
+                        This enables per-user authentication passthrough (e.g., personal access tokens)
+                        without requiring OAuth configuration.
+                        Each entry specifies a header name to extract and an optional rename for the backend.
+                      items:
+                        description: MCPHeaderForward specifies a header to extract
+                          from the incoming request and forward to a backend.
+                        properties:
+                          backendHeader:
+                            description: |-
+                              BackendHeader is the header name to use when forwarding to the backend.
+                              If not specified, the original header name is used.
+                            minLength: 1
+                            type: string
+                          name:
+                            description: Name is the header name to extract from the
+                              incoming client request.
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      maxItems: 32
+                      type: array
                     group:
                       default: ""
                       description: |-

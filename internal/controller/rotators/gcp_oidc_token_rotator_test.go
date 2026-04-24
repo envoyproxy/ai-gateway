@@ -866,74 +866,22 @@ func (c *errorOnGetClient) Get(_ context.Context, _ client.ObjectKey, _ client.O
 
 func TestNewBearerAuthRoundTripper(t *testing.T) {
 	tests := []struct {
-		name        string
-		token       string
-		proxyURL    string
-		setProxyEnv bool
-		wantErr     bool
+		name  string
+		token string
 	}{
 		{
-			name:        "no proxy, no token",
-			token:       "",
-			setProxyEnv: false,
-			wantErr:     false,
+			name:  "empty token",
+			token: "",
 		},
 		{
-			name:        "no proxy, with token",
-			token:       "test-token",
-			setProxyEnv: false,
-			wantErr:     false,
-		},
-		{
-			name:        "empty proxy, with token",
-			token:       "test-token",
-			proxyURL:    "",
-			setProxyEnv: true,
-			wantErr:     false,
-		},
-		{
-			name:        "with valid proxy, no token",
-			token:       "",
-			proxyURL:    "http://proxy.example.com:3128",
-			setProxyEnv: true,
-			wantErr:     false,
-		},
-		{
-			name:        "with valid proxy and token",
-			token:       "test-token",
-			proxyURL:    "https://secure-proxy.example.com:8443",
-			setProxyEnv: true,
-			wantErr:     false,
+			name:  "with token",
+			token: "test-token",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save original environment variable.
-			originalProxyURL := os.Getenv("AI_GATEWAY_GCP_AUTH_PROXY_URL")
-			defer func() {
-				if originalProxyURL != "" {
-					os.Setenv("AI_GATEWAY_GCP_AUTH_PROXY_URL", originalProxyURL)
-				} else {
-					os.Unsetenv("AI_GATEWAY_GCP_AUTH_PROXY_URL")
-				}
-			}()
-
-			if tt.setProxyEnv {
-				os.Setenv("AI_GATEWAY_GCP_AUTH_PROXY_URL", tt.proxyURL)
-			} else {
-				os.Unsetenv("AI_GATEWAY_GCP_AUTH_PROXY_URL")
-			}
-
-			// Call the function under test.
 			roundTripper, err := newBearerAuthRoundTripper(tt.token)
-
-			// Validate error expectation.
-			if tt.wantErr {
-				require.Error(t, err)
-				require.Nil(t, roundTripper)
-				return
-			}
 
 			require.NoError(t, err)
 			require.NotNil(t, roundTripper)
@@ -945,123 +893,6 @@ func TestNewBearerAuthRoundTripper(t *testing.T) {
 			require.NotNil(t, bearerRT.base)
 		})
 	}
-}
-
-// TestInitSharedGCPTransport tests the initSharedGCPTransport function directly.
-// Each sub-test resets the package-level sync.Once so initSharedGCPTransport runs fresh.
-func TestInitSharedGCPTransport(t *testing.T) {
-	tests := []struct {
-		name           string
-		proxyURL       string
-		expectedError  string
-		checkTransport func(t *testing.T, transport http.RoundTripper)
-	}{
-		{
-			name:     "no proxy URL set",
-			proxyURL: "",
-			checkTransport: func(t *testing.T, transport http.RoundTripper) {
-				require.NotNil(t, transport)
-				httpTransport, ok := transport.(*http.Transport)
-				require.True(t, ok, "expected *http.Transport")
-				// http.ProxyURL(nil) means the proxy function is non-nil but always returns nil.
-				require.NotNil(t, httpTransport.Proxy)
-				req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
-				require.NoError(t, err)
-				proxyURL, err := httpTransport.Proxy(req)
-				require.NoError(t, err)
-				require.Nil(t, proxyURL, "expected no proxy when env var is unset")
-			},
-		},
-		{
-			name:     "valid proxy URL",
-			proxyURL: "http://proxy.example.com:8080",
-			checkTransport: func(t *testing.T, transport http.RoundTripper) {
-				require.NotNil(t, transport)
-				httpTransport, ok := transport.(*http.Transport)
-				require.True(t, ok, "expected *http.Transport")
-				require.NotNil(t, httpTransport.Proxy)
-				req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
-				require.NoError(t, err)
-				proxyURL, err := httpTransport.Proxy(req)
-				require.NoError(t, err)
-				require.NotNil(t, proxyURL)
-				require.Equal(t, "http://proxy.example.com:8080", proxyURL.String())
-			},
-		},
-		{
-			name:          "invalid proxy URL",
-			proxyURL:      "://invalid-proxy-url",
-			expectedError: "invalid proxy URL:",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Save and restore all shared transport state so each sub-test is isolated.
-			// sync.Once cannot be copied, so reset it to a fresh value in the defer.
-			origTransport := sharedGCPTransport
-			origErr := sharedGCPTransportErr
-			defer func() {
-				sharedGCPTransport = origTransport
-				sharedGCPTransportOnce = sync.Once{}
-				sharedGCPTransportErr = origErr
-			}()
-
-			// Reset sync.Once so initSharedGCPTransport executes the body again.
-			sharedGCPTransportOnce = sync.Once{}
-			sharedGCPTransportErr = nil
-			sharedGCPTransport = nil
-
-			t.Setenv("AI_GATEWAY_GCP_AUTH_PROXY_URL", tt.proxyURL)
-
-			err := initSharedGCPTransport()
-
-			if tt.expectedError != "" {
-				require.ErrorContains(t, err, tt.expectedError)
-				require.Nil(t, sharedGCPTransport, "transport should remain nil on error")
-				return
-			}
-
-			require.NoError(t, err)
-			if tt.checkTransport != nil {
-				tt.checkTransport(t, sharedGCPTransport)
-			}
-		})
-	}
-}
-
-// TestInitSharedGCPTransport_Idempotency verifies that initSharedGCPTransport is idempotent:
-// the sync.Once guarantee means a second call never re-runs the initialization body,
-// even if the environment variable has changed between calls.
-func TestInitSharedGCPTransport_Idempotency(t *testing.T) {
-	// Save and restore all shared transport state.
-	// sync.Once cannot be copied, so reset it to a fresh value in the defer.
-	origTransport := sharedGCPTransport
-	origErr := sharedGCPTransportErr
-	defer func() {
-		sharedGCPTransport = origTransport
-		sharedGCPTransportOnce = sync.Once{}
-		sharedGCPTransportErr = origErr
-	}()
-
-	// Start from a clean slate with no proxy.
-	sharedGCPTransportOnce = sync.Once{}
-	sharedGCPTransportErr = nil
-	sharedGCPTransport = nil
-	t.Setenv("AI_GATEWAY_GCP_AUTH_PROXY_URL", "")
-
-	// First call: should initialise the transport with no proxy.
-	require.NoError(t, initSharedGCPTransport())
-	require.NotNil(t, sharedGCPTransport)
-	firstTransport := sharedGCPTransport
-
-	// Change the env var – subsequent calls must ignore this.
-	t.Setenv("AI_GATEWAY_GCP_AUTH_PROXY_URL", "http://proxy.example.com:8080")
-
-	// Second call: sync.Once must prevent re-initialisation.
-	require.NoError(t, initSharedGCPTransport())
-	require.Same(t, firstTransport.(*http.Transport), sharedGCPTransport.(*http.Transport),
-		"transport must not be re-created on a second call")
 }
 
 func TestBearerAuthRoundTripper_RoundTrip(t *testing.T) {
