@@ -20,7 +20,6 @@ import (
 	openaisdk "github.com/openai/openai-go/v3"
 	"google.golang.org/genai"
 
-	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
@@ -762,33 +761,14 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 			// Extract thought summary and text from parts.
 			thoughtSummary, content, signature := extractTextAndThoughtSummaryFromGeminiParts(candidate.Content.Parts, responseMode)
 			if thoughtSummary != "" {
-				message.ReasoningContent = &openai.ReasoningContentUnion{
-					Value: &openai.ReasoningContent{
-						ReasoningContent: &awsbedrock.ReasoningContentBlock{
-							ReasoningText: &awsbedrock.ReasoningTextBlock{
-								Text: thoughtSummary,
-							},
-						},
-					},
-				}
+				message.ReasoningContent = &openai.ReasoningContentUnion{Value: thoughtSummary}
 			}
 			if signature != "" {
-				if message.ReasoningContent != nil {
-					if rc, ok := message.ReasoningContent.Value.(*openai.ReasoningContent); ok && rc != nil && rc.ReasoningContent != nil && rc.ReasoningContent.ReasoningText != nil {
-						rc.ReasoningContent.ReasoningText.Signature = signature
-					}
-				} else {
-					message.ReasoningContent = &openai.ReasoningContentUnion{
-						Value: &openai.ReasoningContent{
-							ReasoningContent: &awsbedrock.ReasoningContentBlock{
-								ReasoningText: &awsbedrock.ReasoningTextBlock{
-									Signature: signature,
-								},
-							},
-						},
-					}
-				}
+				message.ThinkingBlocks = append(message.ThinkingBlocks, openai.ThinkingBlock{
+					Type: "thinking", Thinking: thoughtSummary, Signature: signature,
+				})
 			}
+
 			if content != "" {
 				message.Content = &content
 			}
@@ -801,24 +781,12 @@ func geminiCandidatesToOpenAIChoices(candidates []*genai.Candidate, responseMode
 			}
 			message.ToolCalls = toolCalls
 
-			// when the model responds with tool calls, it should not respond with a text at the same time. Thus, we do not need to merge them together
-			if toolCallSignature != "" {
-				signature = toolCallSignature
-				if message.ReasoningContent != nil {
-					if rc, ok := message.ReasoningContent.Value.(*openai.ReasoningContent); ok && rc != nil && rc.ReasoningContent != nil && rc.ReasoningContent.ReasoningText != nil {
-						rc.ReasoningContent.ReasoningText.Signature = signature
-					}
-				} else {
-					message.ReasoningContent = &openai.ReasoningContentUnion{
-						Value: &openai.ReasoningContent{
-							ReasoningContent: &awsbedrock.ReasoningContentBlock{
-								ReasoningText: &awsbedrock.ReasoningTextBlock{
-									Signature: signature,
-								},
-							},
-						},
-					}
-				}
+			if toolCallSignature != "" && len(message.ThinkingBlocks) == 0 {
+				message.ThinkingBlocks = append(message.ThinkingBlocks, openai.ThinkingBlock{
+					Type: "thinking", Signature: toolCallSignature,
+				})
+			} else if toolCallSignature != "" && len(message.ThinkingBlocks) > 0 {
+				message.ThinkingBlocks[0].Signature = toolCallSignature
 			}
 
 			// If there's no content but there are tool calls, set content to nil.

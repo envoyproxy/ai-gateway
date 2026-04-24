@@ -1187,7 +1187,7 @@ data: [DONE]
 			}`,
 			endOfStream:   true,
 			wantError:     false,
-			wantHeaderMut: []internalapi.Header{{contentLengthHeaderName, "450"}},
+			wantHeaderMut: []internalapi.Header{{contentLengthHeaderName, "402"}},
 			wantBodyMut: []byte(`{
     "choices": [
         {
@@ -1195,7 +1195,7 @@ data: [DONE]
             "index": 0,
             "message": {
                 "content": "AI Gateways act as intermediaries between clients and LLM services.",
-				"reasoning_content": {"reasoningContent": {"reasoningText": {"text":  "Let me think step by step."}}},
+                "reasoning_content": "Let me think step by step.",
                 "role": "assistant"
             }
         }
