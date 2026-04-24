@@ -31,6 +31,9 @@ type Config struct {
 	Version string `json:"version,omitempty"`
 	// UUID is the unique identifier of the filter configuration assigned by the AI Gateway when the configuration is updated.
 	UUID string `json:"uuid,omitempty"`
+	// GlobalLLMRequestCosts configures gateway-level default costs for LLM requests.
+	// These costs apply to all routes unless overridden by route-specific LLMRequestCosts.
+	GlobalLLMRequestCosts []GlobalLLMRequestCost `json:"globalLLMRequestCosts,omitempty"`
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
@@ -53,6 +56,19 @@ type Model struct {
 	CreatedAt time.Time
 }
 
+// GlobalLLMRequestCost specifies gateway-level default request cost configuration.
+// This is identical to LLMRequestCost but without the RouteName field, as global costs
+// apply to all routes and are not scoped to a specific route.
+type GlobalLLMRequestCost struct {
+	// MetadataKey is the key of the metadata storing the request cost.
+	MetadataKey string `json:"metadataKey"`
+	// Type is the kind of the request cost calculation.
+	Type LLMRequestCostType `json:"type"`
+	// CEL is the CEL expression to calculate the cost of the request.
+	// This is not empty when the Type is LLMRequestCostTypeCEL.
+	CEL string `json:"cel,omitempty"`
+}
+
 // LLMRequestCost specifies "where" the request cost is stored in the filter metadata as well as
 // "how" the cost is calculated. By default, the cost is retrieved from "output token" in the response body.
 //
@@ -63,6 +79,9 @@ type Model struct {
 type LLMRequestCost struct {
 	// MetadataKey is the key of the metadata storing the request cost.
 	MetadataKey string `json:"metadataKey"`
+	// RouteName scopes this cost to a single AIGatewayRoute (format "namespace/name").
+	// When empty, the cost applies to any request (wildcard). The controller sets this for each route.
+	RouteName string `json:"routeName,omitempty"`
 	// Type is the kind of the request cost calculation.
 	Type LLMRequestCostType `json:"type"`
 	// CEL is the CEL expression to calculate the cost of the request.
@@ -113,7 +132,9 @@ const (
 	APISchemaOpenAI APISchemaName = "OpenAI"
 	// APISchemaCohere represents the Cohere API schema.
 	APISchemaCohere APISchemaName = "Cohere"
-	// APISchemaAWSBedrock represents the AWS Bedrock Converse API schema.
+	// APISchemaAWSBedrock represents the AWS Bedrock API schema.
+	// Used for models hosted on AWS Bedrock. Chat completions use the Converse API,
+	// while embeddings use the InvokeModel API.
 	APISchemaAWSBedrock APISchemaName = "AWSBedrock"
 	// APISchemaAzureOpenAI represents the Azure OpenAI API schema.
 	APISchemaAzureOpenAI APISchemaName = "AzureOpenAI"

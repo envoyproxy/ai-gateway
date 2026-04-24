@@ -233,7 +233,10 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 				return ctrl.Result{}, err
 			}
 		} else {
-			return ctrl.Result{}, fmt.Errorf("one of service account key json file or oidc must be defined, namespace %s name %s", bsp.Namespace, bsp.Name)
+			// Use Application Default Credentials (ADC) - handled by extproc, skip rotation
+			c.logger.Info("Using GCP Application Default Credentials (ADC), skipping rotation",
+				"namespace", bsp.Namespace, "name", bsp.Name)
+			return ctrl.Result{}, nil
 		}
 
 	default:
