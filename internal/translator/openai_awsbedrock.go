@@ -259,27 +259,40 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 				if err != nil {
 					return nil, fmt.Errorf("%w: invalid image data URI", internalapi.ErrInvalidRequestBody)
 				}
-				var format string
-				switch contentType {
-				case mimeTypeImagePNG:
-					format = "png"
-				case mimeTypeImageJPEG:
-					format = "jpeg"
-				case mimeTypeImageGIF:
-					format = "gif"
-				case mimeTypeImageWEBP:
-					format = "webp"
-				default:
-					return nil, fmt.Errorf("%w: unsupported image format %s", internalapi.ErrInvalidRequestBody, contentType)
-				}
 
-				block := &awsbedrock.ContentBlock{
-					Image: &awsbedrock.ImageBlock{
-						Format: format,
-						Source: awsbedrock.ImageSource{
-							Bytes: b, // Decoded data as bytes.
+				var block *awsbedrock.ContentBlock
+				if contentType == mimeTypeApplicationPDF {
+					block = &awsbedrock.ContentBlock{
+						Document: &awsbedrock.DocumentBlock{
+							Format: "pdf",
+							Name:   "document",
+							Source: awsbedrock.DocumentSource{
+								Bytes: b,
+							},
 						},
-					},
+					}
+				} else {
+					var format string
+					switch contentType {
+					case mimeTypeImagePNG:
+						format = "png"
+					case mimeTypeImageJPEG:
+						format = "jpeg"
+					case mimeTypeImageGIF:
+						format = "gif"
+					case mimeTypeImageWEBP:
+						format = "webp"
+					default:
+						return nil, fmt.Errorf("%w: unsupported image format %s", internalapi.ErrInvalidRequestBody, contentType)
+					}
+					block = &awsbedrock.ContentBlock{
+						Image: &awsbedrock.ImageBlock{
+							Format: format,
+							Source: awsbedrock.ImageSource{
+								Bytes: b, // Decoded data as bytes.
+							},
+						},
+					}
 				}
 				chatMessage.Content = append(chatMessage.Content, block)
 				cachePointBlock := getCachePoint(imageContentPart.AnthropicContentFields)
