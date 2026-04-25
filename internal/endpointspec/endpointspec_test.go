@@ -1014,3 +1014,51 @@ func TestSpeechEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 		require.Equal(t, "sse", *redacted.StreamFormat)
 	})
 }
+
+func TestMessagesCountTokensEndpointSpec_ParseBody(t *testing.T) {
+	spec := MessagesCountTokensEndpointSpec{}
+
+	t.Run("invalid json", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte("["), false)
+		require.ErrorContains(t, err, "malformed request")
+	})
+
+	t.Run("missing model", func(t *testing.T) {
+		body, err := json.Marshal(map[string]any{"messages": []any{}})
+		require.NoError(t, err)
+
+		_, _, _, _, err = spec.ParseBody(body, false)
+		require.ErrorContains(t, err, "model field is required")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		body, err := json.Marshal(map[string]any{
+			"model":    "claude-opus-4-6",
+			"messages": []any{map[string]any{"role": "user", "content": "hello"}},
+		})
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "claude-opus-4-6", model)
+		require.False(t, stream) // count_tokens is never streaming
+		require.NotNil(t, parsed)
+		require.Nil(t, mutated)
+	})
+}
+
+func TestMessagesCountTokensEndpointSpec_GetTranslator(t *testing.T) {
+	spec := MessagesCountTokensEndpointSpec{}
+	for _, schema := range []filterapi.VersionedAPISchema{
+		{Name: filterapi.APISchemaGCPAnthropic},
+		{Name: filterapi.APISchemaAWSAnthropic},
+		{Name: filterapi.APISchemaAnthropic},
+	} {
+		translator, err := spec.GetTranslator(schema, "override")
+		require.NoError(t, err)
+		require.NotNil(t, translator)
+	}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	require.ErrorContains(t, err, "unsupported")
+}
