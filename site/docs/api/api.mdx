@@ -761,6 +761,11 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   required="false"
   description="ParentRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.<br />Currently, each reference's Kind must be Gateway."
 /><ApiField
+  name="hostnames"
+  type="Hostname array"
+  required="false"
+  description="Hostnames is a list of hostnames matched against the HTTP Host header to select an AIGatewayRoute<br />used to process the request. This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec.<br />When specified, the generated HTTPRoute will include these hostnames for hostname-based filtering.<br />See https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteSpec<br />for the details of the Hostnames field in the Gateway API."
+/><ApiField
   name="rules"
   type="[AIGatewayRouteRule](#aigatewayrouterule) array"
   required="true"
@@ -3072,6 +3077,11 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   type="[ParentReference](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#parentreference) array"
   required="false"
   description="ParentRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.<br />Currently, each reference's Kind must be Gateway."
+/><ApiField
+  name="hostnames"
+  type="Hostname array"
+  required="false"
+  description="Hostnames is a list of hostnames matched against the HTTP Host header to select an AIGatewayRoute<br />used to process the request. This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec.<br />When specified, the generated HTTPRoute will include these hostnames for hostname-based filtering.<br />See https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteSpec<br />for the details of the Hostnames field in the Gateway API."
 /><ApiField
   name="rules"
   type="[AIGatewayRouteRule](#aigatewayrouterule) array"

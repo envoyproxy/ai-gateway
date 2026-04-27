@@ -375,6 +375,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			continue
 		}
 		hasEffectiveRoute = true
+		hostnames := aiGatewayRoute.Spec.Hostnames
 		routeName := fmt.Sprintf("%s/%s", aiGatewayRoute.Namespace, aiGatewayRoute.Name)
 		spec := aiGatewayRoute.Spec
 		routeBackendNamesSet := map[string]struct{}{}
@@ -390,11 +391,20 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != internalapi.ModelNameHeaderKeyDefault {
 						continue
 					}
-					ec.Models = append(ec.Models, filterapi.Model{
+					model := filterapi.Model{
 						Name:      h.Value,
 						CreatedAt: ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).UTC(),
 						OwnedBy:   ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy),
-					})
+					}
+					ec.Models = append(ec.Models, model)
+					if len(hostnames) > 0 {
+						if ec.ModelsByHost == nil {
+							ec.ModelsByHost = make(map[string][]filterapi.Model)
+						}
+						for _, hn := range hostnames {
+							ec.ModelsByHost[string(hn)] = append(ec.ModelsByHost[string(hn)], model)
+						}
+					}
 				}
 			}
 			for backendRefIndex := range rule.BackendRefs {
