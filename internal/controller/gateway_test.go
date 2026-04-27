@@ -2650,3 +2650,69 @@ func Test_mergeBodyMutations(t *testing.T) {
 		})
 	}
 }
+
+// Test_mcpConfig_TokenExchange verifies that mcpConfig correctly sets UseTokenExchange on an
+// MCPBackend when the BackendRef has a TokenExchange security policy.
+func Test_mcpConfig_TokenExchange(t *testing.T) {
+	tests := []struct {
+		name              string
+		backendRef        aigv1a1.MCPRouteBackendRef
+		wantTokenExchange bool
+	}{
+		{
+			name: "backend with TokenExchange policy sets UseTokenExchange",
+			backendRef: aigv1a1.MCPRouteBackendRef{
+				BackendObjectReference: gwapiv1.BackendObjectReference{
+					Name: "te-backend",
+				},
+				SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
+					TokenExchange: &aigv1a1.MCPBackendTokenExchange{
+						STSEndpoint: "https://sts.example.com/token",
+					},
+				},
+			},
+			wantTokenExchange: true,
+		},
+		{
+			name: "backend without security policy does not set UseTokenExchange",
+			backendRef: aigv1a1.MCPRouteBackendRef{
+				BackendObjectReference: gwapiv1.BackendObjectReference{
+					Name: "plain-backend",
+				},
+			},
+			wantTokenExchange: false,
+		},
+		{
+			name: "backend with nil TokenExchange does not set UseTokenExchange",
+			backendRef: aigv1a1.MCPRouteBackendRef{
+				BackendObjectReference: gwapiv1.BackendObjectReference{
+					Name: "apikey-backend",
+				},
+				SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
+					TokenExchange: nil,
+				},
+			},
+			wantTokenExchange: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mcpRoutes := []aigv1a1.MCPRoute{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "ns"},
+					Spec: aigv1a1.MCPRouteSpec{
+						BackendRefs: []aigv1a1.MCPRouteBackendRef{tc.backendRef},
+					},
+				},
+			}
+
+			mc, effective := mcpConfig(mcpRoutes)
+			require.True(t, effective)
+			require.NotNil(t, mc)
+			require.Len(t, mc.Routes, 1)
+			require.Len(t, mc.Routes[0].Backends, 1)
+			require.Equal(t, tc.wantTokenExchange, mc.Routes[0].Backends[0].UseTokenExchange)
+		})
+	}
+}

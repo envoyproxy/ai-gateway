@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -129,6 +130,34 @@ func SetupAll(ctx context.Context, clusterName string, aigwOpts AIGatewayHelmOpt
 	return nil
 }
 
+// kindConfigTemplate configures a host path so that the compiled dynamic module can be
+// mounted into the test pods.
+var kindConfigTemplate = `kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: %s
+        containerPath: /var/dym/libaigateway.so
+`
+
+func writeKindConfig(clusterName string) (string, error) {
+	f, err := os.CreateTemp("", clusterName+"-config-*.yaml")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temporary kind config file: %w", err)
+	}
+	defer f.Close()
+
+	moduleRoot := internaltesting.FindProjectRoot()
+	dym := path.Join(moduleRoot, "out", fmt.Sprintf("libaigateway-linux-%s.so", runtime.GOARCH))
+	if _, err = os.Stat(dym); err != nil {
+		return "", fmt.Errorf("%s not found; run: make docker-build-dynamic-module: %w", dym, err)
+	}
+
+	_, err = fmt.Fprintf(f, kindConfigTemplate, dym)
+	return f.Name(), err
+}
+
 func initKindCluster(ctx context.Context, clusterName string) (err error) {
 	initLog("Setting up the kind cluster")
 	start := time.Now()
@@ -137,7 +166,12 @@ func initKindCluster(ctx context.Context, clusterName string) (err error) {
 		initLog(fmt.Sprintf("\tdone (took %.2fs in total)", elapsed.Seconds()))
 	}()
 
-	args := []string{"create", "cluster", "--name", clusterName}
+	kindConfig, err := writeKindConfig(clusterName)
+	if err != nil {
+		return fmt.Errorf("failed to write kind config: %w", err)
+	}
+
+	args := []string{"create", "cluster", "--name", clusterName, "--config", kindConfig}
 	// If K8S_VERSION is set, use the specified Kubernetes version for the kind node image.
 	if k8sVersion := os.Getenv("K8S_VERSION"); k8sVersion != "" {
 		args = append(args, "--image", "kindest/node:"+k8sVersion)
@@ -165,6 +199,7 @@ func initKindCluster(ctx context.Context, clusterName string) (err error) {
 		"docker.io/envoyproxy/ai-gateway-testupstream:latest",
 		"docker.io/envoyproxy/ai-gateway-testmcpserver:latest",
 		"docker.io/envoyproxy/ai-gateway-testextauthserver:latest",
+		"docker.io/envoyproxy/ai-gateway-testtokenexchange:latest",
 	} {
 		cmd := testsinternal.GoToolCmdContext(ctx, "kind", "load", "docker-image", image, "--name", clusterName)
 		cmd.Stdout = os.Stdout

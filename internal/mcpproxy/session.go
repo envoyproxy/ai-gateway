@@ -385,6 +385,15 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 		}
 	}
 
+	// For token-exchange backends, forward the original user Authorization header as the subject_token.
+	// The BOE token-exchange Dynamic Module filter in the backend listener will exchange it for a
+	// backend-scoped token before the request reaches the upstream MCP server.
+	if backend.UseTokenExchange {
+		if authz := s.reqCtx.requestHeaders.Get("authorization"); authz != "" {
+			req.Header.Set("Authorization", authz)
+		}
+	}
+
 	if lastEventID := cse.lastEventID; lastEventID != "" {
 		req.Header.Set(lastEventIDHeader, lastEventID)
 	}

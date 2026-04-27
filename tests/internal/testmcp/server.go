@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/envoyproxy/ai-gateway/tests/internal/testtokenexchangelib"
 )
 
 var logger = log.New(os.Stdout, "[mcptestserver] ", 0)
@@ -27,6 +29,7 @@ type Options struct {
 	ForceJSONResponse, DumbEchoServer bool
 	WriteTimeout                      time.Duration
 	DisableLog                        bool
+	ReceivingMiddlewares              []func(handler mcp.MethodHandler) mcp.MethodHandler
 }
 
 // NewServer starts a demo MCP server with two tools: echo and sum.
@@ -124,6 +127,34 @@ func NewServer(opts *Options) (*http.Server, *mcp.Server) {
 				return handler(ctx, method, req)
 			}
 		})
+	}
+
+	expectedExchangedActor := os.Getenv("TEST_EXPECTED_EXCHANGED_ACTOR")
+	if expectedExchangedActor != "" {
+		s.AddReceivingMiddleware(func(handler mcp.MethodHandler) mcp.MethodHandler {
+			return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+				res, err := handler(ctx, method, req)
+				token := strings.TrimPrefix(req.GetExtra().Header.Get("Authorization"), "Bearer ")
+				log.Printf("received token: %s\n", token)
+				claims, tokenErr := testtokenexchangelib.ParseIssuedToken(token)
+				if tokenErr != nil {
+					msg := fmt.Sprintf("failed to parse token from Authorization header: %v", tokenErr)
+					logger.Println(msg)
+					return nil, errors.New(msg)
+				}
+				if claims.Act == nil || claims.Act.Sub != expectedExchangedActor {
+					msg := fmt.Sprintf("expected actor %q in exchanged token, got %q", expectedExchangedActor, claims.Act.Sub)
+					logger.Println(msg)
+					return nil, errors.New(msg)
+				}
+				log.Printf("token exchange delegation chain (%s) is correct\n", expectedExchangedActor)
+				return res, err
+			}
+		})
+	}
+
+	for _, m := range opts.ReceivingMiddlewares {
+		s.AddReceivingMiddleware(m)
 	}
 
 	s.AddPrompt(CodeReviewPrompt, codReviewPromptHandler)

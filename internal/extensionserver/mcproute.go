@@ -6,6 +6,7 @@
 package extensionserver
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -35,7 +36,7 @@ const (
 )
 
 // Generate the resources needed to support MCP Gateway functionality.
-func (s *Server) maybeGenerateResourcesForMCPGateway(req *egextension.PostTranslateModifyRequest) error {
+func (s *Server) maybeGenerateResourcesForMCPGateway(ctx context.Context, req *egextension.PostTranslateModifyRequest) error {
 	if len(req.Listeners) == 0 || len(req.Routes) == 0 {
 		return nil // Nothing to do, mostly for unit tests.
 	}
@@ -43,8 +44,13 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(req *egextension.PostTransl
 	// Order matters: do this before moving rules to the backend listener.
 	s.maybeUpdateMCPRoutes(req.Routes)
 
+	// Create STS clusters for token-exchange backends before building routes.
+	if err := s.maybeCreateSTSClusters(ctx, req); err != nil {
+		return fmt.Errorf("failed to create STS clusters for token exchange: %w", err)
+	}
+
 	// Create routes for the backend listener first to determine if MCP processing is needed
-	mcpBackendRoutes := s.createRoutesForBackendListener(req.Routes)
+	mcpBackendRoutes := s.createRoutesForBackendListener(ctx, req.Routes)
 
 	// Only create the backend listener if there are routes for it
 	if mcpBackendRoutes != nil {
@@ -122,11 +128,20 @@ func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3
 		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: a},
 	})
 
-	// Add Router filter as the terminal HTTP filter.
+	// Add the BOE token-exchange Dynamic Module filter. It is a no-op for routes that do not have
+	// a per-route DynamicModuleFilterPerRoute config, so it is safe to always include it here.
+	tokenExchangeFilter, err := tokenExchangeHTTPFilter()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build token-exchange HTTP filter: %w", err)
+	}
+	httpConManager.HttpFilters = append(httpConManager.HttpFilters, tokenExchangeFilter)
+
 	a, err = toAny(&routerv3.Router{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal router filter config: %w", err)
 	}
+
+	// Add Router filter as the terminal HTTP filter.
 	httpConManager.HttpFilters = append(httpConManager.HttpFilters, &httpconnectionmanagerv3.HttpFilter{
 		Name:       wellknown.Router,
 		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: a},
@@ -188,9 +203,10 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 
 // createRoutesForBackendListener creates routes for the backend listener.
 // The HCM of the backend listener will have all the per-backendRef HTTP routes.
+// For token-exchange backends, it also sets the per-route DynamicModuleFilterPerRoute config.
 //
 // Returns nil if no MCP routes are found.
-func (s *Server) createRoutesForBackendListener(routes []*routev3.RouteConfiguration) *routev3.RouteConfiguration {
+func (s *Server) createRoutesForBackendListener(ctx context.Context, routes []*routev3.RouteConfiguration) *routev3.RouteConfiguration {
 	var backendListenerRoutes []*routev3.Route
 	for _, routeConfig := range routes {
 		for _, vh := range routeConfig.VirtualHosts {
@@ -211,6 +227,9 @@ func (s *Server) createRoutesForBackendListener(routes []*routev3.RouteConfigura
 					}
 					if routeAction := route.GetRoute(); routeAction != nil {
 						if _, ok := routeAction.ClusterSpecifier.(*routev3.RouteAction_Cluster); ok {
+							if err := s.maybeSetTokenExchangePerRouteConfig(ctx, copiedRoute); err != nil {
+								s.log.Error(err, "failed to set token-exchange per-route config", "route", copiedRoute.Name)
+							}
 							backendListenerRoutes = append(backendListenerRoutes, copiedRoute)
 							continue
 						}

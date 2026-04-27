@@ -37,6 +37,9 @@ func init() {
 	if err != nil {
 		panic(fmt.Sprintf("failed to build extproc binary: %v", err))
 	}
+	if err := internaltesting.BuildDynamicModuleOnDemand(); err != nil {
+		panic(fmt.Sprintf("failed to build dynamic module: %v", err))
+	}
 }
 
 // TestEnvironment holds all the services needed for tests.
@@ -255,7 +258,7 @@ func requireEnvoy(t testing.TB,
 		"--concurrency", strconv.Itoa(max(runtime.NumCPU(), 2)),
 		// This allows multiple Envoy instances to run in parallel.
 		"--base-id", strconv.Itoa(time.Now().Nanosecond()),
-		"--component-log-level", "http:warn",
+		"--component-log-level", "http:warn,dynamic_modules:debug",
 	)
 	// Point func-e at the same data dir used by aigw so tests reuse the cached Envoy binary.
 	home, err := os.UserHomeDir()

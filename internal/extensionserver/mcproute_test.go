@@ -23,7 +23,13 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
@@ -94,6 +100,15 @@ func TestServer_createBackendListener(t *testing.T) {
 			for i := range tt.accessLogConfig {
 				require.Equal(t, tt.accessLogConfig[i].Name, hcm.AccessLog[i].Name)
 			}
+
+			// The token-exchange dynamic module filter must always be present, just before the
+			// terminal router filter, so that per-route config can activate it on demand.
+			n := len(hcm.HttpFilters)
+			require.GreaterOrEqual(t, n, 2, "HCM must have at least token-exchange and router filters")
+			require.Equal(t, "token-exchange", hcm.HttpFilters[n-2].Name,
+				"second-to-last HCM filter must be the token-exchange filter")
+			require.Equal(t, wellknown.Router, hcm.HttpFilters[n-1].Name,
+				"last HCM filter must be the router filter")
 		})
 	}
 }
@@ -101,12 +116,66 @@ func TestServer_createBackendListener(t *testing.T) {
 func TestServer_createRoutesForBackendListener(t *testing.T) {
 	tests := []struct {
 		name          string
+		setup         func(*testing.T, client.Client)
 		routes        []*routev3.RouteConfiguration
 		expectedRoute *routev3.RouteConfiguration
 	}{
 		{
 			name:          "empty",
 			routes:        []*routev3.RouteConfiguration{},
+			expectedRoute: nil,
+		},
+		{
+			name: "with MCP route and token-exchange backend sets per-route config",
+			setup: func(t *testing.T, c client.Client) {
+				mcpRoute := &aigv1a1.MCPRoute{
+					ObjectMeta: metav1.ObjectMeta{Name: "my-route", Namespace: "default"},
+					Spec: aigv1a1.MCPRouteSpec{
+						BackendRefs: []aigv1a1.MCPRouteBackendRef{
+							{
+								BackendObjectReference: gwapiv1.BackendObjectReference{Name: "te-backend"},
+								SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
+									TokenExchange: &aigv1a1.MCPBackendTokenExchange{
+										STSEndpoint: "https://sts.example.com/token",
+									},
+								},
+							},
+						},
+					},
+				}
+				require.NoError(t, c.Create(t.Context(), mcpRoute))
+			},
+			routes: []*routev3.RouteConfiguration{
+				{
+					VirtualHosts: []*routev3.VirtualHost{
+						{
+							Name:    "mcp-vh",
+							Domains: []string{"*"},
+							Routes: []*routev3.Route{
+								{
+									Name: internalapi.MCPPerBackendRefHTTPRoutePrefix + "te-backend/rule/0",
+									Action: &routev3.Route_Route{
+										Route: &routev3.RouteAction{ClusterSpecifier: &routev3.RouteAction_Cluster{}},
+									},
+									Match: &routev3.RouteMatch{
+										Headers: []*routev3.HeaderMatcher{
+											{
+												Name:                 internalapi.MCPBackendHeader,
+												HeaderMatchSpecifier: &routev3.HeaderMatcher_ExactMatch{ExactMatch: "te-backend"},
+											},
+											{
+												Name:                 internalapi.MCPRouteHeader,
+												HeaderMatchSpecifier: &routev3.HeaderMatcher_ExactMatch{ExactMatch: "default/my-route"},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			// expectedRoute is nil because we check per-route config directly below.
 			expectedRoute: nil,
 		},
 		{
@@ -179,11 +248,24 @@ func TestServer_createRoutesForBackendListener(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Server{log: testr.New(t)}
-			route := s.createRoutesForBackendListener(tt.routes)
-			if tt.expectedRoute == nil {
+			fakeClient := fake.NewClientBuilder().WithScheme(controller.Scheme).Build()
+			if tt.setup != nil {
+				tt.setup(t, fakeClient)
+			}
+			s := &Server{log: testr.New(t), k8sClient: fakeClient}
+			route := s.createRoutesForBackendListener(t.Context(), tt.routes)
+
+			switch {
+			case tt.name == "with MCP route and token-exchange backend sets per-route config":
+				// The route is returned but we also verify the per-route config was injected.
+				require.NotNil(t, route)
+				backendRoute := route.GetVirtualHosts()[0].GetRoutes()[0]
+				require.NotNil(t, backendRoute.TypedPerFilterConfig,
+					"token-exchange per-route config must be injected for TokenExchange backends")
+				require.Contains(t, backendRoute.TypedPerFilterConfig, tokenExchangeFilterName)
+			case tt.expectedRoute == nil:
 				require.Nil(t, route)
-			} else {
+			default:
 				require.Empty(t, cmp.Diff(tt.expectedRoute, route, protocmp.Transform()))
 			}
 		})
@@ -495,6 +577,7 @@ func TestServer_extractMCPBackendFiltersFromMCPProxyListener(t *testing.T) {
 func TestServer_maybeGenerateResourcesForMCPGateway(t *testing.T) {
 	tests := []struct {
 		name          string
+		setup         func(*testing.T, client.Client)
 		req           *egextension.PostTranslateModifyRequest
 		check         func(t *testing.T, req *egextension.PostTranslateModifyRequest)
 		expectedError bool
@@ -570,12 +653,89 @@ func TestServer_maybeGenerateResourcesForMCPGateway(t *testing.T) {
 				require.Equal(t, clusterv3.Cluster_STATIC, req.Clusters[0].GetClusterDiscoveryType().(*clusterv3.Cluster_Type).Type)
 			},
 		},
+		{
+			name: "creates STS cluster for token-exchange backend",
+			setup: func(t *testing.T, c client.Client) {
+				mcpRoute := &aigv1a1.MCPRoute{
+					ObjectMeta: metav1.ObjectMeta{Name: "sts-route", Namespace: "default"},
+					Spec: aigv1a1.MCPRouteSpec{
+						BackendRefs: []aigv1a1.MCPRouteBackendRef{
+							{
+								BackendObjectReference: gwapiv1.BackendObjectReference{Name: "sts-backend"},
+								SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
+									TokenExchange: &aigv1a1.MCPBackendTokenExchange{
+										STSEndpoint: "https://sts.example.com/token",
+									},
+								},
+							},
+						},
+					},
+				}
+				require.NoError(t, c.Create(t.Context(), mcpRoute))
+			},
+			req: &egextension.PostTranslateModifyRequest{
+				Listeners: []*listenerv3.Listener{
+					{
+						Name: "test-listener",
+						FilterChains: []*listenerv3.FilterChain{
+							{
+								Filters: []*listenerv3.Filter{
+									{
+										Name: wellknown.HTTPConnectionManager,
+										ConfigType: &listenerv3.Filter_TypedConfig{
+											TypedConfig: mustToAny(t, &httpconnectionmanagerv3.HttpConnectionManager{
+												StatPrefix: "http",
+												HttpFilters: []*httpconnectionmanagerv3.HttpFilter{
+													{Name: internalapi.MCPPerBackendHTTPRouteFilterPrefix + "sts-filter"},
+													{Name: "envoy.filters.http.router"},
+												},
+											}),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				Routes: []*routev3.RouteConfiguration{
+					{
+						VirtualHosts: []*routev3.VirtualHost{
+							{
+								Name:    "mcp-vh",
+								Domains: []string{"*"},
+								Routes: []*routev3.Route{
+									{
+										Name: internalapi.MCPPerBackendRefHTTPRoutePrefix + "sts-backend/rule/0",
+										Action: &routev3.Route_Route{
+											Route: &routev3.RouteAction{ClusterSpecifier: &routev3.RouteAction_Cluster{}},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			check: func(t *testing.T, req *egextension.PostTranslateModifyRequest) {
+				// The backend listener and routes are added.
+				require.Len(t, req.Listeners, 2)
+				require.Equal(t, mcpBackendListenerName, req.Listeners[1].Name)
+				// An STS cluster must have been appended for the token-exchange backend.
+				require.Len(t, req.Clusters, 1)
+				require.Equal(t, buildSTSClusterName("https://sts.example.com/token"), req.Clusters[0].Name)
+				require.Equal(t, clusterv3.Cluster_STRICT_DNS, req.Clusters[0].GetClusterDiscoveryType().(*clusterv3.Cluster_Type).Type)
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Server{log: testr.New(t)}
-			err := s.maybeGenerateResourcesForMCPGateway(tt.req)
+			fakeClient := fake.NewClientBuilder().WithScheme(controller.Scheme).Build()
+			if tt.setup != nil {
+				tt.setup(t, fakeClient)
+			}
+			s := &Server{log: testr.New(t), k8sClient: fakeClient}
+			err := s.maybeGenerateResourcesForMCPGateway(t.Context(), tt.req)
 			if tt.expectedError {
 				require.Error(t, err)
 			} else {

@@ -980,3 +980,108 @@ func TestGetHeartbeatInterval(t *testing.T) {
 		})
 	}
 }
+
+// TestSendRequestPerBackend_TokenExchangeForwardsAuth verifies that when backend.UseTokenExchange is
+// true, the original Authorization header from the incoming request is forwarded to the backend.
+func TestSendRequestPerBackend_TokenExchangeForwardsAuth(t *testing.T) {
+	authorizationHeader := "Bearer user-access-token"
+	headersCh := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- r.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	// Set the Authorization header on the incoming request context.
+	proxy.requestHeaders = http.Header{"Authorization": []string{authorizationHeader}}
+
+	s := &session{reqCtx: proxy}
+	ch := make(chan *backendEvent, 1)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+
+	err := s.sendRequestPerBackend(ctx, ch, "test-route",
+		filterapi.MCPBackend{Name: "backend1", UseTokenExchange: true},
+		&compositeSessionEntry{sessionID: "sess1"},
+		http.MethodGet, nil, nil)
+	require.NoError(t, err)
+
+	select {
+	case hdr := <-headersCh:
+		require.Equal(t, authorizationHeader, hdr.Get("Authorization"),
+			"Authorization header must be forwarded for UseTokenExchange backends")
+	case <-ctx.Done():
+		require.Fail(t, "timed out waiting for backend request")
+	}
+}
+
+// TestSendRequestPerBackend_TokenExchangeNoAuthHeader verifies that when backend.UseTokenExchange is
+// true but there is no Authorization header in the incoming request, nothing is forwarded.
+func TestSendRequestPerBackend_TokenExchangeNoAuthHeader(t *testing.T) {
+	headersCh := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- r.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	proxy.requestHeaders = http.Header{} // no Authorization header
+
+	s := &session{reqCtx: proxy}
+	ch := make(chan *backendEvent, 1)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+
+	err := s.sendRequestPerBackend(ctx, ch, "test-route",
+		filterapi.MCPBackend{Name: "backend1", UseTokenExchange: true},
+		&compositeSessionEntry{sessionID: "sess1"},
+		http.MethodGet, nil, nil)
+	require.NoError(t, err)
+
+	select {
+	case hdr := <-headersCh:
+		require.Empty(t, hdr.Get("Authorization"),
+			"Authorization header must not be set when not present in original request")
+	case <-ctx.Done():
+		require.Fail(t, "timed out waiting for backend request")
+	}
+}
+
+// TestSendRequestPerBackend_NonTokenExchangeDoesNotForwardAuth verifies that when
+// backend.UseTokenExchange is false, the Authorization header from the incoming request is NOT
+// automatically forwarded (to avoid leaking credentials to non-token-exchange backends).
+func TestSendRequestPerBackend_NonTokenExchangeDoesNotForwardAuth(t *testing.T) {
+	headersCh := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- r.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	proxy.requestHeaders = http.Header{"Authorization": []string{"Bearer user-access-token"}}
+
+	s := &session{reqCtx: proxy}
+	ch := make(chan *backendEvent, 1)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+
+	err := s.sendRequestPerBackend(ctx, ch, "test-route",
+		filterapi.MCPBackend{Name: "backend1", UseTokenExchange: false},
+		&compositeSessionEntry{sessionID: "sess1"},
+		http.MethodGet, nil, nil)
+	require.NoError(t, err)
+
+	select {
+	case hdr := <-headersCh:
+		require.Empty(t, hdr.Get("Authorization"),
+			"Authorization header must not be forwarded for non-UseTokenExchange backends")
+	case <-ctx.Done():
+		require.Fail(t, "timed out waiting for backend request")
+	}
+}

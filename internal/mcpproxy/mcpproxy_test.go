@@ -452,3 +452,68 @@ func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
+
+// TestInvokeJSONRPCRequest_TokenExchangeForwardsAuth verifies that when backend.UseTokenExchange is
+// true, the original Authorization header from the incoming request is forwarded to the backend.
+func TestInvokeJSONRPCRequest_TokenExchangeForwardsAuth(t *testing.T) {
+	const authorizationHeader = "Bearer user-access-token"
+	headersCh := make(chan http.Header, 1)
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"result": "ok"}`))
+	}))
+	defer backendServer.Close()
+
+	m := newTestMCPProxy()
+	m.backendListenerAddr = backendServer.URL
+	m.requestHeaders = http.Header{"Authorization": []string{authorizationHeader}}
+
+	resp, err := m.invokeJSONRPCRequest(t.Context(), "test-route",
+		filterapi.MCPBackend{Name: "backend1", UseTokenExchange: true},
+		&compositeSessionEntry{sessionID: "sess1"},
+		&jsonrpc.Request{}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NoError(t, resp.Body.Close())
+
+	select {
+	case hdr := <-headersCh:
+		require.Equal(t, authorizationHeader, hdr.Get("Authorization"),
+			"Authorization header must be forwarded for UseTokenExchange backends")
+	default:
+		require.Fail(t, "backend server did not receive a request")
+	}
+}
+
+// TestInvokeJSONRPCRequest_NonTokenExchangeDoesNotForwardAuth verifies that when
+// backend.UseTokenExchange is false, the Authorization header is NOT automatically forwarded.
+func TestInvokeJSONRPCRequest_NonTokenExchangeDoesNotForwardAuth(t *testing.T) {
+	headersCh := make(chan http.Header, 1)
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"result": "ok"}`))
+	}))
+	defer backendServer.Close()
+
+	m := newTestMCPProxy()
+	m.backendListenerAddr = backendServer.URL
+	m.requestHeaders = http.Header{"Authorization": []string{"Bearer user-access-token"}}
+
+	resp, err := m.invokeJSONRPCRequest(t.Context(), "test-route",
+		filterapi.MCPBackend{Name: "backend1", UseTokenExchange: false},
+		&compositeSessionEntry{sessionID: "sess1"},
+		&jsonrpc.Request{}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NoError(t, resp.Body.Close())
+
+	select {
+	case hdr := <-headersCh:
+		require.Empty(t, hdr.Get("Authorization"),
+			"Authorization header must not be forwarded for non-UseTokenExchange backends")
+	default:
+		require.Fail(t, "backend server did not receive a request")
+	}
+}

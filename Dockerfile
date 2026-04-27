@@ -28,7 +28,7 @@ RUN if [ "$COMMAND_NAME" = "aigw" ]; then \
     && chown -R 65532:65532 /home/nonroot \
     && chmod -R 755 /home/nonroot /app
 
-FROM ${RUNTIME_BASE_IMAGE}
+FROM ${RUNTIME_BASE_IMAGE} AS base-runtime
 ARG COMMAND_NAME
 ARG TARGETOS
 ARG TARGETARCH
@@ -57,3 +57,13 @@ ENTRYPOINT ["/app"]
 
 # Default CMD for aigw - uses AIGW_RUN_ID from environment
 CMD ["run"]
+
+# Variant WITH the dynamic module (for aigw)
+FROM base-runtime AS aigw
+
+COPY ./out/libaigateway-${TARGETOS}-${TARGETARCH}.so /var/envoy/dym/libaigateway.so
+ENV ENVOY_DYNAMIC_MODULES_SEARCH_PATH=/var/envoy/dym/
+ENV GODEBUG=cgocheck=0
+
+# Variant WITHOUT the dynamic module
+FROM base-runtime AS default

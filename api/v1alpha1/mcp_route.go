@@ -191,11 +191,183 @@ type MCPToolFilter struct {
 	ExcludeRegex []string `json:"excludeRegex,omitempty"`
 }
 
-// MCPBackendSecurityPolicy defines the security policy for a backend MCP server.
+// MCPBackendSecurityPolicy defines the security policy for authenticating the gateway to an upstream MCP backend.
+//
+// Exactly one of APIKey or TokenExchange must be set.
+//
+// +kubebuilder:validation:XValidation:rule="!(has(self.apiKey) && has(self.tokenExchange))",message="only one of apiKey or tokenExchange can be set"
 type MCPBackendSecurityPolicy struct {
 	// APIKey is a mechanism to access a backend. The API key will be injected into the request headers.
 	// +optional
 	APIKey *MCPBackendAPIKey `json:"apiKey,omitempty"`
+
+	// TokenExchange configures OAuth 2.0 Token Exchange (RFC-8693) as the upstream auth method.
+	// The gateway exchanges the incoming user token for a new token valid for this specific backend
+	// by calling an external Security Token Service (STS).
+	//
+	// +optional
+	TokenExchange *MCPBackendTokenExchange `json:"tokenExchange,omitempty"`
+}
+
+// MCPBackendTokenExchange configures OAuth 2.0 Token Exchange (RFC-8693) as the
+// upstream authentication method for an MCP backend. The gateway exchanges the
+// incoming user token for a new token valid for the specific MCP backend by
+// calling an external Security Token Service (STS).
+//
+// +kubebuilder:validation:XValidation:rule="has(self.stsEndpoint)",message="stsEndpoint is required"
+type MCPBackendTokenExchange struct {
+	// STSEndpoint is the URL of the OAuth 2.0 token endpoint of the Security Token
+	// Service (STS) that will perform the token exchange. Must be an HTTPS URL.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Format=uri
+	STSEndpoint string `json:"stsEndpoint"`
+
+	// SubjectTokenType is the token type URI for the subject_token parameter as defined in RFC-8693 §3.
+	// Defaults to "urn:ietf:params:oauth:token-type:access_token".
+	//
+	// +kubebuilder:default="urn:ietf:params:oauth:token-type:access_token"
+	// +optional
+	SubjectTokenType *string `json:"subjectTokenType,omitempty"`
+
+	// Audience specifies the intended audience for the issued upstream token.
+	// This is used as the "audience" parameter in the token exchange request (RFC-8693 §2.1)
+	// and will appear as the "aud" claim in the issued JWT.
+	//
+	// +optional
+	Audience *string `json:"audience,omitempty"`
+
+	// Resource is the URI of the upstream MCP backend resource, used as the
+	// "resource" parameter in the exchange request (RFC-8693 §2.1, RFC 8707).
+	//
+	// +optional
+	// +kubebuilder:validation:Format=uri
+	Resource *string `json:"resource,omitempty"`
+
+	// Scopes lists the OAuth 2.0 scopes to request for the issued upstream token.
+	// These are used as the "scope" parameter in the exchange request.
+	//
+	// +optional
+	Scopes []string `json:"scopes,omitempty"`
+
+	// RequestedTokenType specifies the desired type of the issued token.
+	// Defaults to "urn:ietf:params:oauth:token-type:access_token".
+	//
+	// +kubebuilder:default="urn:ietf:params:oauth:token-type:access_token"
+	// +optional
+	RequestedTokenType *string `json:"requestedTokenType,omitempty"`
+
+	// ActorToken configures the credential that identifies the gateway itself to the STS.
+	// This is used as the "actor_token" parameter in the exchange. The actor token represents
+	// the gateway's identity and is used by the STS to establish a delegation chain in the issued token.
+	//
+	// +optional
+	ActorToken *MCPBackendTokenExchangeActorToken `json:"actorToken,omitempty"`
+
+	// ClientAuth configures how the gateway authenticates itself as an OAuth client to the STS
+	// token endpoint. This is separate from the actor token and applies to the client_id/client_secret
+	// used in the token exchange HTTP request itself.
+	//
+	// If not set, the STS request is made without client authentication (unauthenticated client).
+	// This is NOT RECOMMENDED for production.
+	//
+	// +optional
+	ClientAuth *MCPTokenExchangeClientAuth `json:"clientAuth,omitempty"`
+
+	// Cache configures token caching behavior to avoid performing a token exchange on every request.
+	// Caching is keyed on (subject_token, audience, scope).
+	//
+	// NOTE: Token caching is not yet implemented. This field is reserved for future use.
+	//
+	// +optional
+	Cache *MCPTokenExchangeCacheConfig `json:"cache,omitempty"`
+}
+
+// MCPBackendTokenExchangeActorToken configures the credential used as the actor_token in the token
+// exchange request, representing the gateway's identity.
+//
+// Exactly one of SecretRef or ClientAssertionJWT must be set.
+//
+// +kubebuilder:validation:XValidation:rule="(has(self.secretRef) && !has(self.clientAssertionJWT)) || (!has(self.secretRef) && has(self.clientAssertionJWT))",message="exactly one of secretRef or clientAssertionJWT must be set"
+type MCPBackendTokenExchangeActorToken struct {
+	// SecretRef references a Kubernetes Secret containing the actor token.
+	// The Secret must have a key "token" containing the actor token value.
+	//
+	// +optional
+	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef,omitempty"`
+
+	// ClientAssertionJWT configures the gateway to generate a signed JWT as the actor token
+	// using a private key. This is the RECOMMENDED approach as it avoids long-lived static
+	// tokens and enables key rotation.
+	//
+	// NOTE: JWT actor token generation is not yet implemented. This field is reserved for future use.
+	//
+	// +optional
+	ClientAssertionJWT *MCPTokenExchangeJWTActorConfig `json:"clientAssertionJWT,omitempty"`
+}
+
+// MCPTokenExchangeJWTActorConfig configures JWT generation for the actor token.
+//
+// NOTE: This configuration is defined for future use. JWT actor token generation is not yet implemented.
+type MCPTokenExchangeJWTActorConfig struct {
+	// Issuer is the "iss" claim value in the generated JWT.
+	// Typically the gateway's client ID or identifier at the STS.
+	//
+	// +kubebuilder:validation:Required
+	Issuer string `json:"issuer"`
+
+	// Subject is the "sub" claim value in the generated JWT.
+	// Typically the gateway's service account identifier.
+	//
+	// +kubebuilder:validation:Required
+	Subject string `json:"subject"`
+
+	// PrivateKeyRef references a Kubernetes Secret containing the private key used to sign the JWT.
+	// The secret must have a key "privateKey" containing a PEM-encoded RSA or EC private key.
+	//
+	// +kubebuilder:validation:Required
+	PrivateKeyRef gwapiv1.SecretObjectReference `json:"privateKeyRef"`
+
+	// SigningAlgorithm specifies the JWT signing algorithm.
+	//
+	// +kubebuilder:default="RS256"
+	// +kubebuilder:validation:Enum=RS256;RS384;RS512;ES256;ES384;ES512;PS256;PS384;PS512;HS256;HS384;HS512
+	// +optional
+	SigningAlgorithm *string `json:"signingAlgorithm,omitempty"`
+
+	// Lifetime is the TTL of the generated JWT in seconds. Defaults to 300 (5 minutes).
+	//
+	// +kubebuilder:default=300
+	// +optional
+	Lifetime *int32 `json:"lifetime,omitempty"`
+}
+
+// MCPTokenExchangeClientAuth configures client authentication at the STS token endpoint.
+// This is how the gateway authenticates itself as an OAuth 2.0 client (client_id + credential).
+//
+// +kubebuilder:validation:XValidation:rule="has(self.clientID)",message="clientID is required"
+// +kubebuilder:validation:XValidation:rule="has(self.clientSecretRef)",message="clientSecretRef is required"
+type MCPTokenExchangeClientAuth struct {
+	// ClientID is the OAuth 2.0 client identifier for the gateway at the STS.
+	//
+	// +kubebuilder:validation:Required
+	ClientID string `json:"clientID"`
+
+	// ClientSecretRef references a Kubernetes Secret containing the client secret.
+	// The Secret must have a key "clientSecret".
+	//
+	// +kubebuilder:validation:Required
+	ClientSecretRef gwapiv1.SecretObjectReference `json:"clientSecretRef"`
+}
+
+// MCPTokenExchangeCacheConfig configures token caching for exchanged tokens.
+//
+// NOTE: Token caching is not yet implemented. This field is reserved for future use.
+type MCPTokenExchangeCacheConfig struct {
+	// TTL is the maximum time to cache an exchanged token.
+	//
+	// +kubebuilder:validation:Required
+	TTL gwapiv1.Duration `json:"ttl"`
 }
 
 // MCPBackendAPIKey defines the configuration for the API Key Authentication to a backend.

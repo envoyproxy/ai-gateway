@@ -1,0 +1,28 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+ARG GOLANG_BASE_IMAGE=golang:1.26
+
+FROM ${GOLANG_BASE_IMAGE} AS build
+
+WORKDIR /workspace
+COPY . .
+
+# Install necessary tools for cgo
+RUN apt-get update
+RUN apt-get install -y --no-install-recommends \
+    ca-certificates wget git ssh netcat-openbsd gcc build-essential binutils binutils-gold
+
+RUN go mod download all
+RUN CGO_ENABLED=1 go build -buildmode=c-shared -o libaigateway.so ./cmd/dynamic_module
+
+FROM scratch AS final
+
+ARG TARGETOS
+ARG TARGETARCH
+
+# Generate the file with the os and arch suffix so it can be easily copied to the project output folder.
+# This facilitates having the dynamic module for each os/arch in the same output folder.
+COPY --from=build /workspace/libaigateway.so /libaigateway-${TARGETOS}-${TARGETARCH}.so

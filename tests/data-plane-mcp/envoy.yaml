@@ -182,6 +182,26 @@ static_resources:
                             idleTimeout: 3600s
                             pathRewrite: /
                             timeout: 120s
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-ai-eg-mcp-backend
+                                string_match:
+                                  exact: te-backend
+                          route:
+                            cluster: te-backend
+                            idleTimeout: 3600s
+                            timeout: 120s
+                            pathRewrite: /mcp
+                          typed_per_filter_config:
+                            token-exchange:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilterPerRoute
+                              dynamic_module_config:
+                                name: aigateway
+                              per_route_config_name: token-exchange
+                              filter_config:
+                                "@type": type.googleapis.com/google.protobuf.StringValue
+                                value: '{"cluster":"mcp-sts-backend","token_exchange_url":"http://127.0.0.1:1075/token","client_id":"aigw-client","client_secret":"aigw-client-secret","subject_token_type":"urn:ietf:params:oauth:token-type:access_token","audience":"mcp-upstream","scope":"mcp.read","actor_token":"gateway-actor-token","actor_token_type":"urn:ietf:params:oauth:token-type:access_token","timeout_ms":5000}'
                 http_filters:
                   - name: envoy.filters.http.header_to_metadata
                     typed_config:
@@ -216,6 +236,14 @@ static_resources:
                             metadata_namespace: io.envoy.ai_gateway
                             key: session.id
                             type: STRING
+                  - name: token-exchange
+                    disabled: true
+                    is_optional: true
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilter
+                      dynamic_module_config:
+                        name: aigateway
+                      filter_name: token-exchange
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -284,6 +312,34 @@ static_resources:
                     socket_address:
                       address: 127.0.0.1
                       port_value: 8080
+
+    - name: te-backend
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: te-backend
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 8082
+
+    - name: mcp-sts-backend
+      connect_timeout: 5s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: mcp-sts-backend
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 1075
 
     - name: context7
       connect_timeout: 30s

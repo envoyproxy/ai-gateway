@@ -65,6 +65,20 @@ func BuildGoBinary(binaryName, packagePath string) (string, error) {
 	return binaryPath, nil
 }
 
+// BuildDynamicModuleOnDemand builds the dynamic module shared library.
+func BuildDynamicModuleOnDemand() error {
+	projectRoot := FindProjectRoot()
+	cmd := exec.Command("make", "build-dynamic-module")
+	cmd.Dir = projectRoot
+	var stderr strings.Builder
+	cmd.Stdout = io.Discard
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to build dynamic module: %w\nstderr: %s", err, stderr.String())
+	}
+	return nil
+}
+
 // FindProjectRoot finds the root of the project by looking for go.mod.
 func FindProjectRoot() string {
 	dir, _ := os.Getwd()
