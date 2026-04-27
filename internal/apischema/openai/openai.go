@@ -882,6 +882,9 @@ type ThinkingEnabled struct {
 
 	// Optional. Indicates the thinking budget in tokens.
 	IncludeThoughts bool `json:"includeThoughts,omitempty"`
+
+	// Optional. Controls how thinking content appears in the response ("summarized" or "omitted").
+	Display string `json:"display,omitempty"`
 }
 
 type ThinkingDisabled struct {
@@ -890,6 +893,9 @@ type ThinkingDisabled struct {
 
 type ThinkingAdaptive struct {
 	Type string `json:"type,"`
+
+	// Optional. Controls how thinking content appears in the response ("summarized" or "omitted").
+	Display string `json:"display,omitempty"`
 }
 
 // MarshalJSON implements the json.Marshaler interface for ThinkingUnion.
@@ -943,6 +949,19 @@ func (t *ThinkingUnion) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
+
+// ReasoningEffort is an alias for the OpenAI SDK's ReasoningEffort type.
+type ReasoningEffort = openai.ReasoningEffort
+
+// ReasoningEffort constants for the reasoning_effort field.
+const (
+	ReasoningEffortNone   ReasoningEffort = "none"
+	ReasoningEffortLow    ReasoningEffort = "low"
+	ReasoningEffortMedium ReasoningEffort = "medium"
+	ReasoningEffortHigh   ReasoningEffort = "high"
+	ReasoningEffortXhigh  ReasoningEffort = "xhigh"
+	ReasoningEffortMax    ReasoningEffort = "max"
+)
 
 type ChatCompletionRequest struct {
 	// Messages: A list of messages comprising the conversation so far.
@@ -1021,12 +1040,13 @@ type ChatCompletionRequest struct {
 
 	// Constrains effort on reasoning for
 	// [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently
-	// supported values are `minimal`, `low`, `medium`, and `high`. Reducing reasoning
+	// supported values are `none`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning
 	// effort can result in faster responses and fewer tokens used on reasoning in a
 	// response.
+	// Note: `max` is an Anthropic-specific extension not defined in the OpenAI SDK.
 	//
-	// Any of "minimal", "low", "medium", "high".
-	ReasoningEffort openai.ReasoningEffort `json:"reasoning_effort,omitzero"`
+	// Any of "none", "low", "medium", "high", "xhigh", "max".
+	ReasoningEffort ReasoningEffort `json:"reasoning_effort,omitzero"`
 
 	// ServiceTier:string or null
 	// Specifies the processing type used for serving the request.

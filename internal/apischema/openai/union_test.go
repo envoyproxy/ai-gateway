@@ -315,6 +315,20 @@ func TestThinkingUnion_UnmarshalJSON(t *testing.T) {
 				OfAdaptive: &ThinkingAdaptive{Type: "adaptive"},
 			},
 		},
+		{
+			name: "enabled with display",
+			data: `{"type":"enabled","budget_tokens":1024,"display":"omitted"}`,
+			expect: ThinkingUnion{
+				OfEnabled: &ThinkingEnabled{Type: "enabled", BudgetTokens: 1024, Display: "omitted"},
+			},
+		},
+		{
+			name: "adaptive with display",
+			data: `{"type":"adaptive","display":"summarized"}`,
+			expect: ThinkingUnion{
+				OfAdaptive: &ThinkingAdaptive{Type: "adaptive", Display: "summarized"},
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -379,6 +393,20 @@ func TestThinkingUnion_MarshalJSON(t *testing.T) {
 				OfAdaptive: &ThinkingAdaptive{Type: "adaptive"},
 			},
 			expect: `{"type":"adaptive"}`,
+		},
+		{
+			name: "enabled with display",
+			input: ThinkingUnion{
+				OfEnabled: &ThinkingEnabled{Type: "enabled", BudgetTokens: 1024, Display: "omitted"},
+			},
+			expect: `{"budget_tokens":1024,"type":"enabled","display":"omitted"}`,
+		},
+		{
+			name: "adaptive with display",
+			input: ThinkingUnion{
+				OfAdaptive: &ThinkingAdaptive{Type: "adaptive", Display: "summarized"},
+			},
+			expect: `{"type":"adaptive","display":"summarized"}`,
 		},
 		{
 			name:   "all nil returns empty object",

@@ -952,6 +952,16 @@ func TestThinking_UnmarshalJSON(t *testing.T) {
 			want:    Thinking{Adaptive: &ThinkingAdaptive{Type: "adaptive"}},
 		},
 		{
+			name:    "enabled with display",
+			jsonStr: `{"type":"enabled","budget_tokens":2048,"display":"omitted"}`,
+			want:    Thinking{Enabled: &ThinkingEnabled{Type: "enabled", BudgetTokens: 2048, Display: "omitted"}},
+		},
+		{
+			name:    "adaptive with display",
+			jsonStr: `{"type":"adaptive","display":"summarized"}`,
+			want:    Thinking{Adaptive: &ThinkingAdaptive{Type: "adaptive", Display: "summarized"}},
+		},
+		{
 			name:    "missing type",
 			jsonStr: `{"budget_tokens":1024}`,
 			wantErr: true,
@@ -998,6 +1008,16 @@ func TestThinking_MarshalJSON(t *testing.T) {
 			name: "adaptive",
 			th:   Thinking{Adaptive: &ThinkingAdaptive{Type: "adaptive"}},
 			want: `{"type":"adaptive"}`,
+		},
+		{
+			name: "enabled with display",
+			th:   Thinking{Enabled: &ThinkingEnabled{Type: "enabled", BudgetTokens: 2048, Display: "omitted"}},
+			want: `{"type":"enabled","budget_tokens":2048,"display":"omitted"}`,
+		},
+		{
+			name: "adaptive with display",
+			th:   Thinking{Adaptive: &ThinkingAdaptive{Type: "adaptive", Display: "summarized"}},
+			want: `{"type":"adaptive","display":"summarized"}`,
 		},
 		{
 			name:    "empty thinking",
