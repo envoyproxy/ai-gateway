@@ -1,0 +1,288 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This example demonstrates AWS Bedrock with per-user cost attribution using EC2 Instance Roles.
+# Suitable for self-managed Kubernetes on EC2, standalone deployments, or non-EKS environments.
+#
+# Architecture:
+# 1. AI Gateway pods/containers use EC2 Instance Role for fallback credentials
+# 2. ext-auth service calls STS AssumeRole with per-user session tags
+# 3. ext-auth injects temporary credentials as headers
+# 4. AI Gateway uses per-request credentials (with session tags) when present
+# 5. AI Gateway falls back to EC2 Instance Role credentials when headers not present
+#
+# Prerequisites:
+# 1. EC2 instances with IAM Instance Profile attached
+# 2. Instance role has Bedrock permissions (fallback)
+# 3. ext-auth service has permissions to call sts:AssumeRole
+# 4. Target IAM role for per-user sessions with Bedrock permissions
+# 5. CUR 2.0 enabled for session tag cost attribution
+#
+# Note: Works with any Kubernetes distribution on EC2 (self-managed, kOps, Rancher, etc.)
+# or standalone Docker/Podman deployments on EC2.
+
+---
+# Step 1: Create Gateway (uses default ServiceAccount, gets credentials from EC2 Instance Role)
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-cost-attribution
+  namespace: default
+spec:
+  gatewayClassName: envoy-ai-gateway
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+# Step 2: Create SecurityPolicy for external authentication
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: ext-auth-policy
+  namespace: default
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-ai-gateway-cost-attribution
+  extAuth:
+    http:
+      backendRef:
+        name: ext-auth-service
+        port: 8080
+      headersToBackend:
+        - authorization
+        - x-api-key
+      failOpen: false
+---
+# Step 3: Create ext-auth Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: ext-auth-service
+  namespace: default
+spec:
+  selector:
+    app: ext-auth
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+# Step 4: Create ext-auth Deployment (uses EC2 Instance Role to call STS AssumeRole)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ext-auth
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ext-auth
+  template:
+    metadata:
+      labels:
+        app: ext-auth
+    spec:
+      # No serviceAccountName needed - will use EC2 Instance Role via IMDS
+      containers:
+        - name: ext-auth
+          image: your-registry/ext-auth:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: AWS_REGION
+              value: us-east-1
+            - name: TARGET_ROLE_ARN
+              value: arn:aws:iam::ACCOUNT_ID:role/ai-gateway-bedrock-tagging
+            - name: REDIS_HOST
+              value: redis
+            # Optional: Explicitly use EC2 IMDS v2 (recommended)
+            - name: AWS_EC2_METADATA_SERVICE_ENDPOINT_MODE
+              value: IPv4
+            - name: AWS_EC2_METADATA_SERVICE_ENDPOINT
+              value: http://169.254.169.254
+---
+# Step 5: Create AIGatewayRoute
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-cost-attribution
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: anthropic.claude-v2
+      backendRefs:
+        - name: envoy-ai-gateway-aws-cost-attr
+---
+# Step 6: Create AIServiceBackend
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr
+  namespace: default
+spec:
+  schema:
+    name: AWSBedrock
+  backendRef:
+    name: envoy-ai-gateway-aws-cost-attr
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+# Step 7: Create BackendSecurityPolicy
+# AI Gateway will:
+# 1. Check for x-aws-* headers (per-user credentials from ext-auth)
+# 2. If present: Use those credentials (with session tags)
+# 3. If not present: Use EC2 Instance Role credentials via IMDS (fallback)
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-aws-cost-attr
+  type: AWSCredentials
+  awsCredentials:
+    region: us-east-1
+    # No configuration needed! AWS SDK automatically discovers:
+    # - Per-request credentials from x-aws-* headers (priority)
+    # - EC2 Instance Role via IMDS (fallback)
+---
+# Step 8: Create Backend
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: bedrock-runtime.us-east-1.amazonaws.com
+        port: 443
+---
+# Step 9: Create BackendTLSPolicy
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: "gateway.envoyproxy.io"
+      kind: Backend
+      name: envoy-ai-gateway-aws-cost-attr
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: bedrock-runtime.us-east-1.amazonaws.com
+
+---
+# EC2 Instance Profile Setup:
+#
+# 1. Create IAM Role for EC2 instances (e.g., "ai-gateway-ec2-role"):
+#    - Trusted entity: EC2 service (ec2.amazonaws.com)
+#    - Permissions: Bedrock access + ability to assume the target role
+#
+# 2. Create Instance Profile and attach role:
+#    aws iam create-instance-profile --instance-profile-name ai-gateway-ec2-profile
+#    aws iam add-role-to-instance-profile \
+#      --instance-profile-name ai-gateway-ec2-profile \
+#      --role-name ai-gateway-ec2-role
+#
+# 3. Attach Instance Profile to EC2 instances:
+#    aws ec2 associate-iam-instance-profile \
+#      --instance-id i-1234567890abcdef0 \
+#      --iam-instance-profile Name=ai-gateway-ec2-profile
+#
+# IAM Trust Policy for EC2 Instance Role (ai-gateway-ec2-role):
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Principal": {
+#         "Service": "ec2.amazonaws.com"
+#       },
+#       "Action": "sts:AssumeRole"
+#     }
+#   ]
+# }
+#
+# IAM Policy for EC2 Instance Role (fallback Bedrock access + assume role):
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Action": [
+#         "bedrock:InvokeModel",
+#         "bedrock:InvokeModelWithResponseStream"
+#       ],
+#       "Resource": "*"
+#     },
+#     {
+#       "Effect": "Allow",
+#       "Action": [
+#         "sts:AssumeRole",
+#         "sts:TagSession"
+#       ],
+#       "Resource": "arn:aws:iam::ACCOUNT_ID:role/ai-gateway-bedrock-tagging"
+#     }
+#   ]
+# }
+#
+# IAM Trust Policy for target role (ai-gateway-bedrock-tagging):
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Principal": {
+#         "AWS": "arn:aws:iam::ACCOUNT_ID:role/ai-gateway-ec2-role"
+#       },
+#       "Action": [
+#         "sts:AssumeRole",
+#         "sts:TagSession"
+#       ]
+#     }
+#   ]
+# }
+#
+# IAM Policy for target role:
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Action": [
+#         "bedrock:InvokeModel",
+#         "bedrock:InvokeModelWithResponseStream"
+#       ],
+#       "Resource": "*"
+#     }
+#   ]
+# }
+#
+# Security Best Practices for EC2 IMDS:
+# 1. Use IMDSv2 (token-based) instead of IMDSv1:
+#    aws ec2 modify-instance-metadata-options \
+#      --instance-id i-1234567890abcdef0 \
+#      --http-tokens required \
+#      --http-put-response-hop-limit 1
+#
+# 2. Limit network access to IMDS endpoint (169.254.169.254) using iptables
+# 3. Use separate IAM roles for different workloads when possible

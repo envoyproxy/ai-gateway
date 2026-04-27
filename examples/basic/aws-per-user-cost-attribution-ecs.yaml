@@ -1,0 +1,312 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This example demonstrates AWS Bedrock with per-user cost attribution using ECS Task Roles.
+# Suitable for deployments on AWS ECS (Fargate or EC2 launch type).
+#
+# Architecture:
+# 1. AI Gateway tasks use ECS Task Role for fallback credentials
+# 2. ext-auth service calls STS AssumeRole with per-user session tags
+# 3. ext-auth injects temporary credentials as headers
+# 4. AI Gateway uses per-request credentials (with session tags) when present
+# 5. AI Gateway falls back to ECS Task Role credentials when headers not present
+#
+# Prerequisites:
+# 1. ECS cluster (Fargate or EC2 launch type)
+# 2. Task Role with Bedrock permissions (fallback)
+# 3. ext-auth task role with sts:AssumeRole permissions
+# 4. Target IAM role for per-user sessions with Bedrock permissions
+# 5. CUR 2.0 enabled for session tag cost attribution
+#
+# Note: This configuration uses ECS Task Definitions instead of Kubernetes manifests.
+
+---
+# ECS Task Definition for AI Gateway with ext-auth sidecar
+# Deploy this via AWS Console, CLI, or Terraform
+
+# AWS CLI example:
+# aws ecs register-task-definition --cli-input-json file://task-definition.json
+
+{
+  "family": "ai-gateway-with-cost-attribution",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ai-gateway-task-role",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "envoy-ai-gateway",
+      "image": "docker.io/envoyproxy/ai-gateway-extproc:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "AWS_REGION",
+          "value": "us-east-1"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ai-gateway",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ai-gateway"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3
+      }
+    },
+    {
+      "name": "ext-auth",
+      "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/ext-auth:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "AWS_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "TARGET_ROLE_ARN",
+          "value": "arn:aws:iam::ACCOUNT_ID:role/ai-gateway-bedrock-tagging"
+        },
+        {
+          "name": "REDIS_HOST",
+          "value": "redis.your-vpc.cache.amazonaws.com"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ext-auth",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ext-auth"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3
+      }
+    }
+  ]
+}
+
+---
+# Alternative: Separate ECS Services (recommended for production)
+
+# 1. AI Gateway Task Definition:
+{
+  "family": "ai-gateway",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ai-gateway-task-role",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "envoy-ai-gateway",
+      "image": "docker.io/envoyproxy/ai-gateway-extproc:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "AWS_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "EXT_AUTH_URL",
+          "value": "http://ext-auth.local:8080"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ai-gateway",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "gateway"
+        }
+      }
+    }
+  ]
+}
+
+# 2. ext-auth Task Definition:
+{
+  "family": "ext-auth",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ext-auth-task-role",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "ext-auth",
+      "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/ext-auth:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "AWS_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "TARGET_ROLE_ARN",
+          "value": "arn:aws:iam::ACCOUNT_ID:role/ai-gateway-bedrock-tagging"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "REDIS_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:redis-password"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ext-auth",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "auth"
+        }
+      }
+    }
+  ]
+}
+
+---
+# IAM Trust Policy for AI Gateway Task Role:
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Principal": {
+#         "Service": "ecs-tasks.amazonaws.com"
+#       },
+#       "Action": "sts:AssumeRole"
+#     }
+#   ]
+# }
+#
+# IAM Policy for AI Gateway Task Role (fallback Bedrock access):
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Action": [
+#         "bedrock:InvokeModel",
+#         "bedrock:InvokeModelWithResponseStream"
+#       ],
+#       "Resource": "*"
+#     }
+#   ]
+# }
+#
+# IAM Trust Policy for ext-auth Task Role:
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Principal": {
+#         "Service": "ecs-tasks.amazonaws.com"
+#       },
+#       "Action": "sts:AssumeRole"
+#     }
+#   ]
+# }
+#
+# IAM Policy for ext-auth Task Role:
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Action": [
+#         "sts:AssumeRole",
+#         "sts:TagSession"
+#       ],
+#       "Resource": "arn:aws:iam::ACCOUNT_ID:role/ai-gateway-bedrock-tagging"
+#     },
+#     {
+#       "Effect": "Allow",
+#       "Action": [
+#         "secretsmanager:GetSecretValue"
+#       ],
+#       "Resource": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:redis-password"
+#     }
+#   ]
+# }
+#
+# IAM Trust Policy for target role (ai-gateway-bedrock-tagging):
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Principal": {
+#         "AWS": "arn:aws:iam::ACCOUNT_ID:role/ext-auth-task-role"
+#       },
+#       "Action": [
+#         "sts:AssumeRole",
+#         "sts:TagSession"
+#       ]
+#     }
+#   ]
+# }
+#
+# ECS Service Creation:
+# aws ecs create-service \
+#   --cluster my-cluster \
+#   --service-name ai-gateway \
+#   --task-definition ai-gateway:1 \
+#   --desired-count 2 \
+#   --launch-type FARGATE \
+#   --network-configuration "awsvpcConfiguration={subnets=[subnet-12345],securityGroups=[sg-12345],assignPublicIp=DISABLED}" \
+#   --load-balancers "targetGroupArn=arn:aws:elasticloadbalancing:us-east-1:ACCOUNT_ID:targetgroup/ai-gateway/abc123,containerName=envoy-ai-gateway,containerPort=80"
+#
+# Service Discovery (AWS Cloud Map):
+# aws servicediscovery create-service \
+#   --name ext-auth \
+#   --dns-config "NamespaceId=ns-12345,DnsRecords=[{Type=A,TTL=10}]" \
+#   --health-check-custom-config FailureThreshold=1
+#
+# How it Works with ECS Task Roles:
+# 1. ext-auth container uses its Task Role credentials to call STS AssumeRole
+# 2. ext-auth injects temporary per-user credentials as x-aws-* headers
+# 3. AI Gateway container checks for x-aws-* headers:
+#    - If present: Uses per-user credentials (with session tags) ✅
+#    - If not present: Uses its Task Role credentials (fallback) ✅
+# 4. AWS SDK automatically retrieves Task Role credentials via ECS credential provider
