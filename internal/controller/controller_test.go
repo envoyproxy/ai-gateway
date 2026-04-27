@@ -531,7 +531,7 @@ func Test_handleFinalizer(t *testing.T) {
 			expectedFinalizers: []string{aiGatewayControllerFinalizer},
 		},
 		{
-			name:               "add finalizer to new object witt update error",
+			name:               "add finalizer to new object with update error",
 			hasFinalizer:       false,
 			hasDeletionTS:      false,
 			clientUpdateError:  true,
