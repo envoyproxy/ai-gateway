@@ -28,6 +28,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/peyeeye"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/mcpproxy"
@@ -60,6 +61,9 @@ type extProcFlags struct {
 	maxRecvMsgSize int
 	// endpointPrefixes is the comma-separated key-value pairs for endpoint prefixes.
 	endpointPrefixes string
+	// peyeeyeEnabled, when true, wraps every registered processor with the
+	// Peyeeye PII redaction & rehydration decorator.
+	peyeeyeEnabled bool
 }
 
 func setOptionalString(dst **string) func(string) error {
@@ -138,6 +142,10 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
 	fs.DurationVar(&flags.mcpWriteTimeout, "mcpWriteTimeout", 120*time.Second,
 		"The maximum duration before timing out writes of the MCP response")
+	fs.BoolVar(&flags.peyeeyeEnabled, "peyeeye", false,
+		"Enable the Peyeeye PII redaction & rehydration processor. Requires "+
+			"the PEYEEYE_API_KEY environment variable to be set. See "+
+			"https://peyeeye.ai for details.")
 
 	if err := fs.Parse(args); err != nil {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
@@ -292,14 +300,32 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/chat/completions"), extproc.NewFactory(
-		chatCompletionMetricsFactory, tracing.ChatCompletionTracer(), endpointspec.ChatCompletionsEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/completions"), extproc.NewFactory(
-		completionMetricsFactory, tracing.CompletionTracer(), endpointspec.CompletionsEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/embeddings"), extproc.NewFactory(
-		embeddingsMetricsFactory, tracing.EmbeddingsTracer(), endpointspec.EmbeddingsEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/responses"), extproc.NewFactory(
-		responsesMetricsFactory, tracing.ResponsesTracer(), endpointspec.ResponsesEndpointSpec{}))
+
+	// Optionally wrap every registered processor with the Peyeeye decorator.
+	wrap := func(f extproc.ProcessorFactory) extproc.ProcessorFactory { return f }
+	if flags.peyeeyeEnabled {
+		cfg, perr := (&peyeeye.PEyeEyeConfig{}).Resolve()
+		if perr != nil {
+			return fmt.Errorf("peyeeye: failed to resolve config: %w", perr)
+		}
+		client := peyeeye.NewClient(&cfg, nil)
+		l.Info("peyeeye PII redaction enabled",
+			slog.String("apiBase", cfg.APIBase),
+			slog.String("sessionMode", string(cfg.SessionMode)),
+		)
+		wrap = func(f extproc.ProcessorFactory) extproc.ProcessorFactory {
+			return peyeeye.WrapFactory(f, client, l.With("component", "peyeeye"))
+		}
+	}
+
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/chat/completions"), wrap(extproc.NewFactory(
+		chatCompletionMetricsFactory, tracing.ChatCompletionTracer(), endpointspec.ChatCompletionsEndpointSpec{})))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/completions"), wrap(extproc.NewFactory(
+		completionMetricsFactory, tracing.CompletionTracer(), endpointspec.CompletionsEndpointSpec{})))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/embeddings"), wrap(extproc.NewFactory(
+		embeddingsMetricsFactory, tracing.EmbeddingsTracer(), endpointspec.EmbeddingsEndpointSpec{})))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/responses"), wrap(extproc.NewFactory(
+		responsesMetricsFactory, tracing.ResponsesTracer(), endpointspec.ResponsesEndpointSpec{})))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/speech"), extproc.NewFactory(
 		speechMetricsFactory, tracing.SpeechTracer(), endpointspec.SpeechEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/images/generations"), extproc.NewFactory(
@@ -307,8 +333,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Cohere, "/v2/rerank"), extproc.NewFactory(
 		rerankMetricsFactory, tracing.RerankTracer(), endpointspec.RerankEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/models"), extproc.NewModelsProcessor)
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages"), extproc.NewFactory(
-		messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{}))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages"), wrap(extproc.NewFactory(
+		messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{})))
 
 	// Create and register gRPC server with ExternalProcessorServer (the service Envoy calls).
 	if err = filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {

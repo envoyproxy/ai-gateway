@@ -43,6 +43,31 @@ type Config struct {
 	Models []Model `json:"models,omitempty"`
 	// MCPConfig is the configuration for the MCPRoute implementations.
 	MCPConfig *MCPConfig `json:"mcpConfig,omitempty"`
+	// PeyeEye, if non-nil, enables the Peyeeye PII redaction & rehydration
+	// processor. The processor wraps every standard endpoint registration
+	// with a pre-call /v1/redact and a post-call /v1/rehydrate. When nil,
+	// the gateway behaves as if the processor were never installed.
+	PeyeEye *PeyeEyeFilterConfig `json:"peyeeye,omitempty"`
+}
+
+// PeyeEyeFilterConfig is the on-disk shape of the Peyeeye section of
+// filterapi.Config. It is the same JSON shape as
+// extproc/peyeeye.PEyeEyeConfig but kept in the filterapi package to keep
+// the two layers decoupled (the runtime layer reads the env vars and
+// resolves defaults).
+type PeyeEyeFilterConfig struct {
+	// APIKey is the Peyeeye API key. Falls back to PEYEEYE_API_KEY.
+	APIKey string `json:"apiKey,omitempty"`
+	// APIBase overrides the Peyeeye API base. Falls back to
+	// PEYEEYE_API_BASE, then https://api.peyeeye.ai.
+	APIBase string `json:"apiBase,omitempty"`
+	// Locale is the BCP-47 locale hint passed to /v1/redact.
+	Locale string `json:"locale,omitempty"`
+	// Entities optionally restricts detection to a subset of Peyeeye
+	// entity ids.
+	Entities []string `json:"entities,omitempty"`
+	// SessionMode is "stateful" (default) or "stateless".
+	SessionMode string `json:"sessionMode,omitempty"`
 }
 
 // Model corresponds to the OpenAI model object in the OpenAI-compatible APIs
