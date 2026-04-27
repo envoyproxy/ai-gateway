@@ -8,6 +8,7 @@ package extensionserver
 import (
 	"testing"
 
+	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	"github.com/stretchr/testify/assert"
@@ -151,4 +152,22 @@ func TestBuildHTTPFilterForInferencePool_Defaults(t *testing.T) {
 	assert.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, filter.ProcessingMode.RequestBodyMode)
 	assert.Equal(t, extprocv3.ProcessingMode_FULL_DUPLEX_STREAMED, filter.ProcessingMode.ResponseBodyMode)
 	assert.False(t, filter.AllowModeOverride)
+}
+
+func TestBuildEPPMetadataForCluster_NilMetadata(t *testing.T) {
+	cluster := &clusterv3.Cluster{
+		Metadata: nil,
+	}
+
+	pool := &gwaiev1.InferencePool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pool",
+			Namespace: "default",
+		},
+	}
+
+	buildEPPMetadataForCluster(cluster, pool)
+
+	assert.NotNil(t, cluster.Metadata)
+	assert.NotNil(t, cluster.Metadata.FilterMetadata)
 }
