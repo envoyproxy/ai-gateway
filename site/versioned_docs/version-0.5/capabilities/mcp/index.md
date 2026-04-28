@@ -210,6 +210,49 @@ Clients will see all tools with prefixed names:
 - `context7__resolve-library-id`
 - `context7__query-docs`
 
+### Header Forwarding
+
+Forward HTTP headers from the client request to specific backend MCP servers. This enables per-user authentication passthrough (e.g., personal access tokens) without requiring OAuth:
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-unified
+  namespace: default
+spec:
+  parentRefs:
+    - name: aigw-run
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  path: "/mcp"
+  backendRefs:
+    - name: atlassian
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/mcp"
+      forwardHeaders:
+        - name: X-Atlassian-Jira-Personal-Token
+        - name: X-Atlassian-Jira-Url
+        - name: Authorization
+          backendHeader: X-Original-Auth # optional: rename the header
+    - name: github
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/mcp"
+      securityPolicy:
+        apiKey:
+          secretRef:
+            name: github-token
+```
+
+Each `forwardHeaders` entry specifies:
+
+- `name` (required): The header to extract from the incoming client request.
+- `backendHeader` (optional): A different header name to use when forwarding to the backend. If omitted, the original header name is used.
+
+Headers are scoped per-backend — during fan-out operations like `tools/list`, only the backends with explicit `forwardHeaders` configuration receive the forwarded headers. Other backends in the same route are unaffected.
+
 ### OAuth Authentication
 
 Protect your MCP Gateway with OAuth authentication following the [MCP Authorization specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization):

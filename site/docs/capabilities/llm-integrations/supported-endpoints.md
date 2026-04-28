@@ -155,6 +155,7 @@ curl -H "Content-Type: application/json" \
 **Supported Providers:**
 
 - OpenAI
+- AWS Bedrock (Titan models, with automatic translation)
 - GCP VertexAI (with automatic translation)
 - Any OpenAI-compatible provider that supports embeddings, including Azure OpenAI.
 
@@ -318,7 +319,7 @@ The following table summarizes which providers support which endpoints:
 | Provider                                                                                              | Chat Completions | Completions | Embeddings | Image Generation | Anthropic Messages | Rerank | Notes                                                                                                                |
 | ----------------------------------------------------------------------------------------------------- | :--------------: | :---------: | :--------: | :--------------: | :----------------: | :----: | -------------------------------------------------------------------------------------------------------------------- |
 | [OpenAI](https://platform.openai.com/docs/api-reference)                                              |        ✅        |     ✅      |     ✅     |        ❌        |         ✅         |   ❌   |                                                                                                                      |
-| [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |        ✅        |     🚧      |     🚧     |        ❌        |         ❌         |   ❌   | Via API translation                                                                                                  |
+| [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |        ✅        |     🚧      |     ✅     |        ❌        |         ❌         |   ❌   | Via API translation (embeddings: Titan models only)                                                                  |
 | [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)                  |        ✅        |     🚧      |     ✅     |        ❌        |         ⚠️         |   ❌   | Via API translation or via [OpenAI-compatible API](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/latest) |
 | [Google Gemini](https://ai.google.dev/gemini-api/docs/openai)                                         |        ✅        |     ⚠️      |     ✅     |        ⚠️        |         ❌         |   ❌   | Via OpenAI-compatible API                                                                                            |
 | [Groq](https://console.groq.com/docs/openai)                                                          |        ✅        |     ❌      |     ❌     |        ❌        |         ❌         |   ❌   | Via OpenAI-compatible API                                                                                            |

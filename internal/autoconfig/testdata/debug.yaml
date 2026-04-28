@@ -97,6 +97,7 @@ spec:
               jsonrpc.request.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
               mcp.session.id: "%REQ(MCP-SESSION-ID)%"
               mcp.method.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
+              mcp.tool.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_tool_name)%"
               session.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:session.id)%"
               mcp.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
               # Common fields

@@ -17,6 +17,7 @@ import (
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"github.com/google/cel-go/cel"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/propagation"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -186,6 +187,28 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 			require.Contains(t, string(p.originalRequestBodyRaw), `"stream_options":{"include_usage":true}`)
 		}
 	})
+
+	t.Run("ok_stream_without_include_usage_global_costs_only", func(t *testing.T) {
+		for _, opt := range []*openai.StreamOptions{nil, {IncludeUsage: false}} {
+			headers := map[string]string{":path": "/foo"}
+			p := &chatCompletionProcessorRouterFilter{
+				config: &filterapi.RuntimeConfig{
+					// Gateway-level defaults alone must still force include_usage for streaming token accounting.
+					GlobalRequestCosts: []filterapi.RuntimeGlobalRequestCost{{}},
+				},
+				requestHeaders: headers,
+				logger:         slog.Default(),
+				tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+			}
+			resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", true, opt)})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			require.NotNil(t, p.originalRequestBody.StreamOptions)
+			require.True(t, p.forceBodyMutation)
+			require.True(t, p.originalRequestBody.StreamOptions.IncludeUsage)
+			require.Contains(t, string(p.originalRequestBodyRaw), `"stream_options":{"include_usage":true}`)
+		}
+	})
 }
 
 func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseHeaders(t *testing.T) {
@@ -289,17 +312,17 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 				stream: true,
 				config: &filterapi.RuntimeConfig{
 					RequestCosts: []filterapi.RuntimeRequestCost{
-						{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
-						{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
-						{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCachedInputToken, MetadataKey: "cached_input_token_usage"}},
-						{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCacheCreationInputToken, MetadataKey: "cache_creation_input_token_usage"}},
+						{LLMRequestCost: &filterapi.LLMRequestCost{RouteName: "some_route", Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
+						{LLMRequestCost: &filterapi.LLMRequestCost{RouteName: "some_route", Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_token_usage"}},
+						{LLMRequestCost: &filterapi.LLMRequestCost{RouteName: "some_route", Type: filterapi.LLMRequestCostTypeCachedInputToken, MetadataKey: "cached_input_token_usage"}},
+						{LLMRequestCost: &filterapi.LLMRequestCost{RouteName: "some_route", Type: filterapi.LLMRequestCostTypeCacheCreationInputToken, MetadataKey: "cache_creation_input_token_usage"}},
 						{
 							CELProg:        celProgInt,
-							LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_int"},
+							LLMRequestCost: &filterapi.LLMRequestCost{RouteName: "some_route", Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_int"},
 						},
 						{
 							CELProg:        celProgUint,
-							LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_uint"},
+							LLMRequestCost: &filterapi.LLMRequestCost{RouteName: "some_route", Type: filterapi.LLMRequestCostTypeCEL, MetadataKey: "cel_uint"},
 						},
 					},
 				},
@@ -307,6 +330,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 			requestHeaders:    map[string]string{internalapi.ModelNameHeaderKeyDefault: "ai_gateway_llm"},
 			responseHeaders:   map[string]string{":status": "200"},
 			backendName:       "some_backend",
+			routeName:         "some_route",
 			modelNameOverride: "ai_gateway_llm",
 		}
 		res, err := p.ProcessResponseBody(t.Context(), inBody)
@@ -336,6 +360,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 			GetStructValue().Fields["cel_uint"].GetNumberValue())
 		require.Equal(t, "ai_gateway_llm", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["model_name_override"].GetStringValue())
 		require.Equal(t, "some_backend", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["backend_name"].GetStringValue())
+		require.Equal(t, "some_route", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["route_name"].GetStringValue())
 		require.Equal(t, "some_model", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["response_model"].GetStringValue())
 	})
 
@@ -425,11 +450,13 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 		metrics:        mm,
 	}
 	r := &chatCompletionProcessorRouterFilter{}
-	err := p.SetBackend(t.Context(), &filterapi.Backend{
-		Name:              "some-backend",
-		Schema:            filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
-		ModelNameOverride: "ai_gateway_llm",
-	}, nil, r)
+	err := p.SetBackend(t.Context(), &filterapi.RuntimeBackend{
+		Backend: &filterapi.Backend{
+			Name:              "some-backend",
+			Schema:            filterapi.VersionedAPISchema{Name: "some-schema", Version: "v10.0"},
+			ModelNameOverride: "ai_gateway_llm",
+		},
+	}, "test-route", r)
 	require.ErrorContains(t, err, "unsupported API schema: backend")
 	mm.RequireRequestFailure(t)
 	require.Zero(t, mm.inputTokenCount)
@@ -456,10 +483,12 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend_unsupportedSchema_noR
 	}
 	r := &chatCompletionProcessorRouterFilter{}
 
-	err := p.SetBackend(t.Context(), &filterapi.Backend{
-		Name:   "bad-backend",
-		Schema: filterapi.VersionedAPISchema{Name: "unsupported-schema", Version: "v1"},
-	}, nil, r)
+	err := p.SetBackend(t.Context(), &filterapi.RuntimeBackend{
+		Backend: &filterapi.Backend{
+			Name:   "bad-backend",
+			Schema: filterapi.VersionedAPISchema{Name: "unsupported-schema", Version: "v1"},
+		},
+	}, "", r)
 	require.Error(t, err)
 	require.Nil(t, r.upstreamFilter, "upstreamFilter must remain nil on translator creation failure")
 
@@ -1044,7 +1073,10 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 			requestHeaders:         headers,
 		}
 
-		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		err := p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
+			Backend: backend,
+			Handler: &mockBackendAuthHandler{},
+		}, "test-route", rp)
 		require.NoError(t, err)
 
 		p.translator = &translator
@@ -1105,7 +1137,10 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 			upstreamFilterCount:    2,
 		}
 
-		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		err := p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
+			Backend: backend,
+			Handler: &mockBackendAuthHandler{},
+		}, "test-route", rp)
 		require.NoError(t, err)
 
 		require.NotNil(t, p.bodyMutator)
@@ -1201,7 +1236,10 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 			logger:                 slog.Default(),
 		}
 
-		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		err := p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
+			Backend: backend,
+			Handler: &mockBackendAuthHandler{},
+		}, "test-route", rp)
 		require.NoError(t, err)
 
 		// Restore translator after SetBackend
@@ -1295,7 +1333,10 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 			logger:                 slog.Default(),
 		}
 
-		err := p.SetBackend(context.Background(), backend, &mockBackendAuthHandler{}, rp)
+		err := p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
+			Backend: backend,
+			Handler: &mockBackendAuthHandler{},
+		}, "test-route", rp)
 		require.NoError(t, err)
 
 		p.translator = &translator
@@ -1350,7 +1391,10 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 		}
 
 		// Simulate retry by incrementing upstreamFilterCount
-		err = p.SetBackend(context.Background(), retryBackend, &mockBackendAuthHandler{}, rp)
+		err = p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
+			Backend: retryBackend,
+			Handler: &mockBackendAuthHandler{},
+		}, "test-route", rp)
 		require.NoError(t, err)
 
 		// Restore translator for retry
@@ -1388,4 +1432,242 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 		require.NotContains(t, retryResult, "model", "OpenAI 'model' field should NOT be present on retry")
 		require.Contains(t, retryResult, "messages", "Bedrock 'messages' field should be present on retry")
 	})
+}
+
+func TestBuildDynamicMetadata_routeScoped(t *testing.T) {
+	hdr := map[string]string{internalapi.ModelNameHeaderKeyDefault: "m"}
+
+	tests := []struct {
+		name           string
+		requestCosts   []filterapi.RuntimeRequestCost
+		inputTokens    uint32
+		totalTokens    uint32
+		requestHeaders map[string]string
+		backendName    string
+		routeName      string
+		wantCostValues map[string]float64
+		wantAbsent     []string
+	}{
+		{
+			name: "route name mismatch key absent",
+			requestCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "k", RouteName: "ns/other", Type: filterapi.LLMRequestCostTypeInputToken}},
+			},
+			inputTokens:    10,
+			requestHeaders: hdr,
+			backendName:    "be",
+			routeName:      "ns/this",
+			wantAbsent:     []string{"k"},
+		},
+		{
+			name: "two routes same key different route names",
+			requestCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "billing", RouteName: "ns/free", Type: filterapi.LLMRequestCostTypeTotalToken}},
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "billing", RouteName: "ns/paid", Type: filterapi.LLMRequestCostTypeInputToken}},
+			},
+			inputTokens:    3,
+			totalTokens:    99,
+			requestHeaders: hdr,
+			backendName:    "be",
+			routeName:      "ns/paid",
+			wantCostValues: map[string]float64{"billing": 3},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tu metrics.TokenUsage
+			tu.SetInputTokens(tt.inputTokens)
+			tu.SetTotalTokens(tt.totalTokens)
+
+			md, err := buildDynamicMetadata(nil, tt.requestCosts, &tu, tt.requestHeaders, tt.backendName, tt.routeName, "")
+			require.NoError(t, err)
+
+			ns := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
+			for k, want := range tt.wantCostValues {
+				require.Equal(t, want, ns[k].GetNumberValue(), "key %q", k)
+			}
+			for _, k := range tt.wantAbsent {
+				_, exists := ns[k]
+				require.False(t, exists, "key %q should be absent from metadata", k)
+			}
+		})
+	}
+}
+
+// TestBuildDynamicMetadata_GlobalAndRouteScoped tests the two-tier precedence logic
+// where route-scoped costs override global costs on a per-metadataKey basis.
+func TestBuildDynamicMetadata_GlobalAndRouteScoped(t *testing.T) {
+	tests := []struct {
+		name           string
+		globalCosts    []filterapi.RuntimeGlobalRequestCost
+		routeCosts     []filterapi.RuntimeRequestCost
+		inputTokens    uint32
+		outputTokens   uint32
+		totalTokens    uint32
+		requestHeaders map[string]string
+		backendName    string
+		routeName      string
+		wantCostValues map[string]float64
+		wantAbsent     []string
+	}{
+		{
+			name: "global cost used when no route override",
+			globalCosts: []filterapi.RuntimeGlobalRequestCost{
+				{GlobalLLMRequestCost: &filterapi.GlobalLLMRequestCost{MetadataKey: "billing_charges", Type: filterapi.LLMRequestCostTypeInputToken}},
+			},
+			routeCosts:     []filterapi.RuntimeRequestCost{},
+			inputTokens:    100,
+			requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "model"},
+			backendName:    "backend",
+			routeName:      "ns/standard-route",
+			wantCostValues: map[string]float64{"billing_charges": 100},
+		},
+		{
+			name: "route cost overrides global for same metadataKey",
+			globalCosts: []filterapi.RuntimeGlobalRequestCost{
+				{GlobalLLMRequestCost: &filterapi.GlobalLLMRequestCost{MetadataKey: "billing_charges", Type: filterapi.LLMRequestCostTypeInputToken}},
+			},
+			routeCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "billing_charges", RouteName: "ns/premium-route", Type: filterapi.LLMRequestCostTypeOutputToken}},
+			},
+			inputTokens:    100,
+			outputTokens:   50,
+			requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "model"},
+			backendName:    "backend",
+			routeName:      "ns/premium-route",
+			wantCostValues: map[string]float64{"billing_charges": 50}, // Route override (output tokens) wins
+		},
+		{
+			name: "global cost used for different route",
+			globalCosts: []filterapi.RuntimeGlobalRequestCost{
+				{GlobalLLMRequestCost: &filterapi.GlobalLLMRequestCost{MetadataKey: "billing_charges", Type: filterapi.LLMRequestCostTypeInputToken}},
+			},
+			routeCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "billing_charges", RouteName: "ns/premium-route", Type: filterapi.LLMRequestCostTypeOutputToken}},
+			},
+			inputTokens:    100,
+			outputTokens:   50,
+			requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "model"},
+			backendName:    "backend",
+			routeName:      "ns/standard-route", // Different route - uses global
+			wantCostValues: map[string]float64{"billing_charges": 100},
+		},
+		{
+			name: "multiple keys mixed global and route",
+			globalCosts: []filterapi.RuntimeGlobalRequestCost{
+				{GlobalLLMRequestCost: &filterapi.GlobalLLMRequestCost{MetadataKey: "billing_charges", Type: filterapi.LLMRequestCostTypeInputToken}},
+				{GlobalLLMRequestCost: &filterapi.GlobalLLMRequestCost{MetadataKey: "total_tokens", Type: filterapi.LLMRequestCostTypeTotalToken}},
+			},
+			routeCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "billing_charges", RouteName: "ns/route1", Type: filterapi.LLMRequestCostTypeOutputToken}},
+			},
+			inputTokens:    100,
+			outputTokens:   50,
+			totalTokens:    150,
+			requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "model"},
+			backendName:    "backend",
+			routeName:      "ns/route1",
+			wantCostValues: map[string]float64{
+				"billing_charges": 50,  // Route override
+				"total_tokens":    150, // Global (no route override)
+			},
+		},
+		{
+			name: "route cost for wrong route does not override global",
+			globalCosts: []filterapi.RuntimeGlobalRequestCost{
+				{GlobalLLMRequestCost: &filterapi.GlobalLLMRequestCost{MetadataKey: "cost", Type: filterapi.LLMRequestCostTypeInputToken}},
+			},
+			routeCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "cost", RouteName: "ns/other-route", Type: filterapi.LLMRequestCostTypeOutputToken}},
+			},
+			inputTokens:    100,
+			outputTokens:   50,
+			requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "model"},
+			backendName:    "backend",
+			routeName:      "ns/this-route",
+			wantCostValues: map[string]float64{"cost": 100}, // Global wins (route cost is for different route)
+		},
+		{
+			name: "no global or route cost for key means key absent",
+			globalCosts: []filterapi.RuntimeGlobalRequestCost{
+				{GlobalLLMRequestCost: &filterapi.GlobalLLMRequestCost{MetadataKey: "other_key", Type: filterapi.LLMRequestCostTypeInputToken}},
+			},
+			routeCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "route_key", RouteName: "ns/other-route", Type: filterapi.LLMRequestCostTypeOutputToken}},
+			},
+			inputTokens:    100,
+			requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "model"},
+			backendName:    "backend",
+			routeName:      "ns/this-route",
+			wantCostValues: map[string]float64{"other_key": 100},
+			wantAbsent:     []string{"missing_key", "route_key"}, // route_key doesn't match route
+		},
+		{
+			name: "CEL expression in global cost",
+			globalCosts: []filterapi.RuntimeGlobalRequestCost{
+				{
+					GlobalLLMRequestCost: &filterapi.GlobalLLMRequestCost{MetadataKey: "custom_cost", Type: filterapi.LLMRequestCostTypeCEL, CEL: "input_tokens + input_tokens + output_tokens"},
+					CELProg:              mustCompileCEL(t, "input_tokens + input_tokens + output_tokens"),
+				},
+			},
+			routeCosts:     []filterapi.RuntimeRequestCost{},
+			inputTokens:    100,
+			outputTokens:   50,
+			requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "model"},
+			backendName:    "backend",
+			routeName:      "ns/route1",
+			wantCostValues: map[string]float64{"custom_cost": 250}, // 100 + 100 + 50 = 250
+		},
+		{
+			name: "CEL expression in route overrides global",
+			globalCosts: []filterapi.RuntimeGlobalRequestCost{
+				{
+					GlobalLLMRequestCost: &filterapi.GlobalLLMRequestCost{MetadataKey: "custom_cost", Type: filterapi.LLMRequestCostTypeCEL, CEL: "input_tokens + output_tokens"},
+					CELProg:              mustCompileCEL(t, "input_tokens + output_tokens"),
+				},
+			},
+			routeCosts: []filterapi.RuntimeRequestCost{
+				{
+					LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "custom_cost", RouteName: "ns/free-route", Type: filterapi.LLMRequestCostTypeCEL, CEL: "0"},
+					CELProg:        mustCompileCEL(t, "0"),
+				},
+			},
+			inputTokens:    100,
+			outputTokens:   50,
+			requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "model"},
+			backendName:    "backend",
+			routeName:      "ns/free-route",
+			wantCostValues: map[string]float64{"custom_cost": 0}, // Route CEL overrides global
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tu metrics.TokenUsage
+			tu.SetInputTokens(tt.inputTokens)
+			tu.SetOutputTokens(tt.outputTokens)
+			tu.SetTotalTokens(tt.totalTokens)
+
+			md, err := buildDynamicMetadata(tt.globalCosts, tt.routeCosts, &tu, tt.requestHeaders, tt.backendName, tt.routeName, "")
+			require.NoError(t, err)
+
+			ns := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
+			for k, want := range tt.wantCostValues {
+				require.Equal(t, want, ns[k].GetNumberValue(), "key %q", k)
+			}
+			for _, k := range tt.wantAbsent {
+				_, exists := ns[k]
+				require.False(t, exists, "key %q should be absent from metadata", k)
+			}
+		})
+	}
+}
+
+// mustCompileCEL is a test helper that compiles a CEL expression or fails the test.
+func mustCompileCEL(t *testing.T, expr string) cel.Program {
+	t.Helper()
+	prog, err := llmcostcel.NewProgram(expr)
+	require.NoError(t, err)
+	return prog
 }

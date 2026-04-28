@@ -111,7 +111,12 @@ func (c *MCPRouteController) syncMCPRoute(ctx context.Context, mcpRoute *aigv1a1
 		return fmt.Errorf("failed to create or update HTTPRoute: %w", err)
 	}
 
-	// Then, build HTTPRoute for each backend in the MCPRoute to avoid the hard limit of 16 Rules per HTTPRoute.
+	existingPerBackendRoutes, err := c.listExistingPerBackendHTTPRoutes(ctx, mcpRoute)
+	if err != nil {
+		return fmt.Errorf("failed to list existing per-backend HTTPRoutes: %w", err)
+	}
+
+	// Build HTTPRoute for each backend in the MCPRoute to avoid the hard limit of 16 Rules per HTTPRoute.
 	// The route here will be moved to the backend listener in the extension server behind the MCP Proxy.
 	//
 	// Each backend will have its own rule that matches the internalapi.MCPBackendHeader set by the MCP proxy.
@@ -119,10 +124,12 @@ func (c *MCPRouteController) syncMCPRoute(ctx context.Context, mcpRoute *aigv1a1
 	for i := range mcpRoute.Spec.BackendRefs {
 		ref := &mcpRoute.Spec.BackendRefs[i]
 		name := mcpPerBackendRefHTTPRouteName(mcpRoute.Name, ref.Name)
-		var httpRoute *gwapiv1.HTTPRoute
-		httpRoute, existing, err = c.getOrNewHTTPRouteRoute(ctx, mcpRoute, name)
-		if err != nil {
-			return fmt.Errorf("failed to get or create HTTPRoute: %w", err)
+		httpRoute, existing := existingPerBackendRoutes[name]
+		if !existing {
+			httpRoute, err = c.newHTTPRoute(mcpRoute, name)
+			if err != nil {
+				return fmt.Errorf("failed to construct a new HTTPRoute for backend %s: %w", ref.Name, err)
+			}
 		}
 		if err = c.newPerBackendRefHTTPRoute(ctx, httpRoute, mcpRoute, ref); err != nil {
 			return fmt.Errorf("failed to construct a new HTTPRoute for backend %s: %w", ref.Name, err)
@@ -130,6 +137,11 @@ func (c *MCPRouteController) syncMCPRoute(ctx context.Context, mcpRoute *aigv1a1
 		if err = c.createOrUpdateHTTPRoute(ctx, httpRoute, existing); err != nil {
 			return fmt.Errorf("failed to create or update HTTPRoute for backend %s: %w", ref.Name, err)
 		}
+		delete(existingPerBackendRoutes, name)
+	}
+
+	if err = c.deleteOrphanedPerBackendResources(ctx, mcpRoute, existingPerBackendRoutes); err != nil {
+		return fmt.Errorf("failed to delete orphaned per-backend resources: %w", err)
 	}
 
 	// Reconciles MCPRouteSecurityPolicy and creates/updates its associated envoy gateway resources.
@@ -169,32 +181,77 @@ func (c *MCPRouteController) getOrNewHTTPRouteRoute(ctx context.Context, mcpRout
 	existing := err == nil
 	if apierrors.IsNotFound(err) {
 		// This means that this MCPRoute is a new one.
-		httpRoute = &gwapiv1.HTTPRoute{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        routeName,
-				Namespace:   mcpRoute.Namespace,
-				Labels:      make(map[string]string),
-				Annotations: make(map[string]string),
-			},
-			Spec: gwapiv1.HTTPRouteSpec{},
-		}
-
-		// Copy labels from MCPRoute to HTTPRoute.
-		for k, v := range mcpRoute.Labels {
-			httpRoute.Labels[k] = v
-		}
-
-		// Copy non-controller annotations from MCPRoute to HTTPRoute.
-		for k, v := range mcpRoute.Annotations {
-			httpRoute.Annotations[k] = v
-		}
-		if err = ctrlutil.SetControllerReference(mcpRoute, httpRoute, c.client.Scheme()); err != nil {
-			return nil, false, fmt.Errorf("failed to set controller reference for HTTPRoute: %w", err)
+		httpRoute, err = c.newHTTPRoute(mcpRoute, routeName)
+		if err != nil {
+			return nil, false, err
 		}
 	} else if err != nil {
 		return nil, false, fmt.Errorf("failed to get HTTPRoute: %w", err)
 	}
 	return httpRoute, existing, nil
+}
+
+func (c *MCPRouteController) newHTTPRoute(mcpRoute *aigv1a1.MCPRoute, routeName string) (*gwapiv1.HTTPRoute, error) {
+	httpRoute := &gwapiv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        routeName,
+			Namespace:   mcpRoute.Namespace,
+			Labels:      make(map[string]string),
+			Annotations: make(map[string]string),
+		},
+		Spec: gwapiv1.HTTPRouteSpec{},
+	}
+	// Copy labels from MCPRoute to HTTPRoute.
+	for k, v := range mcpRoute.Labels {
+		httpRoute.Labels[k] = v
+	}
+	// Copy non-controller annotations from MCPRoute to HTTPRoute.
+	for k, v := range mcpRoute.Annotations {
+		httpRoute.Annotations[k] = v
+	}
+	if err := ctrlutil.SetControllerReference(mcpRoute, httpRoute, c.client.Scheme()); err != nil {
+		return nil, fmt.Errorf("failed to set controller reference for HTTPRoute: %w", err)
+	}
+	return httpRoute, nil
+}
+
+// listExistingPerBackendHTTPRoutes returns a map of name -> HTTPRoute for all per-backend
+// HTTPRoutes currently owned by this MCPRoute.
+func (c *MCPRouteController) listExistingPerBackendHTTPRoutes(ctx context.Context, mcpRoute *aigv1a1.MCPRoute) (map[string]*gwapiv1.HTTPRoute, error) {
+	var ownedRoutes gwapiv1.HTTPRouteList
+	if err := c.client.List(ctx, &ownedRoutes,
+		client.InNamespace(mcpRoute.Namespace),
+		client.MatchingFields{k8sClientIndexMCPRouteToOwnedHTTPRoute: fmt.Sprintf("%s.%s", mcpRoute.Name, mcpRoute.Namespace)},
+	); err != nil {
+		return nil, fmt.Errorf("failed to list owned HTTPRoutes: %w", err)
+	}
+	existing := make(map[string]*gwapiv1.HTTPRoute, len(ownedRoutes.Items))
+	for i := range ownedRoutes.Items {
+		r := &ownedRoutes.Items[i]
+		if strings.HasPrefix(r.Name, internalapi.MCPPerBackendRefHTTPRoutePrefix) {
+			existing[r.Name] = r
+		}
+	}
+	return existing, nil
+}
+
+// deleteOrphanedPerBackendResources deletes per-backend HTTPRoutes and their corresponding
+// HTTPRouteFilters that are no longer referenced by any backendRef in the MCPRoute spec.
+func (c *MCPRouteController) deleteOrphanedPerBackendResources(ctx context.Context, mcpRoute *aigv1a1.MCPRoute, orphaned map[string]*gwapiv1.HTTPRoute) error {
+	for name, route := range orphaned {
+		c.logger.Info("Deleting orphaned per-backend HTTPRoute", "namespace", route.Namespace, "name", name)
+		if err := c.client.Delete(ctx, route); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete orphaned HTTPRoute %s: %w", name, err)
+		}
+
+		filterName := strings.Replace(name, internalapi.MCPPerBackendRefHTTPRoutePrefix, internalapi.MCPPerBackendHTTPRouteFilterPrefix, 1)
+		c.logger.Info("Deleting orphaned per-backend HTTPRouteFilter", "namespace", mcpRoute.Namespace, "name", filterName)
+		filter := &egv1a1.HTTPRouteFilter{ObjectMeta: metav1.ObjectMeta{Name: filterName, Namespace: mcpRoute.Namespace}}
+		if err := c.client.Delete(ctx, filter); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete orphaned HTTPRouteFilter %s: %w", filterName, err)
+		}
+	}
+	return nil
 }
 
 // newMainHTTPRoute updates the main HTTPRoute with the MCPRoute.
