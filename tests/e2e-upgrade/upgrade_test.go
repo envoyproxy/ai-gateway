@@ -408,6 +408,7 @@ func verifyCRDStorageVersions(ctx context.Context, t *testing.T) {
 		"aiservicebackends.aigateway.envoyproxy.io",
 		"backendsecuritypolicies.aigateway.envoyproxy.io",
 		"gatewayconfigs.aigateway.envoyproxy.io",
+		"mcproutes.aigateway.envoyproxy.io",
 	}
 
 	for _, crdName := range crdsToCheck {
@@ -510,6 +511,7 @@ func TestCRDVersionUpgrade(t *testing.T) {
 	}{
 		{"aigatewayroute", "upgrade-test"},
 		{"aiservicebackend", "upgrade-test-cool-model-backend"},
+		{"mcproute", "upgrade-test-mcp-route"},
 	}
 
 	for _, r := range resources {

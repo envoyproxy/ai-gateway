@@ -3,7 +3,7 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-package v1alpha1
+package v1beta1
 
 import (
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -21,7 +21,7 @@ import (
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
-// +kubebuilder:deprecatedversion:warning="aigateway.envoyproxy.io/v1alpha1 is deprecated; use aigateway.envoyproxy.io/v1beta1 instead"
+// +kubebuilder:storageversion
 type MCPRoute struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

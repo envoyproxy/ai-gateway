@@ -2527,6 +2527,8 @@ API group. This is the beta version of the API, preferred over v1alpha1 for new 
 - [BackendSecurityPolicyList](#backendsecuritypolicylist)
 - [GatewayConfig](#gatewayconfig)
 - [GatewayConfigList](#gatewayconfiglist)
+- [MCPRoute](#mcproute)
+- [MCPRouteList](#mcproutelist)
 
 ### Kind Definitions
 #### AIGatewayRoute
@@ -2887,6 +2889,88 @@ GatewayConfigList contains a list of GatewayConfig.
 />
 
 
+#### MCPRoute
+
+
+
+**Appears in:**
+- [MCPRouteList](#mcproutelist)
+
+MCPRoute defines how to route MCP requests to the backend MCP servers.
+
+This serves as a way to define a "unified" AI API for a Gateway which allows downstream
+clients to use a single schema API to interact with multiple MCP backends.
+
+##### Fields
+
+<ApiField
+  name="apiVersion"
+  type="String"
+  required="true"
+  description="We are on version <code>aigateway.envoyproxy.io/v1beta1</code> of the API."
+/>
+
+<ApiField
+  name="kind"
+  type="String"
+  required="true"
+  description="This is a <code>MCPRoute</code> resource"
+/>
+
+<ApiField
+  name="metadata"
+  type="[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#objectmeta-v1-meta)"
+  required="true"
+  description="Refer to Kubernetes API documentation for fields of `metadata`."
+/><ApiField
+  name="spec"
+  type="[MCPRouteSpec](#mcproutespec)"
+  required="true"
+  description="Spec defines the details of the MCPRoute."
+/><ApiField
+  name="status"
+  type="[MCPRouteStatus](#mcproutestatus)"
+  required="true"
+  description="Status defines the status details of the MCPRoute."
+/>
+
+
+#### MCPRouteList
+
+
+
+
+MCPRouteList contains a list of MCPRoute.
+
+##### Fields
+
+<ApiField
+  name="apiVersion"
+  type="String"
+  required="true"
+  description="We are on version <code>aigateway.envoyproxy.io/v1beta1</code> of the API."
+/>
+
+<ApiField
+  name="kind"
+  type="String"
+  required="true"
+  description="This is a <code>MCPRouteList</code> resource"
+/>
+
+<ApiField
+  name="metadata"
+  type="[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#listmeta-v1-meta)"
+  required="true"
+  description="Refer to Kubernetes API documentation for fields of `metadata`."
+/><ApiField
+  name="items"
+  type="[MCPRoute](#mcproute) array"
+  required="true"
+  description=""
+/>
+
+
 ## Supporting Types
 
 ### Available Types
@@ -2922,8 +3006,25 @@ GatewayConfigList contains a list of GatewayConfig.
 - [HTTPBodyField](#httpbodyfield)
 - [HTTPBodyMutation](#httpbodymutation)
 - [HTTPHeaderMutation](#httpheadermutation)
+- [JWKS](#jwks)
+- [JWTSource](#jwtsource)
 - [LLMRequestCost](#llmrequestcost)
 - [LLMRequestCostType](#llmrequestcosttype)
+- [MCPAuthorizationSource](#mcpauthorizationsource)
+- [MCPAuthorizationTarget](#mcpauthorizationtarget)
+- [MCPBackendAPIKey](#mcpbackendapikey)
+- [MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)
+- [MCPHeaderForward](#mcpheaderforward)
+- [MCPRouteAuthorization](#mcprouteauthorization)
+- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
+- [MCPRouteBackendRef](#mcproutebackendref)
+- [MCPRouteOAuth](#mcprouteoauth)
+- [MCPRouteSecurityPolicy](#mcproutesecuritypolicy)
+- [MCPRouteSpec](#mcproutespec)
+- [MCPRouteStatus](#mcproutestatus)
+- [MCPToolFilter](#mcptoolfilter)
+- [ProtectedResourceMetadata](#protectedresourcemetadata)
+- [ToolCall](#toolcall)
 - [VersionedAPISchema](#versionedapischema)
 
 ### Type Definitions
@@ -3921,6 +4022,60 @@ HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to 
 />
 
 
+#### JWKS
+
+
+
+**Appears in:**
+- [MCPRouteOAuth](#mcprouteoauth)
+
+JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HTTPS endpoint or from a local source.
+
+##### Fields
+
+
+
+<ApiField
+  name="remoteJWKS"
+  type="[RemoteJWKS](https://gateway.envoyproxy.io/docs/api/extension_types/#remotejwks)"
+  required="false"
+  description="RemoteJWKS defines how to fetch and cache JSON Web Key Sets (JWKS) from a remote<br />HTTP/HTTPS endpoint."
+/><ApiField
+  name="localJWKS"
+  type="[LocalJWKS](https://gateway.envoyproxy.io/docs/api/extension_types/#localjwks)"
+  required="false"
+  description="LocalJWKS defines how to get the JSON Web Key Sets (JWKS) from a local source."
+/>
+
+
+#### JWTSource
+
+
+
+**Appears in:**
+- [MCPAuthorizationSource](#mcpauthorizationsource)
+
+JWTSource defines the MCP authorization source for JWT tokens.
+At least one of scopes or claims must be provided.
+Scopes and claims are AND-ed: when both are specified, both sets must match.
+
+##### Fields
+
+
+
+<ApiField
+  name="scopes"
+  type="JWTScope array"
+  required="false"
+  description="Scopes defines the list of JWT scopes required for the rule.<br />If multiple scopes are specified, all scopes must be present in the JWT for the rule to match."
+/><ApiField
+  name="claims"
+  type="JWTClaim array"
+  required="false"
+  description="Claims defines the list of JWT claims required for the rule. Each claim must exist on the token<br />and have at least one of the expected values. Use to enforce tenant or subject-based access."
+/>
+
+
 #### LLMRequestCost
 
 
@@ -4002,6 +4157,515 @@ LLMRequestCostType specifies the type of the LLMRequestCost.
   required="false"
   description="LLMRequestCostTypeCEL is for calculating the cost using the CEL expression.<br />"
 />
+#### MCPAuthorizationSource
+
+
+
+**Appears in:**
+- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
+
+MCPAuthorizationSource defines the source of an authorization rule.
+
+##### Fields
+
+
+
+<ApiField
+  name="jwt"
+  type="[JWTSource](#jwtsource)"
+  required="true"
+  description="JWT defines the JWT scopes required for this rule to match."
+/>
+
+
+#### MCPAuthorizationTarget
+
+
+
+**Appears in:**
+- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
+
+MCPAuthorizationTarget defines the target of an authorization rule.
+
+##### Fields
+
+
+
+<ApiField
+  name="tools"
+  type="[ToolCall](#toolcall) array"
+  required="true"
+  description="Tools defines the list of tools this rule applies to."
+/>
+
+
+#### MCPBackendAPIKey
+
+
+
+**Appears in:**
+- [MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)
+
+MCPBackendAPIKey defines the configuration for the API Key Authentication to a backend.
+When both `header` and `queryParam` are unspecified, the API key will be injected into the "Authorization" header by default.
+
+##### Fields
+
+
+
+<ApiField
+  name="secretRef"
+  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
+  required="false"
+  description="secretRef is the Kubernetes secret which contains the API keys.<br />The key of the secret should be `apiKey`."
+/><ApiField
+  name="inline"
+  type="string"
+  required="false"
+  description="Inline contains the API key as an inline string."
+/><ApiField
+  name="header"
+  type="string"
+  required="false"
+  description="Header is the HTTP header to inject the API key into. If not specified,<br />defaults to `Authorization`.<br />When the header is `Authorization`, the injected header value will be<br />prefixed with `Bearer `.<br />Either one of Header or QueryParam can be specified to inject the API key."
+/><ApiField
+  name="queryParam"
+  type="string"
+  required="false"
+  description="QueryParam is the HTTP query parameter to inject the API key into.<br />For example, if QueryParam is set to `api_key`, and the API key is `mysecretkey`, the request URL will be modified to include<br />`?api_key=mysecretkey`.<br />Either one of Header or QueryParam can be specified to inject the API key."
+/>
+
+
+#### MCPBackendSecurityPolicy
+
+
+
+**Appears in:**
+- [MCPRouteBackendRef](#mcproutebackendref)
+
+MCPBackendSecurityPolicy defines the security policy for a sp
+
+##### Fields
+
+
+
+<ApiField
+  name="apiKey"
+  type="[MCPBackendAPIKey](#mcpbackendapikey)"
+  required="false"
+  description="APIKey is a mechanism to access a backend. The API key will be injected into the request headers."
+/>
+
+
+#### MCPHeaderForward
+
+
+
+**Appears in:**
+- [MCPRouteBackendRef](#mcproutebackendref)
+
+MCPHeaderForward specifies a header to extract from the incoming request and forward to a backend.
+
+##### Fields
+
+
+
+<ApiField
+  name="name"
+  type="string"
+  required="true"
+  description="Name is the header name to extract from the incoming client request."
+/><ApiField
+  name="backendHeader"
+  type="string"
+  required="false"
+  description="BackendHeader is the header name to use when forwarding to the backend.<br />If not specified, the original header name is used."
+/>
+
+
+#### MCPRouteAuthorization
+
+
+
+**Appears in:**
+- [MCPRouteSecurityPolicy](#mcproutesecuritypolicy)
+
+MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
+
+##### Fields
+
+
+
+<ApiField
+  name="defaultAction"
+  type="[AuthorizationAction](#authorizationaction)"
+  required="false"
+  defaultValue="Deny"
+  description="DefaultAction is the action to take when no rules match. If unspecified, defaults to Deny."
+/><ApiField
+  name="rules"
+  type="[MCPRouteAuthorizationRule](#mcprouteauthorizationrule) array"
+  required="false"
+  description="Rules defines a list of authorization rules.<br />These rules are evaluated in order, the first matching rule will be applied,<br />and the rest will be skipped.<br />If no rules are defined, the default action will be applied to all requests."
+/>
+
+
+#### MCPRouteAuthorizationRule
+
+
+
+**Appears in:**
+- [MCPRouteAuthorization](#mcprouteauthorization)
+
+MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
+Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
+
+##### Fields
+
+
+
+<ApiField
+  name="source"
+  type="[MCPAuthorizationSource](#mcpauthorizationsource)"
+  required="true"
+  description="Source defines the authorization source for this rule.<br />If not specified, the rule will match all sources."
+/><ApiField
+  name="target"
+  type="[MCPAuthorizationTarget](#mcpauthorizationtarget)"
+  required="true"
+  description="Target defines the authorization target for this rule.<br />If not specified, the rule will match all targets."
+/><ApiField
+  name="cel"
+  type="string"
+  required="false"
+  description="CEL specifies a Common Expression Language (CEL) expression evaluated for this rule.<br />The expression must return a boolean; evaluation errors or non-boolean results<br />are treated as `no match`.<br />Example CEL expressions:<br />	* `request.method == `POST``<br />	* `request.headers[`x-custom-header`] == `AllowedValue``<br />	* `request.mcp.tool in [`toolA`, `toolB`]`<br />Available attributes in the CEL expression:<br />	* request.method: HTTP method such as GET or POST. Type: string.<br />	* request.headers: map of headers with lowercased keys, first value only. Type: map[string]string.<br />	* request.headers_all: map of headers with lowercased keys, all values. Type: map[string][]string.<br />	* request.path: request path such as /mcp. Type: string.<br />	* request.auth.jwt.claims: JWT claims when a bearer JWT is present. Type: map[string]any.<br />	* request.auth.jwt.scopes: JWT scopes when a bearer JWT is present. Type: []string.<br />	* request.mcp.method: MCP method such as tools/list or tools/call. Type: string.<br />	* request.mcp.backend: upstream backend name (for example, `kiwi` or `github`). Type: string.<br />	* request.mcp.tool: tool name without backend prefix (for example, `list_issues`). Type: string.<br />	* request.mcp.params: parameters of the MCP method, including keys like `_meta` and `arguments`. Type: object.<br />Note: The CEL expression support is experimental, and the attributes<br />available to the expression may change in future releases."
+/><ApiField
+  name="action"
+  type="[AuthorizationAction](#authorizationaction)"
+  required="false"
+  defaultValue="Allow"
+  description="Action is the authorization decision for matching requests. If unspecified, defaults to Allow."
+/>
+
+
+#### MCPRouteBackendRef
+
+
+
+**Appears in:**
+- [MCPRouteSpec](#mcproutespec)
+
+MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP server.
+
+##### Fields
+
+
+
+<ApiField
+  name="group"
+  type="[Group](#group)"
+  required="false"
+  description="Group is the group of the referent. For example, `gateway.networking.k8s.io`.<br />When unspecified or empty string, core API group is inferred."
+/><ApiField
+  name="kind"
+  type="[Kind](#kind)"
+  required="false"
+  defaultValue="Service"
+  description="Kind is the Kubernetes resource kind of the referent. For example<br />`Service`.<br />Defaults to `Service` when not specified.<br />ExternalName services can refer to CNAME DNS records that may live<br />outside of the cluster and as such are difficult to reason about in<br />terms of conformance. They also may not be safe to forward to (see<br />CVE-2021-25740 for more information). Implementations SHOULD NOT<br />support ExternalName Services.<br />Support: Core (Services with a type other than ExternalName)<br />Support: Implementation-specific (Services with type ExternalName)"
+/><ApiField
+  name="name"
+  type="[ObjectName](#objectname)"
+  required="true"
+  description="Name is the name of the referent."
+/><ApiField
+  name="namespace"
+  type="[Namespace](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#namespace)"
+  required="false"
+  description="Namespace is the namespace of the backend. When unspecified, the local<br />namespace is inferred.<br />Note that when a namespace different than the local namespace is specified,<br />a ReferenceGrant object is required in the referent namespace to allow that<br />namespace's owner to accept the reference. See the ReferenceGrant<br />documentation for details.<br />Support: Core"
+/><ApiField
+  name="port"
+  type="[PortNumber](#portnumber)"
+  required="false"
+  description="Port specifies the destination port number to use for this resource.<br />Port is required when the referent is a Kubernetes Service. In this<br />case, the port number is the service port number, not the target port.<br />For other resources, destination port might be derived from the referent<br />resource or this field."
+/><ApiField
+  name="path"
+  type="string"
+  required="false"
+  defaultValue="/mcp"
+  description="Path is the HTTP endpoint path of the baackend MCP server.<br />If not specified, the default is `/mcp`."
+/><ApiField
+  name="toolSelector"
+  type="[MCPToolFilter](#mcptoolfilter)"
+  required="false"
+  description="ToolSelector filters the tools exposed by this MCP server.<br />Supports exact matches and RE2-compatible regular expressions for both include and exclude patterns.<br />If not specified, all tools from the MCP server are exposed."
+/><ApiField
+  name="securityPolicy"
+  type="[MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)"
+  required="false"
+  description="SecurityPolicy is the security policy to apply to this MCP server."
+/><ApiField
+  name="forwardHeaders"
+  type="[MCPHeaderForward](#mcpheaderforward) array"
+  required="false"
+  description="ForwardHeaders specifies HTTP headers to extract from the incoming client request<br />and forward to this backend MCP server.<br />This enables per-user authentication passthrough (e.g., personal access tokens)<br />without requiring OAuth configuration.<br />Each entry specifies a header name to extract and an optional rename for the backend."
+/>
+
+
+#### MCPRouteOAuth
+
+
+
+**Appears in:**
+- [MCPRouteSecurityPolicy](#mcproutesecuritypolicy)
+
+MCPRouteOAuth defines a MCP spec compatible OAuth authentication configuration for a MCPRoute.
+Reference: https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization
+
+##### Fields
+
+
+
+<ApiField
+  name="issuer"
+  type="string"
+  required="true"
+  description="Issuer is the authorization server's issuer identity."
+/><ApiField
+  name="audiences"
+  type="string array"
+  required="true"
+  description="Audiences is a list of JWT audiences allowed access.<br />It is recommended to set this field for token audience validation, as it is a security best practice to prevent token misuse.<br />Reference: https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#token-audience-binding-and-validation"
+/><ApiField
+  name="jwks"
+  type="[JWKS](#jwks)"
+  required="false"
+  description="JWKS defines how a JSON Web Key Sets (JWKS) can be obtained to verify the access tokens presented by the clients.<br />If not specified, the JWKS URI will be discovered from the OAuth 2.0 Authorization Server Metadata<br />as per RFC 8414 by querying the `/.well-known/oauth-authorization-server` endpoint on the Issuer."
+/><ApiField
+  name="protectedResourceMetadata"
+  type="[ProtectedResourceMetadata](#protectedresourcemetadata)"
+  required="true"
+  description="ProtectedResourceMetadata defines the OAuth 2.0 Resource Server Metadata as per RFC 8414.<br />This is used to expose the metadata endpoint for mcp clients to discover the authorization servers,<br />supported scopes, and JWKS URI."
+/><ApiField
+  name="claimToHeaders"
+  type="ClaimToHeader array"
+  required="false"
+  description="ClaimToHeaders specifies JWT claims to extract and forward as HTTP headers to backend MCP servers.<br />This enables backends to access user identity for authorization, auditing, or personalization.<br />Security considerations:<br />- Any client-provided headers matching the configured header names will be stripped to prevent forgery<br />- Only the specified claims are extracted; the full JWT is not forwarded to backends<br />- Consider using a header prefix (e.g., `X-Jwt-Claim-`) to avoid conflicts with other headers"
+/>
+
+
+#### MCPRouteSecurityPolicy
+
+
+
+**Appears in:**
+- [MCPRouteSpec](#mcproutespec)
+
+MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
+
+##### Fields
+
+
+
+<ApiField
+  name="oauth"
+  type="[MCPRouteOAuth](#mcprouteoauth)"
+  required="false"
+  description="OAuth defines the configuration for the MCP spec compatible OAuth authentication."
+/><ApiField
+  name="apiKeyAuth"
+  type="[APIKeyAuth](https://gateway.envoyproxy.io/docs/api/extension_types/#apikeyauth)"
+  required="false"
+  description="APIKeyAuth defines the configuration for the API Key Authentication."
+/><ApiField
+  name="extAuth"
+  type="[ExtAuth](#extauth)"
+  required="false"
+  description="ExtAuth defines the configuration for External Authorization."
+/><ApiField
+  name="authorization"
+  type="[MCPRouteAuthorization](#mcprouteauthorization)"
+  required="false"
+  description="Authorization defines the configuration for the MCP spec compatible authorization."
+/>
+
+
+#### MCPRouteSpec
+
+
+
+**Appears in:**
+- [MCPRoute](#mcproute)
+
+MCPRouteSpec details the MCPRoute configuration.
+
+##### Fields
+
+
+
+<ApiField
+  name="parentRefs"
+  type="[ParentReference](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#parentreference) array"
+  required="true"
+  description="ParentRefs are the names of the Gateway resources this MCPRoute is being attached to.<br />Cross namespace references are not supported. In other words, the Gateway resources must be in the<br />same namespace as the MCPRoute. Currently, each reference's Kind must be Gateway."
+/><ApiField
+  name="path"
+  type="string"
+  required="false"
+  defaultValue="/mcp"
+  description="Path is the HTTP endpoint path that serves MCP requests over the Streamable HTTP transport.<br />If not specified, the default is `/mcp`."
+/><ApiField
+  name="headers"
+  type="[HTTPHeaderMatch](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httpheadermatch) array"
+  required="false"
+  description="Headers are HTTP headers that must match for this route to be selected.<br />Multiple match values are ANDed together, meaning, a request must match all the specified headers to select the route."
+/><ApiField
+  name="backendRefs"
+  type="[MCPRouteBackendRef](#mcproutebackendref) array"
+  required="true"
+  description="BackendRefs is a list of backend references to the MCP servers.<br />These MCP servers will be aggregated and exposed as a single MCP endpoint to the clients.<br />From the client's perspective, they only need to configure a single MCP server URL, e.g. `https://api.example.com/mcp`,<br />and the Envoy AI Gateway will route the requests to the appropriate MCP server based on the requests.<br />All names must be unique within this list to avoid potential tools, resources, etc. name collisions.<br />Also, cross-namespace references are not supported. In other words, the backend MCP servers must be in the<br />same namespace as the MCPRoute."
+/><ApiField
+  name="securityPolicy"
+  type="[MCPRouteSecurityPolicy](#mcproutesecuritypolicy)"
+  required="false"
+  description="SecurityPolicy defines the security policy for this MCPRoute."
+/>
+
+
+#### MCPRouteStatus
+
+
+
+**Appears in:**
+- [MCPRoute](#mcproute)
+
+MCPRouteStatus contains the conditions by the reconciliation result.
+
+##### Fields
+
+
+
+<ApiField
+  name="conditions"
+  type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
+  required="true"
+  description="Conditions is the list of conditions by the reconciliation result.<br />Currently, at most one condition is set.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`."
+/>
+
+
+#### MCPToolFilter
+
+
+
+**Appears in:**
+- [MCPRouteBackendRef](#mcproutebackendref)
+
+MCPToolFilter filters tools using include and exclude patterns with exact matches or regular expressions.
+Exclude rules take precedence over include rules (deny-wins). When both include and exclude are specified,
+a tool must match an include rule AND not match any exclude rule to be allowed.
+
+##### Fields
+
+
+
+<ApiField
+  name="include"
+  type="string array"
+  required="false"
+  description="Include is a list of tool names to include. Only the specified tools will be available."
+/><ApiField
+  name="includeRegex"
+  type="string array"
+  required="false"
+  description="IncludeRegex is a list of RE2-compatible regular expressions that, when matched, include the tool.<br />Only tools matching these patterns will be available."
+/><ApiField
+  name="exclude"
+  type="string array"
+  required="false"
+  description="Exclude is a list of tool names to exclude. The specified tools will not be available.<br />Exclude rules take precedence over include rules."
+/><ApiField
+  name="excludeRegex"
+  type="string array"
+  required="false"
+  description="ExcludeRegex is a list of RE2-compatible regular expressions that, when matched, exclude the tool.<br />Tools matching these patterns will not be available. Exclude rules take precedence over include rules."
+/>
+
+
+#### ProtectedResourceMetadata
+
+
+
+**Appears in:**
+- [MCPRouteOAuth](#mcprouteoauth)
+
+ProtectedResourceMetadata represents the Protected Resource Metadata	of the MCP server as per RFC 9728.
+
+References:
+* https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#authorization-server-location
+* https://datatracker.ietf.org/doc/html/rfc9728#name-protected-resource-metadata
+
+##### Fields
+
+
+
+<ApiField
+  name="resource"
+  type="string"
+  required="true"
+  description="Resource is the identifier of the protected resource.<br />This should match the MCPRoute's URL. For example, if the MCPRoute's URL is<br />`https://api.example.com/mcp`, the Resource should be `https://api.example.com/mcp`."
+/><ApiField
+  name="resourceName"
+  type="string"
+  required="false"
+  description="ResourceName is a human-readable name for the protected resource."
+/><ApiField
+  name="scopesSupported"
+  type="string array"
+  required="false"
+  description="ScopesSupported defines the minimal set of scopes required for the basic functionality of the MCPRoute.<br />It should avoid broad or overly permissive scopes to prevent clients from requesting tokens with excessive privileges.<br />If an operation requires additional scopes that are not present in the access token, the client will receive a<br />403 Forbidden response that includes the required scopes in the `scope` field of the `WWW-Authenticate` header.<br />This enables incremental privilege elevation through targeted `WWW-Authenticate: scope=`...`` challenges when<br />privileged operations are first attempted."
+/><ApiField
+  name="resourceSigningAlgValuesSupported"
+  type="string array"
+  required="false"
+  description="ResourceSigningAlgValuesSupported is a list of JWS signing algorithms supported by the resource server.<br />These algorithms are used in the `alg` field of the JOSE header in signed tokens."
+/><ApiField
+  name="resourceDocumentation"
+  type="string"
+  required="false"
+  description="ResourceDocumentation is a URL that provides human-readable documentation for the resource."
+/><ApiField
+  name="resourcePolicyUri"
+  type="string"
+  required="false"
+  description="ResourcePolicyURI is a URL that points to the resource server's policy document."
+/>
+
+
+#### ToolCall
+
+
+
+**Appears in:**
+- [MCPAuthorizationTarget](#mcpauthorizationtarget)
+
+ToolCall represents a tool call in the MCP authorization target.
+
+##### Fields
+
+
+
+<ApiField
+  name="backend"
+  type="string"
+  required="true"
+  description="Backend is the name of the backend this tool belongs to."
+/><ApiField
+  name="tool"
+  type="string"
+  required="true"
+  description="Tool is the name of the tool."
+/>
+
+
 #### VersionedAPISchema
 
 

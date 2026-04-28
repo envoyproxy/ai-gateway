@@ -33,6 +33,10 @@ func (c *FakeAigatewayV1beta1) GatewayConfigs(namespace string) v1beta1.GatewayC
 	return newFakeGatewayConfigs(c, namespace)
 }
 
+func (c *FakeAigatewayV1beta1) MCPRoutes(namespace string) v1beta1.MCPRouteInterface {
+	return newFakeMCPRoutes(c, namespace)
+}
+
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
 func (c *FakeAigatewayV1beta1) RESTClient() rest.Interface {

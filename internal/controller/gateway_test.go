@@ -27,7 +27,6 @@ import (
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	"sigs.k8s.io/yaml"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -1951,15 +1950,15 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 
 	const gwNamespace = "ns"
 	// Two routes with different CreationTimestamp for deterministic order.
-	mcpRoutes := []aigv1a1.MCPRoute{
+	mcpRoutes := []aigv1b1.MCPRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "mcp-route-old", Namespace: gwNamespace, CreationTimestamp: metav1.NewTime(time.Now().Add(-2 * time.Hour))},
-			Spec: aigv1a1.MCPRouteSpec{
-				BackendRefs: []aigv1a1.MCPRouteBackendRef{{
+			Spec: aigv1b1.MCPRouteSpec{
+				BackendRefs: []aigv1b1.MCPRouteBackendRef{{
 					BackendObjectReference: gwapiv1.BackendObjectReference{
 						Name: gwapiv1.ObjectName("backendA"),
 					},
-					ToolSelector: &aigv1a1.MCPToolFilter{
+					ToolSelector: &aigv1b1.MCPToolFilter{
 						Include: []string{"toolA"},
 					},
 				}},
@@ -1967,12 +1966,12 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "mcp-route-new", Namespace: gwNamespace, CreationTimestamp: metav1.NewTime(time.Now().Add(-1 * time.Hour))},
-			Spec: aigv1a1.MCPRouteSpec{
-				BackendRefs: []aigv1a1.MCPRouteBackendRef{{
+			Spec: aigv1b1.MCPRouteSpec{
+				BackendRefs: []aigv1b1.MCPRouteBackendRef{{
 					BackendObjectReference: gwapiv1.BackendObjectReference{
 						Name: gwapiv1.ObjectName("backendB"),
 					},
-					ToolSelector: &aigv1a1.MCPToolFilter{
+					ToolSelector: &aigv1b1.MCPToolFilter{
 						Include: []string{"toolB"},
 					},
 				}},
@@ -2005,15 +2004,15 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 }
 
 func Test_mcpConfig_ToolSelectorExclude(t *testing.T) {
-	mcpRoutes := []aigv1a1.MCPRoute{
+	mcpRoutes := []aigv1b1.MCPRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "ns"},
-			Spec: aigv1a1.MCPRouteSpec{
-				BackendRefs: []aigv1a1.MCPRouteBackendRef{{
+			Spec: aigv1b1.MCPRouteSpec{
+				BackendRefs: []aigv1b1.MCPRouteBackendRef{{
 					BackendObjectReference: gwapiv1.BackendObjectReference{
 						Name: gwapiv1.ObjectName("backend"),
 					},
-					ToolSelector: &aigv1a1.MCPToolFilter{
+					ToolSelector: &aigv1b1.MCPToolFilter{
 						Include:      []string{"toolA"},
 						Exclude:      []string{"toolB"},
 						ExcludeRegex: []string{"^secret.*"},
@@ -2037,16 +2036,16 @@ func Test_mcpConfig_ToolSelectorExclude(t *testing.T) {
 
 func Test_mcpConfig_ForwardHeaders(t *testing.T) {
 	renamed := "X-Backend-Auth"
-	mcpRoutes := []aigv1a1.MCPRoute{
+	mcpRoutes := []aigv1b1.MCPRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "ns"},
-			Spec: aigv1a1.MCPRouteSpec{
-				BackendRefs: []aigv1a1.MCPRouteBackendRef{
+			Spec: aigv1b1.MCPRouteSpec{
+				BackendRefs: []aigv1b1.MCPRouteBackendRef{
 					{
 						BackendObjectReference: gwapiv1.BackendObjectReference{
 							Name: gwapiv1.ObjectName("backendA"),
 						},
-						ForwardHeaders: []aigv1a1.MCPHeaderForward{
+						ForwardHeaders: []aigv1b1.MCPHeaderForward{
 							{Name: "X-Api-Key"},
 							{Name: "Authorization", BackendHeader: &renamed},
 						},

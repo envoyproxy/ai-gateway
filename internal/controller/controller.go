@@ -217,7 +217,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	mcpRouteC := NewMCPRouteController(c, kubernetes.NewForConfigOrDie(config), logger.WithName("ai-gateway-mcp-route"),
 		gatewayEventChan,
 	)
-	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.MCPRoute{}).
+	if err = TypedControllerBuilderForCRD(mgr, &aigv1b1.MCPRoute{}).
 		Owns(&gwapiv1.HTTPRoute{}).
 		Owns(&egv1a1.Backend{}).
 		WatchesRawSource(source.Channel(
@@ -359,12 +359,12 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 		return fmt.Errorf("failed to create index from target kind to ReferenceGrant: %w", err)
 	}
 
-	err = indexer(ctx, &aigv1a1.MCPRoute{},
+	err = indexer(ctx, &aigv1b1.MCPRoute{},
 		k8sClientIndexMCPRouteToAttachedGateway, mcpRouteToAttachedGatewayIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to create index from Gateway to MCPRoute: %w", err)
 	}
-	err = indexer(ctx, &aigv1a1.MCPRoute{},
+	err = indexer(ctx, &aigv1b1.MCPRoute{},
 		k8sClientIndexSecretToReferencingMCPRoute, mcpRouteToReferencedSecret)
 	if err != nil {
 		return fmt.Errorf("failed to create index from Gateway to MCPRoute: %w", err)
@@ -378,7 +378,7 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 }
 
 func mcpRouteToAttachedGatewayIndexFunc(o client.Object) []string {
-	mcpRoute := o.(*aigv1a1.MCPRoute)
+	mcpRoute := o.(*aigv1b1.MCPRoute)
 	var ret []string
 	for _, ref := range mcpRoute.Spec.ParentRefs {
 		// Use the namespace from parentRef if specified, otherwise use the route's namespace.
@@ -392,7 +392,7 @@ func mcpRouteToAttachedGatewayIndexFunc(o client.Object) []string {
 }
 
 func mcpRouteToReferencedSecret(o client.Object) []string {
-	mcpRoute := o.(*aigv1a1.MCPRoute)
+	mcpRoute := o.(*aigv1b1.MCPRoute)
 	var ret []string
 	for _, ref := range mcpRoute.Spec.BackendRefs {
 		if ref.SecurityPolicy == nil || ref.SecurityPolicy.APIKey == nil || ref.SecurityPolicy.APIKey.SecretRef == nil {

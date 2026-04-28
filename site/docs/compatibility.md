@@ -40,12 +40,12 @@ helm upgrade aieg oci://docker.io/envoyproxy/ai-gateway-helm \
 
 ### Migrating from v1alpha1 to v1beta1
 
-AIGatewayRoute, AIServiceBackend, BackendSecurityPolicy, and GatewayConfig support both v1alpha1 (deprecated) and v1beta1. When you upgrade:
+AIGatewayRoute, AIServiceBackend, BackendSecurityPolicy, GatewayConfig, and MCPRoute support both v1alpha1 (deprecated) and v1beta1. When you upgrade:
 
 - **Existing v1alpha1 resources** continue to work. The API server can serve them via both v1alpha1 and v1beta1 endpoints.
 - **Storage version migration** is not automatic. To migrate existing resources to v1beta1 storage, you must manually re-apply them or use the storage migration API.
 - **New resources** should use `apiVersion: aigateway.envoyproxy.io/v1beta1`.
-- **MCPRoute and QuotaPolicy** remain v1alpha1-only (no v1beta1 available).
+- **QuotaPolicy** remains v1alpha1-only (no v1beta1 available).
 
 #### Migrating Storage Version
 

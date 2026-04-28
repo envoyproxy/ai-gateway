@@ -22,7 +22,6 @@ import (
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
 
@@ -722,17 +721,17 @@ func Test_aiGatewayRouteToAttachedGatewayIndexFunc(t *testing.T) {
 func Test_mcpRouteToAttachedGatewayIndexFunc(t *testing.T) {
 	tests := []struct {
 		name            string
-		route           *aigv1a1.MCPRoute
+		route           *aigv1b1.MCPRoute
 		expectedIndexes []string
 	}{
 		{
 			name: "parentRef cross-namespace reference",
-			route: &aigv1a1.MCPRoute{
+			route: &aigv1b1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "mcp-route",
 					Namespace: "envoy-mcp-gateway-system",
 				},
-				Spec: aigv1a1.MCPRouteSpec{
+				Spec: aigv1b1.MCPRouteSpec{
 					ParentRefs: []gwapiv1.ParentReference{
 						{
 							Name:      "my-gateway",
@@ -746,12 +745,12 @@ func Test_mcpRouteToAttachedGatewayIndexFunc(t *testing.T) {
 		},
 		{
 			name: "parentRef same namespace as route",
-			route: &aigv1a1.MCPRoute{
+			route: &aigv1b1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "mcp-route",
 					Namespace: "production",
 				},
-				Spec: aigv1a1.MCPRouteSpec{
+				Spec: aigv1b1.MCPRouteSpec{
 					ParentRefs: []gwapiv1.ParentReference{
 						{
 							Name: "my-gateway",
@@ -764,12 +763,12 @@ func Test_mcpRouteToAttachedGatewayIndexFunc(t *testing.T) {
 		},
 		{
 			name: "multiple parentRefs with mixed namespaces",
-			route: &aigv1a1.MCPRoute{
+			route: &aigv1b1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "mcp-route",
 					Namespace: "app-namespace",
 				},
-				Spec: aigv1a1.MCPRouteSpec{
+				Spec: aigv1b1.MCPRouteSpec{
 					ParentRefs: []gwapiv1.ParentReference{
 						{
 							Name:      "gateway-1",
