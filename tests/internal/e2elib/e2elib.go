@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coreos/go-semver/semver"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/singleflight"
 
@@ -940,4 +941,24 @@ func waitUntilKubectl(t *testing.T, timeout time.Duration, pollInterval time.Dur
 		time.Sleep(pollInterval)
 	}
 	require.Fail(t, "timed out waiting", "last error: %v", lastErr)
+}
+
+func RequireMinEnvoyGatewayVersion(t *testing.T, minVersion string) {
+	egVersion := strings.TrimPrefix(os.Getenv("EG_VERSION"), "v")
+	if egVersion == "" {
+		t.Log("EG_VERSION not set, skipping version check")
+		return
+	}
+	if egVersion == "0.0.0-latest" {
+		return
+	}
+
+	v, err := semver.NewVersion(egVersion)
+	require.NoError(t, err, "invalid EG_VERSION format")
+	minV, err := semver.NewVersion(minVersion)
+	require.NoError(t, err, "invalid minVersion format")
+
+	if v.Compare(*minV) < 0 {
+		t.Skipf("EG_VERSION %s is less than required version %s, skipping test", egVersion, minVersion)
+	}
 }

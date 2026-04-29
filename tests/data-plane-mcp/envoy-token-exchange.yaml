@@ -52,26 +52,6 @@ static_resources:
                             cluster: mcp_proxy
                             idleTimeout: 3600s
                             timeout: 120s
-                        - match:
-                            path: "/mcp/yet/another/path"
-                          request_headers_to_add:
-                            - header:
-                                key: x-ai-eg-mcp-route
-                                value: yet-another-route
-                          route:
-                            cluster: mcp_proxy
-                            idleTimeout: 3600s
-                            timeout: 120s
-                        - match:
-                            path: "/awesome-path"
-                          request_headers_to_add:
-                            - header:
-                                key: x-ai-eg-mcp-route
-                                value: awesome-route
-                          route:
-                            cluster: mcp_proxy
-                            idleTimeout: 3600s
-                            timeout: 120s
                 http_filters:
                   - name: envoy.filters.http.router
                     typed_config:
@@ -125,63 +105,21 @@ static_resources:
                             headers:
                               - name: x-ai-eg-mcp-backend
                                 string_match:
-                                  exact: dumb-mcp-backend
+                                  exact: te-backend
                           route:
-                            cluster: dumb-mcp-backend
+                            cluster: te-backend
                             idleTimeout: 3600s
                             timeout: 120s
                             pathRewrite: /mcp
-                        - match:
-                            prefix: "/"
-                            headers:
-                              - name: x-ai-eg-mcp-backend
-                                string_match:
-                                  exact: default-mcp-backend
-                          route:
-                            cluster: default-mcp-backend
-                            idleTimeout: 3600s
-                            timeout: 120s
-                            pathRewrite: /mcp
-                        - match:
-                            prefix: "/"
-                            headers:
-                              - name: x-ai-eg-mcp-backend
-                                string_match:
-                                  exact: context7
-                          route:
-                            autoHostRewrite: true
-                            cluster: context7
-                            idleTimeout: 3600s
-                            pathRewrite: /mcp
-                            timeout: 120s
-                        - match:
-                            prefix: "/"
-                            headers:
-                              - name: x-ai-eg-mcp-backend
-                                string_match:
-                                  exact: github
-                          route:
-                            autoHostRewrite: true
-                            cluster: github
-                            idleTimeout: 3600s
-                            pathRewrite: /mcp/readonly
-                            timeout: 120s
-                          request_headers_to_add:
-                            - header:
-                                key: Authorization
-                                value: Bearer GITHUB_ACCESS_TOKEN_PLACEHOLDER
-                        - match:
-                            prefix: "/"
-                            headers:
-                              - name: x-ai-eg-mcp-backend
-                                string_match:
-                                  exact: kiwi
-                          route:
-                            autoHostRewrite: true
-                            cluster: kiwi
-                            idleTimeout: 3600s
-                            pathRewrite: /
-                            timeout: 120s
+                          typed_per_filter_config:
+                            token-exchange:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilterPerRoute
+                              dynamic_module_config:
+                                name: aigateway
+                              per_route_config_name: token-exchange
+                              filter_config:
+                                "@type": type.googleapis.com/google.protobuf.StringValue
+                                value: '{"cluster":"mcp-sts-backend","token_exchange_url":"http://127.0.0.1:1075/token","client_id":"aigw-client","client_secret":"aigw-client-secret","subject_token_type":"urn:ietf:params:oauth:token-type:access_token","audience":"mcp-upstream","scope":"mcp.read","actor_token":"gateway-actor-token","actor_token_type":"urn:ietf:params:oauth:token-type:access_token","timeout_ms":5000}'
                 http_filters:
                   - name: envoy.filters.http.header_to_metadata
                     typed_config:
@@ -216,6 +154,14 @@ static_resources:
                             metadata_namespace: io.envoy.ai_gateway
                             key: session.id
                             type: STRING
+                  - name: token-exchange
+                    disabled: true
+                    is_optional: true
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_modules.v3.DynamicModuleFilter
+                      dynamic_module_config:
+                        name: aigateway
+                      filter_name: token-exchange
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -257,93 +203,33 @@ static_resources:
                       address: 127.0.0.1
                       port_value: 9856 # Special port where the test MCP server is running inside the extproc process.
 
-    - name: dumb-mcp-backend
-      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
+    - name: te-backend
+      connect_timeout: 5s
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
       load_assignment:
-        cluster_name: dumb-mcp-backend
+        cluster_name: te-backend
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
                       address: 127.0.0.1
-                      port_value: 8081
+                      port_value: 8082
 
-    - name: default-mcp-backend
-      connect_timeout: 5s # Increase from 0.25s to prevent timeout issues
+    - name: mcp-sts-backend
+      connect_timeout: 5s
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
       load_assignment:
-        cluster_name: default-mcp-backend
+        cluster_name: mcp-sts-backend
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
                       address: 127.0.0.1
-                      port_value: 8080
-
-    - name: context7
-      connect_timeout: 30s
-      type: STRICT_DNS
-      dns_lookup_family: V4_ONLY
-      load_assignment:
-        cluster_name: context7
-        endpoints:
-          - lb_endpoints:
-              - endpoint:
-                  hostname: mcp.context7.com
-                  address:
-                    socket_address:
-                      address: mcp.context7.com
-                      port_value: 443
-      transport_socket:
-        name: envoy.transport_sockets.tls
-        typed_config:
-          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-          auto_host_sni: true
-
-    - name: github
-      connect_timeout: 30s
-      type: STRICT_DNS
-      dns_lookup_family: V4_ONLY
-      load_assignment:
-        cluster_name: github
-        endpoints:
-          - lb_endpoints:
-              - endpoint:
-                  hostname: api.githubcopilot.com
-                  address:
-                    socket_address:
-                      address: api.githubcopilot.com
-                      port_value: 443
-      transport_socket:
-        name: envoy.transport_sockets.tls
-        typed_config:
-          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-          auto_host_sni: true
-
-    - name: kiwi
-      connect_timeout: 30s
-      type: STRICT_DNS
-      dns_lookup_family: V4_ONLY
-      load_assignment:
-        cluster_name: kiwi
-        endpoints:
-          - lb_endpoints:
-              - endpoint:
-                  hostname: mcp.kiwi.com
-                  address:
-                    socket_address:
-                      address: mcp.kiwi.com
-                      port_value: 443
-      transport_socket:
-        name: envoy.transport_sockets.tls
-        typed_config:
-          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-          auto_host_sni: true
+                      port_value: 1075
 
 overload_manager:
   refresh_interval: 0.25s

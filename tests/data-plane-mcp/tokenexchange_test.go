@@ -7,11 +7,10 @@ package dataplanemcp
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -28,7 +27,12 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testtokenexchangelib"
 )
 
-func TestMCPTokenExchange_Delegation(t *testing.T) {
+// envoyConfig is the embedded Envoy configuration template.
+//
+//go:embed envoy-token-exchange.yaml
+var envoyConfigTokenExchange string
+
+func TestMCPTokenExchange(t *testing.T) {
 	// Create a middleware to capture the Authorization header received by the upstream MCP server
 	var receivedAuthHeader string
 	authCaptureMiddleware := func(handler mcp.MethodHandler) mcp.MethodHandler {
@@ -78,17 +82,7 @@ func requireTokenExchangeEnv(t *testing.T, middlewares ...func(handler mcp.Metho
 	t.Helper()
 
 	internaltesting.ClearTestEnv(t)
-
-	projectRoot := internaltesting.FindProjectRoot()
-	modulePath := filepath.Join(projectRoot, "out", "libaigateway.so")
-	_, err := os.Stat(modulePath)
-	require.NoError(t, err, "libaigateway.so not found at %s; run: make build-dynamic-module", modulePath)
-
-	// Configure the path where Envoy will look for dynamic module files
-	t.Setenv("ENVOY_DYNAMIC_MODULES_SEARCH_PATH", filepath.Join(projectRoot, "out"))
-	// Needed for Go-based dynamic modules to disable the cgo pointer checks as
-	// Envoy may hold pointers to Go memory.
-	t.Setenv("GODEBUG", "cgocheck=0")
+	requireDynamicModule(t)
 
 	stsServer, stsHTTPServer := testtokenexchangelib.NewServer(1075)
 	t.Cleanup(func() { _ = stsHTTPServer.Close() })
@@ -125,7 +119,7 @@ func requireTokenExchangeEnv(t *testing.T, middlewares ...func(handler mcp.Metho
 			})
 		},
 		map[string]int{"te_backend": 8082, "special_listener": 9999},
-		string(config), nil, envoyConfig, true, true,
+		string(config), nil, envoyConfigTokenExchange, true, true,
 		1200*time.Second,
 	)
 

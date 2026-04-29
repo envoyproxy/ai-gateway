@@ -1,0 +1,235 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: mcp-gateway-class-token-exchange
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: mcp-gateway-token-exchange
+  namespace: default
+spec:
+  gatewayClassName: mcp-gateway-class-token-exchange
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-mcp-gateway-token-exchange
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mcp-gateway-client-secret
+  namespace: default
+type: Opaque
+stringData:
+  clientSecret: "test-client-secret"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: actor-token-key
+  namespace: default
+type: Opaque
+stringData:
+  privateKey: "test-actor-token-private-key"
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: MCPRoute
+metadata:
+  name: mcp-route-token-exchange
+  namespace: default
+spec:
+  parentRefs:
+    - name: mcp-gateway-token-exchange
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  backendRefs:
+    - name: testmcpserver-tokenexchange
+      port: 1063
+      securityPolicy:
+        tokenExchange:
+          stsEndpoint: "http://test-token-exchange.default:1075/token"
+          clientAuth:
+            clientID: test-mcp-gateway
+            clientSecretRef:
+              name: mcp-gateway-client-secret
+          actorToken:
+            clientAssertionJWT:
+              issuer: "https://auth-server.example.com"
+              subject: test-mcp-gateway-actor
+              lifetime: 600
+              signingAlgorithm: HS256
+              privateKeyRef:
+                name: actor-token-key
+  securityPolicy:
+    oauth:
+      issuer: "https://auth-server.example.com"
+      jwks:
+        localJWKS:
+          type: ValueRef
+          valueRef:
+            group: ""
+            kind: ConfigMap
+            name: jwks-configmap
+      protectedResourceMetadata:
+        resource: "https://foo.bar.com/mcp"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jwks-configmap
+  namespace: default
+data:
+  jwks: |
+    {
+      "keys": [
+        {
+          "kty": "RSA",
+          "n": "u1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gunVTLw7onLRnrq0_IzW7yWR7QkrmBL7jTKEn5u-qKhbwKfBstIs-bMY2Zkp18gnTxKLxoS2tFczGkPLPgizskuemMghRniWaoLcyehkd3qqGElvW_VDL5AaWTg0nLVkjRo9z-40RQzuVaE8AkAFmxZzow3x-VJYKdjykkJ0iT9wCS0DRTXu269V264Vf_3jvredZiKRkgwlL9xNAwxXFg0x_XFw005UWVRIkdgcKWTjpBP2dPwVZ4WWC-9aGVd-Gyn1o0CLelf4rEjGoXbAAEgAqeGUxrcIlbjXfbcmw",
+          "e": "AQAB",
+          "alg": "RS256",
+          "use": "sig"
+        },
+        {
+          "alg": "RS256",
+          "e": "AQAB",
+          "key_ops": [
+            "verify"
+          ],
+          "kty": "RSA",
+          "n": "xOHb-i1WDfeAvsbXTSOtosl3hCUDHQ8fRDqX_Rt998-hZDJmAoPOu4J-wcwq5aZtSn_iWUYLcK2WmC_1n-p1eyc-Pl4CBnxF7LUjCk-WGhniaCzXC5I5RON6c5N-MdE0UfukK0PM0zD3iQonZq0fIsnOYyFdYdWvQ5XW-C2aLlq2FUKrjmhAav10jIC0KGd2dHRzauzfLMUmt_iMnpU84Xrur1zRYzBO4D90rN0ypC2HH7o_zI8Osx4o1L8BScW78545sWyVbaprhBV1I2Sa4SH3NAc25ej3RIh-f13Yu97FVfO0AIG4VfFiaMmsTqNTCiBkM20tXD2Z-cHJTKemXzFgInJoqFLAkHLzJ0lPvAkKOgAOufLHa7RA-C276OXd72IXPsL1UOLN4sjhGqTtaynVa00yuHdi3f4-aoy9F9SUJeWfPg--nZNLzuI0eyufsTFywnx1bTQ_kdYlEr0dRE5sujlMk3cZ7FmOQRvcjA9MxFzoVKMmlZc6LMCgqw-P",
+          "use": "sig",
+          "kid": "b520b3c2c4bd75a10e9cebc9576933dc"
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: testmcpserver-tokenexchange
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: testmcpserver-tokenexchange
+  template:
+    metadata:
+      labels:
+        app: testmcpserver-tokenexchange
+    spec:
+      containers:
+        - name: testmcpserver-tokenexchange
+          image: docker.io/envoyproxy/ai-gateway-testmcpserver:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 1063
+          env:
+            - name: TEST_EXPECTED_EXCHANGED_ACTOR
+              value: test-mcp-gateway-actor
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: testmcpserver-tokenexchange
+  namespace: default
+spec:
+  selector:
+    app: testmcpserver-tokenexchange
+  ports:
+    - protocol: TCP
+      port: 1063
+      targetPort: 1063
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-token-exchange
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-token-exchange
+  template:
+    metadata:
+      labels:
+        app: test-token-exchange
+    spec:
+      containers:
+        - name: test-token-exchange
+          image: docker.io/envoyproxy/ai-gateway-testtokenexchange:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 1075
+          env:
+            - name: LISTENER_PORT
+              value: "1075"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-token-exchange
+  namespace: default
+spec:
+  selector:
+    app: test-token-exchange
+  ports:
+    - protocol: TCP
+      port: 1075
+      targetPort: 1075
+  type: ClusterIP
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-mcp-gateway-oauth
+  namespace: default
+spec:
+  logging:
+    level:
+      # Get all messages from the token exchange dynamic module
+      dynamic_modules: debug
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        # When creating the Kind cluster we mount the host path where the compiled
+        # dynamic module is located, so we can use it in the Envoy deployment.
+        pod:
+          volumes:
+            - name: dym
+              hostPath:
+                # This path is configured in the Kind configuration file
+                path: /var/dym/libaigateway.so
+                type: File
+        container:
+          # Clear the default memory/cpu requirements for local tests.
+          resources: {}
+          # Mount the dynamic module in the Envoy container so that we can use
+          # the MCP token exchange features.
+          volumeMounts:
+            - name: dym
+              mountPath: /var/dym/libaigateway.so
+          env:
+            # Configure the path where Envoy will look for dynamic module files
+            - name: ENVOY_DYNAMIC_MODULES_SEARCH_PATH
+              value: /var/dym
+            # Needed for Go-based dynamic modules to disable the cgo pointer checks as
+            # Envoy may hold pointers to Go memory.
+            - name: GODEBUG
+              value: "cgocheck=0"
