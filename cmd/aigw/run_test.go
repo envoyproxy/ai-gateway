@@ -288,6 +288,68 @@ func Test_newEnvoyMiddleware(t *testing.T) {
 	}
 }
 
+func Test_newRunnerErrorHandler(t *testing.T) {
+	tests := []struct {
+		name           string
+		runner         string
+		expectCancel   bool
+		expectInStderr bool
+	}{
+		{
+			name:           "provider runner triggers graceful shutdown",
+			runner:         "provider",
+			expectCancel:   true,
+			expectInStderr: true,
+		},
+		{
+			name:           "infrastructure runner triggers graceful shutdown",
+			runner:         "infrastructure",
+			expectCancel:   true,
+			expectInStderr: true,
+		},
+		{
+			name:         "gateway-api runner does not trigger shutdown",
+			runner:       "gateway-api",
+			expectCancel: false,
+		},
+		{
+			name:         "xds-translator runner does not trigger shutdown",
+			runner:       "xds-translator",
+			expectCancel: false,
+		},
+		{
+			name:         "unknown runner does not trigger shutdown",
+			runner:       "unknown",
+			expectCancel: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			var stderr bytes.Buffer
+			handler := newRunnerErrorHandler(&stderr, cancel)
+
+			mockErr := errors.New("something went wrong")
+			handler(tt.runner, mockErr)
+
+			if tt.expectCancel {
+				require.Error(t, ctx.Err(), "context should be cancelled")
+			} else {
+				require.NoError(t, ctx.Err(), "context should not be cancelled")
+			}
+			if tt.expectInStderr {
+				require.Contains(t, stderr.String(), tt.runner)
+				require.Contains(t, stderr.String(), "something went wrong")
+			} else {
+				require.Empty(t, stderr.String())
+			}
+		})
+	}
+}
+
 func findFlagValue(args []string, flag string) string {
 	for i, arg := range args {
 		if arg == flag && i+1 < len(args) {
