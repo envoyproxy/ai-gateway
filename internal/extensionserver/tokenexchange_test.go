@@ -101,9 +101,9 @@ func TestTokenExchangeHTTPFilter(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, filter)
 	require.Equal(t, tokenExchangeFilterName, filter.Name)
-	require.True(t, filter.Disabled, "filter must be disabled globally (enabled per-route only)")
-	require.True(t, filter.IsOptional, "filter must be optional so Envoy can start without the ai gateway dynamic module")
-	require.NotNil(t, filter.GetTypedConfig(), "filter must have a typed config")
+	require.True(t, filter.Disabled)
+	require.False(t, filter.IsOptional)
+	require.NotNil(t, filter.GetTypedConfig())
 }
 
 // TestExtractMCPHeaderMatchValue verifies extraction of exact-match header values from a route's
@@ -239,8 +239,9 @@ func TestMaybeCreateSTSClusters(t *testing.T) {
 
 	s := &Server{log: testr.New(t), k8sClient: fakeClient}
 	req := &egextension.PostTranslateModifyRequest{}
-	err := s.maybeCreateSTSClusters(t.Context(), req)
+	hasTokenExchange, err := s.maybeCreateSTSClusters(t.Context(), req)
 	require.NoError(t, err)
+	require.True(t, hasTokenExchange)
 
 	// Expect exactly 2 unique clusters (stsEndpoint1 deduplicated, stsEndpoint2 unique).
 	require.Len(t, req.Clusters, 2)
@@ -251,6 +252,31 @@ func TestMaybeCreateSTSClusters(t *testing.T) {
 	}
 	require.True(t, clusterNames[buildSTSClusterName(stsEndpoint1)], "cluster for stsEndpoint1 must be present")
 	require.True(t, clusterNames[buildSTSClusterName(stsEndpoint2)], "cluster for stsEndpoint2 must be present")
+}
+
+func TestMaybeCreateSTSClustersNoTokenExchangeRoutes(t *testing.T) {
+	fakeClient := fake.NewClientBuilder().WithScheme(controller.Scheme).Build()
+
+	mcpRoute1 := &aigv1a1.MCPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "default"},
+		Spec: aigv1a1.MCPRouteSpec{
+			BackendRefs: []aigv1a1.MCPRouteBackendRef{
+				{
+					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "backend1"},
+				},
+			},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), mcpRoute1))
+
+	s := &Server{log: testr.New(t), k8sClient: fakeClient}
+	req := &egextension.PostTranslateModifyRequest{}
+	hasTokenExchange, err := s.maybeCreateSTSClusters(t.Context(), req)
+	require.NoError(t, err)
+	require.False(t, hasTokenExchange)
+
+	// Expect no clusters since there are no token-exchange backends.
+	require.Empty(t, req.Clusters)
 }
 
 // TestMaybeSetTokenExchangePerRouteConfig verifies that the per-route token-exchange

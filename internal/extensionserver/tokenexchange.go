@@ -176,7 +176,6 @@ func tokenExchangeHTTPFilter() (*httpconnectionmanagerv3.HttpFilter, error) {
 	return &httpconnectionmanagerv3.HttpFilter{
 		Name:       tokenExchangeFilterName,
 		Disabled:   true,
-		IsOptional: true, // Allow Envoy to start without the ai gateway dynamic module (e.g. standalone/dev mode).
 		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: a},
 	}, nil
 }
@@ -184,13 +183,13 @@ func tokenExchangeHTTPFilter() (*httpconnectionmanagerv3.HttpFilter, error) {
 // maybeCreateSTSClusters lists all MCPRoute objects and appends a STRICT_DNS Envoy cluster to req
 // for each unique STS endpoint referenced by a token-exchange backend security policy.
 // It is a no-op when no k8sClient is configured (e.g. standalone mode or unit tests).
-func (s *Server) maybeCreateSTSClusters(ctx context.Context, req *egextension.PostTranslateModifyRequest) error {
+func (s *Server) maybeCreateSTSClusters(ctx context.Context, req *egextension.PostTranslateModifyRequest) (bool, error) {
 	var mcpRoutes aigv1a1.MCPRouteList
 	if err := s.k8sClient.List(ctx, &mcpRoutes); err != nil {
-		return fmt.Errorf("failed to list MCPRoutes: %w", err)
+		return false, fmt.Errorf("failed to list MCPRoutes: %w", err)
 	}
 
-	seen := map[string]bool{}
+	seen := make(map[string]bool)
 	for i := range mcpRoutes.Items {
 		for _, backend := range mcpRoutes.Items[i].Spec.BackendRefs {
 			if backend.SecurityPolicy == nil || backend.SecurityPolicy.TokenExchange == nil {
@@ -204,13 +203,14 @@ func (s *Server) maybeCreateSTSClusters(ctx context.Context, req *egextension.Po
 			seen[clusterName] = true
 			cluster, err := buildSTSCluster(clusterName, stsEndpoint)
 			if err != nil {
-				return fmt.Errorf("failed to build STS cluster for %s: %w", stsEndpoint, err)
+				return false, fmt.Errorf("failed to build STS cluster for %s: %w", stsEndpoint, err)
 			}
 			req.Clusters = append(req.Clusters, cluster)
 			s.log.Info("Created STS cluster for token exchange", "cluster", clusterName, "sts", stsEndpoint)
 		}
 	}
-	return nil
+
+	return len(seen) > 0, nil
 }
 
 // extractMCPHeaderMatchValue scans a route's match headers and returns the exact-match value

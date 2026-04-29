@@ -36,6 +36,7 @@ import (
 func TestServer_createBackendListener(t *testing.T) {
 	tests := []struct {
 		name             string
+		hasTokenExchange bool
 		mcpHTTPFilters   []*httpconnectionmanagerv3.HttpFilter
 		accessLogConfig  []*accesslogv3.AccessLog
 		expectedListener *listenerv3.Listener
@@ -80,12 +81,35 @@ func TestServer_createBackendListener(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:             "no filters with access logs and token exchange",
+			hasTokenExchange: true,
+			mcpHTTPFilters:   nil,
+			accessLogConfig: []*accesslogv3.AccessLog{
+				{Name: "accesslog1"},
+				{Name: "accesslog2"},
+			},
+			expectedListener: &listenerv3.Listener{
+				Name: mcpBackendListenerName,
+				Address: &corev3.Address{
+					Address: &corev3.Address_SocketAddress{
+						SocketAddress: &corev3.SocketAddress{
+							Protocol: corev3.SocketAddress_TCP,
+							Address:  "127.0.0.1",
+							PortSpecifier: &corev3.SocketAddress_PortValue{
+								PortValue: internalapi.MCPBackendListenerPort,
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Server{log: testr.New(t)}
-			listener, err := s.createBackendListener(tt.mcpHTTPFilters, tt.accessLogConfig)
+			listener, err := s.createBackendListener(tt.mcpHTTPFilters, tt.accessLogConfig, tt.hasTokenExchange)
 			require.NoError(t, err)
 
 			require.Equal(t, tt.expectedListener.Name, listener.Name)
@@ -101,24 +125,25 @@ func TestServer_createBackendListener(t *testing.T) {
 				require.Equal(t, tt.accessLogConfig[i].Name, hcm.AccessLog[i].Name)
 			}
 
-			// The token-exchange dynamic module filter must always be present, just before the
-			// terminal router filter, so that per-route config can activate it on demand.
-			n := len(hcm.HttpFilters)
-			require.GreaterOrEqual(t, n, 2, "HCM must have at least token-exchange and router filters")
-			require.Equal(t, "token-exchange", hcm.HttpFilters[n-2].Name,
-				"second-to-last HCM filter must be the token-exchange filter")
-			require.Equal(t, wellknown.Router, hcm.HttpFilters[n-1].Name,
-				"last HCM filter must be the router filter")
+			if tt.hasTokenExchange {
+				n := len(hcm.HttpFilters)
+				require.GreaterOrEqual(t, n, 2, "HCM must have at least token-exchange and router filters")
+				require.Equal(t, "token-exchange", hcm.HttpFilters[n-2].Name,
+					"second-to-last HCM filter must be the token-exchange filter")
+				require.Equal(t, wellknown.Router, hcm.HttpFilters[n-1].Name,
+					"last HCM filter must be the router filter")
+			}
 		})
 	}
 }
 
 func TestServer_createRoutesForBackendListener(t *testing.T) {
 	tests := []struct {
-		name          string
-		setup         func(*testing.T, client.Client)
-		routes        []*routev3.RouteConfiguration
-		expectedRoute *routev3.RouteConfiguration
+		name             string
+		hasTokenExchange bool
+		setup            func(*testing.T, client.Client)
+		routes           []*routev3.RouteConfiguration
+		expectedRoute    *routev3.RouteConfiguration
 	}{
 		{
 			name:          "empty",
@@ -126,7 +151,8 @@ func TestServer_createRoutesForBackendListener(t *testing.T) {
 			expectedRoute: nil,
 		},
 		{
-			name: "with MCP route and token-exchange backend sets per-route config",
+			name:             "with MCP route and token-exchange backend sets per-route config",
+			hasTokenExchange: true,
 			setup: func(t *testing.T, c client.Client) {
 				mcpRoute := &aigv1a1.MCPRoute{
 					ObjectMeta: metav1.ObjectMeta{Name: "my-route", Namespace: "default"},
@@ -253,10 +279,10 @@ func TestServer_createRoutesForBackendListener(t *testing.T) {
 				tt.setup(t, fakeClient)
 			}
 			s := &Server{log: testr.New(t), k8sClient: fakeClient}
-			route := s.createRoutesForBackendListener(t.Context(), tt.routes)
+			route := s.createRoutesForBackendListener(t.Context(), tt.routes, tt.hasTokenExchange)
 
 			switch {
-			case tt.name == "with MCP route and token-exchange backend sets per-route config":
+			case tt.hasTokenExchange:
 				// The route is returned but we also verify the per-route config was injected.
 				require.NotNil(t, route)
 				backendRoute := route.GetVirtualHosts()[0].GetRoutes()[0]

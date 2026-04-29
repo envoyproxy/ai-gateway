@@ -45,12 +45,13 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(ctx context.Context, req *e
 	s.maybeUpdateMCPRoutes(req.Routes)
 
 	// Create STS clusters for token-exchange backends before building routes.
-	if err := s.maybeCreateSTSClusters(ctx, req); err != nil {
+	hasTokenExchangeBackends, err := s.maybeCreateSTSClusters(ctx, req)
+	if err != nil {
 		return fmt.Errorf("failed to create STS clusters for token exchange: %w", err)
 	}
 
 	// Create routes for the backend listener first to determine if MCP processing is needed
-	mcpBackendRoutes := s.createRoutesForBackendListener(ctx, req.Routes)
+	mcpBackendRoutes := s.createRoutesForBackendListener(ctx, req.Routes, hasTokenExchangeBackends)
 
 	// Only create the backend listener if there are routes for it
 	if mcpBackendRoutes != nil {
@@ -59,7 +60,7 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(ctx context.Context, req *e
 		if err != nil {
 			return fmt.Errorf("failed to extract MCP backend filters from existing listeners: %w", err)
 		}
-		l, err := s.createBackendListener(mcpBackendHTTPFilters, accessLogConfig)
+		l, err := s.createBackendListener(mcpBackendHTTPFilters, accessLogConfig, hasTokenExchangeBackends)
 		if err != nil {
 			return fmt.Errorf("failed to create MCP backend listener: %w", err)
 		}
@@ -73,7 +74,11 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(ctx context.Context, req *e
 }
 
 // createBackendListener creates the backend listener for MCP Gateway.
-func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3.HttpFilter, accessLogConfig []*accesslogv3.AccessLog) (*listenerv3.Listener, error) {
+func (s *Server) createBackendListener(
+	mcpHTTPFilters []*httpconnectionmanagerv3.HttpFilter,
+	accessLogConfig []*accesslogv3.AccessLog,
+	hasTokenExchangeBackends bool,
+) (*listenerv3.Listener, error) {
 	httpConManager := &httpconnectionmanagerv3.HttpConnectionManager{
 		StatPrefix: fmt.Sprintf("%s-http", mcpBackendListenerName),
 		AccessLog:  accessLogConfig,
@@ -128,13 +133,14 @@ func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3
 		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: a},
 	})
 
-	// Add the BOE token-exchange Dynamic Module filter. It is a no-op for routes that do not have
-	// a per-route DynamicModuleFilterPerRoute config, so it is safe to always include it here.
-	tokenExchangeFilter, err := tokenExchangeHTTPFilter()
-	if err != nil {
-		return nil, fmt.Errorf("failed to build token-exchange HTTP filter: %w", err)
+	if hasTokenExchangeBackends {
+		var tokenExchangeFilter *httpconnectionmanagerv3.HttpFilter
+		tokenExchangeFilter, err = tokenExchangeHTTPFilter()
+		if err != nil {
+			return nil, fmt.Errorf("failed to build token-exchange HTTP filter: %w", err)
+		}
+		httpConManager.HttpFilters = append(httpConManager.HttpFilters, tokenExchangeFilter)
 	}
-	httpConManager.HttpFilters = append(httpConManager.HttpFilters, tokenExchangeFilter)
 
 	a, err = toAny(&routerv3.Router{})
 	if err != nil {
@@ -206,7 +212,7 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 // For token-exchange backends, it also sets the per-route DynamicModuleFilterPerRoute config.
 //
 // Returns nil if no MCP routes are found.
-func (s *Server) createRoutesForBackendListener(ctx context.Context, routes []*routev3.RouteConfiguration) *routev3.RouteConfiguration {
+func (s *Server) createRoutesForBackendListener(ctx context.Context, routes []*routev3.RouteConfiguration, hasTokenExchange bool) *routev3.RouteConfiguration {
 	var backendListenerRoutes []*routev3.Route
 	for _, routeConfig := range routes {
 		for _, vh := range routeConfig.VirtualHosts {
@@ -227,8 +233,10 @@ func (s *Server) createRoutesForBackendListener(ctx context.Context, routes []*r
 					}
 					if routeAction := route.GetRoute(); routeAction != nil {
 						if _, ok := routeAction.ClusterSpecifier.(*routev3.RouteAction_Cluster); ok {
-							if err := s.maybeSetTokenExchangePerRouteConfig(ctx, copiedRoute); err != nil {
-								s.log.Error(err, "failed to set token-exchange per-route config", "route", copiedRoute.Name)
+							if hasTokenExchange {
+								if err := s.maybeSetTokenExchangePerRouteConfig(ctx, copiedRoute); err != nil {
+									s.log.Error(err, "failed to set token-exchange per-route config", "route", copiedRoute.Name)
+								}
 							}
 							backendListenerRoutes = append(backendListenerRoutes, copiedRoute)
 							continue
