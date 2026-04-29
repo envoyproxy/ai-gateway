@@ -517,7 +517,7 @@ func Test_handleFinalizer(t *testing.T) {
 		name               string
 		hasFinalizer       bool
 		hasDeletionTS      bool
-		clientPatchError   bool
+		clientUpdateError  bool
 		onDeletionFnError  bool
 		expectedOnDelete   bool
 		expectedFinalizers []string
@@ -531,10 +531,10 @@ func Test_handleFinalizer(t *testing.T) {
 			expectedFinalizers: []string{aiGatewayControllerFinalizer},
 		},
 		{
-			name:               "add finalizer to new object with patch error",
+			name:               "add finalizer to new object with update error",
 			hasFinalizer:       false,
 			hasDeletionTS:      false,
-			clientPatchError:   true,
+			clientUpdateError:  true,
 			expectedOnDelete:   false,
 			expectedFinalizers: []string{aiGatewayControllerFinalizer},
 		},
@@ -563,10 +563,10 @@ func Test_handleFinalizer(t *testing.T) {
 			expectCallback:     true,
 		},
 		{
-			name:               "object being deleted, client patch error",
+			name:               "object being deleted, client update error",
 			hasFinalizer:       true,
 			hasDeletionTS:      true,
-			clientPatchError:   true,
+			clientUpdateError:  true,
 			expectedOnDelete:   true,
 			expectedFinalizers: []string{},
 			expectCallback:     true,
@@ -599,7 +599,7 @@ func Test_handleFinalizer(t *testing.T) {
 				}
 			}
 			onDelete := handleFinalizer(context.Background(),
-				&mockClient{patchErr: tc.clientPatchError}, logr.Discard(), obj, onDeletionFn)
+				&mockClient{updateErr: tc.clientUpdateError}, logr.Discard(), obj, onDeletionFn)
 			require.Equal(t, tc.expectedOnDelete, onDelete)
 			require.Equal(t, tc.expectedFinalizers, obj.Finalizers)
 			require.Equal(t, tc.expectCallback, callbackExecuted)
@@ -607,16 +607,16 @@ func Test_handleFinalizer(t *testing.T) {
 	}
 }
 
-// mockClients implements client.Client with a custom Patch method for testing purposes.
+// mockClients implements client.Client with a custom Update method for testing purposes.
 type mockClient struct {
 	client.Client
-	patchErr bool
+	updateErr bool
 }
 
-// Patch implements the client.Client interface for the mock client.
-func (m *mockClient) Patch(context.Context, client.Object, client.Patch, ...client.PatchOption) error {
-	if m.patchErr {
-		return fmt.Errorf("mock patch error")
+// Updates implements the client.Client interface for the mock client.
+func (m *mockClient) Update(context.Context, client.Object, ...client.UpdateOption) error {
+	if m.updateErr {
+		return fmt.Errorf("mock update error")
 	}
 	return nil
 }
