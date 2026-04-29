@@ -63,7 +63,7 @@ func TestMCPRouteTokenExchange(t *testing.T) {
 		sess, err = client.Connect(
 			ctx,
 			&mcp.StreamableClientTransport{
-				Endpoint: fmt.Sprintf("%s/token-exchange", fwd.Address()),
+				Endpoint: fmt.Sprintf("%s/mcp", fwd.Address()),
 				// Use HTTP client that adds Authorization header.
 				HTTPClient: authHTTPClient,
 			}, nil)

@@ -17,7 +17,10 @@ require (
 	github.com/bytedance/sonic v1.15.1
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cohere-ai/cohere-go/v2 v2.18.0
+	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/coreos/go-oidc/v3 v3.18.0
+	github.com/coreos/go-semver v0.3.1
+	github.com/docker/docker v28.5.2+incompatible
 	github.com/envoyproxy/envoy/source/extensions/dynamic_modules v0.0.0-20260423231439-f1dd21b16c24
 	github.com/envoyproxy/gateway v1.7.0
 	github.com/envoyproxy/go-control-plane v0.14.0
@@ -116,7 +119,6 @@ require (
 	github.com/containerd/stargz-snapshotter/estargz v0.18.2 // indirect
 	github.com/containers/image/v5 v5.36.2 // indirect
 	github.com/containers/storage v1.59.1 // indirect
-	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect

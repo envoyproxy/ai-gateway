@@ -197,7 +197,7 @@ spec:
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
-  name: envoy-mcp-gateway-oauth
+  name: envoy-mcp-gateway-token-exchange
   namespace: default
 spec:
   logging:
