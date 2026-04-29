@@ -133,40 +133,24 @@ The RFC distinguishes two key semantics:
 // calling an external Security Token Service (STS).
 //
 // +kubebuilder:validation:XValidation:rule="has(self.stsEndpoint)",message="stsEndpoint is required"
-// +kubebuilder:validation:XValidation:rule="!(has(self.subjectTokenSource) && self.subjectTokenSource == 'Header') || has(self.subjectTokenHeader)",message="subjectTokenHeader is required when subjectTokenSource is 'Header'"
-// +kubebuilder:validation:XValidation:rule="!(has(self.semantics) && self.semantics == 'Delegation') || has(self.actorToken)",message="actorToken is required when semantics is Delegation"
 type MCPBackendTokenExchange struct {
 	// STSEndpoint is the URL of the OAuth 2.0 token endpoint of the Security Token
-	// Service (STS) that will perform the token exchange.
-	// Must be an HTTPS URL.
+	// Service (STS) that will perform the token exchange. Must be an HTTPS URL.
 	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Pattern=`^https://.*`
+	// +kubebuilder:validation:Format=uri
 	STSEndpoint string `json:"stsEndpoint"`
 
-	// SubjectTokenType is the token type URI for the subject_token parameter as
-	// defined in RFC-8693 §3.
-	//
+	// SubjectTokenType is the token type URI for the subject_token parameter as defined in RFC-8693 §3.
 	// Defaults to "urn:ietf:params:oauth:token-type:access_token".
-	//
-	// Common values:
-	//   - "urn:ietf:params:oauth:token-type:access_token"
-	//   - "urn:ietf:params:oauth:token-type:jwt"
-	//   - "urn:ietf:params:oauth:token-type:id_token"
 	//
 	// +kubebuilder:default="urn:ietf:params:oauth:token-type:access_token"
 	// +optional
 	SubjectTokenType *string `json:"subjectTokenType,omitempty"`
 
 	// Audience specifies the intended audience for the issued upstream token.
-	// This is used as the "audience" parameter in the token exchange request
-	// (RFC-8693 §2.1) and will appear as the "aud" claim in the issued JWT.
-	//
-	// This SHOULD be set to the logical identifier of the upstream MCP backend
-	// service (e.g., "https://api.github.com" or "github-mcp-server").
-	//
-	// If not set, the STS will determine the audience, which may produce
-	// overly broadly-scoped tokens. Setting this explicitly is STRONGLY RECOMMENDED.
+	// This is used as the "audience" parameter in the token exchange request (RFC-8693 §2.1)
+	// and will appear as the "aud" claim in the issued JWT.
 	//
 	// +optional
 	Audience *string `json:"audience,omitempty"`
@@ -174,23 +158,12 @@ type MCPBackendTokenExchange struct {
 	// Resource is the URI of the upstream MCP backend resource, used as the
 	// "resource" parameter in the exchange request (RFC-8693 §2.1, RFC 8707).
 	//
-	// This is complementary to Audience. When both are set, both are sent to the
-	// STS. Resource MUST be an absolute URI per RFC 3986 §4.3.
-	//
 	// +optional
-	// +kubebuilder:validation:Pattern=`^https?://.*`
+	// +kubebuilder:validation:Format=uri
 	Resource *string `json:"resource,omitempty"`
 
 	// Scopes lists the OAuth 2.0 scopes to request for the issued upstream token.
 	// These are used as the "scope" parameter in the exchange request.
-	//
-	// The scopes SHOULD be narrower than those present in the incoming user token.
-	// The STS will validate that the requested scopes are within the bounds
-	// of the subject token's granted scopes.
-	//
-	// If not set, scope narrowing is not requested and the STS determines
-	// the scopes. Setting explicit scopes is STRONGLY RECOMMENDED to enforce
-	// the principle of least privilege.
 	//
 	// +optional
 	Scopes []string `json:"scopes,omitempty"`
@@ -202,79 +175,34 @@ type MCPBackendTokenExchange struct {
 	// +optional
 	RequestedTokenType *string `json:"requestedTokenType,omitempty"`
 
-	// Semantics controls whether the exchange produces a delegation token
-	// (which includes both the original user and the gateway in the token,
-	// via the "act" claim) or an impersonation token (which contains only
-	// the original user's identity, making the gateway transparent).
-	//
-	// - "Delegation" (default): The STS is asked to include an "act" claim
-	//   identifying the gateway. The ActorToken field MUST be configured.
-	//   The upstream backend can see both the user (sub) and the gateway (act.sub).
-	//   This is the RECOMMENDED mode for auditability.
-	//
-	// - "Impersonation": No actor_token is sent. The issued token will carry
-	//   only the user's sub. The gateway is invisible to the upstream backend.
-	//   Use only when the backend must see the user as a direct caller.
-	//
-	// +kubebuilder:default="Delegation"
-	// +kubebuilder:validation:Enum=Delegation;Impersonation
-	// +optional
-	Semantics *MCPTokenExchangeSemantics `json:"semantics,omitempty"`
-
-	// ActorToken configures the credential that identifies the gateway itself
-	// to the STS. This is used as the "actor_token" parameter in the exchange
-	// request when Semantics is "Delegation".
-	//
-	// Required when Semantics is "Delegation".
+	// ActorToken configures the credential that identifies the gateway itself to the STS.
+	// This is used as the "actor_token" parameter in the exchange. The actor token represents
+	// the gateway's identity and is used by the STS to establish a delegation chain in the issued token.
 	//
 	// +optional
 	ActorToken *MCPBackendTokenExchangeActorToken `json:"actorToken,omitempty"`
 
-	// ClientAuth configures how the gateway authenticates itself as an OAuth
-	// client to the STS token endpoint. This is separate from the actor token
-	// and applies to the client_id/client_secret or client_assertion used in
-	// the token exchange HTTP request itself.
+	// ClientAuth configures how the gateway authenticates itself as an OAuth client to the STS
+	// token endpoint. This is separate from the actor token and applies to the client_id/client_secret
+	// used in the token exchange HTTP request itself.
 	//
-	// If not set, the STS request is made without client authentication
-	// (unauthenticated client). This is NOT RECOMMENDED for production.
+	// If not set, the STS request is made without client authentication (unauthenticated client).
+	// This is NOT RECOMMENDED for production.
 	//
 	// +optional
 	ClientAuth *MCPTokenExchangeClientAuth `json:"clientAuth,omitempty"`
 
-	// TokenHeader specifies the HTTP header into which the issued upstream token
-	// will be injected for the upstream request.
+	// Cache configures token caching behavior to avoid performing a token exchange on every request.
+	// Caching is keyed on (subject_token, audience, scope).
 	//
-	// Defaults to "Authorization". When the header is "Authorization", the token
-	// is prefixed with "Bearer ". For all other headers, the raw token is used.
-	//
-	// +kubebuilder:default="Authorization"
-	// +optional
-	TokenHeader *string `json:"tokenHeader,omitempty"`
-
-	// Cache configures token caching behavior to avoid performing a token exchange
-	// on every request. Caching is keyed on (subject_token, audience, scope).
+	// NOTE: Token caching is not yet implemented. This field is reserved for future use.
 	//
 	// +optional
 	Cache *MCPTokenExchangeCacheConfig `json:"cache,omitempty"`
 }
 
-// MCPTokenExchangeSemantics controls whether token exchange uses delegation
-// or impersonation semantics as defined in RFC-8693 §1.1.
-// +kubebuilder:validation:Enum=Delegation;Impersonation
-type MCPTokenExchangeSemantics string
-
-const (
-	// DelegationSemantics produces a token with an "act" claim identifying
-	// the gateway as the acting party on behalf of the user (sub).
-	DelegationSemantics MCPTokenExchangeSemantics = "Delegation"
-
-	// ImpersonationSemantics produces a token where the gateway is invisible;
-	// the issued token looks as if issued directly to the user.
-	ImpersonationSemantics MCPTokenExchangeSemantics = "Impersonation"
-)
-
-// MCPBackendTokenExchangeActorToken configures the credential used as the
-// actor_token in the token exchange request, representing the gateway's identity.
+// MCPBackendTokenExchangeActorToken configures the credential used as the actor_token in the token
+// exchange request, representing the gateway's identity.
 //
 // Exactly one of SecretRef or ClientAssertionJWT must be set.
 //
@@ -282,27 +210,23 @@ const (
 type MCPBackendTokenExchangeActorToken struct {
 	// SecretRef references a Kubernetes Secret containing the actor token.
 	// The Secret must have a key "token" containing the actor token value.
-	// This is typically a long-lived service token or a client credentials
-	// access token representing the gateway's identity.
 	//
 	// +optional
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef,omitempty"`
 
-	// ClientAssertionJWT configures the gateway to generate a signed JWT as
-	// the actor token using a private key. This is the RECOMMENDED approach
-	// as it avoids long-lived static tokens and enables key rotation.
+	// ClientAssertionJWT configures the gateway to generate a signed JWT as the actor token
+	// using a private key. This is the RECOMMENDED approach as it avoids long-lived static
+	// tokens and enables key rotation.
 	//
-	// The gateway will generate a JWT with:
-	//   iss: <configured issuer>
-	//   sub: <configured subject>
-	//   aud: <stsEndpoint>
-	//   iat, exp: auto-generated (short-lived)
+	// NOTE: JWT actor token generation is not yet implemented. This field is reserved for future use.
 	//
 	// +optional
 	ClientAssertionJWT *MCPTokenExchangeJWTActorConfig `json:"clientAssertionJWT,omitempty"`
 }
 
 // MCPTokenExchangeJWTActorConfig configures JWT generation for the actor token.
+//
+// NOTE: This configuration is defined for future use. JWT actor token generation is not yet implemented.
 type MCPTokenExchangeJWTActorConfig struct {
 	// Issuer is the "iss" claim value in the generated JWT.
 	// Typically the gateway's client ID or identifier at the STS.
@@ -316,28 +240,28 @@ type MCPTokenExchangeJWTActorConfig struct {
 	// +kubebuilder:validation:Required
 	Subject string `json:"subject"`
 
-	// PrivateKeyRef references a Kubernetes Secret containing the private key
-	// used to sign the JWT. The secret must have a key "privateKey" containing
-	// a PEM-encoded RSA or EC private key.
+	// PrivateKeyRef references a Kubernetes Secret containing the private key used to sign the JWT.
+	// The secret must have a key "privateKey" containing a PEM-encoded RSA or EC private key.
 	//
 	// +kubebuilder:validation:Required
 	PrivateKeyRef gwapiv1.SecretObjectReference `json:"privateKeyRef"`
 
 	// SigningAlgorithm specifies the JWT signing algorithm.
+	//
 	// +kubebuilder:default="RS256"
-	// +kubebuilder:validation:Enum=RS256;RS384;RS512;ES256;ES384;ES512;PS256;PS384;PS512
+	// +kubebuilder:validation:Enum=RS256;RS384;RS512;ES256;ES384;ES512;PS256;PS384;PS512;HS256;HS384;HS512
 	// +optional
 	SigningAlgorithm *string `json:"signingAlgorithm,omitempty"`
 
 	// Lifetime is the TTL of the generated JWT in seconds. Defaults to 300 (5 minutes).
+	//
 	// +kubebuilder:default=300
 	// +optional
 	Lifetime *int32 `json:"lifetime,omitempty"`
 }
 
 // MCPTokenExchangeClientAuth configures client authentication at the STS token endpoint.
-// This is how the gateway authenticates itself as an OAuth 2.0 client (client_id + credential),
-// distinct from the actor_token which represents the gateway's *identity* in the delegation chain.
+// This is how the gateway authenticates itself as an OAuth 2.0 client (client_id + credential).
 //
 // +kubebuilder:validation:XValidation:rule="has(self.clientID)",message="clientID is required"
 // +kubebuilder:validation:XValidation:rule="has(self.clientSecretRef)",message="clientSecretRef is required"
@@ -349,43 +273,38 @@ type MCPTokenExchangeClientAuth struct {
 
 	// ClientSecretRef references a Kubernetes Secret containing the client secret.
 	// The Secret must have a key "clientSecret".
-	// Sent as HTTP Basic Auth or as "client_secret" in the request body.
 	//
 	// +kubebuilder:validation:Required
-	ClientSecretRef gwapiv1.SecretObjectReference `json:"clientSecretRef,omitempty"`
+	ClientSecretRef gwapiv1.SecretObjectReference `json:"clientSecretRef"`
 }
 
 // MCPTokenExchangeCacheConfig configures token caching for exchanged tokens.
 //
-// +kubebuilder:validation:XValidation:rule="has(self.ttl)",message="ttl is required"
+// NOTE: Token caching is not yet implemented. This field is reserved for future use.
 type MCPTokenExchangeCacheConfig struct {
 	// TTL is the maximum time to cache an exchanged token.
 	//
 	// +kubebuilder:validation:Required
-	TTL gwapiv1.Duration `json:"ttl,omitempty"`
+	TTL gwapiv1.Duration `json:"ttl"`
 }
 ```
 
 ### Updated `MCPBackendSecurityPolicy`
 
 ```go
-// MCPBackendSecurityPolicy defines the security policy for authenticating the
-// gateway to an upstream MCP backend.
+// MCPBackendSecurityPolicy defines the security policy for authenticating the gateway to an upstream MCP backend.
 //
 // Exactly one of APIKey or TokenExchange must be set.
 //
-// +kubebuilder:validation:XValidation:rule="(has(self.apiKey) && !has(self.tokenExchange)) || (!has(self.apiKey) && has(self.tokenExchange))",message="exactly one of apiKey or tokenExchange must be set"
+// +kubebuilder:validation:XValidation:rule="!(has(self.apiKey) && has(self.tokenExchange))",message="only one of apiKey or tokenExchange can be set"
 type MCPBackendSecurityPolicy struct {
-	// APIKey configures static API key injection as the upstream auth method.
-	// The key is read from a Kubernetes Secret or provided inline and injected
-	// into a configured header or query parameter on every upstream request.
-	//
+	// APIKey is a mechanism to access a backend. The API key will be injected into the request headers.
 	// +optional
 	APIKey *MCPBackendAPIKey `json:"apiKey,omitempty"`
 
-	// TokenExchange configures OAuth 2.0 Token Exchange (RFC-8693) as the
-	// upstream auth method. The gateway exchanges the incoming user token for
-	// a new token valid for this specific backend by calling an external STS.
+	// TokenExchange configures OAuth 2.0 Token Exchange (RFC-8693) as the upstream auth method.
+	// The gateway exchanges the incoming user token for a new token valid for this specific backend
+	// by calling an external Security Token Service (STS).
 	//
 	// +optional
 	TokenExchange *MCPBackendTokenExchange `json:"tokenExchange,omitempty"`
@@ -449,9 +368,6 @@ spec:
           scopes:
             - "copilot:mcp:read"
             - "copilot:mcp:tools"
-          # Use delegation semantics: the issued token will have
-          # sub=<user> and act.sub=<gateway>, making both visible to the backend
-          semantics: "Delegation"
           # The gateway's identity token for the delegation act claim
           actorToken:
             clientAssertionJWT:
@@ -468,8 +384,6 @@ spec:
             clientSecretRef:
               name: aigw-sts-client-secret
               namespace: default
-          # Inject the upstream token as a Bearer token (this can be omitted as it is the default value)
-          tokenHeader: "Authorization"
           # Cache exchanged tokens for up to 5 minutes
           cache:
             ttl: 300s
@@ -508,7 +422,7 @@ The separation of issuers at each boundary prevents cross-context token reuse. A
 
 The end-to-end identity of the user must be preserved through the gateway. The upstream backend should be able to attribute operations to specific users for auditing, rate limiting, and authorization purposes.
 
-In **Delegation mode** (the recommended default), the issued upstream token's `sub` claim is the original user's identifier (copied from the incoming token's `sub`). The `act` claim identifies the gateway. The upstream backend can see:
+In **Delegation mode** (when the `actorToken` information is configured), the issued upstream token's `sub` claim is the original user's identifier (copied from the incoming token's `sub`). The `act` claim identifies the gateway. The upstream backend can see:
 
 ```json
 {
@@ -535,7 +449,7 @@ Choosing between delegation and impersonation has significant security and opera
 | Confused deputy risk        | Lower (gateway must authenticate) | Higher (anyone with user token can impersonate) |
 | Recommended for             | Most enterprise deployments       | When backend must see user as direct caller     |
 
-Delegation is the **default** (`semantics: "Delegation"`) and is strongly recommended for most use cases. Impersonation should only be used when the upstream MCP backend is designed to receive direct user tokens and does not support delegation semantics - for example, a legacy service that only validates `sub` and would be confused by the `act` claim.
+Delegation is strongly recommended for most use cases. Impersonation should only be used when the upstream MCP backend is designed to receive direct user tokens and does not support delegation semantics - for example, a legacy service that only validates `sub` and would be confused by the `act` claim.
 
 ### Scope Narrowing and the Principle of Least Privilege
 
@@ -550,8 +464,6 @@ Each `MCPRouteBackendRef` has its own `securityPolicy.tokenExchange` with its ow
 Without client authentication, any party that obtains a user's access token can exchange it for tokens scoped to any backend. This is a significant token amplification attack vector.
 
 **RFC-8693 §5 states:** _"Note that omitting client authentication allows for a compromised token to be leveraged via an STS into other tokens by anyone possessing the compromised token. Thus, client authentication allows for additional authorization checks by the STS as to which entities are permitted to impersonate or receive delegations from other entities."_
-
-**Not setting `clientAuth` (unauthenticated exchange)** is explicitly allowed but strongly discouraged in production. The STS may also require client authentication regardless of the AIGW configuration - if so, requests without client auth will simply fail at the STS.
 
 ### The `act` Claim and Delegation Chain Integrity
 
@@ -597,7 +509,7 @@ Including `subject_token` in the cache key ensures:
 
 ### TLS Enforcement
 
-Token exchange transmits sensitive credentials over the network. The `stsEndpoint` field is validated to require an `https://` URL prefix (via CRD pattern validation). All communication with the STS is over TLS. Non-TLS STS endpoints are rejected at the API level.
+Token exchange transmits sensitive credentials over the network. The `stsEndpoint` field is recommended to have an `https://` URL prefix. All communication with the STS is over TLS. Non-TLS STS endpoints are rejected at the API level.
 This implements RFC-8693 §5's requirement: _"Tokens employed in the context of the functionality described herein... MUST only be transmitted over encrypted channels, such as Transport Layer Security (TLS)."_
 
 The upstream MCP backend communication is separately secured by the existing Envoy TLS configuration (via `BackendTLSPolicy`), which is unaffected by this proposal.
