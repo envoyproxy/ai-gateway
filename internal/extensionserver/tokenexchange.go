@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -138,9 +139,16 @@ func buildSTSCluster(clusterName, stsEndpoint string) (*clusterv3.Cluster, error
 	}
 
 	if u.Scheme == "https" {
+		// TODO(nacx): Make the CA configurable for privately hosted STS endpoints
 		anyTLS, tlsErr := toAny(&tlsv3.UpstreamTlsContext{
 			CommonTlsContext: &tlsv3.CommonTlsContext{
-				ValidationContextType: &tlsv3.CommonTlsContext_ValidationContext{},
+				ValidationContextType: &tlsv3.CommonTlsContext_ValidationContext{
+					ValidationContext: &tlsv3.CertificateValidationContext{
+						TrustedCa: &corev3.DataSource{
+							Specifier: &corev3.DataSource_Filename{Filename: systemCertPath},
+						},
+					},
+				},
 			},
 			Sni: host,
 		})
@@ -161,7 +169,7 @@ func buildSTSCluster(clusterName, stsEndpoint string) (*clusterv3.Cluster, error
 // tokenExchangeHTTPFilter builds the DynamicModuleFilter HTTP filter configuration for the
 // Dynamic Module filter. This is inserted into the backend listener's HTTP filter chain
 // and operates in per-route mode; routes without per-route config are passed through unchanged.
-// The filter is marked as optional so Envoy can start without the ai gateway dynamic module (e.g. standalone mode).
+// It is only inserted if there is at least one MCPRoute with a token-exchange security policy.
 func tokenExchangeHTTPFilter() (*httpconnectionmanagerv3.HttpFilter, error) {
 	dynModFilter := &dynmodulesv3.DynamicModuleFilter{
 		DynamicModuleConfig: &dynmodulesextv3.DynamicModuleConfig{
@@ -183,18 +191,22 @@ func tokenExchangeHTTPFilter() (*httpconnectionmanagerv3.HttpFilter, error) {
 // maybeCreateSTSClusters lists all MCPRoute objects and appends a STRICT_DNS Envoy cluster to req
 // for each unique STS endpoint referenced by a token-exchange backend security policy.
 // It is a no-op when no k8sClient is configured (e.g. standalone mode or unit tests).
-func (s *Server) maybeCreateSTSClusters(ctx context.Context, req *egextension.PostTranslateModifyRequest) (bool, error) {
+func (s *Server) maybeCreateSTSClusters(ctx context.Context, req *egextension.PostTranslateModifyRequest) (map[types.NamespacedName]aigv1a1.MCPRoute, error) {
 	var mcpRoutes aigv1a1.MCPRouteList
 	if err := s.k8sClient.List(ctx, &mcpRoutes); err != nil {
-		return false, fmt.Errorf("failed to list MCPRoutes: %w", err)
+		return nil, fmt.Errorf("failed to list MCPRoutes: %w", err)
 	}
 
 	seen := make(map[string]bool)
+	tokenExchangeRoutes := make(map[types.NamespacedName]aigv1a1.MCPRoute)
 	for i := range mcpRoutes.Items {
-		for _, backend := range mcpRoutes.Items[i].Spec.BackendRefs {
+		hasTokenExchange := false
+		mcpRoute := mcpRoutes.Items[i]
+		for _, backend := range mcpRoute.Spec.BackendRefs {
 			if backend.SecurityPolicy == nil || backend.SecurityPolicy.TokenExchange == nil {
 				continue
 			}
+			hasTokenExchange = true
 			stsEndpoint := backend.SecurityPolicy.TokenExchange.STSEndpoint
 			clusterName := buildSTSClusterName(stsEndpoint)
 			if seen[clusterName] {
@@ -203,14 +215,19 @@ func (s *Server) maybeCreateSTSClusters(ctx context.Context, req *egextension.Po
 			seen[clusterName] = true
 			cluster, err := buildSTSCluster(clusterName, stsEndpoint)
 			if err != nil {
-				return false, fmt.Errorf("failed to build STS cluster for %s: %w", stsEndpoint, err)
+				return nil, fmt.Errorf("failed to build STS cluster for %s: %w", stsEndpoint, err)
 			}
 			req.Clusters = append(req.Clusters, cluster)
 			s.log.Info("Created STS cluster for token exchange", "cluster", clusterName, "sts", stsEndpoint)
 		}
+
+		if hasTokenExchange {
+			routeKey := types.NamespacedName{Namespace: mcpRoute.Namespace, Name: mcpRoute.Name}
+			tokenExchangeRoutes[routeKey] = mcpRoute
+		}
 	}
 
-	return len(seen) > 0, nil
+	return tokenExchangeRoutes, nil
 }
 
 // extractMCPHeaderMatchValue scans a route's match headers and returns the exact-match value
@@ -243,7 +260,7 @@ func extractMCPHeaderMatchValue(route *routev3.Route, headerName string) string 
 // It is a no-op when:
 //   - The route does not carry MCPBackendHeader / MCPRouteHeader match headers.
 //   - The matched backend ref does not have a TokenExchange security policy.
-func (s *Server) maybeSetTokenExchangePerRouteConfig(ctx context.Context, route *routev3.Route) error {
+func (s *Server) maybeSetTokenExchangePerRouteConfig(ctx context.Context, route *routev3.Route, mcpRoutes map[types.NamespacedName]aigv1a1.MCPRoute) error {
 	backendName := extractMCPHeaderMatchValue(route, internalapi.MCPBackendHeader)
 	mcpRouteRef := extractMCPHeaderMatchValue(route, internalapi.MCPRouteHeader)
 	if backendName == "" || mcpRouteRef == "" {
@@ -258,9 +275,9 @@ func (s *Server) maybeSetTokenExchangePerRouteConfig(ctx context.Context, route 
 	namespace := mcpRouteRef[:slashIdx]
 	routeName := mcpRouteRef[slashIdx+1:]
 
-	var mcpRoute aigv1a1.MCPRoute
-	if err := s.k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: routeName}, &mcpRoute); err != nil {
-		return fmt.Errorf("failed to get MCPRoute %s/%s: %w", namespace, routeName, err)
+	mcpRoute, ok := mcpRoutes[types.NamespacedName{Namespace: namespace, Name: routeName}]
+	if !ok {
+		return fmt.Errorf("MCPRoute %s/%s not found in cache", namespace, routeName)
 	}
 
 	// Find the backend ref matching the route's MCPBackendHeader value.
@@ -293,7 +310,11 @@ func (s *Server) maybeSetTokenExchangePerRouteConfig(ctx context.Context, route 
 		}, &secretObj); err != nil {
 			return fmt.Errorf("failed to get client secret for backend %s: %w", backendName, err)
 		}
-		clientSecret = string(secretObj.Data["clientSecret"])
+		val, ok := secretObj.Data["clientSecret"]
+		if !ok {
+			return fmt.Errorf("client secret key \"clientSecret\" not found in secret %s/%s", secretNS, te.ClientAuth.ClientSecretRef.Name)
+		}
+		clientSecret = string(val)
 	}
 
 	// Read actor token for Delegation mode when a SecretRef actor token is configured.
@@ -370,7 +391,11 @@ func (s *Server) loadTokenExchangeActorToken(ctx context.Context, namespace stri
 		if err != nil {
 			return "", "", fmt.Errorf("failed to load actor token secret: %w", err)
 		}
-		return string(secretObj.Data["token"]), defaultActorTokenType, nil // #nosec G101
+		val, ok := secretObj.Data["token"]
+		if !ok {
+			return "", "", fmt.Errorf("actor token key \"token\" not found in secret %s/%s", namespace, te.ActorToken.SecretRef.Name)
+		}
+		return string(val), defaultActorTokenType, nil // #nosec G101
 	}
 
 	// Otherwise, generate the token with the provided data
@@ -398,7 +423,10 @@ func (s *Server) loadTokenExchangeActorToken(ctx context.Context, namespace stri
 		signingMethod = jwt.GetSigningMethod(*actorTokenConfig.SigningAlgorithm)
 	}
 
-	keyData := privateKey.Data["privateKey"]
+	keyData, ok := privateKey.Data["privateKey"]
+	if !ok {
+		return "", "", fmt.Errorf("private key data key \"privateKey\" not found in secret %s/%s", namespace, actorTokenConfig.PrivateKeyRef.Name)
+	}
 	var key any
 	switch signingMethod {
 	case jwt.SigningMethodRS256, jwt.SigningMethodRS384, jwt.SigningMethodRS512, jwt.SigningMethodPS256, jwt.SigningMethodPS384, jwt.SigningMethodPS512:
@@ -436,3 +464,27 @@ func loadSecret(ctx context.Context, k8sClient client.Client, ref *gwapiv1.Secre
 	}
 	return secretObj, nil
 }
+
+// Code borrowed from: https://github.com/envoyproxy/gateway/blob/main/internal/utils/cert/cert.go
+
+// canonicalCertPath is the Debian/Ubuntu CA path used as a canonical value in golden files.
+// The envoy-proxy image uses Debian, so this matches the runtime path.
+const canonicalCertPath = "/etc/ssl/certs/ca-certificates.crt"
+
+// systemCertPath is the default location of the system trust store, initialized at runtime once.
+//
+// This assumes the Envoy running in a very specific environment. For example, the default location of the system
+// trust store on Debian derivatives like the envoy-proxy image being used by the infrastructure controller.
+var systemCertPath = func() string {
+	switch runtime.GOOS {
+	case "darwin":
+		// TODO: maybe automatically get the keychain cert? That might be macOS version dependent.
+		// For now, we'll just use the root cert installed by Homebrew: brew install ca-certificates.
+		// See:
+		// * https://apple.stackexchange.com/questions/226375/where-are-the-root-cas-stored-on-os-x
+		// * https://superuser.com/questions/992167/where-are-digital-certificates-physically-stored-on-a-mac-os-x-machine
+		return "/opt/homebrew/etc/ca-certificates/cert.pem"
+	default:
+		return canonicalCertPath
+	}
+}()

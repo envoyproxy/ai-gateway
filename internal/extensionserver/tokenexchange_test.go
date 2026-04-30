@@ -25,6 +25,7 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -239,9 +240,9 @@ func TestMaybeCreateSTSClusters(t *testing.T) {
 
 	s := &Server{log: testr.New(t), k8sClient: fakeClient}
 	req := &egextension.PostTranslateModifyRequest{}
-	hasTokenExchange, err := s.maybeCreateSTSClusters(t.Context(), req)
+	tokenExchangeRoutes, err := s.maybeCreateSTSClusters(t.Context(), req)
 	require.NoError(t, err)
-	require.True(t, hasTokenExchange)
+	require.NotEmpty(t, tokenExchangeRoutes)
 
 	// Expect exactly 2 unique clusters (stsEndpoint1 deduplicated, stsEndpoint2 unique).
 	require.Len(t, req.Clusters, 2)
@@ -271,9 +272,9 @@ func TestMaybeCreateSTSClustersNoTokenExchangeRoutes(t *testing.T) {
 
 	s := &Server{log: testr.New(t), k8sClient: fakeClient}
 	req := &egextension.PostTranslateModifyRequest{}
-	hasTokenExchange, err := s.maybeCreateSTSClusters(t.Context(), req)
+	tokenExchangeRoutes, err := s.maybeCreateSTSClusters(t.Context(), req)
 	require.NoError(t, err)
-	require.False(t, hasTokenExchange)
+	require.Empty(t, tokenExchangeRoutes)
 
 	// Expect no clusters since there are no token-exchange backends.
 	require.Empty(t, req.Clusters)
@@ -344,7 +345,11 @@ func TestMaybeSetTokenExchangePerRouteConfig(t *testing.T) {
 		},
 	}
 
-	err := s.maybeSetTokenExchangePerRouteConfig(t.Context(), route)
+	tokenExchangeRoutes := map[types.NamespacedName]aigv1a1.MCPRoute{
+		{Namespace: mcpRoute.Namespace, Name: mcpRoute.Name}: *mcpRoute,
+	}
+
+	err := s.maybeSetTokenExchangePerRouteConfig(t.Context(), route, tokenExchangeRoutes)
 	require.NoError(t, err)
 	require.NotNil(t, route.TypedPerFilterConfig, "per-route config must be set for a token-exchange backend")
 	require.Contains(t, route.TypedPerFilterConfig, tokenExchangeFilterName, "per-route config must be keyed by the filter name")
@@ -398,7 +403,11 @@ func TestMaybeSetTokenExchangePerRouteConfig_NoMatchingBackend(t *testing.T) {
 		},
 	}
 
-	err := s.maybeSetTokenExchangePerRouteConfig(t.Context(), route)
+	tokenExchangeRoutes := map[types.NamespacedName]aigv1a1.MCPRoute{
+		{Namespace: mcpRoute.Namespace, Name: mcpRoute.Name}: *mcpRoute,
+	}
+
+	err := s.maybeSetTokenExchangePerRouteConfig(t.Context(), route, tokenExchangeRoutes)
 	require.NoError(t, err)
 	require.Nil(t, route.TypedPerFilterConfig, "no per-route config should be set when backend has no TokenExchange policy")
 }
@@ -420,7 +429,7 @@ func TestMaybeSetTokenExchangePerRouteConfig_MissingMCPHeaders(t *testing.T) {
 			},
 		},
 	}
-	err := s.maybeSetTokenExchangePerRouteConfig(t.Context(), route)
+	err := s.maybeSetTokenExchangePerRouteConfig(t.Context(), route, nil)
 	require.NoError(t, err)
 	require.Nil(t, route.TypedPerFilterConfig)
 }

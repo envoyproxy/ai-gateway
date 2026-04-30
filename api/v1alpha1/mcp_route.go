@@ -217,7 +217,7 @@ type MCPBackendSecurityPolicy struct {
 // +kubebuilder:validation:XValidation:rule="has(self.stsEndpoint)",message="stsEndpoint is required"
 type MCPBackendTokenExchange struct {
 	// STSEndpoint is the URL of the OAuth 2.0 token endpoint of the Security Token
-	// Service (STS) that will perform the token exchange. Must be an HTTPS URL.
+	// Service (STS) that will perform the token exchange. Should be an HTTPS URL.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Format=uri

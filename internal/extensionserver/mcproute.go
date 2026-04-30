@@ -23,7 +23,9 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"k8s.io/apimachinery/pkg/types"
 
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
@@ -45,13 +47,14 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(ctx context.Context, req *e
 	s.maybeUpdateMCPRoutes(req.Routes)
 
 	// Create STS clusters for token-exchange backends before building routes.
-	hasTokenExchangeBackends, err := s.maybeCreateSTSClusters(ctx, req)
+	tokenExchangeRoutes, err := s.maybeCreateSTSClusters(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to create STS clusters for token exchange: %w", err)
 	}
+	hasTokenExchange := len(tokenExchangeRoutes) > 0
 
 	// Create routes for the backend listener first to determine if MCP processing is needed
-	mcpBackendRoutes := s.createRoutesForBackendListener(ctx, req.Routes, hasTokenExchangeBackends)
+	mcpBackendRoutes := s.createRoutesForBackendListener(ctx, req.Routes, tokenExchangeRoutes)
 
 	// Only create the backend listener if there are routes for it
 	if mcpBackendRoutes != nil {
@@ -60,7 +63,7 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(ctx context.Context, req *e
 		if err != nil {
 			return fmt.Errorf("failed to extract MCP backend filters from existing listeners: %w", err)
 		}
-		l, err := s.createBackendListener(mcpBackendHTTPFilters, accessLogConfig, hasTokenExchangeBackends)
+		l, err := s.createBackendListener(mcpBackendHTTPFilters, accessLogConfig, hasTokenExchange)
 		if err != nil {
 			return fmt.Errorf("failed to create MCP backend listener: %w", err)
 		}
@@ -212,7 +215,7 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 // For token-exchange backends, it also sets the per-route DynamicModuleFilterPerRoute config.
 //
 // Returns nil if no MCP routes are found.
-func (s *Server) createRoutesForBackendListener(ctx context.Context, routes []*routev3.RouteConfiguration, hasTokenExchange bool) *routev3.RouteConfiguration {
+func (s *Server) createRoutesForBackendListener(ctx context.Context, routes []*routev3.RouteConfiguration, tokenExchangeRoutes map[types.NamespacedName]aigv1a1.MCPRoute) *routev3.RouteConfiguration {
 	var backendListenerRoutes []*routev3.Route
 	for _, routeConfig := range routes {
 		for _, vh := range routeConfig.VirtualHosts {
@@ -233,8 +236,8 @@ func (s *Server) createRoutesForBackendListener(ctx context.Context, routes []*r
 					}
 					if routeAction := route.GetRoute(); routeAction != nil {
 						if _, ok := routeAction.ClusterSpecifier.(*routev3.RouteAction_Cluster); ok {
-							if hasTokenExchange {
-								if err := s.maybeSetTokenExchangePerRouteConfig(ctx, copiedRoute); err != nil {
+							if len(tokenExchangeRoutes) > 0 {
+								if err := s.maybeSetTokenExchangePerRouteConfig(ctx, copiedRoute, tokenExchangeRoutes); err != nil {
 									s.log.Error(err, "failed to set token-exchange per-route config", "route", copiedRoute.Name)
 								}
 							}

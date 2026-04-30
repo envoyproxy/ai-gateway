@@ -24,6 +24,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -139,11 +140,10 @@ func TestServer_createBackendListener(t *testing.T) {
 
 func TestServer_createRoutesForBackendListener(t *testing.T) {
 	tests := []struct {
-		name             string
-		hasTokenExchange bool
-		setup            func(*testing.T, client.Client)
-		routes           []*routev3.RouteConfiguration
-		expectedRoute    *routev3.RouteConfiguration
+		name          string
+		mcpRoutes     []*aigv1a1.MCPRoute
+		routes        []*routev3.RouteConfiguration
+		expectedRoute *routev3.RouteConfiguration
 	}{
 		{
 			name:          "empty",
@@ -151,10 +151,9 @@ func TestServer_createRoutesForBackendListener(t *testing.T) {
 			expectedRoute: nil,
 		},
 		{
-			name:             "with MCP route and token-exchange backend sets per-route config",
-			hasTokenExchange: true,
-			setup: func(t *testing.T, c client.Client) {
-				mcpRoute := &aigv1a1.MCPRoute{
+			name: "with MCP route and token-exchange backend sets per-route config",
+			mcpRoutes: []*aigv1a1.MCPRoute{
+				{
 					ObjectMeta: metav1.ObjectMeta{Name: "my-route", Namespace: "default"},
 					Spec: aigv1a1.MCPRouteSpec{
 						BackendRefs: []aigv1a1.MCPRouteBackendRef{
@@ -168,8 +167,7 @@ func TestServer_createRoutesForBackendListener(t *testing.T) {
 							},
 						},
 					},
-				}
-				require.NoError(t, c.Create(t.Context(), mcpRoute))
+				},
 			},
 			routes: []*routev3.RouteConfiguration{
 				{
@@ -275,14 +273,23 @@ func TestServer_createRoutesForBackendListener(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().WithScheme(controller.Scheme).Build()
-			if tt.setup != nil {
-				tt.setup(t, fakeClient)
+
+			mcpRouteMap := make(map[types.NamespacedName]aigv1a1.MCPRoute)
+			for _, mcpRoute := range tt.mcpRoutes {
+				require.NoError(t, fakeClient.Create(t.Context(), mcpRoute))
+				for _, backendRef := range mcpRoute.Spec.BackendRefs {
+					if backendRef.SecurityPolicy != nil && backendRef.SecurityPolicy.TokenExchange != nil {
+						mcpRouteMap[types.NamespacedName{Namespace: mcpRoute.Namespace, Name: mcpRoute.Name}] = *mcpRoute
+						break
+					}
+				}
 			}
+
 			s := &Server{log: testr.New(t), k8sClient: fakeClient}
-			route := s.createRoutesForBackendListener(t.Context(), tt.routes, tt.hasTokenExchange)
+			route := s.createRoutesForBackendListener(t.Context(), tt.routes, mcpRouteMap)
 
 			switch {
-			case tt.hasTokenExchange:
+			case len(mcpRouteMap) > 0:
 				// The route is returned but we also verify the per-route config was injected.
 				require.NotNil(t, route)
 				backendRoute := route.GetVirtualHosts()[0].GetRoutes()[0]
