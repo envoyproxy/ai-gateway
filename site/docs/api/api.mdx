@@ -4364,7 +4364,7 @@ Exactly one of SecretRef or ClientAssertionJWT must be set.
   name="clientAssertionJWT"
   type="[MCPTokenExchangeJWTActorConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcptokenexchangejwtactorconfig)"
   required="false"
-  description="ClientAssertionJWT configures the gateway to generate a signed JWT as the actor token<br />using a private key. This is the RECOMMENDED approach as it avoids long-lived static<br />tokens and enables key rotation.<br />NOTE: JWT actor token generation is not yet implemented. This field is reserved for future use."
+  description="ClientAssertionJWT configures the gateway to generate a signed JWT as the actor token<br />using a private key. This is the RECOMMENDED approach as it avoids long-lived static<br />tokens and enables key rotation."
 />
 
 
@@ -4721,8 +4721,6 @@ This is how the gateway authenticates itself as an OAuth 2.0 client (client_id +
 - [MCPBackendTokenExchangeActorToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendtokenexchangeactortoken)
 
 MCPTokenExchangeJWTActorConfig configures JWT generation for the actor token.
-
-NOTE: This configuration is defined for future use. JWT actor token generation is not yet implemented.
 
 ##### Fields
 

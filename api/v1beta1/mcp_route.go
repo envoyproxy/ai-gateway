@@ -328,7 +328,7 @@ type MCPBackendTokenExchange struct {
 //
 // Exactly one of SecretRef or ClientAssertionJWT must be set.
 //
-// +kubebuilder:validation:XValidation:rule="(has(self.secretRef) && !has(self.clientAssertionJWT)) || (!has(self.secretRef) && has(self.clientAssertionJWT))",message="exactly one of secretRef or clientAssertionJWT must be set"
+// +kubebuilder:validation:XValidation:rule="has(self.secretRef) != has(self.clientAssertionJWT)",message="exactly one of secretRef or clientAssertionJWT must be set"
 type MCPBackendTokenExchangeActorToken struct {
 	// SecretRef references a Kubernetes Secret containing the actor token.
 	// The Secret must have a key "token" containing the actor token value.
@@ -340,15 +340,11 @@ type MCPBackendTokenExchangeActorToken struct {
 	// using a private key. This is the RECOMMENDED approach as it avoids long-lived static
 	// tokens and enables key rotation.
 	//
-	// NOTE: JWT actor token generation is not yet implemented. This field is reserved for future use.
-	//
 	// +optional
 	ClientAssertionJWT *MCPTokenExchangeJWTActorConfig `json:"clientAssertionJWT,omitempty"`
 }
 
 // MCPTokenExchangeJWTActorConfig configures JWT generation for the actor token.
-//
-// NOTE: This configuration is defined for future use. JWT actor token generation is not yet implemented.
 type MCPTokenExchangeJWTActorConfig struct {
 	// Issuer is the "iss" claim value in the generated JWT.
 	// Typically the gateway's client ID or identifier at the STS.

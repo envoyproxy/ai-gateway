@@ -57,8 +57,7 @@ metadata:
   namespace: default
 type: Opaque
 stringData:
-  # clientSecret: "mcp-gateway-client-secret"
-  clientSecret: "vlBY5qJ9HldlkIb3EF5LqgXadlkXdjWC"
+  clientSecret: "mcp-gateway-client-secret"
 ---
 apiVersion: v1
 kind: Secret

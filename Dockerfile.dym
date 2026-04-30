@@ -11,9 +11,9 @@ WORKDIR /workspace
 COPY . .
 
 # Install necessary tools for cgo
-RUN apt-get update
-RUN apt-get install -y --no-install-recommends \
-    ca-certificates wget git ssh netcat-openbsd gcc build-essential binutils binutils-gold
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates wget git ssh netcat-openbsd gcc build-essential binutils binutils-gold \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN go mod download all
 RUN CGO_ENABLED=1 go build -buildmode=c-shared -o libaigateway.so ./cmd/dynamic_module
