@@ -195,7 +195,7 @@ type MCPToolFilter struct {
 //
 // Exactly one of APIKey or TokenExchange must be set.
 //
-// +kubebuilder:validation:XValidation:rule="!(has(self.apiKey) && has(self.tokenExchange))",message="only one of apiKey or tokenExchange can be set"
+// +kubebuilder:validation:XValidation:rule="has(self.apiKey) != has(self.tokenExchange)",message="exactly one of apiKey or tokenExchange must be set"
 type MCPBackendSecurityPolicy struct {
 	// APIKey is a mechanism to access a backend. The API key will be injected into the request headers.
 	// +optional

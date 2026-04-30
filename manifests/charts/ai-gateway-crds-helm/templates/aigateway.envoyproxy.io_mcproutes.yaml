@@ -5185,8 +5185,8 @@ spec:
                             rule: has(self.stsEndpoint)
                       type: object
                       x-kubernetes-validations:
-                      - message: only one of apiKey or tokenExchange can be set
-                        rule: '!(has(self.apiKey) && has(self.tokenExchange))'
+                      - message: exactly one of apiKey or tokenExchange must be set
+                        rule: has(self.apiKey) != has(self.tokenExchange)
                     toolSelector:
                       description: |-
                         ToolSelector filters the tools exposed by this MCP server.

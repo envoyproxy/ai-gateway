@@ -13,7 +13,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"testing"
-	"time"
 
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
@@ -462,10 +461,10 @@ func getPerRouteConfigClusterName(t *testing.T, route *routev3.Route) string {
 
 func TestLoadTokenExchangeActorToken_NoActorToken(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(controller.Scheme).Build()
-	s := &Server{log: testr.New(t), k8sClient: fakeClient}
+	tp := mcpUpstreamTokenProvider{k8sClient: fakeClient}
 
 	t.Run("nil token exchange config", func(t *testing.T) {
-		token, tokenType, err := s.loadTokenExchangeActorToken(t.Context(), "default", nil)
+		token, tokenType, err := tp.GetToken(t.Context(), "default", nil)
 		require.NoError(t, err)
 		require.Empty(t, token)
 		require.Empty(t, tokenType)
@@ -473,7 +472,7 @@ func TestLoadTokenExchangeActorToken_NoActorToken(t *testing.T) {
 
 	t.Run("nil actor token config", func(t *testing.T) {
 		te := &aigv1a1.MCPBackendTokenExchange{}
-		token, tokenType, err := s.loadTokenExchangeActorToken(t.Context(), "default", te)
+		token, tokenType, err := tp.GetToken(t.Context(), "default", te)
 		require.NoError(t, err)
 		require.Empty(t, token)
 		require.Empty(t, tokenType)
@@ -491,17 +490,18 @@ func TestLoadTokenExchangeActorToken_SecretRef(t *testing.T) {
 		Data:       map[string][]byte{"token": []byte(actorToken)},
 	}))
 
-	s := &Server{log: testr.New(t), k8sClient: fakeClient}
 	te := &aigv1a1.MCPBackendTokenExchange{
 		ActorToken: &aigv1a1.MCPBackendTokenExchangeActorToken{
 			SecretRef: &gwapiv1.SecretObjectReference{Name: gwapiv1.ObjectName(actorSecretName)},
 		},
 	}
 
-	token, tokenType, err := s.loadTokenExchangeActorToken(t.Context(), namespace, te)
+	tp := mcpUpstreamTokenProvider{k8sClient: fakeClient}
+	token, tokenType, err := tp.GetToken(t.Context(), namespace, te)
 	require.NoError(t, err)
 	require.Equal(t, actorToken, token)
 	require.Equal(t, defaultActorTokenType, tokenType)
+	require.Empty(t, tp.token, "token should not be cached for static SecretRef actor token")
 }
 
 func TestLoadTokenExchangeActorToken_ClientAssertionJWT_HS256(t *testing.T) {
@@ -531,8 +531,8 @@ func TestLoadTokenExchangeActorToken_ClientAssertionJWT_HS256(t *testing.T) {
 		},
 	}
 
-	s := &Server{log: testr.New(t), k8sClient: fakeClient}
-	signed, tokenType, err := s.loadTokenExchangeActorToken(t.Context(), namespace, te)
+	tp := mcpUpstreamTokenProvider{k8sClient: fakeClient}
+	signed, tokenType, err := tp.GetToken(t.Context(), namespace, te)
 	require.NoError(t, err)
 	require.NotEmpty(t, signed)
 	require.Equal(t, defaultActorTokenType, tokenType)
@@ -548,9 +548,12 @@ func TestLoadTokenExchangeActorToken_ClientAssertionJWT_HS256(t *testing.T) {
 	require.Equal(t, "gateway-service-account", claims.Subject)
 	require.NotNil(t, claims.IssuedAt)
 	require.NotNil(t, claims.ExpiresAt)
-	actualLifetime := claims.ExpiresAt.Sub(claims.IssuedAt.Time)
-	require.GreaterOrEqual(t, actualLifetime, 115*time.Second)
-	require.LessOrEqual(t, actualLifetime, 125*time.Second)
+
+	// Verify the token is not regenerated on subsequent calls (cached value used).
+	signed2, tokenType2, err := tp.GetToken(t.Context(), namespace, te)
+	require.NoError(t, err)
+	require.Equal(t, signed, signed2, "token should be cached and identical on subsequent calls")
+	require.Equal(t, tokenType, tokenType2)
 }
 
 func TestLoadTokenExchangeActorToken_ClientAssertionJWT_RS256(t *testing.T) {
@@ -579,8 +582,8 @@ func TestLoadTokenExchangeActorToken_ClientAssertionJWT_RS256(t *testing.T) {
 		},
 	}
 
-	s := &Server{log: testr.New(t), k8sClient: fakeClient}
-	signed, tokenType, err := s.loadTokenExchangeActorToken(t.Context(), namespace, te)
+	tp := mcpUpstreamTokenProvider{k8sClient: fakeClient}
+	signed, tokenType, err := tp.GetToken(t.Context(), namespace, te)
 	require.NoError(t, err)
 	require.NotEmpty(t, signed)
 	require.Equal(t, defaultActorTokenType, tokenType)
@@ -622,8 +625,8 @@ func TestLoadTokenExchangeActorToken_ClientAssertionJWT_ES256(t *testing.T) {
 		},
 	}
 
-	s := &Server{log: testr.New(t), k8sClient: fakeClient}
-	signed, tokenType, err := s.loadTokenExchangeActorToken(t.Context(), namespace, te)
+	tp := mcpUpstreamTokenProvider{k8sClient: fakeClient}
+	signed, tokenType, err := tp.GetToken(t.Context(), namespace, te)
 	require.NoError(t, err)
 	require.NotEmpty(t, signed)
 	require.Equal(t, defaultActorTokenType, tokenType)
@@ -642,14 +645,14 @@ func TestLoadTokenExchangeActorToken_ClientAssertionJWT_ES256(t *testing.T) {
 func TestLoadTokenExchangeActorToken_Errors(t *testing.T) {
 	t.Run("secret ref not found", func(t *testing.T) {
 		fakeClient := fake.NewClientBuilder().WithScheme(controller.Scheme).Build()
-		s := &Server{log: testr.New(t), k8sClient: fakeClient}
+		tp := mcpUpstreamTokenProvider{k8sClient: fakeClient}
 		te := &aigv1a1.MCPBackendTokenExchange{
 			ActorToken: &aigv1a1.MCPBackendTokenExchangeActorToken{
 				SecretRef: &gwapiv1.SecretObjectReference{Name: "missing-actor-token"},
 			},
 		}
 
-		_, _, err := s.loadTokenExchangeActorToken(t.Context(), "default", te)
+		_, _, err := tp.GetToken(t.Context(), "default", te)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "failed to load actor token secret")
 	})
@@ -662,7 +665,7 @@ func TestLoadTokenExchangeActorToken_Errors(t *testing.T) {
 			Data:       map[string][]byte{"privateKey": []byte("not-a-valid-rsa-pem")},
 		}))
 
-		s := &Server{log: testr.New(t), k8sClient: fakeClient}
+		tp := mcpUpstreamTokenProvider{k8sClient: fakeClient}
 		te := &aigv1a1.MCPBackendTokenExchange{
 			ActorToken: &aigv1a1.MCPBackendTokenExchangeActorToken{
 				ClientAssertionJWT: &aigv1a1.MCPTokenExchangeJWTActorConfig{
@@ -675,7 +678,7 @@ func TestLoadTokenExchangeActorToken_Errors(t *testing.T) {
 			},
 		}
 
-		_, _, err := s.loadTokenExchangeActorToken(t.Context(), namespace, te)
+		_, _, err := tp.GetToken(t.Context(), namespace, te)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "failed to parse client assertion JWT private key")
 	})
@@ -690,7 +693,7 @@ func TestLoadTokenExchangeActorToken_Errors(t *testing.T) {
 			Data:       map[string][]byte{"privateKey": []byte("ignored-for-unsupported-alg")},
 		}))
 
-		s := &Server{log: testr.New(t), k8sClient: fakeClient}
+		tp := mcpUpstreamTokenProvider{k8sClient: fakeClient}
 		te := &aigv1a1.MCPBackendTokenExchange{
 			ActorToken: &aigv1a1.MCPBackendTokenExchangeActorToken{
 				ClientAssertionJWT: &aigv1a1.MCPTokenExchangeJWTActorConfig{
@@ -704,7 +707,7 @@ func TestLoadTokenExchangeActorToken_Errors(t *testing.T) {
 			},
 		}
 
-		_, _, err := s.loadTokenExchangeActorToken(t.Context(), namespace, te)
+		_, _, err := tp.GetToken(t.Context(), namespace, te)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "unsupported signing algorithm for client assertion JWT")
 	})

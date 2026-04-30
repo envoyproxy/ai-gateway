@@ -319,7 +319,7 @@ func (s *Server) maybeSetTokenExchangePerRouteConfig(ctx context.Context, route 
 
 	// Read actor token for Delegation mode when a SecretRef actor token is configured.
 	// JWT-based actor tokens are defined in the API but not yet implemented.
-	actorToken, actorTokenType, err := s.loadTokenExchangeActorToken(ctx, namespace, te)
+	actorToken, actorTokenType, err := s.mcpUpstreamTokenProvider.GetToken(ctx, namespace, te)
 	if err != nil {
 		return fmt.Errorf("failed to load actor token for backend %s: %w", backendName, err)
 	}
@@ -380,14 +380,24 @@ func (s *Server) maybeSetTokenExchangePerRouteConfig(ctx context.Context, route 
 	return nil
 }
 
-func (s *Server) loadTokenExchangeActorToken(ctx context.Context, namespace string, te *aigv1a1.MCPBackendTokenExchange) (string, string, error) {
+// mcpUpstreamTokenProvider is responsible for providing tokens for upstream calls to MCP servers.
+// It supports both static actor tokens and dynamic JWT-based actor tokens used in delegation mode. For dynamic
+// JWT-based actor tokens, it generates and signs a JWT on demand using the configured claims and private key,
+// and caches the token until shortly before expiry to avoid unnecessary regeneration and signing on every request.
+type mcpUpstreamTokenProvider struct {
+	k8sClient client.Client
+	token     string    // last issued token
+	expiry    time.Time // last issued token expiration
+}
+
+func (m *mcpUpstreamTokenProvider) GetToken(ctx context.Context, namespace string, te *aigv1a1.MCPBackendTokenExchange) (string, string, error) {
 	if te == nil || te.ActorToken == nil {
 		return "", "", nil
 	}
 
 	// If the token is provided via SecretRef, load it from Kubernetes.
 	if te.ActorToken.SecretRef != nil {
-		secretObj, err := loadSecret(ctx, s.k8sClient, te.ActorToken.SecretRef, namespace)
+		secretObj, err := loadSecret(ctx, m.k8sClient, te.ActorToken.SecretRef, namespace)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to load actor token secret: %w", err)
 		}
@@ -399,8 +409,15 @@ func (s *Server) loadTokenExchangeActorToken(ctx context.Context, namespace stri
 	}
 
 	// Otherwise, generate the token with the provided data
+
+	// If the last generated token is not expired, return it to avoid unnecessary regeneration and signing that
+	// could potentially trigger an unnecessary config change and RDS update in Envoy.
+	if m.token != "" && time.Until(m.expiry) > 30*time.Second {
+		return m.token, defaultActorTokenType, nil
+	}
+
 	actorTokenConfig := te.ActorToken.ClientAssertionJWT
-	privateKey, err := loadSecret(ctx, s.k8sClient, &actorTokenConfig.PrivateKeyRef, namespace)
+	privateKey, err := loadSecret(ctx, m.k8sClient, &actorTokenConfig.PrivateKeyRef, namespace)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to load client assertion JWT private key secret: %w", err)
 	}
@@ -411,11 +428,12 @@ func (s *Server) loadTokenExchangeActorToken(ctx context.Context, namespace stri
 	}
 
 	now := time.Now()
+	exp := now.Add(lifetime)
 	claims := jwt.RegisteredClaims{
 		Issuer:    actorTokenConfig.Issuer,
 		Subject:   actorTokenConfig.Subject,
 		IssuedAt:  jwt.NewNumericDate(now),
-		ExpiresAt: jwt.NewNumericDate(now.Add(lifetime)),
+		ExpiresAt: jwt.NewNumericDate(exp),
 	}
 
 	var signingMethod jwt.SigningMethod = jwt.SigningMethodRS256
@@ -447,6 +465,10 @@ func (s *Server) loadTokenExchangeActorToken(ctx context.Context, namespace stri
 	if err != nil {
 		return "", "", fmt.Errorf("failed to sign client assertion JWT: %w", err)
 	}
+
+	// Cache the generated token and its expiry time to avoid unnecessary regeneration on every request.
+	m.token = signed
+	m.expiry = exp
 	return signed, defaultActorTokenType, nil
 }
 

@@ -32,6 +32,9 @@ type Server struct {
 	isStandAloneMode bool
 	// logRequestHeaderAttributes maps request headers to dynamic metadata keys for access logs.
 	logRequestHeaderAttributes map[string]string
+	// mcpUpstreamTokenProvider is responsible for providing tokens for upstream calls to MCP servers
+	// that require token exchange.
+	mcpUpstreamTokenProvider mcpUpstreamTokenProvider
 }
 
 const serverName = "envoy-gateway-extension-server"
@@ -49,6 +52,7 @@ func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAlo
 		udsPath:                    udsPath,
 		isStandAloneMode:           isStandAloneMode,
 		logRequestHeaderAttributes: logAttrs,
+		mcpUpstreamTokenProvider:   mcpUpstreamTokenProvider{k8sClient: k8sClient},
 	}, nil
 }
 
