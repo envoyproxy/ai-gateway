@@ -98,7 +98,7 @@ type MCPRouteSpec struct {
 type MCPRouteBackendRef struct {
 	gwapiv1.BackendObjectReference `json:",inline"`
 
-	// Path is the HTTP endpoint path of the baackend MCP server.
+	// Path is the HTTP endpoint path of the backend MCP server.
 	// If not specified, the default is "/mcp".
 	//
 	// +kubebuilder:validation:Optional
@@ -191,7 +191,7 @@ type MCPToolFilter struct {
 	ExcludeRegex []string `json:"excludeRegex,omitempty"`
 }
 
-// MCPBackendSecurityPolicy defines the security policy for a sp
+// MCPBackendSecurityPolicy defines the security policy for a backend MCP server.
 type MCPBackendSecurityPolicy struct {
 	// APIKey is a mechanism to access a backend. The API key will be injected into the request headers.
 	// +optional

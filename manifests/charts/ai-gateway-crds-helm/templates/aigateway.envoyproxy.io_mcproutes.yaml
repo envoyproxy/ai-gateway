@@ -148,7 +148,7 @@ spec:
                     path:
                       default: /mcp
                       description: |-
-                        Path is the HTTP endpoint path of the baackend MCP server.
+                        Path is the HTTP endpoint path of the backend MCP server.
                         If not specified, the default is "/mcp".
                       maxLength: 1024
                       type: string
@@ -4809,7 +4809,7 @@ spec:
                     path:
                       default: /mcp
                       description: |-
-                        Path is the HTTP endpoint path of the baackend MCP server.
+                        Path is the HTTP endpoint path of the backend MCP server.
                         If not specified, the default is "/mcp".
                       maxLength: 1024
                       type: string
