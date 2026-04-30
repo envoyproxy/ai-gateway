@@ -29,7 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
@@ -195,22 +195,22 @@ func TestMaybeCreateSTSClusters(t *testing.T) {
 	stsEndpoint2 := "https://other-sts.example.com/token"
 
 	// Two routes: route1 uses stsEndpoint1 twice (should be deduped), route2 uses stsEndpoint2.
-	mcpRoute1 := &aigv1a1.MCPRoute{
+	mcpRoute1 := &aigv1b1.MCPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "default"},
-		Spec: aigv1a1.MCPRouteSpec{
-			BackendRefs: []aigv1a1.MCPRouteBackendRef{
+		Spec: aigv1b1.MCPRouteSpec{
+			BackendRefs: []aigv1b1.MCPRouteBackendRef{
 				{
 					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "backend1"},
-					SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
-						TokenExchange: &aigv1a1.MCPBackendTokenExchange{
+					SecurityPolicy: &aigv1b1.MCPBackendSecurityPolicy{
+						TokenExchange: &aigv1b1.MCPBackendTokenExchange{
 							STSEndpoint: stsEndpoint1,
 						},
 					},
 				},
 				{
 					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "backend2"},
-					SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
-						TokenExchange: &aigv1a1.MCPBackendTokenExchange{
+					SecurityPolicy: &aigv1b1.MCPBackendSecurityPolicy{
+						TokenExchange: &aigv1b1.MCPBackendTokenExchange{
 							STSEndpoint: stsEndpoint1, // duplicate endpoint
 						},
 					},
@@ -218,14 +218,14 @@ func TestMaybeCreateSTSClusters(t *testing.T) {
 			},
 		},
 	}
-	mcpRoute2 := &aigv1a1.MCPRoute{
+	mcpRoute2 := &aigv1b1.MCPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route2", Namespace: "default"},
-		Spec: aigv1a1.MCPRouteSpec{
-			BackendRefs: []aigv1a1.MCPRouteBackendRef{
+		Spec: aigv1b1.MCPRouteSpec{
+			BackendRefs: []aigv1b1.MCPRouteBackendRef{
 				{
 					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "backend3"},
-					SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
-						TokenExchange: &aigv1a1.MCPBackendTokenExchange{
+					SecurityPolicy: &aigv1b1.MCPBackendSecurityPolicy{
+						TokenExchange: &aigv1b1.MCPBackendTokenExchange{
 							STSEndpoint: stsEndpoint2,
 						},
 					},
@@ -257,10 +257,10 @@ func TestMaybeCreateSTSClusters(t *testing.T) {
 func TestMaybeCreateSTSClustersNoTokenExchangeRoutes(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(controller.Scheme).Build()
 
-	mcpRoute1 := &aigv1a1.MCPRoute{
+	mcpRoute1 := &aigv1b1.MCPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "default"},
-		Spec: aigv1a1.MCPRouteSpec{
-			BackendRefs: []aigv1a1.MCPRouteBackendRef{
+		Spec: aigv1b1.MCPRouteSpec{
+			BackendRefs: []aigv1b1.MCPRouteBackendRef{
 				{
 					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "backend1"},
 				},
@@ -298,16 +298,16 @@ func TestMaybeSetTokenExchangePerRouteConfig(t *testing.T) {
 	require.NoError(t, fakeClient.Create(t.Context(), clientSecret))
 
 	// Create the MCPRoute with a TokenExchange policy.
-	mcpRoute := &aigv1a1.MCPRoute{
+	mcpRoute := &aigv1b1.MCPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: routeName, Namespace: namespace},
-		Spec: aigv1a1.MCPRouteSpec{
-			BackendRefs: []aigv1a1.MCPRouteBackendRef{
+		Spec: aigv1b1.MCPRouteSpec{
+			BackendRefs: []aigv1b1.MCPRouteBackendRef{
 				{
 					BackendObjectReference: gwapiv1.BackendObjectReference{Name: gwapiv1.ObjectName(backendName)},
-					SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
-						TokenExchange: &aigv1a1.MCPBackendTokenExchange{
+					SecurityPolicy: &aigv1b1.MCPBackendSecurityPolicy{
+						TokenExchange: &aigv1b1.MCPBackendTokenExchange{
 							STSEndpoint: stsEndpoint,
-							ClientAuth: &aigv1a1.MCPTokenExchangeClientAuth{
+							ClientAuth: &aigv1b1.MCPTokenExchangeClientAuth{
 								ClientID: clientID,
 								ClientSecretRef: gwapiv1.SecretObjectReference{
 									Name:      "my-client-secret",
@@ -344,7 +344,7 @@ func TestMaybeSetTokenExchangePerRouteConfig(t *testing.T) {
 		},
 	}
 
-	tokenExchangeRoutes := map[types.NamespacedName]aigv1a1.MCPRoute{
+	tokenExchangeRoutes := map[types.NamespacedName]aigv1b1.MCPRoute{
 		{Namespace: mcpRoute.Namespace, Name: mcpRoute.Name}: *mcpRoute,
 	}
 
@@ -365,14 +365,14 @@ func TestMaybeSetTokenExchangePerRouteConfig_NoMatchingBackend(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(controller.Scheme).Build()
 
 	const namespace = "default"
-	mcpRoute := &aigv1a1.MCPRoute{
+	mcpRoute := &aigv1b1.MCPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: namespace},
-		Spec: aigv1a1.MCPRouteSpec{
-			BackendRefs: []aigv1a1.MCPRouteBackendRef{
+		Spec: aigv1b1.MCPRouteSpec{
+			BackendRefs: []aigv1b1.MCPRouteBackendRef{
 				{
 					BackendObjectReference: gwapiv1.BackendObjectReference{Name: "other-backend"},
-					SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
-						TokenExchange: &aigv1a1.MCPBackendTokenExchange{
+					SecurityPolicy: &aigv1b1.MCPBackendSecurityPolicy{
+						TokenExchange: &aigv1b1.MCPBackendTokenExchange{
 							STSEndpoint: "https://sts.example.com/token",
 						},
 					},
@@ -402,7 +402,7 @@ func TestMaybeSetTokenExchangePerRouteConfig_NoMatchingBackend(t *testing.T) {
 		},
 	}
 
-	tokenExchangeRoutes := map[types.NamespacedName]aigv1a1.MCPRoute{
+	tokenExchangeRoutes := map[types.NamespacedName]aigv1b1.MCPRoute{
 		{Namespace: mcpRoute.Namespace, Name: mcpRoute.Name}: *mcpRoute,
 	}
 
@@ -471,7 +471,7 @@ func TestLoadTokenExchangeActorToken_NoActorToken(t *testing.T) {
 	})
 
 	t.Run("nil actor token config", func(t *testing.T) {
-		te := &aigv1a1.MCPBackendTokenExchange{}
+		te := &aigv1b1.MCPBackendTokenExchange{}
 		token, tokenType, err := tp.GetToken(t.Context(), "default", te)
 		require.NoError(t, err)
 		require.Empty(t, token)
@@ -490,8 +490,8 @@ func TestLoadTokenExchangeActorToken_SecretRef(t *testing.T) {
 		Data:       map[string][]byte{"token": []byte(actorToken)},
 	}))
 
-	te := &aigv1a1.MCPBackendTokenExchange{
-		ActorToken: &aigv1a1.MCPBackendTokenExchangeActorToken{
+	te := &aigv1b1.MCPBackendTokenExchange{
+		ActorToken: &aigv1b1.MCPBackendTokenExchangeActorToken{
 			SecretRef: &gwapiv1.SecretObjectReference{Name: gwapiv1.ObjectName(actorSecretName)},
 		},
 	}
@@ -517,9 +517,9 @@ func TestLoadTokenExchangeActorToken_ClientAssertionJWT_HS256(t *testing.T) {
 
 	alg := "HS256"
 	lifetime := int32(120)
-	te := &aigv1a1.MCPBackendTokenExchange{
-		ActorToken: &aigv1a1.MCPBackendTokenExchangeActorToken{
-			ClientAssertionJWT: &aigv1a1.MCPTokenExchangeJWTActorConfig{
+	te := &aigv1b1.MCPBackendTokenExchange{
+		ActorToken: &aigv1b1.MCPBackendTokenExchangeActorToken{
+			ClientAssertionJWT: &aigv1b1.MCPTokenExchangeJWTActorConfig{
 				Issuer:   "gateway-client",
 				Subject:  "gateway-service-account",
 				Lifetime: &lifetime,
@@ -569,9 +569,9 @@ func TestLoadTokenExchangeActorToken_ClientAssertionJWT_RS256(t *testing.T) {
 	}))
 
 	alg := "RS256"
-	te := &aigv1a1.MCPBackendTokenExchange{
-		ActorToken: &aigv1a1.MCPBackendTokenExchangeActorToken{
-			ClientAssertionJWT: &aigv1a1.MCPTokenExchangeJWTActorConfig{
+	te := &aigv1b1.MCPBackendTokenExchange{
+		ActorToken: &aigv1b1.MCPBackendTokenExchangeActorToken{
+			ClientAssertionJWT: &aigv1b1.MCPTokenExchangeJWTActorConfig{
 				Issuer:  "gateway-client-rsa",
 				Subject: "gateway-sa-rsa",
 				PrivateKeyRef: gwapiv1.SecretObjectReference{
@@ -612,9 +612,9 @@ func TestLoadTokenExchangeActorToken_ClientAssertionJWT_ES256(t *testing.T) {
 	}))
 
 	alg := "ES256"
-	te := &aigv1a1.MCPBackendTokenExchange{
-		ActorToken: &aigv1a1.MCPBackendTokenExchangeActorToken{
-			ClientAssertionJWT: &aigv1a1.MCPTokenExchangeJWTActorConfig{
+	te := &aigv1b1.MCPBackendTokenExchange{
+		ActorToken: &aigv1b1.MCPBackendTokenExchangeActorToken{
+			ClientAssertionJWT: &aigv1b1.MCPTokenExchangeJWTActorConfig{
 				Issuer:  "gateway-client-ecdsa",
 				Subject: "gateway-sa-ecdsa",
 				PrivateKeyRef: gwapiv1.SecretObjectReference{
@@ -646,8 +646,8 @@ func TestLoadTokenExchangeActorToken_Errors(t *testing.T) {
 	t.Run("secret ref not found", func(t *testing.T) {
 		fakeClient := fake.NewClientBuilder().WithScheme(controller.Scheme).Build()
 		tp := mcpUpstreamTokenProvider{k8sClient: fakeClient}
-		te := &aigv1a1.MCPBackendTokenExchange{
-			ActorToken: &aigv1a1.MCPBackendTokenExchangeActorToken{
+		te := &aigv1b1.MCPBackendTokenExchange{
+			ActorToken: &aigv1b1.MCPBackendTokenExchangeActorToken{
 				SecretRef: &gwapiv1.SecretObjectReference{Name: "missing-actor-token"},
 			},
 		}
@@ -666,9 +666,9 @@ func TestLoadTokenExchangeActorToken_Errors(t *testing.T) {
 		}))
 
 		tp := mcpUpstreamTokenProvider{k8sClient: fakeClient}
-		te := &aigv1a1.MCPBackendTokenExchange{
-			ActorToken: &aigv1a1.MCPBackendTokenExchangeActorToken{
-				ClientAssertionJWT: &aigv1a1.MCPTokenExchangeJWTActorConfig{
+		te := &aigv1b1.MCPBackendTokenExchange{
+			ActorToken: &aigv1b1.MCPBackendTokenExchangeActorToken{
+				ClientAssertionJWT: &aigv1b1.MCPTokenExchangeJWTActorConfig{
 					Issuer:  "issuer",
 					Subject: "subject",
 					PrivateKeyRef: gwapiv1.SecretObjectReference{
@@ -694,9 +694,9 @@ func TestLoadTokenExchangeActorToken_Errors(t *testing.T) {
 		}))
 
 		tp := mcpUpstreamTokenProvider{k8sClient: fakeClient}
-		te := &aigv1a1.MCPBackendTokenExchange{
-			ActorToken: &aigv1a1.MCPBackendTokenExchangeActorToken{
-				ClientAssertionJWT: &aigv1a1.MCPTokenExchangeJWTActorConfig{
+		te := &aigv1b1.MCPBackendTokenExchange{
+			ActorToken: &aigv1b1.MCPBackendTokenExchangeActorToken{
+				ClientAssertionJWT: &aigv1b1.MCPTokenExchangeJWTActorConfig{
 					Issuer:  "issuer",
 					Subject: "subject",
 					PrivateKeyRef: gwapiv1.SecretObjectReference{

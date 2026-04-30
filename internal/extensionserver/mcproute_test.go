@@ -29,7 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
@@ -141,7 +141,7 @@ func TestServer_createBackendListener(t *testing.T) {
 func TestServer_createRoutesForBackendListener(t *testing.T) {
 	tests := []struct {
 		name          string
-		mcpRoutes     []*aigv1a1.MCPRoute
+		mcpRoutes     []*aigv1b1.MCPRoute
 		routes        []*routev3.RouteConfiguration
 		expectedRoute *routev3.RouteConfiguration
 	}{
@@ -152,15 +152,15 @@ func TestServer_createRoutesForBackendListener(t *testing.T) {
 		},
 		{
 			name: "with MCP route and token-exchange backend sets per-route config",
-			mcpRoutes: []*aigv1a1.MCPRoute{
+			mcpRoutes: []*aigv1b1.MCPRoute{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "my-route", Namespace: "default"},
-					Spec: aigv1a1.MCPRouteSpec{
-						BackendRefs: []aigv1a1.MCPRouteBackendRef{
+					Spec: aigv1b1.MCPRouteSpec{
+						BackendRefs: []aigv1b1.MCPRouteBackendRef{
 							{
 								BackendObjectReference: gwapiv1.BackendObjectReference{Name: "te-backend"},
-								SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
-									TokenExchange: &aigv1a1.MCPBackendTokenExchange{
+								SecurityPolicy: &aigv1b1.MCPBackendSecurityPolicy{
+									TokenExchange: &aigv1b1.MCPBackendTokenExchange{
 										STSEndpoint: "https://sts.example.com/token",
 									},
 								},
@@ -274,7 +274,7 @@ func TestServer_createRoutesForBackendListener(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().WithScheme(controller.Scheme).Build()
 
-			mcpRouteMap := make(map[types.NamespacedName]aigv1a1.MCPRoute)
+			mcpRouteMap := make(map[types.NamespacedName]aigv1b1.MCPRoute)
 			for _, mcpRoute := range tt.mcpRoutes {
 				require.NoError(t, fakeClient.Create(t.Context(), mcpRoute))
 				for _, backendRef := range mcpRoute.Spec.BackendRefs {
@@ -689,14 +689,14 @@ func TestServer_maybeGenerateResourcesForMCPGateway(t *testing.T) {
 		{
 			name: "creates STS cluster for token-exchange backend",
 			setup: func(t *testing.T, c client.Client) {
-				mcpRoute := &aigv1a1.MCPRoute{
+				mcpRoute := &aigv1b1.MCPRoute{
 					ObjectMeta: metav1.ObjectMeta{Name: "sts-route", Namespace: "default"},
-					Spec: aigv1a1.MCPRouteSpec{
-						BackendRefs: []aigv1a1.MCPRouteBackendRef{
+					Spec: aigv1b1.MCPRouteSpec{
+						BackendRefs: []aigv1b1.MCPRouteBackendRef{
 							{
 								BackendObjectReference: gwapiv1.BackendObjectReference{Name: "sts-backend"},
-								SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
-									TokenExchange: &aigv1a1.MCPBackendTokenExchange{
+								SecurityPolicy: &aigv1b1.MCPBackendSecurityPolicy{
+									TokenExchange: &aigv1b1.MCPBackendTokenExchange{
 										STSEndpoint: "https://sts.example.com/token",
 									},
 								},

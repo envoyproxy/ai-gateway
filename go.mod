@@ -17,10 +17,8 @@ require (
 	github.com/bytedance/sonic v1.15.1
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cohere-ai/cohere-go/v2 v2.18.0
-	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/coreos/go-semver v0.3.1
-	github.com/docker/docker v28.5.2+incompatible
 	github.com/envoyproxy/envoy/source/extensions/dynamic_modules v0.0.0-20260423231439-f1dd21b16c24
 	github.com/envoyproxy/gateway v1.7.0
 	github.com/envoyproxy/go-control-plane v0.14.0

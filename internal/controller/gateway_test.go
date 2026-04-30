@@ -2656,17 +2656,17 @@ func Test_mergeBodyMutations(t *testing.T) {
 func Test_mcpConfig_TokenExchange(t *testing.T) {
 	tests := []struct {
 		name              string
-		backendRef        aigv1a1.MCPRouteBackendRef
+		backendRef        aigv1b1.MCPRouteBackendRef
 		wantTokenExchange bool
 	}{
 		{
 			name: "backend with TokenExchange policy sets UseTokenExchange",
-			backendRef: aigv1a1.MCPRouteBackendRef{
+			backendRef: aigv1b1.MCPRouteBackendRef{
 				BackendObjectReference: gwapiv1.BackendObjectReference{
 					Name: "te-backend",
 				},
-				SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
-					TokenExchange: &aigv1a1.MCPBackendTokenExchange{
+				SecurityPolicy: &aigv1b1.MCPBackendSecurityPolicy{
+					TokenExchange: &aigv1b1.MCPBackendTokenExchange{
 						STSEndpoint: "https://sts.example.com/token",
 					},
 				},
@@ -2675,7 +2675,7 @@ func Test_mcpConfig_TokenExchange(t *testing.T) {
 		},
 		{
 			name: "backend without security policy does not set UseTokenExchange",
-			backendRef: aigv1a1.MCPRouteBackendRef{
+			backendRef: aigv1b1.MCPRouteBackendRef{
 				BackendObjectReference: gwapiv1.BackendObjectReference{
 					Name: "plain-backend",
 				},
@@ -2684,11 +2684,11 @@ func Test_mcpConfig_TokenExchange(t *testing.T) {
 		},
 		{
 			name: "backend with nil TokenExchange does not set UseTokenExchange",
-			backendRef: aigv1a1.MCPRouteBackendRef{
+			backendRef: aigv1b1.MCPRouteBackendRef{
 				BackendObjectReference: gwapiv1.BackendObjectReference{
 					Name: "apikey-backend",
 				},
-				SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{
+				SecurityPolicy: &aigv1b1.MCPBackendSecurityPolicy{
 					TokenExchange: nil,
 				},
 			},
@@ -2698,11 +2698,11 @@ func Test_mcpConfig_TokenExchange(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mcpRoutes := []aigv1a1.MCPRoute{
+			mcpRoutes := []aigv1b1.MCPRoute{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "ns"},
-					Spec: aigv1a1.MCPRouteSpec{
-						BackendRefs: []aigv1a1.MCPRouteBackendRef{tc.backendRef},
+					Spec: aigv1b1.MCPRouteSpec{
+						BackendRefs: []aigv1b1.MCPRouteBackendRef{tc.backendRef},
 					},
 				},
 			}

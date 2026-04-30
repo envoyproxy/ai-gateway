@@ -597,8 +597,6 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [MCPAuthorizationTarget](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpauthorizationtarget)
 - [MCPBackendAPIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendapikey)
 - [MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendsecuritypolicy)
-- [MCPBackendTokenExchange](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendtokenexchange)
-- [MCPBackendTokenExchangeActorToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendtokenexchangeactortoken)
 - [MCPHeaderForward](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpheaderforward)
 - [MCPRouteAuthorization](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteauthorization)
 - [MCPRouteAuthorizationRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteauthorizationrule)
@@ -607,9 +605,6 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [MCPRouteSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutesecuritypolicy)
 - [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutespec)
 - [MCPRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutestatus)
-- [MCPTokenExchangeCacheConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptokenexchangecacheconfig)
-- [MCPTokenExchangeClientAuth](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptokenexchangeclientauth)
-- [MCPTokenExchangeJWTActorConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptokenexchangejwtactorconfig)
 - [MCPToolFilter](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptoolfilter)
 - [PerModelQuota](#github-com-envoyproxy-ai-gateway-api-v1alpha1-permodelquota)
 - [ProtectedResourceMetadata](#github-com-envoyproxy-ai-gateway-api-v1alpha1-protectedresourcemetadata)
@@ -1835,9 +1830,7 @@ When both `header` and `queryParam` are unspecified, the API key will be injecte
 **Appears in:**
 - [MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutebackendref)
 
-MCPBackendSecurityPolicy defines the security policy for authenticating the gateway to an upstream MCP backend.
-
-Exactly one of APIKey or TokenExchange must be set.
+MCPBackendSecurityPolicy defines the security policy for a backend MCP server.
 
 ##### Fields
 
@@ -1848,106 +1841,6 @@ Exactly one of APIKey or TokenExchange must be set.
   type="[MCPBackendAPIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendapikey)"
   required="false"
   description="APIKey is a mechanism to access a backend. The API key will be injected into the request headers."
-/><ApiField
-  name="tokenExchange"
-  type="[MCPBackendTokenExchange](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendtokenexchange)"
-  required="false"
-  description="TokenExchange configures OAuth 2.0 Token Exchange (RFC-8693) as the upstream auth method.<br />The gateway exchanges the incoming user token for a new token valid for this specific backend<br />by calling an external Security Token Service (STS)."
-/>
-
-
-#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendtokenexchange">MCPBackendTokenExchange</a>
-
-
-
-**Appears in:**
-- [MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendsecuritypolicy)
-
-MCPBackendTokenExchange configures OAuth 2.0 Token Exchange (RFC-8693) as the
-upstream authentication method for an MCP backend. The gateway exchanges the
-incoming user token for a new token valid for the specific MCP backend by
-calling an external Security Token Service (STS).
-
-##### Fields
-
-
-
-<ApiField
-  name="stsEndpoint"
-  type="string"
-  required="true"
-  description="STSEndpoint is the URL of the OAuth 2.0 token endpoint of the Security Token<br />Service (STS) that will perform the token exchange. Should be an HTTPS URL."
-/><ApiField
-  name="subjectTokenType"
-  type="string"
-  required="false"
-  defaultValue="urn:ietf:params:oauth:token-type:access_token"
-  description="SubjectTokenType is the token type URI for the subject_token parameter as defined in RFC-8693 §3.<br />Defaults to `urn:ietf:params:oauth:token-type:access_token`."
-/><ApiField
-  name="audience"
-  type="string"
-  required="false"
-  description="Audience specifies the intended audience for the issued upstream token.<br />This is used as the `audience` parameter in the token exchange request (RFC-8693 §2.1)<br />and will appear as the `aud` claim in the issued JWT."
-/><ApiField
-  name="resource"
-  type="string"
-  required="false"
-  description="Resource is the URI of the upstream MCP backend resource, used as the<br />`resource` parameter in the exchange request (RFC-8693 §2.1, RFC 8707)."
-/><ApiField
-  name="scopes"
-  type="string array"
-  required="false"
-  description="Scopes lists the OAuth 2.0 scopes to request for the issued upstream token.<br />These are used as the `scope` parameter in the exchange request."
-/><ApiField
-  name="requestedTokenType"
-  type="string"
-  required="false"
-  defaultValue="urn:ietf:params:oauth:token-type:access_token"
-  description="RequestedTokenType specifies the desired type of the issued token.<br />Defaults to `urn:ietf:params:oauth:token-type:access_token`."
-/><ApiField
-  name="actorToken"
-  type="[MCPBackendTokenExchangeActorToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendtokenexchangeactortoken)"
-  required="false"
-  description="ActorToken configures the credential that identifies the gateway itself to the STS.<br />This is used as the `actor_token` parameter in the exchange. The actor token represents<br />the gateway's identity and is used by the STS to establish a delegation chain in the issued token."
-/><ApiField
-  name="clientAuth"
-  type="[MCPTokenExchangeClientAuth](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptokenexchangeclientauth)"
-  required="false"
-  description="ClientAuth configures how the gateway authenticates itself as an OAuth client to the STS<br />token endpoint. This is separate from the actor token and applies to the client_id/client_secret<br />used in the token exchange HTTP request itself.<br />If not set, the STS request is made without client authentication (unauthenticated client).<br />This is NOT RECOMMENDED for production."
-/><ApiField
-  name="cache"
-  type="[MCPTokenExchangeCacheConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptokenexchangecacheconfig)"
-  required="false"
-  description="Cache configures token caching behavior to avoid performing a token exchange on every request.<br />Caching is keyed on (subject_token, audience, scope).<br />NOTE: Token caching is not yet implemented. This field is reserved for future use."
-/>
-
-
-#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendtokenexchangeactortoken">MCPBackendTokenExchangeActorToken</a>
-
-
-
-**Appears in:**
-- [MCPBackendTokenExchange](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendtokenexchange)
-
-MCPBackendTokenExchangeActorToken configures the credential used as the actor_token in the token
-exchange request, representing the gateway's identity.
-
-Exactly one of SecretRef or ClientAssertionJWT must be set.
-
-##### Fields
-
-
-
-<ApiField
-  name="secretRef"
-  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
-  required="false"
-  description="SecretRef references a Kubernetes Secret containing the actor token.<br />The Secret must have a key `token` containing the actor token value."
-/><ApiField
-  name="clientAssertionJWT"
-  type="[MCPTokenExchangeJWTActorConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptokenexchangejwtactorconfig)"
-  required="false"
-  description="ClientAssertionJWT configures the gateway to generate a signed JWT as the actor token<br />using a private key. This is the RECOMMENDED approach as it avoids long-lived static<br />tokens and enables key rotation.<br />NOTE: JWT actor token generation is not yet implemented. This field is reserved for future use."
 />
 
 
@@ -2243,101 +2136,6 @@ MCPRouteStatus contains the conditions by the reconciliation result.
   type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
   required="true"
   description="Conditions is the list of conditions by the reconciliation result.<br />Currently, at most one condition is set.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`."
-/>
-
-
-#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptokenexchangecacheconfig">MCPTokenExchangeCacheConfig</a>
-
-
-
-**Appears in:**
-- [MCPBackendTokenExchange](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendtokenexchange)
-
-MCPTokenExchangeCacheConfig configures token caching for exchanged tokens.
-
-NOTE: Token caching is not yet implemented. This field is reserved for future use.
-
-##### Fields
-
-
-
-<ApiField
-  name="ttl"
-  type="[Duration](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.Duration)"
-  required="true"
-  description="TTL is the maximum time to cache an exchanged token."
-/>
-
-
-#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptokenexchangeclientauth">MCPTokenExchangeClientAuth</a>
-
-
-
-**Appears in:**
-- [MCPBackendTokenExchange](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendtokenexchange)
-
-MCPTokenExchangeClientAuth configures client authentication at the STS token endpoint.
-This is how the gateway authenticates itself as an OAuth 2.0 client (client_id + credential).
-
-##### Fields
-
-
-
-<ApiField
-  name="clientID"
-  type="string"
-  required="true"
-  description="ClientID is the OAuth 2.0 client identifier for the gateway at the STS."
-/><ApiField
-  name="clientSecretRef"
-  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
-  required="true"
-  description="ClientSecretRef references a Kubernetes Secret containing the client secret.<br />The Secret must have a key `clientSecret`."
-/>
-
-
-#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptokenexchangejwtactorconfig">MCPTokenExchangeJWTActorConfig</a>
-
-
-
-**Appears in:**
-- [MCPBackendTokenExchangeActorToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendtokenexchangeactortoken)
-
-MCPTokenExchangeJWTActorConfig configures JWT generation for the actor token.
-
-NOTE: This configuration is defined for future use. JWT actor token generation is not yet implemented.
-
-##### Fields
-
-
-
-<ApiField
-  name="issuer"
-  type="string"
-  required="true"
-  description="Issuer is the `iss` claim value in the generated JWT.<br />Typically the gateway's client ID or identifier at the STS."
-/><ApiField
-  name="subject"
-  type="string"
-  required="true"
-  description="Subject is the `sub` claim value in the generated JWT.<br />Typically the gateway's service account identifier."
-/><ApiField
-  name="privateKeyRef"
-  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
-  required="true"
-  description="PrivateKeyRef references a Kubernetes Secret containing the private key used to sign the JWT.<br />The secret must have a key `privateKey` containing a PEM-encoded RSA or EC private key."
-/><ApiField
-  name="signingAlgorithm"
-  type="string"
-  required="false"
-  defaultValue="RS256"
-  description="SigningAlgorithm specifies the JWT signing algorithm."
-/><ApiField
-  name="lifetime"
-  type="integer"
-  required="false"
-  defaultValue="300"
-  description="Lifetime is the TTL of the generated JWT in seconds. Defaults to 300 (5 minutes)."
 />
 
 
@@ -3220,6 +3018,8 @@ MCPRouteList contains a list of MCPRoute.
 - [MCPAuthorizationTarget](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpauthorizationtarget)
 - [MCPBackendAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendapikey)
 - [MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendsecuritypolicy)
+- [MCPBackendTokenExchange](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendtokenexchange)
+- [MCPBackendTokenExchangeActorToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendtokenexchangeactortoken)
 - [MCPHeaderForward](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpheaderforward)
 - [MCPRouteAuthorization](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorization)
 - [MCPRouteAuthorizationRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorizationrule)
@@ -3228,6 +3028,9 @@ MCPRouteList contains a list of MCPRoute.
 - [MCPRouteSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutesecuritypolicy)
 - [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutespec)
 - [MCPRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutestatus)
+- [MCPTokenExchangeCacheConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcptokenexchangecacheconfig)
+- [MCPTokenExchangeClientAuth](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcptokenexchangeclientauth)
+- [MCPTokenExchangeJWTActorConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcptokenexchangejwtactorconfig)
 - [MCPToolFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcptoolfilter)
 - [ProtectedResourceMetadata](#github-com-envoyproxy-ai-gateway-api-v1beta1-protectedresourcemetadata)
 - [ToolCall](#github-com-envoyproxy-ai-gateway-api-v1beta1-toolcall)
@@ -4449,7 +4252,9 @@ When both `header` and `queryParam` are unspecified, the API key will be injecte
 **Appears in:**
 - [MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutebackendref)
 
-MCPBackendSecurityPolicy defines the security policy for a backend MCP server.
+MCPBackendSecurityPolicy defines the security policy for authenticating the gateway to an upstream MCP backend.
+
+Exactly one of APIKey or TokenExchange must be set.
 
 ##### Fields
 
@@ -4460,6 +4265,106 @@ MCPBackendSecurityPolicy defines the security policy for a backend MCP server.
   type="[MCPBackendAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendapikey)"
   required="false"
   description="APIKey is a mechanism to access a backend. The API key will be injected into the request headers."
+/><ApiField
+  name="tokenExchange"
+  type="[MCPBackendTokenExchange](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendtokenexchange)"
+  required="false"
+  description="TokenExchange configures OAuth 2.0 Token Exchange (RFC-8693) as the upstream auth method.<br />The gateway exchanges the incoming user token for a new token valid for this specific backend<br />by calling an external Security Token Service (STS)."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendtokenexchange">MCPBackendTokenExchange</a>
+
+
+
+**Appears in:**
+- [MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendsecuritypolicy)
+
+MCPBackendTokenExchange configures OAuth 2.0 Token Exchange (RFC-8693) as the
+upstream authentication method for an MCP backend. The gateway exchanges the
+incoming user token for a new token valid for the specific MCP backend by
+calling an external Security Token Service (STS).
+
+##### Fields
+
+
+
+<ApiField
+  name="stsEndpoint"
+  type="string"
+  required="true"
+  description="STSEndpoint is the URL of the OAuth 2.0 token endpoint of the Security Token<br />Service (STS) that will perform the token exchange. Should be an HTTPS URL."
+/><ApiField
+  name="subjectTokenType"
+  type="string"
+  required="false"
+  defaultValue="urn:ietf:params:oauth:token-type:access_token"
+  description="SubjectTokenType is the token type URI for the subject_token parameter as defined in RFC-8693 §3.<br />Defaults to `urn:ietf:params:oauth:token-type:access_token`."
+/><ApiField
+  name="audience"
+  type="string"
+  required="false"
+  description="Audience specifies the intended audience for the issued upstream token.<br />This is used as the `audience` parameter in the token exchange request (RFC-8693 §2.1)<br />and will appear as the `aud` claim in the issued JWT."
+/><ApiField
+  name="resource"
+  type="string"
+  required="false"
+  description="Resource is the URI of the upstream MCP backend resource, used as the<br />`resource` parameter in the exchange request (RFC-8693 §2.1, RFC 8707)."
+/><ApiField
+  name="scopes"
+  type="string array"
+  required="false"
+  description="Scopes lists the OAuth 2.0 scopes to request for the issued upstream token.<br />These are used as the `scope` parameter in the exchange request."
+/><ApiField
+  name="requestedTokenType"
+  type="string"
+  required="false"
+  defaultValue="urn:ietf:params:oauth:token-type:access_token"
+  description="RequestedTokenType specifies the desired type of the issued token.<br />Defaults to `urn:ietf:params:oauth:token-type:access_token`."
+/><ApiField
+  name="actorToken"
+  type="[MCPBackendTokenExchangeActorToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendtokenexchangeactortoken)"
+  required="false"
+  description="ActorToken configures the credential that identifies the gateway itself to the STS.<br />This is used as the `actor_token` parameter in the exchange. The actor token represents<br />the gateway's identity and is used by the STS to establish a delegation chain in the issued token."
+/><ApiField
+  name="clientAuth"
+  type="[MCPTokenExchangeClientAuth](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcptokenexchangeclientauth)"
+  required="false"
+  description="ClientAuth configures how the gateway authenticates itself as an OAuth client to the STS<br />token endpoint. This is separate from the actor token and applies to the client_id/client_secret<br />used in the token exchange HTTP request itself.<br />If not set, the STS request is made without client authentication (unauthenticated client).<br />This is NOT RECOMMENDED for production."
+/><ApiField
+  name="cache"
+  type="[MCPTokenExchangeCacheConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcptokenexchangecacheconfig)"
+  required="false"
+  description="Cache configures token caching behavior to avoid performing a token exchange on every request.<br />Caching is keyed on (subject_token, audience, scope).<br />NOTE: Token caching is not yet implemented. This field is reserved for future use."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendtokenexchangeactortoken">MCPBackendTokenExchangeActorToken</a>
+
+
+
+**Appears in:**
+- [MCPBackendTokenExchange](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendtokenexchange)
+
+MCPBackendTokenExchangeActorToken configures the credential used as the actor_token in the token
+exchange request, representing the gateway's identity.
+
+Exactly one of SecretRef or ClientAssertionJWT must be set.
+
+##### Fields
+
+
+
+<ApiField
+  name="secretRef"
+  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
+  required="false"
+  description="SecretRef references a Kubernetes Secret containing the actor token.<br />The Secret must have a key `token` containing the actor token value."
+/><ApiField
+  name="clientAssertionJWT"
+  type="[MCPTokenExchangeJWTActorConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcptokenexchangejwtactorconfig)"
+  required="false"
+  description="ClientAssertionJWT configures the gateway to generate a signed JWT as the actor token<br />using a private key. This is the RECOMMENDED approach as it avoids long-lived static<br />tokens and enables key rotation.<br />NOTE: JWT actor token generation is not yet implemented. This field is reserved for future use."
 />
 
 
@@ -4755,6 +4660,101 @@ MCPRouteStatus contains the conditions by the reconciliation result.
   type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
   required="true"
   description="Conditions is the list of conditions by the reconciliation result.<br />Currently, at most one condition is set.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcptokenexchangecacheconfig">MCPTokenExchangeCacheConfig</a>
+
+
+
+**Appears in:**
+- [MCPBackendTokenExchange](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendtokenexchange)
+
+MCPTokenExchangeCacheConfig configures token caching for exchanged tokens.
+
+NOTE: Token caching is not yet implemented. This field is reserved for future use.
+
+##### Fields
+
+
+
+<ApiField
+  name="ttl"
+  type="[Duration](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.Duration)"
+  required="true"
+  description="TTL is the maximum time to cache an exchanged token."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcptokenexchangeclientauth">MCPTokenExchangeClientAuth</a>
+
+
+
+**Appears in:**
+- [MCPBackendTokenExchange](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendtokenexchange)
+
+MCPTokenExchangeClientAuth configures client authentication at the STS token endpoint.
+This is how the gateway authenticates itself as an OAuth 2.0 client (client_id + credential).
+
+##### Fields
+
+
+
+<ApiField
+  name="clientID"
+  type="string"
+  required="true"
+  description="ClientID is the OAuth 2.0 client identifier for the gateway at the STS."
+/><ApiField
+  name="clientSecretRef"
+  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
+  required="true"
+  description="ClientSecretRef references a Kubernetes Secret containing the client secret.<br />The Secret must have a key `clientSecret`."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcptokenexchangejwtactorconfig">MCPTokenExchangeJWTActorConfig</a>
+
+
+
+**Appears in:**
+- [MCPBackendTokenExchangeActorToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendtokenexchangeactortoken)
+
+MCPTokenExchangeJWTActorConfig configures JWT generation for the actor token.
+
+NOTE: This configuration is defined for future use. JWT actor token generation is not yet implemented.
+
+##### Fields
+
+
+
+<ApiField
+  name="issuer"
+  type="string"
+  required="true"
+  description="Issuer is the `iss` claim value in the generated JWT.<br />Typically the gateway's client ID or identifier at the STS."
+/><ApiField
+  name="subject"
+  type="string"
+  required="true"
+  description="Subject is the `sub` claim value in the generated JWT.<br />Typically the gateway's service account identifier."
+/><ApiField
+  name="privateKeyRef"
+  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
+  required="true"
+  description="PrivateKeyRef references a Kubernetes Secret containing the private key used to sign the JWT.<br />The secret must have a key `privateKey` containing a PEM-encoded RSA or EC private key."
+/><ApiField
+  name="signingAlgorithm"
+  type="string"
+  required="false"
+  defaultValue="RS256"
+  description="SigningAlgorithm specifies the JWT signing algorithm."
+/><ApiField
+  name="lifetime"
+  type="integer"
+  required="false"
+  defaultValue="300"
+  description="Lifetime is the TTL of the generated JWT in seconds. Defaults to 300 (5 minutes)."
 />
 
 

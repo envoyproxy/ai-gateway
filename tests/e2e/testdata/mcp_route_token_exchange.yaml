@@ -45,7 +45,7 @@ type: Opaque
 stringData:
   privateKey: "test-actor-token-private-key"
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-route-token-exchange

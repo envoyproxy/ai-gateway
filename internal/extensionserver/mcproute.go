@@ -25,7 +25,6 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"k8s.io/apimachinery/pkg/types"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
@@ -215,7 +214,7 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 // For token-exchange backends, it also sets the per-route DynamicModuleFilterPerRoute config.
 //
 // Returns nil if no MCP routes are found.
-func (s *Server) createRoutesForBackendListener(ctx context.Context, routes []*routev3.RouteConfiguration, tokenExchangeRoutes map[types.NamespacedName]aigv1a1.MCPRoute) *routev3.RouteConfiguration {
+func (s *Server) createRoutesForBackendListener(ctx context.Context, routes []*routev3.RouteConfiguration, tokenExchangeRoutes map[types.NamespacedName]aigv1b1.MCPRoute) *routev3.RouteConfiguration {
 	var backendListenerRoutes []*routev3.Route
 	for _, routeConfig := range routes {
 		for _, vh := range routeConfig.VirtualHosts {

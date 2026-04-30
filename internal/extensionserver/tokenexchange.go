@@ -33,7 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )
@@ -191,14 +191,14 @@ func tokenExchangeHTTPFilter() (*httpconnectionmanagerv3.HttpFilter, error) {
 // maybeCreateSTSClusters lists all MCPRoute objects and appends a STRICT_DNS Envoy cluster to req
 // for each unique STS endpoint referenced by a token-exchange backend security policy.
 // It is a no-op when no k8sClient is configured (e.g. standalone mode or unit tests).
-func (s *Server) maybeCreateSTSClusters(ctx context.Context, req *egextension.PostTranslateModifyRequest) (map[types.NamespacedName]aigv1a1.MCPRoute, error) {
-	var mcpRoutes aigv1a1.MCPRouteList
+func (s *Server) maybeCreateSTSClusters(ctx context.Context, req *egextension.PostTranslateModifyRequest) (map[types.NamespacedName]aigv1b1.MCPRoute, error) {
+	var mcpRoutes aigv1b1.MCPRouteList
 	if err := s.k8sClient.List(ctx, &mcpRoutes); err != nil {
 		return nil, fmt.Errorf("failed to list MCPRoutes: %w", err)
 	}
 
 	seen := make(map[string]bool)
-	tokenExchangeRoutes := make(map[types.NamespacedName]aigv1a1.MCPRoute)
+	tokenExchangeRoutes := make(map[types.NamespacedName]aigv1b1.MCPRoute)
 	for i := range mcpRoutes.Items {
 		hasTokenExchange := false
 		mcpRoute := mcpRoutes.Items[i]
@@ -260,7 +260,7 @@ func extractMCPHeaderMatchValue(route *routev3.Route, headerName string) string 
 // It is a no-op when:
 //   - The route does not carry MCPBackendHeader / MCPRouteHeader match headers.
 //   - The matched backend ref does not have a TokenExchange security policy.
-func (s *Server) maybeSetTokenExchangePerRouteConfig(ctx context.Context, route *routev3.Route, mcpRoutes map[types.NamespacedName]aigv1a1.MCPRoute) error {
+func (s *Server) maybeSetTokenExchangePerRouteConfig(ctx context.Context, route *routev3.Route, mcpRoutes map[types.NamespacedName]aigv1b1.MCPRoute) error {
 	backendName := extractMCPHeaderMatchValue(route, internalapi.MCPBackendHeader)
 	mcpRouteRef := extractMCPHeaderMatchValue(route, internalapi.MCPRouteHeader)
 	if backendName == "" || mcpRouteRef == "" {
@@ -281,7 +281,7 @@ func (s *Server) maybeSetTokenExchangePerRouteConfig(ctx context.Context, route 
 	}
 
 	// Find the backend ref matching the route's MCPBackendHeader value.
-	var te *aigv1a1.MCPBackendTokenExchange
+	var te *aigv1b1.MCPBackendTokenExchange
 	for i := range mcpRoute.Spec.BackendRefs {
 		ref := &mcpRoute.Spec.BackendRefs[i]
 		if string(ref.Name) == backendName &&
@@ -390,7 +390,7 @@ type mcpUpstreamTokenProvider struct {
 	expiry    time.Time // last issued token expiration
 }
 
-func (m *mcpUpstreamTokenProvider) GetToken(ctx context.Context, namespace string, te *aigv1a1.MCPBackendTokenExchange) (string, string, error) {
+func (m *mcpUpstreamTokenProvider) GetToken(ctx context.Context, namespace string, te *aigv1b1.MCPBackendTokenExchange) (string, string, error) {
 	if te == nil || te.ActorToken == nil {
 		return "", "", nil
 	}
