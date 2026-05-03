@@ -944,11 +944,12 @@ func (s *openAIStreamToAnthropicState) closeThinkingBlock(out *[]byte) error {
 func (s *openAIStreamToAnthropicState) handleToolCallDelta(tc *openai.ChatCompletionChunkChoiceDeltaToolCall, out *[]byte) error {
 	tool, exists := s.activeTools[tc.Index]
 	if !exists {
-		// New tool call: close any open block (e.g., text block) and open a new tool_use block.
+		// New tool call: close any open block (e.g., text or thinking block) and open a new tool_use block.
 		if s.hasOpenBlock {
 			if err := s.emitContentBlockStop(out); err != nil {
 				return err
 			}
+			s.hasThinkingBlock = false
 			s.blockIndex++
 		}
 

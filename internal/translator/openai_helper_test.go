@@ -1239,6 +1239,50 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_ThinkingThenText(t *testing.
 	require.Equal(t, []string{"thinking", "text"}, blockStartTypes)
 }
 
+func TestOpenAIStreamToAnthropicState_ProcessBuffer_ThinkingThenToolCall(t *testing.T) {
+	// Verify that a thinking block is properly closed when a tool call arrives,
+	// and that hasThinkingBlock is reset so subsequent text doesn't corrupt state.
+	state := &openAIStreamToAnthropicState{
+		activeTools:  make(map[int64]*streamToolCall),
+		requestModel: "claude-3",
+	}
+
+	input := `data: {"id":"chatcmpl-ttc","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":{"text":"thinking..."}}}],"model":"gpt-4o"}` + "\n\n" +
+		`data: {"id":"chatcmpl-ttc","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"get_weather","arguments":""},"type":"function"}]}}]}` + "\n\n" +
+		`data: {"id":"chatcmpl-ttc","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":null,"function":{"name":"","arguments":"{\"city\":\"NYC\"}"}}]}}]}` + "\n\n" +
+		`data: {"id":"chatcmpl-ttc","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}` + "\n\n" +
+		`data: {"id":"chatcmpl-ttc","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}` + "\n\n" +
+		"data: [DONE]\n\n"
+
+	state.buffer.WriteString(input)
+
+	var out []byte
+	err := state.processBuffer(&out, true)
+	require.NoError(t, err)
+
+	events := parseSSEEventsFromBytes(out)
+
+	// Should have: message_start, thinking content_block_start, thinking_delta,
+	// thinking content_block_stop, tool content_block_start, tool input_json_delta,
+	// tool content_block_stop, message_delta, message_stop
+	var blockStartTypes []string
+	var blockStopCount int
+	for _, e := range events {
+		if e.eventType == "content_block_start" {
+			if bytes.Contains([]byte(e.data), []byte(`"thinking"`)) {
+				blockStartTypes = append(blockStartTypes, "thinking")
+			} else if bytes.Contains([]byte(e.data), []byte(`"tool_use"`)) {
+				blockStartTypes = append(blockStartTypes, "tool_use")
+			}
+		}
+		if e.eventType == "content_block_stop" {
+			blockStopCount++
+		}
+	}
+	assert.Equal(t, []string{"thinking", "tool_use"}, blockStartTypes)
+	assert.Equal(t, 2, blockStopCount, "should have exactly 2 content_block_stop events (thinking + tool)")
+}
+
 func TestOpenAIStreamToAnthropicState_ProcessBuffer_SignatureDelta(t *testing.T) {
 	state := &openAIStreamToAnthropicState{
 		activeTools:  make(map[int64]*streamToolCall),
