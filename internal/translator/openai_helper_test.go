@@ -1283,6 +1283,108 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_ThinkingThenToolCall(t *test
 	assert.Equal(t, 2, blockStopCount, "should have exactly 2 content_block_stop events (thinking + tool)")
 }
 
+func TestOpenAIStreamToAnthropicState_ProcessBuffer_TextThenReasoning(t *testing.T) {
+	// Edge case: text arrives before reasoning (unlikely but should not corrupt state).
+	// The text block must be properly closed before the thinking block opens.
+	state := &openAIStreamToAnthropicState{
+		activeTools:  make(map[int64]*streamToolCall),
+		requestModel: "claude-3",
+	}
+
+	input := `data: {"id":"chatcmpl-tr","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"}}],"model":"gpt-4o"}` + "\n\n" +
+		`data: {"id":"chatcmpl-tr","choices":[{"index":0,"delta":{"reasoning_content":{"text":"thinking after text"}}}]}` + "\n\n" +
+		`data: {"id":"chatcmpl-tr","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}` + "\n\n" +
+		`data: {"id":"chatcmpl-tr","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}` + "\n\n" +
+		"data: [DONE]\n\n"
+
+	state.buffer.WriteString(input)
+
+	var out []byte
+	err := state.processBuffer(&out, true)
+	require.NoError(t, err)
+
+	events := parseSSEEventsFromBytes(out)
+
+	// Verify we get two separate content blocks: text first, then thinking.
+	var blockStartTypes []string
+	var blockStopCount int
+	for _, e := range events {
+		if e.eventType == "content_block_start" {
+			if bytes.Contains([]byte(e.data), []byte(`"text"`)) {
+				blockStartTypes = append(blockStartTypes, "text")
+			} else if bytes.Contains([]byte(e.data), []byte(`"thinking"`)) {
+				blockStartTypes = append(blockStartTypes, "thinking")
+			}
+		}
+		if e.eventType == "content_block_stop" {
+			blockStopCount++
+		}
+	}
+	assert.Equal(t, []string{"text", "thinking"}, blockStartTypes)
+	assert.Equal(t, 2, blockStopCount, "both text and thinking blocks should be properly closed")
+}
+
+func TestOpenAIStreamToAnthropicState_ProcessBuffer_SignatureOnlyChunk(t *testing.T) {
+	// Verify that a signature-only chunk (no text) properly opens a thinking block first.
+	state := &openAIStreamToAnthropicState{
+		activeTools:  make(map[int64]*streamToolCall),
+		requestModel: "claude-3",
+	}
+
+	input := `data: {"id":"chatcmpl-so","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":{"signature":"sig_only"}}}],"model":"gpt-4o"}` + "\n\n" +
+		`data: {"id":"chatcmpl-so","choices":[{"index":0,"delta":{"content":"Answer"}}]}` + "\n\n" +
+		`data: {"id":"chatcmpl-so","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}` + "\n\n" +
+		`data: {"id":"chatcmpl-so","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}` + "\n\n" +
+		"data: [DONE]\n\n"
+
+	state.buffer.WriteString(input)
+
+	var out []byte
+	err := state.processBuffer(&out, true)
+	require.NoError(t, err)
+
+	events := parseSSEEventsFromBytes(out)
+
+	// Should have a thinking content_block_start before the signature_delta
+	var blockStartTypes []string
+	for _, e := range events {
+		if e.eventType == "content_block_start" {
+			if bytes.Contains([]byte(e.data), []byte(`"thinking"`)) {
+				blockStartTypes = append(blockStartTypes, "thinking")
+			} else if bytes.Contains([]byte(e.data), []byte(`"text"`)) {
+				blockStartTypes = append(blockStartTypes, "text")
+			}
+		}
+	}
+	assert.Equal(t, []string{"thinking", "text"}, blockStartTypes)
+}
+
+func TestOpenAIResponseToAnthropic_ReasoningContentString(t *testing.T) {
+	// Some models (Qwen, DeepSeek) return reasoning_content as a plain string.
+	content := "The answer is 4."
+	resp := &openai.ChatCompletionResponse{
+		Choices: []openai.ChatCompletionResponseChoice{
+			{
+				FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
+				Message: openai.ChatCompletionResponseChoiceMessage{
+					Content: &content,
+					Role:    "assistant",
+					ReasoningContent: &openai.ReasoningContentUnion{
+						Value: "Let me think step by step...",
+					},
+				},
+			},
+		},
+	}
+	result := openAIResponseToAnthropic(resp, "test-model")
+
+	require.Len(t, result.Content, 2)
+	require.NotNil(t, result.Content[0].Thinking)
+	assert.Equal(t, "Let me think step by step...", result.Content[0].Thinking.Thinking)
+	require.NotNil(t, result.Content[1].Text)
+	assert.Equal(t, "The answer is 4.", result.Content[1].Text.Text)
+}
+
 func TestOpenAIStreamToAnthropicState_ProcessBuffer_SignatureDelta(t *testing.T) {
 	state := &openAIStreamToAnthropicState{
 		activeTools:  make(map[int64]*streamToolCall),

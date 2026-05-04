@@ -462,8 +462,15 @@ func appendThinkingBlocks(content []anthropic.MessagesContentBlock, msg *openai.
 		return content
 	}
 
-	// Fall back to ReasoningContent (used by AWS Bedrock, Gemini).
+	// Fall back to ReasoningContent (used by AWS Bedrock, Gemini, Qwen, DeepSeek).
 	if msg.ReasoningContent == nil {
+		return content
+	}
+	// Some models (Qwen, DeepSeek) return reasoning content as a plain string.
+	if str, ok := msg.ReasoningContent.Value.(string); ok && str != "" {
+		content = append(content, anthropic.MessagesContentBlock{
+			Thinking: &anthropic.ThinkingBlock{Type: "thinking", Thinking: str},
+		})
 		return content
 	}
 	rc, ok := msg.ReasoningContent.Value.(*openai.ReasoningContent)
@@ -861,14 +868,32 @@ func (s *openAIStreamToAnthropicState) emitTextDelta(text string, out *[]byte) e
 }
 
 // handleReasoningDelta handles an OpenAI reasoning content delta and emits Anthropic thinking block events.
+//
+// Note: StreamReasoningContent also has a RedactedContent field (used by AWS Bedrock streaming).
+// We do not handle it here because Anthropic's SSE protocol for redacted_thinking is a complete
+// block (content_block_start + content_block_stop with no deltas), which requires a different emit
+// pattern. This field does not appear in standard OpenAI-compatible backends (vLLM, etc.).
 func (s *openAIStreamToAnthropicState) handleReasoningDelta(rc *openai.StreamReasoningContent, out *[]byte) error {
+	if rc.Text == "" && rc.Signature == "" {
+		return nil
+	}
+	// Close any open non-thinking block (e.g., text) before starting a thinking block.
+	// This handles the unlikely case where reasoning arrives after text content.
+	if !s.hasThinkingBlock && s.hasOpenBlock {
+		if err := s.emitContentBlockStop(out); err != nil {
+			return err
+		}
+		s.hasOpenBlock = false
+		s.blockIndex++
+	}
+	// Ensure the thinking block is open before emitting any delta.
+	if !s.hasThinkingBlock {
+		if err := s.emitThinkingBlockStart(out); err != nil {
+			return err
+		}
+	}
 	// Handle thinking text.
 	if rc.Text != "" {
-		if !s.hasThinkingBlock {
-			if err := s.emitThinkingBlockStart(out); err != nil {
-				return err
-			}
-		}
 		if err := s.emitThinkingDelta(rc.Text, out); err != nil {
 			return err
 		}
