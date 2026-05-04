@@ -5,6 +5,10 @@ toc_min_heading_level: 2
 toc_max_heading_level: 4
 ---
 
+## Versions
+* [aigateway.envoyproxy.io/v1alpha1](#aigatewayenvoyproxyiov1alpha1)
+* [aigateway.envoyproxy.io/v1beta1](#aigatewayenvoyproxyiov1beta1)
+
 
 ## aigateway.envoyproxy.io/v1alpha1
 
@@ -15,26 +19,26 @@ API group.
 ## Resource Kinds
 
 ### Available Kinds
-- [AIGatewayRoute](#aigatewayroute)
-- [AIGatewayRouteList](#aigatewayroutelist)
-- [AIServiceBackend](#aiservicebackend)
-- [AIServiceBackendList](#aiservicebackendlist)
-- [BackendSecurityPolicy](#backendsecuritypolicy)
-- [BackendSecurityPolicyList](#backendsecuritypolicylist)
-- [GatewayConfig](#gatewayconfig)
-- [GatewayConfigList](#gatewayconfiglist)
-- [MCPRoute](#mcproute)
-- [MCPRouteList](#mcproutelist)
-- [QuotaPolicy](#quotapolicy)
-- [QuotaPolicyList](#quotapolicylist)
+- [AIGatewayRoute](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroute)
+- [AIGatewayRouteList](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroutelist)
+- [AIServiceBackend](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackend)
+- [AIServiceBackendList](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendlist)
+- [BackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicy)
+- [BackendSecurityPolicyList](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicylist)
+- [GatewayConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfig)
+- [GatewayConfigList](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfiglist)
+- [MCPRoute](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproute)
+- [MCPRouteList](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutelist)
+- [QuotaPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicy)
+- [QuotaPolicyList](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicylist)
 
 ### Kind Definitions
-#### AIGatewayRoute
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroute">AIGatewayRoute</a>
 
 
 
 **Appears in:**
-- [AIGatewayRouteList](#aigatewayroutelist)
+- [AIGatewayRouteList](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroutelist)
 
 AIGatewayRoute combines multiple AIServiceBackends and attaching them to Gateway(s) resources.
 
@@ -77,18 +81,18 @@ BackendTrafficPolicy API of Envoy Gateway to the generated HTTPRoute.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="spec"
-  type="[AIGatewayRouteSpec](#aigatewayroutespec)"
+  type="[AIGatewayRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroutespec)"
   required="true"
   description="Spec defines the details of the AIGatewayRoute."
 /><ApiField
   name="status"
-  type="[AIGatewayRouteStatus](#aigatewayroutestatus)"
+  type="[AIGatewayRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroutestatus)"
   required="true"
   description="Status defines the status details of the AIGatewayRoute."
 />
 
 
-#### AIGatewayRouteList
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroutelist">AIGatewayRouteList</a>
 
 
 
@@ -118,18 +122,18 @@ AIGatewayRouteList contains a list of AIGatewayRoute.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="items"
-  type="[AIGatewayRoute](#aigatewayroute) array"
+  type="[AIGatewayRoute](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroute) array"
   required="true"
   description=""
 />
 
 
-#### AIServiceBackend
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackend">AIServiceBackend</a>
 
 
 
 **Appears in:**
-- [AIServiceBackendList](#aiservicebackendlist)
+- [AIServiceBackendList](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendlist)
 
 AIServiceBackend is a resource that represents a single backend for AIGatewayRoute.
 A backend is a service that handles traffic with a concrete API specification.
@@ -163,18 +167,18 @@ the backend specific logic in the final HTTPRoute.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="spec"
-  type="[AIServiceBackendSpec](#aiservicebackendspec)"
+  type="[AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendspec)"
   required="true"
   description="Spec defines the details of AIServiceBackend."
 /><ApiField
   name="status"
-  type="[AIServiceBackendStatus](#aiservicebackendstatus)"
+  type="[AIServiceBackendStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendstatus)"
   required="true"
   description="Status defines the status details of the AIServiceBackend."
 />
 
 
-#### AIServiceBackendList
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendlist">AIServiceBackendList</a>
 
 
 
@@ -204,18 +208,18 @@ AIServiceBackendList contains a list of AIServiceBackends.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="items"
-  type="[AIServiceBackend](#aiservicebackend) array"
+  type="[AIServiceBackend](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackend) array"
   required="true"
   description=""
 />
 
 
-#### BackendSecurityPolicy
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicy">BackendSecurityPolicy</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicyList](#backendsecuritypolicylist)
+- [BackendSecurityPolicyList](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicylist)
 
 BackendSecurityPolicy specifies configuration for authentication and authorization rules on the traffic
 exiting the gateway to the backend.
@@ -243,18 +247,18 @@ exiting the gateway to the backend.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="spec"
-  type="[BackendSecurityPolicySpec](#backendsecuritypolicyspec)"
+  type="[BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyspec)"
   required="true"
   description=""
 /><ApiField
   name="status"
-  type="[BackendSecurityPolicyStatus](#backendsecuritypolicystatus)"
+  type="[BackendSecurityPolicyStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicystatus)"
   required="true"
   description="Status defines the status details of the BackendSecurityPolicy."
 />
 
 
-#### BackendSecurityPolicyList
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicylist">BackendSecurityPolicyList</a>
 
 
 
@@ -284,18 +288,18 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="items"
-  type="[BackendSecurityPolicy](#backendsecuritypolicy) array"
+  type="[BackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicy) array"
   required="true"
   description=""
 />
 
 
-#### GatewayConfig
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfig">GatewayConfig</a>
 
 
 
 **Appears in:**
-- [GatewayConfigList](#gatewayconfiglist)
+- [GatewayConfigList](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfiglist)
 
 GatewayConfig provides configuration for the AI Gateway external processor
 container that is deployed alongside the Gateway.
@@ -340,18 +344,18 @@ value takes precedence.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="spec"
-  type="[GatewayConfigSpec](#gatewayconfigspec)"
+  type="[GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigspec)"
   required="true"
   description="Spec defines the configuration for the external processor."
 /><ApiField
   name="status"
-  type="[GatewayConfigStatus](#gatewayconfigstatus)"
+  type="[GatewayConfigStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigstatus)"
   required="true"
   description="Status defines the status of the GatewayConfig."
 />
 
 
-#### GatewayConfigList
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfiglist">GatewayConfigList</a>
 
 
 
@@ -381,18 +385,18 @@ GatewayConfigList contains a list of GatewayConfig.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="items"
-  type="[GatewayConfig](#gatewayconfig) array"
+  type="[GatewayConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfig) array"
   required="true"
   description=""
 />
 
 
-#### MCPRoute
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproute">MCPRoute</a>
 
 
 
 **Appears in:**
-- [MCPRouteList](#mcproutelist)
+- [MCPRouteList](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutelist)
 
 MCPRoute defines how to route MCP requests to the backend MCP servers.
 
@@ -422,18 +426,18 @@ clients to use a single schema API to interact with multiple MCP backends.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="spec"
-  type="[MCPRouteSpec](#mcproutespec)"
+  type="[MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutespec)"
   required="true"
   description="Spec defines the details of the MCPRoute."
 /><ApiField
   name="status"
-  type="[MCPRouteStatus](#mcproutestatus)"
+  type="[MCPRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutestatus)"
   required="true"
   description="Status defines the status details of the MCPRoute."
 />
 
 
-#### MCPRouteList
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutelist">MCPRouteList</a>
 
 
 
@@ -463,18 +467,18 @@ MCPRouteList contains a list of MCPRoute.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="items"
-  type="[MCPRoute](#mcproute) array"
+  type="[MCPRoute](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproute) array"
   required="true"
   description=""
 />
 
 
-#### QuotaPolicy
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicy">QuotaPolicy</a>
 
 
 
 **Appears in:**
-- [QuotaPolicyList](#quotapolicylist)
+- [QuotaPolicyList](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicylist)
 
 QuotaPolicy specifies token quota configuration for inference services.
 Providing a list of backends in the AIGatewayRouteRule allows failover to a different service
@@ -503,18 +507,18 @@ if token quota for a service had been exceeded.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="spec"
-  type="[QuotaPolicySpec](#quotapolicyspec)"
+  type="[QuotaPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicyspec)"
   required="true"
   description=""
 /><ApiField
   name="status"
-  type="[QuotaPolicyStatus](#quotapolicystatus)"
+  type="[QuotaPolicyStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicystatus)"
   required="true"
   description="Status defines the status details of the QuotaPolicy."
 />
 
 
-#### QuotaPolicyList
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicylist">QuotaPolicyList</a>
 
 
 
@@ -544,7 +548,7 @@ QuotaPolicyList contains a list of QuotaPolicy
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="items"
-  type="[QuotaPolicy](#quotapolicy) array"
+  type="[QuotaPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicy) array"
   required="true"
   description=""
 />
@@ -553,74 +557,74 @@ QuotaPolicyList contains a list of QuotaPolicy
 ## Supporting Types
 
 ### Available Types
-- [AIGatewayRouteRule](#aigatewayrouterule)
-- [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
-- [AIGatewayRouteRuleMatch](#aigatewayrouterulematch)
-- [AIGatewayRouteSpec](#aigatewayroutespec)
-- [AIGatewayRouteStatus](#aigatewayroutestatus)
-- [AIServiceBackendSpec](#aiservicebackendspec)
-- [AIServiceBackendStatus](#aiservicebackendstatus)
-- [APISchema](#apischema)
-- [AWSCredentialsFile](#awscredentialsfile)
-- [AWSOIDCExchangeToken](#awsoidcexchangetoken)
-- [AzureOIDCExchangeToken](#azureoidcexchangetoken)
-- [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
-- [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
-- [BackendSecurityPolicyAnthropicAPIKey](#backendsecuritypolicyanthropicapikey)
-- [BackendSecurityPolicyAzureAPIKey](#backendsecuritypolicyazureapikey)
-- [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
-- [BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)
-- [BackendSecurityPolicyOIDC](#backendsecuritypolicyoidc)
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
-- [BackendSecurityPolicyStatus](#backendsecuritypolicystatus)
-- [BackendSecurityPolicyType](#backendsecuritypolicytype)
-- [GCPCredentialsFile](#gcpcredentialsfile)
-- [GCPOIDCExchangeToken](#gcpoidcexchangetoken)
-- [GCPServiceAccountImpersonationConfig](#gcpserviceaccountimpersonationconfig)
-- [GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
-- [GCPWorkloadIdentityProvider](#gcpworkloadidentityprovider)
-- [GatewayConfigExtProc](#gatewayconfigextproc)
-- [GatewayConfigSpec](#gatewayconfigspec)
-- [GatewayConfigStatus](#gatewayconfigstatus)
-- [HTTPBodyField](#httpbodyfield)
-- [HTTPBodyMutation](#httpbodymutation)
-- [HTTPHeaderMutation](#httpheadermutation)
-- [JWKS](#jwks)
-- [JWTSource](#jwtsource)
-- [LLMRequestCost](#llmrequestcost)
-- [LLMRequestCostType](#llmrequestcosttype)
-- [MCPAuthorizationSource](#mcpauthorizationsource)
-- [MCPAuthorizationTarget](#mcpauthorizationtarget)
-- [MCPBackendAPIKey](#mcpbackendapikey)
-- [MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)
-- [MCPHeaderForward](#mcpheaderforward)
-- [MCPRouteAuthorization](#mcprouteauthorization)
-- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
-- [MCPRouteBackendRef](#mcproutebackendref)
-- [MCPRouteOAuth](#mcprouteoauth)
-- [MCPRouteSecurityPolicy](#mcproutesecuritypolicy)
-- [MCPRouteSpec](#mcproutespec)
-- [MCPRouteStatus](#mcproutestatus)
-- [MCPToolFilter](#mcptoolfilter)
-- [PerModelQuota](#permodelquota)
-- [ProtectedResourceMetadata](#protectedresourcemetadata)
-- [QuotaBucketMode](#quotabucketmode)
-- [QuotaDefinition](#quotadefinition)
-- [QuotaPolicySpec](#quotapolicyspec)
-- [QuotaPolicyStatus](#quotapolicystatus)
-- [QuotaRule](#quotarule)
-- [QuotaValue](#quotavalue)
-- [ServiceQuotaDefinition](#servicequotadefinition)
-- [ToolCall](#toolcall)
-- [VersionedAPISchema](#versionedapischema)
+- [AIGatewayRouteRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterule)
+- [AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulebackendref)
+- [AIGatewayRouteRuleMatch](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulematch)
+- [AIGatewayRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroutespec)
+- [AIGatewayRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroutestatus)
+- [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendspec)
+- [AIServiceBackendStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendstatus)
+- [APISchema](#github-com-envoyproxy-ai-gateway-api-v1alpha1-apischema)
+- [AWSCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1alpha1-awscredentialsfile)
+- [AWSOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-awsoidcexchangetoken)
+- [AzureOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-azureoidcexchangetoken)
+- [BackendSecurityPolicyAPIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyapikey)
+- [BackendSecurityPolicyAWSCredentials](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyawscredentials)
+- [BackendSecurityPolicyAnthropicAPIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyanthropicapikey)
+- [BackendSecurityPolicyAzureAPIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyazureapikey)
+- [BackendSecurityPolicyAzureCredentials](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyazurecredentials)
+- [BackendSecurityPolicyGCPCredentials](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicygcpcredentials)
+- [BackendSecurityPolicyOIDC](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyoidc)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyspec)
+- [BackendSecurityPolicyStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicystatus)
+- [BackendSecurityPolicyType](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicytype)
+- [GCPCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpcredentialsfile)
+- [GCPOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpoidcexchangetoken)
+- [GCPServiceAccountImpersonationConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpserviceaccountimpersonationconfig)
+- [GCPWorkloadIdentityFederationConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpworkloadidentityfederationconfig)
+- [GCPWorkloadIdentityProvider](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpworkloadidentityprovider)
+- [GatewayConfigExtProc](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigextproc)
+- [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigspec)
+- [GatewayConfigStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigstatus)
+- [HTTPBodyField](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpbodyfield)
+- [HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpbodymutation)
+- [HTTPHeaderMutation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpheadermutation)
+- [JWKS](#github-com-envoyproxy-ai-gateway-api-v1alpha1-jwks)
+- [JWTSource](#github-com-envoyproxy-ai-gateway-api-v1alpha1-jwtsource)
+- [LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1alpha1-llmrequestcost)
+- [LLMRequestCostType](#github-com-envoyproxy-ai-gateway-api-v1alpha1-llmrequestcosttype)
+- [MCPAuthorizationSource](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpauthorizationsource)
+- [MCPAuthorizationTarget](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpauthorizationtarget)
+- [MCPBackendAPIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendapikey)
+- [MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendsecuritypolicy)
+- [MCPHeaderForward](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpheaderforward)
+- [MCPRouteAuthorization](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteauthorization)
+- [MCPRouteAuthorizationRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteauthorizationrule)
+- [MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutebackendref)
+- [MCPRouteOAuth](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteoauth)
+- [MCPRouteSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutesecuritypolicy)
+- [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutespec)
+- [MCPRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutestatus)
+- [MCPToolFilter](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptoolfilter)
+- [PerModelQuota](#github-com-envoyproxy-ai-gateway-api-v1alpha1-permodelquota)
+- [ProtectedResourceMetadata](#github-com-envoyproxy-ai-gateway-api-v1alpha1-protectedresourcemetadata)
+- [QuotaBucketMode](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotabucketmode)
+- [QuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotadefinition)
+- [QuotaPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicyspec)
+- [QuotaPolicyStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicystatus)
+- [QuotaRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotarule)
+- [QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)
+- [ServiceQuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-servicequotadefinition)
+- [ToolCall](#github-com-envoyproxy-ai-gateway-api-v1alpha1-toolcall)
+- [VersionedAPISchema](#github-com-envoyproxy-ai-gateway-api-v1alpha1-versionedapischema)
 
 ### Type Definitions
-#### AIGatewayRouteRule
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterule">AIGatewayRouteRule</a>
 
 
 
 **Appears in:**
-- [AIGatewayRouteSpec](#aigatewayroutespec)
+- [AIGatewayRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroutespec)
 
 AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
 
@@ -630,12 +634,12 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
 
 <ApiField
   name="backendRefs"
-  type="[AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref) array"
+  type="[AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulebackendref) array"
   required="false"
   description="BackendRefs is the list of backends that this rule will route the traffic to.<br />Each backend can have a weight that determines the traffic distribution.<br />The namespace of each backend defaults to the same namespace as the AIGatewayRoute when not specified.<br />Cross-namespace references are supported by specifying the namespace field.<br />When a namespace different than the AIGatewayRoute's namespace is specified,<br />a ReferenceGrant object is required in the referent namespace to allow that<br />namespace's owner to accept the reference.<br />BackendRefs can reference either AIServiceBackend resources (default) or InferencePool resources<br />from the Gateway API Inference Extension. When referencing InferencePool resources:<br />- Only one InferencePool backend is allowed per rule<br />- Cannot mix InferencePool with AIServiceBackend references in the same rule<br />- Fallback behavior is handled by the InferencePool's endpoint picker<br />For AIServiceBackend references, you can achieve fallback behavior by configuring multiple backends<br />combined with the BackendTrafficPolicy of Envoy Gateway.<br />Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as<br />https://gateway.envoyproxy.io/docs/tasks/traffic/retry/."
 /><ApiField
   name="matches"
-  type="[AIGatewayRouteRuleMatch](#aigatewayrouterulematch) array"
+  type="[AIGatewayRouteRuleMatch](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulematch) array"
   required="false"
   description="Matches is the list of AIGatewayRouteMatch that this rule will match the traffic to.<br />This is a subset of the HTTPRouteMatch in the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch"
 /><ApiField
@@ -657,12 +661,12 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
 />
 
 
-#### AIGatewayRouteRuleBackendRef
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulebackendref">AIGatewayRouteRuleBackendRef</a>
 
 
 
 **Appears in:**
-- [AIGatewayRouteRule](#aigatewayrouterule)
+- [AIGatewayRouteRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterule)
 
 AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
 It can reference either an AIServiceBackend or an InferencePool resource.
@@ -698,12 +702,12 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   description="Name of the model in the backend. If provided this will override the name provided in the request.<br />This field is ignored when referencing InferencePool resources."
 /><ApiField
   name="headerMutation"
-  type="[HTTPHeaderMutation](#httpheadermutation)"
+  type="[HTTPHeaderMutation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpheadermutation)"
   required="false"
   description="HeaderMutation defines the request header mutation to be applied to this backend.<br />When both route-level and backend-level HeaderMutation are defined,<br />route-level takes precedence over backend-level for conflicting operations.<br />This field is ignored when referencing InferencePool resources."
 /><ApiField
   name="bodyMutation"
-  type="[HTTPBodyMutation](#httpbodymutation)"
+  type="[HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpbodymutation)"
   required="false"
   description="BodyMutation defines the request body mutation to be applied to this backend.<br />This allows modification of JSON fields in the request body before sending to the backend.<br />When both route-level and backend-level BodyMutation are defined,<br />route-level takes precedence over backend-level for conflicting operations.<br />This field is ignored when referencing InferencePool resources."
 /><ApiField
@@ -721,12 +725,12 @@ It can reference either an AIServiceBackend or an InferencePool resource.
 />
 
 
-#### AIGatewayRouteRuleMatch
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulematch">AIGatewayRouteRuleMatch</a>
 
 
 
 **Appears in:**
-- [AIGatewayRouteRule](#aigatewayrouterule)
+- [AIGatewayRouteRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterule)
 
 
 
@@ -742,12 +746,12 @@ It can reference either an AIServiceBackend or an InferencePool resource.
 />
 
 
-#### AIGatewayRouteSpec
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroutespec">AIGatewayRouteSpec</a>
 
 
 
 **Appears in:**
-- [AIGatewayRoute](#aigatewayroute)
+- [AIGatewayRoute](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroute)
 
 AIGatewayRouteSpec details the AIGatewayRoute configuration.
 
@@ -762,23 +766,23 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   description="ParentRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.<br />Currently, each reference's Kind must be Gateway."
 /><ApiField
   name="rules"
-  type="[AIGatewayRouteRule](#aigatewayrouterule) array"
+  type="[AIGatewayRouteRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterule) array"
   required="true"
   description="Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.<br />Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).<br />AI Gateway controller will generate a HTTPRoute based on the configuration given here with the additional<br />modifications to achieve the necessary jobs, notably inserting the AI Gateway filter responsible for<br />the transformation of the request and response, etc.<br />In the matching conditions in the AIGatewayRouteRule, `x-ai-eg-model` header is available<br />if we want to describe the routing behavior based on the model name. The model name is extracted<br />from the request content before the routing decision.<br />How multiple rules are matched is the same as the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRoute"
 /><ApiField
   name="llmRequestCosts"
-  type="[LLMRequestCost](#llmrequestcost) array"
+  type="[LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1alpha1-llmrequestcost) array"
   required="false"
   description="LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.<br />The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic<br />metadata per HTTP request. The namespaced key is `io.envoy.ai_gateway`.<br />These route-level costs override any global defaults defined in GatewayConfig.Spec.GlobalLLMRequestCosts<br />for the same metadataKey. If a metadataKey is not defined in either place, no cost is calculated for it.<br />This allows you to define common cost formulas once at the gateway level (e.g., via GatewayConfig)<br />and only override them in specific routes when needed (e.g., premium routes with different pricing).<br />For example, let's say we have the following LLMRequestCosts configuration:<br />```yaml<br />	llmRequestCosts:<br />	- metadataKey: llm_input_token<br />	  type: InputToken<br />	- metadataKey: llm_output_token<br />	  type: OutputToken<br />	- metadataKey: llm_total_token<br />	  type: TotalToken<br />	- metadataKey: llm_cached_input_token<br />	  type: CachedInputToken<br />- metadataKey: llm_cache_creation_input_token<br />   type: CacheCreationInputToken<br />```<br />Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three<br />rate limit buckets for each unique x-tenant-id header value. One bucket is for the input token,<br />the other is for the output token, and the last one is for the total token.<br />Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.<br />```yaml<br />	apiVersion: gateway.envoyproxy.io/v1alpha1<br />	kind: BackendTrafficPolicy<br />	metadata:<br />	  name: some-example-token-rate-limit<br />	  namespace: default<br />	spec:<br />	  targetRefs:<br />	  - group: gateway.networking.k8s.io<br />	     kind: HTTPRoute<br />	     name: usage-rate-limit<br />	  rateLimit:<br />	    type: Global<br />	    global:<br />	      rules:<br />	        - clientSelectors:<br />	            # Do the rate limiting based on the x-tenant-id header.<br />	            - headers:<br />	                - name: x-tenant-id<br />	                  type: Distinct<br />	          limit:<br />	            # Configures the number of `tokens` allowed per hour.<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              # Setting the request cost to zero allows to only check the rate limit budget,<br />	              # and not consume the budget on the request path.<br />	              number: 0<br />	            # This specifies the cost of the response retrieved from the dynamic metadata set by the AI Gateway filter.<br />	            # The extracted value will be used to consume the rate limit budget, and subsequent requests will be rate limited<br />	            # if the budget is exhausted.<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_input_token<br />	        - clientSelectors:<br />	            - headers:<br />	                - name: x-tenant-id<br />	                  type: Distinct<br />	          limit:<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              number: 0<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_output_token<br />	        - clientSelectors:<br />	            - headers:<br />	                - name: x-tenant-id<br />	                  type: Distinct<br />	          limit:<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              number: 0<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_total_token<br />```<br />Note that when multiple AIGatewayRoute resources are attached to the same Gateway, and<br />different costs are configured for the same metadata key, each route's rule is carried in<br />the filter configuration with the route identity; the data plane selects the matching rule<br />per request (by route), so each route can define its own cost for the same metadata key."
 />
 
 
-#### AIGatewayRouteStatus
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroutestatus">AIGatewayRouteStatus</a>
 
 
 
 **Appears in:**
-- [AIGatewayRoute](#aigatewayroute)
+- [AIGatewayRoute](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroute)
 
 AIGatewayRouteStatus contains the conditions by the reconciliation result.
 
@@ -794,12 +798,12 @@ AIGatewayRouteStatus contains the conditions by the reconciliation result.
 />
 
 
-#### AIServiceBackendSpec
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendspec">AIServiceBackendSpec</a>
 
 
 
 **Appears in:**
-- [AIServiceBackend](#aiservicebackend)
+- [AIServiceBackend](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackend)
 
 AIServiceBackendSpec details the AIServiceBackend configuration.
 
@@ -809,7 +813,7 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
 
 <ApiField
   name="schema"
-  type="[VersionedAPISchema](#versionedapischema)"
+  type="[VersionedAPISchema](#github-com-envoyproxy-ai-gateway-api-v1alpha1-versionedapischema)"
   required="true"
   description="APISchema specifies the API schema of the output format of requests from<br />Envoy that this AIServiceBackend can accept as incoming requests.<br />Based on this schema, the ai-gateway will perform the necessary transformation for<br />the pair of AIGatewayRouteSpec.APISchema and AIServiceBackendSpec.APISchema.<br />This is required to be set."
 /><ApiField
@@ -819,23 +823,23 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported<br />as a backend in the future. See https://github.com/envoyproxy/ai-gateway/issues/902 for more details.<br />This is required to be set."
 /><ApiField
   name="headerMutation"
-  type="[HTTPHeaderMutation](#httpheadermutation)"
+  type="[HTTPHeaderMutation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpheadermutation)"
   required="false"
   description="HeaderMutation defines the mutation of HTTP headers that will be applied to the request<br />before sending it to the backend."
 /><ApiField
   name="bodyMutation"
-  type="[HTTPBodyMutation](#httpbodymutation)"
+  type="[HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpbodymutation)"
   required="false"
   description="BodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request<br />before sending it to the backend."
 />
 
 
-#### AIServiceBackendStatus
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendstatus">AIServiceBackendStatus</a>
 
 
 
 **Appears in:**
-- [AIServiceBackend](#aiservicebackend)
+- [AIServiceBackend](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackend)
 
 AIServiceBackendStatus contains the conditions by the reconciliation result.
 
@@ -851,12 +855,12 @@ AIServiceBackendStatus contains the conditions by the reconciliation result.
 />
 
 
-#### APISchema
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-apischema">APISchema</a>
 
 **Underlying type:** string
 
 **Appears in:**
-- [VersionedAPISchema](#versionedapischema)
+- [VersionedAPISchema](#github-com-envoyproxy-ai-gateway-api-v1alpha1-versionedapischema)
 
 APISchema defines the API schema.
 
@@ -905,12 +909,12 @@ APISchema defines the API schema.
   required="false"
   description="APISchemaAWSAnthropic is the schema for Anthropic models hosted on AWS Bedrock.<br />Uses the native Anthropic Messages API format for requests and responses.<br />When used with /v1/chat/completions endpoint, translates OpenAI format to Anthropic.<br />When used with /v1/messages endpoint, passes through native Anthropic format.<br />https://aws.amazon.com/bedrock/anthropic/<br />https://docs.claude.com/en/api/claude-on-amazon-bedrock<br />"
 />
-#### AWSCredentialsFile
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-awscredentialsfile">AWSCredentialsFile</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
+- [BackendSecurityPolicyAWSCredentials](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyawscredentials)
 
 AWSCredentialsFile specifies the credentials file to use for the AWS provider.
 Envoy reads the secret file, and the profile to use is specified by the Profile field.
@@ -933,12 +937,12 @@ Envoy reads the secret file, and the profile to use is specified by the Profile 
 />
 
 
-#### AWSOIDCExchangeToken
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-awsoidcexchangetoken">AWSOIDCExchangeToken</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
+- [BackendSecurityPolicyAWSCredentials](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyawscredentials)
 
 AWSOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.
 For AWS, the controller will query STS to obtain AWS AccessKeyId, SecretAccessKey, and SessionToken,
@@ -971,12 +975,12 @@ and store them in a temporary credentials file.
 />
 
 
-#### AzureOIDCExchangeToken
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-azureoidcexchangetoken">AzureOIDCExchangeToken</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
+- [BackendSecurityPolicyAzureCredentials](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyazurecredentials)
 
 AzureOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.
 For Azure, the controller will query Azure Entra ID to get an Azure Access Token,
@@ -1004,12 +1008,12 @@ and store them in a secret.
 />
 
 
-#### BackendSecurityPolicyAPIKey
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyapikey">BackendSecurityPolicyAPIKey</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyAPIKey specifies the API key.
 
@@ -1025,12 +1029,12 @@ BackendSecurityPolicyAPIKey specifies the API key.
 />
 
 
-#### BackendSecurityPolicyAWSCredentials
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyawscredentials">BackendSecurityPolicyAWSCredentials</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access AWS.
 
@@ -1057,23 +1061,23 @@ they approach expiration (typically hourly for IRSA and Pod Identity).
   description="Region specifies the AWS region associated with the policy."
 /><ApiField
   name="credentialsFile"
-  type="[AWSCredentialsFile](#awscredentialsfile)"
+  type="[AWSCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1alpha1-awscredentialsfile)"
   required="false"
   description="CredentialsFile specifies the credentials file to use for the AWS provider.<br />When specified, this takes precedence over the default credential chain."
 /><ApiField
   name="oidcExchangeToken"
-  type="[AWSOIDCExchangeToken](#awsoidcexchangetoken)"
+  type="[AWSOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-awsoidcexchangetoken)"
   required="false"
   description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access AWS.<br />When specified, this takes precedence over the default credential chain."
 />
 
 
-#### BackendSecurityPolicyAnthropicAPIKey
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyanthropicapikey">BackendSecurityPolicyAnthropicAPIKey</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyAnthropicAPIKey specifies the Anthropic API key.
 
@@ -1089,12 +1093,12 @@ BackendSecurityPolicyAnthropicAPIKey specifies the Anthropic API key.
 />
 
 
-#### BackendSecurityPolicyAzureAPIKey
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyazureapikey">BackendSecurityPolicyAzureAPIKey</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyAzureAPIKey specifies the Azure OpenAI API key.
 
@@ -1110,12 +1114,12 @@ BackendSecurityPolicyAzureAPIKey specifies the Azure OpenAI API key.
 />
 
 
-#### BackendSecurityPolicyAzureCredentials
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyazurecredentials">BackendSecurityPolicyAzureCredentials</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
 Only one of ClientSecretRef or OIDCExchangeToken must be specified. Credentials will not be generated if
@@ -1142,18 +1146,18 @@ neither are set.
   description="ClientSecretRef is the reference to the secret containing the Azure client secret.<br />ai-gateway must be given the permission to read this secret.<br />The key of secret should be `client-secret`."
 /><ApiField
   name="oidcExchangeToken"
-  type="[AzureOIDCExchangeToken](#azureoidcexchangetoken)"
+  type="[AzureOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-azureoidcexchangetoken)"
   required="false"
   description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access Azure."
 />
 
 
-#### BackendSecurityPolicyGCPCredentials
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicygcpcredentials">BackendSecurityPolicyGCPCredentials</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyGCPCredentials contains the supported authentication mechanisms to access GCP.
 
@@ -1173,26 +1177,26 @@ BackendSecurityPolicyGCPCredentials contains the supported authentication mechan
   description="Region is the GCP region associated with the policy."
 /><ApiField
   name="credentialsFile"
-  type="[GCPCredentialsFile](#gcpcredentialsfile)"
+  type="[GCPCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpcredentialsfile)"
   required="false"
   description="CredentialsFile specifies the service account credentials file to use for the GCP provider."
 /><ApiField
   name="workloadIdentityFederationConfig"
-  type="[GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)"
+  type="[GCPWorkloadIdentityFederationConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpworkloadidentityfederationconfig)"
   required="false"
   description="WorkloadIdentityFederationConfig is the configuration for the GCP Workload Identity Federation."
 />
 
 
-#### BackendSecurityPolicyOIDC
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyoidc">BackendSecurityPolicyOIDC</a>
 
 
 
 **Appears in:**
-- [AWSOIDCExchangeToken](#awsoidcexchangetoken)
-- [AzureOIDCExchangeToken](#azureoidcexchangetoken)
-- [GCPOIDCExchangeToken](#gcpoidcexchangetoken)
-- [GCPWorkloadIdentityProvider](#gcpworkloadidentityprovider)
+- [AWSOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-awsoidcexchangetoken)
+- [AzureOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-azureoidcexchangetoken)
+- [GCPOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpoidcexchangetoken)
+- [GCPWorkloadIdentityProvider](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpworkloadidentityprovider)
 
 BackendSecurityPolicyOIDC specifies OIDC related fields.
 
@@ -1218,12 +1222,12 @@ BackendSecurityPolicyOIDC specifies OIDC related fields.
 />
 
 
-#### BackendSecurityPolicySpec
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyspec">BackendSecurityPolicySpec</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicy](#backendsecuritypolicy)
+- [BackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicy)
 
 BackendSecurityPolicySpec specifies authentication rules on access the provider from the Gateway.
 Only one mechanism to access a backend(s) can be specified.
@@ -1241,48 +1245,48 @@ Only one type of BackendSecurityPolicy can be defined.
   description="TargetRefs are the names of the AIServiceBackend or InferencePool resources this BackendSecurityPolicy is being attached to.<br />Attaching multiple BackendSecurityPolicies to the same resource is invalid and will result in an error<br />during the reconciliation of the resource."
 /><ApiField
   name="type"
-  type="[BackendSecurityPolicyType](#backendsecuritypolicytype)"
+  type="[BackendSecurityPolicyType](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicytype)"
   required="true"
   description="Type specifies the type of the backend security policy."
 /><ApiField
   name="apiKey"
-  type="[BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)"
+  type="[BackendSecurityPolicyAPIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyapikey)"
   required="false"
   description="APIKey is a mechanism to access a backend(s). The API key will be injected into the Authorization header."
 /><ApiField
   name="awsCredentials"
-  type="[BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)"
+  type="[BackendSecurityPolicyAWSCredentials](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyawscredentials)"
   required="false"
   description="AWSCredentials is a mechanism to access a backend(s). AWS specific logic will be applied."
 /><ApiField
   name="azureAPIKey"
-  type="[BackendSecurityPolicyAzureAPIKey](#backendsecuritypolicyazureapikey)"
+  type="[BackendSecurityPolicyAzureAPIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyazureapikey)"
   required="false"
   description="AzureAPIKey is a mechanism to access Azure OpenAI backend(s). The API key will be injected into the api-key header."
 /><ApiField
   name="azureCredentials"
-  type="[BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)"
+  type="[BackendSecurityPolicyAzureCredentials](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyazurecredentials)"
   required="false"
   description="AzureCredentials is a mechanism to access a backend(s). Azure OpenAI specific logic will be applied."
 /><ApiField
   name="gcpCredentials"
-  type="[BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)"
+  type="[BackendSecurityPolicyGCPCredentials](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicygcpcredentials)"
   required="false"
   description="GCPCredentials is a mechanism to access a backend(s). GCP specific logic will be applied."
 /><ApiField
   name="anthropicAPIKey"
-  type="[BackendSecurityPolicyAnthropicAPIKey](#backendsecuritypolicyanthropicapikey)"
+  type="[BackendSecurityPolicyAnthropicAPIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyanthropicapikey)"
   required="false"
   description="AnthropicAPIKey is a mechanism to access Anthropic backend(s). The API key will be injected into the `x-api-key` header.<br />https://docs.claude.com/en/api/overview#authentication"
 />
 
 
-#### BackendSecurityPolicyStatus
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicystatus">BackendSecurityPolicyStatus</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicy](#backendsecuritypolicy)
+- [BackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicy)
 
 BackendSecurityPolicyStatus contains the conditions by the reconciliation result.
 
@@ -1298,12 +1302,12 @@ BackendSecurityPolicyStatus contains the conditions by the reconciliation result
 />
 
 
-#### BackendSecurityPolicyType
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicytype">BackendSecurityPolicyType</a>
 
 **Underlying type:** string
 
 **Appears in:**
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyType specifies the type of auth mechanism used to access a backend.
 
@@ -1342,12 +1346,12 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   required="false"
   description=""
 />
-#### GCPCredentialsFile
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpcredentialsfile">GCPCredentialsFile</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)
+- [BackendSecurityPolicyGCPCredentials](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicygcpcredentials)
 
 GCPCredentialsFile specifies the service account key json file to authenticate with GCP provider.
 
@@ -1363,12 +1367,12 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
 />
 
 
-#### GCPOIDCExchangeToken
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpoidcexchangetoken">GCPOIDCExchangeToken</a>
 
 
 
 **Appears in:**
-- [GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
+- [GCPWorkloadIdentityFederationConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpworkloadidentityfederationconfig)
 
 
 
@@ -1394,12 +1398,12 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
 />
 
 
-#### GCPServiceAccountImpersonationConfig
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpserviceaccountimpersonationconfig">GCPServiceAccountImpersonationConfig</a>
 
 
 
 **Appears in:**
-- [GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
+- [GCPWorkloadIdentityFederationConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpworkloadidentityfederationconfig)
 
 
 
@@ -1415,12 +1419,12 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
 />
 
 
-#### GCPWorkloadIdentityFederationConfig
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpworkloadidentityfederationconfig">GCPWorkloadIdentityFederationConfig</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)
+- [BackendSecurityPolicyGCPCredentials](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicygcpcredentials)
 
 
 
@@ -1440,7 +1444,7 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
   description="WorkloadIdentityProviderName is the name of the external identity provider as registered on Google Cloud Platform."
 /><ApiField
   name="oidcExchangeToken"
-  type="[GCPOIDCExchangeToken](#gcpoidcexchangetoken)"
+  type="[GCPOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpoidcexchangetoken)"
   required="true"
   description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access GCP."
 /><ApiField
@@ -1450,19 +1454,19 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
   description="WorkloadIdentityPoolName is the name of the workload identity pool defined in GCP.<br />https://cloud.google.com/iam/docs/workload-identity-federation?hl=en"
 /><ApiField
   name="serviceAccountImpersonation"
-  type="[GCPServiceAccountImpersonationConfig](#gcpserviceaccountimpersonationconfig)"
+  type="[GCPServiceAccountImpersonationConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpserviceaccountimpersonationconfig)"
   required="false"
   description="ServiceAccountImpersonation is the service account impersonation configuration.<br />This is used to impersonate a service account when getting access token."
 />
 
 
 
-#### GatewayConfigExtProc
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigextproc">GatewayConfigExtProc</a>
 
 
 
 **Appears in:**
-- [GatewayConfigSpec](#gatewayconfigspec)
+- [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigspec)
 
 GatewayConfigExtProc holds runtime-specific configuration for the external processor.
 
@@ -1478,12 +1482,12 @@ GatewayConfigExtProc holds runtime-specific configuration for the external proce
 />
 
 
-#### GatewayConfigSpec
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigspec">GatewayConfigSpec</a>
 
 
 
 **Appears in:**
-- [GatewayConfig](#gatewayconfig)
+- [GatewayConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfig)
 
 GatewayConfigSpec defines the configuration for the AI Gateway.
 
@@ -1493,23 +1497,23 @@ GatewayConfigSpec defines the configuration for the AI Gateway.
 
 <ApiField
   name="extProc"
-  type="[GatewayConfigExtProc](#gatewayconfigextproc)"
+  type="[GatewayConfigExtProc](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigextproc)"
   required="false"
   description="ExtProc defines the configuration for the external processor container."
 /><ApiField
   name="globalLLMRequestCosts"
-  type="[LLMRequestCost](#llmrequestcost) array"
+  type="[LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1alpha1-llmrequestcost) array"
   required="false"
   description="GlobalLLMRequestCosts defines default LLM request costs that apply to all<br />routes referencing this GatewayConfig. These costs can be overridden on a<br />per-route basis via AIGatewayRoute.Spec.LLMRequestCosts.<br />When a request matches a route, the cost calculation proceeds as follows:<br /> 1. If the route defines LLMRequestCosts with a matching metadataKey, use that.<br /> 2. Otherwise, fall back to the global cost with that metadataKey (if defined here).<br /> 3. If neither exists, the cost is not calculated for that metadataKey.<br />This allows you to define common cost formulas once at the gateway level<br />(e.g., billing_charges = input_tokens + output_tokens) and only override<br />them in specific routes when needed (e.g., premium routes with different pricing)."
 />
 
 
-#### GatewayConfigStatus
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigstatus">GatewayConfigStatus</a>
 
 
 
 **Appears in:**
-- [GatewayConfig](#gatewayconfig)
+- [GatewayConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfig)
 
 GatewayConfigStatus defines the observed state of GatewayConfig.
 
@@ -1525,12 +1529,12 @@ GatewayConfigStatus defines the observed state of GatewayConfig.
 />
 
 
-#### HTTPBodyField
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-httpbodyfield">HTTPBodyField</a>
 
 
 
 **Appears in:**
-- [HTTPBodyMutation](#httpbodymutation)
+- [HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpbodymutation)
 
 HTTPBodyField represents a JSON field name and value for body mutation
 
@@ -1551,13 +1555,13 @@ HTTPBodyField represents a JSON field name and value for body mutation
 />
 
 
-#### HTTPBodyMutation
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-httpbodymutation">HTTPBodyMutation</a>
 
 
 
 **Appears in:**
-- [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
-- [AIServiceBackendSpec](#aiservicebackendspec)
+- [AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulebackendref)
+- [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendspec)
 
 HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request
 
@@ -1567,7 +1571,7 @@ HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will
 
 <ApiField
   name="set"
-  type="[HTTPBodyField](#httpbodyfield) array"
+  type="[HTTPBodyField](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpbodyfield) array"
   required="false"
   description="Set overwrites/adds the request body with the given JSON field (name, value)<br />before sending to the backend. Only top-level fields are currently supported.<br />Input:<br />  \{<br />    `model`: `gpt-4`,<br />    `service_tier`: `default`<br />  \}<br />Config:<br />  set:<br />  - path: `service_tier`<br />    value: `scale`<br />Output:<br />  \{<br />    `model`: `gpt-4`,<br />    `service_tier`: `scale`<br />  \}"
 /><ApiField
@@ -1578,13 +1582,13 @@ HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will
 />
 
 
-#### HTTPHeaderMutation
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-httpheadermutation">HTTPHeaderMutation</a>
 
 
 
 **Appears in:**
-- [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
-- [AIServiceBackendSpec](#aiservicebackendspec)
+- [AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulebackendref)
+- [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendspec)
 
 HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
 
@@ -1605,12 +1609,12 @@ HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to 
 />
 
 
-#### JWKS
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-jwks">JWKS</a>
 
 
 
 **Appears in:**
-- [MCPRouteOAuth](#mcprouteoauth)
+- [MCPRouteOAuth](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteoauth)
 
 JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HTTPS endpoint or from a local source.
 
@@ -1631,12 +1635,12 @@ JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HT
 />
 
 
-#### JWTSource
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-jwtsource">JWTSource</a>
 
 
 
 **Appears in:**
-- [MCPAuthorizationSource](#mcpauthorizationsource)
+- [MCPAuthorizationSource](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpauthorizationsource)
 
 JWTSource defines the MCP authorization source for JWT tokens.
 At least one of scopes or claims must be provided.
@@ -1659,13 +1663,13 @@ Scopes and claims are AND-ed: when both are specified, both sets must match.
 />
 
 
-#### LLMRequestCost
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-llmrequestcost">LLMRequestCost</a>
 
 
 
 **Appears in:**
-- [AIGatewayRouteSpec](#aigatewayroutespec)
-- [GatewayConfigSpec](#gatewayconfigspec)
+- [AIGatewayRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroutespec)
+- [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigspec)
 
 LLMRequestCost configures each request cost.
 
@@ -1680,7 +1684,7 @@ LLMRequestCost configures each request cost.
   description="MetadataKey is the key of the metadata to store this cost of the request."
 /><ApiField
   name="type"
-  type="[LLMRequestCostType](#llmrequestcosttype)"
+  type="[LLMRequestCostType](#github-com-envoyproxy-ai-gateway-api-v1alpha1-llmrequestcosttype)"
   required="true"
   description="Type specifies the type of the request cost. The default is `OutputToken`,<br />and it uses `output token` as the cost. The other types are `InputToken`, `TotalToken`,<br />`CachedInputToken`, `CacheCreationInputToken`, `ReasoningToken`, and `CEL`."
 /><ApiField
@@ -1691,12 +1695,12 @@ LLMRequestCost configures each request cost.
 />
 
 
-#### LLMRequestCostType
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-llmrequestcosttype">LLMRequestCostType</a>
 
 **Underlying type:** string
 
 **Appears in:**
-- [LLMRequestCost](#llmrequestcost)
+- [LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1alpha1-llmrequestcost)
 
 LLMRequestCostType specifies the type of the LLMRequestCost.
 
@@ -1740,12 +1744,12 @@ LLMRequestCostType specifies the type of the LLMRequestCost.
   required="false"
   description="LLMRequestCostTypeCEL is for calculating the cost using the CEL expression.<br />"
 />
-#### MCPAuthorizationSource
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpauthorizationsource">MCPAuthorizationSource</a>
 
 
 
 **Appears in:**
-- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
+- [MCPRouteAuthorizationRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteauthorizationrule)
 
 MCPAuthorizationSource defines the source of an authorization rule.
 
@@ -1755,18 +1759,18 @@ MCPAuthorizationSource defines the source of an authorization rule.
 
 <ApiField
   name="jwt"
-  type="[JWTSource](#jwtsource)"
+  type="[JWTSource](#github-com-envoyproxy-ai-gateway-api-v1alpha1-jwtsource)"
   required="true"
   description="JWT defines the JWT scopes required for this rule to match."
 />
 
 
-#### MCPAuthorizationTarget
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpauthorizationtarget">MCPAuthorizationTarget</a>
 
 
 
 **Appears in:**
-- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
+- [MCPRouteAuthorizationRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteauthorizationrule)
 
 MCPAuthorizationTarget defines the target of an authorization rule.
 
@@ -1776,18 +1780,18 @@ MCPAuthorizationTarget defines the target of an authorization rule.
 
 <ApiField
   name="tools"
-  type="[ToolCall](#toolcall) array"
+  type="[ToolCall](#github-com-envoyproxy-ai-gateway-api-v1alpha1-toolcall) array"
   required="true"
   description="Tools defines the list of tools this rule applies to."
 />
 
 
-#### MCPBackendAPIKey
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendapikey">MCPBackendAPIKey</a>
 
 
 
 **Appears in:**
-- [MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)
+- [MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendsecuritypolicy)
 
 MCPBackendAPIKey defines the configuration for the API Key Authentication to a backend.
 When both `header` and `queryParam` are unspecified, the API key will be injected into the "Authorization" header by default.
@@ -1819,12 +1823,12 @@ When both `header` and `queryParam` are unspecified, the API key will be injecte
 />
 
 
-#### MCPBackendSecurityPolicy
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendsecuritypolicy">MCPBackendSecurityPolicy</a>
 
 
 
 **Appears in:**
-- [MCPRouteBackendRef](#mcproutebackendref)
+- [MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutebackendref)
 
 MCPBackendSecurityPolicy defines the security policy for a backend MCP server.
 
@@ -1834,18 +1838,18 @@ MCPBackendSecurityPolicy defines the security policy for a backend MCP server.
 
 <ApiField
   name="apiKey"
-  type="[MCPBackendAPIKey](#mcpbackendapikey)"
+  type="[MCPBackendAPIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendapikey)"
   required="false"
   description="APIKey is a mechanism to access a backend. The API key will be injected into the request headers."
 />
 
 
-#### MCPHeaderForward
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpheaderforward">MCPHeaderForward</a>
 
 
 
 **Appears in:**
-- [MCPRouteBackendRef](#mcproutebackendref)
+- [MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutebackendref)
 
 MCPHeaderForward specifies a header to extract from the incoming request and forward to a backend.
 
@@ -1866,12 +1870,12 @@ MCPHeaderForward specifies a header to extract from the incoming request and for
 />
 
 
-#### MCPRouteAuthorization
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteauthorization">MCPRouteAuthorization</a>
 
 
 
 **Appears in:**
-- [MCPRouteSecurityPolicy](#mcproutesecuritypolicy)
+- [MCPRouteSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutesecuritypolicy)
 
 MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
 
@@ -1881,24 +1885,24 @@ MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
 
 <ApiField
   name="defaultAction"
-  type="[AuthorizationAction](#authorizationaction)"
+  type="[AuthorizationAction](#github-com-envoyproxy-gateway-api-v1alpha1-authorizationaction)"
   required="false"
   defaultValue="Deny"
   description="DefaultAction is the action to take when no rules match. If unspecified, defaults to Deny."
 /><ApiField
   name="rules"
-  type="[MCPRouteAuthorizationRule](#mcprouteauthorizationrule) array"
+  type="[MCPRouteAuthorizationRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteauthorizationrule) array"
   required="false"
   description="Rules defines a list of authorization rules.<br />These rules are evaluated in order, the first matching rule will be applied,<br />and the rest will be skipped.<br />If no rules are defined, the default action will be applied to all requests."
 />
 
 
-#### MCPRouteAuthorizationRule
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteauthorizationrule">MCPRouteAuthorizationRule</a>
 
 
 
 **Appears in:**
-- [MCPRouteAuthorization](#mcprouteauthorization)
+- [MCPRouteAuthorization](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteauthorization)
 
 MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
 Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
@@ -1909,12 +1913,12 @@ Reference: https://modelcontextprotocol.io/specification/draft/basic/authorizati
 
 <ApiField
   name="source"
-  type="[MCPAuthorizationSource](#mcpauthorizationsource)"
+  type="[MCPAuthorizationSource](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpauthorizationsource)"
   required="true"
   description="Source defines the authorization source for this rule.<br />If not specified, the rule will match all sources."
 /><ApiField
   name="target"
-  type="[MCPAuthorizationTarget](#mcpauthorizationtarget)"
+  type="[MCPAuthorizationTarget](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpauthorizationtarget)"
   required="true"
   description="Target defines the authorization target for this rule.<br />If not specified, the rule will match all targets."
 /><ApiField
@@ -1924,19 +1928,19 @@ Reference: https://modelcontextprotocol.io/specification/draft/basic/authorizati
   description="CEL specifies a Common Expression Language (CEL) expression evaluated for this rule.<br />The expression must return a boolean; evaluation errors or non-boolean results<br />are treated as `no match`.<br />Example CEL expressions:<br />	* `request.method == `POST``<br />	* `request.headers[`x-custom-header`] == `AllowedValue``<br />	* `request.mcp.tool in [`toolA`, `toolB`]`<br />Available attributes in the CEL expression:<br />	* request.method: HTTP method such as GET or POST. Type: string.<br />	* request.headers: map of headers with lowercased keys, first value only. Type: map[string]string.<br />	* request.headers_all: map of headers with lowercased keys, all values. Type: map[string][]string.<br />	* request.path: request path such as /mcp. Type: string.<br />	* request.auth.jwt.claims: JWT claims when a bearer JWT is present. Type: map[string]any.<br />	* request.auth.jwt.scopes: JWT scopes when a bearer JWT is present. Type: []string.<br />	* request.mcp.method: MCP method such as tools/list or tools/call. Type: string.<br />	* request.mcp.backend: upstream backend name (for example, `kiwi` or `github`). Type: string.<br />	* request.mcp.tool: tool name without backend prefix (for example, `list_issues`). Type: string.<br />	* request.mcp.params: parameters of the MCP method, including keys like `_meta` and `arguments`. Type: object.<br />Note: The CEL expression support is experimental, and the attributes<br />available to the expression may change in future releases."
 /><ApiField
   name="action"
-  type="[AuthorizationAction](#authorizationaction)"
+  type="[AuthorizationAction](#github-com-envoyproxy-gateway-api-v1alpha1-authorizationaction)"
   required="false"
   defaultValue="Allow"
   description="Action is the authorization decision for matching requests. If unspecified, defaults to Allow."
 />
 
 
-#### MCPRouteBackendRef
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutebackendref">MCPRouteBackendRef</a>
 
 
 
 **Appears in:**
-- [MCPRouteSpec](#mcproutespec)
+- [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutespec)
 
 MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP server.
 
@@ -1946,18 +1950,18 @@ MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP serve
 
 <ApiField
   name="group"
-  type="[Group](#group)"
+  type="[Group](#sigs-k8s-io-gateway-api-apis-v1-group)"
   required="false"
   description="Group is the group of the referent. For example, `gateway.networking.k8s.io`.<br />When unspecified or empty string, core API group is inferred."
 /><ApiField
   name="kind"
-  type="[Kind](#kind)"
+  type="[Kind](#sigs-k8s-io-gateway-api-apis-v1-kind)"
   required="false"
   defaultValue="Service"
   description="Kind is the Kubernetes resource kind of the referent. For example<br />`Service`.<br />Defaults to `Service` when not specified.<br />ExternalName services can refer to CNAME DNS records that may live<br />outside of the cluster and as such are difficult to reason about in<br />terms of conformance. They also may not be safe to forward to (see<br />CVE-2021-25740 for more information). Implementations SHOULD NOT<br />support ExternalName Services.<br />Support: Core (Services with a type other than ExternalName)<br />Support: Implementation-specific (Services with type ExternalName)"
 /><ApiField
   name="name"
-  type="[ObjectName](#objectname)"
+  type="[ObjectName](#sigs-k8s-io-gateway-api-apis-v1-objectname)"
   required="true"
   description="Name is the name of the referent."
 /><ApiField
@@ -1967,7 +1971,7 @@ MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP serve
   description="Namespace is the namespace of the backend. When unspecified, the local<br />namespace is inferred.<br />Note that when a namespace different than the local namespace is specified,<br />a ReferenceGrant object is required in the referent namespace to allow that<br />namespace's owner to accept the reference. See the ReferenceGrant<br />documentation for details.<br />Support: Core"
 /><ApiField
   name="port"
-  type="[PortNumber](#portnumber)"
+  type="[PortNumber](#sigs-k8s-io-gateway-api-apis-v1-portnumber)"
   required="false"
   description="Port specifies the destination port number to use for this resource.<br />Port is required when the referent is a Kubernetes Service. In this<br />case, the port number is the service port number, not the target port.<br />For other resources, destination port might be derived from the referent<br />resource or this field."
 /><ApiField
@@ -1978,28 +1982,28 @@ MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP serve
   description="Path is the HTTP endpoint path of the backend MCP server.<br />If not specified, the default is `/mcp`."
 /><ApiField
   name="toolSelector"
-  type="[MCPToolFilter](#mcptoolfilter)"
+  type="[MCPToolFilter](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptoolfilter)"
   required="false"
   description="ToolSelector filters the tools exposed by this MCP server.<br />Supports exact matches and RE2-compatible regular expressions for both include and exclude patterns.<br />If not specified, all tools from the MCP server are exposed."
 /><ApiField
   name="securityPolicy"
-  type="[MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)"
+  type="[MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendsecuritypolicy)"
   required="false"
   description="SecurityPolicy is the security policy to apply to this MCP server."
 /><ApiField
   name="forwardHeaders"
-  type="[MCPHeaderForward](#mcpheaderforward) array"
+  type="[MCPHeaderForward](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpheaderforward) array"
   required="false"
   description="ForwardHeaders specifies HTTP headers to extract from the incoming client request<br />and forward to this backend MCP server.<br />This enables per-user authentication passthrough (e.g., personal access tokens)<br />without requiring OAuth configuration.<br />Each entry specifies a header name to extract and an optional rename for the backend."
 />
 
 
-#### MCPRouteOAuth
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteoauth">MCPRouteOAuth</a>
 
 
 
 **Appears in:**
-- [MCPRouteSecurityPolicy](#mcproutesecuritypolicy)
+- [MCPRouteSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutesecuritypolicy)
 
 MCPRouteOAuth defines a MCP spec compatible OAuth authentication configuration for a MCPRoute.
 Reference: https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization
@@ -2020,12 +2024,12 @@ Reference: https://modelcontextprotocol.io/specification/2025-06-18/basic/author
   description="Audiences is a list of JWT audiences allowed access.<br />It is recommended to set this field for token audience validation, as it is a security best practice to prevent token misuse.<br />Reference: https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#token-audience-binding-and-validation"
 /><ApiField
   name="jwks"
-  type="[JWKS](#jwks)"
+  type="[JWKS](#github-com-envoyproxy-ai-gateway-api-v1alpha1-jwks)"
   required="false"
   description="JWKS defines how a JSON Web Key Sets (JWKS) can be obtained to verify the access tokens presented by the clients.<br />If not specified, the JWKS URI will be discovered from the OAuth 2.0 Authorization Server Metadata<br />as per RFC 8414 by querying the `/.well-known/oauth-authorization-server` endpoint on the Issuer."
 /><ApiField
   name="protectedResourceMetadata"
-  type="[ProtectedResourceMetadata](#protectedresourcemetadata)"
+  type="[ProtectedResourceMetadata](#github-com-envoyproxy-ai-gateway-api-v1alpha1-protectedresourcemetadata)"
   required="true"
   description="ProtectedResourceMetadata defines the OAuth 2.0 Resource Server Metadata as per RFC 8414.<br />This is used to expose the metadata endpoint for mcp clients to discover the authorization servers,<br />supported scopes, and JWKS URI."
 /><ApiField
@@ -2036,12 +2040,12 @@ Reference: https://modelcontextprotocol.io/specification/2025-06-18/basic/author
 />
 
 
-#### MCPRouteSecurityPolicy
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutesecuritypolicy">MCPRouteSecurityPolicy</a>
 
 
 
 **Appears in:**
-- [MCPRouteSpec](#mcproutespec)
+- [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutespec)
 
 MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
 
@@ -2051,7 +2055,7 @@ MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
 
 <ApiField
   name="oauth"
-  type="[MCPRouteOAuth](#mcprouteoauth)"
+  type="[MCPRouteOAuth](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteoauth)"
   required="false"
   description="OAuth defines the configuration for the MCP spec compatible OAuth authentication."
 /><ApiField
@@ -2061,23 +2065,23 @@ MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
   description="APIKeyAuth defines the configuration for the API Key Authentication."
 /><ApiField
   name="extAuth"
-  type="[ExtAuth](#extauth)"
+  type="[ExtAuth](#github-com-envoyproxy-gateway-api-v1alpha1-extauth)"
   required="false"
   description="ExtAuth defines the configuration for External Authorization."
 /><ApiField
   name="authorization"
-  type="[MCPRouteAuthorization](#mcprouteauthorization)"
+  type="[MCPRouteAuthorization](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteauthorization)"
   required="false"
   description="Authorization defines the configuration for the MCP spec compatible authorization."
 />
 
 
-#### MCPRouteSpec
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutespec">MCPRouteSpec</a>
 
 
 
 **Appears in:**
-- [MCPRoute](#mcproute)
+- [MCPRoute](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproute)
 
 MCPRouteSpec details the MCPRoute configuration.
 
@@ -2103,23 +2107,23 @@ MCPRouteSpec details the MCPRoute configuration.
   description="Headers are HTTP headers that must match for this route to be selected.<br />Multiple match values are ANDed together, meaning, a request must match all the specified headers to select the route."
 /><ApiField
   name="backendRefs"
-  type="[MCPRouteBackendRef](#mcproutebackendref) array"
+  type="[MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutebackendref) array"
   required="true"
   description="BackendRefs is a list of backend references to the MCP servers.<br />These MCP servers will be aggregated and exposed as a single MCP endpoint to the clients.<br />From the client's perspective, they only need to configure a single MCP server URL, e.g. `https://api.example.com/mcp`,<br />and the Envoy AI Gateway will route the requests to the appropriate MCP server based on the requests.<br />All names must be unique within this list to avoid potential tools, resources, etc. name collisions.<br />Also, cross-namespace references are not supported. In other words, the backend MCP servers must be in the<br />same namespace as the MCPRoute."
 /><ApiField
   name="securityPolicy"
-  type="[MCPRouteSecurityPolicy](#mcproutesecuritypolicy)"
+  type="[MCPRouteSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutesecuritypolicy)"
   required="false"
   description="SecurityPolicy defines the security policy for this MCPRoute."
 />
 
 
-#### MCPRouteStatus
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutestatus">MCPRouteStatus</a>
 
 
 
 **Appears in:**
-- [MCPRoute](#mcproute)
+- [MCPRoute](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproute)
 
 MCPRouteStatus contains the conditions by the reconciliation result.
 
@@ -2135,12 +2139,12 @@ MCPRouteStatus contains the conditions by the reconciliation result.
 />
 
 
-#### MCPToolFilter
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptoolfilter">MCPToolFilter</a>
 
 
 
 **Appears in:**
-- [MCPRouteBackendRef](#mcproutebackendref)
+- [MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutebackendref)
 
 MCPToolFilter filters tools using include and exclude patterns with exact matches or regular expressions.
 Exclude rules take precedence over include rules (deny-wins). When both include and exclude are specified,
@@ -2173,12 +2177,12 @@ a tool must match an include rule AND not match any exclude rule to be allowed.
 />
 
 
-#### PerModelQuota
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-permodelquota">PerModelQuota</a>
 
 
 
 **Appears in:**
-- [QuotaPolicySpec](#quotapolicyspec)
+- [QuotaPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicyspec)
 
 
 
@@ -2193,18 +2197,18 @@ a tool must match an include rule AND not match any exclude rule to be allowed.
   description="Model name for which the quota is specified."
 /><ApiField
   name="quota"
-  type="[QuotaDefinition](#quotadefinition)"
+  type="[QuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotadefinition)"
   required="true"
   description="Expression for computing request cost and rules for matching requests to quota buckets."
 />
 
 
-#### ProtectedResourceMetadata
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-protectedresourcemetadata">ProtectedResourceMetadata</a>
 
 
 
 **Appears in:**
-- [MCPRouteOAuth](#mcprouteoauth)
+- [MCPRouteOAuth](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteoauth)
 
 ProtectedResourceMetadata represents the Protected Resource Metadata	of the MCP server as per RFC 9728.
 
@@ -2249,12 +2253,12 @@ References:
 />
 
 
-#### QuotaBucketMode
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-quotabucketmode">QuotaBucketMode</a>
 
 **Underlying type:** string
 
 **Appears in:**
-- [QuotaDefinition](#quotadefinition)
+- [QuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotadefinition)
 
 QuotaBucketMode specifies whether the default and per request buckets values are exclusive or inclusive.
 
@@ -2273,12 +2277,12 @@ QuotaBucketMode specifies whether the default and per request buckets values are
   required="false"
   description=""
 />
-#### QuotaDefinition
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-quotadefinition">QuotaDefinition</a>
 
 
 
 **Appears in:**
-- [PerModelQuota](#permodelquota)
+- [PerModelQuota](#github-com-envoyproxy-ai-gateway-api-v1alpha1-permodelquota)
 
 QuotaDefinition specified expression for computing request cost and rules for matching requests to quota buckets.
 
@@ -2293,28 +2297,28 @@ QuotaDefinition specified expression for computing request cost and rules for ma
   description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> * `input_tokens + cached_input_tokens * 0.1 + output_tokens * 6`"
 /><ApiField
   name="mode"
-  type="[QuotaBucketMode](#quotabucketmode)"
+  type="[QuotaBucketMode](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotabucketmode)"
   required="true"
   description="The `Mode` determines how quota is charged to the `DefaultBucket` and matching `BucketRules`.<br />In the `exclusive` mode the quota is charged to matching BucketRules or the DefaultBucket<br />if no BucketRules match the request. The request is denied if all matching buckets are out of quota.<br />In the `shared` mode the quota is charged to all matching `BucketRules` AND the `DefaultBucket`<br />and request is allowed only if the quota is available in all matching buckets."
 /><ApiField
   name="defaultBucket"
-  type="[QuotaValue](#quotavalue)"
+  type="[QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)"
   required="false"
   description="Quota applicable to all traffic. This value can be overridden for specific classes of requests<br />using the `BucketRules` configuration."
 /><ApiField
   name="bucketRules"
-  type="[QuotaRule](#quotarule) array"
+  type="[QuotaRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotarule) array"
   required="false"
   description="BucketRules are a list of client selectors and quotas. If a request<br />matches multiple rules, each of their associated quotas get applied, so a<br />single request might burn down the quota for multiple rules."
 />
 
 
-#### QuotaPolicySpec
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicyspec">QuotaPolicySpec</a>
 
 
 
 **Appears in:**
-- [QuotaPolicy](#quotapolicy)
+- [QuotaPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicy)
 
 QuotaPolicySpec specifies rules for computing token based costs of requests.
 
@@ -2329,23 +2333,23 @@ QuotaPolicySpec specifies rules for computing token based costs of requests.
   description="TargetRefs are the names of the AIServiceBackend resources this QuotaPolicy is being attached to."
 /><ApiField
   name="serviceQuota"
-  type="[ServiceQuotaDefinition](#servicequotadefinition)"
+  type="[ServiceQuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-servicequotadefinition)"
   required="false"
   description="Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the `PerModelQuotas`<br />configuration."
 /><ApiField
   name="perModelQuotas"
-  type="[PerModelQuota](#permodelquota) array"
+  type="[PerModelQuota](#github-com-envoyproxy-ai-gateway-api-v1alpha1-permodelquota) array"
   required="false"
   description="PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this<br />policy is attached."
 />
 
 
-#### QuotaPolicyStatus
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicystatus">QuotaPolicyStatus</a>
 
 
 
 **Appears in:**
-- [QuotaPolicy](#quotapolicy)
+- [QuotaPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicy)
 
 QuotaPolicyStatus contains the conditions by the reconciliation result.
 
@@ -2361,12 +2365,12 @@ QuotaPolicyStatus contains the conditions by the reconciliation result.
 />
 
 
-#### QuotaRule
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-quotarule">QuotaRule</a>
 
 
 
 **Appears in:**
-- [QuotaDefinition](#quotadefinition)
+- [QuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotadefinition)
 
 
 
@@ -2381,7 +2385,7 @@ QuotaPolicyStatus contains the conditions by the reconciliation result.
   description="ClientSelectors holds the list of conditions to select<br />specific clients using attributes from the traffic flow.<br />All individual select conditions must hold True for this rule<br />and its limit to be applied.<br />If no client selectors are specified, the rule applies to all traffic of<br />the targeted AIServiceBackend."
 /><ApiField
   name="quota"
-  type="[QuotaValue](#quotavalue)"
+  type="[QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)"
   required="true"
   description="Quota value for given client selectors.<br />This quota is applied for traffic flows when the selectors<br />compute to True, causing the request to be counted towards the limit.<br />A response with 429 HTTP status code is sent back to the client when<br />the selected requests have exceeded the quota."
 /><ApiField
@@ -2392,14 +2396,14 @@ QuotaPolicyStatus contains the conditions by the reconciliation result.
 />
 
 
-#### QuotaValue
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue">QuotaValue</a>
 
 
 
 **Appears in:**
-- [QuotaDefinition](#quotadefinition)
-- [QuotaRule](#quotarule)
-- [ServiceQuotaDefinition](#servicequotadefinition)
+- [QuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotadefinition)
+- [QuotaRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotarule)
+- [ServiceQuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-servicequotadefinition)
 
 QuotaValue defines the quota limits using sliding window.
 
@@ -2420,12 +2424,12 @@ QuotaValue defines the quota limits using sliding window.
 />
 
 
-#### ServiceQuotaDefinition
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-servicequotadefinition">ServiceQuotaDefinition</a>
 
 
 
 **Appears in:**
-- [QuotaPolicySpec](#quotapolicyspec)
+- [QuotaPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicyspec)
 
 
 
@@ -2440,18 +2444,18 @@ QuotaValue defines the quota limits using sliding window.
   description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> * `input_tokens + cached_input_tokens * 0.1 + output_tokens * 6`"
 /><ApiField
   name="quota"
-  type="[QuotaValue](#quotavalue)"
+  type="[QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)"
   required="true"
   description="Quota value applicable to all requests.<br />A response with 429 HTTP status code is sent back to the client when<br />the selected requests have exceeded the quota."
 />
 
 
-#### ToolCall
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-toolcall">ToolCall</a>
 
 
 
 **Appears in:**
-- [MCPAuthorizationTarget](#mcpauthorizationtarget)
+- [MCPAuthorizationTarget](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpauthorizationtarget)
 
 ToolCall represents a tool call in the MCP authorization target.
 
@@ -2472,12 +2476,12 @@ ToolCall represents a tool call in the MCP authorization target.
 />
 
 
-#### VersionedAPISchema
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-versionedapischema">VersionedAPISchema</a>
 
 
 
 **Appears in:**
-- [AIServiceBackendSpec](#aiservicebackendspec)
+- [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendspec)
 
 VersionedAPISchema defines the API schema of either AIGatewayRoute (the input) or AIServiceBackend (the output).
 
@@ -2493,7 +2497,7 @@ the ai-gateway, but by the vendor via proper versioning.
 
 <ApiField
   name="name"
-  type="[APISchema](#apischema)"
+  type="[APISchema](#github-com-envoyproxy-ai-gateway-api-v1alpha1-apischema)"
   required="true"
   description="Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend."
 /><ApiField
@@ -2519,24 +2523,24 @@ API group. This is the beta version of the API, preferred over v1alpha1 for new 
 ## Resource Kinds
 
 ### Available Kinds
-- [AIGatewayRoute](#aigatewayroute)
-- [AIGatewayRouteList](#aigatewayroutelist)
-- [AIServiceBackend](#aiservicebackend)
-- [AIServiceBackendList](#aiservicebackendlist)
-- [BackendSecurityPolicy](#backendsecuritypolicy)
-- [BackendSecurityPolicyList](#backendsecuritypolicylist)
-- [GatewayConfig](#gatewayconfig)
-- [GatewayConfigList](#gatewayconfiglist)
-- [MCPRoute](#mcproute)
-- [MCPRouteList](#mcproutelist)
+- [AIGatewayRoute](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroute)
+- [AIGatewayRouteList](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroutelist)
+- [AIServiceBackend](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackend)
+- [AIServiceBackendList](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendlist)
+- [BackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicy)
+- [BackendSecurityPolicyList](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicylist)
+- [GatewayConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfig)
+- [GatewayConfigList](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfiglist)
+- [MCPRoute](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproute)
+- [MCPRouteList](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutelist)
 
 ### Kind Definitions
-#### AIGatewayRoute
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroute">AIGatewayRoute</a>
 
 
 
 **Appears in:**
-- [AIGatewayRouteList](#aigatewayroutelist)
+- [AIGatewayRouteList](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroutelist)
 
 AIGatewayRoute combines multiple AIServiceBackends and attaching them to Gateway(s) resources.
 
@@ -2579,18 +2583,18 @@ BackendTrafficPolicy API of Envoy Gateway to the generated HTTPRoute.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="spec"
-  type="[AIGatewayRouteSpec](#aigatewayroutespec)"
+  type="[AIGatewayRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroutespec)"
   required="true"
   description="Spec defines the details of the AIGatewayRoute."
 /><ApiField
   name="status"
-  type="[AIGatewayRouteStatus](#aigatewayroutestatus)"
+  type="[AIGatewayRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroutestatus)"
   required="true"
   description="Status defines the status details of the AIGatewayRoute."
 />
 
 
-#### AIGatewayRouteList
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroutelist">AIGatewayRouteList</a>
 
 
 
@@ -2620,18 +2624,18 @@ AIGatewayRouteList contains a list of AIGatewayRoute.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="items"
-  type="[AIGatewayRoute](#aigatewayroute) array"
+  type="[AIGatewayRoute](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroute) array"
   required="true"
   description=""
 />
 
 
-#### AIServiceBackend
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackend">AIServiceBackend</a>
 
 
 
 **Appears in:**
-- [AIServiceBackendList](#aiservicebackendlist)
+- [AIServiceBackendList](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendlist)
 
 AIServiceBackend is a resource that represents a single backend for AIGatewayRoute.
 A backend is a service that handles traffic with a concrete API specification.
@@ -2665,18 +2669,18 @@ the backend specific logic in the final HTTPRoute.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="spec"
-  type="[AIServiceBackendSpec](#aiservicebackendspec)"
+  type="[AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendspec)"
   required="true"
   description="Spec defines the details of AIServiceBackend."
 /><ApiField
   name="status"
-  type="[AIServiceBackendStatus](#aiservicebackendstatus)"
+  type="[AIServiceBackendStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendstatus)"
   required="true"
   description="Status defines the status details of the AIServiceBackend."
 />
 
 
-#### AIServiceBackendList
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendlist">AIServiceBackendList</a>
 
 
 
@@ -2706,18 +2710,18 @@ AIServiceBackendList contains a list of AIServiceBackends.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="items"
-  type="[AIServiceBackend](#aiservicebackend) array"
+  type="[AIServiceBackend](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackend) array"
   required="true"
   description=""
 />
 
 
-#### BackendSecurityPolicy
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicy">BackendSecurityPolicy</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicyList](#backendsecuritypolicylist)
+- [BackendSecurityPolicyList](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicylist)
 
 BackendSecurityPolicy specifies configuration for authentication and authorization rules on the traffic
 exiting the gateway to the backend.
@@ -2745,18 +2749,18 @@ exiting the gateway to the backend.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="spec"
-  type="[BackendSecurityPolicySpec](#backendsecuritypolicyspec)"
+  type="[BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)"
   required="true"
   description=""
 /><ApiField
   name="status"
-  type="[BackendSecurityPolicyStatus](#backendsecuritypolicystatus)"
+  type="[BackendSecurityPolicyStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicystatus)"
   required="true"
   description="Status defines the status details of the BackendSecurityPolicy."
 />
 
 
-#### BackendSecurityPolicyList
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicylist">BackendSecurityPolicyList</a>
 
 
 
@@ -2786,18 +2790,18 @@ BackendSecurityPolicyList contains a list of BackendSecurityPolicy
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="items"
-  type="[BackendSecurityPolicy](#backendsecuritypolicy) array"
+  type="[BackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicy) array"
   required="true"
   description=""
 />
 
 
-#### GatewayConfig
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfig">GatewayConfig</a>
 
 
 
 **Appears in:**
-- [GatewayConfigList](#gatewayconfiglist)
+- [GatewayConfigList](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfiglist)
 
 GatewayConfig provides configuration for the AI Gateway external processor
 container that is deployed alongside the Gateway.
@@ -2842,18 +2846,18 @@ value takes precedence.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="spec"
-  type="[GatewayConfigSpec](#gatewayconfigspec)"
+  type="[GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigspec)"
   required="true"
   description="Spec defines the configuration for the external processor."
 /><ApiField
   name="status"
-  type="[GatewayConfigStatus](#gatewayconfigstatus)"
+  type="[GatewayConfigStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigstatus)"
   required="true"
   description="Status defines the status of the GatewayConfig."
 />
 
 
-#### GatewayConfigList
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfiglist">GatewayConfigList</a>
 
 
 
@@ -2883,18 +2887,18 @@ GatewayConfigList contains a list of GatewayConfig.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="items"
-  type="[GatewayConfig](#gatewayconfig) array"
+  type="[GatewayConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfig) array"
   required="true"
   description=""
 />
 
 
-#### MCPRoute
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcproute">MCPRoute</a>
 
 
 
 **Appears in:**
-- [MCPRouteList](#mcproutelist)
+- [MCPRouteList](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutelist)
 
 MCPRoute defines how to route MCP requests to the backend MCP servers.
 
@@ -2924,18 +2928,18 @@ clients to use a single schema API to interact with multiple MCP backends.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="spec"
-  type="[MCPRouteSpec](#mcproutespec)"
+  type="[MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutespec)"
   required="true"
   description="Spec defines the details of the MCPRoute."
 /><ApiField
   name="status"
-  type="[MCPRouteStatus](#mcproutestatus)"
+  type="[MCPRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutestatus)"
   required="true"
   description="Status defines the status details of the MCPRoute."
 />
 
 
-#### MCPRouteList
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutelist">MCPRouteList</a>
 
 
 
@@ -2965,7 +2969,7 @@ MCPRouteList contains a list of MCPRoute.
   description="Refer to Kubernetes API documentation for fields of `metadata`."
 /><ApiField
   name="items"
-  type="[MCPRoute](#mcproute) array"
+  type="[MCPRoute](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproute) array"
   required="true"
   description=""
 />
@@ -2974,66 +2978,66 @@ MCPRouteList contains a list of MCPRoute.
 ## Supporting Types
 
 ### Available Types
-- [AIGatewayRouteRule](#aigatewayrouterule)
-- [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
-- [AIGatewayRouteRuleMatch](#aigatewayrouterulematch)
-- [AIGatewayRouteSpec](#aigatewayroutespec)
-- [AIGatewayRouteStatus](#aigatewayroutestatus)
-- [AIServiceBackendSpec](#aiservicebackendspec)
-- [AIServiceBackendStatus](#aiservicebackendstatus)
-- [APISchema](#apischema)
-- [AWSCredentialsFile](#awscredentialsfile)
-- [AWSOIDCExchangeToken](#awsoidcexchangetoken)
-- [AzureOIDCExchangeToken](#azureoidcexchangetoken)
-- [BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)
-- [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
-- [BackendSecurityPolicyAnthropicAPIKey](#backendsecuritypolicyanthropicapikey)
-- [BackendSecurityPolicyAzureAPIKey](#backendsecuritypolicyazureapikey)
-- [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
-- [BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)
-- [BackendSecurityPolicyOIDC](#backendsecuritypolicyoidc)
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
-- [BackendSecurityPolicyStatus](#backendsecuritypolicystatus)
-- [BackendSecurityPolicyType](#backendsecuritypolicytype)
-- [GCPCredentialsFile](#gcpcredentialsfile)
-- [GCPOIDCExchangeToken](#gcpoidcexchangetoken)
-- [GCPServiceAccountImpersonationConfig](#gcpserviceaccountimpersonationconfig)
-- [GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
-- [GCPWorkloadIdentityProvider](#gcpworkloadidentityprovider)
-- [GatewayConfigExtProc](#gatewayconfigextproc)
-- [GatewayConfigSpec](#gatewayconfigspec)
-- [GatewayConfigStatus](#gatewayconfigstatus)
-- [HTTPBodyField](#httpbodyfield)
-- [HTTPBodyMutation](#httpbodymutation)
-- [HTTPHeaderMutation](#httpheadermutation)
-- [JWKS](#jwks)
-- [JWTSource](#jwtsource)
-- [LLMRequestCost](#llmrequestcost)
-- [LLMRequestCostType](#llmrequestcosttype)
-- [MCPAuthorizationSource](#mcpauthorizationsource)
-- [MCPAuthorizationTarget](#mcpauthorizationtarget)
-- [MCPBackendAPIKey](#mcpbackendapikey)
-- [MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)
-- [MCPHeaderForward](#mcpheaderforward)
-- [MCPRouteAuthorization](#mcprouteauthorization)
-- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
-- [MCPRouteBackendRef](#mcproutebackendref)
-- [MCPRouteOAuth](#mcprouteoauth)
-- [MCPRouteSecurityPolicy](#mcproutesecuritypolicy)
-- [MCPRouteSpec](#mcproutespec)
-- [MCPRouteStatus](#mcproutestatus)
-- [MCPToolFilter](#mcptoolfilter)
-- [ProtectedResourceMetadata](#protectedresourcemetadata)
-- [ToolCall](#toolcall)
-- [VersionedAPISchema](#versionedapischema)
+- [AIGatewayRouteRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterule)
+- [AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulebackendref)
+- [AIGatewayRouteRuleMatch](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulematch)
+- [AIGatewayRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroutespec)
+- [AIGatewayRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroutestatus)
+- [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendspec)
+- [AIServiceBackendStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendstatus)
+- [APISchema](#github-com-envoyproxy-ai-gateway-api-v1beta1-apischema)
+- [AWSCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1beta1-awscredentialsfile)
+- [AWSOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-awsoidcexchangetoken)
+- [AzureOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-azureoidcexchangetoken)
+- [BackendSecurityPolicyAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyapikey)
+- [BackendSecurityPolicyAWSCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyawscredentials)
+- [BackendSecurityPolicyAnthropicAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyanthropicapikey)
+- [BackendSecurityPolicyAzureAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazureapikey)
+- [BackendSecurityPolicyAzureCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazurecredentials)
+- [BackendSecurityPolicyGCPCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygcpcredentials)
+- [BackendSecurityPolicyOIDC](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyoidc)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
+- [BackendSecurityPolicyStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicystatus)
+- [BackendSecurityPolicyType](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicytype)
+- [GCPCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpcredentialsfile)
+- [GCPOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpoidcexchangetoken)
+- [GCPServiceAccountImpersonationConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpserviceaccountimpersonationconfig)
+- [GCPWorkloadIdentityFederationConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpworkloadidentityfederationconfig)
+- [GCPWorkloadIdentityProvider](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpworkloadidentityprovider)
+- [GatewayConfigExtProc](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigextproc)
+- [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigspec)
+- [GatewayConfigStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigstatus)
+- [HTTPBodyField](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodyfield)
+- [HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodymutation)
+- [HTTPHeaderMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadermutation)
+- [JWKS](#github-com-envoyproxy-ai-gateway-api-v1beta1-jwks)
+- [JWTSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-jwtsource)
+- [LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcost)
+- [LLMRequestCostType](#github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcosttype)
+- [MCPAuthorizationSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpauthorizationsource)
+- [MCPAuthorizationTarget](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpauthorizationtarget)
+- [MCPBackendAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendapikey)
+- [MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendsecuritypolicy)
+- [MCPHeaderForward](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpheaderforward)
+- [MCPRouteAuthorization](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorization)
+- [MCPRouteAuthorizationRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorizationrule)
+- [MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutebackendref)
+- [MCPRouteOAuth](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteoauth)
+- [MCPRouteSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutesecuritypolicy)
+- [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutespec)
+- [MCPRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutestatus)
+- [MCPToolFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcptoolfilter)
+- [ProtectedResourceMetadata](#github-com-envoyproxy-ai-gateway-api-v1beta1-protectedresourcemetadata)
+- [ToolCall](#github-com-envoyproxy-ai-gateway-api-v1beta1-toolcall)
+- [VersionedAPISchema](#github-com-envoyproxy-ai-gateway-api-v1beta1-versionedapischema)
 
 ### Type Definitions
-#### AIGatewayRouteRule
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterule">AIGatewayRouteRule</a>
 
 
 
 **Appears in:**
-- [AIGatewayRouteSpec](#aigatewayroutespec)
+- [AIGatewayRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroutespec)
 
 AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
 
@@ -3043,12 +3047,12 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
 
 <ApiField
   name="backendRefs"
-  type="[AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref) array"
+  type="[AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulebackendref) array"
   required="false"
   description="BackendRefs is the list of backends that this rule will route the traffic to.<br />Each backend can have a weight that determines the traffic distribution.<br />The namespace of each backend defaults to the same namespace as the AIGatewayRoute when not specified.<br />Cross-namespace references are supported by specifying the namespace field.<br />When a namespace different than the AIGatewayRoute's namespace is specified,<br />a ReferenceGrant object is required in the referent namespace to allow that<br />namespace's owner to accept the reference.<br />BackendRefs can reference either AIServiceBackend resources (default) or InferencePool resources<br />from the Gateway API Inference Extension. When referencing InferencePool resources:<br />- Only one InferencePool backend is allowed per rule<br />- Cannot mix InferencePool with AIServiceBackend references in the same rule<br />- Fallback behavior is handled by the InferencePool's endpoint picker<br />For AIServiceBackend references, you can achieve fallback behavior by configuring multiple backends<br />combined with the BackendTrafficPolicy of Envoy Gateway.<br />Please refer to https://gateway.envoyproxy.io/docs/tasks/traffic/failover/ as well as<br />https://gateway.envoyproxy.io/docs/tasks/traffic/retry/."
 /><ApiField
   name="matches"
-  type="[AIGatewayRouteRuleMatch](#aigatewayrouterulematch) array"
+  type="[AIGatewayRouteRuleMatch](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulematch) array"
   required="false"
   description="Matches is the list of AIGatewayRouteMatch that this rule will match the traffic to.<br />This is a subset of the HTTPRouteMatch in the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteMatch"
 /><ApiField
@@ -3070,12 +3074,12 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
 />
 
 
-#### AIGatewayRouteRuleBackendRef
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulebackendref">AIGatewayRouteRuleBackendRef</a>
 
 
 
 **Appears in:**
-- [AIGatewayRouteRule](#aigatewayrouterule)
+- [AIGatewayRouteRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterule)
 
 AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
 It can reference either an AIServiceBackend or an InferencePool resource.
@@ -3111,12 +3115,12 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   description="Name of the model in the backend. If provided this will override the name provided in the request.<br />This field is ignored when referencing InferencePool resources."
 /><ApiField
   name="headerMutation"
-  type="[HTTPHeaderMutation](#httpheadermutation)"
+  type="[HTTPHeaderMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadermutation)"
   required="false"
   description="HeaderMutation defines the request header mutation to be applied to this backend.<br />When both route-level and backend-level HeaderMutation are defined,<br />route-level takes precedence over backend-level for conflicting operations.<br />This field is ignored when referencing InferencePool resources."
 /><ApiField
   name="bodyMutation"
-  type="[HTTPBodyMutation](#httpbodymutation)"
+  type="[HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodymutation)"
   required="false"
   description="BodyMutation defines the request body mutation to be applied to this backend.<br />This allows modification of JSON fields in the request body before sending to the backend.<br />When both route-level and backend-level BodyMutation are defined,<br />route-level takes precedence over backend-level for conflicting operations.<br />This field is ignored when referencing InferencePool resources."
 /><ApiField
@@ -3134,12 +3138,12 @@ It can reference either an AIServiceBackend or an InferencePool resource.
 />
 
 
-#### AIGatewayRouteRuleMatch
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulematch">AIGatewayRouteRuleMatch</a>
 
 
 
 **Appears in:**
-- [AIGatewayRouteRule](#aigatewayrouterule)
+- [AIGatewayRouteRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterule)
 
 
 
@@ -3155,12 +3159,12 @@ It can reference either an AIServiceBackend or an InferencePool resource.
 />
 
 
-#### AIGatewayRouteSpec
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroutespec">AIGatewayRouteSpec</a>
 
 
 
 **Appears in:**
-- [AIGatewayRoute](#aigatewayroute)
+- [AIGatewayRoute](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroute)
 
 AIGatewayRouteSpec details the AIGatewayRoute configuration.
 
@@ -3175,23 +3179,23 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   description="ParentRefs are the names of the Gateway resources this AIGatewayRoute is being attached to.<br />Currently, each reference's Kind must be Gateway."
 /><ApiField
   name="rules"
-  type="[AIGatewayRouteRule](#aigatewayrouterule) array"
+  type="[AIGatewayRouteRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterule) array"
   required="true"
   description="Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.<br />Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).<br />AI Gateway controller will generate a HTTPRoute based on the configuration given here with the additional<br />modifications to achieve the necessary jobs, notably inserting the AI Gateway filter responsible for<br />the transformation of the request and response, etc.<br />In the matching conditions in the AIGatewayRouteRule, `x-ai-eg-model` header is available<br />if we want to describe the routing behavior based on the model name. The model name is extracted<br />from the request content before the routing decision.<br />How multiple rules are matched is the same as the Gateway API. See for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRoute"
 /><ApiField
   name="llmRequestCosts"
-  type="[LLMRequestCost](#llmrequestcost) array"
+  type="[LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcost) array"
   required="false"
   description="LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.<br />The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic<br />metadata per HTTP request. The namespaced key is `io.envoy.ai_gateway`.<br />These route-level costs override any global defaults defined in GatewayConfig.Spec.GlobalLLMRequestCosts<br />for the same metadataKey. If a metadataKey is not defined in either place, no cost is calculated for it.<br />This allows you to define common cost formulas once at the gateway level (e.g., via GatewayConfig)<br />and only override them in specific routes when needed (e.g., premium routes with different pricing).<br />For example, let's say we have the following LLMRequestCosts configuration:<br />```yaml<br />	llmRequestCosts:<br />	- metadataKey: llm_input_token<br />	  type: InputToken<br />	- metadataKey: llm_output_token<br />	  type: OutputToken<br />	- metadataKey: llm_total_token<br />	  type: TotalToken<br />	- metadataKey: llm_cached_input_token<br />	  type: CachedInputToken<br />- metadataKey: llm_cache_creation_input_token<br />   type: CacheCreationInputToken<br />```<br />Then, with the following BackendTrafficPolicy of Envoy Gateway, you can have three<br />rate limit buckets for each unique x-tenant-id header value. One bucket is for the input token,<br />the other is for the output token, and the last one is for the total token.<br />Each bucket will be reduced by the corresponding token usage captured by the AI Gateway filter.<br />```yaml<br />	apiVersion: gateway.envoyproxy.io/v1alpha1<br />	kind: BackendTrafficPolicy<br />	metadata:<br />	  name: some-example-token-rate-limit<br />	  namespace: default<br />	spec:<br />	  targetRefs:<br />	  - group: gateway.networking.k8s.io<br />	     kind: HTTPRoute<br />	     name: usage-rate-limit<br />	  rateLimit:<br />	    type: Global<br />	    global:<br />	      rules:<br />	        - clientSelectors:<br />	            # Do the rate limiting based on the x-tenant-id header.<br />	            - headers:<br />	                - name: x-tenant-id<br />	                  type: Distinct<br />	          limit:<br />	            # Configures the number of `tokens` allowed per hour.<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              # Setting the request cost to zero allows to only check the rate limit budget,<br />	              # and not consume the budget on the request path.<br />	              number: 0<br />	            # This specifies the cost of the response retrieved from the dynamic metadata set by the AI Gateway filter.<br />	            # The extracted value will be used to consume the rate limit budget, and subsequent requests will be rate limited<br />	            # if the budget is exhausted.<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_input_token<br />	        - clientSelectors:<br />	            - headers:<br />	                - name: x-tenant-id<br />	                  type: Distinct<br />	          limit:<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              number: 0<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_output_token<br />	        - clientSelectors:<br />	            - headers:<br />	                - name: x-tenant-id<br />	                  type: Distinct<br />	          limit:<br />	            requests: 10000<br />	            unit: Hour<br />	          cost:<br />	            request:<br />	              from: Number<br />	              number: 0<br />	            response:<br />	              from: Metadata<br />	              metadata:<br />	                namespace: io.envoy.ai_gateway<br />	                key: llm_total_token<br />```<br />Note that when multiple AIGatewayRoute resources are attached to the same Gateway, and<br />different costs are configured for the same metadata key, each route's rule is carried in<br />the filter configuration with the route identity; the data plane selects the matching rule<br />per request (by route), so each route can define its own cost for the same metadata key."
 />
 
 
-#### AIGatewayRouteStatus
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroutestatus">AIGatewayRouteStatus</a>
 
 
 
 **Appears in:**
-- [AIGatewayRoute](#aigatewayroute)
+- [AIGatewayRoute](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroute)
 
 AIGatewayRouteStatus contains the conditions by the reconciliation result.
 
@@ -3207,12 +3211,12 @@ AIGatewayRouteStatus contains the conditions by the reconciliation result.
 />
 
 
-#### AIServiceBackendSpec
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendspec">AIServiceBackendSpec</a>
 
 
 
 **Appears in:**
-- [AIServiceBackend](#aiservicebackend)
+- [AIServiceBackend](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackend)
 
 AIServiceBackendSpec details the AIServiceBackend configuration.
 
@@ -3222,7 +3226,7 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
 
 <ApiField
   name="schema"
-  type="[VersionedAPISchema](#versionedapischema)"
+  type="[VersionedAPISchema](#github-com-envoyproxy-ai-gateway-api-v1beta1-versionedapischema)"
   required="true"
   description="APISchema specifies the API schema of the output format of requests from<br />Envoy that this AIServiceBackend can accept as incoming requests.<br />Based on this schema, the ai-gateway will perform the necessary transformation for<br />the pair of AIGatewayRouteSpec.APISchema and AIServiceBackendSpec.APISchema.<br />This is required to be set."
 /><ApiField
@@ -3232,23 +3236,23 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   description="BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.<br />A backend must be a Backend resource of Envoy Gateway. Note that k8s Service will be supported<br />as a backend in the future. See https://github.com/envoyproxy/ai-gateway/issues/902 for more details.<br />This is required to be set."
 /><ApiField
   name="headerMutation"
-  type="[HTTPHeaderMutation](#httpheadermutation)"
+  type="[HTTPHeaderMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadermutation)"
   required="false"
   description="HeaderMutation defines the mutation of HTTP headers that will be applied to the request<br />before sending it to the backend."
 /><ApiField
   name="bodyMutation"
-  type="[HTTPBodyMutation](#httpbodymutation)"
+  type="[HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodymutation)"
   required="false"
   description="BodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request<br />before sending it to the backend."
 />
 
 
-#### AIServiceBackendStatus
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendstatus">AIServiceBackendStatus</a>
 
 
 
 **Appears in:**
-- [AIServiceBackend](#aiservicebackend)
+- [AIServiceBackend](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackend)
 
 AIServiceBackendStatus contains the conditions by the reconciliation result.
 
@@ -3264,12 +3268,12 @@ AIServiceBackendStatus contains the conditions by the reconciliation result.
 />
 
 
-#### APISchema
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-apischema">APISchema</a>
 
 **Underlying type:** string
 
 **Appears in:**
-- [VersionedAPISchema](#versionedapischema)
+- [VersionedAPISchema](#github-com-envoyproxy-ai-gateway-api-v1beta1-versionedapischema)
 
 APISchema defines the API schema.
 
@@ -3318,12 +3322,12 @@ APISchema defines the API schema.
   required="false"
   description="APISchemaAWSAnthropic is the schema for Anthropic models hosted on AWS Bedrock.<br />Uses the native Anthropic Messages API format for requests and responses.<br />When used with /v1/chat/completions endpoint, translates OpenAI format to Anthropic.<br />When used with /v1/messages endpoint, passes through native Anthropic format.<br />https://aws.amazon.com/bedrock/anthropic/<br />https://docs.claude.com/en/api/claude-on-amazon-bedrock<br />"
 />
-#### AWSCredentialsFile
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-awscredentialsfile">AWSCredentialsFile</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
+- [BackendSecurityPolicyAWSCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyawscredentials)
 
 AWSCredentialsFile specifies the credentials file to use for the AWS provider.
 Envoy reads the secret file, and the profile to use is specified by the Profile field.
@@ -3346,12 +3350,12 @@ Envoy reads the secret file, and the profile to use is specified by the Profile 
 />
 
 
-#### AWSOIDCExchangeToken
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-awsoidcexchangetoken">AWSOIDCExchangeToken</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)
+- [BackendSecurityPolicyAWSCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyawscredentials)
 
 AWSOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.
 For AWS, the controller will query STS to obtain AWS AccessKeyId, SecretAccessKey, and SessionToken,
@@ -3384,12 +3388,12 @@ and store them in a temporary credentials file.
 />
 
 
-#### AzureOIDCExchangeToken
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-azureoidcexchangetoken">AzureOIDCExchangeToken</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)
+- [BackendSecurityPolicyAzureCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazurecredentials)
 
 AzureOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.
 For Azure, the controller will query Azure Entra ID to get an Azure Access Token,
@@ -3417,12 +3421,12 @@ and store them in a secret.
 />
 
 
-#### BackendSecurityPolicyAPIKey
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyapikey">BackendSecurityPolicyAPIKey</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyAPIKey specifies the API key.
 
@@ -3438,12 +3442,12 @@ BackendSecurityPolicyAPIKey specifies the API key.
 />
 
 
-#### BackendSecurityPolicyAWSCredentials
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyawscredentials">BackendSecurityPolicyAWSCredentials</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyAWSCredentials contains the supported authentication mechanisms to access AWS.
 
@@ -3470,23 +3474,23 @@ they approach expiration (typically hourly for IRSA and Pod Identity).
   description="Region specifies the AWS region associated with the policy."
 /><ApiField
   name="credentialsFile"
-  type="[AWSCredentialsFile](#awscredentialsfile)"
+  type="[AWSCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1beta1-awscredentialsfile)"
   required="false"
   description="CredentialsFile specifies the credentials file to use for the AWS provider.<br />When specified, this takes precedence over the default credential chain."
 /><ApiField
   name="oidcExchangeToken"
-  type="[AWSOIDCExchangeToken](#awsoidcexchangetoken)"
+  type="[AWSOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-awsoidcexchangetoken)"
   required="false"
   description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access AWS.<br />When specified, this takes precedence over the default credential chain."
 />
 
 
-#### BackendSecurityPolicyAnthropicAPIKey
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyanthropicapikey">BackendSecurityPolicyAnthropicAPIKey</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyAnthropicAPIKey specifies the Anthropic API key.
 
@@ -3502,12 +3506,12 @@ BackendSecurityPolicyAnthropicAPIKey specifies the Anthropic API key.
 />
 
 
-#### BackendSecurityPolicyAzureAPIKey
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazureapikey">BackendSecurityPolicyAzureAPIKey</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyAzureAPIKey specifies the Azure OpenAI API key.
 
@@ -3523,12 +3527,12 @@ BackendSecurityPolicyAzureAPIKey specifies the Azure OpenAI API key.
 />
 
 
-#### BackendSecurityPolicyAzureCredentials
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazurecredentials">BackendSecurityPolicyAzureCredentials</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
 Only one of ClientSecretRef or OIDCExchangeToken must be specified. Credentials will not be generated if
@@ -3555,18 +3559,18 @@ neither are set.
   description="ClientSecretRef is the reference to the secret containing the Azure client secret.<br />ai-gateway must be given the permission to read this secret.<br />The key of secret should be `client-secret`."
 /><ApiField
   name="oidcExchangeToken"
-  type="[AzureOIDCExchangeToken](#azureoidcexchangetoken)"
+  type="[AzureOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-azureoidcexchangetoken)"
   required="false"
   description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access Azure."
 />
 
 
-#### BackendSecurityPolicyGCPCredentials
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygcpcredentials">BackendSecurityPolicyGCPCredentials</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyGCPCredentials contains the supported authentication mechanisms to access GCP.
 
@@ -3590,26 +3594,26 @@ default service account credentials when running on GCP.
   description="Region is the GCP region associated with the policy."
 /><ApiField
   name="credentialsFile"
-  type="[GCPCredentialsFile](#gcpcredentialsfile)"
+  type="[GCPCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpcredentialsfile)"
   required="false"
   description="CredentialsFile specifies the service account credentials file to use for the GCP provider."
 /><ApiField
   name="workloadIdentityFederationConfig"
-  type="[GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)"
+  type="[GCPWorkloadIdentityFederationConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpworkloadidentityfederationconfig)"
   required="false"
   description="WorkloadIdentityFederationConfig is the configuration for the GCP Workload Identity Federation."
 />
 
 
-#### BackendSecurityPolicyOIDC
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyoidc">BackendSecurityPolicyOIDC</a>
 
 
 
 **Appears in:**
-- [AWSOIDCExchangeToken](#awsoidcexchangetoken)
-- [AzureOIDCExchangeToken](#azureoidcexchangetoken)
-- [GCPOIDCExchangeToken](#gcpoidcexchangetoken)
-- [GCPWorkloadIdentityProvider](#gcpworkloadidentityprovider)
+- [AWSOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-awsoidcexchangetoken)
+- [AzureOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-azureoidcexchangetoken)
+- [GCPOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpoidcexchangetoken)
+- [GCPWorkloadIdentityProvider](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpworkloadidentityprovider)
 
 BackendSecurityPolicyOIDC specifies OIDC related fields.
 
@@ -3635,12 +3639,12 @@ BackendSecurityPolicyOIDC specifies OIDC related fields.
 />
 
 
-#### BackendSecurityPolicySpec
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec">BackendSecurityPolicySpec</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicy](#backendsecuritypolicy)
+- [BackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicy)
 
 BackendSecurityPolicySpec specifies authentication rules on access the provider from the Gateway.
 Only one mechanism to access a backend(s) can be specified.
@@ -3658,48 +3662,48 @@ Only one type of BackendSecurityPolicy can be defined.
   description="TargetRefs are the names of the AIServiceBackend or InferencePool resources this BackendSecurityPolicy is being attached to.<br />Attaching multiple BackendSecurityPolicies to the same resource is invalid and will result in an error<br />during the reconciliation of the resource."
 /><ApiField
   name="type"
-  type="[BackendSecurityPolicyType](#backendsecuritypolicytype)"
+  type="[BackendSecurityPolicyType](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicytype)"
   required="true"
   description="Type specifies the type of the backend security policy."
 /><ApiField
   name="apiKey"
-  type="[BackendSecurityPolicyAPIKey](#backendsecuritypolicyapikey)"
+  type="[BackendSecurityPolicyAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyapikey)"
   required="false"
   description="APIKey is a mechanism to access a backend(s). The API key will be injected into the Authorization header."
 /><ApiField
   name="awsCredentials"
-  type="[BackendSecurityPolicyAWSCredentials](#backendsecuritypolicyawscredentials)"
+  type="[BackendSecurityPolicyAWSCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyawscredentials)"
   required="false"
   description="AWSCredentials is a mechanism to access a backend(s). AWS specific logic will be applied."
 /><ApiField
   name="azureAPIKey"
-  type="[BackendSecurityPolicyAzureAPIKey](#backendsecuritypolicyazureapikey)"
+  type="[BackendSecurityPolicyAzureAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazureapikey)"
   required="false"
   description="AzureAPIKey is a mechanism to access Azure OpenAI backend(s). The API key will be injected into the api-key header."
 /><ApiField
   name="azureCredentials"
-  type="[BackendSecurityPolicyAzureCredentials](#backendsecuritypolicyazurecredentials)"
+  type="[BackendSecurityPolicyAzureCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazurecredentials)"
   required="false"
   description="AzureCredentials is a mechanism to access a backend(s). Azure OpenAI specific logic will be applied."
 /><ApiField
   name="gcpCredentials"
-  type="[BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)"
+  type="[BackendSecurityPolicyGCPCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygcpcredentials)"
   required="false"
   description="GCPCredentials is a mechanism to access a backend(s). GCP specific logic will be applied."
 /><ApiField
   name="anthropicAPIKey"
-  type="[BackendSecurityPolicyAnthropicAPIKey](#backendsecuritypolicyanthropicapikey)"
+  type="[BackendSecurityPolicyAnthropicAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyanthropicapikey)"
   required="false"
   description="AnthropicAPIKey is a mechanism to access Anthropic backend(s). The API key will be injected into the `x-api-key` header.<br />https://docs.claude.com/en/api/overview#authentication"
 />
 
 
-#### BackendSecurityPolicyStatus
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicystatus">BackendSecurityPolicyStatus</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicy](#backendsecuritypolicy)
+- [BackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicy)
 
 BackendSecurityPolicyStatus contains the conditions by the reconciliation result.
 
@@ -3715,12 +3719,12 @@ BackendSecurityPolicyStatus contains the conditions by the reconciliation result
 />
 
 
-#### BackendSecurityPolicyType
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicytype">BackendSecurityPolicyType</a>
 
 **Underlying type:** string
 
 **Appears in:**
-- [BackendSecurityPolicySpec](#backendsecuritypolicyspec)
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyType specifies the type of auth mechanism used to access a backend.
 
@@ -3759,12 +3763,12 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   required="false"
   description=""
 />
-#### GCPCredentialsFile
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gcpcredentialsfile">GCPCredentialsFile</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)
+- [BackendSecurityPolicyGCPCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygcpcredentials)
 
 GCPCredentialsFile specifies the service account key json file to authenticate with GCP provider.
 
@@ -3780,12 +3784,12 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
 />
 
 
-#### GCPOIDCExchangeToken
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gcpoidcexchangetoken">GCPOIDCExchangeToken</a>
 
 
 
 **Appears in:**
-- [GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
+- [GCPWorkloadIdentityFederationConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpworkloadidentityfederationconfig)
 
 
 
@@ -3811,12 +3815,12 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
 />
 
 
-#### GCPServiceAccountImpersonationConfig
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gcpserviceaccountimpersonationconfig">GCPServiceAccountImpersonationConfig</a>
 
 
 
 **Appears in:**
-- [GCPWorkloadIdentityFederationConfig](#gcpworkloadidentityfederationconfig)
+- [GCPWorkloadIdentityFederationConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpworkloadidentityfederationconfig)
 
 
 
@@ -3832,12 +3836,12 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
 />
 
 
-#### GCPWorkloadIdentityFederationConfig
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gcpworkloadidentityfederationconfig">GCPWorkloadIdentityFederationConfig</a>
 
 
 
 **Appears in:**
-- [BackendSecurityPolicyGCPCredentials](#backendsecuritypolicygcpcredentials)
+- [BackendSecurityPolicyGCPCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygcpcredentials)
 
 
 
@@ -3857,7 +3861,7 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
   description="WorkloadIdentityProviderName is the name of the external identity provider as registered on Google Cloud Platform."
 /><ApiField
   name="oidcExchangeToken"
-  type="[GCPOIDCExchangeToken](#gcpoidcexchangetoken)"
+  type="[GCPOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpoidcexchangetoken)"
   required="true"
   description="OIDCExchangeToken specifies the oidc configurations used to obtain an oidc token. The oidc token will be<br />used to obtain temporary credentials to access GCP."
 /><ApiField
@@ -3867,19 +3871,19 @@ GCPCredentialsFile specifies the service account key json file to authenticate w
   description="WorkloadIdentityPoolName is the name of the workload identity pool defined in GCP.<br />https://cloud.google.com/iam/docs/workload-identity-federation?hl=en"
 /><ApiField
   name="serviceAccountImpersonation"
-  type="[GCPServiceAccountImpersonationConfig](#gcpserviceaccountimpersonationconfig)"
+  type="[GCPServiceAccountImpersonationConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpserviceaccountimpersonationconfig)"
   required="false"
   description="ServiceAccountImpersonation is the service account impersonation configuration.<br />This is used to impersonate a service account when getting access token."
 />
 
 
 
-#### GatewayConfigExtProc
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigextproc">GatewayConfigExtProc</a>
 
 
 
 **Appears in:**
-- [GatewayConfigSpec](#gatewayconfigspec)
+- [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigspec)
 
 GatewayConfigExtProc holds runtime-specific configuration for the external processor.
 
@@ -3895,12 +3899,12 @@ GatewayConfigExtProc holds runtime-specific configuration for the external proce
 />
 
 
-#### GatewayConfigSpec
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigspec">GatewayConfigSpec</a>
 
 
 
 **Appears in:**
-- [GatewayConfig](#gatewayconfig)
+- [GatewayConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfig)
 
 GatewayConfigSpec defines the configuration for the AI Gateway.
 
@@ -3910,23 +3914,23 @@ GatewayConfigSpec defines the configuration for the AI Gateway.
 
 <ApiField
   name="extProc"
-  type="[GatewayConfigExtProc](#gatewayconfigextproc)"
+  type="[GatewayConfigExtProc](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigextproc)"
   required="false"
   description="ExtProc defines the configuration for the external processor container."
 /><ApiField
   name="globalLLMRequestCosts"
-  type="[LLMRequestCost](#llmrequestcost) array"
+  type="[LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcost) array"
   required="false"
   description="GlobalLLMRequestCosts defines default LLM request costs that apply to all<br />routes referencing this GatewayConfig. These costs can be overridden on a<br />per-route basis via AIGatewayRoute.Spec.LLMRequestCosts.<br />When a request matches a route, the cost calculation proceeds as follows:<br /> 1. If the route defines LLMRequestCosts with a matching metadataKey, use that.<br /> 2. Otherwise, fall back to the global cost with that metadataKey (if defined here).<br /> 3. If neither exists, the cost is not calculated for that metadataKey.<br />This allows you to define common cost formulas once at the gateway level<br />(e.g., billing_charges = input_tokens + output_tokens) and only override<br />them in specific routes when needed (e.g., premium routes with different pricing)."
 />
 
 
-#### GatewayConfigStatus
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigstatus">GatewayConfigStatus</a>
 
 
 
 **Appears in:**
-- [GatewayConfig](#gatewayconfig)
+- [GatewayConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfig)
 
 GatewayConfigStatus defines the observed state of GatewayConfig.
 
@@ -3942,12 +3946,12 @@ GatewayConfigStatus defines the observed state of GatewayConfig.
 />
 
 
-#### HTTPBodyField
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodyfield">HTTPBodyField</a>
 
 
 
 **Appears in:**
-- [HTTPBodyMutation](#httpbodymutation)
+- [HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodymutation)
 
 HTTPBodyField represents a JSON field name and value for body mutation
 
@@ -3968,13 +3972,13 @@ HTTPBodyField represents a JSON field name and value for body mutation
 />
 
 
-#### HTTPBodyMutation
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodymutation">HTTPBodyMutation</a>
 
 
 
 **Appears in:**
-- [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
-- [AIServiceBackendSpec](#aiservicebackendspec)
+- [AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulebackendref)
+- [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendspec)
 
 HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request
 
@@ -3984,7 +3988,7 @@ HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will
 
 <ApiField
   name="set"
-  type="[HTTPBodyField](#httpbodyfield) array"
+  type="[HTTPBodyField](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodyfield) array"
   required="false"
   description="Set overwrites/adds the request body with the given JSON field (name, value)<br />before sending to the backend. Only top-level fields are currently supported.<br />Input:<br />  \{<br />    `model`: `gpt-4`,<br />    `service_tier`: `default`<br />  \}<br />Config:<br />  set:<br />  - path: `service_tier`<br />    value: `scale`<br />Output:<br />  \{<br />    `model`: `gpt-4`,<br />    `service_tier`: `scale`<br />  \}"
 /><ApiField
@@ -3995,13 +3999,13 @@ HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will
 />
 
 
-#### HTTPHeaderMutation
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadermutation">HTTPHeaderMutation</a>
 
 
 
 **Appears in:**
-- [AIGatewayRouteRuleBackendRef](#aigatewayrouterulebackendref)
-- [AIServiceBackendSpec](#aiservicebackendspec)
+- [AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulebackendref)
+- [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendspec)
 
 HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
 
@@ -4022,12 +4026,12 @@ HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to 
 />
 
 
-#### JWKS
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-jwks">JWKS</a>
 
 
 
 **Appears in:**
-- [MCPRouteOAuth](#mcprouteoauth)
+- [MCPRouteOAuth](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteoauth)
 
 JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HTTPS endpoint or from a local source.
 
@@ -4048,12 +4052,12 @@ JWKS defines how to obtain JSON Web Key Sets (JWKS) either from a remote HTTP/HT
 />
 
 
-#### JWTSource
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-jwtsource">JWTSource</a>
 
 
 
 **Appears in:**
-- [MCPAuthorizationSource](#mcpauthorizationsource)
+- [MCPAuthorizationSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpauthorizationsource)
 
 JWTSource defines the MCP authorization source for JWT tokens.
 At least one of scopes or claims must be provided.
@@ -4076,13 +4080,13 @@ Scopes and claims are AND-ed: when both are specified, both sets must match.
 />
 
 
-#### LLMRequestCost
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcost">LLMRequestCost</a>
 
 
 
 **Appears in:**
-- [AIGatewayRouteSpec](#aigatewayroutespec)
-- [GatewayConfigSpec](#gatewayconfigspec)
+- [AIGatewayRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroutespec)
+- [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigspec)
 
 LLMRequestCost configures each request cost.
 
@@ -4097,7 +4101,7 @@ LLMRequestCost configures each request cost.
   description="MetadataKey is the key of the metadata to store this cost of the request."
 /><ApiField
   name="type"
-  type="[LLMRequestCostType](#llmrequestcosttype)"
+  type="[LLMRequestCostType](#github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcosttype)"
   required="true"
   description="Type specifies the type of the request cost. The default is `OutputToken`,<br />and it uses `output token` as the cost. The other types are `InputToken`, `TotalToken`,<br />`CachedInputToken`, `CacheCreationInputToken`, `ReasoningToken`, and `CEL`."
 /><ApiField
@@ -4108,12 +4112,12 @@ LLMRequestCost configures each request cost.
 />
 
 
-#### LLMRequestCostType
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcosttype">LLMRequestCostType</a>
 
 **Underlying type:** string
 
 **Appears in:**
-- [LLMRequestCost](#llmrequestcost)
+- [LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcost)
 
 LLMRequestCostType specifies the type of the LLMRequestCost.
 
@@ -4157,12 +4161,12 @@ LLMRequestCostType specifies the type of the LLMRequestCost.
   required="false"
   description="LLMRequestCostTypeCEL is for calculating the cost using the CEL expression.<br />"
 />
-#### MCPAuthorizationSource
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcpauthorizationsource">MCPAuthorizationSource</a>
 
 
 
 **Appears in:**
-- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
+- [MCPRouteAuthorizationRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorizationrule)
 
 MCPAuthorizationSource defines the source of an authorization rule.
 
@@ -4172,18 +4176,18 @@ MCPAuthorizationSource defines the source of an authorization rule.
 
 <ApiField
   name="jwt"
-  type="[JWTSource](#jwtsource)"
+  type="[JWTSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-jwtsource)"
   required="true"
   description="JWT defines the JWT scopes required for this rule to match."
 />
 
 
-#### MCPAuthorizationTarget
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcpauthorizationtarget">MCPAuthorizationTarget</a>
 
 
 
 **Appears in:**
-- [MCPRouteAuthorizationRule](#mcprouteauthorizationrule)
+- [MCPRouteAuthorizationRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorizationrule)
 
 MCPAuthorizationTarget defines the target of an authorization rule.
 
@@ -4193,18 +4197,18 @@ MCPAuthorizationTarget defines the target of an authorization rule.
 
 <ApiField
   name="tools"
-  type="[ToolCall](#toolcall) array"
+  type="[ToolCall](#github-com-envoyproxy-ai-gateway-api-v1beta1-toolcall) array"
   required="true"
   description="Tools defines the list of tools this rule applies to."
 />
 
 
-#### MCPBackendAPIKey
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendapikey">MCPBackendAPIKey</a>
 
 
 
 **Appears in:**
-- [MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)
+- [MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendsecuritypolicy)
 
 MCPBackendAPIKey defines the configuration for the API Key Authentication to a backend.
 When both `header` and `queryParam` are unspecified, the API key will be injected into the "Authorization" header by default.
@@ -4236,12 +4240,12 @@ When both `header` and `queryParam` are unspecified, the API key will be injecte
 />
 
 
-#### MCPBackendSecurityPolicy
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendsecuritypolicy">MCPBackendSecurityPolicy</a>
 
 
 
 **Appears in:**
-- [MCPRouteBackendRef](#mcproutebackendref)
+- [MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutebackendref)
 
 MCPBackendSecurityPolicy defines the security policy for a backend MCP server.
 
@@ -4251,18 +4255,18 @@ MCPBackendSecurityPolicy defines the security policy for a backend MCP server.
 
 <ApiField
   name="apiKey"
-  type="[MCPBackendAPIKey](#mcpbackendapikey)"
+  type="[MCPBackendAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendapikey)"
   required="false"
   description="APIKey is a mechanism to access a backend. The API key will be injected into the request headers."
 />
 
 
-#### MCPHeaderForward
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcpheaderforward">MCPHeaderForward</a>
 
 
 
 **Appears in:**
-- [MCPRouteBackendRef](#mcproutebackendref)
+- [MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutebackendref)
 
 MCPHeaderForward specifies a header to extract from the incoming request and forward to a backend.
 
@@ -4283,12 +4287,12 @@ MCPHeaderForward specifies a header to extract from the incoming request and for
 />
 
 
-#### MCPRouteAuthorization
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorization">MCPRouteAuthorization</a>
 
 
 
 **Appears in:**
-- [MCPRouteSecurityPolicy](#mcproutesecuritypolicy)
+- [MCPRouteSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutesecuritypolicy)
 
 MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
 
@@ -4298,24 +4302,24 @@ MCPRouteAuthorization defines the authorization configuration for a MCPRoute.
 
 <ApiField
   name="defaultAction"
-  type="[AuthorizationAction](#authorizationaction)"
+  type="[AuthorizationAction](#github-com-envoyproxy-gateway-api-v1alpha1-authorizationaction)"
   required="false"
   defaultValue="Deny"
   description="DefaultAction is the action to take when no rules match. If unspecified, defaults to Deny."
 /><ApiField
   name="rules"
-  type="[MCPRouteAuthorizationRule](#mcprouteauthorizationrule) array"
+  type="[MCPRouteAuthorizationRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorizationrule) array"
   required="false"
   description="Rules defines a list of authorization rules.<br />These rules are evaluated in order, the first matching rule will be applied,<br />and the rest will be skipped.<br />If no rules are defined, the default action will be applied to all requests."
 />
 
 
-#### MCPRouteAuthorizationRule
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorizationrule">MCPRouteAuthorizationRule</a>
 
 
 
 **Appears in:**
-- [MCPRouteAuthorization](#mcprouteauthorization)
+- [MCPRouteAuthorization](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorization)
 
 MCPRouteAuthorizationRule defines an authorization rule for MCPRoute based on the MCP authorization spec.
 Reference: https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-challenge-handling
@@ -4326,12 +4330,12 @@ Reference: https://modelcontextprotocol.io/specification/draft/basic/authorizati
 
 <ApiField
   name="source"
-  type="[MCPAuthorizationSource](#mcpauthorizationsource)"
+  type="[MCPAuthorizationSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpauthorizationsource)"
   required="true"
   description="Source defines the authorization source for this rule.<br />If not specified, the rule will match all sources."
 /><ApiField
   name="target"
-  type="[MCPAuthorizationTarget](#mcpauthorizationtarget)"
+  type="[MCPAuthorizationTarget](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpauthorizationtarget)"
   required="true"
   description="Target defines the authorization target for this rule.<br />If not specified, the rule will match all targets."
 /><ApiField
@@ -4341,19 +4345,19 @@ Reference: https://modelcontextprotocol.io/specification/draft/basic/authorizati
   description="CEL specifies a Common Expression Language (CEL) expression evaluated for this rule.<br />The expression must return a boolean; evaluation errors or non-boolean results<br />are treated as `no match`.<br />Example CEL expressions:<br />	* `request.method == `POST``<br />	* `request.headers[`x-custom-header`] == `AllowedValue``<br />	* `request.mcp.tool in [`toolA`, `toolB`]`<br />Available attributes in the CEL expression:<br />	* request.method: HTTP method such as GET or POST. Type: string.<br />	* request.headers: map of headers with lowercased keys, first value only. Type: map[string]string.<br />	* request.headers_all: map of headers with lowercased keys, all values. Type: map[string][]string.<br />	* request.path: request path such as /mcp. Type: string.<br />	* request.auth.jwt.claims: JWT claims when a bearer JWT is present. Type: map[string]any.<br />	* request.auth.jwt.scopes: JWT scopes when a bearer JWT is present. Type: []string.<br />	* request.mcp.method: MCP method such as tools/list or tools/call. Type: string.<br />	* request.mcp.backend: upstream backend name (for example, `kiwi` or `github`). Type: string.<br />	* request.mcp.tool: tool name without backend prefix (for example, `list_issues`). Type: string.<br />	* request.mcp.params: parameters of the MCP method, including keys like `_meta` and `arguments`. Type: object.<br />Note: The CEL expression support is experimental, and the attributes<br />available to the expression may change in future releases."
 /><ApiField
   name="action"
-  type="[AuthorizationAction](#authorizationaction)"
+  type="[AuthorizationAction](#github-com-envoyproxy-gateway-api-v1alpha1-authorizationaction)"
   required="false"
   defaultValue="Allow"
   description="Action is the authorization decision for matching requests. If unspecified, defaults to Allow."
 />
 
 
-#### MCPRouteBackendRef
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutebackendref">MCPRouteBackendRef</a>
 
 
 
 **Appears in:**
-- [MCPRouteSpec](#mcproutespec)
+- [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutespec)
 
 MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP server.
 
@@ -4363,18 +4367,18 @@ MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP serve
 
 <ApiField
   name="group"
-  type="[Group](#group)"
+  type="[Group](#sigs-k8s-io-gateway-api-apis-v1-group)"
   required="false"
   description="Group is the group of the referent. For example, `gateway.networking.k8s.io`.<br />When unspecified or empty string, core API group is inferred."
 /><ApiField
   name="kind"
-  type="[Kind](#kind)"
+  type="[Kind](#sigs-k8s-io-gateway-api-apis-v1-kind)"
   required="false"
   defaultValue="Service"
   description="Kind is the Kubernetes resource kind of the referent. For example<br />`Service`.<br />Defaults to `Service` when not specified.<br />ExternalName services can refer to CNAME DNS records that may live<br />outside of the cluster and as such are difficult to reason about in<br />terms of conformance. They also may not be safe to forward to (see<br />CVE-2021-25740 for more information). Implementations SHOULD NOT<br />support ExternalName Services.<br />Support: Core (Services with a type other than ExternalName)<br />Support: Implementation-specific (Services with type ExternalName)"
 /><ApiField
   name="name"
-  type="[ObjectName](#objectname)"
+  type="[ObjectName](#sigs-k8s-io-gateway-api-apis-v1-objectname)"
   required="true"
   description="Name is the name of the referent."
 /><ApiField
@@ -4384,7 +4388,7 @@ MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP serve
   description="Namespace is the namespace of the backend. When unspecified, the local<br />namespace is inferred.<br />Note that when a namespace different than the local namespace is specified,<br />a ReferenceGrant object is required in the referent namespace to allow that<br />namespace's owner to accept the reference. See the ReferenceGrant<br />documentation for details.<br />Support: Core"
 /><ApiField
   name="port"
-  type="[PortNumber](#portnumber)"
+  type="[PortNumber](#sigs-k8s-io-gateway-api-apis-v1-portnumber)"
   required="false"
   description="Port specifies the destination port number to use for this resource.<br />Port is required when the referent is a Kubernetes Service. In this<br />case, the port number is the service port number, not the target port.<br />For other resources, destination port might be derived from the referent<br />resource or this field."
 /><ApiField
@@ -4395,28 +4399,28 @@ MCPRouteBackendRef wraps a EG's BackendObjectReference to reference an MCP serve
   description="Path is the HTTP endpoint path of the backend MCP server.<br />If not specified, the default is `/mcp`."
 /><ApiField
   name="toolSelector"
-  type="[MCPToolFilter](#mcptoolfilter)"
+  type="[MCPToolFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcptoolfilter)"
   required="false"
   description="ToolSelector filters the tools exposed by this MCP server.<br />Supports exact matches and RE2-compatible regular expressions for both include and exclude patterns.<br />If not specified, all tools from the MCP server are exposed."
 /><ApiField
   name="securityPolicy"
-  type="[MCPBackendSecurityPolicy](#mcpbackendsecuritypolicy)"
+  type="[MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendsecuritypolicy)"
   required="false"
   description="SecurityPolicy is the security policy to apply to this MCP server."
 /><ApiField
   name="forwardHeaders"
-  type="[MCPHeaderForward](#mcpheaderforward) array"
+  type="[MCPHeaderForward](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpheaderforward) array"
   required="false"
   description="ForwardHeaders specifies HTTP headers to extract from the incoming client request<br />and forward to this backend MCP server.<br />This enables per-user authentication passthrough (e.g., personal access tokens)<br />without requiring OAuth configuration.<br />Each entry specifies a header name to extract and an optional rename for the backend."
 />
 
 
-#### MCPRouteOAuth
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteoauth">MCPRouteOAuth</a>
 
 
 
 **Appears in:**
-- [MCPRouteSecurityPolicy](#mcproutesecuritypolicy)
+- [MCPRouteSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutesecuritypolicy)
 
 MCPRouteOAuth defines a MCP spec compatible OAuth authentication configuration for a MCPRoute.
 Reference: https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization
@@ -4437,12 +4441,12 @@ Reference: https://modelcontextprotocol.io/specification/2025-06-18/basic/author
   description="Audiences is a list of JWT audiences allowed access.<br />It is recommended to set this field for token audience validation, as it is a security best practice to prevent token misuse.<br />Reference: https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#token-audience-binding-and-validation"
 /><ApiField
   name="jwks"
-  type="[JWKS](#jwks)"
+  type="[JWKS](#github-com-envoyproxy-ai-gateway-api-v1beta1-jwks)"
   required="false"
   description="JWKS defines how a JSON Web Key Sets (JWKS) can be obtained to verify the access tokens presented by the clients.<br />If not specified, the JWKS URI will be discovered from the OAuth 2.0 Authorization Server Metadata<br />as per RFC 8414 by querying the `/.well-known/oauth-authorization-server` endpoint on the Issuer."
 /><ApiField
   name="protectedResourceMetadata"
-  type="[ProtectedResourceMetadata](#protectedresourcemetadata)"
+  type="[ProtectedResourceMetadata](#github-com-envoyproxy-ai-gateway-api-v1beta1-protectedresourcemetadata)"
   required="true"
   description="ProtectedResourceMetadata defines the OAuth 2.0 Resource Server Metadata as per RFC 8414.<br />This is used to expose the metadata endpoint for mcp clients to discover the authorization servers,<br />supported scopes, and JWKS URI."
 /><ApiField
@@ -4453,12 +4457,12 @@ Reference: https://modelcontextprotocol.io/specification/2025-06-18/basic/author
 />
 
 
-#### MCPRouteSecurityPolicy
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutesecuritypolicy">MCPRouteSecurityPolicy</a>
 
 
 
 **Appears in:**
-- [MCPRouteSpec](#mcproutespec)
+- [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutespec)
 
 MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
 
@@ -4468,7 +4472,7 @@ MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
 
 <ApiField
   name="oauth"
-  type="[MCPRouteOAuth](#mcprouteoauth)"
+  type="[MCPRouteOAuth](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteoauth)"
   required="false"
   description="OAuth defines the configuration for the MCP spec compatible OAuth authentication."
 /><ApiField
@@ -4478,23 +4482,23 @@ MCPRouteSecurityPolicy defines the security policy for a MCPRoute.
   description="APIKeyAuth defines the configuration for the API Key Authentication."
 /><ApiField
   name="extAuth"
-  type="[ExtAuth](#extauth)"
+  type="[ExtAuth](#github-com-envoyproxy-gateway-api-v1alpha1-extauth)"
   required="false"
   description="ExtAuth defines the configuration for External Authorization."
 /><ApiField
   name="authorization"
-  type="[MCPRouteAuthorization](#mcprouteauthorization)"
+  type="[MCPRouteAuthorization](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorization)"
   required="false"
   description="Authorization defines the configuration for the MCP spec compatible authorization."
 />
 
 
-#### MCPRouteSpec
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutespec">MCPRouteSpec</a>
 
 
 
 **Appears in:**
-- [MCPRoute](#mcproute)
+- [MCPRoute](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproute)
 
 MCPRouteSpec details the MCPRoute configuration.
 
@@ -4520,23 +4524,23 @@ MCPRouteSpec details the MCPRoute configuration.
   description="Headers are HTTP headers that must match for this route to be selected.<br />Multiple match values are ANDed together, meaning, a request must match all the specified headers to select the route."
 /><ApiField
   name="backendRefs"
-  type="[MCPRouteBackendRef](#mcproutebackendref) array"
+  type="[MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutebackendref) array"
   required="true"
   description="BackendRefs is a list of backend references to the MCP servers.<br />These MCP servers will be aggregated and exposed as a single MCP endpoint to the clients.<br />From the client's perspective, they only need to configure a single MCP server URL, e.g. `https://api.example.com/mcp`,<br />and the Envoy AI Gateway will route the requests to the appropriate MCP server based on the requests.<br />All names must be unique within this list to avoid potential tools, resources, etc. name collisions.<br />Also, cross-namespace references are not supported. In other words, the backend MCP servers must be in the<br />same namespace as the MCPRoute."
 /><ApiField
   name="securityPolicy"
-  type="[MCPRouteSecurityPolicy](#mcproutesecuritypolicy)"
+  type="[MCPRouteSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutesecuritypolicy)"
   required="false"
   description="SecurityPolicy defines the security policy for this MCPRoute."
 />
 
 
-#### MCPRouteStatus
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutestatus">MCPRouteStatus</a>
 
 
 
 **Appears in:**
-- [MCPRoute](#mcproute)
+- [MCPRoute](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproute)
 
 MCPRouteStatus contains the conditions by the reconciliation result.
 
@@ -4552,12 +4556,12 @@ MCPRouteStatus contains the conditions by the reconciliation result.
 />
 
 
-#### MCPToolFilter
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcptoolfilter">MCPToolFilter</a>
 
 
 
 **Appears in:**
-- [MCPRouteBackendRef](#mcproutebackendref)
+- [MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutebackendref)
 
 MCPToolFilter filters tools using include and exclude patterns with exact matches or regular expressions.
 Exclude rules take precedence over include rules (deny-wins). When both include and exclude are specified,
@@ -4590,12 +4594,12 @@ a tool must match an include rule AND not match any exclude rule to be allowed.
 />
 
 
-#### ProtectedResourceMetadata
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-protectedresourcemetadata">ProtectedResourceMetadata</a>
 
 
 
 **Appears in:**
-- [MCPRouteOAuth](#mcprouteoauth)
+- [MCPRouteOAuth](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteoauth)
 
 ProtectedResourceMetadata represents the Protected Resource Metadata	of the MCP server as per RFC 9728.
 
@@ -4640,12 +4644,12 @@ References:
 />
 
 
-#### ToolCall
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-toolcall">ToolCall</a>
 
 
 
 **Appears in:**
-- [MCPAuthorizationTarget](#mcpauthorizationtarget)
+- [MCPAuthorizationTarget](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpauthorizationtarget)
 
 ToolCall represents a tool call in the MCP authorization target.
 
@@ -4666,12 +4670,12 @@ ToolCall represents a tool call in the MCP authorization target.
 />
 
 
-#### VersionedAPISchema
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-versionedapischema">VersionedAPISchema</a>
 
 
 
 **Appears in:**
-- [AIServiceBackendSpec](#aiservicebackendspec)
+- [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendspec)
 
 VersionedAPISchema defines the API schema of either AIGatewayRoute (the input) or AIServiceBackend (the output).
 
@@ -4687,7 +4691,7 @@ the ai-gateway, but by the vendor via proper versioning.
 
 <ApiField
   name="name"
-  type="[APISchema](#apischema)"
+  type="[APISchema](#github-com-envoyproxy-ai-gateway-api-v1beta1-apischema)"
   required="true"
   description="Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend."
 /><ApiField
