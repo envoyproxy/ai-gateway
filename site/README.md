@@ -40,7 +40,11 @@ npm run start
 
 ### Updating versions
 
-When generating a new version, edit the `versioned_docs/version-{version}/_vars.json` and set the right version values.
+When generating a new version:
+
+* Edit the `versioned_docs/version-{version}/_vars.json` and set the right version values.
+* Update the `versioned_docs/version-{version}/compatibility.md`.
+* Update the `docusaurus.config.ts` to include the new version.
 
 ### AI Coding Assistants
 
