@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
-	anthropicVertex "github.com/anthropics/anthropic-sdk-go/vertex"
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -23,24 +22,26 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
-// currently a requirement for GCP Vertex / Anthropic API https://docs.anthropic.com/en/api/claude-on-vertex-ai
 const (
-	gcpBackendError = "GCPBackendError"
+	// Default Anthropic API version - most commonly used version
+	// https://docs.anthropic.com/en/api/versioning
+	anthropicDefaultVersion = "2023-06-01"
+	anthropicBackendError   = "AnthropicBackendError"
 )
 
-// NewChatCompletionOpenAIToGCPAnthropicTranslator implements [Factory] for OpenAI to GCP Anthropic translation.
-// This translator converts OpenAI ChatCompletion API requests to GCP Anthropic API format.
-func NewChatCompletionOpenAIToGCPAnthropicTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
-	return &openAIToGCPAnthropicTranslatorV1ChatCompletion{
+// NewChatCompletionOpenAIToAnthropicTranslator implements [Factory] for OpenAI to Anthropic translation.
+// This translator converts OpenAI ChatCompletion API requests to Anthropic Messages API format.
+// Unlike cloud-based translators (AWS/GCP), this targets the direct Anthropic API.
+func NewChatCompletionOpenAIToAnthropicTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
+	return &openAIToAnthropicTranslatorV1ChatCompletion{
 		apiVersion:        apiVersion,
 		modelNameOverride: modelNameOverride,
 	}
 }
 
-// openAIToGCPAnthropicTranslatorV1ChatCompletion translates OpenAI Chat Completions API to GCP Anthropic Claude API.
-// This uses the Claude rawPredict and streamRawPredict APIs on Vertex AI:
-// https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude
-type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
+// openAIToAnthropicTranslatorV1ChatCompletion translates OpenAI Chat Completions API to Anthropic Messages API.
+// This uses the direct Anthropic API: https://docs.anthropic.com/en/api/messages
+type openAIToAnthropicTranslatorV1ChatCompletion struct {
 	apiVersion        string
 	modelNameOverride internalapi.ModelNameOverride
 	streamParser      *anthropicStreamParser
@@ -51,30 +52,35 @@ type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
 	logger          *slog.Logger
 }
 
-// RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for GCP.
-func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
+// RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for Anthropic.
+func (o *openAIToAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	params, err := buildAnthropicParams(openAIReq, "GCPAnthropic", o.modelNameOverride)
+	// Resolve the request model up front so it's always recorded, even if
+	// buildAnthropicParams fails. This keeps response-side fallbacks consistent.
+	o.requestModel = openAIReq.Model
+	if o.modelNameOverride != "" {
+		o.requestModel = o.modelNameOverride
+	}
+
+	// Build Anthropic parameters from OpenAI request.
+	params, err := buildAnthropicParams(openAIReq, "Anthropic", o.modelNameOverride)
 	if err != nil {
 		return
 	}
+
+	// buildAnthropicParams intentionally leaves Model unset so cloud variants
+	// (AWS Bedrock / GCP Vertex AI) can place the model in the URL path. The
+	// direct Anthropic API requires it in the request body, so set it here.
+	params.Model = o.requestModel
 
 	body, err := json.Marshal(params)
 	if err != nil {
 		return
 	}
 
-	o.requestModel = openAIReq.Model
-	if o.modelNameOverride != "" {
-		// Use modelName override if set.
-		o.requestModel = o.modelNameOverride
-	}
-
-	// GCP VERTEX PATH.
-	specifier := "rawPredict"
+	// Initialize stream parser and set stream field if this is a streaming request.
 	if openAIReq.Stream {
-		specifier = "streamRawPredict"
 		body, err = sjson.SetBytes(body, "stream", true)
 		if err != nil {
 			return
@@ -82,66 +88,66 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		o.streamParser = newAnthropicStreamParser(o.requestModel)
 	}
 
-	path := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, o.requestModel, specifier)
-	// b. Set the "anthropic_version" key in the JSON body
-	// Using same logic as anthropic go SDK: https://github.com/anthropics/anthropic-sdk-go/blob/e252e284244755b2b2f6eef292b09d6d1e6cd989/bedrock/bedrock.go#L167
-	anthropicVersion := anthropicVertex.DefaultVersion
+	newBody = body
+
+	// The direct Anthropic API requires the version to be sent as the
+	// `anthropic-version` HTTP header (https://docs.anthropic.com/en/api/versioning).
+	// Note: `anthropic_version` in the JSON body is specific to AWS Bedrock and GCP
+	// Vertex AI variants and is not used here.
+	anthropicVersion := anthropicDefaultVersion
 	if o.apiVersion != "" {
 		anthropicVersion = o.apiVersion
 	}
-	body, err = sjson.SetBytes(body, anthropicVersionKey, anthropicVersion)
-	if err != nil {
-		return
+
+	newHeaders = []internalapi.Header{
+		{pathHeaderName, "/v1/messages"},
+		{anthropicVersionHeaderName, anthropicVersion},
+		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
 	}
-	newBody = body
-	newHeaders = []internalapi.Header{{pathHeaderName, path}, {contentLengthHeaderName, strconv.Itoa(len(newBody))}}
 	return
 }
 
 // ResponseError implements [OpenAIChatCompletionTranslator.ResponseError].
-func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
+func (o *openAIToAnthropicTranslatorV1ChatCompletion) ResponseError(respHeaders map[string]string, body io.Reader) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	statusCode := respHeaders[statusHeaderName]
 	var openaiError openai.Error
-	var decodeErr error
 
-	// Check for a JSON content type to decide how to parse the error.
+	// Check for a JSON content type to decide how to parse the error
 	if v, ok := respHeaders[contentTypeHeaderName]; ok && strings.Contains(v, jsonContentType) {
-		var gcpError anthropic.ErrorResponse
-		if decodeErr = json.NewDecoder(body).Decode(&gcpError); decodeErr != nil {
-			// If we expect JSON but fail to decode, it's an internal translator error.
-			return nil, nil, fmt.Errorf("failed to unmarshal JSON error body: %w", decodeErr)
+		var anthropicError anthropic.ErrorResponse
+		if err = json.NewDecoder(body).Decode(&anthropicError); err != nil {
+			return nil, nil, fmt.Errorf("failed to unmarshal Anthropic error body: %w", err)
 		}
 		openaiError = openai.Error{
 			Type: "error",
 			Error: openai.ErrorType{
-				Type:    gcpError.Error.Type,
-				Message: gcpError.Error.Message,
+				Type:    anthropicError.Error.Type,
+				Message: anthropicError.Error.Message,
 				Code:    &statusCode,
 			},
 		}
 	} else {
-		// If not JSON, read the raw body as the error message.
+		// If not JSON, read the raw body as the error message
 		var buf []byte
-		buf, decodeErr = io.ReadAll(body)
-		if decodeErr != nil {
-			return nil, nil, fmt.Errorf("failed to read raw error body: %w", decodeErr)
+		buf, err = io.ReadAll(body)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read raw error body: %w", err)
 		}
 		openaiError = openai.Error{
 			Type: "error",
 			Error: openai.ErrorType{
-				Type:    gcpBackendError,
+				Type:    anthropicBackendError,
 				Message: string(buf),
 				Code:    &statusCode,
 			},
 		}
 	}
 
-	// Marshal the translated OpenAI error.
+	// Marshal the translated OpenAI error
 	newBody, err = json.Marshal(openaiError)
 	if err != nil {
-		// This is an internal failure to create the response.
 		return nil, nil, fmt.Errorf("failed to marshal OpenAI error body: %w", err)
 	}
 	newHeaders = []internalapi.Header{
@@ -152,7 +158,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseError(respHeade
 }
 
 // SetRedactionConfig implements [ResponseRedactor.SetRedactionConfig].
-func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) SetRedactionConfig(debugLogEnabled, enableRedaction bool, logger *slog.Logger) {
+func (o *openAIToAnthropicTranslatorV1ChatCompletion) SetRedactionConfig(debugLogEnabled, enableRedaction bool, logger *slog.Logger) {
 	o.debugLogEnabled = debugLogEnabled
 	o.enableRedaction = enableRedaction
 	o.logger = logger
@@ -160,13 +166,12 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) SetRedactionConfig(debu
 
 // RedactBody implements [ResponseRedactor.RedactBody].
 // Creates a redacted copy of the response for safe logging without modifying the original.
-// Reuses the same redaction logic since GCP Anthropic responses are converted to OpenAI format.
-func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RedactBody(resp *openai.ChatCompletionResponse) *openai.ChatCompletionResponse {
+func (o *openAIToAnthropicTranslatorV1ChatCompletion) RedactBody(resp *openai.ChatCompletionResponse) *openai.ChatCompletionResponse {
 	return redactAnthropicChatCompletionResponse(resp)
 }
 
 // ResponseHeaders implements [OpenAIChatCompletionTranslator.ResponseHeaders].
-func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[string]string) (
+func (o *openAIToAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[string]string) (
 	newHeaders []internalapi.Header, err error,
 ) {
 	if o.streamParser != nil {
@@ -175,14 +180,13 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[s
 	return
 }
 
-// ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody] for GCP Anthropic.
-// GCP Anthropic uses deterministic model mapping without virtualization, where the requested model
-// is exactly what gets executed. The response does not contain a model field, so we return
-// the request model that was originally sent.
-func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracingapi.ChatCompletionSpan) (
+// ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody] for Anthropic.
+// Anthropic uses deterministic model mapping without virtualization, where the requested model
+// is exactly what gets executed. The response contains a model field that we use.
+func (o *openAIToAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracingapi.ChatCompletionSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
-	// If a stream parser was initialized, this is a streaming request.
+	// If a stream parser was initialized, this is a streaming request
 	if o.streamParser != nil {
 		return o.streamParser.Process(body, endOfStream, span)
 	}
