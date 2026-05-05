@@ -594,9 +594,9 @@ func TestMergeToolsList_AuthorizationFiltering(t *testing.T) {
 	session := &session{route: "test-route"}
 
 	tests := []struct {
-		name       string
-		token      string
-		wantTools  []string
+		name      string
+		token     string
+		wantTools []string
 	}{
 		{
 			name:      "caller with required scope sees allowed tool only",
