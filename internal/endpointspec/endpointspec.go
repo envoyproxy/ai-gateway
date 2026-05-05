@@ -127,6 +127,8 @@ func (ChatCompletionsEndpointSpec) ParseBody(
 // GetTranslator implements [EndpointSpec.GetTranslator].
 func (ChatCompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIChatCompletionTranslator, error) {
 	switch schema.Name {
+	case filterapi.APISchemaAnthropic:
+		return translator.NewChatCompletionOpenAIToAnthropicTranslator(schema.Version, modelNameOverride), nil
 	case filterapi.APISchemaOpenAI:
 		return translator.NewChatCompletionOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	case filterapi.APISchemaAWSBedrock:
