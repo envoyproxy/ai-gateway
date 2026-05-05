@@ -27,11 +27,8 @@ import (
 )
 
 // NewAnthropicToAnthropicTranslator creates a passthrough translator for Anthropic.
-// The prefix parameter is the prefix field set in the Anthropic VersionedAPISchema used to construct
-// the translated path (e.g., "v1" produces "/v1/messages", "gateway/v1" produces "/gateway/v1/messages").
-// In production, schemaToFilterAPI defaults the prefix to "v1" for the Anthropic schema, so callers
-// going through that conversion always receive a non-empty prefix. The AWS Anthropic wrapper passes
-// an empty prefix because it overrides the request path entirely.
+// The prefix defaults to "v1" via schemaToFilterAPI, producing "/v1/messages".
+// AWS and GCP Anthropic wrappers pass empty prefix as they override the request path entirely.
 func NewAnthropicToAnthropicTranslator(prefix string, modelNameOverride internalapi.ModelNameOverride) AnthropicMessagesTranslator {
 	return &anthropicToAnthropicTranslator{
 		modelNameOverride: modelNameOverride,
@@ -40,8 +37,7 @@ func NewAnthropicToAnthropicTranslator(prefix string, modelNameOverride internal
 }
 
 type anthropicToAnthropicTranslator struct {
-	modelNameOverride internalapi.ModelNameOverride
-	// path is the request path, prefixed with the Anthropic API path prefix, e.g. "/v1/messages".
+	modelNameOverride      internalapi.ModelNameOverride
 	path                   string
 	requestModel           internalapi.RequestModel
 	stream                 bool

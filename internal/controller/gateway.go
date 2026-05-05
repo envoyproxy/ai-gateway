@@ -164,10 +164,9 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 func schemaToFilterAPI(schema aigv1b1.VersionedAPISchema) filterapi.VersionedAPISchema {
 	ret := filterapi.VersionedAPISchema{}
 	ret.Name = filterapi.APISchemaName(schema.Name)
-	switch schema.Name {
-	case aigv1b1.APISchemaOpenAI, aigv1b1.APISchemaAnthropic:
+	if schema.Name == aigv1b1.APISchemaOpenAI || schema.Name == aigv1b1.APISchemaAnthropic {
 		ret.Prefix = cmp.Or(ptr.Deref(schema.Prefix, ""), "v1")
-	default:
+	} else {
 		ret.Version = ptr.Deref(schema.Version, "")
 	}
 	return ret
