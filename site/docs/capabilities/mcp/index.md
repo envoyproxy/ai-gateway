@@ -78,7 +78,7 @@ Before you begin, you'll need to complete the basic setup from the [Basic Usage]
 The following example demonstrates a basic `MCPRoute` that proxies the GitHub MCP server:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-route
@@ -133,7 +133,7 @@ Now clients can connect to `http://<gateway-address>/mcp` and access GitHub tool
 Control which tools are exposed using the `toolSelector` field. You can use exact matches or regular expressions:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-route
@@ -177,7 +177,7 @@ The `toolSelector` field requires exactly one of `include` or `includeRegex` to 
 The gateway automatically aggregates tools from multiple MCP servers into a single unified interface:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-unified
@@ -215,7 +215,7 @@ Clients will see all tools with prefixed names:
 Forward HTTP headers from the client request to specific backend MCP servers. This enables per-user authentication passthrough (e.g., personal access tokens) without requiring OAuth:
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-unified
@@ -258,7 +258,7 @@ Headers are scoped per-backend — during fan-out operations like `tools/list`, 
 Protect your MCP Gateway with OAuth authentication following the [MCP Authorization specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization):
 
 ```yaml
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-route

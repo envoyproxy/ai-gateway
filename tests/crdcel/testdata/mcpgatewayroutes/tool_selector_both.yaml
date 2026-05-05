@@ -4,7 +4,7 @@
 # the root of the repo.
 
 # This should fail validation: toolSelector can only set one of include or includeRegex
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: tool-selector-both

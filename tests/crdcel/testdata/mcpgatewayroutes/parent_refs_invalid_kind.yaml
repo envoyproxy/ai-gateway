@@ -4,7 +4,7 @@
 # the root of the repo.
 
 # This should fail validation: only Gateway parentRefs are supported
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: invalid-parent-kind
