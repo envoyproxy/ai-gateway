@@ -27,7 +27,10 @@ import (
 // AWS Bedrock supports the native Anthropic Messages API, so this is essentially a passthrough
 // translator with AWS-specific path modifications.
 func NewAnthropicToAWSAnthropicTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) AnthropicMessagesTranslator {
-	anthropicTranslator := NewAnthropicToAnthropicTranslator(apiVersion, modelNameOverride).(*anthropicToAnthropicTranslator)
+	// AWS Bedrock uses its own URL structure (/model/{id}/invoke), so the path
+	// composed by the underlying passthrough translator is overridden in RequestBody
+	// below. Pass an empty prefix here to avoid implying any user-controlled value.
+	anthropicTranslator := NewAnthropicToAnthropicTranslator("", modelNameOverride).(*anthropicToAnthropicTranslator)
 	return &anthropicToAWSAnthropicTranslator{
 		apiVersion:                     apiVersion,
 		anthropicToAnthropicTranslator: *anthropicTranslator,

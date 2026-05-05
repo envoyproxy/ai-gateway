@@ -344,7 +344,7 @@ func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 	case filterapi.APISchemaAWSAnthropic:
 		return translator.NewAnthropicToAWSAnthropicTranslator(schema.Version, modelNameOverride), nil
 	case filterapi.APISchemaAnthropic:
-		return translator.NewAnthropicToAnthropicTranslator(schema.Version, modelNameOverride), nil
+		return translator.NewAnthropicToAnthropicTranslator(schema.AnthropicPrefix(), modelNameOverride), nil
 	case filterapi.APISchemaOpenAI:
 		return translator.NewAnthropicToChatCompletionOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
