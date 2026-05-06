@@ -211,38 +211,33 @@ func appendAnthropicUserMessage(messages []openai.ChatCompletionMessageParamUnio
 		})
 	}
 
-	// Check if there are image blocks — if so, use structured content parts.
+	// Build structured content parts in a single pass. If image blocks are present,
+	// use the structured array format; otherwise, fall back to plain string for compatibility.
+	var parts []openai.ChatCompletionContentPartUserUnionParam
 	hasImages := false
 	for _, block := range msg.Content.Array {
-		if block.Image != nil {
+		switch {
+		case block.Text != nil:
+			parts = append(parts, openai.ChatCompletionContentPartUserUnionParam{
+				OfText: &openai.ChatCompletionContentPartTextParam{
+					Type: string(openai.ChatCompletionContentPartTextTypeText),
+					Text: block.Text.Text,
+				},
+			})
+		case block.Image != nil:
 			hasImages = true
-			break
+			url := anthropicImageSourceToURL(block.Image.Source)
+			parts = append(parts, openai.ChatCompletionContentPartUserUnionParam{
+				OfImageURL: &openai.ChatCompletionContentPartImageParam{
+					Type: openai.ChatCompletionContentPartImageTypeImageURL,
+					ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+						URL: url,
+					},
+				},
+			})
 		}
 	}
-
 	if hasImages {
-		var parts []openai.ChatCompletionContentPartUserUnionParam
-		for _, block := range msg.Content.Array {
-			switch {
-			case block.Text != nil:
-				parts = append(parts, openai.ChatCompletionContentPartUserUnionParam{
-					OfText: &openai.ChatCompletionContentPartTextParam{
-						Type: string(openai.ChatCompletionContentPartTextTypeText),
-						Text: block.Text.Text,
-					},
-				})
-			case block.Image != nil:
-				url := anthropicImageSourceToURL(block.Image.Source)
-				parts = append(parts, openai.ChatCompletionContentPartUserUnionParam{
-					OfImageURL: &openai.ChatCompletionContentPartImageParam{
-						Type: openai.ChatCompletionContentPartImageTypeImageURL,
-						ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
-							URL: url,
-						},
-					},
-				})
-			}
-		}
 		if len(parts) > 0 {
 			messages = append(messages, openai.ChatCompletionMessageParamUnion{
 				OfUser: &openai.ChatCompletionUserMessageParam{
@@ -252,7 +247,6 @@ func appendAnthropicUserMessage(messages []openai.ChatCompletionMessageParamUnio
 			})
 		}
 	} else {
-		// No image blocks — use plain string for backward compatibility.
 		text := anthropicContentToText(msg.Content)
 		if text != "" {
 			messages = append(messages, openai.ChatCompletionMessageParamUnion{

@@ -874,10 +874,6 @@ func TestAnthropicMessagesToOpenAI_ToolConversation(t *testing.T) {
 	})
 }
 
-// ======================================================================
-// F. Integration tests for thinking/reasoning translation
-// ======================================================================
-
 func TestAnthropicToOpenAITranslator_RequestBody_ThinkingConfig(t *testing.T) {
 	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
 	body := &anthropic.MessagesRequest{

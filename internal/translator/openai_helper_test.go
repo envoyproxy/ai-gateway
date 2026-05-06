@@ -774,11 +774,6 @@ func TestOpenAIStreamToAnthropicState_handleChunk_ZeroLen(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// ======================================================================
-// A. Thinking blocks in assistant message requests
-// Ported from vLLM's TestThinkingBlockConversion
-// ======================================================================
-
 func TestAppendAnthropicAssistantMessage_ThinkingPlusText(t *testing.T) {
 	// thinking + text → structured content array with both blocks
 	msg := anthropic.MessageParam{
@@ -934,10 +929,6 @@ func TestAppendAnthropicAssistantMessage_NoThinkingUnchanged(t *testing.T) {
 	assert.Equal(t, "Hello!", strVal)
 }
 
-// ======================================================================
-// B. Thinking config passthrough
-// ======================================================================
-
 func TestBuildOpenAIChatCompletionRequest_ThinkingConfig(t *testing.T) {
 	t.Run("thinking enabled with budget", func(t *testing.T) {
 		body := &anthropic.MessagesRequest{
@@ -989,11 +980,6 @@ func TestBuildOpenAIChatCompletionRequest_ThinkingConfig(t *testing.T) {
 		assert.Nil(t, req.Thinking)
 	})
 }
-
-// ======================================================================
-// C. Image blocks in user messages
-// Ported from vLLM's TestImageContentBlocks
-// ======================================================================
 
 func TestAppendAnthropicUserMessage_Base64Image(t *testing.T) {
 	// base64 image → image_url with data URI
@@ -1068,10 +1054,6 @@ func TestAppendAnthropicUserMessage_TextOnly(t *testing.T) {
 	require.NotNil(t, msgs[0].OfUser)
 	assert.Equal(t, "Hello", msgs[0].OfUser.Content.Value)
 }
-
-// ======================================================================
-// D. Reasoning content in non-streaming responses
-// ======================================================================
 
 func TestOpenAIResponseToAnthropic_ThinkingBlocks(t *testing.T) {
 	content := "Here is the answer."
@@ -1158,10 +1140,6 @@ func TestOpenAIResponseToAnthropic_ThinkingBeforeText(t *testing.T) {
 	// Last should be text
 	require.NotNil(t, result.Content[2].Text)
 }
-
-// ======================================================================
-// E. Streaming reasoning content
-// ======================================================================
 
 func TestOpenAIStreamToAnthropicState_ProcessBuffer_ThinkingStreaming(t *testing.T) {
 	state := &openAIStreamToAnthropicState{
