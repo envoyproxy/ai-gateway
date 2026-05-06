@@ -67,7 +67,7 @@ func TestOpenAIToAzureOpenAITranslatorV1Responses_RequestBody(t *testing.T) {
 				require.NotNil(t, hm)
 
 				require.Equal(t, pathHeaderName, hm[0].Key())
-				require.Equal(t, "/openai/deployments/foo-bar-ai/responses?api-version=some-version", hm[0].Value())
+				require.Equal(t, "/openai/responses?api-version=some-version", hm[0].Value())
 			})
 		}
 	})
@@ -81,7 +81,7 @@ func TestOpenAIToAzureOpenAITranslatorV1Responses_RequestBody(t *testing.T) {
 		require.NotNil(t, hm)
 		require.Len(t, hm, 2)
 		require.Equal(t, pathHeaderName, hm[0].Key())
-		require.Equal(t, "/openai/deployments/"+modelName+"/responses?api-version=some-version", hm[0].Value())
+		require.Equal(t, "/openai/responses?api-version=some-version", hm[0].Value())
 		require.Equal(t, contentLengthHeaderName, hm[1].Key())
 		require.JSONEq(t, `{"model":"gpt-4-turbo-2024-04-09","input":"Hi"}`, string(bm))
 	})

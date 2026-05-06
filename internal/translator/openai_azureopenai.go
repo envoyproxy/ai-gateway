@@ -82,17 +82,11 @@ type openAIToAzureOpenAITranslatorV1Responses struct {
 func (o *openAIToAzureOpenAITranslatorV1Responses) RequestBody(raw []byte, req *openai.ResponseRequest, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	modelName := req.Model
-	if o.modelNameOverride != "" {
-		modelName = o.modelNameOverride
-	}
-
 	newHeaders, newBody, err = o.openAIToOpenAITranslatorV1Responses.RequestBody(raw, req, forceBodyMutation)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	pathTemplate := "/openai/deployments/%s/responses?api-version=%s"
-	newHeaders[0] = internalapi.Header{pathHeaderName, fmt.Sprintf(pathTemplate, modelName, o.apiVersion)}
+	newHeaders[0] = internalapi.Header{pathHeaderName, fmt.Sprintf("/openai/responses?api-version=%s", o.apiVersion)}
 	return
 }
