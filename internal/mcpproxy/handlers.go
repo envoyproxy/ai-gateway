@@ -46,9 +46,10 @@ var (
 // about the failed tool call. This allows callers to have better context
 // about tool execution failures.
 type errToolCall struct {
-	toolName string
-	backend  string
-	err      error
+	toolName        string
+	backend         string
+	validationError bool
+	err             error
 }
 
 func (e *errToolCall) Error() string {
@@ -91,6 +92,7 @@ func checkToolCallError(req *jsonrpc.Request, msg *jsonrpc.Response, backendName
 
 	// Build error message from tool result content
 	var errMsg strings.Builder
+	var validationError bool
 	errMsg.WriteString("tool returned isError=true")
 	if len(toolResult.Content) > 0 {
 		errMsg.WriteString(": ")
@@ -101,6 +103,15 @@ func checkToolCallError(req *jsonrpc.Request, msg *jsonrpc.Response, backendName
 			switch c := content.(type) { // extract text
 			case *mcp.TextContent:
 				errMsg.WriteString(c.Text)
+
+				// In this PR: https://github.com/modelcontextprotocol/go-sdk/pull/863
+				// The MCP Go SDK changed from returning a JSON-RPC error and error code indicating a validation error,
+				// to returning a successful JSON-RPC message and a tool result with IsError=true.
+				// The error details are just a string now and there is no indication of whether it's a validation error or not,
+				// so we do a best effort to guess, and fallback to an internal error.
+				if strings.Contains(c.Text, "validating") {
+					validationError = true
+				}
 			case *mcp.ImageContent:
 				errMsg.WriteString(fmt.Sprintf("[image: %s]", c.MIMEType))
 			default:
@@ -113,9 +124,10 @@ func checkToolCallError(req *jsonrpc.Request, msg *jsonrpc.Response, backendName
 	}
 
 	return &errToolCall{
-		toolName: toolName,
-		backend:  backendName,
-		err:      errors.New(errMsg.String()),
+		toolName:        toolName,
+		backend:         backendName,
+		validationError: validationError,
+		err:             errors.New(errMsg.String()),
 	}
 }
 
@@ -512,6 +524,10 @@ func errorType(err error) metrics.MCPErrorType {
 
 	// Check for specific error types
 	if errors.Is(err, errBackendNotFound) || errors.Is(err, errSessionNotFound) || errors.Is(err, errInvalidToolName) {
+		return metrics.MCPErrorInvalidParam
+	}
+	var toolCallValidaitonError *errToolCall
+	if errors.As(err, &toolCallValidaitonError) && toolCallValidaitonError.validationError {
 		return metrics.MCPErrorInvalidParam
 	}
 
