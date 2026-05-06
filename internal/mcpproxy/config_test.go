@@ -583,7 +583,6 @@ func TestLoadConfig_AuthorizationChangeTriggersNotification(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(1)
 	wg.Go(func() {
 		select {
 		case <-watcher:
