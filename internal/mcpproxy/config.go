@@ -87,6 +87,9 @@ func (m *mcpProxyConfigRoute) sameTools(other *mcpProxyConfigRoute) bool {
 	if !equalKeys(m.backends, other.backends) {
 		return false
 	}
+	if !m.authorization.same(other.authorization) {
+		return false
+	}
 	return maps.EqualFunc(m.toolSelectors, other.toolSelectors, func(a, b *toolSelector) bool {
 		return a.sameTools(b)
 	})

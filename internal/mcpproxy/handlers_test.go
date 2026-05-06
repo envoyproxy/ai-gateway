@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
@@ -552,6 +553,87 @@ func TestServePOST_JSONRPCRequest(t *testing.T) {
 			if tt.validate != nil {
 				tt.validate(t, resp.Result)
 			}
+		})
+	}
+}
+
+func TestMergeToolsList_AuthorizationFiltering(t *testing.T) {
+	makeToken := func(scopes ...string) string {
+		claims := jwt.MapClaims{}
+		if len(scopes) > 0 {
+			claims["scope"] = scopes
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodNone, claims)
+		signed, _ := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
+		return signed
+	}
+
+	auth := &filterapi.MCPRouteAuthorization{
+		DefaultAction: filterapi.AuthorizationActionDeny,
+		Rules: []filterapi.MCPRouteAuthorizationRule{
+			{
+				Action: filterapi.AuthorizationActionAllow,
+				Source: &filterapi.MCPAuthorizationSource{
+					JWT: filterapi.JWTSource{Scopes: []string{"tools:read"}},
+				},
+				Target: &filterapi.MCPAuthorizationTarget{
+					Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "allowed-tool"}},
+				},
+			},
+		},
+	}
+	compiled, err := compileAuthorization(auth)
+	require.NoError(t, err)
+
+	responses := []broadCastResponse[mcp.ListToolsResult]{
+		{
+			backendName: "backend1",
+			res:         mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "allowed-tool"}, {Name: "restricted-tool"}}},
+		},
+	}
+	session := &session{route: "test-route"}
+
+	tests := []struct {
+		name      string
+		token     string
+		wantTools []string
+	}{
+		{
+			name:      "caller with required scope sees allowed tool only",
+			token:     makeToken("tools:read"),
+			wantTools: []string{"backend1__allowed-tool"},
+		},
+		{
+			name:      "caller without required scope sees no tools",
+			token:     makeToken("other:scope"),
+			wantTools: []string{},
+		},
+		{
+			name:      "caller with no token sees no tools",
+			token:     "",
+			wantTools: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proxy := newTestMCPProxy()
+			proxy.routes["test-route"].authorization = compiled
+			// Clear static toolSelectors so only authorization rules govern visibility.
+			proxy.routes["test-route"].toolSelectors = nil
+			if tt.token != "" {
+				proxy.requestHeaders = http.Header{"Authorization": []string{"Bearer " + tt.token}}
+			} else {
+				proxy.requestHeaders = http.Header{}
+			}
+
+			result := proxy.mergeToolsList(session, responses)
+
+			got := make([]string, len(result.Tools))
+			for i, tool := range result.Tools {
+				got[i] = tool.Name
+			}
+			require.Equal(t, tt.wantTools, got)
 		})
 	}
 }
