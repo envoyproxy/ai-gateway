@@ -26,6 +26,17 @@ func NewChatCompletionOpenAIToAzureOpenAITranslator(apiVersion string, modelName
 	}
 }
 
+// NewResponsesOpenAIToAzureOpenAITranslator implements [Factory] for OpenAI to Azure OpenAI translation
+// for responses.
+func NewResponsesOpenAIToAzureOpenAITranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) OpenAIResponsesTranslator {
+	return &openAIToAzureOpenAITranslatorV1Responses{
+		apiVersion: apiVersion,
+		openAIToOpenAITranslatorV1Responses: openAIToOpenAITranslatorV1Responses{
+			modelNameOverride: modelNameOverride,
+		},
+	}
+}
+
 // openAIToAzureOpenAITranslatorV1ChatCompletion adapts OpenAI requests for Azure OpenAI Service.
 // Azure ignores the model field in the request body, using deployment name from the URI path instead:
 // https://learn.microsoft.com/en-us/azure/ai-foundry/openai/reference#chat-completions
@@ -58,5 +69,30 @@ func (o *openAIToAzureOpenAITranslatorV1ChatCompletion) RequestBody(raw []byte, 
 	if forceBodyMutation {
 		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(raw))})
 	}
+	return
+}
+
+// openAIToAzureOpenAITranslatorV1Responses adapts OpenAI Responses requests for Azure OpenAI Service.
+type openAIToAzureOpenAITranslatorV1Responses struct {
+	apiVersion string
+	openAIToOpenAITranslatorV1Responses
+}
+
+// RequestBody implements [OpenAIResponsesTranslator.RequestBody].
+func (o *openAIToAzureOpenAITranslatorV1Responses) RequestBody(raw []byte, req *openai.ResponseRequest, forceBodyMutation bool) (
+	newHeaders []internalapi.Header, newBody []byte, err error,
+) {
+	modelName := req.Model
+	if o.modelNameOverride != "" {
+		modelName = o.modelNameOverride
+	}
+
+	newHeaders, newBody, err = o.openAIToOpenAITranslatorV1Responses.RequestBody(raw, req, forceBodyMutation)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	pathTemplate := "/openai/deployments/%s/responses?api-version=%s"
+	newHeaders[0] = internalapi.Header{pathHeaderName, fmt.Sprintf(pathTemplate, modelName, o.apiVersion)}
 	return
 }

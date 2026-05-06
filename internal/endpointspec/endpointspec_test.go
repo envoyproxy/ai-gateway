@@ -339,7 +339,7 @@ func TestResponsesEndpointSpec_GetTranslator(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
-	require.ErrorContains(t, err, "unsupported API schema")
+	require.NoError(t, err)
 }
 
 func TestChatCompletionsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
