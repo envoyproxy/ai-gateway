@@ -135,6 +135,202 @@ func TestTranscriptionTranslator_ResponseBody_WithSpan_NonJSON(t *testing.T) {
 	require.Equal(t, rawResponse, mockSpan.recordedResponse.Text)
 }
 
+// TestTranscriptionTranslator_ResponseBody_Streaming_FullSSE feeds a complete SSE stream
+// from gpt-4o-transcribe in a single ResponseBody call and asserts that every parsed event
+// reaches the span chunk recorder in order, and that response bytes are streamed through
+// unchanged (newBody is nil).
+func TestTranscriptionTranslator_ResponseBody_Streaming_FullSSE(t *testing.T) {
+	mockSpan := &mockTranscriptionSpan{}
+	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Transcription)
+	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
+	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	require.True(t, tr.stream, "translator should track Stream=true from the request")
+
+	sse := "" +
+		`data: {"type":"transcript.text.delta","delta":"Imagine "}` + "\n" +
+		`data: {"type":"transcript.text.delta","delta":"the wildest idea."}` + "\n" +
+		`data: {"type":"transcript.text.done","text":"Imagine the wildest idea."}` + "\n"
+
+	_, newBody, _, model, err := tr.ResponseBody(
+		map[string]string{contentTypeHeaderName: eventStreamContentType},
+		bytes.NewReader([]byte(sse)), true, mockSpan,
+	)
+	require.NoError(t, err)
+	require.Nil(t, newBody, "SSE bytes must pass through to the client unchanged")
+	require.Equal(t, "gpt-4o-transcribe", model)
+
+	require.Len(t, mockSpan.recordedChunks, 3)
+	require.Equal(t, openai.TranscriptionStreamEventTypeDelta, mockSpan.recordedChunks[0].Type)
+	require.Equal(t, "Imagine ", mockSpan.recordedChunks[0].Delta)
+	require.Equal(t, openai.TranscriptionStreamEventTypeDelta, mockSpan.recordedChunks[1].Type)
+	require.Equal(t, "the wildest idea.", mockSpan.recordedChunks[1].Delta)
+	require.Equal(t, openai.TranscriptionStreamEventTypeDone, mockSpan.recordedChunks[2].Type)
+	require.Equal(t, "Imagine the wildest idea.", mockSpan.recordedChunks[2].Text)
+}
+
+// TestTranscriptionTranslator_ResponseBody_Streaming_SplitAcrossChunks proves that SSE
+// state survives across multiple ResponseBody invocations — Envoy delivers SSE one chunk
+// at a time, and a single `data:` line may straddle a chunk boundary. The translator must
+// buffer partial lines and parse them as soon as a newline arrives.
+func TestTranscriptionTranslator_ResponseBody_Streaming_SplitAcrossChunks(t *testing.T) {
+	mockSpan := &mockTranscriptionSpan{}
+	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
+	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
+	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+
+	headers := map[string]string{contentTypeHeaderName: eventStreamContentType}
+
+	// First chunk carries half a delta event with no terminating newline.
+	chunk1 := `data: {"type":"transcript.text.delta","delta":"hel`
+	_, _, _, _, err := tr.ResponseBody(headers, bytes.NewReader([]byte(chunk1)), false, mockSpan)
+	require.NoError(t, err)
+	require.Empty(t, mockSpan.recordedChunks, "no full line yet, no chunk recorded")
+
+	// Second chunk completes the delta line and adds the terminal done event.
+	chunk2 := `lo"}` + "\n" +
+		`data: {"type":"transcript.text.done","text":"hello"}` + "\n"
+	_, _, _, _, err = tr.ResponseBody(headers, bytes.NewReader([]byte(chunk2)), true, mockSpan)
+	require.NoError(t, err)
+
+	require.Len(t, mockSpan.recordedChunks, 2)
+	require.Equal(t, "hello", mockSpan.recordedChunks[0].Delta)
+	require.Equal(t, openai.TranscriptionStreamEventTypeDone, mockSpan.recordedChunks[1].Type)
+}
+
+// TestTranscriptionTranslator_ResponseBody_Streaming_NonDataLinesSkipped confirms that SSE
+// `event:` preamble lines, comments, and blank lines are silently skipped without disturbing
+// parsing of the actual `data:` payloads.
+func TestTranscriptionTranslator_ResponseBody_Streaming_NonDataLinesSkipped(t *testing.T) {
+	mockSpan := &mockTranscriptionSpan{}
+	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
+	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
+	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+
+	sse := "" +
+		"event: transcript.text.delta\n" +
+		`data: {"type":"transcript.text.delta","delta":"hi"}` + "\n" +
+		"\n" + // blank line
+		": this is an SSE comment\n" +
+		"event: transcript.text.done\n" +
+		`data: {"type":"transcript.text.done","text":"hi"}` + "\n"
+
+	_, _, _, _, err := tr.ResponseBody(
+		map[string]string{contentTypeHeaderName: eventStreamContentType},
+		bytes.NewReader([]byte(sse)), true, mockSpan,
+	)
+	require.NoError(t, err)
+	require.Len(t, mockSpan.recordedChunks, 2)
+}
+
+// TestTranscriptionTranslator_ResponseBody_Streaming_DoneSentinelSkipped proves that a
+// `data: [DONE]` terminator (used by chat completions; not currently emitted by transcription
+// but tolerated for forward-compat) does not raise an error and does not produce a spurious
+// chunk recording.
+func TestTranscriptionTranslator_ResponseBody_Streaming_DoneSentinelSkipped(t *testing.T) {
+	mockSpan := &mockTranscriptionSpan{}
+	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
+	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
+	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+
+	sse := "" +
+		`data: {"type":"transcript.text.delta","delta":"hi"}` + "\n" +
+		`data: {"type":"transcript.text.done","text":"hi"}` + "\n" +
+		"data: [DONE]\n"
+
+	_, _, _, _, err := tr.ResponseBody(
+		map[string]string{contentTypeHeaderName: eventStreamContentType},
+		bytes.NewReader([]byte(sse)), true, mockSpan,
+	)
+	require.NoError(t, err)
+	require.Len(t, mockSpan.recordedChunks, 2, "only the two real events should be recorded")
+}
+
+// TestTranscriptionTranslator_ResponseBody_Streaming_MalformedJSONSkipped proves that one
+// bad `data:` line does not derail parsing of subsequent good lines — graceful degradation
+// when a backend (or proxy) corrupts a single event.
+func TestTranscriptionTranslator_ResponseBody_Streaming_MalformedJSONSkipped(t *testing.T) {
+	mockSpan := &mockTranscriptionSpan{}
+	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
+	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
+	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+
+	sse := "" +
+		"data: not-json\n" +
+		`data: {"type":"transcript.text.done","text":"hi"}` + "\n"
+
+	_, _, _, _, err := tr.ResponseBody(
+		map[string]string{contentTypeHeaderName: eventStreamContentType},
+		bytes.NewReader([]byte(sse)), true, mockSpan,
+	)
+	require.NoError(t, err)
+	require.Len(t, mockSpan.recordedChunks, 1, "malformed line skipped, only the valid one recorded")
+}
+
+// TestTranscriptionTranslator_ResponseBody_Streaming_UnknownEventTypeForwarded proves that
+// future or experimental SSE event types are forwarded to the span chunk recorder without
+// error — forward-compat with any new OpenAI event types.
+func TestTranscriptionTranslator_ResponseBody_Streaming_UnknownEventTypeForwarded(t *testing.T) {
+	mockSpan := &mockTranscriptionSpan{}
+	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
+	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
+	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+
+	sse := `data: {"type":"transcript.experimental","delta":"hi"}` + "\n"
+
+	_, _, _, _, err := tr.ResponseBody(
+		map[string]string{contentTypeHeaderName: eventStreamContentType},
+		bytes.NewReader([]byte(sse)), true, mockSpan,
+	)
+	require.NoError(t, err)
+	require.Len(t, mockSpan.recordedChunks, 1)
+	require.Equal(t, "transcript.experimental", mockSpan.recordedChunks[0].Type)
+	require.Equal(t, "hi", mockSpan.recordedChunks[0].Delta)
+}
+
+// TestTranscriptionTranslator_ResponseBody_Streaming_CRLFLineEndings proves that SSE streams
+// with \r\n line terminators (some servers/proxies use these) parse correctly — the trailing
+// CR must be stripped before JSON decode.
+func TestTranscriptionTranslator_ResponseBody_Streaming_CRLFLineEndings(t *testing.T) {
+	mockSpan := &mockTranscriptionSpan{}
+	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
+	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
+	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+
+	sse := `data: {"type":"transcript.text.done","text":"hi"}` + "\r\n"
+
+	_, _, _, _, err := tr.ResponseBody(
+		map[string]string{contentTypeHeaderName: eventStreamContentType},
+		bytes.NewReader([]byte(sse)), true, mockSpan,
+	)
+	require.NoError(t, err)
+	require.Len(t, mockSpan.recordedChunks, 1)
+	require.Equal(t, "hi", mockSpan.recordedChunks[0].Text)
+}
+
+// TestTranscriptionTranslator_ResponseBody_Whisper1WithStreamTrue is the key pass-through
+// case: when the request has `stream=true` but the model is whisper-1 (which OpenAI silently
+// treats as non-streaming), the backend returns Content-Type: application/json. The translator
+// must take the JSON branch, NOT the SSE branch, even though `o.stream` is true.
+//
+// This is why ResponseBody dispatches on the response Content-Type rather than on `o.stream`.
+func TestTranscriptionTranslator_ResponseBody_Whisper1WithStreamTrue(t *testing.T) {
+	mockSpan := &mockTranscriptionSpan{}
+	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Transcription)
+	req := &openai.TranscriptionRequest{Model: "whisper-1", Stream: true}
+	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	require.True(t, tr.stream, "translator should track the request flag verbatim")
+
+	respJSON := `{"text": "hello"}`
+	_, _, _, _, err := tr.ResponseBody(
+		map[string]string{contentTypeHeaderName: jsonContentType},
+		bytes.NewReader([]byte(respJSON)), true, mockSpan,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, mockSpan.recordedResponse)
+	require.Equal(t, "hello", mockSpan.recordedResponse.Text)
+	require.Empty(t, mockSpan.recordedChunks, "JSON branch must not invoke the chunk recorder")
+}
+
 func TestTranscriptionTranslator_ResponseError(t *testing.T) {
 	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
 	headers := map[string]string{contentTypeHeaderName: "text/plain", statusHeaderName: "400"}
@@ -146,12 +342,15 @@ func TestTranscriptionTranslator_ResponseError(t *testing.T) {
 
 type mockTranscriptionSpan struct {
 	recordedResponse *openai.TranscriptionResponse
+	recordedChunks   []*openai.TranscriptionStreamEvent
 }
 
 func (m *mockTranscriptionSpan) RecordResponse(resp *openai.TranscriptionResponse) {
 	m.recordedResponse = resp
 }
 
-func (m *mockTranscriptionSpan) RecordResponseChunk(*struct{}) {}
-func (m *mockTranscriptionSpan) EndSpanOnError(int, []byte)    {}
-func (m *mockTranscriptionSpan) EndSpan()                      {}
+func (m *mockTranscriptionSpan) RecordResponseChunk(c *openai.TranscriptionStreamEvent) {
+	m.recordedChunks = append(m.recordedChunks, c)
+}
+func (m *mockTranscriptionSpan) EndSpanOnError(int, []byte) {}
+func (m *mockTranscriptionSpan) EndSpan()                   {}

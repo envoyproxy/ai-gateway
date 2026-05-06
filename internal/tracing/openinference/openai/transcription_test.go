@@ -264,6 +264,102 @@ func TestTranscriptionRecorder_RecordResponse(t *testing.T) {
 	}
 }
 
+// TestTranscriptionRecorder_RecordResponseChunks exercises the streaming path: given the SSE
+// events parsed by the translator (transcript.text.delta / transcript.text.done), the recorder
+// aggregates the per-event delta text into the span's OutputValue.
+func TestTranscriptionRecorder_RecordResponseChunks(t *testing.T) {
+	tests := []struct {
+		name          string
+		chunks        []*openai.TranscriptionStreamEvent
+		config        *openinference.TraceConfig
+		expectedAttrs []attribute.KeyValue
+	}{
+		{
+			name:          "no chunks is a no-op",
+			chunks:        nil,
+			config:        &openinference.TraceConfig{},
+			expectedAttrs: []attribute.KeyValue{},
+		},
+		{
+			name: "deltas only — output assembled from concatenated deltas",
+			chunks: []*openai.TranscriptionStreamEvent{
+				{Type: openai.TranscriptionStreamEventTypeDelta, Delta: "Hello "},
+				{Type: openai.TranscriptionStreamEventTypeDelta, Delta: "world."},
+			},
+			config: &openinference.TraceConfig{},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputValue, "Hello world."),
+				attribute.String(openinference.OutputMimeType, "text/plain"),
+			},
+		},
+		{
+			// done.Text is authoritative — it overrides accumulated deltas because the backend
+			// builds it from the canonical transcription, not from naive delta concatenation.
+			name: "done event overrides accumulated deltas",
+			chunks: []*openai.TranscriptionStreamEvent{
+				{Type: openai.TranscriptionStreamEventTypeDelta, Delta: "Hel"},
+				{Type: openai.TranscriptionStreamEventTypeDelta, Delta: "lo wrld."},
+				{Type: openai.TranscriptionStreamEventTypeDone, Text: "Hello world."},
+			},
+			config: &openinference.TraceConfig{},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputValue, "Hello world."),
+				attribute.String(openinference.OutputMimeType, "text/plain"),
+			},
+		},
+		{
+			// Forward-compat: unknown event types are silently ignored.
+			name: "unknown event type ignored",
+			chunks: []*openai.TranscriptionStreamEvent{
+				{Type: "transcript.experimental", Delta: "ignored"},
+				{Type: openai.TranscriptionStreamEventTypeDelta, Delta: "kept"},
+			},
+			config: &openinference.TraceConfig{},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputValue, "kept"),
+				attribute.String(openinference.OutputMimeType, "text/plain"),
+			},
+		},
+		{
+			name: "hide outputs suppresses everything",
+			chunks: []*openai.TranscriptionStreamEvent{
+				{Type: openai.TranscriptionStreamEventTypeDelta, Delta: "secret"},
+				{Type: openai.TranscriptionStreamEventTypeDone, Text: "secret"},
+			},
+			config:        &openinference.TraceConfig{HideOutputs: true},
+			expectedAttrs: []attribute.KeyValue{},
+		},
+		{
+			// Defensive: nil chunks in the slice never panic.
+			name: "nil chunks tolerated",
+			chunks: []*openai.TranscriptionStreamEvent{
+				nil,
+				{Type: openai.TranscriptionStreamEventTypeDelta, Delta: "ok"},
+				nil,
+			},
+			config: &openinference.TraceConfig{},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputValue, "ok"),
+				attribute.String(openinference.OutputMimeType, "text/plain"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := NewTranscriptionRecorder(tt.config).(*TranscriptionRecorder)
+
+			actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+				recorder.RecordResponseChunks(span, tt.chunks)
+				return false
+			})
+
+			openinference.RequireAttributesEqual(t, tt.expectedAttrs, actualSpan.Attributes)
+			require.Empty(t, actualSpan.Events)
+		})
+	}
+}
+
 func TestTranscriptionRecorder_RecordResponseOnError(t *testing.T) {
 	tests := []struct {
 		name           string

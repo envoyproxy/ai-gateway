@@ -72,8 +72,8 @@ func TestNewFactory(t *testing.T) {
 type (
 	chatCompletionProcessorRouterFilter   = routerProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
 	chatCompletionProcessorUpstreamFilter = upstreamProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
-	transcriptionProcessorRouterFilter    = routerProcessor[openai.TranscriptionRequest, openai.TranscriptionResponse, struct{}, endpointspec.TranscriptionEndpointSpec]
-	transcriptionProcessorUpstreamFilter  = upstreamProcessor[openai.TranscriptionRequest, openai.TranscriptionResponse, struct{}, endpointspec.TranscriptionEndpointSpec]
+	transcriptionProcessorRouterFilter    = routerProcessor[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent, endpointspec.TranscriptionEndpointSpec]
+	transcriptionProcessorUpstreamFilter  = upstreamProcessor[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent, endpointspec.TranscriptionEndpointSpec]
 )
 
 type mockTracer struct {
@@ -1465,7 +1465,7 @@ func Test_transcriptionProcessorRouterFilter_ProcessRequestBody_MultipartDispatc
 		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: headers,
 		logger:         slog.Default(),
-		tracer:         tracingapi.NoopTracer[openai.TranscriptionRequest, openai.TranscriptionResponse, struct{}]{},
+		tracer:         tracingapi.NoopTracer[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]{},
 	}
 
 	resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: body})

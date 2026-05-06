@@ -8456,6 +8456,26 @@ type TranscriptionWord struct {
 	End   float64 `json:"end"`
 }
 
+// TranscriptionStreamEvent is one SSE event from /v1/audio/transcriptions when stream=true
+// (gpt-4o-transcribe and gpt-4o-mini-transcribe only; whisper-1 silently ignores the flag).
+//
+// The `Type` field discriminates:
+//   - "transcript.text.delta" — intermediate event carrying a `Delta` text chunk.
+//   - "transcript.text.done"  — terminal event carrying the full `Text`.
+type TranscriptionStreamEvent struct {
+	Type  string `json:"type"`
+	Delta string `json:"delta,omitempty"`
+	Text  string `json:"text,omitempty"`
+}
+
+// Transcription stream event type constants.
+const (
+	// TranscriptionStreamEventTypeDelta is emitted for each intermediate text chunk during streaming.
+	TranscriptionStreamEventTypeDelta = "transcript.text.delta"
+	// TranscriptionStreamEventTypeDone is the terminal event in a transcription stream.
+	TranscriptionStreamEventTypeDone = "transcript.text.done"
+)
+
 // TranslationResponse represents the JSON response from /v1/audio/translations.
 type TranslationResponse struct {
 	Text string `json:"text"`

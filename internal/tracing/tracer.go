@@ -49,7 +49,7 @@ type (
 	imageGenerationTracer = requestTracerImpl[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
 	responsesTracer       = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	speechTracer          = requestTracerImpl[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
-	transcriptionTracer   = requestTracerImpl[openai.TranscriptionRequest, openai.TranscriptionResponse, struct{}]
+	transcriptionTracer   = requestTracerImpl[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
 	translationTracer     = requestTracerImpl[openai.TranslationRequest, openai.TranslationResponse, struct{}]
 	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
 )

@@ -398,7 +398,7 @@ func TestNewTranscriptionTracer_BuildsGenericRequestTracer(t *testing.T) {
 	impl, ok := tracer.(*requestTracerImpl[
 		openai.TranscriptionRequest,
 		openai.TranscriptionResponse,
-		struct{},
+		openai.TranscriptionStreamEvent,
 	])
 	require.True(t, ok)
 	require.Equal(t, headerAttrs, impl.headerAttributes)
@@ -618,7 +618,7 @@ func (r testResponsesRecorder) RecordResponseOnError(span oteltrace.Span, status
 }
 
 type testTranscriptionRecorder struct {
-	tracingapi.NoopChunkRecorder[struct{}]
+	tracingapi.NoopChunkRecorder[openai.TranscriptionStreamEvent]
 }
 
 func (testTranscriptionRecorder) StartParams(_ *openai.TranscriptionRequest, _ []byte) (string, []oteltrace.SpanStartOption) {

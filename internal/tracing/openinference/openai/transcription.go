@@ -6,6 +6,8 @@
 package openai
 
 import (
+	"strings"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -17,8 +19,11 @@ import (
 )
 
 // TranscriptionRecorder implements recorders for OpenInference audio transcription spans.
+//
+// When the upstream backend returns SSE (gpt-4o-transcribe family with stream=true), the translator
+// emits TranscriptionStreamEvent values per `data:` line and RecordResponseChunks aggregates the
+// per-event delta text into the span's OutputValue at span end.
 type TranscriptionRecorder struct {
-	tracingapi.NoopChunkRecorder[struct{}]
 	traceConfig *openinference.TraceConfig
 }
 
@@ -101,6 +106,51 @@ func (r *TranscriptionRecorder) RecordResponse(span trace.Span, resp *openai.Tra
 
 	span.SetAttributes(attrs...)
 	span.SetStatus(codes.Ok, "")
+}
+
+// RecordResponseChunks implements the same method as defined in tracingapi.TranscriptionRecorder.
+//
+// Chunks arrive in order from openai_transcription.go: every parsed `data: {...}` SSE line is one
+// TranscriptionStreamEvent. We aggregate them into the span's OutputValue:
+//
+//   - "transcript.text.delta" events contribute their `Delta` to the running output text.
+//   - "transcript.text.done" events provide the authoritative `Text` and override the accumulated
+//     deltas (the backend's done-event text is the source of truth).
+//   - Unknown event types are silently ignored — forward-compat with future OpenAI event types.
+//
+// When HideOutputs is set, no attributes are emitted.
+func (r *TranscriptionRecorder) RecordResponseChunks(span trace.Span, chunks []*openai.TranscriptionStreamEvent) {
+	if len(chunks) == 0 || r.traceConfig.HideOutputs {
+		return
+	}
+
+	var sb strings.Builder
+	var doneTextSet bool
+	for _, c := range chunks {
+		if c == nil {
+			continue
+		}
+		switch c.Type {
+		case openai.TranscriptionStreamEventTypeDelta:
+			if !doneTextSet {
+				sb.WriteString(c.Delta)
+			}
+		case openai.TranscriptionStreamEventTypeDone:
+			if c.Text != "" {
+				sb.Reset()
+				sb.WriteString(c.Text)
+				doneTextSet = true
+			}
+		}
+	}
+
+	if sb.Len() == 0 {
+		return
+	}
+	span.SetAttributes(
+		attribute.String(openinference.OutputValue, sb.String()),
+		attribute.String(openinference.OutputMimeType, "text/plain"),
+	)
 }
 
 // RecordResponseOnError implements the same method as defined in tracingapi.TranscriptionRecorder.

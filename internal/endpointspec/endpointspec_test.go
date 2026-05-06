@@ -1102,10 +1102,14 @@ func TestTranscriptionEndpointSpec_ParseMultipartBody(t *testing.T) {
 			"stream": "true",
 		}, "test.mp3", []byte("audio-data"))
 
+		// req.Stream is propagated as the third return value so the upstream filter
+		// switches Envoy to STREAMED response mode. The translator still branches on
+		// the actual response Content-Type at response time, so whisper-1+stream=true
+		// (which OpenAI silently treats as non-streaming) is handled correctly.
 		_, req, stream, _, err := spec.ParseMultipartBody(body, ct, false)
 		require.NoError(t, err)
 		require.True(t, req.Stream)
-		require.False(t, stream)
+		require.True(t, stream)
 	})
 
 	t.Run("stream field false", func(t *testing.T) {
@@ -1114,9 +1118,21 @@ func TestTranscriptionEndpointSpec_ParseMultipartBody(t *testing.T) {
 			"stream": "false",
 		}, "test.mp3", []byte("audio-data"))
 
-		_, req, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		_, req, stream, _, err := spec.ParseMultipartBody(body, ct, false)
 		require.NoError(t, err)
 		require.False(t, req.Stream)
+		require.False(t, stream)
+	})
+
+	t.Run("stream field omitted defaults to false", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model": "gpt-4o-transcribe",
+		}, "test.mp3", []byte("audio-data"))
+
+		_, req, stream, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.NoError(t, err)
+		require.False(t, req.Stream)
+		require.False(t, stream)
 	})
 
 	t.Run("timestamp_granularities", func(t *testing.T) {

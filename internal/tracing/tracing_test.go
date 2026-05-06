@@ -866,7 +866,7 @@ func TestTracingImpl_Getters_ImageGenerationAndRerank(t *testing.T) {
 }
 
 func TestTracingImpl_Getters_TranscriptionAndTranslation(t *testing.T) {
-	tr := tracingapi.NoopTracer[openai.TranscriptionRequest, openai.TranscriptionResponse, struct{}]{}
+	tr := tracingapi.NoopTracer[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]{}
 	tl := tracingapi.NoopTracer[openai.TranslationRequest, openai.TranslationResponse, struct{}]{}
 
 	ti := &tracingImpl{

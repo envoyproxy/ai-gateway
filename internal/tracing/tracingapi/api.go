@@ -74,8 +74,13 @@ type (
 	// SpeechTracer creates spans for OpenAI speech synthesis requests.
 	SpeechTracer = RequestTracer[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
 	// TranscriptionTracer creates spans for OpenAI audio transcription requests.
-	TranscriptionTracer = RequestTracer[openai.TranscriptionRequest, openai.TranscriptionResponse, struct{}]
+	// The chunk type is openai.TranscriptionStreamEvent because gpt-4o-transcribe and
+	// gpt-4o-mini-transcribe emit SSE events when stream=true. whisper-1 and gpt-4o-transcribe-diarize
+	// never stream, but the chunk recorder is still invoked with a zero-length slice for those — same
+	// as any other non-streaming endpoint.
+	TranscriptionTracer = RequestTracer[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
 	// TranslationTracer creates spans for OpenAI audio translation requests.
+	// Translation has no streaming per the OpenAI spec, so the chunk type stays struct{}.
 	TranslationTracer = RequestTracer[openai.TranslationRequest, openai.TranslationResponse, struct{}]
 	// RerankTracer creates spans for rerank requests.
 	RerankTracer = RequestTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
@@ -109,7 +114,7 @@ type (
 	// SpeechSpan represents an OpenAI speech synthesis request span.
 	SpeechSpan = Span[[]byte, openai.SpeechStreamChunk]
 	// TranscriptionSpan represents an OpenAI audio transcription request span.
-	TranscriptionSpan = Span[openai.TranscriptionResponse, struct{}]
+	TranscriptionSpan = Span[openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
 	// TranslationSpan represents an OpenAI audio translation request span.
 	TranslationSpan = Span[openai.TranslationResponse, struct{}]
 	// RerankSpan represents a rerank request span.
@@ -158,7 +163,7 @@ type (
 	// SpeechRecorder records attributes to a span according to a semantic convention.
 	SpeechRecorder = SpanRecorder[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
 	// TranscriptionRecorder records attributes to a span according to a semantic convention.
-	TranscriptionRecorder = SpanRecorder[openai.TranscriptionRequest, openai.TranscriptionResponse, struct{}]
+	TranscriptionRecorder = SpanRecorder[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
 	// TranslationRecorder records attributes to a span according to a semantic convention.
 	TranslationRecorder = SpanRecorder[openai.TranslationRequest, openai.TranslationResponse, struct{}]
 	// RerankRecorder records attributes to a span according to a semantic convention.
@@ -250,7 +255,7 @@ type (
 	// NoopSpeechTracer implements SpeechTracer.
 	NoopSpeechTracer = NoopTracer[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
 	// NoopTranscriptionTracer implements TranscriptionTracer.
-	NoopTranscriptionTracer = NoopTracer[openai.TranscriptionRequest, openai.TranscriptionResponse, struct{}]
+	NoopTranscriptionTracer = NoopTracer[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
 	// NoopTranslationTracer implements TranslationTracer.
 	NoopTranslationTracer = NoopTracer[openai.TranslationRequest, openai.TranslationResponse, struct{}]
 	// NoopRerankTracer implements RerankTracer.
