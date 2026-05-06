@@ -35,7 +35,7 @@ type VersionedAPISchema struct {
 	// It can be with or without a leading slash ("/").
 	// This field is ignored for AWSAnthropic and GCPAnthropic.
 	//
-	// This is especially useful when routing to a backend that has an OpenAI- or Anthropic-compatible API but has a different
+	// This is especially useful when routing to a backend that has an OpenAI or Anthropic compatible API but has a different
 	// prefix. For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses
 	// "/v1beta/openai" prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)
 	// uses "/compatibility/v1" prefix. On the other hand, DeepSeek (https://api-docs.deepseek.com/) doesn't

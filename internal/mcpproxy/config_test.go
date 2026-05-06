@@ -542,3 +542,56 @@ func Test_toolSelector_sameTools(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadConfig_AuthorizationChangeTriggersNotification(t *testing.T) {
+	toolChangeSignaler := newMultiWatcherSignaler()
+	watcher := toolChangeSignaler.Watch()
+
+	proxy := &ProxyConfig{
+		mcpProxyConfig: &mcpProxyConfig{
+			backendListenerAddr: "http://localhost:8080",
+			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
+				"route1": {
+					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
+						"backend1": {Name: "backend1"},
+					},
+					authorization: &compiledAuthorization{
+						DefaultAction: filterapi.AuthorizationActionDeny,
+					},
+				},
+			},
+		},
+		toolChangeSignaler: toolChangeSignaler,
+	}
+
+	// Update with different authorization rules — should trigger tools/list notification.
+	config := &filterapi.Config{
+		MCPConfig: &filterapi.MCPConfig{
+			BackendListenerAddr: "http://localhost:8080",
+			Routes: []filterapi.MCPRoute{
+				{
+					Name: "route1",
+					Backends: []filterapi.MCPBackend{
+						{Name: "backend1"},
+					},
+					Authorization: &filterapi.MCPRouteAuthorization{
+						DefaultAction: filterapi.AuthorizationActionAllow, // Changed
+					},
+				},
+			},
+		},
+	}
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		select {
+		case <-watcher:
+		case <-time.After(100 * time.Millisecond):
+			t.Error("expected tools changed notification on authorization change but didn't receive one")
+		}
+	})
+
+	err := proxy.LoadConfig(t.Context(), config)
+	require.NoError(t, err)
+	wg.Wait()
+}

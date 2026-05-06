@@ -1650,12 +1650,24 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 
 	// Aggregate the tools from all responses.
 	// A backend specific prefix is added to the tool name to avoid name collision.
-	// The tools are filtered based on the toolFilters configured for each backend.
+	// The tools are filtered based on the toolFilters configured for each backend,
+	// and additionally by authorization rules so callers only see tools they can invoke.
 	for _, r := range responses {
 		selector := route.toolSelectors[r.backendName]
 		for _, tool := range r.res.Tools {
 			if selector != nil && !selector.allows(tool.Name) {
 				continue
+			}
+			if route.authorization != nil {
+				allowed, _ := m.authorizeRequest(route.authorization, &authorizationRequest{
+					Headers:   m.requestHeaders,
+					MCPMethod: "tools/call",
+					Backend:   r.backendName,
+					Tool:      tool.Name,
+				})
+				if !allowed {
+					continue
+				}
 			}
 			tool.Name = downstreamResourceName(tool.Name, r.backendName)
 			resp.Tools = append(resp.Tools, tool)
