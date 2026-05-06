@@ -794,9 +794,6 @@ func (TranscriptionEndpointSpec) ParseMultipartBody(
 		return "", nil, false, nil, fmt.Errorf("%w: missing required field 'file'", internalapi.ErrMalformedRequest)
 	}
 
-	// Propagate req.Stream so the upstream filter can switch Envoy to STREAMED response mode.
-	// OpenAI silently ignores stream=true for whisper-1 and returns JSON; the gateway must follow
-	// suit by branching on the actual response Content-Type, not on this flag — see the translator.
 	return req.Model, &req, req.Stream, nil, nil
 }
 
