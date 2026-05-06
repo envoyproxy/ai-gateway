@@ -264,9 +264,6 @@ func TestTranscriptionRecorder_RecordResponse(t *testing.T) {
 	}
 }
 
-// TestTranscriptionRecorder_RecordResponseChunks exercises the streaming path: given the SSE
-// events parsed by the translator (transcript.text.delta / transcript.text.done), the recorder
-// aggregates the per-event delta text into the span's OutputValue.
 func TestTranscriptionRecorder_RecordResponseChunks(t *testing.T) {
 	tests := []struct {
 		name          string

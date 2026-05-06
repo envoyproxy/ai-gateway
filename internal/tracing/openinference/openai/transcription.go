@@ -19,10 +19,6 @@ import (
 )
 
 // TranscriptionRecorder implements recorders for OpenInference audio transcription spans.
-//
-// When the upstream backend returns SSE (gpt-4o-transcribe family with stream=true), the translator
-// emits TranscriptionStreamEvent values per `data:` line and RecordResponseChunks aggregates the
-// per-event delta text into the span's OutputValue at span end.
 type TranscriptionRecorder struct {
 	traceConfig *openinference.TraceConfig
 }
@@ -109,16 +105,6 @@ func (r *TranscriptionRecorder) RecordResponse(span trace.Span, resp *openai.Tra
 }
 
 // RecordResponseChunks implements the same method as defined in tracingapi.TranscriptionRecorder.
-//
-// Chunks arrive in order from openai_transcription.go: every parsed `data: {...}` SSE line is one
-// TranscriptionStreamEvent. We aggregate them into the span's OutputValue:
-//
-//   - "transcript.text.delta" events contribute their `Delta` to the running output text.
-//   - "transcript.text.done" events provide the authoritative `Text` and override the accumulated
-//     deltas (the backend's done-event text is the source of truth).
-//   - Unknown event types are silently ignored — forward-compat with future OpenAI event types.
-//
-// When HideOutputs is set, no attributes are emitted.
 func (r *TranscriptionRecorder) RecordResponseChunks(span trace.Span, chunks []*openai.TranscriptionStreamEvent) {
 	if len(chunks) == 0 || r.traceConfig.HideOutputs {
 		return

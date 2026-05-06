@@ -37,18 +37,12 @@ func NewTranscriptionOpenAIToOpenAITranslator(prefix string, modelNameOverride i
 //     response sets Content-Type: text/event-stream. We never inspect o.stream to decide how to
 //     parse — the response Content-Type is the authoritative dispatch signal. This matches
 //     OpenAI's own behavior of silently ignoring stream=true for whisper-1 (which always returns JSON).
-//   - The stream bytes pass through to the client unchanged (newBody is always nil); we only
-//     observe them to record per-event chunks on the tracing span.
 type openAIToOpenAITranslatorV1Transcription struct {
 	modelNameOverride internalapi.ModelNameOverride
 	path              string
 	requestModel      internalapi.RequestModel
 	contentType       string
-	// stream mirrors req.Stream so the upstream filter can opt Envoy into STREAMED response mode.
-	// Advisory only — the SSE-vs-JSON dispatch in ResponseBody is driven by the response Content-Type.
 	stream bool
-	// buffered carries unterminated SSE bytes between successive ResponseBody invocations:
-	// a single `data:` line may straddle a chunk boundary, so we accumulate until a newline arrives.
 	buffered []byte
 }
 
@@ -91,14 +85,6 @@ func (o *openAIToOpenAITranslatorV1Transcription) ResponseHeaders(_ map[string]s
 }
 
 // ResponseBody implements [OpenAIAudioTranscriptionTranslator.ResponseBody].
-//
-// When the response Content-Type is text/event-stream we accumulate the body into o.buffered,
-// parse complete `data:` lines into TranscriptionStreamEvent values, and forward each event to
-// the span chunk recorder. Otherwise we keep the original behavior: try to parse the body as a
-// TranscriptionResponse JSON and, on any parse failure, record the raw bytes as Text on the span.
-//
-// We never modify the response bytes — newBody is always nil so Envoy streams the original payload
-// to the client unchanged.
 func (o *openAIToOpenAITranslatorV1Transcription) ResponseBody(respHeaders map[string]string, body io.Reader, _ bool, span tracingapi.TranscriptionSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
