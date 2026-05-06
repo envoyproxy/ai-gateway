@@ -70,7 +70,9 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
    The main branch should only accept the bug fixes, the security fixes, and documentation changes.
    The release candidate should always be cut from the main branch.
 
-2. Cut the request candidate tag from the main branch. The tag should be v0.50.0-rc1. Assuming the remote `origin` is the main envoyproxy/ai-gateway repository,
+2. Prepare the docs site with the new version, following the process described in the [site/README.md](site/README.md)
+
+3. Cut the request candidate tag from the main branch. The tag should be v0.50.0-rc1. Assuming the remote `origin` is the main envoyproxy/ai-gateway repository,
    the command to cut the tag is:
 
    ```
@@ -82,7 +84,7 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
    Pushing a tag will trigger the pipeline to build the release candidate image and the helm chart tagged with the release candidate tag.
    The release candidate image will be available in the Docker Hub.
 
-3. The release candidate should be tested by the maintainers and the community. If there is any issue, the issue should be fixed in the main branch
+4. The release candidate should be tested by the maintainers and the community. If there is any issue, the issue should be fixed in the main branch
    and the new rc tag should be created. For example, if there is an issue in the release candidate v0.50.0-rc1, replace `v0.50.0-rc1` with `v0.50.0-rc2`
    in the above command and repeat the process.
 
