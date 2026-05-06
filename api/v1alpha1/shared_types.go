@@ -22,6 +22,7 @@ type VersionedAPISchema struct {
 	//
 	// When the name is set to AzureOpenAI, this version maps to "API Version" in the
 	// Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning).
+	// When the name is set to Anthropic, this field is ignored; use prefix to configure custom request paths.
 	//
 	// See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details.
 	// +optional
@@ -32,8 +33,9 @@ type VersionedAPISchema struct {
 	// When the name is set to "OpenAI", "chat completions" API endpoint will be "${this_field}/chat/completions".
 	// When the name is set to "Anthropic", the "messages" API endpoint will be "${this_field}/messages".
 	// It can be with or without a leading slash ("/").
+	// This field is ignored for AWSAnthropic and GCPAnthropic.
 	//
-	// This is especially useful when routing to a backend that has an (OpenAI|Anthropic)-compatible API but has a different
+	// This is especially useful when routing to a backend that has an OpenAI- or Anthropic-compatible API but has a different
 	// prefix. For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses
 	// "/v1beta/openai" prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)
 	// uses "/compatibility/v1" prefix. On the other hand, DeepSeek (https://api-docs.deepseek.com/) doesn't
