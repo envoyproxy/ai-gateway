@@ -295,6 +295,13 @@ build.%: ## Build a binary for the given command under the internal/cmd director
 		done; \
 	done
 
+# This builds the dynamic module filter for Envoy. This is the shared library that can be loaded by Envoy to run the AI Gateway filter.
+.PHONY: build-dynamic-module
+build-dynamic-module: ## Build the dynamic module for Envoy.
+	@echo "-> Building aigw dynamic module"
+	@CGO_ENABLED=1 go build -buildmode=c-shared -o $(OUTPUT_DIR)/libaigateway.so ./cmd/dynamic_module
+	@echo "<- Built $(OUTPUT_DIR)/libaigateway.so"
+
 # This builds the docker images for the controller, extproc and testupstream for the e2e tests.
 .PHONY: build-e2e
 build-e2e: ## Build the docker images for the controller, extproc and testupstream for the e2e tests.
@@ -303,6 +310,8 @@ build-e2e: ## Build the docker images for the controller, extproc and testupstre
 	@$(MAKE) docker-build.testupstream CMD_PATH_PREFIX=tests/internal/testupstreamlib DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testmcpserver CMD_PATH_PREFIX=tests/internal/testmcp DOCKER_BUILD_ARGS="--load"
 	@$(MAKE) docker-build.testextauthserver CMD_PATH_PREFIX=tests/internal/testextauth DOCKER_BUILD_ARGS="--load"
+	@$(MAKE) docker-build.testtokenexchange CMD_PATH_PREFIX=tests/internal/testtokenexchangelib DOCKER_BUILD_ARGS="--load"
+	@$(MAKE) docker-build-dynamic-module
 
 # This builds a docker image for a given command.
 #
@@ -335,11 +344,21 @@ endif
 docker-build.%: ## Build a docker image for a given command.
 	$(eval IMAGE_NAME := $(if $(filter aigw,$(*)),cli,$(*)))
 	$(eval VARIANT := $(if $(filter aigw,$(*)),base-nossl,static))
+	$(eval TARGET := $(if $(filter aigw,$(*)),aigw,default))
 	@$(MAKE) build.$(*) GOOS_LIST="linux" GOARCH_LIST="$(GOARCH_LIST)"
+	@if [ "$(*)" = "aigw" ]; then \
+		echo "-> Building the dynamic module for the Docker target platforms..."; \
+		$(MAKE) docker-build-dynamic-module PLATFORMS="$(PLATFORMS)"; \
+	fi
 	docker buildx build . -t $(OCI_REPOSITORY_PREFIX)-$(IMAGE_NAME):$(TAG) \
 		--build-arg VARIANT=$(VARIANT) \
 		--build-arg COMMAND_NAME=$(*) \
+		--target $(TARGET) \
 		$(PLATFORMS) $(DOCKER_BUILD_ARGS)
+
+.PHONY: docker-build-dynamic-module
+docker-build-dynamic-module:
+	docker buildx build . -f ./Dockerfile.dym --output type=local,dest=$(OUTPUT_DIR) $(PLATFORMS)
 
 HELM_DIR := ./manifests/charts/ai-gateway-helm ./manifests/charts/ai-gateway-crds-helm
 

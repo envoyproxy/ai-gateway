@@ -556,8 +556,10 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 				}
 				mcpBackend.ForwardHeaders = append(mcpBackend.ForwardHeaders, hf)
 			}
-			mcpRoute.Backends = append(
-				mcpRoute.Backends, mcpBackend)
+			if b.SecurityPolicy != nil && b.SecurityPolicy.TokenExchange != nil {
+				mcpBackend.UseTokenExchange = true
+			}
+			mcpRoute.Backends = append(mcpRoute.Backends, mcpBackend)
 		}
 		// Add authorization configuration for the route.
 		if route.Spec.SecurityPolicy != nil && route.Spec.SecurityPolicy.Authorization != nil {

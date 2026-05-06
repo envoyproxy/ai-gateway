@@ -134,7 +134,7 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	}
 
 	// Generate the resources needed to support MCP Gateway functionality.
-	if err = s.maybeGenerateResourcesForMCPGateway(req); err != nil {
+	if err = s.maybeGenerateResourcesForMCPGateway(ctx, req); err != nil {
 		return nil, fmt.Errorf("failed to generate resources for MCP Gateway: %w", err)
 	}
 	if err = s.insertRequestHeaderToMetadataFilters(req.Listeners); err != nil {

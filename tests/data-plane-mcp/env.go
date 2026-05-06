@@ -12,6 +12,8 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -74,6 +76,19 @@ const (
 	mcpDefaultRootName = "test-root"
 	mcpDefaultRootURI  = "foo://bar"
 )
+
+func requireDynamicModule(t *testing.T) {
+	projectRoot := internaltesting.FindProjectRoot()
+	modulePath := filepath.Join(projectRoot, "out", "libaigateway.so")
+	_, err := os.Stat(modulePath)
+	require.NoError(t, err, "libaigateway.so not found at %s; run: make build-dynamic-module", modulePath)
+
+	// Configure the path where Envoy will look for dynamic module files
+	t.Setenv("ENVOY_DYNAMIC_MODULES_SEARCH_PATH", filepath.Join(projectRoot, "out"))
+	// Needed for Go-based dynamic modules to disable the cgo pointer checks as
+	// Envoy may hold pointers to Go memory.
+	t.Setenv("GODEBUG", "cgocheck=0")
+}
 
 func requireNewMCPEnv(t *testing.T, forceJSONResponse bool, writeTimeout time.Duration, path string, extprocArgs ...string) *mcpEnv {
 	t.Helper()

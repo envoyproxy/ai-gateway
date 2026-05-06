@@ -232,6 +232,7 @@ func translateCustomResourceObjects(
 			return
 		}
 		userDefinedSecretKeys[fmt.Sprintf("%s/%s", s.Namespace, s.Name)] = struct{}{}
+		mustCreate(ctx, fakeClient, s, logger)
 	}
 
 	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),

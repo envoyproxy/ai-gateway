@@ -574,6 +574,9 @@ func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, m
 	fullPathPtr := ptr.Deref(ref.Path, defaultMCPPath)
 
 	// Add credential injection if apiKey is specified.
+	// When tokenExchange is configured, no static credential injection is added here -
+	// the BOE token-exchange Dynamic Module filter in the backend listener performs the
+	// exchange at request time using the user's Authorization token as the subject_token.
 	if ref.SecurityPolicy != nil && ref.SecurityPolicy.APIKey != nil {
 		apiKey := ref.SecurityPolicy.APIKey
 

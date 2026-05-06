@@ -47,6 +47,11 @@ type MCPBackend struct {
 	// ForwardHeaders specifies HTTP headers to extract from the incoming request and forward to this backend.
 	// Each entry maps a source header name to an optional destination header name.
 	ForwardHeaders []MCPHeaderForward `json:"forwardHeaders,omitempty"`
+
+	// UseTokenExchange indicates that OAuth 2.0 Token Exchange (RFC-8693) is configured for this backend.
+	// When true, the MCP proxy will forward the incoming user's Authorization header to the backend listener
+	// so that the BOE token-exchange Dynamic Module filter can exchange it for a backend-scoped token.
+	UseTokenExchange bool `json:"useTokenExchange,omitempty"`
 }
 
 // MCPHeaderForward specifies a header to extract from the incoming request and forward to a backend.

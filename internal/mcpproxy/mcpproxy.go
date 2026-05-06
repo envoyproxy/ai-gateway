@@ -447,6 +447,15 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 		}
 	}
 
+	// For token-exchange backends, forward the original user Authorization header as the subject_token.
+	// The BOE token-exchange Dynamic Module filter in the backend listener will exchange it for a
+	// backend-scoped token before the request reaches the upstream MCP server.
+	if backend.UseTokenExchange {
+		if authz := m.requestHeaders.Get("authorization"); authz != "" {
+			req.Header.Set("Authorization", authz)
+		}
+	}
+
 	resp, err := m.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send MCP notifications/initialized request: %w", err)

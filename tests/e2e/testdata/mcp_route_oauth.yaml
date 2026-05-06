@@ -143,5 +143,4 @@ spec:
     kubernetes:
       envoyDeployment:
         container:
-          # Clear the default memory/cpu requirements for local tests.
           resources: {}
