@@ -7,7 +7,9 @@ package translator
 
 import (
 	"bytes"
+	"errors"
 	"io"
+	"log/slog"
 	"strconv"
 	"testing"
 	"time"
@@ -25,6 +27,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
+	"github.com/envoyproxy/ai-gateway/internal/redaction"
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 func TestResponseModel_Anthropic(t *testing.T) {
@@ -461,11 +465,11 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) 
 			require.NoError(t, err)
 
 			expectedTokenUsage := tokenUsageFrom(
-				int32(tt.expectedOpenAIResponse.Usage.PromptTokens),
-				int32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CachedTokens),
-				int32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CacheCreationTokens),
-				int32(tt.expectedOpenAIResponse.Usage.CompletionTokens),
-				int32(tt.expectedOpenAIResponse.Usage.TotalTokens),
+				int32(tt.expectedOpenAIResponse.Usage.PromptTokens),                            // nolint:gosec
+				int32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CachedTokens),        // nolint:gosec
+				int32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CacheCreationTokens), // nolint:gosec
+				int32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                        // nolint:gosec
+				int32(tt.expectedOpenAIResponse.Usage.TotalTokens),                             // nolint:gosec
 				-1,
 			)
 			require.Equal(t, expectedTokenUsage, usedToken)
@@ -543,7 +547,7 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseError(t *testing.T)
 			require.NotNil(t, hm)
 			require.Len(t, hm, 2)
 			require.Equal(t, contentTypeHeaderName, hm[0].Key())
-			require.Equal(t, jsonContentType, hm[0].Value())
+			require.Equal(t, jsonContentType, hm[0].Value()) //nolint:testifylint
 			require.Equal(t, contentLengthHeaderName, hm[1].Key())
 			require.Equal(t, strconv.Itoa(len(body)), hm[1].Value())
 
@@ -583,4 +587,434 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseHeaders(t *testing.
 		require.Equal(t, contentTypeHeaderName, hm[0].Key())
 		require.Equal(t, eventStreamContentType, hm[0].Value())
 	})
+}
+
+func initOpenAIToAnthropicTranslator(t *testing.T) *openAIToAnthropicTranslatorV1ChatCompletion {
+	t.Helper()
+	translator := NewChatCompletionOpenAIToAnthropicTranslator("", "").(*openAIToAnthropicTranslatorV1ChatCompletion)
+	req := &openai.ChatCompletionRequest{
+		Model:     "claude-3",
+		MaxTokens: ptr.To(int64(100)),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+					Role:    openai.ChatMessageRoleUser,
+				},
+			},
+		},
+	}
+	reqBody, _ := json.Marshal(req)
+	_, _, err := translator.RequestBody(reqBody, req, false)
+	require.NoError(t, err)
+	return translator
+}
+
+func TestOpenAIToAnthropicTranslatorV1ChatCompletion_SetRedactionConfig(t *testing.T) {
+	translator := initOpenAIToAnthropicTranslator(t)
+
+	require.False(t, translator.debugLogEnabled)
+	require.False(t, translator.enableRedaction)
+	require.Nil(t, translator.logger)
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	translator.SetRedactionConfig(true, true, logger)
+
+	require.True(t, translator.debugLogEnabled)
+	require.True(t, translator.enableRedaction)
+	require.Equal(t, logger, translator.logger)
+}
+
+func TestOpenAIToAnthropicTranslatorV1ChatCompletion_RedactBody(t *testing.T) {
+	t.Run("nil response", func(t *testing.T) {
+		translator := initOpenAIToAnthropicTranslator(t)
+		result := translator.RedactBody(nil)
+		require.Nil(t, result)
+	})
+
+	t.Run("empty choices", func(t *testing.T) {
+		translator := initOpenAIToAnthropicTranslator(t)
+		resp := &openai.ChatCompletionResponse{
+			ID:      "msg_01",
+			Model:   "claude-3",
+			Choices: nil,
+		}
+		result := translator.RedactBody(resp)
+		require.NotNil(t, result)
+		require.Equal(t, "msg_01", result.ID)
+		require.Nil(t, result.Choices)
+	})
+
+	t.Run("text content is redacted", func(t *testing.T) {
+		translator := initOpenAIToAnthropicTranslator(t)
+		content := "sensitive text"
+		resp := &openai.ChatCompletionResponse{
+			ID:    "msg_02",
+			Model: "claude-3",
+			Choices: []openai.ChatCompletionResponseChoice{
+				{
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role:    "assistant",
+						Content: &content,
+					},
+				},
+			},
+		}
+		result := translator.RedactBody(resp)
+		require.NotNil(t, result)
+		require.Len(t, result.Choices, 1)
+		require.NotNil(t, result.Choices[0].Message.Content)
+		require.Equal(t, redaction.RedactString(content), *result.Choices[0].Message.Content)
+		require.NotEqual(t, content, *result.Choices[0].Message.Content)
+	})
+
+	t.Run("tool calls are redacted", func(t *testing.T) {
+		translator := initOpenAIToAnthropicTranslator(t)
+		funcName := "get_weather"
+		funcArgs := `{"city":"Paris"}`
+		resp := &openai.ChatCompletionResponse{
+			ID:    "msg_03",
+			Model: "claude-3",
+			Choices: []openai.ChatCompletionResponseChoice{
+				{
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role: "assistant",
+						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+							{
+								ID:   ptr.To("toolu_01"),
+								Type: "function",
+								Function: openai.ChatCompletionMessageToolCallFunctionParam{
+									Name:      funcName,
+									Arguments: funcArgs,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		result := translator.RedactBody(resp)
+		require.NotNil(t, result)
+		require.Len(t, result.Choices, 1)
+		require.Len(t, result.Choices[0].Message.ToolCalls, 1)
+		require.Equal(t, redaction.RedactString(funcName), result.Choices[0].Message.ToolCalls[0].Function.Name)
+		require.Equal(t, redaction.RedactString(funcArgs), result.Choices[0].Message.ToolCalls[0].Function.Arguments)
+	})
+
+	t.Run("audio is redacted", func(t *testing.T) {
+		translator := initOpenAIToAnthropicTranslator(t)
+		audioData := "base64audio"
+		audioTranscript := "hello world"
+		resp := &openai.ChatCompletionResponse{
+			ID:    "msg_04",
+			Model: "claude-3",
+			Choices: []openai.ChatCompletionResponseChoice{
+				{
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role: "assistant",
+						Audio: &openai.ChatCompletionResponseChoiceMessageAudio{
+							Data:       audioData,
+							Transcript: audioTranscript,
+						},
+					},
+				},
+			},
+		}
+		result := translator.RedactBody(resp)
+		require.NotNil(t, result)
+		require.Len(t, result.Choices, 1)
+		require.NotNil(t, result.Choices[0].Message.Audio)
+		require.Equal(t, redaction.RedactString(audioData), result.Choices[0].Message.Audio.Data)
+		require.Equal(t, redaction.RedactString(audioTranscript), result.Choices[0].Message.Audio.Transcript)
+	})
+
+	t.Run("reasoning content is redacted", func(t *testing.T) {
+		translator := initOpenAIToAnthropicTranslator(t)
+		reasoningText := "step by step reasoning"
+		resp := &openai.ChatCompletionResponse{
+			ID:    "msg_05",
+			Model: "claude-3",
+			Choices: []openai.ChatCompletionResponseChoice{
+				{
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role: "assistant",
+						ReasoningContent: &openai.ReasoningContentUnion{
+							Value: &openai.ReasoningContent{
+								ReasoningContent: &awsbedrock.ReasoningContentBlock{
+									ReasoningText: &awsbedrock.ReasoningTextBlock{
+										Text:      reasoningText,
+										Signature: "sig123",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		result := translator.RedactBody(resp)
+		require.NotNil(t, result)
+		require.Len(t, result.Choices, 1)
+		require.NotNil(t, result.Choices[0].Message.ReasoningContent)
+		reasoningContent, ok := result.Choices[0].Message.ReasoningContent.Value.(*openai.ReasoningContent)
+		require.True(t, ok)
+		require.NotNil(t, reasoningContent.ReasoningContent)
+		require.NotNil(t, reasoningContent.ReasoningContent.ReasoningText)
+		require.Equal(t, redaction.RedactString(reasoningText), reasoningContent.ReasoningContent.ReasoningText.Text)
+		require.Equal(t, "sig123", reasoningContent.ReasoningContent.ReasoningText.Signature)
+	})
+
+	t.Run("all fields combined", func(t *testing.T) {
+		translator := initOpenAIToAnthropicTranslator(t)
+		content := "text content"
+		funcName := "my_function"
+		funcArgs := `{"key":"val"}`
+		audioData := "audio123"
+		audioTranscript := "transcript"
+		reasoningText := "think step"
+		resp := &openai.ChatCompletionResponse{
+			ID:    "msg_06",
+			Model: "claude-3",
+			Choices: []openai.ChatCompletionResponseChoice{
+				{
+					Message: openai.ChatCompletionResponseChoiceMessage{
+						Role:    "assistant",
+						Content: &content,
+						ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+							{
+								ID:   ptr.To("toolu_02"),
+								Type: "function",
+								Function: openai.ChatCompletionMessageToolCallFunctionParam{
+									Name:      funcName,
+									Arguments: funcArgs,
+								},
+							},
+						},
+						Audio: &openai.ChatCompletionResponseChoiceMessageAudio{
+							Data:       audioData,
+							Transcript: audioTranscript,
+						},
+						ReasoningContent: &openai.ReasoningContentUnion{
+							Value: &openai.ReasoningContent{
+								ReasoningContent: &awsbedrock.ReasoningContentBlock{
+									ReasoningText: &awsbedrock.ReasoningTextBlock{
+										Text:      reasoningText,
+										Signature: "sig456",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		result := translator.RedactBody(resp)
+		require.NotNil(t, result)
+		require.Len(t, result.Choices, 1)
+		msg := result.Choices[0].Message
+
+		require.NotNil(t, msg.Content)
+		require.Equal(t, redaction.RedactString(content), *msg.Content)
+
+		require.Len(t, msg.ToolCalls, 1)
+		require.Equal(t, redaction.RedactString(funcName), msg.ToolCalls[0].Function.Name)
+		require.Equal(t, redaction.RedactString(funcArgs), msg.ToolCalls[0].Function.Arguments)
+
+		require.NotNil(t, msg.Audio)
+		require.Equal(t, redaction.RedactString(audioData), msg.Audio.Data)
+		require.Equal(t, redaction.RedactString(audioTranscript), msg.Audio.Transcript)
+
+		require.NotNil(t, msg.ReasoningContent)
+	})
+}
+
+func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseError_InvalidJSON(t *testing.T) {
+	respHeaders := map[string]string{
+		statusHeaderName:      "400",
+		contentTypeHeaderName: "application/json",
+	}
+	body := bytes.NewBufferString(`{invalid json content`)
+
+	o := &openAIToAnthropicTranslatorV1ChatCompletion{}
+	hm, bodyBytes, err := o.ResponseError(respHeaders, body)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to unmarshal JSON error body")
+	require.Nil(t, hm)
+	require.Nil(t, bodyBytes)
+}
+
+type errReader struct {
+	err error
+}
+
+func (e *errReader) Read(_ []byte) (int, error) {
+	return 0, e.err
+}
+
+func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseError_ReadError(t *testing.T) {
+	respHeaders := map[string]string{
+		statusHeaderName:      "500",
+		contentTypeHeaderName: "text/plain",
+	}
+	body := &errReader{err: errors.New("connection reset")}
+
+	o := &openAIToAnthropicTranslatorV1ChatCompletion{}
+	hm, bodyBytes, err := o.ResponseError(respHeaders, body)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to read raw error body")
+	require.Nil(t, hm)
+	require.Nil(t, bodyBytes)
+}
+
+func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseBody_DebugLogging(t *testing.T) {
+	makeLogger := func(buf *bytes.Buffer) *slog.Logger {
+		return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	}
+
+	t.Run("logs when all conditions are true", func(t *testing.T) {
+		var buf bytes.Buffer
+		translator := initOpenAIToAnthropicTranslator(t)
+		translator.SetRedactionConfig(true, true, makeLogger(&buf))
+
+		anthropicResp := anthropic.Message{
+			ID:   "msg_01XYZ",
+			Type: constant.ValueOf[constant.Message](),
+			Role: constant.ValueOf[constant.Assistant](),
+			Content: []anthropic.ContentBlockUnion{
+				{Type: "text", Text: "Hello!"},
+			},
+			StopReason: anthropic.StopReasonEndTurn,
+			Usage:      anthropic.Usage{InputTokens: 10, OutputTokens: 5},
+		}
+		body, err := json.Marshal(anthropicResp)
+		require.NoError(t, err)
+
+		_, _, _, _, err = translator.ResponseBody(nil, bytes.NewReader(body), true, nil)
+		require.NoError(t, err)
+		require.Contains(t, buf.String(), "response body processing")
+	})
+
+	t.Run("no log when debugLogEnabled is false", func(t *testing.T) {
+		var buf bytes.Buffer
+		translator := initOpenAIToAnthropicTranslator(t)
+		translator.SetRedactionConfig(false, true, makeLogger(&buf))
+
+		anthropicResp := anthropic.Message{
+			ID:   "msg_02XYZ",
+			Type: constant.ValueOf[constant.Message](),
+			Role: constant.ValueOf[constant.Assistant](),
+			Content: []anthropic.ContentBlockUnion{
+				{Type: "text", Text: "Hello!"},
+			},
+			StopReason: anthropic.StopReasonEndTurn,
+			Usage:      anthropic.Usage{InputTokens: 10, OutputTokens: 5},
+		}
+		body, err := json.Marshal(anthropicResp)
+		require.NoError(t, err)
+
+		_, _, _, _, err = translator.ResponseBody(nil, bytes.NewReader(body), true, nil)
+		require.NoError(t, err)
+		require.Empty(t, buf.String())
+	})
+
+	t.Run("no log when enableRedaction is false", func(t *testing.T) {
+		var buf bytes.Buffer
+		translator := initOpenAIToAnthropicTranslator(t)
+		translator.SetRedactionConfig(true, false, makeLogger(&buf))
+
+		anthropicResp := anthropic.Message{
+			ID:   "msg_03XYZ",
+			Type: constant.ValueOf[constant.Message](),
+			Role: constant.ValueOf[constant.Assistant](),
+			Content: []anthropic.ContentBlockUnion{
+				{Type: "text", Text: "Hello!"},
+			},
+			StopReason: anthropic.StopReasonEndTurn,
+			Usage:      anthropic.Usage{InputTokens: 10, OutputTokens: 5},
+		}
+		body, err := json.Marshal(anthropicResp)
+		require.NoError(t, err)
+
+		_, _, _, _, err = translator.ResponseBody(nil, bytes.NewReader(body), true, nil)
+		require.NoError(t, err)
+		require.Empty(t, buf.String())
+	})
+
+	t.Run("no log when logger is nil", func(t *testing.T) {
+		translator := initOpenAIToAnthropicTranslator(t)
+		translator.SetRedactionConfig(true, true, nil)
+
+		anthropicResp := anthropic.Message{
+			ID:   "msg_04XYZ",
+			Type: constant.ValueOf[constant.Message](),
+			Role: constant.ValueOf[constant.Assistant](),
+			Content: []anthropic.ContentBlockUnion{
+				{Type: "text", Text: "Hello!"},
+			},
+			StopReason: anthropic.StopReasonEndTurn,
+			Usage:      anthropic.Usage{InputTokens: 10, OutputTokens: 5},
+		}
+		body, err := json.Marshal(anthropicResp)
+		require.NoError(t, err)
+
+		_, _, _, _, err = translator.ResponseBody(nil, bytes.NewReader(body), true, nil)
+		require.NoError(t, err)
+	})
+}
+
+type mockAnthropicSpan struct {
+	recordedResponse *openai.ChatCompletionResponse
+}
+
+func (m *mockAnthropicSpan) RecordResponseChunk(_ *openai.ChatCompletionResponseChunk) {}
+func (m *mockAnthropicSpan) RecordResponse(resp *openai.ChatCompletionResponse) {
+	m.recordedResponse = resp
+}
+func (m *mockAnthropicSpan) EndSpanOnError(_ int, _ []byte) {}
+func (m *mockAnthropicSpan) EndSpan()                       {}
+
+var _ tracingapi.ChatCompletionSpan = (*mockAnthropicSpan)(nil)
+
+func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseBody_WithSpanRecording(t *testing.T) {
+	translator := initOpenAIToAnthropicTranslator(t)
+
+	anthropicResp := anthropic.Message{
+		ID:   "msg_span01",
+		Type: constant.ValueOf[constant.Message](),
+		Role: constant.ValueOf[constant.Assistant](),
+		Content: []anthropic.ContentBlockUnion{
+			{Type: "text", Text: "Span test content"},
+		},
+		StopReason: anthropic.StopReasonEndTurn,
+		Usage:      anthropic.Usage{InputTokens: 10, OutputTokens: 5},
+	}
+	body, err := json.Marshal(anthropicResp)
+	require.NoError(t, err)
+
+	span := &mockAnthropicSpan{}
+	_, _, _, _, err = translator.ResponseBody(nil, bytes.NewReader(body), true, span)
+	require.NoError(t, err)
+	require.NotNil(t, span.recordedResponse, "RecordResponse should have been called")
+	require.Equal(t, "msg_span01", span.recordedResponse.ID)
+}
+
+func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseBody_InvalidStopReason(t *testing.T) {
+	translator := initOpenAIToAnthropicTranslator(t)
+
+	anthropicResp := anthropic.Message{
+		ID:   "msg_badstop",
+		Type: constant.ValueOf[constant.Message](),
+		Role: constant.ValueOf[constant.Assistant](),
+		Content: []anthropic.ContentBlockUnion{
+			{Type: "text", Text: "test"},
+		},
+		StopReason: anthropic.StopReason("unknown_stop_reason"),
+		Usage:      anthropic.Usage{InputTokens: 10, OutputTokens: 5},
+	}
+	body, err := json.Marshal(anthropicResp)
+	require.NoError(t, err)
+
+	_, _, _, _, err = translator.ResponseBody(nil, bytes.NewReader(body), true, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid stop reason")
 }
