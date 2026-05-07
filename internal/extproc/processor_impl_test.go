@@ -513,8 +513,11 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 	// usage was already accumulated from earlier chunks (e.g. a corrupted
 	// trailing event in the AWS EventStream), the deferred defensive fallback
 	// must still emit the accumulated usage so the histogram doesn't silently
-	// drop the request.
-	t.Run("streaming defensive fallback emits on translator error at EndOfStream", func(t *testing.T) {
+	// drop the request — but ONLY when all four core token-type fields
+	// (input, cache_create, cache_read, output) are populated from prior
+	// chunks. Otherwise we'd risk emitting a partial state that
+	// under-reports cache_creation. See the v2 fix in processor_impl.go.
+	t.Run("streaming defensive fallback emits on translator error at EndOfStream when fields complete", func(t *testing.T) {
 		mm := &mockMetrics{}
 		mt := &mockTranslator{t: t}
 		p := &chatCompletionProcessorUpstreamFilter{
@@ -526,7 +529,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 				config: &filterapi.RuntimeConfig{},
 			},
 		}
-		// Mid-stream chunk: translator parses message_start, returns usage,
+		// Mid-stream chunk: translator parses message_start with ALL four
+		// token-type fields set (input, cache_read, cache_create, output),
 		// not EndOfStream — must NOT emit yet.
 		mid := &extprocv3.HttpBody{Body: []byte("chunk-mid"), EndOfStream: false}
 		mt.expResponseBody = mid
@@ -543,20 +547,63 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 
 		// Final chunk: translator errors out. The early-return path skips the
 		// happy-path emission line, but the deferred defensive fallback should
-		// still fire because EndOfStream=true and we have accumulated usage.
+		// still fire because EndOfStream=true AND all four fields are set
+		// from the prior chunk.
 		final := &extprocv3.HttpBody{Body: []byte("chunk-final"), EndOfStream: true}
 		mt.expResponseBody = final
 		mt.retErr = errors.New("simulated terminal-chunk parse error")
 		_, err = p.ProcessResponseBody(t.Context(), final)
 		require.Error(t, err)
-		// Token usage MUST be recorded once from accumulated state.
 		require.Equal(t, 1, mm.recordTokenUsageCallCount,
-			"defensive fallback must emit usage when translator errors on the EndOfStream chunk")
+			"defensive fallback must emit usage when all four fields set and translator errors on the EndOfStream chunk")
 		require.Equal(t, 70000, mm.inputTokenCount)
 		require.Equal(t, 65000, mm.cachedInputTokenCount)
 		require.Equal(t, 5000, mm.cacheCreationInputTokenCount)
 		require.Equal(t, 1, mm.outputTokenCount)
-		// And the request is recorded as a failure (translator error).
+		mm.RequireRequestFailure(t)
+	})
+
+	// v2 hardening: if u.costs has only some fields populated (e.g. message_start
+	// was never parsed because the translator errored on the very first chunk
+	// that should have contained it), the defensive fallback must NOT fire
+	// with a partial state — that would silently emit cache_creation=0 and
+	// pollute the histogram. We'd rather skip the fallback entirely and let
+	// the gap show up in `gen_ai_client_token_usage_count` for explicit
+	// debugging.
+	t.Run("streaming defensive fallback does NOT emit when fields incomplete", func(t *testing.T) {
+		mm := &mockMetrics{}
+		mt := &mockTranslator{t: t}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200"},
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: true,
+				config: &filterapi.RuntimeConfig{},
+			},
+		}
+		// Mid-stream chunk: translator returns ONLY input_tokens set
+		// (simulating a partial parse where message_start hasn't fully
+		// landed yet — only the input_tokens field was decoded before the
+		// translator errored on the next chunk). cache_create / cache_read /
+		// output are NOT set on the returned TokenUsage.
+		mid := &extprocv3.HttpBody{Body: []byte("chunk-mid"), EndOfStream: false}
+		mt.expResponseBody = mid
+		mt.retUsedToken = metrics.TokenUsage{}
+		mt.retUsedToken.SetInputTokens(70000) // only input set
+		_, err := p.ProcessResponseBody(t.Context(), mid)
+		require.NoError(t, err)
+		require.Zero(t, mm.recordTokenUsageCallCount)
+
+		// Final chunk: translator errors. Defensive fallback should NOT fire
+		// because cache_create / cache_read / output are all unset on u.costs.
+		final := &extprocv3.HttpBody{Body: []byte("chunk-final"), EndOfStream: true}
+		mt.expResponseBody = final
+		mt.retErr = errors.New("simulated terminal-chunk parse error")
+		_, err = p.ProcessResponseBody(t.Context(), final)
+		require.Error(t, err)
+		require.Zero(t, mm.recordTokenUsageCallCount,
+			"defensive fallback must NOT emit a partial-state record when cache_creation_input_tokens is unset")
 		mm.RequireRequestFailure(t)
 	})
 

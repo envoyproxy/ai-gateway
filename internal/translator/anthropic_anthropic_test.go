@@ -154,6 +154,110 @@ data: {"type":"message_stop"       }`
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 }
 
+// Reproducer for the Sonnet "establish-cache" cache_creation under-count bug.
+//
+// In production we observed Anthropic Sonnet streaming responses where
+// `message_start.usage.cache_creation_input_tokens` was 0 (cache write not yet
+// finalized at message_start) and the actual final cumulative count appeared
+// only in `message_delta.usage.cache_creation_input_tokens`. The translator
+// previously read only OutputTokens from message_delta, silently dropping the
+// final cache_creation value and emitting cache_creation=0 to the histogram.
+//
+// This test simulates that exact pattern and asserts the translator captures
+// the cumulative cache_creation_input_tokens reported in message_delta.
+func TestAnthropicToAnthropic_ResponseBody_streaming_establishCache(t *testing.T) {
+	translator := NewAnthropicToAnthropicTranslator("", "")
+	require.NotNil(t, translator)
+	translator.(*anthropicToAnthropicTranslator).stream = true
+
+	// message_start: input_tokens=3 (regular), cache_creation=0 (cache write
+	// not yet finalized), cache_read=0, output=1. This is the "establish-cache"
+	// pattern observed for short Sonnet requests where the cache is being
+	// written DURING processing.
+	const responseHead = `event: message_start
+data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_01EstablishCacheBugRepro","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":3,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":1}}    }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}           }
+
+`
+
+	// message_delta: cumulative final usage. cache_creation_input_tokens=59234
+	// is the FINAL count after the cache was fully written. Per Anthropic
+	// docs, this is cumulative — the translator MUST absorb it.
+	const responseTail = `
+event: content_block_stop
+data: {"type":"content_block_stop","index":0             }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":3,"cache_creation_input_tokens":59234,"cache_read_input_tokens":0,"output_tokens":151}               }
+
+event: message_stop
+data: {"type":"message_stop"       }`
+
+	// First batch: only message_start parsed. cache_creation=0 (correctly).
+	_, _, tokenUsage, _, err := translator.ResponseBody(nil, strings.NewReader(responseHead), false, nil)
+	require.NoError(t, err)
+	expectedAfterHead := tokenUsageFrom(3, 0, 0, 1, 4, -1)
+	require.Equal(t, expectedAfterHead, tokenUsage,
+		"after message_start: input=3 (regular), cache_create=0 (not yet written), output=1")
+
+	// Second batch: message_delta parsed with cumulative cache_creation=59234
+	// and output=151. The translator MUST update cache_creation_input_tokens
+	// from message_delta — this is what was previously broken and silently
+	// emitted as 0.
+	_, _, tokenUsage, _, err = translator.ResponseBody(nil, strings.NewReader(responseTail), true, nil)
+	require.NoError(t, err)
+	// Expected: input gross = 3 (regular) + 0 (cache_read) + 59234 (cache_create) = 59237
+	//           cache_read = 0
+	//           cache_create = 59234
+	//           output = 151
+	//           total = 59237 + 151 = 59388
+	expectedFinal := tokenUsageFrom(59237, 0, 59234, 151, 59388, -1)
+	require.Equal(t, expectedFinal, tokenUsage,
+		"after message_delta: cumulative cache_creation_input_tokens MUST be captured")
+}
+
+// Validates that when message_delta omits the cache fields (only updates
+// output_tokens, the most common case), the translator does NOT reset the
+// cache values that were correctly set from message_start.
+func TestAnthropicToAnthropic_ResponseBody_streaming_messageDelta_preservesMessageStartCache(t *testing.T) {
+	translator := NewAnthropicToAnthropicTranslator("", "")
+	require.NotNil(t, translator)
+	translator.(*anthropicToAnthropicTranslator).stream = true
+
+	// message_start with full cache values (cache hit + small cache write).
+	const responseHead = `event: message_start
+data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_01CacheHit","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":5,"cache_creation_input_tokens":1000,"cache_read_input_tokens":50000,"output_tokens":1}}    }
+
+`
+
+	// message_delta only carries the cumulative output_tokens. Cache fields
+	// are 0 (omitted) — translator must preserve the message_start values.
+	const responseTail = `
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":250}               }
+
+event: message_stop
+data: {"type":"message_stop"       }`
+
+	_, _, tokenUsage, _, err := translator.ResponseBody(nil, strings.NewReader(responseHead), false, nil)
+	require.NoError(t, err)
+	expectedAfterHead := tokenUsageFrom(51005, 50000, 1000, 1, 51006, -1)
+	require.Equal(t, expectedAfterHead, tokenUsage,
+		"after message_start: input gross = 5+50000+1000 = 51005")
+
+	_, _, tokenUsage, _, err = translator.ResponseBody(nil, strings.NewReader(responseTail), true, nil)
+	require.NoError(t, err)
+	// Cache fields preserved from message_start; output updated from message_delta.
+	expectedFinal := tokenUsageFrom(51005, 50000, 1000, 250, 51255, -1)
+	require.Equal(t, expectedFinal, tokenUsage,
+		"after message_delta with output-only usage: cache fields MUST be preserved (not reset to 0)")
+}
+
 func TestAnthropicToAnthropic_ResponseError(t *testing.T) {
 	t.Run("json error", func(t *testing.T) {
 		translator := NewAnthropicToAnthropicTranslator("", "")

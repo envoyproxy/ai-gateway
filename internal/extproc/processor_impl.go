@@ -469,14 +469,28 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		// Defensive fallback for streaming responses: if the EndOfStream chunk
 		// reached us but token usage was not emitted on the happy path (e.g.
 		// the translator returned an error after we had already accumulated
-		// usage from earlier chunks, or it returned an empty usage on the
-		// terminal chunk), emit whatever we have so the histogram doesn't
-		// silently drop the request. Idempotency in emitTokenUsageOnce
+		// usage from earlier chunks), emit whatever we have so the histogram
+		// doesn't silently drop the request. Idempotency in emitTokenUsageOnce
 		// guarantees no double counting on the success path. We deliberately
 		// only fire this on EndOfStream to avoid false positives on
 		// mid-stream chunks.
+		//
+		// Field-completeness gate: require that all four "core" token-type
+		// fields (input, cache_creation_input, cache_read_input, output) are
+		// SET on u.costs before the defensive fallback emits. We'd rather
+		// silently drop the rare incomplete-state fallback than emit a
+		// partial record that under-reports cache_creation (which is then
+		// observable in gen_ai_client_token_usage_count vs sum). All four
+		// fields are populated together by the translator's message_start
+		// handler via ExtractTokenUsageFromExplicitCaching, so this gate
+		// effectively requires "we saw at least one fully-parsed
+		// message_start before the EndOfStream chunk".
 		if body.EndOfStream && u.parent != nil && u.parent.stream && !u.tokenUsageRecorded {
-			if input, ok := u.costs.InputTokens(); ok && input > 0 {
+			_, inputSet := u.costs.InputTokens()
+			_, ccSet := u.costs.CacheCreationInputTokens()
+			_, crSet := u.costs.CachedInputTokens()
+			_, outSet := u.costs.OutputTokens()
+			if inputSet && ccSet && crSet && outSet {
 				u.emitTokenUsageOnce(ctx)
 			}
 		}
