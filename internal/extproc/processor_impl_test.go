@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -563,14 +564,16 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		mm.RequireRequestFailure(t)
 	})
 
-	// v2 hardening: if u.costs has only some fields populated (e.g. message_start
-	// was never parsed because the translator errored on the very first chunk
-	// that should have contained it), the defensive fallback must NOT fire
-	// with a partial state — that would silently emit cache_creation=0 and
-	// pollute the histogram. We'd rather skip the fallback entirely and let
-	// the gap show up in `gen_ai_client_token_usage_count` for explicit
-	// debugging.
-	t.Run("streaming defensive fallback does NOT emit when fields incomplete", func(t *testing.T) {
+	// v3 behavior: when u.costs has only some fields populated AND the
+	// EndOfStream chunk's translator errored, the unconditional last-resort
+	// backstop emits whatever we have. We deliberately prefer
+	// "emit a partial observation" over "lose the request": visibility of
+	// request count in gen_ai_client_token_usage_count is more valuable than
+	// perfect per-token-type sums on rare error paths. The gated
+	// emitTokenUsageOnce path (which DOES require all four fields) prevents
+	// partial records from being emitted on the happy path; only this
+	// EndOfStream backstop is allowed to emit partial state.
+	t.Run("streaming defensive backstop emits partial usage on translator error at EndOfStream when fields incomplete", func(t *testing.T) {
 		mm := &mockMetrics{}
 		mt := &mockTranslator{t: t}
 		p := &chatCompletionProcessorUpstreamFilter{
@@ -593,18 +596,160 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		mt.retUsedToken.SetInputTokens(70000) // only input set
 		_, err := p.ProcessResponseBody(t.Context(), mid)
 		require.NoError(t, err)
-		require.Zero(t, mm.recordTokenUsageCallCount)
+		require.Zero(t, mm.recordTokenUsageCallCount,
+			"mid-stream chunks must not emit token usage (no EndOfStream yet)")
 
-		// Final chunk: translator errors. Defensive fallback should NOT fire
-		// because cache_create / cache_read / output are all unset on u.costs.
+		// Final chunk: translator errors. The backstop fires unconditionally
+		// because EndOfStream=true and no path has emitted yet; it records
+		// whatever we have (partial: only input set).
 		final := &extprocv3.HttpBody{Body: []byte("chunk-final"), EndOfStream: true}
 		mt.expResponseBody = final
 		mt.retErr = errors.New("simulated terminal-chunk parse error")
 		_, err = p.ProcessResponseBody(t.Context(), final)
 		require.Error(t, err)
-		require.Zero(t, mm.recordTokenUsageCallCount,
-			"defensive fallback must NOT emit a partial-state record when cache_creation_input_tokens is unset")
+		require.Equal(t, 1, mm.recordTokenUsageCallCount,
+			"v3 backstop must emit a (partial) record on EndOfStream so the request appears in gen_ai_client_token_usage_count even when the translator errored on the terminal chunk")
+		require.Equal(t, 70000, mm.inputTokenCount,
+			"the partial record must reflect whatever was accumulated before the translator error")
 		mm.RequireRequestFailure(t)
+	})
+
+	// v3 regression: the previously-plain `bool` flag could be raced past by
+	// concurrent goroutines (in production, the same upstreamProcessor
+	// instance is reachable from two ext_proc gRPC streams — the router
+	// stream and the upstream-filter stream — which run on separate
+	// goroutines and can call ProcessResponseBody concurrently for the
+	// terminal chunk). Two goroutines could each observe
+	// `tokenUsageRecorded == false`, both set it to true, and both record,
+	// producing the ~2.0× ratio observed on Haiku non-streaming and
+	// 1.74-1.93× on Sonnet streaming in staging. atomic.Bool.CompareAndSwap
+	// closes that window.
+	t.Run("concurrent EndOfStream emit attempts record token usage exactly once", func(t *testing.T) {
+		mm := &mockMetrics{}
+		mt := &mockTranslator{t: t}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200"},
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: true,
+				config: &filterapi.RuntimeConfig{},
+			},
+		}
+		body := &extprocv3.HttpBody{Body: []byte("chunk-final"), EndOfStream: true}
+		mt.expResponseBody = body
+		mt.retUsedToken = metrics.TokenUsage{}
+		mt.retUsedToken.SetInputTokens(12345)
+		mt.retUsedToken.SetCachedInputTokens(11000)
+		mt.retUsedToken.SetCacheCreationInputTokens(1000)
+		mt.retUsedToken.SetOutputTokens(345)
+
+		// Hammer ProcessResponseBody from many goroutines concurrently to
+		// expose any data race on the idempotency flag. With the v3
+		// atomic.Bool guard this MUST record exactly once regardless of
+		// scheduling. Run with `go test -race` to also flag the underlying
+		// data race if a regression reintroduces a non-atomic flag.
+		const goroutines = 32
+		var wg sync.WaitGroup
+		wg.Add(goroutines)
+		start := make(chan struct{})
+		for i := 0; i < goroutines; i++ {
+			go func() {
+				defer wg.Done()
+				<-start
+				_, _ = p.ProcessResponseBody(t.Context(), body)
+			}()
+		}
+		close(start)
+		wg.Wait()
+
+		require.Equal(t, 1, mm.recordTokenUsageCallCount,
+			"RecordTokenUsage must be called exactly once even under heavy concurrent EndOfStream invocations")
+		require.Equal(t, 12345, mm.inputTokenCount)
+		require.Equal(t, 11000, mm.cachedInputTokenCount)
+		require.Equal(t, 1000, mm.cacheCreationInputTokenCount)
+		require.Equal(t, 345, mm.outputTokenCount)
+	})
+
+	// v3 regression: non-streaming responses for backends that do NOT
+	// populate cache_* token fields (notably the OpenAI happy path, which
+	// only carries input_tokens + output_tokens) must continue to emit
+	// exactly once per request via the unconditional EndOfStream backstop.
+	// The gated emitTokenUsageOnce path skips for these backends because
+	// the field-completeness gate fails — that is by design; the backstop
+	// is responsible for ensuring the histogram still receives the
+	// observation.
+	t.Run("non-streaming without cache fields emits once via backstop", func(t *testing.T) {
+		mm := &mockMetrics{}
+		mt := &mockTranslator{t: t}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200"},
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: false,
+				config: &filterapi.RuntimeConfig{},
+			},
+		}
+		body := &extprocv3.HttpBody{Body: []byte("body"), EndOfStream: true}
+		mt.expResponseBody = body
+		mt.retUsedToken = metrics.TokenUsage{}
+		mt.retUsedToken.SetInputTokens(616)
+		mt.retUsedToken.SetOutputTokens(323)
+		// Note: cache_input and cache_creation_input deliberately NOT set
+		// (mirrors the OpenAI / non-cached Anthropic non-streaming path).
+
+		_, err := p.ProcessResponseBody(t.Context(), body)
+		require.NoError(t, err)
+		require.Equal(t, 1, mm.recordTokenUsageCallCount,
+			"non-streaming responses without cache fields must still record token usage exactly once via the EndOfStream backstop")
+		require.Equal(t, 616, mm.inputTokenCount)
+		require.Equal(t, 323, mm.outputTokenCount)
+	})
+
+	// v3 regression: the "Haiku non-streaming 2.0×" production signature.
+	// Reproduces the multi-call EndOfStream pattern that some Envoy
+	// configurations expose (e.g. response delivered as a single chunk
+	// with EndOfStream=true that gets re-delivered on retry / fallback)
+	// AND adds concurrent invocation to also exercise the race guard.
+	// The previous implementation could record up to 2× per logical
+	// request; v3 must record exactly once.
+	t.Run("non-streaming Haiku-like duplicate EndOfStream concurrent invocations record once", func(t *testing.T) {
+		mm := &mockMetrics{}
+		mt := &mockTranslator{t: t}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200"},
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: false,
+				config: &filterapi.RuntimeConfig{},
+			},
+		}
+		body := &extprocv3.HttpBody{Body: []byte("body"), EndOfStream: true}
+		mt.expResponseBody = body
+		mt.retUsedToken = metrics.TokenUsage{}
+		mt.retUsedToken.SetInputTokens(616)
+		mt.retUsedToken.SetOutputTokens(323)
+
+		const invocations = 16
+		var wg sync.WaitGroup
+		wg.Add(invocations)
+		start := make(chan struct{})
+		for i := 0; i < invocations; i++ {
+			go func() {
+				defer wg.Done()
+				<-start
+				_, _ = p.ProcessResponseBody(t.Context(), body)
+			}()
+		}
+		close(start)
+		wg.Wait()
+
+		require.Equal(t, 1, mm.recordTokenUsageCallCount,
+			"v3 must record token usage exactly once per logical request even under N concurrent ProcessResponseBody invocations on the same upstreamProcessor")
+		require.Equal(t, 616, mm.inputTokenCount)
+		require.Equal(t, 323, mm.outputTokenCount)
 	})
 
 	// Mid-stream chunks must NEVER emit token usage on their own — only
