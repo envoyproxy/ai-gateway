@@ -429,6 +429,225 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		require.Equal(t, 138, mm.streamingOutputTokens) // accumulated output tokens from stream
 		require.Equal(t, 3, mm.cachedInputTokenCount)
 		require.Equal(t, 21, mm.cacheCreationInputTokenCount)
+		// Token usage should be recorded exactly once for the whole stream.
+		require.Equal(t, 1, mm.recordTokenUsageCallCount)
+	})
+
+	// Reproducer for the streaming OTEL token-usage drop bug.
+	//
+	// In production we observed ~28% of long-running streaming Sonnet requests
+	// missing from gen_ai_client_token_usage_sum even though the access log
+	// (also gated on EndOfStream) captured 100% of them. The two suspected
+	// causes were (a) the request context being cancelled by the downstream
+	// client between the last data delivery and the EndOfStream chunk, which
+	// could cause the OTEL Histogram.Record observation to be silently dropped,
+	// and (b) the EndOfStream chunk in some upstream/downstream edge cases
+	// never reaching extproc with EndOfStream=true at all (so the sole
+	// emission point would never fire).
+	//
+	// The fix in emitTokenUsageOnce addresses both by (a) detaching the
+	// request context with context.WithoutCancel before recording, and (b)
+	// adding a defensive fallback in ProcessResponseBody's defer that emits
+	// accumulated usage whenever a streaming response finishes processing
+	// without EndOfStream having emitted, but at least input tokens are
+	// already known. Idempotency guarantees no double counting.
+	t.Run("streaming records usage with cancelled ctx at EndOfStream (H2)", func(t *testing.T) {
+		mm := &mockMetrics{}
+		mt := &mockTranslator{t: t}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200"},
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: true,
+				config: &filterapi.RuntimeConfig{},
+			},
+		}
+		// Mid-stream chunk parses message_start usage but is not EndOfStream.
+		mid := &extprocv3.HttpBody{Body: []byte("chunk-mid"), EndOfStream: false}
+		mt.expResponseBody = mid
+		mt.retUsedToken = metrics.TokenUsage{}
+		mt.retUsedToken.SetInputTokens(59241)
+		mt.retUsedToken.SetCachedInputTokens(0)
+		mt.retUsedToken.SetCacheCreationInputTokens(59238)
+		mt.retUsedToken.SetOutputTokens(1)
+		_, err := p.ProcessResponseBody(t.Context(), mid)
+		require.NoError(t, err)
+		require.Zero(t, mm.recordTokenUsageCallCount)
+
+		// Final chunk arrives with the request context already cancelled.
+		// This simulates a long-running stream where the downstream client has
+		// torn down its half of the HTTP/2 connection before Bedrock finishes.
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		final := &extprocv3.HttpBody{Body: []byte("chunk-final"), EndOfStream: true}
+		mt.expResponseBody = final
+		// Translator returns the cumulative usage including final output.
+		mt.retUsedToken = metrics.TokenUsage{}
+		mt.retUsedToken.SetInputTokens(59241)
+		mt.retUsedToken.SetCachedInputTokens(0)
+		mt.retUsedToken.SetCacheCreationInputTokens(59238)
+		mt.retUsedToken.SetOutputTokens(341)
+		mt.retUsedToken.SetTotalTokens(59582)
+
+		_, err = p.ProcessResponseBody(ctx, final)
+		require.NoError(t, err)
+		// Token usage MUST be recorded exactly once.
+		require.Equal(t, 1, mm.recordTokenUsageCallCount,
+			"RecordTokenUsage must be called exactly once at EndOfStream even when ctx is cancelled")
+		// And the ctx passed to RecordTokenUsage MUST not be cancelled (must be
+		// detached from the request ctx) so the OTEL meter cannot drop the
+		// observation due to ctx cancellation.
+		require.Len(t, mm.recordTokenUsageCtxErrs, 1)
+		require.NoErrorf(t, mm.recordTokenUsageCtxErrs[0],
+			"ctx passed to RecordTokenUsage must be detached from cancellation; got: %v", mm.recordTokenUsageCtxErrs[0])
+		// Final accumulated values must be emitted.
+		require.Equal(t, 59241, mm.inputTokenCount)
+		require.Equal(t, 0, mm.cachedInputTokenCount)
+		require.Equal(t, 59238, mm.cacheCreationInputTokenCount)
+		require.Equal(t, 341, mm.outputTokenCount)
+	})
+
+	// If the translator errors out on the terminal EndOfStream chunk after
+	// usage was already accumulated from earlier chunks (e.g. a corrupted
+	// trailing event in the AWS EventStream), the deferred defensive fallback
+	// must still emit the accumulated usage so the histogram doesn't silently
+	// drop the request.
+	t.Run("streaming defensive fallback emits on translator error at EndOfStream", func(t *testing.T) {
+		mm := &mockMetrics{}
+		mt := &mockTranslator{t: t}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200"},
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: true,
+				config: &filterapi.RuntimeConfig{},
+			},
+		}
+		// Mid-stream chunk: translator parses message_start, returns usage,
+		// not EndOfStream — must NOT emit yet.
+		mid := &extprocv3.HttpBody{Body: []byte("chunk-mid"), EndOfStream: false}
+		mt.expResponseBody = mid
+		mt.retUsedToken = metrics.TokenUsage{}
+		mt.retUsedToken.SetInputTokens(70000)
+		mt.retUsedToken.SetCachedInputTokens(65000)
+		mt.retUsedToken.SetCacheCreationInputTokens(5000)
+		mt.retUsedToken.SetOutputTokens(1)
+		_, err := p.ProcessResponseBody(t.Context(), mid)
+		require.NoError(t, err)
+		require.Zero(t, mm.recordTokenUsageCallCount,
+			"mid-stream chunks must not emit token usage")
+		mm.RequireRequestNotCompleted(t)
+
+		// Final chunk: translator errors out. The early-return path skips the
+		// happy-path emission line, but the deferred defensive fallback should
+		// still fire because EndOfStream=true and we have accumulated usage.
+		final := &extprocv3.HttpBody{Body: []byte("chunk-final"), EndOfStream: true}
+		mt.expResponseBody = final
+		mt.retErr = errors.New("simulated terminal-chunk parse error")
+		_, err = p.ProcessResponseBody(t.Context(), final)
+		require.Error(t, err)
+		// Token usage MUST be recorded once from accumulated state.
+		require.Equal(t, 1, mm.recordTokenUsageCallCount,
+			"defensive fallback must emit usage when translator errors on the EndOfStream chunk")
+		require.Equal(t, 70000, mm.inputTokenCount)
+		require.Equal(t, 65000, mm.cachedInputTokenCount)
+		require.Equal(t, 5000, mm.cacheCreationInputTokenCount)
+		require.Equal(t, 1, mm.outputTokenCount)
+		// And the request is recorded as a failure (translator error).
+		mm.RequireRequestFailure(t)
+	})
+
+	// Mid-stream chunks must NEVER emit token usage on their own — only
+	// EndOfStream (or its defensive fallback) emits. This protects against
+	// regressions where the defensive fallback is loosened too far and starts
+	// firing on every chunk.
+	t.Run("streaming mid-stream chunks never emit token usage", func(t *testing.T) {
+		mm := &mockMetrics{}
+		mt := &mockTranslator{t: t}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200"},
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: true,
+				config: &filterapi.RuntimeConfig{},
+			},
+		}
+		for i := 0; i < 5; i++ {
+			chunk := &extprocv3.HttpBody{Body: []byte(fmt.Sprintf("chunk-%d", i)), EndOfStream: false}
+			mt.expResponseBody = chunk
+			mt.retUsedToken = metrics.TokenUsage{}
+			mt.retUsedToken.SetInputTokens(uint32(1000 * (i + 1))) //nolint:gosec
+			mt.retUsedToken.SetOutputTokens(uint32(10 * (i + 1)))  //nolint:gosec
+			_, err := p.ProcessResponseBody(t.Context(), chunk)
+			require.NoError(t, err)
+		}
+		require.Zero(t, mm.recordTokenUsageCallCount,
+			"no mid-stream chunk may emit token usage")
+		mm.RequireRequestNotCompleted(t)
+	})
+
+	// Multiple EndOfStream chunks (e.g. duplicate terminal events) must not
+	// produce duplicate token-usage observations.
+	t.Run("streaming idempotent across duplicate EndOfStream chunks", func(t *testing.T) {
+		mm := &mockMetrics{}
+		mt := &mockTranslator{t: t}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200"},
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: true,
+				config: &filterapi.RuntimeConfig{},
+			},
+		}
+		body := &extprocv3.HttpBody{Body: []byte("chunk"), EndOfStream: true}
+		mt.expResponseBody = body
+		mt.retUsedToken = metrics.TokenUsage{}
+		mt.retUsedToken.SetInputTokens(100)
+		mt.retUsedToken.SetOutputTokens(50)
+		mt.retUsedToken.SetTotalTokens(150)
+		_, err := p.ProcessResponseBody(t.Context(), body)
+		require.NoError(t, err)
+		_, err = p.ProcessResponseBody(t.Context(), body)
+		require.NoError(t, err)
+		require.Equal(t, 1, mm.recordTokenUsageCallCount,
+			"duplicate EndOfStream chunks must not produce duplicate token usage emissions")
+		require.Equal(t, 100, mm.inputTokenCount)
+		require.Equal(t, 50, mm.outputTokenCount)
+	})
+
+	// Non-streaming responses must continue to record token usage exactly once
+	// and (now) with a detached context.
+	t.Run("non-streaming records usage once with detached ctx", func(t *testing.T) {
+		mm := &mockMetrics{}
+		mt := &mockTranslator{t: t}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200"},
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: false,
+				config: &filterapi.RuntimeConfig{},
+			},
+		}
+		body := &extprocv3.HttpBody{Body: []byte("body"), EndOfStream: true}
+		mt.expResponseBody = body
+		mt.retUsedToken = metrics.TokenUsage{}
+		mt.retUsedToken.SetInputTokens(10)
+		mt.retUsedToken.SetOutputTokens(20)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel() // Cancel before invoking, to validate ctx detachment.
+		_, err := p.ProcessResponseBody(ctx, body)
+		require.NoError(t, err)
+		require.Equal(t, 1, mm.recordTokenUsageCallCount)
+		require.Len(t, mm.recordTokenUsageCtxErrs, 1)
+		require.NoError(t, mm.recordTokenUsageCtxErrs[0],
+			"ctx passed to RecordTokenUsage must be detached from cancellation")
 	})
 }
 
