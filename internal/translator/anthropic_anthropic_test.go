@@ -154,6 +154,51 @@ data: {"type":"message_stop"       }`
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 }
 
+func TestAnthropicToAnthropic_ResponseBody_streaming_messageDelta_cacheCreation(t *testing.T) {
+	t.Run("message_start_has_zero_cache_creation_delta_reports_cumulative", func(t *testing.T) {
+		translator := NewAnthropicToAnthropicTranslator("", "")
+		require.NotNil(t, translator)
+		translator.(*anthropicToAnthropicTranslator).stream = true
+
+		const sse = `event: message_start
+data: {"type":"message_start","message":{"model":"claude-haiku-4-5","id":"msg_x","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0,"service_tier":"standard"}}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":100,"output_tokens":20,"cache_creation_input_tokens":2500,"cache_read_input_tokens":0}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+
+		_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, strings.NewReader(sse), false, nil)
+		require.NoError(t, err)
+		require.Equal(t, "claude-haiku-4-5", responseModel)
+		expected := tokenUsageFrom(2600, 0, 2500, 20, 2620, -1)
+		require.Equal(t, expected, tokenUsage)
+	})
+
+	t.Run("delta_omits_input_tokens_json_zero_recovers_gross_from_message_start", func(t *testing.T) {
+		translator := NewAnthropicToAnthropicTranslator("", "")
+		require.NotNil(t, translator)
+		translator.(*anthropicToAnthropicTranslator).stream = true
+
+		const sse = `event: message_start
+data: {"type":"message_start","message":{"model":"claude-haiku-4-5","id":"msg_y","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":20,"cache_creation_input_tokens":2500}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+
+		_, _, tokenUsage, _, err := translator.ResponseBody(nil, strings.NewReader(sse), false, nil)
+		require.NoError(t, err)
+		expected := tokenUsageFrom(2600, 0, 2500, 20, 2620, -1)
+		require.Equal(t, expected, tokenUsage)
+	})
+}
+
 func TestAnthropicToAnthropic_ResponseError(t *testing.T) {
 	t.Run("json error", func(t *testing.T) {
 		translator := NewAnthropicToAnthropicTranslator("", "")
