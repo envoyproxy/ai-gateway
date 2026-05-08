@@ -842,12 +842,25 @@ func geminiFinishReasonToOpenAI[T toolCallSlice](reason genai.FinishReason, tool
 		return openai.ChatCompletionChoicesFinishReasonStop
 	case genai.FinishReasonMaxTokens:
 		return openai.ChatCompletionChoicesFinishReasonLength
+	case genai.FinishReasonSafety, genai.FinishReasonBlocklist, genai.FinishReasonProhibitedContent,
+		genai.FinishReasonSPII, genai.FinishReasonImageSafety, genai.FinishReasonImageProhibitedContent:
+		return openai.ChatCompletionChoicesFinishReasonContentFilter
+	case genai.FinishReasonRecitation, genai.FinishReasonImageRecitation:
+		return openai.ChatCompletionChoicesFinishReasonRecitation
+	case genai.FinishReasonMalformedFunctionCall:
+		return openai.ChatCompletionChoicesFinishReasonMalformedFunctionCall
+	case genai.FinishReasonUnexpectedToolCall:
+		return openai.ChatCompletionChoicesFinishReasonUnexpectedToolCall
+	case genai.FinishReasonLanguage:
+		return openai.ChatCompletionChoicesFinishReasonLanguage
+	case genai.FinishReasonNoImage:
+		return openai.ChatCompletionChoicesFinishReasonNoImage
 	case "":
 		// For intermediate chunks in a streaming response, the finish reason is an empty string.
 		// This is normal behavior and should not be treated as an error.
 		return ""
 	default:
-		return openai.ChatCompletionChoicesFinishReasonContentFilter
+		return openai.ChatCompletionChoicesFinishReasonError
 	}
 }
 
