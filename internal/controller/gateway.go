@@ -28,7 +28,6 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -101,7 +100,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	var mcpRoutes aigv1a1.MCPRouteList
+	var mcpRoutes aigv1b1.MCPRouteList
 	err = c.client.List(ctx, &mcpRoutes, client.MatchingFields{
 		k8sClientIndexMCPRouteToAttachedGateway: fmt.Sprintf("%s.%s", req.Name, req.Namespace),
 	})
@@ -348,7 +347,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	configSecretName,
 	configSecretNamespace string,
 	aiGatewayRoutes []aigv1b1.AIGatewayRoute,
-	mcpRoutes []aigv1a1.MCPRoute,
+	mcpRoutes []aigv1b1.MCPRoute,
 	uuid string,
 	defaultLLMCosts []aigv1b1.LLMRequestCost,
 ) (hasEffectiveRoute bool, _ error) {
@@ -519,7 +518,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 }
 
 // reconcileFilterConfigSecretForMCPGateway updates the filter config secret for the external processor.
-func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) (_ *filterapi.MCPConfig, hasEffectiveRoute bool) {
+func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffectiveRoute bool) {
 	if len(mcpRoutes) == 0 {
 		return nil, false
 	}

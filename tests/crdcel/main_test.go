@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
@@ -282,7 +281,7 @@ func TestMCPRoutes(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/mcpgatewayroutes", tc.name))
 			require.NoError(t, err)
 
-			mcpRoute := &aigv1a1.MCPRoute{}
+			mcpRoute := &aigv1b1.MCPRoute{}
 			err = yaml.UnmarshalStrict(data, mcpRoute)
 			require.NoError(t, err)
 

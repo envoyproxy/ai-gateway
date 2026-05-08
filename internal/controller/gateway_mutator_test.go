@@ -24,7 +24,6 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
@@ -340,9 +339,9 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 					require.NoError(t, err)
 
 					if tt.needMCP {
-						err = fakeClient.Create(t.Context(), &aigv1a1.MCPRoute{
+						err = fakeClient.Create(t.Context(), &aigv1b1.MCPRoute{
 							ObjectMeta: metav1.ObjectMeta{Name: "test-mcp", Namespace: gwNamespace},
-							Spec: aigv1a1.MCPRouteSpec{
+							Spec: aigv1b1.MCPRouteSpec{
 								ParentRefs: []gwapiv1.ParentReference{
 									{
 										Name:  gwapiv1.ObjectName(gwName),
@@ -866,13 +865,13 @@ func TestGatewayMutator_listMCPRoutesForGateway_NoCacheReaderFallback(t *testing
 	const gwName, gwNamespace = "test-gateway", "test-namespace"
 
 	// Matching MCP route in noCacheReader only.
-	err := noCacheReader.Create(t.Context(), &aigv1a1.MCPRoute{
+	err := noCacheReader.Create(t.Context(), &aigv1b1.MCPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "mcp-matching", Namespace: gwNamespace},
-		Spec: aigv1a1.MCPRouteSpec{
+		Spec: aigv1b1.MCPRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
 				{Name: gwapiv1.ObjectName(gwName)},
 			},
-			BackendRefs: []aigv1a1.MCPRouteBackendRef{
+			BackendRefs: []aigv1b1.MCPRouteBackendRef{
 				{BackendObjectReference: gwapiv1.BackendObjectReference{Name: gwapiv1.ObjectName("server")}},
 			},
 		},
@@ -880,13 +879,13 @@ func TestGatewayMutator_listMCPRoutesForGateway_NoCacheReaderFallback(t *testing
 	require.NoError(t, err)
 
 	// Non-matching MCP route — different gateway name.
-	err = noCacheReader.Create(t.Context(), &aigv1a1.MCPRoute{
+	err = noCacheReader.Create(t.Context(), &aigv1b1.MCPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "mcp-non-matching", Namespace: gwNamespace},
-		Spec: aigv1a1.MCPRouteSpec{
+		Spec: aigv1b1.MCPRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{
 				{Name: gwapiv1.ObjectName("other-gw")},
 			},
-			BackendRefs: []aigv1a1.MCPRouteBackendRef{
+			BackendRefs: []aigv1b1.MCPRouteBackendRef{
 				{BackendObjectReference: gwapiv1.BackendObjectReference{Name: gwapiv1.ObjectName("other")}},
 			},
 		},

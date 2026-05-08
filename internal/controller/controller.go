@@ -19,7 +19,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes"
@@ -27,7 +26,6 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -43,7 +41,6 @@ import (
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
-	aigwjson "github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func init() {
@@ -220,7 +217,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	mcpRouteC := NewMCPRouteController(c, kubernetes.NewForConfigOrDie(config), logger.WithName("ai-gateway-mcp-route"),
 		gatewayEventChan,
 	)
-	if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.MCPRoute{}).
+	if err = TypedControllerBuilderForCRD(mgr, &aigv1b1.MCPRoute{}).
 		Owns(&gwapiv1.HTTPRoute{}).
 		Owns(&egv1a1.Backend{}).
 		WatchesRawSource(source.Channel(
@@ -362,12 +359,12 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 		return fmt.Errorf("failed to create index from target kind to ReferenceGrant: %w", err)
 	}
 
-	err = indexer(ctx, &aigv1a1.MCPRoute{},
+	err = indexer(ctx, &aigv1b1.MCPRoute{},
 		k8sClientIndexMCPRouteToAttachedGateway, mcpRouteToAttachedGatewayIndexFunc)
 	if err != nil {
 		return fmt.Errorf("failed to create index from Gateway to MCPRoute: %w", err)
 	}
-	err = indexer(ctx, &aigv1a1.MCPRoute{},
+	err = indexer(ctx, &aigv1b1.MCPRoute{},
 		k8sClientIndexSecretToReferencingMCPRoute, mcpRouteToReferencedSecret)
 	if err != nil {
 		return fmt.Errorf("failed to create index from Gateway to MCPRoute: %w", err)
@@ -381,7 +378,7 @@ func ApplyIndexing(ctx context.Context, indexer func(ctx context.Context, obj cl
 }
 
 func mcpRouteToAttachedGatewayIndexFunc(o client.Object) []string {
-	mcpRoute := o.(*aigv1a1.MCPRoute)
+	mcpRoute := o.(*aigv1b1.MCPRoute)
 	var ret []string
 	for _, ref := range mcpRoute.Spec.ParentRefs {
 		// Use the namespace from parentRef if specified, otherwise use the route's namespace.
@@ -395,7 +392,7 @@ func mcpRouteToAttachedGatewayIndexFunc(o client.Object) []string {
 }
 
 func mcpRouteToReferencedSecret(o client.Object) []string {
-	mcpRoute := o.(*aigv1a1.MCPRoute)
+	mcpRoute := o.(*aigv1b1.MCPRoute)
 	var ret []string
 	for _, ref := range mcpRoute.Spec.BackendRefs {
 		if ref.SecurityPolicy == nil || ref.SecurityPolicy.APIKey == nil || ref.SecurityPolicy.APIKey.SecretRef == nil {
@@ -546,29 +543,10 @@ func newConditions(conditionType, message string) []metav1.Condition {
 }
 
 // aiGatewayControllerFinalizer is the name of the finalizer added to various AI Gateway resources.
-const (
-	aiGatewayControllerFinalizer  = "aigateway.envoyproxy.io/finalizer"
-	aiGatewayControllerFieldOwner = "aigateway-controller"
-)
-
-func patchFinalizersWithServerSideApply(ctx context.Context, c client.Client, o client.Object) error {
-	gvk, err := apiutil.GVKForObject(o, Scheme)
-	if err != nil {
-		return fmt.Errorf("failed to determine gvk for finalizer patch: %w", err)
-	}
-
-	o.GetObjectKind().SetGroupVersionKind(gvk)
-	o.SetManagedFields(nil)
-	data, err := aigwjson.Marshal(o)
-	if err != nil {
-		return fmt.Errorf("failed to marshal finalizer apply patch: %w", err)
-	}
-	return c.Patch(ctx, o, client.RawPatch(types.ApplyPatchType, data), client.ForceOwnership,
-		client.FieldOwner(aiGatewayControllerFieldOwner))
-}
+const aiGatewayControllerFinalizer = "aigateway.envoyproxy.io/finalizer"
 
 // handleFinalizer checks if the object has a deletion timestamp. If it does, it removes the finalizer and
-// calls the onDeletionFn if provided. Otherwise, it adds the finalizer to the object and patches it
+// calls the onDeletionFn if provided. Otherwise, it adds the finalizer to the object and updates it
 // so that the finalizer is persisted.
 //
 // onDeletionFn can be nil, in which case it will not be called. The function can return an error but should not
@@ -583,7 +561,7 @@ func handleFinalizer[objType client.Object](
 	if o.GetDeletionTimestamp().IsZero() {
 		if !ctrlutil.ContainsFinalizer(o, aiGatewayControllerFinalizer) {
 			ctrlutil.AddFinalizer(o, aiGatewayControllerFinalizer)
-			if err := patchFinalizersWithServerSideApply(ctx, client, o); err != nil {
+			if err := client.Update(ctx, o); err != nil {
 				// This shouldn't happen in normal operation, but if it does, we log the error.
 				logger.Error(err, "Failed to add finalizer to object",
 					"namespace", o.GetNamespace(), "name", o.GetName())
@@ -600,7 +578,7 @@ func handleFinalizer[objType client.Object](
 					"namespace", o.GetNamespace(), "name", o.GetName())
 			}
 		}
-		if err := patchFinalizersWithServerSideApply(ctx, client, o); err != nil {
+		if err := client.Update(ctx, o); err != nil {
 			// This shouldn't happen in normal operation, but if it does, we log the error.
 			logger.Error(err, "Failed to remove finalizer from object",
 				"namespace", o.GetNamespace(), "name", o.GetName())

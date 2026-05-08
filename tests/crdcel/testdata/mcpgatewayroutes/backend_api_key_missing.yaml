@@ -4,7 +4,7 @@
 # the root of the repo.
 
 # This should fail validation: API key requires either secretRef or inline
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: backend-apikey-missing

@@ -18,7 +18,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
 
@@ -79,7 +78,7 @@ func (c *secretController) syncSecret(ctx context.Context, namespace, name strin
 		c.backendSecurityPolicyEventChan <- event.GenericEvent{Object: backendSecurityPolicy}
 	}
 
-	var mcpRoutes aigv1a1.MCPRouteList
+	var mcpRoutes aigv1b1.MCPRouteList
 	err = c.client.List(ctx, &mcpRoutes,
 		client.MatchingFields{
 			k8sClientIndexSecretToReferencingMCPRoute: fmt.Sprintf("%s.%s", name, namespace),
