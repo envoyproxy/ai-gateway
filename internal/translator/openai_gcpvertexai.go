@@ -451,6 +451,8 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiCandidatesToOpenAI
 			}
 
 			choice.Delta = delta
+		} else {
+			choice.Delta = &openai.ChatCompletionResponseChunkChoiceDelta{}
 		}
 		choice.FinishReason = geminiFinishReasonToOpenAI(candidate.FinishReason, toolCalls)
 		choices = append(choices, choice)

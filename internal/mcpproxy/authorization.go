@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -36,6 +37,23 @@ type compiledAuthorizationRule struct {
 	// CEL expression compiled for request-level evaluation.
 	celExpression string
 	celProgram    cel.Program
+}
+
+// same reports whether two compiledAuthorization values are semantically equivalent.
+// celProgram is excluded because it is derived from celExpression and is not comparable.
+func (a *compiledAuthorization) same(other *compiledAuthorization) bool {
+	if a == nil || other == nil {
+		return a == other
+	}
+	if a.ResourceMetadataURL != other.ResourceMetadataURL || a.DefaultAction != other.DefaultAction {
+		return false
+	}
+	return slices.EqualFunc(a.Rules, other.Rules, func(ra, rb compiledAuthorizationRule) bool {
+		return ra.Action == rb.Action &&
+			ra.celExpression == rb.celExpression &&
+			reflect.DeepEqual(ra.Source, rb.Source) &&
+			reflect.DeepEqual(ra.Target, rb.Target)
+	})
 }
 
 // authorizationRequest captures the parts of an MCP request needed for authorization.
