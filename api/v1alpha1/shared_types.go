@@ -22,7 +22,8 @@ type VersionedAPISchema struct {
 	//
 	// When the name is set to AzureOpenAI, this version maps to "API Version" in the
 	// Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning).
-	// When the name is set to Anthropic, this field is ignored; use prefix to configure custom request paths.
+	// This field is ignored for OpenAI, AWSBedrock, GCPVertexAI, and Anthropic.
+	// For OpenAI and Anthropic, use prefix to configure custom request paths.
 	//
 	// See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details.
 	// +optional
