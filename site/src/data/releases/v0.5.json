@@ -3,7 +3,7 @@
     "version": "v0.5",
     "title": "Envoy AI Gateway v0.5.x",
     "subtitle": "Multi-gateway configuration, prompt caching cost savings, fine-grained MCP authorization, OpenAI Responses API, and Google Search grounding for Gemini",
-    "badge": "Latest",
+    "badge": "Stable",
     "badgeType": "milestone"
   },
   "releases": [
@@ -245,6 +245,7 @@
     }
   ],
   "navigation": {
-    "previous": { "version": "v0.4.x Series", "path": "/release-notes/v0.4" }
+    "previous": { "version": "v0.4.x Series", "path": "/release-notes/v0.4" },
+    "next": { "version": "v0.6.x Series", "path": "/release-notes/v0.6" }
   }
 }
