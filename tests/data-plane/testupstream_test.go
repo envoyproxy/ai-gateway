@@ -24,6 +24,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 	"github.com/envoyproxy/ai-gateway/internal/version"
@@ -108,9 +109,12 @@ func TestWithTestUpstream(t *testing.T) {
 	const (
 		openAIFileUpstreamID = "file-123"
 		openAIFileModelName  = "some-model1"
+		stickyOpenAIBackend  = "default.translation-testupstream-another-cool-model-backend"
 		fileUploadBoundary   = "----aigw-test-boundary"
 	)
-	encodedOpenAIFileID := translator.EncodeIDWithModel(openAIFileUpstreamID, openAIFileModelName, "file")
+	// Use the new EncodeIDWithRouting that includes backend name for sticky routing
+	encodedOpenAIFileID := translator.EncodeIDWithRouting(openAIFileUpstreamID, openAIFileModelName, "testupstream-openai", "file")
+	stickyEncodedOpenAIFileID := translator.EncodeIDWithRouting(openAIFileUpstreamID, openAIFileModelName, stickyOpenAIBackend, "file")
 	fileUploadBody := strings.Join([]string{
 		"--" + fileUploadBoundary,
 		`Content-Disposition: form-data; name="file"; filename="test.txt"`,
@@ -221,11 +225,46 @@ func TestWithTestUpstream(t *testing.T) {
 			),
 		},
 		{
+			name:    "openai - GET /v1/files/{file_id} sticky backend routing",
+			backend: "openai",
+			path:    fmt.Sprintf("/v1/files/%s", stickyEncodedOpenAIFileID),
+			method:  http.MethodGet,
+			expPath: "/v1/files/" + openAIFileUpstreamID,
+			expRequestHeaders: map[string]string{
+				internalapi.BackendNameHeaderKey: stickyOpenAIBackend,
+			},
+			responseBody: `{"id":"file-123","object":"file","bytes":29,"created_at":1741382147,"filename":"test.txt","purpose":"batch"}`,
+			expStatus:    http.StatusOK,
+			expResponseBody: fmt.Sprintf(
+				`{"id":"%s","object":"file","bytes":29,"created_at":1741382147,"filename":"test.txt","purpose":"batch"}`,
+				stickyEncodedOpenAIFileID,
+			),
+		},
+		{
 			name:            "openai - GET /v1/files/{file_id}/content",
 			backend:         "openai",
 			path:            fmt.Sprintf("/v1/files/%s/content", encodedOpenAIFileID),
 			method:          http.MethodGet,
 			expPath:         "/v1/files/" + openAIFileUpstreamID + "/content",
+			responseHeaders: "content-type:application/octet-stream",
+			responseBody:    "{\"custom_id\": \"request-1\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}\n{\"custom_id\": \"request-2\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are an helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}",
+			expStatus:       http.StatusOK,
+			expResponseBodyFunc: func(t require.TestingT, body []byte) {
+				lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+				require.Len(t, lines, 2)
+				require.JSONEq(t, "{\"custom_id\": \"request-1\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}", lines[0])
+				require.JSONEq(t, "{\"custom_id\": \"request-2\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are an helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}", lines[1])
+			},
+		},
+		{
+			name:    "openai - GET /v1/files/{file_id}/content sticky backend routing",
+			backend: "openai",
+			path:    fmt.Sprintf("/v1/files/%s/content", stickyEncodedOpenAIFileID),
+			method:  http.MethodGet,
+			expPath: "/v1/files/" + openAIFileUpstreamID + "/content",
+			expRequestHeaders: map[string]string{
+				internalapi.BackendNameHeaderKey: stickyOpenAIBackend,
+			},
 			responseHeaders: "content-type:application/octet-stream",
 			responseBody:    "{\"custom_id\": \"request-1\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are a helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}\n{\"custom_id\": \"request-2\", \"method\": \"POST\", \"url\": \"/v1/chat/completions\", \"body\": {\"model\": \"gpt-3.5-turbo-0125\", \"messages\": [{\"role\": \"system\", \"content\": \"You are an helpful assistant.\"},{\"role\": \"user\", \"content\": \"Hello world!\"}],\"max_tokens\": 1000}}",
 			expStatus:       http.StatusOK,
@@ -247,6 +286,22 @@ func TestWithTestUpstream(t *testing.T) {
 			expResponseBody: fmt.Sprintf(
 				`{"id":"%s","object":"file","deleted":true}`,
 				encodedOpenAIFileID,
+			),
+		},
+		{
+			name:    "openai - DELETE /v1/files/{file_id} sticky backend routing",
+			backend: "openai",
+			path:    fmt.Sprintf("/v1/files/%s", stickyEncodedOpenAIFileID),
+			method:  http.MethodDelete,
+			expPath: "/v1/files/" + openAIFileUpstreamID,
+			expRequestHeaders: map[string]string{
+				internalapi.BackendNameHeaderKey: stickyOpenAIBackend,
+			},
+			responseBody: `{"id":"file-123","object":"file","deleted":true}`,
+			expStatus:    http.StatusOK,
+			expResponseBody: fmt.Sprintf(
+				`{"id":"%s","object":"file","deleted":true}`,
+				stickyEncodedOpenAIFileID,
 			),
 		},
 		{

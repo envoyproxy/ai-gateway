@@ -253,6 +253,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 		},
 	}}
 	rules := make([]gwapiv1.HTTPRouteRule, 0, len(aiGatewayRoute.Spec.Rules)+1) // +1 for the default rule.
+	var stickyRules []gwapiv1.HTTPRouteRule
 	for i := range aiGatewayRoute.Spec.Rules {
 		rule := &aiGatewayRoute.Spec.Rules[i]
 		var backendRefs []gwapiv1.HTTPBackendRef
@@ -309,13 +310,64 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 				Path:    &gwapiv1.HTTPPathMatch{Value: &c.rootPrefix},
 			})
 		}
+
 		rules = append(rules, gwapiv1.HTTPRouteRule{
 			BackendRefs: backendRefs,
 			Matches:     matches,
 			Filters:     rewriteFilters,
 			Timeouts:    rule.GetTimeoutsOrDefault(),
 		})
+
+		// Collect sticky routing rules for this spec rule. Sticky rules match on
+		// x-ai-eg-backend + x-ai-eg-model headers and are used for files/batch APIs
+		// to pin subsequent requests to the same backend that processed the file upload.
+		//
+		// Regular rules are appended first so their HTTPRoute indices match AIGatewayRoute.Spec.Rules indices exactly.
+		// PostTranslateModify hook parses httproute/<ns>/<name>/rule/<idx> and uses <idx> to
+		// look up the spec rule; sticky rules are appended afterward at higher indices.
+		//
+		// each sticky rule has weight=1 and two header constraints
+		// (exact backend name + non-empty model), making it more specific than the
+		// regular rule so Gateway API routes to it first when headers are present.
+		//
+		// BACKEND NAME: uses namespace-qualified "namespace.name" of the AIServiceBackend
+		// because that is what the upstream extproc
+		// writes to x-ai-eg-backend and what the file ID encoding records.
+		for k, br := range backendRefs {
+			stickyBR := br
+			// Since sticky rule only can target one backend, we set the weight to 1.
+			stickyBR.Weight = ptr.To[int32](1)
+			aiBackendRef := &rule.BackendRefs[k]
+			backendNamespace := aiBackendRef.GetNamespace(aiGatewayRoute.Namespace)
+			qualifiedBackendName := fmt.Sprintf("%s.%s", backendNamespace, aiBackendRef.Name)
+			stickyRules = append(stickyRules, gwapiv1.HTTPRouteRule{
+				BackendRefs: []gwapiv1.HTTPBackendRef{stickyBR},
+				Matches: []gwapiv1.HTTPRouteMatch{
+					{
+						Path: &gwapiv1.HTTPPathMatch{Value: &c.rootPrefix},
+						Headers: []gwapiv1.HTTPHeaderMatch{
+							{
+								Name:  internalapi.BackendNameHeaderKey,
+								Value: qualifiedBackendName,
+							},
+							// The model name header matching is required to ensure that this rule takes priority over the regular rule.
+							{
+								Name:  internalapi.ModelNameHeaderKeyDefault,
+								Type:  ptr.To(gwapiv1.HeaderMatchRegularExpression),
+								Value: ".+",
+							},
+						},
+					},
+				},
+				Filters:  rewriteFilters,
+				Timeouts: rule.GetTimeoutsOrDefault(),
+			})
+		}
 	}
+
+	// Sticky rules must come after all regular rules to preserve the spec index invariant
+	// described above. Their higher indices are handled gracefully by the extension server.
+	rules = append(rules, stickyRules...)
 
 	rules = append(rules, gwapiv1.HTTPRouteRule{
 		Name:    ptr.To[gwapiv1.SectionName]("route-not-found"),

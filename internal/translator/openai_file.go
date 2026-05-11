@@ -79,13 +79,22 @@ func (o *openAIToOpenAITranslatorV1ListFiles) ResponseHeaders(map[string]string)
 }
 
 // ResponseBody implements [OpenAIListFilesTranslator.ResponseBody].
-func (o *openAIToOpenAITranslatorV1ListFiles) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracingapi.RetrieveFileSpan) (
+func (o *openAIToOpenAITranslatorV1ListFiles) ResponseBody(respHeaders map[string]string, body io.Reader, _ bool, _ tracingapi.RetrieveFileSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	bodyBytes, err := io.ReadAll(body)
 	if err != nil {
 		return nil, nil, tokenUsage, "", fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	// Verify we have a request model - this is required for encoding
+	if o.requestModel == "" {
+		// Model is required for sticky routing - if missing, return error
+		return nil, nil, tokenUsage, "", fmt.Errorf("missing request model for file ID encoding in list files response - model must be provided as query parameter")
+	}
+
+	// Get backend name from response headers for sticky routing
+	backendName := respHeaders[internalapi.BackendNameHeaderKey]
 
 	newBody = bodyBytes
 	data := gjson.GetBytes(bodyBytes, "data")
@@ -95,7 +104,8 @@ func (o *openAIToOpenAITranslatorV1ListFiles) ResponseBody(_ map[string]string, 
 			if id == "" {
 				continue
 			}
-			newBody, err = sjson.SetBytes(newBody, fmt.Sprintf("data.%d.id", i), EncodeIDWithModel(id, o.requestModel, "file"))
+			// Encode file ID with both model and backend for sticky routing
+			newBody, err = sjson.SetBytes(newBody, fmt.Sprintf("data.%d.id", i), EncodeIDWithRouting(id, o.requestModel, backendName, "file"))
 			if err != nil {
 				return nil, nil, tokenUsage, "", fmt.Errorf("failed to set file ID for list item %d: %w", i, err)
 			}
@@ -159,15 +169,39 @@ func (o *openAIToOpenAITranslatorV1CreateFile) ResponseHeaders(map[string]string
 }
 
 // ResponseBody implements [OpenAICreateFileTranslator.ResponseBody].
-func (o *openAIToOpenAITranslatorV1CreateFile) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracingapi.CreateFileSpan) (
+func (o *openAIToOpenAITranslatorV1CreateFile) ResponseBody(respHeaders map[string]string, body io.Reader, _ bool, _ tracingapi.CreateFileSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
 	bodyBytes, err := io.ReadAll(body)
 	if err != nil {
 		return nil, nil, tokenUsage, "", fmt.Errorf("failed to read response body: %w", err)
 	}
-	// Encode the file ID with model routing information. This allows us to route subsequent requests with the file ID to the correct model backend.
-	newBody, err = sjson.SetBytes(bodyBytes, "id", EncodeIDWithModel(gjson.GetBytes(bodyBytes, "id").String(), o.requestModel, "file"))
+
+	originalID := gjson.GetBytes(bodyBytes, "id").String()
+	if originalID == "" {
+		// No ID field in response, return unchanged
+		return nil, bodyBytes, tokenUsage, "", nil
+	}
+
+	// Verify we have a request model - this is required for encoding
+	if o.requestModel == "" {
+		// Model is required - this shouldn't happen since RequestBody validates it
+		return nil, nil, tokenUsage, "", fmt.Errorf("missing request model for file ID encoding in create file response - cannot encode file ID %s", originalID)
+	}
+
+	// Get backend name from response headers for sticky routing
+	backendName := respHeaders[internalapi.BackendNameHeaderKey]
+
+	// Encode the file ID with model and backend routing information. This allows us to route subsequent requests with the file ID to the correct model and backend.
+	encodedID := EncodeIDWithRouting(originalID, o.requestModel, backendName, "file")
+
+	// Verify encoding actually changed the ID (it should always change unless something is wrong)
+	if encodedID == originalID {
+		// This shouldn't happen - encoding should always produce a different ID
+		return nil, nil, tokenUsage, "", fmt.Errorf("file ID encoding failed - encoded ID equals original ID: %s (model=%s, backend=%s)", originalID, o.requestModel, backendName)
+	}
+
+	newBody, err = sjson.SetBytes(bodyBytes, "id", encodedID)
 	if err != nil {
 		return nil, nil, tokenUsage, "", fmt.Errorf("failed to set file ID: %w", err)
 	}

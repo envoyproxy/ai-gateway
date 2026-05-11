@@ -139,16 +139,82 @@ spec:
             value: "/"
       timeouts:
         request: 60s
-    - matches:
-        - path:
-            value: /
-      name: route-not-found
+    - backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: envoy-ai-gateway-basic-openai
+          weight: 1
       filters:
+        - extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: ai-eg-host-rewrite-envoy-ai-gateway-basic
+          type: ExtensionRef
+      matches:
+        - headers:
+            - name: x-ai-eg-backend
+              value: default.envoy-ai-gateway-basic-openai
+            - name: x-ai-eg-model
+              type: RegularExpression
+              value: .+
+          path:
+            value: "/"
+      timeouts:
+        request: 60s
+    - backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: envoy-ai-gateway-basic-aws
+          weight: 1
+      filters:
+        - extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: ai-eg-host-rewrite-envoy-ai-gateway-basic
+          type: ExtensionRef
+      matches:
+        - headers:
+            - name: x-ai-eg-backend
+              value: default.envoy-ai-gateway-basic-aws
+            - name: x-ai-eg-model
+              type: RegularExpression
+              value: .+
+          path:
+            value: "/"
+      timeouts:
+        request: 60s
+    - backendRefs:
+        - kind: Service
+          name: envoy-ai-gateway-basic-testupstream
+          port: 80
+          weight: 1
+      filters:
+        - extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: ai-eg-host-rewrite-envoy-ai-gateway-basic
+          type: ExtensionRef
+      matches:
+        - headers:
+            - name: x-ai-eg-backend
+              value: default.envoy-ai-gateway-basic-testupstream
+            - name: x-ai-eg-model
+              type: RegularExpression
+              value: .+
+          path:
+            value: "/"
+      timeouts:
+        request: 60s
+    - filters:
         - extensionRef:
             group: gateway.envoyproxy.io
             kind: HTTPRouteFilter
             name: ai-eg-route-not-found-response-envoy-ai-gateway-basic
           type: ExtensionRef
+      matches:
+        - path:
+            value: "/"
+      name: route-not-found
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: HTTPRouteFilter
@@ -262,4 +328,3 @@ spec:
     - name: http
       port: 8888
       protocol: HTTP
-
