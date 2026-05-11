@@ -1352,12 +1352,27 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 	}
 
 	tests := []struct {
-		name     string
-		gcpChunk string
+		name          string
+		gcpChunk      string
+		expectedUsage metrics.TokenUsage
+		assertBody    func(t *testing.T, bodyStr string)
 	}{
 		{
-			name:     "single candidate in streaming response",
-			gcpChunk: `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":"STOP"}]}`,
+			name:          "single candidate in streaming response",
+			gcpChunk:      `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":"STOP"}]}`,
+			expectedUsage: tokenUsageFrom(-1, -1, -1, -1, -1, -1),
+		},
+		{
+			name:          "finish reason without content (MAX_TOKENS)",
+			gcpChunk:      `{"candidates":[{"finishReason":"MAX_TOKENS"}],"usageMetadata":{"promptTokenCount":21,"candidatesTokenCount":71,"totalTokenCount":92}}`,
+			expectedUsage: tokenUsageFrom(21, 0, -1, 71, 92, 0),
+			assertBody: func(t *testing.T, bodyStr string) {
+				// The finish_reason chunk must contain "delta":{} to comply with the OpenAI streaming format.
+				require.Contains(t, bodyStr, `"delta":{}`)
+				require.Contains(t, bodyStr, `"finish_reason":"length"`)
+				// The usage chunk must have empty choices.
+				require.Contains(t, bodyStr, `"choices":[]`)
+			},
 		},
 	}
 
@@ -1374,10 +1389,12 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 			require.NotNil(t, bodyMut)
 			// Check that the response is in SSE format.
 			bodyStr := string(bodyMut)
-			print(bodyStr)
 			require.Contains(t, bodyStr, "data: ")
 			require.Contains(t, bodyStr, "chat.completion.chunk")
-			require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), tokenUsage) // No usage in this test chunk.
+			require.Equal(t, tt.expectedUsage, tokenUsage)
+			if tt.assertBody != nil {
+				tt.assertBody(t, bodyStr)
+			}
 		})
 	}
 }

@@ -1308,10 +1308,16 @@ type ChatCompletionResponse struct {
 type ChatCompletionChoicesFinishReason string
 
 const (
-	ChatCompletionChoicesFinishReasonStop          ChatCompletionChoicesFinishReason = "stop"
-	ChatCompletionChoicesFinishReasonLength        ChatCompletionChoicesFinishReason = "length"
-	ChatCompletionChoicesFinishReasonToolCalls     ChatCompletionChoicesFinishReason = "tool_calls"
-	ChatCompletionChoicesFinishReasonContentFilter ChatCompletionChoicesFinishReason = "content_filter"
+	ChatCompletionChoicesFinishReasonStop                  ChatCompletionChoicesFinishReason = "stop"
+	ChatCompletionChoicesFinishReasonLength                ChatCompletionChoicesFinishReason = "length"
+	ChatCompletionChoicesFinishReasonToolCalls             ChatCompletionChoicesFinishReason = "tool_calls"
+	ChatCompletionChoicesFinishReasonContentFilter         ChatCompletionChoicesFinishReason = "content_filter"
+	ChatCompletionChoicesFinishReasonRecitation            ChatCompletionChoicesFinishReason = "recitation"
+	ChatCompletionChoicesFinishReasonMalformedFunctionCall ChatCompletionChoicesFinishReason = "malformed_function_call"
+	ChatCompletionChoicesFinishReasonUnexpectedToolCall    ChatCompletionChoicesFinishReason = "unexpected_tool_call"
+	ChatCompletionChoicesFinishReasonLanguage              ChatCompletionChoicesFinishReason = "language"
+	ChatCompletionChoicesFinishReasonNoImage               ChatCompletionChoicesFinishReason = "no_image"
+	ChatCompletionChoicesFinishReasonError                 ChatCompletionChoicesFinishReason = "error"
 )
 
 type ChatCompletionTokenLogprobTopLogprob struct {
