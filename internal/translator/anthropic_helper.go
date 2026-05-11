@@ -31,9 +31,9 @@ import (
 )
 
 // redactAnthropicChatCompletionResponse returns a copy of resp with AI-generated
-// fields redacted for safe debug logging. Shared by all OpenAI→Anthropic
-// translators (direct, GCP Vertex AI, AWS Bedrock) since each variant produces
-// the same OpenAI ChatCompletionResponse shape.
+// fields redacted for safe debug logging. Direct, GCP Vertex AI, and AWS Bedrock
+// Anthropic translators share this because they all produce the same OpenAI
+// ChatCompletionResponse shape.
 func redactAnthropicChatCompletionResponse(resp *openai.ChatCompletionResponse) *openai.ChatCompletionResponse {
 	if resp == nil {
 		return nil

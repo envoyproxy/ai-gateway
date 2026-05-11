@@ -25,12 +25,10 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
-// TestResponseModel_Anthropic tests that direct Anthropic API returns the model from response
 func TestResponseModel_Anthropic(t *testing.T) {
 	modelName := "claude-3-opus-20240229"
 	translator := NewChatCompletionOpenAIToAnthropicTranslator("", modelName)
 
-	// Initialize translator with the model
 	req := &openai.ChatCompletionRequest{
 		Model:     "claude-3-opus",
 		MaxTokens: ptr.To(int64(100)),
@@ -47,12 +45,11 @@ func TestResponseModel_Anthropic(t *testing.T) {
 	_, _, err := translator.RequestBody(reqBody, req, false)
 	require.NoError(t, err)
 
-	// Anthropic response includes model field
 	anthropicResponse := anthropic.Message{
 		ID:    "msg_01XYZ",
 		Type:  constant.ValueOf[constant.Message](),
 		Role:  constant.ValueOf[constant.Assistant](),
-		Model: modelName, // Direct Anthropic API returns model in response
+		Model: modelName,
 		Content: []anthropic.ContentBlockUnion{
 			{
 				Type: "text",
@@ -108,16 +105,12 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 		require.NotNil(t, hm)
 		require.NotNil(t, body)
 
-		// Check the path header - should be /v1/messages for direct Anthropic API
 		pathHeader := hm[0]
 		require.Equal(t, pathHeaderName, pathHeader.Key())
 		require.Equal(t, "/v1/messages", pathHeader.Value())
 
-		// Check the body content
 		require.NotNil(t, body)
-		// Model should be present in the body for direct Anthropic API
 		require.Equal(t, openAIReq.Model, gjson.GetBytes(body, "model").String())
-		// Anthropic version must be sent as an HTTP header (not in the body) for the direct API
 		require.Equal(t, anthropicVersionHeaderName, hm[1].Key())
 		require.Equal(t, anthropicDefaultVersion, hm[1].Value())
 		require.False(t, gjson.GetBytes(body, "anthropic_version").Exists())
@@ -131,10 +124,8 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, hm)
 
-		// Check that the model in the body uses the override model name
 		require.Equal(t, overrideModelName, gjson.GetBytes(body, "model").String())
 
-		// Path should still be /v1/messages
 		pathHeader := hm[0]
 		require.Equal(t, "/v1/messages", pathHeader.Value())
 	})
@@ -146,7 +137,6 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 		hm, body, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		// The custom version must be emitted via the anthropic-version header.
 		var versionHeader internalapi.Header
 		for _, h := range hm {
 			if h.Key() == anthropicVersionHeaderName {
@@ -195,18 +185,15 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 		_, body, err := translator.RequestBody(nil, imageReq, false)
 		require.NoError(t, err)
 
-		// Verify the image content was properly translated
 		messages := gjson.GetBytes(body, "messages").Array()
 		require.Len(t, messages, 1)
 
 		content := messages[0].Get("content").Array()
 		require.Len(t, content, 2)
 
-		// First content block should be text
 		require.Equal(t, "text", content[0].Get("type").String())
 		require.Equal(t, "What's in this image?", content[0].Get("text").String())
 
-		// Second content block should be image
 		require.Equal(t, "image", content[1].Get("type").String())
 		require.Equal(t, "image/jpeg", content[1].Get("source.media_type").String())
 		require.Equal(t, imageData, content[1].Get("source.data").String())
@@ -231,10 +218,8 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 		_, body, err := translator.RequestBody(nil, streamReq, false)
 		require.NoError(t, err)
 
-		// Verify stream parser was initialized
 		require.NotNil(t, translator.streamParser)
 
-		// Verify stream is set in request body
 		require.True(t, gjson.GetBytes(body, "stream").Bool())
 	})
 
@@ -275,7 +260,6 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 		_, body, err := translator.RequestBody(nil, toolReq, false)
 		require.NoError(t, err)
 
-		// Verify tools were translated
 		tools := gjson.GetBytes(body, "tools").Array()
 		require.Len(t, tools, 1)
 		require.Equal(t, "get_weather", tools[0].Get("name").String())
@@ -287,7 +271,6 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) 
 	t.Run("Non-Streaming Response", func(t *testing.T) {
 		translator := NewChatCompletionOpenAIToAnthropicTranslator("", "claude-3-opus-20240229")
 
-		// Initialize translator
 		req := &openai.ChatCompletionRequest{
 			Model:     "claude-3-opus-20240229",
 			MaxTokens: ptr.To(int64(100)),
@@ -303,7 +286,6 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) 
 		_, _, err := translator.RequestBody(nil, req, false)
 		require.NoError(t, err)
 
-		// Create Anthropic response
 		anthropicResp := anthropic.Message{
 			ID:    "msg_01XYZ",
 			Type:  constant.ValueOf[constant.Message](),
@@ -330,7 +312,6 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) 
 		require.NotNil(t, newBody)
 		require.Equal(t, "claude-3-opus-20240229", responseModel)
 
-		// Parse OpenAI response
 		var openAIResp openai.ChatCompletionResponse
 		err = json.Unmarshal(newBody, &openAIResp)
 		require.NoError(t, err)
@@ -341,7 +322,6 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) 
 		require.Equal(t, "Hello! How can I help you today?", *openAIResp.Choices[0].Message.Content)
 		require.Equal(t, openai.ChatCompletionChoicesFinishReasonStop, openAIResp.Choices[0].FinishReason)
 
-		// Verify token usage
 		inputTokens, ok := tokenUsage.InputTokens()
 		require.True(t, ok)
 		require.Equal(t, uint32(10), inputTokens)
@@ -349,7 +329,6 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) 
 		require.True(t, ok)
 		require.Equal(t, uint32(12), outputTokens)
 
-		// Verify content-length header
 		require.Len(t, headers, 1)
 		require.Equal(t, contentLengthHeaderName, headers[0].Key())
 	})
@@ -372,7 +351,6 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) 
 		_, _, err := translator.RequestBody(nil, req, false)
 		require.NoError(t, err)
 
-		// Anthropic response with tool use
 		anthropicResp := anthropic.Message{
 			ID:    "msg_tool",
 			Type:  constant.ValueOf[constant.Message](),
@@ -446,7 +424,6 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseError(t *testing.T)
 		require.Equal(t, "Invalid API key", openAIErr.Error.Message)
 		require.Equal(t, "401", *openAIErr.Error.Code)
 
-		// Verify headers
 		require.Len(t, newHeaders, 2)
 		require.Equal(t, contentTypeHeaderName, newHeaders[0].Key())
 		require.Equal(t, jsonContentType, newHeaders[0].Value()) //nolint:testifylint
@@ -487,7 +464,6 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseHeaders(t *testing.
 	t.Run("Streaming", func(t *testing.T) {
 		translator := NewChatCompletionOpenAIToAnthropicTranslator("", "").(*openAIToAnthropicTranslatorV1ChatCompletion)
 
-		// Initialize with streaming request
 		req := &openai.ChatCompletionRequest{
 			Model:     "claude-3-opus-20240229",
 			Stream:    true,
@@ -583,7 +559,6 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_Redaction(t *testing.T) {
 func TestOpenAIToAnthropicTranslatorV1ChatCompletion_Streaming(t *testing.T) {
 	translator := NewChatCompletionOpenAIToAnthropicTranslator("", "claude-3-opus-20240229").(*openAIToAnthropicTranslatorV1ChatCompletion)
 
-	// Initialize with streaming request
 	req := &openai.ChatCompletionRequest{
 		Model:     "claude-3-opus-20240229",
 		Stream:    true,
@@ -625,7 +600,6 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
 	})
 }
 
-// Test that the translator properly handles various edge cases
 func TestOpenAIToAnthropicTranslatorV1ChatCompletion_EdgeCases(t *testing.T) {
 	t.Run("Empty Messages", func(t *testing.T) {
 		translator := NewChatCompletionOpenAIToAnthropicTranslator("", "")
@@ -635,8 +609,8 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_EdgeCases(t *testing.T) {
 			MaxTokens: ptr.To(int64(100)),
 		}
 
-		_, _, err := translator.RequestBody(nil, req, false)
 		// Should handle empty messages gracefully (Anthropic will reject, but translator shouldn't error)
+		_, _, err := translator.RequestBody(nil, req, false)
 		require.NoError(t, err)
 	})
 
@@ -659,17 +633,15 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_EdgeCases(t *testing.T) {
 				},
 			},
 			MaxTokens:   ptr.To(int64(100)),
-			Temperature: ptr.To(2.0), // Out of Anthropic's 0-1 range
+			Temperature: ptr.To(2.0),
 		}
 
 		_, _, err := translator.RequestBody(nil, req, false)
-		// Should return error for invalid temperature
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "temperature")
 	})
 }
 
 func TestAnthropicDefaultVersion(t *testing.T) {
-	// Verify the default version constant is set correctly
 	require.Equal(t, "2023-06-01", anthropicDefaultVersion)
 }

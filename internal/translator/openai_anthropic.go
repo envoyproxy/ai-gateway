@@ -23,15 +23,13 @@ import (
 )
 
 const (
-	// Default Anthropic API version - most commonly used version
+	// Default Anthropic API version used when schema version is unset.
 	// https://docs.anthropic.com/en/api/versioning
 	anthropicDefaultVersion = "2023-06-01"
 	anthropicBackendError   = "AnthropicBackendError"
 )
 
-// NewChatCompletionOpenAIToAnthropicTranslator implements [Factory] for OpenAI to Anthropic translation.
-// This translator converts OpenAI ChatCompletion API requests to Anthropic Messages API format.
-// Unlike cloud-based translators (AWS/GCP), this targets the direct Anthropic API.
+// NewChatCompletionOpenAIToAnthropicTranslator implements [Factory] for direct Anthropic translation.
 func NewChatCompletionOpenAIToAnthropicTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
 	return &openAIToAnthropicTranslatorV1ChatCompletion{
 		apiVersion:        apiVersion,
@@ -46,10 +44,9 @@ type openAIToAnthropicTranslatorV1ChatCompletion struct {
 	modelNameOverride internalapi.ModelNameOverride
 	streamParser      *anthropicStreamParser
 	requestModel      internalapi.RequestModel
-	// Redaction configuration for debug logging
-	debugLogEnabled bool
-	enableRedaction bool
-	logger          *slog.Logger
+	debugLogEnabled   bool
+	enableRedaction   bool
+	logger            *slog.Logger
 }
 
 // RequestBody implements [OpenAIChatCompletionTranslator.RequestBody] for Anthropic.
@@ -63,7 +60,6 @@ func (o *openAIToAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, open
 		o.requestModel = o.modelNameOverride
 	}
 
-	// Build Anthropic parameters from OpenAI request.
 	params, err := buildAnthropicParams(openAIReq, "Anthropic", o.modelNameOverride)
 	if err != nil {
 		return
@@ -79,7 +75,6 @@ func (o *openAIToAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, open
 		return
 	}
 
-	// Initialize stream parser and set stream field if this is a streaming request.
 	if openAIReq.Stream {
 		body, err = sjson.SetBytes(body, "stream", true)
 		if err != nil {
@@ -114,7 +109,6 @@ func (o *openAIToAnthropicTranslatorV1ChatCompletion) ResponseError(respHeaders 
 	statusCode := respHeaders[statusHeaderName]
 	var openaiError openai.Error
 
-	// Check for a JSON content type to decide how to parse the error
 	if v, ok := respHeaders[contentTypeHeaderName]; ok && strings.Contains(v, jsonContentType) {
 		var anthropicError anthropic.ErrorResponse
 		if err = json.NewDecoder(body).Decode(&anthropicError); err != nil {
@@ -129,7 +123,6 @@ func (o *openAIToAnthropicTranslatorV1ChatCompletion) ResponseError(respHeaders 
 			},
 		}
 	} else {
-		// If not JSON, read the raw body as the error message
 		var buf []byte
 		buf, err = io.ReadAll(body)
 		if err != nil {
@@ -145,7 +138,6 @@ func (o *openAIToAnthropicTranslatorV1ChatCompletion) ResponseError(respHeaders 
 		}
 	}
 
-	// Marshal the translated OpenAI error
 	newBody, err = json.Marshal(openaiError)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal OpenAI error body: %w", err)
@@ -165,7 +157,6 @@ func (o *openAIToAnthropicTranslatorV1ChatCompletion) SetRedactionConfig(debugLo
 }
 
 // RedactBody implements [ResponseRedactor.RedactBody].
-// Creates a redacted copy of the response for safe logging without modifying the original.
 func (o *openAIToAnthropicTranslatorV1ChatCompletion) RedactBody(resp *openai.ChatCompletionResponse) *openai.ChatCompletionResponse {
 	return redactAnthropicChatCompletionResponse(resp)
 }
@@ -181,12 +172,10 @@ func (o *openAIToAnthropicTranslatorV1ChatCompletion) ResponseHeaders(_ map[stri
 }
 
 // ResponseBody implements [OpenAIChatCompletionTranslator.ResponseBody] for Anthropic.
-// Anthropic uses deterministic model mapping without virtualization, where the requested model
-// is exactly what gets executed. The response contains a model field that we use.
+// Direct Anthropic responses include the executed model; fall back to the request model if absent.
 func (o *openAIToAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[string]string, body io.Reader, endOfStream bool, span tracingapi.ChatCompletionSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
-	// If a stream parser was initialized, this is a streaming request
 	if o.streamParser != nil {
 		return o.streamParser.Process(body, endOfStream, span)
 	}
@@ -206,7 +195,6 @@ func (o *openAIToAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[string]
 		return nil, nil, metrics.TokenUsage{}, "", err
 	}
 
-	// Redact and log response when enabled
 	if o.debugLogEnabled && o.enableRedaction && o.logger != nil {
 		redactedResp := o.RedactBody(openAIResp)
 		if jsonBody, marshalErr := json.Marshal(redactedResp); marshalErr == nil {
