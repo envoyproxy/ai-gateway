@@ -79,15 +79,16 @@ func serializeOpenAIChatCompletionChunk(chunk *openai.ChatCompletionResponseChun
 	return nil
 }
 
-// EncodeIDWithModel encodes a file/batch ID with model routing information.
+// EncodeIDWithRouting encodes a file/batch ID with model and backend routing information.
 //
-// Format: <prefix><base64(id:<original_id>;model:<model_name>)>
+// Format: <prefix><base64url(aigw:<original_id>;model:<model_name>;backend:<backend_name>)>
 // The result preserves the original prefix (file-, batch_, etc.) for OpenAI compliance.
 //
 // Args:
 //
 //	id: Original file ID from the provider (e.g., "file-abc123")
 //	modelName: Model name (e.g., "gpt-4o-mini")
+//	backendName: Backend name (e.g., "azure-openai", "openai-primary")
 //	idType: Type of ID being encoded. Used to determine the correct prefix.
 //	       Defaults to "file". Supported values are "file".
 //
@@ -97,17 +98,18 @@ func serializeOpenAIChatCompletionChunk(chunk *openai.ChatCompletionResponseChun
 //
 // Examples:
 //
-//	EncodeIDWithModel("file-abc123", "gpt-4o-mini", "file")
-//	-> "file-aWQ6ZmlsZS1hYmMxMjM7bW9kZWw6Z3B0LTRvLW1pbmk"
-func EncodeIDWithModel(id, modelName, _ string) string {
+//	EncodeIDWithRouting("file-abc123", "gpt-4o-mini", "azure-openai", "file")
+//	-> "file-YWlndzpmaWxlLWFiYzEyMzttb2RlbDpncHQtNG8tbWluaTtiYWNrZW5kOmF6dXJlLW9wZW5haQ"
+func EncodeIDWithRouting(id, modelName, backendName, _ string) string {
 	prefix := FileIDPrefix
-	return prefix + base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, "id:%s;model:%s", id, modelName))
+	// Use "aigw:" prefix to identify AI Gateway encoded IDs, consistent with the proposal
+	return prefix + base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, "aigw:%s;model:%s;backend:%s", id, modelName, backendName))
 }
 
-// DecodeFileID extracts the model name and original file id from an encoded file ID.
+// DecodeIDWithRouting extracts the model name, backend name, and original file id from an encoded file ID.
 //
-// It expects the encoded ID to be in the format produced by EncodeIDWithModel, which includes a prefix (file-)
-// followed by a base64-encoded string containing the original ID and model name.
+// It expects the encoded ID to be in the format produced by EncodeIDWithRouting, which includes a prefix (file-)
+// followed by a base64-encoded string containing the original ID, model name, and backend name.
 //
 // Args:
 //
@@ -115,38 +117,59 @@ func EncodeIDWithModel(id, modelName, _ string) string {
 //
 // Returns:
 //
-//	The extracted model name, original file / batch id if decoding is successful, or an error if the format is invalid or decoding fails.
+//	The extracted model name, backend name, and original file/batch id if decoding is successful,
+//	or an error if the format is invalid or decoding fails.
 //
 // Examples:
 //
-//	DecodeFileID("file-aWQ6ZmlsZS1hYmMxMjM7bW9kZWw6Z3B0LTRvLW1pbmk")
-//	-> "gpt-4o-mini", "file-abc123", nil
-func DecodeFileID(encodedID string) (modelName string, id string, err error) {
+//	DecodeIDWithRouting("file-YWlndzpmaWxlLWFiYzEyMzttb2RlbDpncHQtNG8tbWluaTtiYWNrZW5kOmF6dXJlLW9wZW5haQ")
+//	-> "gpt-4o-mini", "azure-openai", "file-abc123", nil
+func DecodeIDWithRouting(encodedID string) (modelName string, backendName string, id string, err error) {
 	var base64Part string
 	switch {
 	case strings.HasPrefix(encodedID, FileIDPrefix):
 		base64Part = strings.TrimPrefix(encodedID, FileIDPrefix)
 	default:
-		return "", "", fmt.Errorf("invalid encoded ID format: missing expected prefix")
+		return "", "", "", fmt.Errorf("invalid encoded ID format: missing expected prefix")
 	}
 
 	decodedBytes, err := base64.RawURLEncoding.DecodeString(base64Part)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to decode base64 part of the ID: %w", err)
+		return "", "", "", fmt.Errorf("failed to decode base64 part of the ID: %w", err)
 	}
 	decodedStr := string(decodedBytes)
-	parts := strings.Split(decodedStr, ";")
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid decoded ID format: expected format 'id:<original_id>;model:<model_name>'")
+
+	if !strings.HasPrefix(decodedStr, "aigw:") {
+		return "", "", "", fmt.Errorf("invalid decoded ID format: expected format 'aigw:<original_id>;model:<model_name>;backend:<backend_name>'")
 	}
 
-	modelName, found := strings.CutPrefix(parts[1], "model:")
-	if !found || modelName == "" {
-		return "", "", fmt.Errorf("model name not found in decoded Id")
+	// Format: aigw:<id>;model:<model>;backend:<backend>
+	parts := strings.Split(strings.TrimPrefix(decodedStr, "aigw:"), ";")
+	if len(parts) < 2 {
+		return "", "", "", fmt.Errorf("invalid decoded ID format: expected format 'aigw:<original_id>;model:<model_name>;backend:<backend_name>'")
 	}
-	id, found = strings.CutPrefix(parts[0], "id:")
-	if !found || id == "" {
-		return "", "", fmt.Errorf("file id not found in decoded Id ")
+
+	// Extract ID from first part
+	id = parts[0]
+	if id == "" {
+		return "", "", "", fmt.Errorf("file id not found in decoded Id")
 	}
-	return
+
+	// Parse remaining parts as key:value pairs
+	for _, part := range parts[1:] {
+		if key, value, found := strings.Cut(part, ":"); found {
+			switch key {
+			case "model":
+				modelName = value
+			case "backend":
+				backendName = value
+			}
+		}
+	}
+
+	if modelName == "" {
+		return "", "", "", fmt.Errorf("model name not found in decoded Id")
+	}
+
+	return modelName, backendName, id, nil
 }

@@ -214,51 +214,6 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	})
 }
 
-func Test_filesProcessorRouterFilter_shouldGetModelFromID(t *testing.T) {
-	fileID := translator.EncodeIDWithModel("file-abc123", "gpt-4o-mini", "file")
-
-	for _, tc := range []struct {
-		name    string
-		method  string
-		path    string
-		expects bool
-	}{
-		{name: "get files list request", method: "GET", path: "/v1/files", expects: false},
-		{name: "get files list request with query", method: "GET", path: "/v1/files?limit=2", expects: false},
-		{name: "get file request", method: "GET", path: "/v1/files/" + fileID, expects: true},
-		{name: "delete file request", method: "DELETE", path: "/v1/files/" + fileID + "/content", expects: true},
-		{name: "put file request unsupported", method: "PUT", path: "/v1/files/" + fileID, expects: false},
-		{name: "regular chat path", method: "GET", path: "/v1/chat/completions", expects: false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expects, shouldGetModelFromID(tc.method, tc.path))
-		})
-	}
-}
-
-func Test_extractFileIDFromPath(t *testing.T) {
-	fileID := translator.EncodeIDWithModel("file-abc123", "gpt-4o-mini", "file")
-
-	for _, tc := range []struct {
-		name       string
-		path       string
-		expectedID string
-		expectsOK  bool
-	}{
-		{name: "file id", path: "/v1/files/" + fileID, expectedID: fileID, expectsOK: true},
-		{name: "file id with suffix and query", path: "/v1/files/" + fileID + "/content?download=1", expectedID: fileID, expectsOK: true},
-		{name: "empty path", path: "", expectsOK: false},
-		{name: "missing id", path: "/v1/files/", expectsOK: false},
-		{name: "non file path", path: "/v1/chat/completions", expectsOK: false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			id, ok := extractFileIDFromPath(tc.path)
-			require.Equal(t, tc.expectsOK, ok)
-			require.Equal(t, tc.expectedID, id)
-		})
-	}
-}
-
 func Test_isListFilesEndpoint(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -278,6 +233,54 @@ func Test_isListFilesEndpoint(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.expects, isListFilesEndpoint(tc.method, tc.path))
+		})
+	}
+}
+
+func Test_shouldGetModelFromID(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		method  string
+		path    string
+		expects bool
+	}{
+		{name: "GET file id endpoint", method: "GET", path: "/v1/files/file-abc123", expects: true},
+		{name: "GET file content endpoint", method: "GET", path: "/v1/files/file-abc123/content", expects: true},
+		{name: "GET file id endpoint with query", method: "GET", path: "/v1/files/file-abc123/content?download=true", expects: true},
+		{name: "GET list files endpoint", method: "GET", path: "/v1/files?model=gpt-4o-mini", expects: false},
+		{name: "GET non-file endpoint", method: "GET", path: "/v1/chat/completions", expects: false},
+		{name: "DELETE file id endpoint", method: "DELETE", path: "/v1/files/file-abc123", expects: true},
+		{name: "DELETE non-file endpoint", method: "DELETE", path: "/v1/files", expects: false},
+		{name: "POST file path should be false", method: "POST", path: "/v1/files/file-abc123", expects: false},
+		{name: "empty path", method: "GET", path: "", expects: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expects, shouldGetModelFromID(tc.method, tc.path))
+		})
+	}
+}
+
+func Test_extractFileIDFromPath(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		path     string
+		expectID string
+		expectOK bool
+	}{
+		{name: "basic file path", path: "/v1/files/file-abc123", expectID: "file-abc123", expectOK: true},
+		{name: "file content path", path: "/v1/files/file-abc123/content", expectID: "file-abc123", expectOK: true},
+		{name: "path with query params", path: "/v1/files/file-abc123/content?download=true", expectID: "file-abc123", expectOK: true},
+		{name: "empty path", path: "", expectID: "", expectOK: false},
+		{name: "missing id", path: "/v1/files/", expectID: "", expectOK: false},
+		{name: "empty id between slashes", path: "/v1/files//content", expectID: "", expectOK: false},
+		{name: "non-files path", path: "/v1/chat/completions", expectID: "", expectOK: false},
+		{name: "list files path", path: "/v1/files?model=gpt-4o-mini", expectID: "", expectOK: false},
+		{name: "segment appears later in path", path: "/prefix/v1/files/file-nested", expectID: "file-nested", expectOK: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			id, ok := extractFileIDFromPath(tc.path)
+			require.Equal(t, tc.expectOK, ok)
+			require.Equal(t, tc.expectID, id)
 		})
 	}
 }
@@ -351,39 +354,6 @@ func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *test
 		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"missing required 'model' query parameter for /v1/files"}}`, string(immediateResp.ImmediateResponse.Body))
 	})
 
-	t.Run("file request resolves model and path metadata", func(t *testing.T) {
-		fileID := translator.EncodeIDWithModel("file-abc123", "gpt-4o-mini", "file")
-		path := "/v1/files/" + fileID + "/content?download=1"
-		requestHeaders := map[string]string{":method": "GET", ":path": path}
-
-		p := &retrieveFileContentProcessorRouterFilter{
-			requestHeaders: requestHeaders,
-			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-		}
-
-		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-
-		headersResp, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
-		require.True(t, ok)
-		require.True(t, headersResp.RequestHeaders.Response.ClearRouteCache)
-
-		mutatedHeaders := headerValueOptionsToMap(headersResp.RequestHeaders.Response.HeaderMutation.SetHeaders)
-		require.Equal(t, "gpt-4o-mini", mutatedHeaders[internalapi.ModelNameHeaderKeyDefault])
-		require.Equal(t, "file-abc123", mutatedHeaders[internalapi.DecodedFileIDHeaderKey])
-		require.Equal(t, fileID, mutatedHeaders[internalapi.OriginalFileIDHeaderKey])
-		require.Equal(t, path, mutatedHeaders[internalapi.OriginalPathHeader])
-		require.Equal(t, path, mutatedHeaders[internalapi.EnvoyOriginalPathHeader])
-
-		require.Equal(t, "gpt-4o-mini", p.originalModel)
-		require.Equal(t, "gpt-4o-mini", p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
-		require.Equal(t, "file-abc123", p.requestHeaders[internalapi.DecodedFileIDHeaderKey])
-		require.Equal(t, fileID, p.requestHeaders[internalapi.OriginalFileIDHeaderKey])
-		require.Equal(t, path, p.requestHeaders[internalapi.OriginalPathHeader])
-		require.Equal(t, path, p.requestHeaders[internalapi.EnvoyOriginalPathHeader])
-	})
-
 	t.Run("path without encoded prefix falls through to pass-through", func(t *testing.T) {
 		p := &retrieveFileContentProcessorRouterFilter{
 			requestHeaders: map[string]string{":method": "GET", ":path": "/v1/files/"},
@@ -415,7 +385,68 @@ func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *test
 		immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
 		require.True(t, ok)
 		require.Equal(t, typev3.StatusCode(400), immediateResp.ImmediateResponse.Status.Code)
-		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"failed to decode model name from file id / batch id"}}`, string(immediateResp.ImmediateResponse.Body))
+		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"failed to decode routing info from file id / batch id"}}`, string(immediateResp.ImmediateResponse.Body))
+	})
+
+	t.Run("file id request sets decoded/model/backend headers and preserves pre-existing original path headers", func(t *testing.T) {
+		encodedID := translator.EncodeIDWithRouting("file-abc123", "gpt-4o-mini", "azure-openai", "file")
+		path := "/v1/files/" + encodedID + "/content"
+		p := &retrieveFileContentProcessorRouterFilter{
+			requestHeaders: map[string]string{
+				":method":                           "GET",
+				":path":                             path,
+				internalapi.OriginalPathHeader:      "/already/set",
+				internalapi.EnvoyOriginalPathHeader: "/already/set/envoy",
+			},
+			logger: slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		}
+
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		headersResp, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
+		require.True(t, ok)
+		require.True(t, headersResp.RequestHeaders.Response.ClearRouteCache)
+
+		mutatedHeaders := headerValueOptionsToMap(headersResp.RequestHeaders.Response.HeaderMutation.SetHeaders)
+		require.Equal(t, encodedID, mutatedHeaders[internalapi.OriginalFileIDHeaderKey])
+		require.Equal(t, "file-abc123", mutatedHeaders[internalapi.DecodedFileIDHeaderKey])
+		require.Equal(t, "gpt-4o-mini", mutatedHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.Equal(t, "azure-openai", mutatedHeaders[internalapi.BackendNameHeaderKey])
+		require.NotContains(t, mutatedHeaders, internalapi.OriginalPathHeader)
+		require.NotContains(t, mutatedHeaders, internalapi.EnvoyOriginalPathHeader)
+
+		require.Equal(t, encodedID, p.requestHeaders[internalapi.OriginalFileIDHeaderKey])
+		require.Equal(t, "file-abc123", p.requestHeaders[internalapi.DecodedFileIDHeaderKey])
+		require.Equal(t, "gpt-4o-mini", p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.Equal(t, "azure-openai", p.requestHeaders[internalapi.BackendNameHeaderKey])
+		require.Equal(t, internalapi.OriginalModel("gpt-4o-mini"), p.originalModel)
+		require.Equal(t, "/already/set", p.requestHeaders[internalapi.OriginalPathHeader])
+		require.Equal(t, "/already/set/envoy", p.requestHeaders[internalapi.EnvoyOriginalPathHeader])
+	})
+
+	t.Run("file id request without backend omits backend header", func(t *testing.T) {
+		encodedID := translator.EncodeIDWithRouting("file-xyz789", "claude-3", "", "file")
+		path := "/v1/files/" + encodedID
+		p := &retrieveFileContentProcessorRouterFilter{
+			requestHeaders: map[string]string{":method": "GET", ":path": path},
+			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		}
+
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		headersResp, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
+		require.True(t, ok)
+		mutatedHeaders := headerValueOptionsToMap(headersResp.RequestHeaders.Response.HeaderMutation.SetHeaders)
+		require.Equal(t, encodedID, mutatedHeaders[internalapi.OriginalFileIDHeaderKey])
+		require.Equal(t, "file-xyz789", mutatedHeaders[internalapi.DecodedFileIDHeaderKey])
+		require.Equal(t, "claude-3", mutatedHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.NotContains(t, mutatedHeaders, internalapi.BackendNameHeaderKey)
+
+		require.NotContains(t, p.requestHeaders, internalapi.BackendNameHeaderKey)
 	})
 }
 
@@ -1649,6 +1680,7 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 		require.Contains(t, retryResult, "messages", "Bedrock 'messages' field should be present on retry")
 	})
 }
+
 func TestBuildDynamicMetadata_routeScoped(t *testing.T) {
 	hdr := map[string]string{internalapi.ModelNameHeaderKeyDefault: "m"}
 
@@ -1887,3 +1919,48 @@ func mustCompileCEL(t *testing.T, expr string) cel.Program {
 	return prog
 }
 
+func TestExtractAIServiceBackendName(t *testing.T) {
+	tests := []struct {
+		name     string
+		fullName string
+		want     string
+	}{
+		{
+			name:     "standard format with namespace and name",
+			fullName: "ns1/backend-a/route/myroute/rule/0/ref/0",
+			want:     "ns1.backend-a",
+		},
+		{
+			name:     "different namespace",
+			fullName: "test-ns/my-backend/route/test-route/rule/1/ref/2",
+			want:     "test-ns.my-backend",
+		},
+		{
+			name:     "empty namespace",
+			fullName: "/backend-name/route/route1/rule/0/ref/0",
+			want:     ".backend-name",
+		},
+		{
+			name:     "non-standard format without slashes returns unchanged",
+			fullName: "simple-backend-name",
+			want:     "simple-backend-name",
+		},
+		{
+			name:     "single slash returns unchanged",
+			fullName: "single/slash",
+			want:     "single/slash",
+		},
+		{
+			name:     "cross-namespace backend",
+			fullName: "backend-ns/cross-ns-backend/route/myroute/rule/0/ref/0",
+			want:     "backend-ns.cross-ns-backend",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractAIServiceBackendName(tt.fullName)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}

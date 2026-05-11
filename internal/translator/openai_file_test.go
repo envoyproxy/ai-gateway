@@ -6,7 +6,7 @@
 package translator
 
 import (
-	"fmt"
+	"errors"
 	"net/url"
 	"strings"
 	"testing"
@@ -16,7 +16,14 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
+
+type listErrorReader struct{}
+
+func (listErrorReader) Read(_ []byte) (int, error) {
+	return 0, errors.New("read failed")
+}
 
 func TestListFilesOpenAIToOpenAITranslatorRequestBody(t *testing.T) {
 	translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
@@ -41,101 +48,101 @@ func TestListFilesOpenAIToOpenAITranslatorRequestBody(t *testing.T) {
 	require.Equal(t, "2", query.Get("limit"))
 }
 
-func TestListFilesOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
+func TestListFilesOpenAIToOpenAITranslatorRequestBody_NoOriginalPathAndForceBodyMutation(t *testing.T) {
 	translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
+	original := []byte("{\"k\":\"v\"}")
 
-	_, _, err := translator.RequestBody(
-		map[string]string{
-			pathHeaderName:                        "/v1/files?model=gpt-4o-mini",
-			internalapi.OriginalPathHeader:        "/v1/files?model=gpt-4o-mini",
-			internalapi.ModelNameHeaderKeyDefault: "gpt-4o-mini",
-		},
-		nil,
+	headers, body, err := translator.RequestBody(
+		map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4o-mini"},
+		original,
 		&struct{}{},
-		false,
-	)
-	require.NoError(t, err)
-
-	_, body, usage, _, err := translator.ResponseBody(
-		map[string]string{"content-type": "application/json"},
-		strings.NewReader(`{"object":"list","data":[{"id":"file-123"},{"id":"file-456"}]}`),
 		true,
-		nil,
 	)
 	require.NoError(t, err)
-	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), usage)
-
-	encoded1 := gjson.GetBytes(body, "data.0.id").String()
-	encoded2 := gjson.GetBytes(body, "data.1.id").String()
-	require.NotEqual(t, "file-123", encoded1)
-	require.NotEqual(t, "file-456", encoded2)
-
-	model1, id1, err := DecodeFileID(encoded1)
-	require.NoError(t, err)
-	require.Equal(t, internalapi.OriginalModel("gpt-4o-mini"), model1)
-	require.Equal(t, "file-123", id1)
-
-	model2, id2, err := DecodeFileID(encoded2)
-	require.NoError(t, err)
-	require.Equal(t, internalapi.OriginalModel("gpt-4o-mini"), model2)
-	require.Equal(t, "file-456", id2)
+	require.Equal(t, original, body)
+	require.Len(t, headers, 2)
+	require.Equal(t, pathHeaderName, headers[0].Key())
+	require.Equal(t, "/v1/files", headers[0].Value())
+	require.Equal(t, contentLengthHeaderName, headers[1].Key())
+	require.Equal(t, "9", headers[1].Value())
 }
 
-func TestListFilesOpenAIToOpenAITranslatorResponseBody_ListFiles(t *testing.T) {
+func TestListFilesOpenAIToOpenAITranslatorRequestBody_InvalidQueryReturnsError(t *testing.T) {
 	translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
 
-	_, _, err := translator.RequestBody(
-		map[string]string{
-			pathHeaderName:                        "/v1/files?model=openai/gpt-oss-20b",
-			internalapi.OriginalPathHeader:        "/v1/files?model=openai/gpt-oss-20b",
-			internalapi.ModelNameHeaderKeyDefault: "openai/gpt-oss-20b",
-			":method":                             "GET",
-		},
+	headers, body, err := translator.RequestBody(
+		map[string]string{pathHeaderName: "/v1/files?bad=%zz", internalapi.OriginalPathHeader: "/v1/files?bad=%zz"},
 		nil,
 		&struct{}{},
 		false,
 	)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to parse query parameters from original path")
+	require.Nil(t, headers)
+	require.Nil(t, body)
+}
 
-	const responseBody = `{
-		"data": [
-			{"id": "file-1775547086445804698"},
-			{"id": "file-1775547089989603753"},
-			{"id": "file-1775548393817282850"}
-		],
-		"has_more": false
-	}`
+func TestListFilesOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
+	t.Run("encodes ids with model and backend", func(t *testing.T) {
+		translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
+		impl := translator.(*openAIToOpenAITranslatorV1ListFiles)
+		impl.requestModel = "gpt-4o-mini"
 
-	_, body, usage, _, err := translator.ResponseBody(
-		map[string]string{"content-type": "application/json"},
-		strings.NewReader(responseBody),
-		true,
-		nil,
-	)
-	require.NoError(t, err)
-	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), usage)
+		resp := `{"data":[{"id":"file-a"},{"id":"file-b"}]}`
+		headers, body, _, _, err := translator.ResponseBody(
+			map[string]string{internalapi.BackendNameHeaderKey: "default/test-backend/route/r/rule/0/ref/0"},
+			strings.NewReader(resp),
+			true,
+			nil,
+		)
+		require.NoError(t, err)
+		require.Len(t, headers, 1)
+		require.Equal(t, contentLengthHeaderName, headers[0].Key())
 
-	expectedOriginalIDs := []string{
-		"file-1775547086445804698",
-		"file-1775547089989603753",
-		"file-1775548393817282850",
-	}
+		id0 := gjson.GetBytes(body, "data.0.id").String()
+		id1 := gjson.GetBytes(body, "data.1.id").String()
 
-	seenEncodedIDs := map[string]struct{}{}
-	for i, expectedID := range expectedOriginalIDs {
-		encodedID := gjson.GetBytes(body, fmt.Sprintf("data.%d.id", i)).String()
-		require.NotEmpty(t, encodedID)
-		require.NotEqual(t, expectedID, encodedID)
+		require.NotEqual(t, "file-a", id0)
+		require.NotEqual(t, "file-b", id1)
 
-		_, exists := seenEncodedIDs[encodedID]
-		require.False(t, exists, "encoded ID duplicated across list items: %s", encodedID)
-		seenEncodedIDs[encodedID] = struct{}{}
+		model0, backend0, original0, err := DecodeIDWithRouting(id0)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o-mini", model0)
+		require.Equal(t, "default/test-backend/route/r/rule/0/ref/0", backend0)
+		require.Equal(t, "file-a", original0)
 
-		model, decodedID, decodeErr := DecodeFileID(encodedID)
-		require.NoError(t, decodeErr)
-		require.Equal(t, internalapi.OriginalModel("openai/gpt-oss-20b"), model)
-		require.Equal(t, expectedID, decodedID)
-	}
+		model1, backend1, original1, err := DecodeIDWithRouting(id1)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o-mini", model1)
+		require.Equal(t, "default/test-backend/route/r/rule/0/ref/0", backend1)
+		require.Equal(t, "file-b", original1)
+	})
+
+	t.Run("missing request model returns error", func(t *testing.T) {
+		translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
+		headers, body, _, _, err := translator.ResponseBody(
+			map[string]string{internalapi.BackendNameHeaderKey: "default/test-backend/route/r/rule/0/ref/0"},
+			strings.NewReader(`{"data":[{"id":"file-a"}]}`),
+			true,
+			nil,
+		)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "missing request model")
+		require.Nil(t, headers)
+		require.Nil(t, body)
+	})
+
+	t.Run("read error returns error", func(t *testing.T) {
+		translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
+		impl := translator.(*openAIToOpenAITranslatorV1ListFiles)
+		impl.requestModel = "gpt-4o-mini"
+
+		headers, body, _, _, err := translator.ResponseBody(map[string]string{}, listErrorReader{}, true, nil)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to read response body")
+		require.Nil(t, headers)
+		require.Nil(t, body)
+	})
 }
 
 func TestCreateFileOpenAIToOpenAITranslatorRequestBody(t *testing.T) {
@@ -247,14 +254,24 @@ func TestCreateFileOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
 			}`,
 			expModel: "",
 		},
+		{
+			name:         "missing_request_model_returns_error",
+			responseBody: `{"id": "file-789", "object": "file"}`,
+			expError:     true,
+			expModel:     "", // requestModel not set
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			translator := NewCreateFileOpenAIToOpenAITranslator("v1", "")
 			impl := translator.(*openAIToOpenAITranslatorV1CreateFile)
-			impl.requestModel = "gpt-4"
+			// Only set requestModel if not testing the error case
+			if !tc.expError {
+				impl.requestModel = "gpt-4"
+			}
 
 			respHeaders := map[string]string{
-				"content-type": "application/json",
+				"content-type":                   "application/json",
+				internalapi.BackendNameHeaderKey: "default/test-backend/route/test-route/rule/0/ref/0",
 			}
 
 			_, bodyMutation, tokenUsage, _, err := translator.ResponseBody(
@@ -266,6 +283,7 @@ func TestCreateFileOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
 
 			if tc.expError {
 				require.Error(t, err)
+				require.Contains(t, err.Error(), "missing request model")
 				return
 			}
 
@@ -274,6 +292,23 @@ func TestCreateFileOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
 
 			// Verify body was mutated with encoded ID
 			require.NotNil(t, bodyMutation)
+
+			// Verify the file ID is encoded with backend routing information
+			var response map[string]interface{}
+			err = json.Unmarshal(bodyMutation, &response)
+			require.NoError(t, err)
+
+			encodedID, ok := response["id"].(string)
+			require.True(t, ok, "response should have 'id' field")
+			require.True(t, strings.HasPrefix(encodedID, "file-"), "encoded ID should have file- prefix")
+			require.NotEqual(t, gjson.Get(tc.responseBody, "id").String(), encodedID, "ID should be encoded, not original")
+
+			// Decode and verify routing information
+			modelName, backendName, originalID, err := DecodeIDWithRouting(encodedID)
+			require.NoError(t, err)
+			require.Equal(t, "gpt-4", modelName)
+			require.Equal(t, "default/test-backend/route/test-route/rule/0/ref/0", backendName)
+			require.Equal(t, gjson.Get(tc.responseBody, "id").String(), originalID)
 		})
 	}
 }
