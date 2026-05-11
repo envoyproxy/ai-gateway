@@ -313,20 +313,31 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processFileIDI
 		logger.Error("failed to extract file_id from path", slog.String("path", r.requestHeaders[":path"]))
 		return createUserFacingErrorResponse(400, "BadRequest", "failed to extract file id / batch id from path"), nil
 	}
-	modelName, decodedID, err := translator.DecodeFileID(fileID)
+	// Decode file ID with routing information (model and backend)
+	modelName, backendName, decodedID, err := translator.DecodeIDWithRouting(fileID)
 	if err != nil {
-		logger.Error("failed to decode model name from file_id", slog.String("file_id", fileID), slog.String("error", err.Error()))
-		return createUserFacingErrorResponse(400, "BadRequest", "failed to decode model name from file id / batch id"), nil
+		logger.Error("failed to decode routing info from file_id", slog.String("file_id", fileID), slog.String("error", err.Error()))
+		return createUserFacingErrorResponse(400, "BadRequest", "failed to decode routing info from file id / batch id"), nil
 	}
 	r.requestHeaders[internalapi.OriginalFileIDHeaderKey] = fileID
 	r.requestHeaders[internalapi.DecodedFileIDHeaderKey] = decodedID
 	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = modelName
 	r.originalModel = modelName
 
+	// Set backend name header for sticky routing if backend info is available
+	if backendName != "" {
+		r.requestHeaders[internalapi.BackendNameHeaderKey] = backendName
+	}
+
 	headerMutation := &extprocv3.HeaderMutation{}
 	setHeader(headerMutation, internalapi.OriginalFileIDHeaderKey, fileID)
 	setHeader(headerMutation, internalapi.DecodedFileIDHeaderKey, decodedID)
 	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, modelName)
+
+	// Set backend header for routing if available
+	if backendName != "" {
+		setHeader(headerMutation, internalapi.BackendNameHeaderKey, backendName)
+	}
 
 	originalPath := r.requestHeaders[":path"]
 	if r.requestHeaders[originalPathHeader] == "" {
@@ -393,36 +404,8 @@ func createUserFacingErrorResponse(statusCode int, errorType string, message str
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	if r.requestInitialized {
-		return r.passThroughProcessor.ProcessRequestBody(ctx, rawBody)
-	}
-
-	headerMutation, immediateResp, err := r.initRequest(ctx, rawBody.Body)
-	if immediateResp != nil {
-		return immediateResp, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	return &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_RequestBody{
-			RequestBody: &extprocv3.BodyResponse{
-				Response: &extprocv3.CommonResponse{
-					HeaderMutation:  headerMutation,
-					ClearRouteCache: true,
-				},
-			},
-		},
-	}, nil
-}
-
-func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) initRequest(ctx context.Context, rawBody []byte) (*extprocv3.HeaderMutation, *extprocv3.ProcessingResponse, error) {
-	if rawBody == nil {
-		rawBody = []byte{}
-	}
 	costConfigured := len(r.config.RequestCosts) > 0 || len(r.config.GlobalRequestCosts) > 0
-	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody, costConfigured, r.requestHeaders)
+	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body, costConfigured, r.requestHeaders)
 	if err != nil {
 		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
 			// return to user as 400 -  e.g., "malformed request: failed to parse JSON for /v1/chat/completions"
@@ -623,6 +606,10 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	}()
 
 	u.responseHeaders = headersToMap(headers)
+	// Copy backend name from request headers to response headers so it is available for encoding it in response fileID.
+	if backendName := u.requestHeaders[internalapi.BackendNameHeaderKey]; backendName != "" {
+		u.responseHeaders[internalapi.BackendNameHeaderKey] = backendName
+	}
 	if enc := u.responseHeaders["content-encoding"]; enc != "" {
 		u.responseEncoding = enc
 	}
@@ -783,6 +770,20 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) decodeStream
 	return contentDecodingResult{reader: bytes.NewReader(newData), isEncoded: true}, nil
 }
 
+// extractAIServiceBackendName extracts the namespace-qualified AIServiceBackend name from a
+// PerRouteRuleRefBackendName-formatted string ("namespace/name/route/routeName/rule/X/ref/Y").
+// Returns format "namespace.name" to match HTTPRoute sticky routing rules.
+// Returns the full name unchanged for backends that don't use this format (e.g., data-plane test backends).
+func extractAIServiceBackendName(fullName string) string {
+	parts := strings.SplitN(fullName, "/", 3)
+	if len(parts) < 3 {
+		// Not a valid PerRouteRuleRefBackendName format - return unchanged
+		return fullName
+	}
+	// Return namespace-qualified format: namespace.name
+	return fmt.Sprintf("%s.%s", parts[0], parts[1])
+}
+
 // SetBackend implements [Processor.SetBackend].
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(ctx context.Context, backend *filterapi.RuntimeBackend, routeName string, routeProcessor Processor) (err error) {
 	defer func() {
@@ -806,6 +807,10 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	if u.modelNameOverride != "" {
 		u.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = u.modelNameOverride
 	}
+	// Set backend name header for sticky routing and file ID encoding.
+	// Use namespace-qualified AIServiceBackend name (namespace.name format) to match
+	// the HTTPRoute header-based sticky routing rules generated by the controller.
+	u.requestHeaders[internalapi.BackendNameHeaderKey] = extractAIServiceBackendName(backend.Backend.Name)
 	u.parent = rp // Set parent before GetTranslator so it can access rp.eh
 
 	u.translator, err = u.parent.eh.GetTranslator(backend.Backend.Schema, u.modelNameOverride)

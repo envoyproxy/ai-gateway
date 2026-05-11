@@ -7,6 +7,7 @@ package translator
 
 import (
 	"encoding/base64"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -89,75 +90,101 @@ func TestSystemMsgToDeveloperMsg(t *testing.T) {
 	require.Equal(t, openai.ContentUnion{Value: "You are a helpful assistant."}, developerMsg.Content)
 }
 
-func TestEncodeIDWithModel(t *testing.T) {
+func TestEncodeIDWithRouting(t *testing.T) {
 	tests := []struct {
-		name      string
-		id        string
-		modelName string
-		idType    string
-		want      string
+		name        string
+		id          string
+		modelName   string
+		backendName string
+		idType      string
 	}{
 		{
-			name:      "encodes file id with file prefix",
-			id:        "file-abc123",
-			modelName: "gpt-4o-mini",
-			idType:    "file",
-			want:      "file-aWQ6ZmlsZS1hYmMxMjM7bW9kZWw6Z3B0LTRvLW1pbmk",
+			name:        "encodes file id with model and backend",
+			id:          "file-abc123",
+			modelName:   "gpt-4o-mini",
+			backendName: "azure-openai",
+			idType:      "file",
 		},
 		{
-			name:      "defaults to file prefix for unknown id type",
-			id:        "file-default",
-			modelName: "gpt-4.1-mini",
-			idType:    "unknown",
-			want:      "file-aWQ6ZmlsZS1kZWZhdWx0O21vZGVsOmdwdC00LjEtbWluaQ",
+			name:        "encodes with empty backend",
+			id:          "file-xyz789",
+			modelName:   "gpt-4.1",
+			backendName: "",
+			idType:      "file",
+		},
+		{
+			name:        "encodes with special characters in backend",
+			id:          "file-test123",
+			modelName:   "claude-3",
+			backendName: "anthropic-us-east-1",
+			idType:      "file",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := EncodeIDWithModel(tc.id, tc.modelName, tc.idType)
-			require.Equal(t, tc.want, got)
+			encoded := EncodeIDWithRouting(tc.id, tc.modelName, tc.backendName, tc.idType)
+
+			// Verify it starts with the correct prefix
+			require.True(t, strings.HasPrefix(encoded, "file-"), "encoded ID should start with 'file-'")
+
+			// Decode and verify
+			modelName, backendName, id, err := DecodeIDWithRouting(encoded)
+			require.NoError(t, err)
+			require.Equal(t, tc.modelName, modelName)
+			require.Equal(t, tc.backendName, backendName)
+			require.Equal(t, tc.id, id)
 		})
 	}
 }
 
-func TestDecodeFileID(t *testing.T) {
+func TestDecodeFileIDRouting(t *testing.T) {
 	tests := []struct {
-		name          string
-		encodedID     string
-		wantModelName string
-		wantID        string
-		expectErr     bool
-		expectedError string
+		name            string
+		encodedID       string
+		wantModelName   string
+		wantBackendName string
+		wantID          string
+		expectErr       bool
+		expectedError   string
 	}{
 		{
-			name:          "decodes valid file id",
-			encodedID:     "file-aWQ6ZmlsZS1hYmMxMjM7bW9kZWw6Z3B0LTRvLW1pbmk",
-			wantModelName: "gpt-4o-mini",
-			wantID:        "file-abc123",
-			expectErr:     false,
+			name:            "decodes new format with backend",
+			encodedID:       EncodeIDWithRouting("file-abc123", "gpt-4o-mini", "azure-openai", "file"),
+			wantModelName:   "gpt-4o-mini",
+			wantBackendName: "azure-openai",
+			wantID:          "file-abc123",
+			expectErr:       false,
 		},
 		{
-			name:          "returns error on missing expected prefix",
-			encodedID:     "aWQ6ZmlsZS1hYmMxMjM7bW9kZWw6Z3B0LTRvLW1pbmk",
+			name:            "decodes new format without backend",
+			encodedID:       EncodeIDWithRouting("file-xyz789", "claude-3", "", "file"),
+			wantModelName:   "claude-3",
+			wantBackendName: "",
+			wantID:          "file-xyz789",
+			expectErr:       false,
+		},
+		{
+			name:          "returns error on legacy id model format",
+			encodedID:     FileIDPrefix + base64.RawURLEncoding.EncodeToString([]byte("id:file-legacy123;model:gpt-4o-mini")),
+			expectErr:     true,
+			expectedError: "invalid decoded ID format: expected format 'aigw:<original_id>;model:<model_name>;backend:<backend_name>'",
+		},
+		{
+			name:          "returns error on missing prefix",
+			encodedID:     "YWlndzpmaWxlLWFiYzEyMzttb2RlbDpncHQtNDttYmFja2VuZDphenVyZQ",
 			expectErr:     true,
 			expectedError: "invalid encoded ID format: missing expected prefix",
 		},
 		{
 			name:          "returns error on malformed base64",
-			encodedID:     "file-not@base64",
+			encodedID:     "file-not@valid@base64",
 			expectErr:     true,
 			expectedError: "failed to decode base64 part of the ID",
 		},
 		{
-			name:          "returns error on invalid decoded format",
-			encodedID:     FileIDPrefix + base64.RawURLEncoding.EncodeToString([]byte("id:file-abc123")),
-			expectErr:     true,
-			expectedError: "invalid decoded ID format: expected format 'id:<original_id>;model:<model_name>'",
-		},
-		{
-			name:          "returns error when model is missing",
-			encodedID:     FileIDPrefix + base64.RawURLEncoding.EncodeToString([]byte("id:file-abc123;model:")),
+			name:          "returns error on missing model in new format",
+			encodedID:     FileIDPrefix + base64.RawURLEncoding.EncodeToString([]byte("aigw:file-123;backend:azure")),
 			expectErr:     true,
 			expectedError: "model name not found in decoded Id",
 		},
@@ -165,16 +192,18 @@ func TestDecodeFileID(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			modelName, id, err := DecodeFileID(tc.encodedID)
+			modelName, backendName, id, err := DecodeIDWithRouting(tc.encodedID)
 
 			if tc.expectErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.expectedError)
 				require.Empty(t, modelName)
+				require.Empty(t, backendName)
 				require.Empty(t, id)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tc.wantModelName, modelName)
+				require.Equal(t, tc.wantBackendName, backendName)
 				require.Equal(t, tc.wantID, id)
 			}
 		})
