@@ -53,6 +53,10 @@ func TestAIGatewayRoutes(t *testing.T) {
 			name:   "inference_pool_unsupported_group.yaml",
 			expErr: "spec.rules[0].backendRefs[0]: Invalid value: \"object\": only InferencePool from inference.networking.k8s.io group is supported",
 		},
+		{
+			name:   "too_many_rules.yaml",
+			expErr: "spec.rules: Too many: 16: must have at most 15 items",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/aigatewayroutes", tc.name))
