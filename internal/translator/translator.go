@@ -114,6 +114,8 @@ type (
 	OpenAIResponsesTranslator = Translator[openai.ResponseRequest, tracingapi.ResponsesSpan]
 	// OpenAISpeechTranslator translates the OpenAI's /v1/audio/speech endpoint.
 	OpenAISpeechTranslator = Translator[openai.SpeechRequest, tracingapi.SpeechSpan]
+	// AnthropicCountTokensTranslator translates the Anthropic's /v1/messages/count_tokens endpoint.
+	AnthropicCountTokensTranslator = Translator[anthropicschema.MessagesRequest, tracingapi.CountTokensSpan]
 )
 
 var (
