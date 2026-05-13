@@ -56,6 +56,36 @@ func TestOpenAIChatCompletionContentPartUserUnionParamUnmarshal(t *testing.T) {
 			},
 		},
 		{
+			name: "audio url",
+			in: []byte(`{
+"type": "audio_url",
+"audio_url": {"url": "https://example.com/audio.mp3"}
+}`),
+			out: &ChatCompletionContentPartUserUnionParam{
+				OfAudioURL: &ChatCompletionContentPartAudioParam{
+					Type: ChatCompletionContentPartAudioTypeAudioURL,
+					AudioURL: ChatCompletionContentPartAudioAudioURLParam{
+						URL: "https://example.com/audio.mp3",
+					},
+				},
+			},
+		},
+		{
+			name: "video url",
+			in: []byte(`{
+"type": "video_url",
+"video_url": {"url": "https://example.com/video.mp4"}
+}`),
+			out: &ChatCompletionContentPartUserUnionParam{
+				OfVideoURL: &ChatCompletionContentPartVideoParam{
+					Type: ChatCompletionContentPartVideoTypeVideoURL,
+					VideoURL: ChatCompletionContentPartVideoVideoURLParam{
+						URL: "https://example.com/video.mp4",
+					},
+				},
+			},
+		},
+		{
 			name: "input audio",
 			in: []byte(`{
 "type": "input_audio",
