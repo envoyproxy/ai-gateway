@@ -12,6 +12,7 @@ import (
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -236,7 +237,7 @@ func (c *MCPRouteController) listExistingPerBackendHTTPRoutes(ctx context.Contex
 }
 
 // deleteOrphanedPerBackendResources deletes per-backend HTTPRoutes and their corresponding
-// HTTPRouteFilters that are no longer referenced by any backendRef in the MCPRoute spec.
+// HTTPRouteFilters and credential Secrets that are no longer referenced by any backendRef in the MCPRoute spec.
 func (c *MCPRouteController) deleteOrphanedPerBackendResources(ctx context.Context, mcpRoute *aigv1b1.MCPRoute, orphaned map[string]*gwapiv1.HTTPRoute) error {
 	for name, route := range orphaned {
 		c.logger.Info("Deleting orphaned per-backend HTTPRoute", "namespace", route.Namespace, "name", name)
@@ -249,6 +250,12 @@ func (c *MCPRouteController) deleteOrphanedPerBackendResources(ctx context.Conte
 		filter := &egv1a1.HTTPRouteFilter{ObjectMeta: metav1.ObjectMeta{Name: filterName, Namespace: mcpRoute.Namespace}}
 		if err := c.client.Delete(ctx, filter); err != nil && !apierrors.IsNotFound(err) {
 			return fmt.Errorf("failed to delete orphaned HTTPRouteFilter %s: %w", filterName, err)
+		}
+
+		credSecretName := strings.Replace(name, internalapi.MCPPerBackendRefHTTPRoutePrefix, internalapi.MCPPerBackendCredentialSecretPrefix, 1)
+		c.logger.Info("Deleting orphaned credential secret", "namespace", mcpRoute.Namespace, "name", credSecretName)
+		if err := c.kube.CoreV1().Secrets(mcpRoute.Namespace).Delete(ctx, credSecretName, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete orphaned credential secret %s: %w", credSecretName, err)
 		}
 	}
 	return nil
@@ -549,17 +556,51 @@ func mcpBackendRefFilterName(mcpRoute *aigv1b1.MCPRoute, backendName gwapiv1.Obj
 	return fmt.Sprintf("%s%s-%s", internalapi.MCPPerBackendHTTPRouteFilterPrefix, mcpRoute.Name, backendName)
 }
 
+func mcpCredentialSecretName(mcpRoute *aigv1b1.MCPRoute, backendName gwapiv1.ObjectName) string {
+	return fmt.Sprintf("%s%s-%s", internalapi.MCPPerBackendCredentialSecretPrefix, mcpRoute.Name, backendName)
+}
+
 // mcpBackendRefToHTTPRouteRule creates an HTTPRouteRule for the given MCPRouteBackendRef.
 // The rule routes requests to the specified backend using internalapi.MCPBackendHeader,
 // which is set by the MCP proxy based on its routing logic.
 // This route rule will eventually be moved to the backend listener in the extension server.
 func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, mcpRoute *aigv1b1.MCPRoute, ref *aigv1b1.MCPRouteBackendRef) (gwapiv1.HTTPRouteRule, error) {
-	// Ensure the HTTPRouteFilter for this backend with its optional security configuration.
 	egFilterName := mcpBackendRefFilterName(mcpRoute, ref.Name)
-	err := c.ensureMCPBackendRefHTTPFilter(ctx, egFilterName, mcpRoute)
-	if err != nil {
-		return gwapiv1.HTTPRouteRule{}, fmt.Errorf("failed to ensure MCP backend API key HTTP filter: %w", err)
+
+	// Determine credential injection parameters from the backend's security policy.
+	var credentialSecretName string
+	var credentialHeader *string
+	fullPathPtr := ptr.Deref(ref.Path, defaultMCPPath)
+
+	if ref.SecurityPolicy != nil && ref.SecurityPolicy.APIKey != nil {
+		apiKey := ref.SecurityPolicy.APIKey
+
+		if apiKey.QueryParam != nil {
+			// Query parameter injection cannot use Envoy Gateway's credentialInjection filter;
+			// embed directly in the URL rewrite path.
+			// TODO: evaluate alternatives to avoid embedding the secret in the HTTPRoute manifest.
+			apiKeyLiteral, err := c.readAPIKey(ctx, mcpRoute.Namespace, apiKey)
+			if err != nil {
+				return gwapiv1.HTTPRouteRule{}, fmt.Errorf("failed to read API key for backend %s: %w", ref.Name, err)
+			}
+			fullPathPtr = fmt.Sprintf("%s?%s=%s", fullPathPtr, *apiKey.QueryParam, apiKeyLiteral)
+		} else {
+			// Header-based injection: create a credential Secret and let the
+			// HTTPRouteFilter's credentialInjection handle it securely.
+			credSecretName := mcpCredentialSecretName(mcpRoute, ref.Name)
+			if err := c.ensureCredentialSecret(ctx, credSecretName, mcpRoute, apiKey); err != nil {
+				return gwapiv1.HTTPRouteRule{}, fmt.Errorf("failed to ensure credential secret for backend %s: %w", ref.Name, err)
+			}
+			credentialSecretName = credSecretName
+			credentialHeader = apiKey.Header
+		}
 	}
+
+	// Ensure the HTTPRouteFilter for this backend with URL rewrite and optional credential injection.
+	if err := c.ensureMCPBackendRefHTTPFilter(ctx, egFilterName, mcpRoute, credentialSecretName, credentialHeader); err != nil {
+		return gwapiv1.HTTPRouteRule{}, fmt.Errorf("failed to ensure MCP backend HTTP filter: %w", err)
+	}
+
 	filters := []gwapiv1.HTTPRouteFilter{
 		{
 			Type: gwapiv1.HTTPRouteFilterExtensionRef,
@@ -569,52 +610,7 @@ func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, m
 				Name:  gwapiv1.ObjectName(egFilterName),
 			},
 		},
-	}
-
-	fullPathPtr := ptr.Deref(ref.Path, defaultMCPPath)
-
-	// Add credential injection if apiKey is specified.
-	if ref.SecurityPolicy != nil && ref.SecurityPolicy.APIKey != nil {
-		apiKey := ref.SecurityPolicy.APIKey
-
-		apiKeyLiteral, err := c.readAPIKey(ctx, mcpRoute.Namespace, apiKey)
-		if err != nil {
-			return gwapiv1.HTTPRouteRule{}, fmt.Errorf("failed to read API key for backend %s: %w", ref.Name, err)
-		}
-		switch {
-		case apiKey.QueryParam != nil:
-			fullPathPtr = fmt.Sprintf("%s?%s=%s", fullPathPtr, *apiKey.QueryParam, apiKeyLiteral)
-		case apiKey.Header != nil:
-			header := *apiKey.Header
-			if header == "Authorization" {
-				apiKeyLiteral = "Bearer " + apiKeyLiteral
-			}
-			filters = append(filters,
-				gwapiv1.HTTPRouteFilter{
-					Type: gwapiv1.HTTPRouteFilterRequestHeaderModifier,
-					RequestHeaderModifier: &gwapiv1.HTTPHeaderFilter{
-						Set: []gwapiv1.HTTPHeader{
-							{Name: gwapiv1.HTTPHeaderName(header), Value: apiKeyLiteral},
-						},
-					},
-				},
-			)
-		default:
-			filters = append(filters,
-				gwapiv1.HTTPRouteFilter{
-					Type: gwapiv1.HTTPRouteFilterRequestHeaderModifier,
-					RequestHeaderModifier: &gwapiv1.HTTPHeaderFilter{
-						Set: []gwapiv1.HTTPHeader{
-							{Name: "Authorization", Value: "Bearer " + apiKeyLiteral},
-						},
-					},
-				},
-			)
-		}
-	}
-
-	filters = append(filters,
-		gwapiv1.HTTPRouteFilter{
+		{
 			Type: gwapiv1.HTTPRouteFilterURLRewrite,
 			URLRewrite: &gwapiv1.HTTPURLRewriteFilter{
 				Path: &gwapiv1.HTTPPathModifier{
@@ -623,13 +619,13 @@ func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, m
 				},
 			},
 		},
-	)
+	}
+
 	return gwapiv1.HTTPRouteRule{
 		Matches: []gwapiv1.HTTPRouteMatch{
 			{
 				Path: &gwapiv1.HTTPPathMatch{Type: ptr.To(gwapiv1.PathMatchPathPrefix), Value: ptr.To("/")},
 				Headers: []gwapiv1.HTTPHeaderMatch{
-					// MCPRoute doesn't support cross-namespace backend reference so just use the name.
 					{Name: internalapi.MCPBackendHeader, Value: string(ref.Name)},
 					{Name: internalapi.MCPRouteHeader, Value: mcpRouteHeaderValue(mcpRoute)},
 				},
@@ -648,7 +644,6 @@ func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, m
 			},
 		}},
 		Timeouts: &gwapiv1.HTTPRouteTimeouts{
-			// TODO: make it configurable via MCPRoute.Spec?
 			Request:        ptr.To(gwapiv1.Duration("30m")),
 			BackendRequest: ptr.To(gwapiv1.Duration("30m")),
 		},
@@ -660,16 +655,20 @@ func mcpRouteHeaderValue(mcpRoute *aigv1b1.MCPRoute) string {
 }
 
 // ensureMCPBackendRefHTTPFilter ensures that an HTTPRouteFilter exists for the given backend reference in the MCPRoute.
-func (c *MCPRouteController) ensureMCPBackendRefHTTPFilter(ctx context.Context, filterName string, mcpRoute *aigv1b1.MCPRoute) error {
-	// Rewrite the hostname to the backend service name.
-	// This allows Envoy to route to public MCP services with SNI matching the service name.
-	// This could be a standalone filter and moved to the main mcp gateway route logic.
+// When credentialSecretName is non-empty, the filter is configured with credential injection referencing
+// the given secret (which must store the credential under the "credential" key). When empty, only URL
+// hostname rewrite is configured.
+func (c *MCPRouteController) ensureMCPBackendRefHTTPFilter(ctx context.Context, filterName string, mcpRoute *aigv1b1.MCPRoute,
+	credentialSecretName string, credentialHeader *string,
+) error {
 	filter := &egv1a1.HTTPRouteFilter{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      filterName,
 			Namespace: mcpRoute.Namespace,
 		},
 		Spec: egv1a1.HTTPRouteFilterSpec{
+			// Rewrite the hostname to the backend service name.
+			// This allows Envoy to route to public MCP services with SNI matching the service name.
 			URLRewrite: &egv1a1.HTTPURLRewriteFilter{
 				Hostname: &egv1a1.HTTPHostnameModifier{
 					Type: egv1a1.BackendHTTPHostnameModifier,
@@ -677,6 +676,19 @@ func (c *MCPRouteController) ensureMCPBackendRefHTTPFilter(ctx context.Context, 
 			},
 		},
 	}
+
+	if credentialSecretName != "" {
+		filter.Spec.CredentialInjection = &egv1a1.HTTPCredentialInjectionFilter{
+			Overwrite: ptr.To(true),
+			Header:    credentialHeader,
+			Credential: egv1a1.InjectedCredential{
+				ValueRef: gwapiv1.SecretObjectReference{
+					Name: gwapiv1.ObjectName(credentialSecretName),
+				},
+			},
+		}
+	}
+
 	if err := ctrlutil.SetControllerReference(mcpRoute, filter, c.client.Scheme()); err != nil {
 		return fmt.Errorf("failed to set controller reference for HTTPRouteFilter: %w", err)
 	}
@@ -698,6 +710,59 @@ func (c *MCPRouteController) ensureMCPBackendRefHTTPFilter(ctx context.Context, 
 		c.logger.Info("Updating HTTPRouteFilter", "namespace", existingFilter.Namespace, "name", existingFilter.Name)
 		if err = c.client.Update(ctx, &existingFilter); err != nil {
 			return fmt.Errorf("failed to update HTTPRouteFilter: %w", err)
+		}
+	}
+	return nil
+}
+
+// ensureCredentialSecret creates or updates a Kubernetes Secret that holds the formatted credential
+// value under the "credential" key. This secret is referenced by the HTTPRouteFilter's credentialInjection,
+// keeping the plaintext API key out of the HTTPRoute manifest.
+func (c *MCPRouteController) ensureCredentialSecret(ctx context.Context, secretName string, mcpRoute *aigv1b1.MCPRoute, apiKey *aigv1b1.MCPBackendAPIKey) error {
+	apiKeyLiteral, err := c.readAPIKey(ctx, mcpRoute.Namespace, apiKey)
+	if err != nil {
+		return fmt.Errorf("failed to read API key: %w", err)
+	}
+
+	// Format the credential value. The credentialInjection filter injects
+	// this verbatim into the target header.
+	credentialValue := apiKeyLiteral
+	header := ptr.Deref(apiKey.Header, "Authorization")
+	if header == "Authorization" {
+		credentialValue = "Bearer " + apiKeyLiteral
+	}
+
+	desired := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: mcpRoute.Namespace,
+		},
+		Data: map[string][]byte{
+			"credential": []byte(credentialValue),
+		},
+	}
+	if err := ctrlutil.SetControllerReference(mcpRoute, desired, c.client.Scheme()); err != nil {
+		return fmt.Errorf("failed to set controller reference for credential secret: %w", err)
+	}
+
+	existing, err := c.kube.CoreV1().Secrets(mcpRoute.Namespace).Get(ctx, secretName, metav1.GetOptions{})
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get credential secret: %w", err)
+		}
+		c.logger.Info("Creating credential secret", "namespace", mcpRoute.Namespace, "name", secretName)
+		if _, err = c.kube.CoreV1().Secrets(mcpRoute.Namespace).Create(ctx, desired, metav1.CreateOptions{}); err != nil {
+			return fmt.Errorf("failed to create credential secret: %w", err)
+		}
+		return nil
+	}
+
+	// Update if the credential value changed.
+	if string(existing.Data["credential"]) != credentialValue {
+		existing.Data = desired.Data
+		c.logger.Info("Updating credential secret", "namespace", mcpRoute.Namespace, "name", secretName)
+		if _, err = c.kube.CoreV1().Secrets(mcpRoute.Namespace).Update(ctx, existing, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("failed to update credential secret: %w", err)
 		}
 	}
 	return nil
