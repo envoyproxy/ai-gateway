@@ -77,6 +77,52 @@ func getAwsBedrockThinkingMap(tu *openai.ThinkingUnion) map[string]any {
 	return resultMap
 }
 
+// mimeTypeToImageFormat maps a MIME type to a Bedrock image format string.
+// Returns the format and true if the MIME type is a supported image type, or empty string and false otherwise.
+// Supported formats: png, jpeg, gif, webp.
+func mimeTypeToImageFormat(mimeType string) (string, bool) {
+	switch mimeType {
+	case mimeTypeImagePNG:
+		return "png", true
+	case mimeTypeImageJPEG:
+		return "jpeg", true
+	case mimeTypeImageGIF:
+		return "gif", true
+	case mimeTypeImageWEBP:
+		return "webp", true
+	default:
+		return "", false
+	}
+}
+
+// mimeTypeToDocumentFormat maps a MIME type to a Bedrock document format string.
+// Returns the format and true if the MIME type is a supported document type, or empty string and false otherwise.
+// Supported formats: pdf, csv, doc, docx, xls, xlsx, html, txt, md.
+func mimeTypeToDocumentFormat(mimeType string) (string, bool) {
+	switch mimeType {
+	case mimeTypeApplicationPDF:
+		return "pdf", true
+	case mimeTypeTextCSV:
+		return "csv", true
+	case mimeTypeApplicationMSWord:
+		return "doc", true
+	case mimeTypeApplicationDocx:
+		return "docx", true
+	case mimeTypeApplicationMSExcel:
+		return "xls", true
+	case mimeTypeApplicationXlsx:
+		return "xlsx", true
+	case mimeTypeTextHTML:
+		return "html", true
+	case mimeTypeTextPlain:
+		return "txt", true
+	case mimeTypeTextMarkdown:
+		return "md", true
+	default:
+		return "", false
+	}
+}
+
 // getCachePoint returns a cache point block for AWS Bedrock if cache control is enabled, otherwise nil.
 func getCachePoint(fields *openai.AnthropicContentFields) *awsbedrock.CachePointBlock {
 	if isCacheEnabled(fields) {
@@ -239,9 +285,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 	} else if contents, ok := openAiMessage.Content.Value.([]openai.ChatCompletionContentPartUserUnionParam); ok {
 		chatMessage := &awsbedrock.Message{Role: role}
 		chatMessage.Content = make([]*awsbedrock.ContentBlock, 0, len(contents))
+		var hasText, hasDocument bool
 		for i := range contents {
 			contentPart := &contents[i]
 			if contentPart.OfText != nil {
+				hasText = true
 				textContentPart := contentPart.OfText
 				block := &awsbedrock.ContentBlock{
 					Text: &textContentPart.Text,
@@ -259,27 +307,30 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 				if err != nil {
 					return nil, fmt.Errorf("%w: invalid image data URI", internalapi.ErrInvalidRequestBody)
 				}
-				var format string
-				switch contentType {
-				case mimeTypeImagePNG:
-					format = "png"
-				case mimeTypeImageJPEG:
-					format = "jpeg"
-				case mimeTypeImageGIF:
-					format = "gif"
-				case mimeTypeImageWEBP:
-					format = "webp"
-				default:
-					return nil, fmt.Errorf("%w: unsupported image format %s", internalapi.ErrInvalidRequestBody, contentType)
-				}
 
-				block := &awsbedrock.ContentBlock{
-					Image: &awsbedrock.ImageBlock{
-						Format: format,
-						Source: awsbedrock.ImageSource{
-							Bytes: b, // Decoded data as bytes.
+				var block *awsbedrock.ContentBlock
+				if docFormat, ok := mimeTypeToDocumentFormat(contentType); ok {
+					hasDocument = true
+					block = &awsbedrock.ContentBlock{
+						Document: &awsbedrock.DocumentBlock{
+							Format: docFormat,
+							Name:   "document",
+							Source: awsbedrock.DocumentSource{
+								Bytes: b,
+							},
 						},
-					},
+					}
+				} else if imgFormat, ok := mimeTypeToImageFormat(contentType); ok {
+					block = &awsbedrock.ContentBlock{
+						Image: &awsbedrock.ImageBlock{
+							Format: imgFormat,
+							Source: awsbedrock.ImageSource{
+								Bytes: b,
+							},
+						},
+					}
+				} else {
+					return nil, fmt.Errorf("%w: unsupported format %s", internalapi.ErrInvalidRequestBody, contentType)
 				}
 				chatMessage.Content = append(chatMessage.Content, block)
 				cachePointBlock := getCachePoint(imageContentPart.AnthropicContentFields)
@@ -289,6 +340,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 					})
 				}
 			}
+		}
+		if hasDocument && !hasText {
+			return nil, fmt.Errorf("%w: Bedrock requires at least one text block alongside a document block", internalapi.ErrInvalidRequestBody)
 		}
 		return chatMessage, nil
 	}
