@@ -165,7 +165,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 	// Parse cluster name to extract AIGatewayRoute information.
 	// Expected format: "httproute/<namespace>/<name>/rule/<index_of_rule>".
 	parts := strings.Split(cluster.Name, "/")
-	if len(parts) != 5 || parts[0] != "httproute" {
+	if (len(parts) != 5 && len(parts) != 7) || parts[0] != "httproute" {
 		// This is not an AIGatewayRoute-generated cluster, skip modification.
 		s.log.Info("non-ai-gateway cluster name", "cluster_name", cluster.Name)
 		return nil
@@ -178,6 +178,20 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		s.log.Error(err, "failed to parse HTTPRoute rule index",
 			"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndexStr)
 		return nil
+	}
+	backendRefIndexes := []int{-1}
+	if len(parts) == 7 {
+		if parts[5] != "backend" {
+			s.log.Info("non-ai-gateway cluster name", "cluster_name", cluster.Name)
+			return nil
+		}
+		backendRefIndex, err := strconv.Atoi(parts[6])
+		if err != nil {
+			s.log.Error(err, "failed to parse HTTPRoute backend index",
+				"cluster_name", cluster.Name, "backend_index", parts[6])
+			return nil
+		}
+		backendRefIndexes[0] = backendRefIndex
 	}
 
 	// Check if this rule has InferencePool backends.
@@ -203,6 +217,11 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		return nil
 	}
 	httpRouteRule := &aigwRoute.Spec.Rules[httpRouteRuleIndex]
+	if backendRefIndexes[0] >= len(httpRouteRule.BackendRefs) {
+		s.log.Info("HTTPRoute backend index out of range",
+			"cluster_name", cluster.Name, "backend_index", parts[6])
+		return nil
+	}
 
 	// Only process LoadAssignment for non-InferencePool backends.
 	if pool == nil {
@@ -212,13 +231,20 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 			// can resolve the backend via XDSClusterMetadataBackendNamePath fallback.
 			s.log.Info("LoadAssignment is nil, setting cluster-level metadata", "cluster_name", cluster.Name)
 			if len(httpRouteRule.BackendRefs) > 0 {
-				backendRef := httpRouteRule.BackendRefs[0]
-				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, 0)
+				backendRefIndex := 0
+				if backendRefIndexes[0] >= 0 {
+					backendRefIndex = backendRefIndexes[0]
+				}
+				backendRef := httpRouteRule.BackendRefs[backendRefIndex]
+				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, backendRefIndex)
 			}
 		} else {
 			// Populate the metadata for each endpoint in the LoadAssignment.
 			var lbEndpointIndex int
 			for i, backendRef := range httpRouteRule.BackendRefs {
+				if backendRefIndexes[0] >= 0 && i != backendRefIndexes[0] {
+					continue
+				}
 				// The weight of 0 means this backend is disabled and is not included in the LoadAssignment by EG,
 				// so we skip it here.
 				if backendRef.Weight != nil && *backendRef.Weight == 0 {
