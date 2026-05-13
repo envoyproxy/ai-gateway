@@ -285,30 +285,35 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 	ctrlr := NewMCPRouteController(c, kubeClient, logr.Discard(), eventCh.Ch)
 
 	tests := []struct {
-		name             string
-		key              *aigv1b1.MCPBackendAPIKey
-		expRequestHeader *internalapi.Header
-		refPath          *string
-		expPath          string
+		name string
+		key  *aigv1b1.MCPBackendAPIKey
+		// expCredentialValue is the expected value stored in the credential secret's "credential" key.
+		// When set, the HTTPRouteFilter is expected to have credentialInjection configured.
+		expCredentialValue string
+		// expCredentialHeader is the expected header for the credential injection filter.
+		expCredentialHeader *string
+		refPath             *string
+		expPath             string
 	}{
 		{
-			name:             "inline API key default header",
-			key:              &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key")},
-			expRequestHeader: &internalapi.Header{"Authorization", "Bearer inline-key"},
-			expPath:          "/mcp",
+			name:               "inline API key default header",
+			key:                &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key")},
+			expCredentialValue: "Bearer inline-key",
+			expPath:            "/mcp",
 		},
 		{
-			name:             "inline API key custom header",
-			key:              &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key"), Header: ptr.To("X-API-KEY")},
-			expRequestHeader: &internalapi.Header{"X-API-KEY", "inline-key"},
-			expPath:          "/mcp",
+			name:                "inline API key custom header",
+			key:                 &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key"), Header: ptr.To("X-API-KEY")},
+			expCredentialValue:  "inline-key",
+			expCredentialHeader: ptr.To("X-API-KEY"),
+			expPath:             "/mcp",
 		},
 		{
-			name:             "secret ref API key default header",
-			key:              &aigv1b1.MCPBackendAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret"}},
-			expRequestHeader: &internalapi.Header{"Authorization", "Bearer secretvalue"},
-			refPath:          ptr.To("/some/path"),
-			expPath:          "/some/path",
+			name:               "secret ref API key default header",
+			key:                &aigv1b1.MCPBackendAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret"}},
+			expCredentialValue: "Bearer secretvalue",
+			refPath:            ptr.To("/some/path"),
+			expPath:            "/some/path",
 		},
 		{
 			name:    "query param API key",
@@ -319,8 +324,9 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			mcpRoute := &aigv1b1.MCPRoute{ObjectMeta: metav1.ObjectMeta{Name: "route-a", Namespace: "default"}}
 			httpRule, err := ctrlr.mcpBackendRefToHTTPRouteRule(t.Context(),
-				&aigv1b1.MCPRoute{ObjectMeta: metav1.ObjectMeta{Name: "route-a", Namespace: "default"}},
+				mcpRoute,
 				&aigv1b1.MCPRouteBackendRef{
 					BackendObjectReference: gwapiv1.BackendObjectReference{
 						Name:      "svc-a",
@@ -340,7 +346,7 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 			require.Equal(t, internalapi.MCPRouteHeader, string(headers[1].Name))
 			require.Contains(t, headers[1].Value, "route-a")
 
-			// The first filter is the EG extension ref filter for URL host rewrite.
+			// The first filter is the EG extension ref filter for URL host rewrite + credential injection.
 			egFilter := httpRule.Filters[0]
 			require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, egFilter.Type)
 			require.NotNil(t, egFilter.ExtensionRef)
@@ -354,24 +360,35 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 			require.NotNil(t, httpFilter.Spec.URLRewrite.Hostname)
 			require.Equal(t, egv1a1.BackendHTTPHostnameModifier, httpFilter.Spec.URLRewrite.Hostname.Type)
 
-			if tt.expRequestHeader != nil {
-				// The second filter is the request header modifier for API key injection.
-				reqHeaderFilter := httpRule.Filters[1]
-				require.Equal(t, gwapiv1.HTTPRouteFilterRequestHeaderModifier, reqHeaderFilter.Type)
-				require.NotNil(t, reqHeaderFilter.RequestHeaderModifier)
-				found := false
-				for _, set := range reqHeaderFilter.RequestHeaderModifier.Set {
-					if set.Name == gwapiv1.HTTPHeaderName(tt.expRequestHeader.Key()) &&
-						set.Value == tt.expRequestHeader.Value() {
-						found = true
-						break
+			if tt.expCredentialValue != "" {
+				// Verify the HTTPRouteFilter has credentialInjection configured.
+				require.NotNil(t, httpFilter.Spec.CredentialInjection, "expected credentialInjection on the HTTPRouteFilter")
+				credSecretName := string(httpFilter.Spec.CredentialInjection.Credential.ValueRef.Name)
+				require.Equal(t, mcpCredentialSecretName(mcpRoute, "svc-a"), credSecretName)
+				require.Equal(t, tt.expCredentialHeader, httpFilter.Spec.CredentialInjection.Header)
+				require.True(t, *httpFilter.Spec.CredentialInjection.Overwrite)
+
+				// Verify the credential secret was created with the correct value.
+				credSecret, err := kubeClient.CoreV1().Secrets("default").Get(t.Context(), credSecretName, metav1.GetOptions{})
+				require.NoError(t, err)
+				require.Equal(t, tt.expCredentialValue, string(credSecret.Data["credential"]))
+
+				// Verify NO plaintext API key appears in the HTTPRoute filters.
+				for _, f := range httpRule.Filters {
+					if f.RequestHeaderModifier != nil {
+						for _, h := range f.RequestHeaderModifier.Set {
+							require.NotContains(t, h.Value, "inline-key", "plaintext API key must not appear in HTTPRoute")
+							require.NotContains(t, h.Value, "secretvalue", "plaintext API key must not appear in HTTPRoute")
+						}
 					}
 				}
-				require.Truef(t, found, "Expected request header modifier not found in %v", reqHeaderFilter.RequestHeaderModifier.Set)
+			} else {
+				require.Nil(t, httpFilter.Spec.CredentialInjection, "expected no credentialInjection for query param case")
 			}
 
-			// Verify the last filter is the path rewrite filter.
-			pathRewriteFilter := httpRule.Filters[len(httpRule.Filters)-1]
+			// Verify the second filter is the path rewrite filter.
+			require.Len(t, httpRule.Filters, 2)
+			pathRewriteFilter := httpRule.Filters[1]
 			require.Equal(t, gwapiv1.HTTPRouteFilterURLRewrite, pathRewriteFilter.Type)
 			require.NotNil(t, pathRewriteFilter.URLRewrite)
 			require.NotNil(t, pathRewriteFilter.URLRewrite.Path)
@@ -398,13 +415,32 @@ func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 	require.NoError(t, err)
 
 	filterName := mcpBackendRefFilterName(mcpRoute, "some-name")
-	err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute)
-	require.NoError(t, err)
 
-	// Verify HTTPRouteFilter was created.
-	var httpFilter egv1a1.HTTPRouteFilter
-	err = c.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: filterName}, &httpFilter)
-	require.NoError(t, err)
+	t.Run("without credential injection", func(t *testing.T) {
+		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, "", nil)
+		require.NoError(t, err)
+
+		var httpFilter egv1a1.HTTPRouteFilter
+		err = c.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: filterName}, &httpFilter)
+		require.NoError(t, err)
+		require.NotNil(t, httpFilter.Spec.URLRewrite)
+		require.Nil(t, httpFilter.Spec.CredentialInjection)
+	})
+
+	t.Run("with credential injection", func(t *testing.T) {
+		customHeader := "X-Custom-Key"
+		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, "my-cred-secret", &customHeader)
+		require.NoError(t, err)
+
+		var httpFilter egv1a1.HTTPRouteFilter
+		err = c.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: filterName}, &httpFilter)
+		require.NoError(t, err)
+		require.NotNil(t, httpFilter.Spec.URLRewrite)
+		require.NotNil(t, httpFilter.Spec.CredentialInjection)
+		require.Equal(t, &customHeader, httpFilter.Spec.CredentialInjection.Header)
+		require.True(t, *httpFilter.Spec.CredentialInjection.Overwrite)
+		require.Equal(t, gwapiv1.ObjectName("my-cred-secret"), httpFilter.Spec.CredentialInjection.Credential.ValueRef.Name)
+	})
 }
 
 func TestMCPRouteController_syncGateways_NamespaceCrossReference(t *testing.T) {
