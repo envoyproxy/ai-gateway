@@ -14,6 +14,8 @@ import (
 	"io"
 	"log/slog"
 	"strconv"
+	"sync"
+	"sync/atomic"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -122,8 +124,32 @@ type (
 		backendName        string
 		routeName          string
 		handler            filterapi.BackendAuthHandler
+		// responseBodyMu serialises ProcessResponseBody invocations on this
+		// processor. The same upstreamProcessor instance is reachable from
+		// two ext_proc gRPC streams in production (the router stream and
+		// the upstream-filter stream) which run on separate goroutines.
+		// Without serialisation, concurrent invocations race on u.costs
+		// (translator-returned TokenUsage absorbed via Override),
+		// u.compressedBuf / u.decompressedOffset (streaming gzip state),
+		// and the per-translator streamingTokenUsage state. The mutex is
+		// uncontended in the common case (one chunk at a time per
+		// processor) and only does work in the race scenarios that the
+		// v3 fix targets. Idempotency of token-usage emission is also
+		// independently protected by tokenUsageRecorded (atomic.Bool) so
+		// the mutex is defense-in-depth for the metric, and primary
+		// protection for the other shared mutable state.
+		responseBodyMu sync.Mutex
 		// cost is the cost of the request that is accumulated during the processing of the response.
 		costs metrics.TokenUsage
+		// tokenUsageRecorded ensures token usage is emitted exactly once per request,
+		// even across multiple terminal chunks, defensive fallback paths, or
+		// concurrent goroutines. The sole writer transitions are performed via
+		// atomic.Bool.CompareAndSwap and atomic.Bool.Store; the only place
+		// that may transition true→false is emitTokenUsageOnce when its
+		// field-completeness gate fails (so a later caller can reclaim the
+		// emission). See emitTokenUsageOnce / emitTokenUsageBackstop for
+		// details.
+		tokenUsageRecorded atomic.Bool
 		// metrics tracking.
 		metrics metrics.Metrics
 	}
@@ -434,10 +460,120 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	}, ModeOverride: mode}, nil
 }
 
+// emitTokenUsageOnce records token usage to the metrics exactly once per
+// request, only when all four "core" token-type fields are SET on u.costs.
+//
+// Background: For Anthropic-on-Bedrock streaming responses we previously gated
+// RecordTokenUsage on `body.EndOfStream` only. In production we observed ~28% of
+// long-running streaming Sonnet requests silently missing from
+// `gen_ai_client_token_usage_sum` while access logs (also gated on EndOfStream)
+// captured 100% of them. The leading hypothesis is that the request context is
+// cancelled by the downstream client between data delivery and the EndOfStream
+// chunk on long streams, causing the OTEL Histogram.Record call to be silently
+// dropped by some readers.
+//
+// In v2 we also observed ~37% under-counting of cache_creation_input on
+// Sonnet because message_delta carries the FINAL cumulative cache_creation
+// while message_start often reports 0; the translator now absorbs the
+// cumulative value, but to defend the histogram against partial records the
+// happy-path emission gate requires all four core token-type fields to be
+// SET on u.costs.
+//
+// In v3 we observed a ~2.0× over-counting on Haiku non-streaming and
+// 1.74–1.93× on Sonnet streaming. The leading hypothesis is a data race on
+// the previously-plain `bool` flag: the same upstreamProcessor instance is
+// reachable from two ext_proc gRPC streams (router stream + upstream-filter
+// stream) which can call ProcessResponseBody concurrently. Two goroutines
+// could both observe `tokenUsageRecorded == false` before either set it to
+// true and so both record. We now serialise emission with
+// atomic.Bool.CompareAndSwap.
+//
+// To make emission resilient we:
+//
+//  1. Detach the request context with context.WithoutCancel so the histogram
+//     observation cannot be dropped due to client / upstream cancellation.
+//  2. Use atomic.Bool.CompareAndSwap so concurrent emission attempts cannot
+//     race past the idempotency check.
+//  3. Apply a field-completeness gate inside the helper. Callers everywhere
+//     in the chunk loop, on EndOfStream, and on retries can all safely
+//     attempt emission — the helper claims the right to record only if all
+//     four core token-type fields are SET on u.costs. If they are not, the
+//     claim is released so a subsequent caller (next chunk OR the deferred
+//     unconditional backstop, see emitTokenUsageBackstop) can try again.
+//  4. Pair this with an unconditional deferred backstop on EndOfStream so
+//     requests whose translator never populates all four fields (e.g. the
+//     OpenAI happy path which only carries input+output) still contribute
+//     to the histogram exactly once.
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) emitTokenUsageOnce(ctx context.Context) {
+	if !u.tokenUsageRecorded.CompareAndSwap(false, true) {
+		return
+	}
+	_, inSet := u.costs.InputTokens()
+	_, outSet := u.costs.OutputTokens()
+	_, ccSet := u.costs.CacheCreationInputTokens()
+	_, crSet := u.costs.CachedInputTokens()
+	if !inSet || !outSet || !ccSet || !crSet {
+		// Release the claim so a later caller (next chunk or the EndOfStream
+		// backstop) can attempt emission once the missing fields have been
+		// parsed. This is safe even under contention: callers either claim
+		// + record + keep, or claim + release; another caller may then
+		// claim again.
+		u.tokenUsageRecorded.Store(false)
+		return
+	}
+	u.metrics.RecordTokenUsage(context.WithoutCancel(ctx), u.costs, u.requestHeaders)
+}
+
+// emitTokenUsageBackstop records token usage to the metrics exactly once per
+// request, BYPASSING the field-completeness gate of emitTokenUsageOnce. It is
+// intended to be invoked only from the deferred close in
+// ProcessResponseBody on the EndOfStream chunk, as a last-resort backstop
+// for requests whose happy-path emission never fired (translator error after
+// partial accumulation, OpenAI-style backends without cache fields, mid-
+// stream client disconnect that still delivered EndOfStream, etc.).
+//
+// Idempotency is enforced via the same atomic flag as emitTokenUsageOnce, so
+// the backstop and the gated path can both be called safely without
+// producing duplicate observations.
+//
+// We deliberately prefer "emit a partial observation" over "lose the
+// request" — visibility of request count in
+// gen_ai_client_token_usage_count is more valuable than perfect
+// per-token-type sums on rare error paths.
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) emitTokenUsageBackstop(ctx context.Context) {
+	if !u.tokenUsageRecorded.CompareAndSwap(false, true) {
+		return
+	}
+	u.metrics.RecordTokenUsage(context.WithoutCancel(ctx), u.costs, u.requestHeaders)
+}
+
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+	// See responseBodyMu doc on upstreamProcessor.
+	u.responseBodyMu.Lock()
+	defer u.responseBodyMu.Unlock()
+
 	recordRequestCompletionErr := false
 	defer func() {
+		// Unconditional last-resort backstop: on EndOfStream, if no path
+		// emitted token usage (translator errored after accumulation,
+		// OpenAI-style backend without cache fields where the gated
+		// emitTokenUsageOnce skipped, mid-stream client disconnect that
+		// still delivered EndOfStream, race on a previously-non-atomic
+		// flag, etc.), emit whatever we have so the histogram doesn't
+		// silently drop the request. Idempotency in emitTokenUsageBackstop
+		// (and emitTokenUsageOnce) guarantees no double counting.
+		//
+		// We deliberately fire this for BOTH streaming and non-streaming
+		// responses on EndOfStream — non-streaming OpenAI requests do not
+		// populate cache_* token fields, so the gated emitTokenUsageOnce
+		// would skip and only this backstop emits for them. We also
+		// deliberately do NOT gate on u.parent.stream so retries / fallback
+		// chains that do not match the "is streaming" predicate are still
+		// covered.
+		if body.EndOfStream && u.parent != nil {
+			u.emitTokenUsageBackstop(ctx)
+		}
 		if err != nil || recordRequestCompletionErr {
 			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
 			return
@@ -523,11 +659,13 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		out, _ := u.costs.OutputTokens()
 		u.metrics.RecordTokenLatency(ctx, out, body.EndOfStream, u.requestHeaders)
 		// Emit usage once at end-of-stream using final totals.
+		// Idempotency is enforced inside emitTokenUsageOnce so the defensive
+		// fallback in the defer above cannot double-count.
 		if body.EndOfStream {
-			u.metrics.RecordTokenUsage(ctx, u.costs, u.requestHeaders)
+			u.emitTokenUsageOnce(ctx)
 		}
 	} else {
-		u.metrics.RecordTokenUsage(ctx, u.costs, u.requestHeaders)
+		u.emitTokenUsageOnce(ctx)
 	}
 
 	if body.EndOfStream && (len(u.parent.config.GlobalRequestCosts) > 0 || len(u.parent.config.RequestCosts) > 0) {
