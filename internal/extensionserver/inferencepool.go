@@ -130,15 +130,21 @@ func getInferencePoolByMetadata(meta *corev3.Metadata) *gwaiev1.InferencePool {
 }
 
 // buildMetadataForInferencePool adds InferencePool metadata to the cluster for reference by other components.
-// encoded as a string in the format: "namespace/name/serviceName/port".
+// encoded as a string in the format: "namespace/name/serviceName/port/bodyMode/allowModeOverride".
 func buildEPPMetadataForCluster(cluster *clusterv3.Cluster, inferencePool *gwaiev1.InferencePool) {
 	// Initialize cluster metadata structure if not present.
+	if cluster.Metadata == nil {
+		cluster.Metadata = &corev3.Metadata{}
+	}
 	buildEPPMetadata(cluster.Metadata, inferencePool)
 }
 
 // buildMetadataForInferencePool adds InferencePool metadata to the route for reference by other components.
 func buildEPPMetadataForRoute(route *routev3.Route, inferencePool *gwaiev1.InferencePool) {
 	// Initialize route metadata structure if not present.
+	if route.Metadata == nil {
+		route.Metadata = &corev3.Metadata{}
+	}
 	buildEPPMetadata(route.Metadata, inferencePool)
 }
 
