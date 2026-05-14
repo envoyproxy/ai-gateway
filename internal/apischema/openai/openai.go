@@ -1096,6 +1096,12 @@ type ChatCompletionRequest struct {
 	// Docs: https://platform.openai.com/docs/guides/function-calling/parallel-function-calling
 	ParallelToolCalls *bool `json:"parallel_tool_calls,omitempty"` //nolint:tagliatelle //follow openai api
 
+	// EagerInputStreaming enables incremental streaming of tool input parameters
+	// when the request is routed to an Anthropic backend. When true, the gateway
+	// applies eager_input_streaming=true to every translated tool definition.
+	// https://platform.claude.com/docs/en/agents-and-tools/tool-use/fine-grained-tool-streaming#how-to-use-fine-grained-tool-streaming
+	EagerInputStreaming *bool `json:"eager_input_streaming,omitempty"` //nolint:tagliatelle
+
 	// User: A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.
 	// Docs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-user
 	User string `json:"user,omitempty"`

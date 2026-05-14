@@ -363,6 +363,28 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			expectErr: true,
 		},
 		{
+			name: "eager input streaming applies to all tools",
+			openAIReq: &openai.ChatCompletionRequest{
+				Tools: []openai.Tool{
+					{Type: "function", Function: &openai.FunctionDefinition{Name: "get_weather"}},
+					{Type: "function", Function: &openai.FunctionDefinition{Name: "get_time"}},
+				},
+				EagerInputStreaming: ptr.To(true),
+			},
+			expectedTools: []anthropic.ToolUnionParam{
+				{OfTool: &anthropic.ToolParam{Name: "get_weather", Description: anthropic.String(""), EagerInputStreaming: anthropic.Bool(true)}},
+				{OfTool: &anthropic.ToolParam{Name: "get_time", Description: anthropic.String(""), EagerInputStreaming: anthropic.Bool(true)}},
+			},
+		},
+		{
+			name: "eager input streaming false leaves field unset",
+			openAIReq: &openai.ChatCompletionRequest{
+				Tools:               openaiTestTool,
+				EagerInputStreaming: ptr.To(false),
+			},
+			expectedTools: anthropicTestTool,
+		},
+		{
 			name: "nested schema in tool's defintions",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools: []openai.Tool{
@@ -437,7 +459,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tools, toolChoice, err := translateOpenAItoAnthropicTools(tt.openAIReq.Tools, tt.openAIReq.ToolChoice, tt.openAIReq.ParallelToolCalls)
+			tools, toolChoice, err := translateOpenAItoAnthropicTools(tt.openAIReq.Tools, tt.openAIReq.ToolChoice, tt.openAIReq.ParallelToolCalls, tt.openAIReq.EagerInputStreaming)
 			if tt.expectErr {
 				require.Error(t, err)
 			} else {
@@ -466,6 +488,9 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 					}
 					if tt.expectedTools[0].GetInputSchema().ExtraFields != nil {
 						require.Equal(t, tt.expectedTools[0].GetInputSchema().ExtraFields, tools[0].GetInputSchema().ExtraFields)
+					}
+					for i := range tt.expectedTools {
+						require.Equal(t, tt.expectedTools[i].OfTool.EagerInputStreaming, tools[i].OfTool.EagerInputStreaming)
 					}
 				}
 			}
