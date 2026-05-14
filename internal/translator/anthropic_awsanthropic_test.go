@@ -313,3 +313,27 @@ data: {"type":"message_stop","amazon-bedrock-invocationMetrics":{"inputTokenCoun
 
 `, string(results))
 }
+
+func TestAnthropicToAWSAnthropicTranslator_ResponseBody_streaming_messageDelta_cacheCreation(t *testing.T) {
+	sse := `event: message_start
+data: {"type":"message_start","message":{"model":"claude-haiku-4-5","id":"msg_bedrock","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":20,"cache_creation_input_tokens":2500}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+
+	es, err := wrapAnthropicSSEInEventStream(sse)
+	require.NoError(t, err)
+
+	translator := NewAnthropicToAWSAnthropicTranslator("bedrock-2023-05-31", "")
+	translator.(*anthropicToAWSAnthropicTranslator).stream = true
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(es), true, nil)
+	require.NoError(t, err)
+	require.Equal(t, "claude-haiku-4-5", responseModel)
+	expected := tokenUsageFrom(2600, 0, 2500, 20, 2620, -1)
+	require.Equal(t, expected, tokenUsage)
+}

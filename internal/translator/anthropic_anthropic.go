@@ -175,10 +175,65 @@ func (a *anthropicToAnthropicTranslator) reflectStreamingEvent(eventUnion *anthr
 		}
 	case eventUnion.MessageDelta != nil:
 		u := eventUnion.MessageDelta.Usage
-		// message_delta events provide final counts for specific token types
-		// Update output tokens from message_delta (final count)
+		// message_delta.usage is CUMULATIVE per Anthropic documentation
+		// (see the comment on MessagesStreamChunkMessageDelta in the local
+		// apischema). It carries the running totals for any of input_tokens,
+		// cache_creation_input_tokens, cache_read_input_tokens, and
+		// output_tokens; cache writes that happen mid-generation only
+		// appear here, never in message_start. The previous implementation
+		// only absorbed output_tokens, which silently undercounted
+		// cache_creation_input_tokens by ~85% on Anthropic streaming
+		// (Haiku 4.5: 91k truth vs 463 reported; Sonnet 4.6: 73k vs 10k).
+		//
+		// Anthropic's SDK models the cache fields as Optional[int] and
+		// omits unchanged fields from the JSON body; Go unmarshals the
+		// omissions to 0. Treat 0 as "not reported in this delta" so
+		// we preserve the message_start values rather than clobbering
+		// them with a zero. (Cumulative counters never decrease, so a
+		// real 0 in a later delta would only happen when the field had
+		// always been 0, in which case preserving 0 is equivalent.)
+		// output_tokens: keep >= 0 so a message_delta that omits the entire
+		// "usage" object (all zeroes after unmarshal) still marks output as
+		// set — see TestAnthropicToGCPAnthropicTranslator_ResponseBody_StreamingEdgeCases.
 		if u.OutputTokens >= 0 {
 			a.streamingTokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
+		}
+
+		oldGross, grossSet := a.streamingTokenUsage.InputTokens()
+		oldCC, ccOK := a.streamingTokenUsage.CacheCreationInputTokens()
+		oldCR, crOK := a.streamingTokenUsage.CachedInputTokens()
+		var oldCCv, oldCRv uint32
+		if ccOK {
+			oldCCv = oldCC
+		}
+		if crOK {
+			oldCRv = oldCR
+		}
+
+		cacheCreate := oldCCv
+		if u.CacheCreationInputTokens > 0 {
+			cacheCreate = uint32(u.CacheCreationInputTokens) //nolint:gosec
+			a.streamingTokenUsage.SetCacheCreationInputTokens(cacheCreate)
+		}
+		cacheRead := oldCRv
+		if u.CacheReadInputTokens > 0 {
+			cacheRead = uint32(u.CacheReadInputTokens) //nolint:gosec
+			a.streamingTokenUsage.SetCachedInputTokens(cacheRead)
+		}
+
+		switch {
+		case u.InputTokens > 0:
+			// u.InputTokens is the regular (non-cache) portion; gross stored
+			// on streamingTokenUsage is regular + cache_create + cache_read.
+			a.streamingTokenUsage.SetInputTokens(uint32(u.InputTokens) + cacheCreate + cacheRead) //nolint:gosec
+		case grossSet && (u.CacheCreationInputTokens > 0 || u.CacheReadInputTokens > 0):
+			// Delta updated cache counts but omitted input_tokens (JSON → 0).
+			// Recover regular input from prior gross so we do not leave gross stale.
+			regular := oldGross
+			if sub := oldCCv + oldCRv; regular >= sub {
+				regular -= sub
+			}
+			a.streamingTokenUsage.SetInputTokens(regular + cacheCreate + cacheRead) //nolint:gosec
 		}
 	}
 }
@@ -195,12 +250,28 @@ func (a *anthropicToAnthropicTranslator) updateTotalTokens() {
 		inputSet = true
 	}
 
-	// Set cached tokens to 0 if not set but we have other token data
+	// Set cache_* tokens to 0 if not set but we have other token data so the
+	// downstream histogram observation always emits an observation per token
+	// type per request (RecordTokenUsage skips fields whose *_set flag is
+	// false). This safety net used to fire for every Anthropic streaming
+	// request because reflectStreamingEvent ignored the cache fields in
+	// message_delta — a silent 0-fill that hid that bug for months. After
+	// the message_delta fix above the safety net should only fire for
+	// streams that completed without ever yielding a usage payload, which
+	// itself indicates an upstream problem; emit a WARN so it is visible.
 	if outputSet {
 		if _, cachedSet := a.streamingTokenUsage.CachedInputTokens(); !cachedSet {
+			if a.logger != nil {
+				a.logger.Warn("anthropic streaming: cached_input_tokens missing at end of stream; defaulting to 0",
+					slog.String("response_model", a.streamingResponseModel))
+			}
 			a.streamingTokenUsage.SetCachedInputTokens(0)
 		}
 		if _, cachedSet := a.streamingTokenUsage.CacheCreationInputTokens(); !cachedSet {
+			if a.logger != nil {
+				a.logger.Warn("anthropic streaming: cache_creation_input_tokens missing at end of stream; defaulting to 0",
+					slog.String("response_model", a.streamingResponseModel))
+			}
 			a.streamingTokenUsage.SetCacheCreationInputTokens(0)
 		}
 	}
