@@ -288,37 +288,44 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 		name string
 		key  *aigv1b1.MCPBackendAPIKey
 		// expCredentialValue is the expected value stored in the credential secret's "credential" key.
-		// When set, the HTTPRouteFilter is expected to have credentialInjection configured.
+		// When set, the HTTPRouteFilter is expected to have credentialInjection configured (secretRef path).
 		expCredentialValue string
-		// expCredentialHeader is the expected header for the credential injection filter.
+		// expCredentialHeader is the expected header for the credential injection filter (secretRef path).
 		expCredentialHeader *string
-		refPath             *string
-		expPath             string
+		// expInlineHeader is the expected RequestHeaderModifier header/value (inline path).
+		expInlineHeader *internalapi.Header
+		// expFilterCount is the expected number of filters on the HTTPRouteRule.
+		expFilterCount int
+		refPath        *string
+		expPath        string
 	}{
 		{
-			name:               "inline API key default header",
-			key:                &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key")},
-			expCredentialValue: "Bearer inline-key",
-			expPath:            "/mcp",
+			name:            "inline API key default header",
+			key:             &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key")},
+			expInlineHeader: &internalapi.Header{"Authorization", "Bearer inline-key"},
+			expFilterCount:  3,
+			expPath:         "/mcp",
 		},
 		{
-			name:                "inline API key custom header",
-			key:                 &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key"), Header: ptr.To("X-API-KEY")},
-			expCredentialValue:  "inline-key",
-			expCredentialHeader: ptr.To("X-API-KEY"),
-			expPath:             "/mcp",
+			name:            "inline API key custom header",
+			key:             &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key"), Header: ptr.To("X-API-KEY")},
+			expInlineHeader: &internalapi.Header{"X-API-KEY", "inline-key"},
+			expFilterCount:  3,
+			expPath:         "/mcp",
 		},
 		{
 			name:               "secret ref API key default header",
 			key:                &aigv1b1.MCPBackendAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "some-secret"}},
 			expCredentialValue: "Bearer secretvalue",
+			expFilterCount:     2,
 			refPath:            ptr.To("/some/path"),
 			expPath:            "/some/path",
 		},
 		{
-			name:    "query param API key",
-			key:     &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key"), QueryParam: ptr.To("api_key")},
-			expPath: "/mcp?api_key=inline-key",
+			name:           "query param API key",
+			key:            &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-key"), QueryParam: ptr.To("api_key")},
+			expFilterCount: 2,
+			expPath:        "/mcp?api_key=inline-key",
 		},
 	}
 
@@ -346,7 +353,9 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 			require.Equal(t, internalapi.MCPRouteHeader, string(headers[1].Name))
 			require.Contains(t, headers[1].Value, "route-a")
 
-			// The first filter is the EG extension ref filter for URL host rewrite + credential injection.
+			require.Len(t, httpRule.Filters, tt.expFilterCount)
+
+			// The first filter is always the EG extension ref filter for URL host rewrite.
 			egFilter := httpRule.Filters[0]
 			require.Equal(t, gwapiv1.HTTPRouteFilterExtensionRef, egFilter.Type)
 			require.NotNil(t, egFilter.ExtensionRef)
@@ -361,34 +370,53 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 			require.Equal(t, egv1a1.BackendHTTPHostnameModifier, httpFilter.Spec.URLRewrite.Hostname.Type)
 
 			if tt.expCredentialValue != "" {
-				// Verify the HTTPRouteFilter has credentialInjection configured.
+				// SecretRef path: credentialInjection on HTTPRouteFilter, no RequestHeaderModifier.
 				require.NotNil(t, httpFilter.Spec.CredentialInjection, "expected credentialInjection on the HTTPRouteFilter")
 				credSecretName := string(httpFilter.Spec.CredentialInjection.Credential.ValueRef.Name)
 				require.Equal(t, mcpCredentialSecretName(mcpRoute, "svc-a"), credSecretName)
 				require.Equal(t, tt.expCredentialHeader, httpFilter.Spec.CredentialInjection.Header)
 				require.True(t, *httpFilter.Spec.CredentialInjection.Overwrite)
 
-				// Verify the credential secret was created with the correct value.
 				credSecret, err := kubeClient.CoreV1().Secrets("default").Get(t.Context(), credSecretName, metav1.GetOptions{})
 				require.NoError(t, err)
 				require.Equal(t, tt.expCredentialValue, string(credSecret.Data["credential"]))
 
-				// Verify NO plaintext API key appears in the HTTPRoute filters.
+				// No plaintext should appear in any RequestHeaderModifier filter.
 				for _, f := range httpRule.Filters {
 					if f.RequestHeaderModifier != nil {
 						for _, h := range f.RequestHeaderModifier.Set {
-							require.NotContains(t, h.Value, "inline-key", "plaintext API key must not appear in HTTPRoute")
 							require.NotContains(t, h.Value, "secretvalue", "plaintext API key must not appear in HTTPRoute")
 						}
 					}
 				}
+			} else if tt.expInlineHeader != nil {
+				// Inline path: RequestHeaderModifier, no credentialInjection, no credential Secret.
+				require.Nil(t, httpFilter.Spec.CredentialInjection, "inline key should not use credentialInjection")
+
+				reqHeaderFilter := httpRule.Filters[1]
+				require.Equal(t, gwapiv1.HTTPRouteFilterRequestHeaderModifier, reqHeaderFilter.Type)
+				require.NotNil(t, reqHeaderFilter.RequestHeaderModifier)
+				found := false
+				for _, set := range reqHeaderFilter.RequestHeaderModifier.Set {
+					if set.Name == gwapiv1.HTTPHeaderName(tt.expInlineHeader.Key()) &&
+						set.Value == tt.expInlineHeader.Value() {
+						found = true
+						break
+					}
+				}
+				require.Truef(t, found, "expected header %v in %v", tt.expInlineHeader, reqHeaderFilter.RequestHeaderModifier.Set)
+
+				// No credential Secret should be created for inline keys.
+				credSecretName := mcpCredentialSecretName(mcpRoute, "svc-a")
+				_, err = kubeClient.CoreV1().Secrets("default").Get(t.Context(), credSecretName, metav1.GetOptions{})
+				require.True(t, apierrors.IsNotFound(err), "no credential secret should exist for inline API key")
 			} else {
+				// Query param path: no credentialInjection, no RequestHeaderModifier.
 				require.Nil(t, httpFilter.Spec.CredentialInjection, "expected no credentialInjection for query param case")
 			}
 
-			// Verify the second filter is the path rewrite filter.
-			require.Len(t, httpRule.Filters, 2)
-			pathRewriteFilter := httpRule.Filters[1]
+			// The last filter is always the path rewrite filter.
+			pathRewriteFilter := httpRule.Filters[len(httpRule.Filters)-1]
 			require.Equal(t, gwapiv1.HTTPRouteFilterURLRewrite, pathRewriteFilter.Type)
 			require.NotNil(t, pathRewriteFilter.URLRewrite)
 			require.NotNil(t, pathRewriteFilter.URLRewrite.Path)
@@ -396,6 +424,51 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 			require.Equal(t, tt.expPath, *pathRewriteFilter.URLRewrite.Path.ReplaceFullPath)
 		})
 	}
+}
+
+func TestMCPRouteController_staleCredentialSecretCleanup(t *testing.T) {
+	c := requireNewFakeClientWithIndexesForMCP(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	kubeClient := fakekube.NewClientset(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "api-secret", Namespace: "default"},
+		Data:       map[string][]byte{"apiKey": []byte("my-secret-key")},
+	})
+	ctrlr := NewMCPRouteController(c, kubeClient, logr.Discard(), eventCh.Ch)
+
+	mcpRoute := &aigv1b1.MCPRoute{ObjectMeta: metav1.ObjectMeta{Name: "route-cleanup", Namespace: "default"}}
+	backendRef := &aigv1b1.MCPRouteBackendRef{
+		BackendObjectReference: gwapiv1.BackendObjectReference{
+			Name:      "svc-b",
+			Namespace: ptr.To(gwapiv1.Namespace("default")),
+		},
+		SecurityPolicy: &aigv1b1.MCPBackendSecurityPolicy{
+			APIKey: &aigv1b1.MCPBackendAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "api-secret"}},
+		},
+	}
+
+	// Step 1: Create an HTTPRouteRule with secretRef-based credential injection.
+	_, err := ctrlr.mcpBackendRefToHTTPRouteRule(t.Context(), mcpRoute, backendRef)
+	require.NoError(t, err)
+
+	// Verify the credential secret was created.
+	credSecretName := mcpCredentialSecretName(mcpRoute, "svc-b")
+	credSecret, err := kubeClient.CoreV1().Secrets("default").Get(t.Context(), credSecretName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "Bearer my-secret-key", string(credSecret.Data["credential"]))
+
+	// Step 2: Remove the security policy from the backend ref and reconcile again.
+	backendRef.SecurityPolicy = nil
+	_, err = ctrlr.mcpBackendRefToHTTPRouteRule(t.Context(), mcpRoute, backendRef)
+	require.NoError(t, err)
+
+	// Verify the stale credential secret was deleted.
+	_, err = kubeClient.CoreV1().Secrets("default").Get(t.Context(), credSecretName, metav1.GetOptions{})
+	require.True(t, apierrors.IsNotFound(err), "expected credential secret to be deleted, but got: %v", err)
+
+	// Step 3: Verify that calling again without a security policy is idempotent (no error on missing secret).
+	backendRef.SecurityPolicy = nil
+	_, err = ctrlr.mcpBackendRefToHTTPRouteRule(t.Context(), mcpRoute, backendRef)
+	require.NoError(t, err)
 }
 
 func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {

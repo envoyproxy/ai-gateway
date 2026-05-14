@@ -560,16 +560,22 @@ func mcpCredentialSecretName(mcpRoute *aigv1b1.MCPRoute, backendName gwapiv1.Obj
 	return fmt.Sprintf("%s%s-%s", internalapi.MCPPerBackendCredentialSecretPrefix, mcpRoute.Name, backendName)
 }
 
-// mcpBackendRefToHTTPRouteRule creates an HTTPRouteRule for the given MCPRouteBackendRef.
+// mcpBackendRefToHTTPRouteRule creates a HTTPRouteRule for the given MCPRouteBackendRef.
 // The rule routes requests to the specified backend using internalapi.MCPBackendHeader,
 // which is set by the MCP proxy based on its routing logic.
 // This route rule will eventually be moved to the backend listener in the extension server.
 func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, mcpRoute *aigv1b1.MCPRoute, ref *aigv1b1.MCPRouteBackendRef) (gwapiv1.HTTPRouteRule, error) {
 	egFilterName := mcpBackendRefFilterName(mcpRoute, ref.Name)
 
-	// Determine credential injection parameters from the backend's security policy.
+	// Determine credential handling from the backend's security policy.
+	// - inline API keys: use RequestHeaderModifier (no security benefit from a Secret since
+	//   the plaintext is already in the MCPRoute CRD manifest).
+	// - secretRef API keys: use credentialInjection via a managed Secret to keep the
+	//   plaintext confined to Secret resources only.
+	// - query param API keys: embed in the URL rewrite path (There is no route filter support for query params).
 	var credentialSecretName string
 	var credentialHeader *string
+	var inlineHeaderFilter *gwapiv1.HTTPRouteFilter
 	fullPathPtr := ptr.Deref(ref.Path, defaultMCPPath)
 
 	if ref.SecurityPolicy != nil && ref.SecurityPolicy.APIKey != nil {
@@ -584,15 +590,39 @@ func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, m
 				return gwapiv1.HTTPRouteRule{}, fmt.Errorf("failed to read API key for backend %s: %w", ref.Name, err)
 			}
 			fullPathPtr = fmt.Sprintf("%s?%s=%s", fullPathPtr, *apiKey.QueryParam, apiKeyLiteral)
-		} else {
-			// Header-based injection: create a credential Secret and let the
-			// HTTPRouteFilter's credentialInjection handle it securely.
+		} else if apiKey.Inline != nil {
+			// Inline API key: inject via RequestHeaderModifier directly. The value is already
+			// visible in the MCPRoute manifest, so a separate Secret adds no security benefit.
+			header := ptr.Deref(apiKey.Header, "Authorization")
+			value := *apiKey.Inline
+			if header == "Authorization" {
+				value = "Bearer " + value
+			}
+			inlineHeaderFilter = &gwapiv1.HTTPRouteFilter{
+				Type: gwapiv1.HTTPRouteFilterRequestHeaderModifier,
+				RequestHeaderModifier: &gwapiv1.HTTPHeaderFilter{
+					Set: []gwapiv1.HTTPHeader{
+						{Name: gwapiv1.HTTPHeaderName(header), Value: value},
+					},
+				},
+			}
+		} else if apiKey.SecretRef != nil {
+			// SecretRef API key: create a managed credential Secret and use the
+			// HTTPRouteFilter's credentialInjection to keep plaintext out of non-Secret resources.
 			credSecretName := mcpCredentialSecretName(mcpRoute, ref.Name)
 			if err := c.ensureCredentialSecret(ctx, credSecretName, mcpRoute, apiKey); err != nil {
 				return gwapiv1.HTTPRouteRule{}, fmt.Errorf("failed to ensure credential secret for backend %s: %w", ref.Name, err)
 			}
 			credentialSecretName = credSecretName
 			credentialHeader = apiKey.Header
+		}
+	}
+
+	// Clean up any previously created credential secret when credential injection is no longer needed.
+	if credentialSecretName == "" {
+		staleSecretName := mcpCredentialSecretName(mcpRoute, ref.Name)
+		if err := c.kube.CoreV1().Secrets(mcpRoute.Namespace).Delete(ctx, staleSecretName, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return gwapiv1.HTTPRouteRule{}, fmt.Errorf("failed to delete stale credential secret for backend %s: %w", ref.Name, err)
 		}
 	}
 
@@ -610,16 +640,19 @@ func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, m
 				Name:  gwapiv1.ObjectName(egFilterName),
 			},
 		},
-		{
-			Type: gwapiv1.HTTPRouteFilterURLRewrite,
-			URLRewrite: &gwapiv1.HTTPURLRewriteFilter{
-				Path: &gwapiv1.HTTPPathModifier{
-					Type:            gwapiv1.FullPathHTTPPathModifier,
-					ReplaceFullPath: ptr.To(fullPathPtr),
-				},
+	}
+	if inlineHeaderFilter != nil {
+		filters = append(filters, *inlineHeaderFilter)
+	}
+	filters = append(filters, gwapiv1.HTTPRouteFilter{
+		Type: gwapiv1.HTTPRouteFilterURLRewrite,
+		URLRewrite: &gwapiv1.HTTPURLRewriteFilter{
+			Path: &gwapiv1.HTTPPathModifier{
+				Type:            gwapiv1.FullPathHTTPPathModifier,
+				ReplaceFullPath: ptr.To(fullPathPtr),
 			},
 		},
-	}
+	})
 
 	return gwapiv1.HTTPRouteRule{
 		Matches: []gwapiv1.HTTPRouteMatch{
