@@ -255,8 +255,8 @@ func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body 
 	// 3. It would require model-specific tokenizer libraries (tiktoken, sentencepiece, etc.)
 	// 4. Azure deployments don't affect this (they only host OpenAI models with cl100k_base)
 	// Following OpenInference spec guidance to only record human-readable text.
-	if !config.HideInputs && !config.HideEmbeddingsText {
-		switch input := embRequest.Input.Value.(type) {
+	if !config.HideInputs && !config.HideEmbeddingsText && embRequest.OfCompletion != nil {
+		switch input := embRequest.OfCompletion.Input.Value.(type) {
 		case string:
 			attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(0), input))
 		case []string:
