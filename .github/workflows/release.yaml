@@ -14,6 +14,8 @@ jobs:
     needs: [docker_push]
     name: Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # gh release create requires releases:write
     steps:
       - name: Set HELM_CHART_VERSION and TAG envs
         run: |
