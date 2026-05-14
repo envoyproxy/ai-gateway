@@ -24,7 +24,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
-	"github.com/envoyproxy/ai-gateway/internal/redaction"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
@@ -1016,60 +1015,5 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) SetRedactionConfig(debugL
 // Creates a redacted copy of the response for safe logging without modifying the original.
 // Reuses the same redaction logic since AWS Bedrock responses are converted to OpenAI format.
 func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RedactBody(resp *openai.ChatCompletionResponse) *openai.ChatCompletionResponse {
-	if resp == nil {
-		return nil
-	}
-
-	// Create a shallow copy of the response
-	redacted := *resp
-
-	// Redact choices (contains AI-generated content)
-	if len(resp.Choices) > 0 {
-		redacted.Choices = make([]openai.ChatCompletionResponseChoice, len(resp.Choices))
-		for i := range resp.Choices {
-			redactedChoice := resp.Choices[i]
-			redactedChoice.Message = redactAWSBedrockResponseMessage(&resp.Choices[i].Message)
-			redacted.Choices[i] = redactedChoice
-		}
-	}
-
-	return &redacted
-}
-
-// redactAWSBedrockResponseMessage redacts sensitive content from an AWS Bedrock response message
-// that has been converted to OpenAI format.
-func redactAWSBedrockResponseMessage(msg *openai.ChatCompletionResponseChoiceMessage) openai.ChatCompletionResponseChoiceMessage {
-	redactedMsg := *msg
-
-	// Redact message content (AI-generated text)
-	if msg.Content != nil {
-		redactedContent := redaction.RedactString(*msg.Content)
-		redactedMsg.Content = &redactedContent
-	}
-
-	// Redact tool calls (may contain sensitive function arguments)
-	if len(msg.ToolCalls) > 0 {
-		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.ToolCalls))
-		for i, tc := range msg.ToolCalls {
-			redactedToolCall := tc
-			redactedToolCall.Function.Name = redaction.RedactString(tc.Function.Name)
-			redactedToolCall.Function.Arguments = redaction.RedactString(tc.Function.Arguments)
-			redactedMsg.ToolCalls[i] = redactedToolCall
-		}
-	}
-
-	// Redact audio data if present
-	if msg.Audio != nil {
-		redactedAudio := *msg.Audio
-		redactedAudio.Data = redaction.RedactString(msg.Audio.Data)
-		redactedAudio.Transcript = redaction.RedactString(msg.Audio.Transcript)
-		redactedMsg.Audio = &redactedAudio
-	}
-
-	// Redact reasoning content if present (AWS Bedrock thinking blocks)
-	if msg.ReasoningContent != nil {
-		redactedMsg.ReasoningContent = redactReasoningContent(msg.ReasoningContent)
-	}
-
-	return redactedMsg
+	return redactAnthropicChatCompletionResponse(resp)
 }
