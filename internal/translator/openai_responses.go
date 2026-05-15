@@ -47,7 +47,7 @@ type openAIToOpenAITranslatorV1Responses struct {
 }
 
 // RequestBody implements [OpenAIResponsesTranslator.RequestBody].
-func (o *openAIToOpenAITranslatorV1Responses) RequestBody(original []byte, req *openai.ResponseRequest, forceBodyMutation bool) (
+func (o *openAIToOpenAITranslatorV1Responses) RequestBody(_ map[string]string, original []byte, req *openai.ResponseRequest, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	// Store the request model to use as fallback for response model

@@ -220,7 +220,7 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_RequestBody(t *testing.T) {
 			translator := NewEmbeddingOpenAIToGCPVertexAITranslator("text-embedding-004", tc.modelNameOverride)
 			originalBody, _ := json.Marshal(tc.input)
 
-			headerMut, bodyMut, err := translator.RequestBody(originalBody, &tc.input, tc.onRetry)
+			headerMut, bodyMut, err := translator.RequestBody(nil, originalBody, &tc.input, tc.onRetry)
 
 			if tc.wantError {
 				require.Error(t, err)
@@ -647,7 +647,7 @@ func TestResponseModel_GCPVertexAIEmbeddings(t *testing.T) {
 		Input: openai.EmbeddingRequestInput{Value: "test"},
 	}
 	reqBody, _ := json.Marshal(req)
-	_, _, err := translator.RequestBody(reqBody, req, false)
+	_, _, err := translator.RequestBody(nil, reqBody, req, false)
 	require.NoError(t, err)
 
 	// GCP VertexAI embedding response

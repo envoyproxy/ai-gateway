@@ -6,10 +6,12 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
@@ -19,7 +21,10 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/require"
 
+	openaischema "github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
+	"github.com/envoyproxy/ai-gateway/internal/translator"
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
@@ -145,6 +150,438 @@ func TestWithTestUpstream(t *testing.T) {
 				}, 10*time.Second, 1*time.Second)
 			})
 		}
+	})
+
+	t.Run("/files", func(t *testing.T) {
+		const (
+			modelName      = "some-cool-model"
+			testUpstreamID = "primary"
+			canaryUpstream = "canary"
+			upstreamHost   = "testupstream.default.svc.cluster.local"
+			canaryHost     = "testupstream-canary.default.svc.cluster.local"
+			upstreamFileID = "file-123"
+			canaryBackend  = "default.translation-testupstream-another-cool-model-backend"
+		)
+
+		var encodedFileID string
+		var encodedBackendName string
+
+		buildFileUploadBody := func(t *testing.T) ([]byte, string) {
+			t.Helper()
+
+			var buf bytes.Buffer
+			w := multipart.NewWriter(&buf)
+
+			fw, err := w.CreateFormFile("file", "test.txt")
+			require.NoError(t, err)
+			_, err = fw.Write([]byte("hello from ai gateway file e2e"))
+			require.NoError(t, err)
+			require.NoError(t, w.WriteField("purpose", "assistants"))
+			require.NoError(t, w.WriteField("model", modelName))
+			require.NoError(t, w.Close())
+			return buf.Bytes(), w.FormDataContentType()
+		}
+
+		t.Run("POST /v1/files", func(t *testing.T) {
+			require.Eventually(t, func() bool {
+				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+				defer fwd.Kill()
+
+				requestBody, contentType := buildFileUploadBody(t)
+				req, err := http.NewRequest(http.MethodPost, fwd.Address()+"/v1/files", bytes.NewReader(requestBody))
+				require.NoError(t, err)
+
+				req.Header.Set("Content-Type", contentType)
+				req.Header.Set(testupstreamlib.ExpectedHostKey, upstreamHost)
+				req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, testUpstreamID)
+				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/files")))
+				req.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey, base64.StdEncoding.EncodeToString(requestBody))
+				req.Header.Set(testupstreamlib.ExpectedHeadersKey, base64.StdEncoding.EncodeToString([]byte("Authorization:Bearer "+dummyToken)))
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(
+					fmt.Sprintf(`{"id":"%s","object":"file","bytes":29,"created_at":1741382147,"filename":"test.txt","purpose":"assistants"}`, upstreamFileID),
+				)))
+
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Logf("error: %v", err)
+					return false
+				}
+				defer func() { _ = resp.Body.Close() }()
+
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					t.Logf("error reading response body: %v", err)
+					return false
+				}
+				if resp.StatusCode != http.StatusOK {
+					t.Logf("unexpected status code: %d (expected %d), body: %s", resp.StatusCode, http.StatusOK, body)
+					return false
+				}
+
+				var fileObj openaischema.FileObject
+				if err = json.Unmarshal(body, &fileObj); err != nil {
+					t.Logf("error unmarshalling create file response: %v, body: %s", err, body)
+					return false
+				}
+				if fileObj.ID == "" {
+					t.Logf("missing file id in response body: %s", body)
+					return false
+				}
+
+				gotModel, gotBackendName, gotFileID, err := translator.DecodeIDWithRouting(fileObj.ID)
+				if err != nil {
+					t.Logf("error decoding returned file id %q: %v", fileObj.ID, err)
+					return false
+				}
+				if gotModel != modelName || gotFileID != upstreamFileID {
+					t.Logf("unexpected decoded id values: model=%q fileID=%q", gotModel, gotFileID)
+					return false
+				}
+				if gotBackendName == "" {
+					t.Logf("unexpected empty backend name in decoded file id: %q", fileObj.ID)
+					return false
+				}
+				encodedFileID = fileObj.ID
+				encodedBackendName = gotBackendName
+				return true
+			}, 10*time.Second, 1*time.Second)
+		})
+
+		t.Run("GET /v1/files", func(t *testing.T) {
+			require.Eventually(t, func() bool {
+				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+				defer fwd.Kill()
+
+				req, err := http.NewRequest(http.MethodGet, fwd.Address()+"/v1/files?model="+modelName, nil)
+				require.NoError(t, err)
+				req.Header.Set(testupstreamlib.ExpectedHostKey, upstreamHost)
+				req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, testUpstreamID)
+				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/files")))
+				req.Header.Set(testupstreamlib.ExpectedHeadersKey, base64.StdEncoding.EncodeToString([]byte("Authorization:Bearer "+dummyToken)))
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(
+					fmt.Sprintf(`{"object":"list","data":[{"id":"%s","object":"file","bytes":29,"created_at":1741382147,"filename":"test.txt","purpose":"assistants"}]}`, upstreamFileID),
+				)))
+
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Logf("error: %v", err)
+					return false
+				}
+				defer func() { _ = resp.Body.Close() }()
+
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					t.Logf("error reading response body: %v", err)
+					return false
+				}
+				if resp.StatusCode != http.StatusOK {
+					t.Logf("unexpected status code: %d (expected %d), body: %s", resp.StatusCode, http.StatusOK, body)
+					return false
+				}
+
+				var listResp struct {
+					Object string                    `json:"object"`
+					Data   []openaischema.FileObject `json:"data"`
+				}
+				if err = json.Unmarshal(body, &listResp); err != nil {
+					t.Logf("error unmarshalling list files response: %v, body: %s", err, body)
+					return false
+				}
+				if listResp.Object != "list" {
+					t.Logf("unexpected object type in response: %q", listResp.Object)
+					return false
+				}
+				if len(listResp.Data) == 0 {
+					t.Logf("unexpected empty data in list response: %s", body)
+					return false
+				}
+				if listResp.Data[0].ID != encodedFileID {
+					t.Logf("unexpected file id in list response: got %q, expected %q", listResp.Data[0].ID, encodedFileID)
+					return false
+				}
+				return true
+			}, 10*time.Second, 1*time.Second)
+		})
+
+		t.Run("GET /v1/files/{file_id}", func(t *testing.T) {
+			require.NotEmpty(t, encodedFileID)
+			require.Eventually(t, func() bool {
+				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+				defer fwd.Kill()
+
+				req, err := http.NewRequest(http.MethodGet, fwd.Address()+"/v1/files/"+encodedFileID, nil)
+				require.NoError(t, err)
+				req.Header.Set(testupstreamlib.ExpectedHostKey, upstreamHost)
+				req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, testUpstreamID)
+				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/files/"+upstreamFileID)))
+				req.Header.Set(testupstreamlib.ExpectedHeadersKey, base64.StdEncoding.EncodeToString([]byte("Authorization:Bearer "+dummyToken)))
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(
+					fmt.Sprintf(`{"id":"%s","object":"file","bytes":29,"created_at":1741382147,"filename":"test.txt","purpose":"assistants"}`, upstreamFileID),
+				)))
+
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Logf("error: %v", err)
+					return false
+				}
+				defer func() { _ = resp.Body.Close() }()
+
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					t.Logf("error reading response body: %v", err)
+					return false
+				}
+				if resp.StatusCode != http.StatusOK {
+					t.Logf("unexpected status code: %d (expected %d), body: %s", resp.StatusCode, http.StatusOK, body)
+					return false
+				}
+
+				var fileObj openaischema.FileObject
+				if err = json.Unmarshal(body, &fileObj); err != nil {
+					t.Logf("error unmarshalling retrieve file response: %v, body: %s", err, body)
+					return false
+				}
+				if fileObj.ID != encodedFileID {
+					t.Logf("unexpected file id in response: got %q, expected %q", fileObj.ID, encodedFileID)
+					return false
+				}
+				return true
+			}, 10*time.Second, 1*time.Second)
+		})
+
+		t.Run("GET /v1/files/{file_id} sticky backend with existing model", func(t *testing.T) {
+			require.NotEmpty(t, encodedBackendName)
+			stickyEncodedFileID := translator.EncodeIDWithRouting(upstreamFileID, modelName, encodedBackendName, "file")
+
+			require.Eventually(t, func() bool {
+				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+				defer fwd.Kill()
+
+				req, err := http.NewRequest(http.MethodGet, fwd.Address()+"/v1/files/"+stickyEncodedFileID, nil)
+				require.NoError(t, err)
+				req.Header.Set(testupstreamlib.ExpectedHostKey, upstreamHost)
+				req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, testUpstreamID)
+				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/files/"+upstreamFileID)))
+				req.Header.Set(testupstreamlib.ExpectedHeadersKey, base64.StdEncoding.EncodeToString([]byte("Authorization:Bearer "+dummyToken)))
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(
+					fmt.Sprintf(`{"id":"%s","object":"file","bytes":29,"created_at":1741382147,"filename":"test.txt","purpose":"assistants"}`, upstreamFileID),
+				)))
+
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Logf("error: %v", err)
+					return false
+				}
+				defer func() { _ = resp.Body.Close() }()
+
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					t.Logf("error reading response body: %v", err)
+					return false
+				}
+				if resp.StatusCode != http.StatusOK {
+					t.Logf("unexpected status code: %d (expected %d), body: %s", resp.StatusCode, http.StatusOK, body)
+					return false
+				}
+
+				var fileObj openaischema.FileObject
+				if err = json.Unmarshal(body, &fileObj); err != nil {
+					t.Logf("error unmarshalling retrieve file response: %v, body: %s", err, body)
+					return false
+				}
+				if fileObj.ID != stickyEncodedFileID {
+					t.Logf("unexpected file id in sticky response: got %q, expected %q", fileObj.ID, stickyEncodedFileID)
+					return false
+				}
+				return true
+			}, 10*time.Second, 1*time.Second)
+		})
+
+		t.Run("GET /v1/files/{file_id}/content", func(t *testing.T) {
+			require.NotEmpty(t, encodedFileID)
+			require.Eventually(t, func() bool {
+				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+				defer fwd.Kill()
+
+				req, err := http.NewRequest(http.MethodGet, fwd.Address()+"/v1/files/"+encodedFileID+"/content", nil)
+				require.NoError(t, err)
+				req.Header.Set(testupstreamlib.ExpectedHostKey, upstreamHost)
+				req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, testUpstreamID)
+				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/files/"+upstreamFileID+"/content")))
+				req.Header.Set(testupstreamlib.ExpectedHeadersKey, base64.StdEncoding.EncodeToString([]byte("Authorization:Bearer "+dummyToken)))
+				req.Header.Set(testupstreamlib.ResponseHeadersKey, base64.StdEncoding.EncodeToString([]byte("content-type:text/plain")))
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte("line-1\nline-2\n")))
+
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Logf("error: %v", err)
+					return false
+				}
+				defer func() { _ = resp.Body.Close() }()
+
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					t.Logf("error reading response body: %v", err)
+					return false
+				}
+				if resp.StatusCode != http.StatusOK {
+					t.Logf("unexpected status code: %d (expected %d), body: %s", resp.StatusCode, http.StatusOK, body)
+					return false
+				}
+				if string(body) != "line-1\nline-2\n" {
+					t.Logf("unexpected file content body: %q", body)
+					return false
+				}
+				if !strings.HasPrefix(resp.Header.Get("content-type"), "text/plain") {
+					t.Logf("unexpected content-type header: %q", resp.Header.Get("content-type"))
+					return false
+				}
+				return true
+			}, 10*time.Second, 1*time.Second)
+		})
+
+		t.Run("GET /v1/files/{file_id}/content sticky backend with existing model", func(t *testing.T) {
+			require.NotEmpty(t, encodedBackendName)
+			stickyEncodedFileID := translator.EncodeIDWithRouting(upstreamFileID, modelName, encodedBackendName, "file")
+
+			require.Eventually(t, func() bool {
+				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+				defer fwd.Kill()
+
+				req, err := http.NewRequest(http.MethodGet, fwd.Address()+"/v1/files/"+stickyEncodedFileID+"/content", nil)
+				require.NoError(t, err)
+				req.Header.Set(testupstreamlib.ExpectedHostKey, upstreamHost)
+				req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, testUpstreamID)
+				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/files/"+upstreamFileID+"/content")))
+				req.Header.Set(testupstreamlib.ExpectedHeadersKey, base64.StdEncoding.EncodeToString([]byte("Authorization:Bearer "+dummyToken)))
+				req.Header.Set(testupstreamlib.ResponseHeadersKey, base64.StdEncoding.EncodeToString([]byte("content-type:text/plain")))
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte("sticky-primary\n")))
+
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Logf("error: %v", err)
+					return false
+				}
+				defer func() { _ = resp.Body.Close() }()
+
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					t.Logf("error reading response body: %v", err)
+					return false
+				}
+				if resp.StatusCode != http.StatusOK {
+					t.Logf("unexpected status code: %d (expected %d), body: %s", resp.StatusCode, http.StatusOK, body)
+					return false
+				}
+				if string(body) != "sticky-primary\n" {
+					t.Logf("unexpected sticky content body: %q", body)
+					return false
+				}
+				return true
+			}, 10*time.Second, 1*time.Second)
+		})
+
+		t.Run("DELETE /v1/files/{file_id}", func(t *testing.T) {
+			require.NotEmpty(t, encodedFileID)
+			require.Eventually(t, func() bool {
+				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+				defer fwd.Kill()
+
+				req, err := http.NewRequest(http.MethodDelete, fwd.Address()+"/v1/files/"+encodedFileID, nil)
+				require.NoError(t, err)
+				req.Header.Set(testupstreamlib.ExpectedHostKey, upstreamHost)
+				req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, testUpstreamID)
+				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/files/"+upstreamFileID)))
+				req.Header.Set(testupstreamlib.ExpectedHeadersKey, base64.StdEncoding.EncodeToString([]byte("Authorization:Bearer "+dummyToken)))
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(
+					fmt.Sprintf(`{"id":"%s","object":"file","deleted":true}`, upstreamFileID),
+				)))
+
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Logf("error: %v", err)
+					return false
+				}
+				defer func() { _ = resp.Body.Close() }()
+
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					t.Logf("error reading response body: %v", err)
+					return false
+				}
+				if resp.StatusCode != http.StatusOK {
+					t.Logf("unexpected status code: %d (expected %d), body: %s", resp.StatusCode, http.StatusOK, body)
+					return false
+				}
+
+				var deleteResp openaischema.FileDeleted
+				if err := json.Unmarshal(body, &deleteResp); err != nil {
+					t.Logf("error unmarshalling delete file response: %v, body: %s", err, body)
+					return false
+				}
+				if deleteResp.ID != encodedFileID {
+					t.Logf("unexpected file id in delete response: got %q, expected %q", deleteResp.ID, encodedFileID)
+					return false
+				}
+				if !deleteResp.Deleted {
+					t.Logf("unexpected deleted field in response body: %s", body)
+					return false
+				}
+				return true
+			}, 10*time.Second, 1*time.Second)
+		})
+
+		t.Run("DELETE /v1/files/{file_id} sticky backend with existing model", func(t *testing.T) {
+			require.NotEmpty(t, encodedBackendName)
+			stickyEncodedFileID := translator.EncodeIDWithRouting(upstreamFileID, modelName, encodedBackendName, "file")
+
+			require.Eventually(t, func() bool {
+				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+				defer fwd.Kill()
+
+				req, err := http.NewRequest(http.MethodDelete, fwd.Address()+"/v1/files/"+stickyEncodedFileID, nil)
+				require.NoError(t, err)
+				req.Header.Set(testupstreamlib.ExpectedHostKey, upstreamHost)
+				req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, testUpstreamID)
+				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/files/"+upstreamFileID)))
+				req.Header.Set(testupstreamlib.ExpectedHeadersKey, base64.StdEncoding.EncodeToString([]byte("Authorization:Bearer "+dummyToken)))
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(
+					fmt.Sprintf(`{"id":"%s","object":"file","deleted":true}`, upstreamFileID),
+				)))
+
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Logf("error: %v", err)
+					return false
+				}
+				defer func() { _ = resp.Body.Close() }()
+
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					t.Logf("error reading response body: %v", err)
+					return false
+				}
+				if resp.StatusCode != http.StatusOK {
+					t.Logf("unexpected status code: %d (expected %d), body: %s", resp.StatusCode, http.StatusOK, body)
+					return false
+				}
+
+				var deleteResp openaischema.FileDeleted
+				if err := json.Unmarshal(body, &deleteResp); err != nil {
+					t.Logf("error unmarshalling sticky delete response: %v, body: %s", err, body)
+					return false
+				}
+				if deleteResp.ID != stickyEncodedFileID {
+					t.Logf("unexpected sticky file id in delete response: got %q, expected %q", deleteResp.ID, stickyEncodedFileID)
+					return false
+				}
+				if !deleteResp.Deleted {
+					t.Logf("unexpected deleted field in sticky delete response body: %s", body)
+					return false
+				}
+				return true
+			}, 10*time.Second, 1*time.Second)
+		})
 	})
 
 	t.Run("non-llm-route", func(t *testing.T) {

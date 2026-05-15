@@ -27,6 +27,7 @@ import (
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
@@ -161,13 +162,34 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		var updatedHTTPRoute gwapiv1.HTTPRoute
 		err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "myroute", Namespace: "ns1"}, &updatedHTTPRoute)
 		require.NoError(t, err)
-		require.Len(t, updatedHTTPRoute.Spec.Rules, 2) // 1 rule + 1 for the default rule.
+		// Expected rules:
+		// - 1 general rule with both backends (regular rules first, kept at AIGatewayRoute spec indices)
+		// - 2 backend-specific sticky rules (one for apple, one for orange)
+		// - 1 default rule
+		require.Len(t, updatedHTTPRoute.Spec.Rules, 4)
+
+		// General rule with both backends (rule 0 in spec → HTTPRoute index 0).
 		require.Len(t, updatedHTTPRoute.Spec.Rules[0].BackendRefs, 2)
 		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[0].Name))
 		require.Equal(t, "some-backend2", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[1].Name))
-		// Defaulting to the empty path, which shouldn't reach in practice.
-		require.Empty(t, updatedHTTPRoute.Spec.Rules[1].BackendRefs)
-		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[1].Matches[0].Path.Value)
+
+		// Backend-specific sticky rules (appended after regular rules).
+		require.Len(t, updatedHTTPRoute.Spec.Rules[1].BackendRefs, 1)
+		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[1].BackendRefs[0].Name))
+		// Verify sticky rule matches on both backend and model headers
+		require.Len(t, updatedHTTPRoute.Spec.Rules[1].Matches, 1)
+		require.Len(t, updatedHTTPRoute.Spec.Rules[1].Matches[0].Headers, 2)
+		require.Equal(t, gwapiv1.HTTPHeaderName(internalapi.BackendNameHeaderKey), updatedHTTPRoute.Spec.Rules[1].Matches[0].Headers[0].Name)
+		require.Equal(t, "ns1.apple", updatedHTTPRoute.Spec.Rules[1].Matches[0].Headers[0].Value) // Namespace-qualified
+		require.Equal(t, gwapiv1.HTTPHeaderName(internalapi.ModelNameHeaderKeyDefault), updatedHTTPRoute.Spec.Rules[1].Matches[0].Headers[1].Name)
+		require.Len(t, updatedHTTPRoute.Spec.Rules[2].BackendRefs, 1)
+		require.Equal(t, "some-backend2", string(updatedHTTPRoute.Spec.Rules[2].BackendRefs[0].Name))
+		// Verify second sticky rule header value
+		require.Equal(t, "ns1.orange", updatedHTTPRoute.Spec.Rules[2].Matches[0].Headers[0].Value)
+
+		// Default rule
+		require.Empty(t, updatedHTTPRoute.Spec.Rules[3].BackendRefs)
+		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[3].Matches[0].Path.Value)
 
 		// Check per AIGatewayRoute has the default host rewrite filter.
 		var f egv1a1.HTTPRouteFilter
@@ -285,6 +307,12 @@ func Test_newHTTPRoute(t *testing.T) {
 			err := s.newHTTPRoute(t.Context(), httpRoute, aiGatewayRoute)
 			require.NoError(t, err)
 
+			// Compute expected namespace-qualified backend names (format: namespace.name)
+			qualifiedApple := fmt.Sprintf("%s.apple", ns)
+			qualifiedOrange := fmt.Sprintf("%s.orange", ns)
+			qualifiedPineapple := fmt.Sprintf("%s.pineapple", ns)
+			qualifiedFoo := fmt.Sprintf("%s.foo", ns)
+
 			rewriteFilters := []gwapiv1.HTTPRouteFilter{{
 				Type: gwapiv1.HTTPRouteFilterExtensionRef,
 				ExtensionRef: &gwapiv1.LocalObjectReference{
@@ -295,6 +323,9 @@ func Test_newHTTPRoute(t *testing.T) {
 			}}
 			expPath := &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}
 			expRules := []gwapiv1.HTTPRouteRule{
+				// General model-based routing rules (kept at the same indices as
+				// AIGatewayRoute.Spec.Rules so the extension server can map clusters
+				// httproute/<ns>/<name>/rule/<idx> back to the spec rules).
 				{
 					Matches: []gwapiv1.HTTPRouteMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "rule-0"}}, Path: expPath},
@@ -319,6 +350,106 @@ func Test_newHTTPRoute(t *testing.T) {
 					Matches: []gwapiv1.HTTPRouteMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "rule-2"}}, Path: expPath},
 					},
+					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: refNs}, Weight: ptr.To[int32](1)}}},
+					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
+					Filters:     rewriteFilters,
+				},
+				// Backend-specific rules for sticky routing (rule 0, ref 0)
+				{
+					Matches: []gwapiv1.HTTPRouteMatch{{
+						Path: expPath,
+						Headers: []gwapiv1.HTTPHeaderMatch{
+							{
+								Name:  gwapiv1.HTTPHeaderName(internalapi.BackendNameHeaderKey),
+								Value: qualifiedApple,
+							},
+							{
+								Name:  internalapi.ModelNameHeaderKeyDefault,
+								Type:  ptr.To(gwapiv1.HeaderMatchRegularExpression),
+								Value: ".+",
+							},
+						},
+					}},
+					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: refNs}, Weight: ptr.To[int32](1)}}},
+					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &defaultTimeout},
+					Filters:     rewriteFilters,
+				},
+				// Backend-specific rules for sticky routing (rule 1, ref 0)
+				{
+					Matches: []gwapiv1.HTTPRouteMatch{{
+						Path: expPath,
+						Headers: []gwapiv1.HTTPHeaderMatch{
+							{
+								Name:  gwapiv1.HTTPHeaderName(internalapi.BackendNameHeaderKey),
+								Value: qualifiedOrange,
+							},
+							{
+								Name:  internalapi.ModelNameHeaderKeyDefault,
+								Type:  ptr.To(gwapiv1.HeaderMatchRegularExpression),
+								Value: ".+",
+							},
+						},
+					}},
+					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: refNs}, Weight: ptr.To[int32](1)}}},
+					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &defaultTimeout},
+					Filters:     rewriteFilters,
+				},
+				// Backend-specific rules for sticky routing (rule 1, ref 1)
+				{
+					Matches: []gwapiv1.HTTPRouteMatch{{
+						Path: expPath,
+						Headers: []gwapiv1.HTTPHeaderMatch{
+							{
+								Name:  gwapiv1.HTTPHeaderName(internalapi.BackendNameHeaderKey),
+								Value: qualifiedApple,
+							},
+							{
+								Name:  internalapi.ModelNameHeaderKeyDefault,
+								Type:  ptr.To(gwapiv1.HeaderMatchRegularExpression),
+								Value: ".+",
+							},
+						},
+					}},
+					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: refNs}, Weight: ptr.To[int32](1)}}},
+					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &defaultTimeout},
+					Filters:     rewriteFilters,
+				},
+				// Backend-specific rules for sticky routing (rule 1, ref 2)
+				{
+					Matches: []gwapiv1.HTTPRouteMatch{{
+						Path: expPath,
+						Headers: []gwapiv1.HTTPHeaderMatch{
+							{
+								Name:  gwapiv1.HTTPHeaderName(internalapi.BackendNameHeaderKey),
+								Value: qualifiedPineapple,
+							},
+							{
+								Name:  internalapi.ModelNameHeaderKeyDefault,
+								Type:  ptr.To(gwapiv1.HeaderMatchRegularExpression),
+								Value: ".+",
+							},
+						},
+					}},
+					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: refNs}, Weight: ptr.To[int32](1)}}},
+					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &defaultTimeout},
+					Filters:     rewriteFilters,
+				},
+				// Backend-specific rules for sticky routing (rule 2, ref 0)
+				{
+					Matches: []gwapiv1.HTTPRouteMatch{{
+						Path: expPath,
+						Headers: []gwapiv1.HTTPHeaderMatch{
+							{
+								Name:  gwapiv1.HTTPHeaderName(internalapi.BackendNameHeaderKey),
+								Value: qualifiedFoo,
+							},
+							{
+								Name:  internalapi.ModelNameHeaderKeyDefault,
+								Type:  ptr.To(gwapiv1.HeaderMatchRegularExpression),
+								Value: ".+",
+							},
+						},
+					}},
 					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: refNs}, Weight: ptr.To[int32](1)}}},
 					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
 					Filters:     rewriteFilters,
@@ -454,12 +585,15 @@ func Test_newHTTPRoute_InferencePool(t *testing.T) {
 	err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
 	require.NoError(t, err)
 
-	// Verify HTTPRoute has correct backend reference for InferencePool.
-	// Note: newHTTPRoute always adds a default "unreachable" rule, so we expect 2 rules total.
-	require.Len(t, httpRoute.Spec.Rules, 2)
-	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
+	// Verify HTTPRoute has correct backend references for InferencePool.
+	// Expected rules:
+	// 1. General InferencePool rule (kept at the same index as AIGatewayRoute spec rule)
+	// 2. Backend-specific rule for sticky routing (matches on x-ai-eg-backend-name header)
+	// 3. Default "route-not-found" rule
+	require.Len(t, httpRoute.Spec.Rules, 3)
 
-	// Check the first rule (our InferencePool rule).
+	// Check the first rule (general InferencePool rule).
+	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
 	backendRef := httpRoute.Spec.Rules[0].BackendRefs[0]
 	require.Equal(t, "inference.networking.k8s.io", string(*backendRef.Group))
 	require.Equal(t, "InferencePool", string(*backendRef.Kind))
@@ -467,9 +601,26 @@ func Test_newHTTPRoute_InferencePool(t *testing.T) {
 	require.Equal(t, "test-ns", string(*backendRef.Namespace))
 	require.Equal(t, int32(100), *backendRef.Weight)
 
-	// Check the second rule is the default "route-not-found" rule.
-	require.Equal(t, "route-not-found", string(*httpRoute.Spec.Rules[1].Name))
-	require.Empty(t, httpRoute.Spec.Rules[1].BackendRefs) // No backend refs for default rule.
+	// Check the second rule (backend-specific sticky routing rule).
+	require.Len(t, httpRoute.Spec.Rules[1].BackendRefs, 1)
+	backendSpecificRef := httpRoute.Spec.Rules[1].BackendRefs[0]
+	require.Equal(t, "inference.networking.k8s.io", string(*backendSpecificRef.Group))
+	require.Equal(t, "InferencePool", string(*backendSpecificRef.Kind))
+	require.Equal(t, "test-inference-pool", string(backendSpecificRef.Name))
+	require.Equal(t, "test-ns", string(*backendSpecificRef.Namespace))
+	require.Equal(t, int32(1), *backendSpecificRef.Weight)
+	// Verify it matches on both backend and model headers
+	require.Len(t, httpRoute.Spec.Rules[1].Matches, 1)
+	require.Len(t, httpRoute.Spec.Rules[1].Matches[0].Headers, 2)
+	require.Equal(t, gwapiv1.HTTPHeaderName(internalapi.BackendNameHeaderKey), httpRoute.Spec.Rules[1].Matches[0].Headers[0].Name)
+	require.Equal(t, "test-ns.test-inference-pool", httpRoute.Spec.Rules[1].Matches[0].Headers[0].Value) // Namespace-qualified
+	require.Equal(t, gwapiv1.HTTPHeaderName(internalapi.ModelNameHeaderKeyDefault), httpRoute.Spec.Rules[1].Matches[0].Headers[1].Name)
+	require.Equal(t, gwapiv1.HeaderMatchRegularExpression, *httpRoute.Spec.Rules[1].Matches[0].Headers[1].Type)
+	require.Equal(t, ".+", httpRoute.Spec.Rules[1].Matches[0].Headers[1].Value)
+
+	// Check the third rule is the default "route-not-found" rule.
+	require.Equal(t, "route-not-found", string(*httpRoute.Spec.Rules[2].Name))
+	require.Empty(t, httpRoute.Spec.Rules[2].BackendRefs) // No backend refs for default rule.
 }
 
 func Test_newHTTPRoute_LabelAndAnnotationPropagation(t *testing.T) {

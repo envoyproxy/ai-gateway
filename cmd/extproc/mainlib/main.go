@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -276,6 +277,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create metrics: %w", err)
 	}
+
 	chatCompletionMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationChat)
 	messagesMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationMessages)
 	completionMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationCompletion)
@@ -292,23 +294,62 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/chat/completions"), extproc.NewFactory(
-		chatCompletionMetricsFactory, tracing.ChatCompletionTracer(), endpointspec.ChatCompletionsEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/completions"), extproc.NewFactory(
-		completionMetricsFactory, tracing.CompletionTracer(), endpointspec.CompletionsEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/embeddings"), extproc.NewFactory(
-		embeddingsMetricsFactory, tracing.EmbeddingsTracer(), endpointspec.EmbeddingsEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/responses"), extproc.NewFactory(
-		responsesMetricsFactory, tracing.ResponsesTracer(), endpointspec.ResponsesEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/speech"), extproc.NewFactory(
-		speechMetricsFactory, tracing.SpeechTracer(), endpointspec.SpeechEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/images/generations"), extproc.NewFactory(
-		imageGenerationMetricsFactory, tracing.ImageGenerationTracer(), endpointspec.ImageGenerationEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Cohere, "/v2/rerank"), extproc.NewFactory(
-		rerankMetricsFactory, tracing.RerankTracer(), endpointspec.RerankEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/models"), extproc.NewModelsProcessor)
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages"), extproc.NewFactory(
-		messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/chat/completions")+"$"),
+		http.MethodPost,
+		extproc.NewFactory(chatCompletionMetricsFactory, tracing.ChatCompletionTracer(), endpointspec.ChatCompletionsEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/completions")+"$"),
+		http.MethodPost,
+		extproc.NewFactory(completionMetricsFactory, tracing.CompletionTracer(), endpointspec.CompletionsEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/embeddings")+"$"),
+		http.MethodPost,
+		extproc.NewFactory(embeddingsMetricsFactory, tracing.EmbeddingsTracer(), endpointspec.EmbeddingsEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/responses")+"$"),
+		http.MethodPost,
+		extproc.NewFactory(responsesMetricsFactory, tracing.ResponsesTracer(), endpointspec.ResponsesEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/speech")+"$"),
+		http.MethodPost,
+		extproc.NewFactory(speechMetricsFactory, tracing.SpeechTracer(), endpointspec.SpeechEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/images/generations")+"$"),
+		http.MethodPost,
+		extproc.NewFactory(imageGenerationMetricsFactory, tracing.ImageGenerationTracer(), endpointspec.ImageGenerationEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.Cohere, "/v2/rerank")+"$"),
+		http.MethodPost,
+		extproc.NewFactory(rerankMetricsFactory, tracing.RerankTracer(), endpointspec.RerankEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/models")+"$"),
+		http.MethodGet,
+		extproc.NewModelsProcessor)
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages")+"$"),
+		http.MethodPost,
+		extproc.NewFactory(messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files")+"$"),
+		http.MethodPost,
+		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.CreateFileTracer(), endpointspec.CreateFileEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files")+"$"),
+		http.MethodGet,
+		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.RetrieveFileTracer(), endpointspec.ListFilesEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files")+"/([^/]+)/?$"),
+		http.MethodGet,
+		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.RetrieveFileTracer(), endpointspec.RetrieveFileEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files")+"/([^/]+)/content$"),
+		http.MethodGet,
+		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.RetrieveFileContentTracer(), endpointspec.RetrieveFileContentEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files")+"/([^/]+)/?$"),
+		http.MethodDelete,
+		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.DeleteFileTracer(), endpointspec.DeleteFileEndpointSpec{}))
 
 	// Create and register gRPC server with ExternalProcessorServer (the service Envoy calls).
 	if err = filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {
