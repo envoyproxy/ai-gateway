@@ -33,6 +33,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -180,51 +181,108 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		return nil
 	}
 
+	// Check if this is a per-backend sticky HTTPRoute (name ends with "-<backend>-sticky").
+	aigatewayRouteName := httpRouteName
+	aigatewayRouteNamespace := httpRouteNamespace
+	isStickyRoute := strings.HasSuffix(httpRouteName, "-sticky")
+	stickyBackendName := ""
+	stickyBackendRefIndex := -1
+
+	if isStickyRoute {
+		// For sticky per-backend routes, use labels as the source of truth:
+		// - internalapi.AIGatewayStickyRouteOwnerLabel: original AIGatewayRoute name
+		// - internalapi.AIGatewayStickyRouteOwnerNamespaceLabel: original AIGatewayRoute namespace
+		// - internalapi.AIGatewayStickyRouteBackendLabel: backend ref name
+		var perBackendHTTPRoute gwapiv1.HTTPRoute
+		if err = s.k8sClient.Get(ctx, client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &perBackendHTTPRoute); err != nil {
+			if !apierrors.IsNotFound(err) {
+				s.log.Error(err, "failed to get per-backend HTTPRoute", "namespace", httpRouteNamespace, "name", httpRouteName)
+				return err
+			}
+		} else {
+			if owner := perBackendHTTPRoute.Labels[internalapi.AIGatewayStickyRouteOwnerLabel]; owner != "" {
+				aigatewayRouteName = owner
+			}
+			if ownerNamespace := perBackendHTTPRoute.Labels[internalapi.AIGatewayStickyRouteOwnerNamespaceLabel]; ownerNamespace != "" {
+				aigatewayRouteNamespace = ownerNamespace
+			}
+			stickyBackendName = perBackendHTTPRoute.Labels[internalapi.AIGatewayStickyRouteBackendLabel]
+		}
+	}
+
 	// Check if this rule has InferencePool backends.
 	pool := getInferencePoolByMetadata(cluster.Metadata)
 	// Get the HTTPRoute object from the cluster name.
 	var aigwRoute aigv1b1.AIGatewayRoute
-	err = s.k8sClient.Get(ctx, client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &aigwRoute)
+	err = s.k8sClient.Get(ctx, client.ObjectKey{Namespace: aigatewayRouteNamespace, Name: aigatewayRouteName}, &aigwRoute)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			s.log.Info("Skipping non-AIGatewayRoute HTTPRoute cluster modification",
-				"namespace", httpRouteNamespace, "name", httpRouteName)
+				"namespace", aigatewayRouteNamespace, "name", aigatewayRouteName)
 			return nil
 		}
 		s.log.Error(err, "failed to get AIGatewayRoute object",
-			"namespace", httpRouteNamespace, "name", httpRouteName)
+			"namespace", aigatewayRouteNamespace, "name", aigatewayRouteName)
 		return err
 	}
 
-	// Get the backend from the HTTPRoute object.
-	// stickyRuleSingleRefIdx stores the backend ref index when httpRouteRuleIndex points to a
-	// sticky-routing rule (appended by the controller after regular Spec.Rules). For sticky
-	// clusters, we narrow backendRefs to that single backend since the cluster has only one
-	// endpoint group. The metadata must still encode the original (specRuleIdx, refIdx) so
-	// the upstream extproc filter can resolve the correct backend at request time. It is -1
-	// for non-sticky (regular) rules.
-	stickyRuleSingleRefIdx := -1
-	if httpRouteRuleIndex >= len(aigwRoute.Spec.Rules) {
-		specRuleIdx, refIdx, ok := s.resolveStickyRuleBackend(ctx, httpRouteNamespace, httpRouteName, httpRouteRuleIndex, &aigwRoute)
-		if !ok {
-			s.log.Info("HTTPRoute rule index out of range",
-				"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndexStr)
+	// For per-backend sticky HTTPRoutes (which have only one sticky rule),
+	// we need to find the original spec rule and backend ref index.
+	if isStickyRoute {
+		if stickyBackendName == "" {
+			s.log.Info("Could not extract backend name from per-backend HTTPRoute",
+				"cluster_name", cluster.Name, "httproute_name", httpRouteName, "aigw_route_name", aigatewayRouteName)
 			return nil
 		}
-		httpRouteRuleIndex = specRuleIdx
-		stickyRuleSingleRefIdx = refIdx
+
+		// Find the spec rule and backend ref that matches this backend
+		found := false
+		for specIdx, rule := range aigwRoute.Spec.Rules {
+			for refIdx, br := range rule.BackendRefs {
+				if br.Name == stickyBackendName {
+					httpRouteRuleIndex = specIdx
+					stickyBackendRefIndex = refIdx
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			s.log.Info("Could not find matching spec rule for sticky backend",
+				"cluster_name", cluster.Name, "backend_name", stickyBackendName)
+			return nil
+		}
+	}
+
+	// Validate that the rule index is within bounds.
+	// Sticky rules are now in separate per-backend HTTPRoutes, so the main HTTPRoute
+	// only contains regular rules (Spec.Rules) and the route-not-found rule at the end.
+	if httpRouteRuleIndex >= len(aigwRoute.Spec.Rules) {
+		// This could be the route-not-found rule or an out-of-range index.
+		// Skip processing for these cases.
+		s.log.Info("HTTPRoute rule index out of range",
+			"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndexStr)
+		return nil
 	}
 	httpRouteRule := &aigwRoute.Spec.Rules[httpRouteRuleIndex]
 
 	// Only process LoadAssignment for non-InferencePool backends.
 	if pool == nil {
-		// Sticky clusters target a single backend with one endpoint group. Narrow the
-		// backendRefs to just that backend to prevent misaligning parent rule refs.
+		// For regular rules, use all backendRefs as defined in the spec.
+		// For sticky per-backend HTTPRoutes, use only the matched backend ref.
 		backendRefs := httpRouteRule.BackendRefs
-		refIdxOffset := 0
-		if stickyRuleSingleRefIdx >= 0 && stickyRuleSingleRefIdx < len(backendRefs) {
-			backendRefs = backendRefs[stickyRuleSingleRefIdx : stickyRuleSingleRefIdx+1]
-			refIdxOffset = stickyRuleSingleRefIdx
+		backendRefIdxOffset := 0
+		if isStickyRoute {
+			if stickyBackendRefIndex < 0 || stickyBackendRefIndex >= len(httpRouteRule.BackendRefs) {
+				s.log.Info("Sticky backend ref index out of range",
+					"cluster_name", cluster.Name, "backend_ref_index", stickyBackendRefIndex)
+				return nil
+			}
+			backendRefIdxOffset = stickyBackendRefIndex
+			backendRefs = []aigv1b1.AIGatewayRouteRuleBackendRef{httpRouteRule.BackendRefs[stickyBackendRefIndex]}
 		}
 		if cluster.LoadAssignment == nil {
 			// When LoadAssignment is nil (e.g. EDS-managed endpoints in standalone mode),
@@ -233,7 +291,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 			s.log.Info("LoadAssignment is nil, setting cluster-level metadata", "cluster_name", cluster.Name)
 			if len(backendRefs) > 0 {
 				backendRef := backendRefs[0]
-				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, refIdxOffset)
+				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, backendRefIdxOffset)
 			}
 		} else {
 			// Populate the metadata for each endpoint in the LoadAssignment.
@@ -244,10 +302,10 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				if backendRef.Weight != nil && *backendRef.Weight == 0 {
 					continue
 				}
-				if stickyRuleSingleRefIdx == -1 && lbEndpointIndex >= len(cluster.LoadAssignment.Endpoints) {
+				if lbEndpointIndex >= len(cluster.LoadAssignment.Endpoints) {
 					s.log.Info("LoadAssignment has fewer endpoint groups than non-zero-weight backend refs; skipping remaining refs",
 						"cluster_name", cluster.Name, "backend_ref_index", i, "endpoints_count", len(cluster.LoadAssignment.Endpoints))
-					return fmt.Errorf("LoadAssignment has fewer endpoint groups than non-zero-weight backend refs: %w", err)
+					return fmt.Errorf("LoadAssignment has fewer endpoint groups than non-zero-weight backend refs")
 				}
 				endpoints := cluster.LoadAssignment.Endpoints[lbEndpointIndex]
 				lbEndpointIndex++
@@ -274,7 +332,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 						m.Fields = make(map[string]*structpb.Value)
 					}
 					m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
-						internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i+refIdxOffset),
+						internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i+backendRefIdxOffset),
 					)
 				}
 			}
@@ -404,41 +462,6 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 	}
 	cluster.TypedExtensionProtocolOptions[httpProtocolOptions] = poAny
 	return nil
-}
-
-// resolveStickyRuleBackend maps an appended sticky-routing HTTPRoute rule index back to
-// its original backend reference in AIGatewayRoute.Spec.Rules.
-//
-// Sticky rules are appended after all regular rules, one per BackendRef, preserving the
-// declaration order in AIGatewayRoute:
-//
-//	(rule0.backend0, rule0.backend1, ..., ruleN.backendM)
-//
-// Mapping algorithm:
-//  1. Compute stickyOffset = httpRouteRuleIndex - len(aigwRoute.Spec.Rules).
-//  2. Treat all BackendRefs across all rules as a single flattened sequence.
-//  3. Return the (specRuleIdx, refIdx) at stickyOffset.
-//
-// This uses position-based mapping (not name-based mapping) because
-// AIGatewayRoute.BackendRef.Name refers to an AIServiceBackend, while sticky-rule
-// values in the generated HTTPRoute use the underlying Backend resource name.
-//
-// Returns (specRuleIdx, refIdx, true) when resolved; otherwise (0, 0, false).
-func (s *Server) resolveStickyRuleBackend(_ context.Context, _, _ string, httpRouteRuleIndex int, aigwRoute *aigv1b1.AIGatewayRoute) (int, int, bool) {
-	stickyOffset := httpRouteRuleIndex - len(aigwRoute.Spec.Rules)
-	if stickyOffset < 0 {
-		return 0, 0, false
-	}
-	flat := 0
-	for i := range aigwRoute.Spec.Rules {
-		for j := range aigwRoute.Spec.Rules[i].BackendRefs {
-			if flat == stickyOffset {
-				return i, j, true
-			}
-			flat++
-		}
-	}
-	return 0, 0, false
 }
 
 // maybeModifyListenerAndRoutes modifies listeners and routes to support InferencePool backends.
