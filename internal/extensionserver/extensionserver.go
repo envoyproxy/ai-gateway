@@ -32,16 +32,26 @@ type Server struct {
 	isStandAloneMode bool
 	// logRequestHeaderAttributes maps request headers to dynamic metadata keys for access logs.
 	logRequestHeaderAttributes map[string]string
+	// extProcMaxRequests is the maximum number of concurrent requests allowed to the ext_proc
+	// UDS cluster before Envoy's circuit breaker triggers overflow. Defaults to 10000.
+	extProcMaxRequests uint32
 }
 
 const serverName = "envoy-gateway-extension-server"
 
+// DefaultExtProcMaxRequests is the default circuit breaker max_requests for the ext_proc UDS cluster.
+// Override via --extProcMaxRequests or controller.extProcMaxRequests in Helm.
+const DefaultExtProcMaxRequests = 1024
+
 // New creates a new instance of the extension server that implements the EnvoyGatewayExtensionServer interface.
-func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, requestHeaderAttributes, logRequestHeaderAttributes *string) (*Server, error) {
+func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, requestHeaderAttributes, logRequestHeaderAttributes *string, extProcMaxRequests uint32) (*Server, error) {
 	logger = logger.WithName(serverName)
 	logAttrs, err := requestheaderattrs.ResolveLog(requestHeaderAttributes, logRequestHeaderAttributes)
 	if err != nil {
 		return nil, err
+	}
+	if extProcMaxRequests == 0 {
+		extProcMaxRequests = DefaultExtProcMaxRequests
 	}
 	return &Server{
 		log:                        logger,
@@ -49,6 +59,7 @@ func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAlo
 		udsPath:                    udsPath,
 		isStandAloneMode:           isStandAloneMode,
 		logRequestHeaderAttributes: logAttrs,
+		extProcMaxRequests:         extProcMaxRequests,
 	}, nil
 }
 
