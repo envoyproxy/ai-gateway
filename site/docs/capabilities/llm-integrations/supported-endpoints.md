@@ -220,6 +220,7 @@ curl -H "Content-Type: application/json" \
 **Supported Providers:**
 
 - OpenAI
+- Azure OpenAI with an API version that supports Responses, such as `2025-04-01-preview`
 - Any OpenAI-compatible provider (Groq, Together AI, Mistral, Tetrate Agent Router Service, etc.)
 
 **Example:**
