@@ -81,6 +81,7 @@ curl -H "Content-Type: application/json" \
 - Anthropic
 - GCP Anthropic
 - AWS Anthropic
+- AWS Bedrock
 
 **Example:**
 
