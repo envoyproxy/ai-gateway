@@ -430,11 +430,27 @@ func (CreateFileEndpointSpec) ParseBody(
 	if err := req.UnmarshalMultipart(body, params["boundary"]); err != nil {
 		return "", nil, false, nil, fmt.Errorf("%w: failed to parse multipart form-data for /v1/files", internalapi.ErrMalformedRequest)
 	}
-	modelName, ok := req.ExtraBody["model"]
+	modelNameRaw, ok := req.ExtraBody["model"]
 	if !ok {
 		return "", nil, false, nil, errors.New("'model' parameter should be passed as extra field for file upload operations")
 	}
-	return string(modelName.([]byte)), &req, false, body, nil
+	modelNameBytes, ok := modelNameRaw.([]byte)
+	if !ok {
+		return "", nil, false, nil, fmt.Errorf("%w: invalid 'model' parameter type for file upload operations", internalapi.ErrInvalidRequestBody)
+	}
+
+	// Optional backend can be provided as multipart extra field for sticky backend routing.
+	if backendNameRaw, ok := req.ExtraBody["backend"]; ok {
+		backendNameBytes, ok := backendNameRaw.([]byte)
+		if !ok {
+			return "", nil, false, nil, fmt.Errorf("%w: invalid 'backend' parameter type for file upload operations", internalapi.ErrInvalidRequestBody)
+		}
+		if len(backendNameBytes) > 0 {
+			requestHeaders[internalapi.BackendNameHeaderKey] = string(backendNameBytes)
+		}
+	}
+
+	return string(modelNameBytes), &req, false, body, nil
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].

@@ -139,6 +139,28 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		require.Equal(t, "/foo", string(setHeaders[2].Header.RawValue))
 	})
 
+	t.Run("ok_with_backend_header", func(t *testing.T) {
+		headers := map[string]string{":path": "/foo", internalapi.BackendNameHeaderKey: "openai-primary"}
+		p := &chatCompletionProcessorRouterFilter{
+			config:         &filterapi.RuntimeConfig{},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		}
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		re, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+		require.True(t, ok)
+		require.NotNil(t, re)
+		require.NotNil(t, re.RequestBody)
+		setHeaders := headerValueOptionsToMap(re.RequestBody.GetResponse().GetHeaderMutation().SetHeaders)
+		require.Equal(t, "some-model", setHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.Equal(t, "openai-primary", setHeaders[internalapi.BackendNameHeaderKey])
+		require.Equal(t, "/foo", setHeaders[internalapi.OriginalPathHeader])
+		require.Equal(t, "/foo", setHeaders[internalapi.EnvoyOriginalPathHeader])
+	})
+
 	t.Run("span creation", func(t *testing.T) {
 		headers := map[string]string{":path": "/v1/chat/completions"}
 		span := &testotel.MockSpan{}

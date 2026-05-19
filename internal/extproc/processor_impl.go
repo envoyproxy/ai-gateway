@@ -485,6 +485,11 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 		// Set the original model to the request header with the key `x-ai-eg-model`.
 		Header: &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
 	})
+	if backendName := r.requestHeaders[internalapi.BackendNameHeaderKey]; backendName != "" {
+		additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
+			Header: &corev3.HeaderValue{Key: internalapi.BackendNameHeaderKey, RawValue: []byte(backendName)},
+		})
+	}
 	originalPath := r.requestHeaders[":path"]
 	if r.requestHeaders[originalPathHeader] == "" {
 		r.requestHeaders[originalPathHeader] = originalPath
