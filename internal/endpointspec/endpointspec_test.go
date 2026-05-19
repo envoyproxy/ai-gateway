@@ -16,6 +16,7 @@ import (
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/redaction"
 )
@@ -1042,7 +1043,7 @@ func TestSpeechEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 
 // buildFileUploadBody constructs a multipart/form-data body for /v1/files endpoint tests.
 // When includeModelName is true, a model field is added to ExtraBody.
-func buildFileUploadBody(t *testing.T, includeModelName bool, modelName string) ([]byte, string) {
+func buildFileUploadBody(t *testing.T, includeModelName bool, modelName, backendName string) ([]byte, string) {
 	t.Helper()
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
@@ -1053,6 +1054,9 @@ func buildFileUploadBody(t *testing.T, includeModelName bool, modelName string) 
 	require.NoError(t, writer.WriteField("purpose", "assistants"))
 	if includeModelName {
 		require.NoError(t, writer.WriteField("model", modelName))
+	}
+	if backendName != "" {
+		require.NoError(t, writer.WriteField("backend", backendName))
 	}
 	require.NoError(t, writer.Close())
 	return buf.Bytes(), writer.FormDataContentType()
@@ -1086,19 +1090,31 @@ func TestCreateFileEndpointSpec_ParseBody(t *testing.T) {
 	})
 
 	t.Run("missing_model_name", func(t *testing.T) {
-		body, contentType := buildFileUploadBody(t, false, "")
+		body, contentType := buildFileUploadBody(t, false, "", "")
 		_, _, _, _, err := spec.ParseBody(body, false, map[string]string{"content-type": contentType})
 		require.ErrorContains(t, err, "'model' parameter should be passed as extra field for file upload operations")
 	})
 
 	t.Run("success", func(t *testing.T) {
-		body, contentType := buildFileUploadBody(t, true, "gpt-4o")
+		body, contentType := buildFileUploadBody(t, true, "gpt-4o", "")
 		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{"content-type": contentType})
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4o", model)
 		require.NotNil(t, parsed)
 		require.False(t, stream)
 		require.NotNil(t, mutated)
+	})
+
+	t.Run("success_with_optional_backend", func(t *testing.T) {
+		body, contentType := buildFileUploadBody(t, true, "gpt-4o", "openai-primary")
+		headers := map[string]string{"content-type": contentType}
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, headers)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o", model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
+		require.NotNil(t, mutated)
+		require.Equal(t, "openai-primary", headers[internalapi.BackendNameHeaderKey])
 	})
 }
 
