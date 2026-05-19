@@ -29,7 +29,7 @@ func TestListFilesOpenAIToOpenAITranslatorRequestBody(t *testing.T) {
 	translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
 
 	headers, body, err := translator.RequestBody(
-		map[string]string{pathHeaderName: "/v1/files?model=gpt-4o-mini&purpose=assistants&limit=2", internalapi.OriginalPathHeader: "/v1/files?model=gpt-4o-mini&purpose=assistants&limit=2"},
+		map[string]string{pathHeaderName: "/v1/files?backend=openai-primary&purpose=assistants&limit=2", internalapi.OriginalPathHeader: "/v1/files?backend=openai-primary&purpose=assistants&limit=2"},
 		nil,
 		&struct{}{},
 		false,
@@ -44,6 +44,7 @@ func TestListFilesOpenAIToOpenAITranslatorRequestBody(t *testing.T) {
 	query, err := url.ParseQuery(rawQuery)
 	require.NoError(t, err)
 	require.False(t, query.Has("model"))
+	require.False(t, query.Has("backend"))
 	require.Equal(t, "assistants", query.Get("purpose"))
 	require.Equal(t, "2", query.Get("limit"))
 }
@@ -53,7 +54,7 @@ func TestListFilesOpenAIToOpenAITranslatorRequestBody_NoOriginalPathAndForceBody
 	original := []byte("{\"k\":\"v\"}")
 
 	headers, body, err := translator.RequestBody(
-		map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4o-mini"},
+		map[string]string{},
 		original,
 		&struct{}{},
 		true,
@@ -83,11 +84,8 @@ func TestListFilesOpenAIToOpenAITranslatorRequestBody_InvalidQueryReturnsError(t
 }
 
 func TestListFilesOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
-	t.Run("encodes ids with model and backend", func(t *testing.T) {
+	t.Run("returns passthrough without mutation", func(t *testing.T) {
 		translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
-		impl := translator.(*openAIToOpenAITranslatorV1ListFiles)
-		impl.requestModel = "gpt-4o-mini"
-
 		resp := `{"data":[{"id":"file-a"},{"id":"file-b"}]}`
 		headers, body, _, _, err := translator.ResponseBody(
 			map[string]string{internalapi.BackendNameHeaderKey: "default/test-backend/route/r/rule/0/ref/0"},
@@ -96,50 +94,19 @@ func TestListFilesOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
 			nil,
 		)
 		require.NoError(t, err)
-		require.Len(t, headers, 1)
-		require.Equal(t, contentLengthHeaderName, headers[0].Key())
-
-		id0 := gjson.GetBytes(body, "data.0.id").String()
-		id1 := gjson.GetBytes(body, "data.1.id").String()
-
-		require.NotEqual(t, "file-a", id0)
-		require.NotEqual(t, "file-b", id1)
-
-		model0, backend0, original0, err := DecodeIDWithRouting(id0)
-		require.NoError(t, err)
-		require.Equal(t, "gpt-4o-mini", model0)
-		require.Equal(t, "default/test-backend/route/r/rule/0/ref/0", backend0)
-		require.Equal(t, "file-a", original0)
-
-		model1, backend1, original1, err := DecodeIDWithRouting(id1)
-		require.NoError(t, err)
-		require.Equal(t, "gpt-4o-mini", model1)
-		require.Equal(t, "default/test-backend/route/r/rule/0/ref/0", backend1)
-		require.Equal(t, "file-b", original1)
-	})
-
-	t.Run("missing request model returns error", func(t *testing.T) {
-		translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
-		headers, body, _, _, err := translator.ResponseBody(
-			map[string]string{internalapi.BackendNameHeaderKey: "default/test-backend/route/r/rule/0/ref/0"},
-			strings.NewReader(`{"data":[{"id":"file-a"}]}`),
-			true,
-			nil,
-		)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "missing request model")
 		require.Nil(t, headers)
 		require.Nil(t, body)
 	})
 
-	t.Run("read error returns error", func(t *testing.T) {
+	t.Run("response body reader is ignored", func(t *testing.T) {
 		translator := NewListFilesOpenAIToOpenAITranslator("v1", "")
-		impl := translator.(*openAIToOpenAITranslatorV1ListFiles)
-		impl.requestModel = "gpt-4o-mini"
-
-		headers, body, _, _, err := translator.ResponseBody(map[string]string{}, listErrorReader{}, true, nil)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "failed to read response body")
+		headers, body, _, _, err := translator.ResponseBody(
+			map[string]string{},
+			listErrorReader{},
+			true,
+			nil,
+		)
+		require.NoError(t, err)
 		require.Nil(t, headers)
 		require.Nil(t, body)
 	})

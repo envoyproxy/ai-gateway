@@ -51,22 +51,22 @@ func Test_translate(t *testing.T) {
 			err := translate(t.Context(), []string{tc.in, tc.in}, buf, os.Stderr)
 			require.NoError(t, err)
 
-				outHTTPRoutes, outEnvoyExtensionPolicy, outHTTPRouteFilter,
-					outConfigMaps, outSecrets, outDeployments, outServices,
-					outBackends, outBackendTLSPolicy, outGatewayClass, outGateway, outEnvoyProxy, outBackendTrafficPolicy, outSecurityPolicy := requireCollectTranslatedObjects(t, buf.String())
+			outHTTPRoutes, outEnvoyExtensionPolicy, outHTTPRouteFilter,
+				outConfigMaps, outSecrets, outDeployments, outServices,
+				outBackends, outBackendTLSPolicy, outGatewayClass, outGateway, outEnvoyProxy, outBackendTrafficPolicy, outSecurityPolicy := requireCollectTranslatedObjects(t, buf.String())
 
-				if tc.name == "basic" || tc.name == "basic_v1alpha1" {
-					// Basic translation output shape evolves as routing behavior changes.
-					// Keep these cases focused on validating successful translation and emitted core resources.
-					require.NotEmpty(t, outHTTPRoutes)
-					require.NotEmpty(t, outHTTPRouteFilter)
-					require.NotEmpty(t, outSecrets)
-					require.NotEmpty(t, outBackends)
-					require.NotEmpty(t, outBackendTLSPolicy)
-					require.NotEmpty(t, outGatewayClass)
-					require.NotEmpty(t, outGateway)
-					return
-				}
+			if tc.name == "basic" || tc.name == "basic_v1alpha1" {
+				// Basic translation output shape evolves as routing behavior changes.
+				// Keep these cases focused on validating successful translation and emitted core resources.
+				require.NotEmpty(t, outHTTPRoutes)
+				require.NotEmpty(t, outHTTPRouteFilter)
+				require.NotEmpty(t, outSecrets)
+				require.NotEmpty(t, outBackends)
+				require.NotEmpty(t, outBackendTLSPolicy)
+				require.NotEmpty(t, outGatewayClass)
+				require.NotEmpty(t, outGateway)
+				return
+			}
 
 			outBuf, err := os.ReadFile(tc.out)
 			require.NoError(t, err)

@@ -465,18 +465,21 @@ func (ListFilesEndpointSpec) ParseBody(
 	}
 	_, rawQuery, found := strings.Cut(originalPath, "?")
 	if !found || rawQuery == "" {
-		return "", nil, false, nil, fmt.Errorf("%w: missing required 'model' query parameter for /v1/files", internalapi.ErrInvalidRequestBody)
+		return "", nil, false, nil, fmt.Errorf("%w: missing required 'backend' query parameter for /v1/files", internalapi.ErrInvalidRequestBody)
 	}
 	query, err := url.ParseQuery(rawQuery)
 	if err != nil {
 		return "", nil, false, nil, fmt.Errorf("%w: failed to parse query parameters for /v1/files: %w", internalapi.ErrMalformedRequest, err)
 	}
-	modelName := query.Get("model")
-	if modelName == "" {
-		return "", nil, false, nil, fmt.Errorf("%w: missing required 'model' query parameter for /v1/files", internalapi.ErrInvalidRequestBody)
+	if query.Has("model") {
+		return "", nil, false, nil, fmt.Errorf("%w: 'model' query parameter is not supported for /v1/files. use 'backend' query parameter instead", internalapi.ErrInvalidRequestBody)
+	}
+	backendName := query.Get("backend")
+	if backendName == "" {
+		return "", nil, false, nil, fmt.Errorf("%w: missing required 'backend' query parameter for /v1/files", internalapi.ErrInvalidRequestBody)
 	}
 	// ListFiles endpoint does not have a body.
-	return modelName, &struct{}{}, false, body, nil
+	return "", &struct{}{}, false, body, nil
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].

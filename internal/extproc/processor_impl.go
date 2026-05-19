@@ -45,6 +45,9 @@ var LogRequestHeaderAttributes map[string]string
 const (
 	filePathPrefix = "/v1/files/" + translator.FileIDPrefix
 	fileListPath   = "/v1/files"
+	// fileRouteModelValue is a placeholder model header value used only to satisfy sticky backend+model route matching
+	// for file operations that do not have a real model in the request.
+	fileRouteModelValue = "__aigw_file_route__"
 )
 
 // NewFactory creates a ProcessorFactory with the given parameters.
@@ -194,7 +197,7 @@ func shouldGetModelFromID(method, path string) bool {
 	switch method {
 	case "GET":
 		// These methods can be header-only for file operations.
-		// e.g GET /v1/files/{file_id}, GET /v1/files?model={model_name}, GET /v1/files/{file_id}/content
+		// e.g GET /v1/files/{file_id}, GET /v1/files/{file_id}/content
 		return strings.Contains(path, filePathPrefix)
 	case "DELETE":
 		// These methods can be header-only for file operations. e.g DELETE /v1/files/{file_id}
@@ -219,25 +222,41 @@ func isListFilesEndpoint(method, path string) bool {
 	return path == fileListPath
 }
 
-// Extract the model name from the query parameter for list files request, e.g. GET /v1/files?model={model_name}.
-// Returns the model name and whether the extraction was successful.
-func extractModelFromQueryParam(path string) (internalapi.OriginalModel, bool) {
+// parseQueryFromPath parses the query string from a request path and returns URL query values.
+func parseQueryFromPath(path string) (url.Values, bool) {
 	if path == "" {
-		return "", false
+		return nil, false
 	}
 	_, rawQuery, found := strings.Cut(path, "?")
 	if !found || rawQuery == "" {
-		return "", false
+		return nil, false
 	}
 	query, err := url.ParseQuery(rawQuery)
 	if err != nil {
+		return nil, false
+	}
+	return query, true
+}
+
+// Extract the backend name from query parameters for list and raw file-id operations.
+func extractBackendFromQueryParam(path string) (string, bool) {
+	query, ok := parseQueryFromPath(path)
+	if !ok {
 		return "", false
 	}
-	modelName := query.Get("model")
-	if modelName == "" {
+	backendName := query.Get("backend")
+	if backendName == "" {
 		return "", false
 	}
-	return modelName, true
+	return backendName, true
+}
+
+func hasModelQueryParam(path string) bool {
+	query, ok := parseQueryFromPath(path)
+	if !ok {
+		return false
+	}
+	return query.Has("model")
 }
 
 func extractFileIDFromPath(path string) (string, bool) {
@@ -269,13 +288,18 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processListFil
 	if logger == nil {
 		logger = r.logger
 	}
-	modelName, ok := extractModelFromQueryParam(r.requestHeaders[":path"])
+	if hasModelQueryParam(r.requestHeaders[":path"]) {
+		logger.Error("model query parameter is not supported for list files request", slog.String("path", r.requestHeaders[":path"]))
+		return createUserFacingErrorResponse(400, "BadRequest", "'model' query parameter is not supported for /v1/files. use 'backend' query parameter instead"), nil
+	}
+	backendName, ok := extractBackendFromQueryParam(r.requestHeaders[":path"])
 	if !ok {
-		logger.Error("missing model query parameter for list files request", slog.String("path", r.requestHeaders[":path"]))
-		return createUserFacingErrorResponse(400, "BadRequest", "missing required 'model' query parameter for /v1/files"), nil
+		logger.Error("missing backend query parameter for list files request", slog.String("path", r.requestHeaders[":path"]))
+		return createUserFacingErrorResponse(400, "BadRequest", "missing required 'backend' query parameter for /v1/files"), nil
 	}
 	headerMutation := &extprocv3.HeaderMutation{}
-	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, modelName)
+	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, fileRouteModelValue)
+	setHeader(headerMutation, internalapi.BackendNameHeaderKey, backendName)
 
 	originalPath := r.requestHeaders[":path"]
 	if r.requestHeaders[originalPathHeader] == "" {
@@ -287,8 +311,9 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processListFil
 		setHeader(headerMutation, internalapi.EnvoyOriginalPathHeader, originalPath)
 	}
 
-	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = modelName
-	r.originalModel = modelName
+	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = fileRouteModelValue
+	r.requestHeaders[internalapi.BackendNameHeaderKey] = backendName
+	r.originalModel = ""
 
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -313,16 +338,26 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processFileIDI
 		logger.Error("failed to extract file_id from path", slog.String("path", r.requestHeaders[":path"]))
 		return createUserFacingErrorResponse(400, "BadRequest", "failed to extract file id / batch id from path"), nil
 	}
-	// Decode file ID with routing information (model and backend)
+	// Decode file ID with routing information (model and backend).
+	// If decoding fails, treat the ID as raw provider file ID and require explicit backend query parameter.
 	modelName, backendName, decodedID, err := translator.DecodeIDWithRouting(fileID)
 	if err != nil {
-		logger.Error("failed to decode routing info from file_id", slog.String("file_id", fileID), slog.String("error", err.Error()))
-		return createUserFacingErrorResponse(400, "BadRequest", "failed to decode routing info from file id / batch id"), nil
+		backendName, ok = extractBackendFromQueryParam(r.requestHeaders[":path"])
+		if !ok {
+			logger.Error("failed to decode routing info from file_id and no backend query parameter provided", slog.String("file_id", fileID), slog.String("error", err.Error()))
+			return createUserFacingErrorResponse(400, "BadRequest", "failed to decode routing info from file id / batch id. raw ids require 'backend' query parameter"), nil
+		}
+		modelName = fileRouteModelValue
+		decodedID = fileID
 	}
 	r.requestHeaders[internalapi.OriginalFileIDHeaderKey] = fileID
 	r.requestHeaders[internalapi.DecodedFileIDHeaderKey] = decodedID
 	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = modelName
-	r.originalModel = modelName
+	if modelName == fileRouteModelValue {
+		r.originalModel = ""
+	} else {
+		r.originalModel = modelName
+	}
 
 	// Set backend name header for sticky routing if backend info is available
 	if backendName != "" {
@@ -332,7 +367,9 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processFileIDI
 	headerMutation := &extprocv3.HeaderMutation{}
 	setHeader(headerMutation, internalapi.OriginalFileIDHeaderKey, fileID)
 	setHeader(headerMutation, internalapi.DecodedFileIDHeaderKey, decodedID)
-	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, modelName)
+	if modelName != "" {
+		setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, modelName)
+	}
 
 	// Set backend header for routing if available
 	if backendName != "" {

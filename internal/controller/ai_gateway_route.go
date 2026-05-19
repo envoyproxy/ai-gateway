@@ -561,7 +561,7 @@ func (c *AIGatewayRouteController) listExistingPerBackendHTTPRoutes(ctx context.
 ) (map[string]*gwapiv1.HTTPRoute, error) {
 	var httpRoutes gwapiv1.HTTPRouteList
 	selector := client.MatchingLabels{
-		managedByLabel:                                   "ai-gateway",
+		managedByLabel: "ai-gateway",
 		internalapi.AIGatewayStickyRouteOwnerLabel:          aiGatewayRoute.Name,
 		internalapi.AIGatewayStickyRouteOwnerNamespaceLabel: aiGatewayRoute.Namespace,
 		internalapi.AIGatewayStickyRouteTypeLabel:           internalapi.AIGatewayStickyRouteTypePerBackend,
@@ -602,7 +602,7 @@ func (c *AIGatewayRouteController) newStickyPerBackendRefHTTPRoute(ctx context.C
 		backendObjRef.Namespace = &ns
 	}
 
-	// Create the single sticky rule that matches on backend name + model header
+	// Create the single sticky rule that matches on backend name + model header.
 	stickyRule := gwapiv1.HTTPRouteRule{
 		BackendRefs: []gwapiv1.HTTPBackendRef{
 			{
