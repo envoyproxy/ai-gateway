@@ -147,6 +147,10 @@ Flags:
       --mcp-session-encryption-iterations=100000
                               Number of iterations for MCP session encryption
                               key derivation.
+      --ext-proc-max-requests=1024
+                              Circuit breaker max_requests for the ext_proc UDS
+                              cluster. Default (1024) matches Envoy's built-in
+                              default.
 `,
 			expPanicCode: ptr.To(0),
 		},

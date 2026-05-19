@@ -52,6 +52,8 @@ type (
 
 		MCPSessionEncryptionIterations int `name:"mcp-session-encryption-iterations" help:"Number of iterations for MCP session encryption key derivation." default:"100000"`
 
+		ExtProcMaxRequests uint32 `name:"ext-proc-max-requests" help:"Circuit breaker max_requests for the ext_proc UDS cluster. Default (1024) matches Envoy's built-in default." default:"1024"`
+
 		mcpConfig *autoconfig.MCPServers `kong:"-"` // Internal field: normalized MCP JSON data
 		dirs      *xdg.Directories       `kong:"-"` // Internal field: XDG directories, set by BeforeApply
 		runOpts   *runOpts               `kong:"-"` // Internal field: run options, set by Validate

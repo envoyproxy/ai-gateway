@@ -6,6 +6,8 @@
 package main
 
 import (
+	"fmt"
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -17,6 +19,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 )
 
 func Test_parseAndValidateFlags(t *testing.T) {
@@ -34,6 +38,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 		require.Equal(t, "tls.key", f.tlsKeyName)
 		require.Equal(t, 9443, f.webhookPort)
 		require.Equal(t, 4*1024*1024, f.maxRecvMsgSize)
+		require.Equal(t, extensionserver.EnvoyDefaultCircuitBreakerMaxRequests, f.extProcMaxRequests)
 		require.Nil(t, f.spanRequestHeaderAttributes)
 		require.Nil(t, f.logRequestHeaderAttributes)
 		require.NoError(t, err)
@@ -179,6 +184,16 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				flags:  []string{"--mcpFallbackSessionEncryptionSeed=fallback", "--mcpFallbackSessionEncryptionIterations=-1"},
 				expErr: "mcp fallback session encryption iterations must be positive: -1",
 			},
+			{
+				name:   "negative extProcMaxRequests",
+				flags:  []string{"--extProcMaxRequests=-1"},
+				expErr: "extProcMaxRequests must be in [0,",
+			},
+			{
+				name:   "extProcMaxRequests above MaxUint32",
+				flags:  []string{fmt.Sprintf("--extProcMaxRequests=%d", int64(math.MaxUint32)+1)},
+				expErr: "extProcMaxRequests must be in [0,",
+			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				_, err := parseAndValidateFlags(tc.flags)
@@ -186,6 +201,27 @@ func Test_parseAndValidateFlags(t *testing.T) {
 			})
 		}
 	})
+}
+
+func Test_parseAndValidateFlags_extProcMaxRequests(t *testing.T) {
+	tests := []struct {
+		name     string
+		flags    []string
+		expected uint32
+	}{
+		{"default unset matches Envoy default", nil, extensionserver.EnvoyDefaultCircuitBreakerMaxRequests},
+		{"explicit 0 (legacy backward-compat sentinel)", []string{"--extProcMaxRequests=0"}, 0},
+		{"explicit Envoy default", []string{fmt.Sprintf("--extProcMaxRequests=%d", extensionserver.EnvoyDefaultCircuitBreakerMaxRequests)}, extensionserver.EnvoyDefaultCircuitBreakerMaxRequests},
+		{"common override", []string{"--extProcMaxRequests=2048"}, 2048},
+		{"max permitted", []string{fmt.Sprintf("--extProcMaxRequests=%d", uint64(math.MaxUint32))}, math.MaxUint32},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, err := parseAndValidateFlags(tt.flags)
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, f.extProcMaxRequests)
+		})
+	}
 }
 
 func Test_maybePatchAdmissionWebhook(t *testing.T) {
