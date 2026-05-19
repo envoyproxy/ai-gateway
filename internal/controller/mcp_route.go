@@ -689,7 +689,7 @@ func mcpRouteHeaderValue(mcpRoute *aigv1b1.MCPRoute) string {
 
 // ensureMCPBackendRefHTTPFilter ensures that an HTTPRouteFilter exists for the given backend reference in the MCPRoute.
 // When credentialSecretName is non-empty, the filter is configured with credential injection referencing
-// the given secret (which must store the credential under the "credential" key). When empty, only URL
+// the given secret (which must store the credential under the InjectedCredentialKey key). When empty, only URL
 // hostname rewrite is configured.
 func (c *MCPRouteController) ensureMCPBackendRefHTTPFilter(ctx context.Context, filterName string, mcpRoute *aigv1b1.MCPRoute,
 	credentialSecretName string, credentialHeader *string,
@@ -749,7 +749,7 @@ func (c *MCPRouteController) ensureMCPBackendRefHTTPFilter(ctx context.Context, 
 }
 
 // ensureCredentialSecret creates or updates a Kubernetes Secret that holds the formatted credential
-// value under the "credential" key. This secret is referenced by the HTTPRouteFilter's credentialInjection,
+// value under the InjectedCredentialKey key. This secret is referenced by the HTTPRouteFilter's credentialInjection,
 // keeping the plaintext API key out of the HTTPRoute manifest.
 func (c *MCPRouteController) ensureCredentialSecret(ctx context.Context, secretName string, mcpRoute *aigv1b1.MCPRoute, apiKey *aigv1b1.MCPBackendAPIKey) error {
 	apiKeyLiteral, err := c.readAPIKey(ctx, mcpRoute.Namespace, apiKey)
@@ -771,7 +771,7 @@ func (c *MCPRouteController) ensureCredentialSecret(ctx context.Context, secretN
 			Namespace: mcpRoute.Namespace,
 		},
 		Data: map[string][]byte{
-			"credential": []byte(credentialValue),
+			egv1a1.InjectedCredentialKey: []byte(credentialValue),
 		},
 	}
 	if err := ctrlutil.SetControllerReference(mcpRoute, desired, c.client.Scheme()); err != nil {
@@ -791,7 +791,7 @@ func (c *MCPRouteController) ensureCredentialSecret(ctx context.Context, secretN
 	}
 
 	// Update if the credential value changed.
-	if string(existing.Data["credential"]) != credentialValue {
+	if string(existing.Data[egv1a1.InjectedCredentialKey]) != credentialValue {
 		existing.Data = desired.Data
 		c.logger.Info("Updating credential secret", "namespace", mcpRoute.Namespace, "name", secretName)
 		if _, err = c.kube.CoreV1().Secrets(mcpRoute.Namespace).Update(ctx, existing, metav1.UpdateOptions{}); err != nil {

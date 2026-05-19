@@ -287,7 +287,7 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 	tests := []struct {
 		name string
 		key  *aigv1b1.MCPBackendAPIKey
-		// expCredentialValue is the expected value stored in the credential secret's "credential" key.
+		// expCredentialValue is the expected value stored in the credential secret's InjectedCredentialKey key.
 		// When set, the HTTPRouteFilter is expected to have credentialInjection configured (secretRef path).
 		expCredentialValue string
 		// expCredentialHeader is the expected header for the credential injection filter (secretRef path).
@@ -379,7 +379,7 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 
 				credSecret, err := kubeClient.CoreV1().Secrets("default").Get(t.Context(), credSecretName, metav1.GetOptions{})
 				require.NoError(t, err)
-				require.Equal(t, tt.expCredentialValue, string(credSecret.Data["credential"]))
+				require.Equal(t, tt.expCredentialValue, string(credSecret.Data[egv1a1.InjectedCredentialKey]))
 
 				// No plaintext should appear in any RequestHeaderModifier filter.
 				for _, f := range httpRule.Filters {
@@ -454,7 +454,7 @@ func TestMCPRouteController_staleCredentialSecretCleanup(t *testing.T) {
 	credSecretName := mcpCredentialSecretName(mcpRoute, "svc-b")
 	credSecret, err := kubeClient.CoreV1().Secrets("default").Get(t.Context(), credSecretName, metav1.GetOptions{})
 	require.NoError(t, err)
-	require.Equal(t, "Bearer my-secret-key", string(credSecret.Data["credential"]))
+	require.Equal(t, "Bearer my-secret-key", string(credSecret.Data[egv1a1.InjectedCredentialKey]))
 
 	// Step 2: Remove the security policy from the backend ref and reconcile again.
 	backendRef.SecurityPolicy = nil
