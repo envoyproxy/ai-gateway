@@ -248,11 +248,12 @@ func TestWithTestUpstream(t *testing.T) {
 		})
 
 		t.Run("GET /v1/files", func(t *testing.T) {
+			require.NotEmpty(t, encodedBackendName)
 			require.Eventually(t, func() bool {
 				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 				defer fwd.Kill()
 
-				req, err := http.NewRequest(http.MethodGet, fwd.Address()+"/v1/files?model="+modelName, nil)
+				req, err := http.NewRequest(http.MethodGet, fwd.Address()+"/v1/files?backend="+encodedBackendName, nil)
 				require.NoError(t, err)
 				req.Header.Set(testupstreamlib.ExpectedHostKey, upstreamHost)
 				req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, testUpstreamID)
@@ -295,8 +296,8 @@ func TestWithTestUpstream(t *testing.T) {
 					t.Logf("unexpected empty data in list response: %s", body)
 					return false
 				}
-				if listResp.Data[0].ID != encodedFileID {
-					t.Logf("unexpected file id in list response: got %q, expected %q", listResp.Data[0].ID, encodedFileID)
+				if listResp.Data[0].ID != upstreamFileID {
+					t.Logf("unexpected file id in list response: got %q, expected %q", listResp.Data[0].ID, upstreamFileID)
 					return false
 				}
 				return true

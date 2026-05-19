@@ -16,7 +16,6 @@ import (
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
-	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/redaction"
 )
@@ -1124,15 +1123,18 @@ func TestCreateFileEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 func TestListFilesEndpointSpec_ParseBody(t *testing.T) {
 	spec := ListFilesEndpointSpec{}
 	body := []byte("irrelevant")
-	model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{":path": "/v1/files?model=gpt-4o-mini&limit=2"})
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{":path": "/v1/files?backend=openai-primary&limit=2"})
 	require.NoError(t, err)
-	require.Equal(t, internalapi.OriginalModel("gpt-4o-mini"), model)
+	require.Empty(t, model)
 	require.NotNil(t, parsed)
 	require.False(t, stream)
 	require.NotNil(t, mutated)
 
 	_, _, _, _, err = spec.ParseBody(body, false, map[string]string{":path": "/v1/files?limit=2"})
-	require.ErrorContains(t, err, "missing required 'model' query parameter")
+	require.ErrorContains(t, err, "missing required 'backend' query parameter")
+
+	_, _, _, _, err = spec.ParseBody(body, false, map[string]string{":path": "/v1/files?model=gpt-4o-mini&backend=openai-primary"})
+	require.ErrorContains(t, err, "'model' query parameter is not supported")
 }
 
 func TestListFilesEndpointSpec_GetTranslator(t *testing.T) {

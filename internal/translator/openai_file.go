@@ -36,7 +36,6 @@ func NewListFilesOpenAIToOpenAITranslator(prefix string, modelNameOverride inter
 // https://platform.openai.com/docs/api-reference/files/list
 type openAIToOpenAITranslatorV1ListFiles struct {
 	modelNameOverride internalapi.ModelNameOverride
-	requestModel      internalapi.RequestModel
 	// The path of the files endpoint to be used for the request. It is prefixed with the OpenAI path prefix.
 	path string
 }
@@ -45,7 +44,6 @@ type openAIToOpenAITranslatorV1ListFiles struct {
 func (o *openAIToOpenAITranslatorV1ListFiles) RequestBody(reqHeaders map[string]string, original []byte, _ *struct{}, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	o.requestModel = reqHeaders[internalapi.ModelNameHeaderKeyDefault]
 	upstreamPath := o.path
 	if originalPath, ok := reqHeaders[pathHeaderName]; ok {
 		if _, query, found := strings.Cut(originalPath, "?"); found && query != "" {
@@ -53,8 +51,9 @@ func (o *openAIToOpenAITranslatorV1ListFiles) RequestBody(reqHeaders map[string]
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to parse query parameters from original path: %w", err)
 			}
-			// Remove the model query parameter from the upstream request since it is only used for routing and is not expected by the OpenAI API.
+			// Remove routing-only query parameters that are not expected by the OpenAI API.
 			query.Del("model")
+			query.Del("backend")
 			upstreamPath += "?" + query.Encode()
 		}
 	}
@@ -82,37 +81,10 @@ func (o *openAIToOpenAITranslatorV1ListFiles) ResponseHeaders(map[string]string)
 func (o *openAIToOpenAITranslatorV1ListFiles) ResponseBody(respHeaders map[string]string, body io.Reader, _ bool, _ tracingapi.RetrieveFileSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
-	bodyBytes, err := io.ReadAll(body)
-	if err != nil {
-		return nil, nil, tokenUsage, "", fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// Verify we have a request model - this is required for encoding
-	if o.requestModel == "" {
-		// Model is required for sticky routing - if missing, return error
-		return nil, nil, tokenUsage, "", fmt.Errorf("missing request model for file ID encoding in list files response - model must be provided as query parameter")
-	}
-
-	// Get backend name from response headers for sticky routing
-	backendName := respHeaders[internalapi.BackendNameHeaderKey]
-
-	newBody = bodyBytes
-	data := gjson.GetBytes(bodyBytes, "data")
-	if data.IsArray() {
-		for i, item := range data.Array() {
-			id := item.Get("id").String()
-			if id == "" {
-				continue
-			}
-			// Encode file ID with both model and backend for sticky routing
-			newBody, err = sjson.SetBytes(newBody, fmt.Sprintf("data.%d.id", i), EncodeIDWithRouting(id, o.requestModel, backendName, "file"))
-			if err != nil {
-				return nil, nil, tokenUsage, "", fmt.Errorf("failed to set file ID for list item %d: %w", i, err)
-			}
-		}
-	}
-
-	newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
+	_ = respHeaders
+	_ = body
+	// Preserve upstream response as-is for list files responses.
+	// No response body mutation is needed.
 	return
 }
 

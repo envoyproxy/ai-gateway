@@ -226,8 +226,8 @@ func Test_isListFilesEndpoint(t *testing.T) {
 	}{
 		{name: "exact path", method: "GET", path: "/v1/files", expects: true},
 		{name: "trailing slash", method: "GET", path: "/v1/files/", expects: true},
-		{name: "with query params", method: "GET", path: "/v1/files?model=gpt-4o-mini", expects: true},
-		{name: "with query params and trailing slash", method: "GET", path: "/v1/files/?model=gpt-4o-mini", expects: true},
+		{name: "with query params", method: "GET", path: "/v1/files?backend=openai-primary", expects: true},
+		{name: "with query params and trailing slash", method: "GET", path: "/v1/files/?backend=openai-primary", expects: true},
 		{name: "not GET method", method: "POST", path: "/v1/files", expects: false},
 		{name: "DELETE method", method: "DELETE", path: "/v1/files", expects: false},
 		{name: "file id path", method: "GET", path: "/v1/files/file-abc123", expects: false},
@@ -250,7 +250,7 @@ func Test_shouldGetModelFromID(t *testing.T) {
 		{name: "GET file id endpoint", method: "GET", path: "/v1/files/file-abc123", expects: true},
 		{name: "GET file content endpoint", method: "GET", path: "/v1/files/file-abc123/content", expects: true},
 		{name: "GET file id endpoint with query", method: "GET", path: "/v1/files/file-abc123/content?download=true", expects: true},
-		{name: "GET list files endpoint", method: "GET", path: "/v1/files?model=gpt-4o-mini", expects: false},
+		{name: "GET list files endpoint", method: "GET", path: "/v1/files?backend=openai-primary", expects: false},
 		{name: "GET non-file endpoint", method: "GET", path: "/v1/chat/completions", expects: false},
 		{name: "DELETE file id endpoint", method: "DELETE", path: "/v1/files/file-abc123", expects: true},
 		{name: "DELETE non-file endpoint", method: "DELETE", path: "/v1/files", expects: false},
@@ -288,24 +288,24 @@ func Test_extractFileIDFromPath(t *testing.T) {
 	}
 }
 
-func Test_extractModelFromQueryParam(t *testing.T) {
+func Test_extractBackendFromQueryParam(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		path        string
 		expectModel string
 		expectsOK   bool
 	}{
-		{name: "model present", path: "/v1/files?model=gpt-4o-mini", expectModel: "gpt-4o-mini", expectsOK: true},
-		{name: "model with other params", path: "/v1/files?limit=10&model=text-davinci-003", expectModel: "text-davinci-003", expectsOK: true},
-		{name: "model first with other params", path: "/v1/files?model=claude-3&after=abc", expectModel: "claude-3", expectsOK: true},
+		{name: "backend present", path: "/v1/files?backend=openai-primary", expectModel: "openai-primary", expectsOK: true},
+		{name: "backend with other params", path: "/v1/files?limit=10&backend=backend-a", expectModel: "backend-a", expectsOK: true},
+		{name: "backend first with other params", path: "/v1/files?backend=backend-b&after=abc", expectModel: "backend-b", expectsOK: true},
 		{name: "no query string", path: "/v1/files", expectModel: "", expectsOK: false},
 		{name: "empty query string", path: "/v1/files?", expectModel: "", expectsOK: false},
-		{name: "query without model key", path: "/v1/files?limit=10&order=asc", expectModel: "", expectsOK: false},
-		{name: "model key with empty value", path: "/v1/files?model=", expectModel: "", expectsOK: false},
+		{name: "query without backend key", path: "/v1/files?limit=10&order=asc", expectModel: "", expectsOK: false},
+		{name: "backend key with empty value", path: "/v1/files?backend=", expectModel: "", expectsOK: false},
 		{name: "empty path", path: "", expectModel: "", expectsOK: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			model, ok := extractModelFromQueryParam(tc.path)
+			model, ok := extractBackendFromQueryParam(tc.path)
 			require.Equal(t, tc.expectsOK, ok)
 			require.Equal(t, tc.expectModel, model)
 		})
@@ -313,8 +313,8 @@ func Test_extractModelFromQueryParam(t *testing.T) {
 }
 
 func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *testing.T) {
-	t.Run("list files request sets query model and clears route cache", func(t *testing.T) {
-		path := "/v1/files?model=gpt-4o-mini&limit=10"
+	t.Run("list files request sets query backend and clears route cache", func(t *testing.T) {
+		path := "/v1/files?backend=openai-primary&limit=10"
 		p := &retrieveFileContentProcessorRouterFilter{
 			requestHeaders: map[string]string{":method": "GET", ":path": path},
 			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
@@ -329,19 +329,37 @@ func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *test
 		require.True(t, headersResp.RequestHeaders.Response.ClearRouteCache)
 
 		mutatedHeaders := headerValueOptionsToMap(headersResp.RequestHeaders.Response.HeaderMutation.SetHeaders)
-		require.Equal(t, "gpt-4o-mini", mutatedHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.Equal(t, fileRouteModelValue, mutatedHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.Equal(t, "openai-primary", mutatedHeaders[internalapi.BackendNameHeaderKey])
 		require.NotContains(t, mutatedHeaders, internalapi.DecodedFileIDHeaderKey)
 		require.NotContains(t, mutatedHeaders, internalapi.OriginalFileIDHeaderKey)
 		require.Equal(t, path, mutatedHeaders[internalapi.OriginalPathHeader])
 		require.Equal(t, path, mutatedHeaders[internalapi.EnvoyOriginalPathHeader])
 
-		require.Equal(t, "gpt-4o-mini", p.originalModel)
-		require.Equal(t, "gpt-4o-mini", p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.Empty(t, p.originalModel)
+		require.Equal(t, fileRouteModelValue, p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.Equal(t, "openai-primary", p.requestHeaders[internalapi.BackendNameHeaderKey])
 		require.NotContains(t, p.requestHeaders, internalapi.DecodedFileIDHeaderKey)
 		require.NotContains(t, p.requestHeaders, internalapi.OriginalFileIDHeaderKey)
 	})
 
-	t.Run("list files request without model returns user-facing error", func(t *testing.T) {
+	t.Run("list files request with model parameter returns user-facing error", func(t *testing.T) {
+		p := &retrieveFileContentProcessorRouterFilter{
+			requestHeaders: map[string]string{":method": "GET", ":path": "/v1/files?model=gpt-4o-mini&backend=openai"},
+			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		}
+
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+		require.True(t, ok)
+		require.Equal(t, typev3.StatusCode(400), immediateResp.ImmediateResponse.Status.Code)
+		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"'model' query parameter is not supported for /v1/files. use 'backend' query parameter instead"}}`, string(immediateResp.ImmediateResponse.Body))
+	})
+
+	t.Run("list files request without backend returns user-facing error", func(t *testing.T) {
 		p := &retrieveFileContentProcessorRouterFilter{
 			requestHeaders: map[string]string{":method": "GET", ":path": "/v1/files?limit=10"},
 			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
@@ -354,7 +372,7 @@ func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *test
 		immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
 		require.True(t, ok)
 		require.Equal(t, typev3.StatusCode(400), immediateResp.ImmediateResponse.Status.Code)
-		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"missing required 'model' query parameter for /v1/files"}}`, string(immediateResp.ImmediateResponse.Body))
+		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"missing required 'backend' query parameter for /v1/files"}}`, string(immediateResp.ImmediateResponse.Body))
 	})
 
 	t.Run("path without encoded prefix falls through to pass-through", func(t *testing.T) {
@@ -370,7 +388,7 @@ func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *test
 		immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
 		require.True(t, ok)
 		require.Equal(t, typev3.StatusCode(400), immediateResp.ImmediateResponse.Status.Code)
-		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"missing required 'model' query parameter for /v1/files"}}`, string(immediateResp.ImmediateResponse.Body))
+		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"missing required 'backend' query parameter for /v1/files"}}`, string(immediateResp.ImmediateResponse.Body))
 		require.Empty(t, p.originalModel)
 		require.NotContains(t, p.requestHeaders, internalapi.ModelNameHeaderKeyDefault)
 	})
@@ -388,7 +406,34 @@ func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *test
 		immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
 		require.True(t, ok)
 		require.Equal(t, typev3.StatusCode(400), immediateResp.ImmediateResponse.Status.Code)
-		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"failed to decode routing info from file id / batch id"}}`, string(immediateResp.ImmediateResponse.Body))
+		require.JSONEq(t, `{"type":"error","error":{"type":"BadRequest","code":"400","message":"failed to decode routing info from file id / batch id. raw ids require 'backend' query parameter"}}`, string(immediateResp.ImmediateResponse.Body))
+	})
+
+	t.Run("raw file id with backend query works", func(t *testing.T) {
+		path := "/v1/files/file-raw123/content?backend=azure-openai"
+		p := &retrieveFileContentProcessorRouterFilter{
+			requestHeaders: map[string]string{":method": "GET", ":path": path},
+			logger:         slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		}
+
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		headersResp, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
+		require.True(t, ok)
+
+		mutatedHeaders := headerValueOptionsToMap(headersResp.RequestHeaders.Response.HeaderMutation.SetHeaders)
+		require.Equal(t, "file-raw123", mutatedHeaders[internalapi.OriginalFileIDHeaderKey])
+		require.Equal(t, "file-raw123", mutatedHeaders[internalapi.DecodedFileIDHeaderKey])
+		require.Equal(t, fileRouteModelValue, mutatedHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.Equal(t, "azure-openai", mutatedHeaders[internalapi.BackendNameHeaderKey])
+
+		require.Equal(t, "file-raw123", p.requestHeaders[internalapi.OriginalFileIDHeaderKey])
+		require.Equal(t, "file-raw123", p.requestHeaders[internalapi.DecodedFileIDHeaderKey])
+		require.Equal(t, fileRouteModelValue, p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.Equal(t, "azure-openai", p.requestHeaders[internalapi.BackendNameHeaderKey])
+		require.Empty(t, p.originalModel)
 	})
 
 	t.Run("file id request sets decoded/model/backend headers and preserves pre-existing original path headers", func(t *testing.T) {
