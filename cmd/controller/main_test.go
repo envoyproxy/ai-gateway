@@ -32,6 +32,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 		require.Equal(t, "/certs", f.tlsCertDir)
 		require.Equal(t, "tls.crt", f.tlsCertName)
 		require.Equal(t, "tls.key", f.tlsKeyName)
+		require.Equal(t, 9443, f.webhookPort)
 		require.Equal(t, 4*1024*1024, f.maxRecvMsgSize)
 		require.Nil(t, f.spanRequestHeaderAttributes)
 		require.Nil(t, f.logRequestHeaderAttributes)
@@ -54,6 +55,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					tc.dash + "enableLeaderElection=false",
 					tc.dash + "logLevel=debug",
 					tc.dash + "port=:8080",
+					tc.dash + "webhookPort=19443",
 					tc.dash + "extProcExtraEnvVars=OTEL_SERVICE_NAME=test;OTEL_TRACES_EXPORTER=console",
 					tc.dash + "requestHeaderAttributes=x-tenant-id:tenant.id",
 					tc.dash + "spanRequestHeaderAttributes=x-forwarded-proto:url.scheme",
@@ -75,6 +77,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				require.False(t, f.enableLeaderElection)
 				require.Equal(t, "debug", f.logLevel.String())
 				require.Equal(t, ":8080", f.extensionServerPort)
+				require.Equal(t, 19443, f.webhookPort)
 				require.Equal(t, "OTEL_SERVICE_NAME=test;OTEL_TRACES_EXPORTER=console", f.extProcExtraEnvVars)
 				require.NotNil(t, f.requestHeaderAttributes)
 				require.Equal(t, "x-tenant-id:tenant.id", *f.requestHeaderAttributes)

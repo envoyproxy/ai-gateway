@@ -34,6 +34,11 @@ func Test_translate(t *testing.T) {
 			out:  "testdata/translate_basic.out.yaml",
 		},
 		{
+			name: "basic_v1alpha1",
+			in:   "testdata/translate_basic_v1alpha1.in.yaml",
+			out:  "testdata/translate_basic.out.yaml", // Output should be identical for both API versions
+		},
+		{
 			name: "nonairesources",
 			in:   "testdata/translate_nonairesources.yaml",
 			// The result should be the same as the input.

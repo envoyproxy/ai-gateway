@@ -13,7 +13,7 @@ import (
 	"slices"
 	"strings"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
 
 const (
@@ -27,6 +27,8 @@ const (
 	InternalEndpointMetadataNamespace = "aigateway.envoy.io"
 	// InternalMetadataBackendNameKey is the key used to store the backend name
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
+	// InternalMetadataRouteNameKey is the key used to store the route name.
+	InternalMetadataRouteNameKey = "aigw_route_name"
 	// MCPBackendHeader is the special header key used to specify the target backend name.
 	MCPBackendHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend"
 	// MCPRouteHeader is the special header key used to identify the mcp route.
@@ -53,6 +55,8 @@ const (
 	MCPMetadataHeaderRequestID = MCPMetadataHeaderPrefix + "request-id"
 	// MCPMetadataHeaderMethod is the special header key used to pass the MCP method in the filter metadata.
 	MCPMetadataHeaderMethod = MCPMetadataHeaderPrefix + "method"
+	// MCPMetadataHeaderToolName is the special header key used to pass the MCP tool name in the filter metadata.
+	MCPMetadataHeaderToolName = MCPMetadataHeaderPrefix + "tool-name"
 )
 
 // MCPInternalHeadersToMetadata maps special MCP headers to metadata keys.
@@ -60,6 +64,7 @@ var MCPInternalHeadersToMetadata = map[string]string{
 	MCPBackendHeader:           "mcp_backend",
 	MCPMetadataHeaderMethod:    "mcp_method",
 	MCPMetadataHeaderRequestID: "mcp_request_id",
+	MCPMetadataHeaderToolName:  "mcp_tool_name",
 }
 
 const (
@@ -74,6 +79,8 @@ const (
 	XDSClusterMetadataBackendNamePath = "xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
 	// XDSUpstreamHostMetadataBackendNamePath is the full attribute path to access the backend name in upstream host metadata in xDS attributes.
 	XDSUpstreamHostMetadataBackendNamePath = "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
+	// XDSRouteMetadataRouteNamePath is the full attribute path to access the route name in route metadata in xDS attributes.
+	XDSRouteMetadataRouteNamePath = "xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']"
 )
 
 // PerRouteRuleRefBackendName generates a unique backend name for a per-route rule,
@@ -228,7 +235,7 @@ func ParseEndpointPrefixes(s string) (EndpointPrefixes, error) {
 }
 
 // ModelNameHeaderKeyDefault is the default header key for the model name.
-const ModelNameHeaderKeyDefault = aigv1a1.AIModelHeaderKey
+const ModelNameHeaderKeyDefault = aigv1b1.AIModelHeaderKey
 
 // ModelNameHeaderKey is the configurable header key whose value is set by the gateway
 // based on the model extracted from the request body.
@@ -247,7 +254,7 @@ type ModelNameHeaderKey = string
 // the OriginalModel in the client request to the router.
 //
 // Configuration:
-//   - Set via aigv1a1.AIGatewayRouteRuleBackendRef
+//   - Set via aigv1b1.AIGatewayRouteRuleBackendRef
 //   - Replaces the OriginalModel with a backend-specific model name
 //
 // Example:
@@ -340,6 +347,6 @@ type ResponseModel = string
 // AIGatewayFilterMetadataNamespace is the namespace used for the filter metadata related to AI Gateway.
 //
 // For example, token usage, input/output tokens, and request costs are stored in this namespace.
-// Aliased from aigv1a1.AIGatewayFilterMetadataNamespace to avoid making ExtProc directly depend
+// Aliased from aigv1b1.AIGatewayFilterMetadataNamespace to avoid making ExtProc directly depend
 // on the control plane API which is not a concern of ExtProc.
-const AIGatewayFilterMetadataNamespace = aigv1a1.AIGatewayFilterMetadataNamespace
+const AIGatewayFilterMetadataNamespace = aigv1b1.AIGatewayFilterMetadataNamespace

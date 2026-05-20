@@ -85,7 +85,7 @@ static_resources:
                             headers:
                               - name: x-ai-eg-model
                                 string_match:
-                                  exact: us.anthropic.claude-3-5-sonnet-20240620-v1:0
+                                  exact: us.anthropic.claude-sonnet-4-5-20250929-v1:0
                           route:
                             auto_host_rewrite: true
                             cluster: aws_bedrock
@@ -107,6 +107,15 @@ static_resources:
                           route:
                             auto_host_rewrite: true
                             cluster: openai
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-ai-eg-model
+                                string_match:
+                                  exact: amazon.titan-embed-text-v2:0
+                          route:
+                            auto_host_rewrite: true
+                            cluster: aws_bedrock
                         - match:
                             prefix: "/"
                             headers:
@@ -196,6 +205,10 @@ static_resources:
                                   exact: openai
                           route:
                             cluster: testupstream-openai
+                          metadata:
+                            filter_metadata:
+                              aigateway.envoy.io:
+                                route_name: "test-ns/openai-route"
                         - match:
                             prefix: "/"
                             headers:
@@ -212,6 +225,10 @@ static_resources:
                                   exact: modelname-override
                           route:
                             cluster: testupstream-modelname-override
+                          metadata:
+                            filter_metadata:
+                              aigateway.envoy.io:
+                                route_name: "test-ns/modelname-override-route"
                         - match:
                             prefix: "/"
                             headers:

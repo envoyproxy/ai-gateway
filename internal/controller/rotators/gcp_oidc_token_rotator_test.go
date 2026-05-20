@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/tokenprovider"
 )
 
@@ -41,6 +42,18 @@ const (
 	oldGCPAccessToken  = "old-gcp-access-token" // #nosec G101
 	newGCPAccessToken  = "new-gcp-access-token" // #nosec G101
 )
+
+// TestMain initializes the shared GCP transport before running any tests.
+// This is required because the old init() function was replaced with the lazy
+// initSharedGCPTransport() using sync.Once, so tests that use newBearerAuthRoundTripper
+// (directly or via exchangeJWTForSTSToken / impersonateServiceAccount) need the
+// transport to be non-nil.
+func TestMain(m *testing.M) {
+	if err := initSharedGCPTransport(); err != nil {
+		panic("failed to initialize shared GCP transport: " + err.Error())
+	}
+	os.Exit(m.Run())
+}
 
 func TestGCPOIDCTokenRotator_Rotate(t *testing.T) {
 	scheme := runtime.NewScheme()
@@ -98,7 +111,7 @@ func TestGCPOIDCTokenRotator_Rotate(t *testing.T) {
 		{
 			name:            "failed to get sts token",
 			kubeInitObjects: []runtime.Object{oldSecret},
-			stsTokenFunc: func(_ context.Context, _ string, _ *aigv1a1.GCPWorkloadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+			stsTokenFunc: func(_ context.Context, _ string, _ *aigv1b1.GCPWorkloadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 				return nil, fmt.Errorf("fake network failure")
 			},
 			expectErrorMsg: "failed to exchange JWT for STS token (project: test-project-id, pool: test-pool-name): fake network failure",
@@ -111,7 +124,7 @@ func TestGCPOIDCTokenRotator_Rotate(t *testing.T) {
 		{
 			name:            "failed to impersonate service account",
 			kubeInitObjects: []runtime.Object{oldSecret},
-			saTokenFunc: func(_ context.Context, _ string, _ aigv1a1.GCPServiceAccountImpersonationConfig, _ string, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+			saTokenFunc: func(_ context.Context, _ string, _ aigv1b1.GCPServiceAccountImpersonationConfig, _ string, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 				return nil, fmt.Errorf("fake network failure")
 			},
 			expectErrorMsg: "failed to impersonate service account test-service-account@dummy-project-name.iam.gserviceaccount.com: fake network failure",
@@ -195,25 +208,25 @@ func TestGCPOIDCTokenRotator_Rotate(t *testing.T) {
 
 			// If no saTokenFunc or stsTokenFunc is provided, use the default mock functions.
 			if tt.saTokenFunc == nil {
-				tt.saTokenFunc = func(_ context.Context, _ string, _ aigv1a1.GCPServiceAccountImpersonationConfig, _ string, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+				tt.saTokenFunc = func(_ context.Context, _ string, _ aigv1b1.GCPServiceAccountImpersonationConfig, _ string, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 					return &tokenprovider.TokenExpiry{Token: newGCPAccessToken, ExpiresAt: twoHourAfterNow}, nil
 				}
 			}
 			if tt.stsTokenFunc == nil {
-				tt.stsTokenFunc = func(_ context.Context, _ string, _ *aigv1a1.GCPWorkloadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
+				tt.stsTokenFunc = func(_ context.Context, _ string, _ *aigv1b1.GCPWorkloadIdentityFederationConfig, _ ...option.ClientOption) (*tokenprovider.TokenExpiry, error) {
 					return &tokenprovider.TokenExpiry{Token: dummySTSToken, ExpiresAt: twoHourAfterNow}, nil
 				}
 			}
-			gcpCredentials := aigv1a1.BackendSecurityPolicyGCPCredentials{
+			gcpCredentials := aigv1b1.BackendSecurityPolicyGCPCredentials{
 				ProjectName: dummyProjectName,
 				Region:      dummyProjectRegion,
-				WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
+				WorkloadIdentityFederationConfig: &aigv1b1.GCPWorkloadIdentityFederationConfig{
 					ProjectID:                "test-project-id",
 					WorkloadIdentityPoolName: "test-pool-name",
 				},
 			}
 			if !tt.skipServiceAccountImpersonation {
-				gcpCredentials.WorkloadIdentityFederationConfig.ServiceAccountImpersonation = &aigv1a1.GCPServiceAccountImpersonationConfig{
+				gcpCredentials.WorkloadIdentityFederationConfig.ServiceAccountImpersonation = &aigv1b1.GCPServiceAccountImpersonationConfig{
 					ServiceAccountName: "test-service-account",
 				}
 			}
@@ -350,7 +363,7 @@ func TestGCPOIDCTokenRotator_GetPreRotationTime(t *testing.T) {
 				preRotationWindow:              5 * time.Minute,
 				backendSecurityPolicyName:      "test-policy",
 				backendSecurityPolicyNamespace: "default",
-				gcpCredentials:                 aigv1a1.BackendSecurityPolicyGCPCredentials{},
+				gcpCredentials:                 aigv1b1.BackendSecurityPolicyGCPCredentials{},
 			}
 
 			got, err := testRotator.GetPreRotationTime(context.Background())
@@ -402,7 +415,7 @@ func TestExchangeJWTForSTSToken(t *testing.T) {
 	tests := []struct {
 		name            string
 		jwtToken        string
-		wifConfig       aigv1a1.GCPWorkloadIdentityFederationConfig
+		wifConfig       aigv1b1.GCPWorkloadIdentityFederationConfig
 		mockServer      func() *httptest.Server
 		expectedError   bool
 		expectedToken   string
@@ -411,7 +424,7 @@ func TestExchangeJWTForSTSToken(t *testing.T) {
 		{
 			name:     "successful token exchange",
 			jwtToken: "test-jwt-token",
-			wifConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+			wifConfig: aigv1b1.GCPWorkloadIdentityFederationConfig{
 				ProjectID:                    "test-project",
 				WorkloadIdentityPoolName:     "test-pool",
 				WorkloadIdentityProviderName: "test-provider",
@@ -444,7 +457,7 @@ func TestExchangeJWTForSTSToken(t *testing.T) {
 		{
 			name:     "token exchange error",
 			jwtToken: "invalid-jwt-token",
-			wifConfig: aigv1a1.GCPWorkloadIdentityFederationConfig{
+			wifConfig: aigv1b1.GCPWorkloadIdentityFederationConfig{
 				ProjectID:                    "test-project",
 				WorkloadIdentityPoolName:     "test-pool",
 				WorkloadIdentityProviderName: "test-provider",
@@ -518,7 +531,7 @@ func TestExchangeJWTForSTSToken_WithoutAuthOption(t *testing.T) {
 	defer server.Close()
 
 	jwtToken := "test-jwt-token" // #nosec G101
-	wifConfig := &aigv1a1.GCPWorkloadIdentityFederationConfig{
+	wifConfig := &aigv1b1.GCPWorkloadIdentityFederationConfig{
 		ProjectID:                    "test-project",
 		WorkloadIdentityPoolName:     "test-pool",
 		WorkloadIdentityProviderName: "test-provider",
@@ -553,7 +566,7 @@ func TestImpersonateServiceAccount(t *testing.T) {
 		stsToken    string
 		saName      string
 		projectName string
-		saConfig    aigv1a1.GCPServiceAccountImpersonationConfig
+		saConfig    aigv1b1.GCPServiceAccountImpersonationConfig
 		// impersonateServiceAccount is hardcoded to call google api endpoint and ignore mockEndpoints set via opts.
 		// thus we mock the underlying HTTPRoundTripper to simulate mock responses.
 		mockResponse  func(req *http.Request) (*http.Response, error)
@@ -623,7 +636,7 @@ func TestImpersonateServiceAccount(t *testing.T) {
 		{
 			name:     "credentials creation error",
 			stsToken: "test-sts-token",
-			saConfig: aigv1a1.GCPServiceAccountImpersonationConfig{
+			saConfig: aigv1b1.GCPServiceAccountImpersonationConfig{
 				ServiceAccountName: "test-service-account",
 			},
 			mockResponse: func(_ *http.Request) (*http.Response, error) {
@@ -672,7 +685,7 @@ func TestNewGCPOIDCTokenRotator(t *testing.T) {
 	// without monkey patching the NewOidcTokenProvider function.
 
 	// Define OIDC values based on the real Envoy Gateway API types.
-	validOIDCConfig := aigv1a1.BackendSecurityPolicyOIDC{
+	validOIDCConfig := aigv1b1.BackendSecurityPolicyOIDC{
 		OIDC: egv1a1.OIDC{
 			ClientID: ptr.To("client-id"),
 			Scopes:   []string{"scope1", "scope2"},
@@ -681,17 +694,17 @@ func TestNewGCPOIDCTokenRotator(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		bsp           aigv1a1.BackendSecurityPolicy
+		bsp           aigv1b1.BackendSecurityPolicy
 		expectedError string
 	}{
 		{
 			name: "nil GCP credentials",
-			bsp: aigv1a1.BackendSecurityPolicy{
+			bsp: aigv1b1.BackendSecurityPolicy{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-policy",
 					Namespace: "default",
 				},
-				Spec: aigv1a1.BackendSecurityPolicySpec{
+				Spec: aigv1b1.BackendSecurityPolicySpec{
 					GCPCredentials: nil,
 				},
 			},
@@ -699,23 +712,23 @@ func TestNewGCPOIDCTokenRotator(t *testing.T) {
 		},
 		{
 			name: "success",
-			bsp: aigv1a1.BackendSecurityPolicy{
+			bsp: aigv1b1.BackendSecurityPolicy{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-success-policy",
 					Namespace: "default",
 				},
-				Spec: aigv1a1.BackendSecurityPolicySpec{
-					GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
+				Spec: aigv1b1.BackendSecurityPolicySpec{
+					GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{
 						ProjectName: "test-project",
 						Region:      "us-central1",
-						WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
+						WorkloadIdentityFederationConfig: &aigv1b1.GCPWorkloadIdentityFederationConfig{
 							ProjectID:                    "test-project-id",
 							WorkloadIdentityPoolName:     "test-pool-name",
 							WorkloadIdentityProviderName: "test-provider",
-							ServiceAccountImpersonation: &aigv1a1.GCPServiceAccountImpersonationConfig{
+							ServiceAccountImpersonation: &aigv1b1.GCPServiceAccountImpersonationConfig{
 								ServiceAccountName: "test-service-account",
 							},
-							OIDCExchangeToken: aigv1a1.GCPOIDCExchangeToken{
+							OIDCExchangeToken: aigv1b1.GCPOIDCExchangeToken{
 								BackendSecurityPolicyOIDC: validOIDCConfig,
 							},
 						},
@@ -766,6 +779,38 @@ func TestNewGCPOIDCTokenRotator(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestNewGCPOIDCTokenRotatorInvalidProxyURL tests that NewGCPOIDCTokenRotator returns an error
+// when initSharedGCPTransport fails due to a malformed proxy URL.
+func TestNewGCPOIDCTokenRotatorInvalidProxyURL(t *testing.T) {
+	// Save and restore all shared transport state so this test is isolated.
+	// sync.Once cannot be copied, so reset it to a fresh value in the defer.
+	origTransport := sharedGCPTransport
+	origErr := sharedGCPTransportErr
+	defer func() {
+		sharedGCPTransport = origTransport
+		sharedGCPTransportOnce = sync.Once{}
+		sharedGCPTransportErr = origErr
+	}()
+
+	// Reset sync.Once and error so initSharedGCPTransport runs again.
+	sharedGCPTransportOnce = sync.Once{}
+	sharedGCPTransportErr = nil
+	sharedGCPTransport = nil
+
+	// Set an invalid proxy URL to trigger a parse error inside initSharedGCPTransport.
+	t.Setenv("AI_GATEWAY_GCP_AUTH_PROXY_URL", "://invalid-proxy-url")
+
+	bsp := &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-policy", Namespace: "default"},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{},
+		},
+	}
+	mockTokenProvider := tokenprovider.NewMockTokenProvider("mock-jwt-token", time.Now().Add(time.Hour), nil)
+	_, err := NewGCPOIDCTokenRotator(fake.NewFakeClient(), logr.Logger{}, bsp, 30*time.Minute, mockTokenProvider)
+	require.ErrorContains(t, err, "error initializing GCP transport:")
 }
 
 // errorOnCreateClient is a client that returns an error on Create.
@@ -821,74 +866,22 @@ func (c *errorOnGetClient) Get(_ context.Context, _ client.ObjectKey, _ client.O
 
 func TestNewBearerAuthRoundTripper(t *testing.T) {
 	tests := []struct {
-		name        string
-		token       string
-		proxyURL    string
-		setProxyEnv bool
-		wantErr     bool
+		name  string
+		token string
 	}{
 		{
-			name:        "no proxy, no token",
-			token:       "",
-			setProxyEnv: false,
-			wantErr:     false,
+			name:  "empty token",
+			token: "",
 		},
 		{
-			name:        "no proxy, with token",
-			token:       "test-token",
-			setProxyEnv: false,
-			wantErr:     false,
-		},
-		{
-			name:        "empty proxy, with token",
-			token:       "test-token",
-			proxyURL:    "",
-			setProxyEnv: true,
-			wantErr:     false,
-		},
-		{
-			name:        "with valid proxy, no token",
-			token:       "",
-			proxyURL:    "http://proxy.example.com:3128",
-			setProxyEnv: true,
-			wantErr:     false,
-		},
-		{
-			name:        "with valid proxy and token",
-			token:       "test-token",
-			proxyURL:    "https://secure-proxy.example.com:8443",
-			setProxyEnv: true,
-			wantErr:     false,
+			name:  "with token",
+			token: "test-token",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save original environment variable.
-			originalProxyURL := os.Getenv("AI_GATEWAY_GCP_AUTH_PROXY_URL")
-			defer func() {
-				if originalProxyURL != "" {
-					os.Setenv("AI_GATEWAY_GCP_AUTH_PROXY_URL", originalProxyURL)
-				} else {
-					os.Unsetenv("AI_GATEWAY_GCP_AUTH_PROXY_URL")
-				}
-			}()
-
-			if tt.setProxyEnv {
-				os.Setenv("AI_GATEWAY_GCP_AUTH_PROXY_URL", tt.proxyURL)
-			} else {
-				os.Unsetenv("AI_GATEWAY_GCP_AUTH_PROXY_URL")
-			}
-
-			// Call the function under test.
 			roundTripper, err := newBearerAuthRoundTripper(tt.token)
-
-			// Validate error expectation.
-			if tt.wantErr {
-				require.Error(t, err)
-				require.Nil(t, roundTripper)
-				return
-			}
 
 			require.NoError(t, err)
 			require.NotNil(t, roundTripper)

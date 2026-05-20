@@ -282,7 +282,7 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseBody(t *testing.T) {
 					}
 				]
 			}`,
-			wantTokenUsage: tokenUsageFrom(5, -1, -1, -1, 5),
+			wantTokenUsage: tokenUsageFrom(5, -1, -1, -1, 5, -1),
 			wantResponseBody: openai.EmbeddingResponse{
 				Object: "list",
 				Model:  "text-embedding-004",
@@ -305,7 +305,7 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseBody(t *testing.T) {
 			gcpResponse: `{
 				"predictions": null
 			}`,
-			wantTokenUsage: tokenUsageFrom(0, -1, -1, -1, 0),
+			wantTokenUsage: tokenUsageFrom(0, -1, -1, -1, 0, -1),
 			wantResponseBody: openai.EmbeddingResponse{
 				Object: "list",
 				Model:  "text-embedding-004",
@@ -331,7 +331,7 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseBody(t *testing.T) {
 					}
 				]
 			}`,
-			wantTokenUsage: tokenUsageFrom(3, -1, -1, -1, 3),
+			wantTokenUsage: tokenUsageFrom(3, -1, -1, -1, 3, -1),
 			wantResponseBody: openai.EmbeddingResponse{
 				Object: "list",
 				Model:  "text-embedding-004",
@@ -389,7 +389,7 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseBody(t *testing.T) {
 					}
 				]
 			}`,
-			wantTokenUsage: tokenUsageFrom(12, -1, -1, -1, 12), // 3 + 4 + 5 = 12
+			wantTokenUsage: tokenUsageFrom(12, -1, -1, -1, 12, -1), // 3 + 4 + 5 = 12
 			wantResponseBody: openai.EmbeddingResponse{
 				Object: "list",
 				Model:  "text-embedding-004",
@@ -434,7 +434,7 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseBody(t *testing.T) {
 					}
 				]
 			}`,
-			wantTokenUsage: tokenUsageFrom(10, -1, -1, -1, 10),
+			wantTokenUsage: tokenUsageFrom(10, -1, -1, -1, 10, -1),
 			wantResponseBody: openai.EmbeddingResponse{
 				Object: "list",
 				Model:  "text-embedding-004",
@@ -463,7 +463,7 @@ func TestOpenAIToGCPVertexAITranslatorV1Embedding_ResponseBody(t *testing.T) {
 					}
 				]
 			}`,
-			wantTokenUsage: tokenUsageFrom(0, -1, -1, -1, 0), // No statistics provided
+			wantTokenUsage: tokenUsageFrom(0, -1, -1, -1, 0, -1), // No statistics provided
 			wantResponseBody: openai.EmbeddingResponse{
 				Object: "list",
 				Model:  "text-embedding-004",

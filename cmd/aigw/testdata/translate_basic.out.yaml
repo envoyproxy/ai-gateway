@@ -70,7 +70,7 @@ metadata:
     gateway.envoyproxy.io/backend-ref-priority: 0:envoy-ai-gateway-basic-openai:0,1:envoy-ai-gateway-basic-aws:0,2:envoy-ai-gateway-basic-testupstream:0
     gateway.envoyproxy.io/ai-gateway-generated: "true"
   ownerReferences:
-    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+    - apiVersion: aigateway.envoyproxy.io/v1beta1
       blockOwnerDeletion: true
       controller: true
       kind: AIGatewayRoute
@@ -156,7 +156,7 @@ metadata:
   name: ai-eg-host-rewrite-envoy-ai-gateway-basic
   namespace: default
   ownerReferences:
-    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+    - apiVersion: aigateway.envoyproxy.io/v1beta1
       kind: AIGatewayRoute
       name: envoy-ai-gateway-basic
       uid: ""
@@ -173,7 +173,7 @@ metadata:
   name: ai-eg-route-not-found-response-envoy-ai-gateway-basic
   namespace: default
   ownerReferences:
-    - apiVersion: aigateway.envoyproxy.io/v1alpha1
+    - apiVersion: aigateway.envoyproxy.io/v1beta1
       kind: AIGatewayRoute
       name: envoy-ai-gateway-basic
       uid: ""
@@ -192,11 +192,11 @@ metadata:
   name: envoy-ai-gateway-basic-default-21a9f8f801bd
 stringData:
   index.yaml: |
-    checksum: 4688edcd560882a731a3a5c288e97d5d51748bfda435c456eb4249680ef159a1
+    checksum: 715d03a335eb2a5e469e0fd1a022b4bf0b064e2ee2bf5f5c431dbdc3f30498c5
     parts:
     - name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-000
       path: parts/000
-      sizeBytes: 1054
+      sizeBytes: 1022
     uuid: aigw-translate
     version: dev
 ---
@@ -215,7 +215,6 @@ stringData:
       schema:
         name: OpenAI
         prefix: v1
-        version: v1
     - auth:
         aws:
           credentialFileLiteral: |
@@ -232,7 +231,6 @@ stringData:
       schema:
         name: OpenAI
         prefix: v1
-        version: v1
     models:
     - CreatedAt: "2025-05-23T00:00:00Z"
       Name: gpt-4o-mini
@@ -261,7 +259,6 @@ stringData:
       schema:
         name: OpenAI
         prefix: v1
-        version: v1
     - auth:
         aws:
           credentialFileLiteral: |
@@ -278,7 +275,6 @@ stringData:
       schema:
         name: OpenAI
         prefix: v1
-        version: v1
     models:
     - CreatedAt: "2025-05-23T00:00:00Z"
       Name: gpt-4o-mini

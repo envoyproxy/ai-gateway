@@ -249,6 +249,70 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 		cacheCreationTokens, ok := tokenUsage.CacheCreationInputTokens()
 		require.True(t, ok)
 		require.Equal(t, uint32(0), cacheCreationTokens)
+
+		reasoningTokens, ok := tokenUsage.ReasoningTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), reasoningTokens)
+	})
+
+	t.Run("non-streaming response with reasoning tokens", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+
+		req := &openai.ResponseRequest{
+			Model:  "o1",
+			Stream: false,
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
+			},
+		}
+		original := []byte(`{"model":"o1","input":"Hi"}`)
+		_, _, err := translator.RequestBody(original, req, false)
+		require.NoError(t, err)
+
+		respJSON := []byte(`{
+			"id": "resp_123",
+			"object": "response",
+			"created_at": 1741476542,
+			"status": "completed",
+			"model": "o1-2024-12-17",
+			"output": [
+				{
+					"type": "message",
+					"id": "msg_123",
+					"status": "completed",
+					"role": "assistant",
+					"content": [
+						{
+							"type": "output_text",
+							"text": "Hello!"
+						}
+					]
+				}
+			],
+			"usage": {
+				"input_tokens": 10,
+				"input_tokens_details": {
+					"cached_tokens": 0
+				},
+				"output_tokens": 25,
+				"output_tokens_details": {
+					"reasoning_tokens": 15
+				},
+				"total_tokens": 35
+			}
+		}`)
+
+		_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(respJSON), false, nil)
+		require.NoError(t, err)
+		require.Equal(t, "o1-2024-12-17", responseModel)
+
+		reasoningTokens, ok := tokenUsage.ReasoningTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(15), reasoningTokens)
+
+		outputTokens, ok := tokenUsage.OutputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(25), outputTokens)
 	})
 
 	t.Run("non-streaming response with fallback model", func(t *testing.T) {
@@ -365,6 +429,45 @@ data: [DONE]
 		cacheCreationTokens, ok := tokenUsage.CacheCreationInputTokens()
 		require.True(t, ok)
 		require.Equal(t, uint32(0), cacheCreationTokens)
+
+		reasoningTokens, ok := tokenUsage.ReasoningTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), reasoningTokens)
+	})
+
+	t.Run("streaming response with reasoning tokens", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+
+		req := &openai.ResponseRequest{
+			Model:  "o1",
+			Stream: true,
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
+			},
+		}
+		original := []byte(`{"model":"o1","input":"Hi","stream":true}`)
+		_, _, err := translator.RequestBody(original, req, false)
+		require.NoError(t, err)
+		require.True(t, translator.stream)
+
+		sseChunks := `data: {"type":"response.created","response":{"model":"o1-2024-12-17"}}
+
+data: {"type":"response.completed","response":{"id":"resp_123","object":"response","created_at":1741476542,"status":"completed","model":"o1-2024-12-17","output":[{"type":"message","id":"msg_123","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Hello!"}]}],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},"output_tokens":25,"output_tokens_details":{"reasoning_tokens":15},"total_tokens":35}}}
+
+data: [DONE]
+
+`
+		_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(sseChunks)), true, nil)
+		require.NoError(t, err)
+		require.Equal(t, "o1-2024-12-17", responseModel)
+
+		reasoningTokens, ok := tokenUsage.ReasoningTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(15), reasoningTokens)
+
+		outputTokens, ok := tokenUsage.OutputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(25), outputTokens)
 	})
 
 	t.Run("streaming response with fallback model", func(t *testing.T) {
@@ -464,6 +567,10 @@ data: [DONE]
 		cacheCreationTokens, ok := tokenUsage.CacheCreationInputTokens()
 		require.True(t, ok)
 		require.Equal(t, uint32(0), cacheCreationTokens)
+
+		reasoningTokens, ok := tokenUsage.ReasoningTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), reasoningTokens)
 	})
 
 	t.Run("streaming read error", func(t *testing.T) {
@@ -556,6 +663,10 @@ func TestResponses_HandleNonStreamingResponse(t *testing.T) {
 		cacheCreationTokens, ok := tokenUsage.CacheCreationInputTokens()
 		require.True(t, ok)
 		require.Equal(t, uint32(0), cacheCreationTokens)
+
+		reasoningTokens, ok := tokenUsage.ReasoningTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), reasoningTokens)
 	})
 
 	t.Run("invalid JSON", func(t *testing.T) {
@@ -621,6 +732,10 @@ data: [DONE]
 		cacheCreationTokens, ok := tokenUsage.CacheCreationInputTokens()
 		require.True(t, ok)
 		require.Equal(t, uint32(0), cacheCreationTokens)
+
+		reasoningTokens, ok := tokenUsage.ReasoningTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), reasoningTokens)
 	})
 
 	t.Run("model extraction", func(t *testing.T) {

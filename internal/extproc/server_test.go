@@ -119,6 +119,35 @@ func TestServer_processMsg(t *testing.T) {
 		require.NotNil(t, resp)
 		require.Equal(t, expResponse, resp)
 	})
+	t.Run("request headers with immediate response (missing required header)", func(t *testing.T) {
+		s, p := requireNewServerWithMockProcessor(t)
+		ctx := context.WithValue(t.Context(), loggerContextKey, slog.Default())
+
+		hm := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}}}
+		// Simulate what happens when ProcessRequestHeaders returns an error response
+		expResponse := &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+				ImmediateResponse: &extprocv3.ImmediateResponse{
+					Status: &typev3.HttpStatus{Code: typev3.StatusCode_BadRequest},
+					Body:   []byte(`{"type":"error","error":{"type":"BadRequest","code":"400","message":"missing required header"}}`),
+				},
+			},
+		}
+		p.t = t
+		p.expHeaderMap = hm
+		p.retProcessingResponse = expResponse
+		req := &extprocv3.ProcessingRequest{
+			Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{Headers: hm}},
+		}
+		// This should not panic even though response type is ImmediateResponse
+		resp, err := s.processMsg(ctx, p, req, "test-req-id", false)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, expResponse, resp)
+		// Verify it's actually an ImmediateResponse
+		_, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+		require.True(t, ok, "expected ImmediateResponse type")
+	})
 	t.Run("request body with immediate response (malformed request)", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
 		ctx := context.WithValue(t.Context(), loggerContextKey, slog.Default())
@@ -299,6 +328,9 @@ func TestServer_setBackend(t *testing.T) {
 						attributeKey: {Kind: &structpb.Value_StringValue{
 							StringValue: "openai",
 						}},
+						internalapi.XDSRouteMetadataRouteNamePath: {Kind: &structpb.Value_StringValue{
+							StringValue: "route-a",
+						}},
 					}},
 				},
 				Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{}},
@@ -367,6 +399,20 @@ func TestResolveBackendName(t *testing.T) {
 			require.Equal(t, tc.expected, actual)
 		})
 	}
+}
+
+func TestResolveRouteName(t *testing.T) {
+	const routeName = "my-route"
+	attributes := &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			internalapi.XDSRouteMetadataRouteNamePath: structpb.NewStringValue(routeName),
+		},
+	}
+	actual := resolveRouteName(attributes)
+	require.Equal(t, routeName, actual)
+
+	actual = resolveRouteName(&structpb.Struct{Fields: map[string]*structpb.Value{}})
+	require.Empty(t, actual)
 }
 
 func TestServer_ProcessorSelection(t *testing.T) {

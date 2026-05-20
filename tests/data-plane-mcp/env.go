@@ -357,3 +357,20 @@ func requireMCPSpanWithException(t *testing.T, span *tracev1.Span, expectedName 
 	}
 	require.True(t, foundException, "expected span to have exception event but none found")
 }
+
+// backendsFromSpan extracts backend names from "route to backend" events in the span.
+func backendsFromSpan(t *testing.T, span *tracev1.Span) []string {
+	t.Helper()
+	// Extract backends from span events
+	var backends []string
+	for _, event := range span.Events {
+		if event.Name == "route to backend" {
+			for _, attr := range event.Attributes {
+				if attr.Key == "mcp.backend.name" {
+					backends = append(backends, attr.Value.GetStringValue())
+				}
+			}
+		}
+	}
+	return backends
+}

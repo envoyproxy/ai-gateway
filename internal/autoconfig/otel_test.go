@@ -64,7 +64,7 @@ func TestPopulateOTELLogEnvConfig(t *testing.T) {
 				"OTEL_RESOURCE_ATTRIBUTES":    "service.name=attr-service,service.version=v1",
 			},
 			expectBackends: []Backend{
-				{Name: "otel", Hostname: "collector", Port: 4317, NeedsTLS: false},
+				{Name: "otel", Hostname: "collector", Port: 4317, NeedsTLS: false, IsTelemetry: true},
 			},
 			expectLog: &otelLogConfig{
 				Exporter:    "otlp",
@@ -83,7 +83,7 @@ func TestPopulateOTELLogEnvConfig(t *testing.T) {
 				"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs:4317",
 			},
 			expectBackends: []Backend{
-				{Name: "otel-logs", Hostname: "logs", Port: 4317, NeedsTLS: false},
+				{Name: "otel-logs", Hostname: "logs", Port: 4317, NeedsTLS: false, IsTelemetry: true},
 			},
 			expectLog: &otelLogConfig{
 				Exporter:    "otlp",
@@ -96,7 +96,7 @@ func TestPopulateOTELLogEnvConfig(t *testing.T) {
 				"OTEL_EXPORTER_OTLP_ENDPOINT": "https://secure.example.com",
 			},
 			expectBackends: []Backend{
-				{Name: "otel", Hostname: "secure.example.com", Port: 443, NeedsTLS: true},
+				{Name: "otel", Hostname: "secure.example.com", Port: 443, NeedsTLS: true, IsTelemetry: true},
 			},
 			expectLog: &otelLogConfig{
 				Exporter:    "otlp",
@@ -109,7 +109,7 @@ func TestPopulateOTELLogEnvConfig(t *testing.T) {
 				"OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector",
 			},
 			expectBackends: []Backend{
-				{Name: "otel", Hostname: "collector", Port: 80, NeedsTLS: false},
+				{Name: "otel", Hostname: "collector", Port: 80, NeedsTLS: false, IsTelemetry: true},
 			},
 			expectLog: &otelLogConfig{
 				Exporter:    "otlp",
@@ -122,7 +122,7 @@ func TestPopulateOTELLogEnvConfig(t *testing.T) {
 				"OTEL_EXPORTER_OTLP_ENDPOINT": "http://10.0.0.5",
 			},
 			expectBackends: []Backend{
-				{Name: "otel", IP: "10.0.0.5", Port: 80, NeedsTLS: false},
+				{Name: "otel", IP: "10.0.0.5", Port: 80, NeedsTLS: false, IsTelemetry: true},
 			},
 			expectLog: &otelLogConfig{
 				Exporter:    "otlp",
@@ -138,7 +138,7 @@ func TestPopulateOTELLogEnvConfig(t *testing.T) {
 				"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://collector:4317",
 			},
 			expectBackends: []Backend{
-				{Name: "otel-logs", Hostname: "collector", Port: 4317, NeedsTLS: false},
+				{Name: "otel-logs", Hostname: "collector", Port: 4317, NeedsTLS: false, IsTelemetry: true},
 			},
 			expectLog: &otelLogConfig{
 				Exporter:    "otlp",
@@ -154,7 +154,7 @@ func TestPopulateOTELLogEnvConfig(t *testing.T) {
 				"OTEL_SERVICE_NAME":           "override",
 			},
 			expectBackends: []Backend{
-				{Name: "otel", Hostname: "collector", Port: 4317, NeedsTLS: false},
+				{Name: "otel", Hostname: "collector", Port: 4317, NeedsTLS: false, IsTelemetry: true},
 			},
 			expectLog: &otelLogConfig{
 				Exporter:    "otlp",

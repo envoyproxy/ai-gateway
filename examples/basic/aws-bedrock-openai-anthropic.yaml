@@ -15,7 +15,7 @@
 # - When migrating from OpenAI to Claude on AWS without changing client code
 # - When using tools that only support OpenAI format but need Claude on AWS
 
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: envoy-ai-gateway-aws-bedrock-claude-openai-format
@@ -34,7 +34,7 @@ spec:
       backendRefs:
         - name: envoy-ai-gateway-aws-bedrock-claude-openai
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: envoy-ai-gateway-aws-bedrock-claude-openai
@@ -52,7 +52,7 @@ spec:
     kind: Backend
     group: gateway.envoyproxy.io
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: envoy-ai-gateway-aws-bedrock-credentials

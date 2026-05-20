@@ -1,5 +1,13 @@
 [
     {
+        "date": "2026-03-25",
+        "title": "The Future of AI Traffic: What's New in Envoy AI Gateway 2026",
+        "url": "https://kccnceu2026.sched.com/event/372ab7dc653c2138e0485e5ed7e3456a?iframe=no",
+        "event": "EnvoyCon Europe 2026",
+        "speaker": "Xiaolin Lin (Bloomberg)",
+        "description": "In 2025, we crossed a major milestone — Envoy AI Gateway went from vision to production-ready reality. Now, we're just getting started. This talk looks ahead to what's coming in 2026: new capabilities and the next frontier of AI traffic management. Come learn what we built, what we learned along the way, and where we're taking it next."
+    },
+    {
         "date": "2026-03-23",
         "title": "Scaling LLMs at Bloomberg Using Envoy AI Gateway: A Hybrid Cloud Approach",
         "url": "https://colocatedeventseu2026.sched.com/event/2DY8Z/scaling-llms-at-bloomberg-using-envoy-ai-gateway-a-hybrid-cloud-approach-xiaolin-lin-bloomberg",

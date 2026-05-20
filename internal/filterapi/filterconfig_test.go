@@ -22,6 +22,7 @@ schema:
   name: OpenAI
 llmRequestCosts:
 - metadataKey: token_usage_key
+  routeName: ns/my-route
   type: OutputToken
 `
 	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
@@ -32,6 +33,7 @@ llmRequestCosts:
 		LLMRequestCosts: []filterapi.LLMRequestCost{
 			{
 				MetadataKey: "token_usage_key",
+				RouteName:   "ns/my-route",
 				Type:        filterapi.LLMRequestCostTypeOutputToken,
 			},
 		},

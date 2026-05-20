@@ -23,7 +23,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
@@ -71,6 +71,10 @@ func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3
 	httpConManager := &httpconnectionmanagerv3.HttpConnectionManager{
 		StatPrefix: fmt.Sprintf("%s-http", mcpBackendListenerName),
 		AccessLog:  accessLogConfig,
+		// Match the :scheme pseudo-header to the upstream transport protocol.
+		SchemeHeaderTransformation: &corev3.SchemeHeaderTransformation{
+			MatchUpstream: true,
+		},
 		RouteSpecifier: &httpconnectionmanagerv3.HttpConnectionManager_Rds{
 			Rds: &httpconnectionmanagerv3.Rds{
 				RouteConfigName: fmt.Sprintf("%s-route-config", mcpBackendListenerName),
@@ -100,7 +104,7 @@ func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3
 			&htomv3.Config_Rule{
 				Header: h,
 				OnHeaderPresent: &htomv3.Config_KeyValuePair{
-					MetadataNamespace: aigv1a1.AIGatewayFilterMetadataNamespace,
+					MetadataNamespace: aigv1b1.AIGatewayFilterMetadataNamespace,
 					Key:               m,
 					Type:              htomv3.Config_STRING,
 				},

@@ -127,6 +127,11 @@ func (o *openAIToOpenAITranslatorV1Completion) ResponseBody(_ map[string]string,
 				tokenUsage.SetCacheCreationInputTokens(uint32(resp.Usage.PromptTokensDetails.CacheCreationTokens)) //nolint:gosec
 			}
 		}
+		if resp.Usage.CompletionTokensDetails != nil {
+			if resp.Usage.CompletionTokensDetails.ReasoningTokens >= 0 {
+				tokenUsage.SetReasoningTokens(uint32(resp.Usage.CompletionTokensDetails.ReasoningTokens)) //nolint:gosec
+			}
+		}
 	}
 
 	// Record non-streaming response to span if tracing is enabled.
@@ -181,6 +186,9 @@ func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent(span 
 			if usage.PromptTokensDetails != nil {
 				tokenUsage.SetCachedInputTokens(uint32(usage.PromptTokensDetails.CachedTokens))               //nolint:gosec
 				tokenUsage.SetCacheCreationInputTokens(uint32(usage.PromptTokensDetails.CacheCreationTokens)) //nolint:gosec
+			}
+			if usage.CompletionTokensDetails != nil {
+				tokenUsage.SetReasoningTokens(uint32(usage.CompletionTokensDetails.ReasoningTokens)) //nolint:gosec
 			}
 			// Do not mark buffering done; keep scanning to return the latest usage in this batch.
 		}

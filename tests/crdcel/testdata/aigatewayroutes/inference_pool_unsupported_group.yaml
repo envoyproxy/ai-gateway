@@ -5,7 +5,7 @@
 
 # This should fail validation: only InferencePool from inference.networking.k8s.io group is supported
 
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: inference-pool-unsupported-group

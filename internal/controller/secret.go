@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
 
 // secretController implements reconcile.TypedReconciler for corev1.Secret.
@@ -62,7 +62,7 @@ func (c *secretController) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 // syncSecret syncs the state of all resource referencing the given secret.
 func (c *secretController) syncSecret(ctx context.Context, namespace, name string) error {
-	var backendSecurityPolicies aigv1a1.BackendSecurityPolicyList
+	var backendSecurityPolicies aigv1b1.BackendSecurityPolicyList
 	err := c.client.List(ctx, &backendSecurityPolicies,
 		client.MatchingFields{
 			k8sClientIndexSecretToReferencingBackendSecurityPolicy: backendSecurityPolicyKey(namespace, name),
@@ -78,7 +78,7 @@ func (c *secretController) syncSecret(ctx context.Context, namespace, name strin
 		c.backendSecurityPolicyEventChan <- event.GenericEvent{Object: backendSecurityPolicy}
 	}
 
-	var mcpRoutes aigv1a1.MCPRouteList
+	var mcpRoutes aigv1b1.MCPRouteList
 	err = c.client.List(ctx, &mcpRoutes,
 		client.MatchingFields{
 			k8sClientIndexSecretToReferencingMCPRoute: fmt.Sprintf("%s.%s", name, namespace),

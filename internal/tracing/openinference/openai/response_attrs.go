@@ -271,22 +271,32 @@ func setResponseOutputAttrs(output *openai.ResponseOutputItemUnion, attrs []attr
 
 func setResponseOutputMsgAttrs(o *openai.ResponseOutputMessage, attrs []attribute.KeyValue, config *openinference.TraceConfig, messageIndex int) []attribute.KeyValue {
 	attrs = append(attrs, attribute.String(openinference.OutputMessageAttribute(messageIndex, openinference.MessageRole), o.Role))
-	for i, content := range o.Content {
-		switch {
-		case content.OfOutputText != nil:
-			attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, i, "type"), "text"))
-			if config.HideOutputText {
-				attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, i, "text"), openinference.RedactedValue))
-			} else {
-				attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, i, "text"), content.OfOutputText.Text))
+	switch {
+	case o.Content.OfContentArray != nil:
+		for i, content := range o.Content.OfContentArray {
+			switch {
+			case content.OfOutputText != nil:
+				attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, i, "type"), "text"))
+				if config.HideOutputText {
+					attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, i, "text"), openinference.RedactedValue))
+				} else {
+					attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, i, "text"), content.OfOutputText.Text))
+				}
+			case content.OfRefusal != nil:
+				attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, i, "type"), "text"))
+				if config.HideOutputText {
+					attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, i, "text"), openinference.RedactedValue))
+				} else {
+					attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, i, "text"), content.OfRefusal.Refusal))
+				}
 			}
-		case content.OfRefusal != nil:
-			attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, i, "type"), "text"))
-			if config.HideOutputText {
-				attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, i, "text"), openinference.RedactedValue))
-			} else {
-				attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, i, "text"), content.OfRefusal.Refusal))
-			}
+		}
+	case o.Content.OfString != nil:
+		attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, 0, "type"), "text"))
+		if config.HideOutputText {
+			attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, 0, "text"), openinference.RedactedValue))
+		} else {
+			attrs = append(attrs, attribute.String(openinference.OutputMessageContentAttribute(messageIndex, 0, "text"), *o.Content.OfString))
 		}
 	}
 	return attrs

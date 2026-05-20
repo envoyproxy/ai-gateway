@@ -172,6 +172,12 @@ func (b *metricsImpl) RecordTokenUsage(ctx context.Context, usage TokenUsage, re
 			metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeOutput)),
 		)
 	}
+	if reasoningTokens, ok := usage.ReasoningTokens(); ok {
+		b.metrics.tokenUsage.Record(ctx, float64(reasoningTokens),
+			metric.WithAttributeSet(attrs),
+			metric.WithAttributes(attribute.Key(genaiAttributeTokenType).String(genaiTokenTypeReasoning)),
+		)
+	}
 }
 
 // GetTimeToFirstTokenMs implements [Metrics.GetTimeToFirstTokenMs].

@@ -860,6 +860,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 	chunk := &openai.ChatCompletionResponseChunk{
 		Object: object, Model: o.requestModel, ID: o.responseID,
 		Created: openai.JSONUNIXTime(time.Now()),
+		Choices: []openai.ChatCompletionResponseChunkChoice{},
 	}
 
 	switch event.EventType {

@@ -9,22 +9,28 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
 func TestNewGCPHandler(t *testing.T) {
+	type wantError struct {
+		check bool
+		msg   string
+	}
 	testCases := []struct {
-		name         string
-		gcpAuth      *filterapi.GCPAuth
-		wantHandler  *gcpHandler
-		wantErrorMsg string
+		name        string
+		gcpAuth     *filterapi.GCPAuth
+		wantHandler *gcpHandler
+		wantError   wantError
 	}{
 		{
-			name: "valid config",
+			name: "valid config with token",
 			gcpAuth: &filterapi.GCPAuth{
 				AccessToken: "test-token",
 				Region:      "us-central1",
@@ -37,34 +43,33 @@ func TestNewGCPHandler(t *testing.T) {
 			},
 		},
 		{
-			name: "missing auth token",
+			name: "empty token uses ADC",
 			gcpAuth: &filterapi.GCPAuth{
-				AccessToken: "",
 				Region:      "us-central1",
 				ProjectName: "test-project",
 			},
-			wantHandler:  nil,
-			wantErrorMsg: "GCP access token cannot be empty",
+			wantError: wantError{check: true, msg: "failed to find GCP default credentials"},
 		},
 		{
-			name:         "nil config",
-			gcpAuth:      nil,
-			wantHandler:  nil,
-			wantErrorMsg: "GCP auth configuration cannot be nil",
+			name:      "nil config",
+			gcpAuth:   nil,
+			wantError: wantError{check: true, msg: "GCP auth configuration cannot be nil"},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			handler, err := newGCPHandler(tc.gcpAuth)
-			if tc.wantErrorMsg != "" {
-				require.ErrorContains(t, err, tc.wantErrorMsg)
+			ctx := context.Background()
+			handler, err := newGCPHandler(ctx, tc.gcpAuth)
+			if err != nil {
+				require.True(t, tc.wantError.check, "unexpected error: %v", err)
+				require.ErrorContains(t, err, tc.wantError.msg)
 			} else {
-				require.NoError(t, err)
 				require.NotNil(t, handler)
-
-				if d := cmp.Diff(tc.wantHandler, handler, cmp.AllowUnexported(gcpHandler{})); d != "" {
-					t.Errorf("Handler mismatch (-want +got):\n%s", d)
+				if tc.wantHandler != nil {
+					if d := cmp.Diff(tc.wantHandler, handler, cmp.AllowUnexported(gcpHandler{})); d != "" {
+						t.Errorf("Handler mismatch (-want +got):\n%s", d)
+					}
 				}
 			}
 		})
@@ -113,4 +118,53 @@ func TestGCPHandler_Do(t *testing.T) {
 			require.Equal(t, tc.wantPathValue, pathValue, ":path header value mismatch")
 		})
 	}
+}
+
+type mockTokenSource struct {
+	token string
+	err   error
+}
+
+func (m *mockTokenSource) Token() (*oauth2.Token, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &oauth2.Token{
+		AccessToken: m.token,
+		Expiry:      time.Now().Add(time.Hour),
+	}, nil
+}
+
+func TestGCPHandler_Do_WithTokenSource(t *testing.T) {
+	handler := &gcpHandler{
+		tokenSource: &mockTokenSource{token: "adc-token"},
+		region:      "us-central1",
+		projectName: "test-project",
+	}
+
+	requestHeaders := map[string]string{
+		":path": "publishers/google/models/gemini-pro:generateContent",
+	}
+
+	hdrs, err := handler.Do(context.Background(), requestHeaders, nil)
+	require.NoError(t, err)
+
+	hdrsMap := stringPairsToMap(hdrs)
+	require.Equal(t, "Bearer adc-token", hdrsMap["Authorization"])
+	require.Equal(t, "/v1/projects/test-project/locations/us-central1/publishers/google/models/gemini-pro:generateContent", hdrsMap[":path"])
+}
+
+func TestGCPHandler_Do_TokenSourceError(t *testing.T) {
+	handler := &gcpHandler{
+		tokenSource: &mockTokenSource{err: fmt.Errorf("token refresh failed")},
+		region:      "us-central1",
+		projectName: "test-project",
+	}
+
+	requestHeaders := map[string]string{
+		":path": "publishers/google/models/gemini-pro:generateContent",
+	}
+
+	_, err := handler.Do(context.Background(), requestHeaders, nil)
+	require.ErrorContains(t, err, "failed to get GCP access token")
 }

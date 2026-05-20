@@ -21,6 +21,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -29,11 +30,63 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/llmcostcel"
 )
+
+// requireLLMRequestCostsEqual asserts two LLMRequestCost slices are equal, printing a go-cmp diff on failure.
+func requireLLMRequestCostsEqual(t *testing.T, want, got []filterapi.LLMRequestCost) {
+	t.Helper()
+	// Compare as sets (order-agnostic) since map iteration order is non-deterministic.
+	less := func(a, b filterapi.LLMRequestCost) bool {
+		if a.RouteName != b.RouteName {
+			return a.RouteName < b.RouteName
+		}
+		return a.MetadataKey < b.MetadataKey
+	}
+	if diff := cmp.Diff(want, got, cmpopts.SortSlices(less)); diff != "" {
+		t.Fatalf("LLMRequestCosts not equal (-want +got):\n%s", diff)
+	}
+}
+
+func requireFilterConfigFromBundle(t *testing.T, kube kubernetes.Interface, namespace, gatewayName, gatewayNamespace string) filterapi.Config {
+	t.Helper()
+
+	configName := FilterConfigBundleIndexSecretName(gatewayName, gatewayNamespace)
+	secret, err := kube.CoreV1().Secrets(namespace).Get(t.Context(), configName, metav1.GetOptions{})
+	require.NoError(t, err)
+	indexRaw := ""
+	ok := false
+	if b, exists := secret.Data[FilterConfigBundleIndexKey]; exists {
+		indexRaw = string(b)
+		ok = true
+	} else if s, exists := secret.StringData[FilterConfigBundleIndexKey]; exists {
+		indexRaw = s
+		ok = true
+	}
+	require.True(t, ok)
+	index, err := filterapi.UnmarshalConfigBundleIndex([]byte(indexRaw))
+	require.NoError(t, err)
+
+	cfg, err := filterapi.ReassembleBundleConfig(index, func(part filterapi.ConfigBundlePart) ([]byte, error) {
+		partSecret, getErr := kube.CoreV1().Secrets(namespace).Get(t.Context(), part.Name, metav1.GetOptions{})
+		if getErr != nil {
+			return nil, getErr
+		}
+		if b, exists := partSecret.Data[FilterConfigBundlePartKey]; exists {
+			return b, nil
+		}
+		if b, exists := partSecret.StringData[FilterConfigBundlePartKey]; exists {
+			return []byte(b), nil
+		}
+		return nil, fmt.Errorf("missing key %q in part secret %s", FilterConfigBundlePartKey, part.Name)
+	})
+	require.NoError(t, err)
+	return *cfg
+}
 
 func TestGatewayController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
@@ -62,22 +115,22 @@ func TestGatewayController_Reconcile(t *testing.T) {
 			Group: ptr.To(gwapiv1a2.Group("gateway.networking.k8s.io")),
 		},
 	}
-	for _, aigwRoute := range []*aigv1a1.AIGatewayRoute{
+	for _, aigwRoute := range []*aigv1b1.AIGatewayRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: namespace},
-			Spec: aigv1a1.AIGatewayRouteSpec{
+			Spec: aigv1b1.AIGatewayRouteSpec{
 				ParentRefs: targets,
-				Rules: []aigv1a1.AIGatewayRouteRule{
-					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
 				},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route2", Namespace: namespace},
-			Spec: aigv1a1.AIGatewayRouteSpec{
+			Spec: aigv1b1.AIGatewayRouteSpec{
 				ParentRefs: targets,
-				Rules: []aigv1a1.AIGatewayRouteRule{
-					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "orange"}}},
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "orange"}}},
 				},
 			},
 		},
@@ -86,16 +139,16 @@ func TestGatewayController_Reconcile(t *testing.T) {
 		require.NoError(t, err)
 	}
 	// We also need to create corresponding AIServiceBackends.
-	for _, aigwRoute := range []*aigv1a1.AIServiceBackend{
+	for _, aigwRoute := range []*aigv1b1.AIServiceBackend{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: namespace},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1b1.AIServiceBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](namespace)},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: namespace},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1b1.AIServiceBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](namespace)},
 			},
 		},
@@ -165,18 +218,18 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const gwNamespace = "ns"
-	routes := []aigv1a1.AIGatewayRoute{
+	routes := []aigv1b1.AIGatewayRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: gwNamespace},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 							{Name: "apple"},
 							{Name: "invalid-bsp-backend"},  // This should be ignored as the BSP is invalid.
 							{Name: "non-existent-backend"}, // This should be ignored as the backend does not exist.
 						},
-						Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+						Matches: []aigv1b1.AIGatewayRouteRuleMatch{
 							{
 								Headers: []gwapiv1.HTTPHeaderMatch{
 									{
@@ -188,35 +241,35 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 						},
 					},
 				},
-				LLMRequestCosts: []aigv1a1.LLMRequestCost{
-					{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken},
-					{MetadataKey: "bar", Type: aigv1a1.LLMRequestCostTypeOutputToken},
-					{MetadataKey: "baz", Type: aigv1a1.LLMRequestCostTypeTotalToken},
-					{MetadataKey: "qux", Type: aigv1a1.LLMRequestCostTypeCachedInputToken},
-					{MetadataKey: "zoo", Type: aigv1a1.LLMRequestCostTypeCacheCreationInputToken},
+				LLMRequestCosts: []aigv1b1.LLMRequestCost{
+					{MetadataKey: "foo", Type: aigv1b1.LLMRequestCostTypeInputToken},
+					{MetadataKey: "bar", Type: aigv1b1.LLMRequestCostTypeOutputToken},
+					{MetadataKey: "baz", Type: aigv1b1.LLMRequestCostTypeTotalToken},
+					{MetadataKey: "qux", Type: aigv1b1.LLMRequestCostTypeCachedInputToken},
+					{MetadataKey: "zoo", Type: aigv1b1.LLMRequestCostTypeCacheCreationInputToken},
 				},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "route2", Namespace: gwNamespace},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
-					{BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{{Name: "orange"}}},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "orange"}}},
 				},
-				LLMRequestCosts: []aigv1a1.LLMRequestCost{
-					{MetadataKey: "foo", Type: aigv1a1.LLMRequestCostTypeInputToken}, // This should be ignored as it has the duplicate key.
-					{MetadataKey: "cat", Type: aigv1a1.LLMRequestCostTypeCEL, CEL: ptr.To(`backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`)},
+				LLMRequestCosts: []aigv1b1.LLMRequestCost{
+					{MetadataKey: "foo", Type: aigv1b1.LLMRequestCostTypeInputToken}, // Same metadataKey as route1; scoped to this route in filter config.
+					{MetadataKey: "cat", Type: aigv1b1.LLMRequestCostTypeCEL, CEL: ptr.To(`backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`)},
 				},
 			},
 		},
 	}
 	// We also need to create corresponding AIServiceBackends.
-	for _, aigwRoute := range []*aigv1a1.AIServiceBackend{
+	for _, aigwRoute := range []*aigv1b1.AIServiceBackend{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: gwNamespace},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1b1.AIServiceBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
-				HeaderMutation: &aigv1a1.HTTPHeaderMutation{Set: []gwapiv1.HTTPHeader{
+				HeaderMutation: &aigv1b1.HTTPHeaderMutation{Set: []gwapiv1.HTTPHeader{
 					// Header name should be normalized to lowercase in the filter config.
 					{Name: "X-Foo", Value: "foo"},
 				}, Remove: []string{"x-Bar"}},
@@ -224,13 +277,13 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: gwNamespace},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1b1.AIServiceBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "invalid-bsp-backend", Namespace: gwNamespace},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1b1.AIServiceBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
 			},
 		},
@@ -240,11 +293,11 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	}
 
 	// Create a BackendSecurityPolicy that is invalid (missing secret ref).
-	err := fakeClient.Create(t.Context(), &aigv1a1.BackendSecurityPolicy{
+	err := fakeClient.Create(t.Context(), &aigv1b1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "invalid-bsp", Namespace: gwNamespace},
-		Spec: aigv1a1.BackendSecurityPolicySpec{
-			Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
-			APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type: aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			APIKey: &aigv1b1.BackendSecurityPolicyAPIKey{
 				SecretRef: &gwapiv1.SecretObjectReference{Name: "non-existent-secret"},
 			},
 			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
@@ -261,7 +314,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	for range 2 { // Reconcile twice to make sure the secret update path is working.
 		const someNamespace = "some-namespace"
 		configName := FilterConfigBundleIndexSecretName("gw", gwNamespace)
-		effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, routes, nil, "foouuid")
+		effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
 		require.NoError(t, err)
 		require.True(t, effective, "expected filter config to be effective")
 
@@ -295,14 +348,28 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.NoError(t, err)
 		fc := *cfg
 		require.Equal(t, "dev", fc.Version)
-		require.Len(t, fc.LLMRequestCosts, 6)
-		require.Equal(t, filterapi.LLMRequestCostTypeInputToken, fc.LLMRequestCosts[0].Type)
-		require.Equal(t, filterapi.LLMRequestCostTypeOutputToken, fc.LLMRequestCosts[1].Type)
-		require.Equal(t, filterapi.LLMRequestCostTypeTotalToken, fc.LLMRequestCosts[2].Type)
-		require.Equal(t, filterapi.LLMRequestCostTypeCachedInputToken, fc.LLMRequestCosts[3].Type)
-		require.Equal(t, filterapi.LLMRequestCostTypeCacheCreationInputToken, fc.LLMRequestCosts[4].Type)
-		require.Equal(t, filterapi.LLMRequestCostTypeCEL, fc.LLMRequestCosts[5].Type)
-		require.Equal(t, `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`, fc.LLMRequestCosts[5].CEL)
+		wantLLMRequestCosts := []filterapi.LLMRequestCost{
+			{MetadataKey: "foo", RouteName: "ns/route1", Type: filterapi.LLMRequestCostTypeInputToken},
+			{MetadataKey: "bar", RouteName: "ns/route1", Type: filterapi.LLMRequestCostTypeOutputToken},
+			{MetadataKey: "baz", RouteName: "ns/route1", Type: filterapi.LLMRequestCostTypeTotalToken},
+			{MetadataKey: "qux", RouteName: "ns/route1", Type: filterapi.LLMRequestCostTypeCachedInputToken},
+			{MetadataKey: "zoo", RouteName: "ns/route1", Type: filterapi.LLMRequestCostTypeCacheCreationInputToken},
+			{MetadataKey: "foo", RouteName: "ns/route2", Type: filterapi.LLMRequestCostTypeInputToken},
+			{
+				MetadataKey: "cat",
+				RouteName:   "ns/route2",
+				Type:        filterapi.LLMRequestCostTypeCEL,
+				CEL:         `backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`,
+			},
+		}
+		requireLLMRequestCostsEqual(t, wantLLMRequestCosts, fc.LLMRequestCosts)
+
+		catProg, err := llmcostcel.NewProgram(wantLLMRequestCosts[6].CEL)
+		require.NoError(t, err)
+		catVal, err := llmcostcel.EvaluateProgram(catProg, "model", "foo.default", "ns/route2", 3, 0, 0, 4, 7, 0)
+		require.NoError(t, err)
+		require.Equal(t, uint64(7), catVal)
+
 		require.Len(t, fc.Models, 1)
 		require.Equal(t, "mymodel", fc.Models[0].Name)
 
@@ -312,6 +379,191 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.Equal(t, "foo", fc.Backends[0].HeaderMutation.Set[0].Value)
 		require.Equal(t, "x-bar", fc.Backends[0].HeaderMutation.Remove[0])
 	}
+}
+
+// TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostAggregation verifies that
+// routes sharing the same metadataKey each get their own filter-config row (scoped by routeName).
+func TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostAggregation(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	const gwNamespace = "ns"
+	// Create two routes with DIFFERENT CEL expressions for the SAME metadataKey.
+	// This is the core scenario of Issue #1688.
+	routes := []aigv1b1.AIGatewayRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "free-model-route", Namespace: gwNamespace},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "free-backend"}}},
+				},
+				LLMRequestCosts: []aigv1b1.LLMRequestCost{
+					// Free model: cost is always 0
+					{MetadataKey: "billing_charges", Type: aigv1b1.LLMRequestCostTypeCEL, CEL: ptr.To("0")},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "paid-model-route", Namespace: gwNamespace},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "paid-backend"}}},
+				},
+				LLMRequestCosts: []aigv1b1.LLMRequestCost{
+					// Paid model: cost calculation based on tokens
+					{MetadataKey: "billing_charges", Type: aigv1b1.LLMRequestCostTypeCEL, CEL: ptr.To("input_tokens + output_tokens")},
+				},
+			},
+		},
+	}
+
+	// Create corresponding AIServiceBackends.
+	for _, backend := range []*aigv1b1.AIServiceBackend{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "free-backend", Namespace: gwNamespace},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "paid-backend", Namespace: gwNamespace},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		},
+	} {
+		err := fakeClient.Create(t.Context(), backend)
+		require.NoError(t, err)
+	}
+
+	const someNamespace = "some-namespace"
+
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
+	require.NoError(t, err)
+	require.True(t, effective, "expected filter config to be effective")
+	fc := requireFilterConfigFromBundle(t, kube, someNamespace, "gw", gwNamespace)
+
+	// Verify we have two backends and one filter-config row per route (same metadataKey).
+	require.Len(t, fc.Backends, 2, "expected 2 backends")
+	wantLLMRequestCosts := []filterapi.LLMRequestCost{
+		{
+			MetadataKey: "billing_charges",
+			RouteName:   "ns/free-model-route",
+			Type:        filterapi.LLMRequestCostTypeCEL,
+			CEL:         "0",
+		},
+		{
+			MetadataKey: "billing_charges",
+			RouteName:   "ns/paid-model-route",
+			Type:        filterapi.LLMRequestCostTypeCEL,
+			CEL:         "input_tokens + output_tokens",
+		},
+	}
+	requireLLMRequestCostsEqual(t, wantLLMRequestCosts, fc.LLMRequestCosts)
+
+	freeProg, err := llmcostcel.NewProgram(wantLLMRequestCosts[0].CEL)
+	require.NoError(t, err)
+	val, err := llmcostcel.EvaluateProgram(freeProg, "model", "free-backend", "ns/free-model-route", 10, 0, 0, 5, 15, 0)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), val)
+	paidProg, err := llmcostcel.NewProgram(wantLLMRequestCosts[1].CEL)
+	require.NoError(t, err)
+	val, err = llmcostcel.EvaluateProgram(paidProg, "model", "paid-backend", "ns/paid-model-route", 10, 0, 0, 5, 15, 0)
+	require.NoError(t, err)
+	require.Equal(t, uint64(15), val)
+}
+
+// TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostAggregation_DuplicateMetadataKey
+// verifies that duplicate metadata keys keep "last definition wins" semantics.
+func TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostAggregation_DuplicateMetadataKey(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	const gwNamespace = "ns"
+	routes := []aigv1b1.AIGatewayRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "route-with-duplicate-metadata", Namespace: gwNamespace},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "test-backend"}}},
+				},
+				LLMRequestCosts: []aigv1b1.LLMRequestCost{
+					{MetadataKey: "billing_charges", Type: aigv1b1.LLMRequestCostTypeInputToken},
+					{MetadataKey: "billing_charges", Type: aigv1b1.LLMRequestCostTypeOutputToken},
+				},
+			},
+		},
+	}
+
+	err := fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: gwNamespace},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+		},
+	})
+	require.NoError(t, err)
+
+	const someNamespace = "some-namespace"
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
+	require.NoError(t, err)
+	require.True(t, effective, "expected filter config to be effective")
+
+	fc := requireFilterConfigFromBundle(t, kube, someNamespace, "gw", gwNamespace)
+	// Controller deduplicates same (metadataKey, routeName): last definition wins.
+	wantLLMRequestCosts := []filterapi.LLMRequestCost{
+		{
+			MetadataKey: "billing_charges",
+			RouteName:   "ns/route-with-duplicate-metadata",
+			Type:        filterapi.LLMRequestCostTypeOutputToken,
+		},
+	}
+	requireLLMRequestCostsEqual(t, wantLLMRequestCosts, fc.LLMRequestCosts)
+}
+
+// TestGatewayController_reconcileFilterConfigSecret_InvalidCELExpression tests that invalid CEL
+// expressions in LLMRequestCosts cause an error during reconciliation.
+func TestGatewayController_reconcileFilterConfigSecret_InvalidCELExpression(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	const gwNamespace = "ns"
+	routes := []aigv1b1.AIGatewayRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "route-with-invalid-cel", Namespace: gwNamespace},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "test-backend"}}},
+				},
+				LLMRequestCosts: []aigv1b1.LLMRequestCost{
+					// Invalid CEL expression - syntax error
+					{MetadataKey: "cost", Type: aigv1b1.LLMRequestCostTypeCEL, CEL: ptr.To("invalid syntax (((")},
+				},
+			},
+		},
+	}
+
+	// Create the backend
+	err := fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-backend", Namespace: gwNamespace},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+		},
+	})
+	require.NoError(t, err)
+
+	const someNamespace = "some-namespace"
+	_, err = c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid CEL expression")
 }
 
 func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *testing.T) {
@@ -325,20 +577,20 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 	now := metav1.Now()
 
 	// Create routes: one active, one being deleted.
-	routes := []aigv1a1.AIGatewayRoute{
+	routes := []aigv1b1.AIGatewayRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:              "active-route",
 				Namespace:         gwNamespace,
 				DeletionTimestamp: nil, // Active route.
 			},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 							{Name: "apple"},
 						},
-						Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+						Matches: []aigv1b1.AIGatewayRouteRuleMatch{
 							{
 								Headers: []gwapiv1.HTTPHeaderMatch{
 									{
@@ -358,13 +610,13 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 				Namespace:         gwNamespace,
 				DeletionTimestamp: &now, // Route being deleted.
 			},
-			Spec: aigv1a1.AIGatewayRouteSpec{
-				Rules: []aigv1a1.AIGatewayRouteRule{
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
 					{
-						BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 							{Name: "orange"},
 						},
-						Matches: []aigv1a1.AIGatewayRouteRuleMatch{
+						Matches: []aigv1b1.AIGatewayRouteRuleMatch{
 							{
 								Headers: []gwapiv1.HTTPHeaderMatch{
 									{
@@ -381,16 +633,16 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 	}
 
 	// Create AIServiceBackends for both routes.
-	for _, backend := range []*aigv1a1.AIServiceBackend{
+	for _, backend := range []*aigv1b1.AIServiceBackend{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: gwNamespace},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1b1.AIServiceBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "orange", Namespace: gwNamespace},
-			Spec: aigv1a1.AIServiceBackendSpec{
+			Spec: aigv1b1.AIServiceBackendSpec{
 				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
 			},
 		},
@@ -403,7 +655,7 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 	configName := FilterConfigBundleIndexSecretName("gw", gwNamespace)
 
 	// Reconcile filter config secret.
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, routes, nil, "foouuid")
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
 	require.NoError(t, err)
 	require.True(t, effective, "expected filter config to be effective")
 
@@ -456,22 +708,22 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const namespace = "ns"
-	for _, bsp := range []*aigv1a1.BackendSecurityPolicy{
+	for _, bsp := range []*aigv1b1.BackendSecurityPolicy{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "bsp-apikey", Namespace: namespace},
-			Spec: aigv1a1.BackendSecurityPolicySpec{
-				Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
-				APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: aigv1b1.BackendSecurityPolicyTypeAPIKey,
+				APIKey: &aigv1b1.BackendSecurityPolicyAPIKey{
 					SecretRef: &gwapiv1.SecretObjectReference{Name: "api-key-secret"},
 				},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "aws-credentials-file", Namespace: namespace},
-			Spec: aigv1a1.BackendSecurityPolicySpec{
-				Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
-				AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
-					CredentialsFile: &aigv1a1.AWSCredentialsFile{
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+				AWSCredentials: &aigv1b1.BackendSecurityPolicyAWSCredentials{
+					CredentialsFile: &aigv1b1.AWSCredentialsFile{
 						SecretRef: &gwapiv1.SecretObjectReference{Name: "aws-credentials-file-secret"},
 					},
 				},
@@ -479,18 +731,18 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "aws-oidc", Namespace: namespace},
-			Spec: aigv1a1.BackendSecurityPolicySpec{
-				Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
-				AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
-					OIDCExchangeToken: &aigv1a1.AWSOIDCExchangeToken{},
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+				AWSCredentials: &aigv1b1.BackendSecurityPolicyAWSCredentials{
+					OIDCExchangeToken: &aigv1b1.AWSOIDCExchangeToken{},
 				},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "aws-default-chain", Namespace: namespace},
-			Spec: aigv1a1.BackendSecurityPolicySpec{
-				Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
-				AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+				AWSCredentials: &aigv1b1.BackendSecurityPolicyAWSCredentials{
 					Region: "us-west-2",
 					// No CredentialsFile or OIDCExchangeToken - uses default credential chain
 				},
@@ -498,17 +750,17 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "azure-oidc", Namespace: namespace},
-			Spec: aigv1a1.BackendSecurityPolicySpec{
-				Type:             aigv1a1.BackendSecurityPolicyTypeAzureCredentials,
-				AzureCredentials: &aigv1a1.BackendSecurityPolicyAzureCredentials{},
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type:             aigv1b1.BackendSecurityPolicyTypeAzureCredentials,
+				AzureCredentials: &aigv1b1.BackendSecurityPolicyAzureCredentials{},
 			},
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "gcp-sa-key-file", Namespace: namespace},
-			Spec: aigv1a1.BackendSecurityPolicySpec{
-				Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
-				GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
-					CredentialsFile: &aigv1a1.GCPCredentialsFile{
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+				GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{
+					CredentialsFile: &aigv1b1.GCPCredentialsFile{
 						SecretRef: &gwapiv1.SecretObjectReference{Name: "gcp-sa-key-file"},
 					},
 				},
@@ -516,20 +768,30 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "gcp-wif", Namespace: namespace},
-			Spec: aigv1a1.BackendSecurityPolicySpec{
-				Type: aigv1a1.BackendSecurityPolicyTypeGCPCredentials,
-				GCPCredentials: &aigv1a1.BackendSecurityPolicyGCPCredentials{
-					WorkloadIdentityFederationConfig: &aigv1a1.GCPWorkloadIdentityFederationConfig{
-						OIDCExchangeToken: aigv1a1.GCPOIDCExchangeToken{},
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+				GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{
+					WorkloadIdentityFederationConfig: &aigv1b1.GCPWorkloadIdentityFederationConfig{
+						OIDCExchangeToken: aigv1b1.GCPOIDCExchangeToken{},
 					},
 				},
 			},
 		},
 		{
+			ObjectMeta: metav1.ObjectMeta{Name: "gcp-adc", Namespace: namespace},
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+				GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{
+					ProjectName: "test-project",
+					Region:      "us-central1",
+				},
+			},
+		},
+		{
 			ObjectMeta: metav1.ObjectMeta{Name: "bsp-anthropic-apikey", Namespace: namespace},
-			Spec: aigv1a1.BackendSecurityPolicySpec{
-				Type: aigv1a1.BackendSecurityPolicyTypeAnthropicAPIKey,
-				AnthropicAPIKey: &aigv1a1.BackendSecurityPolicyAnthropicAPIKey{
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey,
+				AnthropicAPIKey: &aigv1b1.BackendSecurityPolicyAnthropicAPIKey{
 					SecretRef: &gwapiv1.SecretObjectReference{Name: "api-key-secret"},
 				},
 			},
@@ -611,6 +873,15 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			},
 		},
 		{
+			bspName: "gcp-adc",
+			exp: &filterapi.BackendAuth{
+				GCPAuth: &filterapi.GCPAuth{
+					Region:      "us-central1",
+					ProjectName: "test-project",
+				},
+			},
+		},
+		{
 			bspName: "bsp-anthropic-apikey",
 			exp: &filterapi.BackendAuth{
 				AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: "thisisapikey"},
@@ -618,7 +889,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 		},
 	} {
 		t.Run(tc.bspName, func(t *testing.T) {
-			bsp := &aigv1a1.BackendSecurityPolicy{}
+			bsp := &aigv1b1.BackendSecurityPolicy{}
 			err := fakeClient.Get(t.Context(), client.ObjectKey{
 				Name:      tc.bspName,
 				Namespace: namespace,
@@ -642,17 +913,17 @@ func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 	tests := []struct {
 		name          string
 		bspName       string
-		bsp           *aigv1a1.BackendSecurityPolicy
+		bsp           *aigv1b1.BackendSecurityPolicy
 		expectedError string
 	}{
 		{
 			name:    "api key type with missing secret",
 			bspName: "api-key-bsp",
-			bsp: &aigv1a1.BackendSecurityPolicy{
+			bsp: &aigv1b1.BackendSecurityPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: "api-key-bsp", Namespace: namespace},
-				Spec: aigv1a1.BackendSecurityPolicySpec{
-					Type: aigv1a1.BackendSecurityPolicyTypeAPIKey,
-					APIKey: &aigv1a1.BackendSecurityPolicyAPIKey{
+				Spec: aigv1b1.BackendSecurityPolicySpec{
+					Type: aigv1b1.BackendSecurityPolicyTypeAPIKey,
+					APIKey: &aigv1b1.BackendSecurityPolicyAPIKey{
 						SecretRef: &gwapiv1.SecretObjectReference{
 							Name: "missing-secret",
 						},
@@ -664,13 +935,13 @@ func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 		{
 			name:    "aws credentials with credentials file missing secret",
 			bspName: "aws-creds-file-bsp",
-			bsp: &aigv1a1.BackendSecurityPolicy{
+			bsp: &aigv1b1.BackendSecurityPolicy{
 				ObjectMeta: metav1.ObjectMeta{Name: "aws-creds-file-bsp", Namespace: namespace},
-				Spec: aigv1a1.BackendSecurityPolicySpec{
-					Type: aigv1a1.BackendSecurityPolicyTypeAWSCredentials,
-					AWSCredentials: &aigv1a1.BackendSecurityPolicyAWSCredentials{
+				Spec: aigv1b1.BackendSecurityPolicySpec{
+					Type: aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+					AWSCredentials: &aigv1b1.BackendSecurityPolicyAWSCredentials{
 						Region: "us-west-2",
-						CredentialsFile: &aigv1a1.AWSCredentialsFile{
+						CredentialsFile: &aigv1b1.AWSCredentialsFile{
 							SecretRef: &gwapiv1.SecretObjectReference{
 								Name: "missing-aws-secret",
 							},
@@ -1658,30 +1929,24 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 
 func Test_schemaToFilterAPI(t *testing.T) {
 	for i, tc := range []struct {
-		in       aigv1a1.VersionedAPISchema
+		in       aigv1b1.VersionedAPISchema
 		expected filterapi.VersionedAPISchema
 	}{
 		{
-			// Backward compatible case.
-			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Version: ptr.To("v123")},
-			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v123", Version: "v123"},
+			in:       aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaOpenAI},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1"},
 		},
 		{
-			// Backward compatible case.
-			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI},
-			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1", Version: "v1"},
+			in:       aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaOpenAI, Prefix: ptr.To("v1/foo")},
+			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1/foo"},
 		},
 		{
-			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaOpenAI, Prefix: ptr.To("v1/foo")},
-			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1/foo", Version: "v1/foo"},
-		},
-		{
-			in:       aigv1a1.VersionedAPISchema{Name: aigv1a1.APISchemaAWSBedrock},
+			in:       aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaAWSBedrock},
 			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			require.Equal(t, tc.expected, schemaToFilterAPI(tc.in, ctrl.Log))
+			require.Equal(t, tc.expected, schemaToFilterAPI(tc.in))
 		})
 	}
 }
@@ -1698,9 +1963,9 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	require.ErrorContains(t, err, `aiservicebackends.aigateway.envoyproxy.io "bar" not found`)
 
 	// Create AIServiceBackend without BSP.
-	backend := &aigv1a1.AIServiceBackend{
+	backend := &aigv1b1.AIServiceBackend{
 		ObjectMeta: metav1.ObjectMeta{Name: "bar", Namespace: "foo"},
-		Spec:       aigv1a1.AIServiceBackendSpec{},
+		Spec:       aigv1b1.AIServiceBackendSpec{},
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), backend))
 
@@ -1711,9 +1976,9 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 
 	// Create a new BSP for the existing backend, referencing the backend by name.
 	const bspName = "bsp-bar"
-	bspObj := &aigv1a1.BackendSecurityPolicy{
+	bspObj := &aigv1b1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: bspName, Namespace: backend.Namespace},
-		Spec: aigv1a1.BackendSecurityPolicySpec{
+		Spec: aigv1b1.BackendSecurityPolicySpec{
 			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
 				{Name: gwapiv1.ObjectName(backend.Name), Kind: aiServiceBackendKind, Group: aiServiceBackendGroup},
 			},
@@ -1730,9 +1995,9 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	require.Equal(t, bspName, bsp.Name, "should return the correct BSP name")
 
 	// Create a new BSP that has the same target ref, and one that does not exist.
-	bspWithTargetRefs := &aigv1a1.BackendSecurityPolicy{
+	bspWithTargetRefs := &aigv1b1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "bsp-bar-target-refs", Namespace: backend.Namespace},
-		Spec: aigv1a1.BackendSecurityPolicySpec{
+		Spec: aigv1b1.BackendSecurityPolicySpec{
 			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
 				{Name: gwapiv1.ObjectName(backend.Name), Kind: aiServiceBackendKind, Group: aiServiceBackendGroup},
 				{Name: gwapiv1.ObjectName("non-existent-backend"), Kind: aiServiceBackendKind, Group: aiServiceBackendGroup},
@@ -1756,15 +2021,15 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 
 	const gwNamespace = "ns"
 	// Two routes with different CreationTimestamp for deterministic order.
-	mcpRoutes := []aigv1a1.MCPRoute{
+	mcpRoutes := []aigv1b1.MCPRoute{
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "mcp-route-old", Namespace: gwNamespace, CreationTimestamp: metav1.NewTime(time.Now().Add(-2 * time.Hour))},
-			Spec: aigv1a1.MCPRouteSpec{
-				BackendRefs: []aigv1a1.MCPRouteBackendRef{{
+			Spec: aigv1b1.MCPRouteSpec{
+				BackendRefs: []aigv1b1.MCPRouteBackendRef{{
 					BackendObjectReference: gwapiv1.BackendObjectReference{
 						Name: gwapiv1.ObjectName("backendA"),
 					},
-					ToolSelector: &aigv1a1.MCPToolFilter{
+					ToolSelector: &aigv1b1.MCPToolFilter{
 						Include: []string{"toolA"},
 					},
 				}},
@@ -1772,12 +2037,12 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 		},
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "mcp-route-new", Namespace: gwNamespace, CreationTimestamp: metav1.NewTime(time.Now().Add(-1 * time.Hour))},
-			Spec: aigv1a1.MCPRouteSpec{
-				BackendRefs: []aigv1a1.MCPRouteBackendRef{{
+			Spec: aigv1b1.MCPRouteSpec{
+				BackendRefs: []aigv1b1.MCPRouteBackendRef{{
 					BackendObjectReference: gwapiv1.BackendObjectReference{
 						Name: gwapiv1.ObjectName("backendB"),
 					},
-					ToolSelector: &aigv1a1.MCPToolFilter{
+					ToolSelector: &aigv1b1.MCPToolFilter{
 						Include: []string{"toolB"},
 					},
 				}},
@@ -1789,10 +2054,10 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 	const someNamespace = "some-namespace"
 	configName := FilterConfigBundleIndexSecretName("gw", gwNamespace)
 
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, nil, nil, "mcp-uuid")
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, nil, nil, "mcp-uuid", nil)
 	require.NoError(t, err)
 	require.False(t, effective) // No MCP routes, so not effective.
-	effective, err = c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, nil, mcpRoutes, "mcp-uuid")
+	effective, err = c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, nil, mcpRoutes, "mcp-uuid", nil)
 	require.NoError(t, err)
 	require.True(t, effective)
 
@@ -1885,12 +2150,86 @@ func TestGatewayController_writeFilterConfigBundleShards_Overflow(t *testing.T) 
 	require.ErrorContains(t, err, "exceeds max supported slots")
 }
 
+func Test_mcpConfig_ToolSelectorExclude(t *testing.T) {
+	mcpRoutes := []aigv1b1.MCPRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "ns"},
+			Spec: aigv1b1.MCPRouteSpec{
+				BackendRefs: []aigv1b1.MCPRouteBackendRef{{
+					BackendObjectReference: gwapiv1.BackendObjectReference{
+						Name: gwapiv1.ObjectName("backend"),
+					},
+					ToolSelector: &aigv1b1.MCPToolFilter{
+						Include:      []string{"toolA"},
+						Exclude:      []string{"toolB"},
+						ExcludeRegex: []string{"^secret.*"},
+					},
+				}},
+			},
+		},
+	}
+
+	mc, effective := mcpConfig(mcpRoutes)
+	require.True(t, effective)
+	require.NotNil(t, mc)
+	require.Len(t, mc.Routes, 1)
+	require.Len(t, mc.Routes[0].Backends, 1)
+	ts := mc.Routes[0].Backends[0].ToolSelector
+	require.NotNil(t, ts)
+	require.Equal(t, []string{"toolA"}, ts.Include)
+	require.Equal(t, []string{"toolB"}, ts.Exclude)
+	require.Equal(t, []string{"^secret.*"}, ts.ExcludeRegex)
+}
+
+func Test_mcpConfig_ForwardHeaders(t *testing.T) {
+	renamed := "X-Backend-Auth"
+	mcpRoutes := []aigv1b1.MCPRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "ns"},
+			Spec: aigv1b1.MCPRouteSpec{
+				BackendRefs: []aigv1b1.MCPRouteBackendRef{
+					{
+						BackendObjectReference: gwapiv1.BackendObjectReference{
+							Name: gwapiv1.ObjectName("backendA"),
+						},
+						ForwardHeaders: []aigv1b1.MCPHeaderForward{
+							{Name: "X-Api-Key"},
+							{Name: "Authorization", BackendHeader: &renamed},
+						},
+					},
+					{
+						BackendObjectReference: gwapiv1.BackendObjectReference{
+							Name: gwapiv1.ObjectName("backendB"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	mc, effective := mcpConfig(mcpRoutes)
+	require.True(t, effective)
+	require.NotNil(t, mc)
+	require.Len(t, mc.Routes, 1)
+	require.Len(t, mc.Routes[0].Backends, 2)
+
+	backendA := mc.Routes[0].Backends[0]
+	require.Equal(t, "backendA", backendA.Name)
+	require.Len(t, backendA.ForwardHeaders, 2)
+	require.Equal(t, filterapi.MCPHeaderForward{Name: "X-Api-Key"}, backendA.ForwardHeaders[0])
+	require.Equal(t, filterapi.MCPHeaderForward{Name: "Authorization", BackendHeader: "X-Backend-Auth"}, backendA.ForwardHeaders[1])
+
+	backendB := mc.Routes[0].Backends[1]
+	require.Equal(t, "backendB", backendB.Name)
+	require.Empty(t, backendB.ForwardHeaders)
+}
+
 func Test_mergeHeaderMutations(t *testing.T) {
 	tests := []struct {
 		name         string
-		routeLevel   *aigv1a1.HTTPHeaderMutation
-		backendLevel *aigv1a1.HTTPHeaderMutation
-		expected     *aigv1a1.HTTPHeaderMutation
+		routeLevel   *aigv1b1.HTTPHeaderMutation
+		backendLevel *aigv1b1.HTTPHeaderMutation
+		expected     *aigv1b1.HTTPHeaderMutation
 	}{
 		{
 			name:         "both nil",
@@ -1901,38 +2240,38 @@ func Test_mergeHeaderMutations(t *testing.T) {
 		{
 			name:       "route nil, backend has values",
 			routeLevel: nil,
-			backendLevel: &aigv1a1.HTTPHeaderMutation{
+			backendLevel: &aigv1b1.HTTPHeaderMutation{
 				Set:    []gwapiv1.HTTPHeader{{Name: "Backend-Header", Value: "backend-value"}},
 				Remove: []string{"Backend-Remove"},
 			},
-			expected: &aigv1a1.HTTPHeaderMutation{
+			expected: &aigv1b1.HTTPHeaderMutation{
 				Set:    []gwapiv1.HTTPHeader{{Name: "Backend-Header", Value: "backend-value"}},
 				Remove: []string{"Backend-Remove"},
 			},
 		},
 		{
 			name: "route has values, backend nil",
-			routeLevel: &aigv1a1.HTTPHeaderMutation{
+			routeLevel: &aigv1b1.HTTPHeaderMutation{
 				Set:    []gwapiv1.HTTPHeader{{Name: "Route-Header", Value: "route-value"}},
 				Remove: []string{"Route-Remove"},
 			},
 			backendLevel: nil,
-			expected: &aigv1a1.HTTPHeaderMutation{
+			expected: &aigv1b1.HTTPHeaderMutation{
 				Set:    []gwapiv1.HTTPHeader{{Name: "Route-Header", Value: "route-value"}},
 				Remove: []string{"Route-Remove"},
 			},
 		},
 		{
 			name: "no conflicts - different headers",
-			routeLevel: &aigv1a1.HTTPHeaderMutation{
+			routeLevel: &aigv1b1.HTTPHeaderMutation{
 				Set:    []gwapiv1.HTTPHeader{{Name: "Route-Header", Value: "route-value"}},
 				Remove: []string{"Route-Remove"},
 			},
-			backendLevel: &aigv1a1.HTTPHeaderMutation{
+			backendLevel: &aigv1b1.HTTPHeaderMutation{
 				Set:    []gwapiv1.HTTPHeader{{Name: "Backend-Header", Value: "backend-value"}},
 				Remove: []string{"Backend-Remove"},
 			},
-			expected: &aigv1a1.HTTPHeaderMutation{
+			expected: &aigv1b1.HTTPHeaderMutation{
 				Set: []gwapiv1.HTTPHeader{
 					{Name: "Backend-Header", Value: "backend-value"},
 					{Name: "Route-Header", Value: "route-value"},
@@ -1942,57 +2281,57 @@ func Test_mergeHeaderMutations(t *testing.T) {
 		},
 		{
 			name: "route overrides backend for same header name",
-			routeLevel: &aigv1a1.HTTPHeaderMutation{
+			routeLevel: &aigv1b1.HTTPHeaderMutation{
 				Set: []gwapiv1.HTTPHeader{{Name: "X-Custom", Value: "route-value"}},
 			},
-			backendLevel: &aigv1a1.HTTPHeaderMutation{
+			backendLevel: &aigv1b1.HTTPHeaderMutation{
 				Set: []gwapiv1.HTTPHeader{{Name: "X-Custom", Value: "backend-value"}},
 			},
-			expected: &aigv1a1.HTTPHeaderMutation{
+			expected: &aigv1b1.HTTPHeaderMutation{
 				Set: []gwapiv1.HTTPHeader{{Name: "X-Custom", Value: "route-value"}},
 			},
 		},
 		{
 			name: "case insensitive header name conflicts",
-			routeLevel: &aigv1a1.HTTPHeaderMutation{
+			routeLevel: &aigv1b1.HTTPHeaderMutation{
 				Set: []gwapiv1.HTTPHeader{{Name: "x-custom", Value: "route-value"}},
 			},
-			backendLevel: &aigv1a1.HTTPHeaderMutation{
+			backendLevel: &aigv1b1.HTTPHeaderMutation{
 				Set: []gwapiv1.HTTPHeader{{Name: "X-CUSTOM", Value: "backend-value"}},
 			},
-			expected: &aigv1a1.HTTPHeaderMutation{
+			expected: &aigv1b1.HTTPHeaderMutation{
 				Set: []gwapiv1.HTTPHeader{{Name: "x-custom", Value: "route-value"}},
 			},
 		},
 		{
 			name: "remove operations are combined and deduplicated",
-			routeLevel: &aigv1a1.HTTPHeaderMutation{
+			routeLevel: &aigv1b1.HTTPHeaderMutation{
 				Remove: []string{"X-Remove", "x-shared"},
 			},
-			backendLevel: &aigv1a1.HTTPHeaderMutation{
+			backendLevel: &aigv1b1.HTTPHeaderMutation{
 				Remove: []string{"X-Backend-Remove", "X-SHARED"},
 			},
-			expected: &aigv1a1.HTTPHeaderMutation{
+			expected: &aigv1b1.HTTPHeaderMutation{
 				Remove: []string{"x-backend-remove", "x-remove", "x-shared"},
 			},
 		},
 		{
 			name: "complex merge scenario",
-			routeLevel: &aigv1a1.HTTPHeaderMutation{
+			routeLevel: &aigv1b1.HTTPHeaderMutation{
 				Set: []gwapiv1.HTTPHeader{
 					{Name: "X-Route-Only", Value: "route-only"},
 					{Name: "X-Override", Value: "route-wins"},
 				},
 				Remove: []string{"X-Route-Remove", "x-shared-remove"},
 			},
-			backendLevel: &aigv1a1.HTTPHeaderMutation{
+			backendLevel: &aigv1b1.HTTPHeaderMutation{
 				Set: []gwapiv1.HTTPHeader{
 					{Name: "X-Backend-Only", Value: "backend-only"},
 					{Name: "x-override", Value: "backend-loses"},
 				},
 				Remove: []string{"X-Backend-Remove", "X-SHARED-REMOVE"},
 			},
-			expected: &aigv1a1.HTTPHeaderMutation{
+			expected: &aigv1b1.HTTPHeaderMutation{
 				Set: []gwapiv1.HTTPHeader{
 					{Name: "X-Backend-Only", Value: "backend-only"},
 					{Name: "X-Override", Value: "route-wins"},
@@ -2003,15 +2342,15 @@ func Test_mergeHeaderMutations(t *testing.T) {
 		},
 		{
 			name: "empty mutations",
-			routeLevel: &aigv1a1.HTTPHeaderMutation{
+			routeLevel: &aigv1b1.HTTPHeaderMutation{
 				Set:    []gwapiv1.HTTPHeader{},
 				Remove: []string{},
 			},
-			backendLevel: &aigv1a1.HTTPHeaderMutation{
+			backendLevel: &aigv1b1.HTTPHeaderMutation{
 				Set:    []gwapiv1.HTTPHeader{},
 				Remove: []string{},
 			},
-			expected: &aigv1a1.HTTPHeaderMutation{
+			expected: &aigv1b1.HTTPHeaderMutation{
 				Set:    nil,
 				Remove: nil,
 			},
@@ -2043,7 +2382,7 @@ func Test_mergeHeaderMutations(t *testing.T) {
 func Test_bodyMutationToFilterAPI(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    *aigv1a1.HTTPBodyMutation
+		input    *aigv1b1.HTTPBodyMutation
 		expected *filterapi.HTTPBodyMutation
 	}{
 		{
@@ -2053,8 +2392,8 @@ func Test_bodyMutationToFilterAPI(t *testing.T) {
 		},
 		{
 			name: "empty mutation",
-			input: &aigv1a1.HTTPBodyMutation{
-				Set:    []aigv1a1.HTTPBodyField{},
+			input: &aigv1b1.HTTPBodyMutation{
+				Set:    []aigv1b1.HTTPBodyField{},
 				Remove: []string{},
 			},
 			expected: &filterapi.HTTPBodyMutation{
@@ -2064,8 +2403,8 @@ func Test_bodyMutationToFilterAPI(t *testing.T) {
 		},
 		{
 			name: "only set operations",
-			input: &aigv1a1.HTTPBodyMutation{
-				Set: []aigv1a1.HTTPBodyField{
+			input: &aigv1b1.HTTPBodyMutation{
+				Set: []aigv1b1.HTTPBodyField{
 					{Path: "model", Value: "\"gpt-4\""},
 					{Path: "temperature", Value: "0.7"},
 					{Path: "max_tokens", Value: "100"},
@@ -2082,7 +2421,7 @@ func Test_bodyMutationToFilterAPI(t *testing.T) {
 		},
 		{
 			name: "only remove operations",
-			input: &aigv1a1.HTTPBodyMutation{
+			input: &aigv1b1.HTTPBodyMutation{
 				Remove: []string{"internal_flag", "debug_mode", "temp_field"},
 			},
 			expected: &filterapi.HTTPBodyMutation{
@@ -2092,8 +2431,8 @@ func Test_bodyMutationToFilterAPI(t *testing.T) {
 		},
 		{
 			name: "both set and remove operations",
-			input: &aigv1a1.HTTPBodyMutation{
-				Set: []aigv1a1.HTTPBodyField{
+			input: &aigv1b1.HTTPBodyMutation{
+				Set: []aigv1b1.HTTPBodyField{
 					{Path: "service_tier", Value: "\"scale\""},
 					{Path: "stream", Value: "true"},
 					{Path: "metadata", Value: "{\"key\": \"value\"}"},
@@ -2111,8 +2450,8 @@ func Test_bodyMutationToFilterAPI(t *testing.T) {
 		},
 		{
 			name: "complex json values",
-			input: &aigv1a1.HTTPBodyMutation{
-				Set: []aigv1a1.HTTPBodyField{
+			input: &aigv1b1.HTTPBodyMutation{
+				Set: []aigv1b1.HTTPBodyField{
 					{Path: "array_field", Value: "[1, 2, 3]"},
 					{Path: "null_field", Value: "null"},
 					{Path: "bool_field", Value: "false"},
@@ -2146,12 +2485,147 @@ func Test_bodyMutationToFilterAPI(t *testing.T) {
 	}
 }
 
+// TestGatewayController_reconcileFilterConfigSecret_GlobalDefaults tests that
+// global LLM request costs from GatewayConfig are properly included in the filter config
+// when no routes override them.
+func TestGatewayController_reconcileFilterConfigSecret_GlobalDefaults(t *testing.T) {
+	tests := []struct {
+		name                     string
+		globalCosts              []aigv1b1.LLMRequestCost
+		routes                   []aigv1b1.AIGatewayRoute
+		expectedGlobalCosts      []filterapi.GlobalLLMRequestCost
+		expectedRouteScopedCosts []filterapi.LLMRequestCost
+	}{
+		{
+			name: "global defaults only, no routes",
+			globalCosts: []aigv1b1.LLMRequestCost{
+				{MetadataKey: "billing_charges", Type: aigv1b1.LLMRequestCostTypeInputToken},
+			},
+			routes: []aigv1b1.AIGatewayRoute{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: "ns"},
+					Spec: aigv1b1.AIGatewayRouteSpec{
+						Rules: []aigv1b1.AIGatewayRouteRule{
+							{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "backend1"}}},
+						},
+					},
+				},
+			},
+			expectedGlobalCosts: []filterapi.GlobalLLMRequestCost{
+				{MetadataKey: "billing_charges", Type: filterapi.LLMRequestCostTypeInputToken},
+			},
+			expectedRouteScopedCosts: nil, // No route-scoped costs
+		},
+		{
+			name: "global defaults with route override",
+			globalCosts: []aigv1b1.LLMRequestCost{
+				{MetadataKey: "billing_charges", Type: aigv1b1.LLMRequestCostTypeInputToken},
+				{MetadataKey: "total_tokens", Type: aigv1b1.LLMRequestCostTypeTotalToken},
+			},
+			routes: []aigv1b1.AIGatewayRoute{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "premium-route", Namespace: "ns"},
+					Spec: aigv1b1.AIGatewayRouteSpec{
+						Rules: []aigv1b1.AIGatewayRouteRule{
+							{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "backend1"}}},
+						},
+						LLMRequestCosts: []aigv1b1.LLMRequestCost{
+							{MetadataKey: "billing_charges", Type: aigv1b1.LLMRequestCostTypeOutputToken}, // Override global
+						},
+					},
+				},
+			},
+			expectedGlobalCosts: []filterapi.GlobalLLMRequestCost{
+				{MetadataKey: "billing_charges", Type: filterapi.LLMRequestCostTypeInputToken},
+				{MetadataKey: "total_tokens", Type: filterapi.LLMRequestCostTypeTotalToken},
+			},
+			expectedRouteScopedCosts: []filterapi.LLMRequestCost{
+				{MetadataKey: "billing_charges", RouteName: "ns/premium-route", Type: filterapi.LLMRequestCostTypeOutputToken},
+			},
+		},
+		{
+			name: "multiple routes with different overrides",
+			globalCosts: []aigv1b1.LLMRequestCost{
+				{MetadataKey: "billing_charges", Type: aigv1b1.LLMRequestCostTypeInputToken},
+			},
+			routes: []aigv1b1.AIGatewayRoute{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "free-route", Namespace: "ns"},
+					Spec: aigv1b1.AIGatewayRouteSpec{
+						Rules: []aigv1b1.AIGatewayRouteRule{
+							{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "backend1"}}},
+						},
+						LLMRequestCosts: []aigv1b1.LLMRequestCost{
+							{MetadataKey: "billing_charges", Type: aigv1b1.LLMRequestCostTypeCEL, CEL: ptr.To("0")}, // Free
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "standard-route", Namespace: "ns"},
+					Spec: aigv1b1.AIGatewayRouteSpec{
+						Rules: []aigv1b1.AIGatewayRouteRule{
+							{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "backend1"}}},
+						},
+						// No override - will use global default
+					},
+				},
+			},
+			expectedGlobalCosts: []filterapi.GlobalLLMRequestCost{
+				{MetadataKey: "billing_charges", Type: filterapi.LLMRequestCostTypeInputToken},
+			},
+			expectedRouteScopedCosts: []filterapi.LLMRequestCost{
+				{MetadataKey: "billing_charges", RouteName: "ns/free-route", Type: filterapi.LLMRequestCostTypeCEL, CEL: "0"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeClient := requireNewFakeClientWithIndexes(t)
+			kube := fake2.NewClientset()
+			ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+			c := NewGatewayController(fakeClient, kube, ctrl.Log,
+				"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+			const gwNamespace = "ns"
+
+			// Create AIServiceBackend
+			backend := &aigv1b1.AIServiceBackend{
+				ObjectMeta: metav1.ObjectMeta{Name: "backend1", Namespace: gwNamespace},
+				Spec: aigv1b1.AIServiceBackendSpec{
+					BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+				},
+			}
+			err := fakeClient.Create(t.Context(), backend)
+			require.NoError(t, err)
+
+			const someNamespace = "some-namespace"
+			effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, tt.routes, nil, "test-uuid", tt.globalCosts)
+			require.NoError(t, err)
+			require.True(t, effective)
+
+			fc := requireFilterConfigFromBundle(t, kube, someNamespace, "gw", gwNamespace)
+
+			// Compare global costs (order-agnostic)
+			if diff := cmp.Diff(tt.expectedGlobalCosts, fc.GlobalLLMRequestCosts,
+				cmpopts.SortSlices(func(a, b filterapi.GlobalLLMRequestCost) bool {
+					return a.MetadataKey < b.MetadataKey
+				})); diff != "" {
+				t.Errorf("GlobalLLMRequestCosts mismatch (-want +got):\n%s", diff)
+			}
+
+			// Compare route-scoped costs (order-agnostic)
+			requireLLMRequestCostsEqual(t, tt.expectedRouteScopedCosts, fc.LLMRequestCosts)
+		})
+	}
+}
+
 func Test_mergeBodyMutations(t *testing.T) {
 	tests := []struct {
 		name         string
-		routeLevel   *aigv1a1.HTTPBodyMutation
-		backendLevel *aigv1a1.HTTPBodyMutation
-		expected     *aigv1a1.HTTPBodyMutation
+		routeLevel   *aigv1b1.HTTPBodyMutation
+		backendLevel *aigv1b1.HTTPBodyMutation
+		expected     *aigv1b1.HTTPBodyMutation
 	}{
 		{
 			name:         "both nil",
@@ -2162,39 +2636,39 @@ func Test_mergeBodyMutations(t *testing.T) {
 		{
 			name:       "route nil, backend has values",
 			routeLevel: nil,
-			backendLevel: &aigv1a1.HTTPBodyMutation{
-				Set:    []aigv1a1.HTTPBodyField{{Path: "backend_field", Value: "\"backend-value\""}},
+			backendLevel: &aigv1b1.HTTPBodyMutation{
+				Set:    []aigv1b1.HTTPBodyField{{Path: "backend_field", Value: "\"backend-value\""}},
 				Remove: []string{"backend_remove"},
 			},
-			expected: &aigv1a1.HTTPBodyMutation{
-				Set:    []aigv1a1.HTTPBodyField{{Path: "backend_field", Value: "\"backend-value\""}},
+			expected: &aigv1b1.HTTPBodyMutation{
+				Set:    []aigv1b1.HTTPBodyField{{Path: "backend_field", Value: "\"backend-value\""}},
 				Remove: []string{"backend_remove"},
 			},
 		},
 		{
 			name: "route has values, backend nil",
-			routeLevel: &aigv1a1.HTTPBodyMutation{
-				Set:    []aigv1a1.HTTPBodyField{{Path: "route_field", Value: "\"route-value\""}},
+			routeLevel: &aigv1b1.HTTPBodyMutation{
+				Set:    []aigv1b1.HTTPBodyField{{Path: "route_field", Value: "\"route-value\""}},
 				Remove: []string{"route_remove"},
 			},
 			backendLevel: nil,
-			expected: &aigv1a1.HTTPBodyMutation{
-				Set:    []aigv1a1.HTTPBodyField{{Path: "route_field", Value: "\"route-value\""}},
+			expected: &aigv1b1.HTTPBodyMutation{
+				Set:    []aigv1b1.HTTPBodyField{{Path: "route_field", Value: "\"route-value\""}},
 				Remove: []string{"route_remove"},
 			},
 		},
 		{
 			name: "no conflicts - different fields",
-			routeLevel: &aigv1a1.HTTPBodyMutation{
-				Set:    []aigv1a1.HTTPBodyField{{Path: "route_field", Value: "\"route-value\""}},
+			routeLevel: &aigv1b1.HTTPBodyMutation{
+				Set:    []aigv1b1.HTTPBodyField{{Path: "route_field", Value: "\"route-value\""}},
 				Remove: []string{"route_remove"},
 			},
-			backendLevel: &aigv1a1.HTTPBodyMutation{
-				Set:    []aigv1a1.HTTPBodyField{{Path: "backend_field", Value: "\"backend-value\""}},
+			backendLevel: &aigv1b1.HTTPBodyMutation{
+				Set:    []aigv1b1.HTTPBodyField{{Path: "backend_field", Value: "\"backend-value\""}},
 				Remove: []string{"backend_remove"},
 			},
-			expected: &aigv1a1.HTTPBodyMutation{
-				Set: []aigv1a1.HTTPBodyField{
+			expected: &aigv1b1.HTTPBodyMutation{
+				Set: []aigv1b1.HTTPBodyField{
 					{Path: "backend_field", Value: "\"backend-value\""},
 					{Path: "route_field", Value: "\"route-value\""},
 				},
@@ -2203,48 +2677,48 @@ func Test_mergeBodyMutations(t *testing.T) {
 		},
 		{
 			name: "route overrides backend for same field path",
-			routeLevel: &aigv1a1.HTTPBodyMutation{
-				Set: []aigv1a1.HTTPBodyField{{Path: "service_tier", Value: "\"route-value\""}},
+			routeLevel: &aigv1b1.HTTPBodyMutation{
+				Set: []aigv1b1.HTTPBodyField{{Path: "service_tier", Value: "\"route-value\""}},
 			},
-			backendLevel: &aigv1a1.HTTPBodyMutation{
-				Set: []aigv1a1.HTTPBodyField{{Path: "service_tier", Value: "\"backend-value\""}},
+			backendLevel: &aigv1b1.HTTPBodyMutation{
+				Set: []aigv1b1.HTTPBodyField{{Path: "service_tier", Value: "\"backend-value\""}},
 			},
-			expected: &aigv1a1.HTTPBodyMutation{
-				Set: []aigv1a1.HTTPBodyField{{Path: "service_tier", Value: "\"route-value\""}},
+			expected: &aigv1b1.HTTPBodyMutation{
+				Set: []aigv1b1.HTTPBodyField{{Path: "service_tier", Value: "\"route-value\""}},
 			},
 		},
 		{
 			name: "remove operations are combined and deduplicated",
-			routeLevel: &aigv1a1.HTTPBodyMutation{
+			routeLevel: &aigv1b1.HTTPBodyMutation{
 				Remove: []string{"field1", "shared_field"},
 			},
-			backendLevel: &aigv1a1.HTTPBodyMutation{
+			backendLevel: &aigv1b1.HTTPBodyMutation{
 				Remove: []string{"field2", "shared_field"},
 			},
-			expected: &aigv1a1.HTTPBodyMutation{
+			expected: &aigv1b1.HTTPBodyMutation{
 				Remove: []string{"field1", "field2", "shared_field"},
 			},
 		},
 		{
 			name: "complex merge scenario",
-			routeLevel: &aigv1a1.HTTPBodyMutation{
-				Set: []aigv1a1.HTTPBodyField{
+			routeLevel: &aigv1b1.HTTPBodyMutation{
+				Set: []aigv1b1.HTTPBodyField{
 					{Path: "route_only", Value: "\"route-only\""},
 					{Path: "override_field", Value: "\"route-wins\""},
 					{Path: "temperature", Value: "0.8"},
 				},
 				Remove: []string{"route_remove", "shared_remove"},
 			},
-			backendLevel: &aigv1a1.HTTPBodyMutation{
-				Set: []aigv1a1.HTTPBodyField{
+			backendLevel: &aigv1b1.HTTPBodyMutation{
+				Set: []aigv1b1.HTTPBodyField{
 					{Path: "backend_only", Value: "\"backend-only\""},
 					{Path: "override_field", Value: "\"backend-loses\""},
 					{Path: "max_tokens", Value: "100"},
 				},
 				Remove: []string{"backend_remove", "shared_remove"},
 			},
-			expected: &aigv1a1.HTTPBodyMutation{
-				Set: []aigv1a1.HTTPBodyField{
+			expected: &aigv1b1.HTTPBodyMutation{
+				Set: []aigv1b1.HTTPBodyField{
 					{Path: "backend_only", Value: "\"backend-only\""},
 					{Path: "max_tokens", Value: "100"},
 					{Path: "override_field", Value: "\"route-wins\""},
@@ -2256,37 +2730,37 @@ func Test_mergeBodyMutations(t *testing.T) {
 		},
 		{
 			name: "empty mutations",
-			routeLevel: &aigv1a1.HTTPBodyMutation{
-				Set:    []aigv1a1.HTTPBodyField{},
+			routeLevel: &aigv1b1.HTTPBodyMutation{
+				Set:    []aigv1b1.HTTPBodyField{},
 				Remove: []string{},
 			},
-			backendLevel: &aigv1a1.HTTPBodyMutation{
-				Set:    []aigv1a1.HTTPBodyField{},
+			backendLevel: &aigv1b1.HTTPBodyMutation{
+				Set:    []aigv1b1.HTTPBodyField{},
 				Remove: []string{},
 			},
-			expected: &aigv1a1.HTTPBodyMutation{
+			expected: &aigv1b1.HTTPBodyMutation{
 				Set:    nil,
 				Remove: nil,
 			},
 		},
 		{
 			name: "different json value types",
-			routeLevel: &aigv1a1.HTTPBodyMutation{
-				Set: []aigv1a1.HTTPBodyField{
+			routeLevel: &aigv1b1.HTTPBodyMutation{
+				Set: []aigv1b1.HTTPBodyField{
 					{Path: "string_field", Value: "\"string-value\""},
 					{Path: "number_field", Value: "42"},
 				},
 			},
-			backendLevel: &aigv1a1.HTTPBodyMutation{
-				Set: []aigv1a1.HTTPBodyField{
+			backendLevel: &aigv1b1.HTTPBodyMutation{
+				Set: []aigv1b1.HTTPBodyField{
 					{Path: "bool_field", Value: "true"},
 					{Path: "object_field", Value: "{\"key\": \"value\"}"},
 					{Path: "array_field", Value: "[1, 2, 3]"},
 					{Path: "null_field", Value: "null"},
 				},
 			},
-			expected: &aigv1a1.HTTPBodyMutation{
-				Set: []aigv1a1.HTTPBodyField{
+			expected: &aigv1b1.HTTPBodyMutation{
+				Set: []aigv1b1.HTTPBodyField{
 					{Path: "array_field", Value: "[1, 2, 3]"},
 					{Path: "bool_field", Value: "true"},
 					{Path: "null_field", Value: "null"},
@@ -2306,7 +2780,7 @@ func Test_mergeBodyMutations(t *testing.T) {
 				return
 			}
 			require.NotNil(t, result)
-			if d := cmp.Diff(tt.expected, result, cmpopts.SortSlices(func(a, b aigv1a1.HTTPBodyField) bool {
+			if d := cmp.Diff(tt.expected, result, cmpopts.SortSlices(func(a, b aigv1b1.HTTPBodyField) bool {
 				return a.Path < b.Path
 			}), cmpopts.SortSlices(func(a, b string) bool {
 				return a < b

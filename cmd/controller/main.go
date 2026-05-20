@@ -56,6 +56,8 @@ type flags struct {
 	rootPrefix                     string
 	extProcExtraEnvVars            string
 	extProcImagePullSecrets        string
+	// webhookPort is the port for the mutating webhook server.
+	webhookPort int
 	// extProcMaxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
 	extProcMaxRecvMsgSize int
 	// maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive.
@@ -136,6 +138,11 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		"port",
 		":1063",
 		"gRPC port for the extension server",
+	)
+	webhookPort := fs.Int(
+		"webhookPort",
+		9443,
+		"The port for the mutating webhook server.",
 	)
 	tlsCertDir := fs.String(
 		"tlsCertDir",
@@ -330,6 +337,7 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		rootPrefix:                             *rootPrefix,
 		extProcExtraEnvVars:                    *extProcExtraEnvVars,
 		extProcImagePullSecrets:                *extProcImagePullSecrets,
+		webhookPort:                            *webhookPort,
 		extProcMaxRecvMsgSize:                  *extProcMaxRecvMsgSize,
 		maxRecvMsgSize:                         *maxRecvMsgSize,
 		watchNamespaces:                        parseWatchNamespaces(*watchNamespaces),
@@ -373,7 +381,7 @@ func main() {
 			CertDir:  parsedFlags.tlsCertDir,
 			CertName: parsedFlags.tlsCertName,
 			KeyName:  parsedFlags.tlsKeyName,
-			Port:     9443,
+			Port:     parsedFlags.webhookPort,
 		}),
 	}
 	mgr, err := ctrl.NewManager(k8sConfig, mgrOpts)

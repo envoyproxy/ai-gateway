@@ -52,6 +52,7 @@ const (
 	// However, the spec says "a custom value MAY be used.", so we can use it now.
 	genaiTokenTypeCachedInput        = "cached_input"
 	genaiTokenTypeCacheCreationInput = "cache_creation_input"
+	genaiTokenTypeReasoning          = "reasoning"
 	genaiErrorTypeFallback           = "_OTHER"
 )
 

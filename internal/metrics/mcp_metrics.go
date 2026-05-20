@@ -52,6 +52,8 @@ const (
 	mcpAttributeCapabilityType = "capability.type"
 	// MCP capability side, which is either "client" or "server". See mcpCapabilitySide for all sides.
 	mcpAttributeCapabilitySide = "capability.side"
+	// MCP backend attribute, which identifies the upstream MCP backend that handled the request.
+	mcpAttributeBackend = "mcp.backend"
 )
 
 // MCPErrorType defines the type of error that occurred during an MCP request.
@@ -110,6 +112,9 @@ const (
 type MCPMetrics interface {
 	// WithRequestAttributes returns a new MCPMetrics instance with default attributes extracted from the HTTP request.
 	WithRequestAttributes(req *http.Request) MCPMetrics
+	// WithBackend returns a new MCPMetrics instance with the backend attribute set.
+	// This allows metrics to be filtered/sorted by the upstream MCP backend that handled the request.
+	WithBackend(backend string) MCPMetrics
 	// RecordRequestDuration records the duration of a success MCP request.
 	RecordRequestDuration(ctx context.Context, startAt time.Time, meta mcpsdk.Params)
 	// RecordRequestErrorDuration records the duration of an MCP request that resulted in an error.
@@ -168,6 +173,23 @@ func NewMCP(meter metric.Meter, requestHeaderAttributeMapping map[string]string)
 			metric.WithDescription("Total number of MCP progress notifications sent"),
 		),
 	}
+}
+
+// WithBackend returns a new MCPMetrics instance with the backend attribute set.
+func (m *mcp) WithBackend(backend string) MCPMetrics {
+	withBackend := &mcp{
+		requestDuration:               m.requestDuration,
+		methodCount:                   m.methodCount,
+		initializationDuration:        m.initializationDuration,
+		capabilitiesNegotiated:        m.capabilitiesNegotiated,
+		progressNotifications:         m.progressNotifications,
+		requestHeaderAttributeMapping: m.requestHeaderAttributeMapping,
+		defaultAttributes: append(
+			slices.Clone(m.defaultAttributes),
+			attribute.String(mcpAttributeBackend, backend),
+		),
+	}
+	return withBackend
 }
 
 // WithRequestAttributes returns a new MCPMetrics instance with default attributes extracted from

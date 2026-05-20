@@ -1,0 +1,52 @@
+<!--
+  ~ Copyright Envoy AI Gateway Authors
+  ~ SPDX-License-Identifier: Apache-2.0
+  ~ The full text of the Apache license is available in the LICENSE file at
+  ~ the root of the repo.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 380">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="700" height="380" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="350" y="30" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#333">Flow 3: Explicit Cache (Pre-cached)</text>
+
+  <!-- Lifeline labels -->
+  <text x="100" y="60" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#1976d2">Client</text>
+  <text x="320" y="60" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#388e3c">ai-gateway</text>
+  <text x="560" y="60" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#7b1fa2">Vertex AI</text>
+
+  <!-- Lifelines -->
+  <line x1="100" y1="75" x2="100" y2="340" stroke="#999" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="320" y1="75" x2="320" y2="340" stroke="#999" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="560" y1="75" x2="560" y2="340" stroke="#999" stroke-width="1" stroke-dasharray="5,5"/>
+
+  <!-- Step 1: Client to ai-gateway -->
+  <line x1="100" y1="110" x2="310" y2="110" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="205" y="100" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">POST /v1/chat/completions</text>
+  <text x="205" y="125" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#666">(with cachedContent field)</text>
+
+  <!-- Note: No cache service call -->
+  <rect x="250" y="150" width="140" height="30" rx="4" fill="#e8f5e9" stroke="#388e3c" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="320" y="170" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#388e3c">No cache service call</text>
+
+  <!-- Step 2: ai-gateway to Vertex AI -->
+  <line x1="320" y1="210" x2="550" y2="210" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="435" y="200" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">POST generateContent</text>
+  <text x="435" y="225" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#666">(with cachedContent)</text>
+
+  <!-- Step 3: Vertex AI response -->
+  <line x1="560" y1="270" x2="330" y2="270" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="445" y="260" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">Response</text>
+
+  <!-- Step 4: ai-gateway to Client -->
+  <line x1="320" y1="320" x2="110" y2="320" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="215" y="310" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#333">Response (OpenAI format)</text>
+</svg>

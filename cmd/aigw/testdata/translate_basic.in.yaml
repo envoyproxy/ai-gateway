@@ -22,7 +22,7 @@ spec:
       protocol: HTTP
       port: 8888
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: envoy-ai-gateway-basic
@@ -61,7 +61,7 @@ spec:
         - name: envoy-ai-gateway-basic-testupstream
       modelsCreatedAt: "2025-05-23T00:00:00Z"
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: envoy-ai-gateway-basic-openai
@@ -74,7 +74,7 @@ spec:
     kind: Backend
     group: gateway.envoyproxy.io
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: envoy-ai-gateway-basic-aws
@@ -87,7 +87,7 @@ spec:
     kind: Backend
     group: gateway.envoyproxy.io
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: envoy-ai-gateway-basic-openai-apikey
@@ -103,7 +103,7 @@ spec:
       name: envoy-ai-gateway-basic-openai-apikey
       namespace: default
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: envoy-ai-gateway-basic-aws-credentials
@@ -170,7 +170,7 @@ spec:
     wellKnownCACertificates: "System"
     hostname: bedrock-runtime.us-east-1.amazonaws.com
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: envoy-ai-gateway-basic-testupstream

@@ -15,7 +15,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	openaigo "github.com/openai/openai-go/v2"
+	openaigo "github.com/openai/openai-go/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genai"
@@ -881,7 +881,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 				"usageMetadata": {
 					"promptTokenCount": 10,
 					"candidatesTokenCount": 15,
-					"totalTokenCount": 25,
+					"totalTokenCount": 35,
                     "cachedContentTokenCount": 10,
                     "thoughtsTokenCount": 10
 				}
@@ -910,10 +910,10 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "prompt_tokens_details": {
             "cached_tokens": 10
         },
-        "total_tokens": 25
+        "total_tokens": 35
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(10, 10, -1, 15, 25),
+			wantTokenUsage: tokenUsageFrom(10, 10, -1, 25, 35, 10),
 		},
 		{
 			name: "response with safety ratings",
@@ -993,7 +993,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
         "total_tokens": 20
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(8, 0, -1, 12, 20),
+			wantTokenUsage: tokenUsageFrom(8, 0, -1, 12, 20, 0),
 		},
 		{
 			name: "empty response",
@@ -1005,7 +1005,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantError:      false,
 			wantHeaderMut:  []internalapi.Header{{contentLengthHeaderName, "28"}},
 			wantBodyMut:    []byte(`{"object":"chat.completion"}`),
-			wantTokenUsage: tokenUsageFrom(-1, -1, -1, -1, -1),
+			wantTokenUsage: tokenUsageFrom(0, -1, -1, 0, 0, -1),
 		},
 		{
 			name: "single stream chunk response",
@@ -1021,11 +1021,11 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_ResponseBody(t *testing.T
 			wantHeaderMut: nil,
 			wantBodyMut: []byte(`data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+data: {"choices":[],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8), // Does not support cache creation.
+			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8, 0), // Does not support cache creation.
 		},
 		{
 			name: "response with model version field",
@@ -1080,7 +1080,7 @@ data: [DONE]
         "total_tokens": 14
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(6, 0, -1, 8, 14), // Does not support Cache Creation.
+			wantTokenUsage: tokenUsageFrom(6, 0, -1, 8, 14, 0), // Does not support Cache Creation.
 		},
 
 		{
@@ -1149,7 +1149,7 @@ data: [DONE]
         "total_tokens": 20
     }
 }`),
-			wantTokenUsage: tokenUsageFrom(8, 0, -1, 12, 20), // Does not support Cache Creation.
+			wantTokenUsage: tokenUsageFrom(8, 0, -1, 12, 20, 0), // Does not support Cache Creation.
 		},
 		{
 			name: "response with thought summary",
@@ -1180,14 +1180,14 @@ data: [DONE]
 				"usageMetadata": {
 					"promptTokenCount": 10,
 					"candidatesTokenCount": 15,
-					"totalTokenCount": 25,
+					"totalTokenCount": 35,
                     "cachedContentTokenCount": 10,
                     "thoughtsTokenCount": 10
 				}
 			}`,
 			endOfStream:   true,
 			wantError:     false,
-			wantHeaderMut: []internalapi.Header{{contentLengthHeaderName, "450"}},
+			wantHeaderMut: []internalapi.Header{{contentLengthHeaderName, "402"}},
 			wantBodyMut: []byte(`{
     "choices": [
         {
@@ -1195,7 +1195,7 @@ data: [DONE]
             "index": 0,
             "message": {
                 "content": "AI Gateways act as intermediaries between clients and LLM services.",
-				"reasoning_content": {"reasoningContent": {"reasoningText": {"text":  "Let me think step by step."}}},
+                "reasoning_content": "Let me think step by step.",
                 "role": "assistant"
             }
         }
@@ -1210,11 +1210,11 @@ data: [DONE]
         "prompt_tokens_details": {
             "cached_tokens": 10
         },
-        "total_tokens": 25
+        "total_tokens": 35
     }
 }`),
 
-			wantTokenUsage: tokenUsageFrom(10, 10, -1, 15, 25), // Does not support Cache Creation.
+			wantTokenUsage: tokenUsageFrom(10, 10, -1, 25, 35, 10), // Does not support Cache Creation.
 		},
 		{
 			name: "stream chunks with thought summary",
@@ -1232,11 +1232,11 @@ data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}],"usageMetadata":{
 
 data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+data: {"choices":[],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8), // Does not support Cache Creation.
+			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8, 0), // Does not support Cache Creation.
 		},
 		{
 			name: "stream chunks with thought signature on text part",
@@ -1254,11 +1254,11 @@ data: {"candidates":[{"content":{"parts":[{"text":"The answer is 42.", "thoughtS
 
 data: {"choices":[{"index":0,"delta":{"content":"The answer is 42.","role":"assistant","reasoning_content":{"signature":"dGVzdHNpZ25hdHVyZQ=="}}}],"object":"chat.completion.chunk"}
 
-data: {"object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":8,"total_tokens":18,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+data: {"choices":[],"object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":8,"total_tokens":18,"completion_tokens_details":{},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(10, 0, -1, 8, 18),
+			wantTokenUsage: tokenUsageFrom(10, 0, -1, 8, 18, 0),
 		},
 	}
 
@@ -1352,12 +1352,27 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 	}
 
 	tests := []struct {
-		name     string
-		gcpChunk string
+		name          string
+		gcpChunk      string
+		expectedUsage metrics.TokenUsage
+		assertBody    func(t *testing.T, bodyStr string)
 	}{
 		{
-			name:     "single candidate in streaming response",
-			gcpChunk: `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":"STOP"}]}`,
+			name:          "single candidate in streaming response",
+			gcpChunk:      `{"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"finishReason":"STOP"}]}`,
+			expectedUsage: tokenUsageFrom(-1, -1, -1, -1, -1, -1),
+		},
+		{
+			name:          "finish reason without content (MAX_TOKENS)",
+			gcpChunk:      `{"candidates":[{"finishReason":"MAX_TOKENS"}],"usageMetadata":{"promptTokenCount":21,"candidatesTokenCount":71,"totalTokenCount":92}}`,
+			expectedUsage: tokenUsageFrom(21, 0, -1, 71, 92, 0),
+			assertBody: func(t *testing.T, bodyStr string) {
+				// The finish_reason chunk must contain "delta":{} to comply with the OpenAI streaming format.
+				require.Contains(t, bodyStr, `"delta":{}`)
+				require.Contains(t, bodyStr, `"finish_reason":"length"`)
+				// The usage chunk must have empty choices.
+				require.Contains(t, bodyStr, `"choices":[]`)
+			},
 		},
 	}
 
@@ -1374,10 +1389,12 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingResponseBody(t *
 			require.NotNil(t, bodyMut)
 			// Check that the response is in SSE format.
 			bodyStr := string(bodyMut)
-			print(bodyStr)
 			require.Contains(t, bodyStr, "data: ")
 			require.Contains(t, bodyStr, "chat.completion.chunk")
-			require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), tokenUsage) // No usage in this test chunk.
+			require.Equal(t, tt.expectedUsage, tokenUsage)
+			if tt.assertBody != nil {
+				tt.assertBody(t, bodyStr)
+			}
 		})
 	}
 }

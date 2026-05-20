@@ -62,7 +62,7 @@ spec:
           # Clear the default memory/cpu requirements for local tests.
           resources: {}
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: route1
@@ -82,7 +82,7 @@ spec:
       backendRefs:
         - name: route1-backend
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: route1-backend
@@ -106,7 +106,7 @@ spec:
         hostname: envoy-ai-gateway-basic-testupstream.default.svc.cluster.local
         port: 80
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: route2
@@ -126,7 +126,7 @@ spec:
       backendRefs:
         - name: route2-backend
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: route2-backend

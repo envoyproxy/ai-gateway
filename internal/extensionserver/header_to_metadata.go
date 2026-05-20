@@ -15,7 +15,7 @@ import (
 	httpconnectionmanagerv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
 
 const headerToMetadataFilterName = "envoy.filters.http.header_to_metadata"
@@ -98,7 +98,7 @@ func buildHeaderToMetadataFilter(attrs map[string]string) (*httpconnectionmanage
 		cfg.RequestRules = append(cfg.RequestRules, &htomv3.Config_Rule{
 			Header: header,
 			OnHeaderPresent: &htomv3.Config_KeyValuePair{
-				MetadataNamespace: aigv1a1.AIGatewayFilterMetadataNamespace,
+				MetadataNamespace: aigv1b1.AIGatewayFilterMetadataNamespace,
 				Key:               attrs[header],
 				Type:              htomv3.Config_STRING,
 			},
@@ -159,7 +159,7 @@ func mergeHeaderToMetadataRules(cfg *htomv3.Config, attrs map[string]string) boo
 		cfg.RequestRules = append(cfg.RequestRules, &htomv3.Config_Rule{
 			Header: header,
 			OnHeaderPresent: &htomv3.Config_KeyValuePair{
-				MetadataNamespace: aigv1a1.AIGatewayFilterMetadataNamespace,
+				MetadataNamespace: aigv1b1.AIGatewayFilterMetadataNamespace,
 				Key:               attrs[header],
 				Type:              htomv3.Config_STRING,
 			},

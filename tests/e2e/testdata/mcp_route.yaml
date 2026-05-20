@@ -30,7 +30,7 @@ spec:
       kind: EnvoyProxy
       name: mcp-envoyproxy
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-default-route
@@ -134,7 +134,7 @@ kind: Namespace
 metadata:
   name: mcp-tenant
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-tenant-route
@@ -214,7 +214,7 @@ spec:
           # Clear the default memory/cpu requirements for local tests.
           resources: {}
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-tenant-route-with-path
@@ -237,7 +237,7 @@ spec:
         include:
           - sum
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-tenant-route-with-top-level-path
@@ -259,7 +259,7 @@ spec:
         include:
           - echo
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-invalid-api-key-route

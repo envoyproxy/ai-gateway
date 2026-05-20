@@ -5,7 +5,7 @@
 
 # This should fail validation: cannot mix InferencePool and AIServiceBackend references in the same rule
 
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: inference-pool-mixed-backends
