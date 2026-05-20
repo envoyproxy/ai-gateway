@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	"github.com/tidwall/sjson"
@@ -36,7 +37,13 @@ func NewAnthropicToAWSAnthropicTranslator(apiVersion string, modelNameOverride i
 
 type anthropicToAWSAnthropicTranslator struct {
 	anthropicToAnthropicTranslator
-	apiVersion string
+	apiVersion     string
+	requestHeaders map[string]string
+}
+
+// SetRequestHeaders implements [RequestHeadersSetter].
+func (a *anthropicToAWSAnthropicTranslator) SetRequestHeaders(headers map[string]string) {
+	a.requestHeaders = headers
 }
 
 // ResponseHeaders implements [AnthropicMessagesTranslator.ResponseHeaders].
@@ -72,6 +79,21 @@ func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *an
 	// It is safe to use sjsonOptionsInPlace here since we have already created a new mutatedBody above.
 	newBody, _ = sjson.DeleteBytesOptions(newBody, "model", sjsonOptionsInPlace)
 	newBody, _ = sjson.DeleteBytesOptions(newBody, "stream", sjsonOptionsInPlace)
+
+	if betaHeader := a.requestHeaders["anthropic-beta"]; betaHeader != "" {
+		var betaValues []string
+		for _, beta := range strings.Split(betaHeader, ",") {
+			if beta = strings.TrimSpace(beta); beta != "" {
+				betaValues = append(betaValues, beta)
+			}
+		}
+		if len(betaValues) > 0 {
+			newBody, err = sjson.SetBytesOptions(newBody, "anthropic_beta", betaValues, sjsonOptionsInPlace)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to set anthropic_beta field: %w", err)
+			}
+		}
+	}
 
 	// Determine the AWS Bedrock path based on whether streaming is requested.
 	var pathTemplate string
