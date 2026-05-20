@@ -271,7 +271,7 @@ func TestCreateFileOpenAIToOpenAITranslatorResponseBody(t *testing.T) {
 			require.NotEqual(t, gjson.Get(tc.responseBody, "id").String(), encodedID, "ID should be encoded, not original")
 
 			// Decode and verify routing information
-			modelName, backendName, originalID, err := DecodeIDWithRouting(encodedID)
+			modelName, backendName, originalID, err := DecodeFileIDWithRouting(encodedID)
 			require.NoError(t, err)
 			require.Equal(t, "gpt-4", modelName)
 			require.Equal(t, "default/test-backend/route/test-route/rule/0/ref/0", backendName)

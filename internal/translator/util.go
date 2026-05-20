@@ -79,7 +79,7 @@ func serializeOpenAIChatCompletionChunk(chunk *openai.ChatCompletionResponseChun
 	return nil
 }
 
-// EncodeIDWithRouting encodes a file/batch ID with model and backend routing information.
+// EncodeFileIDWithRouting encodes a file/batch ID with model and backend routing information.
 //
 // Format: <prefix><base64url(aigw:<original_id>;model:<model_name>;backend:<backend_name>)>
 // The result preserves the original prefix (file-, batch_, etc.) for OpenAI compliance.
@@ -98,15 +98,15 @@ func serializeOpenAIChatCompletionChunk(chunk *openai.ChatCompletionResponseChun
 //
 // Examples:
 //
-//	EncodeIDWithRouting("file-abc123", "gpt-4o-mini", "azure-openai", "file")
+//	EncodeFileIDWithRouting("file-abc123", "gpt-4o-mini", "azure-openai", "file")
 //	-> "file-YWlndzpmaWxlLWFiYzEyMzttb2RlbDpncHQtNG8tbWluaTtiYWNrZW5kOmF6dXJlLW9wZW5haQ"
-func EncodeIDWithRouting(id, modelName, backendName, _ string) string {
+func EncodeFileIDWithRouting(id, modelName, backendName, _ string) string {
 	prefix := FileIDPrefix
 	// Use "aigw:" prefix to identify AI Gateway encoded IDs, consistent with the proposal
 	return prefix + base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, "aigw:%s;model:%s;backend:%s", id, modelName, backendName))
 }
 
-// DecodeIDWithRouting extracts the model name, backend name, and original file id from an encoded file ID.
+// DecodeFileIDWithRouting extracts the model name, backend name, and original file id from an encoded file ID.
 //
 // It expects the encoded ID to be in the format produced by EncodeIDWithRouting, which includes a prefix (file-)
 // followed by a base64-encoded string containing the original ID, model name, and backend name.
@@ -122,9 +122,9 @@ func EncodeIDWithRouting(id, modelName, backendName, _ string) string {
 //
 // Examples:
 //
-//	DecodeIDWithRouting("file-YWlndzpmaWxlLWFiYzEyMzttb2RlbDpncHQtNG8tbWluaTtiYWNrZW5kOmF6dXJlLW9wZW5haQ")
+//	DecodeFileIDWithRouting("file-YWlndzpmaWxlLWFiYzEyMzttb2RlbDpncHQtNG8tbWluaTtiYWNrZW5kOmF6dXJlLW9wZW5haQ")
 //	-> "gpt-4o-mini", "azure-openai", "file-abc123", nil
-func DecodeIDWithRouting(encodedID string) (modelName string, backendName string, id string, err error) {
+func DecodeFileIDWithRouting(encodedID string) (modelName string, backendName string, id string, err error) {
 	var base64Part string
 	switch {
 	case strings.HasPrefix(encodedID, FileIDPrefix):

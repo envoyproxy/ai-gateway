@@ -340,7 +340,7 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processFileIDI
 	}
 	// Decode file ID with routing information (model and backend).
 	// If decoding fails, treat the ID as raw provider file ID and require explicit backend query parameter.
-	modelName, backendName, decodedID, err := translator.DecodeIDWithRouting(fileID)
+	modelName, backendName, decodedID, err := translator.DecodeFileIDWithRouting(fileID)
 	if err != nil {
 		backendName, ok = extractBackendFromQueryParam(r.requestHeaders[":path"])
 		if !ok {

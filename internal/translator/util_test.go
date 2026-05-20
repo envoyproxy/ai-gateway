@@ -123,13 +123,13 @@ func TestEncodeIDWithRouting(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			encoded := EncodeIDWithRouting(tc.id, tc.modelName, tc.backendName, tc.idType)
+			encoded := EncodeFileIDWithRouting(tc.id, tc.modelName, tc.backendName, tc.idType)
 
 			// Verify it starts with the correct prefix
 			require.True(t, strings.HasPrefix(encoded, "file-"), "encoded ID should start with 'file-'")
 
 			// Decode and verify
-			modelName, backendName, id, err := DecodeIDWithRouting(encoded)
+			modelName, backendName, id, err := DecodeFileIDWithRouting(encoded)
 			require.NoError(t, err)
 			require.Equal(t, tc.modelName, modelName)
 			require.Equal(t, tc.backendName, backendName)
@@ -150,7 +150,7 @@ func TestDecodeFileIDRouting(t *testing.T) {
 	}{
 		{
 			name:            "decodes new format with backend",
-			encodedID:       EncodeIDWithRouting("file-abc123", "gpt-4o-mini", "azure-openai", "file"),
+			encodedID:       EncodeFileIDWithRouting("file-abc123", "gpt-4o-mini", "azure-openai", "file"),
 			wantModelName:   "gpt-4o-mini",
 			wantBackendName: "azure-openai",
 			wantID:          "file-abc123",
@@ -158,7 +158,7 @@ func TestDecodeFileIDRouting(t *testing.T) {
 		},
 		{
 			name:            "decodes new format without backend",
-			encodedID:       EncodeIDWithRouting("file-xyz789", "claude-3", "", "file"),
+			encodedID:       EncodeFileIDWithRouting("file-xyz789", "claude-3", "", "file"),
 			wantModelName:   "claude-3",
 			wantBackendName: "",
 			wantID:          "file-xyz789",
@@ -192,7 +192,7 @@ func TestDecodeFileIDRouting(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			modelName, backendName, id, err := DecodeIDWithRouting(tc.encodedID)
+			modelName, backendName, id, err := DecodeFileIDWithRouting(tc.encodedID)
 
 			if tc.expectErr {
 				require.Error(t, err)

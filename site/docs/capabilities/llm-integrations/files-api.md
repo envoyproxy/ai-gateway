@@ -15,7 +15,7 @@ The Files API is a prerequisite for batch processing workflows. Uploaded files a
 ### Supported Endpoints
 
 | Endpoint                  | Method   | Path                          | Description                             |
-|---------------------------|----------|-------------------------------|-----------------------------------------|
+| ------------------------- | -------- | ----------------------------- | --------------------------------------- |
 | **Upload file**           | `POST`   | `/v1/files`                   | Upload a file via `multipart/form-data` |
 | **List files**            | `GET`    | `/v1/files`                   | List files stored in a backend          |
 | **Retrieve file**         | `GET`    | `/v1/files/{file_id}`         | Fetch file metadata by ID               |
@@ -31,7 +31,7 @@ The Files API is currently supported for **OpenAI-compatible backends**.
 ### Routing Inputs by Operation
 
 | Endpoint                                                               | Routing input                                                                                                                                                                                         |
-|------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /v1/files`                                                       | `multipart/form-data` only. `model` is required as a multipart field. `backend` is optional as a multipart field and can pin the upload to a specific backend.                                        |
 | `GET /v1/files`                                                        | Query parameter `backend` is required (for example: `?backend=default.openai-backend`)                                                                                                                |
 | `GET/DELETE /v1/files/{file_id}` and `GET /v1/files/{file_id}/content` | Prefer the gateway-encoded file ID returned by upload. Raw upstream file IDs are also supported, but they must include `?backend=<namespace.backend>` so the gateway can route the request correctly. |

@@ -546,7 +546,7 @@ func (RetrieveFileContentEndpointSpec) ParseBody(
 	_ bool,
 	_ map[string]string,
 ) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
-	// RetrieveFile endpoint does not have a body.
+	// RetrieveFileContent endpoint does not have a body.
 	return "", &struct{}{}, false, body, nil
 }
 
@@ -571,7 +571,7 @@ func (DeleteFileEndpointSpec) ParseBody(body []byte,
 	_ bool,
 	_ map[string]string,
 ) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
-	// RetrieveFile endpoint does not have a body.
+	// DeleteFile endpoint does not have a body.
 	return "", &struct{}{}, false, body, nil
 }
 
