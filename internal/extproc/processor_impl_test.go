@@ -459,7 +459,7 @@ func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *test
 	})
 
 	t.Run("file id request sets decoded/model/backend headers and preserves pre-existing original path headers", func(t *testing.T) {
-		encodedID := translator.EncodeIDWithRouting("file-abc123", "gpt-4o-mini", "azure-openai", "file")
+		encodedID := translator.EncodeFileIDWithRouting("file-abc123", "gpt-4o-mini", "azure-openai", "file")
 		path := "/v1/files/" + encodedID + "/content"
 		p := &retrieveFileContentProcessorRouterFilter{
 			requestHeaders: map[string]string{
@@ -497,7 +497,7 @@ func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *test
 	})
 
 	t.Run("file id request without backend omits backend header", func(t *testing.T) {
-		encodedID := translator.EncodeIDWithRouting("file-xyz789", "claude-3", "", "file")
+		encodedID := translator.EncodeFileIDWithRouting("file-xyz789", "claude-3", "", "file")
 		path := "/v1/files/" + encodedID
 		p := &retrieveFileContentProcessorRouterFilter{
 			requestHeaders: map[string]string{":method": "GET", ":path": path},

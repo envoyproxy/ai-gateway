@@ -113,8 +113,8 @@ func TestWithTestUpstream(t *testing.T) {
 		fileUploadBoundary   = "----aigw-test-boundary"
 	)
 	// Use the new EncodeIDWithRouting that includes backend name for sticky routing
-	encodedOpenAIFileID := translator.EncodeIDWithRouting(openAIFileUpstreamID, openAIFileModelName, "testupstream-openai", "file")
-	stickyEncodedOpenAIFileID := translator.EncodeIDWithRouting(openAIFileUpstreamID, openAIFileModelName, stickyOpenAIBackend, "file")
+	encodedOpenAIFileID := translator.EncodeFileIDWithRouting(openAIFileUpstreamID, openAIFileModelName, "testupstream-openai", "file")
+	stickyEncodedOpenAIFileID := translator.EncodeFileIDWithRouting(openAIFileUpstreamID, openAIFileModelName, stickyOpenAIBackend, "file")
 	fileUploadBody := strings.Join([]string{
 		"--" + fileUploadBoundary,
 		`Content-Disposition: form-data; name="file"; filename="test.txt"`,

@@ -228,7 +228,7 @@ func TestWithTestUpstream(t *testing.T) {
 					return false
 				}
 
-				gotModel, gotBackendName, gotFileID, err := translator.DecodeIDWithRouting(fileObj.ID)
+				gotModel, gotBackendName, gotFileID, err := translator.DecodeFileIDWithRouting(fileObj.ID)
 				if err != nil {
 					t.Logf("error decoding returned file id %q: %v", fileObj.ID, err)
 					return false
@@ -352,7 +352,7 @@ func TestWithTestUpstream(t *testing.T) {
 
 		t.Run("GET /v1/files/{file_id} sticky backend with existing model", func(t *testing.T) {
 			require.NotEmpty(t, encodedBackendName)
-			stickyEncodedFileID := translator.EncodeIDWithRouting(upstreamFileID, modelName, encodedBackendName, "file")
+			stickyEncodedFileID := translator.EncodeFileIDWithRouting(upstreamFileID, modelName, encodedBackendName, "file")
 
 			require.Eventually(t, func() bool {
 				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
@@ -443,7 +443,7 @@ func TestWithTestUpstream(t *testing.T) {
 
 		t.Run("GET /v1/files/{file_id}/content sticky backend with existing model", func(t *testing.T) {
 			require.NotEmpty(t, encodedBackendName)
-			stickyEncodedFileID := translator.EncodeIDWithRouting(upstreamFileID, modelName, encodedBackendName, "file")
+			stickyEncodedFileID := translator.EncodeFileIDWithRouting(upstreamFileID, modelName, encodedBackendName, "file")
 
 			require.Eventually(t, func() bool {
 				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
@@ -534,7 +534,7 @@ func TestWithTestUpstream(t *testing.T) {
 
 		t.Run("DELETE /v1/files/{file_id} sticky backend with existing model", func(t *testing.T) {
 			require.NotEmpty(t, encodedBackendName)
-			stickyEncodedFileID := translator.EncodeIDWithRouting(upstreamFileID, modelName, encodedBackendName, "file")
+			stickyEncodedFileID := translator.EncodeFileIDWithRouting(upstreamFileID, modelName, encodedBackendName, "file")
 
 			require.Eventually(t, func() bool {
 				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)

@@ -166,8 +166,9 @@ func TestStartControllers(t *testing.T) {
 					t.Logf("failed to get http route %s: %v", route, err)
 					return false
 				}
-				// Rules: 1 regular rule + 2 sticky rules (one per backend) + 1 route-not-found rule = 4
-				require.Len(t, httpRoute.Spec.Rules, 4)
+				// Main route rules: 1 regular rule + 1 route-not-found rule = 2.
+				// Sticky routing is configured in separate per-backend HTTPRoutes.
+				require.Len(t, httpRoute.Spec.Rules, 2)
 				require.Len(t, httpRoute.Spec.Rules[0].Matches, 1)
 				require.Len(t, httpRoute.Spec.Rules[0].Matches[0].Headers, 1)
 				require.Equal(t, internalapi.ModelNameHeaderKeyDefault, string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))

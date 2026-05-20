@@ -165,7 +165,7 @@ func (o *openAIToOpenAITranslatorV1CreateFile) ResponseBody(respHeaders map[stri
 	backendName := respHeaders[internalapi.BackendNameHeaderKey]
 
 	// Encode the file ID with model and backend routing information. This allows us to route subsequent requests with the file ID to the correct model and backend.
-	encodedID := EncodeIDWithRouting(originalID, o.requestModel, backendName, "file")
+	encodedID := EncodeFileIDWithRouting(originalID, o.requestModel, backendName, "file")
 
 	// Verify encoding actually changed the ID (it should always change unless something is wrong)
 	if encodedID == originalID {
