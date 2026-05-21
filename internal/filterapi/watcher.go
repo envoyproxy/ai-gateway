@@ -17,6 +17,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
+var errBundlePartNotFound = errors.New("bundle part not found")
+
 // ConfigReceiver is an interface that can receive *Config updates.
 // This is mostly for decoupling and testing purposes.
 type ConfigReceiver interface {
@@ -62,7 +64,7 @@ func StartConfigBundleWatcher(ctx context.Context, bundlePath string, rcv Config
 	if err := cw.loadConfig(ctx); err != nil {
 		// The initial load of the bundle may fail because of race condition
 		// when the bundle is being created. We will retry on the next tick.
-		if !errors.Is(err, ErrBundleChecksumMismatch) {
+		if !errors.Is(err, ErrBundleChecksumMismatch) && !errors.Is(err, errBundlePartNotFound) {
 			return fmt.Errorf("failed to load initial bundled config: %w", err)
 		}
 		l.Warn("failed to load initial bundled config; will retry on next watch tick", slog.String("error", err.Error()))
@@ -160,6 +162,9 @@ func (cw *bundleConfigWatcher) loadConfig(ctx context.Context) error {
 		partPath := filepath.Join(cw.path, filepath.FromSlash(index.Parts[i].Path))
 		partStat, statErr := os.Stat(partPath)
 		if statErr != nil {
+			if errors.Is(statErr, os.ErrNotExist) {
+				return fmt.Errorf("%w %q: %w", errBundlePartNotFound, index.Parts[i].Path, statErr)
+			}
 			return statErr
 		}
 		if partStat.ModTime().After(maxMod) {
@@ -173,7 +178,11 @@ func (cw *bundleConfigWatcher) loadConfig(ctx context.Context) error {
 	cw.l.Info("loading a new bundled config", slog.String("path", cw.path))
 	cfg, err := ReassembleBundleConfig(index, func(part ConfigBundlePart) ([]byte, error) {
 		partPath := filepath.Join(cw.path, filepath.FromSlash(part.Path))
-		return os.ReadFile(partPath)
+		raw, readErr := os.ReadFile(partPath)
+		if readErr != nil && errors.Is(readErr, os.ErrNotExist) {
+			return nil, fmt.Errorf("%w %q: %w", errBundlePartNotFound, part.Path, readErr)
+		}
+		return raw, readErr
 	})
 	if err != nil {
 		return err
