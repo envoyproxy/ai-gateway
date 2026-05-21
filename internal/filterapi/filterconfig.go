@@ -126,6 +126,9 @@ func (v VersionedAPISchema) OpenAIPrefix() string {
 
 // AnthropicPrefix returns the Anthropic API prefix for the VersionedAPISchema.
 func (v VersionedAPISchema) AnthropicPrefix() string {
+	if v.Prefix == "" {
+		return "v1"
+	}
 	return v.Prefix
 }
 
