@@ -361,8 +361,8 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 		if getErr != nil {
 			return nil, getErr
 		}
-		if b, exists := partSecret.StringData[controller.FilterConfigBundlePartKey]; exists {
-			return []byte(b), nil
+		if b, exists := partSecret.Data[controller.FilterConfigBundlePartKey]; exists {
+			return b, nil
 		}
 		return nil, fmt.Errorf("missing key %q in part secret %s", controller.FilterConfigBundlePartKey, part.Name)
 	})

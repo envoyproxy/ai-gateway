@@ -74,7 +74,7 @@ func (c *GatewayController) writeFilterConfigBundle(ctx context.Context, gateway
 			Path:      filterapi.ConfigBundlePartPath(i),
 			SizeBytes: len(chunks[i]),
 		})
-		partData := map[string]string{FilterConfigBundlePartKey: string(chunks[i])}
+		partData := map[string][]byte{FilterConfigBundlePartKey: chunks[i]}
 
 		secret, err := c.kube.CoreV1().Secrets(configSecretNamespace).Get(ctx, partName, metav1.GetOptions{})
 		switch {
@@ -83,13 +83,13 @@ func (c *GatewayController) writeFilterConfigBundle(ctx context.Context, gateway
 		case err != nil && apierrors.IsNotFound(err): // not found
 			secret = &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: partName, Namespace: configSecretNamespace},
-				StringData: partData,
+				Data:       partData,
 			}
 			if _, err = c.kube.CoreV1().Secrets(configSecretNamespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
 				return fmt.Errorf("failed to create filter config part secret %s: %w", partName, err)
 			}
 		case err == nil: // found
-			secret.StringData = partData
+			secret.Data = partData
 			if _, err = c.kube.CoreV1().Secrets(configSecretNamespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
 				return fmt.Errorf("failed to update filter config part secret %s: %w", partName, err)
 			}

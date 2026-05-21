@@ -204,45 +204,8 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-000
-stringData:
-  chunk: |
-    backends:
-    - auth:
-        apiKey:
-          key: apiKey
-      modelNameOverride: ""
-      name: default/envoy-ai-gateway-basic-openai/route/envoy-ai-gateway-basic/rule/0/ref/0
-      schema:
-        name: OpenAI
-        prefix: v1
-    - auth:
-        aws:
-          credentialFileLiteral: |
-            [default]
-            aws_access_key_id = AWS_ACCESS_KEY_ID
-            aws_secret_access_key = AWS_SECRET_ACCESS_KEY
-          region: us-east-1
-      modelNameOverride: us.meta.llama3-2-1b-instruct-v1:0
-      name: default/envoy-ai-gateway-basic-aws/route/envoy-ai-gateway-basic/rule/1/ref/0
-      schema:
-        name: AWSBedrock
-    - modelNameOverride: ""
-      name: default/envoy-ai-gateway-basic-testupstream/route/envoy-ai-gateway-basic/rule/2/ref/0
-      schema:
-        name: OpenAI
-        prefix: v1
-    models:
-    - CreatedAt: "2025-05-23T00:00:00Z"
-      Name: gpt-4o-mini
-      OwnedBy: openai
-    - CreatedAt: "2025-05-23T00:00:00Z"
-      Name: llama3-2-1b-instruct-v1
-      OwnedBy: aws
-    - CreatedAt: "2025-05-23T00:00:00Z"
-      Name: some-cool-self-hosted-model
-      OwnedBy: Envoy AI Gateway
-    uuid: aigw-translate
-    version: dev
+data:
+  chunk: YmFja2VuZHM6Ci0gYXV0aDoKICAgIGFwaUtleToKICAgICAga2V5OiBhcGlLZXkKICBtb2RlbE5hbWVPdmVycmlkZTogIiIKICBuYW1lOiBkZWZhdWx0L2Vudm95LWFpLWdhdGV3YXktYmFzaWMtb3BlbmFpL3JvdXRlL2Vudm95LWFpLWdhdGV3YXktYmFzaWMvcnVsZS8wL3JlZi8wCiAgc2NoZW1hOgogICAgbmFtZTogT3BlbkFJCiAgICBwcmVmaXg6IHYxCi0gYXV0aDoKICAgIGF3czoKICAgICAgY3JlZGVudGlhbEZpbGVMaXRlcmFsOiB8CiAgICAgICAgW2RlZmF1bHRdCiAgICAgICAgYXdzX2FjY2Vzc19rZXlfaWQgPSBBV1NfQUNDRVNTX0tFWV9JRAogICAgICAgIGF3c19zZWNyZXRfYWNjZXNzX2tleSA9IEFXU19TRUNSRVRfQUNDRVNTX0tFWQogICAgICByZWdpb246IHVzLWVhc3QtMQogIG1vZGVsTmFtZU92ZXJyaWRlOiB1cy5tZXRhLmxsYW1hMy0yLTFiLWluc3RydWN0LXYxOjAKICBuYW1lOiBkZWZhdWx0L2Vudm95LWFpLWdhdGV3YXktYmFzaWMtYXdzL3JvdXRlL2Vudm95LWFpLWdhdGV3YXktYmFzaWMvcnVsZS8xL3JlZi8wCiAgc2NoZW1hOgogICAgbmFtZTogQVdTQmVkcm9jawotIG1vZGVsTmFtZU92ZXJyaWRlOiAiIgogIG5hbWU6IGRlZmF1bHQvZW52b3ktYWktZ2F0ZXdheS1iYXNpYy10ZXN0dXBzdHJlYW0vcm91dGUvZW52b3ktYWktZ2F0ZXdheS1iYXNpYy9ydWxlLzIvcmVmLzAKICBzY2hlbWE6CiAgICBuYW1lOiBPcGVuQUkKICAgIHByZWZpeDogdjEKbW9kZWxzOgotIENyZWF0ZWRBdDogIjIwMjUtMDUtMjNUMDA6MDA6MDBaIgogIE5hbWU6IGdwdC00by1taW5pCiAgT3duZWRCeTogb3BlbmFpCi0gQ3JlYXRlZEF0OiAiMjAyNS0wNS0yM1QwMDowMDowMFoiCiAgTmFtZTogbGxhbWEzLTItMWItaW5zdHJ1Y3QtdjEKICBPd25lZEJ5OiBhd3MKLSBDcmVhdGVkQXQ6ICIyMDI1LTA1LTIzVDAwOjAwOjAwWiIKICBOYW1lOiBzb21lLWNvb2wtc2VsZi1ob3N0ZWQtbW9kZWwKICBPd25lZEJ5OiBFbnZveSBBSSBHYXRld2F5CnV1aWQ6IGFpZ3ctdHJhbnNsYXRlCnZlcnNpb246IGRldgo=
 ---
 apiVersion: v1
 kind: Secret

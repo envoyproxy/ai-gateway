@@ -6,6 +6,7 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strconv"
@@ -2106,7 +2107,7 @@ func TestGatewayController_writeFilterConfigBundleShards(t *testing.T) {
 	namespace := "ns"
 	gatewayName := "cfg-gw"
 	gatewayNamespace := "cfg-ns"
-	payload := []byte(strings.Repeat("x", filterConfigBundlePartSizeBytes*2+10))
+	payload := append([]byte(strings.Repeat("x", filterConfigBundlePartSizeBytes*2+10)), []byte("中文字符")...)
 	err := c.writeFilterConfigBundle(t.Context(), gatewayName, gatewayNamespace, namespace, payload, "uuid-1")
 	require.NoError(t, err)
 
@@ -2125,12 +2126,17 @@ func TestGatewayController_writeFilterConfigBundleShards(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, index.Parts, 3)
 
+	var reassembled bytes.Buffer
 	for _, part := range index.Parts {
 		s, getErr := kube.CoreV1().Secrets(namespace).Get(t.Context(), part.Name, metav1.GetOptions{})
 		require.NoError(t, getErr)
-		_, partOK := s.StringData[FilterConfigBundlePartKey]
+		chunk, partOK := s.Data[FilterConfigBundlePartKey]
 		require.True(t, partOK)
+		_, stringDataOK := s.StringData[FilterConfigBundlePartKey]
+		require.False(t, stringDataOK)
+		reassembled.Write(chunk)
 	}
+	require.Equal(t, payload, reassembled.Bytes())
 	_, err = kube.CoreV1().Secrets(namespace).Get(t.Context(),
 		filterConfigBundlePartSecretName(gatewayName, gatewayNamespace, maxFilterConfigBundleSlots-1), metav1.GetOptions{})
 	require.True(t, apierrors.IsNotFound(err))
