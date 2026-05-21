@@ -18,9 +18,12 @@ import (
 )
 
 var (
-	sseEventPrefix = []byte("event: ")
-	sseIDPrefix    = []byte("id: ")
-	sseDataPrefix  = []byte("data: ")
+	sseEventPrefix = []byte("event:")
+	sseIDPrefix    = []byte("id:")
+	sseDataPrefix  = []byte("data:")
+	sseEventPrefixSpace = []byte("event: ")
+	sseIDPrefixSpace    = []byte("id: ")
+	sseDataPrefixSpace  = []byte("data: ")
 
 	sseCR   = []byte{'\r'}
 	sseLF   = []byte{'\n'}
@@ -98,11 +101,11 @@ func (s *sseEventParser) parseEvent(chunk []byte) (*sseEvent, error) {
 	for line := range bytes.SplitSeq(chunk, sseLF) {
 		switch {
 		case bytes.HasPrefix(line, sseEventPrefix):
-			ret.event = string(bytes.TrimSpace(line[7:]))
+			ret.event = string(bytes.TrimSpace(line[len(sseEventPrefix):]))
 		case bytes.HasPrefix(line, sseIDPrefix):
-			ret.id = string(bytes.TrimSpace(line[4:]))
+			ret.id = string(bytes.TrimSpace(line[len(sseIDPrefix):]))
 		case bytes.HasPrefix(line, sseDataPrefix):
-			data := bytes.TrimSpace(line[6:])
+			data := bytes.TrimSpace(line[len(sseDataPrefix):])
 			msg, err := jsonrpc.DecodeMessage(data)
 			if err != nil {
 				return nil, fmt.Errorf("failed to decode jsonrpc message from sse data: %w", err)
@@ -143,17 +146,17 @@ type sseEvent struct {
 
 func (s *sseEvent) writeAndMaybeFlush(w io.Writer) {
 	if s.event != "" {
-		_, _ = w.Write(sseEventPrefix)
+		_, _ = w.Write(sseEventPrefixSpace)
 		_, _ = w.Write([]byte(s.event))
 		_, _ = w.Write(sseLF)
 	}
 	if s.id != "" {
-		_, _ = w.Write(sseIDPrefix)
+		_, _ = w.Write(sseIDPrefixSpace)
 		_, _ = w.Write([]byte(s.id))
 		_, _ = w.Write(sseLF)
 	}
 	for _, msg := range s.messages {
-		_, _ = w.Write(sseDataPrefix)
+		_, _ = w.Write(sseDataPrefixSpace)
 		data, _ := jsonrpc.EncodeMessage(msg)
 		_, _ = w.Write(data)
 		_, _ = w.Write(sseLF)
