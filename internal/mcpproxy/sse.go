@@ -18,9 +18,9 @@ import (
 )
 
 var (
-	sseEventPrefix = []byte("event:")
-	sseIDPrefix    = []byte("id:")
-	sseDataPrefix  = []byte("data:")
+	sseEventPrefix      = []byte("event:")
+	sseIDPrefix         = []byte("id:")
+	sseDataPrefix       = []byte("data:")
 	sseEventPrefixSpace = []byte("event: ")
 	sseIDPrefixSpace    = []byte("id: ")
 	sseDataPrefixSpace  = []byte("data: ")

@@ -290,7 +290,6 @@ func TestSSEEventParser_IncompleteEvent(t *testing.T) {
 
 func TestSSEEventParser_InvalidJSONRPCMessage(t *testing.T) {
 	// Malformed JSON (not a jsonrpc message).
-	raw := []byte("data: {invalid json}\n\n")
 	for _, prefix := range []string{"data:", "data: "} {
 		t.Run(prefix, func(t *testing.T) {
 			raw := []byte(prefix + " {invalid json}\n\n")
@@ -300,10 +299,6 @@ func TestSSEEventParser_InvalidJSONRPCMessage(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
-	p := newSSEEventParser(bytes.NewReader(raw), "mybackend")
-	ev, err := p.next()
-	require.Nil(t, ev)
-	require.Error(t, err)
 }
 
 func TestSSEEvent_WriteAndMaybeFlush(t *testing.T) {
