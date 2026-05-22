@@ -29,11 +29,14 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
 	"github.com/envoyproxy/ai-gateway/internal/extproc/wrapper"
-	"github.com/envoyproxy/ai-gateway/internal/extproc/wrapper/peyeeye"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/mcpproxy"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/internal/piiredaction"
+	// piiredaction/peyeeye is imported for its registration side effect only,
+	// so --pii-provider peyeeye resolves.
+	_ "github.com/envoyproxy/ai-gateway/internal/piiredaction/peyeeye"
 	"github.com/envoyproxy/ai-gateway/internal/requestheaderattrs"
 	"github.com/envoyproxy/ai-gateway/internal/tracing"
 	"github.com/envoyproxy/ai-gateway/internal/version"
@@ -62,9 +65,10 @@ type extProcFlags struct {
 	maxRecvMsgSize int
 	// endpointPrefixes is the comma-separated key-value pairs for endpoint prefixes.
 	endpointPrefixes string
-	// peyeeyeEnabled, when true, wraps every registered processor with the
-	// Peyeeye PII redaction & rehydration decorator.
-	peyeeyeEnabled bool
+	// piiProvider selects the PII redaction & rehydration provider that wraps
+	// every registered processor. Empty disables redaction; "peyeeye" selects
+	// the Peyeeye backend.
+	piiProvider string
 }
 
 func setOptionalString(dst **string) func(string) error {
@@ -143,10 +147,11 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
 	fs.DurationVar(&flags.mcpWriteTimeout, "mcpWriteTimeout", 120*time.Second,
 		"The maximum duration before timing out writes of the MCP response")
-	fs.BoolVar(&flags.peyeeyeEnabled, "peyeeye", false,
-		"Enable the Peyeeye PII redaction & rehydration processor. Requires "+
-			"the PEYEEYE_API_KEY environment variable to be set. See "+
-			"https://peyeeye.ai for details.")
+	fs.StringVar(&flags.piiProvider, "pii-provider", "",
+		"Enable PII redaction & rehydration of request/response bodies using the "+
+			"named provider. One of '' (disabled, default) or 'peyeeye'. The "+
+			"'peyeeye' provider requires the PEYEEYE_API_KEY environment variable; "+
+			"see https://peyeeye.ai for details.")
 
 	if err := fs.Parse(args); err != nil {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
@@ -302,21 +307,19 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
 
-	// Optionally wrap every registered processor with the Peyeeye decorator.
+	// Optionally wrap every registered processor with the configured PII
+	// redaction provider. An empty provider leaves the factories untouched.
 	wrap := func(f extproc.ProcessorFactory) extproc.ProcessorFactory { return f }
-	if flags.peyeeyeEnabled {
-		cfg, perr := (&peyeeye.PEyeEyeConfig{}).Resolve()
+	if flags.piiProvider != "" {
+		piiLogger := l.With("component", "pii-redaction", "provider", flags.piiProvider)
+		transformer, perr := piiredaction.New(piiredaction.Provider(flags.piiProvider), piiLogger)
 		if perr != nil {
-			return fmt.Errorf("peyeeye: failed to resolve config: %w", perr)
+			return fmt.Errorf("failed to initialize PII redaction provider %q: %w", flags.piiProvider, perr)
 		}
-		client := peyeeye.NewClient(&cfg, nil)
-		l.Info("peyeeye PII redaction enabled",
-			slog.String("apiBase", cfg.APIBase),
-			slog.String("sessionMode", string(cfg.SessionMode)),
-		)
-		transformer := peyeeye.NewTransformer(client)
-		wrap = func(f extproc.ProcessorFactory) extproc.ProcessorFactory {
-			return wrapper.WrapFactory(f, transformer, l.With("component", "peyeeye"))
+		if transformer != nil {
+			wrap = func(f extproc.ProcessorFactory) extproc.ProcessorFactory {
+				return wrapper.WrapFactory(f, transformer, piiLogger)
+			}
 		}
 	}
 

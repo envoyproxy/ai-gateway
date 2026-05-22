@@ -20,6 +20,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/piiredaction"
 )
 
 // ------------------------------------------------------------------ fakes
@@ -128,7 +129,7 @@ type fakeTransformer struct {
 	w *fakeWrapper
 }
 
-func (t *fakeTransformer) NewWrapper(*slog.Logger) Wrapper { return t.w }
+func (t *fakeTransformer) NewWrapper(*slog.Logger) piiredaction.Wrapper { return t.w }
 
 // quietLogger discards all log lines so the test runner stays clean.
 func quietLogger() *slog.Logger {

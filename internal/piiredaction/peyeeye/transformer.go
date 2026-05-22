@@ -13,9 +13,29 @@ import (
 
 	"github.com/tidwall/sjson"
 
-	"github.com/envoyproxy/ai-gateway/internal/extproc/wrapper"
 	"github.com/envoyproxy/ai-gateway/internal/json"
+	"github.com/envoyproxy/ai-gateway/internal/piiredaction"
 )
+
+// init registers Peyeeye as a selectable PII redaction provider. Importing
+// this package is enough to make `--pii-provider peyeeye` resolve. The factory
+// resolves its configuration from the environment (PEYEEYE_API_KEY,
+// PEYEEYE_API_BASE) at startup.
+func init() {
+	piiredaction.Register(piiredaction.ProviderPeyeeye, func(logger *slog.Logger) (piiredaction.BodyTransformer, error) {
+		cfg, err := (&PEyeEyeConfig{}).Resolve()
+		if err != nil {
+			return nil, err
+		}
+		if logger != nil {
+			logger.Info("peyeeye PII redaction enabled",
+				slog.String("apiBase", cfg.APIBase),
+				slog.String("sessionMode", string(cfg.SessionMode)),
+			)
+		}
+		return NewTransformer(NewClient(&cfg, nil)), nil
+	})
+}
 
 // Client is the subset of *PEyeEyeClient that the Wrapper needs. Pulled
 // out as an interface so tests can substitute a mock.
@@ -30,7 +50,7 @@ type Client interface {
 // per request via NewWrapper. The supplied Client is shared by every
 // wrapper instance and is expected to be safe for concurrent use.
 //
-// Transformer implements wrapper.BodyTransformer.
+// Transformer implements piiredaction.BodyTransformer.
 type Transformer struct {
 	client Client
 }
@@ -42,8 +62,8 @@ func NewTransformer(client Client) *Transformer {
 	return &Transformer{client: client}
 }
 
-// NewWrapper implements wrapper.BodyTransformer.
-func (t *Transformer) NewWrapper(logger *slog.Logger) wrapper.Wrapper {
+// NewWrapper implements piiredaction.BodyTransformer.
+func (t *Transformer) NewWrapper(logger *slog.Logger) piiredaction.Wrapper {
 	if logger == nil {
 		logger = slog.Default()
 	}

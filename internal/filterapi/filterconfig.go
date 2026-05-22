@@ -43,16 +43,31 @@ type Config struct {
 	Models []Model `json:"models,omitempty"`
 	// MCPConfig is the configuration for the MCPRoute implementations.
 	MCPConfig *MCPConfig `json:"mcpConfig,omitempty"`
-	// PeyeEye, if non-nil, enables the Peyeeye PII redaction & rehydration
-	// processor. The processor wraps every standard endpoint registration
-	// with a pre-call /v1/redact and a post-call /v1/rehydrate. When nil,
-	// the gateway behaves as if the processor were never installed.
-	PeyeEye *PeyeEyeFilterConfig `json:"peyeeye,omitempty"`
+	// PIIRedaction, if non-nil, enables PII redaction & rehydration of
+	// request/response bodies via the configured Provider. The processor
+	// wraps every standard endpoint registration with a pre-call redact and
+	// a post-call rehydrate. When nil, the gateway behaves as if no redaction
+	// processor were installed.
+	PIIRedaction *PIIRedactionConfig `json:"piiRedaction,omitempty"`
+}
+
+// PIIRedactionConfig is the provider-neutral on-disk shape of the PII
+// redaction section of filterapi.Config. Provider selects the backend and the
+// matching provider-specific sub-config carries its settings, so adding a new
+// backend (e.g. Presidio) means adding a field here rather than reshaping the
+// top-level config.
+type PIIRedactionConfig struct {
+	// Provider selects the redaction backend: "peyeeye" (others such as
+	// "presidio" are reserved). Empty disables redaction.
+	Provider string `json:"provider,omitempty"`
+	// Peyeeye holds Peyeeye-specific settings; consulted when Provider is
+	// "peyeeye".
+	Peyeeye *PeyeEyeFilterConfig `json:"peyeeye,omitempty"`
 }
 
 // PeyeEyeFilterConfig is the on-disk shape of the Peyeeye section of
-// filterapi.Config. It is the same JSON shape as
-// extproc/peyeeye.PEyeEyeConfig but kept in the filterapi package to keep
+// PIIRedactionConfig. It is the same JSON shape as
+// piiredaction/peyeeye.PEyeEyeConfig but kept in the filterapi package to keep
 // the two layers decoupled (the runtime layer reads the env vars and
 // resolves defaults).
 type PeyeEyeFilterConfig struct {

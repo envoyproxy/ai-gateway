@@ -3,15 +3,15 @@
 // The full text of the Apache license is available in the LICENSE file at
 // the root of the repo.
 
-// Package wrapper provides a generic decorator that lets implementations hook
-// into the request and response body byte streams of any inner extproc
-// Processor without re-implementing the full extproc surface.
+// Package wrapper provides a generic extproc decorator that routes the request
+// and response body byte streams of any inner extproc Processor through a
+// piiredaction.Wrapper without re-implementing the full extproc surface.
 //
-// The decorator is provider-agnostic. PII redaction, body redaction, body
-// signing, content classification, and similar concerns can all be expressed
-// as a BodyTransformer/Wrapper pair, then composed with any extproc factory
-// via WrapFactory. The peyeeye PII redaction integration under
-// wrapper/peyeeye is one such implementation.
+// The provider-neutral BodyTransformer/Wrapper interfaces and the provider
+// implementations (Peyeeye, etc.) live under internal/piiredaction so they can
+// be reused by other transports such as the MCP proxy. This package holds only
+// the extproc-specific glue: WrapFactory composes a piiredaction.BodyTransformer
+// with any extproc.ProcessorFactory.
 package wrapper
 
 import (
@@ -25,42 +25,15 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/piiredaction"
 )
-
-// BodyTransformer constructs a per-request Wrapper. A single Transformer is
-// shared across the extproc server lifetime; one Wrapper is created per
-// request stream so the request half can hand state to the response half via
-// fields on the Wrapper instance.
-type BodyTransformer interface {
-	// NewWrapper returns a Wrapper for a single extproc request stream. The
-	// supplied logger should be used by the Wrapper for any per-request log
-	// lines so callers can correlate them with the request.
-	NewWrapper(logger *slog.Logger) Wrapper
-}
-
-// Wrapper hooks into a single extproc request/response round trip. State
-// flowing from the request half to the response half lives on the Wrapper
-// instance. Implementations must be safe for sequential use within one
-// request but need not be safe for concurrent use across requests.
-type Wrapper interface {
-	// OnRequestBody returns a possibly-modified body that will be forwarded
-	// to the inner processor. Returning an error fails the request closed.
-	OnRequestBody(ctx context.Context, body []byte) ([]byte, error)
-	// OnResponseBody returns a possibly-modified body that will be forwarded
-	// back to the client. Returning an error fails the response closed.
-	OnResponseBody(ctx context.Context, body []byte) ([]byte, error)
-	// Close releases any per-request resources. Best-effort; errors should
-	// be logged by the implementation, not propagated, since Close can run
-	// after the request has completed.
-	Close(ctx context.Context) error
-}
 
 // WrappingProcessor decorates an inner extproc.Processor with a Wrapper.
 // Headers and SetBackend pass through unchanged. Body messages are routed
 // through the wrapper before/after the inner processor sees them.
 type WrappingProcessor struct {
 	inner   extproc.Processor
-	wrapper Wrapper
+	wrapper piiredaction.Wrapper
 	logger  *slog.Logger
 
 	// requestEOSSeen latches once we have observed end-of-stream on the
@@ -73,7 +46,7 @@ type WrappingProcessor struct {
 
 // NewProcessor wraps inner with w. logger is used for body-transform errors
 // and Close-time errors. If logger is nil, slog.Default is used.
-func NewProcessor(inner extproc.Processor, w Wrapper, logger *slog.Logger) *WrappingProcessor {
+func NewProcessor(inner extproc.Processor, w piiredaction.Wrapper, logger *slog.Logger) *WrappingProcessor {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -226,7 +199,7 @@ func immediateInternalError(message string) *extprocv3.ProcessingResponse {
 // by inner with a fresh Wrapper from t. If inner is nil it is returned
 // unchanged so callers can use this in conditional wiring without an
 // upstream nil check.
-func WrapFactory(inner extproc.ProcessorFactory, t BodyTransformer, logger *slog.Logger) extproc.ProcessorFactory {
+func WrapFactory(inner extproc.ProcessorFactory, t piiredaction.BodyTransformer, logger *slog.Logger) extproc.ProcessorFactory {
 	if inner == nil || t == nil {
 		return inner
 	}
