@@ -132,11 +132,12 @@ spec:
                 - name
                 type: object
                 x-kubernetes-validations:
-                - message: BackendRef must be a Backend resource of Envoy Gateway.
-                    See https://github.com/envoyproxy/ai-gateway/issues/902 for more
-                    details.
-                  rule: has(self.kind) && self.kind == 'Backend' && has(self.group)
-                    && self.group == 'gateway.envoyproxy.io'
+                - message: BackendRef must be either an Envoy Gateway Backend (gateway.envoyproxy.io/Backend)
+                    or a Gateway API Inference Extension pool (inference.networking.k8s.io/InferencePool).
+                  rule: (has(self.kind) && self.kind == 'Backend' && has(self.group)
+                    && self.group == 'gateway.envoyproxy.io') || (has(self.kind) &&
+                    self.kind == 'InferencePool' && has(self.group) && self.group ==
+                    'inference.networking.k8s.io')
                 - message: Must have port for Service reference
                   rule: '(size(self.group) == 0 && self.kind == ''Service'') ? has(self.port)
                     : true'
@@ -536,11 +537,12 @@ spec:
                 - name
                 type: object
                 x-kubernetes-validations:
-                - message: BackendRef must be a Backend resource of Envoy Gateway.
-                    See https://github.com/envoyproxy/ai-gateway/issues/902 for more
-                    details.
-                  rule: has(self.kind) && self.kind == 'Backend' && has(self.group)
-                    && self.group == 'gateway.envoyproxy.io'
+                - message: BackendRef must be either an Envoy Gateway Backend (gateway.envoyproxy.io/Backend)
+                    or a Gateway API Inference Extension pool (inference.networking.k8s.io/InferencePool).
+                  rule: (has(self.kind) && self.kind == 'Backend' && has(self.group)
+                    && self.group == 'gateway.envoyproxy.io') || (has(self.kind) &&
+                    self.kind == 'InferencePool' && has(self.group) && self.group ==
+                    'inference.networking.k8s.io')
                 - message: Must have port for Service reference
                   rule: '(size(self.group) == 0 && self.kind == ''Service'') ? has(self.port)
                     : true'
