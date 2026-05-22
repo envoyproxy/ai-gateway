@@ -144,7 +144,6 @@ func TestTranscriptionTranslator_ResponseBody_Streaming_FullSSE(t *testing.T) {
 	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Transcription)
 	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
 	_, _, _ = tr.RequestBody([]byte("body"), req, false)
-	require.True(t, tr.stream, "translator should track Stream=true from the request")
 
 	sse := "" +
 		`data: {"type":"transcript.text.delta","delta":"Imagine "}` + "\n" +
@@ -310,15 +309,14 @@ func TestTranscriptionTranslator_ResponseBody_Streaming_CRLFLineEndings(t *testi
 // TestTranscriptionTranslator_ResponseBody_Whisper1WithStreamTrue is the key pass-through
 // case: when the request has `stream=true` but the model is whisper-1 (which OpenAI silently
 // treats as non-streaming), the backend returns Content-Type: application/json. The translator
-// must take the JSON branch, NOT the SSE branch, even though `o.stream` is true.
+// must take the JSON branch, NOT the SSE branch, despite stream=true on the request.
 //
-// This is why ResponseBody dispatches on the response Content-Type rather than on `o.stream`.
+// This is why ResponseBody dispatches on the response Content-Type rather than on req.Stream.
 func TestTranscriptionTranslator_ResponseBody_Whisper1WithStreamTrue(t *testing.T) {
 	mockSpan := &mockTranscriptionSpan{}
-	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Transcription)
+	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
 	req := &openai.TranscriptionRequest{Model: "whisper-1", Stream: true}
 	_, _, _ = tr.RequestBody([]byte("body"), req, false)
-	require.True(t, tr.stream, "translator should track the request flag verbatim")
 
 	respJSON := `{"text": "hello"}`
 	_, _, _, _, err := tr.ResponseBody(

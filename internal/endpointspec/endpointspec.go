@@ -703,8 +703,6 @@ func (SpeechEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.SpeechReque
 	return &redacted, nil
 }
 
-// --- TranscriptionEndpointSpec ---
-
 // ParseBody implements [Spec.ParseBody]. Transcription uses multipart, so JSON body is not expected.
 func (TranscriptionEndpointSpec) ParseBody(
 	_ []byte, _ bool,
@@ -756,36 +754,44 @@ func (TranscriptionEndpointSpec) ParseMultipartBody(
 			req.FileSize = n
 		case "language":
 			val, err := readFormField(part)
-			if err == nil {
-				req.Language = val
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read language field: %w", internalapi.ErrMalformedRequest, err)
 			}
+			req.Language = val
 		case "prompt":
 			val, err := readFormField(part)
-			if err == nil {
-				req.Prompt = val
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read prompt field: %w", internalapi.ErrMalformedRequest, err)
 			}
+			req.Prompt = val
 		case "response_format":
 			val, err := readFormField(part)
-			if err == nil {
-				req.ResponseFormat = val
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read response_format field: %w", internalapi.ErrMalformedRequest, err)
 			}
+			req.ResponseFormat = val
 		case "temperature":
 			val, err := readFormField(part)
-			if err == nil {
-				if t, parseErr := strconv.ParseFloat(val, 64); parseErr == nil {
-					req.Temperature = &t
-				}
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read temperature field: %w", internalapi.ErrMalformedRequest, err)
 			}
+			t, parseErr := strconv.ParseFloat(val, 64)
+			if parseErr != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: invalid temperature value %q: %w", internalapi.ErrMalformedRequest, val, parseErr)
+			}
+			req.Temperature = &t
 		case "stream":
 			val, err := readFormField(part)
-			if err == nil {
-				req.Stream = strings.EqualFold(val, "true")
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read stream field: %w", internalapi.ErrMalformedRequest, err)
 			}
+			req.Stream = strings.EqualFold(val, "true")
 		case "timestamp_granularities[]":
 			val, err := readFormField(part)
-			if err == nil {
-				req.TimestampGranularities = append(req.TimestampGranularities, val)
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read timestamp_granularities field: %w", internalapi.ErrMalformedRequest, err)
 			}
+			req.TimestampGranularities = append(req.TimestampGranularities, val)
 		}
 	}
 
@@ -818,8 +824,6 @@ func (TranscriptionEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Tran
 	return &redacted, nil
 }
 
-// --- TranslationEndpointSpec ---
-
 // ParseBody implements [Spec.ParseBody]. Translation uses multipart, so JSON body is not expected.
 func (TranslationEndpointSpec) ParseBody(
 	_ []byte, _ bool,
@@ -828,6 +832,8 @@ func (TranslationEndpointSpec) ParseBody(
 }
 
 // ParseMultipartBody implements [Spec.ParseMultipartBody] for /v1/audio/translations.
+// OpenAI's translation endpoint does not support streaming, so the stream return value is
+// always false.
 func (TranslationEndpointSpec) ParseMultipartBody(
 	body []byte, contentType string, _ bool,
 ) (internalapi.OriginalModel, *openai.TranslationRequest, bool, []byte, error) {
@@ -871,21 +877,26 @@ func (TranslationEndpointSpec) ParseMultipartBody(
 			req.FileSize = n
 		case "prompt":
 			val, err := readFormField(part)
-			if err == nil {
-				req.Prompt = val
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read prompt field: %w", internalapi.ErrMalformedRequest, err)
 			}
+			req.Prompt = val
 		case "response_format":
 			val, err := readFormField(part)
-			if err == nil {
-				req.ResponseFormat = val
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read response_format field: %w", internalapi.ErrMalformedRequest, err)
 			}
+			req.ResponseFormat = val
 		case "temperature":
 			val, err := readFormField(part)
-			if err == nil {
-				if t, parseErr := strconv.ParseFloat(val, 64); parseErr == nil {
-					req.Temperature = &t
-				}
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read temperature field: %w", internalapi.ErrMalformedRequest, err)
 			}
+			t, parseErr := strconv.ParseFloat(val, 64)
+			if parseErr != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: invalid temperature value %q: %w", internalapi.ErrMalformedRequest, val, parseErr)
+			}
+			req.Temperature = &t
 		}
 	}
 

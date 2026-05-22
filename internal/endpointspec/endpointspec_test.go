@@ -1097,6 +1097,17 @@ func TestTranscriptionEndpointSpec_ParseMultipartBody(t *testing.T) {
 		require.Equal(t, "verbose_json", req.ResponseFormat)
 	})
 
+	t.Run("invalid temperature rejected as malformed request", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":       "whisper-1",
+			"temperature": "not-a-number",
+		}, "test.mp3", []byte("audio-data"))
+
+		_, _, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.ErrorContains(t, err, "invalid temperature value")
+		require.ErrorContains(t, err, "malformed request")
+	})
+
 	t.Run("stream field true", func(t *testing.T) {
 		body, ct := buildMultipartBody(t, map[string]string{
 			"model":  "whisper-1",
@@ -1265,6 +1276,17 @@ func TestTranslationEndpointSpec_ParseMultipartBody(t *testing.T) {
 		require.NotNil(t, req.Temperature)
 		require.Equal(t, 0.3, *req.Temperature)
 		require.Equal(t, "srt", req.ResponseFormat)
+	})
+
+	t.Run("invalid temperature rejected as malformed request", func(t *testing.T) {
+		body, ct := buildMultipartBody(t, map[string]string{
+			"model":       "whisper-1",
+			"temperature": "abc",
+		}, "test.mp3", []byte("audio-data"))
+
+		_, _, _, _, err := spec.ParseMultipartBody(body, ct, false)
+		require.ErrorContains(t, err, "invalid temperature value")
+		require.ErrorContains(t, err, "malformed request")
 	})
 
 	t.Run("invalid content type", func(t *testing.T) {

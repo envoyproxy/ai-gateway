@@ -34,16 +34,15 @@ func NewTranscriptionOpenAIToOpenAITranslator(prefix string, modelNameOverride i
 //
 // Streaming notes (gpt-4o-transcribe and gpt-4o-mini-transcribe with stream=true):
 //   - Envoy delivers the SSE body across multiple ResponseBody invocations once the upstream
-//     response sets Content-Type: text/event-stream. We never inspect o.stream to decide how to
-//     parse — the response Content-Type is the authoritative dispatch signal. This matches
+//     response sets Content-Type: text/event-stream. The response Content-Type is the authoritative
+//     dispatch signal — the request's stream flag is intentionally not consulted here so we mirror
 //     OpenAI's own behavior of silently ignoring stream=true for whisper-1 (which always returns JSON).
 type openAIToOpenAITranslatorV1Transcription struct {
 	modelNameOverride internalapi.ModelNameOverride
 	path              string
 	requestModel      internalapi.RequestModel
 	contentType       string
-	stream bool
-	buffered []byte
+	sseBuffer         []byte
 }
 
 // RequestBody implements [OpenAIAudioTranscriptionTranslator.RequestBody].
@@ -51,7 +50,6 @@ func (o *openAIToOpenAITranslatorV1Transcription) RequestBody(original []byte, r
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	o.requestModel = req.Model
-	o.stream = req.Stream
 
 	if o.modelNameOverride != "" && o.contentType != "" {
 		var newContentType string
@@ -95,7 +93,7 @@ func (o *openAIToOpenAITranslatorV1Transcription) ResponseBody(respHeaders map[s
 		if readErr != nil {
 			return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to read SSE stream: %w", readErr)
 		}
-		o.buffered = append(o.buffered, buf...)
+		o.sseBuffer = append(o.sseBuffer, buf...)
 		o.recordTranscriptionStreamChunks(span)
 		return
 	}
@@ -116,7 +114,7 @@ func (o *openAIToOpenAITranslatorV1Transcription) ResponseBody(respHeaders map[s
 	return
 }
 
-// recordTranscriptionStreamChunks scans o.buffered for complete SSE `data:` lines and forwards
+// recordTranscriptionStreamChunks scans o.sseBuffer for complete SSE `data:` lines and forwards
 // each parsed event to the span chunk recorder. Mirrors the canonical pattern used by other
 // streaming translators (see openai_openai.go:extractUsageFromBufferEvent).
 //
@@ -128,12 +126,12 @@ func (o *openAIToOpenAITranslatorV1Transcription) ResponseBody(respHeaders map[s
 //   - Events with unknown `type` values are still forwarded to the chunk recorder verbatim.
 func (o *openAIToOpenAITranslatorV1Transcription) recordTranscriptionStreamChunks(span tracingapi.TranscriptionSpan) {
 	for {
-		i := bytes.IndexByte(o.buffered, '\n')
+		i := bytes.IndexByte(o.sseBuffer, '\n')
 		if i == -1 {
 			return
 		}
-		line := o.buffered[:i]
-		o.buffered = o.buffered[i+1:]
+		line := o.sseBuffer[:i]
+		o.sseBuffer = o.sseBuffer[i+1:]
 		// Some servers terminate SSE lines with \r\n; strip the trailing CR before JSON decode.
 		line = bytes.TrimRight(line, "\r")
 		if !bytes.HasPrefix(line, sseDataPrefix) {
