@@ -86,6 +86,13 @@ type ResponseRedactor interface {
 	RedactBody(resp *openai.ChatCompletionResponse) *openai.ChatCompletionResponse
 }
 
+// RequestHeadersAware is an optional interface that translators can implement
+// to receive request headers before translation. This allows translators to
+// modify headers (e.g., stripping unsupported beta values) during translation.
+type RequestHeadersAware interface {
+	SetRequestHeaders(headers map[string]string)
+}
+
 // AnthropicResponseRedactor is an optional interface that Anthropic translators
 // can implement to support response body redaction for debug logging.
 type AnthropicResponseRedactor interface {
