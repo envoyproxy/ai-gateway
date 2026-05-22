@@ -68,6 +68,7 @@ type flags struct {
 	mcpFallbackSessionEncryptionIterations int
 	watchNamespaces                        []string
 	cacheSyncTimeout                       time.Duration
+	extProcBeforeFilterNames               []string
 }
 
 func setOptionalString(dst **string) func(string) error {
@@ -97,6 +98,21 @@ func parseWatchNamespaces(s string) []string {
 		}
 	}
 	return namespaces
+}
+
+// parseExtProcBeforeFilterNames parses a comma-separated list of exact Envoy filter names.
+func parseExtProcBeforeFilterNames(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var names []string
+	for _, n := range strings.Split(s, ",") {
+		name := strings.TrimSpace(n)
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 // parseAndValidateFlags parses the command-line arguments provided in args,
@@ -232,6 +248,13 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		"Optional fallback seed used for MCP session key rotation")
 	mcpFallbackSessionEncryptionIterations := fs.Int("mcpFallbackSessionEncryptionIterations", 100_000,
 		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
+	extProcBeforeFilterNames := fs.String(
+		"extProcBeforeFilterNames",
+		"",
+		"Comma-separated list of exact Envoy filter names that are allowed to run before the AI Gateway extproc "+
+			"in the HCM filter chain. Only filters whose name exactly matches an entry in this list will be ordered "+
+			"before AI Gateway. When empty (default), AI Gateway is placed before all other extproc filters.",
+	)
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -346,6 +369,7 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		mcpFallbackSessionEncryptionSeed:       *mcpFallbackSessionEncryptionSeed,
 		mcpSessionEncryptionIterations:         *mcpSessionEncryptionIterations,
 		mcpFallbackSessionEncryptionIterations: *mcpFallbackSessionEncryptionIterations,
+		extProcBeforeFilterNames:               parseExtProcBeforeFilterNames(*extProcBeforeFilterNames),
 	}, nil
 }
 
@@ -403,7 +427,7 @@ func main() {
 	// Start the extension server running alongside the controller.
 	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
 	s := grpc.NewServer(grpc.MaxRecvMsgSize(parsedFlags.maxRecvMsgSize))
-	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes)
+	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes, parsedFlags.extProcBeforeFilterNames)
 	if err != nil {
 		setupLog.Error(err, "failed to create extension server")
 		os.Exit(1)
