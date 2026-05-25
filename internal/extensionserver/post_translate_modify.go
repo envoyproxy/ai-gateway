@@ -668,10 +668,10 @@ func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener
 			ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: epAny},
 		}
 
-		if err = insertAIGatewayExtProcAfterAllowedFilters(httpConManager, extProcFilter, s.extProcBeforeFilterNames); err != nil {
+		if err = insertAIGatewayExtProcFilter(httpConManager, extProcFilter, s.extProcBeforeFilterNames); err != nil {
 			return fmt.Errorf("failed to insert AI Gateway extproc filter: %w", err)
 		}
-		
+
 		hcAny, err := toAny(httpConManager)
 		if err != nil {
 			return fmt.Errorf("failed to marshal updated HCM to Any: %w", err)
@@ -844,44 +844,33 @@ func shouldAIGatewayExtProcBeInserted(filters []*httpconnectionmanagerv3.HttpFil
 	return true
 }
 
-// insertAIGatewayExtProcAfterAllowedFilters inserts the AI Gateway extproc filter into the HTTP connection manager.
-// If allowedNames is non-empty, it scans the HCM filter chain for filters whose exact name is in the allowlist
-// and inserts the AI Gateway filter right after the LAST match. This ensures only explicitly approved filters
-// run before the AI Gateway extproc.
-// If allowedNames is empty or no match is found, falls back to the standard insertion logic.
-func insertAIGatewayExtProcAfterAllowedFilters(mgr *httpconnectionmanagerv3.HttpConnectionManager, filter *httpconnectionmanagerv3.HttpFilter, allowedNames map[string]struct{}) error {
-	if len(allowedNames) > 0 {
-		lastAllowedIndex := -1
-		for i, existingFilter := range mgr.HttpFilters {
-			if _, ok := allowedNames[existingFilter.Name]; ok {
-				lastAllowedIndex = i
-			}
-		}
-		if lastAllowedIndex != -1 {
-			insertIndex := lastAllowedIndex + 1
-			mgr.HttpFilters = append(mgr.HttpFilters, filter)
-			copy(mgr.HttpFilters[insertIndex+1:], mgr.HttpFilters[insertIndex:])
-			mgr.HttpFilters[insertIndex] = filter
-			return nil
-		}
-	}
-
-	return insertAIGatewayExtProcFilter(mgr, filter)
-}
-
 // insertAIGatewayExtProcFilter inserts the AI Gateway extproc filter into the HTTP connection manager.
 //
 // The order is simple: make sure that the AI Gateway extproc filter is the very first extproc filter in the standard
 // Envoy Gateway order. See:
 // https://github.com/envoyproxy/gateway/blob/f1e6dab770fabc70d175237380eedfc1f9b1a9e5/internal/xds/translator/httpfilters.go#L93
-func insertAIGatewayExtProcFilter(mgr *httpconnectionmanagerv3.HttpConnectionManager, filter *httpconnectionmanagerv3.HttpFilter) error {
+//
+// If allowedNames is non-empty, it scans the HCM filter chain for filters whose exact name is in the allowlist
+// and inserts the AI Gateway filter right after the LAST match. This ensures only explicitly approved filters
+// run before the AI Gateway extproc.
+// If allowedNames is empty or no match is found, falls back to the standard insertion logic.
+func insertAIGatewayExtProcFilter(mgr *httpconnectionmanagerv3.HttpConnectionManager, filter *httpconnectionmanagerv3.HttpFilter, allowedNames map[string]struct{}) error {
 	insertIndex := -1
-outer:
-	for i, existingFilter := range mgr.HttpFilters { // TODO: Maybe searching backwards is faster, but not sure if it's worth the complexity.
-		for _, prefix := range afterExtProcFilterPrefixes {
-			if strings.HasPrefix(existingFilter.Name, prefix) {
-				insertIndex = i
-				break outer
+	if len(allowedNames) > 0 {
+		for i, existingFilter := range mgr.HttpFilters {
+			if _, ok := allowedNames[existingFilter.Name]; ok {
+				insertIndex = i + 1
+			}
+		}
+	}
+	if insertIndex == -1 {
+	outer:
+		for i, existingFilter := range mgr.HttpFilters { // TODO: Maybe searching backwards is faster, but not sure if it's worth the complexity.
+			for _, prefix := range afterExtProcFilterPrefixes {
+				if strings.HasPrefix(existingFilter.Name, prefix) {
+					insertIndex = i
+					break outer
+				}
 			}
 		}
 	}

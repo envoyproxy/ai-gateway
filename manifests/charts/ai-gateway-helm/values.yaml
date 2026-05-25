@@ -118,6 +118,21 @@ controller:
     # Default is 2 minutes.
     cacheSyncTimeout: 2m
 
+  # Allowlist of exact Envoy HTTP filter names that are permitted to run *before* the
+  # AI Gateway extproc filter in the HCM filter chain. The AI Gateway extproc is
+  # inserted immediately after the last filter whose name appears in this list.
+  # When the list is empty (default), the AI Gateway extproc is placed before all
+  # other extproc filters, which is the secure default.
+  #
+  # Use this only for filters that must observe the request before AI Gateway
+  # (for example, a semantic router extproc). Names must be exact Envoy filter
+  # names, e.g. produced by an EnvoyExtensionPolicy as:
+  #   envoy.filters.http.ext_proc/envoyextensionpolicy/<namespace>/<name>/extproc/<index>
+  # Example:
+  # extProcBeforeFilterNames:
+  #   - envoy.filters.http.ext_proc/envoyextensionpolicy/my-ns/my-policy/extproc/0
+  extProcBeforeFilterNames: []
+
   # -- Deployment configs --
   image:
     repository: docker.io/envoyproxy/ai-gateway-controller

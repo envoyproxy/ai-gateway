@@ -182,7 +182,7 @@ func TestInsertAIGatewayExtProcFilter(t *testing.T) {
 				ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: &anypb.Any{}},
 			}
 
-			err := insertAIGatewayExtProcFilter(mgr, newFilter)
+			err := insertAIGatewayExtProcFilter(mgr, newFilter, nil)
 			require.NoError(t, err)
 
 			require.Len(t, mgr.HttpFilters, tt.expectedFilterCount)
@@ -295,7 +295,7 @@ func TestInsertAIGatewayExtProcAfterAllowedFilters(t *testing.T) {
 				ConfigType: newFilter.ConfigType,
 			}
 
-			err := insertAIGatewayExtProcAfterAllowedFilters(mgr, filter, tt.allowedNames)
+			err := insertAIGatewayExtProcFilter(mgr, filter, tt.allowedNames)
 			require.NoError(t, err)
 			require.Len(t, mgr.HttpFilters, tt.expectedFilterCount)
 			require.Equal(t, aiGatewayExtProcName, mgr.HttpFilters[tt.expectedPosition].Name)
