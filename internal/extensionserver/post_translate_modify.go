@@ -613,7 +613,8 @@ func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.R
 }
 
 // insertRouterLevelAIGatewayExtProc inserts the AI Gateway external processor filter into the listener's filter chains.
-// If a semantic router filter (from EnvoyPatchPolicy) is already present, it inserts AI Gateway AFTER it.
+// If any filter whose name is in the configured before-AI-Gateway allowlist is already present, the AI Gateway
+// extproc is inserted AFTER the last such filter; otherwise it falls back to the standard insertion logic.
 func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener) error {
 	// First, get the filter chains from the listener.
 	filterChains := listener.GetFilterChains()

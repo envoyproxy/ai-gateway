@@ -108,7 +108,7 @@ func TestServerPostTranslateModify(t *testing.T) {
 		})
 		require.NotNil(t, res)
 		require.NoError(t, err)
-		require.Len(t, res.Clusters, 2) // foo, ai-gateway-extproc-uds (semantic-router not added by extension server)
+		require.Len(t, res.Clusters, 2) // foo, ai-gateway-extproc-uds (extension server only adds the UDS cluster)
 		require.Equal(t, "foo", res.Clusters[0].Name)
 		require.Equal(t, extProcUDSClusterName, res.Clusters[1].Name)
 	})
@@ -1961,7 +1961,7 @@ func TestPostTranslateModify(t *testing.T) {
 		resp, err := s.PostTranslateModify(context.Background(), req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		// Should have original cluster plus the UDS cluster (semantic-router not added).
+		// Should have the original cluster plus the AI Gateway extproc UDS cluster.
 		require.Len(t, resp.Clusters, 2)
 		require.Equal(t, "test-cluster", resp.Clusters[0].Name)
 		require.Equal(t, "ai-gateway-extproc-uds", resp.Clusters[1].Name)
