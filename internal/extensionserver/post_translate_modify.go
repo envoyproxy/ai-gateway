@@ -224,6 +224,20 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				if backendRef.Weight != nil && *backendRef.Weight == 0 {
 					continue
 				}
+				if lbEndpointIndex >= len(cluster.LoadAssignment.Endpoints) {
+					// envoy-gateway emitted a LoadAssignment with fewer Endpoints entries
+					// than the rule has active (non-zero-weight) BackendRefs. This is a
+					// transient translation mismatch; skip the remaining backendRefs rather
+					// than indexing out of range and crashing the controller.
+					s.log.Info("LoadAssignment has fewer Endpoints than active BackendRefs; skipping remaining",
+						"cluster_name", cluster.Name,
+						"namespace", aigwRoute.Namespace,
+						"name", aigwRoute.Name,
+						"endpoints_len", len(cluster.LoadAssignment.Endpoints),
+						"lb_endpoint_index", lbEndpointIndex,
+						"backend_ref_index", i)
+					break
+				}
 				endpoints := cluster.LoadAssignment.Endpoints[lbEndpointIndex]
 				lbEndpointIndex++
 				name := backendRef.Name
