@@ -36,7 +36,6 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -757,7 +756,7 @@ func TestSecretController(t *testing.T) {
 	require.NoError(t, err)
 
 	bspCh := internaltesting.NewControllerEventChan[*aigv1b1.BackendSecurityPolicy]()
-	mcpRouteCh := internaltesting.NewControllerEventChan[*aigv1a1.MCPRoute]()
+	mcpRouteCh := internaltesting.NewControllerEventChan[*aigv1b1.MCPRoute]()
 	sc := controller.NewSecretController(mgr.GetClient(), k, defaultLogger(), bspCh.Ch, mcpRouteCh.Ch)
 	const secretName, secretNamespace = "mysecret", "default"
 

@@ -38,3 +38,11 @@ type GatewayConfigListerExpansion interface{}
 // GatewayConfigNamespaceListerExpansion allows custom methods to be added to
 // GatewayConfigNamespaceLister.
 type GatewayConfigNamespaceListerExpansion interface{}
+
+// MCPRouteListerExpansion allows custom methods to be added to
+// MCPRouteLister.
+type MCPRouteListerExpansion interface{}
+
+// MCPRouteNamespaceListerExpansion allows custom methods to be added to
+// MCPRouteNamespaceLister.
+type MCPRouteNamespaceListerExpansion interface{}

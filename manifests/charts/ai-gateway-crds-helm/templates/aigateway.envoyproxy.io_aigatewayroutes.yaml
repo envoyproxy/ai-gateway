@@ -351,6 +351,10 @@ spec:
 
                   How multiple rules are matched is the same as the Gateway API. See for the details:
                   https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRoute
+
+                  At most 15 rules are allowed per AIGatewayRoute, corresponding to the Gateway API's limit on
+                  HTTPRoute.spec.rules (one slot is reserved for a controller-injected catch-all rule). To
+                  configure more rules on the same Gateway, split them across multiple AIGatewayRoute resources.
                 items:
                   description: AIGatewayRouteRule is a rule that defines the routing
                     behavior of the AIGatewayRoute.
@@ -800,7 +804,7 @@ spec:
                     rule: '!has(self.backendRefs) || size(self.backendRefs) == 0 ||
                       !self.backendRefs.exists(ref, has(ref.group) && has(ref.kind))
                       || size(self.backendRefs) == 1'
-                maxItems: 128
+                maxItems: 15
                 type: array
             required:
             - rules
@@ -1204,6 +1208,10 @@ spec:
 
                   How multiple rules are matched is the same as the Gateway API. See for the details:
                   https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRoute
+
+                  At most 15 rules are allowed per AIGatewayRoute, corresponding to the Gateway API's limit on
+                  HTTPRoute.spec.rules (one slot is reserved for a controller-injected catch-all rule). To
+                  configure more rules on the same Gateway, split them across multiple AIGatewayRoute resources.
                 items:
                   description: AIGatewayRouteRule is a rule that defines the routing
                     behavior of the AIGatewayRoute.
@@ -1653,7 +1661,7 @@ spec:
                     rule: '!has(self.backendRefs) || size(self.backendRefs) == 0 ||
                       !self.backendRefs.exists(ref, has(ref.group) && has(ref.kind))
                       || size(self.backendRefs) == 1'
-                maxItems: 128
+                maxItems: 15
                 type: array
             required:
             - rules

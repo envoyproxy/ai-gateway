@@ -20,14 +20,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
 func TestSecretController_Reconcile(t *testing.T) {
 	bspCh := internaltesting.NewControllerEventChan[*aigv1b1.BackendSecurityPolicy]()
-	mcpRouteCh := internaltesting.NewControllerEventChan[*aigv1a1.MCPRoute]()
+	mcpRouteCh := internaltesting.NewControllerEventChan[*aigv1b1.MCPRoute]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	c := NewSecretController(fakeClient, fake2.NewClientset(), ctrl.Log, bspCh.Ch, mcpRouteCh.Ch)
 
@@ -62,11 +61,11 @@ func TestSecretController_Reconcile(t *testing.T) {
 	}
 
 	// Create a MCPRoute that references the secret via API Key secret ref.
-	mcp := &aigv1a1.MCPRoute{
+	mcp := &aigv1b1.MCPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
-		Spec: aigv1a1.MCPRouteSpec{
-			BackendRefs: []aigv1a1.MCPRouteBackendRef{{
-				SecurityPolicy: &aigv1a1.MCPBackendSecurityPolicy{APIKey: &aigv1a1.MCPBackendAPIKey{
+		Spec: aigv1b1.MCPRouteSpec{
+			BackendRefs: []aigv1b1.MCPRouteBackendRef{{
+				SecurityPolicy: &aigv1b1.MCPBackendSecurityPolicy{APIKey: &aigv1b1.MCPBackendAPIKey{
 					SecretRef: &gwapiv1.SecretObjectReference{Name: "mysecret", Namespace: ptr.To[gwapiv1.Namespace]("default")},
 				}},
 			}},

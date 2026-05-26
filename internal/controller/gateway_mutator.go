@@ -25,7 +25,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
@@ -279,8 +278,8 @@ func (g *gatewayMutator) listAIGatewayRoutesForGateway(ctx context.Context, gate
 	return routes, nil
 }
 
-func (g *gatewayMutator) listMCPRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1a1.MCPRouteList, error) {
-	var routes aigv1a1.MCPRouteList
+func (g *gatewayMutator) listMCPRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1b1.MCPRouteList, error) {
+	var routes aigv1b1.MCPRouteList
 	key := fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace)
 	cacheErr := g.c.List(ctx, &routes, client.MatchingFields{
 		k8sClientIndexMCPRouteToAttachedGateway: key,
@@ -292,7 +291,7 @@ func (g *gatewayMutator) listMCPRoutesForGateway(ctx context.Context, gatewayNam
 		return routes, cacheErr
 	}
 	// noCacheReader doesn't have access to cache indexes, so list then filter.
-	var all aigv1a1.MCPRouteList
+	var all aigv1b1.MCPRouteList
 	if err := g.noCacheReader.List(ctx, &all); err != nil {
 		return routes, fmt.Errorf("failed to list MCP routes: %w", err)
 	}
@@ -310,8 +309,8 @@ func filterAIGatewayRoutesForGateway(routes []aigv1b1.AIGatewayRoute, gatewayNam
 	return filtered
 }
 
-func filterMCPRoutesForGateway(routes []aigv1a1.MCPRoute, gatewayName, gatewayNamespace string) []aigv1a1.MCPRoute {
-	var filtered []aigv1a1.MCPRoute
+func filterMCPRoutesForGateway(routes []aigv1b1.MCPRoute, gatewayName, gatewayNamespace string) []aigv1b1.MCPRoute {
+	var filtered []aigv1b1.MCPRoute
 	for i := range routes {
 		if parentRefsMatchGateway(routes[i].Namespace, routes[i].Spec.ParentRefs, gatewayName, gatewayNamespace) {
 			filtered = append(filtered, routes[i])
