@@ -417,6 +417,62 @@ func TestGatewayController_reconcileFilterConfigSecret_HostnameScopedModels(t *t
 	require.ElementsMatch(t, []string{"scoped-model", "unscoped-model"}, gotHostModels)
 }
 
+// TestGatewayController_reconcileFilterConfigSecret_AllUnscopedRoutesLeaveUnscopedModelsEmpty
+// regression-locks the gate added to avoid duplicating Models into UnscopedModels when no route is
+// hostname-scoped. Without the gate, every existing golden YAML that didn't expect an
+// `unscopedModels:` field would break (as Test_translate did when this gate was missing).
+func TestGatewayController_reconcileFilterConfigSecret_AllUnscopedRoutesLeaveUnscopedModelsEmpty(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	const gwNamespace = "ns"
+	routes := []aigv1b1.AIGatewayRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "route-only-unscoped", Namespace: gwNamespace},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				// No Hostnames — and no other route adds Hostnames either.
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "apple"}},
+						Matches: []aigv1b1.AIGatewayRouteRuleMatch{
+							{Headers: []gwapiv1.HTTPHeaderMatch{
+								{Name: internalapi.ModelNameHeaderKeyDefault, Value: "lone-model"},
+							}},
+						},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: gwNamespace},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+		},
+	}))
+
+	const someNamespace = "some-namespace"
+	configName := FilterConfigSecretPerGatewayName("gw-unscoped-only", gwNamespace)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+	require.NoError(t, err)
+	require.True(t, effective)
+
+	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
+	require.NoError(t, err)
+	var fc filterapi.Config
+	require.NoError(t, yaml.Unmarshal([]byte(secret.StringData[FilterConfigKeyInSecret]), &fc))
+
+	require.Len(t, fc.Models, 1)
+	require.Equal(t, "lone-model", fc.Models[0].Name)
+	// Critical: with no scoped routes, ModelsByHost must be empty AND UnscopedModels must stay nil
+	// so it's omitted from the marshalled YAML (omitempty).
+	require.Empty(t, fc.ModelsByHost)
+	require.Nil(t, fc.UnscopedModels)
+}
+
 // TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostAggregation verifies that
 // routes sharing the same metadataKey each get their own filter-config row (scoped by routeName).
 func TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostAggregation(t *testing.T) {
