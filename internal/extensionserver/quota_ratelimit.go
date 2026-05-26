@@ -8,6 +8,8 @@ package extensionserver
 import (
 	"context"
 	"fmt"
+	"github.com/go-logr/logr"
+	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	"strconv"
 	"strings"
 
@@ -46,9 +48,9 @@ const (
 	// defaultQuotaRateLimitServicePort is the default gRPC port for the rate limit service.
 	defaultQuotaRateLimitServicePort = 8081
 
-	// quotaCostMetadataKey is the dynamic metadata key where the ext_proc filter stores
-	// the computed request cost (token usage) for quota enforcement.
-	quotaCostMetadataKey = "llm_total_token"
+	// quotaCostMetadataKeyPrefix is the prefix for dynamic metadata keys where ext_proc
+	// stores computed quota costs. The full key is "quota_cost_<modelName>".
+	quotaCostMetadataKeyPrefix = "quota_cost_"
 )
 
 // maybeInjectQuotaRateLimiting injects the rate limit HTTP filter into the HCM
@@ -60,6 +62,7 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 	listeners []*listenerv3.Listener,
 	routes []*routev3.RouteConfiguration,
 ) ([]*clusterv3.Cluster, error) {
+	s.log.Info("QP: Checking for QuotaPolicies to determine if quota rate limit filter injection is needed")
 	// Find all QuotaPolicies and their target backends.
 	quotaPolicies, err := s.listQuotaPolicies(ctx)
 	if err != nil {
@@ -68,6 +71,8 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 	if len(quotaPolicies) == 0 {
 		return clusters, nil
 	}
+
+	s.log.Info("QP: Quota policies exists:", "count", len(quotaPolicies), "example_policy", fmt.Sprintf("%+v", quotaPolicies[0]))
 
 	// Build a map of "namespace/backendName" to the QuotaPolicies targeting each backend.
 	quotaBackendPolicies := buildQuotaBackendPolicies(quotaPolicies)
@@ -114,6 +119,7 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 			}
 		}
 		if hasQuotaRoute {
+			s.log.Info("QP: Found quota rate limit listener", "listener", ln.Name)
 			if err := s.injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain); err != nil {
 				s.log.Error(err, "failed to inject quota rate limit filter into listener", "listener", ln.Name)
 			}
@@ -187,6 +193,7 @@ func (s *Server) buildQuotaRateLimitCluster() *clusterv3.Cluster {
 // into the HCM filter chain of the given listener. The filter is inserted before the
 // router filter. It is a no-op on routes without per-route RateLimitPerRoute config.
 func (s *Server) injectQuotaRateLimitFilterIntoListener(ln *listenerv3.Listener, domain string) error {
+	s.log.Info("QP: Injecting Quota Rate Limit", "domain", domain)
 	filterChains := ln.GetFilterChains()
 	if ln.DefaultFilterChain != nil {
 		filterChains = append(filterChains, ln.DefaultFilterChain)
@@ -209,6 +216,7 @@ func (s *Server) injectQuotaRateLimitFilterIntoListener(ln *listenerv3.Listener,
 			continue
 		}
 
+		s.log.Info("QP: Building Quota Rate Limit")
 		rateLimitFilter, err := s.buildQuotaRateLimitFilter(domain)
 		if err != nil {
 			return fmt.Errorf("failed to build quota rate limit filter: %w", err)
@@ -235,6 +243,8 @@ func (s *Server) injectQuotaRateLimitFilterIntoListener(ln *listenerv3.Listener,
 		if !inserted {
 			httpConManager.HttpFilters = append(httpConManager.HttpFilters, rateLimitFilter)
 		}
+
+		s.log.Info("QP: Updating Quota Rate Limit", "inserted", inserted)
 
 		hcmAny, err := toAny(httpConManager)
 		if err != nil {
@@ -294,22 +304,18 @@ func (s *Server) patchRoutesWithQuotaRateLimits(
 			if !s.isRouteGeneratedByAIGateway(route) {
 				continue
 			}
-
 			routeAction := route.GetRoute()
 			if routeAction == nil {
 				continue
 			}
-
-			// Check if any backend on this route has a QuotaPolicy.
 			if !s.routeHasQuotaBackend(route, quotaBackendPolicies) {
 				continue
 			}
 
-			// Collect the QuotaPolicies relevant to this route's backends.
 			policies := s.policiesForRoute(route, quotaBackendPolicies)
+			modelInfo := s.resolveRouteModelInfo(route)
 
-			// Set per-route rate limit actions using the global quota domain.
-			if err := enableQuotaRateLimitOnRoute(route, policies); err != nil {
+			if err := enableQuotaRateLimitOnRoute(s.log, route, policies, modelInfo); err != nil {
 				s.log.Error(err, "failed to enable quota rate limit on route", "route", route.Name)
 			}
 			patched = true
@@ -467,38 +473,128 @@ func (s *Server) backendKeysForCluster(clusterName string) []string {
 	return keys
 }
 
-// enableQuotaRateLimitOnRoute sets per-route rate limit actions via TypedPerFilterConfig.
-//
-// The base RateLimit entry sends (backend_name, model_name_override) for quotas without
-// bucket rules and service-wide quotas. Additional RateLimit entries are appended for
-// each bucket rule, extending the chain with header-matching actions that correspond to
-// the ClientSelectors defined in the QuotaPolicy.
-func enableQuotaRateLimitOnRoute(route *routev3.Route, policies []aigv1a1.QuotaPolicy) error {
-	// Request-time base entry: checks quota at request time (returns 429 if exceeded).
-	// Uses the same descriptor actions but without HitsAddend and ApplyOnStreamDone.
-	rateLimitActions := []*routev3.RateLimit{
-		{
-			Actions: baseDescriptorActions(),
-		},
+// routeModelInfo holds the resolved model information for an Envoy route.
+type routeModelInfo struct {
+	// routeNames is the set of AIGatewayRoute names this Envoy route was generated
+	// from. Used for filtering: a QuotaPolicy's modelName must match one of these.
+	routeNames map[string]bool
+	// backendModels maps backend name → ModelNameOverride from the AIGatewayRoute.
+	// Used for request-time descriptors (the actual value ext_proc will set).
+	backendModels map[string]string
+}
+
+// resolveRouteModelInfo determines the model information for an Envoy route by
+// resolving its clusters back to AIGatewayRoute rules.
+func (s *Server) resolveRouteModelInfo(route *routev3.Route) *routeModelInfo {
+	routeAction := route.GetRoute()
+	if routeAction == nil {
+		return nil
 	}
 
-	// Stream-done base entry: counts tokens after response is complete.
-	rateLimitActions = append(rateLimitActions, &routev3.RateLimit{
-		Actions:           baseDescriptorActions(),
-		HitsAddend:        quotaHitsAddend(),
-		ApplyOnStreamDone: true,
-	})
+	info := &routeModelInfo{
+		routeNames:    make(map[string]bool),
+		backendModels: make(map[string]string),
+	}
 
-	// Append RateLimit entries for bucket rules from each policy's per-model quotas.
+	collectFromCluster := func(clusterName string) {
+		parts := strings.Split(clusterName, "/")
+		if len(parts) != 5 || parts[0] != "httproute" {
+			return
+		}
+		namespace := parts[1]
+		routeName := parts[2]
+		ruleIndex, err := strconv.Atoi(parts[4])
+		if err != nil {
+			return
+		}
+
+		info.routeNames[routeName] = true
+
+		var aigwRoute aigv1b1.AIGatewayRoute
+		if err := s.k8sClient.Get(context.Background(), client.ObjectKey{
+			Namespace: namespace,
+			Name:      routeName,
+		}, &aigwRoute); err != nil {
+			return
+		}
+		if ruleIndex >= len(aigwRoute.Spec.Rules) {
+			return
+		}
+		rule := &aigwRoute.Spec.Rules[ruleIndex]
+
+		for _, br := range rule.BackendRefs {
+			if br.ModelNameOverride != "" {
+				info.backendModels[br.Name] = br.ModelNameOverride
+			}
+		}
+	}
+
+	if clusterName := routeAction.GetCluster(); clusterName != "" {
+		collectFromCluster(clusterName)
+	}
+	if wc := routeAction.GetWeightedClusters(); wc != nil {
+		for _, c := range wc.Clusters {
+			collectFromCluster(c.Name)
+		}
+	}
+
+	if len(info.routeNames) == 0 {
+		return nil
+	}
+	return info
+}
+
+// enableQuotaRateLimitOnRoute sets per-route rate limit actions via TypedPerFilterConfig.
+// modelInfo provides the AIGatewayRoute names (for filtering) and backend→ModelNameOverride
+// mapping (for request-time descriptors). If nil, all models are included.
+func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies []aigv1a1.QuotaPolicy, modelInfo *routeModelInfo) error {
+	var rateLimitActions []*routev3.RateLimit
+	streamDoneModels := make(map[string]bool)
+
+	var backendModels map[string]string
+	if modelInfo != nil {
+		backendModels = modelInfo.backendModels
+	}
+
 	for i := range policies {
 		for _, pmq := range policies[i].Spec.PerModelQuotas {
-			if pmq.ModelName == nil || len(pmq.Quota.BucketRules) == 0 {
+			if pmq.ModelName == nil {
 				continue
 			}
 			modelName := *pmq.ModelName
-			bucketActions := buildBucketRuleLimitEntries(modelName, &pmq.Quota)
-			rateLimitActions = append(rateLimitActions, bucketActions...)
+			if modelInfo != nil && !modelInfo.routeNames[modelName] {
+				continue
+			}
+
+			if len(pmq.Quota.BucketRules) == 0 && pmq.Quota.DefaultBucket.Limit > 0 {
+				entries := buildSimpleModelEntries(modelName, policies[i].Namespace, policies[i].Spec.TargetRefs, backendModels)
+				rateLimitActions = append(rateLimitActions, entries...)
+			} else if len(pmq.Quota.BucketRules) > 0 {
+				bucketActions := buildBucketRuleLimitEntries(modelName, policies[i].Namespace, &pmq.Quota, policies[i].Spec.TargetRefs, backendModels)
+				rateLimitActions = append(rateLimitActions, bucketActions...)
+			}
+
+			// Track models that need a stream-done entry.
+			streamDoneModels[modelName] = true
 		}
+	}
+
+	// Add one stream-done entry per unique model. This entry reads backend_name
+	// and model_name_override from dynamic metadata (set by ext_proc) and counts
+	// the quota cost via HitsAddend. Only one entry is needed because metadata
+	// values are the same regardless of which policy/target produced the request.
+	// TODO: With client selectors, stream-done entries may need per-bucket-rule
+	// descriptor keys to match the 3-level service config tree.
+	for modelName := range streamDoneModels {
+		rateLimitActions = append(rateLimitActions, &routev3.RateLimit{
+			Actions:           baseDescriptorActions(),
+			HitsAddend:        quotaHitsAddend(modelName),
+			ApplyOnStreamDone: true,
+		})
+	}
+
+	if len(rateLimitActions) == 0 {
+		return nil
 	}
 
 	perRouteConfig := &ratelimitfilterv3.RateLimitPerRoute{
@@ -560,61 +656,112 @@ func baseDescriptorActions() []*routev3.RateLimit_Action {
 	}
 }
 
-// quotaHitsAddend returns the HitsAddend that reads the request cost from dynamic
-// metadata stored by the ext_proc filter. This allows quota enforcement based on
-// token usage rather than request count.
-func quotaHitsAddend() *routev3.RateLimit_HitsAddend {
-	return &routev3.RateLimit_HitsAddend{
-		Format: fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s)%%",
-			aigv1b1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey),
-	}
-}
-
-// buildBucketRuleLimitEntries creates RateLimit entries for a model's bucket rules.
-// Each bucket rule and the default bucket gets its own RateLimit entry with the base
-// descriptor actions plus header-matching or generic-key actions.
-func buildBucketRuleLimitEntries(modelName string, quota *aigv1a1.QuotaDefinition) []*routev3.RateLimit {
+// buildSimpleModelEntries creates RateLimit entries for a model with no bucket rules.
+// Produces 2-level descriptors (backend_name, model_name_override) matching the
+// translator's simple case where rate_limit is directly on the model descriptor.
+func buildSimpleModelEntries(modelName, policyNamespace string, targets []gwapiv1a2.LocalPolicyTargetReference, routeModelNames map[string]string) []*routev3.RateLimit {
 	var entries []*routev3.RateLimit
 
-	for rIdx, rule := range quota.BucketRules {
-		actions := append([]*routev3.RateLimit_Action{}, baseDescriptorActions()...)
-		actions = append(actions, buildClientSelectorActions(modelName, rIdx, rule.ClientSelectors)...)
-		// Request-time entry checks quota (returns 429 if exceeded).
-		// Stream-done entry counts tokens after response.
+	// Request-time entries only. Stream-done is added once per model in enableQuotaRateLimitOnRoute.
+	for _, target := range targets {
+		resolvedModel := resolveModelName(string(target.Name), modelName, routeModelNames)
 		entries = append(entries, &routev3.RateLimit{
-			Actions: actions,
-		}, &routev3.RateLimit{
-			Actions:           actions,
-			HitsAddend:        quotaHitsAddend(),
-			ApplyOnStreamDone: true,
-		})
-	}
-
-	// Default bucket: always matches via GenericKey.
-	if quota.DefaultBucket.Limit > 0 {
-		defaultKey := translator.DefaultBucketDescriptorKey(modelName, len(quota.BucketRules))
-		actions := append([]*routev3.RateLimit_Action{}, baseDescriptorActions()...)
-		actions = append(actions, &routev3.RateLimit_Action{
-			ActionSpecifier: &routev3.RateLimit_Action_GenericKey_{
-				GenericKey: &routev3.RateLimit_Action_GenericKey{
-					DescriptorKey:   defaultKey,
-					DescriptorValue: defaultKey,
-				},
-			},
-		})
-		// Request-time entry: checks quota (returns 429 if exceeded).
-		entries = append(entries, &routev3.RateLimit{
-			Actions: actions,
-		})
-		// Stream-done entry: counts tokens after response.
-		entries = append(entries, &routev3.RateLimit{
-			Actions:           actions,
-			HitsAddend:        quotaHitsAddend(),
-			ApplyOnStreamDone: true,
+			Actions: requestTimeBaseActions(policyNamespace, string(target.Name), resolvedModel),
 		})
 	}
 
 	return entries
+}
+
+// quotaHitsAddend returns the HitsAddend that reads the quota cost from dynamic
+// metadata stored by the ext_proc filter. The metadata key is derived from the
+// model name (quota_cost_<modelName>) matching what the gateway controller injects.
+func quotaHitsAddend(modelName string) *routev3.RateLimit_HitsAddend {
+	return &routev3.RateLimit_HitsAddend{
+		Format: fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s%s)%%",
+			aigv1b1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKeyPrefix, modelName),
+	}
+}
+
+// buildBucketRuleLimitEntries creates RateLimit entries for a model's bucket rules.
+// Each bucket rule and the default bucket produces:
+//   - One request-time entry per target backend (uses GenericKey for known values)
+//   - One stream-done entry (uses Metadata for actual runtime values)
+//
+// Action order matches the translator's service config tree:
+// backend_name (Level 0) → model_name_override (Level 1) → bucket_rule_key (Level 2)
+//
+// routeModelNames maps backend name → model name override from the AIGatewayRoute.
+// For request-time entries, the model name is resolved from this map when available,
+// falling back to modelName from the QuotaPolicy.
+func buildBucketRuleLimitEntries(modelName, policyNamespace string, quota *aigv1a1.QuotaDefinition, targets []gwapiv1a2.LocalPolicyTargetReference, routeModelNames map[string]string) []*routev3.RateLimit {
+	var entries []*routev3.RateLimit
+
+	// Request-time entries only. Stream-done is added once per model in enableQuotaRateLimitOnRoute.
+	// TODO: When client selectors are used, stream-done entries may need per-bucket-rule
+	// descriptor keys. Revisit deduplication when that case is implemented end-to-end.
+	for _, target := range targets {
+		resolvedModel := resolveModelName(string(target.Name), modelName, routeModelNames)
+
+		for rIdx, rule := range quota.BucketRules {
+			clientActions := buildClientSelectorActions(resolvedModel, rIdx, rule.ClientSelectors)
+			actions := requestTimeBaseActions(policyNamespace, string(target.Name), resolvedModel)
+			actions = append(actions, clientActions...)
+			entries = append(entries, &routev3.RateLimit{Actions: actions})
+		}
+
+		if quota.DefaultBucket.Limit > 0 {
+			defaultKey := translator.DefaultBucketDescriptorKey(resolvedModel, len(quota.BucketRules))
+			defaultAction := &routev3.RateLimit_Action{
+				ActionSpecifier: &routev3.RateLimit_Action_GenericKey_{
+					GenericKey: &routev3.RateLimit_Action_GenericKey{
+						DescriptorKey:   defaultKey,
+						DescriptorValue: defaultKey,
+					},
+				},
+			}
+			actions := requestTimeBaseActions(policyNamespace, string(target.Name), resolvedModel)
+			actions = append(actions, defaultAction)
+			entries = append(entries, &routev3.RateLimit{Actions: actions})
+		}
+	}
+
+	return entries
+}
+
+// resolveModelName returns the model name to use for request-time descriptors.
+// If routeModelNames has an entry for the backend, that value is used (the actual
+// ModelNameOverride from the AIGatewayRoute). Otherwise falls back to the
+// QuotaPolicy's modelName.
+func resolveModelName(backendName, fallback string, routeModelNames map[string]string) string {
+	if m, ok := routeModelNames[backendName]; ok {
+		return m
+	}
+	return fallback
+}
+
+// requestTimeBaseActions returns GenericKey actions for backend_name and
+// model_name_override using known static values. These are used in
+// request-time entries before ext_proc has set dynamic metadata.
+func requestTimeBaseActions(namespace, backendName, modelName string) []*routev3.RateLimit_Action {
+	return []*routev3.RateLimit_Action{
+		{
+			ActionSpecifier: &routev3.RateLimit_Action_GenericKey_{
+				GenericKey: &routev3.RateLimit_Action_GenericKey{
+					DescriptorKey:   translator.BackendNameDescriptorKey,
+					DescriptorValue: namespace + "/" + backendName,
+				},
+			},
+		},
+		{
+			ActionSpecifier: &routev3.RateLimit_Action_GenericKey_{
+				GenericKey: &routev3.RateLimit_Action_GenericKey{
+					DescriptorKey:   translator.ModelNameDescriptorKey,
+					DescriptorValue: modelName,
+				},
+			},
+		},
+	}
 }
 
 // buildClientSelectorActions converts ClientSelectors into rate limit actions.

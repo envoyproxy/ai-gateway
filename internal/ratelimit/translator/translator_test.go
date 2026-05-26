@@ -443,7 +443,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 		backend.Namespace = "default"
 		backend.Name = "my-backend"
 
-		desc, err := buildBackendDescriptor(policy, backend)
+		desc, err := buildBackendDescriptor(policy, backend, nil)
 		require.NoError(t, err)
 		require.Nil(t, desc)
 	})
@@ -465,7 +465,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 		backend.Namespace = "default"
 		backend.Name = "my-backend"
 
-		desc, err := buildBackendDescriptor(policy, backend)
+		desc, err := buildBackendDescriptor(policy, backend, nil)
 		require.NoError(t, err)
 		require.Nil(t, desc) // nil model name is skipped, no service quota either
 	})
@@ -487,7 +487,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 		backend.Namespace = "ns1"
 		backend.Name = "openai"
 
-		desc, err := buildBackendDescriptor(policy, backend)
+		desc, err := buildBackendDescriptor(policy, backend, nil)
 		require.NoError(t, err)
 		require.NotNil(t, desc)
 		require.Equal(t, BackendNameDescriptorKey, desc.Key)
@@ -509,7 +509,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 		backend.Namespace = "default"
 		backend.Name = "backend"
 
-		desc, err := buildBackendDescriptor(policy, backend)
+		desc, err := buildBackendDescriptor(policy, backend, nil)
 		require.NoError(t, err)
 		require.NotNil(t, desc)
 		require.Len(t, desc.Descriptors, 1)
@@ -543,7 +543,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 		backend.Namespace = "default"
 		backend.Name = "multi-model"
 
-		desc, err := buildBackendDescriptor(policy, backend)
+		desc, err := buildBackendDescriptor(policy, backend, nil)
 		require.NoError(t, err)
 		require.NotNil(t, desc)
 		// 2 per-model + 1 service quota catch-all = 3
@@ -565,7 +565,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 		backend.Namespace = "default"
 		backend.Name = "b"
 
-		desc, err := buildBackendDescriptor(policy, backend)
+		desc, err := buildBackendDescriptor(policy, backend, nil)
 		require.NoError(t, err)
 		require.Nil(t, desc) // limit 0 is not > 0, so no service quota descriptor
 	})
@@ -587,7 +587,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 		backend.Namespace = "ns"
 		backend.Name = "b"
 
-		_, err := buildBackendDescriptor(policy, backend)
+		_, err := buildBackendDescriptor(policy, backend, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), `model "bad-model"`)
 	})
@@ -604,7 +604,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 		backend.Namespace = "ns"
 		backend.Name = "b"
 
-		_, err := buildBackendDescriptor(policy, backend)
+		_, err := buildBackendDescriptor(policy, backend, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "service quota")
 	})
@@ -613,14 +613,14 @@ func TestBuildBackendDescriptor(t *testing.T) {
 func TestBuildRateLimitConfigs(t *testing.T) {
 	t.Run("nil backends returns nil", func(t *testing.T) {
 		policy := &aigv1a1.QuotaPolicy{}
-		configs, err := BuildRateLimitConfigs(policy, nil)
+		configs, err := BuildRateLimitConfigs(policy, nil, nil)
 		require.NoError(t, err)
 		require.Nil(t, configs)
 	})
 
 	t.Run("empty backends returns nil", func(t *testing.T) {
 		policy := &aigv1a1.QuotaPolicy{}
-		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{})
+		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{}, nil)
 		require.NoError(t, err)
 		require.Nil(t, configs)
 	})
@@ -633,7 +633,7 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "b1", Namespace: "default"},
 		}
 
-		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend})
+		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend}, nil)
 		require.NoError(t, err)
 		require.Nil(t, configs)
 	})
@@ -655,7 +655,7 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "openai", Namespace: "default"},
 		}
 
-		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend})
+		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend}, nil)
 		require.NoError(t, err)
 		require.Len(t, configs, 1)
 		require.Equal(t, QuotaDomain, configs[0].Domain)
@@ -685,7 +685,7 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "azure", Namespace: "ns2"},
 		}
 
-		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{b1, b2})
+		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{b1, b2}, nil)
 		require.NoError(t, err)
 		require.Len(t, configs, 1) // single config with shared domain
 		require.Len(t, configs[0].Descriptors, 2)
@@ -710,7 +710,7 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
 		}
 
-		_, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend})
+		_, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend}, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "ns/b")
 	})
@@ -744,7 +744,7 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "openai", Namespace: "default"},
 		}
 
-		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend})
+		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend}, nil)
 		require.NoError(t, err)
 		require.Len(t, configs, 1)
 
@@ -784,7 +784,7 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
 		}
 
-		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend})
+		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend}, nil)
 		require.NoError(t, err)
 		require.Nil(t, configs)
 	})
@@ -801,7 +801,7 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: "prod"},
 		}
 
-		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend})
+		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend}, nil)
 		require.NoError(t, err)
 		require.Len(t, configs, 1)
 		require.Len(t, configs[0].Descriptors, 1)

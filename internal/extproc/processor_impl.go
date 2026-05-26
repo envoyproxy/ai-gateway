@@ -706,8 +706,15 @@ func mergeDynamicMetadata(base, extra *structpb.Struct) *structpb.Struct {
 // The metadata includes token usage costs and model information for downstream processing.
 func buildDynamicMetadata(config *filterapi.RuntimeConfig, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName string) (*structpb.Struct, error) {
 	metadata := make(map[string]*structpb.Value, len(config.RequestCosts)+2)
+	shortBackend := backendName
+	if parts := strings.SplitN(backendName, "/", 3); len(parts) >= 2 {
+		shortBackend = parts[0] + "/" + parts[1]
+	}
 	for i := range config.RequestCosts {
 		rc := &config.RequestCosts[i]
+		if rc.Backend != "" && rc.Backend != shortBackend {
+			continue
+		}
 		var cost uint32
 		switch rc.Type {
 		case filterapi.LLMRequestCostTypeInputToken:

@@ -426,6 +426,10 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
 				llmCosts[cost.MetadataKey] = struct{}{}
 			}
+
+			// Inject QuotaPolicy cost expressions as LLMRequestCost entries so ext_proc
+			// computes and stores them in metadata for the HitsAddend to read.
+			c.injectQuotaPolicyCostExpressions(ctx, aiGatewayRoute, ec, llmCosts)
 		}
 	}
 
@@ -665,6 +669,87 @@ func (c *GatewayController) getSecretData(ctx context.Context, namespace, name, 
 		}
 	}
 	return "", fmt.Errorf("secret %s does not contain key %s", name, dataKey)
+}
+
+// injectQuotaPolicyCostExpressions looks up QuotaPolicies targeting the backends
+// on this route and injects their CostExpression as LLMRequestCost entries into
+// the ext_proc config. This allows ext_proc to compute and store quota costs in
+// dynamic metadata for the rate limit filter's HitsAddend to read.
+func (c *GatewayController) injectQuotaPolicyCostExpressions(
+	ctx context.Context,
+	route *aigv1b1.AIGatewayRoute,
+	ec *filterapi.Config,
+	llmCosts map[string]struct{},
+) {
+	var quotaPolicies aigv1a1.QuotaPolicyList
+	if err := c.client.List(ctx, &quotaPolicies, client.InNamespace(route.Namespace)); err != nil {
+		c.logger.Error(err, "failed to list QuotaPolicies for cost expression injection")
+		return
+	}
+
+	// Collect backend names on this route.
+	routeBackends := make(map[string]bool)
+	for _, rule := range route.Spec.Rules {
+		for _, br := range rule.BackendRefs {
+			routeBackends[br.Name] = true
+		}
+	}
+
+	for i := range quotaPolicies.Items {
+		qp := &quotaPolicies.Items[i]
+		// Check if this policy targets any backend on this route.
+		targetsRoute := false
+		for _, ref := range qp.Spec.TargetRefs {
+			if routeBackends[string(ref.Name)] {
+				targetsRoute = true
+				break
+			}
+		}
+		if !targetsRoute {
+			continue
+		}
+
+		for _, pmq := range qp.Spec.PerModelQuotas {
+			if pmq.ModelName == nil {
+				continue
+			}
+			expr := "total_tokens"
+			if pmq.Quota.CostExpression != nil {
+				expr = *pmq.Quota.CostExpression
+			}
+			if _, err := llmcostcel.NewProgram(expr); err != nil {
+				c.logger.Error(err, "invalid QuotaPolicy cost expression, skipping",
+					"policy", qp.Name, "model", *pmq.ModelName, "expression", expr)
+				continue
+			}
+			metadataKey := QuotaCostMetadataKey(*pmq.ModelName)
+			// One LLMRequestCost per target backend with the Backend filter.
+			// ext_proc only evaluates the entry matching the serving backend,
+			// storing the result under the shared metadata key.
+			for _, ref := range qp.Spec.TargetRefs {
+				backendKey := route.Namespace + "/" + string(ref.Name)
+				dedupeKey := metadataKey + "\x00" + backendKey
+				if _, exists := llmCosts[dedupeKey]; exists {
+					continue
+				}
+				ec.LLMRequestCosts = append(ec.LLMRequestCosts, filterapi.LLMRequestCost{
+					Type:        filterapi.LLMRequestCostTypeCEL,
+					MetadataKey: metadataKey,
+					CEL:         expr,
+					Backend:     backendKey,
+				})
+				llmCosts[dedupeKey] = struct{}{}
+			}
+		}
+	}
+}
+
+// QuotaCostMetadataKey returns the dynamic metadata key used to store a
+// QuotaPolicy's computed cost for a given model. This key is shared between
+// the gateway controller (injecting LLMRequestCost) and the extension server
+// (building HitsAddend).
+func QuotaCostMetadataKey(modelName string) string {
+	return "quota_cost_" + modelName
 }
 
 // backendWithMaybeBSP retrieves the AIServiceBackend and its associated BackendSecurityPolicy if it exists.
