@@ -104,7 +104,7 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 	// Patch routes and track which route configs had quota backends enabled.
 	quotaEnabledRoutes := make(map[string]bool)
 	for _, routeConfig := range routes {
-		if s.patchRoutesWithQuotaRateLimits(routeConfig, quotaBackendPolicies) {
+		if s.patchRoutesWithQuotaRateLimits(ctx, routeConfig, quotaBackendPolicies) {
 			quotaEnabledRoutes[routeConfig.Name] = true
 		}
 	}
@@ -295,6 +295,7 @@ func (s *Server) buildQuotaRateLimitFilter(domain string) (*httpconnectionmanage
 // from dynamic metadata and the model name from the x-ai-eg-model header.
 // Returns true if any route in the configuration was patched.
 func (s *Server) patchRoutesWithQuotaRateLimits(
+	ctx context.Context,
 	routeConfig *routev3.RouteConfiguration,
 	quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy,
 ) bool {
@@ -308,12 +309,12 @@ func (s *Server) patchRoutesWithQuotaRateLimits(
 			if routeAction == nil {
 				continue
 			}
-			if !s.routeHasQuotaBackend(route, quotaBackendPolicies) {
+			if !s.routeHasQuotaBackend(ctx, route, quotaBackendPolicies) {
 				continue
 			}
 
-			policies := s.policiesForRoute(route, quotaBackendPolicies)
-			modelInfo := s.resolveRouteModelInfo(route)
+			policies := s.policiesForRoute(ctx, route, quotaBackendPolicies)
+			modelInfo := s.resolveRouteModelInfo(ctx, route)
 
 			if err := enableQuotaRateLimitOnRoute(s.log, route, policies, modelInfo); err != nil {
 				s.log.Error(err, "failed to enable quota rate limit on route", "route", route.Name)
@@ -328,6 +329,7 @@ func (s *Server) patchRoutesWithQuotaRateLimits(
 // a QuotaPolicy by resolving the cluster name to an AIGatewayRoute and checking
 // its BackendRefs against the quotaBackendPolicies map.
 func (s *Server) routeHasQuotaBackend(
+	ctx context.Context,
 	route *routev3.Route,
 	quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy,
 ) bool {
@@ -338,13 +340,13 @@ func (s *Server) routeHasQuotaBackend(
 
 	// Check single cluster.
 	if clusterName := routeAction.GetCluster(); clusterName != "" {
-		return s.clusterHasQuotaBackend(clusterName, quotaBackendPolicies)
+		return s.clusterHasQuotaBackend(ctx, clusterName, quotaBackendPolicies)
 	}
 
 	// Check weighted clusters.
 	if wc := routeAction.GetWeightedClusters(); wc != nil {
 		for _, c := range wc.Clusters {
-			if s.clusterHasQuotaBackend(c.Name, quotaBackendPolicies) {
+			if s.clusterHasQuotaBackend(ctx, c.Name, quotaBackendPolicies) {
 				return true
 			}
 		}
@@ -359,7 +361,7 @@ func (s *Server) routeHasQuotaBackend(
 // Cluster name format: "httproute/{namespace}/{routeName}/rule/{ruleIndex}"
 // The function fetches the AIGatewayRoute, indexes into the rule, and checks each
 // BackendRef against the quotaBackendPolicies map.
-func (s *Server) clusterHasQuotaBackend(clusterName string, quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy) bool {
+func (s *Server) clusterHasQuotaBackend(ctx context.Context, clusterName string, quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy) bool {
 	// Parse cluster name: "httproute/{namespace}/{routeName}/rule/{ruleIndex}"
 	parts := strings.Split(clusterName, "/")
 	if len(parts) != 5 || parts[0] != "httproute" {
@@ -375,7 +377,7 @@ func (s *Server) clusterHasQuotaBackend(clusterName string, quotaBackendPolicies
 
 	// Fetch the AIGatewayRoute to get the actual backend refs.
 	var aigwRoute aigv1b1.AIGatewayRoute
-	if err := s.k8sClient.Get(context.Background(), client.ObjectKey{
+	if err := s.k8sClient.Get(ctx, client.ObjectKey{
 		Namespace: namespace,
 		Name:      routeName,
 	}, &aigwRoute); err != nil {
@@ -400,6 +402,7 @@ func (s *Server) clusterHasQuotaBackend(clusterName string, quotaBackendPolicies
 // policiesForRoute collects the deduplicated QuotaPolicies applicable to a route
 // by resolving its clusters to backends and looking up the policies map.
 func (s *Server) policiesForRoute(
+	ctx context.Context,
 	route *routev3.Route,
 	quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy,
 ) []aigv1a1.QuotaPolicy {
@@ -407,7 +410,7 @@ func (s *Server) policiesForRoute(
 	var result []aigv1a1.QuotaPolicy
 
 	collectFromCluster := func(clusterName string) {
-		backendKeys := s.backendKeysForCluster(clusterName)
+		backendKeys := s.backendKeysForCluster(ctx, clusterName)
 		for _, key := range backendKeys {
 			policies, ok := quotaBackendPolicies[key]
 			if !ok {
@@ -441,7 +444,7 @@ func (s *Server) policiesForRoute(
 
 // backendKeysForCluster resolves a cluster name to "namespace/backendName" keys
 // by fetching the AIGatewayRoute and looking up its BackendRefs.
-func (s *Server) backendKeysForCluster(clusterName string) []string {
+func (s *Server) backendKeysForCluster(ctx context.Context, clusterName string) []string {
 	parts := strings.Split(clusterName, "/")
 	if len(parts) != 5 || parts[0] != "httproute" {
 		return nil
@@ -454,7 +457,7 @@ func (s *Server) backendKeysForCluster(clusterName string) []string {
 	}
 
 	var aigwRoute aigv1b1.AIGatewayRoute
-	if err := s.k8sClient.Get(context.Background(), client.ObjectKey{
+	if err := s.k8sClient.Get(ctx, client.ObjectKey{
 		Namespace: namespace,
 		Name:      routeName,
 	}, &aigwRoute); err != nil {
@@ -485,7 +488,7 @@ type routeModelInfo struct {
 
 // resolveRouteModelInfo determines the model information for an Envoy route by
 // resolving its clusters back to AIGatewayRoute rules.
-func (s *Server) resolveRouteModelInfo(route *routev3.Route) *routeModelInfo {
+func (s *Server) resolveRouteModelInfo(ctx context.Context, route *routev3.Route) *routeModelInfo {
 	routeAction := route.GetRoute()
 	if routeAction == nil {
 		return nil
@@ -511,7 +514,7 @@ func (s *Server) resolveRouteModelInfo(route *routev3.Route) *routeModelInfo {
 		info.routeNames[routeName] = true
 
 		var aigwRoute aigv1b1.AIGatewayRoute
-		if err := s.k8sClient.Get(context.Background(), client.ObjectKey{
+		if err := s.k8sClient.Get(ctx, client.ObjectKey{
 			Namespace: namespace,
 			Name:      routeName,
 		}, &aigwRoute); err != nil {
