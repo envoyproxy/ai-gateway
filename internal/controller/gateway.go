@@ -403,6 +403,9 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 						for _, hn := range hostnames {
 							ec.ModelsByHost[string(hn)] = append(ec.ModelsByHost[string(hn)], model)
 						}
+					} else {
+						// Routes without hostnames are "unscoped": they apply to every host.
+						ec.UnscopedModels = append(ec.UnscopedModels, model)
 					}
 				}
 			}
@@ -490,6 +493,16 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			for _, fc := range dedup {
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
 			}
+		}
+	}
+
+	// Merge unscoped models into every per-host list so that a request matching a hostname-scoped route
+	// still sees the models from routes that didn't declare hostnames. Without this, a Gateway that mixes
+	// scoped and unscoped AIGatewayRoutes would silently hide the unscoped models from /v1/models on the
+	// scoped hosts. The unscoped fallback for unmatched hosts is handled by filterapi.RuntimeConfig.UnscopedModels.
+	if len(ec.ModelsByHost) > 0 && len(ec.UnscopedModels) > 0 {
+		for hn := range ec.ModelsByHost {
+			ec.ModelsByHost[hn] = append(ec.ModelsByHost[hn], ec.UnscopedModels...)
 		}
 	}
 

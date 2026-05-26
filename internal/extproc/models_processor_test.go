@@ -71,12 +71,14 @@ func headers(in []*corev3.HeaderValueOption) map[string]string {
 
 func Test_selectModelsForHost(t *testing.T) {
 	defaultModels := []filterapi.Model{{Name: "default"}}
+	unscopedModels := []filterapi.Model{{Name: "unscoped"}}
 	exactModels := []filterapi.Model{{Name: "exact"}}
 	wildcardComModels := []filterapi.Model{{Name: "wildcard-com"}}
 	wildcardBentomlModels := []filterapi.Model{{Name: "wildcard-bentoml"}}
 
 	cfg := &filterapi.RuntimeConfig{
 		DeclaredModels: defaultModels,
+		UnscopedModels: unscopedModels,
 		ModelsByHost: map[string][]filterapi.Model{
 			"api.bentoml.com":   exactModels,
 			"*.com":             wildcardComModels,
@@ -116,12 +118,21 @@ func Test_selectModelsForHost(t *testing.T) {
 			want: wildcardComModels,
 		},
 		{
-			name: "returns empty list when host has no match",
-			host: "localhost",
-			want: []filterapi.Model{},
+			// Per Gateway API spec, "*.bentoml.com" matches exactly one label, so a
+			// multi-label subdomain ("foo.api.bentoml.com") must NOT match it. "*.com"
+			// likewise must not match it. With no wildcard matching, we fall back to
+			// the unscoped models.
+			name: "wildcard does not match multi-label subdomain",
+			host: "foo.api.bentoml.com",
+			want: unscopedModels,
 		},
 		{
-			name: "empty host falls back to default",
+			name: "unmatched host falls back to unscoped models",
+			host: "localhost",
+			want: unscopedModels,
+		},
+		{
+			name: "empty host falls back to declared (all) models",
 			host: "",
 			want: defaultModels,
 		},
@@ -132,4 +143,17 @@ func Test_selectModelsForHost(t *testing.T) {
 			require.Equal(t, tt.want, selectModelsForHost(tt.host, cfg))
 		})
 	}
+
+	t.Run("no unscoped models: unmatched host returns nil", func(t *testing.T) {
+		// When every route is hostname-scoped, UnscopedModels is nil and an unmatched
+		// host returns nil (treated as empty by the /v1/models endpoint). This preserves
+		// the "no leak to unknown hosts" guarantee.
+		scopedOnly := &filterapi.RuntimeConfig{
+			DeclaredModels: defaultModels,
+			ModelsByHost: map[string][]filterapi.Model{
+				"api.bentoml.com": exactModels,
+			},
+		}
+		require.Nil(t, selectModelsForHost("localhost", scopedOnly))
+	})
 }

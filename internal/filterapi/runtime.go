@@ -37,8 +37,12 @@ type RuntimeConfig struct {
 	RequestCosts []RuntimeRequestCost
 	// DeclaredModels is the list of declared models.
 	DeclaredModels []Model
-	// ModelsByHost maps hostnames to their specific model lists for per-host filtering.
+	// ModelsByHost maps hostnames to their specific model lists for per-host filtering. Each entry already includes
+	// UnscopedModels so that routes without hostname scoping remain visible on host-matched requests.
 	ModelsByHost map[string][]Model
+	// UnscopedModels is the fallback returned for hosts that don't match any ModelsByHost entry. Populated from routes
+	// that did NOT declare hostnames; kept separate from DeclaredModels so we don't leak scoped models to unknown hosts.
+	UnscopedModels []Model
 	// Backends is the map of backends by name.
 	Backends map[string]*RuntimeBackend
 }
@@ -126,5 +130,6 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 		RequestCosts:       costs,
 		DeclaredModels:     config.Models,
 		ModelsByHost:       config.ModelsByHost,
+		UnscopedModels:     config.UnscopedModels,
 	}, nil
 }

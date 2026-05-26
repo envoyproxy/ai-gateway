@@ -123,21 +123,28 @@ func selectModelsForHost(host string, cfg *filterapi.RuntimeConfig) []filterapi.
 			continue
 		}
 		suffix := strings.TrimPrefix(pattern, "*.")
-		// Wildcard hostnames only match subdomains with a label boundary.
-		// Example: "*.bentoml.com" matches "api.bentoml.com" but not "bentoml.com" or "evilbentoml.com".
-		if strings.HasSuffix(host, "."+suffix) {
-			if len(suffix) > bestMatchLength {
-				bestMatchLength = len(suffix)
-				bestMatchModels = models
-			}
+		// Per the Gateway API spec, a wildcard label matches exactly one DNS label, not multiple.
+		// "*.bentoml.com" matches "api.bentoml.com" but NOT "foo.api.bentoml.com", "bentoml.com",
+		// or "evilbentoml.com". Verify both the label boundary and that the prefix is a single label.
+		if !strings.HasSuffix(host, "."+suffix) {
+			continue
+		}
+		prefix := strings.TrimSuffix(host, "."+suffix)
+		if strings.Contains(prefix, ".") {
+			continue
+		}
+		if len(suffix) > bestMatchLength {
+			bestMatchLength = len(suffix)
+			bestMatchModels = models
 		}
 	}
 	if bestMatchModels != nil {
 		return bestMatchModels
 	}
 
-	// When ModelsByHost is configured, an unmatched host returns an empty list
-	// rather than falling back to DeclaredModels: hostname scoping is opt-in,
-	// and leaking the global model list to unknown hosts would defeat it.
-	return []filterapi.Model{}
+	// Unmatched host: fall back to UnscopedModels (models from routes that didn't declare hostnames).
+	// We do NOT fall back to DeclaredModels because hostname scoping is opt-in — leaking host-scoped
+	// models to unknown hosts would defeat the purpose. UnscopedModels is nil when every route is
+	// scoped, which correctly degrades to an empty list.
+	return cfg.UnscopedModels
 }
