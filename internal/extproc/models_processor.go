@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -99,8 +100,8 @@ func requestHost(headers map[string]string) string {
 	if host == "" {
 		return ""
 	}
-	if idx := strings.IndexByte(host, ':'); idx != -1 {
-		host = host[:idx]
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
 	}
 	return strings.ToLower(host)
 }
@@ -135,5 +136,8 @@ func selectModelsForHost(host string, cfg *filterapi.RuntimeConfig) []filterapi.
 		return bestMatchModels
 	}
 
+	// When ModelsByHost is configured, an unmatched host returns an empty list
+	// rather than falling back to DeclaredModels: hostname scoping is opt-in,
+	// and leaking the global model list to unknown hosts would defeat it.
 	return []filterapi.Model{}
 }
