@@ -69,6 +69,62 @@ func headers(in []*corev3.HeaderValueOption) map[string]string {
 	return h
 }
 
+func Test_requestHost(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers map[string]string
+		want    string
+	}{
+		{
+			name: "prefers :authority over host",
+			headers: map[string]string{
+				":authority": "Api.Bentoml.COM",
+				"host":       "should-be-ignored.example.com",
+			},
+			want: "api.bentoml.com",
+		},
+		{
+			name:    "falls back to host header when :authority is missing",
+			headers: map[string]string{"host": "API.example.com"},
+			want:    "api.example.com",
+		},
+		{
+			name:    "strips port for IPv4 / hostname authorities",
+			headers: map[string]string{":authority": "api.bentoml.com:8443"},
+			want:    "api.bentoml.com",
+		},
+		{
+			name: "strips port for bracketed IPv6 authority (the case net.SplitHostPort fixes)",
+			// Before the SplitHostPort change, `strings.IndexByte(host, ':')` would have
+			// truncated this to `[2001` and ToLower-ed it — a clearly broken result. Lock
+			// the correct behaviour in.
+			headers: map[string]string{":authority": "[2001:db8::1]:8443"},
+			want:    "2001:db8::1",
+		},
+		{
+			name:    "leaves unbracketed IPv6 alone (SplitHostPort fails, fallback returns the raw value lowercased)",
+			headers: map[string]string{":authority": "2001:db8::1"},
+			want:    "2001:db8::1",
+		},
+		{
+			name:    "returns empty when neither :authority nor host is present",
+			headers: map[string]string{},
+			want:    "",
+		},
+		{
+			name:    "nil headers map",
+			headers: nil,
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, requestHost(tt.headers))
+		})
+	}
+}
+
 func Test_selectModelsForHost(t *testing.T) {
 	defaultModels := []filterapi.Model{{Name: "default"}}
 	unscopedModels := []filterapi.Model{{Name: "unscoped"}}
