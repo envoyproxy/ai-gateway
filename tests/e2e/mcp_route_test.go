@@ -203,7 +203,7 @@ spec:
 	})
 
 	const mcpRouteTemplate = `
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-with-many-backends

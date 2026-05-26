@@ -22,7 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
@@ -55,7 +55,7 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		mcpRoute       *aigv1a1.MCPRoute
+		mcpRoute       *aigv1b1.MCPRoute
 		extraObjs      []client.Object
 		wantSecPol     bool
 		wantJWT        bool
@@ -68,10 +68,10 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 	}{
 		{
 			name: "no authentication configured",
-			mcpRoute: &aigv1a1.MCPRoute{
+			mcpRoute: &aigv1b1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
-				Spec: aigv1a1.MCPRouteSpec{
-					SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{},
+				Spec: aigv1b1.MCPRouteSpec{
+					SecurityPolicy: &aigv1b1.MCPRouteSecurityPolicy{},
 				},
 			},
 			wantSecPol: false,
@@ -82,19 +82,19 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 		},
 		{
 			name: "authentication configured",
-			mcpRoute: &aigv1a1.MCPRoute{
+			mcpRoute: &aigv1b1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
-				Spec: aigv1a1.MCPRouteSpec{
-					SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{
-						OAuth: &aigv1a1.MCPRouteOAuth{
+				Spec: aigv1b1.MCPRouteSpec{
+					SecurityPolicy: &aigv1b1.MCPRouteSecurityPolicy{
+						OAuth: &aigv1b1.MCPRouteOAuth{
 							Issuer:    server.URL,
 							Audiences: []string{"test-audience"},
-							JWKS: &aigv1a1.JWKS{
+							JWKS: &aigv1b1.JWKS{
 								RemoteJWKS: &egv1a1.RemoteJWKS{
 									URI: server.URL + "/.well-known/jwks.json",
 								},
 							},
-							ProtectedResourceMetadata: aigv1a1.ProtectedResourceMetadata{
+							ProtectedResourceMetadata: aigv1b1.ProtectedResourceMetadata{
 								Resource:                          "https://api.example.com/mcp",
 								ScopesSupported:                   []string{"read", "write"},
 								ResourceName:                      ptr.To("my cool mcp tools"),
@@ -116,14 +116,14 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 		},
 		{
 			name: "authentication configured without jwks - auto discovery",
-			mcpRoute: &aigv1a1.MCPRoute{
+			mcpRoute: &aigv1b1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
-				Spec: aigv1a1.MCPRouteSpec{
-					SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{
-						OAuth: &aigv1a1.MCPRouteOAuth{
+				Spec: aigv1b1.MCPRouteSpec{
+					SecurityPolicy: &aigv1b1.MCPRouteSecurityPolicy{
+						OAuth: &aigv1b1.MCPRouteOAuth{
 							Issuer:    server.URL,
 							Audiences: []string{"test-audience"},
-							ProtectedResourceMetadata: aigv1a1.ProtectedResourceMetadata{
+							ProtectedResourceMetadata: aigv1b1.ProtectedResourceMetadata{
 								Resource:        "https://api.example.com/mcp",
 								ScopesSupported: []string{"read", "write"},
 							},
@@ -186,10 +186,10 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 		},
 		{
 			name: "api key authentication configured",
-			mcpRoute: &aigv1a1.MCPRoute{
+			mcpRoute: &aigv1b1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
-				Spec: aigv1a1.MCPRouteSpec{
-					SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{
+				Spec: aigv1b1.MCPRouteSpec{
+					SecurityPolicy: &aigv1b1.MCPRouteSecurityPolicy{
 						APIKeyAuth: &egv1a1.APIKeyAuth{
 							CredentialRefs: []gwapiv1.SecretObjectReference{
 								{Name: "client-keys"},
@@ -222,10 +222,10 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 		},
 		{
 			name: "ext auth configured",
-			mcpRoute: &aigv1a1.MCPRoute{
+			mcpRoute: &aigv1b1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
-				Spec: aigv1a1.MCPRouteSpec{
-					SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{
+				Spec: aigv1b1.MCPRouteSpec{
+					SecurityPolicy: &aigv1b1.MCPRouteSecurityPolicy{
 						ExtAuth: &egv1a1.ExtAuth{
 							GRPC: &egv1a1.GRPCExtAuthService{
 								BackendCluster: egv1a1.BackendCluster{
@@ -266,10 +266,10 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy(t *testing.T) {
 		},
 		{
 			name: "api key authentication and ext auth configured",
-			mcpRoute: &aigv1a1.MCPRoute{
+			mcpRoute: &aigv1b1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
-				Spec: aigv1a1.MCPRouteSpec{
-					SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{
+				Spec: aigv1b1.MCPRouteSpec{
+					SecurityPolicy: &aigv1b1.MCPRouteSecurityPolicy{
 						APIKeyAuth: &egv1a1.APIKeyAuth{
 							CredentialRefs: []gwapiv1.SecretObjectReference{
 								{Name: "client-keys"},
@@ -421,19 +421,19 @@ func TestMCPRouteControllerCleanupSecurityPolicyResources(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewMCPRouteController(fakeClient, nil, logr.Discard(), eventCh.Ch)
 
-	mcpRoute := &aigv1a1.MCPRoute{
+	mcpRoute := &aigv1b1.MCPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
-		Spec: aigv1a1.MCPRouteSpec{
-			SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{
-				OAuth: &aigv1a1.MCPRouteOAuth{
+		Spec: aigv1b1.MCPRouteSpec{
+			SecurityPolicy: &aigv1b1.MCPRouteSecurityPolicy{
+				OAuth: &aigv1b1.MCPRouteOAuth{
 					Issuer:    "https://auth.example.com",
 					Audiences: []string{"test-audience"},
-					JWKS: &aigv1a1.JWKS{
+					JWKS: &aigv1b1.JWKS{
 						RemoteJWKS: &egv1a1.RemoteJWKS{
 							URI: "https://auth.example.com/.well-known/jwks.json",
 						},
 					},
-					ProtectedResourceMetadata: aigv1a1.ProtectedResourceMetadata{
+					ProtectedResourceMetadata: aigv1b1.ProtectedResourceMetadata{
 						Resource:        "https://api.example.com/mcp",
 						ScopesSupported: []string{"read", "write"},
 					},
@@ -499,15 +499,15 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy_DisableOAuthKeepsAPIKey(t
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewMCPRouteController(fakeClient, nil, logr.Discard(), eventCh.Ch)
 
-	securityPolicy := &aigv1a1.MCPRouteSecurityPolicy{
-		OAuth: &aigv1a1.MCPRouteOAuth{
+	securityPolicy := &aigv1b1.MCPRouteSecurityPolicy{
+		OAuth: &aigv1b1.MCPRouteOAuth{
 			Issuer: "https://auth.example.com",
-			JWKS: &aigv1a1.JWKS{
+			JWKS: &aigv1b1.JWKS{
 				RemoteJWKS: &egv1a1.RemoteJWKS{
 					URI: "https://auth.example.com/.well-known/jwks.json",
 				},
 			},
-			ProtectedResourceMetadata: aigv1a1.ProtectedResourceMetadata{Resource: "https://api.example.com/mcp"},
+			ProtectedResourceMetadata: aigv1b1.ProtectedResourceMetadata{Resource: "https://api.example.com/mcp"},
 		},
 		APIKeyAuth: &egv1a1.APIKeyAuth{
 			CredentialRefs: []gwapiv1.SecretObjectReference{{Name: "client-keys"}},
@@ -515,9 +515,9 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy_DisableOAuthKeepsAPIKey(t
 		},
 	}
 
-	mcpRoute := &aigv1a1.MCPRoute{
+	mcpRoute := &aigv1b1.MCPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
-		Spec:       aigv1a1.MCPRouteSpec{SecurityPolicy: securityPolicy.DeepCopy()},
+		Spec:       aigv1b1.MCPRouteSpec{SecurityPolicy: securityPolicy.DeepCopy()},
 	}
 
 	require.NoError(t, fakeClient.Create(t.Context(), mcpRoute))
@@ -571,19 +571,19 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy_ClaimToHeaders(t *testing
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewMCPRouteController(fakeClient, nil, logr.Discard(), eventCh.Ch)
 
-	mcpRoute := &aigv1a1.MCPRoute{
+	mcpRoute := &aigv1b1.MCPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
-		Spec: aigv1a1.MCPRouteSpec{
-			SecurityPolicy: &aigv1a1.MCPRouteSecurityPolicy{
-				OAuth: &aigv1a1.MCPRouteOAuth{
+		Spec: aigv1b1.MCPRouteSpec{
+			SecurityPolicy: &aigv1b1.MCPRouteSecurityPolicy{
+				OAuth: &aigv1b1.MCPRouteOAuth{
 					Issuer:    "https://auth.example.com",
 					Audiences: []string{"test-audience"},
-					JWKS: &aigv1a1.JWKS{
+					JWKS: &aigv1b1.JWKS{
 						RemoteJWKS: &egv1a1.RemoteJWKS{
 							URI: "https://auth.example.com/.well-known/jwks.json",
 						},
 					},
-					ProtectedResourceMetadata: aigv1a1.ProtectedResourceMetadata{
+					ProtectedResourceMetadata: aigv1b1.ProtectedResourceMetadata{
 						Resource: "https://api.example.com/mcp",
 					},
 					ClaimToHeaders: []egv1a1.ClaimToHeader{
@@ -617,9 +617,9 @@ func TestMCPRouteController_syncMCPRouteSecurityPolicy_ClaimToHeaders(t *testing
 }
 
 func Test_buildOAuthProtectedResourceMetadataJSON(t *testing.T) {
-	auth := &aigv1a1.MCPRouteOAuth{
+	auth := &aigv1b1.MCPRouteOAuth{
 		Issuer: "https://auth.example.com",
-		ProtectedResourceMetadata: aigv1a1.ProtectedResourceMetadata{
+		ProtectedResourceMetadata: aigv1b1.ProtectedResourceMetadata{
 			Resource:        "https://api.example.com/mcp",
 			ScopesSupported: []string{"read", "write", "admin"},
 		},
@@ -640,75 +640,75 @@ func Test_buildOAuthProtectedResourceMetadataJSON(t *testing.T) {
 func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 	tests := []struct {
 		name     string
-		metadata *aigv1a1.ProtectedResourceMetadata
+		metadata *aigv1b1.ProtectedResourceMetadata
 		expected string
 	}{
 		{
 			name: "https URL with path",
-			metadata: &aigv1a1.ProtectedResourceMetadata{
+			metadata: &aigv1b1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com/mcp/v1",
 			},
 			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp/v1"`,
 		},
 		{
 			name: "https URL without path",
-			metadata: &aigv1a1.ProtectedResourceMetadata{
+			metadata: &aigv1b1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com",
 			},
 			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource"`,
 		},
 		{
 			name: "https URL with trailing slash",
-			metadata: &aigv1a1.ProtectedResourceMetadata{
+			metadata: &aigv1b1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com/mcp/",
 			},
 			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "http URL with path",
-			metadata: &aigv1a1.ProtectedResourceMetadata{
+			metadata: &aigv1b1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com/mcp/v1",
 			},
 			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource/mcp/v1"`,
 		},
 		{
 			name: "http URL without path",
-			metadata: &aigv1a1.ProtectedResourceMetadata{
+			metadata: &aigv1b1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com",
 			},
 			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource"`,
 		},
 		{
 			name: "http URL with trailing slash",
-			metadata: &aigv1a1.ProtectedResourceMetadata{
+			metadata: &aigv1b1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com/mcp/",
 			},
 			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="http://api.example.com/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "URL with port number https",
-			metadata: &aigv1a1.ProtectedResourceMetadata{
+			metadata: &aigv1b1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com:8080/mcp",
 			},
 			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com:8080/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "URL with port number http",
-			metadata: &aigv1a1.ProtectedResourceMetadata{
+			metadata: &aigv1b1.ProtectedResourceMetadata{
 				Resource: "http://api.example.com:8080/mcp",
 			},
 			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="http://api.example.com:8080/.well-known/oauth-protected-resource/mcp"`,
 		},
 		{
 			name: "complex path with multiple segments",
-			metadata: &aigv1a1.ProtectedResourceMetadata{
+			metadata: &aigv1b1.ProtectedResourceMetadata{
 				Resource: "https://api.example.com/v1/mcp/endpoint",
 			},
 			expected: `Bearer error="invalid_token", error_description="The access token is missing or invalid", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/v1/mcp/endpoint"`,
 		},
 		{
 			name: "with empty scopes supported",
-			metadata: &aigv1a1.ProtectedResourceMetadata{
+			metadata: &aigv1b1.ProtectedResourceMetadata{
 				Resource:        "https://api.example.com/mcp",
 				ScopesSupported: []string{},
 			},
@@ -716,7 +716,7 @@ func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 		},
 		{
 			name: "with single scope supported",
-			metadata: &aigv1a1.ProtectedResourceMetadata{
+			metadata: &aigv1b1.ProtectedResourceMetadata{
 				Resource:        "https://api.example.com/mcp",
 				ScopesSupported: []string{"read"},
 			},
@@ -724,7 +724,7 @@ func Test_buildWWWAuthenticateHeaderValue(t *testing.T) {
 		},
 		{
 			name: "with multiple scopes supported",
-			metadata: &aigv1a1.ProtectedResourceMetadata{
+			metadata: &aigv1b1.ProtectedResourceMetadata{
 				Resource:        "https://api.example.com/mcp",
 				ScopesSupported: []string{"read", "write"},
 			},
