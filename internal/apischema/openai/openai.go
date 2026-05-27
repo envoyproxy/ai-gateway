@@ -166,6 +166,8 @@ type ChatCompletionContentPartAudioAudioURLParam struct {
 	URL string `json:"url"`
 }
 
+// ChatCompletionContentPartAudioParam Learn more in the
+// [Multimodal Inputs - vLLM](https://docs.vllm.ai/en/latest/features/multimodal_inputs/#audio-inputs_1).
 type ChatCompletionContentPartAudioParam struct {
 	AudioURL ChatCompletionContentPartAudioAudioURLParam `json:"audio_url"`
 	// The type of the content part.
@@ -178,6 +180,8 @@ type ChatCompletionContentPartVideoVideoURLParam struct {
 	URL string `json:"url"`
 }
 
+// ChatCompletionContentPartVideoParam Learn more in the
+// [Multimodal Inputs - vLLM](https://docs.vllm.ai/en/latest/features/multimodal_inputs/#video-inputs_1).
 type ChatCompletionContentPartVideoParam struct {
 	VideoURL ChatCompletionContentPartVideoVideoURLParam `json:"video_url"`
 	// The type of the content part.
