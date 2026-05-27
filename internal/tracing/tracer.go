@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
+	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
@@ -48,6 +49,7 @@ type (
 	responsesTracer       = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	speechTracer          = requestTracerImpl[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
 	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
+	countTokensTracer     = requestTracerImpl[anthropicschema.MessagesRequest, anthropicschema.CountTokensResponse, struct{}]
 )
 
 func newRequestTracer[ReqT any, RespT any, RespChunkT any](
@@ -196,6 +198,18 @@ func newMessageTracer(tracer trace.Tracer, propagator propagation.TextMapPropaga
 		headerAttributes,
 		func(span trace.Span, recorder tracingapi.MessageRecorder) tracingapi.MessageSpan {
 			return &messageSpan{span: span, recorder: recorder}
+		},
+	)
+}
+
+func newCountTokensTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.CountTokensRecorder, headerAttributes map[string]string) tracingapi.CountTokensTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		headerAttributes,
+		func(span trace.Span, recorder tracingapi.CountTokensRecorder) tracingapi.CountTokensSpan {
+			return &countTokensSpan{span: span, recorder: recorder}
 		},
 	)
 }
