@@ -38,12 +38,20 @@ func NewAnthropicToAWSAnthropicTranslator(apiVersion string, modelNameOverride i
 type anthropicToAWSAnthropicTranslator struct {
 	anthropicToAnthropicTranslator
 	apiVersion     string
-	requestHeaders map[string]string
+	anthropicBetas []string
 }
 
 // SetRequestHeaders implements [RequestHeadersSetter].
 func (a *anthropicToAWSAnthropicTranslator) SetRequestHeaders(headers map[string]string) {
-	a.requestHeaders = headers
+	var anthropicBetas []string
+	if betaHeader := headers["anthropic-beta"]; betaHeader != "" {
+		for _, beta := range strings.Split(betaHeader, ",") {
+			if beta = strings.TrimSpace(beta); beta != "" {
+				anthropicBetas = append(anthropicBetas, beta)
+			}
+		}
+	}
+	a.anthropicBetas = anthropicBetas
 }
 
 // ResponseHeaders implements [AnthropicMessagesTranslator.ResponseHeaders].
@@ -80,18 +88,10 @@ func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *an
 	newBody, _ = sjson.DeleteBytesOptions(newBody, "model", sjsonOptionsInPlace)
 	newBody, _ = sjson.DeleteBytesOptions(newBody, "stream", sjsonOptionsInPlace)
 
-	if betaHeader := a.requestHeaders["anthropic-beta"]; betaHeader != "" {
-		var betaValues []string
-		for _, beta := range strings.Split(betaHeader, ",") {
-			if beta = strings.TrimSpace(beta); beta != "" {
-				betaValues = append(betaValues, beta)
-			}
-		}
-		if len(betaValues) > 0 {
-			newBody, err = sjson.SetBytesOptions(newBody, "anthropic_beta", betaValues, sjsonOptionsInPlace)
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to set anthropic_beta field: %w", err)
-			}
+	if len(a.anthropicBetas) > 0 {
+		newBody, err = sjson.SetBytesOptions(newBody, "anthropic_beta", a.anthropicBetas, sjsonOptionsInPlace)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to set anthropic_beta field: %w", err)
 		}
 	}
 
