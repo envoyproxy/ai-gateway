@@ -44,6 +44,8 @@ type openAIToOpenAITranslatorV1Responses struct {
 	// requestModel serves as fallback for non-compliant OpenAI backends that
 	// don't return model in responses, ensuring metrics/tracing always have a model.
 	requestModel internalapi.RequestModel
+	// buffered stores incomplete SSE bytes across ResponseBody calls.
+	buffered []byte
 }
 
 // RequestBody implements [OpenAIResponsesTranslator.RequestBody].
@@ -102,12 +104,12 @@ func (o *openAIToOpenAITranslatorV1Responses) ResponseBody(_ map[string]string, 
 func (o *openAIToOpenAITranslatorV1Responses) handleStreamingResponse(body io.Reader, span tracingapi.ResponsesSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
-	// Buffer the incoming SSE data
 	chunks, err := io.ReadAll(body)
 	if err != nil {
 		return nil, nil, tokenUsage, "", fmt.Errorf("failed to read body: %w", err)
 	}
-	tokenUsage = o.extractUsageFromBufferEvent(span, chunks)
+	o.buffered = append(o.buffered, chunks...)
+	tokenUsage = o.extractUsageFromBufferEvent(span)
 	// Use stored streaming response model, fallback to request model for non-compliant backends
 	responseModel = cmp.Or(o.streamingResponseModel, o.requestModel)
 	return
@@ -142,11 +144,16 @@ func (o *openAIToOpenAITranslatorV1Responses) handleNonStreamingResponse(body io
 }
 
 // extractUsageFromBufferEvent extracts the token usage and model from the buffered SSE events.
-// It scans complete lines and returns the latest usage found in response.completed event.
-func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span tracingapi.ResponsesSpan, chunks []byte) (tokenUsage metrics.TokenUsage) {
-	// Parse SSE events from the buffered data
-	// SSE format: "data: {json}\n\n"
-	for event := range bytes.SplitSeq(chunks, []byte("\n\n")) {
+// It scans complete SSE events and returns the latest usage found in response.completed event.
+func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span tracingapi.ResponsesSpan) (tokenUsage metrics.TokenUsage) {
+	for {
+		// SSE event boundary is a blank line: "data: {json}\n\n".
+		i := bytes.Index(o.buffered, []byte("\n\n"))
+		if i == -1 {
+			return tokenUsage
+		}
+		event := o.buffered[:i]
+		o.buffered = o.buffered[i+2:]
 		for line := range bytes.SplitSeq(event, []byte("\n")) {
 			// Look for lines starting with "data: "
 			if !bytes.HasPrefix(line, sseDataPrefix) {
@@ -188,7 +195,6 @@ func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span t
 			}
 		}
 	}
-	return tokenUsage
 }
 
 // ResponseError implements [OpenAIResponsesTranslator.ResponseError].

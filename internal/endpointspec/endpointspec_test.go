@@ -160,14 +160,26 @@ func TestEmbeddingsEndpointSpec_ParseBody(t *testing.T) {
 func TestEmbeddingsEndpointSpec_GetTranslator(t *testing.T) {
 	spec := EmbeddingsEndpointSpec{}
 
-	for _, schema := range []filterapi.VersionedAPISchema{{Name: filterapi.APISchemaOpenAI}, {Name: filterapi.APISchemaAzureOpenAI}} {
-		translator, err := spec.GetTranslator(schema, "override")
-		require.NoError(t, err)
-		require.NotNil(t, translator)
+	supported := []filterapi.VersionedAPISchema{
+		{Name: filterapi.APISchemaOpenAI},
+		{Name: filterapi.APISchemaAzureOpenAI},
+		{Name: filterapi.APISchemaGCPVertexAI},
+		{Name: filterapi.APISchemaAWSBedrock},
+	}
+	for _, schema := range supported {
+		s := schema
+		t.Run("supported_"+string(s.Name), func(t *testing.T) {
+			t.Parallel()
+			tr, err := spec.GetTranslator(s, "override")
+			require.NoError(t, err)
+			require.NotNil(t, tr)
+		})
 	}
 
-	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere}, "override")
-	require.ErrorContains(t, err, "unsupported API schema")
+	t.Run("unsupported", func(t *testing.T) {
+		_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere}, "override")
+		require.ErrorContains(t, err, "unsupported API schema")
+	})
 }
 
 func TestImageGenerationEndpointSpec_ParseBody(t *testing.T) {
@@ -236,7 +248,8 @@ func TestMessagesEndpointSpec_GetTranslator(t *testing.T) {
 		{Name: filterapi.APISchemaGCPAnthropic},
 		{Name: filterapi.APISchemaAWSAnthropic},
 		{Name: filterapi.APISchemaAnthropic},
-		{Name: filterapi.APISchemaOpenAI}, // This is for OpenAI-schema backends like vLLM that support the /v1/messages endpoint
+		{Name: filterapi.APISchemaOpenAI},     // This is for OpenAI-schema backends like vLLM that support the /v1/messages endpoint
+		{Name: filterapi.APISchemaAWSBedrock}, // This is for AWS Bedrock translation from the /v1/messages endpoint
 	} {
 		translator, err := spec.GetTranslator(schema, "override")
 		require.NoError(t, err)

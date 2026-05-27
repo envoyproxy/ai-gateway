@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	testsinternal "github.com/envoyproxy/ai-gateway/tests/internal"
 )
@@ -53,6 +52,10 @@ func TestAIGatewayRoutes(t *testing.T) {
 		{
 			name:   "inference_pool_unsupported_group.yaml",
 			expErr: "spec.rules[0].backendRefs[0]: Invalid value: \"object\": only InferencePool from inference.networking.k8s.io group is supported",
+		},
+		{
+			name:   "too_many_rules.yaml",
+			expErr: "spec.rules: Too many: 16: must have at most 15 items",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -231,11 +234,18 @@ func TestMCPRoutes(t *testing.T) {
 		},
 		{
 			name:   "tool_selector_missing.yaml",
-			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": exactly one of include or includeRegex must be specified",
+			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": at least one of include, includeRegex, exclude, or excludeRegex must be specified",
 		},
 		{
 			name:   "tool_selector_both.yaml",
-			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": exactly one of include or includeRegex must be specified",
+			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": include and includeRegex are mutually exclusive",
+		},
+		{name: "tool_selector_exclude.yaml"},
+		{name: "tool_selector_exclude_regex.yaml"},
+		{name: "tool_selector_include_and_exclude.yaml"},
+		{
+			name:   "tool_selector_exclude_both.yaml",
+			expErr: "spec.backendRefs[0].toolSelector: Invalid value: \"object\": exclude and excludeRegex are mutually exclusive",
 		},
 		{
 			name:   "backend_api_key_inline_and_secret.yaml",
@@ -275,7 +285,7 @@ func TestMCPRoutes(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/mcpgatewayroutes", tc.name))
 			require.NoError(t, err)
 
-			mcpRoute := &aigv1a1.MCPRoute{}
+			mcpRoute := &aigv1b1.MCPRoute{}
 			err = yaml.UnmarshalStrict(data, mcpRoute)
 			require.NoError(t, err)
 

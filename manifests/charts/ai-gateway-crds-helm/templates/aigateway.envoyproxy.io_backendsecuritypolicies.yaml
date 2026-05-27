@@ -9967,10 +9967,9 @@ spec:
                 - region
                 type: object
                 x-kubernetes-validations:
-                - message: Exactly one of GCPWorkloadIdentityFederationConfig or GCPCredentialsFile
-                    must be specified
-                  rule: (has(self.credentialsFile) && !has(self.workloadIdentityFederationConfig))
-                    || (has(self.workloadIdentityFederationConfig) && !has(self.credentialsFile))
+                - message: At most one of credentialsFile or workloadIdentityFederationConfig
+                    may be specified
+                  rule: '!(has(self.credentialsFile) && has(self.workloadIdentityFederationConfig))'
               targetRefs:
                 description: |-
                   TargetRefs are the names of the AIServiceBackend or InferencePool resources this BackendSecurityPolicy is being attached to.

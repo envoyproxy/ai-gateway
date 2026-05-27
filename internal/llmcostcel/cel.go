@@ -18,6 +18,7 @@ import (
 const (
 	celModelNameKey                = "model"
 	celBackendKey                  = "backend"
+	celRouteNameKey                = "route_name"
 	celInputTokensKey              = "input_tokens"
 	celCachedInputTokensKey        = "cached_input_tokens"         // #nosec G101
 	celCacheCreationInputTokensKey = "cache_creation_input_tokens" // #nosec G101
@@ -33,6 +34,7 @@ func init() {
 	env, err = cel.NewEnv(
 		cel.Variable(celModelNameKey, cel.StringType),
 		cel.Variable(celBackendKey, cel.StringType),
+		cel.Variable(celRouteNameKey, cel.StringType),
 		cel.Variable(celInputTokensKey, cel.UintType),
 		cel.Variable(celCachedInputTokensKey, cel.UintType),
 		cel.Variable(celCacheCreationInputTokensKey, cel.UintType),
@@ -58,7 +60,7 @@ func NewProgram(expr string) (prog cel.Program, err error) {
 	}
 
 	// Sanity check by evaluating the expression with some dummy values.
-	_, err = EvaluateProgram(prog, "dummy", "dummy", 0, 0, 0, 0, 0, 0)
+	_, err = EvaluateProgram(prog, "dummy", "dummy", "dummy", 0, 0, 0, 0, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
 	}
@@ -66,10 +68,11 @@ func NewProgram(expr string) (prog cel.Program, err error) {
 }
 
 // EvaluateProgram evaluates the given CEL program with the given variables.
-func EvaluateProgram(prog cel.Program, modelName, backend string, inputTokens, cachedInputTokens, cacheCreationInputTokens, outputTokens, totalTokens, reasoningTokens uint32) (uint64, error) {
+func EvaluateProgram(prog cel.Program, modelName, backend, routeName string, inputTokens, cachedInputTokens, cacheCreationInputTokens, outputTokens, totalTokens, reasoningTokens uint32) (uint64, error) {
 	out, _, err := prog.Eval(map[string]any{
 		celModelNameKey:                modelName,
 		celBackendKey:                  backend,
+		celRouteNameKey:                routeName,
 		celInputTokensKey:              inputTokens,
 		celCachedInputTokensKey:        cachedInputTokens,
 		celCacheCreationInputTokensKey: cacheCreationInputTokens,

@@ -18,14 +18,21 @@ import (
 )
 
 var (
-	sseEventPrefix = []byte("event: ")
-	sseIDPrefix    = []byte("id: ")
-	sseDataPrefix  = []byte("data: ")
+	sseEventPrefix      = []byte("event:")
+	sseIDPrefix         = []byte("id:")
+	sseDataPrefix       = []byte("data:")
+	sseEventPrefixSpace = []byte("event: ")
+	sseIDPrefixSpace    = []byte("id: ")
+	sseDataPrefixSpace  = []byte("data: ")
 
 	sseCR   = []byte{'\r'}
 	sseLF   = []byte{'\n'}
 	sseCRLF = []byte{'\r', '\n'}
 	sseLFLF = []byte{'\n', '\n'}
+
+	// utf8BOM is the UTF-8 Byte Order Mark (U+FEFF). Some backends prepend this
+	// invisible sequence to response bodies, which breaks JSON decoding.
+	utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 )
 
 // sseEventParser reads bytes from a reader and parses the SSE Events gracefully
@@ -39,6 +46,20 @@ type sseEventParser struct {
 
 func newSSEEventParser(r io.Reader, backend filterapi.MCPBackendName) sseEventParser {
 	return sseEventParser{r: r, backend: backend}
+}
+
+// tryDecodeJSONRPCMessage attempts to decode the body as a single JSON-RPC message.
+// It strips a leading UTF-8 BOM and whitespace before decoding.
+// Returns the decoded message and true on success, or nil and false if the body
+// is not valid JSON-RPC (e.g. the backend sent SSE despite a JSON content type).
+func tryDecodeJSONRPCMessage(body []byte) (jsonrpc.Message, bool) {
+	body = bytes.TrimSpace(body)
+	body = bytes.TrimPrefix(body, utf8BOM)
+	msg, err := jsonrpc.DecodeMessage(body)
+	if err != nil {
+		return nil, false
+	}
+	return msg, true
 }
 
 // next reads the next SSE event from the stream.
@@ -80,11 +101,11 @@ func (s *sseEventParser) parseEvent(chunk []byte) (*sseEvent, error) {
 	for line := range bytes.SplitSeq(chunk, sseLF) {
 		switch {
 		case bytes.HasPrefix(line, sseEventPrefix):
-			ret.event = string(bytes.TrimSpace(line[7:]))
+			ret.event = string(bytes.TrimSpace(line[len(sseEventPrefix):]))
 		case bytes.HasPrefix(line, sseIDPrefix):
-			ret.id = string(bytes.TrimSpace(line[4:]))
+			ret.id = string(bytes.TrimSpace(line[len(sseIDPrefix):]))
 		case bytes.HasPrefix(line, sseDataPrefix):
-			data := bytes.TrimSpace(line[6:])
+			data := bytes.TrimSpace(line[len(sseDataPrefix):])
 			msg, err := jsonrpc.DecodeMessage(data)
 			if err != nil {
 				return nil, fmt.Errorf("failed to decode jsonrpc message from sse data: %w", err)
@@ -125,17 +146,17 @@ type sseEvent struct {
 
 func (s *sseEvent) writeAndMaybeFlush(w io.Writer) {
 	if s.event != "" {
-		_, _ = w.Write(sseEventPrefix)
+		_, _ = w.Write(sseEventPrefixSpace)
 		_, _ = w.Write([]byte(s.event))
 		_, _ = w.Write(sseLF)
 	}
 	if s.id != "" {
-		_, _ = w.Write(sseIDPrefix)
+		_, _ = w.Write(sseIDPrefixSpace)
 		_, _ = w.Write([]byte(s.id))
 		_, _ = w.Write(sseLF)
 	}
 	for _, msg := range s.messages {
-		_, _ = w.Write(sseDataPrefix)
+		_, _ = w.Write(sseDataPrefixSpace)
 		data, _ := jsonrpc.EncodeMessage(msg)
 		_, _ = w.Write(data)
 		_, _ = w.Write(sseLF)

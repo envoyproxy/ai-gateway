@@ -37,6 +37,7 @@ type accessLogLine struct {
 	SessionID        any    `json:"session.id"`
 	MCPProviderName  any    `json:"mcp.provider.name"`
 	MCPMethodName    any    `json:"mcp.method.name"`
+	MCPToolName      any    `json:"mcp.tool.name"`
 	JSONRPCRequestID any    `json:"jsonrpc.request.id"`
 }
 
@@ -140,6 +141,9 @@ func TestMCPAccessLogMetadata(t *testing.T) {
 				return false
 			}
 			if line.MCPMethodName != "tools/call" {
+				return false
+			}
+			if line.MCPToolName != testmcp.ToolEcho.Tool.Name {
 				return false
 			}
 			return line.JSONRPCRequestID != nil
@@ -317,9 +321,11 @@ func testToolCallError(t *testing.T, m *mcpEnv) {
 			Name:      defaultMCPBackendResourcePrefix + testmcp.ToolError.Tool.Name,
 			Arguments: testmcp.ToolErrorArgs{Error: "a"},
 		})
-		require.Error(t, err)
-		require.Nil(t, res)
-		require.Contains(t, err.Error(), "minLength")
+		require.NoError(t, err)
+		require.True(t, res.IsError)
+		require.Len(t, res.Content, 1)
+		require.IsType(t, &mcp.TextContent{}, res.Content[0])
+		require.Contains(t, res.Content[0].(*mcp.TextContent).Text, "minLength")
 		requireToolSpanWithExceptionType(t, m.collector.TakeSpan(), "default-mcp-backend", testmcp.ToolError.Tool.Name, false, "minLength", "invalid_param")
 	})
 }

@@ -57,7 +57,7 @@ apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
   name: ai-gateway-with-aws
-  namespace: envoy-gateway-system
+  namespace: default
 spec:
   provider:
     type: Kubernetes
@@ -71,15 +71,18 @@ kind: Gateway
 metadata:
   name: envoy-ai-gateway-basic
   namespace: default
-  annotations:
-    # This links the Gateway to use our custom EnvoyProxy with AWS credentials
-    gateway.envoyproxy.io/envoy-proxy: envoy-gateway-system/ai-gateway-with-aws
 spec:
   gatewayClassName: envoy-ai-gateway
   listeners:
     - name: http
       protocol: HTTP
       port: 80
+  infrastructure:
+    parametersRef:
+      # This links the Gateway to use our custom EnvoyProxy with AWS credentials
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: ai-gateway-with-aws
 ---
 # Step 5: Create AIGatewayRoute for routing to Bedrock
 apiVersion: aigateway.envoyproxy.io/v1beta1

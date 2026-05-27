@@ -440,7 +440,7 @@ func TestSendRequestPerBackend_SetsOriginalPathHeaders(t *testing.T) {
 	defer cancel()
 	err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
-	}, http.MethodGet, nil)
+	}, http.MethodGet, nil, nil)
 	require.NoError(t, err)
 
 	select {
@@ -450,6 +450,95 @@ func TestSendRequestPerBackend_SetsOriginalPathHeaders(t *testing.T) {
 	case <-ctx.Done():
 		require.Fail(t, "timed out waiting for backend request")
 	}
+}
+
+func TestSendRequestPerBackend_PerBackendHeaders(t *testing.T) {
+	headersCh := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- r.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+
+	t.Run("per-backend headers are forwarded to the matching backend", func(t *testing.T) {
+		s := &session{
+			reqCtx: proxy,
+			perBackendExtraHeaders: map[filterapi.MCPBackendName]map[string]string{
+				"backend1": {
+					"X-Api-Key":      "secret123",
+					"X-Backend-Auth": "Bearer tok",
+				},
+			},
+		}
+		ch := make(chan *backendEvent, 1)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		defer cancel()
+		err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+			sessionID: "sess1",
+		}, http.MethodGet, nil, nil)
+		require.NoError(t, err)
+
+		select {
+		case hdr := <-headersCh:
+			require.Equal(t, "secret123", hdr.Get("X-Api-Key"))
+			require.Equal(t, "Bearer tok", hdr.Get("X-Backend-Auth"))
+		case <-ctx.Done():
+			require.Fail(t, "timed out waiting for backend request")
+		}
+	})
+
+	t.Run("per-backend headers are NOT sent to a different backend", func(t *testing.T) {
+		s := &session{
+			reqCtx: proxy,
+			perBackendExtraHeaders: map[filterapi.MCPBackendName]map[string]string{
+				"backend1": {
+					"X-Api-Key": "secret123",
+				},
+			},
+		}
+		ch := make(chan *backendEvent, 1)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		defer cancel()
+		err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend2"}, &compositeSessionEntry{
+			sessionID: "sess2",
+		}, http.MethodGet, nil, nil)
+		require.NoError(t, err)
+
+		select {
+		case hdr := <-headersCh:
+			require.Empty(t, hdr.Get("X-Api-Key"), "per-backend header should NOT be sent to a different backend")
+		case <-ctx.Done():
+			require.Fail(t, "timed out waiting for backend request")
+		}
+	})
+
+	t.Run("route-level and per-backend headers are both applied", func(t *testing.T) {
+		s := &session{
+			reqCtx:       proxy,
+			extraHeaders: map[string]string{"X-Route-Header": "route-val"},
+			perBackendExtraHeaders: map[filterapi.MCPBackendName]map[string]string{
+				"backend1": {"X-Backend-Header": "backend-val"},
+			},
+		}
+		ch := make(chan *backendEvent, 1)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		defer cancel()
+		err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+			sessionID: "sess1",
+		}, http.MethodGet, nil, nil)
+		require.NoError(t, err)
+
+		select {
+		case hdr := <-headersCh:
+			require.Equal(t, "route-val", hdr.Get("X-Route-Header"))
+			require.Equal(t, "backend-val", hdr.Get("X-Backend-Header"))
+		case <-ctx.Done():
+			require.Fail(t, "timed out waiting for backend request")
+		}
+	})
 }
 
 func TestSendRequestPerBackend_AcceptEncoding(t *testing.T) {
@@ -469,7 +558,7 @@ func TestSendRequestPerBackend_AcceptEncoding(t *testing.T) {
 	defer cancel()
 	err := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
-	}, http.MethodGet, nil)
+	}, http.MethodGet, nil, nil)
 	require.NoError(t, err)
 
 	select {
@@ -511,7 +600,7 @@ func TestSendRequestPerBackend_GzipDecompression(t *testing.T) {
 	defer cancel()
 	err = s.sendRequestPerBackend(ctx, ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
-	}, http.MethodGet, nil)
+	}, http.MethodGet, nil, nil)
 	require.NoError(t, err)
 	close(ch)
 	var events []*backendEvent
@@ -554,7 +643,7 @@ func TestSendRequestPerBackend_BrotliDecompression(t *testing.T) {
 	defer cancel()
 	err = s.sendRequestPerBackend(ctx, ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
-	}, http.MethodGet, nil)
+	}, http.MethodGet, nil, nil)
 	require.NoError(t, err)
 	close(ch)
 	var events []*backendEvent
@@ -567,6 +656,42 @@ func TestSendRequestPerBackend_BrotliDecompression(t *testing.T) {
 	req, ok := events[0].messages[0].(*jsonrpc.Request)
 	require.True(t, ok)
 	require.Equal(t, "ping", req.Method)
+}
+
+func TestSendRequestPerBackend_BOMPrefixedJSON(t *testing.T) {
+	id1, _ := jsonrpc.MakeID("1")
+	msg1, _ := jsonrpc.EncodeMessage(&jsonrpc.Response{ID: id1, Result: []byte(`{"ok":true}`)})
+
+	bomBody := append([]byte{0xEF, 0xBB, 0xBF}, msg1...)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(bomBody)
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	s := &session{reqCtx: proxy}
+	ch := make(chan *backendEvent, 10)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	err := s.sendRequestPerBackend(ctx, ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+		sessionID: "sess1",
+	}, http.MethodGet, nil, nil)
+	require.NoError(t, err)
+	close(ch)
+	var events []*backendEvent
+	for e := range ch {
+		events = append(events, e)
+	}
+	require.Len(t, events, 1, "expected 1 event from BOM-prefixed JSON response")
+	require.Equal(t, "message", events[0].event)
+	require.Len(t, events[0].messages, 1)
+	resp, ok := events[0].messages[0].(*jsonrpc.Response)
+	require.True(t, ok)
+	require.Equal(t, id1, resp.ID)
 }
 
 func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
@@ -604,7 +729,7 @@ func TestHandleNotificationsPerBackend_SSE(t *testing.T) {
 	defer cancel()
 	err := s.sendRequestPerBackend(ctx, ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
-	}, http.MethodGet, nil)
+	}, http.MethodGet, nil, nil)
 	require.NoError(t, err)
 	close(ch)
 	count := 0
@@ -624,11 +749,11 @@ func TestSession_StreamNotifications(t *testing.T) {
 	}{
 		// the default heartbeat interval is 1 second, but the events will come faster, so
 		// we don't expect any heartbeats.
-		{"fast events", 10 * time.Millisecond, 5 * time.Second, 10 * time.Second, false},
+		{"fast events", 10 * time.Millisecond, 500 * time.Millisecond, 10 * time.Second, false},
 		// configure a heartbeat interval faster than the event interval, so we expect heartbeats.
-		{"slow events", 20 * time.Millisecond, 5 * time.Second, 10 * time.Millisecond, true},
+		{"slow events", 20 * time.Millisecond, 500 * time.Millisecond, 10 * time.Millisecond, true},
 		// disable heartbeats. Even though events come in slowly, we don't expect heartbeats.
-		{"no heartbeats", 20 * time.Millisecond, 5 * time.Second, 0, false},
+		{"no heartbeats", 20 * time.Millisecond, 500 * time.Millisecond, 0, false},
 	}
 
 	for _, tc := range tests {
@@ -684,7 +809,7 @@ func TestSession_StreamNotifications(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), tc.deadline)
 			defer cancel()
 			err2 := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
-			require.NoError(t, err2)
+			require.ErrorIs(t, err2, context.DeadlineExceeded)
 			out := rr.Body.String()
 			require.Contains(t, out, "event: a1")
 			require.Contains(t, out, "event: a2")
@@ -736,7 +861,7 @@ func TestNotifyToolsChanged(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		t.Cleanup(cancel)
 		err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
 		out := rr.Body.String()
 		require.NotContains(t, out, `"id":"`+envoyAIGatewayServerToClientToolsChangedRequestIDPrefix)
 		require.NotContains(t, out, `"method":"notifications/tools/list_changed"`)
@@ -748,11 +873,53 @@ func TestNotifyToolsChanged(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		t.Cleanup(cancel)
 		err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
 		out := rr.Body.String()
 		require.Contains(t, out, `"id":"`+envoyAIGatewayServerToClientToolsChangedRequestIDPrefix)
 		require.Contains(t, out, `"method":"notifications/tools/list_changed"`)
 	})
+}
+
+func TestStreamNotifications_AllBackends405(t *testing.T) {
+	// When all backends return 405 for GET, streamNotifications should NOT return
+	// immediately. It should keep the SSE connection alive with heartbeats until the
+	// context is cancelled. This prevents a rapid reconnection loop when backends
+	// don't support the GET SSE notification stream.
+	originalHeartbeatInterval := heartbeatInterval
+	heartbeatInterval = 20 * time.Millisecond
+	t.Cleanup(func() { heartbeatInterval = originalHeartbeatInterval })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = srv.URL
+
+	s := &session{
+		reqCtx: proxy,
+		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+			"backend1": {backendName: "backend1", sessionID: "s1"},
+		},
+		route: "test-route",
+	}
+
+	rr := httptest.NewRecorder()
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+
+	err := s.streamNotifications(ctx, rr, proxy.toolChangeSignaler)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	out := rr.Body.String()
+	// Should have the initial heartbeat plus additional ones while waiting.
+	heartbeatCount := strings.Count(out, `"method":"ping"`)
+	require.Greater(t, heartbeatCount, 1, "expected heartbeats while waiting; got output: %s", out)
 }
 
 func TestSendRequestPerBackend_ErrorStatus(t *testing.T) {
@@ -768,7 +935,7 @@ func TestSendRequestPerBackend_ErrorStatus(t *testing.T) {
 	cse := &compositeSessionEntry{
 		sessionID: "sess1",
 	}
-	err2 := s.sendRequestPerBackend(t.Context(), ch, "route1", filterapi.MCPBackend{Name: "backend1"}, cse, http.MethodGet, nil)
+	err2 := s.sendRequestPerBackend(t.Context(), ch, "route1", filterapi.MCPBackend{Name: "backend1"}, cse, http.MethodGet, nil, nil)
 	require.Error(t, err2)
 	require.Contains(t, err2.Error(), "failed with status code")
 }
@@ -786,7 +953,7 @@ func TestSendRequestPerBackend_EOF(t *testing.T) {
 	ch := make(chan *backendEvent, 1)
 	err2 := s.sendRequestPerBackend(t.Context(), ch, "route1", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
 		sessionID: "sess1",
-	}, http.MethodGet, nil)
+	}, http.MethodGet, nil, nil)
 	require.True(t, err2 == nil || errors.Is(err2, io.EOF), "unexpected error: %v", err2)
 }
 

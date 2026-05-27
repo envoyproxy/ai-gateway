@@ -36,7 +36,7 @@ type: Opaque
 stringData:
   client1: "valid-mcp-api-key"
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-route-api-key

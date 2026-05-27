@@ -70,7 +70,7 @@ func (o *openAIToAWSAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		o.streamParser = newAnthropicStreamParser(o.requestModel)
 	}
 
-	params, err := buildAnthropicParams(openAIReq, "AWSAnthropic")
+	params, err := buildAnthropicParams(openAIReq, "AWSAnthropic", o.modelNameOverride)
 	if err != nil {
 		return
 	}
@@ -190,7 +190,7 @@ func (o *openAIToAWSAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 
 	responseModel = o.requestModel
 	if anthropicResp.Model != "" {
-		responseModel = string(anthropicResp.Model)
+		responseModel = anthropicResp.Model
 	}
 
 	openAIResp, tokenUsage, err := messageToChatCompletion(&anthropicResp, responseModel)

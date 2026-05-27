@@ -46,6 +46,12 @@ func TestResource(t *testing.T) {
 			expectedResource: "backendsecuritypolicies",
 		},
 		{
+			name:             "mcproute resource",
+			resource:         "mcproutes",
+			expectedGroup:    "aigateway.envoyproxy.io",
+			expectedResource: "mcproutes",
+		},
+		{
 			name:             "gatewayconfig resource",
 			resource:         "gatewayconfigs",
 			expectedGroup:    "aigateway.envoyproxy.io",
@@ -72,7 +78,6 @@ func TestAddKnownTypes(t *testing.T) {
 		types := scheme.KnownTypes(SchemeGroupVersion)
 
 		// Verify all resource types are registered
-		// Note: v1beta1 does not include MCPRoute (remains in v1alpha1)
 		expectedTypes := []string{
 			"AIGatewayRoute",
 			"AIGatewayRouteList",
@@ -80,6 +85,8 @@ func TestAddKnownTypes(t *testing.T) {
 			"AIServiceBackendList",
 			"BackendSecurityPolicy",
 			"BackendSecurityPolicyList",
+			"MCPRoute",
+			"MCPRouteList",
 			"GatewayConfig",
 			"GatewayConfigList",
 		}
@@ -88,8 +95,8 @@ func TestAddKnownTypes(t *testing.T) {
 			assert.Contains(t, types, typeName, "Type %s should be registered", typeName)
 		}
 
-		// Verify we have the expected number of types (8 custom types)
-		assert.GreaterOrEqual(t, len(types), 8, "Should have at least 8 registered types")
+		// Verify we have the expected number of types (10 custom types)
+		assert.GreaterOrEqual(t, len(types), 10, "Should have at least 10 registered types")
 	})
 
 	t.Run("AddKnownTypes can be called multiple times", func(t *testing.T) {
@@ -120,6 +127,7 @@ func TestAddToScheme(t *testing.T) {
 		assert.Contains(t, types, "AIGatewayRoute")
 		assert.Contains(t, types, "AIServiceBackend")
 		assert.Contains(t, types, "BackendSecurityPolicy")
+		assert.Contains(t, types, "MCPRoute")
 		assert.Contains(t, types, "GatewayConfig")
 	})
 }

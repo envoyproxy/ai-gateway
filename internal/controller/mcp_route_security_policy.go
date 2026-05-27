@@ -25,7 +25,7 @@ import (
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )
@@ -43,7 +43,7 @@ const (
 )
 
 // syncMCPRouteSecurityPolicy reconciles MCPRouteSecurityPolicy and creates/updates its associated envoy gateway resources.
-func (c *MCPRouteController) syncMCPRouteSecurityPolicy(ctx context.Context, mcpRoute *aigv1a1.MCPRoute, httpRouteName string) error {
+func (c *MCPRouteController) syncMCPRouteSecurityPolicy(ctx context.Context, mcpRoute *aigv1b1.MCPRoute, httpRouteName string) error {
 	securityPolicy := mcpRoute.Spec.SecurityPolicy
 	hasOAuth := securityPolicy != nil && securityPolicy.OAuth != nil
 	hasAPIKeyAuth := securityPolicy != nil && securityPolicy.APIKeyAuth != nil
@@ -83,7 +83,7 @@ func (c *MCPRouteController) syncMCPRouteSecurityPolicy(ctx context.Context, mcp
 }
 
 // ensureSecurityPolicy ensures that the SecurityPolicy resource exists with the configured authentication methods.
-func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute *aigv1a1.MCPRoute, httpRouteName string) error {
+func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute *aigv1b1.MCPRoute, httpRouteName string) error {
 	var securityPolicy egv1a1.SecurityPolicy
 	securityPolicyName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name
 	err := c.client.Get(ctx, client.ObjectKey{Name: securityPolicyName, Namespace: mcpRoute.Namespace}, &securityPolicy)
@@ -199,7 +199,7 @@ func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute 
 }
 
 // ensureOAuthProtectedResourceMetadataBTP ensures that the BackendTrafficPolicy resource exists with response override for WWW-Authenticate header.
-func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context.Context, mcpRoute *aigv1a1.MCPRoute, httpRouteName string) error {
+func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context.Context, mcpRoute *aigv1b1.MCPRoute, httpRouteName string) error {
 	var backendTrafficPolicy egv1a1.BackendTrafficPolicy
 	backendTrafficPolicyName := oauthProtectedResourceMetadataName(mcpRoute.Name)
 	err := c.client.Get(ctx, client.ObjectKey{Name: backendTrafficPolicyName, Namespace: mcpRoute.Namespace}, &backendTrafficPolicy)
@@ -286,7 +286,7 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context
 // References:
 // * https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#authorization-server-location
 // * https://datatracker.ietf.org/doc/html/rfc9728#name-www-authenticate-response
-func buildResourceMetadataURL(metadata *aigv1a1.ProtectedResourceMetadata) string {
+func buildResourceMetadataURL(metadata *aigv1b1.ProtectedResourceMetadata) string {
 	resourceURL := strings.TrimSuffix(metadata.Resource, "/")
 
 	var (
@@ -322,7 +322,7 @@ func buildResourceMetadataURL(metadata *aigv1a1.ProtectedResourceMetadata) strin
 // References:
 // * https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#protected-resource-metadata-discovery-requirements
 // * https://datatracker.ietf.org/doc/html/rfc9728#name-www-authenticate-response
-func buildWWWAuthenticateHeaderValue(metadata *aigv1a1.ProtectedResourceMetadata) string {
+func buildWWWAuthenticateHeaderValue(metadata *aigv1b1.ProtectedResourceMetadata) string {
 	resourceMetadataURL := buildResourceMetadataURL(metadata)
 	headerValue := `Bearer error="invalid_token", error_description="The access token is missing or invalid"`
 
@@ -338,7 +338,7 @@ func buildWWWAuthenticateHeaderValue(metadata *aigv1a1.ProtectedResourceMetadata
 }
 
 // ensureOAuthProtectedResourceMetadataHRF ensures that the HTTPRouteFilter resource exists with direct response for OAuth metadata.
-func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataHRF(ctx context.Context, mcpRoute *aigv1a1.MCPRoute) error {
+func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataHRF(ctx context.Context, mcpRoute *aigv1b1.MCPRoute) error {
 	if mcpRoute.Spec.SecurityPolicy == nil || mcpRoute.Spec.SecurityPolicy.OAuth == nil {
 		return nil
 	}
@@ -413,7 +413,7 @@ func ensureCORSHeaders(httpHeaderFilter *gwapiv1.HTTPHeaderFilter) {
 }
 
 // ensureOAuthAuthServerMetadataHRF ensures that the HTTPRouteFilter resource exists with direct response for OAuth authorization server metadata.
-func (c *MCPRouteController) ensureOAuthAuthServerMetadataHRF(ctx context.Context, mcpRoute *aigv1a1.MCPRoute) error {
+func (c *MCPRouteController) ensureOAuthAuthServerMetadataHRF(ctx context.Context, mcpRoute *aigv1b1.MCPRoute) error {
 	var httpRouteFilter egv1a1.HTTPRouteFilter
 	authServerFilterName := oauthAuthServerMetadataFilterName(mcpRoute.Name)
 	err := c.client.Get(ctx, client.ObjectKey{Name: authServerFilterName, Namespace: mcpRoute.Namespace}, &httpRouteFilter)
@@ -471,7 +471,7 @@ func (c *MCPRouteController) ensureOAuthAuthServerMetadataHRF(ctx context.Contex
 // References:
 // * https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#authorization-server-location
 // * https://datatracker.ietf.org/doc/html/rfc9728#name-protected-resource-metadata
-func buildOAuthProtectedResourceMetadataJSON(auth *aigv1a1.MCPRouteOAuth) string {
+func buildOAuthProtectedResourceMetadataJSON(auth *aigv1b1.MCPRouteOAuth) string {
 	response := map[string]interface{}{
 		"resource":                 auth.ProtectedResourceMetadata.Resource,
 		"authorization_servers":    []string{auth.Issuer},
@@ -507,7 +507,7 @@ func buildOAuthProtectedResourceMetadataJSON(auth *aigv1a1.MCPRouteOAuth) string
 // References:
 // * https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization#authorization-server-location
 // * https://datatracker.ietf.org/doc/html/rfc8414#section-3.2
-func (c *MCPRouteController) buildOAuthAuthServerMetadataJSON(oauth *aigv1a1.MCPRouteOAuth) string {
+func (c *MCPRouteController) buildOAuthAuthServerMetadataJSON(oauth *aigv1b1.MCPRouteOAuth) string {
 	// For 2025-03-26 compatibility, we return the authorization server metadata.
 
 	// The authorization server's issuer identifier, which is a URL that uses the "https" scheme and has no query or
@@ -554,7 +554,7 @@ func (c *MCPRouteController) buildOAuthAuthServerMetadataJSON(oauth *aigv1a1.MCP
 }
 
 // cleanupSecurityPolicyResources deletes existing SecurityPolicy-related resources when SecurityPolicy is nil.
-func (c *MCPRouteController) cleanupSecurityPolicyResources(ctx context.Context, mcpRoute *aigv1a1.MCPRoute) error {
+func (c *MCPRouteController) cleanupSecurityPolicyResources(ctx context.Context, mcpRoute *aigv1b1.MCPRoute) error {
 	// Delete SecurityPolicy.
 	securityPolicyName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name
 	var securityPolicy egv1a1.SecurityPolicy
@@ -570,7 +570,7 @@ func (c *MCPRouteController) cleanupSecurityPolicyResources(ctx context.Context,
 	return nil
 }
 
-func (c *MCPRouteController) ensureOAuthResources(ctx context.Context, mcpRoute *aigv1a1.MCPRoute, httpRouteName string) error {
+func (c *MCPRouteController) ensureOAuthResources(ctx context.Context, mcpRoute *aigv1b1.MCPRoute, httpRouteName string) error {
 	// Create BackendTrafficPolicy for WWW-Authenticate header with OAuth resource metadata in 401 responses.
 	if btpErr := c.ensureOAuthProtectedResourceMetadataBTP(ctx, mcpRoute, httpRouteName); btpErr != nil {
 		return fmt.Errorf("failed to ensure BackendTrafficPolicy: %w", btpErr)
@@ -588,7 +588,7 @@ func (c *MCPRouteController) ensureOAuthResources(ctx context.Context, mcpRoute 
 	return nil
 }
 
-func (c *MCPRouteController) cleanupOAuthResources(ctx context.Context, mcpRoute *aigv1a1.MCPRoute) error {
+func (c *MCPRouteController) cleanupOAuthResources(ctx context.Context, mcpRoute *aigv1b1.MCPRoute) error {
 	// Delete BackendTrafficPolicy.
 	backendTrafficPolicyName := oauthProtectedResourceMetadataName(mcpRoute.Name)
 	var backendTrafficPolicy egv1a1.BackendTrafficPolicy

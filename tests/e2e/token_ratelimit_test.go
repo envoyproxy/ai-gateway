@@ -179,8 +179,8 @@ func Test_Examples_TokenRateLimit(t *testing.T) {
 				Result     []struct {
 					Metric map[string]string `json:"metric"`
 					Value  []any             `json:"value"`
-				}
-			}
+				} `json:"result"`
+			} `json:"data"`
 		}
 		var pr prometheusResponse
 		require.NoError(t, json.Unmarshal(body, &pr))

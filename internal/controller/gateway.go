@@ -28,7 +28,6 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -101,7 +100,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	var mcpRoutes aigv1a1.MCPRouteList
+	var mcpRoutes aigv1b1.MCPRouteList
 	err = c.client.List(ctx, &mcpRoutes, client.MatchingFields{
 		k8sClientIndexMCPRouteToAttachedGateway: fmt.Sprintf("%s.%s", req.Name, req.Namespace),
 	})
@@ -132,10 +131,20 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	uid := c.uuidFn()
 
+	// Fetch GatewayConfig to get global LLM request cost defaults.
+	gwConfig, err := c.fetchGatewayConfig(ctx, gw)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	var defaultLLMCosts []aigv1b1.LLMRequestCost
+	if gwConfig != nil {
+		defaultLLMCosts = gwConfig.Spec.GlobalLLMRequestCosts
+	}
+
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	var hasEffectiveRoutes bool // indicates whether the filter config is effective (i.e., there is at least one active route).
-	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, aiRoutes.Items, mcpRoutes.Items, uid)
+	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, aiRoutes.Items, mcpRoutes.Items, uid, defaultLLMCosts)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -155,7 +164,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 func schemaToFilterAPI(schema aigv1b1.VersionedAPISchema) filterapi.VersionedAPISchema {
 	ret := filterapi.VersionedAPISchema{}
 	ret.Name = filterapi.APISchemaName(schema.Name)
-	if schema.Name == aigv1b1.APISchemaOpenAI {
+	if schema.Name == aigv1b1.APISchemaOpenAI || schema.Name == aigv1b1.APISchemaAnthropic {
 		ret.Prefix = cmp.Or(ptr.Deref(schema.Prefix, ""), "v1")
 	} else {
 		ret.Version = ptr.Deref(schema.Version, "")
@@ -191,6 +200,51 @@ func bodyMutationToFilterAPI(m *aigv1b1.HTTPBodyMutation) *filterapi.HTTPBodyMut
 		ret.Set = append(ret.Set, filterapi.HTTPBodyField{Path: field.Path, Value: field.Value})
 	}
 	return ret
+}
+
+// validateCELExpression validates and returns a CEL expression for cost calculation.
+func validateCELExpression(cost aigv1b1.LLMRequestCost) (string, error) {
+	if cost.CEL == nil {
+		return "", fmt.Errorf("missing CEL expression")
+	}
+	expr := *cost.CEL
+	if _, err := llmcostcel.NewProgram(expr); err != nil {
+		return "", fmt.Errorf("invalid CEL expression: %w", err)
+	}
+	return expr, nil
+}
+
+// aigwLLMRequestCostToFilterAPI converts an API LLMRequestCost to filter API form for the given
+// AIGatewayRoute (routeName is "namespace/name").
+func aigwGlobalLLMRequestCostToFilterAPI(cost aigv1b1.LLMRequestCost) (filterapi.GlobalLLMRequestCost, error) {
+	out := filterapi.GlobalLLMRequestCost{
+		MetadataKey: cost.MetadataKey,
+		Type:        filterapi.LLMRequestCostType(cost.Type),
+	}
+	if cost.Type == aigv1b1.LLMRequestCostTypeCEL {
+		celExpr, err := validateCELExpression(cost)
+		if err != nil {
+			return filterapi.GlobalLLMRequestCost{}, err
+		}
+		out.CEL = celExpr
+	}
+	return out, nil
+}
+
+func aigwLLMRequestCostToFilterAPI(cost aigv1b1.LLMRequestCost, routeName string) (filterapi.LLMRequestCost, error) {
+	out := filterapi.LLMRequestCost{
+		MetadataKey: cost.MetadataKey,
+		RouteName:   routeName,
+		Type:        filterapi.LLMRequestCostType(cost.Type),
+	}
+	if cost.Type == aigv1b1.LLMRequestCostTypeCEL {
+		celExpr, err := validateCELExpression(cost)
+		if err != nil {
+			return filterapi.LLMRequestCost{}, err
+		}
+		out.CEL = celExpr
+	}
+	return out, nil
 }
 
 // mergeBodyMutations merges route-level and backend-level BodyMutation with route-level taking precedence.
@@ -293,13 +347,31 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	configSecretName,
 	configSecretNamespace string,
 	aiGatewayRoutes []aigv1b1.AIGatewayRoute,
-	mcpRoutes []aigv1a1.MCPRoute,
+	mcpRoutes []aigv1b1.MCPRoute,
 	uuid string,
+	defaultLLMCosts []aigv1b1.LLMRequestCost,
 ) (hasEffectiveRoute bool, _ error) {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	ec := &filterapi.Config{UUID: uuid, Version: version.Parse()}
 	var err error
-	llmCosts := map[string]struct{}{}
+
+	// Process global LLM request costs from GatewayConfig.
+	// These have no RouteName and serve as defaults.
+	// Note: The CRD enforces uniqueness via +listType=map and +listMapKey=metadataKey,
+	// so we don't need to deduplicate here.
+	for _, cost := range defaultLLMCosts {
+		fc, convErr := aigwGlobalLLMRequestCostToFilterAPI(cost)
+		if convErr != nil {
+			return false, fmt.Errorf("failed to convert global LLMRequestCosts: %w", convErr)
+		}
+		ec.GlobalLLMRequestCosts = append(ec.GlobalLLMRequestCosts, fc)
+	}
+
+	// Models contributed by routes with no Spec.Hostnames. We only promote these to
+	// ec.UnscopedModels (and merge them into ec.ModelsByHost) when at least one route
+	// IS hostname-scoped; otherwise the existing ec.Models list already covers them.
+	var unscopedModels []filterapi.Model
+
 	for i := range aiGatewayRoutes {
 		aiGatewayRoute := &aiGatewayRoutes[i]
 		if !aiGatewayRoute.GetDeletionTimestamp().IsZero() {
@@ -307,7 +379,11 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			continue
 		}
 		hasEffectiveRoute = true
+		routeName := fmt.Sprintf("%s/%s", aiGatewayRoute.Namespace, aiGatewayRoute.Name)
+		hostnames := aiGatewayRoute.Spec.Hostnames
 		spec := aiGatewayRoute.Spec
+		routeBackendNamesSet := map[string]struct{}{}
+		routeBackendNames := []string{}
 		for ruleIndex := range spec.Rules {
 			rule := &spec.Rules[ruleIndex]
 			for _, m := range rule.Matches {
@@ -319,11 +395,25 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != internalapi.ModelNameHeaderKeyDefault {
 						continue
 					}
-					ec.Models = append(ec.Models, filterapi.Model{
+					model := filterapi.Model{
 						Name:      h.Value,
 						CreatedAt: ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).UTC(),
 						OwnedBy:   ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy),
-					})
+					}
+					ec.Models = append(ec.Models, model)
+					if len(hostnames) > 0 {
+						if ec.ModelsByHost == nil {
+							ec.ModelsByHost = make(map[string][]filterapi.Model)
+						}
+						for _, hn := range hostnames {
+							ec.ModelsByHost[string(hn)] = append(ec.ModelsByHost[string(hn)], model)
+						}
+					} else {
+						// Routes without hostnames are "unscoped": they apply to every host.
+						// Tracked in unscopedModels for now; only promoted to ec.UnscopedModels
+						// after the loop if at least one scoped route is also present.
+						unscopedModels = append(unscopedModels, model)
+					}
 				}
 			}
 			for backendRefIndex := range rule.BackendRefs {
@@ -390,46 +480,43 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				}
 
 				ec.Backends = append(ec.Backends, b)
+				if _, exists := routeBackendNamesSet[b.Name]; !exists {
+					routeBackendNamesSet[b.Name] = struct{}{}
+					routeBackendNames = append(routeBackendNames, b.Name)
+				}
 			}
-
+		}
+		if len(routeBackendNames) > 0 {
+			// Dedup per (metadataKey, routeName): last definition wins.
+			dedup := map[string]filterapi.LLMRequestCost{}
 			for _, cost := range aiGatewayRoute.Spec.LLMRequestCosts {
-				fc := filterapi.LLMRequestCost{MetadataKey: cost.MetadataKey}
-				_, ok := llmCosts[cost.MetadataKey]
-				if ok {
-					c.logger.Info("LLMRequestCost with the same metadata key already exists, skipping",
-						"metadataKey", cost.MetadataKey, "route", aiGatewayRoute.Name)
-					continue
+				fc, convErr := aigwLLMRequestCostToFilterAPI(cost, routeName)
+				if convErr != nil {
+					return false, fmt.Errorf("failed to convert LLMRequestCosts for route %s: %w", aiGatewayRoute.Name, convErr)
 				}
-				switch cost.Type {
-				case aigv1b1.LLMRequestCostTypeInputToken:
-					fc.Type = filterapi.LLMRequestCostTypeInputToken
-				case aigv1b1.LLMRequestCostTypeCachedInputToken:
-					fc.Type = filterapi.LLMRequestCostTypeCachedInputToken
-				case aigv1b1.LLMRequestCostTypeCacheCreationInputToken:
-					fc.Type = filterapi.LLMRequestCostTypeCacheCreationInputToken
-				case aigv1b1.LLMRequestCostTypeOutputToken:
-					fc.Type = filterapi.LLMRequestCostTypeOutputToken
-				case aigv1b1.LLMRequestCostTypeTotalToken:
-					fc.Type = filterapi.LLMRequestCostTypeTotalToken
-				case aigv1b1.LLMRequestCostTypeCEL:
-					fc.Type = filterapi.LLMRequestCostTypeCEL
-					expr := *cost.CEL
-					// Sanity check the CEL expression.
-					_, err = llmcostcel.NewProgram(expr)
-					if err != nil {
-						return false, fmt.Errorf("invalid CEL expression: %w", err)
-					}
-					fc.CEL = expr
-				default:
-					return false, fmt.Errorf("unknown request cost type: %s", cost.Type)
-				}
-				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
-				llmCosts[cost.MetadataKey] = struct{}{}
+				key := fc.MetadataKey
+				dedup[key] = fc
 			}
 
 			// Inject QuotaPolicy cost expressions as LLMRequestCost entries so ext_proc
 			// computes and stores them in metadata for the HitsAddend to read.
 			c.injectQuotaPolicyCostExpressions(ctx, aiGatewayRoute, ec, llmCosts)
+
+			for _, fc := range dedup {
+				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
+			}
+		}
+	}
+
+	// If at least one route is hostname-scoped, promote the unscoped models to ec.UnscopedModels
+	// so the runtime can fall back to them on unmatched hosts, and merge them into every per-host
+	// list so a host-matched request still sees the models from routes that didn't declare hostnames.
+	// When no route uses hostname scoping, ec.Models is the sole source of truth and we skip both
+	// steps to avoid serializing a redundant UnscopedModels duplicate of Models.
+	if len(ec.ModelsByHost) > 0 && len(unscopedModels) > 0 {
+		ec.UnscopedModels = unscopedModels
+		for hn := range ec.ModelsByHost {
+			ec.ModelsByHost[hn] = append(ec.ModelsByHost[hn], unscopedModels...)
 		}
 	}
 
@@ -468,7 +555,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 }
 
 // reconcileFilterConfigSecretForMCPGateway updates the filter config secret for the external processor.
-func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) (_ *filterapi.MCPConfig, hasEffectiveRoute bool) {
+func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffectiveRoute bool) {
 	if len(mcpRoutes) == 0 {
 		return nil, false
 	}
@@ -495,7 +582,16 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 				mcpBackend.ToolSelector = &filterapi.MCPToolSelector{
 					Include:      b.ToolSelector.Include,
 					IncludeRegex: b.ToolSelector.IncludeRegex,
+					Exclude:      b.ToolSelector.Exclude,
+					ExcludeRegex: b.ToolSelector.ExcludeRegex,
 				}
+			}
+			for _, fh := range b.ForwardHeaders {
+				hf := filterapi.MCPHeaderForward{Name: fh.Name}
+				if fh.BackendHeader != nil {
+					hf.BackendHeader = *fh.BackendHeader
+				}
+				mcpBackend.ForwardHeaders = append(mcpBackend.ForwardHeaders, hf)
 			}
 			mcpRoute.Backends = append(
 				mcpRoute.Backends, mcpBackend)
@@ -560,7 +656,7 @@ func mcpConfig(mcpRoutes []aigv1a1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 				mcpRoute.Authorization.Rules = append(mcpRoute.Authorization.Rules, mcpRule)
 			}
 		}
-		// Add headers to forward from the incoming request to backend MCP servers.
+		// Forward OAuth claim-to-header mappings to all backends in this route.
 		if route.Spec.SecurityPolicy != nil && route.Spec.SecurityPolicy.OAuth != nil {
 			for _, ctoh := range route.Spec.SecurityPolicy.OAuth.ClaimToHeaders {
 				mcpRoute.ForwardHeaders = append(mcpRoute.ForwardHeaders, ctoh.Header)
@@ -635,6 +731,19 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken},
 		}, nil
 	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
+		gcpCreds := backendSecurityPolicy.Spec.GCPCredentials
+
+		// If no credentials file or WIF is configured, use ADC (handled by extproc)
+		if gcpCreds.CredentialsFile == nil && gcpCreds.WorkloadIdentityFederationConfig == nil {
+			return &filterapi.BackendAuth{
+				GCPAuth: &filterapi.GCPAuth{
+					Region:      gcpCreds.Region,
+					ProjectName: gcpCreds.ProjectName,
+				},
+			}, nil
+		}
+
+		// Otherwise, fetch token from rotated secret
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		gcpAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
 		if err != nil {
@@ -643,8 +752,8 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		return &filterapi.BackendAuth{
 			GCPAuth: &filterapi.GCPAuth{
 				AccessToken: gcpAccessToken,
-				Region:      backendSecurityPolicy.Spec.GCPCredentials.Region,
-				ProjectName: backendSecurityPolicy.Spec.GCPCredentials.ProjectName,
+				Region:      gcpCreds.Region,
+				ProjectName: gcpCreds.ProjectName,
 			},
 		}, nil
 	default:
@@ -1063,4 +1172,32 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 		namespace = daemonSets[0].Namespace
 	}
 	return
+}
+
+// fetchGatewayConfig returns the referenced GatewayConfig (if present) for the given Gateway.
+// Returns nil if no GatewayConfig is referenced or if it cannot be found.
+// fetchGatewayConfig returns the referenced GatewayConfig (if present) for the given Gateway.
+// Returns (nil, nil) if: no annotation, empty annotation, or GatewayConfig not found.
+// Returns (nil, error) for transient failures (API errors) to trigger reconciliation retry.
+func (c *GatewayController) fetchGatewayConfig(ctx context.Context, gw *gwapiv1.Gateway) (*aigv1b1.GatewayConfig, error) {
+	configName, ok := gw.Annotations[GatewayConfigAnnotationKey]
+	if !ok || configName == "" {
+		return nil, nil
+	}
+
+	// Fetch the GatewayConfig (must be in same namespace as Gateway).
+	var gatewayConfig aigv1b1.GatewayConfig
+	if err := c.client.Get(ctx, client.ObjectKey{Name: configName, Namespace: gw.Namespace}, &gatewayConfig); err != nil {
+		if apierrors.IsNotFound(err) {
+			c.logger.Info("GatewayConfig referenced by Gateway not found, using defaults",
+				"gateway_name", gw.Name, "gateway_namespace", gw.Namespace, "gatewayconfig_name", configName)
+			return nil, nil
+		}
+		// Return error for transient failures (e.g., API errors) to trigger retry.
+		return nil, fmt.Errorf("failed to get GatewayConfig: %w", err)
+	}
+
+	c.logger.Info("found GatewayConfig for Gateway",
+		"gateway_name", gw.Name, "gateway_namespace", gw.Namespace, "gatewayconfig_name", configName)
+	return &gatewayConfig, nil
 }
