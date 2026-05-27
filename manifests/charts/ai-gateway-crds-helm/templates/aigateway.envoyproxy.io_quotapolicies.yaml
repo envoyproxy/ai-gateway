@@ -274,12 +274,11 @@ spec:
                                   the selected requests have exceeded the quota.
                                 properties:
                                   duration:
-                                    description: |-
-                                      Time window. The suffix is used to specify units. The following
-                                      suffixes are supported:
-                                      * s - seconds (the default unit)
-                                      * m - minutes
-                                      * h - hours
+                                    description: 'Time window. Must be exactly one of: "1s" (1 second), "1m" (1 minute), or "1h" (1 hour).'
+                                    enum:
+                                    - "1s"
+                                    - "1m"
+                                    - "1h"
                                     type: string
                                   limit:
                                     description: The limit alloted for a specified
@@ -314,12 +313,11 @@ spec:
                             using the "BucketRules" configuration.
                           properties:
                             duration:
-                              description: |-
-                                Time window. The suffix is used to specify units. The following
-                                suffixes are supported:
-                                * s - seconds (the default unit)
-                                * m - minutes
-                                * h - hours
+                              description: 'Time window. Must be exactly one of: "1s" (1 second), "1m" (1 minute), or "1h" (1 hour).'
+                              enum:
+                              - "1s"
+                              - "1m"
+                              - "1h"
                               type: string
                             limit:
                               description: The limit alloted for a specified time
@@ -330,18 +328,15 @@ spec:
                           - limit
                           type: object
                         mode:
+                          default: Shared
                           description: |-
                             The "Mode" determines how quota is charged to the "DefaultBucket" and matching "BucketRules".
-                            In the "exclusive" mode the quota is charged to matching BucketRules or the DefaultBucket
-                            if no BucketRules match the request. The request is denied if all matching buckets are out of quota.
                             In the "shared" mode the quota is charged to all matching "BucketRules" AND the "DefaultBucket"
                             and request is allowed only if the quota is available in all matching buckets.
+                            Defaults to "Shared".
                           enum:
-                          - Exclusive
                           - Shared
                           type: string
-                      required:
-                      - mode
                       type: object
                   required:
                   - modelName
@@ -369,12 +364,11 @@ spec:
                       the selected requests have exceeded the quota.
                     properties:
                       duration:
-                        description: |-
-                          Time window. The suffix is used to specify units. The following
-                          suffixes are supported:
-                          * s - seconds (the default unit)
-                          * m - minutes
-                          * h - hours
+                        description: 'Time window. Must be exactly one of: "1s" (1 second), "1m" (1 minute), or "1h" (1 hour).'
+                        enum:
+                        - "1s"
+                        - "1m"
+                        - "1h"
                         type: string
                       limit:
                         description: The limit alloted for a specified time window.

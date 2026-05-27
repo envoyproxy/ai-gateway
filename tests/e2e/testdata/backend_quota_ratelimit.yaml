@@ -106,7 +106,7 @@ spec:
   perModelQuotas:
     - modelName: "quota-test-model"
       quota:
-        mode: Exclusive
+        mode: Shared
         defaultBucket:
           # Allow 10 total tokens per hour per backend. Once consumed,
           # subsequent requests should be rate limited (429).
