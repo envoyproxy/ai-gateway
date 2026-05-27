@@ -53,3 +53,11 @@ llmRequestCosts:
 		require.Error(t, err)
 	})
 }
+
+func TestVersionedAPISchemaAnthropicPrefix(t *testing.T) {
+	require.Equal(t, "v1", filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}.AnthropicPrefix())
+	require.Equal(t, "gateway/v1", filterapi.VersionedAPISchema{
+		Name:   filterapi.APISchemaAnthropic,
+		Prefix: "gateway/v1",
+	}.AnthropicPrefix())
+}
