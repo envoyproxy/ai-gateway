@@ -49,8 +49,8 @@ func TestBackendNameFromDomain(t *testing.T) {
 }
 
 func TestBucketRuleDescriptorKey(t *testing.T) {
-	require.Equal(t, "rule-gpt-4-0-match-0", BucketRuleDescriptorKey("gpt-4", 0, 0))
-	require.Equal(t, "rule-claude-2-match-1", BucketRuleDescriptorKey("claude", 2, 1))
+	require.Equal(t, "rule-openai-gpt-4-0-match-0", BucketRuleDescriptorKey("openai", "gpt-4", 0, 0))
+	require.Equal(t, "rule-backend-claude-2-match-1", BucketRuleDescriptorKey("backend", "claude", 2, 1))
 }
 
 func TestDefaultBucketDescriptorKey(t *testing.T) {
@@ -62,60 +62,29 @@ func TestParseDuration(t *testing.T) {
 	tests := []struct {
 		name      string
 		input     string
-		wantMult  uint32
 		wantUnit  rlsconfv3.RateLimitUnit
 		wantError bool
 	}{
-		{"1 second", "1s", 1, rlsconfv3.RateLimitUnit_SECOND, false},
-		{"30 seconds", "30s", 30, rlsconfv3.RateLimitUnit_SECOND, false},
-		{"1 minute", "1m", 1, rlsconfv3.RateLimitUnit_MINUTE, false},
-		{"5 minutes", "5m", 5, rlsconfv3.RateLimitUnit_MINUTE, false},
-		{"60 seconds equals 1 minute", "60s", 1, rlsconfv3.RateLimitUnit_MINUTE, false},
-		{"1 hour", "1h", 1, rlsconfv3.RateLimitUnit_HOUR, false},
-		{"2 hours", "2h", 2, rlsconfv3.RateLimitUnit_HOUR, false},
-		{"24 hours equals 1 day", "24h", 1, rlsconfv3.RateLimitUnit_DAY, false},
-		{"48 hours equals 2 days", "48h", 2, rlsconfv3.RateLimitUnit_DAY, false},
-		{"90 seconds stays in seconds", "90s", 90, rlsconfv3.RateLimitUnit_SECOND, false},
-		{"invalid duration", "abc", 0, 0, true},
-		{"negative duration", "-1s", 0, 0, true},
-		{"zero duration", "0s", 0, 0, true},
+		{"1 second", "1s", rlsconfv3.RateLimitUnit_SECOND, false},
+		{"1 minute", "1m", rlsconfv3.RateLimitUnit_MINUTE, false},
+		{"1 hour", "1h", rlsconfv3.RateLimitUnit_HOUR, false},
+		{"30 seconds rejected", "30s", 0, true},
+		{"5 minutes rejected", "5m", 0, true},
+		{"2 hours rejected", "2h", 0, true},
+		{"24 hours rejected", "24h", 0, true},
+		{"invalid duration", "abc", 0, true},
+		{"negative duration", "-1s", 0, true},
+		{"zero duration", "0s", 0, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mult, unit, err := parseDuration(tt.input)
+			unit, err := parseDuration(tt.input)
 			if tt.wantError {
 				require.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, tt.wantMult, mult)
-			require.Equal(t, tt.wantUnit, unit)
-		})
-	}
-}
-
-func TestFlattenToBaseUnit(t *testing.T) {
-	tests := []struct {
-		name       string
-		multiplier uint32
-		unit       rlsconfv3.RateLimitUnit
-		wantMult   uint32
-		wantUnit   rlsconfv3.RateLimitUnit
-	}{
-		{"1 day stays", 1, rlsconfv3.RateLimitUnit_DAY, 1, rlsconfv3.RateLimitUnit_DAY},
-		{"2 days to hours", 2, rlsconfv3.RateLimitUnit_DAY, 48, rlsconfv3.RateLimitUnit_HOUR},
-		{"1 hour stays", 1, rlsconfv3.RateLimitUnit_HOUR, 1, rlsconfv3.RateLimitUnit_HOUR},
-		{"3 hours to minutes", 3, rlsconfv3.RateLimitUnit_HOUR, 180, rlsconfv3.RateLimitUnit_MINUTE},
-		{"1 minute stays", 1, rlsconfv3.RateLimitUnit_MINUTE, 1, rlsconfv3.RateLimitUnit_MINUTE},
-		{"5 minutes to seconds", 5, rlsconfv3.RateLimitUnit_MINUTE, 300, rlsconfv3.RateLimitUnit_SECOND},
-		{"seconds pass through", 10, rlsconfv3.RateLimitUnit_SECOND, 10, rlsconfv3.RateLimitUnit_SECOND},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mult, unit := flattenToBaseUnit(tt.multiplier, tt.unit)
-			require.Equal(t, tt.wantMult, mult)
 			require.Equal(t, tt.wantUnit, unit)
 		})
 	}
@@ -127,15 +96,6 @@ func TestQuotaValueToPolicy(t *testing.T) {
 		policy, err := quotaValueToPolicy(qv)
 		require.NoError(t, err)
 		require.Equal(t, uint32(100), policy.RequestsPerUnit)
-		require.Equal(t, rlsconfv3.RateLimitUnit_MINUTE, policy.Unit)
-	})
-
-	t.Run("5 minutes divides limit", func(t *testing.T) {
-		qv := &aigv1a1.QuotaValue{Limit: 20, Duration: "5m"}
-		policy, err := quotaValueToPolicy(qv)
-		require.NoError(t, err)
-		// 20 / 5 = 4 requests per MINUTE
-		require.Equal(t, uint32(4), policy.RequestsPerUnit)
 		require.Equal(t, rlsconfv3.RateLimitUnit_MINUTE, policy.Unit)
 	})
 
@@ -155,12 +115,11 @@ func TestQuotaValueToPolicy(t *testing.T) {
 		require.Equal(t, rlsconfv3.RateLimitUnit_SECOND, policy.Unit)
 	})
 
-	t.Run("24 hours as day", func(t *testing.T) {
-		qv := &aigv1a1.QuotaValue{Limit: 1000, Duration: "24h"}
-		policy, err := quotaValueToPolicy(qv)
-		require.NoError(t, err)
-		require.Equal(t, uint32(1000), policy.RequestsPerUnit)
-		require.Equal(t, rlsconfv3.RateLimitUnit_DAY, policy.Unit)
+	t.Run("custom duration rejected", func(t *testing.T) {
+		qv := &aigv1a1.QuotaValue{Limit: 20, Duration: "5m"}
+		_, err := quotaValueToPolicy(qv)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid duration")
 	})
 
 	t.Run("invalid duration", func(t *testing.T) {
@@ -199,7 +158,7 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 		quota := &aigv1a1.QuotaDefinition{
 			DefaultBucket: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 		}
-		desc, err := buildPerModelDescriptor("gpt-4", "gpt-4", quota)
+		desc, err := buildPerModelDescriptor("backend", "gpt-4", "gpt-4", quota)
 		require.NoError(t, err)
 		require.Equal(t, ModelNameDescriptorKey, desc.Key)
 		require.Equal(t, "gpt-4", desc.Value)
@@ -215,7 +174,7 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 			},
 			DefaultBucket: aigv1a1.QuotaValue{Limit: 50, Duration: "1m"},
 		}
-		desc, err := buildPerModelDescriptor("gpt-4", "gpt-4", quota)
+		desc, err := buildPerModelDescriptor("backend", "gpt-4", "gpt-4", quota)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4", desc.Value)
 		require.Nil(t, desc.RateLimit)      // rate limit on nested descriptors, not parent
@@ -229,7 +188,7 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 			},
 			DefaultBucket: aigv1a1.QuotaValue{Limit: 0}, // zero limit = no default
 		}
-		desc, err := buildPerModelDescriptor("gpt-4", "gpt-4", quota)
+		desc, err := buildPerModelDescriptor("backend", "gpt-4", "gpt-4", quota)
 		require.NoError(t, err)
 		require.Len(t, desc.Descriptors, 1) // only the bucket rule
 	})
@@ -243,7 +202,7 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 			},
 			DefaultBucket: aigv1a1.QuotaValue{Limit: 5, Duration: "1s"},
 		}
-		desc, err := buildPerModelDescriptor("model-x", "model-x", quota)
+		desc, err := buildPerModelDescriptor("backend", "model-x", "model-x", quota)
 		require.NoError(t, err)
 		require.Len(t, desc.Descriptors, 4) // 3 bucket rules + 1 default
 
@@ -256,7 +215,7 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 		quota := &aigv1a1.QuotaDefinition{
 			DefaultBucket: aigv1a1.QuotaValue{Limit: 100, Duration: "invalid"},
 		}
-		_, err := buildPerModelDescriptor("gpt-4", "gpt-4", quota)
+		_, err := buildPerModelDescriptor("backend", "gpt-4", "gpt-4", quota)
 		require.Error(t, err)
 	})
 
@@ -266,7 +225,7 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 				{Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "bad"}},
 			},
 		}
-		_, err := buildPerModelDescriptor("gpt-4", "gpt-4", quota)
+		_, err := buildPerModelDescriptor("backend", "gpt-4", "gpt-4", quota)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "bucket rule 0")
 	})
@@ -277,11 +236,11 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 		}
-		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
+		descs, err := buildBucketRuleDescriptors("backend", "gpt-4", 0, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
-		require.Equal(t, "rule-gpt-4-0-match-0", descs[0].Key)
-		require.Equal(t, "rule-gpt-4-0-match-0", descs[0].Value)
+		require.Equal(t, "rule-backend-gpt-4-0-match-0", descs[0].Key)
+		require.Equal(t, "rule-backend-gpt-4-0-match-0", descs[0].Value)
 		require.NotNil(t, descs[0].RateLimit)
 		require.Nil(t, descs[0].Descriptors)
 	})
@@ -297,10 +256,10 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 			},
 			Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 		}
-		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
+		descs, err := buildBucketRuleDescriptors("backend", "gpt-4", 0, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
-		require.Equal(t, "rule-gpt-4-0-match-0", descs[0].Key)
+		require.Equal(t, "rule-backend-gpt-4-0-match-0", descs[0].Key)
 		require.NotNil(t, descs[0].RateLimit)
 		require.Nil(t, descs[0].Descriptors)
 	})
@@ -317,18 +276,18 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 			},
 			Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 		}
-		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
+		descs, err := buildBucketRuleDescriptors("backend", "gpt-4", 0, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
 
 		// Root: x-api-key sorted first (match-0).
-		require.Equal(t, "rule-gpt-4-0-match-0", descs[0].Key)
+		require.Equal(t, "rule-backend-gpt-4-0-match-0", descs[0].Key)
 		require.Nil(t, descs[0].RateLimit)
 		require.Len(t, descs[0].Descriptors, 1)
 
 		// Leaf: x-org sorted second (match-1), rate_limit only here.
 		leaf := descs[0].Descriptors[0]
-		require.Equal(t, "rule-gpt-4-0-match-1", leaf.Key)
+		require.Equal(t, "rule-backend-gpt-4-0-match-1", leaf.Key)
 		require.NotNil(t, leaf.RateLimit)
 		require.Equal(t, uint32(100), leaf.RateLimit.RequestsPerUnit)
 		require.Nil(t, leaf.Descriptors)
@@ -351,23 +310,23 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 			},
 			Quota: aigv1a1.QuotaValue{Limit: 50, Duration: "1h"},
 		}
-		descs, err := buildBucketRuleDescriptors("model", 1, rule)
+		descs, err := buildBucketRuleDescriptors("backend", "model", 1, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
 
 		// Nested chain: h1 (match-0) → h2 (match-1) → h3 (match-2, leaf with rate_limit).
 		root := descs[0]
-		require.Equal(t, "rule-model-1-match-0", root.Key)
+		require.Equal(t, "rule-backend-model-1-match-0", root.Key)
 		require.Nil(t, root.RateLimit)
 		require.Len(t, root.Descriptors, 1)
 
 		mid := root.Descriptors[0]
-		require.Equal(t, "rule-model-1-match-1", mid.Key)
+		require.Equal(t, "rule-backend-model-1-match-1", mid.Key)
 		require.Nil(t, mid.RateLimit)
 		require.Len(t, mid.Descriptors, 1)
 
 		leaf := mid.Descriptors[0]
-		require.Equal(t, "rule-model-1-match-2", leaf.Key)
+		require.Equal(t, "rule-backend-model-1-match-2", leaf.Key)
 		require.NotNil(t, leaf.RateLimit)
 		require.Equal(t, uint32(50), leaf.RateLimit.RequestsPerUnit)
 		require.Equal(t, rlsconfv3.RateLimitUnit_HOUR, leaf.RateLimit.Unit)
@@ -379,7 +338,7 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 			Quota:      aigv1a1.QuotaValue{Limit: 50, Duration: "1m"},
 			ShadowMode: ptr.To(true),
 		}
-		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
+		descs, err := buildBucketRuleDescriptors("backend", "gpt-4", 0, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
 		require.True(t, descs[0].ShadowMode)
@@ -390,7 +349,7 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 			Quota:      aigv1a1.QuotaValue{Limit: 50, Duration: "1m"},
 			ShadowMode: ptr.To(false),
 		}
-		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
+		descs, err := buildBucketRuleDescriptors("backend", "gpt-4", 0, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
 		require.False(t, descs[0].ShadowMode)
@@ -400,7 +359,7 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			Quota: aigv1a1.QuotaValue{Limit: 50, Duration: "1m"},
 		}
-		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
+		descs, err := buildBucketRuleDescriptors("backend", "gpt-4", 0, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
 		require.False(t, descs[0].ShadowMode)
@@ -414,7 +373,7 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 			Quota:      aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 			ShadowMode: ptr.To(true),
 		}
-		descs, err := buildBucketRuleDescriptors("m", 0, rule)
+		descs, err := buildBucketRuleDescriptors("backend", "m", 0, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
 		// Shadow mode only on leaf.
@@ -434,10 +393,10 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 			},
 			Quota: aigv1a1.QuotaValue{Limit: 50, Duration: "1m"},
 		}
-		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
+		descs, err := buildBucketRuleDescriptors("backend", "gpt-4", 0, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
-		require.Equal(t, BucketRuleDescriptorKey("gpt-4", 0, 0), descs[0].Key)
+		require.Equal(t, BucketRuleDescriptorKey("backend", "gpt-4", 0, 0), descs[0].Key)
 		require.Empty(t, descs[0].Value) // key-only: matches any value
 		require.NotNil(t, descs[0].RateLimit)
 	})
@@ -453,10 +412,10 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 			},
 			Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 		}
-		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
+		descs, err := buildBucketRuleDescriptors("backend", "gpt-4", 0, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
-		key := BucketRuleDescriptorKey("gpt-4", 0, 0)
+		key := BucketRuleDescriptorKey("backend", "gpt-4", 0, 0)
 		require.Equal(t, key, descs[0].Key)
 		require.Equal(t, key, descs[0].Value) // fixed value matches HeaderValueMatch DescriptorValue
 	})
@@ -471,19 +430,19 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 			},
 			Quota: aigv1a1.QuotaValue{Limit: 75, Duration: "1h"},
 		}
-		descs, err := buildBucketRuleDescriptors("model", 2, rule)
+		descs, err := buildBucketRuleDescriptors("backend", "model", 2, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
 
 		// Root: x-tier sorted first (match-0), exact → key+value.
-		require.Equal(t, BucketRuleDescriptorKey("model", 2, 0), descs[0].Key)
-		require.Equal(t, BucketRuleDescriptorKey("model", 2, 0), descs[0].Value)
+		require.Equal(t, BucketRuleDescriptorKey("backend", "model", 2, 0), descs[0].Key)
+		require.Equal(t, BucketRuleDescriptorKey("backend", "model", 2, 0), descs[0].Value)
 		require.Nil(t, descs[0].RateLimit)
 		require.Len(t, descs[0].Descriptors, 1)
 
 		// Leaf: x-user-id sorted second (match-1), distinct → key-only.
 		leaf := descs[0].Descriptors[0]
-		require.Equal(t, BucketRuleDescriptorKey("model", 2, 1), leaf.Key)
+		require.Equal(t, BucketRuleDescriptorKey("backend", "model", 2, 1), leaf.Key)
 		require.Empty(t, leaf.Value)
 		require.NotNil(t, leaf.RateLimit)
 	})
@@ -492,7 +451,7 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "bad"},
 		}
-		_, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
+		_, err := buildBucketRuleDescriptors("backend", "gpt-4", 0, rule)
 		require.Error(t, err)
 	})
 
@@ -500,10 +459,10 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 		}
-		descs, err := buildBucketRuleDescriptors("gpt-4", 5, rule)
+		descs, err := buildBucketRuleDescriptors("backend", "gpt-4", 5, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
-		require.Equal(t, "rule-gpt-4-5-match-0", descs[0].Key)
+		require.Equal(t, "rule-backend-gpt-4-5-match-0", descs[0].Key)
 	})
 }
 
@@ -866,7 +825,7 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 		policy := &aigv1a1.QuotaPolicy{
 			Spec: aigv1a1.QuotaPolicySpec{
 				ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-					Quota: aigv1a1.QuotaValue{Limit: 5000, Duration: "24h"},
+					Quota: aigv1a1.QuotaValue{Limit: 5000, Duration: "1h"},
 				},
 			},
 		}
@@ -884,6 +843,6 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 		require.Len(t, backendDesc.Descriptors, 1)
 		require.Empty(t, backendDesc.Descriptors[0].Value) // catch-all
 		require.Equal(t, uint32(5000), backendDesc.Descriptors[0].RateLimit.RequestsPerUnit)
-		require.Equal(t, rlsconfv3.RateLimitUnit_DAY, backendDesc.Descriptors[0].RateLimit.Unit)
+		require.Equal(t, rlsconfv3.RateLimitUnit_HOUR, backendDesc.Descriptors[0].RateLimit.Unit)
 	})
 }

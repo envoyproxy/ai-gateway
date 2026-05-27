@@ -89,11 +89,13 @@ type QuotaDefinition struct {
 	// +optional
 	CostExpression *string `json:"costExpression,omitempty"`
 	// The "Mode" determines how quota is charged to the "DefaultBucket" and matching "BucketRules".
-	// In the "exclusive" mode the quota is charged to matching BucketRules or the DefaultBucket
-	// if no BucketRules match the request. The request is denied if all matching buckets are out of quota.
 	// In the "shared" mode the quota is charged to all matching "BucketRules" AND the "DefaultBucket"
 	// and request is allowed only if the quota is available in all matching buckets.
-	Mode QuotaBucketMode `json:"mode"`
+	// Defaults to "Shared".
+	//
+	// +optional
+	// +kubebuilder:default=Shared
+	Mode QuotaBucketMode `json:"mode,omitempty"`
 	// Quota applicable to all traffic. This value can be overridden for specific classes of requests
 	// using the "BucketRules" configuration.
 	//
@@ -112,12 +114,12 @@ type QuotaDefinition struct {
 
 // QuotaBucketMode specifies whether the default and per request buckets values are exclusive or inclusive.
 //
-// +kubebuilder:validation:Enum=Exclusive;Shared
+// TODO: Add Exclusive mode in the future.
+// +kubebuilder:validation:Enum=Shared
 type QuotaBucketMode string
 
 const (
-	QuoteBucketModeShared    QuotaBucketMode = "Shared"
-	QuoteBucketModeExclusive QuotaBucketMode = "Exclusive"
+	QuoteBucketModeShared QuotaBucketMode = "Shared"
 )
 
 type QuotaRule struct {
@@ -151,11 +153,9 @@ type QuotaRule struct {
 type QuotaValue struct {
 	// The limit alloted for a specified time window.
 	Limit uint `json:"limit"`
-	// Time window. The suffix is used to specify units. The following
-	// suffixes are supported:
-	// * s - seconds (the default unit)
-	// * m - minutes
-	// * h - hours
+	// Time window. Must be exactly one of: "1s" (1 second), "1m" (1 minute), or "1h" (1 hour).
+	//
+	// +kubebuilder:validation:Enum="1s";"1m";"1h"
 	Duration string `json:"duration"`
 }
 

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	rlsconfv3 "github.com/envoyproxy/go-control-plane/ratelimit/config/ratelimit/v3"
@@ -69,10 +68,10 @@ func headerComparableValue(header egv1a1.HeaderMatch) string {
 }
 
 // BucketRuleDescriptorKey returns the descriptor key for a bucket rule's header match.
-// The model name is included to prevent cross-model matching when different models
-// have different header conditions at the same rule index.
-func BucketRuleDescriptorKey(modelName string, ruleIndex, matchIndex int) string {
-	return fmt.Sprintf("rule-%s-%d-match-%d", modelName, ruleIndex, matchIndex)
+// Both the backend name and model name are included so that each backend's bucket rule
+// has a unique key, preventing cross-backend matching in the rate limit service config.
+func BucketRuleDescriptorKey(backendName, modelName string, ruleIndex, matchIndex int) string {
+	return fmt.Sprintf("rule-%s-%s-%d-match-%d", backendName, modelName, ruleIndex, matchIndex)
 }
 
 // DefaultBucketDescriptorKey returns the descriptor key for a model's default bucket.
@@ -187,7 +186,7 @@ func buildBackendDescriptorKeyed(
 		routeModelName := *pmq.ModelName
 		descriptorModelNames := resolveModelNames(routeModelName, modelOverrides)
 		for _, descriptorModelName := range descriptorModelNames {
-			desc, keyed, err := buildPerModelDescriptorKeyed(routeModelName, descriptorModelName, &pmq.Quota, backendKeySegment)
+			desc, keyed, err := buildPerModelDescriptorKeyed(backend.Name, routeModelName, descriptorModelName, &pmq.Quota, backendKeySegment)
 			if err != nil {
 				return nil, nil, fmt.Errorf("model %q: %w", descriptorModelName, err)
 			}
@@ -243,17 +242,18 @@ func buildBackendDescriptorKeyed(
 //	      - key: rule-gpt-4-0-match-1       ← second header (sorted)
 //	        value: rule-gpt-4-0-match-1
 //	        rate_limit: ...                  ← only on leaf
-func buildPerModelDescriptor(routeModelName, descriptorModelName string, quota *aigv1a1.QuotaDefinition) (*rlsconfv3.RateLimitDescriptor, error) {
-	desc, _, err := buildPerModelDescriptorKeyed(routeModelName, descriptorModelName, quota, "")
+func buildPerModelDescriptor(backendName, routeModelName, descriptorModelName string, quota *aigv1a1.QuotaDefinition) (*rlsconfv3.RateLimitDescriptor, error) {
+	desc, _, err := buildPerModelDescriptorKeyed(backendName, routeModelName, descriptorModelName, quota, "")
 	return desc, err
 }
 
 // buildPerModelDescriptorKeyed creates a model-level descriptor and also returns
 // KeyedDescriptor entries for all leaf descriptors. parentKeyPrefix is the
 // comparable key prefix from ancestor descriptors (e.g., the backend segment).
+// backendName is used in bucket rule descriptor keys to make them backend-specific.
 // routeModelName is used for bucket rule descriptor keys; descriptorModelName
 // is used as the model_name_override descriptor value.
-func buildPerModelDescriptorKeyed(routeModelName, descriptorModelName string, quota *aigv1a1.QuotaDefinition, parentKeyPrefix string) (*rlsconfv3.RateLimitDescriptor, []KeyedDescriptor, error) {
+func buildPerModelDescriptorKeyed(backendName, routeModelName, descriptorModelName string, quota *aigv1a1.QuotaDefinition, parentKeyPrefix string) (*rlsconfv3.RateLimitDescriptor, []KeyedDescriptor, error) {
 	modelSegment := ComparableKeySegment(ModelNameDescriptorKey, 1, descriptorModelName)
 	modelPrefix := modelSegment
 	if parentKeyPrefix != "" {
@@ -281,7 +281,7 @@ func buildPerModelDescriptorKeyed(routeModelName, descriptorModelName string, qu
 	var nested []*rlsconfv3.RateLimitDescriptor
 	var keyed []KeyedDescriptor
 	for rIdx, rule := range quota.BucketRules {
-		ruleDescs, err := buildBucketRuleDescriptors(routeModelName, rIdx, &rule)
+		ruleDescs, err := buildBucketRuleDescriptors(backendName, routeModelName, rIdx, &rule)
 		if err != nil {
 			return nil, nil, fmt.Errorf("bucket rule %d: %w", rIdx, err)
 		}
@@ -362,7 +362,7 @@ func buildServiceQuotaDescriptor(sq *aigv1a1.ServiceQuotaDefinition) (*rlsconfv3
 //   - Exact / Regex: key and value both set to the BucketRuleDescriptorKey. The
 //     HeaderValueMatch action sends the fixed DescriptorValue (not the actual header
 //     value), so the service config must match that same fixed string.
-func buildBucketRuleDescriptors(modelName string, ruleIndex int, rule *aigv1a1.QuotaRule) ([]*rlsconfv3.RateLimitDescriptor, error) {
+func buildBucketRuleDescriptors(backendName, modelName string, ruleIndex int, rule *aigv1a1.QuotaRule) ([]*rlsconfv3.RateLimitDescriptor, error) {
 	policy, err := quotaValueToPolicy(&rule.Quota)
 	if err != nil {
 		return nil, err
@@ -374,7 +374,7 @@ func buildBucketRuleDescriptors(modelName string, ruleIndex int, rule *aigv1a1.Q
 
 	// No headers: single catch-all descriptor for this rule.
 	if len(allHeaders) == 0 {
-		key := BucketRuleDescriptorKey(modelName, ruleIndex, 0)
+		key := BucketRuleDescriptorKey(backendName, modelName, ruleIndex, 0)
 		return []*rlsconfv3.RateLimitDescriptor{{
 			Key:        key,
 			Value:      key,
@@ -390,7 +390,7 @@ func buildBucketRuleDescriptors(modelName string, ruleIndex int, rule *aigv1a1.Q
 	var root *rlsconfv3.RateLimitDescriptor
 	var leaf *rlsconfv3.RateLimitDescriptor
 	for mIdx, header := range allHeaders {
-		key := BucketRuleDescriptorKey(modelName, ruleIndex, mIdx)
+		key := BucketRuleDescriptorKey(backendName, modelName, ruleIndex, mIdx)
 		desc := &rlsconfv3.RateLimitDescriptor{Key: key}
 		if header.Type == nil || *header.Type != egv1a1.HeaderMatchDistinct {
 			desc.Value = key
@@ -422,71 +422,29 @@ func flattenAndSortHeaders(selectors []egv1a1.RateLimitSelectCondition) []egv1a1
 	return headers
 }
 
-// quotaValueToPolicy converts a QuotaValue to a rate limit policy protobuf.
-// Since Envoy rate limit only supports standard units (SECOND, MINUTE, HOUR, DAY),
-// non-standard durations like "5m" are approximated by dividing the limit by the
-// number of base units. For example, limit=20 with duration="5m" becomes 4 per MINUTE.
 func quotaValueToPolicy(qv *aigv1a1.QuotaValue) (*rlsconfv3.RateLimitPolicy, error) {
-	divisor, unit, err := parseDuration(qv.Duration)
+	unit, err := parseDuration(qv.Duration)
 	if err != nil {
 		return nil, fmt.Errorf("invalid duration %q: %w", qv.Duration, err)
 	}
 	return &rlsconfv3.RateLimitPolicy{
-		RequestsPerUnit: uint32(qv.Limit) / divisor, //nolint:gosec
+		RequestsPerUnit: uint32(qv.Limit), //nolint:gosec
 		Unit:            unit,
 	}, nil
 }
 
-// parseDuration converts a duration string (e.g. "10s", "5m", "1h") into a
-// (divisor, RateLimitUnit) pair. The divisor is used to divide the limit
-// when the duration spans multiple base units, approximating the rate.
-//
-// Examples:
-//
-//	"1s"   → (1, SECOND)   — limit / 1 per second
-//	"60s"  → (1, MINUTE)   — limit / 1 per minute
-//	"5m"   → (5, MINUTE)   — limit / 5 per minute
-//	"1h"   → (1, HOUR)     — limit / 1 per hour
-//	"90s"  → (90, SECOND)  — limit / 90 per second
-func parseDuration(s string) (uint32, rlsconfv3.RateLimitUnit, error) {
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return 0, 0, fmt.Errorf("cannot parse duration: %w", err)
-	}
-	if d <= 0 {
-		return 0, 0, fmt.Errorf("duration must be positive, got %s", s)
-	}
-
-	switch {
-	case d%(24*time.Hour) == 0:
-		return uint32(d / (24 * time.Hour)), rlsconfv3.RateLimitUnit_DAY, nil //nolint:gosec
-	case d%time.Hour == 0:
-		return uint32(d / time.Hour), rlsconfv3.RateLimitUnit_HOUR, nil //nolint:gosec
-	case d%time.Minute == 0:
-		return uint32(d / time.Minute), rlsconfv3.RateLimitUnit_MINUTE, nil //nolint:gosec
+// parseDuration accepts exactly "1s", "1m", or "1h".
+func parseDuration(s string) (rlsconfv3.RateLimitUnit, error) {
+	switch s {
+	case "1s":
+		return rlsconfv3.RateLimitUnit_SECOND, nil
+	case "1m":
+		return rlsconfv3.RateLimitUnit_MINUTE, nil
+	case "1h":
+		return rlsconfv3.RateLimitUnit_HOUR, nil
 	default:
-		return uint32(d / time.Second), rlsconfv3.RateLimitUnit_SECOND, nil //nolint:gosec
+		return 0, fmt.Errorf("unsupported duration %q: must be one of 1s, 1m, 1h", s)
 	}
-}
-
-// flattenToBaseUnit converts a multiplied unit to a lower base unit.
-// E.g., 5 MINUTE → 300 SECOND.
-func flattenToBaseUnit(multiplier uint32, unit rlsconfv3.RateLimitUnit) (uint32, rlsconfv3.RateLimitUnit) {
-	switch unit {
-	case rlsconfv3.RateLimitUnit_DAY:
-		if multiplier > 1 {
-			return multiplier * 24, rlsconfv3.RateLimitUnit_HOUR
-		}
-	case rlsconfv3.RateLimitUnit_HOUR:
-		if multiplier > 1 {
-			return multiplier * 60, rlsconfv3.RateLimitUnit_MINUTE
-		}
-	case rlsconfv3.RateLimitUnit_MINUTE:
-		if multiplier > 1 {
-			return multiplier * 60, rlsconfv3.RateLimitUnit_SECOND
-		}
-	}
-	return multiplier, unit
 }
 
 // BackendNameFromDomain extracts the namespace and backend name from a BackendDomainValue string.

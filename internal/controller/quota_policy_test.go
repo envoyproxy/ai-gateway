@@ -367,7 +367,7 @@ func TestQuotaPolicyController_Reconcile_PerModelQuotas(t *testing.T) {
 				{
 					ModelName: &modelName,
 					Quota: aigv1a1.QuotaDefinition{
-						Mode:          aigv1a1.QuoteBucketModeExclusive,
+						Mode:          aigv1a1.QuoteBucketModeShared,
 						DefaultBucket: aigv1a1.QuotaValue{Limit: 50, Duration: "1m"},
 					},
 				},
