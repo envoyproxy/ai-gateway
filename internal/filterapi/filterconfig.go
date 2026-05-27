@@ -115,12 +115,20 @@ type VersionedAPISchema struct {
 	Name APISchemaName `json:"name"`
 	// Version is the version of the API schema. Optional.
 	Version string `json:"version,omitempty"`
-	// Prefix is the prefix of the API schema. Optional. Currently, only used for OpenAI.
+	// Prefix is the prefix of the API schema. Optional. Used for OpenAI and Anthropic schemas.
 	Prefix string `json:"prefix,omitempty"`
 }
 
 // OpenAIPrefix returns the OpenAI API prefix for the VersionedAPISchema.
 func (v VersionedAPISchema) OpenAIPrefix() string {
+	return v.Prefix
+}
+
+// AnthropicPrefix returns the Anthropic API prefix for the VersionedAPISchema.
+func (v VersionedAPISchema) AnthropicPrefix() string {
+	if v.Prefix == "" {
+		return "v1"
+	}
 	return v.Prefix
 }
 
