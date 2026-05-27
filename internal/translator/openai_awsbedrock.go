@@ -735,6 +735,17 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 	if err = json.NewDecoder(body).Decode(&bedrockResp); err != nil {
 		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to unmarshal body: %w", err)
 	}
+	// Bedrock can return HTTP 200 with a body that has no "output" field
+	// (e.g. Coral framework errors like UnknownOperationException, guardrail
+	// interventions, or empty/null responses). Guard the dereference so we
+	// surface a real error to the caller instead of panicking with a nil
+	// pointer dereference on bedrockResp.Output.Message below.
+	if bedrockResp.Output == nil {
+		return nil, nil, metrics.TokenUsage{}, responseModel, fmt.Errorf(
+			"bedrock response missing 'output' (stopReason=%q)",
+			ptr.Deref(bedrockResp.StopReason, ""),
+		)
+	}
 	openAIResp := &openai.ChatCompletionResponse{
 		// We use request model as response model since bedrock does not return the modelName in the response.
 		Model:   o.requestModel,
