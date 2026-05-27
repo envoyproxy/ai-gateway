@@ -11,7 +11,6 @@ package openai
 import (
 	"bytes"
 	"encoding/base64"
-	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -1611,9 +1610,16 @@ func (e *ErrorType) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	var codeNumber stdjson.Number
-	if err := stdjson.Unmarshal(aux.Code, &codeNumber); err == nil {
-		code = codeNumber.String()
+	var codeInt int64
+	if err := json.Unmarshal(aux.Code, &codeInt); err == nil {
+		code = strconv.FormatInt(codeInt, 10)
+		e.Code = &code
+		return nil
+	}
+
+	var codeFloat float64
+	if err := json.Unmarshal(aux.Code, &codeFloat); err == nil {
+		code = strconv.FormatFloat(codeFloat, 'f', -1, 64)
 		e.Code = &code
 		return nil
 	}
