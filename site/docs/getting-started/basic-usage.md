@@ -38,6 +38,36 @@ In the `basic.yaml` file, you will find "ClientTrafficPolicy" resource that conf
 By default, Envoy Gateway configures 32KB as the buffer limit, which is not enough for most AI model responses, hence it's configured to 50MB in the example.
 Envoy Gateway provides more advanced policies, not limited to the buffer limit. Please refer to the [Client Traffic Policies](https://gateway.envoyproxy.io/latest/tasks/traffic/client-traffic-policy/) documentation for more details.
 
+**HTTP/2 window size settings:** If you are sending requests over HTTP/2, Envoy imposes additional
+flow-control limits via `initialStreamWindowSize` and `initialConnectionWindowSize`.
+These act as a secondary cap on request body size, independent of `bufferLimit`, and can cause
+`413 request_payload_too_large` errors even after the buffer limit is raised.
+To avoid this, set both values to the Envoy defaults (`16Mi` and `24Mi`) in the `ClientTrafficPolicy`:
+
+```yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: client-buffer-limit
+  namespace: default
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-ai-gateway-basic
+  connection:
+    bufferLimit: 50Mi
+  http2:
+    initialStreamWindowSize: 16Mi
+    initialConnectionWindowSize: 24Mi
+```
+
+See the Envoy API reference for
+[`initial_stream_window_size`](https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/core/v3/protocol.proto#envoy-v3-api-field-config-core-v3-http2protocoloptions-initial-stream-window-size)
+and
+[`initial_connection_window_size`](https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/core/v3/protocol.proto#envoy-v3-api-field-config-core-v3-http2protocoloptions-initial-connection-window-size)
+for more details.
+
 :::
 
 ## Configure `$GATEWAY_URL`
