@@ -30,7 +30,7 @@ func TestMergeDescriptors_DisjointPaths(t *testing.T) {
 	require.Equal(t, uint32(200), merged[1].RateLimit.RequestsPerUnit)
 }
 
-func TestMergeDescriptors_SamePathKeepsStricter(t *testing.T) {
+func TestMergeDescriptors_SamePathKeepsFirst(t *testing.T) {
 	descs := []*rlsconfv3.RateLimitDescriptor{
 		{Key: "backend_name", Value: "ns/backend", RateLimit: &rlsconfv3.RateLimitPolicy{
 			RequestsPerUnit: 200, Unit: rlsconfv3.RateLimitUnit_MINUTE,
@@ -42,16 +42,16 @@ func TestMergeDescriptors_SamePathKeepsStricter(t *testing.T) {
 
 	merged := MergeDescriptors(descs)
 	require.Len(t, merged, 1)
-	require.Equal(t, uint32(100), merged[0].RateLimit.RequestsPerUnit)
+	require.Equal(t, uint32(200), merged[0].RateLimit.RequestsPerUnit)
 }
 
-func TestMergeDescriptors_DifferentUnitsNormalized(t *testing.T) {
+func TestMergeDescriptors_DifferentUnitsKeepsFirst(t *testing.T) {
 	descs := []*rlsconfv3.RateLimitDescriptor{
-		// 100 per minute = 1.67/s
+		// 100 per minute = 1.67/s (first encountered)
 		{Key: "k", Value: "v", RateLimit: &rlsconfv3.RateLimitPolicy{
 			RequestsPerUnit: 100, Unit: rlsconfv3.RateLimitUnit_MINUTE,
 		}},
-		// 1000 per hour = 0.28/s (stricter)
+		// 1000 per hour = 0.28/s (second, ignored)
 		{Key: "k", Value: "v", RateLimit: &rlsconfv3.RateLimitPolicy{
 			RequestsPerUnit: 1000, Unit: rlsconfv3.RateLimitUnit_HOUR,
 		}},
@@ -59,8 +59,8 @@ func TestMergeDescriptors_DifferentUnitsNormalized(t *testing.T) {
 
 	merged := MergeDescriptors(descs)
 	require.Len(t, merged, 1)
-	require.Equal(t, uint32(1000), merged[0].RateLimit.RequestsPerUnit)
-	require.Equal(t, rlsconfv3.RateLimitUnit_HOUR, merged[0].RateLimit.Unit)
+	require.Equal(t, uint32(100), merged[0].RateLimit.RequestsPerUnit)
+	require.Equal(t, rlsconfv3.RateLimitUnit_MINUTE, merged[0].RateLimit.Unit)
 }
 
 func TestMergeDescriptors_RecursiveChildren(t *testing.T) {
@@ -90,9 +90,9 @@ func TestMergeDescriptors_RecursiveChildren(t *testing.T) {
 	require.Len(t, merged, 1)
 	require.Len(t, merged[0].Descriptors, 2)
 
-	// Sonnet: 50/min wins (stricter than 100/min).
+	// Sonnet: 100/min wins (first encountered).
 	require.Equal(t, "sonnet", merged[0].Descriptors[0].Value)
-	require.Equal(t, uint32(50), merged[0].Descriptors[0].RateLimit.RequestsPerUnit)
+	require.Equal(t, uint32(100), merged[0].Descriptors[0].RateLimit.RequestsPerUnit)
 
 	// Haiku: only from second policy.
 	require.Equal(t, "haiku", merged[0].Descriptors[1].Value)

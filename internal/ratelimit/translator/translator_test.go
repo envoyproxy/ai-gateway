@@ -199,7 +199,7 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 		quota := &aigv1a1.QuotaDefinition{
 			DefaultBucket: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 		}
-		desc, err := buildPerModelDescriptor("gpt-4", quota)
+		desc, err := buildPerModelDescriptor("gpt-4", "gpt-4", quota)
 		require.NoError(t, err)
 		require.Equal(t, ModelNameDescriptorKey, desc.Key)
 		require.Equal(t, "gpt-4", desc.Value)
@@ -215,7 +215,7 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 			},
 			DefaultBucket: aigv1a1.QuotaValue{Limit: 50, Duration: "1m"},
 		}
-		desc, err := buildPerModelDescriptor("gpt-4", quota)
+		desc, err := buildPerModelDescriptor("gpt-4", "gpt-4", quota)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4", desc.Value)
 		require.Nil(t, desc.RateLimit)      // rate limit on nested descriptors, not parent
@@ -229,7 +229,7 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 			},
 			DefaultBucket: aigv1a1.QuotaValue{Limit: 0}, // zero limit = no default
 		}
-		desc, err := buildPerModelDescriptor("gpt-4", quota)
+		desc, err := buildPerModelDescriptor("gpt-4", "gpt-4", quota)
 		require.NoError(t, err)
 		require.Len(t, desc.Descriptors, 1) // only the bucket rule
 	})
@@ -243,7 +243,7 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 			},
 			DefaultBucket: aigv1a1.QuotaValue{Limit: 5, Duration: "1s"},
 		}
-		desc, err := buildPerModelDescriptor("model-x", quota)
+		desc, err := buildPerModelDescriptor("model-x", "model-x", quota)
 		require.NoError(t, err)
 		require.Len(t, desc.Descriptors, 4) // 3 bucket rules + 1 default
 
@@ -256,7 +256,7 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 		quota := &aigv1a1.QuotaDefinition{
 			DefaultBucket: aigv1a1.QuotaValue{Limit: 100, Duration: "invalid"},
 		}
-		_, err := buildPerModelDescriptor("gpt-4", quota)
+		_, err := buildPerModelDescriptor("gpt-4", "gpt-4", quota)
 		require.Error(t, err)
 	})
 
@@ -266,7 +266,7 @@ func TestBuildPerModelDescriptor(t *testing.T) {
 				{Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "bad"}},
 			},
 		}
-		_, err := buildPerModelDescriptor("gpt-4", quota)
+		_, err := buildPerModelDescriptor("gpt-4", "gpt-4", quota)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "bucket rule 0")
 	})
@@ -305,13 +305,13 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 		require.Nil(t, descs[0].Descriptors)
 	})
 
-	t.Run("two headers creates flat array of descriptors", func(t *testing.T) {
+	t.Run("two headers creates nested chain sorted by name", func(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			ClientSelectors: []egv1a1.RateLimitSelectCondition{
 				{
 					Headers: []egv1a1.HeaderMatch{
-						{Name: "x-api-key"},
 						{Name: "x-org"},
+						{Name: "x-api-key"},
 					},
 				},
 			},
@@ -319,31 +319,33 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 		}
 		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
 		require.NoError(t, err)
-		require.Len(t, descs, 2)
+		require.Len(t, descs, 1)
 
+		// Root: x-api-key sorted first (match-0).
 		require.Equal(t, "rule-gpt-4-0-match-0", descs[0].Key)
-		require.NotNil(t, descs[0].RateLimit)
-		require.Equal(t, uint32(100), descs[0].RateLimit.RequestsPerUnit)
-		require.Nil(t, descs[0].Descriptors)
+		require.Nil(t, descs[0].RateLimit)
+		require.Len(t, descs[0].Descriptors, 1)
 
-		require.Equal(t, "rule-gpt-4-0-match-1", descs[1].Key)
-		require.NotNil(t, descs[1].RateLimit)
-		require.Equal(t, uint32(100), descs[1].RateLimit.RequestsPerUnit)
-		require.Nil(t, descs[1].Descriptors)
+		// Leaf: x-org sorted second (match-1), rate_limit only here.
+		leaf := descs[0].Descriptors[0]
+		require.Equal(t, "rule-gpt-4-0-match-1", leaf.Key)
+		require.NotNil(t, leaf.RateLimit)
+		require.Equal(t, uint32(100), leaf.RateLimit.RequestsPerUnit)
+		require.Nil(t, leaf.Descriptors)
 	})
 
-	t.Run("three headers across multiple selectors creates flat array", func(t *testing.T) {
+	t.Run("three headers across multiple selectors creates nested chain sorted by name", func(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			ClientSelectors: []egv1a1.RateLimitSelectCondition{
 				{
 					Headers: []egv1a1.HeaderMatch{
-						{Name: "h1"},
+						{Name: "h3"},
 					},
 				},
 				{
 					Headers: []egv1a1.HeaderMatch{
+						{Name: "h1"},
 						{Name: "h2"},
-						{Name: "h3"},
 					},
 				},
 			},
@@ -351,21 +353,25 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 		}
 		descs, err := buildBucketRuleDescriptors("model", 1, rule)
 		require.NoError(t, err)
-		require.Len(t, descs, 3)
+		require.Len(t, descs, 1)
 
-		require.Equal(t, "rule-model-1-match-0", descs[0].Key)
-		require.NotNil(t, descs[0].RateLimit)
-		require.Equal(t, uint32(50), descs[0].RateLimit.RequestsPerUnit)
-		require.Equal(t, rlsconfv3.RateLimitUnit_HOUR, descs[0].RateLimit.Unit)
-		require.Nil(t, descs[0].Descriptors)
+		// Nested chain: h1 (match-0) → h2 (match-1) → h3 (match-2, leaf with rate_limit).
+		root := descs[0]
+		require.Equal(t, "rule-model-1-match-0", root.Key)
+		require.Nil(t, root.RateLimit)
+		require.Len(t, root.Descriptors, 1)
 
-		require.Equal(t, "rule-model-1-match-1", descs[1].Key)
-		require.NotNil(t, descs[1].RateLimit)
-		require.Nil(t, descs[1].Descriptors)
+		mid := root.Descriptors[0]
+		require.Equal(t, "rule-model-1-match-1", mid.Key)
+		require.Nil(t, mid.RateLimit)
+		require.Len(t, mid.Descriptors, 1)
 
-		require.Equal(t, "rule-model-1-match-2", descs[2].Key)
-		require.NotNil(t, descs[2].RateLimit)
-		require.Nil(t, descs[2].Descriptors)
+		leaf := mid.Descriptors[0]
+		require.Equal(t, "rule-model-1-match-2", leaf.Key)
+		require.NotNil(t, leaf.RateLimit)
+		require.Equal(t, uint32(50), leaf.RateLimit.RequestsPerUnit)
+		require.Equal(t, rlsconfv3.RateLimitUnit_HOUR, leaf.RateLimit.Unit)
+		require.Nil(t, leaf.Descriptors)
 	})
 
 	t.Run("shadow mode enabled", func(t *testing.T) {
@@ -400,7 +406,7 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 		require.False(t, descs[0].ShadowMode)
 	})
 
-	t.Run("shadow mode applied to all descriptors in flat array", func(t *testing.T) {
+	t.Run("shadow mode applied to leaf descriptor in nested chain", func(t *testing.T) {
 		rule := &aigv1a1.QuotaRule{
 			ClientSelectors: []egv1a1.RateLimitSelectCondition{
 				{Headers: []egv1a1.HeaderMatch{{Name: "h1"}, {Name: "h2"}}},
@@ -410,9 +416,76 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 		}
 		descs, err := buildBucketRuleDescriptors("m", 0, rule)
 		require.NoError(t, err)
-		require.Len(t, descs, 2)
-		require.True(t, descs[0].ShadowMode)
-		require.True(t, descs[1].ShadowMode)
+		require.Len(t, descs, 1)
+		// Shadow mode only on leaf.
+		require.False(t, descs[0].ShadowMode)
+		leaf := descs[0].Descriptors[0]
+		require.True(t, leaf.ShadowMode)
+	})
+
+	t.Run("distinct header produces key-only descriptor", func(t *testing.T) {
+		// Distinct headers use RequestHeaders action which sends the actual header value.
+		// The service config must use key-only (no value) so it matches any value.
+		rule := &aigv1a1.QuotaRule{
+			ClientSelectors: []egv1a1.RateLimitSelectCondition{
+				{Headers: []egv1a1.HeaderMatch{
+					{Name: "x-user-id", Type: ptr.To(egv1a1.HeaderMatchDistinct)},
+				}},
+			},
+			Quota: aigv1a1.QuotaValue{Limit: 50, Duration: "1m"},
+		}
+		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
+		require.NoError(t, err)
+		require.Len(t, descs, 1)
+		require.Equal(t, BucketRuleDescriptorKey("gpt-4", 0, 0), descs[0].Key)
+		require.Empty(t, descs[0].Value) // key-only: matches any value
+		require.NotNil(t, descs[0].RateLimit)
+	})
+
+	t.Run("exact header produces key+value descriptor", func(t *testing.T) {
+		// Exact headers use HeaderValueMatch which sends the fixed DescriptorValue.
+		// The service config must use key+value matching that same fixed string.
+		rule := &aigv1a1.QuotaRule{
+			ClientSelectors: []egv1a1.RateLimitSelectCondition{
+				{Headers: []egv1a1.HeaderMatch{
+					{Name: "x-api-key", Type: ptr.To(egv1a1.HeaderMatchExact), Value: ptr.To("premium")},
+				}},
+			},
+			Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
+		}
+		descs, err := buildBucketRuleDescriptors("gpt-4", 0, rule)
+		require.NoError(t, err)
+		require.Len(t, descs, 1)
+		key := BucketRuleDescriptorKey("gpt-4", 0, 0)
+		require.Equal(t, key, descs[0].Key)
+		require.Equal(t, key, descs[0].Value) // fixed value matches HeaderValueMatch DescriptorValue
+	})
+
+	t.Run("mixed distinct and exact headers nested sorted by name", func(t *testing.T) {
+		rule := &aigv1a1.QuotaRule{
+			ClientSelectors: []egv1a1.RateLimitSelectCondition{
+				{Headers: []egv1a1.HeaderMatch{
+					{Name: "x-user-id", Type: ptr.To(egv1a1.HeaderMatchDistinct)},
+					{Name: "x-tier", Type: ptr.To(egv1a1.HeaderMatchExact), Value: ptr.To("premium")},
+				}},
+			},
+			Quota: aigv1a1.QuotaValue{Limit: 75, Duration: "1h"},
+		}
+		descs, err := buildBucketRuleDescriptors("model", 2, rule)
+		require.NoError(t, err)
+		require.Len(t, descs, 1)
+
+		// Root: x-tier sorted first (match-0), exact → key+value.
+		require.Equal(t, BucketRuleDescriptorKey("model", 2, 0), descs[0].Key)
+		require.Equal(t, BucketRuleDescriptorKey("model", 2, 0), descs[0].Value)
+		require.Nil(t, descs[0].RateLimit)
+		require.Len(t, descs[0].Descriptors, 1)
+
+		// Leaf: x-user-id sorted second (match-1), distinct → key-only.
+		leaf := descs[0].Descriptors[0]
+		require.Equal(t, BucketRuleDescriptorKey("model", 2, 1), leaf.Key)
+		require.Empty(t, leaf.Value)
+		require.NotNil(t, leaf.RateLimit)
 	})
 
 	t.Run("invalid duration", func(t *testing.T) {

@@ -103,6 +103,9 @@ type QuotaDefinition struct {
 	// matches multiple rules, each of their associated quotas get applied, so a
 	// single request might burn down the quota for multiple rules.
 	//
+	// Client selectors that match under the same model / service backend will be
+	// combined with the first limit taking precedence.
+	//
 	// +optional
 	BucketRules []QuotaRule `json:"bucketRules"`
 }

@@ -121,44 +121,6 @@ func TestQuotaPolicyController_Reconcile_NotFound(t *testing.T) {
 	require.False(t, res.Requeue)
 }
 
-func TestQuotaPolicyController_Reconcile_NoBackendsFound(t *testing.T) {
-	fakeClient := requireNewFakeClientWithIndexesForQuotaPolicy(t)
-	rateLimitRunner := newTestRunner(t)
-	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner)
-	namespace := "default"
-
-	// Create a QuotaPolicy targeting a non-existent backend.
-	qp := &aigv1a1.QuotaPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "qp-no-backends", Namespace: namespace},
-		Spec: aigv1a1.QuotaPolicySpec{
-			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
-				{
-					Kind:  "AIServiceBackend",
-					Group: "aigateway.envoyproxy.io",
-					Name:  "nonexistent-backend",
-				},
-			},
-			ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-				Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
-			},
-		},
-	}
-	require.NoError(t, fakeClient.Create(t.Context(), qp))
-
-	// Reconcile should succeed (missing backends are skipped).
-	res, err := c.Reconcile(t.Context(), reconcile.Request{
-		NamespacedName: types.NamespacedName{Namespace: namespace, Name: "qp-no-backends"},
-	})
-	require.NoError(t, err)
-	require.False(t, res.Requeue)
-
-	// Verify status is Accepted (no error from sync).
-	var updatedQP aigv1a1.QuotaPolicy
-	require.NoError(t, fakeClient.Get(t.Context(), types.NamespacedName{Namespace: namespace, Name: "qp-no-backends"}, &updatedQP))
-	require.Len(t, updatedQP.Status.Conditions, 1)
-	require.Equal(t, aigv1a1.ConditionTypeAccepted, updatedQP.Status.Conditions[0].Type)
-}
-
 func TestQuotaPolicyController_Reconcile_SyncError(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesForQuotaPolicy(t)
 	// Use a runner whose cache is not initialized to trigger UpdateConfigs error.

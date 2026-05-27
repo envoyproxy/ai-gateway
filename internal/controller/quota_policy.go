@@ -106,7 +106,11 @@ func (c *QuotaPolicyController) syncQuotaPolicy(ctx context.Context, policy *aig
 		backends = append(backends, &backend)
 	}
 
-	// Collect the model names from the policy to filter which routes we resolve overrides from.
+	if len(backends) == 0 && len(policy.Spec.TargetRefs) > 0 {
+		return fmt.Errorf("none of the %d target AIServiceBackends were found for QuotaPolicy %s/%s, will retry",
+			len(policy.Spec.TargetRefs), policy.Namespace, policy.Name)
+	}
+
 	policyModelNames := make(map[string]bool)
 	for _, pmq := range policy.Spec.PerModelQuotas {
 		if pmq.ModelName != nil {

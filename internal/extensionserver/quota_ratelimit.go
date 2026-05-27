@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/go-logr/logr"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -552,7 +553,13 @@ func (s *Server) resolveRouteModelInfo(ctx context.Context, route *routev3.Route
 // mapping (for request-time descriptors). If nil, all models are included.
 func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies []aigv1a1.QuotaPolicy, modelInfo *routeModelInfo) error {
 	var rateLimitActions []*routev3.RateLimit
-	streamDoneModels := make(map[string]bool)
+
+	// streamDoneActions collects the stream-done RateLimit entries built inline during
+	// the policy loop. They are appended to rateLimitActions at the end so all
+	// request-time entries come first. seenStreamDoneKeys deduplicates across policies
+	// that may produce the same descriptor key for the same model and rule index.
+	var streamDoneActions []*routev3.RateLimit
+	seenStreamDoneKeys := make(map[string]bool)
 
 	var backendModels map[string]string
 	if modelInfo != nil {
@@ -572,29 +579,57 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 			if len(pmq.Quota.BucketRules) == 0 && pmq.Quota.DefaultBucket.Limit > 0 {
 				entries := buildSimpleModelEntries(modelName, policies[i].Namespace, policies[i].Spec.TargetRefs, backendModels)
 				rateLimitActions = append(rateLimitActions, entries...)
+				// Simple case: 2-level stream-done (backend_name + model_name_override).
+				if !seenStreamDoneKeys[modelName] {
+					seenStreamDoneKeys[modelName] = true
+					streamDoneActions = append(streamDoneActions, &routev3.RateLimit{
+						Actions:           baseDescriptorActions(),
+						HitsAddend:        quotaHitsAddend(modelName),
+						ApplyOnStreamDone: true,
+					})
+				}
 			} else if len(pmq.Quota.BucketRules) > 0 {
 				bucketActions := buildBucketRuleLimitEntries(modelName, policies[i].Namespace, &pmq.Quota, policies[i].Spec.TargetRefs, backendModels)
 				rateLimitActions = append(rateLimitActions, bucketActions...)
+				// Bucket rules: 3-level stream-done per rule (base + HeaderValueMatch).
+				for rIdx, rule := range pmq.Quota.BucketRules {
+					dupKey := translator.BucketRuleDescriptorKey(modelName, rIdx, 0)
+					if !seenStreamDoneKeys[dupKey] {
+						seenStreamDoneKeys[dupKey] = true
+						clientActions := buildClientSelectorStreamDoneActions(modelName, rIdx, rule.ClientSelectors)
+						streamDoneActions = append(streamDoneActions, &routev3.RateLimit{
+							Actions:           append(baseDescriptorActions(), clientActions...),
+							HitsAddend:        quotaHitsAddend(modelName),
+							ApplyOnStreamDone: true,
+						})
+					}
+				}
+				// Default bucket: 3-level stream-done with GenericKey (always fires).
+				// In Exclusive mode this also decrements the default bucket for requests
+				// that matched a specific rule; in Shared mode this is correct.
+				if pmq.Quota.DefaultBucket.Limit > 0 {
+					defaultKey := translator.DefaultBucketDescriptorKey(modelName, len(pmq.Quota.BucketRules))
+					if !seenStreamDoneKeys[defaultKey] {
+						seenStreamDoneKeys[defaultKey] = true
+						streamDoneActions = append(streamDoneActions, &routev3.RateLimit{
+							Actions: append(baseDescriptorActions(), &routev3.RateLimit_Action{
+								ActionSpecifier: &routev3.RateLimit_Action_GenericKey_{
+									GenericKey: &routev3.RateLimit_Action_GenericKey{
+										DescriptorKey:   defaultKey,
+										DescriptorValue: defaultKey,
+									},
+								},
+							}),
+							HitsAddend:        quotaHitsAddend(modelName),
+							ApplyOnStreamDone: true,
+						})
+					}
+				}
 			}
-
-			// Track models that need a stream-done entry.
-			streamDoneModels[modelName] = true
 		}
 	}
 
-	// Add one stream-done entry per unique model. This entry reads backend_name
-	// and model_name_override from dynamic metadata (set by ext_proc) and counts
-	// the quota cost via HitsAddend. Only one entry is needed because metadata
-	// values are the same regardless of which policy/target produced the request.
-	// TODO: With client selectors, stream-done entries may need per-bucket-rule
-	// descriptor keys to match the 3-level service config tree.
-	for modelName := range streamDoneModels {
-		rateLimitActions = append(rateLimitActions, &routev3.RateLimit{
-			Actions:           baseDescriptorActions(),
-			HitsAddend:        quotaHitsAddend(modelName),
-			ApplyOnStreamDone: true,
-		})
-	}
+	rateLimitActions = append(rateLimitActions, streamDoneActions...)
 
 	if len(rateLimitActions) == 0 {
 		return nil
@@ -687,34 +722,27 @@ func quotaHitsAddend(modelName string) *routev3.RateLimit_HitsAddend {
 }
 
 // buildBucketRuleLimitEntries creates RateLimit entries for a model's bucket rules.
-// Each bucket rule and the default bucket produces:
-//   - One request-time entry per target backend (uses GenericKey for known values)
-//   - One stream-done entry (uses Metadata for actual runtime values)
+// Each bucket rule and the default bucket produces one request-time entry per target
+// backend. The model_name_override descriptor uses the resolved ModelNameOverride
+// from the AIGatewayRoute (matching what ext_proc sets in dynamic metadata).
 //
 // Action order matches the translator's service config tree:
 // backend_name (Level 0) → model_name_override (Level 1) → bucket_rule_key (Level 2)
-//
-// routeModelNames maps backend name → model name override from the AIGatewayRoute.
-// For request-time entries, the model name is resolved from this map when available,
-// falling back to modelName from the QuotaPolicy.
 func buildBucketRuleLimitEntries(modelName, policyNamespace string, quota *aigv1a1.QuotaDefinition, targets []gwapiv1a2.LocalPolicyTargetReference, routeModelNames map[string]string) []*routev3.RateLimit {
 	var entries []*routev3.RateLimit
 
-	// Request-time entries only. Stream-done is added once per model in enableQuotaRateLimitOnRoute.
-	// TODO: When client selectors are used, stream-done entries may need per-bucket-rule
-	// descriptor keys. Revisit deduplication when that case is implemented end-to-end.
 	for _, target := range targets {
 		resolvedModel := resolveModelName(string(target.Name), modelName, routeModelNames)
 
 		for rIdx, rule := range quota.BucketRules {
-			clientActions := buildClientSelectorActions(resolvedModel, rIdx, rule.ClientSelectors)
+			clientActions := buildClientSelectorActions(modelName, rIdx, rule.ClientSelectors)
 			actions := requestTimeBaseActions(policyNamespace, string(target.Name), resolvedModel)
 			actions = append(actions, clientActions...)
 			entries = append(entries, &routev3.RateLimit{Actions: actions})
 		}
 
 		if quota.DefaultBucket.Limit > 0 {
-			defaultKey := translator.DefaultBucketDescriptorKey(resolvedModel, len(quota.BucketRules))
+			defaultKey := translator.DefaultBucketDescriptorKey(modelName, len(quota.BucketRules))
 			defaultAction := &routev3.RateLimit_Action{
 				ActionSpecifier: &routev3.RateLimit_Action_GenericKey_{
 					GenericKey: &routev3.RateLimit_Action_GenericKey{
@@ -768,18 +796,14 @@ func requestTimeBaseActions(namespace, backendName, modelName string) []*routev3
 }
 
 // buildClientSelectorActions converts ClientSelectors into rate limit actions.
-// Headers from all selectors are flattened (ANDed) and each becomes a separate action.
-// If no selectors are specified, a GenericKey action is used (matches all traffic).
+// Headers from all selectors are flattened, sorted by name, and each becomes a
+// separate action. The sort order matches the nested descriptor tree in the rate
+// limit service config. If no selectors are specified, a GenericKey action is used.
 func buildClientSelectorActions(
 	modelName string, ruleIndex int, selectors []egv1a1.RateLimitSelectCondition,
 ) []*routev3.RateLimit_Action {
-	// Flatten all headers across all selectors.
-	var headers []egv1a1.HeaderMatch
-	for _, sel := range selectors {
-		headers = append(headers, sel.Headers...)
-	}
+	headers := flattenAndSortClientSelectorHeaders(selectors)
 
-	// No headers: rule applies to all traffic, use GenericKey.
 	if len(headers) == 0 {
 		key := translator.BucketRuleDescriptorKey(modelName, ruleIndex, 0)
 		return []*routev3.RateLimit_Action{
@@ -799,6 +823,86 @@ func buildClientSelectorActions(
 		actions = append(actions, buildHeaderMatchAction(modelName, ruleIndex, mIdx, header))
 	}
 	return actions
+}
+
+// buildClientSelectorStreamDoneActions is like buildClientSelectorActions but
+// always uses ExpectMatch=true on HeaderValueMatch actions. Distinct headers fall
+// back to GenericKey because per-value bucketing is not applicable at stream-done time.
+func buildClientSelectorStreamDoneActions(
+	modelName string, ruleIndex int, selectors []egv1a1.RateLimitSelectCondition,
+) []*routev3.RateLimit_Action {
+	headers := flattenAndSortClientSelectorHeaders(selectors)
+
+	if len(headers) == 0 {
+		key := translator.BucketRuleDescriptorKey(modelName, ruleIndex, 0)
+		return []*routev3.RateLimit_Action{
+			{
+				ActionSpecifier: &routev3.RateLimit_Action_GenericKey_{
+					GenericKey: &routev3.RateLimit_Action_GenericKey{
+						DescriptorKey:   key,
+						DescriptorValue: key,
+					},
+				},
+			},
+		}
+	}
+
+	var actions []*routev3.RateLimit_Action
+	for mIdx, header := range headers {
+		actions = append(actions, buildStreamDoneHeaderMatchAction(modelName, ruleIndex, mIdx, header))
+	}
+	return actions
+}
+
+// flattenAndSortClientSelectorHeaders collects all HeaderMatch entries from all
+// ClientSelectors and sorts them by header Name for deterministic action ordering
+// that matches the nested descriptor tree in the rate limit service config.
+func flattenAndSortClientSelectorHeaders(selectors []egv1a1.RateLimitSelectCondition) []egv1a1.HeaderMatch {
+	var headers []egv1a1.HeaderMatch
+	for _, sel := range selectors {
+		headers = append(headers, sel.Headers...)
+	}
+	sort.Slice(headers, func(i, j int) bool {
+		return headers[i].Name < headers[j].Name
+	})
+	return headers
+}
+
+// buildStreamDoneHeaderMatchAction is like buildHeaderMatchAction but always uses
+// ExpectMatch=true. Distinct headers are treated as GenericKey.
+func buildStreamDoneHeaderMatchAction(
+	modelName string, ruleIndex, matchIndex int, header egv1a1.HeaderMatch,
+) *routev3.RateLimit_Action {
+	descriptorKey := translator.BucketRuleDescriptorKey(modelName, ruleIndex, matchIndex)
+
+	if header.Type != nil && *header.Type == egv1a1.HeaderMatchDistinct {
+		return &routev3.RateLimit_Action{
+			ActionSpecifier: &routev3.RateLimit_Action_GenericKey_{
+				GenericKey: &routev3.RateLimit_Action_GenericKey{
+					DescriptorKey:   descriptorKey,
+					DescriptorValue: descriptorKey,
+				},
+			},
+		}
+	}
+
+	stringMatcher := buildStringMatcher(header)
+	headerMatcher := &routev3.HeaderMatcher{
+		Name: header.Name,
+		HeaderMatchSpecifier: &routev3.HeaderMatcher_StringMatch{
+			StringMatch: stringMatcher,
+		},
+	}
+	return &routev3.RateLimit_Action{
+		ActionSpecifier: &routev3.RateLimit_Action_HeaderValueMatch_{
+			HeaderValueMatch: &routev3.RateLimit_Action_HeaderValueMatch{
+				DescriptorKey:   descriptorKey,
+				DescriptorValue: descriptorKey,
+				ExpectMatch:     &wrapperspb.BoolValue{Value: true},
+				Headers:         []*routev3.HeaderMatcher{headerMatcher},
+			},
+		},
+	}
 }
 
 // buildHeaderMatchAction converts a single HeaderMatch into a rate limit action.

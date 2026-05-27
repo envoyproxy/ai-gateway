@@ -11,7 +11,7 @@ import (
 
 // MergeDescriptors merges a flat slice of descriptors by combining entries with
 // the same Key+Value. Children are merged recursively. When two descriptors at
-// the same path both have a RateLimit, the stricter (lower effective rate) is kept.
+// the same path both have a RateLimit, the first one encountered is kept.
 func MergeDescriptors(descs []*rlsconfv3.RateLimitDescriptor) []*rlsconfv3.RateLimitDescriptor {
 	type entry struct {
 		desc  *rlsconfv3.RateLimitDescriptor
@@ -36,11 +36,9 @@ func MergeDescriptors(descs []*rlsconfv3.RateLimitDescriptor) []*rlsconfv3.RateL
 			)
 		}
 
-		// Keep stricter rate limit.
-		if d.RateLimit != nil {
-			if existing.desc.RateLimit == nil || isStricter(d.RateLimit, existing.desc.RateLimit) {
-				existing.desc.RateLimit = d.RateLimit
-			}
+		// First limit takes precedence — only set if not already present.
+		if d.RateLimit != nil && existing.desc.RateLimit == nil {
+			existing.desc.RateLimit = d.RateLimit
 		}
 
 		// Preserve QuotaMode and ShadowMode if either has it.
@@ -60,6 +58,22 @@ func MergeDescriptors(descs []*rlsconfv3.RateLimitDescriptor) []*rlsconfv3.RateL
 	}
 	for _, e := range sorted {
 		result = append(result, e.desc)
+	}
+	return result
+}
+
+// MergeKeyedDescriptors merges descriptors using their comparable keys.
+// Entries with the same ComparableKey are deduplicated with the first limit
+// taking precedence. Returns the deduplicated KeyedDescriptor list.
+func MergeKeyedDescriptors(entries []KeyedDescriptor) []KeyedDescriptor {
+	seen := make(map[string]bool)
+	var result []KeyedDescriptor
+	for _, e := range entries {
+		if seen[e.ComparableKey] {
+			continue
+		}
+		seen[e.ComparableKey] = true
+		result = append(result, e)
 	}
 	return result
 }

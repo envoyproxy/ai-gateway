@@ -444,19 +444,21 @@ func TestEnableQuotaRateLimitOnRoute_HitsAddend(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// 1 bucket req-time + 1 default req-time + 1 stream-done at end = 3 entries.
-		require.Len(t, perRoute.RateLimits, 3)
+		// 1 bucket req-time + 1 default req-time + 2 stream-done at end = 4 entries.
+		require.Len(t, perRoute.RateLimits, 4)
 		// First 2 entries are request-time without HitsAddend.
 		for i := 0; i < 2; i++ {
 			rl := perRoute.RateLimits[i]
 			require.Nil(t, rl.HitsAddend, "RateLimit entry %d should not have HitsAddend", i)
 			require.False(t, rl.ApplyOnStreamDone, "RateLimit entry %d should not have ApplyOnStreamDone", i)
 		}
-		// Last entry is stream-done with HitsAddend.
-		rl := perRoute.RateLimits[2]
-		require.NotNil(t, rl.HitsAddend, "last RateLimit entry should have HitsAddend")
-		require.NotEmpty(t, rl.HitsAddend.Format, "last RateLimit entry should have HitsAddend format")
-		require.True(t, rl.ApplyOnStreamDone, "last RateLimit entry should have ApplyOnStreamDone")
+		// Last 2 entries are stream-done with HitsAddend.
+		for i := 2; i < 4; i++ {
+			rl := perRoute.RateLimits[i]
+			require.NotNil(t, rl.HitsAddend, "RateLimit entry %d should have HitsAddend", i)
+			require.NotEmpty(t, rl.HitsAddend.Format, "RateLimit entry %d should have HitsAddend format", i)
+			require.True(t, rl.ApplyOnStreamDone, "RateLimit entry %d should have ApplyOnStreamDone", i)
+		}
 	})
 }
 
@@ -555,8 +557,8 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// 1 bucket req-time + 1 default req-time + 1 stream-done at end = 3 RateLimit entries.
-		require.Len(t, perRoute.RateLimits, 3)
+		// 1 bucket req-time + 1 default req-time + 2 stream-done (rule + default) = 4 RateLimit entries.
+		require.Len(t, perRoute.RateLimits, 4)
 
 		// Bucket rule request-time entry (index 0): backend_name + model_name + HeaderValueMatch = 3 actions.
 		ruleEntry := perRoute.RateLimits[0]
@@ -844,8 +846,9 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// gpt-4: 1 bucket req + 1 default req = 2; claude: 1 bucket req = 1; + 2 stream-done at end = 5
-		require.Len(t, perRoute.RateLimits, 5)
+		// gpt-4: 1 bucket req + 1 default req = 2; claude: 1 bucket req = 1;
+		// + 3 stream-done (gpt-4 rule, gpt-4 default, claude rule) = 6
+		require.Len(t, perRoute.RateLimits, 6)
 	})
 
 	t.Run("nil model name in per-model quota is skipped", func(t *testing.T) {
@@ -913,8 +916,8 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// 2 bucket req-time + 1 default req-time + 1 stream-done at end = 4
-		require.Len(t, perRoute.RateLimits, 4)
+		// 2 bucket req-time + 1 default req-time + 3 stream-done (rule 0, rule 1, default) = 6
+		require.Len(t, perRoute.RateLimits, 6)
 
 		// Verify bucket rule 0 (request-time entry at index 0)
 		r0 := perRoute.RateLimits[0]
@@ -938,6 +941,34 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		gk := dfl.Actions[2].GetGenericKey()
 		require.NotNil(t, gk)
 		require.Equal(t, translator.DefaultBucketDescriptorKey("gpt-4", 2), gk.DescriptorKey)
+
+		// Verify stream-done entry for rule 0 (index 3): base actions + HeaderValueMatch(expect_match=true)
+		sd0 := perRoute.RateLimits[3]
+		require.True(t, sd0.ApplyOnStreamDone)
+		require.Len(t, sd0.Actions, 3)
+		sdHvm0 := sd0.Actions[2].GetHeaderValueMatch()
+		require.NotNil(t, sdHvm0)
+		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 0, 0), sdHvm0.DescriptorKey)
+		require.True(t, sdHvm0.ExpectMatch.Value)
+		require.Equal(t, "x-api-key", sdHvm0.Headers[0].Name)
+
+		// Verify stream-done entry for rule 1 (index 4): base actions + HeaderValueMatch(expect_match=true)
+		sd1 := perRoute.RateLimits[4]
+		require.True(t, sd1.ApplyOnStreamDone)
+		require.Len(t, sd1.Actions, 3)
+		sdHvm1 := sd1.Actions[2].GetHeaderValueMatch()
+		require.NotNil(t, sdHvm1)
+		require.Equal(t, translator.BucketRuleDescriptorKey("gpt-4", 1, 0), sdHvm1.DescriptorKey)
+		require.True(t, sdHvm1.ExpectMatch.Value)
+		require.Equal(t, "x-tier", sdHvm1.Headers[0].Name)
+
+		// Verify stream-done entry for default bucket (index 5): base actions + GenericKey (always fires)
+		sdDfl := perRoute.RateLimits[5]
+		require.True(t, sdDfl.ApplyOnStreamDone)
+		require.Len(t, sdDfl.Actions, 3)
+		sdDflGk := sdDfl.Actions[2].GetGenericKey()
+		require.NotNil(t, sdDflGk)
+		require.Equal(t, translator.DefaultBucketDescriptorKey("gpt-4", 2), sdDflGk.DescriptorKey)
 	})
 
 	t.Run("nil policies list", func(t *testing.T) {
@@ -1112,83 +1143,8 @@ func TestBuildBucketRuleLimitEntries(t *testing.T) {
 		require.Equal(t, "gpt-4", reqTime.Actions[1].GetGenericKey().DescriptorValue)
 	})
 
-	t.Run("multiple bucket rules with route model override", func(t *testing.T) {
-		quota := &aigv1a1.QuotaDefinition{
-			BucketRules: []aigv1a1.QuotaRule{
-				{
-					ClientSelectors: []egv1a1.RateLimitSelectCondition{
-						{Headers: []egv1a1.HeaderMatch{
-							{Name: "x-tier", Type: ptr.To(egv1a1.HeaderMatchExact), Value: ptr.To("premium")},
-						}},
-					},
-					Quota: aigv1a1.QuotaValue{Limit: 1000, Duration: "1m"},
-				},
-				{
-					ClientSelectors: []egv1a1.RateLimitSelectCondition{
-						{Headers: []egv1a1.HeaderMatch{
-							{Name: "x-tier", Type: ptr.To(egv1a1.HeaderMatchExact), Value: ptr.To("standard")},
-						}},
-					},
-					Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
-				},
-			},
-			DefaultBucket: aigv1a1.QuotaValue{Limit: 50, Duration: "1m"},
-		}
-		routeModels := map[string]string{"test-backend": "us.anthropic.claude-sonnet-4-6"}
-		entries := buildBucketRuleLimitEntries("claude-sonnet-4-6", "gateway", quota, oneTarget, routeModels)
-
-		// Per target: 2 bucket rules req-time + 1 default req-time = 3 (no stream-done)
-		require.Len(t, entries, 3)
-
-		// Bucket rule 0 request-time: uses resolved model name in all descriptors.
-		reqTime0 := entries[0]
-		require.Equal(t, "gateway/test-backend", reqTime0.Actions[0].GetGenericKey().DescriptorValue)
-		require.Equal(t, "us.anthropic.claude-sonnet-4-6", reqTime0.Actions[1].GetGenericKey().DescriptorValue)
-		hvm := reqTime0.Actions[2].GetHeaderValueMatch()
-		require.NotNil(t, hvm)
-		require.Equal(t, translator.BucketRuleDescriptorKey("us.anthropic.claude-sonnet-4-6", 0, 0), hvm.DescriptorKey)
-
-		// Bucket rule 1 request-time: different rule index, same resolved model.
-		reqTime1 := entries[1]
-		require.Equal(t, "us.anthropic.claude-sonnet-4-6", reqTime1.Actions[1].GetGenericKey().DescriptorValue)
-		require.Equal(t, translator.BucketRuleDescriptorKey("us.anthropic.claude-sonnet-4-6", 1, 0), reqTime1.Actions[2].GetHeaderValueMatch().DescriptorKey)
-
-		// Default bucket request-time: uses resolved model in descriptor key.
-		defaultReq := entries[2]
-		defaultGk := defaultReq.Actions[2].GetGenericKey()
-		require.Equal(t, translator.DefaultBucketDescriptorKey("us.anthropic.claude-sonnet-4-6", 2), defaultGk.DescriptorKey)
-	})
-
-	t.Run("multiple targets with different model overrides", func(t *testing.T) {
-		twoTargets := []gwapiv1a2.LocalPolicyTargetReference{
-			{Name: "bedrock-backend"},
-			{Name: "gcp-backend"},
-		}
-		quota := &aigv1a1.QuotaDefinition{
-			BucketRules: []aigv1a1.QuotaRule{
-				{Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"}},
-			},
-		}
-		routeModels := map[string]string{
-			"bedrock-backend": "us.anthropic.claude-sonnet-4-6",
-			"gcp-backend":     "claude-sonnet-4-6@default",
-		}
-		entries := buildBucketRuleLimitEntries("claude-sonnet-4-6", "gateway", quota, twoTargets, routeModels)
-
-		// 2 targets * 1 bucket rule req-time = 2 (no stream-done)
-		require.Len(t, entries, 2)
-
-		// Bedrock target: uses bedrock model override.
-		require.Equal(t, "us.anthropic.claude-sonnet-4-6", entries[0].Actions[1].GetGenericKey().DescriptorValue)
-		require.Equal(t, translator.BucketRuleDescriptorKey("us.anthropic.claude-sonnet-4-6", 0, 0),
-			entries[0].Actions[2].GetGenericKey().DescriptorKey)
-
-		// GCP target: uses gcp model override.
-		require.Equal(t, "claude-sonnet-4-6@default", entries[1].Actions[1].GetGenericKey().DescriptorValue)
-		require.Equal(t, translator.BucketRuleDescriptorKey("claude-sonnet-4-6@default", 0, 0),
-			entries[1].Actions[2].GetGenericKey().DescriptorKey)
-	})
 }
+
 
 func TestEnableQuotaRateLimitOnRoute_MultiplePerModelQuotas(t *testing.T) {
 	route := &routev3.Route{Name: "test-route"}
@@ -1219,8 +1175,7 @@ func TestEnableQuotaRateLimitOnRoute_MultiplePerModelQuotas(t *testing.T) {
 
 	t.Run("filters by route name, only matching model included", func(t *testing.T) {
 		modelInfo := &routeModelInfo{
-			routeNames:    map[string]bool{"claude-sonnet-4-6": true},
-			backendModels: map[string]string{"bedrock-backend": "us.anthropic.claude-sonnet-4-6"},
+			routeNames: map[string]bool{"claude-sonnet-4-6": true},
 		}
 		require.NoError(t, enableQuotaRateLimitOnRoute(logr.Discard(), route, policies, modelInfo))
 
@@ -1229,7 +1184,7 @@ func TestEnableQuotaRateLimitOnRoute_MultiplePerModelQuotas(t *testing.T) {
 
 		// Only claude-sonnet-4-6 included (simple case: 1 req-time + 1 stream-done at end).
 		require.Len(t, perRoute.RateLimits, 2)
-		require.Equal(t, "us.anthropic.claude-sonnet-4-6", perRoute.RateLimits[0].Actions[1].GetGenericKey().DescriptorValue)
+		require.Equal(t, "claude-sonnet-4-6", perRoute.RateLimits[0].Actions[1].GetGenericKey().DescriptorValue)
 	})
 
 	t.Run("nil modelInfo includes all models", func(t *testing.T) {
@@ -1280,8 +1235,7 @@ func TestEnableQuotaRateLimitOnRoute_MultiplePerModelQuotas(t *testing.T) {
 			},
 		}
 		modelInfo := &routeModelInfo{
-			routeNames:    map[string]bool{"claude-sonnet-4-6": true, "claude-haiku-4-5": true},
-			backendModels: map[string]string{"bedrock-backend": "us.anthropic.claude-sonnet-4-6"},
+			routeNames: map[string]bool{"claude-sonnet-4-6": true, "claude-haiku-4-5": true},
 		}
 		require.NoError(t, enableQuotaRateLimitOnRoute(logr.Discard(), route3, mixedPolicies, modelInfo))
 
@@ -1290,17 +1244,31 @@ func TestEnableQuotaRateLimitOnRoute_MultiplePerModelQuotas(t *testing.T) {
 
 		// claude-sonnet-4-6 with bucket rules: 1 bucket req-time + 1 default req-time = 2
 		// claude-haiku-4-5 simple: 1 req-time = 1
-		// + 2 stream-done at end (2 unique models) = 5
-		require.Len(t, perRoute.RateLimits, 5)
+		// + 3 stream-done (sonnet rule, sonnet default bucket, haiku simple) = 6
+		require.Len(t, perRoute.RateLimits, 6)
 
-		// Verify sonnet bucket rule uses resolved model in descriptor key.
+		// Verify sonnet bucket rule uses policy model name (not ModelNameOverride).
 		sonnetBucketReqTime := perRoute.RateLimits[0]
-		require.Equal(t, translator.BucketRuleDescriptorKey("us.anthropic.claude-sonnet-4-6", 0, 0),
+		require.Equal(t, translator.BucketRuleDescriptorKey("claude-sonnet-4-6", 0, 0),
 			sonnetBucketReqTime.Actions[2].GetHeaderValueMatch().DescriptorKey)
 
-		// Haiku also targets bedrock-backend, so it resolves to the same ModelNameOverride.
+		// Haiku uses its own policy model name.
 		haikuReqTime := perRoute.RateLimits[2]
-		require.Equal(t, "us.anthropic.claude-sonnet-4-6", haikuReqTime.Actions[1].GetGenericKey().DescriptorValue)
+		require.Equal(t, "claude-haiku-4-5", haikuReqTime.Actions[1].GetGenericKey().DescriptorValue)
+
+		// Stream-done entries use policy model name consistently with request-time.
+		// Entry order: sonnet rule (3), sonnet default (4), haiku simple (5).
+		sonnetRuleSD := perRoute.RateLimits[3]
+		require.True(t, sonnetRuleSD.ApplyOnStreamDone)
+		sdHvm := sonnetRuleSD.Actions[2].GetHeaderValueMatch()
+		require.NotNil(t, sdHvm)
+		require.Equal(t, translator.BucketRuleDescriptorKey("claude-sonnet-4-6", 0, 0), sdHvm.DescriptorKey)
+
+		sonnetDefaultSD := perRoute.RateLimits[4]
+		require.True(t, sonnetDefaultSD.ApplyOnStreamDone)
+		sdGk := sonnetDefaultSD.Actions[2].GetGenericKey()
+		require.NotNil(t, sdGk)
+		require.Equal(t, translator.DefaultBucketDescriptorKey("claude-sonnet-4-6", 1), sdGk.DescriptorKey)
 	})
 }
 
