@@ -59,6 +59,9 @@ extProc:
   ##   # Enabled by default for troubleshooting purposes given the impact is negligible when not in use.
   ##   - name: DISABLE_PPROF
   ##     value: "true"
+  ##   # GCP ADC authentication requests will use this proxy if set.
+  ##   - name: AI_GATEWAY_GCP_AUTH_PROXY_URL
+  ##     value: "http://proxy.example.com:8080"
   ##
   extraEnvVars: []
 

@@ -43,6 +43,29 @@ type MCPBackend struct {
 
 	// ToolSelector filters the tools exposed by this backend. If not set, all tools are exposed.
 	ToolSelector *MCPToolSelector `json:"toolSelector,omitempty"`
+
+	// ForwardHeaders specifies HTTP headers to extract from the incoming request and forward to this backend.
+	// Each entry maps a source header name to an optional destination header name.
+	ForwardHeaders []MCPHeaderForward `json:"forwardHeaders,omitempty"`
+}
+
+// MCPHeaderForward specifies a header to extract from the incoming request and forward to a backend.
+type MCPHeaderForward struct {
+	// Name is the header name to extract from the incoming client request.
+	Name string `json:"name"`
+
+	// BackendHeader is the header name to use when forwarding to the backend.
+	// If empty, the original header name is used.
+	BackendHeader string `json:"backendHeader,omitempty"`
+}
+
+// ForwardName returns the header name to use when forwarding to the backend.
+// If BackendHeader is set, it is used; otherwise the original Name is used.
+func (h MCPHeaderForward) ForwardName() string {
+	if h.BackendHeader != "" {
+		return h.BackendHeader
+	}
+	return h.Name
 }
 
 // MCPBackendName is the name of the MCP backend.

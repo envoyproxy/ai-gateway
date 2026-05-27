@@ -25,7 +25,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
@@ -279,8 +278,8 @@ func (g *gatewayMutator) listAIGatewayRoutesForGateway(ctx context.Context, gate
 	return routes, nil
 }
 
-func (g *gatewayMutator) listMCPRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1a1.MCPRouteList, error) {
-	var routes aigv1a1.MCPRouteList
+func (g *gatewayMutator) listMCPRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1b1.MCPRouteList, error) {
+	var routes aigv1b1.MCPRouteList
 	key := fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace)
 	cacheErr := g.c.List(ctx, &routes, client.MatchingFields{
 		k8sClientIndexMCPRouteToAttachedGateway: key,
@@ -292,7 +291,7 @@ func (g *gatewayMutator) listMCPRoutesForGateway(ctx context.Context, gatewayNam
 		return routes, cacheErr
 	}
 	// noCacheReader doesn't have access to cache indexes, so list then filter.
-	var all aigv1a1.MCPRouteList
+	var all aigv1b1.MCPRouteList
 	if err := g.noCacheReader.List(ctx, &all); err != nil {
 		return routes, fmt.Errorf("failed to list MCP routes: %w", err)
 	}
@@ -310,8 +309,8 @@ func filterAIGatewayRoutesForGateway(routes []aigv1b1.AIGatewayRoute, gatewayNam
 	return filtered
 }
 
-func filterMCPRoutesForGateway(routes []aigv1a1.MCPRoute, gatewayName, gatewayNamespace string) []aigv1a1.MCPRoute {
-	var filtered []aigv1a1.MCPRoute
+func filterMCPRoutesForGateway(routes []aigv1b1.MCPRoute, gatewayName, gatewayNamespace string) []aigv1b1.MCPRoute {
+	var filtered []aigv1b1.MCPRoute
 	for i := range routes {
 		if parentRefsMatchGateway(routes[i].Namespace, routes[i].Spec.ParentRefs, gatewayName, gatewayNamespace) {
 			filtered = append(filtered, routes[i])
@@ -368,7 +367,10 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 		return fmt.Errorf("failed to get filter config secret: %w", err)
 	}
 
-	gatewayConfig := g.fetchGatewayConfig(ctx, gatewayName, gatewayNamespace)
+	gatewayConfig, err := g.fetchGatewayConfig(ctx, gatewayName, gatewayNamespace)
+	if err != nil {
+		return fmt.Errorf("failed to fetch GatewayConfig: %w", err)
+	}
 	var (
 		extProcSpec       *aigv1b1.GatewayConfigExtProc
 		kubernetesExtProc *egv1a1.KubernetesContainerSpec
@@ -504,24 +506,25 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	return nil
 }
 
-// fetchGatewayConfig returns the referenced GatewayConfig (if present).
-func (g *gatewayMutator) fetchGatewayConfig(ctx context.Context, gatewayName, gatewayNamespace string) *aigv1b1.GatewayConfig {
+// fetchGatewayConfig returns the referenced GatewayConfig (if present) for the given Gateway.
+// Returns (nil, nil) if: Gateway not found, no annotation, empty annotation, or GatewayConfig not found.
+// Returns (nil, error) for transient failures (API errors) to trigger mutation retry.
+func (g *gatewayMutator) fetchGatewayConfig(ctx context.Context, gatewayName, gatewayNamespace string) (*aigv1b1.GatewayConfig, error) {
 	// Fetch the Gateway object.
 	var gateway gwapiv1.Gateway
 	if err := g.c.Get(ctx, client.ObjectKey{Name: gatewayName, Namespace: gatewayNamespace}, &gateway); err != nil {
 		if apierrors.IsNotFound(err) {
 			g.logger.Info("Gateway not found, using global default configuration",
 				"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
-		} else {
-			g.logger.Error(err, "failed to get Gateway, using global default configuration",
-				"gateway_name", gatewayName, "gateway_namespace", gatewayNamespace)
+			return nil, nil
 		}
-		return nil
+		// Return error for transient failures (e.g., API errors) to trigger retry.
+		return nil, fmt.Errorf("failed to get Gateway: %w", err)
 	}
 
 	configName, ok := gateway.Annotations[GatewayConfigAnnotationKey]
 	if !ok || configName == "" {
-		return nil
+		return nil, nil
 	}
 
 	// Fetch the GatewayConfig (must be in same namespace as Gateway).
@@ -530,16 +533,15 @@ func (g *gatewayMutator) fetchGatewayConfig(ctx context.Context, gatewayName, ga
 		if apierrors.IsNotFound(err) {
 			g.logger.Info("GatewayConfig referenced by Gateway not found, using global defaults",
 				"gateway_name", gatewayName, "gatewayconfig_name", configName)
-		} else {
-			g.logger.Error(err, "failed to get GatewayConfig, using global defaults",
-				"gateway_name", gatewayName, "gatewayconfig_name", configName)
+			return nil, nil
 		}
-		return nil
+		// Return error for transient failures (e.g., API errors) to trigger retry.
+		return nil, fmt.Errorf("failed to get GatewayConfig: %w", err)
 	}
 
 	g.logger.Info("found GatewayConfig for Gateway",
 		"gateway_name", gatewayName, "gatewayconfig_name", configName)
-	return &gatewayConfig
+	return &gatewayConfig, nil
 }
 
 // mergeEnvVars merges env vars; GatewayConfig overrides global while preserving order.

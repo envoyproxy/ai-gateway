@@ -21,6 +21,7 @@ import (
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
+// +kubebuilder:deprecatedversion:warning="aigateway.envoyproxy.io/v1alpha1 is deprecated; use aigateway.envoyproxy.io/v1beta1 instead"
 type MCPRoute struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -97,7 +98,7 @@ type MCPRouteSpec struct {
 type MCPRouteBackendRef struct {
 	gwapiv1.BackendObjectReference `json:",inline"`
 
-	// Path is the HTTP endpoint path of the baackend MCP server.
+	// Path is the HTTP endpoint path of the backend MCP server.
 	// If not specified, the default is "/mcp".
 	//
 	// +kubebuilder:validation:Optional
@@ -121,7 +122,33 @@ type MCPRouteBackendRef struct {
 	// +optional
 	SecurityPolicy *MCPBackendSecurityPolicy `json:"securityPolicy,omitempty"`
 
-	// TODO: add fancy per-MCP server config. For example, Rate Limit, etc.
+	// ForwardHeaders specifies HTTP headers to extract from the incoming client request
+	// and forward to this backend MCP server.
+	// This enables per-user authentication passthrough (e.g., personal access tokens)
+	// without requiring OAuth configuration.
+	// Each entry specifies a header name to extract and an optional rename for the backend.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=32
+	// +optional
+	ForwardHeaders []MCPHeaderForward `json:"forwardHeaders,omitempty"`
+}
+
+// MCPHeaderForward specifies a header to extract from the incoming request and forward to a backend.
+type MCPHeaderForward struct {
+	// Name is the header name to extract from the incoming client request.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// BackendHeader is the header name to use when forwarding to the backend.
+	// If not specified, the original header name is used.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	// +optional
+	BackendHeader *string `json:"backendHeader,omitempty"`
 }
 
 // MCPToolFilter filters tools using include and exclude patterns with exact matches or regular expressions.
@@ -164,7 +191,7 @@ type MCPToolFilter struct {
 	ExcludeRegex []string `json:"excludeRegex,omitempty"`
 }
 
-// MCPBackendSecurityPolicy defines the security policy for a sp
+// MCPBackendSecurityPolicy defines the security policy for a backend MCP server.
 type MCPBackendSecurityPolicy struct {
 	// APIKey is a mechanism to access a backend. The API key will be injected into the request headers.
 	// +optional

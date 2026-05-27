@@ -21,6 +21,7 @@ type AigatewayV1beta1Interface interface {
 	AIServiceBackendsGetter
 	BackendSecurityPoliciesGetter
 	GatewayConfigsGetter
+	MCPRoutesGetter
 }
 
 // AigatewayV1beta1Client is used to interact with features provided by the aigateway.envoyproxy.io group.
@@ -42,6 +43,10 @@ func (c *AigatewayV1beta1Client) BackendSecurityPolicies(namespace string) Backe
 
 func (c *AigatewayV1beta1Client) GatewayConfigs(namespace string) GatewayConfigInterface {
 	return newGatewayConfigs(c, namespace)
+}
+
+func (c *AigatewayV1beta1Client) MCPRoutes(namespace string) MCPRouteInterface {
+	return newMCPRoutes(c, namespace)
 }
 
 // NewForConfig creates a new AigatewayV1beta1Client for the given config.

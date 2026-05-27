@@ -46,9 +46,10 @@ var (
 // about the failed tool call. This allows callers to have better context
 // about tool execution failures.
 type errToolCall struct {
-	toolName string
-	backend  string
-	err      error
+	toolName        string
+	backend         string
+	validationError bool
+	err             error
 }
 
 func (e *errToolCall) Error() string {
@@ -91,6 +92,7 @@ func checkToolCallError(req *jsonrpc.Request, msg *jsonrpc.Response, backendName
 
 	// Build error message from tool result content
 	var errMsg strings.Builder
+	var validationError bool
 	errMsg.WriteString("tool returned isError=true")
 	if len(toolResult.Content) > 0 {
 		errMsg.WriteString(": ")
@@ -101,6 +103,15 @@ func checkToolCallError(req *jsonrpc.Request, msg *jsonrpc.Response, backendName
 			switch c := content.(type) { // extract text
 			case *mcp.TextContent:
 				errMsg.WriteString(c.Text)
+
+				// In this PR: https://github.com/modelcontextprotocol/go-sdk/pull/863
+				// The MCP Go SDK changed from returning a JSON-RPC error and error code indicating a validation error,
+				// to returning a successful JSON-RPC message and a tool result with IsError=true.
+				// The error details are just a string now and there is no indication of whether it's a validation error or not,
+				// so we do a best effort to guess, and fallback to an internal error.
+				if strings.Contains(c.Text, "validating") {
+					validationError = true
+				}
 			case *mcp.ImageContent:
 				errMsg.WriteString(fmt.Sprintf("[image: %s]", c.MIMEType))
 			default:
@@ -113,9 +124,10 @@ func checkToolCallError(req *jsonrpc.Request, msg *jsonrpc.Response, backendName
 	}
 
 	return &errToolCall{
-		toolName: toolName,
-		backend:  backendName,
-		err:      errors.New(errMsg.String()),
+		toolName:        toolName,
+		backend:         backendName,
+		validationError: validationError,
+		err:             errors.New(errMsg.String()),
 	}
 }
 
@@ -319,7 +331,7 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 				onErrorResponse(w, http.StatusBadRequest, "invalid params")
 				return
 			}
-			err = m.handleNotificationsRootsListChanged(ctx, s, w, msg, span)
+			err = m.handleNotificationsRootsListChanged(ctx, s, w, msg, params, span)
 		case "completion/complete":
 			params = &mcp.CompleteParams{}
 			span, err = parseParamsAndMaybeStartSpan(ctx, m, msg, params, r.Header)
@@ -514,6 +526,10 @@ func errorType(err error) metrics.MCPErrorType {
 	if errors.Is(err, errBackendNotFound) || errors.Is(err, errSessionNotFound) || errors.Is(err, errInvalidToolName) {
 		return metrics.MCPErrorInvalidParam
 	}
+	var toolCallValidaitonError *errToolCall
+	if errors.As(err, &toolCallValidaitonError) && toolCallValidaitonError.validationError {
+		return metrics.MCPErrorInvalidParam
+	}
 
 	// Check for joined errors last, as it's more expensive (recursive)
 	var joinedErrs interface{ Unwrap() []error }
@@ -660,7 +676,7 @@ func (m *mcpRequestContext) handleClientToServerResponse(ctx context.Context, s 
 		onErrorResponse(w, http.StatusNotFound, fmt.Sprintf("unknown backend %s", backendName))
 		return result, fmt.Errorf("%w: unknown backend %s", errBackendNotFound, backendName)
 	}
-	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, cse, res)
+	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, cse, res, nil)
 	if err != nil {
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to send: %v", err))
 		return result, err
@@ -746,7 +762,7 @@ func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *sessio
 		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false)
 	}
 	req.Params = param
-	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req)
+	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req, p)
 }
 
 func copyProxyHeaders(resp *http.Response, w http.ResponseWriter) {
@@ -1095,7 +1111,7 @@ func (m *mcpRequestContext) handleResourceReadRequest(ctx context.Context, s *se
 		logger.Debug("Routing to backend")
 	}
 	req.Params = param
-	return result, m.invokeAndProxyResponse(ctx, s, w, backend, sess, req)
+	return result, m.invokeAndProxyResponse(ctx, s, w, backend, sess, req, p)
 }
 
 // handleResourcesSubscribeRequest handles the "resources/subscribe" JSON-RPC method.
@@ -1109,7 +1125,7 @@ func (m *mcpRequestContext) handleResourcesUnsubscribeRequest(ctx context.Contex
 }
 
 func (m *mcpRequestContext) handleResourcesSubscriptionRequest(ctx context.Context, s *session, w http.ResponseWriter,
-	req *jsonrpc.Request, p interface{}, // *mcp.SubscribeParams or *mcp.UnsubscribeParams.
+	req *jsonrpc.Request, p mcp.Params, // *mcp.SubscribeParams or *mcp.UnsubscribeParams.
 	span tracingapi.MCPSpan,
 ) (handlerResult, error) {
 	var uri string
@@ -1160,7 +1176,7 @@ func (m *mcpRequestContext) handleResourcesSubscriptionRequest(ctx context.Conte
 		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false)
 	}
 	req.Params = param
-	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req)
+	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req, p)
 }
 
 var emptyJSONRPCMessage = []byte(`{}`)
@@ -1228,6 +1244,9 @@ func extractSubject(r *http.Request) string {
 	if !strings.EqualFold(parts[0], "bearer") {
 		return ""
 	}
+	if len(parts) < 2 {
+		return ""
+	}
 
 	var claims jwt.RegisteredClaims
 	_, _, _ = jwt.NewParser().ParseUnverified(parts[1], &claims)
@@ -1244,6 +1263,26 @@ func extractForwardHeaders(reqHeaders http.Header, headers []string) map[string]
 	for _, header := range headers {
 		if value := reqHeaders.Get(header); value != "" {
 			result[header] = value
+		}
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+// extractPerBackendForwardHeaders reads per-backend header forwarding config from the incoming request.
+// It supports header renaming: each entry maps a source header to an optional destination header name.
+func extractPerBackendForwardHeaders(reqHeaders http.Header, mappings []filterapi.MCPHeaderForward) map[string]string {
+	if len(mappings) == 0 {
+		return nil
+	}
+
+	result := make(map[string]string)
+	for _, m := range mappings {
+		if value := reqHeaders.Get(m.Name); value != "" {
+			result[m.ForwardName()] = value
 		}
 	}
 
@@ -1280,7 +1319,7 @@ func (m *mcpRequestContext) handlePromptGetRequest(ctx context.Context, s *sessi
 		logger.Debug("Routing to backend")
 	}
 	req.Params = param
-	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req)
+	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req, p)
 }
 
 func (m *mcpRequestContext) handleCompletionComplete(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, param *mcp.CompleteParams, span tracingapi.MCPSpan) (handlerResult, error) {
@@ -1316,7 +1355,7 @@ func (m *mcpRequestContext) handleCompletionComplete(ctx context.Context, s *ses
 	if span != nil {
 		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false)
 	}
-	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req)
+	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req, param)
 }
 
 // handleClientToServerNotificationsProgress handles client-to-server progress notifications that require routing to a specific backend.
@@ -1391,13 +1430,13 @@ func (m *mcpRequestContext) handleClientToServerNotificationsProgress(ctx contex
 	if span != nil {
 		span.RecordRouteToBackend(backendName, string(cse.sessionID), false)
 	}
-	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req)
+	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req, p)
 }
 
 // invokeAndProxyResponse invokes the given JSON-RPC request to the given backend and proxies the response back to the client
 // via w ResponseWriter.
-func (m *mcpRequestContext) invokeAndProxyResponse(ctx context.Context, s *session, w http.ResponseWriter, backend filterapi.MCPBackend, sess *compositeSessionEntry, req *jsonrpc.Request) error {
-	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, sess, req)
+func (m *mcpRequestContext) invokeAndProxyResponse(ctx context.Context, s *session, w http.ResponseWriter, backend filterapi.MCPBackend, sess *compositeSessionEntry, req *jsonrpc.Request, params mcp.Params) error {
+	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, sess, req, params)
 	if err != nil {
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("call to %s failed: %v", backend.Name, err))
 		return err
@@ -1420,7 +1459,7 @@ func (m *mcpRequestContext) invokeAndProxyResponse(ctx context.Context, s *sessi
 }
 
 // addMCPHeaders adds the MCP metadata headers to the HTTP request.
-func addMCPHeaders(httpReq *http.Request, msg jsonrpc.Message, routeName filterapi.MCPRouteName, backendName filterapi.MCPBackendName) {
+func addMCPHeaders(httpReq *http.Request, msg jsonrpc.Message, params mcp.Params, routeName filterapi.MCPRouteName, backendName filterapi.MCPBackendName) {
 	// MCP backend header is used for upstream MCP routing.
 	httpReq.Header.Set(internalapi.MCPBackendHeader, backendName)
 	httpReq.Header.Set(internalapi.MCPRouteHeader, routeName)
@@ -1428,6 +1467,12 @@ func addMCPHeaders(httpReq *http.Request, msg jsonrpc.Message, routeName filtera
 		// MCP request headers are used to populate information in the envoy filter metadata.
 		httpReq.Header.Set(internalapi.MCPMetadataHeaderRequestID, fmt.Sprintf("%v", mcpReq.ID.Raw()))
 		httpReq.Header.Set(internalapi.MCPMetadataHeaderMethod, mcpReq.Method)
+
+		if params != nil {
+			if p, ok := params.(*mcp.CallToolParams); ok {
+				httpReq.Header.Set(internalapi.MCPMetadataHeaderToolName, p.Name)
+			}
+		}
 	}
 }
 
@@ -1456,7 +1501,7 @@ func sendToAllBackendsAndAggregateResponses[responseType any, paramsType mcp.Par
 
 	encoded, _ := json.Marshal(p)
 	request.Params = encoded
-	backendMsgs := s.sendToBackendsFiltered(ctx, http.MethodPost, request, span, filter)
+	backendMsgs := s.sendToBackendsFiltered(ctx, http.MethodPost, request, p, span, filter)
 	return sendToAllBackendsAndAggregateResponsesImpl(ctx, backendMsgs, m, w, s, request, p, mergeFn)
 }
 
@@ -1621,12 +1666,24 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 
 	// Aggregate the tools from all responses.
 	// A backend specific prefix is added to the tool name to avoid name collision.
-	// The tools are filtered based on the toolFilters configured for each backend.
+	// The tools are filtered based on the toolFilters configured for each backend,
+	// and additionally by authorization rules so callers only see tools they can invoke.
 	for _, r := range responses {
 		selector := route.toolSelectors[r.backendName]
 		for _, tool := range r.res.Tools {
 			if selector != nil && !selector.allows(tool.Name) {
 				continue
+			}
+			if route.authorization != nil {
+				allowed, _ := m.authorizeRequest(route.authorization, &authorizationRequest{
+					Headers:   m.requestHeaders,
+					MCPMethod: "tools/call",
+					Backend:   r.backendName,
+					Tool:      tool.Name,
+				})
+				if !allowed {
+					continue
+				}
 			}
 			tool.Name = downstreamResourceName(tool.Name, r.backendName)
 			resp.Tools = append(resp.Tools, tool)
@@ -1679,9 +1736,9 @@ func (m *mcpRequestContext) mergePromptsList(_ *session, responses []broadCastRe
 }
 
 // handleNotificationsRootsListChanged handles the "notifications/roots/list_changed" JSON-RPC method.
-func (m *mcpRequestContext) handleNotificationsRootsListChanged(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, span tracingapi.MCPSpan) error {
+func (m *mcpRequestContext) handleNotificationsRootsListChanged(ctx context.Context, s *session, w http.ResponseWriter, req *jsonrpc.Request, params mcp.Params, span tracingapi.MCPSpan) error {
 	// Since notifications request doesn't expect a response, we can just send the request to all backends and return 202 Accepted per the spec.
-	eventChan := s.sendToAllBackends(ctx, http.MethodPost, req, span)
+	eventChan := s.sendToAllBackends(ctx, http.MethodPost, req, params, span)
 	w.Header().Set(sessionIDHeader, string(s.clientGatewaySessionID()))
 	w.WriteHeader(http.StatusAccepted)
 	// Just wait for all requests to complete and return 202 Accepted. There should be events sent from the backends per the spec.

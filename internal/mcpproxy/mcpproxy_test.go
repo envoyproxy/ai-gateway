@@ -423,7 +423,7 @@ func TestInvokeJSONRPCRequest_Success(t *testing.T) {
 	m.backendListenerAddr = backendServer.URL
 	resp, err := m.invokeJSONRPCRequest(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &compositeSessionEntry{
 		sessionID: "test-session",
-	}, &jsonrpc.Request{})
+	}, &jsonrpc.Request{}, nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -445,7 +445,7 @@ func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 	m.backendListenerAddr = backendServer.URL
 	resp, err := m.invokeJSONRPCRequest(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &compositeSessionEntry{
 		sessionID: "",
-	}, &jsonrpc.Request{})
+	}, &jsonrpc.Request{}, nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)

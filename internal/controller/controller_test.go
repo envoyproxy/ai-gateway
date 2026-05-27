@@ -22,7 +22,6 @@ import (
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
 
@@ -517,7 +516,7 @@ func Test_handleFinalizer(t *testing.T) {
 		name               string
 		hasFinalizer       bool
 		hasDeletionTS      bool
-		clientPatchError   bool
+		clientUpdateError  bool
 		onDeletionFnError  bool
 		expectedOnDelete   bool
 		expectedFinalizers []string
@@ -531,10 +530,10 @@ func Test_handleFinalizer(t *testing.T) {
 			expectedFinalizers: []string{aiGatewayControllerFinalizer},
 		},
 		{
-			name:               "add finalizer to new object with patch error",
+			name:               "add finalizer to new object with update error",
 			hasFinalizer:       false,
 			hasDeletionTS:      false,
-			clientPatchError:   true,
+			clientUpdateError:  true,
 			expectedOnDelete:   false,
 			expectedFinalizers: []string{aiGatewayControllerFinalizer},
 		},
@@ -563,10 +562,10 @@ func Test_handleFinalizer(t *testing.T) {
 			expectCallback:     true,
 		},
 		{
-			name:               "object being deleted, client patch error",
+			name:               "object being deleted, client update error",
 			hasFinalizer:       true,
 			hasDeletionTS:      true,
-			clientPatchError:   true,
+			clientUpdateError:  true,
 			expectedOnDelete:   true,
 			expectedFinalizers: []string{},
 			expectCallback:     true,
@@ -599,7 +598,7 @@ func Test_handleFinalizer(t *testing.T) {
 				}
 			}
 			onDelete := handleFinalizer(context.Background(),
-				&mockClient{patchErr: tc.clientPatchError}, logr.Discard(), obj, onDeletionFn)
+				&mockClient{updateErr: tc.clientUpdateError}, logr.Discard(), obj, onDeletionFn)
 			require.Equal(t, tc.expectedOnDelete, onDelete)
 			require.Equal(t, tc.expectedFinalizers, obj.Finalizers)
 			require.Equal(t, tc.expectCallback, callbackExecuted)
@@ -607,16 +606,16 @@ func Test_handleFinalizer(t *testing.T) {
 	}
 }
 
-// mockClients implements client.Client with a custom Patch method for testing purposes.
+// mockClients implements client.Client with a custom Update method for testing purposes.
 type mockClient struct {
 	client.Client
-	patchErr bool
+	updateErr bool
 }
 
-// Patch implements the client.Client interface for the mock client.
-func (m *mockClient) Patch(context.Context, client.Object, client.Patch, ...client.PatchOption) error {
-	if m.patchErr {
-		return fmt.Errorf("mock patch error")
+// Updates implements the client.Client interface for the mock client.
+func (m *mockClient) Update(context.Context, client.Object, ...client.UpdateOption) error {
+	if m.updateErr {
+		return fmt.Errorf("mock update error")
 	}
 	return nil
 }
@@ -722,17 +721,17 @@ func Test_aiGatewayRouteToAttachedGatewayIndexFunc(t *testing.T) {
 func Test_mcpRouteToAttachedGatewayIndexFunc(t *testing.T) {
 	tests := []struct {
 		name            string
-		route           *aigv1a1.MCPRoute
+		route           *aigv1b1.MCPRoute
 		expectedIndexes []string
 	}{
 		{
 			name: "parentRef cross-namespace reference",
-			route: &aigv1a1.MCPRoute{
+			route: &aigv1b1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "mcp-route",
 					Namespace: "envoy-mcp-gateway-system",
 				},
-				Spec: aigv1a1.MCPRouteSpec{
+				Spec: aigv1b1.MCPRouteSpec{
 					ParentRefs: []gwapiv1.ParentReference{
 						{
 							Name:      "my-gateway",
@@ -746,12 +745,12 @@ func Test_mcpRouteToAttachedGatewayIndexFunc(t *testing.T) {
 		},
 		{
 			name: "parentRef same namespace as route",
-			route: &aigv1a1.MCPRoute{
+			route: &aigv1b1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "mcp-route",
 					Namespace: "production",
 				},
-				Spec: aigv1a1.MCPRouteSpec{
+				Spec: aigv1b1.MCPRouteSpec{
 					ParentRefs: []gwapiv1.ParentReference{
 						{
 							Name: "my-gateway",
@@ -764,12 +763,12 @@ func Test_mcpRouteToAttachedGatewayIndexFunc(t *testing.T) {
 		},
 		{
 			name: "multiple parentRefs with mixed namespaces",
-			route: &aigv1a1.MCPRoute{
+			route: &aigv1b1.MCPRoute{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "mcp-route",
 					Namespace: "app-namespace",
 				},
-				Spec: aigv1a1.MCPRouteSpec{
+				Spec: aigv1b1.MCPRouteSpec{
 					ParentRefs: []gwapiv1.ParentReference{
 						{
 							Name:      "gateway-1",

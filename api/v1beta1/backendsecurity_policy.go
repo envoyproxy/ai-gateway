@@ -208,7 +208,12 @@ type GCPServiceAccountImpersonationConfig struct {
 }
 
 // BackendSecurityPolicyGCPCredentials contains the supported authentication mechanisms to access GCP.
-// +kubebuilder:validation:XValidation:rule="(has(self.credentialsFile) && !has(self.workloadIdentityFederationConfig)) || (has(self.workloadIdentityFederationConfig) && !has(self.credentialsFile))",message="Exactly one of GCPWorkloadIdentityFederationConfig or GCPCredentialsFile must be specified"
+//
+// When neither CredentialsFile nor WorkloadIdentityFederationConfig is specified, Application Default
+// Credentials (ADC) will be used. This supports GKE Workload Identity, environment variables, and
+// default service account credentials when running on GCP.
+//
+// +kubebuilder:validation:XValidation:rule="!(has(self.credentialsFile) && has(self.workloadIdentityFederationConfig))",message="At most one of credentialsFile or workloadIdentityFederationConfig may be specified"
 type BackendSecurityPolicyGCPCredentials struct {
 	// ProjectName is the GCP project name.
 	//

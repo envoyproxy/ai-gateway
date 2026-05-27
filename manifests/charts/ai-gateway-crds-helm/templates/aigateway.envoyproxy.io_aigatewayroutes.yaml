@@ -68,12 +68,47 @@ spec:
           spec:
             description: Spec defines the details of the AIGatewayRoute.
             properties:
+              hostnames:
+                description: |-
+                  Hostnames is a list of hostnames matched against the HTTP Host header to select an AIGatewayRoute
+                  used to process the request. This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec.
+                  When specified, the generated HTTPRoute will include these hostnames for hostname-based filtering.
+                  See https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteSpec
+                  for the details of the Hostnames field in the Gateway API.
+                items:
+                  description: |-
+                    Hostname is the fully qualified domain name of a network host. This matches
+                    the RFC 1123 definition of a hostname with 2 notable exceptions:
+
+                     1. IPs are not allowed.
+                     2. A hostname may be prefixed with a wildcard label (`*.`). The wildcard
+                        label must appear by itself as the first label.
+
+                    Hostname can be "precise" which is a domain name without the terminating
+                    dot of a network host (e.g. "foo.example.com") or "wildcard", which is a
+                    domain name prefixed with a single wildcard label (e.g. `*.example.com`).
+
+                    Note that as per RFC1035 and RFC1123, a *label* must consist of lower case
+                    alphanumeric characters or '-', and must start and end with an alphanumeric
+                    character. No other punctuation is allowed.
+                  maxLength: 253
+                  minLength: 1
+                  pattern: ^(\*\.)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                  type: string
+                maxItems: 16
+                type: array
               llmRequestCosts:
                 description: "LLMRequestCosts specifies how to capture the cost of
                   the LLM-related request, notably the token usage.\nThe AI Gateway
                   filter will capture each specified number and store it in the Envoy's
-                  dynamic\nmetadata per HTTP request. The namespaced key is \"io.envoy.ai_gateway\",\n\nFor
-                  example, let's say we have the following LLMRequestCosts configuration:\n```yaml\n\tllmRequestCosts:\n\t-
+                  dynamic\nmetadata per HTTP request. The namespaced key is \"io.envoy.ai_gateway\".\n\nThese
+                  route-level costs override any global defaults defined in GatewayConfig.Spec.GlobalLLMRequestCosts\nfor
+                  the same metadataKey. If a metadataKey is not defined in either
+                  place, no cost is calculated for it.\n\nThis allows you to define
+                  common cost formulas once at the gateway level (e.g., via GatewayConfig)\nand
+                  only override them in specific routes when needed (e.g., premium
+                  routes with different pricing).\n\nFor example, let's say we have
+                  the following LLMRequestCosts configuration:\n```yaml\n\tllmRequestCosts:\n\t-
                   metadataKey: llm_input_token\n\t  type: InputToken\n\t- metadataKey:
                   llm_output_token\n\t  type: OutputToken\n\t- metadataKey: llm_total_token\n\t
                   \ type: TotalToken\n\t- metadataKey: llm_cached_input_token\n\t
@@ -119,8 +154,10 @@ spec:
                   io.envoy.ai_gateway\n\t                key: llm_total_token\n```\n\nNote
                   that when multiple AIGatewayRoute resources are attached to the
                   same Gateway, and\ndifferent costs are configured for the same metadata
-                  key, the ai-gateway will pick one of them\nto configure the metadata
-                  key in the generated HTTPRoute, and ignore the rest."
+                  key, each route's rule is carried in\nthe filter configuration with
+                  the route identity; the data plane selects the matching rule\nper
+                  request (by route), so each route can define its own cost for the
+                  same metadata key."
                 items:
                   description: LLMRequestCost configures each request cost.
                   properties:
@@ -343,6 +380,10 @@ spec:
 
                   How multiple rules are matched is the same as the Gateway API. See for the details:
                   https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRoute
+
+                  At most 15 rules are allowed per AIGatewayRoute, corresponding to the Gateway API's limit on
+                  HTTPRoute.spec.rules (one slot is reserved for a controller-injected catch-all rule). To
+                  configure more rules on the same Gateway, split them across multiple AIGatewayRoute resources.
                 items:
                   description: AIGatewayRouteRule is a rule that defines the routing
                     behavior of the AIGatewayRoute.
@@ -792,7 +833,7 @@ spec:
                     rule: '!has(self.backendRefs) || size(self.backendRefs) == 0 ||
                       !self.backendRefs.exists(ref, has(ref.group) && has(ref.kind))
                       || size(self.backendRefs) == 1'
-                maxItems: 128
+                maxItems: 15
                 type: array
             required:
             - rules
@@ -913,12 +954,47 @@ spec:
           spec:
             description: Spec defines the details of the AIGatewayRoute.
             properties:
+              hostnames:
+                description: |-
+                  Hostnames is a list of hostnames matched against the HTTP Host header to select an AIGatewayRoute
+                  used to process the request. This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec.
+                  When specified, the generated HTTPRoute will include these hostnames for hostname-based filtering.
+                  See https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteSpec
+                  for the details of the Hostnames field in the Gateway API.
+                items:
+                  description: |-
+                    Hostname is the fully qualified domain name of a network host. This matches
+                    the RFC 1123 definition of a hostname with 2 notable exceptions:
+
+                     1. IPs are not allowed.
+                     2. A hostname may be prefixed with a wildcard label (`*.`). The wildcard
+                        label must appear by itself as the first label.
+
+                    Hostname can be "precise" which is a domain name without the terminating
+                    dot of a network host (e.g. "foo.example.com") or "wildcard", which is a
+                    domain name prefixed with a single wildcard label (e.g. `*.example.com`).
+
+                    Note that as per RFC1035 and RFC1123, a *label* must consist of lower case
+                    alphanumeric characters or '-', and must start and end with an alphanumeric
+                    character. No other punctuation is allowed.
+                  maxLength: 253
+                  minLength: 1
+                  pattern: ^(\*\.)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                  type: string
+                maxItems: 16
+                type: array
               llmRequestCosts:
                 description: "LLMRequestCosts specifies how to capture the cost of
                   the LLM-related request, notably the token usage.\nThe AI Gateway
                   filter will capture each specified number and store it in the Envoy's
-                  dynamic\nmetadata per HTTP request. The namespaced key is \"io.envoy.ai_gateway\",\n\nFor
-                  example, let's say we have the following LLMRequestCosts configuration:\n```yaml\n\tllmRequestCosts:\n\t-
+                  dynamic\nmetadata per HTTP request. The namespaced key is \"io.envoy.ai_gateway\".\n\nThese
+                  route-level costs override any global defaults defined in GatewayConfig.Spec.GlobalLLMRequestCosts\nfor
+                  the same metadataKey. If a metadataKey is not defined in either
+                  place, no cost is calculated for it.\n\nThis allows you to define
+                  common cost formulas once at the gateway level (e.g., via GatewayConfig)\nand
+                  only override them in specific routes when needed (e.g., premium
+                  routes with different pricing).\n\nFor example, let's say we have
+                  the following LLMRequestCosts configuration:\n```yaml\n\tllmRequestCosts:\n\t-
                   metadataKey: llm_input_token\n\t  type: InputToken\n\t- metadataKey:
                   llm_output_token\n\t  type: OutputToken\n\t- metadataKey: llm_total_token\n\t
                   \ type: TotalToken\n\t- metadataKey: llm_cached_input_token\n\t
@@ -964,8 +1040,10 @@ spec:
                   io.envoy.ai_gateway\n\t                key: llm_total_token\n```\n\nNote
                   that when multiple AIGatewayRoute resources are attached to the
                   same Gateway, and\ndifferent costs are configured for the same metadata
-                  key, the ai-gateway will pick one of them\nto configure the metadata
-                  key in the generated HTTPRoute, and ignore the rest."
+                  key, each route's rule is carried in\nthe filter configuration with
+                  the route identity; the data plane selects the matching rule\nper
+                  request (by route), so each route can define its own cost for the
+                  same metadata key."
                 items:
                   description: LLMRequestCost configures each request cost.
                   properties:
@@ -1188,6 +1266,10 @@ spec:
 
                   How multiple rules are matched is the same as the Gateway API. See for the details:
                   https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRoute
+
+                  At most 15 rules are allowed per AIGatewayRoute, corresponding to the Gateway API's limit on
+                  HTTPRoute.spec.rules (one slot is reserved for a controller-injected catch-all rule). To
+                  configure more rules on the same Gateway, split them across multiple AIGatewayRoute resources.
                 items:
                   description: AIGatewayRouteRule is a rule that defines the routing
                     behavior of the AIGatewayRoute.
@@ -1637,7 +1719,7 @@ spec:
                     rule: '!has(self.backendRefs) || size(self.backendRefs) == 0 ||
                       !self.backendRefs.exists(ref, has(ref.group) && has(ref.kind))
                       || size(self.backendRefs) == 1'
-                maxItems: 128
+                maxItems: 15
                 type: array
             required:
             - rules

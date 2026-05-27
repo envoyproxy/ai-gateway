@@ -1,0 +1,131 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This fixture has 16 rules, exceeding the per-AIGatewayRoute limit of 15 which
+# corresponds to the Gateway API's HTTPRoute.spec.rules limit.
+# See https://github.com/envoyproxy/ai-gateway/issues/2120.
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: too-many-rules
+  namespace: default
+spec:
+  parentRefs:
+    - name: some-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-1
+      backendRefs:
+        - name: backend-1
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-2
+      backendRefs:
+        - name: backend-2
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-3
+      backendRefs:
+        - name: backend-3
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-4
+      backendRefs:
+        - name: backend-4
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-5
+      backendRefs:
+        - name: backend-5
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-6
+      backendRefs:
+        - name: backend-6
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-7
+      backendRefs:
+        - name: backend-7
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-8
+      backendRefs:
+        - name: backend-8
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-9
+      backendRefs:
+        - name: backend-9
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-10
+      backendRefs:
+        - name: backend-10
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-11
+      backendRefs:
+        - name: backend-11
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-12
+      backendRefs:
+        - name: backend-12
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-13
+      backendRefs:
+        - name: backend-13
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-14
+      backendRefs:
+        - name: backend-14
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-15
+      backendRefs:
+        - name: backend-15
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-16
+      backendRefs:
+        - name: backend-16

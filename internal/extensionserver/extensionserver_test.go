@@ -208,6 +208,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 										RequestAttributes: []string{
 											internalapi.XDSUpstreamHostMetadataBackendNamePath,
 											internalapi.XDSClusterMetadataBackendNamePath,
+											internalapi.XDSRouteMetadataRouteNamePath,
 										},
 										ProcessingMode: &extprocv3.ProcessingMode{
 											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
@@ -341,6 +342,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 										RequestAttributes: []string{
 											internalapi.XDSUpstreamHostMetadataBackendNamePath,
 											internalapi.XDSClusterMetadataBackendNamePath,
+											internalapi.XDSRouteMetadataRouteNamePath,
 										},
 										ProcessingMode: &extprocv3.ProcessingMode{
 											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
@@ -2086,5 +2088,64 @@ func TestList(t *testing.T) {
 		require.NotNil(t, resp)
 		require.NotEmpty(t, resp.Statuses)
 		require.Contains(t, resp.Statuses, "envoy-gateway-extension-server")
+	})
+}
+
+func TestRouteNameFromRouteConfigName(t *testing.T) {
+	t.Run("extract namespaced route name", func(t *testing.T) {
+		require.Equal(t, "ns/myroute", routeNameFromRouteConfigName("httproute/ns/myroute/rule/0"))
+	})
+
+	t.Run("ignore unexpected format", func(t *testing.T) {
+		require.Empty(t, routeNameFromRouteConfigName("not-a-route-config-name"))
+	})
+}
+
+func TestRouteNameFromEnvoyGatewayMetadata(t *testing.T) {
+	t.Run("prefer namespaced resource identity", func(t *testing.T) {
+		route := &routev3.Route{
+			Metadata: &corev3.Metadata{
+				FilterMetadata: map[string]*structpb.Struct{
+					"envoy-gateway": {
+						Fields: map[string]*structpb.Value{
+							"resources": structpb.NewListValue(&structpb.ListValue{
+								Values: []*structpb.Value{
+									structpb.NewStructValue(&structpb.Struct{
+										Fields: map[string]*structpb.Value{
+											"name":      structpb.NewStringValue("myroute"),
+											"namespace": structpb.NewStringValue("default"),
+										},
+									}),
+								},
+							}),
+						},
+					},
+				},
+			},
+		}
+		require.Equal(t, "default/myroute", routeNameFromEnvoyGatewayMetadata(route))
+	})
+
+	t.Run("fallback to legacy name-only metadata", func(t *testing.T) {
+		route := &routev3.Route{
+			Metadata: &corev3.Metadata{
+				FilterMetadata: map[string]*structpb.Struct{
+					"envoy-gateway": {
+						Fields: map[string]*structpb.Value{
+							"resources": structpb.NewListValue(&structpb.ListValue{
+								Values: []*structpb.Value{
+									structpb.NewStructValue(&structpb.Struct{
+										Fields: map[string]*structpb.Value{
+											"name": structpb.NewStringValue("legacy-route"),
+										},
+									}),
+								},
+							}),
+						},
+					},
+				},
+			},
+		}
+		require.Equal(t, "legacy-route", routeNameFromEnvoyGatewayMetadata(route))
 	})
 }

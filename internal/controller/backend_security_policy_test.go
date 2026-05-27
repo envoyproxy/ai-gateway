@@ -914,18 +914,6 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials(t *test
 			},
 			expectedErrMsg: "invalid GCP credentials configuration: projectName cannot be empty",
 		},
-		{
-			name: "neither oidc nor credentials file configured",
-			bsp: &aigv1b1.BackendSecurityPolicySpec{
-				Type: aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
-				GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{
-					ProjectName: "test-project",
-					Region:      "us-central1",
-					// Neither WorkloadIdentityFederationConfig nor CredentialsFile is set.
-				},
-			},
-			expectedErrMsg: "one of service account key json file or oidc must be defined",
-		},
 	}
 
 	c := NewBackendSecurityPolicyController(fake.NewFakeClient(), fake2.NewClientset(), ctrl.Log, nil, nil)
@@ -954,6 +942,27 @@ func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials(t *test
 			}
 		})
 	}
+}
+
+func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_ADC(t *testing.T) {
+	c := NewBackendSecurityPolicyController(fake.NewFakeClient(), fake2.NewClientset(), ctrl.Log, nil, nil)
+	bsp := &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "gcp-adc-policy",
+			Namespace: "default",
+		},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type: aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+			GCPCredentials: &aigv1b1.BackendSecurityPolicyGCPCredentials{
+				ProjectName: "test-project",
+				Region:      "us-central1",
+			},
+		},
+	}
+
+	res, err := c.rotateCredential(context.Background(), bsp)
+	require.NoError(t, err)
+	require.Zero(t, res.RequeueAfter)
 }
 
 func TestBackendSecurityPolicyController_RotateCredential_GCPCredentials_OIDC(t *testing.T) {
