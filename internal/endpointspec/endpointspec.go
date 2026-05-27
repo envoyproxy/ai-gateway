@@ -75,6 +75,19 @@ type (
 		// * redactedReq: A copy with sensitive fields replaced by [REDACTED LENGTH=n HASH=xxxx] placeholders.
 		// * err: An error if redaction fails (implementation-specific).
 		RedactSensitiveInfoFromRequest(req *ReqT) (redactedReq *ReqT, err error)
+		// EarlyTranslate translates the parsed request body to OpenAI chat-completions format at the
+		// router-filter phase so that the EndpointPicker (EPP), which runs in the listener filter
+		// chain before the upstream ext_proc, receives a body it can parse.
+		//
+		// Most endpoint specs return nil (no early translation needed). MessagesEndpointSpec
+		// implements this to convert Anthropic format → OpenAI format so the EPP does not fail
+		// when it tries to extract the model name for KV-cache-aware routing.
+		//
+		// The upstream ext_proc re-translates from the stored original body, so the final request
+		// sent to the backend is always determined by the upstream translator (not this method).
+		//
+		// Returns nil headers and nil body when early translation is not applicable.
+		EarlyTranslate(req *ReqT) (headers []internalapi.Header, body []byte, err error)
 	}
 	// ChatCompletionsEndpointSpec implements EndpointSpec for /v1/chat/completions.
 	ChatCompletionsEndpointSpec struct{}
@@ -142,6 +155,11 @@ func (ChatCompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISc
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
+}
+
+// EarlyTranslate implements [EndpointSpec.EarlyTranslate]. No-op for chat completions.
+func (ChatCompletionsEndpointSpec) EarlyTranslate(_ *openai.ChatCompletionRequest) ([]internalapi.Header, []byte, error) {
+	return nil, nil, nil
 }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
@@ -221,6 +239,11 @@ func (CompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema
 	}
 }
 
+// EarlyTranslate implements [EndpointSpec.EarlyTranslate]. No-op for completions.
+func (CompletionsEndpointSpec) EarlyTranslate(_ *openai.CompletionRequest) ([]internalapi.Header, []byte, error) {
+	return nil, nil, nil
+}
+
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (CompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.CompletionRequest) (redactedReq *openai.CompletionRequest, err error) {
 	// Placeholder if redaction is required in future
@@ -255,6 +278,19 @@ func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema,
 	}
 }
 
+// EarlyTranslate implements [EndpointSpec.EarlyTranslate].
+// Produces a minimal chat-completions body so the EPP can parse it, and rewrites
+// :path to /v1/chat/completions so the EPP selects the chat-completions body parser
+// (which understands the "messages" field). The upstream processor uses the preserved
+// original path to still select EmbeddingsEndpointSpec and restore the original body.
+func (EmbeddingsEndpointSpec) EarlyTranslate(req *openai.EmbeddingRequest) ([]internalapi.Header, []byte, error) {
+	body := fmt.Appendf(nil, `{"model":%q,"messages":[{"role":"user","content":""}]}`, req.Model)
+	return []internalapi.Header{
+		{":path", "/v1/chat/completions"},
+		{"content-length", fmt.Sprintf("%d", len(body))},
+	}, body, nil
+}
+
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (EmbeddingsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.EmbeddingRequest) (redactedReq *openai.EmbeddingRequest, err error) {
 	// Placeholder if redaction is required in future
@@ -280,6 +316,11 @@ func (ImageGenerationEndpointSpec) GetTranslator(schema filterapi.VersionedAPISc
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
+}
+
+// EarlyTranslate implements [EndpointSpec.EarlyTranslate]. No-op for image generation.
+func (ImageGenerationEndpointSpec) EarlyTranslate(_ *openai.ImageGenerationRequest) ([]internalapi.Header, []byte, error) {
+	return nil, nil, nil
 }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
@@ -308,6 +349,11 @@ func (ResponsesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, 
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
+}
+
+// EarlyTranslate implements [EndpointSpec.EarlyTranslate]. No-op for responses.
+func (ResponsesEndpointSpec) EarlyTranslate(_ *openai.ResponseRequest) ([]internalapi.Header, []byte, error) {
+	return nil, nil, nil
 }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
@@ -354,6 +400,17 @@ func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 	}
 }
 
+// EarlyTranslate implements [EndpointSpec.EarlyTranslate].
+// Translates the Anthropic request to OpenAI chat-completions format so the EndpointPicker
+// (EPP), which runs in the listener filter chain before the upstream ext_proc does the real
+// translation, can parse the body for KV-cache-aware routing.
+// The upstream ext_proc re-translates from the stored original Anthropic body, so the actual
+// body/path delivered to the backend is always determined by the upstream translator.
+func (MessagesEndpointSpec) EarlyTranslate(req *anthropic.MessagesRequest) ([]internalapi.Header, []byte, error) {
+	t := translator.NewAnthropicToChatCompletionOpenAITranslator("v1", "")
+	return t.RequestBody(nil, req, false)
+}
+
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (MessagesEndpointSpec) RedactSensitiveInfoFromRequest(req *anthropic.MessagesRequest) (redactedReq *anthropic.MessagesRequest, err error) {
 	// Placeholder if redaction is required in future
@@ -380,6 +437,11 @@ func (RerankEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, mod
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
+}
+
+// EarlyTranslate implements [EndpointSpec.EarlyTranslate]. No-op for rerank.
+func (RerankEndpointSpec) EarlyTranslate(_ *cohereschema.RerankV2Request) ([]internalapi.Header, []byte, error) {
+	return nil, nil, nil
 }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
@@ -621,6 +683,11 @@ func (SpeechEndpointSpec) GetTranslator(
 	default:
 		return nil, fmt.Errorf("unsupported API schema for speech: backend=%s", schema)
 	}
+}
+
+// EarlyTranslate implements [EndpointSpec.EarlyTranslate]. No-op for speech.
+func (SpeechEndpointSpec) EarlyTranslate(_ *openai.SpeechRequest) ([]internalapi.Header, []byte, error) {
+	return nil, nil, nil
 }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
