@@ -64,8 +64,11 @@ type AIGatewayRouteSpec struct {
 	// +optional
 	ParentRefs []gwapiv1.ParentReference `json:"parentRefs,omitempty"`
 
-	// Hostnames defines a set of hostnames that should be matched against the HTTP Host header
-	// before applying rules. This maps directly to HTTPRoute.Spec.Hostnames.
+	// Hostnames is a list of hostnames matched against the HTTP Host header to select an AIGatewayRoute
+	// used to process the request. This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec.
+	// When specified, the generated HTTPRoute will include these hostnames for hostname-based filtering.
+	// See https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteSpec
+	// for the details of the Hostnames field in the Gateway API.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=16
