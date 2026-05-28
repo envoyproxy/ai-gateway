@@ -660,6 +660,26 @@ spec:
                             && self.kind == ''InferencePool'')'
                       maxItems: 128
                       type: array
+                    firstTokenTimeout:
+                      description: |-
+                        FirstTokenTimeout is the maximum time to wait for the first response byte
+                        from the upstream model backend before Envoy resets the upstream stream.
+
+                        Mechanically the AI Gateway controller emits an EnvoyPatchPolicy that sets
+                        the per-route Envoy idle_timeout to this value on every xDS route generated
+                        from this rule. The timer fires when no upstream bytes have been receieved
+                        for the configured duration. Once any byte arrives, the timer resets.
+
+                        When the timeout fires, Envoy resets the upstream stream before any response
+                        headers reach the downstream client, so a properly configured retry policy
+                        can fall over to the next backend in the rule transparently.
+
+                        Pair this field with the existing Timeouts.Request, which acts as the overall
+                        deadline.
+
+                        If this field is not set, no idle_timeout override is applied.
+                      pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                      type: string
                     matches:
                       description: |-
                         Matches is the list of AIGatewayRouteMatch that this rule will match the traffic to.
@@ -764,7 +784,9 @@ spec:
                         set 60s for the request timeout as opposed to 15s of the Envoy Gateway's default value.
 
                         For streaming responses (like chat completions with stream=true), consider setting
-                        longer timeouts as the response may take time until the completion.
+                        longer timeouts as the response may take time until the completion. Timeouts.Request
+                        acts as the maximum total time the gateway will wait for the entire response,
+                        including all streamed chunks.
                       properties:
                         backendRequest:
                           description: |-
@@ -1546,6 +1568,26 @@ spec:
                             && self.kind == ''InferencePool'')'
                       maxItems: 128
                       type: array
+                    firstTokenTimeout:
+                      description: |-
+                        FirstTokenTimeout is the maximum time to wait for the first response byte
+                        from the upstream model backend before Envoy resets the upstream stream.
+
+                        Mechanically the AI Gateway controller emits an EnvoyPatchPolicy that sets
+                        the per-route Envoy idle_timeout to this value on every xDS route generated
+                        from this rule. The timer fires when no upstream bytes have been receieved
+                        for the configured duration. Once any byte arrives, the timer resets.
+
+                        When the timeout fires, Envoy resets the upstream stream before any response
+                        headers reach the downstream client, so a properly configured retry policy
+                        can fall over to the next backend in the rule transparently.
+
+                        Pair this field with the existing Timeouts.Request, which acts as the overall
+                        deadline.
+
+                        If this field is not set, no idle_timeout override is applied.
+                      pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                      type: string
                     matches:
                       description: |-
                         Matches is the list of AIGatewayRouteMatch that this rule will match the traffic to.
@@ -1650,7 +1692,9 @@ spec:
                         set 60s for the request timeout as opposed to 15s of the Envoy Gateway's default value.
 
                         For streaming responses (like chat completions with stream=true), consider setting
-                        longer timeouts as the response may take time until the completion.
+                        longer timeouts as the response may take time until the completion. Timeouts.Request
+                        acts as the maximum total time the gateway will wait for the entire response,
+                        including all streamed chunks.
                       properties:
                         backendRequest:
                           description: |-

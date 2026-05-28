@@ -7,11 +7,43 @@ package v1beta1
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
+
+func TestAIGatewayRouteRule_GetFirstTokenTimeout(t *testing.T) {
+	tests := []struct {
+		name     string
+		rule     *AIGatewayRouteRule
+		expected time.Duration
+	}{
+		{name: "nil rule disables deadline", rule: nil, expected: 0},
+		{name: "unset field disables deadline", rule: &AIGatewayRouteRule{}, expected: 0},
+		{
+			name:     "valid 5s duration is parsed",
+			rule:     &AIGatewayRouteRule{FirstTokenTimeout: ptr.To(gwapiv1.Duration("5s"))},
+			expected: 5 * time.Second,
+		},
+		{
+			name:     "negative duration is treated as unset",
+			rule:     &AIGatewayRouteRule{FirstTokenTimeout: ptr.To(gwapiv1.Duration("-1s"))},
+			expected: 0,
+		},
+		{
+			name:     "malformed duration falls back to zero rather than panicking",
+			rule:     &AIGatewayRouteRule{FirstTokenTimeout: ptr.To(gwapiv1.Duration("nope"))},
+			expected: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.rule.GetFirstTokenTimeout())
+		})
+	}
+}
 
 func TestAIGatewayRouteRule_GetTimeoutsWithDefaults(t *testing.T) {
 	tests := []struct {
