@@ -107,8 +107,8 @@ func TestReconcileFirstTokenTimeoutPolicy_CreatesPatchWhenTimeoutSet(t *testing.
 	require.Equal(t, egv1a1.RouteConfigurationEnvoyResourceType, patch.Type)
 	require.Equal(t, "default/gw1/http", patch.Name)
 	require.NotNil(t, patch.Operation.JSONPath)
-	require.Contains(t, *patch.Operation.JSONPath, "httproute/default/myroute/rule/0/")
-	require.Equal(t, "/route/idleTimeout", *patch.Operation.Path)
+	require.Contains(t, *patch.Operation.JSONPath, `=~ '^httproute/default/myroute/rule/0/`)
+	require.Equal(t, "/route/retry_policy/per_try_idle_timeout", *patch.Operation.Path)
 	require.Equal(t, `"10s"`, string(patch.Operation.Value.Raw))
 	require.Equal(t, "default/gw1/https", epp.Spec.JSONPatches[1].Name)
 }

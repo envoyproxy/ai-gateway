@@ -8,6 +8,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"time"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -28,8 +29,12 @@ func firstTokenTimeoutPolicyName(route *aigv1b1.AIGatewayRoute) string {
 }
 
 // reconcileFirstTokenTimeoutPolicy creates, updates, or removes the EnvoyPatchPolicy that
-// carries the per-route idle_timeout derived from FirstTokenTimeout. Retry configuration is
-// intentionally left to the user's BackendTrafficPolicy so we don't clobber it.
+// carries the per-try idle timeout derived from FirstTokenTimeout. The patch sets
+// route.retry_policy.per_try_idle_timeout on every xDS route generated from a rule with
+// FirstTokenTimeout configured. When the upstream stays silent for that duration Envoy
+// treats the try as failed and applies the existing retry policy. A BackendTrafficPolicy
+// with retryOn covering `reset` / `connect-failure` then falls over to the next backend in the
+// rule before any response reaches the downstream client.
 func (c *AIGatewayRouteController) reconcileFirstTokenTimeoutPolicy(ctx context.Context, aiGatewayRoute *aigv1b1.AIGatewayRoute) error {
 	desired, err := c.buildFirstTokenTimeoutPolicy(ctx, aiGatewayRoute)
 	if err != nil {
@@ -116,15 +121,15 @@ func (c *AIGatewayRouteController) buildFirstTokenTimeoutPolicy(ctx context.Cont
 		routeConfigName := fmt.Sprintf("%s/%s/%s", gw.Namespace, gw.Name, listener.Name)
 		for _, r := range rules {
 			// Envoy Gateway xDS route naming: "httproute/<ns>/<name>/rule/<idx>/match/<midx>[/<host>]".
-			routeNamePrefix := fmt.Sprintf("httproute/%s/%s/rule/%d/",
-				aiGatewayRoute.Namespace, aiGatewayRoute.Name, r.idx)
+			routeNameRegex := "^" + regexp.QuoteMeta(fmt.Sprintf(
+				"httproute/%s/%s/rule/%d/", aiGatewayRoute.Namespace, aiGatewayRoute.Name, r.idx))
 			patches = append(patches, egv1a1.EnvoyJSONPatchConfig{
 				Type: egv1a1.RouteConfigurationEnvoyResourceType,
 				Name: routeConfigName,
 				Operation: egv1a1.JSONPatchOperation{
 					Op:       "add",
-					JSONPath: new(fmt.Sprintf("$..routes[?(@.name ^= '%s')]", routeNamePrefix)),
-					Path:     new("/route/idleTimeout"),
+					JSONPath: new(fmt.Sprintf("$..routes[?(@.name =~ '%s')]", routeNameRegex)),
+					Path:     new("/route/retry_policy/per_try_idle_timeout"),
 					Value:    durationJSONValue(r.duration),
 				},
 			})
