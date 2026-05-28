@@ -109,7 +109,7 @@ type QuotaDefinition struct {
 	// combined with the first limit taking precedence.
 	//
 	// +optional
-	BucketRules []QuotaRule `json:"bucketRules"`
+	BucketRules []QuotaRule `json:"bucketRules,omitempty"`
 }
 
 // QuotaBucketMode specifies whether the default and per request buckets values are exclusive or inclusive.

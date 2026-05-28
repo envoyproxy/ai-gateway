@@ -7,7 +7,6 @@ package translator
 
 import (
 	"fmt"
-	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"sort"
 	"strings"
 
@@ -15,6 +14,7 @@ import (
 	rlsconfv3 "github.com/envoyproxy/go-control-plane/ratelimit/config/ratelimit/v3"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
 
 const (
@@ -117,7 +117,6 @@ func BuildRateLimitConfigs(
 		},
 	}, nil
 }
-
 
 // buildBackendDescriptor creates a backend_name descriptor containing
 // model-level descriptors for a single backend.

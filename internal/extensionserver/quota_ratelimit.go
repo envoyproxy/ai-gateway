@@ -567,7 +567,8 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 	}
 
 	for i := range policies {
-		for _, pmq := range policies[i].Spec.PerModelQuotas {
+		policy := &policies[i]
+		for _, pmq := range policy.Spec.PerModelQuotas {
 			if pmq.ModelName == nil {
 				continue
 			}
@@ -577,7 +578,7 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 			}
 
 			if len(pmq.Quota.BucketRules) == 0 && pmq.Quota.DefaultBucket.Limit > 0 {
-				entries := buildSimpleModelEntries(modelName, policies[i].Namespace, policies[i].Spec.TargetRefs, backendModels)
+				entries := buildSimpleModelEntries(modelName, policy.Namespace, policy.Spec.TargetRefs, backendModels)
 				rateLimitActions = append(rateLimitActions, entries...)
 				// Simple case: 2-level stream-done (backend_name + model_name_override).
 				if !seenStreamDoneKeys[modelName] {
@@ -589,13 +590,13 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 					})
 				}
 			} else if len(pmq.Quota.BucketRules) > 0 {
-				bucketActions := buildBucketRuleLimitEntries(modelName, policies[i].Namespace, &pmq.Quota, policies[i].Spec.TargetRefs, backendModels)
+				bucketActions := buildBucketRuleLimitEntries(modelName, policy.Namespace, &pmq.Quota, policy.Spec.TargetRefs, backendModels)
 				rateLimitActions = append(rateLimitActions, bucketActions...)
 				// Bucket rules: one stream-done per (target, rule). The backend-specific
 				// descriptor key ensures the rate limit service only matches the entry
 				// under the actual backend's tree, preventing cross-backend charging.
 				for rIdx, rule := range pmq.Quota.BucketRules {
-					for _, target := range policies[i].Spec.TargetRefs {
+					for _, target := range policy.Spec.TargetRefs {
 						targetName := string(target.Name)
 						dupKey := targetName + "|" + translator.BucketRuleDescriptorKey(targetName, modelName, rIdx, 0)
 						if !seenStreamDoneKeys[dupKey] {

@@ -612,7 +612,7 @@ func TestQuotaPolicyController_resolveBackendModelOverrides(t *testing.T) {
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), unrelatedRoute))
 
-	backends := []*aigv1a1.AIServiceBackend{
+	backends := []*aigv1b1.AIServiceBackend{
 		{ObjectMeta: metav1.ObjectMeta{Name: "my-backend", Namespace: namespace}},
 	}
 	policyModelNames := map[string]bool{"claude-sonnet-4-6": true}

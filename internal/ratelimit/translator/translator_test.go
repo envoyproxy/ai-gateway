@@ -15,6 +15,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
 
 func TestBackendDomainValue(t *testing.T) {
@@ -471,7 +472,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 		policy := &aigv1a1.QuotaPolicy{
 			Spec: aigv1a1.QuotaPolicySpec{},
 		}
-		backend := &aigv1a1.AIServiceBackend{}
+		backend := &aigv1b1.AIServiceBackend{}
 		backend.Namespace = "default"
 		backend.Name = "my-backend"
 
@@ -493,7 +494,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 				},
 			},
 		}
-		backend := &aigv1a1.AIServiceBackend{}
+		backend := &aigv1b1.AIServiceBackend{}
 		backend.Namespace = "default"
 		backend.Name = "my-backend"
 
@@ -515,7 +516,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 				},
 			},
 		}
-		backend := &aigv1a1.AIServiceBackend{}
+		backend := &aigv1b1.AIServiceBackend{}
 		backend.Namespace = "ns1"
 		backend.Name = "openai"
 
@@ -537,7 +538,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 				},
 			},
 		}
-		backend := &aigv1a1.AIServiceBackend{}
+		backend := &aigv1b1.AIServiceBackend{}
 		backend.Namespace = "default"
 		backend.Name = "backend"
 
@@ -571,7 +572,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 				},
 			},
 		}
-		backend := &aigv1a1.AIServiceBackend{}
+		backend := &aigv1b1.AIServiceBackend{}
 		backend.Namespace = "default"
 		backend.Name = "multi-model"
 
@@ -593,7 +594,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 				},
 			},
 		}
-		backend := &aigv1a1.AIServiceBackend{}
+		backend := &aigv1b1.AIServiceBackend{}
 		backend.Namespace = "default"
 		backend.Name = "b"
 
@@ -615,7 +616,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 				},
 			},
 		}
-		backend := &aigv1a1.AIServiceBackend{}
+		backend := &aigv1b1.AIServiceBackend{}
 		backend.Namespace = "ns"
 		backend.Name = "b"
 
@@ -632,7 +633,7 @@ func TestBuildBackendDescriptor(t *testing.T) {
 				},
 			},
 		}
-		backend := &aigv1a1.AIServiceBackend{}
+		backend := &aigv1b1.AIServiceBackend{}
 		backend.Namespace = "ns"
 		backend.Name = "b"
 
@@ -652,7 +653,7 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 
 	t.Run("empty backends returns nil", func(t *testing.T) {
 		policy := &aigv1a1.QuotaPolicy{}
-		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{}, nil)
+		configs, err := BuildRateLimitConfigs(policy, []*aigv1b1.AIServiceBackend{}, nil)
 		require.NoError(t, err)
 		require.Nil(t, configs)
 	})
@@ -661,11 +662,11 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 		policy := &aigv1a1.QuotaPolicy{
 			Spec: aigv1a1.QuotaPolicySpec{},
 		}
-		backend := &aigv1a1.AIServiceBackend{
+		backend := &aigv1b1.AIServiceBackend{
 			ObjectMeta: metav1.ObjectMeta{Name: "b1", Namespace: "default"},
 		}
 
-		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend}, nil)
+		configs, err := BuildRateLimitConfigs(policy, []*aigv1b1.AIServiceBackend{backend}, nil)
 		require.NoError(t, err)
 		require.Nil(t, configs)
 	})
@@ -683,11 +684,11 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 				},
 			},
 		}
-		backend := &aigv1a1.AIServiceBackend{
+		backend := &aigv1b1.AIServiceBackend{
 			ObjectMeta: metav1.ObjectMeta{Name: "openai", Namespace: "default"},
 		}
 
-		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend}, nil)
+		configs, err := BuildRateLimitConfigs(policy, []*aigv1b1.AIServiceBackend{backend}, nil)
 		require.NoError(t, err)
 		require.Len(t, configs, 1)
 		require.Equal(t, QuotaDomain, configs[0].Domain)
@@ -710,14 +711,14 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 				},
 			},
 		}
-		b1 := &aigv1a1.AIServiceBackend{
+		b1 := &aigv1b1.AIServiceBackend{
 			ObjectMeta: metav1.ObjectMeta{Name: "openai", Namespace: "ns1"},
 		}
-		b2 := &aigv1a1.AIServiceBackend{
+		b2 := &aigv1b1.AIServiceBackend{
 			ObjectMeta: metav1.ObjectMeta{Name: "azure", Namespace: "ns2"},
 		}
 
-		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{b1, b2}, nil)
+		configs, err := BuildRateLimitConfigs(policy, []*aigv1b1.AIServiceBackend{b1, b2}, nil)
 		require.NoError(t, err)
 		require.Len(t, configs, 1) // single config with shared domain
 		require.Len(t, configs[0].Descriptors, 2)
@@ -738,11 +739,11 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 				},
 			},
 		}
-		backend := &aigv1a1.AIServiceBackend{
+		backend := &aigv1b1.AIServiceBackend{
 			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
 		}
 
-		_, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend}, nil)
+		_, err := BuildRateLimitConfigs(policy, []*aigv1b1.AIServiceBackend{backend}, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "ns/b")
 	})
@@ -772,11 +773,11 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 				},
 			},
 		}
-		backend := &aigv1a1.AIServiceBackend{
+		backend := &aigv1b1.AIServiceBackend{
 			ObjectMeta: metav1.ObjectMeta{Name: "openai", Namespace: "default"},
 		}
 
-		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend}, nil)
+		configs, err := BuildRateLimitConfigs(policy, []*aigv1b1.AIServiceBackend{backend}, nil)
 		require.NoError(t, err)
 		require.Len(t, configs, 1)
 
@@ -812,11 +813,11 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 				},
 			},
 		}
-		backend := &aigv1a1.AIServiceBackend{
+		backend := &aigv1b1.AIServiceBackend{
 			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
 		}
 
-		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend}, nil)
+		configs, err := BuildRateLimitConfigs(policy, []*aigv1b1.AIServiceBackend{backend}, nil)
 		require.NoError(t, err)
 		require.Nil(t, configs)
 	})
@@ -829,11 +830,11 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 				},
 			},
 		}
-		backend := &aigv1a1.AIServiceBackend{
+		backend := &aigv1b1.AIServiceBackend{
 			ObjectMeta: metav1.ObjectMeta{Name: "svc", Namespace: "prod"},
 		}
 
-		configs, err := BuildRateLimitConfigs(policy, []*aigv1a1.AIServiceBackend{backend}, nil)
+		configs, err := BuildRateLimitConfigs(policy, []*aigv1b1.AIServiceBackend{backend}, nil)
 		require.NoError(t, err)
 		require.Len(t, configs, 1)
 		require.Len(t, configs[0].Descriptors, 1)
