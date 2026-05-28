@@ -7,6 +7,7 @@ package translator
 
 import (
 	"fmt"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"sort"
 	"strings"
 
@@ -90,7 +91,7 @@ func DefaultBucketDescriptorKey(modelName string, numRules int) string {
 // descriptors sent by Envoy at request time.
 func BuildRateLimitConfigs(
 	policy *aigv1a1.QuotaPolicy,
-	backends []*aigv1a1.AIServiceBackend,
+	backends []*aigv1b1.AIServiceBackend,
 	backendModelOverrides map[string][]string,
 ) ([]*rlsconfv3.RateLimitConfig, error) {
 	var backendDescriptors []*rlsconfv3.RateLimitDescriptor
@@ -117,40 +118,6 @@ func BuildRateLimitConfigs(
 	}, nil
 }
 
-// BuildKeyedRateLimitConfigs is like BuildRateLimitConfigs but also returns
-// KeyedDescriptor entries for each leaf descriptor. These can be used for
-// key-based merging across policies.
-func BuildKeyedRateLimitConfigs(
-	policy *aigv1a1.QuotaPolicy,
-	backends []*aigv1a1.AIServiceBackend,
-	backendModelOverrides map[string][]string,
-) ([]*rlsconfv3.RateLimitConfig, []KeyedDescriptor, error) {
-	var backendDescriptors []*rlsconfv3.RateLimitDescriptor
-	var allKeyed []KeyedDescriptor
-	for _, backend := range backends {
-		desc, keyed, err := buildBackendDescriptorKeyed(policy, backend, backendModelOverrides[backend.Name])
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to build descriptors for backend %s/%s: %w",
-				backend.Namespace, backend.Name, err)
-		}
-		if desc != nil {
-			backendDescriptors = append(backendDescriptors, desc)
-		}
-		allKeyed = append(allKeyed, keyed...)
-	}
-	if len(backendDescriptors) == 0 {
-		return nil, nil, nil
-	}
-
-	configs := []*rlsconfv3.RateLimitConfig{
-		{
-			Name:        QuotaDomain,
-			Domain:      QuotaDomain,
-			Descriptors: backendDescriptors,
-		},
-	}
-	return configs, allKeyed, nil
-}
 
 // buildBackendDescriptor creates a backend_name descriptor containing
 // model-level descriptors for a single backend.
@@ -159,7 +126,7 @@ func BuildKeyedRateLimitConfigs(
 // override values instead of the QuotaPolicy's modelName.
 func buildBackendDescriptor(
 	policy *aigv1a1.QuotaPolicy,
-	backend *aigv1a1.AIServiceBackend,
+	backend *aigv1b1.AIServiceBackend,
 	modelOverrides []string,
 ) (*rlsconfv3.RateLimitDescriptor, error) {
 	desc, _, err := buildBackendDescriptorKeyed(policy, backend, modelOverrides)
@@ -170,7 +137,7 @@ func buildBackendDescriptor(
 // KeyedDescriptor entries for all leaf descriptors under it.
 func buildBackendDescriptorKeyed(
 	policy *aigv1a1.QuotaPolicy,
-	backend *aigv1a1.AIServiceBackend,
+	backend *aigv1b1.AIServiceBackend,
 	modelOverrides []string,
 ) (*rlsconfv3.RateLimitDescriptor, []KeyedDescriptor, error) {
 	backendValue := BackendDomainValue(backend.Namespace, backend.Name)

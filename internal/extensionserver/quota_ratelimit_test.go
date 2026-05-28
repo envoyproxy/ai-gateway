@@ -861,7 +861,7 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 					PerModelQuotas: []aigv1a1.PerModelQuota{
 						{
 							ModelName: nil,
-							Quota: aigv1a1.QuotaDefinition{},
+							Quota:     aigv1a1.QuotaDefinition{},
 						},
 					},
 				},
@@ -1295,9 +1295,7 @@ func TestBuildBucketRuleLimitEntries(t *testing.T) {
 		require.Equal(t, translator.ModelNameDescriptorKey, reqTime.Actions[1].GetGenericKey().DescriptorKey)
 		require.Equal(t, "gpt-4", reqTime.Actions[1].GetGenericKey().DescriptorValue)
 	})
-
 }
-
 
 func TestEnableQuotaRateLimitOnRoute_MultiplePerModelQuotas(t *testing.T) {
 	route := &routev3.Route{Name: "test-route"}
@@ -1666,37 +1664,37 @@ func TestBackendKeysForCluster(t *testing.T) {
 	s := newTestServerWithRoute(t, route)
 
 	t.Run("valid cluster name returns backend keys", func(t *testing.T) {
-		keys := s.backendKeysForCluster(context.Background(),"httproute/default/myroute/rule/0")
+		keys := s.backendKeysForCluster(context.Background(), "httproute/default/myroute/rule/0")
 		require.Equal(t, []string{"default/backend-a", "default/backend-b"}, keys)
 	})
 
 	t.Run("second rule index", func(t *testing.T) {
-		keys := s.backendKeysForCluster(context.Background(),"httproute/default/myroute/rule/1")
+		keys := s.backendKeysForCluster(context.Background(), "httproute/default/myroute/rule/1")
 		require.Equal(t, []string{"default/backend-c"}, keys)
 	})
 
 	t.Run("wrong number of parts returns nil", func(t *testing.T) {
-		keys := s.backendKeysForCluster(context.Background(),"too/few/parts")
+		keys := s.backendKeysForCluster(context.Background(), "too/few/parts")
 		require.Nil(t, keys)
 	})
 
 	t.Run("not starting with httproute returns nil", func(t *testing.T) {
-		keys := s.backendKeysForCluster(context.Background(),"tcproute/default/myroute/rule/0")
+		keys := s.backendKeysForCluster(context.Background(), "tcproute/default/myroute/rule/0")
 		require.Nil(t, keys)
 	})
 
 	t.Run("non-numeric rule index returns nil", func(t *testing.T) {
-		keys := s.backendKeysForCluster(context.Background(),"httproute/default/myroute/rule/abc")
+		keys := s.backendKeysForCluster(context.Background(), "httproute/default/myroute/rule/abc")
 		require.Nil(t, keys)
 	})
 
 	t.Run("route not found returns nil", func(t *testing.T) {
-		keys := s.backendKeysForCluster(context.Background(),"httproute/default/nonexistent/rule/0")
+		keys := s.backendKeysForCluster(context.Background(), "httproute/default/nonexistent/rule/0")
 		require.Nil(t, keys)
 	})
 
 	t.Run("rule index out of bounds returns nil", func(t *testing.T) {
-		keys := s.backendKeysForCluster(context.Background(),"httproute/default/myroute/rule/99")
+		keys := s.backendKeysForCluster(context.Background(), "httproute/default/myroute/rule/99")
 		require.Nil(t, keys)
 	})
 }
@@ -1722,7 +1720,7 @@ func TestClusterHasQuotaBackend(t *testing.T) {
 	}
 
 	t.Run("cluster with matching backend returns true", func(t *testing.T) {
-		result := s.clusterHasQuotaBackend(context.Background(),"httproute/default/myroute/rule/0", quotaBackendPolicies)
+		result := s.clusterHasQuotaBackend(context.Background(), "httproute/default/myroute/rule/0", quotaBackendPolicies)
 		require.True(t, result)
 	})
 
@@ -1730,27 +1728,27 @@ func TestClusterHasQuotaBackend(t *testing.T) {
 		noMatchPolicies := map[string][]aigv1a1.QuotaPolicy{
 			"default/backend-x": {{Spec: aigv1a1.QuotaPolicySpec{}}},
 		}
-		result := s.clusterHasQuotaBackend(context.Background(),"httproute/default/myroute/rule/0", noMatchPolicies)
+		result := s.clusterHasQuotaBackend(context.Background(), "httproute/default/myroute/rule/0", noMatchPolicies)
 		require.False(t, result)
 	})
 
 	t.Run("invalid cluster name returns false", func(t *testing.T) {
-		result := s.clusterHasQuotaBackend(context.Background(),"invalid", quotaBackendPolicies)
+		result := s.clusterHasQuotaBackend(context.Background(), "invalid", quotaBackendPolicies)
 		require.False(t, result)
 	})
 
 	t.Run("nonexistent route returns false", func(t *testing.T) {
-		result := s.clusterHasQuotaBackend(context.Background(),"httproute/default/missing/rule/0", quotaBackendPolicies)
+		result := s.clusterHasQuotaBackend(context.Background(), "httproute/default/missing/rule/0", quotaBackendPolicies)
 		require.False(t, result)
 	})
 
 	t.Run("rule index out of bounds returns false", func(t *testing.T) {
-		result := s.clusterHasQuotaBackend(context.Background(),"httproute/default/myroute/rule/5", quotaBackendPolicies)
+		result := s.clusterHasQuotaBackend(context.Background(), "httproute/default/myroute/rule/5", quotaBackendPolicies)
 		require.False(t, result)
 	})
 
 	t.Run("non-numeric rule index returns false", func(t *testing.T) {
-		result := s.clusterHasQuotaBackend(context.Background(),"httproute/default/myroute/rule/bad", quotaBackendPolicies)
+		result := s.clusterHasQuotaBackend(context.Background(), "httproute/default/myroute/rule/bad", quotaBackendPolicies)
 		require.False(t, result)
 	})
 }
@@ -1776,7 +1774,7 @@ func TestRouteHasQuotaBackend(t *testing.T) {
 
 	t.Run("nil route action returns false", func(t *testing.T) {
 		route := &routev3.Route{Name: "test"}
-		result := s.routeHasQuotaBackend(context.Background(),route, quotaBackendPolicies)
+		result := s.routeHasQuotaBackend(context.Background(), route, quotaBackendPolicies)
 		require.False(t, result)
 	})
 
@@ -1791,7 +1789,7 @@ func TestRouteHasQuotaBackend(t *testing.T) {
 				},
 			},
 		}
-		result := s.routeHasQuotaBackend(context.Background(),route, quotaBackendPolicies)
+		result := s.routeHasQuotaBackend(context.Background(), route, quotaBackendPolicies)
 		require.True(t, result)
 	})
 
@@ -1806,7 +1804,7 @@ func TestRouteHasQuotaBackend(t *testing.T) {
 				},
 			},
 		}
-		result := s.routeHasQuotaBackend(context.Background(),route, quotaBackendPolicies)
+		result := s.routeHasQuotaBackend(context.Background(), route, quotaBackendPolicies)
 		require.False(t, result)
 	})
 
@@ -1826,7 +1824,7 @@ func TestRouteHasQuotaBackend(t *testing.T) {
 				},
 			},
 		}
-		result := s.routeHasQuotaBackend(context.Background(),route, quotaBackendPolicies)
+		result := s.routeHasQuotaBackend(context.Background(), route, quotaBackendPolicies)
 		require.True(t, result)
 	})
 
@@ -1845,7 +1843,7 @@ func TestRouteHasQuotaBackend(t *testing.T) {
 				},
 			},
 		}
-		result := s.routeHasQuotaBackend(context.Background(),route, quotaBackendPolicies)
+		result := s.routeHasQuotaBackend(context.Background(), route, quotaBackendPolicies)
 		require.False(t, result)
 	})
 }
@@ -1885,7 +1883,7 @@ func TestPoliciesForRoute(t *testing.T) {
 
 	t.Run("nil route action returns nil", func(t *testing.T) {
 		route := &routev3.Route{Name: "test"}
-		result := s.policiesForRoute(context.Background(),route, quotaBackendPolicies)
+		result := s.policiesForRoute(context.Background(), route, quotaBackendPolicies)
 		require.Nil(t, result)
 	})
 
@@ -1900,7 +1898,7 @@ func TestPoliciesForRoute(t *testing.T) {
 				},
 			},
 		}
-		result := s.policiesForRoute(context.Background(),route, quotaBackendPolicies)
+		result := s.policiesForRoute(context.Background(), route, quotaBackendPolicies)
 		require.Len(t, result, 1)
 		require.Equal(t, types.UID("uid-a"), result[0].UID)
 	})
@@ -1921,7 +1919,7 @@ func TestPoliciesForRoute(t *testing.T) {
 				},
 			},
 		}
-		result := s.policiesForRoute(context.Background(),route, quotaBackendPolicies)
+		result := s.policiesForRoute(context.Background(), route, quotaBackendPolicies)
 		require.Len(t, result, 2)
 	})
 
@@ -1946,7 +1944,7 @@ func TestPoliciesForRoute(t *testing.T) {
 				},
 			},
 		}
-		result := s.policiesForRoute(context.Background(),route, sharedPolicies)
+		result := s.policiesForRoute(context.Background(), route, sharedPolicies)
 		require.Len(t, result, 1)
 		require.Equal(t, types.UID("uid-a"), result[0].UID)
 	})
@@ -1962,7 +1960,7 @@ func TestPoliciesForRoute(t *testing.T) {
 				},
 			},
 		}
-		result := s.policiesForRoute(context.Background(),route, quotaBackendPolicies)
+		result := s.policiesForRoute(context.Background(), route, quotaBackendPolicies)
 		require.Empty(t, result)
 	})
 }
@@ -2024,7 +2022,7 @@ func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
 			},
 		}
 
-		s.patchRoutesWithQuotaRateLimits(context.Background(),routeConfig, quotaBackendPolicies)
+		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies)
 
 		route := routeConfig.VirtualHosts[0].Routes[0]
 		require.NotNil(t, route.TypedPerFilterConfig)
@@ -2051,7 +2049,7 @@ func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
 			},
 		}
 
-		s.patchRoutesWithQuotaRateLimits(context.Background(),routeConfig, quotaBackendPolicies)
+		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies)
 
 		route := routeConfig.VirtualHosts[0].Routes[0]
 		require.Nil(t, route.TypedPerFilterConfig)
@@ -2074,7 +2072,7 @@ func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
 			},
 		}
 
-		s.patchRoutesWithQuotaRateLimits(context.Background(),routeConfig, quotaBackendPolicies)
+		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies)
 
 		route := routeConfig.VirtualHosts[0].Routes[0]
 		require.Nil(t, route.TypedPerFilterConfig)
@@ -2101,7 +2099,7 @@ func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
 			},
 		}
 
-		s.patchRoutesWithQuotaRateLimits(context.Background(),routeConfig, quotaBackendPolicies)
+		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies)
 
 		route := routeConfig.VirtualHosts[0].Routes[0]
 		require.Nil(t, route.TypedPerFilterConfig)
@@ -2143,7 +2141,7 @@ func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
 			},
 		}
 
-		s.patchRoutesWithQuotaRateLimits(context.Background(),routeConfig, quotaBackendPolicies)
+		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies)
 
 		require.Contains(t, routeConfig.VirtualHosts[0].Routes[0].TypedPerFilterConfig, quotaRateLimitFilterName)
 		require.Contains(t, routeConfig.VirtualHosts[1].Routes[0].TypedPerFilterConfig, quotaRateLimitFilterName)

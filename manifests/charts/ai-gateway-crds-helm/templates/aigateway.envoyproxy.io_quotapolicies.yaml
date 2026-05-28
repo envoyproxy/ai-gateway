@@ -73,6 +73,9 @@ spec:
                             BucketRules are a list of client selectors and quotas. If a request
                             matches multiple rules, each of their associated quotas get applied, so a
                             single request might burn down the quota for multiple rules.
+
+                            Client selectors that match under the same model / service backend will be
+                            combined with the first limit taking precedence.
                           items:
                             properties:
                               clientSelectors:
@@ -274,11 +277,13 @@ spec:
                                   the selected requests have exceeded the quota.
                                 properties:
                                   duration:
-                                    description: 'Time window. Must be exactly one of: "1s" (1 second), "1m" (1 minute), or "1h" (1 hour).'
+                                    description: 'Time window. Must be exactly one
+                                      of: "1s" (1 second), "1m" (1 minute), or "1h"
+                                      (1 hour).'
                                     enum:
-                                    - "1s"
-                                    - "1m"
-                                    - "1h"
+                                    - 1s
+                                    - 1m
+                                    - 1h
                                     type: string
                                   limit:
                                     description: The limit alloted for a specified
@@ -313,11 +318,12 @@ spec:
                             using the "BucketRules" configuration.
                           properties:
                             duration:
-                              description: 'Time window. Must be exactly one of: "1s" (1 second), "1m" (1 minute), or "1h" (1 hour).'
+                              description: 'Time window. Must be exactly one of: "1s"
+                                (1 second), "1m" (1 minute), or "1h" (1 hour).'
                               enum:
-                              - "1s"
-                              - "1m"
-                              - "1h"
+                              - 1s
+                              - 1m
+                              - 1h
                               type: string
                             limit:
                               description: The limit alloted for a specified time
@@ -364,11 +370,12 @@ spec:
                       the selected requests have exceeded the quota.
                     properties:
                       duration:
-                        description: 'Time window. Must be exactly one of: "1s" (1 second), "1m" (1 minute), or "1h" (1 hour).'
+                        description: 'Time window. Must be exactly one of: "1s" (1
+                          second), "1m" (1 minute), or "1h" (1 hour).'
                         enum:
-                        - "1s"
-                        - "1m"
-                        - "1h"
+                        - 1s
+                        - 1m
+                        - 1h
                         type: string
                       limit:
                         description: The limit alloted for a specified time window.

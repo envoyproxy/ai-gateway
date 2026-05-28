@@ -77,4 +77,3 @@ func MergeKeyedDescriptors(entries []KeyedDescriptor) []KeyedDescriptor {
 	}
 	return result
 }
-
