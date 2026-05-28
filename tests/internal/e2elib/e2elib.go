@@ -580,7 +580,7 @@ func requireWaitForGatewayPod(t *testing.T, selector string) {
 		}
 		return nil
 	}, "get", "pod", "-n", EnvoyGatewayNamespace,
-		"-o", "jsonpath='{.items[*].spec.initContainers[*].name} {.items[*].spec.containers[*].name}'")
+		"--selector="+selector, "-o", "jsonpath='{.items[0].spec.initContainers[*].name} {.items[0].spec.containers[*].name}'")
 }
 
 // RequireWaitForPodReady waits for the pod with the given selector to be ready.
