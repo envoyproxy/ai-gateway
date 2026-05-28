@@ -6,11 +6,13 @@
 package endpointspec
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 
+	anthropic "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -1013,5 +1015,78 @@ func TestSpeechEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 		require.Equal(t, 1.5, *redacted.Speed)
 		require.NotNil(t, redacted.StreamFormat)
 		require.Equal(t, "sse", *redacted.StreamFormat)
+	})
+}
+
+func TestMessagesEndpointSpec_EarlyTranslate(t *testing.T) {
+	spec := MessagesEndpointSpec{}
+
+	req := &anthropic.MessagesRequest{
+		Model:     "claude-3-5-sonnet-20241022",
+		MaxTokens: 100,
+		Messages: []anthropic.MessageParam{
+			{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "hello"}},
+		},
+	}
+
+	headers, body, err := spec.EarlyTranslate(req)
+	require.NoError(t, err)
+	require.NotNil(t, body)
+
+	// Verify headers contain :path rewritten to chat/completions and matching content-length.
+	var pathVal, contentLengthVal string
+	for _, h := range headers {
+		switch h.Key() {
+		case ":path":
+			pathVal = h.Value()
+		case "content-length":
+			contentLengthVal = h.Value()
+		}
+	}
+	require.Equal(t, "/v1/chat/completions", pathVal)
+	require.Equal(t, fmt.Sprintf("%d", len(body)), contentLengthVal)
+
+	// Body must be valid OpenAI chat-completions JSON with the model preserved.
+	var openaiReq openai.ChatCompletionRequest
+	require.NoError(t, json.Unmarshal(body, &openaiReq))
+	require.Equal(t, "claude-3-5-sonnet-20241022", openaiReq.Model)
+}
+
+func TestEarlyTranslate_NoOpSpecs(t *testing.T) {
+	t.Run("chat_completions", func(t *testing.T) {
+		headers, body, err := ChatCompletionsEndpointSpec{}.EarlyTranslate(&openai.ChatCompletionRequest{})
+		require.NoError(t, err)
+		require.Nil(t, headers)
+		require.Nil(t, body)
+	})
+	t.Run("completions", func(t *testing.T) {
+		headers, body, err := CompletionsEndpointSpec{}.EarlyTranslate(&openai.CompletionRequest{})
+		require.NoError(t, err)
+		require.Nil(t, headers)
+		require.Nil(t, body)
+	})
+	t.Run("embeddings", func(t *testing.T) {
+		headers, body, err := EmbeddingsEndpointSpec{}.EarlyTranslate(&openai.EmbeddingRequest{})
+		require.NoError(t, err)
+		require.Nil(t, headers)
+		require.Nil(t, body)
+	})
+	t.Run("image_generation", func(t *testing.T) {
+		headers, body, err := ImageGenerationEndpointSpec{}.EarlyTranslate(&openai.ImageGenerationRequest{})
+		require.NoError(t, err)
+		require.Nil(t, headers)
+		require.Nil(t, body)
+	})
+	t.Run("responses", func(t *testing.T) {
+		headers, body, err := ResponsesEndpointSpec{}.EarlyTranslate(&openai.ResponseRequest{})
+		require.NoError(t, err)
+		require.Nil(t, headers)
+		require.Nil(t, body)
+	})
+	t.Run("rerank", func(t *testing.T) {
+		headers, body, err := RerankEndpointSpec{}.EarlyTranslate(&cohereschema.RerankV2Request{})
+		require.NoError(t, err)
+		require.Nil(t, headers)
+		require.Nil(t, body)
 	})
 }

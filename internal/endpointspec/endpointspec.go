@@ -278,17 +278,9 @@ func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema,
 	}
 }
 
-// EarlyTranslate implements [EndpointSpec.EarlyTranslate].
-// Produces a minimal chat-completions body so the EPP can parse it, and rewrites
-// :path to /v1/chat/completions so the EPP selects the chat-completions body parser
-// (which understands the "messages" field). The upstream processor uses the preserved
-// original path to still select EmbeddingsEndpointSpec and restore the original body.
-func (EmbeddingsEndpointSpec) EarlyTranslate(req *openai.EmbeddingRequest) ([]internalapi.Header, []byte, error) {
-	body := fmt.Appendf(nil, `{"model":%q,"messages":[{"role":"user","content":""}]}`, req.Model)
-	return []internalapi.Header{
-		{":path", "/v1/chat/completions"},
-		{"content-length", fmt.Sprintf("%d", len(body))},
-	}, body, nil
+// EarlyTranslate implements [EndpointSpec.EarlyTranslate]. No-op for embeddings.
+func (EmbeddingsEndpointSpec) EarlyTranslate(_ *openai.EmbeddingRequest) ([]internalapi.Header, []byte, error) {
+	return nil, nil, nil
 }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
