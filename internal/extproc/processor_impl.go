@@ -353,8 +353,19 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 		}
 	}
 
-	// Apply body mutations from the route and also restore original body on retry.
-	bodyMutation = applyBodyMutation(u.bodyMutator, bodyMutation, u.parent.originalRequestBodyRaw, u.logger)
+	// Decide whether the upstream filter should replace the request body at
+	// all. If the translator emitted no body, no backend HTTPBodyMutation is
+	// configured, and we're not forcing body replay (retry or
+	// streaming-without-usage), then issuing CONTINUE_AND_REPLACE with the
+	// captured original body would clobber any body mutation applied by an
+	// earlier ext_proc filter in the chain.
+	mutatorHasMutations := u.bodyMutator != nil && u.bodyMutator.HasMutations()
+	wantBodyReplace := bodyMutation != nil || forceBodyMutation || mutatorHasMutations
+
+	if wantBodyReplace {
+		// Apply body mutations from the route and also restore original body on retry.
+		bodyMutation = applyBodyMutation(u.bodyMutator, bodyMutation, u.parent.originalRequestBodyRaw, u.logger)
+	}
 
 	// Ensure bodyMutation is not nil for subsequent processing
 	if bodyMutation == nil {
@@ -377,6 +388,22 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 				Header:       &corev3.HeaderValue{Key: h.Key(), RawValue: []byte(h.Value())},
 			})
 		}
+	}
+
+	if !wantBodyReplace {
+		// No body change -> no content-length restamp; emit CONTINUE so Envoy
+		// keeps whatever body the previous filter in the chain produced.
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_RequestHeaders{
+				RequestHeaders: &extprocv3.HeadersResponse{
+					Response: &extprocv3.CommonResponse{
+						HeaderMutation: headerMutation,
+						Status:         extprocv3.CommonResponse_CONTINUE,
+					},
+				},
+			},
+			DynamicMetadata: buildRequestHeaderDynamicMetadata(u.requestHeaders),
+		}, nil
 	}
 
 	var dm *structpb.Struct

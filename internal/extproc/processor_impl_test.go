@@ -24,6 +24,7 @@ import (
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
@@ -738,6 +739,127 @@ func Test_messagesProcessorUpstreamFilter_ProcessRequestHeaders_AWSAnthropicBeta
 	betaValues, ok := translatedBody["anthropic_beta"].([]any)
 	require.True(t, ok)
 	require.Equal(t, []any{"interleaved-thinking-2025-05-14", "context-1m-2025-08-07"}, betaValues)
+}
+
+// Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_BodyReplaceContract
+// locks the contract for when the upstream filter must NOT replace the request
+// body: when the translator returns no body, no backend HTTPBodyMutation is
+// configured, and forceBodyMutation is false, the upstream filter must emit
+// CONTINUE rather than CONTINUE_AND_REPLACE. Issuing CONTINUE_AND_REPLACE with
+// the captured original body would clobber any body mutation applied by an
+// earlier ext_proc filter in the chain. Header mutations and auth headers
+// must still apply on the CONTINUE branch.
+//
+// The sibling subtest pins the opposite half of the contract: when the
+// translator DID emit a body, the upstream filter must continue to issue
+// CONTINUE_AND_REPLACE, so a future refactor cannot quietly flip the contract
+// back.
+func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_BodyReplaceContract(t *testing.T) {
+	t.Run("no translator body, no mutator, no force -> CONTINUE", func(t *testing.T) {
+		someBody := bodyFromModel(t, "some-model", false, nil)
+		headers := map[string]string{
+			":path":                               "/foo",
+			internalapi.ModelNameHeaderKeyDefault: "some-model",
+		}
+		var expBody openai.ChatCompletionRequest
+		require.NoError(t, json.Unmarshal(someBody, &expBody))
+
+		pathRewrite := []internalapi.Header{{":path", "/v1/chat/completions"}}
+		mt := &mockTranslator{
+			t:                           t,
+			expRequestBody:              &expBody,
+			retHeaderMutation:           pathRewrite,
+			retBodyMutation:             nil,
+			expForceRequestBodyMutation: false,
+		}
+		mm := &mockMetrics{}
+		p := &chatCompletionProcessorUpstreamFilter{
+			parent: &chatCompletionProcessorRouterFilter{
+				config:                 &filterapi.RuntimeConfig{},
+				logger:                 slog.Default(),
+				originalRequestBodyRaw: someBody,
+				originalRequestBody:    &expBody,
+				originalModel:          "some-model",
+				stream:                 false,
+				forceBodyMutation:      false,
+			},
+			requestHeaders: headers,
+			metrics:        mm,
+			translator:     mt,
+			handler:        &mockBackendAuthHandler{},
+			// No-config body mutator: HasMutations() returns false. This mirrors
+			// SetBackend's call to bodymutator.NewBodyMutator(nil, ...) when the
+			// route has no HTTPBodyMutation.
+			bodyMutator: bodymutator.NewBodyMutator(nil, someBody),
+		}
+
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
+		require.Equal(t, extprocv3.CommonResponse_CONTINUE, commonRes.Status,
+			"must NOT issue CONTINUE_AND_REPLACE when nothing actually needs to mutate the body — that path silently replays the original body and clobbers earlier filters' mutations")
+		require.Nil(t, commonRes.BodyMutation, "no body mutation should ride on a CONTINUE response")
+
+		require.NotNil(t, commonRes.HeaderMutation)
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 2,
+			"header mutations from the translator (path rewrite) and the auth handler must still apply on the CONTINUE branch")
+		require.Equal(t, ":path", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, []byte("/v1/chat/completions"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[1].Header.Key)
+		require.Equal(t, "mock-auth-handler", string(commonRes.HeaderMutation.SetHeaders[1].Header.RawValue))
+
+		// No body change -> no content-length restamp.
+		// buildRequestHeaderDynamicMetadata returns nil when LogRequestHeaderAttributes is empty.
+		require.Nil(t, resp.DynamicMetadata,
+			"buildContentLengthDynamicMetadataOnRequest must not be called when the body is not replaced")
+	})
+
+	t.Run("translator body present -> CONTINUE_AND_REPLACE", func(t *testing.T) {
+		someBody := bodyFromModel(t, "some-model", false, nil)
+		headers := map[string]string{
+			":path":                               "/foo",
+			internalapi.ModelNameHeaderKeyDefault: "some-model",
+		}
+		var expBody openai.ChatCompletionRequest
+		require.NoError(t, json.Unmarshal(someBody, &expBody))
+
+		bodyMut := []byte("translator-emitted body")
+		mt := &mockTranslator{
+			t:                           t,
+			expRequestBody:              &expBody,
+			retHeaderMutation:           []internalapi.Header{{":path", "/v1/chat/completions"}},
+			retBodyMutation:             bodyMut,
+			expForceRequestBodyMutation: false,
+		}
+		mm := &mockMetrics{}
+		p := &chatCompletionProcessorUpstreamFilter{
+			parent: &chatCompletionProcessorRouterFilter{
+				config:                 &filterapi.RuntimeConfig{},
+				logger:                 slog.Default(),
+				originalRequestBodyRaw: someBody,
+				originalRequestBody:    &expBody,
+				originalModel:          "some-model",
+				stream:                 false,
+				forceBodyMutation:      false,
+			},
+			requestHeaders: headers,
+			metrics:        mm,
+			translator:     mt,
+			handler:        &mockBackendAuthHandler{},
+			bodyMutator:    bodymutator.NewBodyMutator(nil, someBody),
+		}
+
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
+		require.Equal(t, extprocv3.CommonResponse_CONTINUE_AND_REPLACE, commonRes.Status,
+			"existing CONTINUE_AND_REPLACE behavior must be preserved when the translator produced a body")
+		require.Equal(t, bodyMut, commonRes.BodyMutation.GetBody())
+	})
 }
 
 func Test_chatCompletionProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testing.T) {
