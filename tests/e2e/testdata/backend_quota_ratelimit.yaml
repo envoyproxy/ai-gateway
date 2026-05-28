@@ -42,7 +42,7 @@ spec:
           # In production, you should set these to values that make sense for your environment.
           resources: {}
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: envoy-ai-gateway-quota-ratelimit
@@ -69,7 +69,7 @@ spec:
     - metadataKey: llm_total_token
       type: TotalToken
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: envoy-ai-gateway-quota-ratelimit-testupstream
