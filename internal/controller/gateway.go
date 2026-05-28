@@ -28,6 +28,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -384,6 +385,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 		spec := aiGatewayRoute.Spec
 		routeBackendNamesSet := map[string]struct{}{}
 		routeBackendNames := []string{}
+		injectedQuotaCosts := make(map[string]struct{})
 		for ruleIndex := range spec.Rules {
 			rule := &spec.Rules[ruleIndex]
 			for _, m := range rule.Matches {
@@ -497,10 +499,9 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				key := fc.MetadataKey
 				dedup[key] = fc
 			}
-
 			// Inject QuotaPolicy cost expressions as LLMRequestCost entries so ext_proc
 			// computes and stores them in metadata for the HitsAddend to read.
-			c.injectQuotaPolicyCostExpressions(ctx, aiGatewayRoute, ec, llmCosts)
+			c.injectQuotaPolicyCostExpressions(ctx, aiGatewayRoute, ec, injectedQuotaCosts)
 
 			for _, fc := range dedup {
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
@@ -788,7 +789,7 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 	ctx context.Context,
 	route *aigv1b1.AIGatewayRoute,
 	ec *filterapi.Config,
-	llmCosts map[string]struct{},
+	injectedQuotaCosts map[string]struct{},
 ) {
 	var quotaPolicies aigv1a1.QuotaPolicyList
 	if err := c.client.List(ctx, &quotaPolicies, client.InNamespace(route.Namespace)); err != nil {
@@ -838,7 +839,7 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 			for _, ref := range qp.Spec.TargetRefs {
 				backendKey := route.Namespace + "/" + string(ref.Name)
 				dedupeKey := metadataKey + "\x00" + backendKey
-				if _, exists := llmCosts[dedupeKey]; exists {
+				if _, exists := injectedQuotaCosts[dedupeKey]; exists {
 					continue
 				}
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, filterapi.LLMRequestCost{
@@ -847,7 +848,7 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 					CEL:         expr,
 					Backend:     backendKey,
 				})
-				llmCosts[dedupeKey] = struct{}{}
+				injectedQuotaCosts[dedupeKey] = struct{}{}
 			}
 		}
 	}
