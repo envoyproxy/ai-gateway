@@ -175,6 +175,8 @@ spec:
           ports:
             - containerPort: 8081
               name: grpc
+          args:
+            - --quotaRateLimitServiceHost=envoy-ai-gateway-ratelimit.envoy-gateway-system
           env:
             - name: LOG_LEVEL
               value: debug
@@ -210,4 +212,8 @@ spec:
       protocol: TCP
       port: 8081
       targetPort: 8081
+    - name: ratelimit-xds
+      protocol: TCP
+      port: 8082
+      targetPort: 8082
   type: ClusterIP
