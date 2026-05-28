@@ -78,35 +78,3 @@ func MergeKeyedDescriptors(entries []KeyedDescriptor) []KeyedDescriptor {
 	return result
 }
 
-// isStricter returns true if policy a is stricter (lower effective rate) than b.
-func isStricter(a, b *rlsconfv3.RateLimitPolicy) bool {
-	return effectiveRatePerSecond(a) < effectiveRatePerSecond(b)
-}
-
-// effectiveRatePerSecond normalizes a rate limit policy to requests per second.
-func effectiveRatePerSecond(p *rlsconfv3.RateLimitPolicy) float64 {
-	if p == nil || p.RequestsPerUnit == 0 {
-		return 0
-	}
-	seconds := unitToSeconds(p.Unit)
-	if seconds == 0 {
-		return float64(p.RequestsPerUnit)
-	}
-	return float64(p.RequestsPerUnit) / float64(seconds)
-}
-
-// unitToSeconds converts a RateLimitUnit to its duration in seconds.
-func unitToSeconds(unit rlsconfv3.RateLimitUnit) uint32 {
-	switch unit {
-	case rlsconfv3.RateLimitUnit_SECOND:
-		return 1
-	case rlsconfv3.RateLimitUnit_MINUTE:
-		return 60
-	case rlsconfv3.RateLimitUnit_HOUR:
-		return 3600
-	case rlsconfv3.RateLimitUnit_DAY:
-		return 86400
-	default:
-		return 1
-	}
-}

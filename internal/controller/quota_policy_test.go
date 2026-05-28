@@ -22,6 +22,7 @@ import (
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/ratelimit/runner"
 )
 
@@ -571,6 +572,58 @@ func Test_quotaPolicyTargetRefsIndexFunc(t *testing.T) {
 		client.MatchingFields{k8sClientIndexAIServiceBackendToTargetingQuotaPolicy: "nonexistent.default"})
 	require.NoError(t, err)
 	require.Empty(t, policies.Items)
+}
+
+func TestQuotaPolicyController_resolveBackendModelOverrides(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexesForQuotaPolicy(t)
+	rateLimitRunner := newTestRunner(t)
+	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner)
+	namespace := "default"
+
+	// Create an AIGatewayRoute named "claude-sonnet-4-6" with a backend ref that has a ModelNameOverride.
+	route := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "claude-sonnet-4-6", Namespace: namespace},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+						{Name: "my-backend", ModelNameOverride: "claude-sonnet-4-6-20250514"},
+						{Name: "my-backend", ModelNameOverride: "claude-sonnet-4-6-20250514"}, // duplicate
+						{Name: "other-backend", ModelNameOverride: "other-override"},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), route))
+
+	// Create a route that should NOT match (different model name).
+	unrelatedRoute := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "claude-haiku-4-5", Namespace: namespace},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+						{Name: "my-backend", ModelNameOverride: "haiku-override"},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), unrelatedRoute))
+
+	backends := []*aigv1a1.AIServiceBackend{
+		{ObjectMeta: metav1.ObjectMeta{Name: "my-backend", Namespace: namespace}},
+	}
+	policyModelNames := map[string]bool{"claude-sonnet-4-6": true}
+
+	result := c.resolveBackendModelOverrides(t.Context(), namespace, backends, policyModelNames)
+
+	// Should find the override for my-backend from the matching route, deduped.
+	require.Len(t, result["my-backend"], 1)
+	require.Equal(t, "claude-sonnet-4-6-20250514", result["my-backend"][0])
+	// other-backend is not in our backends list, so not included.
+	require.Empty(t, result["other-backend"])
 }
 
 func ptrTo[T any](v T) *T {

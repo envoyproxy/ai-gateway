@@ -124,34 +124,40 @@ func TestMergeDescriptors_NilRateLimitNotOverwritten(t *testing.T) {
 	require.Equal(t, uint32(100), merged[0].RateLimit.RequestsPerUnit)
 }
 
-func TestIsStricter(t *testing.T) {
-	tests := []struct {
-		name     string
-		a, b     *rlsconfv3.RateLimitPolicy
-		expected bool
-	}{
-		{
-			name:     "same unit, lower rate is stricter",
-			a:        &rlsconfv3.RateLimitPolicy{RequestsPerUnit: 50, Unit: rlsconfv3.RateLimitUnit_MINUTE},
-			b:        &rlsconfv3.RateLimitPolicy{RequestsPerUnit: 100, Unit: rlsconfv3.RateLimitUnit_MINUTE},
-			expected: true,
-		},
-		{
-			name:     "same unit, higher rate is not stricter",
-			a:        &rlsconfv3.RateLimitPolicy{RequestsPerUnit: 100, Unit: rlsconfv3.RateLimitUnit_MINUTE},
-			b:        &rlsconfv3.RateLimitPolicy{RequestsPerUnit: 50, Unit: rlsconfv3.RateLimitUnit_MINUTE},
-			expected: false,
-		},
-		{
-			name:     "different units, 100/hour stricter than 10/minute",
-			a:        &rlsconfv3.RateLimitPolicy{RequestsPerUnit: 100, Unit: rlsconfv3.RateLimitUnit_HOUR},
-			b:        &rlsconfv3.RateLimitPolicy{RequestsPerUnit: 10, Unit: rlsconfv3.RateLimitUnit_MINUTE},
-			expected: true, // 100/3600=0.028 < 10/60=0.167
-		},
+func TestMergeKeyedDescriptors(t *testing.T) {
+	entries := []KeyedDescriptor{
+		{ComparableKey: "a", Descriptor: &rlsconfv3.RateLimitDescriptor{Key: "k", Value: "a"}},
+		{ComparableKey: "b", Descriptor: &rlsconfv3.RateLimitDescriptor{Key: "k", Value: "b"}},
+		{ComparableKey: "a", Descriptor: &rlsconfv3.RateLimitDescriptor{Key: "k", Value: "a-dup"}},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.expected, isStricter(tt.a, tt.b))
-		})
+
+	result := MergeKeyedDescriptors(entries)
+	require.Len(t, result, 2)
+	require.Equal(t, "a", result[0].Descriptor.Value)
+	require.Equal(t, "b", result[1].Descriptor.Value)
+}
+
+func TestMergeDescriptors_PreservesShadowMode(t *testing.T) {
+	descs := []*rlsconfv3.RateLimitDescriptor{
+		{Key: "k", Value: "v", ShadowMode: false},
+		{Key: "k", Value: "v", ShadowMode: true},
 	}
+
+	merged := MergeDescriptors(descs)
+	require.Len(t, merged, 1)
+	require.True(t, merged[0].ShadowMode)
+}
+
+func TestMergeDescriptors_SecondHasLimitFirstDoesNot(t *testing.T) {
+	descs := []*rlsconfv3.RateLimitDescriptor{
+		{Key: "k", Value: "v"},
+		{Key: "k", Value: "v", RateLimit: &rlsconfv3.RateLimitPolicy{
+			RequestsPerUnit: 42, Unit: rlsconfv3.RateLimitUnit_SECOND,
+		}},
+	}
+
+	merged := MergeDescriptors(descs)
+	require.Len(t, merged, 1)
+	require.NotNil(t, merged[0].RateLimit)
+	require.Equal(t, uint32(42), merged[0].RateLimit.RequestsPerUnit)
 }
