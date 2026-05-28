@@ -40,6 +40,8 @@ type openAIToOpenAITranslatorV1Speech struct {
 	stream bool
 	// requestModel stores the model from the request to use in the response.
 	requestModel internalapi.RequestModel
+	// buffered stores incomplete SSE events across streamed response body chunks.
+	buffered []byte
 }
 
 // RequestBody implements [OpenAISpeechTranslator.RequestBody].
@@ -106,7 +108,8 @@ func (o *openAIToOpenAITranslatorV1Speech) handleStreamingResponse(body io.Reade
 
 	// Record SSE chunks to span if tracing is enabled
 	if span != nil {
-		o.recordSSEChunksToSpan(span, chunks)
+		o.buffered = append(o.buffered, chunks...)
+		o.recordSSEChunksToSpan(span)
 	}
 
 	// Use request model as response model (speech synthesis doesn't return a model field)
@@ -137,10 +140,15 @@ func (o *openAIToOpenAITranslatorV1Speech) handleBinaryResponse(body io.Reader, 
 }
 
 // recordSSEChunksToSpan records SSE streaming chunks to the tracing span.
-func (o *openAIToOpenAITranslatorV1Speech) recordSSEChunksToSpan(span tracingapi.SpeechSpan, chunks []byte) {
-	// Parse SSE events from the buffered data
-	// SSE format: "data: {json}\n\n"
-	for event := range bytes.SplitSeq(chunks, []byte("\n\n")) {
+func (o *openAIToOpenAITranslatorV1Speech) recordSSEChunksToSpan(span tracingapi.SpeechSpan) {
+	for {
+		// SSE event boundary is a blank line: "data: {json}\n\n".
+		i := bytes.Index(o.buffered, []byte("\n\n"))
+		if i == -1 {
+			return
+		}
+		event := o.buffered[:i]
+		o.buffered = o.buffered[i+2:]
 		for line := range bytes.SplitSeq(event, []byte("\n")) {
 			// Look for lines starting with "data: "
 			if !bytes.HasPrefix(line, sseDataPrefix) {

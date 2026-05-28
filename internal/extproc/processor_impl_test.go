@@ -22,7 +22,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	anthropic "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -71,7 +71,8 @@ func TestNewFactory(t *testing.T) {
 type (
 	chatCompletionProcessorRouterFilter   = routerProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
 	chatCompletionProcessorUpstreamFilter = upstreamProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
-	messagesProcessorRouterFilter         = routerProcessor[anthropic.MessagesRequest, anthropic.MessagesResponse, anthropic.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
+	messagesProcessorRouterFilter         = routerProcessor[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
+	messagesProcessorUpstreamFilter       = upstreamProcessor[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
 )
 
 type mockTracer struct {
@@ -214,10 +215,10 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 }
 
 func Test_messagesProcessorRouterFilter_ProcessRequestBody_EarlyTranslate(t *testing.T) {
-	reqBody, err := json.Marshal(&anthropic.MessagesRequest{
+	reqBody, err := json.Marshal(&anthropicschema.MessagesRequest{
 		Model:     "claude-3-5-sonnet-20241022",
 		MaxTokens: 100,
-		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "hello"}}},
+		Messages:  []anthropicschema.MessageParam{{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "hello"}}},
 	})
 	require.NoError(t, err)
 
@@ -225,7 +226,7 @@ func Test_messagesProcessorRouterFilter_ProcessRequestBody_EarlyTranslate(t *tes
 		config:         &filterapi.RuntimeConfig{},
 		requestHeaders: map[string]string{":path": "/v1/messages"},
 		logger:         slog.Default(),
-		tracer:         tracingapi.NoopTracer[anthropic.MessagesRequest, anthropic.MessagesResponse, anthropic.MessagesStreamChunk]{},
+		tracer:         tracingapi.NoopTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]{},
 	}
 
 	resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: reqBody})
@@ -728,6 +729,63 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 			})
 		})
 	}
+}
+
+func Test_messagesProcessorUpstreamFilter_ProcessRequestHeaders_AWSAnthropicBetaHeader(t *testing.T) {
+	body := anthropicschema.MessagesRequest{
+		Model:     "anthropic.claude-3-sonnet-20240229-v1:0",
+		MaxTokens: 128,
+		Messages: []anthropicschema.MessageParam{
+			{
+				Role:    anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{Text: "hello"},
+			},
+		},
+	}
+	raw, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	headers := map[string]string{
+		":path":                               "/v1/messages",
+		internalapi.ModelNameHeaderKeyDefault: body.Model,
+		"anthropic-beta":                      "interleaved-thinking-2025-05-14,context-1m-2025-08-07",
+	}
+	mm := &mockMetrics{}
+	p := &messagesProcessorUpstreamFilter{
+		requestHeaders: headers,
+		metrics:        mm,
+	}
+	r := &messagesProcessorRouterFilter{
+		eh:                     endpointspec.MessagesEndpointSpec{},
+		config:                 &filterapi.RuntimeConfig{},
+		logger:                 slog.Default(),
+		originalRequestBodyRaw: raw,
+		originalRequestBody:    &body,
+		originalModel:          body.Model,
+	}
+
+	err = p.SetBackend(t.Context(), &filterapi.RuntimeBackend{
+		Backend: &filterapi.Backend{
+			Name:   "aws-anthropic",
+			Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSAnthropic, Version: "bedrock-2023-05-31"},
+		},
+	}, "test-route", r)
+	require.NoError(t, err)
+
+	resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+	require.NoError(t, err)
+	commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
+
+	var translatedBody map[string]any
+	err = json.Unmarshal(commonRes.BodyMutation.GetBody(), &translatedBody)
+	require.NoError(t, err)
+	require.Equal(t, "bedrock-2023-05-31", translatedBody["anthropic_version"])
+	require.NotContains(t, translatedBody, "model")
+	require.NotContains(t, translatedBody, "stream")
+
+	betaValues, ok := translatedBody["anthropic_beta"].([]any)
+	require.True(t, ok)
+	require.Equal(t, []any{"interleaved-thinking-2025-05-14", "context-1m-2025-08-07"}, betaValues)
 }
 
 func Test_chatCompletionProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testing.T) {
