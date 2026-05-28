@@ -87,9 +87,9 @@ func (c *QuotaPolicyController) Reconcile(ctx context.Context, req reconcile.Req
 // configs to the xDS runner.
 func (c *QuotaPolicyController) syncQuotaPolicy(ctx context.Context, policy *aigv1a1.QuotaPolicy) error {
 	// Resolve target backends for this policy.
-	var backends []*aigv1a1.AIServiceBackend
+	var backends []*aigv1b1.AIServiceBackend
 	for _, ref := range policy.Spec.TargetRefs {
-		var backend aigv1a1.AIServiceBackend
+		var backend aigv1b1.AIServiceBackend
 		key := client.ObjectKey{
 			Namespace: policy.Namespace,
 			Name:      string(ref.Name),
@@ -188,7 +188,7 @@ func (c *QuotaPolicyController) getMergedConfigsLocked() []*rlsconfv3.RateLimitC
 // the policyModelNames and collects the unique ModelNameOverride values for each
 // backend. This ensures a policy for "claude-sonnet-4-6" only picks up overrides
 // from the "claude-sonnet-4-6" route, not from unrelated routes.
-func (c *QuotaPolicyController) resolveBackendModelOverrides(ctx context.Context, namespace string, backends []*aigv1a1.AIServiceBackend, policyModelNames map[string]bool) map[string][]string {
+func (c *QuotaPolicyController) resolveBackendModelOverrides(ctx context.Context, namespace string, backends []*aigv1b1.AIServiceBackend, policyModelNames map[string]bool) map[string][]string {
 	backendNames := make(map[string]bool, len(backends))
 	for _, b := range backends {
 		backendNames[b.Name] = true
