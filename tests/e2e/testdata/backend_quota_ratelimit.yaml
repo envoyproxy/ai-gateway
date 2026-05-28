@@ -45,7 +45,7 @@ spec:
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
-  name: envoy-ai-gateway-quota-ratelimit
+  name: quota-test-model
   namespace: default
 spec:
   parentRefs:
