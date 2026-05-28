@@ -579,8 +579,8 @@ func requireWaitForGatewayPod(t *testing.T, selector string) {
 			return fmt.Errorf("container not found, output: %s", output)
 		}
 		return nil
-	}, "get", "pod", "-n", EnvoyGatewayNamespace,
-		"--selector="+selector, "-o", "jsonpath='{.items[0].spec.initContainers[*].name} {.items[0].spec.containers[*].name}'")
+	}, "get", "pod", "-a", EnvoyGatewayNamespace,
+		"-o", "jsonpath='{.items[0].spec.initContainers[*].name} {.items[0].spec.containers[*].name}'")
 }
 
 // RequireWaitForPodReady waits for the pod with the given selector to be ready.

@@ -35,6 +35,9 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 		_ = e2elib.KubectlDeleteManifest(context.Background(), "../../examples/token_ratelimit/redis.yaml")
 	})
 
+	// Wait for the redis pod to be ready so that the rate limit service can connect.
+	e2elib.RequireWaitForPodReady(t, "redis-system", "app=redis")
+
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), "testdata/backend_quota_ratelimit.yaml"))
 	t.Cleanup(func() {
 		_ = e2elib.KubectlDeleteManifest(context.Background(), "testdata/backend_quota_ratelimit.yaml")
@@ -43,8 +46,6 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-quota-ratelimit"
 	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 
-	// Wait for the redis pod to be ready so that the rate limit service can connect.
-	e2elib.RequireWaitForPodReady(t, "redis-system", "app=redis")
 	// Wait for the AI Gateway rate limit service to be ready.
 	e2elib.RequireWaitForPodReady(t, e2elib.EnvoyGatewayNamespace, "app=envoy-ai-gateway-ratelimit")
 

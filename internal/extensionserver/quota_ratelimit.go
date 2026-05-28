@@ -63,20 +63,14 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 	listeners []*listenerv3.Listener,
 	routes []*routev3.RouteConfiguration,
 ) ([]*clusterv3.Cluster, error) {
-	s.log.Info("QP: Checking for QuotaPolicies to determine if quota rate limit filter injection is needed")
 	// Find all QuotaPolicies and their target backends.
 	quotaPolicies, err := s.listQuotaPolicies(ctx)
 	if err != nil {
-		// Log but don't fail: a transient error (e.g. cache not synced yet)
-		// should not block xDS translation for all gateways.
-		s.log.Error(err, "QP: failed to list QuotaPolicies, skipping quota rate limit injection")
-		return clusters, nil
+		return clusters, fmt.Errorf("failed to list QuotaPolicies: %w", err)
 	}
 	if len(quotaPolicies) == 0 {
 		return clusters, nil
 	}
-
-	s.log.Info("QP: Quota policies exists:", "count", len(quotaPolicies), "example_policy", fmt.Sprintf("%+v", quotaPolicies[0]))
 
 	// Build a map of "namespace/backendName" to the QuotaPolicies targeting each backend.
 	quotaBackendPolicies := buildQuotaBackendPolicies(quotaPolicies)
@@ -123,7 +117,6 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 			}
 		}
 		if hasQuotaRoute {
-			s.log.Info("QP: Found quota rate limit listener", "listener", ln.Name)
 			if err := s.injectQuotaRateLimitFilterIntoListener(ln, translator.QuotaDomain); err != nil {
 				s.log.Error(err, "failed to inject quota rate limit filter into listener", "listener", ln.Name)
 			}
@@ -197,7 +190,6 @@ func (s *Server) buildQuotaRateLimitCluster() *clusterv3.Cluster {
 // into the HCM filter chain of the given listener. The filter is inserted before the
 // router filter. It is a no-op on routes without per-route RateLimitPerRoute config.
 func (s *Server) injectQuotaRateLimitFilterIntoListener(ln *listenerv3.Listener, domain string) error {
-	s.log.Info("QP: Injecting Quota Rate Limit", "domain", domain)
 	filterChains := ln.GetFilterChains()
 	if ln.DefaultFilterChain != nil {
 		filterChains = append(filterChains, ln.DefaultFilterChain)
@@ -220,7 +212,6 @@ func (s *Server) injectQuotaRateLimitFilterIntoListener(ln *listenerv3.Listener,
 			continue
 		}
 
-		s.log.Info("QP: Building Quota Rate Limit")
 		rateLimitFilter, err := s.buildQuotaRateLimitFilter(domain)
 		if err != nil {
 			return fmt.Errorf("failed to build quota rate limit filter: %w", err)
@@ -247,8 +238,6 @@ func (s *Server) injectQuotaRateLimitFilterIntoListener(ln *listenerv3.Listener,
 		if !inserted {
 			httpConManager.HttpFilters = append(httpConManager.HttpFilters, rateLimitFilter)
 		}
-
-		s.log.Info("QP: Updating Quota Rate Limit", "inserted", inserted)
 
 		hcmAny, err := toAny(httpConManager)
 		if err != nil {

@@ -125,7 +125,6 @@ func (c *QuotaPolicyController) syncQuotaPolicy(ctx context.Context, policy *aig
 
 	// Build rate limit configs for this policy.
 	var configs []*rlsconfv3.RateLimitConfig
-	c.logger.Info("QP: found backends for policy, building configs", "backendCount", len(backends), "quotaPolicy", policy.Name)
 	if len(backends) > 0 {
 		var err error
 		configs, err = translator.BuildRateLimitConfigs(policy, backends, backendModelOverrides)
