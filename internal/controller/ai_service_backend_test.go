@@ -15,9 +15,11 @@ import (
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
@@ -111,4 +113,98 @@ func TestAIServiceBackendController_Reconcile_error_with_multiple_bsps(t *testin
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: backendName}})
 	require.ErrorContains(t, err, `multiple BackendSecurityPolicies found for AIServiceBackend mybackend: [bsp-0 bsp-1 bsp-2 bsp-3 bsp-4]`)
+}
+
+func TestAIServiceBackendController_validateBackendRef(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
+	eventChan := internaltesting.NewControllerEventChan[*aigv1b1.AIGatewayRoute]()
+	c := NewAIServiceBackendController(fakeClient, fake2.NewClientset(), ctrl.Log, eventChan.Ch)
+
+	pool := &gwaiev1.InferencePool{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-pool", Namespace: "default"},
+		Spec: gwaiev1.InferencePoolSpec{
+			Selector:    gwaiev1.LabelSelector{},
+			TargetPorts: []gwaiev1.Port{{Number: 8000}},
+			EndpointPickerRef: gwaiev1.EndpointPickerRef{
+				Name: "epp-svc",
+			},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), pool))
+
+	t.Run("non_inference_pool_ref_is_noop", func(t *testing.T) {
+		backend := &aigv1b1.AIServiceBackend{
+			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "default"},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend"},
+			},
+		}
+		require.NoError(t, c.validateBackendRef(t.Context(), backend))
+	})
+
+	t.Run("inference_pool_found", func(t *testing.T) {
+		backend := &aigv1b1.AIServiceBackend{
+			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "default"},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{
+					Group: ptr.To(gwapiv1.Group(inferencePoolGroup)),
+					Kind:  ptr.To(gwapiv1.Kind(inferencePoolKind)),
+					Name:  "my-pool",
+				},
+			},
+		}
+		require.NoError(t, c.validateBackendRef(t.Context(), backend))
+	})
+
+	t.Run("inference_pool_not_found", func(t *testing.T) {
+		backend := &aigv1b1.AIServiceBackend{
+			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "default"},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{
+					Group: ptr.To(gwapiv1.Group(inferencePoolGroup)),
+					Kind:  ptr.To(gwapiv1.Kind(inferencePoolKind)),
+					Name:  "missing-pool",
+				},
+			},
+		}
+		err := c.validateBackendRef(t.Context(), backend)
+		require.ErrorContains(t, err, "missing-pool")
+	})
+}
+
+func TestAIServiceBackendController_inferencePoolEventHandler(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
+	eventChan := internaltesting.NewControllerEventChan[*aigv1b1.AIGatewayRoute]()
+	c := NewAIServiceBackendController(fakeClient, fake2.NewClientset(), ctrl.Log, eventChan.Ch)
+
+	// Create two backends: one referencing the pool, one not.
+	backendWithPool := &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "b-pool", Namespace: "default"},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{
+				Group: ptr.To(gwapiv1.Group(inferencePoolGroup)),
+				Kind:  ptr.To(gwapiv1.Kind(inferencePoolKind)),
+				Name:  "my-pool",
+			},
+		},
+	}
+	backendWithoutPool := &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "b-other", Namespace: "default"},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend"},
+		},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), backendWithPool))
+	require.NoError(t, fakeClient.Create(t.Context(), backendWithoutPool))
+
+	pool := &gwaiev1.InferencePool{ObjectMeta: metav1.ObjectMeta{Name: "my-pool", Namespace: "default"}}
+	requests := c.inferencePoolEventHandler(t.Context(), pool)
+
+	require.Len(t, requests, 1)
+	require.Equal(t, reconcile.Request{NamespacedName: client.ObjectKey{Name: "b-pool", Namespace: "default"}}, requests[0])
+
+	// A pool in a different namespace should match no backends.
+	otherPool := &gwaiev1.InferencePool{ObjectMeta: metav1.ObjectMeta{Name: "my-pool", Namespace: "other"}}
+	requests = c.inferencePoolEventHandler(t.Context(), otherPool)
+	require.Empty(t, requests)
 }
