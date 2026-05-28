@@ -76,6 +76,12 @@ type ChatCompletionContentPartTextType string
 // ChatCompletionContentPartImageType The type of the content part.
 type ChatCompletionContentPartImageType string
 
+// ChatCompletionContentPartAudioType The type of the content part.
+type ChatCompletionContentPartAudioType string
+
+// ChatCompletionContentPartVideoType The type of the content part.
+type ChatCompletionContentPartVideoType string
+
 // ChatCompletionContentPartFileType The type of the content part.
 type ChatCompletionContentPartFileType string
 
@@ -84,6 +90,8 @@ const (
 	ChatCompletionContentPartRefusalTypeRefusal       ChatCompletionContentPartRefusalType    = "refusal"
 	ChatCompletionContentPartInputAudioTypeInputAudio ChatCompletionContentPartInputAudioType = "input_audio"
 	ChatCompletionContentPartImageTypeImageURL        ChatCompletionContentPartImageType      = "image_url"
+	ChatCompletionContentPartAudioTypeAudioURL        ChatCompletionContentPartAudioType      = "audio_url"
+	ChatCompletionContentPartVideoTypeVideoURL        ChatCompletionContentPartVideoType      = "video_url"
 	ChatCompletionContentPartFileTypeFile             ChatCompletionContentPartFileType       = "file"
 )
 
@@ -153,6 +161,34 @@ type ChatCompletionContentPartImageParam struct {
 	*AnthropicContentFields `json:",inline,omitempty"`
 }
 
+type ChatCompletionContentPartAudioAudioURLParam struct {
+	// Either a URL of the audio or the base64 encoded audio data.
+	URL string `json:"url"`
+}
+
+// ChatCompletionContentPartAudioParam Learn more in the
+// [Multimodal Inputs - vLLM](https://docs.vllm.ai/en/latest/features/multimodal_inputs/#audio-inputs_1).
+type ChatCompletionContentPartAudioParam struct {
+	AudioURL ChatCompletionContentPartAudioAudioURLParam `json:"audio_url"`
+	// The type of the content part.
+	Type                    ChatCompletionContentPartAudioType `json:"type"`
+	*AnthropicContentFields `json:",inline,omitempty"`
+}
+
+type ChatCompletionContentPartVideoVideoURLParam struct {
+	// Either a URL of the video or the base64 encoded video data.
+	URL string `json:"url"`
+}
+
+// ChatCompletionContentPartVideoParam Learn more in the
+// [Multimodal Inputs - vLLM](https://docs.vllm.ai/en/latest/features/multimodal_inputs/#video-inputs_1).
+type ChatCompletionContentPartVideoParam struct {
+	VideoURL ChatCompletionContentPartVideoVideoURLParam `json:"video_url"`
+	// The type of the content part.
+	Type                    ChatCompletionContentPartVideoType `json:"type"`
+	*AnthropicContentFields `json:",inline,omitempty"`
+}
+
 type ChatCompletionContentPartFileFileParam struct {
 	// The base64 encoded file data, used when passing the file to the model as a
 	// string.
@@ -179,6 +215,8 @@ type ChatCompletionContentPartUserUnionParam struct {
 	OfText       *ChatCompletionContentPartTextParam       `json:",omitzero,inline"`
 	OfInputAudio *ChatCompletionContentPartInputAudioParam `json:",omitzero,inline"`
 	OfImageURL   *ChatCompletionContentPartImageParam      `json:",omitzero,inline"`
+	OfAudioURL   *ChatCompletionContentPartAudioParam      `json:",omitzero,inline"`
+	OfVideoURL   *ChatCompletionContentPartVideoParam      `json:",omitzero,inline"`
 	OfFile       *ChatCompletionContentPartFileParam       `json:",omitzero,inline"`
 }
 
@@ -210,6 +248,18 @@ func (c *ChatCompletionContentPartUserUnionParam) UnmarshalJSON(data []byte) err
 			return err
 		}
 		c.OfImageURL = &imageContent
+	case string(ChatCompletionContentPartAudioTypeAudioURL):
+		var audioContent ChatCompletionContentPartAudioParam
+		if err := json.Unmarshal(data, &audioContent); err != nil {
+			return err
+		}
+		c.OfAudioURL = &audioContent
+	case string(ChatCompletionContentPartVideoTypeVideoURL):
+		var videoContent ChatCompletionContentPartVideoParam
+		if err := json.Unmarshal(data, &videoContent); err != nil {
+			return err
+		}
+		c.OfVideoURL = &videoContent
 	case string(ChatCompletionContentPartFileTypeFile):
 		var fileContent ChatCompletionContentPartFileParam
 		if err := json.Unmarshal(data, &fileContent); err != nil {
@@ -232,6 +282,12 @@ func (c ChatCompletionContentPartUserUnionParam) MarshalJSON() ([]byte, error) {
 	}
 	if c.OfImageURL != nil {
 		return json.Marshal(c.OfImageURL)
+	}
+	if c.OfAudioURL != nil {
+		return json.Marshal(c.OfAudioURL)
+	}
+	if c.OfVideoURL != nil {
+		return json.Marshal(c.OfVideoURL)
 	}
 	return nil, errors.New("no content to marshal")
 }
