@@ -8,6 +8,7 @@ package translator
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -87,6 +88,20 @@ func (o *openAIToAzureOpenAITranslatorV1Responses) RequestBody(raw []byte, req *
 		return nil, nil, err
 	}
 
-	newHeaders[0] = internalapi.Header{pathHeaderName, fmt.Sprintf("/openai/responses?api-version=%s", o.apiVersion)}
+	path := newHeaders[0].Value()
+	if path == "" {
+		path = "/openai/responses"
+	}
+	newHeaders[0] = internalapi.Header{pathHeaderName, appendAzureOpenAIAPIVersion(path, o.apiVersion)}
 	return
+}
+
+func appendAzureOpenAIAPIVersion(path, apiVersion string) string {
+	separator := "?"
+	if strings.Contains(path, "?") && !strings.HasSuffix(path, "?") && !strings.HasSuffix(path, "&") {
+		separator = "&"
+	} else if strings.HasSuffix(path, "?") || strings.HasSuffix(path, "&") {
+		separator = ""
+	}
+	return path + separator + "api-version=" + apiVersion
 }
