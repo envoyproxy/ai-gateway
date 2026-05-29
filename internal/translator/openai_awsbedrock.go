@@ -138,12 +138,20 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) RequestBody(_ []byte, ope
 		bedrockReq.InferenceConfig.StopSequences = openAIReq.Stop.OfStringArray
 	}
 
-	// Handle thinking config
+	// Handle thinking config (for Anthropic models)
 	if openAIReq.Thinking != nil {
 		if bedrockReq.AdditionalModelRequestFields == nil {
 			bedrockReq.AdditionalModelRequestFields = make(map[string]interface{})
 		}
 		bedrockReq.AdditionalModelRequestFields = getAwsBedrockThinkingMap(openAIReq.Thinking)
+	}
+
+	// Forward reasoning_effort as reasoning_config (for GLM, Nova, and other models)
+	if openAIReq.ReasoningEffort != "" {
+		if bedrockReq.AdditionalModelRequestFields == nil {
+			bedrockReq.AdditionalModelRequestFields = make(map[string]interface{})
+		}
+		bedrockReq.AdditionalModelRequestFields["reasoning_config"] = string(openAIReq.ReasoningEffort)
 	}
 
 	// Convert Chat Completion messages.
