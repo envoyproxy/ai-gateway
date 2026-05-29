@@ -3747,7 +3747,16 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 	// Handle messages without explicit type field (for compatibility with simple message arrays)
 	// This allows arrays like [{"role": "user", "content": "Hello"}] to work without requiring type field
 	if typ.String() == "" {
-		if gjson.GetBytes(data, "role").Exists() && gjson.GetBytes(data, "content").Exists() {
+		role := gjson.GetBytes(data, "role")
+		if role.Exists() && gjson.GetBytes(data, "content").Exists() {
+			if role.String() == "assistant" {
+				// Assistant history may be sent as output_message content without type: "message".
+				var om ResponseOutputMessage
+				if err := json.Unmarshal(data, &om); err == nil {
+					r.OfOutputMessage = &om
+					return nil
+				}
+			}
 			// Treat as EasyInputMessageParam
 			var msg EasyInputMessageParam
 			if err := json.Unmarshal(data, &msg); err != nil {
