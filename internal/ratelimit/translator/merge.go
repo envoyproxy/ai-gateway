@@ -25,7 +25,8 @@ func MergeDescriptors(descs []*rlsconfv3.RateLimitDescriptor) []*rlsconfv3.RateL
 		key := d.Key + "\x00" + d.Value
 		existing, ok := byKey[key]
 		if !ok {
-			byKey[key] = &entry{desc: d, order: order}
+			cloned := proto.Clone(d).(*rlsconfv3.RateLimitDescriptor)
+			byKey[key] = &entry{desc: cloned, order: order}
 			order++
 			continue
 		}
