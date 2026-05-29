@@ -445,7 +445,7 @@ func (s *Server) backendKeysForCluster(ctx context.Context, clusterName string) 
 	namespace := parts[1]
 	routeName := parts[2]
 	ruleIndex, err := strconv.Atoi(parts[4])
-	if err != nil {
+	if err != nil || ruleIndex < 0 {
 		return nil
 	}
 
@@ -500,7 +500,7 @@ func (s *Server) resolveRouteModelInfo(ctx context.Context, route *routev3.Route
 		namespace := parts[1]
 		routeName := parts[2]
 		ruleIndex, err := strconv.Atoi(parts[4])
-		if err != nil {
+		if err != nil || ruleIndex < 0 {
 			return
 		}
 
