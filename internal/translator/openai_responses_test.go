@@ -606,7 +606,7 @@ data: [DONE]
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(map[string]string{}, original, req, false)
 		require.NoError(t, err)
 
 		firstChunk := []byte(`data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
@@ -664,7 +664,7 @@ data: [DONE]
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(map[string]string{}, original, req, false)
 		require.NoError(t, err)
 
 		firstChunk := []byte(`data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}

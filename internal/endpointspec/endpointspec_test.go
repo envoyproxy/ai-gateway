@@ -345,7 +345,7 @@ func TestResponsesEndpointSpec_ParseBody(t *testing.T) {
 			]
 		}`)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4.7", model)
 		require.False(t, stream)

@@ -72,8 +72,8 @@ func TestNewFactory(t *testing.T) {
 type (
 	chatCompletionProcessorRouterFilter      = routerProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
 	chatCompletionProcessorUpstreamFilter    = upstreamProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
-	messagesProcessorRouterFilter         = routerProcessor[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
-	messagesProcessorUpstreamFilter       = upstreamProcessor[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
+	messagesProcessorRouterFilter            = routerProcessor[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
+	messagesProcessorUpstreamFilter          = upstreamProcessor[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
 	retrieveFileContentProcessorRouterFilter = routerProcessor[struct{}, struct{}, struct{}, endpointspec.RetrieveFileContentEndpointSpec]
 	// filesProcessorUpstreamFilter = upstreamProcessor[openai.FileRequest, openai.FileResponse, openai.FileResponseChunk, endpointspec.FilesEndpointSpec]
 )
@@ -351,7 +351,7 @@ func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *test
 		require.True(t, headersResp.RequestHeaders.Response.ClearRouteCache)
 
 		mutatedHeaders := headerValueOptionsToMap(headersResp.RequestHeaders.Response.HeaderMutation.SetHeaders)
-		require.Equal(t, fileRouteModelValue, mutatedHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.Equal(t, noModelPlaceholder, mutatedHeaders[internalapi.ModelNameHeaderKeyDefault])
 		require.Equal(t, "openai-primary", mutatedHeaders[internalapi.BackendNameHeaderKey])
 		require.NotContains(t, mutatedHeaders, internalapi.DecodedFileIDHeaderKey)
 		require.NotContains(t, mutatedHeaders, internalapi.OriginalFileIDHeaderKey)
@@ -359,7 +359,7 @@ func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *test
 		require.Equal(t, path, mutatedHeaders[internalapi.EnvoyOriginalPathHeader])
 
 		require.Empty(t, p.originalModel)
-		require.Equal(t, fileRouteModelValue, p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.Equal(t, noModelPlaceholder, p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
 		require.Equal(t, "openai-primary", p.requestHeaders[internalapi.BackendNameHeaderKey])
 		require.NotContains(t, p.requestHeaders, internalapi.DecodedFileIDHeaderKey)
 		require.NotContains(t, p.requestHeaders, internalapi.OriginalFileIDHeaderKey)
@@ -448,12 +448,12 @@ func Test_retrieveFileContentProcessorRouterFilter_ProcessRequestHeaders(t *test
 		mutatedHeaders := headerValueOptionsToMap(headersResp.RequestHeaders.Response.HeaderMutation.SetHeaders)
 		require.Equal(t, "file-raw123", mutatedHeaders[internalapi.OriginalFileIDHeaderKey])
 		require.Equal(t, "file-raw123", mutatedHeaders[internalapi.DecodedFileIDHeaderKey])
-		require.Equal(t, fileRouteModelValue, mutatedHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.Equal(t, noModelPlaceholder, mutatedHeaders[internalapi.ModelNameHeaderKeyDefault])
 		require.Equal(t, "azure-openai", mutatedHeaders[internalapi.BackendNameHeaderKey])
 
 		require.Equal(t, "file-raw123", p.requestHeaders[internalapi.OriginalFileIDHeaderKey])
 		require.Equal(t, "file-raw123", p.requestHeaders[internalapi.DecodedFileIDHeaderKey])
-		require.Equal(t, fileRouteModelValue, p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
+		require.Equal(t, noModelPlaceholder, p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
 		require.Equal(t, "azure-openai", p.requestHeaders[internalapi.BackendNameHeaderKey])
 		require.Empty(t, p.originalModel)
 	})

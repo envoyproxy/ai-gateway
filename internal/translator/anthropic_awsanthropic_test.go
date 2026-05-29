@@ -289,7 +289,7 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_AnthropicBetaHeader(t *te
 			rawBody, err := json.Marshal(originalReq)
 			require.NoError(t, err)
 
-			_, bodyMutation, err := translator.RequestBody(rawBody, originalReq, false)
+			_, bodyMutation, err := translator.RequestBody(map[string]string{}, rawBody, originalReq, false)
 			require.NoError(t, err)
 
 			var modifiedReq map[string]any
