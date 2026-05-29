@@ -7,6 +7,7 @@ package translator
 
 import (
 	rlsconfv3 "github.com/envoyproxy/go-control-plane/ratelimit/config/ratelimit/v3"
+	"google.golang.org/protobuf/proto"
 )
 
 // MergeDescriptors merges a flat slice of descriptors by combining entries with
