@@ -198,7 +198,7 @@ func TestOpenAIToOpenAISpeechTranslator_ResponseBody_RecordsSpan_Streaming(t *te
 		StreamFormat: &sseFormat,
 	}
 	original, _ := json.Marshal(req)
-	_, _, _ = tr.RequestBody(nil, original, req, false)
+	_, _, _ = tr.RequestBody(map[string]string{}, original, req, false)
 
 	sseData := `data: {"data":"dGVzdA=="}
 
@@ -223,7 +223,7 @@ func TestOpenAIToOpenAISpeechTranslator_ResponseBody_RecordsSpan_StreamingSplitE
 		StreamFormat: &sseFormat,
 	}
 	original, _ := json.Marshal(req)
-	_, _, _ = tr.RequestBody(original, req, false)
+	_, _, _ = tr.RequestBody(map[string]string{}, original, req, false)
 
 	firstChunk := []byte(`data: {"data":"dGVz`)
 	_, _, _, respModel, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(firstChunk), false, mockSpan)

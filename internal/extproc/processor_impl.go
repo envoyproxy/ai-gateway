@@ -45,9 +45,9 @@ var LogRequestHeaderAttributes map[string]string
 const (
 	filePathPrefix = "/v1/files/" + translator.FileIDPrefix
 	fileListPath   = "/v1/files"
-	// fileRouteModelValue is a placeholder model header value used only to satisfy sticky backend+model route matching
-	// for file operations that do not have a real model in the request.
-	fileRouteModelValue = "__aigw_file_route__"
+	// noModelPlaceholder is a sentinel model header value for requests that have no real model
+	// (e.g. file operations), used only to satisfy sticky backend+model route matching.
+	noModelPlaceholder = "__aigw_no_model__"
 )
 
 // NewFactory creates a ProcessorFactory with the given parameters.
@@ -298,7 +298,7 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processListFil
 		return createUserFacingErrorResponse(400, "BadRequest", "missing required 'backend' query parameter for /v1/files"), nil
 	}
 	headerMutation := &extprocv3.HeaderMutation{}
-	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, fileRouteModelValue)
+	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, noModelPlaceholder)
 	setHeader(headerMutation, internalapi.BackendNameHeaderKey, backendName)
 
 	originalPath := r.requestHeaders[":path"]
@@ -311,7 +311,7 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processListFil
 		setHeader(headerMutation, internalapi.EnvoyOriginalPathHeader, originalPath)
 	}
 
-	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = fileRouteModelValue
+	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = noModelPlaceholder
 	r.requestHeaders[internalapi.BackendNameHeaderKey] = backendName
 	r.originalModel = ""
 
@@ -347,13 +347,13 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processFileIDI
 			logger.Error("failed to decode routing info from file_id and no backend query parameter provided", slog.String("file_id", fileID), slog.String("error", err.Error()))
 			return createUserFacingErrorResponse(400, "BadRequest", "failed to decode routing info from file id / batch id. raw ids require 'backend' query parameter"), nil
 		}
-		modelName = fileRouteModelValue
+		modelName = noModelPlaceholder
 		decodedID = fileID
 	}
 	r.requestHeaders[internalapi.OriginalFileIDHeaderKey] = fileID
 	r.requestHeaders[internalapi.DecodedFileIDHeaderKey] = decodedID
 	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = modelName
-	if modelName == fileRouteModelValue {
+	if modelName == noModelPlaceholder {
 		r.originalModel = ""
 	} else {
 		r.originalModel = modelName
