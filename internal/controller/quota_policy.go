@@ -8,6 +8,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 
 	rlsconfv3 "github.com/envoyproxy/go-control-plane/ratelimit/config/ratelimit/v3"
@@ -160,13 +161,19 @@ func (c *QuotaPolicyController) deleteQuotaPolicyConfig(ctx context.Context, key
 }
 
 // getMergedConfigsLocked merges all cached configs into a single RateLimitConfig.
-// When multiple QuotaPolicies define the same descriptor path, the most restrictive
-// rate limit is kept. This avoids xDS resource Name deduplication issues.
+// When multiple QuotaPolicies define the same descriptor path, the policy whose
+// namespace/name is alphabetically first takes precedence. Keys are sorted to
+// ensure deterministic snapshot generation.
 // Caller must hold c.mu lock.
 func (c *QuotaPolicyController) getMergedConfigsLocked() []*rlsconfv3.RateLimitConfig {
 	var allDescriptors []*rlsconfv3.RateLimitDescriptor
-	for _, configs := range c.configCache {
-		for _, cfg := range configs {
+	keys := make([]string, 0, len(c.configCache))
+	for k := range c.configCache {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		for _, cfg := range c.configCache[k] {
 			allDescriptors = append(allDescriptors, cfg.Descriptors...)
 		}
 	}
