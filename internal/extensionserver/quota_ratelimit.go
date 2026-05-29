@@ -364,7 +364,7 @@ func (s *Server) clusterHasQuotaBackend(ctx context.Context, clusterName string,
 	routeName := parts[2]
 	ruleIndexStr := parts[4]
 	ruleIndex, err := strconv.Atoi(ruleIndexStr)
-	if err != nil {
+	if err != nil || ruleIndex < 0 {
 		return false
 	}
 
