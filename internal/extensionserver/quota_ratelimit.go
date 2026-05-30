@@ -28,6 +28,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
@@ -66,10 +67,10 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 	// Find all QuotaPolicies and their target backends.
 	quotaPolicies, err := s.listQuotaPolicies(ctx)
 	if err != nil {
-		// Log but don't fail: a transient error (e.g. cache not synced yet)
-		// should not block xDS translation for all gateways.
-		s.log.Error(err, "failed to list QuotaPolicies, skipping quota rate limit injection")
-		return clusters, nil
+		if apierrors.IsNotFound(err) {
+			return clusters, nil
+		}
+		return clusters, fmt.Errorf("failed to list QuotaPolicies: %w", err)
 	}
 	if len(quotaPolicies) == 0 {
 		return clusters, nil
