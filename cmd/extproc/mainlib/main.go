@@ -317,14 +317,19 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 
 	var mcpServer *http.Server
 	if mcpLis != nil {
-		mcpSessionCrypto := mcpproxy.NewPBKDF2AesGcmSessionCrypto(flags.mcpSessionEncryptionSeed, flags.mcpSessionEncryptionIterations)
-		if flags.mcpFallbackSessionEncryptionSeed != "" {
-			mcpSessionCrypto = &mcpproxy.FallbackEnabledSessionCrypto{
-				Primary: mcpSessionCrypto,
-				Fallback: mcpproxy.NewPBKDF2AesGcmSessionCrypto(
-					flags.mcpFallbackSessionEncryptionSeed,
-					flags.mcpFallbackSessionEncryptionIterations,
-				),
+		// Build the initial session crypto from CLI flags for aigw standalone mode.
+		// In Kubernetes the controller populates it via the filter config instead.
+		var mcpSessionCrypto mcpproxy.SessionCrypto
+		if flags.mcpSessionEncryptionSeed != "" {
+			mcpSessionCrypto = mcpproxy.NewPBKDF2AesGcmSessionCrypto(flags.mcpSessionEncryptionSeed, flags.mcpSessionEncryptionIterations)
+			if flags.mcpFallbackSessionEncryptionSeed != "" {
+				mcpSessionCrypto = &mcpproxy.FallbackEnabledSessionCrypto{
+					Primary: mcpSessionCrypto,
+					Fallback: mcpproxy.NewPBKDF2AesGcmSessionCrypto(
+						flags.mcpFallbackSessionEncryptionSeed,
+						flags.mcpFallbackSessionEncryptionIterations,
+					),
+				}
 			}
 		}
 

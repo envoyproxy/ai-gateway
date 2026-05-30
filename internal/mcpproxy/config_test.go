@@ -543,6 +543,72 @@ func Test_toolSelector_sameTools(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_InstallsSessionCryptoFromConfig(t *testing.T) {
+	t.Run("config seed replaces initial crypto", func(t *testing.T) {
+		initial := NewPBKDF2AesGcmSessionCrypto("startup-seed", 50)
+		proxy, _, err := NewMCPProxy(slog.Default(), stubMetrics{}, noopTracer, initial, nil)
+		require.NoError(t, err)
+		require.Equal(t, initial, proxy.sessionCrypto())
+
+		cfg := &filterapi.Config{MCPConfig: &filterapi.MCPConfig{
+			BackendListenerAddr: "http://localhost:8080",
+			SessionEncryption: &filterapi.MCPSessionEncryptionConfig{
+				Seed:       "config-seed",
+				Iterations: 75,
+			},
+		}}
+		require.NoError(t, proxy.LoadConfig(t.Context(), cfg))
+
+		updated := proxy.sessionCrypto()
+		require.NotNil(t, updated)
+		require.NotSame(t, initial, updated)
+
+		ct, err := updated.Encrypt("payload")
+		require.NoError(t, err)
+		pt, err := updated.Decrypt(ct)
+		require.NoError(t, err)
+		require.Equal(t, "payload", pt)
+
+		_, err = initial.Decrypt(ct)
+		require.Error(t, err)
+	})
+
+	t.Run("config fallback enables decrypting old ciphertext", func(t *testing.T) {
+		previous := NewPBKDF2AesGcmSessionCrypto("previous-seed", 50)
+		oldCiphertext, err := previous.Encrypt("legacy-session")
+		require.NoError(t, err)
+
+		proxy, _, err := NewMCPProxy(slog.Default(), stubMetrics{}, noopTracer, nil, nil)
+		require.NoError(t, err)
+
+		cfg := &filterapi.Config{MCPConfig: &filterapi.MCPConfig{
+			BackendListenerAddr: "http://localhost:8080",
+			SessionEncryption: &filterapi.MCPSessionEncryptionConfig{
+				Seed:               "new-seed",
+				Iterations:         50,
+				FallbackSeed:       "previous-seed",
+				FallbackIterations: 50,
+			},
+		}}
+		require.NoError(t, proxy.LoadConfig(t.Context(), cfg))
+
+		pt, err := proxy.sessionCrypto().Decrypt(oldCiphertext)
+		require.NoError(t, err)
+		require.Equal(t, "legacy-session", pt)
+	})
+
+	t.Run("empty seed in config leaves initial crypto untouched", func(t *testing.T) {
+		initial := NewPBKDF2AesGcmSessionCrypto("startup-seed", 50)
+		proxy, _, err := NewMCPProxy(slog.Default(), stubMetrics{}, noopTracer, initial, nil)
+		require.NoError(t, err)
+
+		cfg := &filterapi.Config{MCPConfig: &filterapi.MCPConfig{BackendListenerAddr: "http://localhost:8080"}}
+		require.NoError(t, proxy.LoadConfig(t.Context(), cfg))
+
+		require.Equal(t, initial, proxy.sessionCrypto())
+	})
+}
+
 func TestLoadConfig_AuthorizationChangeTriggersNotification(t *testing.T) {
 	toolChangeSignaler := newMultiWatcherSignaler()
 	watcher := toolChangeSignaler.Watch()

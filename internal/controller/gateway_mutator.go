@@ -54,15 +54,6 @@ type gatewayMutator struct {
 	extProcImagePullSecrets        []corev1.LocalObjectReference
 	extProcMaxRecvMsgSize          int
 
-	// mcpSessionEncryptionSeed is the seed used to derive the encryption key for MCP session data.
-	mcpSessionEncryptionSeed string
-	// mcpSessionEncryptionIterations is the number of iterations to use for PBKDF2 key derivation for MCP session data.
-	mcpSessionEncryptionIterations int
-	// mcpFallbackSessionEncryptionSeed is the optional fallback seed used for MCP session key rotation.
-	mcpFallbackSessionEncryptionSeed string
-	// mcpFallbackSessionEncryptionIterations is the number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.
-	mcpFallbackSessionEncryptionIterations int
-
 	// Whether to run the extProc container as a sidecar (true) as a normal container (false).
 	// This is essentially a workaround for old k8s versions, and we can remove this in the future.
 	extProcAsSideCar bool
@@ -72,7 +63,6 @@ func newGatewayMutator(c client.Client, noCacheReader client.Reader, kube kubern
 	extProcImage string, extProcImagePullPolicy corev1.PullPolicy, extProcLogLevel string, extProcEnableRedaction bool,
 	udsPath string, requestHeaderAttributes, spanRequestHeaderAttributes, metricsRequestHeaderAttributes, logRequestHeaderAttributes *string, rootPrefix, endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets string, extProcMaxRecvMsgSize int,
 	extProcAsSideCar bool,
-	mcpSessionEncryptionSeed string, mcpSessionEncryptionIterations int, mcpFallbackSessionEncryptionSeed string, mcpFallbackSessionEncryptionIterations int,
 ) *gatewayMutator {
 	var parsedEnvVars []corev1.EnvVar
 	if extProcExtraEnvVars != "" {
@@ -96,28 +86,24 @@ func newGatewayMutator(c client.Client, noCacheReader client.Reader, kube kubern
 
 	return &gatewayMutator{
 		c: c, codec: serializer.NewCodecFactory(Scheme),
-		noCacheReader:                          noCacheReader,
-		kube:                                   kube,
-		extProcImage:                           extProcImage,
-		extProcImagePullPolicy:                 extProcImagePullPolicy,
-		extProcLogLevel:                        extProcLogLevel,
-		extProcEnableRedaction:                 extProcEnableRedaction,
-		logger:                                 logger,
-		udsPath:                                udsPath,
-		requestHeaderAttributes:                requestHeaderAttributes,
-		spanRequestHeaderAttributes:            spanRequestHeaderAttributes,
-		metricsRequestHeaderAttributes:         metricsRequestHeaderAttributes,
-		logRequestHeaderAttributes:             logRequestHeaderAttributes,
-		rootPrefix:                             rootPrefix,
-		endpointPrefixes:                       endpointPrefixes,
-		extProcExtraEnvVars:                    parsedEnvVars,
-		extProcImagePullSecrets:                parsedImagePullSecrets,
-		extProcMaxRecvMsgSize:                  extProcMaxRecvMsgSize,
-		extProcAsSideCar:                       extProcAsSideCar,
-		mcpSessionEncryptionSeed:               mcpSessionEncryptionSeed,
-		mcpSessionEncryptionIterations:         mcpSessionEncryptionIterations,
-		mcpFallbackSessionEncryptionSeed:       mcpFallbackSessionEncryptionSeed,
-		mcpFallbackSessionEncryptionIterations: mcpFallbackSessionEncryptionIterations,
+		noCacheReader:                  noCacheReader,
+		kube:                           kube,
+		extProcImage:                   extProcImage,
+		extProcImagePullPolicy:         extProcImagePullPolicy,
+		extProcLogLevel:                extProcLogLevel,
+		extProcEnableRedaction:         extProcEnableRedaction,
+		logger:                         logger,
+		udsPath:                        udsPath,
+		requestHeaderAttributes:        requestHeaderAttributes,
+		spanRequestHeaderAttributes:    spanRequestHeaderAttributes,
+		metricsRequestHeaderAttributes: metricsRequestHeaderAttributes,
+		logRequestHeaderAttributes:     logRequestHeaderAttributes,
+		rootPrefix:                     rootPrefix,
+		endpointPrefixes:               endpointPrefixes,
+		extProcExtraEnvVars:            parsedEnvVars,
+		extProcImagePullSecrets:        parsedImagePullSecrets,
+		extProcMaxRecvMsgSize:          extProcMaxRecvMsgSize,
+		extProcAsSideCar:               extProcAsSideCar,
 	}
 }
 
@@ -151,17 +137,10 @@ func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcAd
 		"-maxRecvMsgSize", fmt.Sprintf("%d", g.extProcMaxRecvMsgSize),
 	}
 	if needMCP {
+		// The MCP session encryption seed is read from the filter config Secret, not passed as a CLI arg.
 		args = append(args,
 			"-mcpAddr", ":"+strconv.Itoa(internalapi.MCPProxyPort),
-			"-mcpSessionEncryptionSeed", g.mcpSessionEncryptionSeed,
-			"-mcpSessionEncryptionIterations", strconv.Itoa(g.mcpSessionEncryptionIterations),
 		)
-		if g.mcpFallbackSessionEncryptionSeed != "" {
-			args = append(args,
-				"-mcpFallbackSessionEncryptionSeed", g.mcpFallbackSessionEncryptionSeed,
-				"-mcpFallbackSessionEncryptionIterations", strconv.Itoa(g.mcpFallbackSessionEncryptionIterations),
-			)
-		}
 	}
 
 	if g.requestHeaderAttributes != nil {

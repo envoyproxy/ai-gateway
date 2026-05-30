@@ -87,6 +87,22 @@ func parsePullPolicy(s string) (corev1.PullPolicy, error) {
 	}
 }
 
+// resolveMCPSeed returns the seed from filePath if non-empty, otherwise inline.
+// Trailing newlines are trimmed.
+func resolveMCPSeed(filePath, inline string) (string, error) {
+	if filePath == "" {
+		return inline, nil
+	}
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read seed file %q: %w", filePath, err)
+	}
+	if seed := strings.TrimRight(string(data), "\r\n"); seed != "" {
+		return seed, nil
+	}
+	return inline, nil
+}
+
 // parseWatchNamespaces parses a comma-separated list of namespaces into a slice of strings.
 func parseWatchNamespaces(s string) []string {
 	var namespaces []string
@@ -225,11 +241,17 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		"Maximum time to wait for k8s caches to sync",
 	)
 	mcpSessionEncryptionSeed := fs.String("mcpSessionEncryptionSeed", "default-insecure-seed",
-		"Seed used to derive the MCP session encryption key. This should be changed and set to a secure value.")
+		"Seed used to derive the MCP session encryption key. This should be changed and set to a secure value. "+
+			"Prefer --mcpSessionEncryptionSeedFilePath to avoid exposing the seed in the Deployment spec.")
+	mcpSessionEncryptionSeedFilePath := fs.String("mcpSessionEncryptionSeedFilePath", "",
+		"Path to a file containing the MCP session encryption seed. Takes precedence over --mcpSessionEncryptionSeed when the file is non-empty.")
 	mcpSessionEncryptionIterations := fs.Int("mcpSessionEncryptionIterations", 100_000,
 		"Number of iterations to use for PBKDF2 key derivation for MCP session encryption.")
 	mcpFallbackSessionEncryptionSeed := fs.String("mcpFallbackSessionEncryptionSeed", "",
-		"Optional fallback seed used for MCP session key rotation")
+		"Optional fallback seed used for MCP session key rotation. "+
+			"Prefer --mcpFallbackSessionEncryptionSeedFilePath to avoid exposing the seed in the Deployment spec.")
+	mcpFallbackSessionEncryptionSeedFilePath := fs.String("mcpFallbackSessionEncryptionSeedFilePath", "",
+		"Path to a file containing the optional fallback MCP session encryption seed. Takes precedence over --mcpFallbackSessionEncryptionSeed when the file is non-empty.")
 	mcpFallbackSessionEncryptionIterations := fs.Int("mcpFallbackSessionEncryptionIterations", 100_000,
 		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
 
@@ -313,7 +335,16 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 	if *mcpSessionEncryptionIterations <= 0 {
 		return nil, fmt.Errorf("mcp session encryption iterations must be positive: %d", *mcpSessionEncryptionIterations)
 	}
-	if *mcpFallbackSessionEncryptionSeed != "" && *mcpFallbackSessionEncryptionIterations <= 0 {
+
+	resolvedMCPSeed, seedErr := resolveMCPSeed(*mcpSessionEncryptionSeedFilePath, *mcpSessionEncryptionSeed)
+	if seedErr != nil {
+		return nil, fmt.Errorf("failed to resolve mcp session encryption seed: %w", seedErr)
+	}
+	resolvedMCPFallbackSeed, seedErr := resolveMCPSeed(*mcpFallbackSessionEncryptionSeedFilePath, *mcpFallbackSessionEncryptionSeed)
+	if seedErr != nil {
+		return nil, fmt.Errorf("failed to resolve mcp fallback session encryption seed: %w", seedErr)
+	}
+	if resolvedMCPFallbackSeed != "" && *mcpFallbackSessionEncryptionIterations <= 0 {
 		return nil, fmt.Errorf("mcp fallback session encryption iterations must be positive: %d", *mcpFallbackSessionEncryptionIterations)
 	}
 
@@ -342,8 +373,8 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		maxRecvMsgSize:                         *maxRecvMsgSize,
 		watchNamespaces:                        parseWatchNamespaces(*watchNamespaces),
 		cacheSyncTimeout:                       *cacheSyncTimeout,
-		mcpSessionEncryptionSeed:               *mcpSessionEncryptionSeed,
-		mcpFallbackSessionEncryptionSeed:       *mcpFallbackSessionEncryptionSeed,
+		mcpSessionEncryptionSeed:               resolvedMCPSeed,
+		mcpFallbackSessionEncryptionSeed:       resolvedMCPFallbackSeed,
 		mcpSessionEncryptionIterations:         *mcpSessionEncryptionIterations,
 		mcpFallbackSessionEncryptionIterations: *mcpFallbackSessionEncryptionIterations,
 	}, nil

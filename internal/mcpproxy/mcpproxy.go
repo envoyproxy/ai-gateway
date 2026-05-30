@@ -39,17 +39,18 @@ type mcpRequestContext struct {
 	perBackendMetricsRecorded bool
 }
 
-// NewMCPProxy creates a new MCPProxy instance.
+// NewMCPProxy creates a new MCPProxy instance. sessionCrypto may be nil, in
+// which case it must be installed by a subsequent LoadConfig call.
 func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingapi.MCPTracer, sessionCrypto SessionCrypto, logRequestHeaderAttributes map[string]string) (*ProxyConfig, *http.ServeMux, error) {
 	toolChangeSignaler := newMultiWatcherSignaler() // used to signal changes to all active sessions.
 	cfg := &ProxyConfig{
 		toolChangeSignaler:         toolChangeSignaler,
 		tracer:                     tracer,
-		sessionCrypto:              sessionCrypto,
 		l:                          l,
 		client:                     http.Client{}, // No timeout as it's enforced at Envoy level.
 		logRequestHeaderAttributes: maps.Clone(logRequestHeaderAttributes),
 	}
+	cfg.setSessionCrypto(sessionCrypto)
 	mux := http.NewServeMux()
 	mux.HandleFunc(
 		// Must match all paths since the route selection happens at Envoy level and the "route" header is already
@@ -212,7 +213,11 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 		return nil, errors.New("failed to create MCP session to any backend")
 	}
 
-	encrypted, err := m.sessionCrypto.Encrypt(string(clientToGatewaySessionIDFromEntries(subject, finalEntries, routeName)))
+	sessionCrypto := m.sessionCrypto()
+	if sessionCrypto == nil {
+		return nil, errors.New("MCP session encryption is not configured")
+	}
+	encrypted, err := sessionCrypto.Encrypt(string(clientToGatewaySessionIDFromEntries(subject, finalEntries, routeName)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt session ID: %w", err)
 	}
@@ -236,7 +241,11 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 
 // sessionFromID returns the session with the given ID, or error if not found or invalid.
 func (m *mcpRequestContext) sessionFromID(id secureClientToGatewaySessionID, lastEvent secureClientToGatewayEventID) (*session, error) {
-	decrypted, err := m.sessionCrypto.Decrypt(string(id))
+	sessionCrypto := m.sessionCrypto()
+	if sessionCrypto == nil {
+		return nil, errors.New("MCP session encryption is not configured")
+	}
+	decrypted, err := sessionCrypto.Decrypt(string(id))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt session ID: %w", err)
 	}
@@ -246,7 +255,7 @@ func (m *mcpRequestContext) sessionFromID(id secureClientToGatewaySessionID, las
 		return nil, err
 	}
 	if len(lastEvent) != 0 {
-		decryptedEventID, err := m.sessionCrypto.Decrypt(string(lastEvent))
+		decryptedEventID, err := sessionCrypto.Decrypt(string(lastEvent))
 		if err != nil {
 			return nil, fmt.Errorf("failed to decrypt last event ID: %w", err)
 		}

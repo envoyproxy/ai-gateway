@@ -17,6 +17,23 @@ type MCPConfig struct {
 
 	// Routes is the list of routes that this listener can route to.
 	Routes []MCPRoute `json:"routes,omitempty"`
+
+	// SessionEncryption is the MCP session encryption configuration propagated
+	// by the controller. When empty, extproc falls back to its CLI flags.
+	SessionEncryption *MCPSessionEncryptionConfig `json:"sessionEncryption,omitempty"`
+}
+
+// MCPSessionEncryptionConfig configures the PBKDF2/AES-GCM key derivation used
+// to encrypt MCP session identifiers.
+type MCPSessionEncryptionConfig struct {
+	// Seed is the secret value used to derive the encryption key.
+	Seed string `json:"seed,omitempty"`
+	// Iterations is the PBKDF2 iteration count for Seed.
+	Iterations int `json:"iterations,omitempty"`
+	// FallbackSeed is the previous seed, used to decrypt sessions during rotation.
+	FallbackSeed string `json:"fallbackSeed,omitempty"`
+	// FallbackIterations is the PBKDF2 iteration count for FallbackSeed.
+	FallbackIterations int `json:"fallbackIterations,omitempty"`
 }
 
 // MCPRoute is the route configuration for routing to each MCP backend based on the tool name.

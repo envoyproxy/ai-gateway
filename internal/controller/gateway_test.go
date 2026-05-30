@@ -2003,6 +2003,60 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 	require.Equal(t, "http://127.0.0.1:"+strconv.Itoa(internalapi.MCPBackendListenerPort), fc.MCPConfig.BackendListenerAddr)
 }
 
+func TestGatewayController_reconcileFilterConfigSecret_PropagatesMCPSessionEncryption(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	const gwNamespace = "ns"
+	const someNamespace = "some-namespace"
+	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
+
+	mcpRoutes := []aigv1b1.MCPRoute{{
+		ObjectMeta: metav1.ObjectMeta{Name: "mcp-route", Namespace: gwNamespace},
+		Spec: aigv1b1.MCPRouteSpec{
+			BackendRefs: []aigv1b1.MCPRouteBackendRef{{
+				BackendObjectReference: gwapiv1.BackendObjectReference{Name: gwapiv1.ObjectName("backendA")},
+			}},
+		},
+	}}
+
+	t.Run("seed populated when configured", func(t *testing.T) {
+		c.SetMCPSessionEncryption("primary-seed", 12345, "previous-seed", 99)
+
+		effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, nil, mcpRoutes, "uuid-1", nil)
+		require.NoError(t, err)
+		require.True(t, effective)
+
+		secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
+		require.NoError(t, err)
+		var fc filterapi.Config
+		require.NoError(t, yaml.Unmarshal([]byte(secret.StringData[FilterConfigKeyInSecret]), &fc))
+		require.NotNil(t, fc.MCPConfig)
+		require.NotNil(t, fc.MCPConfig.SessionEncryption)
+		require.Equal(t, "primary-seed", fc.MCPConfig.SessionEncryption.Seed)
+		require.Equal(t, 12345, fc.MCPConfig.SessionEncryption.Iterations)
+		require.Equal(t, "previous-seed", fc.MCPConfig.SessionEncryption.FallbackSeed)
+		require.Equal(t, 99, fc.MCPConfig.SessionEncryption.FallbackIterations)
+	})
+
+	t.Run("seed omitted when not configured", func(t *testing.T) {
+		c.SetMCPSessionEncryption("", 0, "", 0)
+		effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, nil, mcpRoutes, "uuid-2", nil)
+		require.NoError(t, err)
+		require.True(t, effective)
+
+		secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
+		require.NoError(t, err)
+		var fc filterapi.Config
+		require.NoError(t, yaml.Unmarshal([]byte(secret.StringData[FilterConfigKeyInSecret]), &fc))
+		require.NotNil(t, fc.MCPConfig)
+		require.Nil(t, fc.MCPConfig.SessionEncryption)
+	})
+}
+
 func Test_mcpConfig_ToolSelectorExclude(t *testing.T) {
 	mcpRoutes := []aigv1b1.MCPRoute{
 		{

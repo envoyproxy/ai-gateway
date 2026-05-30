@@ -50,33 +50,34 @@ func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *mcpRequestContext {
 	// and performance, but for the tests we can use fewer iterations to make tests faster.
 	sessionCrypto := NewPBKDF2AesGcmSessionCrypto("test", 100)
 
-	return &mcpRequestContext{
-		metrics: stubMetrics{},
-		ProxyConfig: &ProxyConfig{
-			sessionCrypto:      sessionCrypto,
-			toolChangeSignaler: newMultiWatcherSignaler(),
-			mcpProxyConfig: &mcpProxyConfig{
-				backendListenerAddr: "http://test-backend",
-				routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
-					"test-route": {
-						toolSelectors: map[filterapi.MCPBackendName]*toolSelector{
-							"backend1": {include: map[string]struct{}{"test-tool": {}}},
-						},
-						backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
-							"backend1": {Name: "backend1"},
-							"backend2": {Name: "backend2"},
-						},
+	cfg := &ProxyConfig{
+		toolChangeSignaler: newMultiWatcherSignaler(),
+		mcpProxyConfig: &mcpProxyConfig{
+			backendListenerAddr: "http://test-backend",
+			routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
+				"test-route": {
+					toolSelectors: map[filterapi.MCPBackendName]*toolSelector{
+						"backend1": {include: map[string]struct{}{"test-tool": {}}},
 					},
-					"test-route-another": {
-						backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
-							"backend3": {Name: "backend3"},
-						},
+					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
+						"backend1": {Name: "backend1"},
+						"backend2": {Name: "backend2"},
+					},
+				},
+				"test-route-another": {
+					backends: map[filterapi.MCPBackendName]filterapi.MCPBackend{
+						"backend3": {Name: "backend3"},
 					},
 				},
 			},
-			tracer: t,
-			l:      slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		},
+		tracer: t,
+		l:      slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	}
+	cfg.setSessionCrypto(sessionCrypto)
+	return &mcpRequestContext{
+		metrics:     stubMetrics{},
+		ProxyConfig: cfg,
 	}
 }
 
@@ -255,7 +256,7 @@ func TestServePOST_InitializeRequest(t *testing.T) {
 	require.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 	require.NotEmpty(t, rr.Header().Get(sessionIDHeader))
 
-	decrypted, err := proxy.sessionCrypto.Decrypt(rr.Header().Get(sessionIDHeader))
+	decrypted, err := proxy.sessionCrypto().Decrypt(rr.Header().Get(sessionIDHeader))
 	require.NoError(t, err)
 	perBackendSessions, _, err := clientToGatewaySessionID(decrypted).backendSessionIDs()
 	require.NoError(t, err)
@@ -1530,7 +1531,7 @@ func TestExtractPerBackendForwardHeaders(t *testing.T) {
 }
 
 func secureID(t *testing.T, proxy *mcpRequestContext, sessionID string) string {
-	secure, err := proxy.sessionCrypto.Encrypt(sessionID)
+	secure, err := proxy.sessionCrypto().Encrypt(sessionID)
 	require.NoError(t, err)
 	return secure
 }
