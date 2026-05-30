@@ -66,7 +66,10 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 	// Find all QuotaPolicies and their target backends.
 	quotaPolicies, err := s.listQuotaPolicies(ctx)
 	if err != nil {
-		return clusters, fmt.Errorf("failed to list QuotaPolicies: %w", err)
+		// Log but don't fail: a transient error (e.g. cache not synced yet)
+		// should not block xDS translation for all gateways.
+		s.log.Error(err, "failed to list QuotaPolicies, skipping quota rate limit injection")
+		return clusters, nil
 	}
 	if len(quotaPolicies) == 0 {
 		return clusters, nil
@@ -90,13 +93,6 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 		rlCluster := s.buildQuotaRateLimitCluster()
 		clusters = append(clusters, rlCluster)
 		s.log.Info("Added quota rate limit cluster", "cluster", quotaRateLimitClusterName)
-	}
-
-	// Build listener-to-route and route name-to-config mappings so we can
-	// selectively inject the filter only into listeners serving quota routes.
-	routeNameToConfig := make(map[string]*routev3.RouteConfiguration, len(routes))
-	for _, rc := range routes {
-		routeNameToConfig[rc.Name] = rc
 	}
 
 	// Patch routes and track which route configs had quota backends enabled.
