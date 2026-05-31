@@ -350,6 +350,22 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files")+"/([^/]+)/?$"),
 		http.MethodDelete,
 		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.DeleteFileTracer(), endpointspec.DeleteFileEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/batches")+"$"),
+		http.MethodPost,
+		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.CreateBatchTracer(), endpointspec.CreateBatchEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/batches")+"$"),
+		http.MethodGet,
+		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.ListBatchesTracer(), endpointspec.ListBatchesEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/batches")+"/([^/]+)/?$"),
+		http.MethodGet,
+		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.RetrieveBatchTracer(), endpointspec.RetrieveBatchEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/batches")+"/([^/]+)/cancel$"),
+		http.MethodPost,
+		extproc.NewFactory(metrics.NewNoOpMetricsFactory(), tracing.CancelBatchTracer(), endpointspec.CancelBatchEndpointSpec{}))
 
 	// Create and register gRPC server with ExternalProcessorServer (the service Envoy calls).
 	if err = filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {

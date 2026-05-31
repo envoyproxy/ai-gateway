@@ -41,6 +41,10 @@ type tracingImpl struct {
 	retrieveFileTracer        tracingapi.RetrieveFileTracer
 	retrieveFileContentTracer tracingapi.RetrieveFileContentTracer
 	deleteFileTracer          tracingapi.DeleteFileTracer
+	createBatchTracer         tracingapi.CreateBatchTracer
+	listBatchesTracer         tracingapi.ListBatchesTracer
+	retrieveBatchTracer       tracingapi.RetrieveBatchTracer
+	cancelBatchTracer         tracingapi.CancelBatchTracer
 	// shutdown is nil when we didn't create tp.
 	shutdown func(context.Context) error
 }
@@ -104,6 +108,22 @@ func (t *tracingImpl) RetrieveFileContentTracer() tracingapi.RetrieveFileContent
 
 func (t *tracingImpl) DeleteFileTracer() tracingapi.DeleteFileTracer {
 	return t.deleteFileTracer
+}
+
+func (t *tracingImpl) CreateBatchTracer() tracingapi.CreateBatchTracer {
+	return t.createBatchTracer
+}
+
+func (t *tracingImpl) ListBatchesTracer() tracingapi.ListBatchesTracer {
+	return t.listBatchesTracer
+}
+
+func (t *tracingImpl) RetrieveBatchTracer() tracingapi.RetrieveBatchTracer {
+	return t.retrieveBatchTracer
+}
+
+func (t *tracingImpl) CancelBatchTracer() tracingapi.CancelBatchTracer {
+	return t.cancelBatchTracer
 }
 
 // Shutdown implements the same method as documented on tracingapi.Tracing.
@@ -231,6 +251,10 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 	retrieveFileRecorder := openai.NewRetrieveFileRecorderFromEnv()
 	retrieveFileContentRecorder := openai.NewRetrieveFileContentRecorderFromEnv()
 	deleteFileRecorder := openai.NewDeleteFileRecorderFromEnv()
+	createBatchRecorder := openai.NewCreateBatchRecorderFromEnv()
+	listBatchesRecorder := openai.NewListBatchesRecorderFromEnv()
+	retrieveBatchRecorder := openai.NewRetrieveBatchRecorderFromEnv()
+	cancelBatchRecorder := openai.NewCancelBatchRecorderFromEnv()
 
 	tracer := tp.Tracer("envoyproxy/ai-gateway")
 	return &tracingImpl{
@@ -303,6 +327,30 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			tracer,
 			propagator,
 			deleteFileRecorder,
+			headerAttrs,
+		),
+		createBatchTracer: newCreateBatchTracer(
+			tracer,
+			propagator,
+			createBatchRecorder,
+			headerAttrs,
+		),
+		listBatchesTracer: newListBatchesTracer(
+			tracer,
+			propagator,
+			listBatchesRecorder,
+			headerAttrs,
+		),
+		retrieveBatchTracer: newRetrieveBatchTracer(
+			tracer,
+			propagator,
+			retrieveBatchRecorder,
+			headerAttrs,
+		),
+		cancelBatchTracer: newCancelBatchTracer(
+			tracer,
+			propagator,
+			cancelBatchRecorder,
 			headerAttrs,
 		),
 		mcpTracer: newMCPTracer(tracer, propagator, headerAttrs),

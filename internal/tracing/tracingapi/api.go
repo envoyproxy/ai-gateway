@@ -46,6 +46,14 @@ type (
 		RetrieveFileContentTracer() RetrieveFileContentTracer
 		// DeleteFileTracer creates spans for OpenAI delete file requests.
 		DeleteFileTracer() DeleteFileTracer
+		// CreateBatchTracer creates spans for OpenAI create batch requests.
+		CreateBatchTracer() CreateBatchTracer
+		// ListBatchesTracer creates spans for OpenAI list batches requests.
+		ListBatchesTracer() ListBatchesTracer
+		// RetrieveBatchTracer creates spans for OpenAI retrieve batch requests.
+		RetrieveBatchTracer() RetrieveBatchTracer
+		// CancelBatchTracer creates spans for OpenAI cancel batch requests.
+		CancelBatchTracer() CancelBatchTracer
 		// MCPTracer creates spans for MCP requests.
 		MCPTracer() MCPTracer
 		// Shutdown shuts down the tracer, flushing any buffered spans.
@@ -89,6 +97,14 @@ type (
 	RetrieveFileContentTracer = RequestTracer[struct{}, struct{}, struct{}]
 	// DeleteFileTracer creates spans for OpenAI delete file requests.
 	DeleteFileTracer = RequestTracer[struct{}, openai.FileDeleted, struct{}]
+	// CreateBatchTracer creates spans for OpenAI create batch requests.
+	CreateBatchTracer = RequestTracer[openai.BatchNewParams, openai.Batch, struct{}]
+	// ListBatchesTracer creates spans for OpenAI list batches requests.
+	ListBatchesTracer = RequestTracer[struct{}, struct{}, struct{}]
+	// RetrieveBatchTracer creates spans for OpenAI retrieve batch requests.
+	RetrieveBatchTracer = RequestTracer[struct{}, openai.Batch, struct{}]
+	// CancelBatchTracer creates spans for OpenAI cancel batch requests.
+	CancelBatchTracer = RequestTracer[struct{}, openai.Batch, struct{}]
 )
 
 type (
@@ -128,6 +144,14 @@ type (
 	RetrieveFileContentSpan = Span[struct{}, struct{}]
 	// DeleteFileSpan represents an OpenAI delete file request span.
 	DeleteFileSpan = Span[openai.FileDeleted, struct{}]
+	// CreateBatchSpan represents an OpenAI create batch request span.
+	CreateBatchSpan = Span[openai.Batch, struct{}]
+	// ListBatchesSpan represents an OpenAI list batches request span.
+	ListBatchesSpan = Span[struct{}, struct{}]
+	// RetrieveBatchSpan represents an OpenAI retrieve batch request span.
+	RetrieveBatchSpan = Span[openai.Batch, struct{}]
+	// CancelBatchSpan represents an OpenAI cancel batch request span.
+	CancelBatchSpan = Span[openai.Batch, struct{}]
 )
 
 type (
@@ -181,6 +205,14 @@ type (
 	RetrieveFileContentRecorder = SpanRecorder[struct{}, struct{}, struct{}]
 	// DeleteFileRecorder records attributes to a span according to a semantic convention.
 	DeleteFileRecorder = SpanRecorder[struct{}, openai.FileDeleted, struct{}]
+	// CreateBatchRecorder records attributes to a span according to a semantic convention.
+	CreateBatchRecorder = SpanRecorder[openai.BatchNewParams, openai.Batch, struct{}]
+	// ListBatchesRecorder records attributes to a span according to a semantic convention.
+	ListBatchesRecorder = SpanRecorder[struct{}, struct{}, struct{}]
+	// RetrieveBatchRecorder records attributes to a span according to a semantic convention.
+	RetrieveBatchRecorder = SpanRecorder[struct{}, openai.Batch, struct{}]
+	// CancelBatchRecorder records attributes to a span according to a semantic convention.
+	CancelBatchRecorder = SpanRecorder[struct{}, openai.Batch, struct{}]
 )
 
 // NoopChunkRecorder provides a no-op RecordResponseChunks implementation for recorders that don't emit streaming chunks.
@@ -251,6 +283,22 @@ func (NoopTracing) DeleteFileTracer() DeleteFileTracer {
 	return NoopDeleteFileTracer{}
 }
 
+func (NoopTracing) CreateBatchTracer() CreateBatchTracer {
+	return NoopCreateBatchTracer{}
+}
+
+func (NoopTracing) ListBatchesTracer() ListBatchesTracer {
+	return NoopListBatchesTracer{}
+}
+
+func (NoopTracing) RetrieveBatchTracer() RetrieveBatchTracer {
+	return NoopRetrieveBatchTracer{}
+}
+
+func (NoopTracing) CancelBatchTracer() CancelBatchTracer {
+	return NoopCancelBatchTracer{}
+}
+
 // Shutdown implements Tracing.Shutdown.
 func (NoopTracing) Shutdown(context.Context) error {
 	return nil
@@ -283,6 +331,14 @@ type (
 	NoopRetrieveFileContentTracer = NoopTracer[struct{}, struct{}, struct{}]
 	// NoopDeleteFileTracer implements DeleteFileTracer.
 	NoopDeleteFileTracer = NoopTracer[struct{}, openai.FileDeleted, struct{}]
+	// NoopCreateBatchTracer implements CreateBatchTracer.
+	NoopCreateBatchTracer = NoopTracer[openai.BatchNewParams, openai.Batch, struct{}]
+	// NoopListBatchesTracer implements ListBatchesTracer.
+	NoopListBatchesTracer = NoopTracer[struct{}, struct{}, struct{}]
+	// NoopRetrieveBatchTracer implements RetrieveBatchTracer.
+	NoopRetrieveBatchTracer = NoopTracer[struct{}, openai.Batch, struct{}]
+	// NoopCancelBatchTracer implements CancelBatchTracer.
+	NoopCancelBatchTracer = NoopTracer[struct{}, openai.Batch, struct{}]
 )
 
 // StartSpanAndInjectHeaders implements RequestTracer.StartSpanAndInjectHeaders.

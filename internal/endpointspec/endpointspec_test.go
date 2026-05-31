@@ -345,7 +345,7 @@ func TestResponsesEndpointSpec_ParseBody(t *testing.T) {
 			]
 		}`)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4.7", model)
 		require.False(t, stream)
@@ -1252,6 +1252,143 @@ func TestDeleteFileEndpointSpec_GetTranslator(t *testing.T) {
 
 func TestDeleteFileEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 	spec := DeleteFileEndpointSpec{}
+	req := &struct{}{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestCreateBatchEndpointSpec_ParseBody(t *testing.T) {
+	spec := CreateBatchEndpointSpec{}
+
+	t.Run("success_with_raw_input_file_id_uses_placeholder_model", func(t *testing.T) {
+		body := []byte(`{"input_file_id":"file-123"}`)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
+		require.NoError(t, err)
+		require.Equal(t, internalapi.OriginalModel(noModelPlaceholder), model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
+		require.NotNil(t, mutated)
+	})
+
+	t.Run("success_with_optional_backend_in_extra_body", func(t *testing.T) {
+		body := []byte(`{"input_file_id":"file-123","extra_body":{"backend":"openai-primary"}}`)
+		headers := map[string]string{}
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, headers)
+		require.NoError(t, err)
+		require.Equal(t, internalapi.OriginalModel(noModelPlaceholder), model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
+		require.NotNil(t, mutated)
+		require.Equal(t, "openai-primary", headers[internalapi.BackendNameHeaderKey])
+	})
+
+	t.Run("invalid_backend_type_in_extra_body", func(t *testing.T) {
+		body := []byte(`{"input_file_id":"file-123","extra_body":{"backend":123}}`)
+		_, _, _, _, err := spec.ParseBody(body, false, map[string]string{})
+		require.ErrorContains(t, err, "invalid 'backend' parameter type for batch create operations")
+	})
+}
+
+func TestCreateBatchEndpointSpec_GetTranslator(t *testing.T) {
+	spec := CreateBatchEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestCreateBatchEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := CreateBatchEndpointSpec{}
+	req := &openai.BatchNewParams{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestListBatchesEndpointSpec_ParseBody(t *testing.T) {
+	spec := ListBatchesEndpointSpec{}
+	body := []byte("irrelevant")
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
+	require.NoError(t, err)
+	require.Empty(t, model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+}
+
+func TestListBatchesEndpointSpec_GetTranslator(t *testing.T) {
+	spec := ListBatchesEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestListBatchesEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := ListBatchesEndpointSpec{}
+	req := &struct{}{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestRetrieveBatchEndpointSpec_ParseBody(t *testing.T) {
+	spec := RetrieveBatchEndpointSpec{}
+	body := []byte("irrelevant")
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
+	require.NoError(t, err)
+	require.Empty(t, model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+}
+
+func TestRetrieveBatchEndpointSpec_GetTranslator(t *testing.T) {
+	spec := RetrieveBatchEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestRetrieveBatchEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := RetrieveBatchEndpointSpec{}
+	req := &struct{}{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestCancelBatchEndpointSpec_ParseBody(t *testing.T) {
+	spec := CancelBatchEndpointSpec{}
+	body := []byte("irrelevant")
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
+	require.NoError(t, err)
+	require.Empty(t, model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+}
+
+func TestCancelBatchEndpointSpec_GetTranslator(t *testing.T) {
+	spec := CancelBatchEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestCancelBatchEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := CancelBatchEndpointSpec{}
 	req := &struct{}{}
 	result, err := spec.RedactSensitiveInfoFromRequest(req)
 	require.NoError(t, err)

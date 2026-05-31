@@ -27,7 +27,8 @@ const (
 
 // File ID prefix used for encoding routing information.
 const (
-	FileIDPrefix = "file-"
+	FileIDPrefix  = "file-"
+	BatchIDPrefix = "batch_"
 )
 
 var (
@@ -83,6 +84,7 @@ func serializeOpenAIChatCompletionChunk(chunk *openai.ChatCompletionResponseChun
 //
 // Format: <prefix><base64url(aigw:<original_id>;model:<model_name>;backend:<backend_name>)>
 // The result preserves the original prefix (file-, batch_, etc.) for OpenAI compliance.
+// The 'aigw:' prefix in the encoded payload identifies this as an AI Gateway encoded ID.
 //
 // Args:
 //
@@ -90,7 +92,7 @@ func serializeOpenAIChatCompletionChunk(chunk *openai.ChatCompletionResponseChun
 //	modelName: Model name (e.g., "gpt-4o-mini")
 //	backendName: Backend name (e.g., "azure-openai", "openai-primary")
 //	idType: Type of ID being encoded. Used to determine the correct prefix.
-//	       Defaults to "file". Supported values are "file".
+//	       Supported values: "file", "batch". Defaults to "file".
 //
 // Returns:
 //
@@ -100,8 +102,11 @@ func serializeOpenAIChatCompletionChunk(chunk *openai.ChatCompletionResponseChun
 //
 //	EncodeFileIDWithRouting("file-abc123", "gpt-4o-mini", "azure-openai", "file")
 //	-> "file-YWlndzpmaWxlLWFiYzEyMzttb2RlbDpncHQtNG8tbWluaTtiYWNrZW5kOmF6dXJlLW9wZW5haQ"
-func EncodeFileIDWithRouting(id, modelName, backendName, _ string) string {
+func EncodeFileIDWithRouting(id, modelName, backendName, idType string) string {
 	prefix := FileIDPrefix
+	if idType == "batch" {
+		prefix = BatchIDPrefix
+	}
 	// Use "aigw:" prefix to identify AI Gateway encoded IDs, consistent with the proposal
 	return prefix + base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, "aigw:%s;model:%s;backend:%s", id, modelName, backendName))
 }
@@ -129,6 +134,8 @@ func DecodeFileIDWithRouting(encodedID string) (modelName string, backendName st
 	switch {
 	case strings.HasPrefix(encodedID, FileIDPrefix):
 		base64Part = strings.TrimPrefix(encodedID, FileIDPrefix)
+	case strings.HasPrefix(encodedID, BatchIDPrefix):
+		base64Part = strings.TrimPrefix(encodedID, BatchIDPrefix)
 	default:
 		return "", "", "", fmt.Errorf("invalid encoded ID format: missing expected prefix")
 	}

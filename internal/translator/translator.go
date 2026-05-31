@@ -131,6 +131,14 @@ type (
 	OpenAIRetrieveFileContentTranslator = Translator[struct{}, tracingapi.RetrieveFileContentSpan]
 	// OpenAIDeleteFileTranslator translates the OpenAI's DELETE /v1/files/{file_id} endpoint.
 	OpenAIDeleteFileTranslator = Translator[struct{}, tracingapi.DeleteFileSpan]
+	// OpenAICreateBatchTranslator translates the OpenAI's POST /v1/batches endpoint.
+	OpenAICreateBatchTranslator = Translator[openai.BatchNewParams, tracingapi.CreateBatchSpan]
+	// OpenAIListBatchesTranslator translates the OpenAI's GET /v1/batches endpoint.
+	OpenAIListBatchesTranslator = Translator[struct{}, tracingapi.ListBatchesSpan]
+	// OpenAIRetrieveBatchTranslator translates the OpenAI's GET /v1/batches/{batch_id} endpoint.
+	OpenAIRetrieveBatchTranslator = Translator[struct{}, tracingapi.RetrieveBatchSpan]
+	// OpenAICancelBatchTranslator translates the OpenAI's POST /v1/batches/{batch_id}/cancel endpoint.
+	OpenAICancelBatchTranslator = Translator[struct{}, tracingapi.CancelBatchSpan]
 )
 
 var (

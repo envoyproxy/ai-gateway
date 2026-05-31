@@ -58,4 +58,8 @@ type (
 	retrieveFileSpan        = span[openai.FileObject, struct{}]
 	retrieveFileContentSpan = span[struct{}, struct{}]
 	deleteFileSpan          = span[openai.FileDeleted, struct{}]
+	createBatchSpan         = span[openai.Batch, struct{}]
+	listBatchesSpan         = span[struct{}, struct{}]
+	retrieveBatchSpan       = span[openai.Batch, struct{}]
+	cancelBatchSpan         = span[openai.Batch, struct{}]
 )

@@ -8750,6 +8750,12 @@ type BatchNewParams struct {
 	// for storing additional information about the object in a structured format, and
 	// querying for objects via API or the dashboard.
 	Metadata map[string]string `json:"metadata,omitzero"`
+	// Used for providing extra parameters that are not part of the standard OpenAI Batch API.
+	//
+	// The ExtraBody field serves a special purpose in the AI Gateway context:
+	// it can carry a "backend" field that the gateway uses for sticky backend routing
+	// when creating batches.
+	ExtraBody map[string]any `json:"extra_body,omitzero"`
 	// The expiration policy for the output and/or error file that are generated for a
 	// batch.
 	OutputExpiresAfter BatchNewParamsOutputExpiresAfter `json:"output_expires_after,omitzero"`
@@ -8911,4 +8917,3 @@ type BatchUsageOutputTokensDetails struct {
 	// The number of reasoning tokens.
 	ReasoningTokens int64 `json:"reasoning_tokens"`
 }
-

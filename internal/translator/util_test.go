@@ -119,6 +119,13 @@ func TestEncodeIDWithRouting(t *testing.T) {
 			backendName: "anthropic-us-east-1",
 			idType:      "file",
 		},
+		{
+			name:        "encodes batch id with model and backend",
+			id:          "batch_abc123",
+			modelName:   "gpt-4o-mini",
+			backendName: "openai-primary",
+			idType:      "batch",
+		},
 	}
 
 	for _, tc := range tests {
@@ -126,7 +133,11 @@ func TestEncodeIDWithRouting(t *testing.T) {
 			encoded := EncodeFileIDWithRouting(tc.id, tc.modelName, tc.backendName, tc.idType)
 
 			// Verify it starts with the correct prefix
-			require.True(t, strings.HasPrefix(encoded, "file-"), "encoded ID should start with 'file-'")
+			expectedPrefix := FileIDPrefix
+			if tc.idType == "batch" {
+				expectedPrefix = BatchIDPrefix
+			}
+			require.True(t, strings.HasPrefix(encoded, expectedPrefix), "encoded ID should start with expected prefix")
 
 			// Decode and verify
 			modelName, backendName, id, err := DecodeFileIDWithRouting(encoded)
@@ -162,6 +173,14 @@ func TestDecodeFileIDRouting(t *testing.T) {
 			wantModelName:   "claude-3",
 			wantBackendName: "",
 			wantID:          "file-xyz789",
+			expectErr:       false,
+		},
+		{
+			name:            "decodes batch prefix format",
+			encodedID:       EncodeFileIDWithRouting("batch_abc123", "gpt-4.1", "azure-openai", "batch"),
+			wantModelName:   "gpt-4.1",
+			wantBackendName: "azure-openai",
+			wantID:          "batch_abc123",
 			expectErr:       false,
 		},
 		{

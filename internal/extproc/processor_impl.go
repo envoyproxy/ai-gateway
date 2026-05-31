@@ -41,12 +41,14 @@ import (
 // This is configured at the startup of the extproc server.
 var LogRequestHeaderAttributes map[string]string
 
-// Precomputed path prefixes for file operations to avoid string concatenation on every request.
+// Precomputed path prefixes for file and batch operations to avoid string concatenation on every request.
 const (
-	filePathPrefix = "/v1/files/" + translator.FileIDPrefix
-	fileListPath   = "/v1/files"
-	// noModelPlaceholder is a sentinel model header value for requests that have no real model
-	// (e.g. file operations), used only to satisfy sticky backend+model route matching.
+	filePathPrefix  = "/v1/files/" + translator.FileIDPrefix
+	fileListPath    = "/v1/files"
+	batchPathPrefix = "/v1/batches/" + translator.BatchIDPrefix
+	batchListPath   = "/v1/batches"
+	// noModelPlaceholder is a sentinel model name used when a request has no explicit model (e.g. file and batch operations).
+	// It satisfies sticky backend+model route matching without a real model.
 	noModelPlaceholder = "__aigw_no_model__"
 )
 
@@ -198,10 +200,16 @@ func shouldGetModelFromID(method, path string) bool {
 	case "GET":
 		// These methods can be header-only for file operations.
 		// e.g GET /v1/files/{file_id}, GET /v1/files/{file_id}/content
-		return strings.Contains(path, filePathPrefix)
+		// Also handles batch retrieval for path-based routing.
+		// e.g GET /v1/batches/{batch_id}
+		return strings.Contains(path, filePathPrefix) || strings.Contains(path, batchPathPrefix)
 	case "DELETE":
 		// These methods can be header-only for file operations. e.g DELETE /v1/files/{file_id}
 		return strings.Contains(path, filePathPrefix)
+	case "POST":
+		// Batch cancel is a header-only operation for path-based routing.
+		// e.g POST /v1/batches/{batch_id}/cancel
+		return strings.Contains(path, batchPathPrefix)
 	default:
 		return false
 	}
@@ -259,6 +267,21 @@ func hasModelQueryParam(path string) bool {
 	return query.Has("model")
 }
 
+func isListBatchesEndpoint(method, path string) bool {
+	if method != "GET" {
+		return false
+	}
+	if path == "" {
+		return false
+	}
+	// Remove query params.
+	if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
+		path = path[:queryIndex]
+	}
+	path = strings.TrimSuffix(path, "/")
+	return path == batchListPath
+}
+
 func extractFileIDFromPath(path string) (string, bool) {
 	if path == "" {
 		return "", false
@@ -267,7 +290,7 @@ func extractFileIDFromPath(path string) (string, bool) {
 	if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
 		path = path[:queryIndex]
 	}
-	segments := []string{"/v1/files/"}
+	segments := []string{"/v1/files/", "/v1/batches/"}
 	for _, segment := range segments {
 		_, after, found := strings.Cut(path, segment)
 		if !found {
@@ -296,6 +319,51 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processListFil
 	if !ok {
 		logger.Error("missing backend query parameter for list files request", slog.String("path", r.requestHeaders[":path"]))
 		return createUserFacingErrorResponse(400, "BadRequest", "missing required 'backend' query parameter for /v1/files"), nil
+	}
+	headerMutation := &extprocv3.HeaderMutation{}
+	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, noModelPlaceholder)
+	setHeader(headerMutation, internalapi.BackendNameHeaderKey, backendName)
+
+	originalPath := r.requestHeaders[":path"]
+	if r.requestHeaders[originalPathHeader] == "" {
+		r.requestHeaders[originalPathHeader] = originalPath
+		setHeader(headerMutation, originalPathHeader, originalPath)
+	}
+	if r.requestHeaders[internalapi.EnvoyOriginalPathHeader] == "" {
+		r.requestHeaders[internalapi.EnvoyOriginalPathHeader] = originalPath
+		setHeader(headerMutation, internalapi.EnvoyOriginalPathHeader, originalPath)
+	}
+
+	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = noModelPlaceholder
+	r.requestHeaders[internalapi.BackendNameHeaderKey] = backendName
+	r.originalModel = ""
+
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation:  headerMutation,
+					ClearRouteCache: true,
+				},
+			},
+		},
+	}, nil
+}
+
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processListBatchesRequestHeaders(ctx context.Context) (*extprocv3.ProcessingResponse, error) {
+	// Use the request-scoped logger from context if available, otherwise fall back to processor logger
+	logger := loggerFromContext(ctx)
+	if logger == nil {
+		logger = r.logger
+	}
+	if hasModelQueryParam(r.requestHeaders[":path"]) {
+		logger.Error("model query parameter is not supported for list batches request", slog.String("path", r.requestHeaders[":path"]))
+		return createUserFacingErrorResponse(400, "BadRequest", "'model' query parameter is not supported for /v1/batches. use 'backend' query parameter instead"), nil
+	}
+	backendName, ok := extractBackendFromQueryParam(r.requestHeaders[":path"])
+	if !ok {
+		logger.Error("missing backend query parameter for list batches request", slog.String("path", r.requestHeaders[":path"]))
+		return createUserFacingErrorResponse(400, "BadRequest", "missing required 'backend' query parameter for /v1/batches"), nil
 	}
 	headerMutation := &extprocv3.HeaderMutation{}
 	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, noModelPlaceholder)
@@ -404,6 +472,9 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 	case isListFilesEndpoint(r.requestHeaders[":method"], r.requestHeaders[":path"]):
 		// For list files endpoint, we need to extract the model name from the query parameter and set it to the request header since there is no request body.
 		return r.processListFilesRequestHeaders(ctx)
+	case isListBatchesEndpoint(r.requestHeaders[":method"], r.requestHeaders[":path"]):
+		// For list batches endpoint, we need to extract the model/backend from headers/query since there is no request body.
+		return r.processListBatchesRequestHeaders(ctx)
 	case shouldGetModelFromID(r.requestHeaders[":method"], r.requestHeaders[":path"]):
 		// For file endpoints with file_id in the path, we need to extract the model name from the file_id and set it to the request header since there is no request body.
 		return r.processFileIDInPathRequestHeaders(ctx)

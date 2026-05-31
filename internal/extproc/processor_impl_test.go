@@ -276,6 +276,7 @@ func Test_shouldGetModelFromID(t *testing.T) {
 		{name: "GET non-file endpoint", method: "GET", path: "/v1/chat/completions", expects: false},
 		{name: "DELETE file id endpoint", method: "DELETE", path: "/v1/files/file-abc123", expects: true},
 		{name: "DELETE non-file endpoint", method: "DELETE", path: "/v1/files", expects: false},
+		{name: "POST batch cancel endpoint with encoded batch id", method: "POST", path: "/v1/batches/batch_abc123/cancel", expects: true},
 		{name: "POST file path should be false", method: "POST", path: "/v1/files/file-abc123", expects: false},
 		{name: "empty path", method: "GET", path: "", expects: false},
 	} {
@@ -301,6 +302,8 @@ func Test_extractFileIDFromPath(t *testing.T) {
 		{name: "non-files path", path: "/v1/chat/completions", expectID: "", expectOK: false},
 		{name: "list files path", path: "/v1/files?model=gpt-4o-mini", expectID: "", expectOK: false},
 		{name: "segment appears later in path", path: "/prefix/v1/files/file-nested", expectID: "file-nested", expectOK: true},
+		{name: "batch id path", path: "/v1/batches/batch_abc123", expectID: "batch_abc123", expectOK: true},
+		{name: "batch cancel path", path: "/v1/batches/batch_abc123/cancel", expectID: "batch_abc123", expectOK: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			id, ok := extractFileIDFromPath(tc.path)
