@@ -333,6 +333,28 @@ func TestResponsesEndpointSpec_ParseBody(t *testing.T) {
 		require.Equal(t, "user", parsed.Input.OfInputItemList[0].OfMessage.Role)
 		require.Nil(t, mutated)
 	})
+
+	t.Run("multi_turn_input_with_assistant_output_without_type_field", func(t *testing.T) {
+		body := []byte(`{
+			"model": "gpt-4.7",
+			"input": [
+				{"role": "user", "content": "Hello"},
+				{"role": "assistant", "content": [{"type": "output_text", "text": "Hi there"}]},
+				{"role": "user", "content": "Continue"}
+			]
+		}`)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4.7", model)
+		require.False(t, stream)
+		require.NotNil(t, parsed)
+		require.NotNil(t, parsed.Input.OfInputItemList)
+		require.Len(t, parsed.Input.OfInputItemList, 3)
+		require.NotNil(t, parsed.Input.OfInputItemList[1].OfOutputMessage)
+		require.Equal(t, "assistant", parsed.Input.OfInputItemList[1].OfOutputMessage.Role)
+		require.Nil(t, mutated)
+	})
 }
 
 func TestResponsesEndpointSpec_GetTranslator(t *testing.T) {
