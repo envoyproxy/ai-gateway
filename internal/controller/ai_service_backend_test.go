@@ -194,8 +194,21 @@ func TestAIServiceBackendController_inferencePoolEventHandler(t *testing.T) {
 			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend"},
 		},
 	}
+	// Backend in namespace "a" that explicitly references a pool in namespace "other".
+	backendCrossNamespace := &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "b-cross", Namespace: "a"},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{
+				Group:     ptr.To(gwapiv1.Group(inferencePoolGroup)),
+				Kind:      ptr.To(gwapiv1.Kind(inferencePoolKind)),
+				Name:      "my-pool",
+				Namespace: ptr.To(gwapiv1.Namespace("other")),
+			},
+		},
+	}
 	require.NoError(t, fakeClient.Create(t.Context(), backendWithPool))
 	require.NoError(t, fakeClient.Create(t.Context(), backendWithoutPool))
+	require.NoError(t, fakeClient.Create(t.Context(), backendCrossNamespace))
 
 	pool := &gwaiev1.InferencePool{ObjectMeta: metav1.ObjectMeta{Name: "my-pool", Namespace: "default"}}
 	requests := c.inferencePoolEventHandler(t.Context(), pool)
@@ -203,8 +216,16 @@ func TestAIServiceBackendController_inferencePoolEventHandler(t *testing.T) {
 	require.Len(t, requests, 1)
 	require.Equal(t, reconcile.Request{NamespacedName: client.ObjectKey{Name: "b-pool", Namespace: "default"}}, requests[0])
 
-	// A pool in a different namespace should match no backends.
+	// A pool in namespace "other" should match the cross-namespace backend (which lives in namespace "a")
+	// but not the default backend that implicitly references its own namespace.
 	otherPool := &gwaiev1.InferencePool{ObjectMeta: metav1.ObjectMeta{Name: "my-pool", Namespace: "other"}}
 	requests = c.inferencePoolEventHandler(t.Context(), otherPool)
+	require.Len(t, requests, 1)
+	require.Equal(t, reconcile.Request{NamespacedName: client.ObjectKey{Name: "b-cross", Namespace: "a"}}, requests[0])
+
+	// A pool named "my-pool" in namespace "a" must NOT match the cross-namespace backend, which
+	// references "other/my-pool" rather than its own namespace.
+	poolInA := &gwaiev1.InferencePool{ObjectMeta: metav1.ObjectMeta{Name: "my-pool", Namespace: "a"}}
+	requests = c.inferencePoolEventHandler(t.Context(), poolInA)
 	require.Empty(t, requests)
 }

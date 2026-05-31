@@ -136,7 +136,7 @@ func (c *AIBackendController) inferencePoolEventHandler(ctx context.Context, obj
 		return nil
 	}
 	var backends aigv1b1.AIServiceBackendList
-	if err := c.client.List(ctx, &backends, client.InNamespace(pool.Namespace)); err != nil {
+	if err := c.client.List(ctx, &backends); err != nil {
 		c.logger.Error(err, "failed to list AIServiceBackends for InferencePool event", "pool", pool.Name)
 		return nil
 	}
@@ -147,9 +147,15 @@ func (c *AIBackendController) inferencePoolEventHandler(ctx context.Context, obj
 		if br.Kind != nil && string(*br.Kind) == inferencePoolKind &&
 			br.Group != nil && string(*br.Group) == inferencePoolGroup &&
 			string(br.Name) == pool.Name {
-			requests = append(requests, reconcile.Request{
-				NamespacedName: client.ObjectKey{Name: backend.Name, Namespace: backend.Namespace},
-			})
+			ns := backend.Namespace
+			if br.Namespace != nil {
+				ns = string(*br.Namespace)
+			}
+			if ns == pool.Namespace {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: client.ObjectKey{Name: backend.Name, Namespace: backend.Namespace},
+				})
+			}
 		}
 	}
 	return requests
