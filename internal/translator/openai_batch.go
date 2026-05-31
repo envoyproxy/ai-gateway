@@ -101,13 +101,13 @@ func (o *openAIToOpenAITranslatorV1CreateBatch) ResponseBody(_ map[string]string
 	}
 	batchID := gjson.GetBytes(bodyBytes, "id").String()
 	if batchID != "" {
-		encodedID := EncodeFileIDWithRouting(batchID, string(o.requestModel), o.requestBackend, "batch")
+		encodedID := EncodeFileIDWithRouting(batchID, o.requestModel, o.requestBackend, "batch")
 		bodyBytes, err = sjson.SetBytes(bodyBytes, "id", encodedID)
 		if err != nil {
 			return nil, nil, tokenUsage, "", fmt.Errorf("failed to encode batch ID in response: %w", err)
 		}
 	}
-	bodyBytes, err = encodeOutputAndErrorFileIDs(bodyBytes, string(o.requestModel), o.requestBackend)
+	bodyBytes, err = encodeOutputAndErrorFileIDs(bodyBytes, o.requestModel, o.requestBackend)
 	if err != nil {
 		return nil, nil, tokenUsage, "", err
 	}
@@ -165,44 +165,14 @@ func (o *openAIToOpenAITranslatorV1ListBatches) ResponseHeaders(map[string]strin
 }
 
 // ResponseBody implements [OpenAIListBatchesTranslator.ResponseBody].
-// Encodes each batch_id, output_file_id and error_file_id in the list response to enable sticky
-// routing for subsequent batch and file retrieval operations.
+// Preserve upstream response as-is for list batches responses.
+// No response body mutation is needed, similar to ListFiles endpoint.
 func (o *openAIToOpenAITranslatorV1ListBatches) ResponseBody(_ map[string]string, body io.Reader, _ bool, _ tracingapi.Span[struct{}, struct{}]) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
-	bodyBytes, err := io.ReadAll(body)
-	if err != nil {
-		return nil, nil, tokenUsage, "", fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	newBody = bodyBytes
-	data := gjson.GetBytes(bodyBytes, "data")
-	if data.IsArray() {
-		for i, item := range data.Array() {
-			id := item.Get("id").String()
-			if id == "" {
-				continue
-			}
-			newBody, err = sjson.SetBytes(newBody, fmt.Sprintf("data.%d.id", i), EncodeFileIDWithRouting(id, string(o.requestModel), o.requestBackend, "batch"))
-			if err != nil {
-				return nil, nil, tokenUsage, "", fmt.Errorf("failed to encode batch ID for list item %d: %w", i, err)
-			}
-			if outputFileID := item.Get("output_file_id").String(); outputFileID != "" {
-				newBody, err = sjson.SetBytes(newBody, fmt.Sprintf("data.%d.output_file_id", i), EncodeFileIDWithRouting(outputFileID, string(o.requestModel), o.requestBackend, "file"))
-				if err != nil {
-					return nil, nil, tokenUsage, "", fmt.Errorf("failed to encode output_file_id for list item %d: %w", i, err)
-				}
-			}
-			if errorFileID := item.Get("error_file_id").String(); errorFileID != "" {
-				newBody, err = sjson.SetBytes(newBody, fmt.Sprintf("data.%d.error_file_id", i), EncodeFileIDWithRouting(errorFileID, string(o.requestModel), o.requestBackend, "file"))
-				if err != nil {
-					return nil, nil, tokenUsage, "", fmt.Errorf("failed to encode error_file_id for list item %d: %w", i, err)
-				}
-			}
-		}
-	}
-
-	newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
+	_ = body
+	// Preserve upstream response as-is for list batches responses.
+	// No response body mutation is needed.
 	return
 }
 
@@ -275,7 +245,7 @@ func (o *openAIToOpenAITranslatorV1RetrieveBatch) ResponseBody(_ map[string]stri
 			return nil, nil, tokenUsage, "", fmt.Errorf("failed to set batch ID: %w", err)
 		}
 	}
-	bodyBytes, err = encodeOutputAndErrorFileIDs(bodyBytes, string(o.requestModel), o.requestBackend)
+	bodyBytes, err = encodeOutputAndErrorFileIDs(bodyBytes, o.requestModel, o.requestBackend)
 	if err != nil {
 		return nil, nil, tokenUsage, "", err
 	}
@@ -353,7 +323,7 @@ func (o *openAIToOpenAITranslatorV1CancelBatch) ResponseBody(_ map[string]string
 			return nil, nil, tokenUsage, "", fmt.Errorf("failed to set batch ID: %w", err)
 		}
 	}
-	bodyBytes, err = encodeOutputAndErrorFileIDs(bodyBytes, string(o.requestModel), o.requestBackend)
+	bodyBytes, err = encodeOutputAndErrorFileIDs(bodyBytes, o.requestModel, o.requestBackend)
 	if err != nil {
 		return nil, nil, tokenUsage, "", err
 	}

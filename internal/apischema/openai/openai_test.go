@@ -14081,6 +14081,47 @@ func TestFileNewParamsUnmarshalMultipart(t *testing.T) {
 	}
 }
 
+func TestBatchNewParamsUnmarshalJSON(t *testing.T) {
+	t.Run("captures_top_level_extra_fields", func(t *testing.T) {
+		in := []byte(`{
+			"completion_window":"24h",
+			"endpoint":"/v1/chat/completions",
+			"input_file_id":"file-123",
+			"metadata":{"source":"dummy-batch-client"},
+			"output_expires_after":{"anchor":"created_at","seconds":86400},
+			"model":"openai/gpt-oss-20b",
+			"backend":"default.openai-gpt-oss-20b-2"
+		}`)
+
+		var got BatchNewParams
+		err := json.Unmarshal(in, &got)
+		require.NoError(t, err)
+		require.Equal(t, "file-123", got.InputFileID)
+		require.NotNil(t, got.ExtraBody)
+		require.Equal(t, "openai/gpt-oss-20b", got.ExtraBody["model"])
+		require.Equal(t, "default.openai-gpt-oss-20b-2", got.ExtraBody["backend"])
+	})
+
+	t.Run("merges_extra_body_and_top_level_extra_fields", func(t *testing.T) {
+		in := []byte(`{
+			"completion_window":"24h",
+			"endpoint":"/v1/chat/completions",
+			"input_file_id":"file-123",
+			"extra_body":{"tenant":"prod"},
+			"model":"openai/gpt-oss-20b",
+			"backend":"default.openai-gpt-oss-20b-2"
+		}`)
+
+		var got BatchNewParams
+		err := json.Unmarshal(in, &got)
+		require.NoError(t, err)
+		require.NotNil(t, got.ExtraBody)
+		require.Equal(t, "prod", got.ExtraBody["tenant"])
+		require.Equal(t, "openai/gpt-oss-20b", got.ExtraBody["model"])
+		require.Equal(t, "default.openai-gpt-oss-20b-2", got.ExtraBody["backend"])
+	})
+}
+
 // mockFile implements various file interfaces for testing
 type mockFile struct {
 	content     []byte

@@ -19,6 +19,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/redaction"
+	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
 func TestChatCompletionsEndpointSpec_ParseBody(t *testing.T) {
@@ -1261,22 +1262,60 @@ func TestDeleteFileEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 func TestCreateBatchEndpointSpec_ParseBody(t *testing.T) {
 	spec := CreateBatchEndpointSpec{}
 
-	t.Run("success_with_raw_input_file_id_uses_placeholder_model", func(t *testing.T) {
-		body := []byte(`{"input_file_id":"file-123"}`)
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
+	// Build an encoded file ID with routing to simulate a gateway-issued file ID.
+	encodedFileID := translator.EncodeFileIDWithRouting("file-abc123", "gpt-4o-mini", "openai-primary", "file")
+	encodedFileIDWithoutBackend := translator.EncodeFileIDWithRouting("file-abc123", "gpt-4o-mini", "", "file")
+
+	t.Run("encoded_file_id_extracts_model_and_backend", func(t *testing.T) {
+		body, err := json.Marshal(map[string]any{"input_file_id": encodedFileID})
 		require.NoError(t, err)
-		require.Equal(t, internalapi.OriginalModel(noModelPlaceholder), model)
+		headers := map[string]string{}
+		model, parsed, stream, mutated, parseErr := spec.ParseBody(body, false, headers)
+		require.NoError(t, parseErr)
+		require.Equal(t, internalapi.OriginalModel("gpt-4o-mini"), model)
 		require.NotNil(t, parsed)
 		require.False(t, stream)
 		require.NotNil(t, mutated)
+		require.Equal(t, "openai-primary", headers[internalapi.BackendNameHeaderKey])
 	})
 
-	t.Run("success_with_optional_backend_in_extra_body", func(t *testing.T) {
-		body := []byte(`{"input_file_id":"file-123","extra_body":{"backend":"openai-primary"}}`)
+	t.Run("encoded_file_id_without_backend_returns_error", func(t *testing.T) {
+		body, err := json.Marshal(map[string]any{"input_file_id": encodedFileIDWithoutBackend})
+		require.NoError(t, err)
+		_, _, _, _, parseErr := spec.ParseBody(body, false, map[string]string{})
+		require.ErrorContains(t, parseErr, "backend routing information is required")
+	})
+
+	t.Run("raw_input_file_id_without_model_returns_error", func(t *testing.T) {
+		body := []byte(`{"input_file_id":"file-123"}`)
+		_, _, _, _, err := spec.ParseBody(body, false, map[string]string{})
+		require.ErrorContains(t, err, "'model' parameter must be provided in extra_body")
+	})
+
+	t.Run("raw_input_file_id_without_backend_returns_error", func(t *testing.T) {
+		body := []byte(`{"input_file_id":"file-123","extra_body":{"model":"gpt-4o-mini"}}`)
+		_, _, _, _, err := spec.ParseBody(body, false, map[string]string{})
+		require.ErrorContains(t, err, "'backend' parameter must be provided in extra_body")
+	})
+
+	t.Run("success_with_top_level_extra_fields", func(t *testing.T) {
+		body := []byte(`{"input_file_id":"file-123","model":"gpt-4o-mini","backend":"openai-primary"}`)
 		headers := map[string]string{}
 		model, parsed, stream, mutated, err := spec.ParseBody(body, false, headers)
 		require.NoError(t, err)
-		require.Equal(t, internalapi.OriginalModel(noModelPlaceholder), model)
+		require.Equal(t, internalapi.OriginalModel("gpt-4o-mini"), model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
+		require.NotNil(t, mutated)
+		require.Equal(t, "openai-primary", headers[internalapi.BackendNameHeaderKey])
+	})
+
+	t.Run("success_with_model_and_backend_in_extra_body", func(t *testing.T) {
+		body := []byte(`{"input_file_id":"file-123","extra_body":{"model":"gpt-4o-mini","backend":"openai-primary"}}`)
+		headers := map[string]string{}
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, headers)
+		require.NoError(t, err)
+		require.Equal(t, internalapi.OriginalModel("gpt-4o-mini"), model)
 		require.NotNil(t, parsed)
 		require.False(t, stream)
 		require.NotNil(t, mutated)
@@ -1284,9 +1323,15 @@ func TestCreateBatchEndpointSpec_ParseBody(t *testing.T) {
 	})
 
 	t.Run("invalid_backend_type_in_extra_body", func(t *testing.T) {
-		body := []byte(`{"input_file_id":"file-123","extra_body":{"backend":123}}`)
+		body := []byte(`{"input_file_id":"file-123","extra_body":{"model":"gpt-4o","backend":123}}`)
 		_, _, _, _, err := spec.ParseBody(body, false, map[string]string{})
-		require.ErrorContains(t, err, "invalid 'backend' parameter type for batch create operations")
+		require.ErrorContains(t, err, "invalid 'backend' parameter type in extra_body")
+	})
+
+	t.Run("invalid_model_type_in_extra_body", func(t *testing.T) {
+		body := []byte(`{"input_file_id":"file-123","extra_body":{"model":42}}`)
+		_, _, _, _, err := spec.ParseBody(body, false, map[string]string{})
+		require.ErrorContains(t, err, "invalid 'model' parameter type in extra_body")
 	})
 }
 

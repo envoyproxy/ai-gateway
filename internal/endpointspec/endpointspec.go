@@ -27,12 +27,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
-const (
-	// noModelPlaceholder is a sentinel model name used when a request has no explicit model (e.g. file and batch operations).
-	// It satisfies sticky backend+model route matching without a real model.
-	noModelPlaceholder = "__aigw_no_model__"
-)
-
 type (
 	// Spec defines methods for parsing request bodies and selecting translators
 	// for different API endpoints.
@@ -616,28 +610,51 @@ func (CreateBatchEndpointSpec) ParseBody(
 		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/batches: %w", internalapi.ErrMalformedRequest, err)
 	}
 
-	// Optional backend can be provided via extra_body for sticky backend routing.
-	if backendNameRaw, ok := req.ExtraBody["backend"]; ok {
-		backendName, ok := backendNameRaw.(string)
-		if !ok {
-			return "", nil, false, nil, fmt.Errorf("%w: invalid 'backend' parameter type for batch create operations", internalapi.ErrInvalidRequestBody)
-		}
-		if backendName != "" && requestHeaders != nil {
-			requestHeaders[internalapi.BackendNameHeaderKey] = backendName
+	// Try to extract model and backend from the encoded input_file_id.
+	// If the file ID does not carry routing info (i.e. it is a raw upstream ID),
+	// fall back to extra_body for model (required) and backend (required).
+	var modelName internalapi.OriginalModel
+	var backendName string
+	if req.InputFileID != "" {
+		model, backend, _, err := translator.DecodeFileIDWithRouting(req.InputFileID)
+		if err == nil && model != "" {
+			modelName = model
+			backendName = backend
 		}
 	}
 
-	// Extract model name from the input_file_id if it contains routing information
-	// For raw file IDs (that can't be decoded), use a placeholder model value
-	// This is consistent with file operations that don't have an explicit model
-	modelName := internalapi.OriginalModel(noModelPlaceholder)
-	if req.InputFileID != "" {
-		// Try to decode the file ID with routing information (model and backend)
-		model, _, _, err := translator.DecodeFileIDWithRouting(req.InputFileID)
-		if err == nil && model != "" {
-			modelName = internalapi.OriginalModel(model)
+	if modelName == "" {
+		// File ID was not encoded — model and backend must come from extra_body.
+		modelRaw, ok := req.ExtraBody["model"]
+		if !ok {
+			return "", nil, false, nil, fmt.Errorf("%w: 'model' parameter must be provided in extra_body when input_file_id is not an encoded gateway file ID", internalapi.ErrInvalidRequestBody)
 		}
-		// If decoding fails or model is empty, use the placeholder model value
+		modelStr, ok := modelRaw.(string)
+		if !ok {
+			return "", nil, false, nil, fmt.Errorf("%w: invalid 'model' parameter type in extra_body for batch create operations", internalapi.ErrInvalidRequestBody)
+		}
+		modelName = modelStr
+
+		backendRaw, ok := req.ExtraBody["backend"]
+		if !ok {
+			return "", nil, false, nil, fmt.Errorf("%w: 'backend' parameter must be provided in extra_body when input_file_id is not an encoded gateway file ID", internalapi.ErrInvalidRequestBody)
+		}
+		backendStr, ok := backendRaw.(string)
+		if !ok {
+			return "", nil, false, nil, fmt.Errorf("%w: invalid 'backend' parameter type in extra_body for batch create operations", internalapi.ErrInvalidRequestBody)
+		}
+		if backendStr == "" {
+			return "", nil, false, nil, fmt.Errorf("%w: 'backend' parameter in extra_body cannot be empty for batch create operations", internalapi.ErrInvalidRequestBody)
+		}
+		backendName = backendStr
+	}
+
+	if backendName == "" {
+		return "", nil, false, nil, fmt.Errorf("%w: backend routing information is required for /v1/batches create endpoint", internalapi.ErrInvalidRequestBody)
+	}
+
+	if requestHeaders != nil {
+		requestHeaders[internalapi.BackendNameHeaderKey] = backendName
 	}
 
 	return modelName, &req, false, body, nil

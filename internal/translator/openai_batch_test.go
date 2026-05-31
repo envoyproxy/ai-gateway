@@ -88,9 +88,9 @@ func TestCreateBatch_ResponseBody_AbsentFileIDsUnchanged(t *testing.T) {
 	require.Empty(t, getField(body, "error_file_id"))
 }
 
-// TestListBatches_ResponseBody_EncodesAllIDs verifies list-batches ResponseBody encodes IDs
-// for each item in the data array, including output_file_id and error_file_id.
-func TestListBatches_ResponseBody_EncodesAllIDs(t *testing.T) {
+// TestListBatches_ResponseBody_Passthrough verifies list-batches ResponseBody returns upstream
+// response as-is without encoding IDs, similar to ListFiles endpoint.
+func TestListBatches_ResponseBody_Passthrough(t *testing.T) {
 	tr := NewListBatchesOpenAIToOpenAITranslator("", "")
 	_, _, _ = tr.RequestBody(batchTestHeaders("gpt-4o", "default.openai"), nil, nil, false)
 
@@ -98,34 +98,12 @@ func TestListBatches_ResponseBody_EncodesAllIDs(t *testing.T) {
 		`{"id":"batch_1","status":"completed","output_file_id":"file-o1","error_file_id":"file-e1"},` +
 		`{"id":"batch_2","status":"in_progress"}` +
 		`]}`
-	_, body, _, _, err := tr.ResponseBody(nil, strings.NewReader(rawBody), false, nil)
+	headers, body, _, _, err := tr.ResponseBody(nil, strings.NewReader(rawBody), false, nil)
 	require.NoError(t, err)
 
-	// Item 0: batch id encoded with batch_ prefix.
-	_, _, raw0, err := DecodeFileIDWithRouting(getField(body, "data.0.id"))
-	require.NoError(t, err)
-	require.Equal(t, "batch_1", raw0)
-
-	// Item 0: output_file_id encoded with file- prefix.
-	encodedOut0 := getField(body, "data.0.output_file_id")
-	require.True(t, strings.HasPrefix(encodedOut0, FileIDPrefix))
-	_, _, rawOut0, err := DecodeFileIDWithRouting(encodedOut0)
-	require.NoError(t, err)
-	require.Equal(t, "file-o1", rawOut0)
-
-	// Item 0: error_file_id encoded with file- prefix.
-	encodedErr0 := getField(body, "data.0.error_file_id")
-	require.True(t, strings.HasPrefix(encodedErr0, FileIDPrefix))
-	_, _, rawErr0, err := DecodeFileIDWithRouting(encodedErr0)
-	require.NoError(t, err)
-	require.Equal(t, "file-e1", rawErr0)
-
-	// Item 1: batch id encoded; no file id fields.
-	_, _, raw1, err := DecodeFileIDWithRouting(getField(body, "data.1.id"))
-	require.NoError(t, err)
-	require.Equal(t, "batch_2", raw1)
-	require.Empty(t, getField(body, "data.1.output_file_id"))
-	require.Empty(t, getField(body, "data.1.error_file_id"))
+	// Verify response is returned as-is (passthrough), with no mutation.
+	require.Nil(t, headers)
+	require.Nil(t, body)
 }
 
 // TestRetrieveBatch_ResponseBody_EncodesAllIDs verifies retrieve-batch ResponseBody echoes the
