@@ -49,7 +49,7 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 	// Wait for the AI Gateway rate limit service to be ready.
 	e2elib.RequireWaitForPodReady(t, e2elib.EnvoyGatewayNamespace, "app=envoy-ai-gateway-ratelimit")
 
-	const modelName = "quota-test-model-override"
+	const modelName = "quota-test-model"
 
 	// Flush any existing quota keys in Redis to start with a clean state.
 	flushQuotaKeys(t)
