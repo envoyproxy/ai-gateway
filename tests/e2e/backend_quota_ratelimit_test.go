@@ -17,10 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 
-	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
@@ -55,9 +53,8 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 	flushQuotaKeys(t)
 
 	// makeRequest sends a chat completion request via the test upstream with the
-	// specified total_tokens in the fake response. It asserts that the response
-	// status is 200 OK and returns the response body.
-	makeRequest := func(totalTokens int) {
+	// specified total_tokens in the fake response and asserts the expected status code.
+	makeRequest := func(totalTokens int, expectedStatus int) {
 		fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 		defer fwd.Kill()
 
@@ -80,12 +77,7 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 
-		require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code, body: %s", string(body))
-
-		var oaiBody openai.ChatCompletion
-		require.NoError(t, json.Unmarshal(body, &oaiBody))
-		require.Equal(t, "This is a test.", oaiBody.Choices[0].Message.Content)
-		require.Equal(t, int64(totalTokens), oaiBody.Usage.TotalTokens)
+		require.Equal(t, expectedStatus, resp.StatusCode, "unexpected status code, body: %s", string(body))
 	}
 
 	// Test per-model quota enforcement by verifying the quota counter in Redis.
@@ -93,21 +85,19 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 	//
 	// The stream-done rate limit entry (ApplyOnStreamDone=true) runs after the
 	// response is complete and increments the quota counter by the token usage.
-	// Since stream-done runs asynchronously after the response, we verify the
-	// counter in Redis rather than expecting a 429 on the next request.
 	t.Run("per-model quota", func(t *testing.T) {
 		// First request: 20 total tokens (exceeds the limit of 10).
 		// The request succeeds because stream-done counting happens after the response.
-		makeRequest(20)
+		makeRequest(20, http.StatusOK)
 
 		// Verify the quota counter in Redis was incremented to 21.
-		requireQuotaUsage(t, modelName, 21) // 21 to account for the +1 in the request path
+		requireQuotaUsage(t, modelName, 21) // 21 to account for the +1 in the request check
 
-		// Second request: 5 more total tokens.
-		makeRequest(5)
+		// Second request: rejected because the quota counter (21) already exceeds the limit (10).
+		makeRequest(5, http.StatusTooManyRequests)
 
-		// Verify the quota counter increased to 27.
-		requireQuotaUsage(t, modelName, 27) // 27 to account for the +1 in the request path
+		// Verify the quota counter increments by 1 since the request was rejected.
+		requireQuotaUsage(t, modelName, 22)
 	})
 }
 
