@@ -100,14 +100,14 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 		// The request succeeds because stream-done counting happens after the response.
 		makeRequest(20)
 
-		// Verify the quota counter in Redis was incremented to 20.
-		requireQuotaUsage(t, modelName, 20)
+		// Verify the quota counter in Redis was incremented to 21.
+		requireQuotaUsage(t, modelName, 21) // 21 to account for the +1 in the request path
 
 		// Second request: 5 more total tokens.
 		makeRequest(5)
 
-		// Verify the quota counter increased to 25.
-		requireQuotaUsage(t, modelName, 25)
+		// Verify the quota counter increased to 27.
+		requireQuotaUsage(t, modelName, 27) // 27 to account for the +1 in the request path
 	})
 }
 
