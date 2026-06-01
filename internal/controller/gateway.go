@@ -367,6 +367,11 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 		ec.GlobalLLMRequestCosts = append(ec.GlobalLLMRequestCosts, fc)
 	}
 
+	// Models contributed by routes with no Spec.Hostnames. We only promote these to
+	// ec.UnscopedModels (and merge them into ec.ModelsByHost) when at least one route
+	// IS hostname-scoped; otherwise the existing ec.Models list already covers them.
+	var unscopedModels []filterapi.Model
+
 	for i := range aiGatewayRoutes {
 		aiGatewayRoute := &aiGatewayRoutes[i]
 		if !aiGatewayRoute.GetDeletionTimestamp().IsZero() {
@@ -375,6 +380,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 		}
 		hasEffectiveRoute = true
 		routeName := fmt.Sprintf("%s/%s", aiGatewayRoute.Namespace, aiGatewayRoute.Name)
+		hostnames := aiGatewayRoute.Spec.Hostnames
 		spec := aiGatewayRoute.Spec
 		routeBackendNamesSet := map[string]struct{}{}
 		routeBackendNames := []string{}
@@ -389,11 +395,25 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != internalapi.ModelNameHeaderKeyDefault {
 						continue
 					}
-					ec.Models = append(ec.Models, filterapi.Model{
+					model := filterapi.Model{
 						Name:      h.Value,
 						CreatedAt: ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).UTC(),
 						OwnedBy:   ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy),
-					})
+					}
+					ec.Models = append(ec.Models, model)
+					if len(hostnames) > 0 {
+						if ec.ModelsByHost == nil {
+							ec.ModelsByHost = make(map[string][]filterapi.Model)
+						}
+						for _, hn := range hostnames {
+							ec.ModelsByHost[string(hn)] = append(ec.ModelsByHost[string(hn)], model)
+						}
+					} else {
+						// Routes without hostnames are "unscoped": they apply to every host.
+						// Tracked in unscopedModels for now; only promoted to ec.UnscopedModels
+						// after the loop if at least one scoped route is also present.
+						unscopedModels = append(unscopedModels, model)
+					}
 				}
 			}
 			for backendRefIndex := range rule.BackendRefs {
@@ -480,6 +500,18 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			for _, fc := range dedup {
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
 			}
+		}
+	}
+
+	// If at least one route is hostname-scoped, promote the unscoped models to ec.UnscopedModels
+	// so the runtime can fall back to them on unmatched hosts, and merge them into every per-host
+	// list so a host-matched request still sees the models from routes that didn't declare hostnames.
+	// When no route uses hostname scoping, ec.Models is the sole source of truth and we skip both
+	// steps to avoid serializing a redundant UnscopedModels duplicate of Models.
+	if len(ec.ModelsByHost) > 0 && len(unscopedModels) > 0 {
+		ec.UnscopedModels = unscopedModels
+		for hn := range ec.ModelsByHost {
+			ec.ModelsByHost[hn] = append(ec.ModelsByHost[hn], unscopedModels...)
 		}
 	}
 
