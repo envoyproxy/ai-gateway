@@ -27,6 +27,7 @@ The Envoy AI Gateway acts as a proxy that accepts OpenAI-compatible and Anthropi
 - ✅ Response format specification (including JSON schema)
 - ✅ Temperature, top_p, and other sampling parameters
 - ✅ System and user messages
+- ✅ Audio and video inputs
 - ✅ Model selection via request body or `x-ai-eg-model` header
 - ✅ Token usage tracking and cost calculation
 - ✅ Provider fallback and load balancing

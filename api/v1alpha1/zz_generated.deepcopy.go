@@ -201,6 +201,11 @@ func (in *AIGatewayRouteSpec) DeepCopyInto(out *AIGatewayRouteSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.Hostnames != nil {
+		in, out := &in.Hostnames, &out.Hostnames
+		*out = make([]v1.Hostname, len(*in))
+		copy(*out, *in)
+	}
 	if in.Rules != nil {
 		in, out := &in.Rules, &out.Rules
 		*out = make([]AIGatewayRouteRule, len(*in))
