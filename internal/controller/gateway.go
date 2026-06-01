@@ -798,11 +798,15 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 		return
 	}
 
-	// Collect backend names on this route.
+	// Collect backend names and model name overrides on this route.
 	routeBackends := make(map[string]bool)
+	routeModels := make(map[string]bool)
 	for _, rule := range route.Spec.Rules {
 		for _, br := range rule.BackendRefs {
 			routeBackends[br.Name] = true
+			if br.ModelNameOverride != "" {
+				routeModels[br.ModelNameOverride] = true
+			}
 		}
 	}
 
@@ -822,6 +826,10 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 
 		for _, pmq := range qp.Spec.PerModelQuotas {
 			if pmq.ModelName == nil {
+				continue
+			}
+			// Skip this PerModelQuota if the model is not served by this route.
+			if len(routeModels) > 0 && !routeModels[*pmq.ModelName] {
 				continue
 			}
 			expr := "total_tokens"
