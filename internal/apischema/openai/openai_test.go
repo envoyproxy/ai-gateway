@@ -56,6 +56,36 @@ func TestOpenAIChatCompletionContentPartUserUnionParamUnmarshal(t *testing.T) {
 			},
 		},
 		{
+			name: "audio url",
+			in: []byte(`{
+"type": "audio_url",
+"audio_url": {"url": "https://example.com/audio.mp3"}
+}`),
+			out: &ChatCompletionContentPartUserUnionParam{
+				OfAudioURL: &ChatCompletionContentPartAudioParam{
+					Type: ChatCompletionContentPartAudioTypeAudioURL,
+					AudioURL: ChatCompletionContentPartAudioAudioURLParam{
+						URL: "https://example.com/audio.mp3",
+					},
+				},
+			},
+		},
+		{
+			name: "video url",
+			in: []byte(`{
+"type": "video_url",
+"video_url": {"url": "https://example.com/video.mp4"}
+}`),
+			out: &ChatCompletionContentPartUserUnionParam{
+				OfVideoURL: &ChatCompletionContentPartVideoParam{
+					Type: ChatCompletionContentPartVideoTypeVideoURL,
+					VideoURL: ChatCompletionContentPartVideoVideoURLParam{
+						URL: "https://example.com/video.mp4",
+					},
+				},
+			},
+		},
+		{
 			name: "input audio",
 			in: []byte(`{
 "type": "input_audio",
@@ -4918,6 +4948,20 @@ func TestResponseInputItemUnionParamUnmarshalJSON(t *testing.T) {
 				},
 			},
 			input: []byte(`{"role": "user", "content": "Hello"}`),
+		},
+		{
+			name: "unmarshal assistant output_message without type field",
+			expRes: ResponseInputItemUnionParam{
+				OfOutputMessage: &ResponseOutputMessage{
+					Role: "assistant",
+					Content: ResponseOutputMessageContentUnion{
+						OfContentArray: []ResponseOutputMessageContentArrayUnion{
+							{OfOutputText: &ResponseOutputTextParam{Text: "Hi! I'm here and working.", Type: "output_text"}},
+						},
+					},
+				},
+			},
+			input: []byte(`{"role": "assistant", "content": [{"text": "Hi! I'm here and working.", "type": "output_text"}]}`),
 		},
 		{
 			name:   "unmarshal message without type field (role missing, should error)",

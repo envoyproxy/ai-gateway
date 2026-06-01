@@ -75,6 +75,12 @@ type Translator[ReqT any, SpanT any] interface {
 	)
 }
 
+// RequestHeadersSetter is an optional interface for translators that need
+// request headers to translate provider-specific request fields.
+type RequestHeadersSetter interface {
+	SetRequestHeaders(headers map[string]string)
+}
+
 // ResponseRedactor is an optional interface that translators can implement
 // to support response body redaction for debug logging.
 type ResponseRedactor interface {
