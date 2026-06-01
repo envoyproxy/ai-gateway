@@ -227,8 +227,4 @@ spec:
       protocol: TCP
       port: 8081
       targetPort: 8081
-    - name: ratelimit-xds
-      protocol: TCP
-      port: 8082
-      targetPort: 8082
   type: ClusterIP
