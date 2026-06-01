@@ -1324,9 +1324,9 @@ func TestEnableQuotaRateLimitOnRoute_MultiplePerModelQuotas(t *testing.T) {
 		},
 	}
 
-	t.Run("filters by route name, only matching model included", func(t *testing.T) {
+	t.Run("filters by backend override, only matching model included", func(t *testing.T) {
 		modelInfo := &routeModelInfo{
-			routeNames: map[string]bool{"claude-sonnet-4-6": true},
+			backendModels: map[string]string{"bedrock-backend": "claude-sonnet-4-6"},
 		}
 		require.NoError(t, enableQuotaRateLimitOnRoute(logr.Discard(), route, policies, modelInfo))
 
@@ -1357,6 +1357,7 @@ func TestEnableQuotaRateLimitOnRoute_MultiplePerModelQuotas(t *testing.T) {
 				Spec: aigv1a1.QuotaPolicySpec{
 					TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
 						{Name: "bedrock-backend"},
+						{Name: "bedrock-backend-haiku"},
 					},
 					PerModelQuotas: []aigv1a1.PerModelQuota{
 						{
@@ -1386,36 +1387,35 @@ func TestEnableQuotaRateLimitOnRoute_MultiplePerModelQuotas(t *testing.T) {
 			},
 		}
 		modelInfo := &routeModelInfo{
-			routeNames: map[string]bool{"claude-sonnet-4-6": true, "claude-haiku-4-5": true},
+			backendModels: map[string]string{
+				"bedrock-backend":       "claude-sonnet-4-6",
+				"bedrock-backend-haiku": "claude-haiku-4-5",
+			},
 		}
 		require.NoError(t, enableQuotaRateLimitOnRoute(logr.Discard(), route3, mixedPolicies, modelInfo))
 
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route3.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// claude-sonnet-4-6 with bucket rules: 1 bucket req-time + 1 default req-time = 2
-		// claude-haiku-4-5 simple: 1 req-time = 1
-		// + 3 stream-done (sonnet rule, sonnet default bucket, haiku simple) = 6
-		require.Len(t, perRoute.RateLimits, 6)
+		// claude-sonnet-4-6 with bucket rules: 2 targets × (1 bucket + 1 default) = 4 req-time
+		// claude-haiku-4-5 simple: 2 targets × 1 = 2 req-time
+		// stream-done: 2 sonnet rule (one per target) + 1 sonnet default + 1 haiku simple = 4
+		// Total: 6 + 4 = 10
+		require.Len(t, perRoute.RateLimits, 10)
 
 		// Verify sonnet bucket rule uses policy model name (not ModelNameOverride).
 		sonnetBucketReqTime := perRoute.RateLimits[0]
 		require.Equal(t, translator.BucketRuleDescriptorKey("bedrock-backend", "claude-sonnet-4-6", 0, 0),
 			sonnetBucketReqTime.Actions[2].GetHeaderValueMatch().DescriptorKey)
 
-		// Haiku uses its own policy model name.
-		haikuReqTime := perRoute.RateLimits[2]
-		require.Equal(t, "claude-haiku-4-5", haikuReqTime.Actions[1].GetGenericKey().DescriptorValue)
-
 		// Stream-done entries use policy model name consistently with request-time.
-		// Entry order: sonnet rule (3), sonnet default (4), haiku simple (5).
-		sonnetRuleSD := perRoute.RateLimits[3]
+		sonnetRuleSD := perRoute.RateLimits[6]
 		require.True(t, sonnetRuleSD.ApplyOnStreamDone)
 		sdHvm := sonnetRuleSD.Actions[2].GetHeaderValueMatch()
 		require.NotNil(t, sdHvm)
 		require.Equal(t, translator.BucketRuleDescriptorKey("bedrock-backend", "claude-sonnet-4-6", 0, 0), sdHvm.DescriptorKey)
 
-		sonnetDefaultSD := perRoute.RateLimits[4]
+		sonnetDefaultSD := perRoute.RateLimits[8]
 		require.True(t, sonnetDefaultSD.ApplyOnStreamDone)
 		sdGk := sonnetDefaultSD.Actions[2].GetGenericKey()
 		require.NotNil(t, sdGk)
@@ -1988,7 +1988,7 @@ func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
 					TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{{Name: "backend-a"}},
 					PerModelQuotas: []aigv1a1.PerModelQuota{
 						{
-							ModelName: ptr.To("gpt-4"),
+							ModelName: ptr.To("gpt-4-turbo"),
 							Quota: aigv1a1.QuotaDefinition{
 								BucketRules: []aigv1a1.QuotaRule{
 									{Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"}},
@@ -2226,7 +2226,7 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 				},
 				PerModelQuotas: []aigv1a1.PerModelQuota{
 					{
-						ModelName: ptr.To("gpt-4"),
+						ModelName: ptr.To("gpt-4-turbo"),
 						Quota: aigv1a1.QuotaDefinition{
 							DefaultBucket: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 						},

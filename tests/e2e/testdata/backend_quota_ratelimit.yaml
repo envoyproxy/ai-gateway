@@ -60,6 +60,7 @@ spec:
               value: quota-test-model
       backendRefs:
         - name: envoy-ai-gateway-quota-ratelimit-testupstream
+          modelNameOverride: quota-test-model-override
   # The following metadata keys are used to store the costs from the LLM request.
   llmRequestCosts:
     - metadataKey: llm_input_token
@@ -104,7 +105,7 @@ spec:
       kind: AIServiceBackend
       name: envoy-ai-gateway-quota-ratelimit-testupstream
   perModelQuotas:
-    - modelName: "quota-test-model"
+    - modelName: "quota-test-model-override"
       quota:
         mode: Shared
         defaultBucket:

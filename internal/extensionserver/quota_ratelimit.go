@@ -468,11 +468,9 @@ func (s *Server) backendKeysForCluster(ctx context.Context, clusterName string) 
 
 // routeModelInfo holds the resolved model information for an Envoy route.
 type routeModelInfo struct {
-	// routeNames is the set of AIGatewayRoute names this Envoy route was generated
-	// from. Used for filtering: a QuotaPolicy's modelName must match one of these.
-	routeNames map[string]bool
 	// backendModels maps backend name → ModelNameOverride from the AIGatewayRoute.
-	// Used for request-time descriptors (the actual value ext_proc will set).
+	// Used for filtering (a QuotaPolicy's target+modelName must match) and for
+	// request-time descriptors (the actual value ext_proc will set).
 	backendModels map[string]string
 }
 
@@ -485,7 +483,6 @@ func (s *Server) resolveRouteModelInfo(ctx context.Context, route *routev3.Route
 	}
 
 	info := &routeModelInfo{
-		routeNames:    make(map[string]bool),
 		backendModels: make(map[string]string),
 	}
 
@@ -500,8 +497,6 @@ func (s *Server) resolveRouteModelInfo(ctx context.Context, route *routev3.Route
 		if err != nil || ruleIndex < 0 {
 			return
 		}
-
-		info.routeNames[routeName] = true
 
 		var aigwRoute aigv1b1.AIGatewayRoute
 		if err := s.k8sClient.Get(ctx, client.ObjectKey{
@@ -531,15 +526,16 @@ func (s *Server) resolveRouteModelInfo(ctx context.Context, route *routev3.Route
 		}
 	}
 
-	if len(info.routeNames) == 0 {
+	if len(info.backendModels) == 0 {
 		return nil
 	}
 	return info
 }
 
 // enableQuotaRateLimitOnRoute sets per-route rate limit actions via TypedPerFilterConfig.
-// modelInfo provides the AIGatewayRoute names (for filtering) and backend→ModelNameOverride
-// mapping (for request-time descriptors). If nil, all models are included.
+// modelInfo provides the backend→ModelNameOverride mapping used for filtering (a policy's
+// target and modelName must match a backend override) and for request-time descriptors.
+// If nil, all models are included.
 func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies []aigv1a1.QuotaPolicy, modelInfo *routeModelInfo) error {
 	var rateLimitActions []*routev3.RateLimit
 
@@ -562,8 +558,22 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 				continue
 			}
 			modelName := *pmq.ModelName
-			if modelInfo != nil && !modelInfo.routeNames[modelName] {
-				continue
+			// Skip this PerModelQuota unless at least one policy target is a backendRef
+			// on this route whose ModelNameOverride matches the quota's model name.
+			// The model name in the QuotaPolicy must match the ModelNameOverride set
+			// in the AIGatewayRoute's BackendRef for the policy to apply.
+			if modelInfo != nil {
+				matched := false
+				for _, target := range policy.Spec.TargetRefs {
+					targetName := string(target.Name)
+					if override, ok := modelInfo.backendModels[targetName]; ok && override == modelName {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					continue
+				}
 			}
 
 			if len(pmq.Quota.BucketRules) == 0 && pmq.Quota.DefaultBucket.Limit > 0 {

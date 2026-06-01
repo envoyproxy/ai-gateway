@@ -67,6 +67,8 @@ type ServiceQuotaDefinition struct {
 
 type PerModelQuota struct {
 	// Model name for which the quota is specified.
+	// This must match the ModelNameOverride set in the AIGatewayRoute's BackendRef
+	// for the quota policy to apply to that backend.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1

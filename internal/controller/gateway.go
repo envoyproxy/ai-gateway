@@ -501,7 +501,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			}
 			// Inject QuotaPolicy cost expressions as LLMRequestCost entries so ext_proc
 			// computes and stores them in metadata for the HitsAddend to read.
-			c.injectQuotaPolicyCostExpressions(ctx, aiGatewayRoute, ec, injectedQuotaCosts)
+			c.injectQuotaPolicyCostExpressions(ctx, aiGatewayRoute, ec, injectedQuotaCosts, routeName)
 
 			for _, fc := range dedup {
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
@@ -790,6 +790,7 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 	route *aigv1b1.AIGatewayRoute,
 	ec *filterapi.Config,
 	injectedQuotaCosts map[string]struct{},
+	routeName string,
 ) {
 	var quotaPolicies aigv1a1.QuotaPolicyList
 	if err := c.client.List(ctx, &quotaPolicies, client.InNamespace(route.Namespace)); err != nil {
@@ -847,6 +848,7 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 					MetadataKey: metadataKey,
 					CEL:         expr,
 					Backend:     backendKey,
+					RouteName:   routeName,
 				})
 				injectedQuotaCosts[dedupeKey] = struct{}{}
 			}
