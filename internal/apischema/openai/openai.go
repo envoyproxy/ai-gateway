@@ -8494,7 +8494,6 @@ type TranslationRequest struct {
 }
 
 // TranscriptionResponse represents the JSON response from /v1/audio/transcriptions.
-// Covers both the simple (json) and verbose (verbose_json) response formats.
 type TranscriptionResponse struct {
 	Text     string                 `json:"text"`
 	Task     string                 `json:"task,omitempty"`
