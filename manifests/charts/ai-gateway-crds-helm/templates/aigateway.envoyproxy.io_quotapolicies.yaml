@@ -61,7 +61,10 @@ spec:
                 items:
                   properties:
                     modelName:
-                      description: Model name for which the quota is specified.
+                      description: |-
+                        Model name for which the quota is specified.
+                        This must match the ModelNameOverride set in the AIGatewayRoute's BackendRef
+                        for the quota policy to apply to that backend.
                       minLength: 1
                       type: string
                     quota:
@@ -278,12 +281,13 @@ spec:
                                 properties:
                                   duration:
                                     description: 'Time window. Must be exactly one
-                                      of: "1s" (1 second), "1m" (1 minute), or "1h"
-                                      (1 hour).'
+                                      of: "1s" (1 second), "1m" (1 minute), "1h" (1
+                                      hour), or "1d" (1 day).'
                                     enum:
                                     - 1s
                                     - 1m
                                     - 1h
+                                    - 1d
                                     type: string
                                   limit:
                                     description: The limit alloted for a specified
@@ -319,11 +323,13 @@ spec:
                           properties:
                             duration:
                               description: 'Time window. Must be exactly one of: "1s"
-                                (1 second), "1m" (1 minute), or "1h" (1 hour).'
+                                (1 second), "1m" (1 minute), "1h" (1 hour), or "1d"
+                                (1 day).'
                               enum:
                               - 1s
                               - 1m
                               - 1h
+                              - 1d
                               type: string
                             limit:
                               description: The limit alloted for a specified time
@@ -371,11 +377,12 @@ spec:
                     properties:
                       duration:
                         description: 'Time window. Must be exactly one of: "1s" (1
-                          second), "1m" (1 minute), or "1h" (1 hour).'
+                          second), "1m" (1 minute), "1h" (1 hour), or "1d" (1 day).'
                         enum:
                         - 1s
                         - 1m
                         - 1h
+                        - 1d
                         type: string
                       limit:
                         description: The limit alloted for a specified time window.

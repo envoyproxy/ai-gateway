@@ -2199,7 +2199,7 @@ a tool must match an include rule AND not match any exclude rule to be allowed.
   name="modelName"
   type="string"
   required="true"
-  description="Model name for which the quota is specified."
+  description="Model name for which the quota is specified.<br />This must match the ModelNameOverride set in the AIGatewayRoute's BackendRef<br />for the quota policy to apply to that backend."
 /><ApiField
   name="quota"
   type="[QuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotadefinition)"
@@ -2422,7 +2422,7 @@ QuotaValue defines the quota limits using sliding window.
   name="duration"
   type="string"
   required="true"
-  description="Time window. Must be exactly one of: `1s` (1 second), `1m` (1 minute), or `1h` (1 hour)."
+  description="Time window. Must be exactly one of: `1s` (1 second), `1m` (1 minute), `1h` (1 hour), or `1d` (1 day)."
 />
 
 
