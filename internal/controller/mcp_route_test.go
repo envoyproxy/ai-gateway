@@ -272,7 +272,9 @@ func TestMCPRouteController_syncGateway_notFound(t *testing.T) { // coverage for
 	fakeClient := requireNewFakeClientWithIndexesForMCP(t)
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	s := NewMCPRouteController(fakeClient, fakekube.NewClientset(), logr.Discard(), eventCh.Ch)
-	s.syncGateway(context.Background(), "ns", "non-exist")
+	err := s.syncGateway(context.Background(), "ns", "non-exist")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
 }
 
 func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {

@@ -460,24 +460,27 @@ func (c *MCPRouteController) syncGateways(ctx context.Context, mcpRoute *aigv1b1
 		if p.Namespace != nil {
 			gwNamespace = string(*p.Namespace)
 		}
-		c.syncGateway(ctx, gwNamespace, string(p.Name))
+		if err := c.syncGateway(ctx, gwNamespace, string(p.Name)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 // syncGateway is a helper function for syncGateways that sends one GenericEvent to the gateway controller.
-func (c *MCPRouteController) syncGateway(ctx context.Context, namespace, name string) {
+func (c *MCPRouteController) syncGateway(ctx context.Context, namespace, name string) error {
 	var gw gwapiv1.Gateway
 	if err := c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &gw); err != nil {
 		if apierrors.IsNotFound(err) {
 			c.logger.Info("Gateway not found", "namespace", namespace, "name", name)
-			return
+			return fmt.Errorf("gateway %s/%s not found", namespace, name)
 		}
 		c.logger.Error(err, "failed to get Gateway", "namespace", namespace, "name", name)
-		return
+		return fmt.Errorf("failed to get Gateway %s/%s: %w", namespace, name, err)
 	}
 	c.logger.Info("Syncing Gateway", "namespace", gw.Namespace, "name", gw.Name)
 	c.gatewayEventChan <- event.GenericEvent{Object: &gw}
+	return nil
 }
 
 // updateMCPRouteStatus updates the status of the MCPRoute.
