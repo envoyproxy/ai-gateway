@@ -602,6 +602,10 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	}
 	rp.upstreamFilter = u // Only assign after translator is confirmed valid
 
+	if headerSetter, ok := u.translator.(translator.RequestHeadersSetter); ok {
+		headerSetter.SetRequestHeaders(u.requestHeaders)
+	}
+
 	switch redactor := u.translator.(type) {
 	case translator.ResponseRedactor:
 		redactor.SetRedactionConfig(u.parent.debugLogEnabled, u.parent.enableRedaction, u.logger)
