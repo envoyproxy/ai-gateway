@@ -93,7 +93,6 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 		makeRequest("quota-test-model", 5, http.StatusTooManyRequests)
 		requireQuotaUsage(t, "quota-test-model", 22)
 	})
-
 }
 
 // redisExec runs a redis-cli command on the Redis pod and returns the output.
