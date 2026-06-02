@@ -52,7 +52,7 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 
 	// makeRequest sends a chat completion request via the test upstream with the
 	// specified total_tokens in the fake response and asserts the expected status code.
-	makeRequest := func(modelName string, totalTokens int, expectedStatus int) {
+	makeRequest := func(modelName string, totalTokens int, expectedStatus int, headers ...http.Header) {
 		fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 		defer fwd.Kill()
 
@@ -67,6 +67,13 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 		req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(fakeResponseBody)))
 		req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
 		req.Header.Set("Host", "openai.com")
+		for _, h := range headers {
+			for k, vals := range h {
+				for _, v := range vals {
+					req.Header.Set(k, v)
+				}
+			}
+		}
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
@@ -92,16 +99,21 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 	// QuotaPolicies with client selectors matching on x-ai-eg-model header.
 	// Route A has a quota limit of 10, Route B has a quota limit of 20.
 	t.Run("client selector quota", func(t *testing.T) {
+		routeAHeaders := http.Header{"x-ai-eg-model": []string{"route-a"}}
+		routeBHeaders := http.Header{"x-ai-eg-model": []string{"route-b"}}
+
 		t.Run("route-a (limit 10)", func(t *testing.T) {
-			makeRequest("quota-selector-route-a", 20, http.StatusOK)
+			makeRequest("quota-selector-model", 20, http.StatusOK, routeAHeaders)
 			requireQuotaUsage(t, "quota-selector-model", 21)
-			makeRequest("quota-selector-route-a", 5, http.StatusTooManyRequests)
+			makeRequest("quota-selector-model", 5, http.StatusTooManyRequests, routeAHeaders)
 			requireQuotaUsage(t, "quota-selector-model", 22)
 		})
 
 		t.Run("route-b (limit 20) independent quota", func(t *testing.T) {
-			makeRequest("quota-selector-route-b", 15, http.StatusOK)
-			makeRequest("quota-selector-route-b", 5, http.StatusTooManyRequests)
+			makeRequest("quota-selector-model", 15, http.StatusOK, routeBHeaders)
+			requireQuotaUsage(t, "quota-selector-model", 16)
+			makeRequest("quota-selector-model", 5, http.StatusTooManyRequests, routeBHeaders)
+			requireQuotaUsage(t, "quota-selector-model", 17)
 		})
 	})
 }
