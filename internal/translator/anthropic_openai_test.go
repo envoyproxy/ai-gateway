@@ -874,6 +874,165 @@ func TestAnthropicMessagesToOpenAI_ToolConversation(t *testing.T) {
 	})
 }
 
+func TestAnthropicToOpenAITranslator_RequestBody_ThinkingConfig(t *testing.T) {
+	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
+	body := &anthropic.MessagesRequest{
+		Model:     "claude-3",
+		MaxTokens: 8192,
+		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Think"}}},
+		Thinking:  &anthropic.Thinking{Enabled: &anthropic.ThinkingEnabled{Type: "enabled", BudgetTokens: 4096}},
+	}
+	headers, newBody, err := translator.RequestBody(nil, body, false)
+	require.NoError(t, err)
+	require.NotNil(t, newBody)
+	require.Len(t, headers, 2)
+
+	var req map[string]any
+	require.NoError(t, json.Unmarshal(newBody, &req))
+	thinking, ok := req["thinking"].(map[string]any)
+	require.True(t, ok, "expected thinking config in request body")
+	assert.Equal(t, "enabled", thinking["type"])
+	assert.Equal(t, float64(4096), thinking["budget_tokens"])
+}
+
+func TestAnthropicToOpenAITranslator_RequestBody_MultiTurnWithThinking(t *testing.T) {
+	// Multi-turn conversation with thinking blocks in history should not error.
+	// This is the primary regression scenario from vLLM's test suite.
+	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
+	body := &anthropic.MessagesRequest{
+		Model:     "claude-3",
+		MaxTokens: 100,
+		Messages: []anthropic.MessageParam{
+			{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Turn 1 question"}},
+			{
+				Role: anthropic.MessageRoleAssistant,
+				Content: anthropic.MessageContent{
+					Array: []anthropic.ContentBlockParam{
+						{Thinking: &anthropic.ThinkingBlockParam{Type: "thinking", Thinking: "Reasoning for turn 1.", Signature: "s_t1"}},
+						{Text: &anthropic.TextBlockParam{Type: "text", Text: "Answer for turn 1."}},
+					},
+				},
+			},
+			{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Turn 2 question"}},
+			{
+				Role: anthropic.MessageRoleAssistant,
+				Content: anthropic.MessageContent{
+					Array: []anthropic.ContentBlockParam{
+						{Thinking: &anthropic.ThinkingBlockParam{Type: "thinking", Thinking: "Reasoning for turn 2.", Signature: "s_t2"}},
+						{Text: &anthropic.TextBlockParam{Type: "text", Text: "Answer for turn 2."}},
+					},
+				},
+			},
+			{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Turn 3 question"}},
+		},
+	}
+	_, newBody, err := translator.RequestBody(nil, body, false)
+	require.NoError(t, err)
+	require.NotNil(t, newBody)
+
+	// Verify the body can be parsed and contains the expected messages
+	var req map[string]any
+	require.NoError(t, json.Unmarshal(newBody, &req))
+	messages, ok := req["messages"].([]any)
+	require.True(t, ok)
+	// 3 user + 2 assistant = 5 messages
+	assert.Len(t, messages, 5)
+}
+
+func TestAnthropicToOpenAITranslator_ResponseBody_NonStreaming_Thinking(t *testing.T) {
+	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
+	reqBody := &anthropic.MessagesRequest{
+		Model:     "claude-3",
+		MaxTokens: 100,
+		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
+	}
+	_, _, err := translator.RequestBody(nil, reqBody, false)
+	require.NoError(t, err)
+
+	content := "The answer is 42."
+	openAIResp := openai.ChatCompletionResponse{
+		ID:    "chatcmpl-think",
+		Model: "gpt-4o",
+		Choices: []openai.ChatCompletionResponseChoice{
+			{
+				FinishReason: openai.ChatCompletionChoicesFinishReasonStop,
+				Message: openai.ChatCompletionResponseChoiceMessage{
+					Content: &content,
+					Role:    "assistant",
+					ThinkingBlocks: []openai.ThinkingBlock{
+						{Type: "thinking", Thinking: "Let me calculate...", Signature: "sig_calc"},
+					},
+				},
+			},
+		},
+		Usage: openai.Usage{PromptTokens: 10, CompletionTokens: 20},
+	}
+	respBytes, err := json.Marshal(openAIResp)
+	require.NoError(t, err)
+
+	_, body, _, _, err := translator.ResponseBody(
+		map[string]string{"content-type": "application/json"},
+		bytes.NewReader(respBytes),
+		true,
+		nil,
+	)
+	require.NoError(t, err)
+
+	var anthropicResp anthropic.MessagesResponse
+	require.NoError(t, json.Unmarshal(body, &anthropicResp))
+
+	// Should have thinking block before text
+	require.Len(t, anthropicResp.Content, 2)
+	require.NotNil(t, anthropicResp.Content[0].Thinking)
+	assert.Equal(t, "Let me calculate...", anthropicResp.Content[0].Thinking.Thinking)
+	assert.Equal(t, "sig_calc", anthropicResp.Content[0].Thinking.Signature)
+	require.NotNil(t, anthropicResp.Content[1].Text)
+	assert.Equal(t, "The answer is 42.", anthropicResp.Content[1].Text.Text)
+}
+
+func TestAnthropicToOpenAITranslator_ResponseBody_Streaming_Thinking(t *testing.T) {
+	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "claude-3")
+	reqBody := &anthropic.MessagesRequest{
+		Model:     "claude-3",
+		MaxTokens: 100,
+		Stream:    true,
+		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Think"}}},
+	}
+	_, _, err := translator.RequestBody(nil, reqBody, false)
+	require.NoError(t, err)
+
+	// Simulate OpenAI streaming with reasoning content followed by text content
+	input := `data: {"id":"chatcmpl-sr","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":{"text":"Thinking..."}}}],"model":"gpt-4o"}` + "\n\n" +
+		`data: {"id":"chatcmpl-sr","choices":[{"index":0,"delta":{"content":"Answer"}}]}` + "\n\n" +
+		`data: {"id":"chatcmpl-sr","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}` + "\n\n" +
+		`data: {"id":"chatcmpl-sr","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}` + "\n\n" +
+		"data: [DONE]\n\n"
+
+	_, body, _, _, err := translator.ResponseBody(
+		map[string]string{"content-type": "text/event-stream"},
+		strings.NewReader(input),
+		true,
+		nil,
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, body)
+
+	events := parseSSEEventsFromBytes(body)
+
+	// Should contain thinking content block start and text content block start
+	var blockTypes []string
+	for _, e := range events {
+		if e.eventType == "content_block_start" {
+			if bytes.Contains([]byte(e.data), []byte(`"thinking"`)) {
+				blockTypes = append(blockTypes, "thinking")
+			} else if bytes.Contains([]byte(e.data), []byte(`"text"`)) {
+				blockTypes = append(blockTypes, "text")
+			}
+		}
+	}
+	assert.Equal(t, []string{"thinking", "text"}, blockTypes)
+}
+
 // responseBodyStreaming should return an error when streamState is nil.
 func TestAnthropicToOpenAITranslator_ResponseBody_StreamStateNilGuard(t *testing.T) {
 	tr := NewAnthropicToChatCompletionOpenAITranslator("v1", "").(*anthropicToOpenAIV1ChatCompletionTranslator)
