@@ -173,28 +173,6 @@ func (ChatCompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Ch
 		redacted.Messages[i] = redactMessage(msg)
 	}
 
-	// Redact tool definitions (function descriptions and parameter schemas may contain sensitive information)
-	if len(req.Tools) > 0 {
-		redacted.Tools = make([]openai.Tool, len(req.Tools))
-		for i, tool := range req.Tools {
-			redacted.Tools[i] = tool
-			if tool.Function != nil {
-				redactedFunc := *tool.Function
-				redactedFunc.Description = redaction.RedactString(redactedFunc.Description)
-				// Redact parameters by replacing with a placeholder map to preserve type safety
-				// while hiding sensitive schema information
-				if redactedFunc.Parameters != nil {
-					params := fmt.Sprintf("%v", redactedFunc.Parameters)
-					hash := redaction.ComputeContentHash(params)
-					redactedFunc.Parameters = map[string]any{
-						"_redacted": fmt.Sprintf("REDACTED LENGTH=%d HASH=%s", len(params), hash),
-					}
-				}
-				redacted.Tools[i].Function = &redactedFunc
-			}
-		}
-	}
-
 	// Redact prediction content if present (cached prompts, prefill content)
 	if req.PredictionContent != nil {
 		redactedPrediction := *req.PredictionContent
@@ -202,17 +180,9 @@ func (ChatCompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Ch
 		redacted.PredictionContent = &redactedPrediction
 	}
 
-	// Redact response format schema (may contain sensitive structure information)
-	if req.ResponseFormat != nil {
-		redacted.ResponseFormat = redactResponseFormat(req.ResponseFormat)
-	}
-
-	// Redact guided JSON schema (contains raw JSON schema definition)
-	if len(req.GuidedJSON) > 0 {
-		originalLen := len(req.GuidedJSON)
-		hash := redaction.ComputeContentHash(string(req.GuidedJSON))
-		redacted.GuidedJSON = []byte(fmt.Sprintf(`{"_redacted":"[REDACTED LENGTH=%d HASH=%s]"}`, originalLen, hash))
-	}
+	// Tool definitions (name, description, parameters) are developer-authored schema metadata,
+	// not user data — kept as-is.
+	// Response format schemas and guided_json are developer-authored — kept as-is.
 
 	return &redacted, nil
 }
@@ -472,12 +442,12 @@ func redactUserMessage(msg openai.ChatCompletionMessageParamUnion) openai.ChatCo
 func redactAssistantMessage(msg openai.ChatCompletionMessageParamUnion) openai.ChatCompletionMessageParamUnion {
 	redactedMsg := *msg.OfAssistant
 	redactedMsg.Content = redactStringOrAssistantRoleContentUnion(msg.OfAssistant.Content)
-	// Redact tool call arguments (may contain sensitive data extracted from user messages)
+	// Redact tool call arguments (may contain data derived from user messages).
+	// Function name is kept — it is the tool API name, not user data.
 	if len(msg.OfAssistant.ToolCalls) > 0 {
 		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.OfAssistant.ToolCalls))
 		for i, tc := range msg.OfAssistant.ToolCalls {
 			redactedToolCall := tc
-			redactedToolCall.Function.Name = redaction.RedactString(tc.Function.Name)
 			redactedToolCall.Function.Arguments = redaction.RedactString(tc.Function.Arguments)
 			redactedMsg.ToolCalls[i] = redactedToolCall
 		}
@@ -574,37 +544,6 @@ func redactStringOrAssistantRoleContentUnion(content openai.StringOrAssistantRol
 	default:
 		return content
 	}
-}
-
-// redactResponseFormat redacts schema information from response format while preserving the type.
-// JSON schema details may contain sensitive structure information about the application's data model.
-func redactResponseFormat(format *openai.ChatCompletionResponseFormatUnion) *openai.ChatCompletionResponseFormatUnion {
-	redactedFormat := *format
-
-	// Only JSON schema contains potentially sensitive schema information
-	if format.OfJSONSchema != nil {
-		redactedJSONSchema := *format.OfJSONSchema
-		redactedInnerSchema := redactedJSONSchema.JSONSchema
-
-		// Redact the schema name and description (may reveal internal structure)
-		redactedInnerSchema.Name = redaction.RedactString(redactedInnerSchema.Name)
-		if redactedInnerSchema.Description != "" {
-			redactedInnerSchema.Description = redaction.RedactString(redactedInnerSchema.Description)
-		}
-
-		// Redact the actual JSON schema (contains sensitive data model structure)
-		if len(redactedInnerSchema.Schema) > 0 {
-			originalLen := len(redactedInnerSchema.Schema)
-			hash := redaction.ComputeContentHash(string(redactedInnerSchema.Schema))
-			redactedInnerSchema.Schema = []byte(fmt.Sprintf(`{"_redacted":"[REDACTED LENGTH=%d HASH=%s]"}`, originalLen, hash))
-		}
-
-		redactedJSONSchema.JSONSchema = redactedInnerSchema
-		redactedFormat.OfJSONSchema = &redactedJSONSchema
-	}
-
-	// OfText and OfJSONObject don't contain sensitive schema information, just type indicators
-	return &redactedFormat
 }
 
 // redactUserContentPart redacts sensitive content from a user message content part.
