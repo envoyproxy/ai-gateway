@@ -221,6 +221,12 @@ type AWSAuth struct {
 	// [default]\naws_access_key_id = <access-key-id>\naws_secret_access_key = <secret-access-key>\naws_session_token = <session-token>.
 	CredentialFileLiteral string `json:"credentialFileLiteral,omitempty"`
 	Region                string `json:"region"`
+	// Service is the AWS service name used for SigV4 signing.
+	// If empty, signer will infer from host and fallback to legacy value.
+	Service string `json:"service,omitempty"`
+	// SigningHost is the host used for SigV4 signing.
+	// If empty, signer will use request authority and fallback to legacy value.
+	SigningHost string `json:"signingHost,omitempty"`
 }
 
 // LogValue implements slog.LogValuer for AWSAuth to redact sensitive information.

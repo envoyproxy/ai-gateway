@@ -831,6 +831,31 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			},
 		},
 		{
+			ObjectMeta: metav1.ObjectMeta{Name: "aws-default-chain-overrides", Namespace: namespace},
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+				AWSCredentials: &aigv1b1.BackendSecurityPolicyAWSCredentials{
+					Region:      "us-east-2",
+					Service:     ptr.To("bedrock"),
+					SigningHost: ptr.To("bedrock-mantle.us-east-2.api.aws"),
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "aws-credentials-file-overrides", Namespace: namespace},
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+				AWSCredentials: &aigv1b1.BackendSecurityPolicyAWSCredentials{
+					Region:      "us-east-2",
+					Service:     ptr.To("bedrock"),
+					SigningHost: ptr.To("bedrock-mantle.us-east-2.api.aws"),
+					CredentialsFile: &aigv1b1.AWSCredentialsFile{
+						SecretRef: &gwapiv1.SecretObjectReference{Name: "aws-credentials-file-secret"},
+					},
+				},
+			},
+		},
+		{
 			ObjectMeta: metav1.ObjectMeta{Name: "azure-oidc", Namespace: namespace},
 			Spec: aigv1b1.BackendSecurityPolicySpec{
 				Type:             aigv1b1.BackendSecurityPolicyTypeAzureCredentials,
@@ -939,6 +964,27 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 				AWSAuth: &filterapi.AWSAuth{
 					Region: "us-west-2",
 					// CredentialFileLiteral is empty - uses default credential chain (IRSA/Pod Identity)
+				},
+			},
+		},
+		{
+			bspName: "aws-default-chain-overrides",
+			exp: &filterapi.BackendAuth{
+				AWSAuth: &filterapi.AWSAuth{
+					Region:      "us-east-2",
+					Service:     "bedrock",
+					SigningHost: "bedrock-mantle.us-east-2.api.aws",
+				},
+			},
+		},
+		{
+			bspName: "aws-credentials-file-overrides",
+			exp: &filterapi.BackendAuth{
+				AWSAuth: &filterapi.AWSAuth{
+					CredentialFileLiteral: "thisisawscredentials",
+					Region:                "us-east-2",
+					Service:               "bedrock",
+					SigningHost:           "bedrock-mantle.us-east-2.api.aws",
 				},
 			},
 		},

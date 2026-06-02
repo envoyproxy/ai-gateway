@@ -696,13 +696,23 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		return &filterapi.BackendAuth{AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: apiKey}}, nil
 	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
 		awsCred := backendSecurityPolicy.Spec.AWSCredentials
+		service := ""
+		signingHost := ""
+		if awsCred.Service != nil {
+			service = *awsCred.Service
+		}
+		if awsCred.SigningHost != nil {
+			signingHost = *awsCred.SigningHost
+		}
 
 		// If no credentials file or OIDC token is configured, use default credential chain
 		// This allows IRSA/Pod Identity to work automatically
 		if awsCred.CredentialsFile == nil && awsCred.OIDCExchangeToken == nil {
 			return &filterapi.BackendAuth{
 				AWSAuth: &filterapi.AWSAuth{
-					Region: awsCred.Region,
+					Region:      awsCred.Region,
+					Service:     service,
+					SigningHost: signingHost,
 				},
 			}, nil
 		}
@@ -722,6 +732,8 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			AWSAuth: &filterapi.AWSAuth{
 				CredentialFileLiteral: credentialsLiteral,
 				Region:                awsCred.Region,
+				Service:               service,
+				SigningHost:           signingHost,
 			},
 		}, nil
 	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
