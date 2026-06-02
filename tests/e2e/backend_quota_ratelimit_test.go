@@ -47,14 +47,12 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 	// Wait for the AI Gateway rate limit service to be ready.
 	e2elib.RequireWaitForPodReady(t, e2elib.EnvoyGatewayNamespace, "app=envoy-ai-gateway-ratelimit")
 
-	const modelName = "quota-test-model"
-
 	// Flush any existing quota keys in Redis to start with a clean state.
 	flushQuotaKeys(t)
 
 	// makeRequest sends a chat completion request via the test upstream with the
 	// specified total_tokens in the fake response and asserts the expected status code.
-	makeRequest := func(totalTokens int, expectedStatus int) {
+	makeRequest := func(modelName string, totalTokens int, expectedStatus int) {
 		fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
 		defer fwd.Kill()
 
@@ -82,22 +80,29 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 
 	// Test per-model quota enforcement by verifying the quota counter in Redis.
 	// The QuotaPolicy sets a quota of 10 total tokens per hour for "quota-test-model".
-	//
-	// The stream-done rate limit entry (ApplyOnStreamDone=true) runs after the
-	// response is complete and increments the quota counter by the token usage.
 	t.Run("per-model quota", func(t *testing.T) {
-		// First request: 20 total tokens (exceeds the limit of 10).
-		// The request succeeds because stream-done counting happens after the response.
-		makeRequest(20, http.StatusOK)
+		makeRequest("quota-test-model", 20, http.StatusOK)
+		requireQuotaUsage(t, "quota-test-model", 21)
+		makeRequest("quota-test-model", 5, http.StatusTooManyRequests)
+		requireQuotaUsage(t, "quota-test-model", 22)
+	})
 
-		// Verify the quota counter in Redis was incremented to 21.
-		requireQuotaUsage(t, modelName, 21) // 21 to account for the +1 in the request check
+	// Test client selector quota enforcement. Two AIGatewayRoutes (quota-selector-route-a
+	// and quota-selector-route-b) both override to "quota-selector-model" but have different
+	// QuotaPolicies with client selectors matching on x-ai-eg-model header.
+	// Route A has a quota limit of 10, Route B has a quota limit of 20.
+	t.Run("client selector quota", func(t *testing.T) {
+		t.Run("route-a (limit 10)", func(t *testing.T) {
+			makeRequest("quota-selector-route-a", 20, http.StatusOK)
+			requireQuotaUsage(t, "quota-selector-model", 21)
+			makeRequest("quota-selector-route-a", 5, http.StatusTooManyRequests)
+			requireQuotaUsage(t, "quota-selector-model", 22)
+		})
 
-		// Second request: rejected because the quota counter (21) already exceeds the limit (10).
-		makeRequest(5, http.StatusTooManyRequests)
-
-		// Verify the quota counter increments by 1 since the request was rejected.
-		requireQuotaUsage(t, modelName, 22)
+		t.Run("route-b (limit 20) independent quota", func(t *testing.T) {
+			makeRequest("quota-selector-route-b", 15, http.StatusOK)
+			makeRequest("quota-selector-route-b", 5, http.StatusTooManyRequests)
+		})
 	})
 }
 
