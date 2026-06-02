@@ -595,9 +595,10 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 				// descriptor key ensures the rate limit service only matches the entry
 				// under the actual backend's tree, preventing cross-backend charging.
 				for rIdx, rule := range pmq.Quota.BucketRules {
+					firstHdr, firstVal := firstSelectorHeader(rule.ClientSelectors)
 					for _, target := range policy.Spec.TargetRefs {
 						targetName := string(target.Name)
-						dupKey := targetName + "|" + translator.BucketRuleDescriptorKey(targetName, modelName, rIdx, 0)
+						dupKey := targetName + "|" + translator.BucketRuleDescriptorKey(targetName, modelName, rIdx, 0, firstHdr, firstVal)
 						if !seenStreamDoneKeys[dupKey] {
 							seenStreamDoneKeys[dupKey] = true
 							clientActions := buildClientSelectorStreamDoneActions(targetName, modelName, rIdx, rule.ClientSelectors)
@@ -810,7 +811,7 @@ func buildClientSelectorActions(
 	headers := flattenAndSortClientSelectorHeaders(selectors)
 
 	if len(headers) == 0 {
-		key := translator.BucketRuleDescriptorKey(backendName, modelName, ruleIndex, 0)
+		key := translator.BucketRuleDescriptorKey(backendName, modelName, ruleIndex, 0, "", "")
 		return []*routev3.RateLimit_Action{
 			{
 				ActionSpecifier: &routev3.RateLimit_Action_GenericKey_{
@@ -839,7 +840,7 @@ func buildClientSelectorStreamDoneActions(
 	headers := flattenAndSortClientSelectorHeaders(selectors)
 
 	if len(headers) == 0 {
-		key := translator.BucketRuleDescriptorKey(backendName, modelName, ruleIndex, 0)
+		key := translator.BucketRuleDescriptorKey(backendName, modelName, ruleIndex, 0, "", "")
 		return []*routev3.RateLimit_Action{
 			{
 				ActionSpecifier: &routev3.RateLimit_Action_GenericKey_{
@@ -878,7 +879,7 @@ func flattenAndSortClientSelectorHeaders(selectors []egv1a1.RateLimitSelectCondi
 func buildStreamDoneHeaderMatchAction(
 	backendName, modelName string, ruleIndex, matchIndex int, header egv1a1.HeaderMatch,
 ) *routev3.RateLimit_Action {
-	descriptorKey := translator.BucketRuleDescriptorKey(backendName, modelName, ruleIndex, matchIndex)
+	descriptorKey := translator.BucketRuleDescriptorKey(backendName, modelName, ruleIndex, matchIndex, header.Name, headerMatchKeyValue(header))
 
 	if header.Type != nil && *header.Type == egv1a1.HeaderMatchDistinct {
 		return &routev3.RateLimit_Action{
@@ -916,7 +917,7 @@ func buildStreamDoneHeaderMatchAction(
 func buildHeaderMatchAction(
 	backendName, modelName string, ruleIndex, matchIndex int, header egv1a1.HeaderMatch,
 ) *routev3.RateLimit_Action {
-	descriptorKey := translator.BucketRuleDescriptorKey(backendName, modelName, ruleIndex, matchIndex)
+	descriptorKey := translator.BucketRuleDescriptorKey(backendName, modelName, ruleIndex, matchIndex, header.Name, headerMatchKeyValue(header))
 
 	// Distinct: use RequestHeaders action.
 	if header.Type != nil && *header.Type == egv1a1.HeaderMatchDistinct {
@@ -951,6 +952,30 @@ func buildHeaderMatchAction(
 			},
 		},
 	}
+}
+
+// firstSelectorHeader returns the name and value of the first header from the
+// flattened and sorted client selectors. Used for dedup keys where the full
+// descriptor chain isn't needed but uniqueness across different selectors is.
+func firstSelectorHeader(selectors []egv1a1.RateLimitSelectCondition) (string, string) {
+	headers := flattenAndSortClientSelectorHeaders(selectors)
+	if len(headers) == 0 {
+		return "", ""
+	}
+	return headers[0].Name, headerMatchKeyValue(headers[0])
+}
+
+// headerMatchKeyValue returns the value to include in a BucketRuleDescriptorKey for a header.
+// Distinct headers return empty (the value is per-request, not known at config time).
+// Exact/Regex headers return the configured value.
+func headerMatchKeyValue(header egv1a1.HeaderMatch) string {
+	if header.Type != nil && *header.Type == egv1a1.HeaderMatchDistinct {
+		return ""
+	}
+	if header.Value != nil {
+		return *header.Value
+	}
+	return ""
 }
 
 // buildStringMatcher creates an Envoy StringMatcher from a HeaderMatch.

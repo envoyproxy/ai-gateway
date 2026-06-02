@@ -69,10 +69,19 @@ func headerComparableValue(header egv1a1.HeaderMatch) string {
 }
 
 // BucketRuleDescriptorKey returns the descriptor key for a bucket rule's header match.
-// Both the backend name and model name are included so that each backend's bucket rule
-// has a unique key, preventing cross-backend matching in the rate limit service config.
-func BucketRuleDescriptorKey(backendName, modelName string, ruleIndex, matchIndex int) string {
-	return fmt.Sprintf("rule-%s-%s-%d-match-%d", backendName, modelName, ruleIndex, matchIndex)
+// The backend name, model name, and selector header name/value are all included so that
+// rules with different client selectors produce unique keys, preventing cross-rule and
+// cross-policy collisions in the rate limit service config.
+// The "|" separator between header name and value prevents ambiguity ("|" is illegal in
+// HTTP header names per RFC 7230). For catch-all rules, headerName and headerValue are empty.
+func BucketRuleDescriptorKey(backendName, modelName string, ruleIndex, matchIndex int, headerName, headerValue string) string {
+	if headerName == "" {
+		return fmt.Sprintf("rule-%s-%s-%d-match-%d", backendName, modelName, ruleIndex, matchIndex)
+	}
+	if headerValue == "" {
+		return fmt.Sprintf("rule-%s-%s-%d-%s-match-%d", backendName, modelName, ruleIndex, headerName, matchIndex)
+	}
+	return fmt.Sprintf("rule-%s-%s-%d-%s|%s-match-%d", backendName, modelName, ruleIndex, headerName, headerValue, matchIndex)
 }
 
 // DefaultBucketDescriptorKey returns the descriptor key for a model's default bucket.
@@ -340,7 +349,7 @@ func buildBucketRuleDescriptors(backendName, modelName string, ruleIndex int, ru
 
 	// No headers: single catch-all descriptor for this rule.
 	if len(allHeaders) == 0 {
-		key := BucketRuleDescriptorKey(backendName, modelName, ruleIndex, 0)
+		key := BucketRuleDescriptorKey(backendName, modelName, ruleIndex, 0, "", "")
 		return []*rlsconfv3.RateLimitDescriptor{{
 			Key:        key,
 			Value:      key,
@@ -356,7 +365,7 @@ func buildBucketRuleDescriptors(backendName, modelName string, ruleIndex int, ru
 	var root *rlsconfv3.RateLimitDescriptor
 	var leaf *rlsconfv3.RateLimitDescriptor
 	for mIdx, header := range allHeaders {
-		key := BucketRuleDescriptorKey(backendName, modelName, ruleIndex, mIdx)
+		key := BucketRuleDescriptorKey(backendName, modelName, ruleIndex, mIdx, header.Name, headerMatchValue(header))
 		desc := &rlsconfv3.RateLimitDescriptor{Key: key}
 		if header.Type == nil || *header.Type != egv1a1.HeaderMatchDistinct {
 			desc.Value = key
@@ -373,6 +382,19 @@ func buildBucketRuleDescriptors(backendName, modelName string, ruleIndex int, ru
 	leaf.QuotaMode = true
 
 	return []*rlsconfv3.RateLimitDescriptor{root}, nil
+}
+
+// headerMatchValue returns the value to include in a BucketRuleDescriptorKey for a header.
+// Distinct headers return empty (the value is per-request, not known at config time).
+// Exact/Regex headers return the configured value.
+func headerMatchValue(header egv1a1.HeaderMatch) string {
+	if header.Type != nil && *header.Type == egv1a1.HeaderMatchDistinct {
+		return ""
+	}
+	if header.Value != nil {
+		return *header.Value
+	}
+	return ""
 }
 
 // flattenAndSortHeaders collects all HeaderMatch entries from all ClientSelectors

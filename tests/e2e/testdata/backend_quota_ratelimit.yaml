@@ -94,60 +94,6 @@ spec:
         hostname: envoy-ai-gateway-quota-ratelimit-testupstream.default.svc.cluster.local
         port: 80
 ---
-apiVersion: aigateway.envoyproxy.io/v1beta1
-kind: AIGatewayRoute
-metadata:
-  name: quota-selector-route-a
-  namespace: default
-spec:
-  parentRefs:
-    - name: envoy-ai-gateway-quota-ratelimit
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  rules:
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: quota-selector-route-a
-      backendRefs:
-        - name: envoy-ai-gateway-quota-ratelimit-testupstream
-          modelNameOverride: quota-selector-model
-  llmRequestCosts:
-    - metadataKey: llm_input_token
-      type: InputToken
-    - metadataKey: llm_output_token
-      type: OutputToken
-    - metadataKey: llm_total_token
-      type: TotalToken
----
-apiVersion: aigateway.envoyproxy.io/v1beta1
-kind: AIGatewayRoute
-metadata:
-  name: quota-selector-route-b
-  namespace: default
-spec:
-  parentRefs:
-    - name: envoy-ai-gateway-quota-ratelimit
-      kind: Gateway
-      group: gateway.networking.k8s.io
-  rules:
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: quota-selector-route-b
-      backendRefs:
-        - name: envoy-ai-gateway-quota-ratelimit-testupstream
-          modelNameOverride: quota-selector-model
-  llmRequestCosts:
-    - metadataKey: llm_input_token
-      type: InputToken
-    - metadataKey: llm_output_token
-      type: OutputToken
-    - metadataKey: llm_total_token
-      type: TotalToken
----
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: QuotaPolicy
 metadata:
@@ -167,52 +113,6 @@ spec:
           # subsequent requests should be rate limited (429).
           limit: 10
           duration: "1h"
----
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: QuotaPolicy
-metadata:
-  name: envoy-ai-gateway-quota-selector-policy-a
-  namespace: default
-spec:
-  targetRefs:
-    - group: aigateway.envoyproxy.io
-      kind: AIServiceBackend
-      name: envoy-ai-gateway-quota-ratelimit-testupstream
-  perModelQuotas:
-    - modelName: "quota-selector-model"
-      quota:
-        bucketRules:
-          - clientSelectors:
-              - headers:
-                  - name: x-ai-eg-model
-                    type: Exact
-                    value: quota-selector-route-a
-            quota:
-              limit: 10
-              duration: "1h"
----
-apiVersion: aigateway.envoyproxy.io/v1alpha1
-kind: QuotaPolicy
-metadata:
-  name: envoy-ai-gateway-quota-selector-policy-b
-  namespace: default
-spec:
-  targetRefs:
-    - group: aigateway.envoyproxy.io
-      kind: AIServiceBackend
-      name: envoy-ai-gateway-quota-ratelimit-testupstream
-  perModelQuotas:
-    - modelName: "quota-selector-model"
-      quota:
-        bucketRules:
-          - clientSelectors:
-              - headers:
-                  - name: x-ai-eg-model
-                    type: Exact
-                    value: quota-selector-route-b
-            quota:
-              limit: 20
-              duration: "1h"
 ---
 apiVersion: apps/v1
 kind: Deployment

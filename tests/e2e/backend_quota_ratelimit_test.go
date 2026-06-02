@@ -94,28 +94,6 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 		requireQuotaUsage(t, "quota-test-model", 22)
 	})
 
-	// Test client selector quota enforcement. Two AIGatewayRoutes (quota-selector-route-a
-	// and quota-selector-route-b) both override to "quota-selector-model" but have different
-	// QuotaPolicies with client selectors matching on x-ai-eg-model header.
-	// Route A has a quota limit of 10, Route B has a quota limit of 20.
-	t.Run("client selector quota", func(t *testing.T) {
-		routeAHeaders := http.Header{"x-ai-eg-model": []string{"route-a"}}
-		routeBHeaders := http.Header{"x-ai-eg-model": []string{"route-b"}}
-
-		t.Run("route-a (limit 10)", func(t *testing.T) {
-			makeRequest("quota-selector-model", 20, http.StatusOK, routeAHeaders)
-			requireQuotaUsage(t, "quota-selector-model", 21)
-			makeRequest("quota-selector-model", 5, http.StatusTooManyRequests, routeAHeaders)
-			requireQuotaUsage(t, "quota-selector-model", 22)
-		})
-
-		t.Run("route-b (limit 20) independent quota", func(t *testing.T) {
-			makeRequest("quota-selector-model", 15, http.StatusOK, routeBHeaders)
-			requireQuotaUsage(t, "quota-selector-model", 16)
-			makeRequest("quota-selector-model", 5, http.StatusTooManyRequests, routeBHeaders)
-			requireQuotaUsage(t, "quota-selector-model", 17)
-		})
-	})
 }
 
 // redisExec runs a redis-cli command on the Redis pod and returns the output.

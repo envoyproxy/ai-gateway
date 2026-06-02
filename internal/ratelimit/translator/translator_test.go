@@ -50,8 +50,8 @@ func TestBackendNameFromDomain(t *testing.T) {
 }
 
 func TestBucketRuleDescriptorKey(t *testing.T) {
-	require.Equal(t, "rule-openai-gpt-4-0-match-0", BucketRuleDescriptorKey("openai", "gpt-4", 0, 0))
-	require.Equal(t, "rule-backend-claude-2-match-1", BucketRuleDescriptorKey("backend", "claude", 2, 1))
+	require.Equal(t, "rule-openai-gpt-4-0-match-0", BucketRuleDescriptorKey("openai", "gpt-4", 0, 0, "", ""))
+	require.Equal(t, "rule-backend-claude-2-match-1", BucketRuleDescriptorKey("backend", "claude", 2, 1, "", ""))
 }
 
 func TestDefaultBucketDescriptorKey(t *testing.T) {
@@ -260,7 +260,7 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 		descs, err := buildBucketRuleDescriptors("backend", "gpt-4", 0, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
-		require.Equal(t, "rule-backend-gpt-4-0-match-0", descs[0].Key)
+		require.Equal(t, "rule-backend-gpt-4-0-x-api-key-match-0", descs[0].Key)
 		require.NotNil(t, descs[0].RateLimit)
 		require.Nil(t, descs[0].Descriptors)
 	})
@@ -282,13 +282,13 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 		require.Len(t, descs, 1)
 
 		// Root: x-api-key sorted first (match-0).
-		require.Equal(t, "rule-backend-gpt-4-0-match-0", descs[0].Key)
+		require.Equal(t, "rule-backend-gpt-4-0-x-api-key-match-0", descs[0].Key)
 		require.Nil(t, descs[0].RateLimit)
 		require.Len(t, descs[0].Descriptors, 1)
 
 		// Leaf: x-org sorted second (match-1), rate_limit only here.
 		leaf := descs[0].Descriptors[0]
-		require.Equal(t, "rule-backend-gpt-4-0-match-1", leaf.Key)
+		require.Equal(t, "rule-backend-gpt-4-0-x-org-match-1", leaf.Key)
 		require.NotNil(t, leaf.RateLimit)
 		require.Equal(t, uint32(100), leaf.RateLimit.RequestsPerUnit)
 		require.Nil(t, leaf.Descriptors)
@@ -317,17 +317,17 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 
 		// Nested chain: h1 (match-0) → h2 (match-1) → h3 (match-2, leaf with rate_limit).
 		root := descs[0]
-		require.Equal(t, "rule-backend-model-1-match-0", root.Key)
+		require.Equal(t, "rule-backend-model-1-h1-match-0", root.Key)
 		require.Nil(t, root.RateLimit)
 		require.Len(t, root.Descriptors, 1)
 
 		mid := root.Descriptors[0]
-		require.Equal(t, "rule-backend-model-1-match-1", mid.Key)
+		require.Equal(t, "rule-backend-model-1-h2-match-1", mid.Key)
 		require.Nil(t, mid.RateLimit)
 		require.Len(t, mid.Descriptors, 1)
 
 		leaf := mid.Descriptors[0]
-		require.Equal(t, "rule-backend-model-1-match-2", leaf.Key)
+		require.Equal(t, "rule-backend-model-1-h3-match-2", leaf.Key)
 		require.NotNil(t, leaf.RateLimit)
 		require.Equal(t, uint32(50), leaf.RateLimit.RequestsPerUnit)
 		require.Equal(t, rlsconfv3.RateLimitUnit_HOUR, leaf.RateLimit.Unit)
@@ -397,7 +397,7 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 		descs, err := buildBucketRuleDescriptors("backend", "gpt-4", 0, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
-		require.Equal(t, BucketRuleDescriptorKey("backend", "gpt-4", 0, 0), descs[0].Key)
+		require.Equal(t, BucketRuleDescriptorKey("backend", "gpt-4", 0, 0, "x-user-id", ""), descs[0].Key)
 		require.Empty(t, descs[0].Value) // key-only: matches any value
 		require.NotNil(t, descs[0].RateLimit)
 	})
@@ -416,7 +416,7 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 		descs, err := buildBucketRuleDescriptors("backend", "gpt-4", 0, rule)
 		require.NoError(t, err)
 		require.Len(t, descs, 1)
-		key := BucketRuleDescriptorKey("backend", "gpt-4", 0, 0)
+		key := BucketRuleDescriptorKey("backend", "gpt-4", 0, 0, "x-api-key", "premium")
 		require.Equal(t, key, descs[0].Key)
 		require.Equal(t, key, descs[0].Value) // fixed value matches HeaderValueMatch DescriptorValue
 	})
@@ -436,14 +436,14 @@ func TestBuildBucketRuleDescriptors(t *testing.T) {
 		require.Len(t, descs, 1)
 
 		// Root: x-tier sorted first (match-0), exact → key+value.
-		require.Equal(t, BucketRuleDescriptorKey("backend", "model", 2, 0), descs[0].Key)
-		require.Equal(t, BucketRuleDescriptorKey("backend", "model", 2, 0), descs[0].Value)
+		require.Equal(t, BucketRuleDescriptorKey("backend", "model", 2, 0, "x-tier", "premium"), descs[0].Key)
+		require.Equal(t, BucketRuleDescriptorKey("backend", "model", 2, 0, "x-tier", "premium"), descs[0].Value)
 		require.Nil(t, descs[0].RateLimit)
 		require.Len(t, descs[0].Descriptors, 1)
 
 		// Leaf: x-user-id sorted second (match-1), distinct → key-only.
 		leaf := descs[0].Descriptors[0]
-		require.Equal(t, BucketRuleDescriptorKey("backend", "model", 2, 1), leaf.Key)
+		require.Equal(t, BucketRuleDescriptorKey("backend", "model", 2, 1, "x-user-id", ""), leaf.Key)
 		require.Empty(t, leaf.Value)
 		require.NotNil(t, leaf.RateLimit)
 	})
