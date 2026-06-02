@@ -1811,8 +1811,8 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RedactBody(t *testing.T)
 		require.NotNil(t, result)
 		require.Len(t, result.Choices, 1)
 		require.Len(t, result.Choices[0].Message.ToolCalls, 1)
-		// Tool call name and arguments should be redacted
-		require.NotEqual(t, "get_secret", result.Choices[0].Message.ToolCalls[0].Function.Name)
+		// Tool call name is kept (API name, not user data); arguments are redacted
+		require.Equal(t, "get_secret", result.Choices[0].Message.ToolCalls[0].Function.Name)
 		require.NotEqual(t, `{"password": "secret123"}`, result.Choices[0].Message.ToolCalls[0].Function.Arguments)
 	})
 

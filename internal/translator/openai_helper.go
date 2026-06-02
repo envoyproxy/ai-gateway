@@ -53,7 +53,36 @@ func buildOpenAIChatCompletionRequest(body *anthropic.MessagesRequest, modelName
 		req.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
 	}
 
+	// Map Anthropic thinking config to OpenAI thinking config.
+	if body.Thinking != nil {
+		req.Thinking = anthropicThinkingToOpenAI(body.Thinking)
+	}
+
 	return req
+}
+
+// anthropicThinkingToOpenAI converts an Anthropic Thinking config to OpenAI ThinkingUnion.
+func anthropicThinkingToOpenAI(t *anthropic.Thinking) *openai.ThinkingUnion {
+	if t == nil {
+		return nil
+	}
+	switch {
+	case t.Enabled != nil:
+		return &openai.ThinkingUnion{OfEnabled: &openai.ThinkingEnabled{
+			Type:         "enabled",
+			BudgetTokens: int64(t.Enabled.BudgetTokens),
+		}}
+	case t.Disabled != nil:
+		return &openai.ThinkingUnion{OfDisabled: &openai.ThinkingDisabled{
+			Type: "disabled",
+		}}
+	case t.Adaptive != nil:
+		return &openai.ThinkingUnion{OfAdaptive: &openai.ThinkingAdaptive{
+			Type: "adaptive",
+		}}
+	default:
+		return nil
+	}
 }
 
 // anthropicMessagesToOpenAI converts Anthropic messages (including the system prompt) to OpenAI message format.
@@ -89,36 +118,71 @@ func anthropicMessagesToOpenAI(body *anthropic.MessagesRequest) []openai.ChatCom
 
 // appendAnthropicAssistantMessage converts an Anthropic assistant message to OpenAI format.
 // It extracts tool_use blocks as OpenAI tool_calls on the assistant message, and preserves
-// any text content alongside them.
+// text, thinking, and redacted_thinking content blocks.
+//
+// When thinking or redacted_thinking blocks are present, the content is encoded as a
+// structured []ChatCompletionAssistantMessageParamContent array to preserve full fidelity.
+// Otherwise, plain string content is used for backward compatibility.
 func appendAnthropicAssistantMessage(messages []openai.ChatCompletionMessageParamUnion, msg anthropic.MessageParam) []openai.ChatCompletionMessageParamUnion {
-	text := anthropicContentToText(msg.Content)
 	var toolCalls []openai.ChatCompletionMessageToolCallParam
+	var contentParts []openai.ChatCompletionAssistantMessageParamContent
+	hasThinking := false
 
 	for _, block := range msg.Content.Array {
-		if block.ToolUse == nil {
-			continue
+		switch {
+		case block.Thinking != nil:
+			hasThinking = true
+			thinking := block.Thinking.Thinking
+			signature := block.Thinking.Signature
+			contentParts = append(contentParts, openai.ChatCompletionAssistantMessageParamContent{
+				Type:      openai.ChatCompletionAssistantMessageParamContentTypeThinking,
+				Text:      &thinking,
+				Signature: &signature,
+			})
+		case block.RedactedThinking != nil:
+			hasThinking = true
+			contentParts = append(contentParts, openai.ChatCompletionAssistantMessageParamContent{
+				Type:            openai.ChatCompletionAssistantMessageParamContentTypeRedactedThinking,
+				RedactedContent: &openai.RedactedContentUnion{Value: block.RedactedThinking.Data},
+			})
+		case block.Text != nil:
+			text := block.Text.Text
+			contentParts = append(contentParts, openai.ChatCompletionAssistantMessageParamContent{
+				Type: openai.ChatCompletionAssistantMessageParamContentTypeText,
+				Text: &text,
+			})
+		case block.ToolUse != nil:
+			args, _ := json.Marshal(block.ToolUse.Input)
+			if args == nil {
+				args = []byte("{}")
+			}
+			id := block.ToolUse.ID
+			toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
+				ID:   &id,
+				Type: openai.ChatCompletionMessageToolCallTypeFunction,
+				Function: openai.ChatCompletionMessageToolCallFunctionParam{
+					Name:      block.ToolUse.Name,
+					Arguments: string(args),
+				},
+			})
 		}
-		args, _ := json.Marshal(block.ToolUse.Input)
-		if args == nil {
-			args = []byte("{}")
-		}
-		id := block.ToolUse.ID
-		toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
-			ID:   &id,
-			Type: openai.ChatCompletionMessageToolCallTypeFunction,
-			Function: openai.ChatCompletionMessageToolCallFunctionParam{
-				Name:      block.ToolUse.Name,
-				Arguments: string(args),
-			},
-		})
 	}
 
 	assistantMsg := &openai.ChatCompletionAssistantMessageParam{
 		Role: openai.ChatMessageRoleAssistant,
 	}
-	if text != "" {
-		assistantMsg.Content = openai.StringOrAssistantRoleContentUnion{Value: text}
+
+	if hasThinking {
+		// Use structured content array to preserve thinking blocks.
+		assistantMsg.Content = openai.StringOrAssistantRoleContentUnion{Value: contentParts}
+	} else {
+		// No thinking blocks — use plain string for backward compatibility.
+		text := anthropicContentToText(msg.Content)
+		if text != "" {
+			assistantMsg.Content = openai.StringOrAssistantRoleContentUnion{Value: text}
+		}
 	}
+
 	if len(toolCalls) > 0 {
 		assistantMsg.ToolCalls = toolCalls
 	}
@@ -127,7 +191,8 @@ func appendAnthropicAssistantMessage(messages []openai.ChatCompletionMessagePara
 
 // appendAnthropicUserMessage converts an Anthropic user message to OpenAI format.
 // It splits tool_result blocks into separate OpenAI tool-role messages and keeps
-// text content as a user message.
+// text and image content as a user message. When image blocks are present,
+// structured content parts are used instead of plain string content.
 func appendAnthropicUserMessage(messages []openai.ChatCompletionMessageParamUnion, msg anthropic.MessageParam) []openai.ChatCompletionMessageParamUnion {
 	// Emit tool-role messages for each tool_result block first, since OpenAI
 	// expects tool results to immediately follow the assistant message that
@@ -146,18 +211,66 @@ func appendAnthropicUserMessage(messages []openai.ChatCompletionMessageParamUnio
 		})
 	}
 
-	// Emit user text if there is any non-tool-result content.
-	text := anthropicContentToText(msg.Content)
-	if text != "" {
-		messages = append(messages, openai.ChatCompletionMessageParamUnion{
-			OfUser: &openai.ChatCompletionUserMessageParam{
-				Content: openai.StringOrUserRoleContentUnion{Value: text},
-				Role:    openai.ChatMessageRoleUser,
-			},
-		})
+	// Build structured content parts in a single pass. If image blocks are present,
+	// use the structured array format; otherwise, fall back to plain string for compatibility.
+	var parts []openai.ChatCompletionContentPartUserUnionParam
+	hasImages := false
+	for _, block := range msg.Content.Array {
+		switch {
+		case block.Text != nil:
+			parts = append(parts, openai.ChatCompletionContentPartUserUnionParam{
+				OfText: &openai.ChatCompletionContentPartTextParam{
+					Type: string(openai.ChatCompletionContentPartTextTypeText),
+					Text: block.Text.Text,
+				},
+			})
+		case block.Image != nil:
+			hasImages = true
+			url := anthropicImageSourceToURL(block.Image.Source)
+			parts = append(parts, openai.ChatCompletionContentPartUserUnionParam{
+				OfImageURL: &openai.ChatCompletionContentPartImageParam{
+					Type: openai.ChatCompletionContentPartImageTypeImageURL,
+					ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+						URL: url,
+					},
+				},
+			})
+		}
+	}
+	if hasImages {
+		if len(parts) > 0 {
+			messages = append(messages, openai.ChatCompletionMessageParamUnion{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Content: openai.StringOrUserRoleContentUnion{Value: parts},
+					Role:    openai.ChatMessageRoleUser,
+				},
+			})
+		}
+	} else {
+		text := anthropicContentToText(msg.Content)
+		if text != "" {
+			messages = append(messages, openai.ChatCompletionMessageParamUnion{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Content: openai.StringOrUserRoleContentUnion{Value: text},
+					Role:    openai.ChatMessageRoleUser,
+				},
+			})
+		}
 	}
 
 	return messages
+}
+
+// anthropicImageSourceToURL converts an Anthropic ImageSource to an OpenAI-compatible URL.
+func anthropicImageSourceToURL(source anthropic.ImageSource) string {
+	switch {
+	case source.Base64 != nil:
+		return fmt.Sprintf("data:%s;base64,%s", source.Base64.MediaType, source.Base64.Data)
+	case source.URL != nil:
+		return source.URL.URL
+	default:
+		return ""
+	}
 }
 
 // toolResultToText extracts text from a ToolResultBlockParam.
@@ -268,6 +381,9 @@ func openAIResponseToAnthropic(resp *openai.ChatCompletionResponse, model string
 		choice := &resp.Choices[0]
 		msg := &choice.Message
 
+		// Convert thinking blocks first (Anthropic convention: thinking → text → tool_use).
+		content = appendThinkingBlocks(content, msg)
+
 		// Convert text content.
 		if msg.Content != nil && *msg.Content != "" {
 			content = append(content, anthropic.MessagesContentBlock{
@@ -318,6 +434,61 @@ func openAIResponseToAnthropic(resp *openai.ChatCompletionResponse, model string
 		StopReason: stopReason,
 		Usage:      usage,
 	}
+}
+
+// appendThinkingBlocks converts OpenAI ThinkingBlocks and ReasoningContent to Anthropic
+// thinking/redacted_thinking content blocks. ThinkingBlocks take priority over ReasoningContent.
+func appendThinkingBlocks(content []anthropic.MessagesContentBlock, msg *openai.ChatCompletionResponseChoiceMessage) []anthropic.MessagesContentBlock {
+	// Prefer ThinkingBlocks (structured, preserves signatures).
+	if len(msg.ThinkingBlocks) > 0 {
+		for _, tb := range msg.ThinkingBlocks {
+			switch tb.Type {
+			case "thinking":
+				content = append(content, anthropic.MessagesContentBlock{
+					Thinking: &anthropic.ThinkingBlock{Type: "thinking", Thinking: tb.Thinking, Signature: tb.Signature},
+				})
+			case "redacted_thinking":
+				content = append(content, anthropic.MessagesContentBlock{
+					RedactedThinking: &anthropic.RedactedThinkingBlock{Type: "redacted_thinking", Data: tb.Data},
+				})
+			}
+		}
+		return content
+	}
+
+	// Fall back to ReasoningContent (used by AWS Bedrock, Gemini, Qwen, DeepSeek).
+	if msg.ReasoningContent == nil {
+		return content
+	}
+	// Some models (Qwen, DeepSeek) return reasoning content as a plain string.
+	if str, ok := msg.ReasoningContent.Value.(string); ok && str != "" {
+		content = append(content, anthropic.MessagesContentBlock{
+			Thinking: &anthropic.ThinkingBlock{Type: "thinking", Thinking: str},
+		})
+		return content
+	}
+	rc, ok := msg.ReasoningContent.Value.(*openai.ReasoningContent)
+	if !ok || rc == nil || rc.ReasoningContent == nil {
+		return content
+	}
+	if rc.ReasoningContent.ReasoningText != nil {
+		content = append(content, anthropic.MessagesContentBlock{
+			Thinking: &anthropic.ThinkingBlock{
+				Type:      "thinking",
+				Thinking:  rc.ReasoningContent.ReasoningText.Text,
+				Signature: rc.ReasoningContent.ReasoningText.Signature,
+			},
+		})
+	}
+	if len(rc.ReasoningContent.RedactedContent) > 0 {
+		content = append(content, anthropic.MessagesContentBlock{
+			RedactedThinking: &anthropic.RedactedThinkingBlock{
+				Type: "redacted_thinking",
+				Data: string(rc.ReasoningContent.RedactedContent),
+			},
+		})
+	}
+	return content
 }
 
 // openAIFinishReasonToAnthropic maps an OpenAI finish_reason to an Anthropic StopReason.
@@ -409,6 +580,39 @@ type sseInputJSONDelta struct {
 	PartialJSON string `json:"partial_json"`
 }
 
+type sseContentBlockStartThinking struct {
+	Type         string          `json:"type"`
+	Index        int             `json:"index"`
+	ContentBlock sseThinkingInit `json:"content_block"`
+}
+
+type sseThinkingInit struct {
+	Type     string `json:"type"`
+	Thinking string `json:"thinking"`
+}
+
+type sseContentBlockDeltaThinking struct {
+	Type  string           `json:"type"`
+	Index int              `json:"index"`
+	Delta sseThinkingDelta `json:"delta"`
+}
+
+type sseThinkingDelta struct {
+	Type     string `json:"type"`
+	Thinking string `json:"thinking"`
+}
+
+type sseContentBlockDeltaSignature struct {
+	Type  string            `json:"type"`
+	Index int               `json:"index"`
+	Delta sseSignatureDelta `json:"delta"`
+}
+
+type sseSignatureDelta struct {
+	Type      string `json:"type"`
+	Signature string `json:"signature"`
+}
+
 type sseContentBlockStop struct {
 	Type  string `json:"type"`
 	Index int    `json:"index"`
@@ -435,19 +639,20 @@ type sseMessageStop struct {
 
 // openAIStreamToAnthropicState tracks the state for converting OpenAI SSE chunks to Anthropic SSE events.
 type openAIStreamToAnthropicState struct {
-	buffer         bytes.Buffer
-	messageStarted bool // flag indicating emitted message_start
-	hasOpenBlock   bool // flag indicating emitted content_block_start but not content_block_stop
-	closingEmitted bool // flag indicating emitted content_block_stop + message_delta + message_stop
-	messageID      string
-	model          string
-	stopReason     string // Anthropic stop_reason, mapped from OpenAI finish_reason
-	inputTokens    int
-	outputTokens   int
-	tokenUsage     metrics.TokenUsage
-	blockIndex     int                       // current Anthropic content block index
-	activeTools    map[int64]*streamToolCall // keyed by OpenAI tool_call index
-	requestModel   string
+	buffer           bytes.Buffer
+	messageStarted   bool // flag indicating emitted message_start
+	hasOpenBlock     bool // flag indicating emitted content_block_start but not content_block_stop
+	hasThinkingBlock bool // flag indicating the open block is a thinking block
+	closingEmitted   bool // flag indicating emitted content_block_stop + message_delta + message_stop
+	messageID        string
+	model            string
+	stopReason       string // Anthropic stop_reason, mapped from OpenAI finish_reason
+	inputTokens      int
+	outputTokens     int
+	tokenUsage       metrics.TokenUsage
+	blockIndex       int                       // current Anthropic content block index
+	activeTools      map[int64]*streamToolCall // keyed by OpenAI tool_call index
+	requestModel     string
 }
 
 type streamToolCall struct {
@@ -558,8 +763,21 @@ func (s *openAIStreamToAnthropicState) handleChunk(chunk *openai.ChatCompletionR
 	}
 
 	if delta != nil {
+		// Handle reasoning/thinking content (must come before text).
+		if delta.ReasoningContent != nil {
+			if err := s.handleReasoningDelta(delta.ReasoningContent, out); err != nil {
+				return err
+			}
+		}
+
 		// Handle text content.
 		if delta.Content != nil && *delta.Content != "" {
+			// Close any open thinking block before starting a text block.
+			if s.hasThinkingBlock {
+				if err := s.closeThinkingBlock(out); err != nil {
+					return err
+				}
+			}
 			// Emit textblockstart if not started
 			if !s.hasOpenBlock {
 				if err := s.emitTextBlockStart(out); err != nil {
@@ -643,15 +861,114 @@ func (s *openAIStreamToAnthropicState) emitTextDelta(text string, out *[]byte) e
 	return nil
 }
 
+// handleReasoningDelta handles an OpenAI reasoning content delta and emits Anthropic thinking block events.
+//
+// Note: StreamReasoningContent also has a RedactedContent field (used by AWS Bedrock streaming).
+// We do not handle it here because Anthropic's SSE protocol for redacted_thinking is a complete
+// block (content_block_start + content_block_stop with no deltas), which requires a different emit
+// pattern. This field does not appear in standard OpenAI-compatible backends (vLLM, etc.).
+func (s *openAIStreamToAnthropicState) handleReasoningDelta(rc *openai.StreamReasoningContent, out *[]byte) error {
+	if rc.Text == "" && rc.Signature == "" {
+		return nil
+	}
+	// Close any open non-thinking block (e.g., text) before starting a thinking block.
+	// This handles the unlikely case where reasoning arrives after text content.
+	if !s.hasThinkingBlock && s.hasOpenBlock {
+		if err := s.emitContentBlockStop(out); err != nil {
+			return err
+		}
+		s.hasOpenBlock = false
+		s.blockIndex++
+	}
+	// Ensure the thinking block is open before emitting any delta.
+	if !s.hasThinkingBlock {
+		if err := s.emitThinkingBlockStart(out); err != nil {
+			return err
+		}
+	}
+	// Handle thinking text.
+	if rc.Text != "" {
+		if err := s.emitThinkingDelta(rc.Text, out); err != nil {
+			return err
+		}
+	}
+	// Handle signature.
+	if rc.Signature != "" {
+		if err := s.emitSignatureDelta(rc.Signature, out); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// emitThinkingBlockStart emits a content_block_start SSE event for a thinking content block.
+func (s *openAIStreamToAnthropicState) emitThinkingBlockStart(out *[]byte) error {
+	s.hasOpenBlock = true
+	s.hasThinkingBlock = true
+	payload := sseContentBlockStartThinking{
+		Type:         "content_block_start",
+		Index:        s.blockIndex,
+		ContentBlock: sseThinkingInit{Type: "thinking", Thinking: ""},
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal thinking content_block_start: %w", err)
+	}
+	appendAnthropicSSEEvent(out, "content_block_start", data)
+	return nil
+}
+
+// emitThinkingDelta emits a content_block_delta SSE event with thinking content.
+func (s *openAIStreamToAnthropicState) emitThinkingDelta(text string, out *[]byte) error {
+	payload := sseContentBlockDeltaThinking{
+		Type:  "content_block_delta",
+		Index: s.blockIndex,
+		Delta: sseThinkingDelta{Type: "thinking_delta", Thinking: text},
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal thinking_delta: %w", err)
+	}
+	appendAnthropicSSEEvent(out, "content_block_delta", data)
+	return nil
+}
+
+// emitSignatureDelta emits a content_block_delta SSE event with a signature.
+func (s *openAIStreamToAnthropicState) emitSignatureDelta(signature string, out *[]byte) error {
+	payload := sseContentBlockDeltaSignature{
+		Type:  "content_block_delta",
+		Index: s.blockIndex,
+		Delta: sseSignatureDelta{Type: "signature_delta", Signature: signature},
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal signature_delta: %w", err)
+	}
+	appendAnthropicSSEEvent(out, "content_block_delta", data)
+	return nil
+}
+
+// closeThinkingBlock closes an open thinking block by emitting content_block_stop and advancing the block index.
+func (s *openAIStreamToAnthropicState) closeThinkingBlock(out *[]byte) error {
+	if err := s.emitContentBlockStop(out); err != nil {
+		return err
+	}
+	s.hasOpenBlock = false
+	s.hasThinkingBlock = false
+	s.blockIndex++
+	return nil
+}
+
 // handleToolCallDelta handles an OpenAI tool call delta and emits Anthropic tool_use content block events.
 func (s *openAIStreamToAnthropicState) handleToolCallDelta(tc *openai.ChatCompletionChunkChoiceDeltaToolCall, out *[]byte) error {
 	tool, exists := s.activeTools[tc.Index]
 	if !exists {
-		// New tool call: close any open block (e.g., text block) and open a new tool_use block.
+		// New tool call: close any open block (e.g., text or thinking block) and open a new tool_use block.
 		if s.hasOpenBlock {
 			if err := s.emitContentBlockStop(out); err != nil {
 				return err
 			}
+			s.hasThinkingBlock = false
 			s.blockIndex++
 		}
 
