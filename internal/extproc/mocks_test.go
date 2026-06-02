@@ -9,6 +9,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -170,7 +171,16 @@ func (m *mockMetricsFactory) NewMetrics() metrics.Metrics {
 }
 
 // mockMetrics implements [metrics.Metrics] for testing.
+//
+// All mutable fields are guarded by `mu` so concurrent invocations from
+// tests that exercise the race-detector-friendly idempotency guards in
+// upstreamProcessor (e.g. concurrent ProcessResponseBody emissions) do not
+// themselves race on the mock's own internal bookkeeping. The production
+// metricsImpl uses thread-safe OTEL instruments, so this mutex models the
+// "what tests actually want to observe" semantics, not a production
+// hot-path constraint.
 type mockMetrics struct {
+	mu                           sync.Mutex
 	requestStart                 time.Time
 	originalModel                string
 	requestModel                 string
@@ -182,6 +192,12 @@ type mockMetrics struct {
 	cachedInputTokenCount        int
 	cacheCreationInputTokenCount int
 	outputTokenCount             int
+	// recordTokenUsageCallCount tracks how many times RecordTokenUsage was invoked.
+	// Useful for asserting idempotent emission for streaming responses.
+	recordTokenUsageCallCount int
+	// recordTokenUsageCtxErrs captures ctx.Err() observed at each RecordTokenUsage
+	// invocation so tests can verify the context was detached from cancellation.
+	recordTokenUsageCtxErrs []error
 	// streamingOutputTokens tracks the cumulative output tokens recorded via RecordTokenLatency.
 	streamingOutputTokens int
 	timeToFirstToken      float64
@@ -191,28 +207,46 @@ type mockMetrics struct {
 }
 
 // StartRequest implements [metrics.Metrics].
-func (m *mockMetrics) StartRequest(_ map[string]string) { m.requestStart = time.Now() }
+func (m *mockMetrics) StartRequest(_ map[string]string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.requestStart = time.Now()
+}
 
 // SetOriginalModel implements [metrics.Metrics].
 func (m *mockMetrics) SetOriginalModel(originalModel internalapi.OriginalModel) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.originalModel = originalModel
 }
 
 // SetRequestModel implements [metrics.Metrics].
 func (m *mockMetrics) SetRequestModel(requestModel internalapi.RequestModel) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.requestModel = requestModel
 }
 
 // SetResponseModel implements [metrics.Metrics].
 func (m *mockMetrics) SetResponseModel(responseModel internalapi.ResponseModel) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.responseModel = responseModel
 }
 
 // SetBackend implements [metrics.Metrics].
-func (m *mockMetrics) SetBackend(backend *filterapi.Backend) { m.backend = backend.Name }
+func (m *mockMetrics) SetBackend(backend *filterapi.Backend) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.backend = backend.Name
+}
 
 // RecordTokenUsage implements [metrics.Metrics].
-func (m *mockMetrics) RecordTokenUsage(_ context.Context, usage metrics.TokenUsage, _ map[string]string) {
+func (m *mockMetrics) RecordTokenUsage(ctx context.Context, usage metrics.TokenUsage, _ map[string]string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.recordTokenUsageCallCount++
+	m.recordTokenUsageCtxErrs = append(m.recordTokenUsageCtxErrs, ctx.Err())
 	if input, ok := usage.InputTokens(); ok {
 		m.inputTokenCount += int(input)
 	}
@@ -230,33 +264,37 @@ func (m *mockMetrics) RecordTokenUsage(_ context.Context, usage metrics.TokenUsa
 // RecordTokenLatency implements [metrics.Metrics].
 // For streaming responses, this tracks output tokens incrementally to compute latency metrics.
 func (m *mockMetrics) RecordTokenLatency(_ context.Context, output uint32, _ bool, _ map[string]string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.streamingOutputTokens += int(output)
 }
 
 // GetTimeToFirstTokenMs implements [metrics.Metrics].
 func (m *mockMetrics) GetTimeToFirstTokenMs() float64 {
-	// If timeToFirstTokenMs is explicitly set, return it
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.timeToFirstTokenMs != 0 {
 		return m.timeToFirstTokenMs
 	}
-	// Otherwise use the default behavior
 	m.timeToFirstToken = 1.0
 	return m.timeToFirstToken * 1000
 }
 
 // GetInterTokenLatencyMs implements [metrics.Metrics].
 func (m *mockMetrics) GetInterTokenLatencyMs() float64 {
-	// If interTokenLatencyMs is explicitly set, return it
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.interTokenLatencyMs != 0 {
 		return m.interTokenLatencyMs
 	}
-	// Otherwise use the default behavior
 	m.interTokenLatency = 0.5
 	return m.interTokenLatency * 1000
 }
 
 // RecordRequestCompletion implements [metrics.Metrics].
 func (m *mockMetrics) RecordRequestCompletion(_ context.Context, success bool, _ map[string]string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if success {
 		m.requestSuccessCount++
 	} else {
@@ -266,6 +304,8 @@ func (m *mockMetrics) RecordRequestCompletion(_ context.Context, success bool, _
 
 // RequireSelectedModel asserts the models set on the metrics.
 func (m *mockMetrics) RequireSelectedModel(t *testing.T, originalModel, requestModel, responseModel string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	require.Equal(t, originalModel, m.originalModel)
 	require.Equal(t, requestModel, m.requestModel)
 	require.Equal(t, responseModel, m.responseModel)
@@ -273,16 +313,22 @@ func (m *mockMetrics) RequireSelectedModel(t *testing.T, originalModel, requestM
 
 // RequireModelAndBackendSet asserts the model and backend set on the metrics.
 func (m *mockMetrics) RequireSelectedBackend(t *testing.T, backend string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	require.Equal(t, backend, m.backend)
 }
 
 // RequireRequestFailure asserts the request was marked as a failure.
 func (m *mockMetrics) RequireRequestFailure(t *testing.T) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	require.Zero(t, m.requestSuccessCount)
 	require.Equal(t, 1, m.requestErrorCount)
 }
 
 func (m *mockMetrics) RequireTokensRecorded(t *testing.T, expectedInput, expectedCachedInput, expectedWriteCachedInput, expectedOutput int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	require.Equal(t, expectedInput, m.inputTokenCount)
 	require.Equal(t, expectedCachedInput, m.cachedInputTokenCount)
 	require.Equal(t, expectedWriteCachedInput, m.cacheCreationInputTokenCount)
@@ -291,12 +337,16 @@ func (m *mockMetrics) RequireTokensRecorded(t *testing.T, expectedInput, expecte
 
 // RequireRequestNotCompleted asserts the request was not completed.
 func (m *mockMetrics) RequireRequestNotCompleted(t *testing.T) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	require.Zero(t, m.requestSuccessCount)
 	require.Zero(t, m.requestErrorCount)
 }
 
 // RequireRequestSuccess asserts the request was marked as a success.
 func (m *mockMetrics) RequireRequestSuccess(t *testing.T) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	require.Equal(t, 1, m.requestSuccessCount)
 	require.Zero(t, m.requestErrorCount)
 }
