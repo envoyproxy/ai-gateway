@@ -36,6 +36,8 @@ func TestNewAWSHandler(t *testing.T) {
 		awsH, ok := handler.(*awsHandler)
 		require.True(t, ok)
 		require.Equal(t, "us-east-1", awsH.region)
+		require.Empty(t, awsH.service)
+		require.Empty(t, awsH.signingHost)
 		require.NotNil(t, awsH.credentialsProvider)
 		require.NotNil(t, awsH.signer)
 	})
@@ -62,6 +64,8 @@ func TestNewAWSHandler(t *testing.T) {
 		awsH, ok := handler.(*awsHandler)
 		require.True(t, ok)
 		require.Equal(t, "us-west-2", awsH.region)
+		require.Empty(t, awsH.service)
+		require.Empty(t, awsH.signingHost)
 
 		// Verify credentials can be retrieved from environment
 		creds, err := awsH.credentialsProvider.Retrieve(t.Context())
@@ -100,6 +104,22 @@ func TestNewAWSHandler(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, handler)
 		require.Contains(t, err.Error(), "aws auth configuration is required")
+	})
+
+	t.Run("explicit service and signing host", func(t *testing.T) {
+		awsFileBody := "[default]\naws_access_key_id=test\naws_secret_access_key=secret\n"
+		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
+			CredentialFileLiteral: awsFileBody,
+			Region:                "us-east-1",
+			Service:               "bedrock",
+			SigningHost:           "bedrock-mantle.us-east-1.api.aws",
+		})
+		require.NoError(t, err)
+
+		awsH, ok := handler.(*awsHandler)
+		require.True(t, ok)
+		require.Equal(t, "bedrock", awsH.service)
+		require.Equal(t, "bedrock-mantle.us-east-1.api.aws", awsH.signingHost)
 	})
 }
 
@@ -141,7 +161,7 @@ func TestAWSHandler_Do(t *testing.T) {
 		require.NoError(t, err)
 
 		hdrs, err := handler.Do(t.Context(), map[string]string{
-			":method": "POST", ":path": "/model/amazon.titan-text-express-v1/invoke",
+			":method": "POST", ":path": "/model/amazon.titan-text-express-v1/invoke", ":authority": "bedrock-runtime.us-east-1.amazonaws.com",
 		}, []byte(`{"inputText": "Hello from default chain"}`))
 		require.NoError(t, err)
 
@@ -164,7 +184,7 @@ func TestAWSHandler_Do(t *testing.T) {
 		require.NoError(t, err)
 
 		hdrs, err := handler.Do(t.Context(), map[string]string{
-			":method": "POST", ":path": "/model/anthropic.claude-v2/converse",
+			":method": "POST", ":path": "/model/anthropic.claude-v2/converse", ":authority": "bedrock-runtime.eu-central-1.amazonaws.com",
 		}, []byte(`{"inputText": "Hello from default chain"}`))
 		require.NoError(t, err)
 
@@ -186,7 +206,7 @@ func TestAWSHandler_Do(t *testing.T) {
 		methods := []string{"POST", "GET", "PUT"}
 		for _, method := range methods {
 			hdrs, err := handler.Do(t.Context(), map[string]string{
-				":method": method, ":path": "/model/test-model/invoke",
+				":method": method, ":path": "/model/test-model/invoke", ":authority": "bedrock-runtime.us-east-1.amazonaws.com",
 			}, []byte(`{"test": "data"}`))
 			require.NoError(t, err)
 
@@ -204,7 +224,7 @@ func TestAWSHandler_Do(t *testing.T) {
 		require.NoError(t, err)
 
 		hdrs, err := handler.Do(t.Context(), map[string]string{
-			":method": "GET", ":path": "/model/test-model/invoke",
+			":method": "GET", ":path": "/model/test-model/invoke", ":authority": "bedrock-runtime.ap-northeast-1.amazonaws.com",
 		}, nil)
 		require.NoError(t, err)
 
@@ -225,9 +245,69 @@ func TestAWSHandler_Do(t *testing.T) {
 			require.NoError(t, err)
 
 			_, err = handler.Do(t.Context(), map[string]string{
-				":method": "POST", ":path": "/model/test/converse",
+				":method": "POST", ":path": "/model/test/converse", ":authority": "bedrock-runtime." + region + ".amazonaws.com",
 			}, nil)
 			require.NoError(t, err, "Failed for region: %s", region)
 		}
 	})
+
+	t.Run("mantle authority infers bedrock service", func(t *testing.T) {
+		awsFileBody := "[default]\naws_access_key_id=test\naws_secret_access_key=secret\n"
+		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
+			CredentialFileLiteral: awsFileBody,
+			Region:                "us-east-2",
+		})
+		require.NoError(t, err)
+
+		hdrs, err := handler.Do(t.Context(), map[string]string{
+			":method":    "POST",
+			":path":      "/openai/v1/responses",
+			":authority": "bedrock-mantle.us-east-2.api.aws",
+		}, []byte(`{"model": "gpt-5.4"}`))
+		require.NoError(t, err)
+
+		headers := stringPairsToMap(hdrs)
+		require.Contains(t, headers["Authorization"], "/bedrock/")
+	})
+
+	t.Run("explicit service override wins", func(t *testing.T) {
+		awsFileBody := "[default]\naws_access_key_id=test\naws_secret_access_key=secret\n"
+		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
+			CredentialFileLiteral: awsFileBody,
+			Region:                "us-east-2",
+			Service:               "bedrock-agentcore",
+			SigningHost:           "bedrock-mantle.us-east-2.api.aws",
+		})
+		require.NoError(t, err)
+
+		hdrs, err := handler.Do(t.Context(), map[string]string{
+			":method": "POST",
+			":path":   "/openai/v1/responses",
+		}, []byte(`{"model": "gpt-5.4"}`))
+		require.NoError(t, err)
+
+		headers := stringPairsToMap(hdrs)
+		require.Contains(t, headers["Authorization"], "/bedrock-agentcore/")
+	})
+}
+
+func TestInferAWSServiceFromHost(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		want string
+	}{
+		{name: "bedrock runtime", host: "bedrock-runtime.us-east-1.amazonaws.com", want: "bedrock"},
+		{name: "bedrock mantle", host: "bedrock-mantle.us-east-2.api.aws", want: "bedrock"},
+		{name: "bedrock bare", host: "bedrock.us-west-2.amazonaws.com", want: "bedrock"},
+		{name: "host with port", host: "bedrock-mantle.us-east-2.api.aws:443", want: "bedrock"},
+		{name: "unknown aws", host: "execute-api.us-east-1.amazonaws.com", want: "execute-api"},
+		{name: "empty", host: "", want: "bedrock"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, inferAWSServiceFromHost(tt.host))
+		})
+	}
 }

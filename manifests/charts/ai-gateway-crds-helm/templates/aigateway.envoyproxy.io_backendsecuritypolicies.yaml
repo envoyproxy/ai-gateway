@@ -1714,6 +1714,18 @@ spec:
                       policy.
                     minLength: 1
                     type: string
+                  service:
+                    description: |-
+                      Service specifies the AWS service name used for SigV4 signing.
+                      If not set, the service is inferred from the backend host at request time.
+                    minLength: 1
+                    type: string
+                  signingHost:
+                    description: |-
+                      SigningHost specifies the host used for SigV4 signing.
+                      If not set, the backend host (":authority") is used at request time.
+                    minLength: 1
+                    type: string
                 required:
                 - region
                 type: object
@@ -6763,6 +6775,18 @@ spec:
                   region:
                     description: Region specifies the AWS region associated with the
                       policy.
+                    minLength: 1
+                    type: string
+                  service:
+                    description: |-
+                      Service specifies the AWS service name used for SigV4 signing.
+                      If not set, the service is inferred from the backend host at request time.
+                    minLength: 1
+                    type: string
+                  signingHost:
+                    description: |-
+                      SigningHost specifies the host used for SigV4 signing.
+                      If not set, the backend host (":authority") is used at request time.
                     minLength: 1
                     type: string
                 required:
