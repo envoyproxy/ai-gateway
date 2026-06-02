@@ -178,9 +178,9 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 			mustWriteObj(nil, obj, out)
 		case "Backend":
 			// Envoy Gateway Backends referenced by MCPRoute (e.g. AWS SigV4) must exist in the fake client
-			// before the gateway controller resolves backend hosts.
+			// before the gateway controller resolves backend hosts. They are re-emitted from the fake
+			// client (see backends.Items), so we must not also write them here to avoid duplicates.
 			mustExtractAndAppend(obj, &egBackends)
-			mustWriteObj(nil, obj, out)
 		case "GatewayConfig":
 			// GatewayConfig is gateway-scoped configuration for extproc containers.
 			// Write it back as-is to the output.

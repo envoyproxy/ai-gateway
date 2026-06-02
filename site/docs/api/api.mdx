@@ -2992,6 +2992,7 @@ MCPRouteList contains a list of MCPRoute.
 - [AIServiceBackendStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendstatus)
 - [APISchema](#github-com-envoyproxy-ai-gateway-api-v1beta1-apischema)
 - [AWSCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1beta1-awscredentialsfile)
+- [AWSCredentialsMode](#github-com-envoyproxy-ai-gateway-api-v1beta1-awscredentialsmode)
 - [AWSOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-awsoidcexchangetoken)
 - [AzureOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-azureoidcexchangetoken)
 - [BackendSecurityPolicyAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyapikey)
@@ -3019,9 +3020,11 @@ MCPRouteList contains a list of MCPRoute.
 - [JWTSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-jwtsource)
 - [LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcost)
 - [LLMRequestCostType](#github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcosttype)
+- [MCPAWSCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpawscredentialsfile)
 - [MCPAuthorizationSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpauthorizationsource)
 - [MCPAuthorizationTarget](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpauthorizationtarget)
 - [MCPBackendAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendapikey)
+- [MCPBackendAWSCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendawscredentials)
 - [MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendsecuritypolicy)
 - [MCPHeaderForward](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpheaderforward)
 - [MCPRouteAuthorization](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorization)
@@ -3360,6 +3363,26 @@ Envoy reads the secret file, and the profile to use is specified by the Profile 
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-awscredentialsmode">AWSCredentialsMode</a>
+
+**Underlying type:** string
+
+**Appears in:**
+- [MCPBackendAWSCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendawscredentials)
+
+AWSCredentialsMode selects which identity is used to sign requests to an
+AWS-authenticated MCP backend.
+
+
+
+##### Possible Values
+
+<ApiField
+  name="ServiceIdentify"
+  type="enum"
+  required="false"
+  description="AWSCredentialsModeServiceIdentify signs every request with the gateway's own<br />AWS identity (the credentials resolved from the configured source). This is the<br />default and currently the only supported mode.<br />"
+/>
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-awsoidcexchangetoken">AWSOIDCExchangeToken</a>
 
 
@@ -4171,6 +4194,33 @@ LLMRequestCostType specifies the type of the LLMRequestCost.
   required="false"
   description="LLMRequestCostTypeCEL is for calculating the cost using the CEL expression.<br />"
 />
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcpawscredentialsfile">MCPAWSCredentialsFile</a>
+
+
+
+**Appears in:**
+- [MCPBackendAWSCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendawscredentials)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="secretRef"
+  type="[SecretObjectReference](https://gateway-api.sigs.k8s.io/references/spec/#gateway.networking.k8s.io/v1.SecretObjectReference)"
+  required="true"
+  description="SecretRef is the reference to the credential file secret.<br />The secret should contain the AWS credentials file keyed on `credentials`."
+/><ApiField
+  name="profile"
+  type="string"
+  required="false"
+  defaultValue="default"
+  description="Profile is the profile to use in the credentials file."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcpauthorizationsource">MCPAuthorizationSource</a>
 
 
@@ -4250,6 +4300,43 @@ When both `header` and `queryParam` are unspecified, the API key will be injecte
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendawscredentials">MCPBackendAWSCredentials</a>
+
+
+
+**Appears in:**
+- [MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendsecuritypolicy)
+
+
+
+##### Fields
+
+
+
+<ApiField
+  name="region"
+  type="string"
+  required="true"
+  description="Region is the AWS region used for SigV4 signing, e.g. `us-east-1`."
+/><ApiField
+  name="service"
+  type="string"
+  required="false"
+  description="Service is the AWS SigV4 service name to sign for, e.g. `bedrock-agentcore`<br />for Bedrock AgentCore-hosted MCP servers, or the service name of the AWS MCP Server.<br />When omitted, the gateway infers the service name from the backend hostname."
+/><ApiField
+  name="mode"
+  type="[AWSCredentialsMode](#github-com-envoyproxy-ai-gateway-api-v1beta1-awscredentialsmode)"
+  required="false"
+  defaultValue="ServiceIdentify"
+  description="Mode selects the signing identity. Currently, only `ServiceIdentify` is<br />supported, which signs all requests with the gateway's own AWS identity."
+/><ApiField
+  name="credentialsFile"
+  type="[MCPAWSCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpawscredentialsfile)"
+  required="false"
+  description="CredentialsFile references a Kubernetes secret containing an AWS credentials file<br />to use for signing. When specified, this takes precedence over the default credential<br />chain (environment variables, IRSA, EKS Pod Identity, EC2 instance role, etc.), with<br />automatic credential rotation."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendsecuritypolicy">MCPBackendSecurityPolicy</a>
 
 
@@ -4268,6 +4355,11 @@ MCPBackendSecurityPolicy defines the security policy for a backend MCP server.
   type="[MCPBackendAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendapikey)"
   required="false"
   description="APIKey is a mechanism to access a backend. The API key will be injected into the request headers."
+/><ApiField
+  name="awsCredentials"
+  type="[MCPBackendAWSCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendawscredentials)"
+  required="false"
+  description="AWSCredentials authenticates requests to the backend MCP server using AWS<br />Signature Version 4 (SigV4). Use this to connect to MCP servers fronted by AWS IAM<br />such as the AWS MCP Server or MCP servers hosted on Amazon Bedrock AgentCore.<br />The gateway signs each outbound request with the AWS credentials it resolves<br />from the configured source: a referenced credentials file, or the default AWS<br />credential chain (which supports environment variables, IRSA, and EKS Pod<br />Identity). All requests to the backend are signed with this single gateway identity."
 />
 
 
