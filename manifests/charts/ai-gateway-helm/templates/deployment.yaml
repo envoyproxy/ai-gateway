@@ -100,6 +100,9 @@ spec:
             {{- end }}
             - --cacheSyncTimeout={{ .Values.controller.watch.cacheSyncTimeout }}
             - --watchNamespaces={{ join "," .Values.controller.watch.namespaces }}
+            {{- if .Values.controller.extProcBeforeFilterNames }}
+            - --extProcBeforeFilterNames={{ join "," .Values.controller.extProcBeforeFilterNames }}
+            {{- end }}
             - --mcpSessionEncryptionSeed={{ .Values.controller.mcp.sessionEncryption.seed }}
             - --mcpSessionEncryptionIterations={{ .Values.controller.mcp.sessionEncryption.iterations }}
             {{- if .Values.controller.mcp.sessionEncryption.fallback.seed }}

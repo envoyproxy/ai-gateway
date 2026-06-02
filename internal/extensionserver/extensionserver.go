@@ -32,16 +32,29 @@ type Server struct {
 	isStandAloneMode bool
 	// logRequestHeaderAttributes maps request headers to dynamic metadata keys for access logs.
 	logRequestHeaderAttributes map[string]string
+	// extProcBeforeFilterNames is an allowlist of exact Envoy filter names that are
+	// permitted to run before the AI Gateway extproc in the HCM filter chain.
+	// When non-empty, the AI Gateway extproc is inserted after the last filter
+	// whose name appears in this set. When empty, the standard insertion logic is used.
+	extProcBeforeFilterNames map[string]struct{}
 }
 
 const serverName = "envoy-gateway-extension-server"
 
 // New creates a new instance of the extension server that implements the EnvoyGatewayExtensionServer interface.
-func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, requestHeaderAttributes, logRequestHeaderAttributes *string) (*Server, error) {
+// extProcBeforeFilterNames is an optional list of exact Envoy filter names that should be ordered
+// before the AI Gateway extproc filter in the HCM filter chain.
+func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, requestHeaderAttributes, logRequestHeaderAttributes *string, extProcBeforeFilterNames []string) (*Server, error) {
 	logger = logger.WithName(serverName)
 	logAttrs, err := requestheaderattrs.ResolveLog(requestHeaderAttributes, logRequestHeaderAttributes)
 	if err != nil {
 		return nil, err
+	}
+	allowedSet := make(map[string]struct{}, len(extProcBeforeFilterNames))
+	for _, name := range extProcBeforeFilterNames {
+		if name != "" {
+			allowedSet[name] = struct{}{}
+		}
 	}
 	return &Server{
 		log:                        logger,
@@ -49,6 +62,7 @@ func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAlo
 		udsPath:                    udsPath,
 		isStandAloneMode:           isStandAloneMode,
 		logRequestHeaderAttributes: logAttrs,
+		extProcBeforeFilterNames:   allowedSet,
 	}, nil
 }
 

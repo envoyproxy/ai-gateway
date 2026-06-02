@@ -177,7 +177,15 @@ func run(ctx context.Context, c *cmdRun, o *runOpts, stdout, stderr io.Writer) e
 	s := grpc.NewServer()
 	requestHeaderAttributes := envOptional("OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES")
 	logRequestHeaderAttributes := envOptional("OTEL_AIGW_LOG_REQUEST_HEADER_ATTRIBUTES")
-	extSrv, err := extensionserver.New(fakeClient, ctrl.Log, o.extprocUDSPath, true, requestHeaderAttributes, logRequestHeaderAttributes)
+	var extProcBeforeFilterNames []string
+	if v, ok := os.LookupEnv("AIGW_EXTPROC_BEFORE_FILTER_NAMES"); ok && v != "" {
+		for _, name := range strings.Split(v, ",") {
+			if n := strings.TrimSpace(name); n != "" {
+				extProcBeforeFilterNames = append(extProcBeforeFilterNames, n)
+			}
+		}
+	}
+	extSrv, err := extensionserver.New(fakeClient, ctrl.Log, o.extprocUDSPath, true, requestHeaderAttributes, logRequestHeaderAttributes, extProcBeforeFilterNames)
 	if err != nil {
 		return err
 	}

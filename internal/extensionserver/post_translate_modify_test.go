@@ -182,7 +182,7 @@ func TestInsertAIGatewayExtProcFilter(t *testing.T) {
 				ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: &anypb.Any{}},
 			}
 
-			err := insertAIGatewayExtProcFilter(mgr, newFilter)
+			err := insertAIGatewayExtProcFilter(mgr, newFilter, nil)
 			require.NoError(t, err)
 
 			require.Len(t, mgr.HttpFilters, tt.expectedFilterCount)
@@ -195,6 +195,110 @@ func TestInsertAIGatewayExtProcFilter(t *testing.T) {
 					require.Equal(t, originalFilter.Name, mgr.HttpFilters[i+1].Name, "filter at position %d should be shifted by 1", i)
 				}
 			}
+		})
+	}
+}
+
+func TestInsertAIGatewayExtProcAfterAllowedFilters(t *testing.T) {
+	newFilter := &httpconnectionmanagerv3.HttpFilter{
+		Name:       aiGatewayExtProcName,
+		ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: &anypb.Any{}},
+	}
+
+	tests := []struct {
+		name                string
+		existingFilters     []*httpconnectionmanagerv3.HttpFilter
+		allowedNames        map[string]struct{}
+		expectedPosition    int
+		expectedFilterCount int
+	}{
+		{
+			name: "empty allowlist falls back to standard insertion",
+			existingFilters: []*httpconnectionmanagerv3.HttpFilter{
+				{Name: "envoy.filters.http.fault"},
+				{Name: "envoy.filters.http.ext_proc/some-policy/extproc/0"},
+				{Name: "envoy.filters.http.router"},
+			},
+			allowedNames:        nil,
+			expectedPosition:    1,
+			expectedFilterCount: 4,
+		},
+		{
+			name: "allowlist with matching filter inserts after it",
+			existingFilters: []*httpconnectionmanagerv3.HttpFilter{
+				{Name: "envoy.filters.http.fault"},
+				{Name: "envoy.filters.http.ext_proc/default/my-policy/extproc/0"},
+				{Name: "envoy.filters.http.router"},
+			},
+			allowedNames:        map[string]struct{}{"envoy.filters.http.ext_proc/default/my-policy/extproc/0": {}},
+			expectedPosition:    2,
+			expectedFilterCount: 4,
+		},
+		{
+			name: "allowlist with no matching filter falls back to standard insertion",
+			existingFilters: []*httpconnectionmanagerv3.HttpFilter{
+				{Name: "envoy.filters.http.fault"},
+				{Name: "envoy.filters.http.ext_proc/default/other-policy/extproc/0"},
+				{Name: "envoy.filters.http.router"},
+			},
+			allowedNames:        map[string]struct{}{"envoy.filters.http.ext_proc/default/my-policy/extproc/0": {}},
+			expectedPosition:    1,
+			expectedFilterCount: 4,
+		},
+		{
+			name: "multiple allowed filters inserts after last match",
+			existingFilters: []*httpconnectionmanagerv3.HttpFilter{
+				{Name: "envoy.filters.http.ext_proc/default/policy-a/extproc/0"},
+				{Name: "envoy.filters.http.ext_proc/default/policy-b/extproc/0"},
+				{Name: "envoy.filters.http.ratelimit"},
+				{Name: "envoy.filters.http.router"},
+			},
+			allowedNames: map[string]struct{}{
+				"envoy.filters.http.ext_proc/default/policy-a/extproc/0": {},
+				"envoy.filters.http.ext_proc/default/policy-b/extproc/0": {},
+			},
+			expectedPosition:    2,
+			expectedFilterCount: 5,
+		},
+		{
+			name: "non-extproc filter in allowlist also works",
+			existingFilters: []*httpconnectionmanagerv3.HttpFilter{
+				{Name: "custom-filter"},
+				{Name: "envoy.filters.http.router"},
+			},
+			allowedNames:        map[string]struct{}{"custom-filter": {}},
+			expectedPosition:    1,
+			expectedFilterCount: 3,
+		},
+		{
+			name: "partial match in allowlist inserts after last match only",
+			existingFilters: []*httpconnectionmanagerv3.HttpFilter{
+				{Name: "envoy.filters.http.ext_proc/default/allowed/extproc/0"},
+				{Name: "envoy.filters.http.ext_proc/default/not-allowed/extproc/0"},
+				{Name: "envoy.filters.http.router"},
+			},
+			allowedNames:        map[string]struct{}{"envoy.filters.http.ext_proc/default/allowed/extproc/0": {}},
+			expectedPosition:    1,
+			expectedFilterCount: 4,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mgr := &httpconnectionmanagerv3.HttpConnectionManager{
+				HttpFilters: make([]*httpconnectionmanagerv3.HttpFilter, len(tt.existingFilters)),
+			}
+			copy(mgr.HttpFilters, tt.existingFilters)
+
+			filter := &httpconnectionmanagerv3.HttpFilter{
+				Name:       newFilter.Name,
+				ConfigType: newFilter.ConfigType,
+			}
+
+			err := insertAIGatewayExtProcFilter(mgr, filter, tt.allowedNames)
+			require.NoError(t, err)
+			require.Len(t, mgr.HttpFilters, tt.expectedFilterCount)
+			require.Equal(t, aiGatewayExtProcName, mgr.HttpFilters[tt.expectedPosition].Name)
 		})
 	}
 }
@@ -317,26 +421,42 @@ func Test_shouldAIGatewayExtProcBeInserted(t *testing.T) {
 		expected bool
 	}{
 		{
+			name:     "no filters present",
 			filters:  []*httpconnectionmanagerv3.HttpFilter{{}},
 			expected: true,
 		},
 		{
+			name:     "AI Gateway filter present",
 			filters:  []*httpconnectionmanagerv3.HttpFilter{{Name: aiGatewayExtProcName}},
 			expected: false,
 		},
 		{
+			name:     "AI Gateway filter present in middle",
 			filters:  []*httpconnectionmanagerv3.HttpFilter{{}, {Name: aiGatewayExtProcName}, {}},
 			expected: false,
 		},
 		{
+			name:     "other extproc filter present",
+			filters:  []*httpconnectionmanagerv3.HttpFilter{{Name: "envoy.filters.http.ext_proc/some-policy"}},
+			expected: true, // Should still insert AI Gateway
+		},
+		{
+			name:     "other extproc and AI Gateway filter present",
+			filters:  []*httpconnectionmanagerv3.HttpFilter{{Name: "envoy.filters.http.ext_proc/some-policy"}, {Name: aiGatewayExtProcName}},
+			expected: false,
+		},
+		{
+			name:     "empty filters list",
 			filters:  []*httpconnectionmanagerv3.HttpFilter{{}, {}},
 			expected: true,
 		},
 	}
 
 	for _, tt := range tests {
-		result := shouldAIGatewayExtProcBeInserted(tt.filters)
-		require.Equal(t, tt.expected, result)
+		t.Run(tt.name, func(t *testing.T) {
+			result := shouldAIGatewayExtProcBeInserted(tt.filters)
+			require.Equal(t, tt.expected, result)
+		})
 	}
 }
 
