@@ -286,7 +286,7 @@ spec:
         - name: ratelimit
           command:
             - /bin/ratelimit
-          image: docker.io/envoyproxy/ratelimit:60d8e81b
+          image: docker.io/envoyproxy/ratelimit:1631871c
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8081
