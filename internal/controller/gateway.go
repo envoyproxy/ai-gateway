@@ -517,7 +517,10 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 
 	// Configuration for MCP processor.
 	var effectiveMCPRoute bool
-	ec.MCPConfig, effectiveMCPRoute = mcpConfig(mcpRoutes)
+	ec.MCPConfig, effectiveMCPRoute, err = c.mcpConfig(ctx, mcpRoutes)
+	if err != nil {
+		return false, fmt.Errorf("failed to build MCP Config: %w", err)
+	}
 	hasEffectiveRoute = hasEffectiveRoute || effectiveMCPRoute
 
 	marshaled, err := yaml.Marshal(ec)
@@ -550,9 +553,9 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 }
 
 // reconcileFilterConfigSecretForMCPGateway updates the filter config secret for the external processor.
-func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffectiveRoute bool) {
+func (c *GatewayController) mcpConfig(ctx context.Context, mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffectiveRoute bool, _ error) {
 	if len(mcpRoutes) == 0 {
-		return nil, false
+		return nil, false, nil
 	}
 
 	mc := &filterapi.MCPConfig{
@@ -587,6 +590,13 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 					hf.BackendHeader = *fh.BackendHeader
 				}
 				mcpBackend.ForwardHeaders = append(mcpBackend.ForwardHeaders, hf)
+			}
+			if b.SecurityPolicy != nil && b.SecurityPolicy.AWSCredentials != nil {
+				awsAuth, err := c.resolveMCPBackendAWSAuth(ctx, route.Namespace, &b, b.SecurityPolicy.AWSCredentials)
+				if err != nil {
+					return nil, false, fmt.Errorf("failed to resolve AWS credentials for MCP backend %s in route %s/%s: %w", b.Name, route.Namespace, route.Name, err)
+				}
+				mcpBackend.AWSAuth = awsAuth
 			}
 			mcpRoute.Backends = append(
 				mcpRoute.Backends, mcpBackend)
@@ -659,7 +669,119 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 		}
 		mc.Routes = append(mc.Routes, mcpRoute)
 	}
-	return mc, hasEffectiveRoute
+	return mc, hasEffectiveRoute, nil
+}
+
+// resolveMCPBackendAWSAuth builds the resolved AWS SigV4 signing config for a backend
+// reference that declares awsCredentials. It resolves the upstream host from the
+// referenced Backend resource (SigV4 signs over the host that AWS ultimately sees) and
+// reads the optional credentials file secret.
+func (c *GatewayController) resolveMCPBackendAWSAuth(ctx context.Context, namespace string, ref *aigv1b1.MCPRouteBackendRef, creds *aigv1b1.MCPBackendAWSCredentials) (*filterapi.MCPBackendAWSAuth, error) {
+	host, err := c.resolveMCPBackendHost(ctx, namespace, ref)
+	if err != nil {
+		return nil, err
+	}
+
+	service := ptr.Deref(creds.Service, "")
+	if service == "" {
+		service = inferAWSServiceFromHost(host)
+		if service == "" {
+			return nil, fmt.Errorf("cannot infer AWS SigV4 service name from host %q; set securityPolicy.awsCredentials.service explicitly", host)
+		}
+	}
+
+	awsAuth := &filterapi.MCPBackendAWSAuth{
+		Region:  creds.Region,
+		Service: service,
+		Host:    host,
+		// Envoy rewrites the request path to the backend path (defaultMCPPath when unset)
+		// via the URLRewrite filter, so SigV4 must sign against that same path.
+		Path: ptr.Deref(ref.Path, defaultMCPPath),
+	}
+
+	if creds.CredentialsFile != nil {
+		literal, profile, err := c.readMCPAWSCredentialsFile(ctx, namespace, creds.CredentialsFile)
+		if err != nil {
+			return nil, err
+		}
+		awsAuth.CredentialFileLiteral = literal
+		awsAuth.Profile = profile
+	}
+
+	return awsAuth, nil
+}
+
+// resolveMCPBackendHost resolves the upstream host of an MCP backend reference. AWS SigV4
+// signs over the request host, and Envoy rewrites the request authority to the backend's
+// hostname before it reaches AWS, so the proxy must sign against that same hostname.
+func (c *GatewayController) resolveMCPBackendHost(ctx context.Context, namespace string, ref *aigv1b1.MCPRouteBackendRef) (string, error) {
+	// Only Envoy Gateway Backend resources carry the FQDN that we sign against.
+	if ref.Kind != nil && *ref.Kind != "Backend" {
+		return "", fmt.Errorf("AWS SigV4 signing requires a Backend reference, but backend %s has kind %s", ref.Name, *ref.Kind)
+	}
+
+	var backend egv1a1.Backend
+	if err := c.client.Get(ctx, client.ObjectKey{Name: string(ref.Name), Namespace: namespace}, &backend); err != nil {
+		return "", fmt.Errorf("failed to get backend %s: %w", ref.Name, err)
+	}
+
+	for i := range backend.Spec.Endpoints {
+		ep := &backend.Spec.Endpoints[i]
+		if ep.FQDN != nil && ep.FQDN.Hostname != "" {
+			return ep.FQDN.Hostname, nil
+		}
+
+		if ep.Hostname != nil && *ep.Hostname != "" {
+			return *ep.Hostname, nil
+		}
+	}
+
+	return "", fmt.Errorf("backend %s has no FQDN/hostname endpoint, which is required for AWS SigV4 signing", ref.Name)
+}
+
+// inferAWSServiceFromHost best-effort infers the SigV4 service name from a standard AWS endpoint
+// host of the form "<service>.<region>.amazonaws.com" (or ".api.aws"). It returns an empty string
+// when the host does not look like a standard AWS endpoint, in which case the caller
+// must require an explicit service name.
+func inferAWSServiceFromHost(host string) string {
+	host = strings.TrimSuffix(host, ".")
+	for _, suffix := range []string{".amazonaws.com", ".api.aws"} {
+		if !strings.HasSuffix(host, suffix) {
+			continue
+		}
+		prefix := strings.TrimSuffix(host, suffix)
+		if i := strings.IndexByte(prefix, '.'); i > 0 {
+			return prefix[:i]
+		}
+		return ""
+	}
+	return ""
+}
+
+// readMCPAWSCredentialsFile reads the AWS credential file contents from the referenced
+// secret. The secret is expected to contain the credentials file keyed on "credentials".
+func (c *GatewayController) readMCPAWSCredentialsFile(ctx context.Context, namespace string, file *aigv1b1.MCPAWSCredentialsFile) (literal, profile string, _ error) {
+	profile = file.Profile
+	secretName := string(file.SecretRef.Name)
+	secretNS := namespace
+	if file.SecretRef.Namespace != nil {
+		secretNS = string(*file.SecretRef.Namespace)
+	}
+
+	secret, err := c.kube.CoreV1().Secrets(secretNS).Get(ctx, secretName, metav1.GetOptions{})
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get AWS credentials secret %s/%s: %w", secretNS, secretName, err)
+	}
+
+	if v, ok := secret.Data["credentials"]; ok {
+		return string(v), profile, nil
+	}
+
+	if v, ok := secret.StringData["credentials"]; ok {
+		return v, profile, nil
+	}
+
+	return "", "", fmt.Errorf("secret %s/%s does not contain key 'credentials' key", secretNS, secretName)
 }
 
 func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backendSecurityPolicy *aigv1b1.BackendSecurityPolicy) (*filterapi.BackendAuth, error) {

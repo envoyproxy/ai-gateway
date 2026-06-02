@@ -260,6 +260,11 @@ func TestMCPRoutes(t *testing.T) {
 			expErr: "only one of header or queryParam can be set",
 		},
 		{
+			name:   "backend_api_key_and_aws_credentials.yaml",
+			expErr: "only one of apiKey or awsCredentials can be set",
+		},
+		{name: "backend_aws_credentials.yaml"},
+		{
 			name:   "jwks_missing.yaml",
 			expErr: "spec.securityPolicy.oauth.jwks: Invalid value: \"object\": either remoteJWKS or localJWKS must be specified.",
 		},

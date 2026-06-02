@@ -541,6 +541,103 @@ func TestSendRequestPerBackend_PerBackendHeaders(t *testing.T) {
 	})
 }
 
+func TestSendRequestPerBackend_SignsAWSBackend(t *testing.T) {
+	headersCh := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- r.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	signer, err := newAWSBackendSigner(t.Context(), &filterapi.MCPBackendAWSAuth{
+		Region:                "us-east-1",
+		Service:               "bedrock-agentcore",
+		Host:                  "bedrock-agentcore.us-east-1.amazonaws.com",
+		Path:                  "/mcp",
+		CredentialFileLiteral: testAWSCredentialsFile,
+	})
+	require.NoError(t, err)
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	proxy.routes["test-route"].awsSigners = map[filterapi.MCPBackendName]*awsBackendSigner{
+		"backend1": signer,
+	}
+
+	s := &session{reqCtx: proxy}
+	ch := make(chan *backendEvent, 1)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	err = s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+		sessionID: "sess1",
+	}, http.MethodPost, &jsonrpc.Request{Method: "tools/call"}, nil)
+	require.NoError(t, err)
+
+	select {
+	case hdr := <-headersCh:
+		auth := hdr.Get("Authorization")
+		require.Contains(t, auth, "AWS4-HMAC-SHA256")
+		require.Contains(t, auth, "Credential=AKIAIOSFODNN7EXAMPLE")
+		require.Contains(t, auth, "/us-east-1/bedrock-agentcore/aws4_request")
+		require.NotEmpty(t, hdr.Get("X-Amz-Date"))
+	case <-ctx.Done():
+		require.Fail(t, "timed out waiting for backend request")
+	}
+}
+
+// TestSendRequestPerBackend_AWSSigningIsolation verifies that on the fan-out path the AWS
+// signature is applied only to the backend configured for AWS auth and never leaks to a
+// sibling backend on the same route.
+func TestSendRequestPerBackend_AWSSigningIsolation(t *testing.T) {
+	headersCh := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- r.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	signer, err := newAWSBackendSigner(t.Context(), &filterapi.MCPBackendAWSAuth{
+		Region:                "us-east-1",
+		Service:               "bedrock-agentcore",
+		Host:                  "bedrock-agentcore.us-east-1.amazonaws.com",
+		Path:                  "/mcp",
+		CredentialFileLiteral: testAWSCredentialsFile,
+	})
+	require.NoError(t, err)
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+	// Only backend1 is AWS-authenticated; backend2 has no signer.
+	proxy.routes["test-route"].awsSigners = map[filterapi.MCPBackendName]*awsBackendSigner{
+		"backend1": signer,
+	}
+
+	sendTo := func(backendName filterapi.MCPBackendName) http.Header {
+		s := &session{reqCtx: proxy}
+		ch := make(chan *backendEvent, 1)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		defer cancel()
+		reqErr := s.sendRequestPerBackend(ctx, ch, "test-route", filterapi.MCPBackend{Name: backendName}, &compositeSessionEntry{
+			sessionID: "sess1",
+		}, http.MethodPost, &jsonrpc.Request{Method: "tools/call"}, nil)
+		require.NoError(t, reqErr)
+		select {
+		case hdr := <-headersCh:
+			return hdr
+		case <-ctx.Done():
+			require.Fail(t, "timed out waiting for backend request")
+			return nil
+		}
+	}
+
+	awsHdr := sendTo("backend1")
+	require.Contains(t, awsHdr.Get("Authorization"), "AWS4-HMAC-SHA256")
+
+	plainHdr := sendTo("backend2")
+	require.Empty(t, plainHdr.Get("Authorization"), "non-AWS backend must not receive a signature")
+	require.Empty(t, plainHdr.Get("X-Amz-Date"), "non-AWS backend must not receive SigV4 headers")
+}
+
 func TestSendRequestPerBackend_AcceptEncoding(t *testing.T) {
 	headersCh := make(chan http.Header, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

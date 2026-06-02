@@ -4906,7 +4906,102 @@ spec:
                               && has(self.inline))
                           - message: only one of header or queryParam can be set
                             rule: '!(has(self.header) && has(self.queryParam))'
+                        awsCredentials:
+                          description: |-
+                            AWSCredentials authenticates requests to the backend MCP server using AWS
+                            Signature Version 4 (SigV4). Use this to connect to MCP servers fronted by AWS IAM
+                            such as the AWS MCP Server or MCP servers hosted on Amazon Bedrock AgentCore.
+
+                            The gateway signs each outbound request with the AWS credentials it resolves
+                            from the configured source: a referenced credentials file, or the default AWS
+                            credential chain (which supports environment variables, IRSA, and EKS Pod
+                            Identity). All requests to the backend are signed with this single gateway identity.
+                          properties:
+                            credentialsFile:
+                              description: |-
+                                CredentialsFile references a Kubernetes secret containing an AWS credentials file
+                                to use for signing. When specified, this takes precedence over the default credential
+                                chain (environment variables, IRSA, EKS Pod Identity, EC2 instance role, etc.), with
+                                automatic credential rotation.
+                              properties:
+                                profile:
+                                  default: default
+                                  description: Profile is the profile to use in the
+                                    credentials file.
+                                  type: string
+                                secretRef:
+                                  description: |-
+                                    SecretRef is the reference to the credential file secret.
+
+                                    The secret should contain the AWS credentials file keyed on "credentials".
+                                  properties:
+                                    group:
+                                      default: ""
+                                      description: |-
+                                        Group is the group of the referent. For example, "gateway.networking.k8s.io".
+                                        When unspecified or empty string, core API group is inferred.
+                                      maxLength: 253
+                                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                                      type: string
+                                    kind:
+                                      default: Secret
+                                      description: Kind is kind of the referent. For
+                                        example "Secret".
+                                      maxLength: 63
+                                      minLength: 1
+                                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                                      type: string
+                                    name:
+                                      description: Name is the name of the referent.
+                                      maxLength: 253
+                                      minLength: 1
+                                      type: string
+                                    namespace:
+                                      description: |-
+                                        Namespace is the namespace of the referenced object. When unspecified, the local
+                                        namespace is inferred.
+
+                                        Note that when a namespace different than the local namespace is specified,
+                                        a ReferenceGrant object is required in the referent namespace to allow that
+                                        namespace's owner to accept the reference. See the ReferenceGrant
+                                        documentation for details.
+
+                                        Support: Core
+                                      maxLength: 63
+                                      minLength: 1
+                                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                                      type: string
+                                  required:
+                                  - name
+                                  type: object
+                              required:
+                              - secretRef
+                              type: object
+                            mode:
+                              default: ServiceIdentify
+                              description: |-
+                                Mode selects the signing identity. Currently, only "ServiceIdentify" is
+                                supported, which signs all requests with the gateway's own AWS identity.
+                              type: string
+                            region:
+                              description: Region is the AWS region used for SigV4
+                                signing, e.g. "us-east-1".
+                              minLength: 1
+                              type: string
+                            service:
+                              description: |-
+                                Service is the AWS SigV4 service name to sign for, e.g. "bedrock-agentcore"
+                                for Bedrock AgentCore-hosted MCP servers, or the service name of the AWS MCP Server.
+                                When omitted, the gateway infers the service name from the backend hostname.
+                              minLength: 1
+                              type: string
+                          required:
+                          - region
+                          type: object
                       type: object
+                      x-kubernetes-validations:
+                      - message: only one of apiKey or awsCredentials can be set
+                        rule: '!(has(self.apiKey) && has(self.awsCredentials))'
                     toolSelector:
                       description: |-
                         ToolSelector filters the tools exposed by this MCP server.
