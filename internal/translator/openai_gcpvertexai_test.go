@@ -2601,9 +2601,9 @@ func TestGCPVertexAIRedactBody(t *testing.T) {
 		require.Equal(t, "search_web", resp.Choices[0].Message.ToolCalls[0].Function.Name)
 		require.Contains(t, resp.Choices[0].Message.ToolCalls[0].Function.Arguments, "GCP Vertex AI")
 
-		// Verify redacted copy has redacted tool calls
+		// Verify redacted copy: name kept, arguments redacted
 		require.Len(t, redacted.Choices[0].Message.ToolCalls, 1)
-		require.Contains(t, redacted.Choices[0].Message.ToolCalls[0].Function.Name, "[REDACTED")
+		require.Equal(t, "search_web", redacted.Choices[0].Message.ToolCalls[0].Function.Name)
 		require.Contains(t, redacted.Choices[0].Message.ToolCalls[0].Function.Arguments, "[REDACTED")
 		require.NotContains(t, redacted.Choices[0].Message.ToolCalls[0].Function.Arguments, "GCP Vertex AI")
 	})

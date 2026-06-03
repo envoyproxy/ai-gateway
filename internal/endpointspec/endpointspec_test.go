@@ -472,10 +472,11 @@ func TestChatCompletionsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T
 		require.NoError(t, err)
 		require.NotNil(t, redacted)
 
-		// Verify tool call arguments are redacted
+		// Verify tool call arguments are redacted but function name is kept
 		require.Len(t, redacted.Messages, 1)
 		require.NotNil(t, redacted.Messages[0].OfAssistant)
 		require.Len(t, redacted.Messages[0].OfAssistant.ToolCalls, 1)
+		require.Equal(t, "get_weather", redacted.Messages[0].OfAssistant.ToolCalls[0].Function.Name)
 		require.Contains(t, redacted.Messages[0].OfAssistant.ToolCalls[0].Function.Arguments, "[REDACTED LENGTH=")
 	})
 
@@ -506,18 +507,12 @@ func TestChatCompletionsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T
 		require.NoError(t, err)
 		require.NotNil(t, redacted)
 
-		// Verify tool description and parameters are redacted
+		// Tool definitions are developer-authored schema metadata — kept as-is
 		require.Len(t, redacted.Tools, 1)
 		require.NotNil(t, redacted.Tools[0].Function)
-		require.Contains(t, redacted.Tools[0].Function.Description, "[REDACTED LENGTH=")
-
-		// Parameters should be redacted to a placeholder map with hash (preserves type safety)
-		paramsMap, ok := redacted.Tools[0].Function.Parameters.(map[string]any)
-		require.True(t, ok, "Parameters should be a map[string]any")
-		redactedValue, exists := paramsMap["_redacted"]
-		require.True(t, exists, "Should have _redacted key")
-		require.Contains(t, redactedValue, "REDACTED LENGTH=")
-		require.Contains(t, redactedValue, "HASH=")
+		require.Equal(t, "get_weather", redacted.Tools[0].Function.Name)
+		require.Equal(t, "Get the current weather in a given location", redacted.Tools[0].Function.Description)
+		require.Equal(t, req.Tools[0].Function.Parameters, redacted.Tools[0].Function.Parameters)
 	})
 
 	t.Run("empty_request", func(t *testing.T) {
@@ -561,19 +556,12 @@ func TestChatCompletionsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T
 		require.NoError(t, err)
 		require.NotNil(t, redacted)
 
-		// Verify response format schema is redacted
+		// Response format schema is developer-authored — kept as-is
 		require.NotNil(t, redacted.ResponseFormat)
 		require.NotNil(t, redacted.ResponseFormat.OfJSONSchema)
-
-		// Schema name and description should be redacted
-		require.Contains(t, redacted.ResponseFormat.OfJSONSchema.JSONSchema.Name, "[REDACTED LENGTH=")
-		require.Contains(t, redacted.ResponseFormat.OfJSONSchema.JSONSchema.Description, "[REDACTED LENGTH=")
-
-		// Schema itself should be redacted
-		schemaStr := string(redacted.ResponseFormat.OfJSONSchema.JSONSchema.Schema)
-		require.Contains(t, schemaStr, `"_redacted"`)
-		require.Contains(t, schemaStr, "REDACTED LENGTH=")
-		require.Contains(t, schemaStr, "HASH=")
+		require.Equal(t, "math_response", redacted.ResponseFormat.OfJSONSchema.JSONSchema.Name)
+		require.Equal(t, "A response containing mathematical steps", redacted.ResponseFormat.OfJSONSchema.JSONSchema.Description)
+		require.Equal(t, req.ResponseFormat.OfJSONSchema.JSONSchema.Schema, redacted.ResponseFormat.OfJSONSchema.JSONSchema.Schema)
 	})
 
 	t.Run("redact_guided_json", func(t *testing.T) {
@@ -595,16 +583,8 @@ func TestChatCompletionsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T
 		require.NoError(t, err)
 		require.NotNil(t, redacted)
 
-		// Verify guided JSON is redacted
-		require.NotNil(t, redacted.GuidedJSON)
-		redactedJSON := string(redacted.GuidedJSON)
-		require.Contains(t, redactedJSON, `"_redacted"`)
-		require.Contains(t, redactedJSON, "REDACTED LENGTH=")
-		require.Contains(t, redactedJSON, "HASH=")
-
-		// Original schema should not be in redacted version
-		require.NotContains(t, redactedJSON, "answer")
-		require.NotContains(t, redactedJSON, "properties")
+		// guided_json is developer-authored schema — kept as-is
+		require.Equal(t, string(guidedSchema), string(redacted.GuidedJSON))
 	})
 
 	t.Run("redact_various_message_types", func(t *testing.T) {
