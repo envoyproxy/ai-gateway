@@ -58,6 +58,10 @@ spec:
                 description: |-
                   PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this
                   policy is attached.
+
+                  When multiple QuotaPolicies define the same Model for the same AIServiceBackend,
+                  the policy whose namespace/name is alphabetically first takes precedence.
+                  Keys are sorted to ensure deterministic snapshot generation.
                 items:
                   properties:
                     modelName:

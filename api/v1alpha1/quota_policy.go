@@ -45,6 +45,10 @@ type QuotaPolicySpec struct {
 	// PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this
 	// policy is attached.
 	//
+	// When multiple QuotaPolicies define the same Model for the same AIServiceBackend,
+	// the policy whose namespace/name is alphabetically first takes precedence.
+	// Keys are sorted to ensure deterministic snapshot generation.
+	//
 	// +kubebuilder:validation:MaxItems=128
 	// +optional
 	PerModelQuotas []PerModelQuota `json:"perModelQuotas,omitempty"`
@@ -121,7 +125,7 @@ type QuotaDefinition struct {
 type QuotaBucketMode string
 
 const (
-	QuoteBucketModeShared QuotaBucketMode = "Shared"
+	QuotaBucketModeShared QuotaBucketMode = "Shared"
 )
 
 type QuotaRule struct {
@@ -129,6 +133,7 @@ type QuotaRule struct {
 	// specific clients using attributes from the traffic flow.
 	// All individual select conditions must hold True for this rule
 	// and its limit to be applied.
+	//
 	//
 	// If no client selectors are specified, the rule applies to all traffic of
 	// the targeted AIServiceBackend.

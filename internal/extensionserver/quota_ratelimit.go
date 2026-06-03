@@ -45,8 +45,6 @@ const (
 	// conflicting with Envoy Gateway's own rate limit filter (e.g., from BackendTrafficPolicy).
 	// The per-route TypedPerFilterConfig keys on this name to target the quota filter specifically.
 	quotaRateLimitFilterName = "envoy.filters.http.ratelimit/ai-gateway-quota"
-	// defaultQuotaRateLimitServiceHost is the default hostname for the AI Gateway rate limit service.
-	defaultQuotaRateLimitServiceHost = "envoy-ai-gateway-ratelimit.envoy-gateway-system"
 	// defaultQuotaRateLimitServicePort is the default gRPC port for the rate limit service.
 	defaultQuotaRateLimitServicePort = 8081
 
@@ -154,7 +152,6 @@ func (s *Server) buildQuotaRateLimitCluster() *clusterv3.Cluster {
 		Name:                 quotaRateLimitClusterName,
 		ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_STRICT_DNS},
 		ConnectTimeout:       &durationpb.Duration{Seconds: 5},
-		Http2ProtocolOptions: &corev3.Http2ProtocolOptions{},
 		LoadAssignment: &endpointv3.ClusterLoadAssignment{
 			ClusterName: quotaRateLimitClusterName,
 			Endpoints: []*endpointv3.LocalityLbEndpoints{
@@ -611,8 +608,6 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 					}
 				}
 				// Default bucket: 3-level stream-done with GenericKey (always fires).
-				// In Exclusive mode this also decrements the default bucket for requests
-				// that matched a specific rule; in Shared mode this is correct.
 				if pmq.Quota.DefaultBucket.Limit > 0 {
 					defaultKey := translator.DefaultBucketDescriptorKey(len(pmq.Quota.BucketRules))
 					dupDefaultKey := modelName + "|" + defaultKey

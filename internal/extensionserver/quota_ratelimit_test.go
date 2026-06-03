@@ -59,6 +59,7 @@ func TestBuildQuotaRateLimitFilter(t *testing.T) {
 }
 
 func TestBuildQuotaRateLimitCluster(t *testing.T) {
+	const defaultQuotaRateLimitServiceHost = "envoy-ai-gateway-ratelimit.envoy-gateway-system"
 	srv := &Server{
 		quotaRateLimitServiceHost: defaultQuotaRateLimitServiceHost,
 	}
@@ -66,7 +67,6 @@ func TestBuildQuotaRateLimitCluster(t *testing.T) {
 	require.Equal(t, quotaRateLimitClusterName, cluster.Name)
 	require.Equal(t, clusterv3.Cluster_STRICT_DNS, cluster.GetType())
 	require.Equal(t, &durationpb.Duration{Seconds: 5}, cluster.ConnectTimeout)
-	require.NotNil(t, cluster.Http2ProtocolOptions)
 	require.NotNil(t, cluster.LoadAssignment)
 	require.Len(t, cluster.LoadAssignment.Endpoints, 1)
 	require.Len(t, cluster.LoadAssignment.Endpoints[0].LbEndpoints, 1)

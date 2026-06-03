@@ -2342,7 +2342,7 @@ QuotaPolicySpec specifies rules for computing token based costs of requests.
   name="perModelQuotas"
   type="[PerModelQuota](#github-com-envoyproxy-ai-gateway-api-v1alpha1-permodelquota) array"
   required="false"
-  description="PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this<br />policy is attached."
+  description="PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this<br />policy is attached.<br />When multiple QuotaPolicies define the same Model for the same AIServiceBackend,<br />the policy whose namespace/name is alphabetically first takes precedence.<br />Keys are sorted to ensure deterministic snapshot generation."
 />
 
 
