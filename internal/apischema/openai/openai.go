@@ -8509,3 +8509,85 @@ const (
 	SpeechModelGPT4oMiniTTS         = "gpt-4o-mini-tts"
 	SpeechModelGPT4oMiniTTS20251215 = "gpt-4o-mini-tts-2025-12-15"
 )
+
+// TranscriptionRequest represents parsed form fields from a /v1/audio/transcriptions multipart request.
+// The actual audio file bytes are not stored here; they remain in the raw body for passthrough.
+type TranscriptionRequest struct {
+	Model                  string   `json:"model"`
+	Language               string   `json:"language,omitempty"`
+	Prompt                 string   `json:"prompt,omitempty"`
+	ResponseFormat         string   `json:"response_format,omitempty"`
+	Temperature            *float64 `json:"temperature,omitempty"`
+	TimestampGranularities []string `json:"timestamp_granularities,omitempty"`
+	Stream                 bool     `json:"stream,omitempty"`
+	FileName               string   `json:"file_name,omitempty"`
+	FileSize               int64    `json:"file_size,omitempty"`
+}
+
+// TranslationRequest represents parsed form fields from a /v1/audio/translations multipart request.
+type TranslationRequest struct {
+	Model          string   `json:"model"`
+	Prompt         string   `json:"prompt,omitempty"`
+	ResponseFormat string   `json:"response_format,omitempty"`
+	Temperature    *float64 `json:"temperature,omitempty"`
+	FileName       string   `json:"file_name,omitempty"`
+	FileSize       int64    `json:"file_size,omitempty"`
+}
+
+// TranscriptionResponse represents the JSON response from /v1/audio/transcriptions.
+type TranscriptionResponse struct {
+	Text     string                 `json:"text"`
+	Task     string                 `json:"task,omitempty"`
+	Language string                 `json:"language,omitempty"`
+	Duration float64                `json:"duration,omitempty"`
+	Segments []TranscriptionSegment `json:"segments,omitempty"`
+	Words    []TranscriptionWord    `json:"words,omitempty"`
+}
+
+// TranscriptionSegment represents a segment in verbose transcription output.
+// Field names/types match openai.TranscriptionSegment from the SDK.
+type TranscriptionSegment struct {
+	ID               int64   `json:"id"`
+	Seek             int64   `json:"seek"`
+	Start            float64 `json:"start"`
+	End              float64 `json:"end"`
+	Text             string  `json:"text"`
+	Tokens           []int64 `json:"tokens"`
+	Temperature      float64 `json:"temperature"`
+	AvgLogprob       float64 `json:"avg_logprob"`
+	CompressionRatio float64 `json:"compression_ratio"`
+	NoSpeechProb     float64 `json:"no_speech_prob"`
+}
+
+// TranscriptionWord represents a word with timestamp in transcription output.
+// Field names/types match openai.TranscriptionWord from the SDK.
+type TranscriptionWord struct {
+	Word  string  `json:"word"`
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+}
+
+// TranscriptionStreamEvent is one SSE event from /v1/audio/transcriptions when stream=true
+// (gpt-4o-transcribe and gpt-4o-mini-transcribe only; whisper-1 silently ignores the flag).
+//
+// The `Type` field discriminates:
+//   - "transcript.text.delta" — intermediate event carrying a `Delta` text chunk.
+//   - "transcript.text.done"  — terminal event carrying the full `Text`.
+type TranscriptionStreamEvent struct {
+	Type  string `json:"type"`
+	Delta string `json:"delta,omitempty"`
+	Text  string `json:"text,omitempty"`
+}
+
+// Transcription stream event type constants.
+const (
+	// TranscriptionStreamEventTypeDelta is emitted for each intermediate text chunk during streaming.
+	TranscriptionStreamEventTypeDelta = "transcript.text.delta"
+	// TranscriptionStreamEventTypeDone is the terminal event in a transcription stream.
+	TranscriptionStreamEventTypeDone = "transcript.text.done"
+)
+
+// TranslationResponse represents the JSON response from /v1/audio/translations.
+type TranslationResponse struct {
+	Text string `json:"text"`
+}
