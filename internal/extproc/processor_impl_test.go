@@ -6,11 +6,13 @@
 package extproc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -71,6 +73,8 @@ func TestNewFactory(t *testing.T) {
 type (
 	chatCompletionProcessorRouterFilter   = routerProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
 	chatCompletionProcessorUpstreamFilter = upstreamProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
+	transcriptionProcessorRouterFilter    = routerProcessor[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent, endpointspec.TranscriptionEndpointSpec]
+	transcriptionProcessorUpstreamFilter  = upstreamProcessor[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent, endpointspec.TranscriptionEndpointSpec]
 	messagesProcessorRouterFilter         = routerProcessor[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
 	messagesProcessorUpstreamFilter       = upstreamProcessor[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
 )
@@ -1658,6 +1662,73 @@ func Test_mergeDynamicMetadata(t *testing.T) {
 		inner := result.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
 		require.Equal(t, "new-value", inner.Fields["key"].GetStringValue())
 	})
+}
+
+func buildTestMultipartBody(t *testing.T, fields map[string]string, filename string, fileData []byte) ([]byte, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		require.NoError(t, writer.WriteField(k, v))
+	}
+	if filename != "" && fileData != nil {
+		part, err := writer.CreateFormFile("file", filename)
+		require.NoError(t, err)
+		_, err = part.Write(fileData)
+		require.NoError(t, err)
+	}
+	require.NoError(t, writer.Close())
+	return buf.Bytes(), writer.FormDataContentType()
+}
+
+func Test_transcriptionProcessorRouterFilter_ProcessRequestBody_MultipartDispatch(t *testing.T) {
+	body, ct := buildTestMultipartBody(t, map[string]string{
+		"model": "whisper-1",
+	}, "test.mp3", []byte("fake-audio-data"))
+
+	headers := map[string]string{":path": "/v1/audio/transcriptions", "content-type": ct}
+	p := &transcriptionProcessorRouterFilter{
+		config:         &filterapi.RuntimeConfig{},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		tracer:         tracingapi.NoopTracer[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]{},
+	}
+
+	resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: body})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	re, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	require.True(t, ok)
+	require.NotNil(t, re.RequestBody)
+
+	setHeaders := re.RequestBody.GetResponse().GetHeaderMutation().SetHeaders
+	require.GreaterOrEqual(t, len(setHeaders), 1)
+	require.Equal(t, internalapi.ModelNameHeaderKeyDefault, setHeaders[0].Header.Key)
+	require.Equal(t, "whisper-1", string(setHeaders[0].Header.RawValue))
+}
+
+func Test_transcriptionProcessorUpstreamFilter_SetBackend_ContentTypeSetter(t *testing.T) {
+	contentType := "multipart/form-data; boundary=testboundary"
+	headers := map[string]string{":path": "/v1/audio/transcriptions", "content-type": contentType}
+	mm := &mockMetrics{}
+	p := &transcriptionProcessorUpstreamFilter{
+		requestHeaders: headers,
+		metrics:        mm,
+	}
+	r := &transcriptionProcessorRouterFilter{
+		requestHeaders: headers,
+	}
+
+	err := p.SetBackend(t.Context(), &filterapi.RuntimeBackend{
+		Backend: &filterapi.Backend{
+			Name:   "transcription-backend",
+			Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+		},
+	}, "", r)
+	require.NoError(t, err)
+	require.NotNil(t, p.translator)
+	require.NotNil(t, r.upstreamFilter)
 }
 
 func TestBuildDynamicMetadata_routeScoped(t *testing.T) {
