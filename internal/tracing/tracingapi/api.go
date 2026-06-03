@@ -38,6 +38,22 @@ type (
 		RerankTracer() RerankTracer
 		// MessageTracer creates spans for Anthropic messages requests.
 		MessageTracer() MessageTracer
+		// CreateFileTracer creates spans for OpenAI create file requests.
+		CreateFileTracer() CreateFileTracer
+		// RetrieveFileTracer creates spans for OpenAI retrieve file requests.
+		RetrieveFileTracer() RetrieveFileTracer
+		// RetrieveFileContentTracer creates spans for OpenAI retrieve file content requests.
+		RetrieveFileContentTracer() RetrieveFileContentTracer
+		// DeleteFileTracer creates spans for OpenAI delete file requests.
+		DeleteFileTracer() DeleteFileTracer
+		// CreateBatchTracer creates spans for OpenAI create batch requests.
+		CreateBatchTracer() CreateBatchTracer
+		// ListBatchesTracer creates spans for OpenAI list batches requests.
+		ListBatchesTracer() ListBatchesTracer
+		// RetrieveBatchTracer creates spans for OpenAI retrieve batch requests.
+		RetrieveBatchTracer() RetrieveBatchTracer
+		// CancelBatchTracer creates spans for OpenAI cancel batch requests.
+		CancelBatchTracer() CancelBatchTracer
 		// MCPTracer creates spans for MCP requests.
 		MCPTracer() MCPTracer
 		// Shutdown shuts down the tracer, flushing any buffered spans.
@@ -73,6 +89,22 @@ type (
 	RerankTracer = RequestTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageTracer creates spans for Anthropic messages requests.
 	MessageTracer = RequestTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// CreateFileTracer creates spans for OpenAI create file requests.
+	CreateFileTracer = RequestTracer[openai.FileNewParams, openai.FileObject, struct{}]
+	// RetrieveFileTracer creates spans for OpenAI retrieve file requests.
+	RetrieveFileTracer = RequestTracer[struct{}, openai.FileObject, struct{}]
+	// RetrieveFileContentTracer creates spans for OpenAI retrieve file content requests.
+	RetrieveFileContentTracer = RequestTracer[struct{}, struct{}, struct{}]
+	// DeleteFileTracer creates spans for OpenAI delete file requests.
+	DeleteFileTracer = RequestTracer[struct{}, openai.FileDeleted, struct{}]
+	// CreateBatchTracer creates spans for OpenAI create batch requests.
+	CreateBatchTracer = RequestTracer[openai.BatchNewParams, openai.Batch, struct{}]
+	// ListBatchesTracer creates spans for OpenAI list batches requests.
+	ListBatchesTracer = RequestTracer[struct{}, struct{}, struct{}]
+	// RetrieveBatchTracer creates spans for OpenAI retrieve batch requests.
+	RetrieveBatchTracer = RequestTracer[struct{}, openai.Batch, struct{}]
+	// CancelBatchTracer creates spans for OpenAI cancel batch requests.
+	CancelBatchTracer = RequestTracer[struct{}, openai.Batch, struct{}]
 )
 
 type (
@@ -104,6 +136,22 @@ type (
 	RerankSpan = Span[cohere.RerankV2Response, struct{}]
 	// MessageSpan represents an Anthropic messages request span.
 	MessageSpan = Span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// CreateFileSpan represents an OpenAI create file request span.
+	CreateFileSpan = Span[openai.FileObject, struct{}]
+	// RetrieveFileSpan represents an OpenAI retrieve file request span.
+	RetrieveFileSpan = Span[openai.FileObject, struct{}]
+	// RetrieveFileContentSpan represents an OpenAI retrieve file content request span.
+	RetrieveFileContentSpan = Span[struct{}, struct{}]
+	// DeleteFileSpan represents an OpenAI delete file request span.
+	DeleteFileSpan = Span[openai.FileDeleted, struct{}]
+	// CreateBatchSpan represents an OpenAI create batch request span.
+	CreateBatchSpan = Span[openai.Batch, struct{}]
+	// ListBatchesSpan represents an OpenAI list batches request span.
+	ListBatchesSpan = Span[struct{}, struct{}]
+	// RetrieveBatchSpan represents an OpenAI retrieve batch request span.
+	RetrieveBatchSpan = Span[openai.Batch, struct{}]
+	// CancelBatchSpan represents an OpenAI cancel batch request span.
+	CancelBatchSpan = Span[openai.Batch, struct{}]
 )
 
 type (
@@ -149,6 +197,22 @@ type (
 	RerankRecorder = SpanRecorder[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageRecorder records attributes to a span according to a semantic convention.
 	MessageRecorder = SpanRecorder[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// CreateFileRecorder records attributes to a span according to a semantic convention.
+	CreateFileRecorder = SpanRecorder[openai.FileNewParams, openai.FileObject, struct{}]
+	// RetrieveFileRecorder records attributes to a span according to a semantic convention.
+	RetrieveFileRecorder = SpanRecorder[struct{}, openai.FileObject, struct{}]
+	// RetrieveFileContentRecorder records attributes to a span according to a semantic convention.
+	RetrieveFileContentRecorder = SpanRecorder[struct{}, struct{}, struct{}]
+	// DeleteFileRecorder records attributes to a span according to a semantic convention.
+	DeleteFileRecorder = SpanRecorder[struct{}, openai.FileDeleted, struct{}]
+	// CreateBatchRecorder records attributes to a span according to a semantic convention.
+	CreateBatchRecorder = SpanRecorder[openai.BatchNewParams, openai.Batch, struct{}]
+	// ListBatchesRecorder records attributes to a span according to a semantic convention.
+	ListBatchesRecorder = SpanRecorder[struct{}, struct{}, struct{}]
+	// RetrieveBatchRecorder records attributes to a span according to a semantic convention.
+	RetrieveBatchRecorder = SpanRecorder[struct{}, openai.Batch, struct{}]
+	// CancelBatchRecorder records attributes to a span according to a semantic convention.
+	CancelBatchRecorder = SpanRecorder[struct{}, openai.Batch, struct{}]
 )
 
 // NoopChunkRecorder provides a no-op RecordResponseChunks implementation for recorders that don't emit streaming chunks.
@@ -203,6 +267,38 @@ func (NoopTracing) MessageTracer() MessageTracer {
 	return NoopMessageTracer{}
 }
 
+func (NoopTracing) CreateFileTracer() CreateFileTracer {
+	return NoopCreateFileTracer{}
+}
+
+func (NoopTracing) RetrieveFileTracer() RetrieveFileTracer {
+	return NoopRetrieveFileTracer{}
+}
+
+func (NoopTracing) RetrieveFileContentTracer() RetrieveFileContentTracer {
+	return NoopRetrieveFileContentTracer{}
+}
+
+func (NoopTracing) DeleteFileTracer() DeleteFileTracer {
+	return NoopDeleteFileTracer{}
+}
+
+func (NoopTracing) CreateBatchTracer() CreateBatchTracer {
+	return NoopCreateBatchTracer{}
+}
+
+func (NoopTracing) ListBatchesTracer() ListBatchesTracer {
+	return NoopListBatchesTracer{}
+}
+
+func (NoopTracing) RetrieveBatchTracer() RetrieveBatchTracer {
+	return NoopRetrieveBatchTracer{}
+}
+
+func (NoopTracing) CancelBatchTracer() CancelBatchTracer {
+	return NoopCancelBatchTracer{}
+}
+
 // Shutdown implements Tracing.Shutdown.
 func (NoopTracing) Shutdown(context.Context) error {
 	return nil
@@ -227,6 +323,22 @@ type (
 	NoopRerankTracer = NoopTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// NoopMessageTracer implements MessageTracer.
 	NoopMessageTracer = NoopTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// NoopCreateFileTracer implements CreateFileTracer.
+	NoopCreateFileTracer = NoopTracer[openai.FileNewParams, openai.FileObject, struct{}]
+	// NoopRetrieveFileTracer implements RetrieveFileTracer.
+	NoopRetrieveFileTracer = NoopTracer[struct{}, openai.FileObject, struct{}]
+	// NoopRetrieveFileContentTracer implements RetrieveFileContentTracer.
+	NoopRetrieveFileContentTracer = NoopTracer[struct{}, struct{}, struct{}]
+	// NoopDeleteFileTracer implements DeleteFileTracer.
+	NoopDeleteFileTracer = NoopTracer[struct{}, openai.FileDeleted, struct{}]
+	// NoopCreateBatchTracer implements CreateBatchTracer.
+	NoopCreateBatchTracer = NoopTracer[openai.BatchNewParams, openai.Batch, struct{}]
+	// NoopListBatchesTracer implements ListBatchesTracer.
+	NoopListBatchesTracer = NoopTracer[struct{}, struct{}, struct{}]
+	// NoopRetrieveBatchTracer implements RetrieveBatchTracer.
+	NoopRetrieveBatchTracer = NoopTracer[struct{}, openai.Batch, struct{}]
+	// NoopCancelBatchTracer implements CancelBatchTracer.
+	NoopCancelBatchTracer = NoopTracer[struct{}, openai.Batch, struct{}]
 )
 
 // StartSpanAndInjectHeaders implements RequestTracer.StartSpanAndInjectHeaders.

@@ -6,6 +6,8 @@
 package endpointspec
 
 import (
+	"bytes"
+	"mime/multipart"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,15 +16,17 @@ import (
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/redaction"
+	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
 func TestChatCompletionsEndpointSpec_ParseBody(t *testing.T) {
 	spec := ChatCompletionsEndpointSpec{}
 
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := spec.ParseBody([]byte("not-json"), false)
+		_, _, _, _, err := spec.ParseBody([]byte("not-json"), false, map[string]string{})
 		require.ErrorContains(t, err, "malformed request")
 	})
 
@@ -31,7 +35,7 @@ func TestChatCompletionsEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, true)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, true, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4o", model)
 		require.True(t, stream)
@@ -55,7 +59,7 @@ func TestChatCompletionsEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		_, parsed, _, mutated, err := spec.ParseBody(body, false)
+		_, parsed, _, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.NotNil(t, parsed)
 		require.True(t, parsed.StreamOptions.IncludeUsage)
@@ -67,7 +71,7 @@ func TestChatCompletionsEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4-mini", model)
 		require.False(t, stream)
@@ -107,7 +111,7 @@ func TestCompletionsEndpointSpec_ParseBody(t *testing.T) {
 	spec := CompletionsEndpointSpec{}
 
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := spec.ParseBody([]byte("{bad"), false)
+		_, _, _, _, err := spec.ParseBody([]byte("{bad"), false, map[string]string{})
 		require.ErrorContains(t, err, "malformed request")
 	})
 
@@ -116,7 +120,7 @@ func TestCompletionsEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "text-davinci-003", model)
 		require.True(t, stream)
@@ -139,7 +143,7 @@ func TestEmbeddingsEndpointSpec_ParseBody(t *testing.T) {
 	spec := EmbeddingsEndpointSpec{}
 
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
+		_, _, _, _, err := spec.ParseBody([]byte("{"), false, map[string]string{})
 		require.ErrorContains(t, err, "malformed request")
 	})
 
@@ -148,7 +152,7 @@ func TestEmbeddingsEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "text-embedding-3-large", model)
 		require.False(t, stream)
@@ -186,7 +190,7 @@ func TestImageGenerationEndpointSpec_ParseBody(t *testing.T) {
 	spec := ImageGenerationEndpointSpec{}
 
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
+		_, _, _, _, err := spec.ParseBody([]byte("{"), false, map[string]string{})
 		require.ErrorContains(t, err, "malformed request")
 	})
 
@@ -194,7 +198,7 @@ func TestImageGenerationEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(map[string]any{"model": "gpt-image-1", "prompt": "cat"})
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "gpt-image-1", model)
 		require.False(t, stream)
@@ -217,7 +221,7 @@ func TestMessagesEndpointSpec_ParseBody(t *testing.T) {
 	spec := MessagesEndpointSpec{}
 
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := spec.ParseBody([]byte("["), false)
+		_, _, _, _, err := spec.ParseBody([]byte("["), false, map[string]string{})
 		require.ErrorContains(t, err, "malformed request")
 	})
 
@@ -225,7 +229,7 @@ func TestMessagesEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(map[string]any{"stream": true})
 		require.NoError(t, err)
 
-		_, _, _, _, err = spec.ParseBody(body, false)
+		_, _, _, _, err = spec.ParseBody(body, false, map[string]string{})
 		require.ErrorContains(t, err, "model field is required")
 	})
 
@@ -233,7 +237,7 @@ func TestMessagesEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(map[string]any{"model": "claude-3", "stream": true})
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "claude-3", model)
 		require.True(t, stream)
@@ -263,7 +267,7 @@ func TestMessagesEndpointSpec_GetTranslator(t *testing.T) {
 func TestRerankEndpointSpec_ParseBody(t *testing.T) {
 	spec := RerankEndpointSpec{}
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
+		_, _, _, _, err := spec.ParseBody([]byte("{"), false, map[string]string{})
 		require.ErrorContains(t, err, "malformed request")
 	})
 
@@ -272,7 +276,7 @@ func TestRerankEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "rerank-v3.5", model)
 		require.False(t, stream)
@@ -294,7 +298,7 @@ func TestRerankEndpointSpec_GetTranslator(t *testing.T) {
 func TestResponsesEndpointSpec_ParseBody(t *testing.T) {
 	spec := ResponsesEndpointSpec{}
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
+		_, _, _, _, err := spec.ParseBody([]byte("{"), false, map[string]string{})
 		require.ErrorContains(t, err, "malformed request")
 	})
 
@@ -305,7 +309,7 @@ func TestResponsesEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4o", model)
 		require.True(t, stream)
@@ -320,7 +324,7 @@ func TestResponsesEndpointSpec_ParseBody(t *testing.T) {
 			"max_tokens": 50
 		}`)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4.7", model)
 		require.False(t, stream)
@@ -342,7 +346,7 @@ func TestResponsesEndpointSpec_ParseBody(t *testing.T) {
 			]
 		}`)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4.7", model)
 		require.False(t, stream)
@@ -848,7 +852,7 @@ func TestSpeechEndpointSpec_ParseBody(t *testing.T) {
 	spec := SpeechEndpointSpec{}
 
 	t.Run("invalid json", func(t *testing.T) {
-		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
+		_, _, _, _, err := spec.ParseBody([]byte("{"), false, map[string]string{})
 		require.ErrorContains(t, err, "failed to unmarshal speech request")
 	})
 
@@ -861,7 +865,7 @@ func TestSpeechEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "tts-1", model)
 		require.False(t, stream)
@@ -880,7 +884,7 @@ func TestSpeechEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4o-mini-tts", model)
 		require.True(t, stream)
@@ -900,7 +904,7 @@ func TestSpeechEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		_, _, stream, _, err := spec.ParseBody(body, false)
+		_, _, stream, _, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.False(t, stream, "audio format should not be treated as streaming")
 	})
@@ -920,7 +924,7 @@ func TestSpeechEndpointSpec_ParseBody(t *testing.T) {
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
 		require.NoError(t, err)
 		require.Equal(t, "tts-1", model)
 		require.False(t, stream)
@@ -1016,4 +1020,402 @@ func TestSpeechEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 		require.NotNil(t, redacted.StreamFormat)
 		require.Equal(t, "sse", *redacted.StreamFormat)
 	})
+}
+
+// buildFileUploadBody constructs a multipart/form-data body for /v1/files endpoint tests.
+// When includeModelName is true, a model field is added to ExtraBody.
+func buildFileUploadBody(t *testing.T, includeModelName bool, modelName, backendName string) ([]byte, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	part, err := writer.CreateFormFile("file", "test.txt")
+	require.NoError(t, err)
+	_, err = part.Write([]byte("hello"))
+	require.NoError(t, err)
+	require.NoError(t, writer.WriteField("purpose", "assistants"))
+	if includeModelName {
+		require.NoError(t, writer.WriteField("model", modelName))
+	}
+	if backendName != "" {
+		require.NoError(t, writer.WriteField("backend", backendName))
+	}
+	require.NoError(t, writer.Close())
+	return buf.Bytes(), writer.FormDataContentType()
+}
+
+func TestCreateFileEndpointSpec_ParseBody(t *testing.T) {
+	spec := CreateFileEndpointSpec{}
+
+	t.Run("missing_content_type", func(t *testing.T) {
+		model, parsed, stream, mutated, err := spec.ParseBody(nil, false, map[string]string{})
+		require.ErrorContains(t, err, "failed to parse Content-Type header")
+		require.Empty(t, model)
+		require.Nil(t, parsed)
+		require.False(t, stream)
+		require.Nil(t, mutated)
+	})
+
+	t.Run("wrong_content_type", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte(`{}`), false, map[string]string{"content-type": "application/json"})
+		require.ErrorContains(t, err, "only multipart/form-data is supported")
+	})
+
+	t.Run("missing_boundary", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte("body"), false, map[string]string{"content-type": "multipart/form-data"})
+		require.ErrorContains(t, err, "missing boundary parameter")
+	})
+
+	t.Run("malformed_multipart", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte("not-valid-multipart"), false, map[string]string{"content-type": "multipart/form-data; boundary=xxx"})
+		require.ErrorContains(t, err, "failed to parse multipart form-data")
+	})
+
+	t.Run("missing_model_name", func(t *testing.T) {
+		body, contentType := buildFileUploadBody(t, false, "", "")
+		_, _, _, _, err := spec.ParseBody(body, false, map[string]string{"content-type": contentType})
+		require.ErrorContains(t, err, "'model' parameter should be passed as extra field for file upload operations")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		body, contentType := buildFileUploadBody(t, true, "gpt-4o", "")
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{"content-type": contentType})
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o", model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
+		require.NotNil(t, mutated)
+	})
+
+	t.Run("success_with_optional_backend", func(t *testing.T) {
+		body, contentType := buildFileUploadBody(t, true, "gpt-4o", "openai-primary")
+		headers := map[string]string{"content-type": contentType}
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, headers)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o", model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
+		require.NotNil(t, mutated)
+		require.Equal(t, "openai-primary", headers[internalapi.BackendNameHeaderKey])
+	})
+}
+
+func TestCreateFileEndpointSpec_GetTranslator(t *testing.T) {
+	spec := CreateFileEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestCreateFileEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := CreateFileEndpointSpec{}
+	req := &openai.FileNewParams{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestListFilesEndpointSpec_ParseBody(t *testing.T) {
+	spec := ListFilesEndpointSpec{}
+	body := []byte("irrelevant")
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{":path": "/v1/files?backend=openai-primary&limit=2"})
+	require.NoError(t, err)
+	require.Empty(t, model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+
+	_, _, _, _, err = spec.ParseBody(body, false, map[string]string{":path": "/v1/files?limit=2"})
+	require.ErrorContains(t, err, "missing required 'backend' query parameter")
+
+	_, _, _, _, err = spec.ParseBody(body, false, map[string]string{":path": "/v1/files?model=gpt-4o-mini&backend=openai-primary"})
+	require.ErrorContains(t, err, "'model' query parameter is not supported")
+}
+
+func TestListFilesEndpointSpec_GetTranslator(t *testing.T) {
+	spec := ListFilesEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestListFilesEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := ListFilesEndpointSpec{}
+	req := &struct{}{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestRetrieveFileEndpointSpec_ParseBody(t *testing.T) {
+	spec := RetrieveFileEndpointSpec{}
+	body := []byte("irrelevant")
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
+	require.NoError(t, err)
+	require.Empty(t, model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+}
+
+func TestRetrieveFileEndpointSpec_GetTranslator(t *testing.T) {
+	spec := RetrieveFileEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestRetrieveFileEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := RetrieveFileEndpointSpec{}
+	req := &struct{}{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestRetrieveFileContentEndpointSpec_ParseBody(t *testing.T) {
+	spec := RetrieveFileContentEndpointSpec{}
+	body := []byte("irrelevant")
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
+	require.NoError(t, err)
+	require.Empty(t, model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+}
+
+func TestRetrieveFileContentEndpointSpec_GetTranslator(t *testing.T) {
+	spec := RetrieveFileContentEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestRetrieveFileContentEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := RetrieveFileContentEndpointSpec{}
+	req := &struct{}{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestDeleteFileEndpointSpec_ParseBody(t *testing.T) {
+	spec := DeleteFileEndpointSpec{}
+	body := []byte("irrelevant")
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
+	require.NoError(t, err)
+	require.Empty(t, model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+}
+
+func TestDeleteFileEndpointSpec_GetTranslator(t *testing.T) {
+	spec := DeleteFileEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestDeleteFileEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := DeleteFileEndpointSpec{}
+	req := &struct{}{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestCreateBatchEndpointSpec_ParseBody(t *testing.T) {
+	spec := CreateBatchEndpointSpec{}
+
+	// Build an encoded file ID with routing to simulate a gateway-issued file ID.
+	encodedFileID := translator.EncodeFileIDWithRouting("file-abc123", "gpt-4o-mini", "openai-primary", "file")
+	encodedFileIDWithoutBackend := translator.EncodeFileIDWithRouting("file-abc123", "gpt-4o-mini", "", "file")
+
+	t.Run("encoded_file_id_extracts_model_and_backend", func(t *testing.T) {
+		body, err := json.Marshal(map[string]any{"input_file_id": encodedFileID})
+		require.NoError(t, err)
+		headers := map[string]string{}
+		model, parsed, stream, mutated, parseErr := spec.ParseBody(body, false, headers)
+		require.NoError(t, parseErr)
+		require.Equal(t, internalapi.OriginalModel("gpt-4o-mini"), model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
+		require.NotNil(t, mutated)
+		require.Equal(t, "openai-primary", headers[internalapi.BackendNameHeaderKey])
+	})
+
+	t.Run("encoded_file_id_without_backend_returns_error", func(t *testing.T) {
+		body, err := json.Marshal(map[string]any{"input_file_id": encodedFileIDWithoutBackend})
+		require.NoError(t, err)
+		_, _, _, _, parseErr := spec.ParseBody(body, false, map[string]string{})
+		require.ErrorContains(t, parseErr, "backend routing information is required")
+	})
+
+	t.Run("raw_input_file_id_without_model_returns_error", func(t *testing.T) {
+		body := []byte(`{"input_file_id":"file-123"}`)
+		_, _, _, _, err := spec.ParseBody(body, false, map[string]string{})
+		require.ErrorContains(t, err, "'model' parameter must be provided in extra_body")
+	})
+
+	t.Run("raw_input_file_id_without_backend_returns_error", func(t *testing.T) {
+		body := []byte(`{"input_file_id":"file-123","extra_body":{"model":"gpt-4o-mini"}}`)
+		_, _, _, _, err := spec.ParseBody(body, false, map[string]string{})
+		require.ErrorContains(t, err, "'backend' parameter must be provided in extra_body")
+	})
+
+	t.Run("success_with_top_level_extra_fields", func(t *testing.T) {
+		body := []byte(`{"input_file_id":"file-123","model":"gpt-4o-mini","backend":"openai-primary"}`)
+		headers := map[string]string{}
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, headers)
+		require.NoError(t, err)
+		require.Equal(t, internalapi.OriginalModel("gpt-4o-mini"), model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
+		require.NotNil(t, mutated)
+		require.Equal(t, "openai-primary", headers[internalapi.BackendNameHeaderKey])
+	})
+
+	t.Run("success_with_model_and_backend_in_extra_body", func(t *testing.T) {
+		body := []byte(`{"input_file_id":"file-123","extra_body":{"model":"gpt-4o-mini","backend":"openai-primary"}}`)
+		headers := map[string]string{}
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false, headers)
+		require.NoError(t, err)
+		require.Equal(t, internalapi.OriginalModel("gpt-4o-mini"), model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
+		require.NotNil(t, mutated)
+		require.Equal(t, "openai-primary", headers[internalapi.BackendNameHeaderKey])
+	})
+
+	t.Run("invalid_backend_type_in_extra_body", func(t *testing.T) {
+		body := []byte(`{"input_file_id":"file-123","extra_body":{"model":"gpt-4o","backend":123}}`)
+		_, _, _, _, err := spec.ParseBody(body, false, map[string]string{})
+		require.ErrorContains(t, err, "invalid 'backend' parameter type in extra_body")
+	})
+
+	t.Run("invalid_model_type_in_extra_body", func(t *testing.T) {
+		body := []byte(`{"input_file_id":"file-123","extra_body":{"model":42}}`)
+		_, _, _, _, err := spec.ParseBody(body, false, map[string]string{})
+		require.ErrorContains(t, err, "invalid 'model' parameter type in extra_body")
+	})
+}
+
+func TestCreateBatchEndpointSpec_GetTranslator(t *testing.T) {
+	spec := CreateBatchEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestCreateBatchEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := CreateBatchEndpointSpec{}
+	req := &openai.BatchNewParams{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestListBatchesEndpointSpec_ParseBody(t *testing.T) {
+	spec := ListBatchesEndpointSpec{}
+	body := []byte("irrelevant")
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
+	require.NoError(t, err)
+	require.Empty(t, model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+}
+
+func TestListBatchesEndpointSpec_GetTranslator(t *testing.T) {
+	spec := ListBatchesEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestListBatchesEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := ListBatchesEndpointSpec{}
+	req := &struct{}{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestRetrieveBatchEndpointSpec_ParseBody(t *testing.T) {
+	spec := RetrieveBatchEndpointSpec{}
+	body := []byte("irrelevant")
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
+	require.NoError(t, err)
+	require.Empty(t, model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+}
+
+func TestRetrieveBatchEndpointSpec_GetTranslator(t *testing.T) {
+	spec := RetrieveBatchEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestRetrieveBatchEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := RetrieveBatchEndpointSpec{}
+	req := &struct{}{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestCancelBatchEndpointSpec_ParseBody(t *testing.T) {
+	spec := CancelBatchEndpointSpec{}
+	body := []byte("irrelevant")
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{})
+	require.NoError(t, err)
+	require.Empty(t, model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+}
+
+func TestCancelBatchEndpointSpec_GetTranslator(t *testing.T) {
+	spec := CancelBatchEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestCancelBatchEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := CancelBatchEndpointSpec{}
+	req := &struct{}{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
 }

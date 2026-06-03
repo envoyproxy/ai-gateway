@@ -126,7 +126,7 @@ func TestResponseModel_AWSAnthropic(t *testing.T) {
 		},
 	}
 	reqBody, _ := json.Marshal(req)
-	_, _, err := translator.RequestBody(reqBody, req, false)
+	_, _, err := translator.RequestBody(nil, reqBody, req, false)
 	require.NoError(t, err)
 
 	// AWS Anthropic response doesn't have model field, uses Anthropic format
@@ -179,7 +179,7 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 
 	t.Run("AWS Bedrock InvokeModel Values Configured Correctly", func(t *testing.T) {
 		translator := NewChatCompletionOpenAIToAWSAnthropicTranslator("", "")
-		hm, body, err := translator.RequestBody(nil, openAIReq, false)
+		hm, body, err := translator.RequestBody(map[string]string{}, nil, openAIReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
 		require.NotNil(t, body)
@@ -204,7 +204,7 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		translator := NewChatCompletionOpenAIToAWSAnthropicTranslator("", overrideModelName)
 
 		// Call RequestBody with the original request, which has a different model name.
-		hm, _, err := translator.RequestBody(nil, openAIReq, false)
+		hm, _, err := translator.RequestBody(map[string]string{}, nil, openAIReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
 
@@ -219,7 +219,7 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		arnModelName := "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-opus-20240229-v1:0"
 		translator := NewChatCompletionOpenAIToAWSAnthropicTranslator("", arnModelName)
 
-		hm, _, err := translator.RequestBody(nil, openAIReq, false)
+		hm, _, err := translator.RequestBody(map[string]string{}, nil, openAIReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
 
@@ -240,7 +240,7 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			Stream:    true,
 		}
 		translator := NewChatCompletionOpenAIToAWSAnthropicTranslator("", "")
-		hm, body, err := translator.RequestBody(nil, streamReq, false)
+		hm, body, err := translator.RequestBody(map[string]string{}, nil, streamReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
 
@@ -263,7 +263,7 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		translator := NewChatCompletionOpenAIToAWSAnthropicTranslator(customAPIVersion, "")
 
 		// Call RequestBody with a standard request.
-		_, body, err := translator.RequestBody(nil, openAIReq, false)
+		_, body, err := translator.RequestBody(map[string]string{}, nil, openAIReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, body)
 
@@ -279,7 +279,7 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			Temperature: ptr.To(2.5),
 		}
 		translator := NewChatCompletionOpenAIToAWSAnthropicTranslator("", "")
-		_, _, err := translator.RequestBody(nil, invalidTempReq, false)
+		_, _, err := translator.RequestBody(map[string]string{}, nil, invalidTempReq, false)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), fmt.Sprintf(tempNotSupportedError, *invalidTempReq.Temperature))
 	})
@@ -290,7 +290,7 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			Messages: []openai.ChatCompletionMessageParamUnion{},
 		}
 		translator := NewChatCompletionOpenAIToAWSAnthropicTranslator("", "")
-		_, body, err := translator.RequestBody(nil, missingTokensReq, false)
+		_, body, err := translator.RequestBody(map[string]string{}, nil, missingTokensReq, false)
 		require.NoError(t, err)
 		require.Equal(t, int64(0), gjson.GetBytes(body, "max_tokens").Int())
 	})
@@ -543,7 +543,7 @@ data: {"type": "message_stop"}
 	}
 
 	translator := NewChatCompletionOpenAIToAWSAnthropicTranslator("", "").(*openAIToAWSAnthropicTranslatorV1ChatCompletion)
-	_, _, err = translator.RequestBody(nil, openAIReq, false)
+	_, _, err = translator.RequestBody(map[string]string{}, nil, openAIReq, false)
 	require.NoError(t, err)
 
 	// Test streaming response - AWS Anthropic doesn't return model in response, uses request model
@@ -596,7 +596,7 @@ data: {"type": "message_stop"}
 			MaxTokens: new(int64),
 		}
 		translator := NewChatCompletionOpenAIToAWSAnthropicTranslator("", "").(*openAIToAWSAnthropicTranslatorV1ChatCompletion)
-		_, _, err = translator.RequestBody(nil, openAIReq, false)
+		_, _, err = translator.RequestBody(map[string]string{}, nil, openAIReq, false)
 		require.NoError(t, err)
 
 		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, bytes.NewReader(eventStreamData), true, nil)
@@ -646,7 +646,7 @@ data: {"type":"message_stop"}
 
 		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
 		translator := NewChatCompletionOpenAIToAWSAnthropicTranslator("", "").(*openAIToAWSAnthropicTranslatorV1ChatCompletion)
-		_, _, err = translator.RequestBody(nil, openAIReq, false)
+		_, _, err = translator.RequestBody(map[string]string{}, nil, openAIReq, false)
 		require.NoError(t, err)
 
 		_, bm, _, _, err := translator.ResponseBody(map[string]string{}, bytes.NewReader(eventStreamData), true, nil)
@@ -669,7 +669,7 @@ func TestAWSAnthropicStreamParser_ErrorHandling(t *testing.T) {
 
 		openAIReq := &openai.ChatCompletionRequest{Stream: true, Model: "test-model", MaxTokens: new(int64)}
 		translator := NewChatCompletionOpenAIToAWSAnthropicTranslator("", "").(*openAIToAWSAnthropicTranslatorV1ChatCompletion)
-		_, _, err = translator.RequestBody(nil, openAIReq, false)
+		_, _, err = translator.RequestBody(map[string]string{}, nil, openAIReq, false)
 		require.NoError(t, err)
 
 		_, _, _, _, err = translator.ResponseBody(map[string]string{}, bytes.NewReader(eventStreamData), endOfStream, nil)
@@ -753,7 +753,7 @@ func TestOpenAIToAWSAnthropicTranslator_EdgeCases(t *testing.T) {
 				}},
 			},
 		}
-		_, _, err := translator.RequestBody(nil, req, false)
+		_, _, err := translator.RequestBody(map[string]string{}, nil, req, false)
 		require.NoError(t, err)
 
 		// Response with model field
@@ -790,7 +790,7 @@ func TestOpenAIToAWSAnthropicTranslator_EdgeCases(t *testing.T) {
 				}},
 			},
 		}
-		_, _, err := translator.RequestBody(nil, req, false)
+		_, _, err := translator.RequestBody(map[string]string{}, nil, req, false)
 		require.NoError(t, err)
 
 		// Response without model field (typical for AWS Bedrock)

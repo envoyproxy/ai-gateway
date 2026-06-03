@@ -235,6 +235,59 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 		}
 	}
 
+	// Create or update per-backend HTTPRoutes for sticky routing.
+	// This splits sticky rules into separate HTTPRoutes to avoid exceeding the 16-rule per-HTTPRoute limit.
+	existingPerBackendRoutes, err := c.listExistingPerBackendHTTPRoutes(ctx, aiGatewayRoute)
+	if err != nil {
+		return fmt.Errorf("failed to list per-backend HTTPRoutes: %w", err)
+	}
+
+	uniqueBackends := extractUniqueBackendRefs(aiGatewayRoute)
+	backendTimeouts := extractBackendTimeouts(aiGatewayRoute)
+	for backendKey, backendRef := range uniqueBackends {
+		routeName := generateStickyHTTPRouteName(aiGatewayRoute.Name, backendRef.Name)
+
+		var perBackendRoute *gwapiv1.HTTPRoute
+		if existing, found := existingPerBackendRoutes[routeName]; found {
+			perBackendRoute = existing
+		} else {
+			perBackendRoute = &gwapiv1.HTTPRoute{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      routeName,
+					Namespace: aiGatewayRoute.Namespace,
+				},
+				Spec: gwapiv1.HTTPRouteSpec{},
+			}
+		}
+
+		if err = c.newStickyPerBackendRefHTTPRoute(ctx, perBackendRoute, aiGatewayRoute, backendRef, backendTimeouts[backendKey]); err != nil {
+			return fmt.Errorf("failed to populate per-backend HTTPRoute for backend %s: %w", backendKey, err)
+		}
+
+		if perBackendRoute.UID == "" {
+			// New route, create it
+			if err = ctrlutil.SetControllerReference(aiGatewayRoute, perBackendRoute, c.client.Scheme()); err != nil {
+				return fmt.Errorf("failed to set controller reference for per-backend HTTPRoute: %w", err)
+			}
+			c.logger.Info("creating per-backend HTTPRoute", "namespace", perBackendRoute.Namespace, "name", perBackendRoute.Name)
+			if err = c.client.Create(ctx, perBackendRoute); err != nil {
+				return fmt.Errorf("failed to create per-backend HTTPRoute for backend %s: %w", backendKey, err)
+			}
+		} else {
+			// Existing route, update it
+			c.logger.Info("updating per-backend HTTPRoute", "namespace", perBackendRoute.Namespace, "name", perBackendRoute.Name)
+			if err = c.client.Update(ctx, perBackendRoute); err != nil {
+				return fmt.Errorf("failed to update per-backend HTTPRoute for backend %s: %w", backendKey, err)
+			}
+		}
+		delete(existingPerBackendRoutes, routeName)
+	}
+
+	// Delete orphaned per-backend HTTPRoutes
+	if err = c.deleteOrphanedPerBackendResources(ctx, existingPerBackendRoutes); err != nil {
+		return fmt.Errorf("failed to delete orphaned per-backend HTTPRoutes: %w", err)
+	}
+
 	err = c.syncGateways(ctx, aiGatewayRoute)
 	if err != nil {
 		return fmt.Errorf("failed to sync gw pods: %w", err)
@@ -309,6 +362,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 				Path:    &gwapiv1.HTTPPathMatch{Value: &c.rootPrefix},
 			})
 		}
+
 		rules = append(rules, gwapiv1.HTTPRouteRule{
 			BackendRefs: backendRefs,
 			Matches:     matches,
@@ -457,4 +511,180 @@ func buildPriorityAnnotation(rules []aigv1b1.AIGatewayRouteRule) string {
 		}
 	}
 	return strings.Join(priorities, ",")
+}
+
+// generateStickyHTTPRouteName generates the name for a per-backend HTTPRoute.
+func generateStickyHTTPRouteName(routeName, backendName string) string {
+	return fmt.Sprintf("%s-%s-sticky", routeName, backendName)
+}
+
+// extractUniqueBackendRefs returns a map of unique backends across all spec rules.
+// Key format: "namespace.backend-name"
+func extractUniqueBackendRefs(aiGatewayRoute *aigv1b1.AIGatewayRoute) map[string]*aigv1b1.AIGatewayRouteRuleBackendRef {
+	uniqueBackends := make(map[string]*aigv1b1.AIGatewayRouteRuleBackendRef)
+	for i := range aiGatewayRoute.Spec.Rules {
+		rule := &aiGatewayRoute.Spec.Rules[i]
+		for j := range rule.BackendRefs {
+			br := &rule.BackendRefs[j]
+			ns := br.GetNamespace(aiGatewayRoute.Namespace)
+			key := fmt.Sprintf("%s.%s", ns, br.Name)
+			uniqueBackends[key] = br
+		}
+	}
+	return uniqueBackends
+}
+
+// extractBackendTimeouts returns a map of backend key to timeout configuration.
+// Key format: "namespace.backend-name".
+// If the same backend appears in multiple rules, the first rule's timeout takes precedence.
+func extractBackendTimeouts(aiGatewayRoute *aigv1b1.AIGatewayRoute) map[string]*gwapiv1.HTTPRouteTimeouts {
+	backendTimeouts := make(map[string]*gwapiv1.HTTPRouteTimeouts)
+	for i := range aiGatewayRoute.Spec.Rules {
+		rule := &aiGatewayRoute.Spec.Rules[i]
+		timeouts := rule.GetTimeoutsOrDefault()
+		for j := range rule.BackendRefs {
+			br := &rule.BackendRefs[j]
+			ns := br.GetNamespace(aiGatewayRoute.Namespace)
+			key := fmt.Sprintf("%s.%s", ns, br.Name)
+			if _, exists := backendTimeouts[key]; !exists {
+				backendTimeouts[key] = timeouts
+			}
+		}
+	}
+	return backendTimeouts
+}
+
+// listExistingPerBackendHTTPRoutes returns a map of all per-backend HTTPRoutes
+// owned by this AIGatewayRoute.
+func (c *AIGatewayRouteController) listExistingPerBackendHTTPRoutes(ctx context.Context,
+	aiGatewayRoute *aigv1b1.AIGatewayRoute,
+) (map[string]*gwapiv1.HTTPRoute, error) {
+	var httpRoutes gwapiv1.HTTPRouteList
+	selector := client.MatchingLabels{
+		managedByLabel: "ai-gateway",
+		internalapi.AIGatewayStickyRouteOwnerLabel:          aiGatewayRoute.Name,
+		internalapi.AIGatewayStickyRouteOwnerNamespaceLabel: aiGatewayRoute.Namespace,
+		internalapi.AIGatewayStickyRouteTypeLabel:           internalapi.AIGatewayStickyRouteTypePerBackend,
+	}
+
+	if err := c.client.List(ctx, &httpRoutes, selector,
+		client.InNamespace(aiGatewayRoute.Namespace)); err != nil {
+		return nil, err
+	}
+
+	existing := make(map[string]*gwapiv1.HTTPRoute)
+	for i := range httpRoutes.Items {
+		existing[httpRoutes.Items[i].Name] = &httpRoutes.Items[i]
+	}
+	return existing, nil
+}
+
+// newStickyPerBackendRefHTTPRoute creates an HTTPRoute with a single sticky rule for a backend.
+func (c *AIGatewayRouteController) newStickyPerBackendRefHTTPRoute(ctx context.Context,
+	dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1b1.AIGatewayRoute,
+	backendRef *aigv1b1.AIGatewayRouteRuleBackendRef,
+	timeouts *gwapiv1.HTTPRouteTimeouts,
+) error {
+	backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
+	qualifiedBackendName := fmt.Sprintf("%s.%s", backendNamespace, backendRef.Name)
+
+	// Validate and get backend details
+	backend, err := c.validateAndGetBackend(ctx, aiGatewayRoute, backendRef)
+	if err != nil {
+		return fmt.Errorf("failed to get AIServiceBackend %s: %w", qualifiedBackendName, err)
+	}
+
+	// Get the underlying Backend reference
+	backendObjRef := backend.Spec.BackendRef
+	if backendObjRef.Namespace == nil && backend.Namespace != "" &&
+		backend.Namespace != aiGatewayRoute.Namespace {
+		ns := gwapiv1.Namespace(backend.Namespace)
+		backendObjRef.Namespace = &ns
+	}
+
+	// Create the single sticky rule that matches on backend name + model header.
+	stickyRule := gwapiv1.HTTPRouteRule{
+		BackendRefs: []gwapiv1.HTTPBackendRef{
+			{
+				BackendRef: gwapiv1.BackendRef{
+					BackendObjectReference: backendObjRef,
+					Weight:                 ptr.To[int32](1), // Single backend
+				},
+			},
+		},
+		Matches: []gwapiv1.HTTPRouteMatch{
+			{
+				Path: &gwapiv1.HTTPPathMatch{Value: &c.rootPrefix},
+				Headers: []gwapiv1.HTTPHeaderMatch{
+					{
+						Name:  internalapi.BackendNameHeaderKey,
+						Value: qualifiedBackendName,
+					},
+					// The model name header matching is required to ensure that this rule
+					// is more specific than the regular rule and takes priority.
+					{
+						Name:  internalapi.ModelNameHeaderKeyDefault,
+						Type:  ptr.To(gwapiv1.HeaderMatchRegularExpression),
+						Value: ".+",
+					},
+				},
+			},
+		},
+		Filters: []gwapiv1.HTTPRouteFilter{
+			{
+				Type: gwapiv1.HTTPRouteFilterExtensionRef,
+				ExtensionRef: &gwapiv1.LocalObjectReference{
+					Group: "gateway.envoyproxy.io",
+					Kind:  "HTTPRouteFilter",
+					Name:  gwapiv1.ObjectName(getHostRewriteFilterName(aiGatewayRoute.Name)),
+				},
+			},
+		},
+		Timeouts: timeouts,
+	}
+
+	dst.Spec.Rules = []gwapiv1.HTTPRouteRule{stickyRule}
+	dst.Spec.ParentRefs = aiGatewayRoute.Spec.ParentRefs
+
+	// Set labels and annotations
+	if dst.Labels == nil {
+		dst.Labels = make(map[string]string)
+	}
+	if dst.Annotations == nil {
+		dst.Annotations = make(map[string]string)
+	}
+
+	// Copy non-controller annotations from AIGatewayRoute
+	for k, v := range aiGatewayRoute.Annotations {
+		if !strings.HasPrefix(k, egAnnotationPrefix) {
+			dst.Annotations[k] = v
+		}
+	}
+
+	// Add controller labels
+	dst.Labels[managedByLabel] = "ai-gateway"
+	dst.Labels[internalapi.AIGatewayStickyRouteOwnerLabel] = aiGatewayRoute.Name
+	dst.Labels[internalapi.AIGatewayStickyRouteOwnerNamespaceLabel] = aiGatewayRoute.Namespace
+	dst.Labels[internalapi.AIGatewayStickyRouteTypeLabel] = internalapi.AIGatewayStickyRouteTypePerBackend
+	dst.Labels[internalapi.AIGatewayStickyRouteBackendLabel] = backendRef.Name
+
+	// Mark as AI Gateway generated
+	dst.Annotations[httpRouteAnnotationForAIGatewayGeneratedIndication] = "true"
+
+	return nil
+}
+
+// deleteOrphanedPerBackendResources deletes per-backend HTTPRoutes that are no longer needed.
+func (c *AIGatewayRouteController) deleteOrphanedPerBackendResources(ctx context.Context,
+	existingPerBackendRoutes map[string]*gwapiv1.HTTPRoute,
+) error {
+	for routeName, route := range existingPerBackendRoutes {
+		if err := c.client.Delete(ctx, route); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return fmt.Errorf("failed to delete per-backend HTTPRoute %s: %w", routeName, err)
+			}
+		}
+		c.logger.Info("deleted orphaned per-backend HTTPRoute", "name", routeName)
+	}
+	return nil
 }

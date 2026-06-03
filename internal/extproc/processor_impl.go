@@ -13,7 +13,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"strconv"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -38,6 +40,17 @@ import (
 // LogRequestHeaderAttributes is the mapping of request headers to log as dynamic metadata attributes.
 // This is configured at the startup of the extproc server.
 var LogRequestHeaderAttributes map[string]string
+
+// Precomputed path prefixes for file and batch operations to avoid string concatenation on every request.
+const (
+	filePathPrefix  = "/v1/files/" + translator.FileIDPrefix
+	fileListPath    = "/v1/files"
+	batchPathPrefix = "/v1/batches/" + translator.BatchIDPrefix
+	batchListPath   = "/v1/batches"
+	// noModelPlaceholder is a sentinel model name used when a request has no explicit model (e.g. file and batch operations).
+	// It satisfies sticky backend+model route matching without a real model.
+	noModelPlaceholder = "__aigw_no_model__"
+)
 
 // NewFactory creates a ProcessorFactory with the given parameters.
 //
@@ -181,6 +194,296 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespons
 	return
 }
 
+// Whether to Get model name from resource id in the path for OpenAI Files API requests that usually don't have request body.
+func shouldGetModelFromID(method, path string) bool {
+	switch method {
+	case "GET":
+		// These methods can be header-only for file operations.
+		// e.g GET /v1/files/{file_id}, GET /v1/files/{file_id}/content
+		// Also handles batch retrieval for path-based routing.
+		// e.g GET /v1/batches/{batch_id}
+		return strings.Contains(path, filePathPrefix) || strings.Contains(path, batchPathPrefix)
+	case "DELETE":
+		// These methods can be header-only for file operations. e.g DELETE /v1/files/{file_id}
+		return strings.Contains(path, filePathPrefix)
+	case "POST":
+		// Batch cancel is a header-only operation for path-based routing.
+		// e.g POST /v1/batches/{batch_id}/cancel
+		return strings.Contains(path, batchPathPrefix)
+	default:
+		return false
+	}
+}
+
+func isListFilesEndpoint(method, path string) bool {
+	if method != "GET" {
+		return false
+	}
+	if path == "" {
+		return false
+	}
+	// Remove query params.
+	if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
+		path = path[:queryIndex]
+	}
+	path = strings.TrimSuffix(path, "/")
+	return path == fileListPath
+}
+
+// parseQueryFromPath parses the query string from a request path and returns URL query values.
+func parseQueryFromPath(path string) (url.Values, bool) {
+	if path == "" {
+		return nil, false
+	}
+	_, rawQuery, found := strings.Cut(path, "?")
+	if !found || rawQuery == "" {
+		return nil, false
+	}
+	query, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return nil, false
+	}
+	return query, true
+}
+
+// Extract the backend name from query parameters for list and raw file-id operations.
+func extractBackendFromQueryParam(path string) (string, bool) {
+	query, ok := parseQueryFromPath(path)
+	if !ok {
+		return "", false
+	}
+	backendName := query.Get("backend")
+	if backendName == "" {
+		return "", false
+	}
+	return backendName, true
+}
+
+func hasModelQueryParam(path string) bool {
+	query, ok := parseQueryFromPath(path)
+	if !ok {
+		return false
+	}
+	return query.Has("model")
+}
+
+func isListBatchesEndpoint(method, path string) bool {
+	if method != "GET" {
+		return false
+	}
+	if path == "" {
+		return false
+	}
+	// Remove query params.
+	if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
+		path = path[:queryIndex]
+	}
+	path = strings.TrimSuffix(path, "/")
+	return path == batchListPath
+}
+
+func extractFileIDFromPath(path string) (string, bool) {
+	if path == "" {
+		return "", false
+	}
+	// Remove query params
+	if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
+		path = path[:queryIndex]
+	}
+	segments := []string{"/v1/files/", "/v1/batches/"}
+	for _, segment := range segments {
+		_, after, found := strings.Cut(path, segment)
+		if !found {
+			continue
+		}
+		id, _, _ := strings.Cut(after, "/")
+		if id == "" {
+			return "", false
+		}
+		return id, true
+	}
+	return "", false
+}
+
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processListFilesRequestHeaders(ctx context.Context) (*extprocv3.ProcessingResponse, error) {
+	// Use the request-scoped logger from context if available, otherwise fall back to processor logger
+	logger := loggerFromContext(ctx)
+	if logger == nil {
+		logger = r.logger
+	}
+	if hasModelQueryParam(r.requestHeaders[":path"]) {
+		logger.Error("model query parameter is not supported for list files request", slog.String("path", r.requestHeaders[":path"]))
+		return createUserFacingErrorResponse(400, "BadRequest", "'model' query parameter is not supported for /v1/files. use 'backend' query parameter instead"), nil
+	}
+	backendName, ok := extractBackendFromQueryParam(r.requestHeaders[":path"])
+	if !ok {
+		logger.Error("missing backend query parameter for list files request", slog.String("path", r.requestHeaders[":path"]))
+		return createUserFacingErrorResponse(400, "BadRequest", "missing required 'backend' query parameter for /v1/files"), nil
+	}
+	headerMutation := &extprocv3.HeaderMutation{}
+	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, noModelPlaceholder)
+	setHeader(headerMutation, internalapi.BackendNameHeaderKey, backendName)
+
+	originalPath := r.requestHeaders[":path"]
+	if r.requestHeaders[originalPathHeader] == "" {
+		r.requestHeaders[originalPathHeader] = originalPath
+		setHeader(headerMutation, originalPathHeader, originalPath)
+	}
+	if r.requestHeaders[internalapi.EnvoyOriginalPathHeader] == "" {
+		r.requestHeaders[internalapi.EnvoyOriginalPathHeader] = originalPath
+		setHeader(headerMutation, internalapi.EnvoyOriginalPathHeader, originalPath)
+	}
+
+	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = noModelPlaceholder
+	r.requestHeaders[internalapi.BackendNameHeaderKey] = backendName
+	r.originalModel = ""
+
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation:  headerMutation,
+					ClearRouteCache: true,
+				},
+			},
+		},
+	}, nil
+}
+
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processListBatchesRequestHeaders(ctx context.Context) (*extprocv3.ProcessingResponse, error) {
+	// Use the request-scoped logger from context if available, otherwise fall back to processor logger
+	logger := loggerFromContext(ctx)
+	if logger == nil {
+		logger = r.logger
+	}
+	if hasModelQueryParam(r.requestHeaders[":path"]) {
+		logger.Error("model query parameter is not supported for list batches request", slog.String("path", r.requestHeaders[":path"]))
+		return createUserFacingErrorResponse(400, "BadRequest", "'model' query parameter is not supported for /v1/batches. use 'backend' query parameter instead"), nil
+	}
+	backendName, ok := extractBackendFromQueryParam(r.requestHeaders[":path"])
+	if !ok {
+		logger.Error("missing backend query parameter for list batches request", slog.String("path", r.requestHeaders[":path"]))
+		return createUserFacingErrorResponse(400, "BadRequest", "missing required 'backend' query parameter for /v1/batches"), nil
+	}
+	headerMutation := &extprocv3.HeaderMutation{}
+	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, noModelPlaceholder)
+	setHeader(headerMutation, internalapi.BackendNameHeaderKey, backendName)
+
+	originalPath := r.requestHeaders[":path"]
+	if r.requestHeaders[originalPathHeader] == "" {
+		r.requestHeaders[originalPathHeader] = originalPath
+		setHeader(headerMutation, originalPathHeader, originalPath)
+	}
+	if r.requestHeaders[internalapi.EnvoyOriginalPathHeader] == "" {
+		r.requestHeaders[internalapi.EnvoyOriginalPathHeader] = originalPath
+		setHeader(headerMutation, internalapi.EnvoyOriginalPathHeader, originalPath)
+	}
+
+	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = noModelPlaceholder
+	r.requestHeaders[internalapi.BackendNameHeaderKey] = backendName
+	r.originalModel = ""
+
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation:  headerMutation,
+					ClearRouteCache: true,
+				},
+			},
+		},
+	}, nil
+}
+
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) processFileIDInPathRequestHeaders(ctx context.Context) (*extprocv3.ProcessingResponse, error) {
+	// Use the request-scoped logger from context if available, otherwise fall back to processor logger
+	logger := loggerFromContext(ctx)
+	if logger == nil {
+		logger = r.logger
+	}
+	fileID, ok := extractFileIDFromPath(r.requestHeaders[":path"])
+	if !ok {
+		logger.Error("failed to extract file_id from path", slog.String("path", r.requestHeaders[":path"]))
+		return createUserFacingErrorResponse(400, "BadRequest", "failed to extract file id / batch id from path"), nil
+	}
+	// Decode file ID with routing information (model and backend).
+	// If decoding fails, treat the ID as raw provider file ID and require explicit backend query parameter.
+	modelName, backendName, decodedID, err := translator.DecodeFileIDWithRouting(fileID)
+	if err != nil {
+		backendName, ok = extractBackendFromQueryParam(r.requestHeaders[":path"])
+		if !ok {
+			logger.Error("failed to decode routing info from file_id and no backend query parameter provided", slog.String("file_id", fileID), slog.String("error", err.Error()))
+			return createUserFacingErrorResponse(400, "BadRequest", "failed to decode routing info from file id / batch id. raw ids require 'backend' query parameter"), nil
+		}
+		modelName = noModelPlaceholder
+		decodedID = fileID
+	}
+	r.requestHeaders[internalapi.OriginalFileIDHeaderKey] = fileID
+	r.requestHeaders[internalapi.DecodedFileIDHeaderKey] = decodedID
+	r.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = modelName
+	if modelName == noModelPlaceholder {
+		r.originalModel = ""
+	} else {
+		r.originalModel = modelName
+	}
+
+	// Set backend name header for sticky routing if backend info is available
+	if backendName != "" {
+		r.requestHeaders[internalapi.BackendNameHeaderKey] = backendName
+	}
+
+	headerMutation := &extprocv3.HeaderMutation{}
+	setHeader(headerMutation, internalapi.OriginalFileIDHeaderKey, fileID)
+	setHeader(headerMutation, internalapi.DecodedFileIDHeaderKey, decodedID)
+	if modelName != "" {
+		setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, modelName)
+	}
+
+	// Set backend header for routing if available
+	if backendName != "" {
+		setHeader(headerMutation, internalapi.BackendNameHeaderKey, backendName)
+	}
+
+	originalPath := r.requestHeaders[":path"]
+	if r.requestHeaders[originalPathHeader] == "" {
+		r.requestHeaders[originalPathHeader] = originalPath
+		setHeader(headerMutation, originalPathHeader, originalPath)
+	}
+	if r.requestHeaders[internalapi.EnvoyOriginalPathHeader] == "" {
+		r.requestHeaders[internalapi.EnvoyOriginalPathHeader] = originalPath
+		setHeader(headerMutation, internalapi.EnvoyOriginalPathHeader, originalPath)
+	}
+
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation:  headerMutation,
+					ClearRouteCache: true,
+				},
+			},
+		},
+	}, nil
+}
+
+// ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestHeaders(ctx context.Context, requestHeaders *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
+	switch {
+	case isListFilesEndpoint(r.requestHeaders[":method"], r.requestHeaders[":path"]):
+		// For list files endpoint, we need to extract the model name from the query parameter and set it to the request header since there is no request body.
+		return r.processListFilesRequestHeaders(ctx)
+	case isListBatchesEndpoint(r.requestHeaders[":method"], r.requestHeaders[":path"]):
+		// For list batches endpoint, we need to extract the model/backend from headers/query since there is no request body.
+		return r.processListBatchesRequestHeaders(ctx)
+	case shouldGetModelFromID(r.requestHeaders[":method"], r.requestHeaders[":path"]):
+		// For file endpoints with file_id in the path, we need to extract the model name from the file_id and set it to the request header since there is no request body.
+		return r.processFileIDInPathRequestHeaders(ctx)
+	default:
+		// Keep the default behaviour for other endpoints.
+		return r.passThroughProcessor.ProcessRequestHeaders(ctx, requestHeaders)
+	}
+}
+
 // formatUserFacingErrorJSON formats a user-facing error as a JSON response body.
 // Returns JSON in format: {"type":"error","error":{"type":"<errorType>","code":"<statusCode>","message":"<message>"}}
 func formatUserFacingErrorJSON(errorType string, statusCode int, message string) []byte {
@@ -210,7 +513,7 @@ func createUserFacingErrorResponse(statusCode int, errorType string, message str
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
 	costConfigured := len(r.config.RequestCosts) > 0 || len(r.config.GlobalRequestCosts) > 0
-	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body, costConfigured)
+	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body, costConfigured, r.requestHeaders)
 	if err != nil {
 		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
 			// return to user as 400 -  e.g., "malformed request: failed to parse JSON for /v1/chat/completions"
@@ -253,6 +556,11 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 		// Set the original model to the request header with the key `x-ai-eg-model`.
 		Header: &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
 	})
+	if backendName := r.requestHeaders[internalapi.BackendNameHeaderKey]; backendName != "" {
+		additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
+			Header: &corev3.HeaderValue{Key: internalapi.BackendNameHeaderKey, RawValue: []byte(backendName)},
+		})
+	}
 	originalPath := r.requestHeaders[":path"]
 	if r.requestHeaders[originalPathHeader] == "" {
 		r.requestHeaders[originalPathHeader] = originalPath
@@ -324,7 +632,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 	// * The request is a streaming request, and the IncludeUsage option is set to false since we need to ensure that
 	//	the token usage is calculated correctly without being bypassed.
 	forceBodyMutation := u.onRetry() || u.parent.forceBodyMutation
-	newHeaders, newBody, err := u.translator.RequestBody(u.parent.originalRequestBodyRaw, u.parent.originalRequestBody, forceBodyMutation)
+	newHeaders, newBody, err := u.translator.RequestBody(u.requestHeaders, u.parent.originalRequestBodyRaw, u.parent.originalRequestBody, forceBodyMutation)
 	if err != nil {
 		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
 			// return to user as 422 -  e.g., "invalid request body: tool_choice type not supported"
@@ -411,6 +719,10 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	}()
 
 	u.responseHeaders = headersToMap(headers)
+	// Copy backend name from request headers to response headers so it is available for encoding it in response fileID.
+	if backendName := u.requestHeaders[internalapi.BackendNameHeaderKey]; backendName != "" {
+		u.responseHeaders[internalapi.BackendNameHeaderKey] = backendName
+	}
 	if enc := u.responseHeaders["content-encoding"]; enc != "" {
 		u.responseEncoding = enc
 	}
@@ -571,6 +883,20 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) decodeStream
 	return contentDecodingResult{reader: bytes.NewReader(newData), isEncoded: true}, nil
 }
 
+// extractAIServiceBackendName extracts the namespace-qualified AIServiceBackend name from a
+// PerRouteRuleRefBackendName-formatted string ("namespace/name/route/routeName/rule/X/ref/Y").
+// Returns format "namespace.name" to match HTTPRoute sticky routing rules.
+// Returns the full name unchanged for backends that don't use this format (e.g., data-plane test backends).
+func extractAIServiceBackendName(fullName string) string {
+	parts := strings.SplitN(fullName, "/", 3)
+	if len(parts) < 3 {
+		// Not a valid PerRouteRuleRefBackendName format - return unchanged
+		return fullName
+	}
+	// Return namespace-qualified format: namespace.name
+	return fmt.Sprintf("%s.%s", parts[0], parts[1])
+}
+
 // SetBackend implements [Processor.SetBackend].
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(ctx context.Context, backend *filterapi.RuntimeBackend, routeName string, routeProcessor Processor) (err error) {
 	defer func() {
@@ -594,6 +920,10 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	if u.modelNameOverride != "" {
 		u.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = u.modelNameOverride
 	}
+	// Set backend name header for sticky routing and file ID encoding.
+	// Use namespace-qualified AIServiceBackend name (namespace.name format) to match
+	// the HTTPRoute header-based sticky routing rules generated by the controller.
+	u.requestHeaders[internalapi.BackendNameHeaderKey] = extractAIServiceBackendName(backend.Backend.Name)
 	u.parent = rp // Set parent before GetTranslator so it can access rp.eh
 
 	u.translator, err = u.parent.eh.GetTranslator(backend.Backend.Schema, u.modelNameOverride)

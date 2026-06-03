@@ -49,7 +49,7 @@ type anthropicToAWSBedrockTranslator struct {
 }
 
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody].
-func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropicschema.MessagesRequest, _ bool) (
+func (a *anthropicToAWSBedrockTranslator) RequestBody(_ map[string]string, _ []byte, body *anthropicschema.MessagesRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	a.stream = body.Stream

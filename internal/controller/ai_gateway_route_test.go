@@ -27,6 +27,7 @@ import (
 	gwapiv1b1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
@@ -137,12 +138,18 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 	}
 
 	t.Run("existing", func(t *testing.T) {
+		var (
+			requestTimeout        gwapiv1.Duration = "45s"
+			backendRequestTimeout gwapiv1.Duration = "50s"
+		)
 		route := &aigv1b1.AIGatewayRoute{
 			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns1"},
 			Spec: aigv1b1.AIGatewayRouteSpec{
+				ParentRefs: []gwapiv1a2.ParentReference{{Name: "my-gateway"}},
 				Rules: []aigv1b1.AIGatewayRouteRule{
 					{
 						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](1)}, {Name: "orange", Weight: ptr.To[int32](1)}},
+						Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &requestTimeout, BackendRequest: &backendRequestTimeout},
 					},
 				},
 			},
@@ -161,13 +168,45 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		var updatedHTTPRoute gwapiv1.HTTPRoute
 		err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "myroute", Namespace: "ns1"}, &updatedHTTPRoute)
 		require.NoError(t, err)
-		require.Len(t, updatedHTTPRoute.Spec.Rules, 2) // 1 rule + 1 for the default rule.
+		// Expected rules in main HTTPRoute:
+		// - 1 general rule with both backends
+		// - 1 default rule with no backends that matches on path "/" (for route-not-found case)
+		require.Len(t, updatedHTTPRoute.Spec.Rules, 2)
+
+		// General rule with both backends (rule 0 in spec → HTTPRoute index 0).
 		require.Len(t, updatedHTTPRoute.Spec.Rules[0].BackendRefs, 2)
 		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[0].Name))
 		require.Equal(t, "some-backend2", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[1].Name))
-		// Defaulting to the empty path, which shouldn't reach in practice.
+
+		// Default rule
 		require.Empty(t, updatedHTTPRoute.Spec.Rules[1].BackendRefs)
 		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[1].Matches[0].Path.Value)
+
+		// Verify per-backend HTTPRoutes are created for sticky routing
+		var appleRoute gwapiv1.HTTPRoute
+		err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "myroute-apple-sticky", Namespace: "ns1"}, &appleRoute)
+		require.NoError(t, err)
+		require.Len(t, appleRoute.Spec.Rules, 1)
+		require.Equal(t, route.Spec.ParentRefs, appleRoute.Spec.ParentRefs)
+		require.Len(t, appleRoute.Spec.Rules[0].BackendRefs, 1)
+		require.Equal(t, "some-backend1", string(appleRoute.Spec.Rules[0].BackendRefs[0].Name))
+		require.Equal(t, route.Spec.Rules[0].GetTimeoutsOrDefault(), appleRoute.Spec.Rules[0].Timeouts)
+		// Verify sticky rule matches on backend + model headers
+		require.Len(t, appleRoute.Spec.Rules[0].Matches, 1)
+		require.Len(t, appleRoute.Spec.Rules[0].Matches[0].Headers, 2)
+		require.Equal(t, gwapiv1.HTTPHeaderName(internalapi.BackendNameHeaderKey), appleRoute.Spec.Rules[0].Matches[0].Headers[0].Name)
+		require.Equal(t, "ns1.apple", appleRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
+		require.Equal(t, gwapiv1.HTTPHeaderName(internalapi.ModelNameHeaderKeyDefault), appleRoute.Spec.Rules[0].Matches[0].Headers[1].Name)
+
+		var orangeRoute gwapiv1.HTTPRoute
+		err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "myroute-orange-sticky", Namespace: "ns1"}, &orangeRoute)
+		require.NoError(t, err)
+		require.Len(t, orangeRoute.Spec.Rules, 1)
+		require.Equal(t, route.Spec.ParentRefs, orangeRoute.Spec.ParentRefs)
+		require.Len(t, orangeRoute.Spec.Rules[0].BackendRefs, 1)
+		require.Equal(t, "some-backend2", string(orangeRoute.Spec.Rules[0].BackendRefs[0].Name))
+		require.Equal(t, "ns1.orange", orangeRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
+		require.Equal(t, route.Spec.Rules[0].GetTimeoutsOrDefault(), orangeRoute.Spec.Rules[0].Timeouts)
 
 		// Check per AIGatewayRoute has the default host rewrite filter.
 		var f egv1a1.HTTPRouteFilter
@@ -295,6 +334,9 @@ func Test_newHTTPRoute(t *testing.T) {
 			}}
 			expPath := &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}
 			expRules := []gwapiv1.HTTPRouteRule{
+				// General model-based routing rules (kept at the same indices as
+				// AIGatewayRoute.Spec.Rules so the extension server can map clusters
+				// httproute/<ns>/<name>/rule/<idx> back to the spec rules).
 				{
 					Matches: []gwapiv1.HTTPRouteMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "rule-0"}}, Path: expPath},
@@ -454,12 +496,14 @@ func Test_newHTTPRoute_InferencePool(t *testing.T) {
 	err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
 	require.NoError(t, err)
 
-	// Verify HTTPRoute has correct backend reference for InferencePool.
-	// Note: newHTTPRoute always adds a default "unreachable" rule, so we expect 2 rules total.
+	// Verify HTTPRoute has correct backend references for InferencePool.
+	// Expected rules:
+	// 1. General InferencePool rule (kept at the same index as AIGatewayRoute spec rule)
+	// 2. Default "route-not-found" rule
 	require.Len(t, httpRoute.Spec.Rules, 2)
-	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
 
-	// Check the first rule (our InferencePool rule).
+	// Check the first rule (general InferencePool rule).
+	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
 	backendRef := httpRoute.Spec.Rules[0].BackendRefs[0]
 	require.Equal(t, "inference.networking.k8s.io", string(*backendRef.Group))
 	require.Equal(t, "InferencePool", string(*backendRef.Kind))

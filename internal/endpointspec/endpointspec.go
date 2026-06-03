@@ -8,7 +8,11 @@
 package endpointspec
 
 import (
+	"errors"
 	"fmt"
+	"mime"
+	"net/url"
+	"strings"
 
 	"github.com/tidwall/sjson"
 
@@ -42,6 +46,7 @@ type (
 		// Parameters:
 		// * body: The raw request body as a byte slice.
 		// * costConfigured: A boolean indicating if cost metrics are configured.
+		// * requestHeaders: The request headers as a map, which can be used for parsing decisions.
 		//
 		// Returns:
 		// * originalModel: The original model specified in the request.
@@ -49,7 +54,7 @@ type (
 		// * stream: A boolean indicating if the request is for streaming responses.
 		// * mutatedBody: The possibly mutated request body as a byte slice. Or nil if no mutation is needed.
 		// * err: An error if parsing fails.
-		ParseBody(body []byte, costConfigured bool) (originalModel internalapi.OriginalModel, req *ReqT, stream bool, mutatedBody []byte, err error)
+		ParseBody(body []byte, costConfigured bool, requestHeaders map[string]string) (originalModel internalapi.OriginalModel, req *ReqT, stream bool, mutatedBody []byte, err error)
 		// GetTranslator selects the appropriate translator based on the output API schema
 		// and an optional model name override.
 		//
@@ -92,12 +97,31 @@ type (
 	RerankEndpointSpec struct{}
 	// SpeechEndpointSpec implements EndpointSpec for /v1/audio/speech.
 	SpeechEndpointSpec struct{}
+	// CreateFileEndpointSpec implements EndpointSpec for /v1/files.
+	CreateFileEndpointSpec struct{}
+	// ListFilesEndpointSpec implements EndpointSpec for GET /v1/files.
+	ListFilesEndpointSpec struct{}
+	// RetrieveFileEndpointSpec implements EndpointSpec for GET /v1/files/{file_id}.
+	RetrieveFileEndpointSpec struct{}
+	// RetrieveFileEndpointSpec implements EndpointSpec for /v1/files/{file_id}/content.
+	RetrieveFileContentEndpointSpec struct{}
+	// DeleteFileEndpointSpce implements EndpointSpec for DELETE /v1/files/{file_id}.
+	DeleteFileEndpointSpec struct{}
+	// CreateBatchEndpointSpec implements EndpointSpec for POST /v1/batches.
+	CreateBatchEndpointSpec struct{}
+	// ListBatchesEndpointSpec implements EndpointSpec for GET /v1/batches.
+	ListBatchesEndpointSpec struct{}
+	// RetrieveBatchEndpointSpec implements EndpointSpec for GET /v1/batches/{batch_id}.
+	RetrieveBatchEndpointSpec struct{}
+	// CancelBatchEndpointSpec implements EndpointSpec for POST /v1/batches/{batch_id}/cancel.
+	CancelBatchEndpointSpec struct{}
 )
 
 // ParseBody implements [EndpointSpec.ParseBody].
 func (ChatCompletionsEndpointSpec) ParseBody(
 	body []byte,
 	costConfigured bool,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.ChatCompletionRequest, bool, []byte, error) {
 	var req openai.ChatCompletionRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -173,6 +197,7 @@ func (ChatCompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Ch
 func (CompletionsEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.CompletionRequest, bool, []byte, error) {
 	var openAIReq openai.CompletionRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
@@ -201,6 +226,7 @@ func (CompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Comple
 func (EmbeddingsEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.EmbeddingRequest, bool, []byte, error) {
 	var openAIReq openai.EmbeddingRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
@@ -234,6 +260,7 @@ func (EmbeddingsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Embeddi
 func (ImageGenerationEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.ImageGenerationRequest, bool, []byte, error) {
 	var openAIReq openai.ImageGenerationRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
@@ -262,6 +289,7 @@ func (ImageGenerationEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Im
 func (ResponsesEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.ResponseRequest, bool, []byte, error) {
 	var openAIReq openai.ResponseRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
@@ -290,6 +318,7 @@ func (ResponsesEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Response
 func (MessagesEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *anthropic.MessagesRequest, bool, []byte, error) {
 	var anthropicReq anthropic.MessagesRequest
 	if err := json.Unmarshal(body, &anthropicReq); err != nil {
@@ -334,6 +363,7 @@ func (MessagesEndpointSpec) RedactSensitiveInfoFromRequest(req *anthropic.Messag
 func (RerankEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *cohereschema.RerankV2Request, bool, []byte, error) {
 	var req cohereschema.RerankV2Request
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -354,6 +384,342 @@ func (RerankEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, mod
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (RerankEndpointSpec) RedactSensitiveInfoFromRequest(req *cohereschema.RerankV2Request) (redactedReq *cohereschema.RerankV2Request, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (CreateFileEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+	requestHeaders map[string]string,
+) (internalapi.OriginalModel, *openai.FileNewParams, bool, []byte, error) {
+	mediaType, params, err := mime.ParseMediaType(requestHeaders["content-type"])
+	if err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse Content-Type header: %w", internalapi.ErrUnsupportedMediaType, err)
+	}
+	if mediaType != "multipart/form-data" {
+		return "", nil, false, nil, fmt.Errorf("%w: only multipart/form-data is supported for /v1/files endpoint", internalapi.ErrUnsupportedMediaType)
+	}
+	if params["boundary"] == "" {
+		return "", nil, false, nil, fmt.Errorf("%w: missing boundary parameter in Content-Type header for multipart/form-data", internalapi.ErrUnsupportedMediaType)
+	}
+	var req openai.FileNewParams
+	if err := req.UnmarshalMultipart(body, params["boundary"]); err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse multipart form-data for /v1/files", internalapi.ErrMalformedRequest)
+	}
+	modelNameRaw, ok := req.ExtraBody["model"]
+	if !ok {
+		return "", nil, false, nil, errors.New("'model' parameter should be passed as extra field for file upload operations")
+	}
+	modelNameBytes, ok := modelNameRaw.([]byte)
+	if !ok {
+		return "", nil, false, nil, fmt.Errorf("%w: invalid 'model' parameter type for file upload operations", internalapi.ErrInvalidRequestBody)
+	}
+
+	// Optional backend can be provided as multipart extra field for sticky backend routing.
+	if backendNameRaw, ok := req.ExtraBody["backend"]; ok {
+		backendNameBytes, ok := backendNameRaw.([]byte)
+		if !ok {
+			return "", nil, false, nil, fmt.Errorf("%w: invalid 'backend' parameter type for file upload operations", internalapi.ErrInvalidRequestBody)
+		}
+		if len(backendNameBytes) > 0 {
+			requestHeaders[internalapi.BackendNameHeaderKey] = string(backendNameBytes)
+		}
+	}
+
+	return string(modelNameBytes), &req, false, body, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (CreateFileEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAICreateFileTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewCreateFileOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (CreateFileEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.FileNewParams) (redactedReq *openai.FileNewParams, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (ListFilesEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+	requestHeaders map[string]string,
+) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	originalPath := requestHeaders[internalapi.OriginalPathHeader]
+	if originalPath == "" {
+		originalPath = requestHeaders[":path"]
+	}
+	_, rawQuery, found := strings.Cut(originalPath, "?")
+	if !found || rawQuery == "" {
+		return "", nil, false, nil, fmt.Errorf("%w: missing required 'backend' query parameter for /v1/files", internalapi.ErrInvalidRequestBody)
+	}
+	query, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse query parameters for /v1/files: %w", internalapi.ErrMalformedRequest, err)
+	}
+	if query.Has("model") {
+		return "", nil, false, nil, fmt.Errorf("%w: 'model' query parameter is not supported for /v1/files. use 'backend' query parameter instead", internalapi.ErrInvalidRequestBody)
+	}
+	backendName := query.Get("backend")
+	if backendName == "" {
+		return "", nil, false, nil, fmt.Errorf("%w: missing required 'backend' query parameter for /v1/files", internalapi.ErrInvalidRequestBody)
+	}
+	// ListFiles endpoint does not have a body.
+	return "", &struct{}{}, false, body, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (ListFilesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIListFilesTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewListFilesOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (ListFilesEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (redactedReq *struct{}, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (RetrieveFileEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+	_ map[string]string,
+) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	// RetrieveFile endpoint does not have a body.
+	return "", &struct{}{}, false, body, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (RetrieveFileEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIRetrieveFileTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewRetrieveFileOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (RetrieveFileEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (redactedReq *struct{}, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (RetrieveFileContentEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+	_ map[string]string,
+) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	// RetrieveFileContent endpoint does not have a body.
+	return "", &struct{}{}, false, body, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (RetrieveFileContentEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIRetrieveFileContentTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewRetrieveFileContentOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (RetrieveFileContentEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (redactedReq *struct{}, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (DeleteFileEndpointSpec) ParseBody(body []byte,
+	_ bool,
+	_ map[string]string,
+) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	// DeleteFile endpoint does not have a body.
+	return "", &struct{}{}, false, body, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (DeleteFileEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIDeleteFileTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewDeleteFileOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (DeleteFileEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (redactedReq *struct{}, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (CreateBatchEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+	requestHeaders map[string]string,
+) (internalapi.OriginalModel, *openai.BatchNewParams, bool, []byte, error) {
+	var req openai.BatchNewParams
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/batches: %w", internalapi.ErrMalformedRequest, err)
+	}
+
+	// Try to extract model and backend from the encoded input_file_id.
+	// If the file ID does not carry routing info (i.e. it is a raw upstream ID),
+	// fall back to extra_body for model (required) and backend (required).
+	var modelName internalapi.OriginalModel
+	var backendName string
+	if req.InputFileID != "" {
+		model, backend, _, err := translator.DecodeFileIDWithRouting(req.InputFileID)
+		if err == nil && model != "" {
+			modelName = model
+			backendName = backend
+		}
+	}
+
+	if modelName == "" {
+		// File ID was not encoded — model and backend must come from extra_body.
+		modelRaw, ok := req.ExtraBody["model"]
+		if !ok {
+			return "", nil, false, nil, fmt.Errorf("%w: 'model' parameter must be provided in extra_body when input_file_id is not an encoded gateway file ID", internalapi.ErrInvalidRequestBody)
+		}
+		modelStr, ok := modelRaw.(string)
+		if !ok {
+			return "", nil, false, nil, fmt.Errorf("%w: invalid 'model' parameter type in extra_body for batch create operations", internalapi.ErrInvalidRequestBody)
+		}
+		modelName = modelStr
+
+		backendRaw, ok := req.ExtraBody["backend"]
+		if !ok {
+			return "", nil, false, nil, fmt.Errorf("%w: 'backend' parameter must be provided in extra_body when input_file_id is not an encoded gateway file ID", internalapi.ErrInvalidRequestBody)
+		}
+		backendStr, ok := backendRaw.(string)
+		if !ok {
+			return "", nil, false, nil, fmt.Errorf("%w: invalid 'backend' parameter type in extra_body for batch create operations", internalapi.ErrInvalidRequestBody)
+		}
+		if backendStr == "" {
+			return "", nil, false, nil, fmt.Errorf("%w: 'backend' parameter in extra_body cannot be empty for batch create operations", internalapi.ErrInvalidRequestBody)
+		}
+		backendName = backendStr
+	}
+
+	if backendName == "" {
+		return "", nil, false, nil, fmt.Errorf("%w: backend routing information is required for /v1/batches create endpoint", internalapi.ErrInvalidRequestBody)
+	}
+
+	if requestHeaders != nil {
+		requestHeaders[internalapi.BackendNameHeaderKey] = backendName
+	}
+
+	return modelName, &req, false, body, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (CreateBatchEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAICreateBatchTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewCreateBatchOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (CreateBatchEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.BatchNewParams) (redactedReq *openai.BatchNewParams, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (ListBatchesEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+	_ map[string]string,
+) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	// ListBatches endpoint does not have a body.
+	return "", &struct{}{}, false, body, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (ListBatchesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIListBatchesTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewListBatchesOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (ListBatchesEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (redactedReq *struct{}, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (RetrieveBatchEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+	_ map[string]string,
+) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	// RetrieveBatch endpoint does not have a body.
+	return "", &struct{}{}, false, body, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (RetrieveBatchEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIRetrieveBatchTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewRetrieveBatchOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (RetrieveBatchEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (redactedReq *struct{}, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (CancelBatchEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+	_ map[string]string,
+) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	// CancelBatch endpoint does not have a body.
+	return "", &struct{}{}, false, body, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (CancelBatchEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAICancelBatchTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewCancelBatchOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (CancelBatchEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (redactedReq *struct{}, err error) {
 	// Placeholder if redaction is required in future
 	return req, nil
 }
@@ -534,6 +900,7 @@ func redactUserContentPart(part openai.ChatCompletionContentPartUserUnionParam) 
 func (SpeechEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.SpeechRequest, bool, []byte, error) {
 	var req openai.SpeechRequest
 	if err := json.Unmarshal(body, &req); err != nil {

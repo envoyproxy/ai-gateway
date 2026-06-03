@@ -34,7 +34,7 @@ type anthropicToGCPAnthropicTranslator struct {
 
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody] for Anthropic to GCP Anthropic translation.
 // This handles the transformation from native Anthropic format to GCP Anthropic format.
-func (a *anthropicToGCPAnthropicTranslator) RequestBody(raw []byte, req *anthropicschema.MessagesRequest, _ bool) (
+func (a *anthropicToGCPAnthropicTranslator) RequestBody(_ map[string]string, raw []byte, req *anthropicschema.MessagesRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	a.stream = req.Stream

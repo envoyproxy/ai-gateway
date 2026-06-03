@@ -166,13 +166,15 @@ func TestStartControllers(t *testing.T) {
 					t.Logf("failed to get http route %s: %v", route, err)
 					return false
 				}
-				require.Len(t, httpRoute.Spec.Rules, 2) // 1 for rule, 1 for the default rule.
+				// Main route rules: 1 regular rule + 1 route-not-found rule = 2.
+				// Sticky routing is configured in separate per-backend HTTPRoutes.
+				require.Len(t, httpRoute.Spec.Rules, 2)
 				require.Len(t, httpRoute.Spec.Rules[0].Matches, 1)
 				require.Len(t, httpRoute.Spec.Rules[0].Matches[0].Headers, 1)
 				require.Equal(t, internalapi.ModelNameHeaderKeyDefault, string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
 				require.Equal(t, "foo", httpRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
 
-				// Check all rule has the host rewrite filter except for the last rule.
+				// Check all regular and sticky rules except the last route-not-found rule have the host rewrite filter.
 				for _, rule := range httpRoute.Spec.Rules[:len(httpRoute.Spec.Rules)-1] {
 					require.Len(t, rule.Filters, 1)
 					require.NotNil(t, rule.Filters[0].ExtensionRef)
@@ -180,6 +182,7 @@ func TestStartControllers(t *testing.T) {
 				}
 				// Check all rules have root-prefix as the path.
 				for _, rule := range httpRoute.Spec.Rules {
+					require.Len(t, rule.Matches, 1)
 					p := rule.Matches[0].Path
 					require.NotNil(t, p)
 					require.Equal(t, "/root-prefix", *p.Value)

@@ -36,7 +36,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody(t *testing.T) {
 	rawBody, err := json.Marshal(req)
 	require.NoError(t, err)
 
-	headers, body, err := translator.RequestBody(rawBody, req, false)
+	headers, body, err := translator.RequestBody(map[string]string{}, rawBody, req, false)
 	require.NoError(t, err)
 	require.NotNil(t, headers)
 	require.NotNil(t, body)
@@ -122,7 +122,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_ModelNameOverride(t *testin
 			rawBody, err := json.Marshal(req)
 			require.NoError(t, err)
 
-			headers, _, err := translator.RequestBody(rawBody, req, false)
+			headers, _, err := translator.RequestBody(map[string]string{}, rawBody, req, false)
 			require.NoError(t, err)
 			require.NotNil(t, headers)
 
@@ -170,7 +170,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_StreamingPaths(t *testing.T
 			rawBody, err := json.Marshal(req)
 			require.NoError(t, err)
 
-			headers, _, err := translator.RequestBody(rawBody, req, false)
+			headers, _, err := translator.RequestBody(map[string]string{}, rawBody, req, false)
 			require.NoError(t, err)
 
 			pathHeader := headers[0]
@@ -220,7 +220,7 @@ func TestAnthropicToAWSBedrockTranslator_URLEncoding(t *testing.T) {
 			rawBody, err := json.Marshal(req)
 			require.NoError(t, err)
 
-			headers, _, err := translator.RequestBody(rawBody, req, false)
+			headers, _, err := translator.RequestBody(map[string]string{}, rawBody, req, false)
 			require.NoError(t, err)
 
 			pathHeader := headers[0]
@@ -253,7 +253,7 @@ func TestAnthropicToAWSBedrockTranslator_ResponseHeaders(t *testing.T) {
 			},
 		}
 		rawBody, _ := json.Marshal(req)
-		_, _, _ = translator.RequestBody(rawBody, req, false)
+		_, _, _ = translator.RequestBody(map[string]string{}, rawBody, req, false)
 
 		headers, err := translator.ResponseHeaders(map[string]string{
 			"content-type":     "application/vnd.amazon.eventstream",
@@ -277,7 +277,7 @@ func TestAnthropicToAWSBedrockTranslator_ResponseBody_NonStreaming(t *testing.T)
 		},
 	}
 	rawBody, _ := json.Marshal(req)
-	_, _, _ = translator.RequestBody(rawBody, req, false)
+	_, _, _ = translator.RequestBody(map[string]string{}, rawBody, req, false)
 
 	// Set response ID via ResponseHeaders.
 	_, _ = translator.ResponseHeaders(map[string]string{
@@ -346,7 +346,7 @@ func TestAnthropicToAWSBedrockTranslator_ResponseBody_Streaming(t *testing.T) {
 		},
 	}
 	rawBody, _ := json.Marshal(req)
-	_, _, _ = translator.RequestBody(rawBody, req, false)
+	_, _, _ = translator.RequestBody(map[string]string{}, rawBody, req, false)
 	_, _ = translator.ResponseHeaders(map[string]string{
 		"content-type":     "application/vnd.amazon.eventstream",
 		"x-amzn-requestid": "stream-req-123",
@@ -444,7 +444,7 @@ func TestAnthropicToAWSBedrockTranslator_ResponseBody_StreamingThinking(t *testi
 		},
 	}
 	rawBody, _ := json.Marshal(req)
-	_, _, _ = translator.RequestBody(rawBody, req, false)
+	_, _, _ = translator.RequestBody(map[string]string{}, rawBody, req, false)
 	_, _ = translator.ResponseHeaders(map[string]string{
 		"content-type":     "application/vnd.amazon.eventstream",
 		"x-amzn-requestid": "think-req",
@@ -649,7 +649,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_SystemPrompt(t *testing.T) 
 			},
 		}
 		rawBody, _ := json.Marshal(req)
-		_, body, err := translator.RequestBody(rawBody, req, false)
+		_, body, err := translator.RequestBody(map[string]string{}, rawBody, req, false)
 		require.NoError(t, err)
 
 		var bedrockReq awsbedrock.ConverseInput
@@ -675,7 +675,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_SystemPrompt(t *testing.T) 
 			},
 		}
 		rawBody, _ := json.Marshal(req)
-		_, body, err := translator.RequestBody(rawBody, req, false)
+		_, body, err := translator.RequestBody(map[string]string{}, rawBody, req, false)
 		require.NoError(t, err)
 
 		var bedrockReq awsbedrock.ConverseInput
@@ -718,7 +718,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_Tools(t *testing.T) {
 		},
 	}
 	rawBody, _ := json.Marshal(req)
-	_, body, err := translator.RequestBody(rawBody, req, false)
+	_, body, err := translator.RequestBody(map[string]string{}, rawBody, req, false)
 	require.NoError(t, err)
 
 	var bedrockReq awsbedrock.ConverseInput
@@ -755,7 +755,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_Thinking(t *testing.T) {
 			},
 		}
 		rawBody, _ := json.Marshal(req)
-		_, body, err := translator.RequestBody(rawBody, req, false)
+		_, body, err := translator.RequestBody(map[string]string{}, rawBody, req, false)
 		require.NoError(t, err)
 
 		var bedrockReq awsbedrock.ConverseInput
@@ -783,7 +783,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_Thinking(t *testing.T) {
 			},
 		}
 		rawBody, _ := json.Marshal(req)
-		_, body, err := translator.RequestBody(rawBody, req, false)
+		_, body, err := translator.RequestBody(map[string]string{}, rawBody, req, false)
 		require.NoError(t, err)
 
 		var bedrockReq awsbedrock.ConverseInput
@@ -809,7 +809,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_Thinking(t *testing.T) {
 			},
 		}
 		rawBody, _ := json.Marshal(req)
-		_, body, err := translator.RequestBody(rawBody, req, false)
+		_, body, err := translator.RequestBody(map[string]string{}, rawBody, req, false)
 		require.NoError(t, err)
 
 		var bedrockReq awsbedrock.ConverseInput
@@ -864,7 +864,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_AssistantMessage(t *testing
 	rawBody, err := json.Marshal(req)
 	require.NoError(t, err)
 
-	_, body, err := translator.RequestBody(rawBody, req, false)
+	_, body, err := translator.RequestBody(map[string]string{}, rawBody, req, false)
 	require.NoError(t, err)
 
 	var bedrockReq awsbedrock.ConverseInput
@@ -929,7 +929,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_UserArrayContent(t *testing
 	rawBody, err := json.Marshal(req)
 	require.NoError(t, err)
 
-	_, body, err := translator.RequestBody(rawBody, req, false)
+	_, body, err := translator.RequestBody(map[string]string{}, rawBody, req, false)
 	require.NoError(t, err)
 
 	var bedrockReq awsbedrock.ConverseInput
@@ -1025,7 +1025,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_ToolResultMessages(t *testi
 	rawBody, err := json.Marshal(req)
 	require.NoError(t, err)
 
-	_, body, err := translator.RequestBody(rawBody, req, false)
+	_, body, err := translator.RequestBody(map[string]string{}, rawBody, req, false)
 	require.NoError(t, err)
 
 	var bedrockReq awsbedrock.ConverseInput
@@ -1071,7 +1071,7 @@ func TestAnthropicToAWSBedrockTranslator_ResponseBody_NonStreamingToolUseAndReas
 		},
 	}
 	rawBody, _ := json.Marshal(req)
-	_, _, _ = translator.RequestBody(rawBody, req, false)
+	_, _, _ = translator.RequestBody(map[string]string{}, rawBody, req, false)
 	_, _ = translator.ResponseHeaders(map[string]string{
 		"x-amzn-requestid": "resp-456",
 	})
@@ -1171,7 +1171,7 @@ func TestAnthropicToAWSBedrockTranslator_ResponseBody_StreamingToolUse(t *testin
 		},
 	}
 	rawBody, _ := json.Marshal(req)
-	_, _, _ = translator.RequestBody(rawBody, req, false)
+	_, _, _ = translator.RequestBody(map[string]string{}, rawBody, req, false)
 	_, _ = translator.ResponseHeaders(map[string]string{
 		"content-type":     "application/vnd.amazon.eventstream",
 		"x-amzn-requestid": "tool-stream-req",

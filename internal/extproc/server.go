@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -57,10 +58,16 @@ type Server struct {
 	debugLogEnabled               bool
 	enableRedaction               bool
 	config                        *filterapi.RuntimeConfig
-	processorFactories            map[string]ProcessorFactory
+	processorFactories            []*RouteProcessorMapper
 	routerProcessorsPerReqID      map[string]Processor
 	routerProcessorsPerReqIDMutex sync.RWMutex
 	uuidFn                        func() string
+}
+
+type RouteProcessorMapper struct {
+	Method           string
+	Path             *regexp.Regexp
+	ProcessorFactory ProcessorFactory
 }
 
 // NewServer creates a new external processor server.
@@ -70,7 +77,7 @@ func NewServer(logger *slog.Logger, enableRedaction bool) (*Server, error) {
 		logger:                   logger,
 		debugLogEnabled:          debugLogEnabled,
 		enableRedaction:          enableRedaction,
-		processorFactories:       make(map[string]ProcessorFactory),
+		processorFactories:       make([]*RouteProcessorMapper, 0, 20),
 		routerProcessorsPerReqID: make(map[string]Processor),
 		uuidFn:                   uuid.NewString,
 	}
@@ -88,32 +95,37 @@ func (s *Server) LoadConfig(ctx context.Context, config *filterapi.Config) error
 }
 
 // Register a new processor for the given request path.
-func (s *Server) Register(path string, newProcessor ProcessorFactory) {
-	s.logger.Info("Registering processor", slog.String("path", path))
-	s.processorFactories[path] = newProcessor
+func (s *Server) Register(path *regexp.Regexp, method string, newProcessor ProcessorFactory) {
+	s.logger.Info("Registering processor", slog.String("path", path.String()), slog.String("method", method))
+	s.processorFactories = append(s.processorFactories, &RouteProcessorMapper{
+		Path:             path,
+		Method:           method,
+		ProcessorFactory: newProcessor,
+	})
 }
 
 var errNoProcessor = errors.New("no processor registered for the given path")
 
 // processorForPath returns the processor for the given path.
-// Only exact path matching is supported currently.
 func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFilter bool, logger *slog.Logger) (Processor, error) {
 	pathHeader := ":path"
+	httpMethodHeader := ":method"
 	if isUpstreamFilter {
 		pathHeader = originalPathHeader
 	}
 	path := requestHeaders[pathHeader]
+	method := requestHeaders[httpMethodHeader]
 
 	// Strip query parameters for processor lookup.
 	if queryIndex := strings.Index(path, "?"); queryIndex != -1 {
 		path = path[:queryIndex]
 	}
-
-	newProcessor, ok := s.processorFactories[path]
-	if !ok {
-		return nil, fmt.Errorf("%w: %s", errNoProcessor, path)
+	for _, route := range s.processorFactories {
+		if route.Method == method && route.Path.MatchString(path) {
+			return route.ProcessorFactory(s.config, requestHeaders, logger, isUpstreamFilter, s.enableRedaction)
+		}
 	}
-	return newProcessor(s.config, requestHeaders, logger, isUpstreamFilter, s.enableRedaction)
+	return nil, fmt.Errorf("%w: %s", errNoProcessor, path)
 }
 
 // originalPathHeader is the header used to pass the original path to the processor.

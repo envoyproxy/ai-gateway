@@ -131,7 +131,7 @@ func TestEmbeddingOpenAIToAWSBedrockTranslator_RequestBody(t *testing.T) {
 			translator := NewEmbeddingOpenAIToAWSBedrockTranslator(tc.modelNameOverride)
 			originalBody, _ := json.Marshal(tc.input)
 
-			headers, body, err := translator.RequestBody(originalBody, &tc.input, false)
+			headers, body, err := translator.RequestBody(map[string]string{}, originalBody, &tc.input, false)
 
 			if tc.wantErr {
 				require.Error(t, err)
@@ -167,7 +167,7 @@ func TestEmbeddingOpenAIToAWSBedrockTranslator_RequestBody_MarshalError(t *testi
 		Model: "amazon.titan-embed-text-v2:0",
 		Input: openai.EmbeddingRequestInput{Value: "test"},
 	}
-	_, _, err := translator.RequestBody(nil, &req, false)
+	_, _, err := translator.RequestBody(map[string]string{}, nil, &req, false)
 	require.ErrorContains(t, err, "failed to marshal body")
 }
 

@@ -40,11 +40,12 @@ const (
 // This is created per request and is not thread-safe.
 type Translator[ReqT any, SpanT any] interface {
 	// RequestBody translates the request body.
+	//     - `reqHeaders` is the request headers
 	//     - `raw` is the raw request body.
 	//     - `body` is the parsed request body of type *ReqT.
 	//     - `flag` is a boolean context flag. Depending on the specific implementation,
 	//       this represents either `forceBodyMutation` or `onRetry`.
-	RequestBody(raw []byte, body *ReqT, flag bool) (
+	RequestBody(reqHeaders map[string]string, raw []byte, body *ReqT, flag bool) (
 		newHeaders []internalapi.Header,
 		mutatedBody []byte,
 		err error,
@@ -120,6 +121,24 @@ type (
 	OpenAIResponsesTranslator = Translator[openai.ResponseRequest, tracingapi.ResponsesSpan]
 	// OpenAISpeechTranslator translates the OpenAI's /v1/audio/speech endpoint.
 	OpenAISpeechTranslator = Translator[openai.SpeechRequest, tracingapi.SpeechSpan]
+	// OpenAICreateFileTranslator translates the OpenAI's /v1/files endpoint.
+	OpenAICreateFileTranslator = Translator[openai.FileNewParams, tracingapi.CreateFileSpan]
+	// OpenAIListFilesTranslator translates the OpenAI's GET /v1/files endpoint.
+	OpenAIListFilesTranslator = Translator[struct{}, tracingapi.RetrieveFileSpan]
+	// OpenAIRetrieveFileTranslator translates the OpenAI's GET /v1/files/{file_id} endpoint.
+	OpenAIRetrieveFileTranslator = Translator[struct{}, tracingapi.RetrieveFileSpan]
+	// OpenAiRetrieveFileContentTranslator translates the OpenAI's /v1/files/{file_id}/content endpoint.
+	OpenAIRetrieveFileContentTranslator = Translator[struct{}, tracingapi.RetrieveFileContentSpan]
+	// OpenAIDeleteFileTranslator translates the OpenAI's DELETE /v1/files/{file_id} endpoint.
+	OpenAIDeleteFileTranslator = Translator[struct{}, tracingapi.DeleteFileSpan]
+	// OpenAICreateBatchTranslator translates the OpenAI's POST /v1/batches endpoint.
+	OpenAICreateBatchTranslator = Translator[openai.BatchNewParams, tracingapi.CreateBatchSpan]
+	// OpenAIListBatchesTranslator translates the OpenAI's GET /v1/batches endpoint.
+	OpenAIListBatchesTranslator = Translator[struct{}, tracingapi.ListBatchesSpan]
+	// OpenAIRetrieveBatchTranslator translates the OpenAI's GET /v1/batches/{batch_id} endpoint.
+	OpenAIRetrieveBatchTranslator = Translator[struct{}, tracingapi.RetrieveBatchSpan]
+	// OpenAICancelBatchTranslator translates the OpenAI's POST /v1/batches/{batch_id}/cancel endpoint.
+	OpenAICancelBatchTranslator = Translator[struct{}, tracingapi.CancelBatchSpan]
 )
 
 var (

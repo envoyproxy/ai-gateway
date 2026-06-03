@@ -13,6 +13,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
+	"net/textproto"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -8468,3 +8472,498 @@ const (
 	SpeechModelGPT4oMiniTTS         = "gpt-4o-mini-tts"
 	SpeechModelGPT4oMiniTTS20251215 = "gpt-4o-mini-tts-2025-12-15"
 )
+
+// OpenAI Files API
+
+type FileNewParams struct {
+	// The File object (not file name) to be uploaded.
+	File io.Reader `json:"file,omitzero"`
+	// The intended purpose of the uploaded file. One of:
+	//
+	// - `assistants`: Used in the Assistants API
+	// - `batch`: Used in the Batch API
+	// - `fine-tune`: Used for fine-tuning
+	// - `vision`: Images used for vision fine-tuning
+	// - `user_data`: Flexible file type for any purpose
+	// - `evals`: Used for eval data sets
+	//
+	// Any of "assistants", "batch", "fine-tune", "vision", "user_data", "evals".
+	Purpose FilePurpose `json:"purpose,omitzero"`
+	// The expiration policy for a file.
+	ExpiresAfter FileNewParamsExpiresAfter `json:"expires_after,omitzero"`
+	// Used for providing extra parameters that are not part of the standard OpenAI Files API.
+	// The ExtraBody field serves a special purpose in the AI Gateway context:
+	// it can carry a "model" field that the gateway uses to:
+	//   - Route the file upload request to the appropriate backend provider
+	//   - Encode/translate the returned file ID to a gateway-specific format,
+	//     ensuring the file can be referenced correctly in subsequent API calls
+	ExtraBody map[string]any `json:"extra_body,omitzero"`
+}
+
+const fileNewParamsMultipartFieldMaxBytes int64 = 1 << 20 // 1 MiB
+
+func readMultipartFieldWithLimit(part *multipart.Part, fieldName string, maxBytes int64) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(part, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > maxBytes {
+		return nil, fmt.Errorf("multipart field %q exceeds maximum allowed size of %d bytes", fieldName, maxBytes)
+	}
+	return b, nil
+}
+
+func (f *FileNewParams) UnmarshalMultipart(data []byte, boundary string) error {
+	reader := multipart.NewReader(bytes.NewReader(data), boundary)
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		switch part.FormName() {
+		case "file":
+			f.File = part
+		case "purpose":
+			purpose, err := readMultipartFieldWithLimit(part, "purpose", fileNewParamsMultipartFieldMaxBytes)
+			if err != nil {
+				return err
+			}
+			f.Purpose = FilePurpose(purpose)
+		case "expires_after.anchor":
+			anchor, err := readMultipartFieldWithLimit(part, "expires_after.anchor", fileNewParamsMultipartFieldMaxBytes)
+			if err != nil {
+				return err
+			}
+			f.ExpiresAfter.Anchor = CreatedAt(anchor)
+		case "expires_after.seconds":
+			seconds, err := readMultipartFieldWithLimit(part, "expires_after.seconds", fileNewParamsMultipartFieldMaxBytes)
+			if err != nil {
+				return err
+			}
+			secondsParsed, err := strconv.ParseInt(string(seconds), 10, 64)
+			if err != nil {
+				return err
+			}
+			f.ExpiresAfter.Seconds = secondsParsed
+		default:
+			// handles any non standard extra parameters. e.g we are using
+			// model field for routing information.
+			fieldName := part.FormName()
+			extraBodyBytes, err := readMultipartFieldWithLimit(part, fieldName, fileNewParamsMultipartFieldMaxBytes)
+			if err != nil {
+				return err
+			}
+			extraBodyVal := any(extraBodyBytes)
+			if f.ExtraBody == nil {
+				f.ExtraBody = map[string]any{fieldName: extraBodyVal}
+			} else {
+				f.ExtraBody[fieldName] = extraBodyVal
+			}
+		}
+	}
+	return nil
+}
+
+var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
+func escapeQuotes(s string) string {
+	return quoteEscaper.Replace(s)
+}
+
+func (f FileNewParams) MarshalMultipart() ([]byte, string, error) {
+	buf := &bytes.Buffer{}
+	writer := multipart.NewWriter(buf)
+
+	if f.File == nil {
+		return nil, "", fmt.Errorf("file is required")
+	}
+	filename := "anonymous_file"
+	contentType := "application/octet-stream"
+	if named, ok := f.File.(interface{ Filename() string }); ok {
+		filename = named.Filename()
+	} else if named, ok := f.File.(interface{ Name() string }); ok {
+		filename = path.Base(named.Name())
+	}
+	if typed, ok := f.File.(interface{ ContentType() string }); ok {
+		contentType = typed.ContentType()
+	}
+
+	// Below is taken almost 1-for-1 from [multipart.CreateFormFile]
+	key := "file"
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, escapeQuotes(key), escapeQuotes(filename)))
+	h.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(h)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if _, err := io.Copy(part, f.File); err != nil {
+		return nil, "", err
+	}
+
+	if f.Purpose == "" {
+		return nil, "", fmt.Errorf("purpose is required")
+	}
+
+	if err := writer.WriteField("purpose", string(f.Purpose)); err != nil {
+		return nil, "", err
+	}
+
+	if f.ExpiresAfter.Anchor != "" {
+		if err := writer.WriteField("expires_after.anchor", string(f.ExpiresAfter.Anchor)); err != nil {
+			return nil, "", err
+		}
+	}
+
+	if f.ExpiresAfter.Seconds != 0 {
+		if err := writer.WriteField("expires_after.seconds", strconv.FormatInt(f.ExpiresAfter.Seconds, 10)); err != nil {
+			return nil, "", err
+		}
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, "", err
+	}
+
+	return buf.Bytes(), writer.FormDataContentType(), nil
+}
+
+// The intended purpose of the uploaded file. One of:
+//
+// - `assistants`: Used in the Assistants API
+// - `batch`: Used in the Batch API
+// - `fine-tune`: Used for fine-tuning
+// - `vision`: Images used for vision fine-tuning
+// - `user_data`: Flexible file type for any purpose
+// - `evals`: Used for eval data sets
+type FilePurpose string
+
+// https://github.com/openai/openai-go/blob/cbf83a69541f646ec84071a0040f3ca524c2238f/file.go#L247-L254
+const (
+	FilePurposeAssistants FilePurpose = "assistants"
+	FilePurposeBatch      FilePurpose = "batch"
+	FilePurposeFineTune   FilePurpose = "fine-tune"
+	FilePurposeVision     FilePurpose = "vision"
+	FilePurposeUserData   FilePurpose = "user_data"
+	FilePurposeEvals      FilePurpose = "evals"
+)
+
+type CreatedAt string
+
+// The expiration policy for a file.
+// The properties Anchor, Seconds are required.
+type FileNewParamsExpiresAfter struct {
+	// The number of seconds after the anchor time that the file will expire.
+	Seconds int64 `json:"seconds"`
+	// Anchor timestamp after which the expiration policy applies. Supported anchors:
+	// `created_at`.
+	Anchor CreatedAt `json:"anchor"`
+}
+
+// The `File` object represents a document that has been uploaded to upstream.
+type FileObject struct {
+	// The file identifier, which can be referenced in the API endpoints.
+	ID string `json:"id"`
+	// The size of the file, in bytes.
+	Bytes int64 `json:"bytes"`
+	// The Unix timestamp (in seconds) for when the file was created.
+	CreatedAt JSONUNIXTime `json:"created_at"`
+	// The name of the file.
+	Filename string `json:"filename"`
+	// The object type, which is always `file`.
+	Object string `json:"object"`
+	// The intended purpose of the file. Supported values are `assistants`,
+	// `assistants_output`, `batch`, `batch_output`, `fine-tune`, `fine-tune-results`,
+	// `vision`, and `user_data`.
+	//
+	// Any of "assistants", "assistants_output", "batch", "batch_output", "fine-tune",
+	// "fine-tune-results", "vision", "user_data".
+	Purpose FileObjectPurpose `json:"purpose"`
+	// Deprecated. The current status of the file, which can be either `uploaded`,
+	// `processed`, or `error`.
+	//
+	// Any of "uploaded", "processed", "error".
+	//
+	// Deprecated: deprecated
+	Status FileObjectStatus `json:"status"`
+	// The Unix timestamp (in seconds) for when the file will expire.
+	ExpiresAt JSONUNIXTime `json:"expires_at,omitzero"`
+	// Deprecated.
+	//
+	// Deprecated: deprecated
+	StatusDetails string `json:"status_details"`
+}
+
+// The intended purpose of the file. Supported values are `assistants`,
+// `assistants_output`, `batch`, `batch_output`, `fine-tune`, `fine-tune-results`,
+// `vision`, and `user_data`.
+type FileObjectPurpose string
+
+// https://github.com/openai/openai-go/blob/da6db3bace003b42c2465545f47401c1fb40c646/file.go#L217-L224
+const (
+	FileObjectPurposeAssistants       FileObjectPurpose = "assistants"
+	FileObjectPurposeAssistantsOutput FileObjectPurpose = "assistants_output"
+	FileObjectPurposeBatch            FileObjectPurpose = "batch"
+	FileObjectPurposeBatchOutput      FileObjectPurpose = "batch_output"
+	FileObjectPurposeFineTune         FileObjectPurpose = "fine-tune"
+	FileObjectPurposeFineTuneResults  FileObjectPurpose = "fine-tune-results"
+	FileObjectPurposeVision           FileObjectPurpose = "vision"
+	FileObjectPurposeUserData         FileObjectPurpose = "user_data"
+)
+
+// Deprecated. The current status of the file, which can be either `uploaded`,
+// `processed`, or `error`.
+type FileObjectStatus string
+
+const (
+	FileObjectStatusUploaded  FileObjectStatus = "uploaded"
+	FileObjectStatusProcessed FileObjectStatus = "processed"
+	FileObjectStatusError     FileObjectStatus = "error"
+)
+
+// The `FileDeleted` object represents the response from the API when a file is deleted.
+type FileDeleted struct {
+	ID      string `json:"id"`
+	Deleted bool   `json:"deleted"`
+	Object  string `json:"object"`
+}
+
+// =======================  Batch API ========================
+
+type BatchNewParams struct {
+	// The time frame within which the batch should be processed.
+	CompletionWindow BatchNewParamsCompletionWindow `json:"completion_window,omitzero"`
+	// The endpoint to be used for all requests in the batch.
+	Endpoint BatchNewParamsEndpoint `json:"endpoint,omitzero"`
+	// The ID of an uploaded file that contains requests for the new batch.
+	//
+	// Your input file must be formatted as a
+	// [JSONL file](https://platform.openai.com/docs/api-reference/batch/request-input),
+	// and must be uploaded with the purpose `batch`.
+	InputFileID string `json:"input_file_id"`
+	// Set of 16 key-value pairs that can be attached to an object. This can be useful
+	// for storing additional information about the object in a structured format, and
+	// querying for objects via API or the dashboard.
+	Metadata map[string]string `json:"metadata,omitzero"`
+	// Used for providing extra parameters that are not part of the standard OpenAI Batch API.
+	//
+	// The ExtraBody field serves a special purpose in the AI Gateway context:
+	// it can carry a "backend" field that the gateway uses for sticky backend routing
+	// when creating batches.
+	ExtraBody map[string]any `json:"extra_body,omitzero"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler for BatchNewParams.
+//
+// In addition to parsing the standard fields, this captures unknown top-level
+// fields into ExtraBody so requests generated by clients that use extra fields
+// (e.g. SetExtraFields) can be handled without requiring an explicit
+// "extra_body" wrapper.
+func (b *BatchNewParams) UnmarshalJSON(data []byte) error {
+	type batchNewParamsAlias BatchNewParams
+	var alias batchNewParamsAlias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	known := map[string]struct{}{
+		"completion_window":    {},
+		"endpoint":             {},
+		"input_file_id":        {},
+		"metadata":             {},
+		"output_expires_after": {},
+		"extra_body":           {},
+	}
+
+	mergedExtraBody := map[string]any{}
+	for k, v := range alias.ExtraBody {
+		mergedExtraBody[k] = v
+	}
+
+	for k, v := range raw {
+		if _, ok := known[k]; ok {
+			continue
+		}
+		var parsed any
+		if err := json.Unmarshal(v, &parsed); err != nil {
+			return err
+		}
+		mergedExtraBody[k] = parsed
+	}
+
+	if len(mergedExtraBody) > 0 {
+		alias.ExtraBody = mergedExtraBody
+	} else {
+		alias.ExtraBody = nil
+	}
+
+	*b = BatchNewParams(alias)
+	return nil
+}
+
+// The time frame within which the batch should be processed.
+type BatchNewParamsCompletionWindow string
+
+// The endpoint to be used for all requests in the batch. Currently
+// `/v1/responses`, `/v1/chat/completions`, `/v1/embeddings`, `/v1/completions`,
+// `/v1/moderations`, `/v1/images/generations`, `/v1/images/edits`, and
+// `/v1/videos` are supported. Note that `/v1/embeddings` batches are also
+// restricted to a maximum of 50,000 embedding inputs across all requests in the
+// batch.
+type BatchNewParamsEndpoint string
+
+// https://github.com/openai/openai-go/blob/8f01a93893a51fc300850dc311aa66c96467f47b/batch.go#L413-L422
+const (
+	BatchNewParamsEndpointV1Responses         BatchNewParamsEndpoint = "/v1/responses"
+	BatchNewParamsEndpointV1ChatCompletions   BatchNewParamsEndpoint = "/v1/chat/completions"
+	BatchNewParamsEndpointV1Embeddings        BatchNewParamsEndpoint = "/v1/embeddings"
+	BatchNewParamsEndpointV1Completions       BatchNewParamsEndpoint = "/v1/completions"
+	BatchNewParamsEndpointV1Moderations       BatchNewParamsEndpoint = "/v1/moderations"
+	BatchNewParamsEndpointV1ImagesGenerations BatchNewParamsEndpoint = "/v1/images/generations"
+	BatchNewParamsEndpointV1ImagesEdits       BatchNewParamsEndpoint = "/v1/images/edits"
+	BatchNewParamsEndpointV1Videos            BatchNewParamsEndpoint = "/v1/videos"
+)
+
+// The expiration policy for the output and/or error file that are generated for a
+// batch.
+//
+// The properties Anchor, Seconds are required.
+type BatchNewParamsOutputExpiresAfter struct {
+	// The number of seconds after the anchor time that the file will expire. Must be
+	// between 3600 (1 hour) and 2592000 (30 days).
+	Seconds int64 `json:"seconds"`
+	// Anchor timestamp after which the expiration policy applies. Supported anchors:
+	// `created_at`. Note that the anchor is the file creation time, not the time the
+	// batch is created.
+	Anchor CreatedAt `json:"anchor"`
+}
+
+type Batch struct {
+	ID string `json:"id"`
+	// The time frame within which the batch should be processed.
+	CompletionWindow string `json:"completion_window"`
+	// The Unix timestamp (in seconds) for when the batch was created.
+	CreatedAt JSONUNIXTime `json:"created_at"`
+	// The OpenAI API endpoint used by the batch.
+	Endpoint string `json:"endpoint"`
+	// The ID of the input file for the batch.
+	InputFileID string `json:"input_file_id"`
+	// The object type, which is always `batch`.
+	Object string `json:"object" default:"batch"`
+	// The current status of the batch.
+	//
+	// Any of "validating", "failed", "in_progress", "finalizing", "completed",
+	// "expired", "cancelling", "cancelled".
+	Status BatchStatus `json:"status"`
+	// The Unix timestamp (in seconds) for when the batch was cancelled.
+	CancelledAt JSONUNIXTime `json:"cancelled_at,omitzero"`
+	// The Unix timestamp (in seconds) for when the batch started cancelling.
+	CancellingAt JSONUNIXTime `json:"cancelling_at,omitzero"`
+	// The Unix timestamp (in seconds) for when the batch was completed.
+	CompletedAt JSONUNIXTime `json:"completed_at,omitzero"`
+	// The ID of the file containing the outputs of requests with errors.
+	ErrorFileID string      `json:"error_file_id,omitzero"`
+	Errors      BatchErrors `json:"errors,omitzero"`
+	// The Unix timestamp (in seconds) for when the batch expired.
+	ExpiredAt JSONUNIXTime `json:"expired_at,omitzero"`
+	// The Unix timestamp (in seconds) for when the batch will expire.
+	ExpiresAt JSONUNIXTime `json:"expires_at,omitzero"`
+	// The Unix timestamp (in seconds) for when the batch failed.
+	FailedAt JSONUNIXTime `json:"failed_at,omitzero"`
+	// The Unix timestamp (in seconds) for when the batch started finalizing.
+	FinalizingAt JSONUNIXTime `json:"finalizing_at,omitzero"`
+	// The Unix timestamp (in seconds) for when the batch started processing.
+	InProgressAt JSONUNIXTime `json:"in_progress_at,omitzero"`
+	// Set of 16 key-value pairs that can be attached to an object. This can be useful
+	// for storing additional information about the object in a structured format, and
+	// querying for objects via API or the dashboard.
+	Metadata map[string]string `json:"metadata,omitzero"`
+	// Model ID used to process the batch, like `gpt-5-2025-08-07`.
+	Model string `json:"model"`
+	// The ID of the file containing the outputs of successfully executed requests.
+	OutputFileID string `json:"output_file_id,omitzero"`
+	// The request counts for different statuses within the batch.
+	RequestCounts BatchRequestCounts `json:"request_counts"`
+	// Represents token usage details including input tokens, output tokens, a
+	// breakdown of output tokens, and the total tokens used.
+	Usage BatchUsage `json:"usage"`
+}
+
+// The current status of the batch.
+type BatchStatus string
+
+// https://github.com/openai/openai-go/blob/8f01a93893a51fc300850dc311aa66c96467f47b/batch.go#L200-L209
+const (
+	BatchStatusValidating BatchStatus = "validating"
+	BatchStatusFailed     BatchStatus = "failed"
+	BatchStatusInProgress BatchStatus = "in_progress"
+	BatchStatusFinalizing BatchStatus = "finalizing"
+	BatchStatusCompleted  BatchStatus = "completed"
+	BatchStatusExpired    BatchStatus = "expired"
+	BatchStatusCancelling BatchStatus = "cancelling"
+	BatchStatusCancelled  BatchStatus = "cancelled"
+)
+
+type BatchErrors struct {
+	Data []BatchError `json:"data"`
+	// The object type, which is always `list`.
+	Object string `json:"object"`
+}
+
+type BatchError struct {
+	// An error code identifying the error type.
+	Code string `json:"code"`
+	// The line number of the input file where the error occurred, if applicable.
+	Line int64 `json:"line,omitzero"`
+	// A human-readable message providing more details about the error.
+	Message string `json:"message"`
+	// The name of the parameter that caused the error, if applicable.
+	Param string `json:"param,omitzero"`
+}
+
+// The request counts for different statuses within the batch.
+type BatchRequestCounts struct {
+	// Number of requests that have been completed successfully.
+	Completed int64 `json:"completed"`
+	// Number of requests that have failed.
+	Failed int64 `json:"failed"`
+	// Total number of requests in the batch.
+	Total int64 `json:"total"`
+}
+
+// Represents token usage details including input tokens, output tokens, a
+// breakdown of output tokens, and the total tokens used.
+type BatchUsage struct {
+	// The number of input tokens.
+	InputTokens int64 `json:"input_tokens"`
+	// A detailed breakdown of the input tokens.
+	InputTokensDetails BatchUsageInputTokensDetails `json:"input_tokens_details"`
+	// The number of output tokens.
+	OutputTokens int64 `json:"output_tokens"`
+	// A detailed breakdown of the output tokens.
+	OutputTokensDetails BatchUsageOutputTokensDetails `json:"output_tokens_details"`
+	// The total number of tokens used.
+	TotalTokens int64 `json:"total_tokens"`
+}
+
+// A detailed breakdown of the input tokens.
+type BatchUsageInputTokensDetails struct {
+	// The number of tokens that were retrieved from the cache.
+	CachedTokens int64 `json:"cached_tokens"`
+}
+
+// A detailed breakdown of the output tokens.
+type BatchUsageOutputTokensDetails struct {
+	// The number of reasoning tokens.
+	ReasoningTokens int64 `json:"reasoning_tokens"`
+}

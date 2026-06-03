@@ -58,7 +58,7 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"}`)
 
-		headers, body, err := translator.RequestBody(original, req, false)
+		headers, body, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4o", translator.requestModel)
 		require.False(t, translator.stream)
@@ -81,7 +81,7 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 		}
 		original := []byte(`{"model":"gpt-4o","stream":true,"input":"Hi"}`)
 
-		headers, body, err := translator.RequestBody(original, req, false)
+		headers, body, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 		require.True(t, translator.stream)
 		require.Len(t, headers, 1)
@@ -101,7 +101,7 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"}`)
 
-		headers, body, err := translator.RequestBody(original, req, false)
+		headers, body, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4-turbo", translator.requestModel)
 
@@ -129,7 +129,7 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 		}
 		original := []byte(`{"model":"gpt-4o", "input":"Hi"}`)
 
-		headers, body, err := translator.RequestBody(original, req, true)
+		headers, body, err := translator.RequestBody(nil, original, req, true)
 		require.NoError(t, err)
 
 		// When forced mutation is true but no override, body should still be returned
@@ -149,7 +149,7 @@ func TestResponsesOpenAIToOpenAITranslator_RequestBody(t *testing.T) {
 			},
 		}
 
-		_, body, err := translator.RequestBody([]byte{}, req, true)
+		_, body, err := translator.RequestBody(nil, []byte{}, req, true)
 		require.NoError(t, err)
 		require.NotNil(t, body)
 		require.NotEmpty(t, body)
@@ -186,7 +186,7 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 
 		// Create a valid response
@@ -266,7 +266,7 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 			},
 		}
 		original := []byte(`{"model":"o1","input":"Hi"}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 
 		respJSON := []byte(`{
@@ -326,7 +326,7 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 
 		// Response without model field
@@ -382,7 +382,7 @@ func TestResponsesOpenAIToOpenAITranslator_ResponseBody(t *testing.T) {
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 		require.True(t, translator.stream)
 
@@ -446,7 +446,7 @@ data: [DONE]
 			},
 		}
 		original := []byte(`{"model":"o1","input":"Hi","stream":true}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 		require.True(t, translator.stream)
 
@@ -481,7 +481,7 @@ data: [DONE]
 			},
 		}
 		original := []byte(`{"model":"gpt-4o-mini","input":"Hi","stream": true}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 
 		// Streaming response without model in events
@@ -526,7 +526,7 @@ func TestResponses_HandleStreamingResponse(t *testing.T) {
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 
 		sseChunks := `data: {"type":"response.created","response":{"id":"resp_67c9fdcecf488190bdd9a0409de3a1ec07b8b0ad4e5eb654","object":"response","created_at":1741487325,"status":"in_progress","model":"gpt-4o-2024-11-20","output":[],"parallel_tool_calls":true,"store":true,"temperature":1.0,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_p":1.0,"truncation":"disabled"},"sequence_number": 1}
@@ -584,7 +584,7 @@ data: [DONE]
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 
 		// Create a reader that fails
@@ -606,7 +606,7 @@ data: [DONE]
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(map[string]string{}, original, req, false)
 		require.NoError(t, err)
 
 		firstChunk := []byte(`data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
@@ -664,7 +664,7 @@ data: [DONE]
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(map[string]string{}, original, req, false)
 		require.NoError(t, err)
 
 		firstChunk := []byte(`data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
@@ -714,7 +714,7 @@ func TestResponses_HandleNonStreamingResponse(t *testing.T) {
 			},
 		}
 		original := []byte(`{"model":"gpt-4o","input":"Hi"`)
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 
 		respJSON := []byte(`{
@@ -782,7 +782,7 @@ func TestResponses_HandleNonStreamingResponse(t *testing.T) {
 			Model:  "gpt-4o",
 			Stream: false,
 		}
-		_, _, err := translator.RequestBody(nil, req, false)
+		_, _, err := translator.RequestBody(map[string]string{}, nil, req, false)
 		require.NoError(t, err)
 
 		invalidBody := bytes.NewReader([]byte(`{invalid json`))
@@ -989,7 +989,7 @@ func TestResponsesOpenAIToOpenAITranslatorWithModelOverride(t *testing.T) {
 		}
 		original := []byte(`{"model":"gpt-4o"}`)
 
-		_, _, err := translator.RequestBody(original, req, false)
+		_, _, err := translator.RequestBody(nil, original, req, false)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4-turbo", translator.requestModel)
 	})
@@ -1001,7 +1001,7 @@ func TestResponsesOpenAIToOpenAITranslatorWithModelOverride(t *testing.T) {
 			Model:  "gpt-4o",
 			Stream: false,
 		}
-		_, _, err := translator.RequestBody(nil, req, false)
+		_, _, err := translator.RequestBody(map[string]string{}, nil, req, false)
 		require.NoError(t, err)
 
 		// Response without model
