@@ -31,6 +31,8 @@ const (
 	GenAIOperationImageGeneration GenAIOperation = "image_generation"
 	GenAIOperationResponses       GenAIOperation = "responses"
 	GenAIOperationSpeech          GenAIOperation = "speech"
+	GenAIOperationTranscription   GenAIOperation = "transcription"
+	GenAIOperationTranslation     GenAIOperation = "translation"
 	GenAIOperationRerank          GenAIOperation = "rerank"
 
 	// Provider names according to the Semantic Conventions for Generative AI Metrics.
