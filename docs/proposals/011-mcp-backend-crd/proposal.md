@@ -21,10 +21,10 @@
    - 6.2 [Option 2: Explicit Name/Group/Kind Fields (AIGatewayRouteRuleBackendRef Pattern)](#option-2-explicit-namegroupkind-fields-aigatewayroterulebackendref-pattern)
 7. [Conclusion](#conclusion)
 8. [API Proposal](#api-proposal)
-    - 8.1 [New Type: MCPBackend](#new-type-mcpbackend)
-    - 8.2 [Updated MCPRouteBackendRef](#updated-mcproutebackendref)
-    - 8.3 [Updated BackendSecurityPolicy](#updated-backendsecuritypolicy)
-    - 8.4 [Full Configuration Example](#full-configuration-example)
+   - 8.1 [New Type: MCPBackend](#new-type-mcpbackend)
+   - 8.2 [Updated MCPRouteBackendRef](#updated-mcproutebackendref)
+   - 8.3 [Updated BackendSecurityPolicy](#updated-backendsecuritypolicy)
+   - 8.4 [Full Configuration Example](#full-configuration-example)
 9. [Implementation Details](#implementation-details)
 
 ## Background and Motivation
@@ -36,10 +36,10 @@ MCP backend configuration in Envoy AI Gateway is entirely inlined within the `MC
 // TODO: move to a standalone MCPBackend CRD to avoid k8s object size limit.
 type MCPRouteBackendRef struct {
 	gwapiv1.BackendObjectReference `json:",inline"`
-	Path           *string                  `json:"path,omitempty"`
-	ToolSelector   *MCPToolFilter           `json:"toolSelector,omitempty"`
-	SecurityPolicy *MCPBackendSecurityPolicy `json:"securityPolicy,omitempty"`
-	ForwardHeaders []MCPHeaderForward       `json:"forwardHeaders,omitempty"`
+	Path                           *string                   `json:"path,omitempty"`
+	ToolSelector                   *MCPToolFilter            `json:"toolSelector,omitempty"`
+	SecurityPolicy                 *MCPBackendSecurityPolicy `json:"securityPolicy,omitempty"`
+	ForwardHeaders                 []MCPHeaderForward        `json:"forwardHeaders,omitempty"`
 }
 ```
 
@@ -437,6 +437,7 @@ Create a separate `MCPBackendSecurityPolicy` CRD specifically for MCP upstream a
 ### Assessment
 
 Extending the existing `BackendSecurityPolicy` is preferred because:
+
 1. The CEL validation complexity is real but manageable — the pattern already exists for 6 types.
 2. The existing controller infrastructure (`BackendSecurityPolicyController`) reduces implementation effort.
 
@@ -486,10 +487,10 @@ type MCPRouteBackendRef struct {
 	gwapiv1.BackendObjectReference `json:",inline"`
 
 	// Legacy inline fields
-	Path           *string                  `json:"path,omitempty"`
+	Path *string `json:"path,omitempty"`
 
 	// Fields valid in both modes (primary definition in legacy, override in MCPBackend mode)
-	ToolSelector   *MCPToolFilter           `json:"toolSelector,omitempty"`
+	ToolSelector   *MCPToolFilter            `json:"toolSelector,omitempty"`
 	ForwardHeaders []MCPHeaderForward        `json:"forwardHeaders,omitempty"`
 	SecurityPolicy *MCPBackendSecurityPolicy `json:"securityPolicy,omitempty"`
 }
@@ -498,11 +499,13 @@ type MCPRouteBackendRef struct {
 In legacy mode (`kind: Backend`), `securityPolicy` is the full definition (API key or token exchange config). In MCPBackend mode (`kind: MCPBackend`), `securityPolicy` acts as a per-route override — only override-able fields are permitted (e.g., `tokenExchange.scopes` to narrow scopes for this route). CEL validation enforces that non-override fields (`tokenExchange.stsEndpoint`, `tokenExchange.clientAuth`, `apiKey`) are not set in MCPBackend mode.
 
 **Pros:**
+
 - Minimal Go source change — the inline embedding stays, only CEL rules are added.
 - DeepCopy and existing controller references to `ref.BackendObjectReference` continue to compile unchanged.
 - No new fields needed — reuses existing `securityPolicy` struct with mode-dependent semantics.
 
 **Cons:**
+
 - `port` and `namespace` fields from `BackendObjectReference` are present but meaningless for MCPBackend references. CEL can reject `port`, but `namespace` has no sensible enforcement.
 - Same field has different semantics per mode (full definition vs. override). Documentation and CEL must make this clear.
 
@@ -513,10 +516,10 @@ Replace the inline `BackendObjectReference` with explicit `Name`, `Group`, `Kind
 ```go
 // from api/v1beta1/ai_gateway_route.go
 type AIGatewayRouteRuleBackendRef struct {
-	Name      string              `json:"name"`
-	Namespace *gwapiv1.Namespace  `json:"namespace,omitempty"`
-	Group     *string             `json:"group,omitempty"`
-	Kind      *string             `json:"kind,omitempty"`
+	Name      string             `json:"name"`
+	Namespace *gwapiv1.Namespace `json:"namespace,omitempty"`
+	Group     *string            `json:"group,omitempty"`
+	Kind      *string            `json:"kind,omitempty"`
 	// ... per-route fields
 }
 ```
@@ -533,7 +536,7 @@ type MCPRouteBackendRef struct {
 	Path      *string             `json:"path,omitempty"`
 
 	// Fields valid in both modes (primary definition in legacy, override in MCPBackend mode)
-	ToolSelector   *MCPToolFilter           `json:"toolSelector,omitempty"`
+	ToolSelector   *MCPToolFilter            `json:"toolSelector,omitempty"`
 	ForwardHeaders []MCPHeaderForward        `json:"forwardHeaders,omitempty"`
 	SecurityPolicy *MCPBackendSecurityPolicy `json:"securityPolicy,omitempty"`
 }
@@ -542,29 +545,31 @@ type MCPRouteBackendRef struct {
 In legacy mode (`kind: Backend`), `securityPolicy` is the full definition. In MCPBackend mode (`kind: MCPBackend`), it acts as a per-route override — only override-able fields are permitted (e.g., `tokenExchange.scopes`). CEL validation enforces that in MCPBackend mode, only `securityPolicy.tokenExchange.scopes` may be set; fields like `stsEndpoint`, `clientAuth`, `actorToken`, and `apiKey` are rejected.
 
 **Pros:**
+
 - Clean field grouping — legacy-only fields structurally separated from shared fields.
 - No dangling artifacts for `port`, `namespace`, `path`. CEL rules enforce these cannot be set for MCPBackend references.
 - No new fields needed — `securityPolicy` serves double duty with mode-dependent semantics.
 - Follows established precedent from `AIGatewayRouteRuleBackendRef`.
 
 **Cons:**
+
 - Go source breaking change — existing controller code accessing `ref.BackendObjectReference` or `ref.BackendObjectReference.Name` must be updated (compile-time, not runtime).
 - DeepCopy regeneration required.
 - Same `securityPolicy` field has different semantics per mode — requires clear documentation.
 
 ### Backward Compatibility Comparison
 
-| Criterion | Option 1 (Inline Embedding) | Option 2 (Explicit Fields) |
-|---|---|---|
-| **Wire format change** | None | None (same JSON field names) |
-| **Existing YAML breaks?** | No | No |
-| **Go source change** | Minimal (add CEL rules) | Moderate (replace embedding, update controller refs) |
-| **New fields needed** | None (reuses securityPolicy) | None (reuses securityPolicy) |
-| **Dangling fields for MCPBackend** | `port`, `namespace` present but meaningless | Every field explicitly scoped |
-| **kubectl explain clarity** | `port`/`namespace` shown for MCPBackend | Clean separation |
-| **Precedent in codebase** | Current `MCPRouteBackendRef` | `AIGatewayRouteRuleBackendRef` |
-| **CEL enforcement** | Can reject `port`; `namespace` hard to enforce | All legacy fields cleanly gated |
-| **securityPolicy reuse** | Yes (override semantics in MCPBackend mode) | Yes (override semantics in MCPBackend mode) |
+| Criterion                          | Option 1 (Inline Embedding)                    | Option 2 (Explicit Fields)                           |
+| ---------------------------------- | ---------------------------------------------- | ---------------------------------------------------- |
+| **Wire format change**             | None                                           | None (same JSON field names)                         |
+| **Existing YAML breaks?**          | No                                             | No                                                   |
+| **Go source change**               | Minimal (add CEL rules)                        | Moderate (replace embedding, update controller refs) |
+| **New fields needed**              | None (reuses securityPolicy)                   | None (reuses securityPolicy)                         |
+| **Dangling fields for MCPBackend** | `port`, `namespace` present but meaningless    | Every field explicitly scoped                        |
+| **kubectl explain clarity**        | `port`/`namespace` shown for MCPBackend        | Clean separation                                     |
+| **Precedent in codebase**          | Current `MCPRouteBackendRef`                   | `AIGatewayRouteRuleBackendRef`                       |
+| **CEL enforcement**                | Can reject `port`; `namespace` hard to enforce | All legacy fields cleanly gated                      |
+| **securityPolicy reuse**           | Yes (override semantics in MCPBackend mode)    | Yes (override semantics in MCPBackend mode)          |
 
 **Recommendation:** Option 2 (Explicit Fields). It aligns with `AIGatewayRouteRuleBackendRef`, eliminates dangling fields, and the Go source change is caught at compile time.
 
@@ -608,8 +613,8 @@ In legacy mode (`kind: Backend`), `securityPolicy` is the full definition. In MC
 type MCPBackend struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec   MCPBackendSpec   `json:"spec,omitempty"`
-	Status MCPBackendStatus `json:"status,omitempty"`
+	Spec              MCPBackendSpec   `json:"spec,omitempty"`
+	Status            MCPBackendStatus `json:"status,omitempty"`
 }
 
 type MCPBackendSpec struct {
@@ -639,7 +644,6 @@ type MCPBackendSpec struct {
 
 ```go
 // MCPRouteBackendRef references either an inline EG Backend (legacy) or an MCPBackend resource.
-//
 // Format detection via kind/group:
 //   - kind: Backend + group: gateway.envoyproxy.io → legacy inline mode.
 //   - kind: MCPBackend + group: aigateway.envoyproxy.io → MCPBackend reference mode.
@@ -722,8 +726,8 @@ const (
 	BackendSecurityPolicyTypeAzureCredentials BackendSecurityPolicyType = "AzureCredentials"
 	BackendSecurityPolicyTypeGCPCredentials   BackendSecurityPolicyType = "GCPCredentials"
 	// New types for MCP backends.
-	BackendSecurityPolicyTypeMCPAPIKey      BackendSecurityPolicyType = "MCPAPIKey"
-	BackendSecurityPolicyTypeTokenExchange  BackendSecurityPolicyType = "TokenExchange"
+	BackendSecurityPolicyTypeMCPAPIKey     BackendSecurityPolicyType = "MCPAPIKey"
+	BackendSecurityPolicyTypeTokenExchange BackendSecurityPolicyType = "TokenExchange"
 )
 
 type BackendSecurityPolicySpec struct {
@@ -940,18 +944,18 @@ case targetRef.Group == mcpBackendGroup && targetRef.Kind == mcpBackendKind:
 
 ```go
 for _, ref := range mcpRoute.Spec.BackendRefs {
-    switch {
-    case ref.Kind == "Backend" && ref.Group == "gateway.envoyproxy.io":
-        // Legacy inline mode — existing code path.
-        rule, err = c.inlineBackendRefToHTTPRouteRule(ctx, mcpRoute, &ref)
-    case ref.Kind == "MCPBackend" && ref.Group == "aigateway.envoyproxy.io":
-        // MCPBackend reference mode — new code path.
-        rule, err = c.mcpBackendRefToHTTPRouteRule(ctx, mcpRoute, &ref)
-    }
+	switch {
+	case ref.Kind == "Backend" && ref.Group == "gateway.envoyproxy.io":
+		// Legacy inline mode — existing code path.
+		rule, err = c.inlineBackendRefToHTTPRouteRule(ctx, mcpRoute, &ref)
+	case ref.Kind == "MCPBackend" && ref.Group == "aigateway.envoyproxy.io":
+		// MCPBackend reference mode — new code path.
+		rule, err = c.mcpBackendRefToHTTPRouteRule(ctx, mcpRoute, &ref)
+	}
 }
 ```
 
-   In the new path, the controller fetches `MCPBackend` by `ref.Name` → resolves its `BackendSecurityPolicy` via a field index → merges per-route overrides (`toolSelector`, `forwardHeaders`, `securityPolicy.tokenExchange.scopes`) → generates HTTPRoutes.
+In the new path, the controller fetches `MCPBackend` by `ref.Name` → resolves its `BackendSecurityPolicy` via a field index → merges per-route overrides (`toolSelector`, `forwardHeaders`, `securityPolicy.tokenExchange.scopes`) → generates HTTPRoutes.
 
 4. **Field indexes**:
    - `MCPRoute → MCPBackend names` (for reverse lookup on MCPBackend change)
