@@ -461,6 +461,9 @@ func (c *MCPRouteController) syncGateways(ctx context.Context, mcpRoute *aigv1b1
 			gwNamespace = string(*p.Namespace)
 		}
 		if err := c.syncGateway(ctx, gwNamespace, string(p.Name)); err != nil {
+			if mcpRoute.DeletionTimestamp != nil && apierrors.IsNotFound(err) {
+				continue
+			}
 			return err
 		}
 	}
@@ -473,7 +476,7 @@ func (c *MCPRouteController) syncGateway(ctx context.Context, namespace, name st
 	if err := c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &gw); err != nil {
 		if apierrors.IsNotFound(err) {
 			c.logger.Info("Gateway not found", "namespace", namespace, "name", name)
-			return fmt.Errorf("gateway %s/%s not found", namespace, name)
+			return fmt.Errorf("gateway %s/%s not found: %w", namespace, name, err)
 		}
 		c.logger.Error(err, "failed to get Gateway", "namespace", namespace, "name", name)
 		return fmt.Errorf("failed to get Gateway %s/%s: %w", namespace, name, err)
