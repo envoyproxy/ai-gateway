@@ -566,7 +566,7 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 
 		hvm := ruleEntry.Actions[2].GetHeaderValueMatch()
 		require.NotNil(t, hvm)
-		expectedKey := translator.BucketRuleDescriptorKey("test-backend", "gpt-4", 0, 0, "x-api-key", "premium")
+		expectedKey := translator.BucketRuleDescriptorKey(0, 0, "x-api-key", "premium")
 		require.Equal(t, expectedKey, hvm.DescriptorKey)
 		require.Equal(t, expectedKey, hvm.DescriptorValue)
 		require.True(t, hvm.ExpectMatch.Value)
@@ -579,7 +579,7 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		require.Len(t, defaultEntry.Actions, 3)
 		gk := defaultEntry.Actions[2].GetGenericKey()
 		require.NotNil(t, gk)
-		require.Equal(t, translator.DefaultBucketDescriptorKey("gpt-4", 1), gk.DescriptorKey)
+		require.Equal(t, translator.DefaultBucketDescriptorKey(1), gk.DescriptorKey)
 	})
 
 	t.Run("distinct header generates RequestHeaders action", func(t *testing.T) {
@@ -630,7 +630,7 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		rh := ruleEntry.Actions[2].GetRequestHeaders()
 		require.NotNil(t, rh)
 		require.Equal(t, "x-user-id", rh.HeaderName)
-		require.Equal(t, translator.BucketRuleDescriptorKey("test-backend", "gpt-4", 0, 0, "x-user-id", ""), rh.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(0, 0, "x-user-id", ""), rh.DescriptorKey)
 	})
 
 	t.Run("regex header with invert", func(t *testing.T) {
@@ -713,7 +713,7 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		ruleEntry := perRoute.RateLimits[0]
 		gk := ruleEntry.Actions[2].GetGenericKey()
 		require.NotNil(t, gk)
-		require.Equal(t, translator.BucketRuleDescriptorKey("test-backend", "gpt-4", 0, 0, "", ""), gk.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(0, 0, "", ""), gk.DescriptorKey)
 	})
 
 	t.Run("multiple headers across selectors are flattened", func(t *testing.T) {
@@ -762,12 +762,12 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 
 		hvm0 := ruleEntry.Actions[2].GetHeaderValueMatch()
 		require.NotNil(t, hvm0)
-		require.Equal(t, translator.BucketRuleDescriptorKey("test-backend", "gpt-4", 0, 0, "x-api-key", "premium"), hvm0.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(0, 0, "x-api-key", "premium"), hvm0.DescriptorKey)
 		require.Equal(t, "x-api-key", hvm0.Headers[0].Name)
 
 		hvm1 := ruleEntry.Actions[3].GetHeaderValueMatch()
 		require.NotNil(t, hvm1)
-		require.Equal(t, translator.BucketRuleDescriptorKey("test-backend", "gpt-4", 0, 1, "x-org", "acme"), hvm1.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(0, 1, "x-org", "acme"), hvm1.DescriptorKey)
 		require.Equal(t, "x-org", hvm1.Headers[0].Name)
 	})
 
@@ -924,7 +924,7 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		require.Len(t, r0.Actions, 3) // backend_name + model_name + 1 header
 		hvm0 := r0.Actions[2].GetHeaderValueMatch()
 		require.NotNil(t, hvm0)
-		require.Equal(t, translator.BucketRuleDescriptorKey("test-backend", "gpt-4", 0, 0, "x-api-key", "premium"), hvm0.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(0, 0, "x-api-key", "premium"), hvm0.DescriptorKey)
 		require.Equal(t, "x-api-key", hvm0.Headers[0].Name)
 
 		// Verify bucket rule 1 (request-time entry at index 1)
@@ -932,7 +932,7 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		require.Len(t, r1.Actions, 3)
 		hvm1 := r1.Actions[2].GetHeaderValueMatch()
 		require.NotNil(t, hvm1)
-		require.Equal(t, translator.BucketRuleDescriptorKey("test-backend", "gpt-4", 1, 0, "x-tier", "free"), hvm1.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(1, 0, "x-tier", "free"), hvm1.DescriptorKey)
 		require.Equal(t, "x-tier", hvm1.Headers[0].Name)
 
 		// Verify default bucket (request-time entry at index 2)
@@ -940,7 +940,7 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		require.Len(t, dfl.Actions, 3)
 		gk := dfl.Actions[2].GetGenericKey()
 		require.NotNil(t, gk)
-		require.Equal(t, translator.DefaultBucketDescriptorKey("gpt-4", 2), gk.DescriptorKey)
+		require.Equal(t, translator.DefaultBucketDescriptorKey(2), gk.DescriptorKey)
 
 		// Verify stream-done entry for rule 0 (index 3): base actions + HeaderValueMatch(expect_match=true)
 		sd0 := perRoute.RateLimits[3]
@@ -948,7 +948,7 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		require.Len(t, sd0.Actions, 3)
 		sdHvm0 := sd0.Actions[2].GetHeaderValueMatch()
 		require.NotNil(t, sdHvm0)
-		require.Equal(t, translator.BucketRuleDescriptorKey("test-backend", "gpt-4", 0, 0, "x-api-key", "premium"), sdHvm0.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(0, 0, "x-api-key", "premium"), sdHvm0.DescriptorKey)
 		require.True(t, sdHvm0.ExpectMatch.Value)
 		require.Equal(t, "x-api-key", sdHvm0.Headers[0].Name)
 
@@ -958,7 +958,7 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		require.Len(t, sd1.Actions, 3)
 		sdHvm1 := sd1.Actions[2].GetHeaderValueMatch()
 		require.NotNil(t, sdHvm1)
-		require.Equal(t, translator.BucketRuleDescriptorKey("test-backend", "gpt-4", 1, 0, "x-tier", "free"), sdHvm1.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(1, 0, "x-tier", "free"), sdHvm1.DescriptorKey)
 		require.True(t, sdHvm1.ExpectMatch.Value)
 		require.Equal(t, "x-tier", sdHvm1.Headers[0].Name)
 
@@ -968,7 +968,7 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		require.Len(t, sdDfl.Actions, 3)
 		sdDflGk := sdDfl.Actions[2].GetGenericKey()
 		require.NotNil(t, sdDflGk)
-		require.Equal(t, translator.DefaultBucketDescriptorKey("gpt-4", 2), sdDflGk.DescriptorKey)
+		require.Equal(t, translator.DefaultBucketDescriptorKey(2), sdDflGk.DescriptorKey)
 	})
 
 	t.Run("multiple policies same model different backends different selectors", func(t *testing.T) {
@@ -1241,8 +1241,8 @@ func TestBuildBucketRuleLimitEntries(t *testing.T) {
 		require.Len(t, defaultEntry.Actions, 3)
 		gk := defaultEntry.Actions[2].GetGenericKey()
 		require.NotNil(t, gk)
-		require.Equal(t, translator.DefaultBucketDescriptorKey("gpt-4", 1), gk.DescriptorKey)
-		require.Equal(t, translator.DefaultBucketDescriptorKey("gpt-4", 1), gk.DescriptorValue)
+		require.Equal(t, translator.DefaultBucketDescriptorKey(1), gk.DescriptorKey)
+		require.Equal(t, translator.DefaultBucketDescriptorKey(1), gk.DescriptorValue)
 	})
 
 	t.Run("zero limit default bucket is not added", func(t *testing.T) {
@@ -1405,7 +1405,7 @@ func TestEnableQuotaRateLimitOnRoute_MultiplePerModelQuotas(t *testing.T) {
 
 		// Verify sonnet bucket rule uses policy model name (not ModelNameOverride).
 		sonnetBucketReqTime := perRoute.RateLimits[0]
-		require.Equal(t, translator.BucketRuleDescriptorKey("bedrock-backend", "claude-sonnet-4-6", 0, 0, "x-tier", "premium"),
+		require.Equal(t, translator.BucketRuleDescriptorKey(0, 0, "x-tier", "premium"),
 			sonnetBucketReqTime.Actions[2].GetHeaderValueMatch().DescriptorKey)
 
 		// Stream-done entries use policy model name consistently with request-time.
@@ -1413,30 +1413,30 @@ func TestEnableQuotaRateLimitOnRoute_MultiplePerModelQuotas(t *testing.T) {
 		require.True(t, sonnetRuleSD.ApplyOnStreamDone)
 		sdHvm := sonnetRuleSD.Actions[2].GetHeaderValueMatch()
 		require.NotNil(t, sdHvm)
-		require.Equal(t, translator.BucketRuleDescriptorKey("bedrock-backend", "claude-sonnet-4-6", 0, 0, "x-tier", "premium"), sdHvm.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(0, 0, "x-tier", "premium"), sdHvm.DescriptorKey)
 
 		sonnetDefaultSD := perRoute.RateLimits[8]
 		require.True(t, sonnetDefaultSD.ApplyOnStreamDone)
 		sdGk := sonnetDefaultSD.Actions[2].GetGenericKey()
 		require.NotNil(t, sdGk)
-		require.Equal(t, translator.DefaultBucketDescriptorKey("claude-sonnet-4-6", 1), sdGk.DescriptorKey)
+		require.Equal(t, translator.DefaultBucketDescriptorKey(1), sdGk.DescriptorKey)
 	})
 }
 
 func TestBuildClientSelectorActions(t *testing.T) {
 	t.Run("empty selectors returns GenericKey", func(t *testing.T) {
-		actions := buildClientSelectorActions("my-backend", "gpt-4", 0, nil)
+		actions := buildClientSelectorActions(0, nil)
 		require.Len(t, actions, 1)
 		gk := actions[0].GetGenericKey()
 		require.NotNil(t, gk)
-		require.Equal(t, translator.BucketRuleDescriptorKey("my-backend", "gpt-4", 0, 0, "", ""), gk.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(0, 0, "", ""), gk.DescriptorKey)
 	})
 
 	t.Run("selectors with no headers returns GenericKey", func(t *testing.T) {
 		selectors := []egv1a1.RateLimitSelectCondition{
 			{}, // no headers
 		}
-		actions := buildClientSelectorActions("my-backend", "gpt-4", 0, selectors)
+		actions := buildClientSelectorActions(0, selectors)
 		require.Len(t, actions, 1)
 		gk := actions[0].GetGenericKey()
 		require.NotNil(t, gk)
@@ -1450,11 +1450,11 @@ func TestBuildClientSelectorActions(t *testing.T) {
 				},
 			},
 		}
-		actions := buildClientSelectorActions("my-backend", "gpt-4", 0, selectors)
+		actions := buildClientSelectorActions(0, selectors)
 		require.Len(t, actions, 1)
 		hvm := actions[0].GetHeaderValueMatch()
 		require.NotNil(t, hvm)
-		require.Equal(t, translator.BucketRuleDescriptorKey("my-backend", "gpt-4", 0, 0, "x-api-key", "premium"), hvm.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(0, 0, "x-api-key", "premium"), hvm.DescriptorKey)
 	})
 
 	t.Run("single header distinct match", func(t *testing.T) {
@@ -1465,12 +1465,12 @@ func TestBuildClientSelectorActions(t *testing.T) {
 				},
 			},
 		}
-		actions := buildClientSelectorActions("my-backend", "gpt-4", 0, selectors)
+		actions := buildClientSelectorActions(0, selectors)
 		require.Len(t, actions, 1)
 		rh := actions[0].GetRequestHeaders()
 		require.NotNil(t, rh)
 		require.Equal(t, "x-user-id", rh.HeaderName)
-		require.Equal(t, translator.BucketRuleDescriptorKey("my-backend", "gpt-4", 0, 0, "x-user-id", ""), rh.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(0, 0, "x-user-id", ""), rh.DescriptorKey)
 	})
 
 	t.Run("multiple headers across selectors flattened", func(t *testing.T) {
@@ -1487,20 +1487,20 @@ func TestBuildClientSelectorActions(t *testing.T) {
 				},
 			},
 		}
-		actions := buildClientSelectorActions("my-backend", "model", 1, selectors)
+		actions := buildClientSelectorActions(1, selectors)
 		require.Len(t, actions, 3) // 3 headers total
 
 		// h1: HeaderValueMatch
 		require.NotNil(t, actions[0].GetHeaderValueMatch())
-		require.Equal(t, translator.BucketRuleDescriptorKey("my-backend", "model", 1, 0, "h1", "v1"), actions[0].GetHeaderValueMatch().DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(1, 0, "h1", "v1"), actions[0].GetHeaderValueMatch().DescriptorKey)
 
 		// h2: HeaderValueMatch
 		require.NotNil(t, actions[1].GetHeaderValueMatch())
-		require.Equal(t, translator.BucketRuleDescriptorKey("my-backend", "model", 1, 1, "h2", "v2"), actions[1].GetHeaderValueMatch().DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(1, 1, "h2", "v2"), actions[1].GetHeaderValueMatch().DescriptorKey)
 
 		// h3: RequestHeaders (Distinct)
 		require.NotNil(t, actions[2].GetRequestHeaders())
-		require.Equal(t, translator.BucketRuleDescriptorKey("my-backend", "model", 1, 2, "h3", ""), actions[2].GetRequestHeaders().DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(1, 2, "h3", ""), actions[2].GetRequestHeaders().DescriptorKey)
 	})
 }
 
@@ -1511,11 +1511,11 @@ func TestBuildHeaderMatchAction(t *testing.T) {
 			Type:  ptr.To(egv1a1.HeaderMatchExact),
 			Value: ptr.To("premium"),
 		}
-		action := buildHeaderMatchAction("my-backend", "gpt-4", 0, 0, header)
+		action := buildHeaderMatchAction(0, 0, header)
 		hvm := action.GetHeaderValueMatch()
 		require.NotNil(t, hvm)
-		require.Equal(t, translator.BucketRuleDescriptorKey("my-backend", "gpt-4", 0, 0, "x-api-key", "premium"), hvm.DescriptorKey)
-		require.Equal(t, translator.BucketRuleDescriptorKey("my-backend", "gpt-4", 0, 0, "x-api-key", "premium"), hvm.DescriptorValue)
+		require.Equal(t, translator.BucketRuleDescriptorKey(0, 0, "x-api-key", "premium"), hvm.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(0, 0, "x-api-key", "premium"), hvm.DescriptorValue)
 		require.True(t, hvm.ExpectMatch.Value)
 		require.Len(t, hvm.Headers, 1)
 		require.Equal(t, "x-api-key", hvm.Headers[0].Name)
@@ -1528,7 +1528,7 @@ func TestBuildHeaderMatchAction(t *testing.T) {
 			Type:  ptr.To(egv1a1.HeaderMatchRegularExpression),
 			Value: ptr.To("premium|enterprise"),
 		}
-		action := buildHeaderMatchAction("my-backend", "gpt-4", 0, 0, header)
+		action := buildHeaderMatchAction(0, 0, header)
 		hvm := action.GetHeaderValueMatch()
 		require.NotNil(t, hvm)
 		require.True(t, hvm.ExpectMatch.Value)
@@ -1540,11 +1540,11 @@ func TestBuildHeaderMatchAction(t *testing.T) {
 			Name: "x-user-id",
 			Type: ptr.To(egv1a1.HeaderMatchDistinct),
 		}
-		action := buildHeaderMatchAction("my-backend", "gpt-4", 0, 0, header)
+		action := buildHeaderMatchAction(0, 0, header)
 		rh := action.GetRequestHeaders()
 		require.NotNil(t, rh)
 		require.Equal(t, "x-user-id", rh.HeaderName)
-		require.Equal(t, translator.BucketRuleDescriptorKey("my-backend", "gpt-4", 0, 0, "x-user-id", ""), rh.DescriptorKey)
+		require.Equal(t, translator.BucketRuleDescriptorKey(0, 0, "x-user-id", ""), rh.DescriptorKey)
 	})
 
 	t.Run("invert true sets ExpectMatch false", func(t *testing.T) {
@@ -1554,7 +1554,7 @@ func TestBuildHeaderMatchAction(t *testing.T) {
 			Value:  ptr.To("internal"),
 			Invert: ptr.To(true),
 		}
-		action := buildHeaderMatchAction("my-backend", "gpt-4", 0, 0, header)
+		action := buildHeaderMatchAction(0, 0, header)
 		hvm := action.GetHeaderValueMatch()
 		require.NotNil(t, hvm)
 		require.False(t, hvm.ExpectMatch.Value)
@@ -1567,7 +1567,7 @@ func TestBuildHeaderMatchAction(t *testing.T) {
 			Value:  ptr.To("external"),
 			Invert: ptr.To(false),
 		}
-		action := buildHeaderMatchAction("my-backend", "gpt-4", 0, 0, header)
+		action := buildHeaderMatchAction(0, 0, header)
 		hvm := action.GetHeaderValueMatch()
 		require.NotNil(t, hvm)
 		require.True(t, hvm.ExpectMatch.Value)
@@ -1579,7 +1579,7 @@ func TestBuildHeaderMatchAction(t *testing.T) {
 			Type:  ptr.To(egv1a1.HeaderMatchExact),
 			Value: ptr.To("standard"),
 		}
-		action := buildHeaderMatchAction("my-backend", "gpt-4", 0, 0, header)
+		action := buildHeaderMatchAction(0, 0, header)
 		hvm := action.GetHeaderValueMatch()
 		require.NotNil(t, hvm)
 		require.True(t, hvm.ExpectMatch.Value)
@@ -1591,10 +1591,10 @@ func TestBuildHeaderMatchAction(t *testing.T) {
 			Type:  ptr.To(egv1a1.HeaderMatchExact),
 			Value: ptr.To("v"),
 		}
-		action := buildHeaderMatchAction("my-backend", "claude", 3, 2, header)
+		action := buildHeaderMatchAction(3, 2, header)
 		hvm := action.GetHeaderValueMatch()
-		require.Equal(t, "rule-my-backend-claude-3-h1|v-match-2", hvm.DescriptorKey)
-		require.Equal(t, "rule-my-backend-claude-3-h1|v-match-2", hvm.DescriptorValue)
+		require.Equal(t, "rule-3-h1|v-match-2", hvm.DescriptorKey)
+		require.Equal(t, "rule-3-h1|v-match-2", hvm.DescriptorValue)
 	})
 }
 

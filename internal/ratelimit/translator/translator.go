@@ -69,24 +69,23 @@ func headerComparableValue(header egv1a1.HeaderMatch) string {
 }
 
 // BucketRuleDescriptorKey returns the descriptor key for a bucket rule's header match.
-// The backend name, model name, and selector header name/value are all included so that
-// rules with different client selectors produce unique keys, preventing cross-rule and
-// cross-policy collisions in the rate limit service config.
 // The "|" separator between header name and value prevents ambiguity ("|" is illegal in
 // HTTP header names per RFC 7230). For catch-all rules, headerName and headerValue are empty.
-func BucketRuleDescriptorKey(backendName, modelName string, ruleIndex, matchIndex int, headerName, headerValue string) string {
+func BucketRuleDescriptorKey(ruleIndex, matchIndex int, headerName, headerValue string) string {
 	if headerName == "" {
-		return fmt.Sprintf("rule-%s-%s-%d-match-%d", backendName, modelName, ruleIndex, matchIndex)
+		return fmt.Sprintf("rule-%d-match-%d", ruleIndex, matchIndex)
 	}
 	if headerValue == "" {
-		return fmt.Sprintf("rule-%s-%s-%d-%s-match-%d", backendName, modelName, ruleIndex, headerName, matchIndex)
+		return fmt.Sprintf("rule-%d-%s-match-%d", ruleIndex, headerName, matchIndex)
 	}
-	return fmt.Sprintf("rule-%s-%s-%d-%s|%s-match-%d", backendName, modelName, ruleIndex, headerName, headerValue, matchIndex)
+	return fmt.Sprintf("rule-%d-%s|%s-match-%d", ruleIndex, headerName, headerValue, matchIndex)
 }
 
 // DefaultBucketDescriptorKey returns the descriptor key for a model's default bucket.
-func DefaultBucketDescriptorKey(modelName string, numRules int) string {
-	return fmt.Sprintf("rule-%s-%d-match--1", modelName, numRules)
+// Model name is omitted because this descriptor is nested under parent backend_name
+// and model_name_override descriptors that already provide uniqueness.
+func DefaultBucketDescriptorKey(numRules int) string {
+	return fmt.Sprintf("rule-%d-match--1", numRules)
 }
 
 // BuildRateLimitConfigs translates a QuotaPolicy and its resolved target
@@ -161,7 +160,7 @@ func buildBackendDescriptorKeyed(
 		routeModelName := *pmq.ModelName
 		descriptorModelNames := resolveModelNames(routeModelName, modelOverrides)
 		for _, descriptorModelName := range descriptorModelNames {
-			desc, keyed, err := buildPerModelDescriptorKeyed(backend.Name, routeModelName, descriptorModelName, &pmq.Quota, backendKeySegment)
+			desc, keyed, err := buildPerModelDescriptorKeyed(descriptorModelName, &pmq.Quota, backendKeySegment)
 			if err != nil {
 				return nil, nil, fmt.Errorf("model %q: %w", descriptorModelName, err)
 			}
@@ -194,7 +193,6 @@ func buildBackendDescriptorKeyed(
 }
 
 // buildPerModelDescriptor creates a descriptor that matches a specific model name.
-// routeModelName is used for bucket rule descriptor keys (e.g., rule-gpt-4-0-match-0).
 // descriptorModelName is used as the model_name_override descriptor value (may differ
 // when a ModelNameOverride is set on the AIGatewayRoute backend ref).
 //
@@ -211,24 +209,22 @@ func buildBackendDescriptorKeyed(
 //	key: model_name_override
 //	value: "gpt-4"
 //	descriptors:
-//	  - key: rule-gpt-4-0-match-0           ← first header (sorted)
-//	    value: rule-gpt-4-0-match-0
+//	  - key: rule-0-match-0                  ← first header (sorted)
+//	    value: rule-0-match-0
 //	    descriptors:
-//	      - key: rule-gpt-4-0-match-1       ← second header (sorted)
-//	        value: rule-gpt-4-0-match-1
+//	      - key: rule-0-match-1              ← second header (sorted)
+//	        value: rule-0-match-1
 //	        rate_limit: ...                  ← only on leaf
-func buildPerModelDescriptor(backendName, routeModelName, descriptorModelName string, quota *aigv1a1.QuotaDefinition) (*rlsconfv3.RateLimitDescriptor, error) {
-	desc, _, err := buildPerModelDescriptorKeyed(backendName, routeModelName, descriptorModelName, quota, "")
+func buildPerModelDescriptor(descriptorModelName string, quota *aigv1a1.QuotaDefinition) (*rlsconfv3.RateLimitDescriptor, error) {
+	desc, _, err := buildPerModelDescriptorKeyed(descriptorModelName, quota, "")
 	return desc, err
 }
 
 // buildPerModelDescriptorKeyed creates a model-level descriptor and also returns
 // KeyedDescriptor entries for all leaf descriptors. parentKeyPrefix is the
 // comparable key prefix from ancestor descriptors (e.g., the backend segment).
-// backendName is used in bucket rule descriptor keys to make them backend-specific.
-// routeModelName is used for bucket rule descriptor keys; descriptorModelName
-// is used as the model_name_override descriptor value.
-func buildPerModelDescriptorKeyed(backendName, routeModelName, descriptorModelName string, quota *aigv1a1.QuotaDefinition, parentKeyPrefix string) (*rlsconfv3.RateLimitDescriptor, []KeyedDescriptor, error) {
+// descriptorModelName is used as the model_name_override descriptor value.
+func buildPerModelDescriptorKeyed(descriptorModelName string, quota *aigv1a1.QuotaDefinition, parentKeyPrefix string) (*rlsconfv3.RateLimitDescriptor, []KeyedDescriptor, error) {
 	modelSegment := ComparableKeySegment(ModelNameDescriptorKey, 1, descriptorModelName)
 	modelPrefix := modelSegment
 	if parentKeyPrefix != "" {
@@ -256,7 +252,7 @@ func buildPerModelDescriptorKeyed(backendName, routeModelName, descriptorModelNa
 	var nested []*rlsconfv3.RateLimitDescriptor
 	var keyed []KeyedDescriptor
 	for rIdx, rule := range quota.BucketRules {
-		ruleDescs, err := buildBucketRuleDescriptors(backendName, routeModelName, rIdx, &rule)
+		ruleDescs, err := buildBucketRuleDescriptors(rIdx, &rule)
 		if err != nil {
 			return nil, nil, fmt.Errorf("bucket rule %d: %w", rIdx, err)
 		}
@@ -285,7 +281,7 @@ func buildPerModelDescriptorKeyed(backendName, routeModelName, descriptorModelNa
 		if err != nil {
 			return nil, nil, err
 		}
-		defaultKey := DefaultBucketDescriptorKey(routeModelName, len(quota.BucketRules))
+		defaultKey := DefaultBucketDescriptorKey(len(quota.BucketRules))
 		defaultDesc := &rlsconfv3.RateLimitDescriptor{
 			Key:       defaultKey,
 			Value:     defaultKey,
@@ -337,7 +333,7 @@ func buildServiceQuotaDescriptor(sq *aigv1a1.ServiceQuotaDefinition) (*rlsconfv3
 //   - Exact / Regex: key and value both set to the BucketRuleDescriptorKey. The
 //     HeaderValueMatch action sends the fixed DescriptorValue (not the actual header
 //     value), so the service config must match that same fixed string.
-func buildBucketRuleDescriptors(backendName, modelName string, ruleIndex int, rule *aigv1a1.QuotaRule) ([]*rlsconfv3.RateLimitDescriptor, error) {
+func buildBucketRuleDescriptors(ruleIndex int, rule *aigv1a1.QuotaRule) ([]*rlsconfv3.RateLimitDescriptor, error) {
 	policy, err := quotaValueToPolicy(&rule.Quota)
 	if err != nil {
 		return nil, err
@@ -349,7 +345,7 @@ func buildBucketRuleDescriptors(backendName, modelName string, ruleIndex int, ru
 
 	// No headers: single catch-all descriptor for this rule.
 	if len(allHeaders) == 0 {
-		key := BucketRuleDescriptorKey(backendName, modelName, ruleIndex, 0, "", "")
+		key := BucketRuleDescriptorKey(ruleIndex, 0, "", "")
 		return []*rlsconfv3.RateLimitDescriptor{{
 			Key:        key,
 			Value:      key,
@@ -365,7 +361,7 @@ func buildBucketRuleDescriptors(backendName, modelName string, ruleIndex int, ru
 	var root *rlsconfv3.RateLimitDescriptor
 	var leaf *rlsconfv3.RateLimitDescriptor
 	for mIdx, header := range allHeaders {
-		key := BucketRuleDescriptorKey(backendName, modelName, ruleIndex, mIdx, header.Name, headerMatchValue(header))
+		key := BucketRuleDescriptorKey(ruleIndex, mIdx, header.Name, headerMatchValue(header))
 		desc := &rlsconfv3.RateLimitDescriptor{Key: key}
 		if header.Type == nil || *header.Type != egv1a1.HeaderMatchDistinct {
 			desc.Value = key
