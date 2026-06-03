@@ -260,9 +260,9 @@ type AIGatewayRouteRule struct {
 	// FirstTokenTimeout is the maximum time to wait for the first response byte
 	// from the upstream model backend before Envoy resets the upstream stream.
 	//
-	// Mechanically the AI Gateway controller emits an EnvoyPatchPolicy that sets
-	// the per-route Envoy idle_timeout to this value on every xDS route generated
-	// from this rule. The timer fires when no upstream bytes have been receieved
+	// The AI Gateway extension server sets route.retry_policy.per_try_idle_timeout
+	// to this value on every xDS route generated from this rule before it is sent
+	// to the data plane. The timer fires when no upstream bytes have been received
 	// for the configured duration. Once any byte arrives, the timer resets.
 	//
 	// When the timeout fires, Envoy resets the upstream stream before any response
@@ -272,7 +272,7 @@ type AIGatewayRouteRule struct {
 	// Pair this field with the existing Timeouts.Request, which acts as the overall
 	// deadline.
 	//
-	// If this field is not set, no idle_timeout override is applied.
+	// If this field is not set, no per-try idle timeout is applied.
 	//
 	// +optional
 	FirstTokenTimeout *gwapiv1.Duration `json:"firstTokenTimeout,omitempty"`

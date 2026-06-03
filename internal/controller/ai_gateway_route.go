@@ -235,10 +235,6 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 		}
 	}
 
-	if err = c.reconcileFirstTokenTimeoutPolicy(ctx, aiGatewayRoute); err != nil {
-		return fmt.Errorf("failed to reconcile first-token timeout EnvoyPatchPolicy: %w", err)
-	}
-
 	err = c.syncGateways(ctx, aiGatewayRoute)
 	if err != nil {
 		return fmt.Errorf("failed to sync gw pods: %w", err)

@@ -76,6 +76,11 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 		return nil, fmt.Errorf("failed to modify listeners and routes for InferencePool support: %w", err)
 	}
 
+	// Apply the per-rule first-token timeout to the generated routes.
+	if err = s.applyFirstTokenTimeouts(ctx, req.Routes); err != nil {
+		return nil, fmt.Errorf("failed to apply first-token timeouts: %w", err)
+	}
+
 	// Ensure the AI Gateway external processor UDS cluster exists.
 	// This cluster is used for communication with the AI Gateway's main external processor.
 	if !extProcUDSExist {
@@ -143,6 +148,65 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 
 	response := &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets, Listeners: req.Listeners, Routes: req.Routes}
 	return response, nil
+}
+
+// applyFirstTokenTimeouts walks the generated route configurations and sets the per-try idle
+// timeout on every AIGatewayRoute route whose rule configures FirstTokenTimeout.
+func (s *Server) applyFirstTokenTimeouts(ctx context.Context, routeConfigs []*routev3.RouteConfiguration) error {
+	for _, rc := range routeConfigs {
+		for _, vh := range rc.VirtualHosts {
+			for _, route := range vh.Routes {
+				if err := s.maybeSetFirstTokenTimeout(ctx, route); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// maybeSetFirstTokenTimeout sets route.retry_policy.per_try_idle_timeout from the rule's
+// FirstTokenTimeout. Envoy resets the upstream stream when no bytes arrive within that
+// duration, so a retry policy covering `reset` falls over to the next backend before any
+// response reaches the downstream client.
+func (s *Server) maybeSetFirstTokenTimeout(ctx context.Context, route *routev3.Route) error {
+	action := route.GetRoute()
+	if action == nil {
+		// Not a forwarding route (e.g. DirectResponse, Redirect).
+		return nil
+	}
+
+	// Route name format: "httproute/<namespace>/<name>/rule/<index>/match/<...>".
+	parts := strings.Split(route.Name, "/")
+	if len(parts) < 5 || parts[0] != "httproute" || parts[3] != "rule" {
+		return nil
+	}
+	ruleIndex, err := strconv.Atoi(parts[4])
+	if err != nil {
+		return nil
+	}
+
+	var aigwRoute aigv1b1.AIGatewayRoute
+	if err := s.k8sClient.Get(ctx, client.ObjectKey{Namespace: parts[1], Name: parts[2]}, &aigwRoute); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to get AIGatewayRoute %s/%s: %w", parts[1], parts[2], err)
+	}
+	if ruleIndex >= len(aigwRoute.Spec.Rules) {
+		return nil
+	}
+
+	timeout := aigwRoute.Spec.Rules[ruleIndex].GetFirstTokenTimeout()
+	if timeout <= 0 {
+		return nil
+	}
+
+	if action.RetryPolicy == nil {
+		action.RetryPolicy = &routev3.RetryPolicy{}
+	}
+	action.RetryPolicy.PerTryIdleTimeout = durationpb.New(timeout)
+	return nil
 }
 
 // maybeModifyCluster modifies clusters generated from AIGatewayRoute resources to add
