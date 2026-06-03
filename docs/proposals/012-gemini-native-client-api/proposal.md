@@ -372,7 +372,8 @@ Usage extraction reads Google response metadata without reshaping the response:
 |--------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
 | Gemini and Vertex `generateContent`                    | `usageMetadata.promptTokenCount`, `usageMetadata.candidatesTokenCount`, `usageMetadata.totalTokenCount`, cache token fields when present |
 | Gemini and Vertex streaming                            | latest `usageMetadata` observed in the stream                                                                                            |
-| `countTokens`                                          | `totalTokens`, `cachedContentTokenCount`                                                                                                 |
+| Gemini `countTokens`                                   | `totalTokens`, `cachedContentTokenCount`, `promptTokensDetails`, `cacheTokensDetails`                                                    |
+| Vertex `countTokens`                                   | `totalTokens`, `totalBillableCharacters`, `promptTokensDetails`                                                                          |
 | Gemini and Vertex `embedContent`, `batchEmbedContents` | `usageMetadata.promptTokenCount` when present                                                                                            |
 | Vertex text embedding `predict`                        | `predictions[].embeddings.statistics.token_count` when present                                                                           |
 
