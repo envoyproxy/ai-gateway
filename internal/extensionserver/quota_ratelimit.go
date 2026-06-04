@@ -578,14 +578,20 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 			} else if len(pmq.Quota.BucketRules) > 0 {
 				bucketActions := buildBucketRuleLimitEntries(modelName, policy.Namespace, &pmq.Quota, policy.Spec.TargetRefs, backendModels)
 				rateLimitActions = append(rateLimitActions, bucketActions...)
-				// Bucket rules: one stream-done per (target, rule). The parent
-				// backend_name descriptor ensures the rate limit service only matches
-				// the entry under the actual backend's tree.
+				// Bucket rules: one stream-done per (target, rule, full header set).
+				// The dedup key covers all sorted headers so rules with
+				// different selector sets are never collapsed.
 				for rIdx, rule := range pmq.Quota.BucketRules {
-					firstHdr, firstVal := firstSelectorHeader(rule.ClientSelectors)
+					headers := flattenAndSortClientSelectorHeaders(rule.ClientSelectors)
 					for _, target := range policy.Spec.TargetRefs {
 						targetName := string(target.Name)
-						dupKey := targetName + "|" + modelName + "|" + translator.BucketRuleDescriptorKey(rIdx, 0, firstHdr, firstVal)
+						dupKey := targetName + "|" + modelName
+						for mIdx, hdr := range headers {
+							dupKey += "|" + translator.BucketRuleDescriptorKey(rIdx, mIdx, hdr.Name, headerMatchKeyValue(hdr))
+						}
+						if len(headers) == 0 {
+							dupKey += "|" + translator.BucketRuleDescriptorKey(rIdx, 0, "", "")
+						}
 						if !seenStreamDoneKeys[dupKey] {
 							seenStreamDoneKeys[dupKey] = true
 							clientActions := buildClientSelectorStreamDoneActions(rIdx, rule.ClientSelectors)
@@ -943,16 +949,7 @@ func buildHeaderMatchAction(
 	}
 }
 
-// firstSelectorHeader returns the name and value of the first header from the
-// flattened and sorted client selectors. Used for dedup keys where the full
-// descriptor chain isn't needed but uniqueness across different selectors is.
-func firstSelectorHeader(selectors []egv1a1.RateLimitSelectCondition) (string, string) {
-	headers := flattenAndSortClientSelectorHeaders(selectors)
-	if len(headers) == 0 {
-		return "", ""
-	}
-	return headers[0].Name, headerMatchKeyValue(headers[0])
-}
+
 
 // headerMatchKeyValue returns the value to include in a BucketRuleDescriptorKey for a header.
 // Distinct headers return empty (the value is per-request, not known at config time).
