@@ -145,6 +145,28 @@ spec:
 When using static credentials, the secret must contain the AWS credentials file with the key name `"credentials"`.
 :::
 
+You can optionally override SigV4 request signing behavior with:
+
+- `service`: Explicit AWS service name used for signing (for example, `bedrock`)
+- `signingHost`: Host value used for signing instead of the backend `:authority`
+
+If `service` is not set, AI Gateway infers it from the backend host at request time. Hosts such as `localhost` and IP addresses fall back to `bedrock`.
+
+**Optional: Override service and signing host**
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: bedrock-auth-custom-signing
+spec:
+  type: AWSCredentials
+  awsCredentials:
+    region: us-east-1
+    service: bedrock
+    signingHost: bedrock-runtime.us-east-1.amazonaws.com
+```
+
 ##### Azure Credentials
 
 Used for connecting to Azure OpenAI
