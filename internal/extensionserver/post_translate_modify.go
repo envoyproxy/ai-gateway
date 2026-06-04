@@ -196,6 +196,9 @@ func (s *Server) maybeSetFirstTokenTimeout(ctx context.Context, route *routev3.R
 		// Not an AIGatewayRoute-owned route, or it was deleted during translation.
 		return nil
 	}
+
+	// The list of rules in the AIGatewayRoute may have changed since this route was generated,
+	// so we check the rule index is still valid before applying the timeout.
 	if ruleIndex >= len(aigwRoute.Spec.Rules) {
 		return nil
 	}
