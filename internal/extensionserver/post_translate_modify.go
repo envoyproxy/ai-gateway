@@ -669,6 +669,10 @@ func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener
 		if err = insertAIGatewayExtProcFilter(httpConManager, extProcFilter); err != nil {
 			return fmt.Errorf("failed to insert AI Gateway extproc filter: %w", err)
 		}
+		// Match the :scheme pseudo-header to the upstream transport protocol.
+		httpConManager.SchemeHeaderTransformation = &corev3.SchemeHeaderTransformation{
+			MatchUpstream: true,
+		}
 		hcAny, err := toAny(httpConManager)
 		if err != nil {
 			return fmt.Errorf("failed to marshal updated HCM to Any: %w", err)
