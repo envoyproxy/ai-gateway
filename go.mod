@@ -9,7 +9,7 @@ require (
 	github.com/a8m/envsubst v1.4.3
 	github.com/alecthomas/kong v1.15.0
 	github.com/andybalholm/brotli v1.2.1
-	github.com/anthropics/anthropic-sdk-go v1.43.0
+	github.com/anthropics/anthropic-sdk-go v1.44.1
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.10
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
@@ -31,13 +31,13 @@ require (
 	github.com/moby/moby/api v1.54.2
 	github.com/modelcontextprotocol/go-sdk v1.6.0
 	github.com/openai/openai-go v1.12.0
-	github.com/openai/openai-go/v3 v3.35.0
+	github.com/openai/openai-go/v3 v3.36.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.67.5
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.42.0
-	github.com/tetratelabs/func-e v1.5.0
+	github.com/tetratelabs/func-e v1.6.0
 	github.com/tidwall/gjson v1.19.0
 	github.com/tidwall/sjson v1.2.6-0.20251103175603-13f6455cf849
 	go.opentelemetry.io/contrib/exporters/autoexport v0.68.0
@@ -57,9 +57,9 @@ require (
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.20.0
 	golang.org/x/tools v0.45.0
-	google.golang.org/api v0.279.0
+	google.golang.org/api v0.280.0
 	google.golang.org/genai v1.57.0
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260427160629-7cedc36a6bc4
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260511170946-3700d4141b60
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	gopkg.in/dnaeon/go-vcr.v4 v4.0.6
