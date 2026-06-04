@@ -101,6 +101,8 @@ spec:
             - --cacheSyncTimeout={{ .Values.controller.watch.cacheSyncTimeout }}
             - --watchNamespaces={{ join "," .Values.controller.watch.namespaces }}
             - --quotaRateLimitServiceHost={{ .Values.controller.quotaRateLimitServiceHost }}
+            - --quotaRateLimitTimeout={{ .Values.controller.quotaRateLimitTimeout }}
+            - --quotaRateLimitFailureModeDeny={{ .Values.controller.quotaRateLimitFailureModeDeny }}
             - --mcpSessionEncryptionSeed={{ .Values.controller.mcp.sessionEncryption.seed }}
             - --mcpSessionEncryptionIterations={{ .Values.controller.mcp.sessionEncryption.iterations }}
             {{- if .Values.controller.mcp.sessionEncryption.fallback.seed }}

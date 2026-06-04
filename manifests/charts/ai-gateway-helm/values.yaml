@@ -73,6 +73,10 @@ controller:
   # Hostname of the AI Gateway rate limit service used for QuotaPolicy enforcement.
   # Envoy's rate limit cluster connects to this address on port 8081.
   quotaRateLimitServiceHost: "envoy-ai-gateway-ratelimit.envoy-gateway-system"
+  # Timeout in seconds for the quota rate limit service.
+  quotaRateLimitTimeout: 5
+  # If true, requests are denied when the quota rate limit service is unavailable.
+  quotaRateLimitFailureModeDeny: false
 
   # Comma-separated key-value pairs for mapping HTTP request headers to Otel attributes shared across metrics, spans, and access logs.
   # Format: "header1:attribute1,header2:attribute2"

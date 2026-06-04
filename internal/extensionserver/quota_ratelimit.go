@@ -949,8 +949,6 @@ func buildHeaderMatchAction(
 	}
 }
 
-
-
 // headerMatchKeyValue returns the value to include in a BucketRuleDescriptorKey for a header.
 // Distinct headers return empty (the value is per-request, not known at config time).
 // Exact/Regex headers return the configured value.

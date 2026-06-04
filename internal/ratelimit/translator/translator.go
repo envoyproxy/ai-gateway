@@ -424,4 +424,3 @@ func BackendNameFromDomain(domain string) (namespace, name string, ok bool) {
 	}
 	return parts[0], parts[1], true
 }
-
