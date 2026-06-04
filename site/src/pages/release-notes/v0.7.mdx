@@ -1,6 +1,6 @@
 ---
 title: Envoy AI Gateway v0.7.x Release Series
-description: Hostname-based routing, Anthropic-to-Bedrock Converse translation, multimodal audio/video content types, MCP authorization-aware tool listing, and SSE streaming fixes
+description: Hostname-based routing, Anthropic-to-Bedrock Converse translation, audio transcription/translation endpoints, Azure OpenAI Responses API, quota-aware rate limiting, Claude Opus 4.7 reasoning, and MCP authorization-aware tool listing
 toc_min_heading_level: 2
 toc_max_heading_level: 4
 ---
@@ -114,6 +114,10 @@ schema:
 
 Note: `prefix` is ignored for `AWSAnthropic` and `GCPAnthropic` backends as they override paths internally.
 
+### Adopting Claude Opus 4.7 Reasoning
+
+If you use Claude Opus 4.7 or Mythos Preview models, note that `display` defaults to `omitted` (unlike earlier Claude models which default to `summarized`). To receive summarized thinking content, set `display: "summarized"` explicitly. The new `xhigh` reasoning effort tier is available for long-horizon agentic tasks.
+
 ## 📦 Dependencies Versions
 
 <Dependencies dependencies={mainRelease.dependencies} />
@@ -145,7 +149,8 @@ We extend our gratitude to all contributors who made this release possible. Spec
 
 We're already working on features for future releases:
 
-- **Quota-aware routing** — building on the backend quota policy API to route around rate-limited upstreams automatically
+- **Full quota-aware routing** — building on the rate limit filter injection landed in v0.7 to route around rate-limited upstreams automatically across multiple backends
+- **MCPBackend CRD** — a dedicated custom resource for MCP backend servers, decoupling MCP backend configuration from MCPRoute
 - **Expanded multimodal support** — additional audio, video, and image generation backends across cloud providers
 - **Deeper MCP authorization** — finer-grained policy across tools, resources, and prompts
 - **More provider translation paths** — filling coverage gaps across Anthropic, Bedrock, and Vertex AI
