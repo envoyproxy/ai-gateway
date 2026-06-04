@@ -343,43 +343,54 @@ func (s *Server) routeHasQuotaBackend(
 	return false
 }
 
-// clusterHasQuotaBackend checks whether a cluster references any AIServiceBackend
-// that has a QuotaPolicy attached.
-//
+// clusterRouteInfo contains the resolved route rule information for a cluster.
+type clusterRouteInfo struct {
+	namespace string
+	rule      *aigv1b1.AIGatewayRouteRule
+}
+
+// resolveClusterRule parses a cluster name and fetches the corresponding AIGatewayRoute rule.
 // Cluster name format: "httproute/{namespace}/{routeName}/rule/{ruleIndex}"
-// The function fetches the AIGatewayRoute, indexes into the rule, and checks each
-// BackendRef against the quotaBackendPolicies map.
-func (s *Server) clusterHasQuotaBackend(ctx context.Context, clusterName string, quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy) bool {
-	// Parse cluster name: "httproute/{namespace}/{routeName}/rule/{ruleIndex}"
+func (s *Server) resolveClusterRule(ctx context.Context, clusterName string) *clusterRouteInfo {
 	parts := strings.Split(clusterName, "/")
 	if len(parts) != 5 || parts[0] != "httproute" {
-		return false
+		return nil
 	}
 	namespace := parts[1]
 	routeName := parts[2]
-	ruleIndexStr := parts[4]
-	ruleIndex, err := strconv.Atoi(ruleIndexStr)
+	ruleIndex, err := strconv.Atoi(parts[4])
 	if err != nil || ruleIndex < 0 {
-		return false
+		return nil
 	}
 
-	// Fetch the AIGatewayRoute to get the actual backend refs.
 	var aigwRoute aigv1b1.AIGatewayRoute
 	if err := s.k8sClient.Get(ctx, client.ObjectKey{
 		Namespace: namespace,
 		Name:      routeName,
 	}, &aigwRoute); err != nil {
-		return false
+		return nil
 	}
 
 	if ruleIndex >= len(aigwRoute.Spec.Rules) {
+		return nil
+	}
+
+	return &clusterRouteInfo{
+		namespace: namespace,
+		rule:      &aigwRoute.Spec.Rules[ruleIndex],
+	}
+}
+
+// clusterHasQuotaBackend checks whether a cluster references any AIServiceBackend
+// that has a QuotaPolicy attached.
+func (s *Server) clusterHasQuotaBackend(ctx context.Context, clusterName string, quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy) bool {
+	info := s.resolveClusterRule(ctx, clusterName)
+	if info == nil {
 		return false
 	}
-	rule := &aigwRoute.Spec.Rules[ruleIndex]
 
-	// Check each backend ref against the quota backend policies map.
-	for _, backendRef := range rule.BackendRefs {
-		key := namespace + "/" + backendRef.Name
+	for _, backendRef := range info.rule.BackendRefs {
+		key := info.namespace + "/" + backendRef.Name
 		if _, ok := quotaBackendPolicies[key]; ok {
 			return true
 		}
@@ -433,33 +444,14 @@ func (s *Server) policiesForRoute(
 // backendKeysForCluster resolves a cluster name to "namespace/backendName" keys
 // by fetching the AIGatewayRoute and looking up its BackendRefs.
 func (s *Server) backendKeysForCluster(ctx context.Context, clusterName string) []string {
-	parts := strings.Split(clusterName, "/")
-	if len(parts) != 5 || parts[0] != "httproute" {
+	info := s.resolveClusterRule(ctx, clusterName)
+	if info == nil {
 		return nil
 	}
-	namespace := parts[1]
-	routeName := parts[2]
-	ruleIndex, err := strconv.Atoi(parts[4])
-	if err != nil || ruleIndex < 0 {
-		return nil
-	}
-
-	var aigwRoute aigv1b1.AIGatewayRoute
-	if err := s.k8sClient.Get(ctx, client.ObjectKey{
-		Namespace: namespace,
-		Name:      routeName,
-	}, &aigwRoute); err != nil {
-		return nil
-	}
-
-	if ruleIndex >= len(aigwRoute.Spec.Rules) {
-		return nil
-	}
-	rule := &aigwRoute.Spec.Rules[ruleIndex]
 
 	var keys []string
-	for _, backendRef := range rule.BackendRefs {
-		keys = append(keys, namespace+"/"+backendRef.Name)
+	for _, backendRef := range info.rule.BackendRefs {
+		keys = append(keys, info.namespace+"/"+backendRef.Name)
 	}
 	return keys
 }
@@ -485,30 +477,12 @@ func (s *Server) resolveRouteModelInfo(ctx context.Context, route *routev3.Route
 	}
 
 	collectFromCluster := func(clusterName string) {
-		parts := strings.Split(clusterName, "/")
-		if len(parts) != 5 || parts[0] != "httproute" {
-			return
-		}
-		namespace := parts[1]
-		routeName := parts[2]
-		ruleIndex, err := strconv.Atoi(parts[4])
-		if err != nil || ruleIndex < 0 {
+		resolved := s.resolveClusterRule(ctx, clusterName)
+		if resolved == nil {
 			return
 		}
 
-		var aigwRoute aigv1b1.AIGatewayRoute
-		if err := s.k8sClient.Get(ctx, client.ObjectKey{
-			Namespace: namespace,
-			Name:      routeName,
-		}, &aigwRoute); err != nil {
-			return
-		}
-		if ruleIndex >= len(aigwRoute.Spec.Rules) {
-			return
-		}
-		rule := &aigwRoute.Spec.Rules[ruleIndex]
-
-		for _, br := range rule.BackendRefs {
+		for _, br := range resolved.rule.BackendRefs {
 			if br.ModelNameOverride != "" {
 				info.backendModels[br.Name] = br.ModelNameOverride
 			}
