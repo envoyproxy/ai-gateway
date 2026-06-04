@@ -152,6 +152,7 @@ func (s *Server) buildQuotaRateLimitCluster() *clusterv3.Cluster {
 		Name:                 quotaRateLimitClusterName,
 		ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_STRICT_DNS},
 		ConnectTimeout:       &durationpb.Duration{Seconds: 5},
+		Http2ProtocolOptions: &corev3.Http2ProtocolOptions{},
 		LoadAssignment: &endpointv3.ClusterLoadAssignment{
 			ClusterName: quotaRateLimitClusterName,
 			Endpoints: []*endpointv3.LocalityLbEndpoints{
