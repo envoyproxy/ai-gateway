@@ -125,6 +125,12 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	gatewayEventChan := make(chan event.GenericEvent, 100)
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
 		logger.WithName("gateway"), options.ExtProcImage, options.ExtProcLogLevel, false, uuid.NewString, isKubernetes133OrLater(versionInfo, logger))
+	gatewayC.SetMCPSessionEncryption(
+		options.MCPSessionEncryptionSeed,
+		options.MCPSessionEncryptionIterations,
+		options.MCPFallbackSessionEncryptionSeed,
+		options.MCPFallbackSessionEncryptionIterations,
+	)
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
 		WatchesRawSource(source.Channel(
 			gatewayEventChan,
@@ -260,10 +266,6 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			options.ExtProcImagePullSecrets,
 			options.ExtProcMaxRecvMsgSize,
 			isKubernetes133OrLater(versionInfo, logger),
-			options.MCPSessionEncryptionSeed,
-			options.MCPSessionEncryptionIterations,
-			options.MCPFallbackSessionEncryptionSeed,
-			options.MCPFallbackSessionEncryptionIterations,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}

@@ -100,9 +100,20 @@ spec:
             {{- end }}
             - --cacheSyncTimeout={{ .Values.controller.watch.cacheSyncTimeout }}
             - --watchNamespaces={{ join "," .Values.controller.watch.namespaces }}
+            {{- $mcpExistingSecretName := .Values.controller.mcp.sessionEncryption.existingSecret.name }}
+            {{- $mcpExistingSeedKey := .Values.controller.mcp.sessionEncryption.existingSecret.seedKey }}
+            {{- $mcpFallbackExistingSecretName := .Values.controller.mcp.sessionEncryption.fallback.existingSecret.name }}
+            {{- $mcpFallbackExistingSeedKey := .Values.controller.mcp.sessionEncryption.fallback.existingSecret.seedKey }}
+            {{- if and $mcpExistingSecretName $mcpExistingSeedKey }}
+            - --mcpSessionEncryptionSeedFilePath=/etc/mcp-session-encryption/{{ $mcpExistingSeedKey }}
+            {{- else }}
             - --mcpSessionEncryptionSeed={{ .Values.controller.mcp.sessionEncryption.seed }}
+            {{- end }}
             - --mcpSessionEncryptionIterations={{ .Values.controller.mcp.sessionEncryption.iterations }}
-            {{- if .Values.controller.mcp.sessionEncryption.fallback.seed }}
+            {{- if and $mcpFallbackExistingSecretName $mcpFallbackExistingSeedKey }}
+            - --mcpFallbackSessionEncryptionSeedFilePath=/etc/mcp-fallback-session-encryption/{{ $mcpFallbackExistingSeedKey }}
+            - --mcpFallbackSessionEncryptionIterations={{ .Values.controller.mcp.sessionEncryption.fallback.iterations }}
+            {{- else if .Values.controller.mcp.sessionEncryption.fallback.seed }}
             - --mcpFallbackSessionEncryptionSeed={{ .Values.controller.mcp.sessionEncryption.fallback.seed }}
             - --mcpFallbackSessionEncryptionIterations={{ .Values.controller.mcp.sessionEncryption.fallback.iterations }}
             {{- end }}
@@ -136,6 +147,16 @@ spec:
             - mountPath: /certs
               name: certs
               readOnly: true
+            {{- if and $mcpExistingSecretName $mcpExistingSeedKey }}
+            - mountPath: /etc/mcp-session-encryption
+              name: mcp-session-encryption
+              readOnly: true
+            {{- end }}
+            {{- if and $mcpFallbackExistingSecretName $mcpFallbackExistingSeedKey }}
+            - mountPath: /etc/mcp-fallback-session-encryption
+              name: mcp-fallback-session-encryption
+              readOnly: true
+            {{- end }}
           {{- if .Values.controller.volumes }}
             {{- range $volume := .Values.controller.volumes }}
             - mountPath: {{ $volume.mountPath }}
@@ -149,6 +170,22 @@ spec:
         - name: certs
           secret:
             secretName: {{ .Values.controller.mutatingWebhook.tlsCertSecretName }}
+        {{- if and $mcpExistingSecretName $mcpExistingSeedKey }}
+        - name: mcp-session-encryption
+          secret:
+            secretName: {{ $mcpExistingSecretName }}
+            items:
+              - key: {{ $mcpExistingSeedKey }}
+                path: {{ $mcpExistingSeedKey }}
+        {{- end }}
+        {{- if and $mcpFallbackExistingSecretName $mcpFallbackExistingSeedKey }}
+        - name: mcp-fallback-session-encryption
+          secret:
+            secretName: {{ $mcpFallbackExistingSecretName }}
+            items:
+              - key: {{ $mcpFallbackExistingSeedKey }}
+                path: {{ $mcpFallbackExistingSeedKey }}
+        {{- end }}
       {{- if .Values.controller.volumes }}
         {{- range $volume := .Values.controller.volumes }}
         - name: {{ $volume.name }}

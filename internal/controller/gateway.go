@@ -80,6 +80,21 @@ type GatewayController struct {
 	// Whether to run the extProc container as a sidecar (true) as a normal container (false).
 	// This is essentially a workaround for old k8s versions, and we can remove this in the future.
 	extProcAsSideCar bool
+
+	// MCP session encryption settings propagated into each per-gateway filter config Secret.
+	mcpSessionEncryptionSeed               string
+	mcpSessionEncryptionIterations         int
+	mcpFallbackSessionEncryptionSeed       string
+	mcpFallbackSessionEncryptionIterations int
+}
+
+// SetMCPSessionEncryption sets the MCP session encryption parameters written
+// into each per-gateway filter config Secret.
+func (c *GatewayController) SetMCPSessionEncryption(seed string, iterations int, fallbackSeed string, fallbackIterations int) {
+	c.mcpSessionEncryptionSeed = seed
+	c.mcpSessionEncryptionIterations = iterations
+	c.mcpFallbackSessionEncryptionSeed = fallbackSeed
+	c.mcpFallbackSessionEncryptionIterations = fallbackIterations
 }
 
 // Reconcile implements the reconcile.Reconciler for gwapiv1.Gateway.
@@ -519,6 +534,14 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	var effectiveMCPRoute bool
 	ec.MCPConfig, effectiveMCPRoute = mcpConfig(mcpRoutes)
 	hasEffectiveRoute = hasEffectiveRoute || effectiveMCPRoute
+	if ec.MCPConfig != nil && c.mcpSessionEncryptionSeed != "" {
+		ec.MCPConfig.SessionEncryption = &filterapi.MCPSessionEncryptionConfig{
+			Seed:               c.mcpSessionEncryptionSeed,
+			Iterations:         c.mcpSessionEncryptionIterations,
+			FallbackSeed:       c.mcpFallbackSessionEncryptionSeed,
+			FallbackIterations: c.mcpFallbackSessionEncryptionIterations,
+		}
+	}
 
 	marshaled, err := yaml.Marshal(ec)
 	if err != nil {

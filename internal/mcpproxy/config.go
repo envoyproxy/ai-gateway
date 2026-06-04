@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
@@ -27,11 +28,14 @@ type (
 		*mcpProxyConfig
 		toolChangeSignaler         changeSignaler // signals tool changes to active sessions.
 		l                          *slog.Logger
-		sessionCrypto              SessionCrypto
+		sessionCryptoVal           atomic.Pointer[sessionCryptoHolder]
 		tracer                     tracingapi.MCPTracer
 		client                     http.Client
 		logRequestHeaderAttributes map[string]string
 	}
+
+	// sessionCryptoHolder wraps a SessionCrypto so it can be swapped atomically.
+	sessionCryptoHolder struct{ SessionCrypto }
 
 	mcpProxyConfig struct {
 		backendListenerAddr string
@@ -175,6 +179,24 @@ func (t *toolSelector) allows(tool string) bool {
 	return true
 }
 
+// sessionCrypto returns the currently active SessionCrypto, or nil if none is set.
+func (p *ProxyConfig) sessionCrypto() SessionCrypto {
+	h := p.sessionCryptoVal.Load()
+	if h == nil {
+		return nil
+	}
+	return h.SessionCrypto
+}
+
+// setSessionCrypto atomically replaces the active SessionCrypto.
+func (p *ProxyConfig) setSessionCrypto(sc SessionCrypto) {
+	if sc == nil {
+		p.sessionCryptoVal.Store(nil)
+		return
+	}
+	p.sessionCryptoVal.Store(&sessionCryptoHolder{SessionCrypto: sc})
+}
+
 // LoadConfig implements [extproc.ConfigReceiver.LoadConfig] which will be called
 // when the configuration is updated on the file system.
 func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) error {
@@ -182,6 +204,19 @@ func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) er
 	mcpConfig := config.MCPConfig
 	if config.MCPConfig == nil {
 		return nil
+	}
+
+	// Install the SessionCrypto from the filter config if the controller
+	// provided one, so the seed does not need to be passed via CLI flags.
+	if se := mcpConfig.SessionEncryption; se != nil && se.Seed != "" && se.Iterations > 0 {
+		newCrypto := NewPBKDF2AesGcmSessionCrypto(se.Seed, se.Iterations)
+		if se.FallbackSeed != "" && se.FallbackIterations > 0 {
+			newCrypto = &FallbackEnabledSessionCrypto{
+				Primary:  newCrypto,
+				Fallback: NewPBKDF2AesGcmSessionCrypto(se.FallbackSeed, se.FallbackIterations),
+			}
+		}
+		p.setSessionCrypto(newCrypto)
 	}
 
 	// Talk to the backend MCP listener on the local Envoy instance.

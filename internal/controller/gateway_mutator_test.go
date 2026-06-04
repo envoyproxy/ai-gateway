@@ -99,31 +99,23 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 			name:    "basic extproc container with MCPRoute",
 			needMCP: true,
 			extprocTest: func(t *testing.T, container corev1.Container) {
-				var foundMCPAddr, foundMCPSeed, foundMCPSIterations, foundFallbackSeed, foundFallbackIterations bool
+				foundMCPAddr := false
 				for i, arg := range container.Args {
 					switch arg {
 					case "-mcpAddr":
 						foundMCPAddr = true
 						require.Equal(t, ":"+strconv.Itoa(internalapi.MCPProxyPort), container.Args[i+1])
-					case "-mcpSessionEncryptionSeed":
-						foundMCPSeed = true
-						require.Equal(t, "seed", container.Args[i+1])
-					case "-mcpSessionEncryptionIterations":
-						foundMCPSIterations = true
-						require.Equal(t, "100", container.Args[i+1])
-					case "-mcpFallbackSessionEncryptionSeed":
-						foundFallbackSeed = true
-						require.Equal(t, "fallback", container.Args[i+1])
-					case "-mcpFallbackSessionEncryptionIterations":
-						foundFallbackIterations = true
-						require.Equal(t, "200", container.Args[i+1])
+					case "-mcpSessionEncryptionSeed",
+						"-mcpSessionEncryptionIterations",
+						"-mcpFallbackSessionEncryptionSeed",
+						"-mcpFallbackSessionEncryptionIterations":
+						t.Fatalf("%s must not be passed to extproc via CLI args", arg)
 					}
 				}
 				require.True(t, foundMCPAddr)
-				require.True(t, foundMCPSeed)
-				require.True(t, foundMCPSIterations)
-				require.True(t, foundFallbackSeed)
-				require.True(t, foundFallbackIterations)
+				for _, env := range container.Env {
+					require.NotContains(t, env.Name, "MCP_SESSION_ENCRYPTION")
+				}
 			},
 		},
 		{
@@ -433,7 +425,7 @@ func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, 
 	return newGatewayMutator(
 		fakeClient, fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
 		"info", false, "/tmp/extproc.sock", requestHeaderAttributes, spanRequestHeaderAttributes, metricsRequestHeaderAttributes, logRequestHeaderAttributes, "/v1", endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets, 512*1024*1024,
-		sidecar, "seed", 100, "fallback", 200,
+		sidecar,
 	)
 }
 
@@ -765,7 +757,7 @@ func TestGatewayMutator_mutatePod_UsesNoCacheReader(t *testing.T) {
 		cacheClient, noCacheReader, fakeKube, ctrl.Log,
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
 		"info", false, "/tmp/extproc.sock", nil, nil, nil, nil, "/v1", "", "", "", 512*1024*1024,
-		false, "seed", 100, "fallback", 200,
+		false,
 	)
 
 	const gwName, gwNamespace = "test-gateway", "test-namespace"
@@ -815,7 +807,7 @@ func TestGatewayMutator_listAIGatewayRoutesForGateway_NoCacheReaderFallback(t *t
 		cacheClient, noCacheReader, fakeKube, ctrl.Log,
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
 		"info", false, "/tmp/extproc.sock", nil, nil, nil, nil, "/v1", "", "", "", 512*1024*1024,
-		false, "seed", 100, "fallback", 200,
+		false,
 	)
 
 	const gwName, gwNamespace = "test-gateway", "test-namespace"
@@ -859,7 +851,7 @@ func TestGatewayMutator_listMCPRoutesForGateway_NoCacheReaderFallback(t *testing
 		cacheClient, noCacheReader, fakeKube, ctrl.Log,
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
 		"info", false, "/tmp/extproc.sock", nil, nil, nil, nil, "/v1", "", "", "", 512*1024*1024,
-		false, "seed", 100, "fallback", 200,
+		false,
 	)
 
 	const gwName, gwNamespace = "test-gateway", "test-namespace"

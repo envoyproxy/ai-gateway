@@ -241,11 +241,20 @@ controller:
     sessionEncryption:
       # Seed used to derive the MCP session encryption key.
       # This value should be set to a secure random string in production environments instead of the default below.
+      # For production, prefer `existingSecret` below to avoid exposing the seed in the controller Deployment spec.
       seed: "default-insecure-seed"
       # Number of PBKDF2 iterations to use for deriving the MCP session encryption key.
       # A higher number increases security but also increases CPU usage and time consumed during key derivation.
       # The default value of 100,000 is a reasonable balance for most production environments.
       iterations: 100000
+      # Source the MCP session encryption seed from an existing Kubernetes Secret instead of
+      # the inline `seed` value above. When `name` is set the chart mounts
+      # the referenced Secret on the controller pod and the seed is read from disk.
+      existingSecret:
+        # Name of the Secret in the controller's namespace.
+        name: ""
+        # Key in the Secret containing the primary seed. Required when `name` is set.
+        seedKey: ""
       # Optional fallback configuration for MCP session encryption key rotation.
       fallback:
         # Fallback seed used to derive the MCP session encryption key.
@@ -254,6 +263,13 @@ controller:
         seed: ""
         # Number of PBKDF2 iterations to use for deriving the MCP session encryption key with the fallback seed.
         iterations: 100000
+        # Source the fallback MCP session encryption seed from an existing Kubernetes Secret instead of
+        # the inline `fallback.seed` value above.
+        existingSecret:
+          # Name of the Secret in the controller's namespace.
+          name: ""
+          # Key in the Secret containing the fallback seed. Required when `name` is set.
+          seedKey: ""
 
 # Configuration for the Envoy Gateway component that AI Gateway relies on to program Envoy.
 envoyGateway:

@@ -7,6 +7,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -179,12 +180,61 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				flags:  []string{"--mcpFallbackSessionEncryptionSeed=fallback", "--mcpFallbackSessionEncryptionIterations=-1"},
 				expErr: "mcp fallback session encryption iterations must be positive: -1",
 			},
+			{
+				name:   "missing mcp session encryption seed file",
+				flags:  []string{"--mcpSessionEncryptionSeedFilePath=/this/path/does/not/exist"},
+				expErr: "failed to resolve mcp session encryption seed",
+			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				_, err := parseAndValidateFlags(tc.flags)
 				require.ErrorContains(t, err, tc.expErr)
 			})
 		}
+	})
+
+	t.Run("mcp seed sourced from file", func(t *testing.T) {
+		dir := t.TempDir()
+
+		t.Run("primary only", func(t *testing.T) {
+			seedFile := filepath.Join(dir, "seed")
+			require.NoError(t, os.WriteFile(seedFile, []byte("file-sourced-seed\n"), 0o600))
+
+			f, err := parseAndValidateFlags([]string{
+				"--mcpSessionEncryptionSeed=ignored-inline-seed",
+				"--mcpSessionEncryptionSeedFilePath=" + seedFile,
+			})
+			require.NoError(t, err)
+			require.Equal(t, "file-sourced-seed", f.mcpSessionEncryptionSeed)
+			require.Empty(t, f.mcpFallbackSessionEncryptionSeed)
+		})
+
+		t.Run("primary and fallback", func(t *testing.T) {
+			seedFile := filepath.Join(dir, "seed2")
+			fallbackFile := filepath.Join(dir, "fallback")
+			require.NoError(t, os.WriteFile(seedFile, []byte("primary"), 0o600))
+			require.NoError(t, os.WriteFile(fallbackFile, []byte("fallback\r\n"), 0o600))
+
+			f, err := parseAndValidateFlags([]string{
+				"--mcpSessionEncryptionSeedFilePath=" + seedFile,
+				"--mcpFallbackSessionEncryptionSeedFilePath=" + fallbackFile,
+			})
+			require.NoError(t, err)
+			require.Equal(t, "primary", f.mcpSessionEncryptionSeed)
+			require.Equal(t, "fallback", f.mcpFallbackSessionEncryptionSeed)
+		})
+
+		t.Run("empty file falls back to inline", func(t *testing.T) {
+			emptyFile := filepath.Join(dir, "empty")
+			require.NoError(t, os.WriteFile(emptyFile, []byte("\n"), 0o600))
+
+			f, err := parseAndValidateFlags([]string{
+				"--mcpSessionEncryptionSeed=inline-seed",
+				"--mcpSessionEncryptionSeedFilePath=" + emptyFile,
+			})
+			require.NoError(t, err)
+			require.Equal(t, "inline-seed", f.mcpSessionEncryptionSeed)
+		})
 	})
 }
 
