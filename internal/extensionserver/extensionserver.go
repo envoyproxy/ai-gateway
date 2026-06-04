@@ -47,16 +47,16 @@ type Server struct {
 const serverName = "envoy-gateway-extension-server"
 
 // New creates a new instance of the extension server that implements the EnvoyGatewayExtensionServer interface.
-func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, requestHeaderAttributes, logRequestHeaderAttributes *string, quotaRateLimitServiceHost string, quotaRateLimitTimeout int64, quotaRateLimitFailureModeDeny bool) (*Server, error) {
+func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, requestHeaderAttributes, logRequestHeaderAttributes *string, quotaRateLimitServiceAddr string, quotaRateLimitTimeout int64, quotaRateLimitFailureModeDeny bool) (*Server, error) {
 	logger = logger.WithName(serverName)
 	logAttrs, err := requestheaderattrs.ResolveLog(requestHeaderAttributes, logRequestHeaderAttributes)
 	if err != nil {
 		return nil, err
 	}
 
-	host, port, err := parseHostPort(quotaRateLimitServiceHost)
+	host, port, err := parseHostPort(quotaRateLimitServiceAddr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid quotaRateLimitServiceHost %q: %w", quotaRateLimitServiceHost, err)
+		return nil, fmt.Errorf("invalid quotaRateLimitServiceAddr %q: %w", quotaRateLimitServiceAddr, err)
 	}
 
 	return &Server{

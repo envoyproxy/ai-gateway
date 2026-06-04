@@ -69,7 +69,7 @@ type flags struct {
 	mcpFallbackSessionEncryptionIterations int
 	watchNamespaces                        []string
 	cacheSyncTimeout                       time.Duration
-	quotaRateLimitServiceHost              string
+	quotaRateLimitServiceAddr              string
 	quotaRateLimitTimeout                  int64
 	quotaRateLimitFailureModeDeny          bool
 }
@@ -236,7 +236,7 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		"Optional fallback seed used for MCP session key rotation")
 	mcpFallbackSessionEncryptionIterations := fs.Int("mcpFallbackSessionEncryptionIterations", 100_000,
 		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
-	quotaRateLimitServiceHost := fs.String("quotaRateLimitServiceHost", "envoy-ai-gateway-ratelimit.envoy-gateway-system",
+	quotaRateLimitServiceAddr := fs.String("quotaRateLimitServiceAddr", "envoy-ai-gateway-ratelimit.envoy-gateway-system",
 		"Host (or host:port) for the AI Gateway quota rate limit service. If no port is specified, 8081 is used.")
 	quotaRateLimitTimeout := fs.Int64("quotaRateLimitTimeout", 5,
 		"Timeout in seconds for the quota rate limit service.")
@@ -356,7 +356,7 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		mcpFallbackSessionEncryptionSeed:       *mcpFallbackSessionEncryptionSeed,
 		mcpSessionEncryptionIterations:         *mcpSessionEncryptionIterations,
 		mcpFallbackSessionEncryptionIterations: *mcpFallbackSessionEncryptionIterations,
-		quotaRateLimitServiceHost:              *quotaRateLimitServiceHost,
+		quotaRateLimitServiceAddr:              *quotaRateLimitServiceAddr,
 		quotaRateLimitTimeout:                  *quotaRateLimitTimeout,
 		quotaRateLimitFailureModeDeny:          *quotaRateLimitFailureModeDeny,
 	}, nil
@@ -416,7 +416,7 @@ func main() {
 	// Start the extension server running alongside the controller.
 	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
 	s := grpc.NewServer(grpc.MaxRecvMsgSize(parsedFlags.maxRecvMsgSize))
-	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes, parsedFlags.quotaRateLimitServiceHost, parsedFlags.quotaRateLimitTimeout, parsedFlags.quotaRateLimitFailureModeDeny)
+	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes, parsedFlags.quotaRateLimitServiceAddr, parsedFlags.quotaRateLimitTimeout, parsedFlags.quotaRateLimitFailureModeDeny)
 	if err != nil {
 		setupLog.Error(err, "failed to create extension server")
 		os.Exit(1)

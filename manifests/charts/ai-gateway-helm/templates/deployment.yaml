@@ -100,7 +100,7 @@ spec:
             {{- end }}
             - --cacheSyncTimeout={{ .Values.controller.watch.cacheSyncTimeout }}
             - --watchNamespaces={{ join "," .Values.controller.watch.namespaces }}
-            - --quotaRateLimitServiceHost={{ .Values.controller.quotaRateLimitServiceHost }}
+            - --quotaRateLimitServiceAddr={{ .Values.controller.quotaRateLimitServiceAddr }}
             - --quotaRateLimitTimeout={{ .Values.controller.quotaRateLimitTimeout }}
             - --quotaRateLimitFailureModeDeny={{ .Values.controller.quotaRateLimitFailureModeDeny }}
             - --mcpSessionEncryptionSeed={{ .Values.controller.mcp.sessionEncryption.seed }}

@@ -70,9 +70,9 @@ controller:
   nameOverride: ""
   fullnameOverride: "ai-gateway-controller"
 
-  # Hostname of the AI Gateway rate limit service used for QuotaPolicy enforcement.
-  # Envoy's rate limit cluster connects to this address on port 8081.
-  quotaRateLimitServiceHost: "envoy-ai-gateway-ratelimit.envoy-gateway-system"
+  # Address (host or host:port) of the AI Gateway rate limit service used for QuotaPolicy enforcement.
+  # When no port is specified, defaults to 8081.
+  quotaRateLimitServiceAddr: "envoy-ai-gateway-ratelimit.envoy-gateway-system"
   # Timeout in seconds for the quota rate limit service.
   quotaRateLimitTimeout: 5
   # If true, requests are denied when the quota rate limit service is unavailable.
