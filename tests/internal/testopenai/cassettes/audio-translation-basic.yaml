@@ -1,0 +1,73 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 29
+        host: api.openai.com
+        body: '[multipart form data omitted]'
+        headers:
+            Accept-Encoding:
+                - gzip
+            Content-Length:
+                - "29"
+            Content-Type:
+                - multipart/form-data; boundary=b31f11f5d9f745f8bfe238614855c4ede3680099a32fe570510ad7cc73de
+            User-Agent:
+                - Go-http-client/1.1
+        url: https://api.openai.com/v1/audio/translations
+        method: POST
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        content_length: 132
+        body: |-
+            {
+              "text": "The sun rises in the east and sets in the west. This simple fact has been observed by humans for thousands of years."
+            }
+        headers:
+            Access-Control-Expose-Headers:
+                - X-Request-ID
+            Alt-Svc:
+                - h3=":443"; ma=86400
+            Cf-Cache-Status:
+                - DYNAMIC
+            Cf-Ray:
+                - 9e8951a71ca22ab0-LAX
+            Content-Length:
+                - "132"
+            Content-Type:
+                - application/json
+            Date:
+                - Tue, 07 Apr 2026 13:18:34 GMT
+            Openai-Processing-Ms:
+                - "453"
+            Openai-Project:
+                - proj_iDVN2qKUWgjCn5caMdHLmSHH
+            Openai-Version:
+                - "2020-10-01"
+            Server:
+                - cloudflare
+            Strict-Transport-Security:
+                - max-age=31536000; includeSubDomains; preload
+            Via:
+                - envoy-router-6f47d7bb8d-7gxvx
+            X-Content-Type-Options:
+                - nosniff
+            X-Openai-Proxy-Wasm:
+                - v0.1
+            X-Ratelimit-Limit-Requests:
+                - "500"
+            X-Ratelimit-Remaining-Requests:
+                - "499"
+            X-Ratelimit-Reset-Requests:
+                - 120ms
+            X-Request-Id:
+                - req_4e92064f74a44df0a26ffc601277ed5d
+        status: 200 OK
+        code: 200
+        duration: 723.944026ms

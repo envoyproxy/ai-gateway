@@ -8,7 +8,14 @@
 package endpointspec
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
+	"mime"
+	"mime/multipart"
+	"strconv"
+	"strings"
 
 	"github.com/tidwall/sjson"
 
@@ -75,6 +82,16 @@ type (
 		// * redactedReq: A copy with sensitive fields replaced by [REDACTED LENGTH=n HASH=xxxx] placeholders.
 		// * err: An error if redaction fails (implementation-specific).
 		RedactSensitiveInfoFromRequest(req *ReqT) (redactedReq *ReqT, err error)
+		// ParseMultipartBody parses a multipart/form-data request body.
+		// Endpoints that don't support multipart should return an error.
+		//
+		// Parameters:
+		// * body: The raw multipart request body.
+		// * contentType: The Content-Type header value (includes boundary parameter).
+		// * costConfigured: A boolean indicating if cost metrics are configured.
+		//
+		// Returns the same tuple as ParseBody.
+		ParseMultipartBody(body []byte, contentType string, costConfigured bool) (originalModel internalapi.OriginalModel, req *ReqT, stream bool, mutatedBody []byte, err error)
 	}
 	// ChatCompletionsEndpointSpec implements EndpointSpec for /v1/chat/completions.
 	ChatCompletionsEndpointSpec struct{}
@@ -92,7 +109,13 @@ type (
 	RerankEndpointSpec struct{}
 	// SpeechEndpointSpec implements EndpointSpec for /v1/audio/speech.
 	SpeechEndpointSpec struct{}
+	// TranscriptionEndpointSpec implements EndpointSpec for /v1/audio/transcriptions.
+	TranscriptionEndpointSpec struct{}
+	// TranslationEndpointSpec implements EndpointSpec for /v1/audio/translations.
+	TranslationEndpointSpec struct{}
 )
+
+var errMultipartNotSupported = fmt.Errorf("%w: multipart body not supported for this endpoint", internalapi.ErrMalformedRequest)
 
 // ParseBody implements [EndpointSpec.ParseBody].
 func (ChatCompletionsEndpointSpec) ParseBody(
@@ -122,6 +145,11 @@ func (ChatCompletionsEndpointSpec) ParseBody(
 		}
 	}
 	return req.Model, &req, req.Stream, mutatedBody, nil
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (ChatCompletionsEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *openai.ChatCompletionRequest, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
@@ -155,28 +183,6 @@ func (ChatCompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Ch
 		redacted.Messages[i] = redactMessage(msg)
 	}
 
-	// Redact tool definitions (function descriptions and parameter schemas may contain sensitive information)
-	if len(req.Tools) > 0 {
-		redacted.Tools = make([]openai.Tool, len(req.Tools))
-		for i, tool := range req.Tools {
-			redacted.Tools[i] = tool
-			if tool.Function != nil {
-				redactedFunc := *tool.Function
-				redactedFunc.Description = redaction.RedactString(redactedFunc.Description)
-				// Redact parameters by replacing with a placeholder map to preserve type safety
-				// while hiding sensitive schema information
-				if redactedFunc.Parameters != nil {
-					params := fmt.Sprintf("%v", redactedFunc.Parameters)
-					hash := redaction.ComputeContentHash(params)
-					redactedFunc.Parameters = map[string]any{
-						"_redacted": fmt.Sprintf("REDACTED LENGTH=%d HASH=%s", len(params), hash),
-					}
-				}
-				redacted.Tools[i].Function = &redactedFunc
-			}
-		}
-	}
-
 	// Redact prediction content if present (cached prompts, prefill content)
 	if req.PredictionContent != nil {
 		redactedPrediction := *req.PredictionContent
@@ -184,17 +190,9 @@ func (ChatCompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Ch
 		redacted.PredictionContent = &redactedPrediction
 	}
 
-	// Redact response format schema (may contain sensitive structure information)
-	if req.ResponseFormat != nil {
-		redacted.ResponseFormat = redactResponseFormat(req.ResponseFormat)
-	}
-
-	// Redact guided JSON schema (contains raw JSON schema definition)
-	if len(req.GuidedJSON) > 0 {
-		originalLen := len(req.GuidedJSON)
-		hash := redaction.ComputeContentHash(string(req.GuidedJSON))
-		redacted.GuidedJSON = []byte(fmt.Sprintf(`{"_redacted":"[REDACTED LENGTH=%d HASH=%s]"}`, originalLen, hash))
-	}
+	// Tool definitions (name, description, parameters) are developer-authored schema metadata,
+	// not user data — kept as-is.
+	// Response format schemas and guided_json are developer-authored — kept as-is.
 
 	return &redacted, nil
 }
@@ -209,6 +207,11 @@ func (CompletionsEndpointSpec) ParseBody(
 		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/completions: %w", internalapi.ErrMalformedRequest, err)
 	}
 	return openAIReq.Model, &openAIReq, openAIReq.Stream, nil, nil
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (CompletionsEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *openai.CompletionRequest, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
@@ -237,6 +240,11 @@ func (EmbeddingsEndpointSpec) ParseBody(
 		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/embeddings: %w", internalapi.ErrMalformedRequest, err)
 	}
 	return openAIReq.Model, &openAIReq, false, nil, nil
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (EmbeddingsEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *openai.EmbeddingRequest, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
@@ -272,6 +280,11 @@ func (ImageGenerationEndpointSpec) ParseBody(
 	return openAIReq.Model, &openAIReq, false, nil, nil
 }
 
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (ImageGenerationEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *openai.ImageGenerationRequest, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
+}
+
 // GetTranslator implements [EndpointSpec.GetTranslator].
 func (ImageGenerationEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIImageGenerationTranslator, error) {
 	switch schema.Name {
@@ -300,11 +313,18 @@ func (ResponsesEndpointSpec) ParseBody(
 	return openAIReq.Model, &openAIReq, openAIReq.Stream, nil, nil
 }
 
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (ResponsesEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *openai.ResponseRequest, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
+}
+
 // GetTranslator implements [EndpointSpec.GetTranslator].
 func (ResponsesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIResponsesTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewResponsesOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	case filterapi.APISchemaAzureOpenAI:
+		return translator.NewResponsesOpenAIToAzureOpenAITranslator(schema.Version, modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
@@ -333,6 +353,11 @@ func (MessagesEndpointSpec) ParseBody(
 
 	stream := anthropicReq.Stream
 	return model, &anthropicReq, stream, nil, nil
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (MessagesEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *anthropic.MessagesRequest, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
@@ -370,6 +395,11 @@ func (RerankEndpointSpec) ParseBody(
 		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v2/rerank: %w", internalapi.ErrMalformedRequest, err)
 	}
 	return req.Model, &req, false, nil, nil
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (RerankEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *cohereschema.RerankV2Request, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
@@ -418,12 +448,12 @@ func redactUserMessage(msg openai.ChatCompletionMessageParamUnion) openai.ChatCo
 func redactAssistantMessage(msg openai.ChatCompletionMessageParamUnion) openai.ChatCompletionMessageParamUnion {
 	redactedMsg := *msg.OfAssistant
 	redactedMsg.Content = redactStringOrAssistantRoleContentUnion(msg.OfAssistant.Content)
-	// Redact tool call arguments (may contain sensitive data extracted from user messages)
+	// Redact tool call arguments (may contain data derived from user messages).
+	// Function name is kept — it is the tool API name, not user data.
 	if len(msg.OfAssistant.ToolCalls) > 0 {
 		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.OfAssistant.ToolCalls))
 		for i, tc := range msg.OfAssistant.ToolCalls {
 			redactedToolCall := tc
-			redactedToolCall.Function.Name = redaction.RedactString(tc.Function.Name)
 			redactedToolCall.Function.Arguments = redaction.RedactString(tc.Function.Arguments)
 			redactedMsg.ToolCalls[i] = redactedToolCall
 		}
@@ -522,37 +552,6 @@ func redactStringOrAssistantRoleContentUnion(content openai.StringOrAssistantRol
 	}
 }
 
-// redactResponseFormat redacts schema information from response format while preserving the type.
-// JSON schema details may contain sensitive structure information about the application's data model.
-func redactResponseFormat(format *openai.ChatCompletionResponseFormatUnion) *openai.ChatCompletionResponseFormatUnion {
-	redactedFormat := *format
-
-	// Only JSON schema contains potentially sensitive schema information
-	if format.OfJSONSchema != nil {
-		redactedJSONSchema := *format.OfJSONSchema
-		redactedInnerSchema := redactedJSONSchema.JSONSchema
-
-		// Redact the schema name and description (may reveal internal structure)
-		redactedInnerSchema.Name = redaction.RedactString(redactedInnerSchema.Name)
-		if redactedInnerSchema.Description != "" {
-			redactedInnerSchema.Description = redaction.RedactString(redactedInnerSchema.Description)
-		}
-
-		// Redact the actual JSON schema (contains sensitive data model structure)
-		if len(redactedInnerSchema.Schema) > 0 {
-			originalLen := len(redactedInnerSchema.Schema)
-			hash := redaction.ComputeContentHash(string(redactedInnerSchema.Schema))
-			redactedInnerSchema.Schema = []byte(fmt.Sprintf(`{"_redacted":"[REDACTED LENGTH=%d HASH=%s]"}`, originalLen, hash))
-		}
-
-		redactedJSONSchema.JSONSchema = redactedInnerSchema
-		redactedFormat.OfJSONSchema = &redactedJSONSchema
-	}
-
-	// OfText and OfJSONObject don't contain sensitive schema information, just type indicators
-	return &redactedFormat
-}
-
 // redactUserContentPart redacts sensitive content from a user message content part.
 // Handles multiple content types: text, images (URLs or base64), audio, and file attachments.
 func redactUserContentPart(part openai.ChatCompletionContentPartUserUnionParam) openai.ChatCompletionContentPartUserUnionParam {
@@ -607,6 +606,11 @@ func (SpeechEndpointSpec) ParseBody(
 	return req.Model, &req, stream, nil, nil
 }
 
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (SpeechEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *openai.SpeechRequest, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
+}
+
 // GetTranslator implements [EndpointSpec.GetTranslator].
 func (SpeechEndpointSpec) GetTranslator(
 	schema filterapi.VersionedAPISchema,
@@ -638,4 +642,239 @@ func (SpeechEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.SpeechReque
 	}
 
 	return &redacted, nil
+}
+
+// ParseBody implements [Spec.ParseBody]. Transcription uses multipart, so JSON body is not expected.
+func (TranscriptionEndpointSpec) ParseBody(
+	_ []byte, _ bool,
+) (internalapi.OriginalModel, *openai.TranscriptionRequest, bool, []byte, error) {
+	return "", nil, false, nil, fmt.Errorf("%w: expected multipart/form-data content type for /v1/audio/transcriptions", internalapi.ErrMalformedRequest)
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody] for /v1/audio/transcriptions.
+func (TranscriptionEndpointSpec) ParseMultipartBody(
+	body []byte, contentType string, _ bool,
+) (internalapi.OriginalModel, *openai.TranscriptionRequest, bool, []byte, error) {
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse multipart form data: %w", internalapi.ErrMalformedRequest, err)
+	}
+	boundary := params["boundary"]
+	if boundary == "" {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse multipart form data: missing boundary", internalapi.ErrMalformedRequest)
+	}
+
+	reader := multipart.NewReader(bytes.NewReader(body), boundary)
+	var req openai.TranscriptionRequest
+	var hasModel, hasFile bool
+
+	for {
+		part, err := reader.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return "", nil, false, nil, fmt.Errorf("%w: failed to parse multipart form data: %w", internalapi.ErrMalformedRequest, err)
+		}
+
+		switch part.FormName() {
+		case "model":
+			val, err := readFormField(part)
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read model field: %w", internalapi.ErrMalformedRequest, err)
+			}
+			req.Model = val
+			hasModel = true
+		case "file":
+			hasFile = true
+			req.FileName = part.FileName()
+			n, err := io.Copy(io.Discard, part)
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read file field: %w", internalapi.ErrMalformedRequest, err)
+			}
+			req.FileSize = n
+		case "language":
+			val, err := readFormField(part)
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read language field: %w", internalapi.ErrMalformedRequest, err)
+			}
+			req.Language = val
+		case "prompt":
+			val, err := readFormField(part)
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read prompt field: %w", internalapi.ErrMalformedRequest, err)
+			}
+			req.Prompt = val
+		case "response_format":
+			val, err := readFormField(part)
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read response_format field: %w", internalapi.ErrMalformedRequest, err)
+			}
+			req.ResponseFormat = val
+		case "temperature":
+			val, err := readFormField(part)
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read temperature field: %w", internalapi.ErrMalformedRequest, err)
+			}
+			t, parseErr := strconv.ParseFloat(val, 64)
+			if parseErr != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: invalid temperature value %q: %w", internalapi.ErrMalformedRequest, val, parseErr)
+			}
+			req.Temperature = &t
+		case "stream":
+			val, err := readFormField(part)
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read stream field: %w", internalapi.ErrMalformedRequest, err)
+			}
+			req.Stream = strings.EqualFold(val, "true")
+		case "timestamp_granularities[]":
+			val, err := readFormField(part)
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read timestamp_granularities field: %w", internalapi.ErrMalformedRequest, err)
+			}
+			req.TimestampGranularities = append(req.TimestampGranularities, val)
+		}
+	}
+
+	if !hasModel {
+		return "", nil, false, nil, fmt.Errorf("%w: missing required field 'model'", internalapi.ErrMalformedRequest)
+	}
+	if !hasFile {
+		return "", nil, false, nil, fmt.Errorf("%w: missing required field 'file'", internalapi.ErrMalformedRequest)
+	}
+
+	return req.Model, &req, req.Stream, nil, nil
+}
+
+// GetTranslator implements [Spec.GetTranslator].
+func (TranscriptionEndpointSpec) GetTranslator(
+	schema filterapi.VersionedAPISchema, modelNameOverride string,
+) (translator.OpenAIAudioTranscriptionTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewTranscriptionOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema for audio transcription: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [Spec.RedactSensitiveInfoFromRequest].
+func (TranscriptionEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.TranscriptionRequest) (*openai.TranscriptionRequest, error) {
+	redacted := *req
+	redacted.Prompt = redaction.RedactString(req.Prompt)
+	return &redacted, nil
+}
+
+// ParseBody implements [Spec.ParseBody]. Translation uses multipart, so JSON body is not expected.
+func (TranslationEndpointSpec) ParseBody(
+	_ []byte, _ bool,
+) (internalapi.OriginalModel, *openai.TranslationRequest, bool, []byte, error) {
+	return "", nil, false, nil, fmt.Errorf("%w: expected multipart/form-data content type for /v1/audio/translations", internalapi.ErrMalformedRequest)
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody] for /v1/audio/translations.
+// OpenAI's translation endpoint does not support streaming, so the stream return value is
+// always false.
+func (TranslationEndpointSpec) ParseMultipartBody(
+	body []byte, contentType string, _ bool,
+) (internalapi.OriginalModel, *openai.TranslationRequest, bool, []byte, error) {
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse multipart form data: %w", internalapi.ErrMalformedRequest, err)
+	}
+	boundary := params["boundary"]
+	if boundary == "" {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse multipart form data: missing boundary", internalapi.ErrMalformedRequest)
+	}
+
+	reader := multipart.NewReader(bytes.NewReader(body), boundary)
+	var req openai.TranslationRequest
+	var hasModel, hasFile bool
+
+	for {
+		part, err := reader.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return "", nil, false, nil, fmt.Errorf("%w: failed to parse multipart form data: %w", internalapi.ErrMalformedRequest, err)
+		}
+
+		switch part.FormName() {
+		case "model":
+			val, err := readFormField(part)
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read model field: %w", internalapi.ErrMalformedRequest, err)
+			}
+			req.Model = val
+			hasModel = true
+		case "file":
+			hasFile = true
+			req.FileName = part.FileName()
+			n, err := io.Copy(io.Discard, part)
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read file field: %w", internalapi.ErrMalformedRequest, err)
+			}
+			req.FileSize = n
+		case "prompt":
+			val, err := readFormField(part)
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read prompt field: %w", internalapi.ErrMalformedRequest, err)
+			}
+			req.Prompt = val
+		case "response_format":
+			val, err := readFormField(part)
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read response_format field: %w", internalapi.ErrMalformedRequest, err)
+			}
+			req.ResponseFormat = val
+		case "temperature":
+			val, err := readFormField(part)
+			if err != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: failed to read temperature field: %w", internalapi.ErrMalformedRequest, err)
+			}
+			t, parseErr := strconv.ParseFloat(val, 64)
+			if parseErr != nil {
+				return "", nil, false, nil, fmt.Errorf("%w: invalid temperature value %q: %w", internalapi.ErrMalformedRequest, val, parseErr)
+			}
+			req.Temperature = &t
+		}
+	}
+
+	if !hasModel {
+		return "", nil, false, nil, fmt.Errorf("%w: missing required field 'model'", internalapi.ErrMalformedRequest)
+	}
+	if !hasFile {
+		return "", nil, false, nil, fmt.Errorf("%w: missing required field 'file'", internalapi.ErrMalformedRequest)
+	}
+
+	return req.Model, &req, false, nil, nil
+}
+
+// GetTranslator implements [Spec.GetTranslator].
+func (TranslationEndpointSpec) GetTranslator(
+	schema filterapi.VersionedAPISchema, modelNameOverride string,
+) (translator.OpenAIAudioTranslationTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewTranslationOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema for audio translation: backend=%s", schema)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [Spec.RedactSensitiveInfoFromRequest].
+func (TranslationEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.TranslationRequest) (*openai.TranslationRequest, error) {
+	redacted := *req
+	redacted.Prompt = redaction.RedactString(req.Prompt)
+	return &redacted, nil
+}
+
+// readFormField reads the entire value of a multipart form field as a string.
+func readFormField(part *multipart.Part) (string, error) {
+	data, err := io.ReadAll(part)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
