@@ -59,21 +59,34 @@ func TestBuildQuotaRateLimitFilter(t *testing.T) {
 }
 
 func TestBuildQuotaRateLimitCluster(t *testing.T) {
-	const defaultQuotaRateLimitServiceHost = "envoy-ai-gateway-ratelimit.envoy-gateway-system"
-	srv := &Server{
-		quotaRateLimitServiceHost: defaultQuotaRateLimitServiceHost,
-	}
-	cluster := srv.buildQuotaRateLimitCluster()
-	require.Equal(t, quotaRateLimitClusterName, cluster.Name)
-	require.Equal(t, clusterv3.Cluster_STRICT_DNS, cluster.GetType())
-	require.Equal(t, &durationpb.Duration{Seconds: 5}, cluster.ConnectTimeout)
-	require.NotNil(t, cluster.LoadAssignment)
-	require.Len(t, cluster.LoadAssignment.Endpoints, 1)
-	require.Len(t, cluster.LoadAssignment.Endpoints[0].LbEndpoints, 1)
+	t.Run("default port", func(t *testing.T) {
+		srv := &Server{
+			quotaRateLimitServiceHost: "envoy-ai-gateway-ratelimit.envoy-gateway-system",
+			quotaRateLimitServicePort: defaultQuotaRateLimitServicePort,
+		}
+		cluster := srv.buildQuotaRateLimitCluster()
+		require.Equal(t, quotaRateLimitClusterName, cluster.Name)
+		require.Equal(t, clusterv3.Cluster_STRICT_DNS, cluster.GetType())
+		require.Equal(t, &durationpb.Duration{Seconds: 5}, cluster.ConnectTimeout)
+		require.NotNil(t, cluster.LoadAssignment)
+		require.Len(t, cluster.LoadAssignment.Endpoints, 1)
+		require.Len(t, cluster.LoadAssignment.Endpoints[0].LbEndpoints, 1)
 
-	ep := cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].GetEndpoint()
-	require.Equal(t, defaultQuotaRateLimitServiceHost, ep.Address.GetSocketAddress().Address)
-	require.Equal(t, uint32(defaultQuotaRateLimitServicePort), ep.Address.GetSocketAddress().GetPortValue())
+		ep := cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].GetEndpoint()
+		require.Equal(t, "envoy-ai-gateway-ratelimit.envoy-gateway-system", ep.Address.GetSocketAddress().Address)
+		require.Equal(t, uint32(defaultQuotaRateLimitServicePort), ep.Address.GetSocketAddress().GetPortValue())
+	})
+
+	t.Run("custom port", func(t *testing.T) {
+		srv := &Server{
+			quotaRateLimitServiceHost: "custom-ratelimit",
+			quotaRateLimitServicePort: 9090,
+		}
+		cluster := srv.buildQuotaRateLimitCluster()
+		ep := cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].GetEndpoint()
+		require.Equal(t, "custom-ratelimit", ep.Address.GetSocketAddress().Address)
+		require.Equal(t, uint32(9090), ep.Address.GetSocketAddress().GetPortValue())
+	})
 }
 
 func TestInjectQuotaRateLimitFilterIntoListeners(t *testing.T) {

@@ -166,7 +166,7 @@ func (s *Server) buildQuotaRateLimitCluster() *clusterv3.Cluster {
 											SocketAddress: &corev3.SocketAddress{
 												Address: s.quotaRateLimitServiceHost,
 												PortSpecifier: &corev3.SocketAddress_PortValue{
-													PortValue: defaultQuotaRateLimitServicePort,
+													PortValue: s.quotaRateLimitServicePort,
 												},
 											},
 										},

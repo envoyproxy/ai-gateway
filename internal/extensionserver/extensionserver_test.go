@@ -2102,6 +2102,7 @@ func TestQuotaRateLimitConfiguration(t *testing.T) {
 		require.Equal(t, int64(5), s.quotaRateLimitTimeout)
 		require.False(t, s.quotaRateLimitFailureModeDeny)
 		require.Equal(t, "envoy-ai-gateway-ratelimit.envoy-gateway-system", s.quotaRateLimitServiceHost)
+		require.Equal(t, uint32(8081), s.quotaRateLimitServicePort)
 	})
 
 	t.Run("custom quota rate limit timeout", func(t *testing.T) {
@@ -2111,6 +2112,7 @@ func TestQuotaRateLimitConfiguration(t *testing.T) {
 		require.Equal(t, int64(10), s.quotaRateLimitTimeout)
 		require.False(t, s.quotaRateLimitFailureModeDeny)
 		require.Equal(t, "custom-ratelimit-service", s.quotaRateLimitServiceHost)
+		require.Equal(t, uint32(8081), s.quotaRateLimitServicePort)
 	})
 
 	t.Run("quota rate limit with failure mode deny enabled", func(t *testing.T) {
@@ -2120,6 +2122,7 @@ func TestQuotaRateLimitConfiguration(t *testing.T) {
 		require.Equal(t, int64(5), s.quotaRateLimitTimeout)
 		require.True(t, s.quotaRateLimitFailureModeDeny)
 		require.Equal(t, "envoy-ai-gateway-ratelimit.envoy-gateway-system", s.quotaRateLimitServiceHost)
+		require.Equal(t, uint32(8081), s.quotaRateLimitServicePort)
 	})
 
 	t.Run("custom quota rate limit with both parameters", func(t *testing.T) {
@@ -2129,6 +2132,15 @@ func TestQuotaRateLimitConfiguration(t *testing.T) {
 		require.Equal(t, int64(30), s.quotaRateLimitTimeout)
 		require.True(t, s.quotaRateLimitFailureModeDeny)
 		require.Equal(t, "my-custom-ratelimit", s.quotaRateLimitServiceHost)
+		require.Equal(t, uint32(8081), s.quotaRateLimitServicePort)
+	})
+
+	t.Run("custom quota rate limit host with port", func(t *testing.T) {
+		s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "my-custom-ratelimit:9090", 5, false)
+		require.NoError(t, err)
+		require.NotNil(t, s)
+		require.Equal(t, "my-custom-ratelimit", s.quotaRateLimitServiceHost)
+		require.Equal(t, uint32(9090), s.quotaRateLimitServicePort)
 	})
 }
 

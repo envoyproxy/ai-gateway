@@ -8,6 +8,8 @@ package extensionserver
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
 
 	egextension "github.com/envoyproxy/gateway/proto/extension"
 	"github.com/go-logr/logr"
@@ -34,6 +36,8 @@ type Server struct {
 	logRequestHeaderAttributes map[string]string
 	// quotaRateLimitServiceHost is the hostname for the AI Gateway quota rate limit service.
 	quotaRateLimitServiceHost string
+	// quotaRateLimitServicePort is the gRPC port for the AI Gateway quota rate limit service.
+	quotaRateLimitServicePort uint32
 	// quotaRateLimitTimeout is the timeout for the rate limit service.
 	quotaRateLimitTimeout int64
 	// quotaRateLimitFailureModeDeny sets the failure mode for the rate limit filter.
@@ -49,16 +53,41 @@ func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAlo
 	if err != nil {
 		return nil, err
 	}
+
+	host, port, err := parseHostPort(quotaRateLimitServiceHost)
+	if err != nil {
+		return nil, fmt.Errorf("invalid quotaRateLimitServiceHost %q: %w", quotaRateLimitServiceHost, err)
+	}
+
 	return &Server{
 		log:                           logger,
 		k8sClient:                     k8sClient,
 		udsPath:                       udsPath,
 		isStandAloneMode:              isStandAloneMode,
 		logRequestHeaderAttributes:    logAttrs,
-		quotaRateLimitServiceHost:     quotaRateLimitServiceHost,
+		quotaRateLimitServiceHost:     host,
+		quotaRateLimitServicePort:     port,
 		quotaRateLimitTimeout:         quotaRateLimitTimeout,
 		quotaRateLimitFailureModeDeny: quotaRateLimitFailureModeDeny,
 	}, nil
+}
+
+// parseHostPort splits a "host:port" string. If no port is present,
+// defaultQuotaRateLimitServicePort is used.
+func parseHostPort(hostPort string) (string, uint32, error) {
+	host, portStr, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		// No port specified — use the default.
+		return hostPort, defaultQuotaRateLimitServicePort, nil
+	}
+	port, err := strconv.ParseUint(portStr, 10, 32)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid port %q: %w", portStr, err)
+	}
+	if port == 0 {
+		return "", 0, fmt.Errorf("port must be non-zero")
+	}
+	return host, uint32(port), nil
 }
 
 // Check implements [grpc_health_v1.HealthServer].

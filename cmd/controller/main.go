@@ -237,7 +237,7 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 	mcpFallbackSessionEncryptionIterations := fs.Int("mcpFallbackSessionEncryptionIterations", 100_000,
 		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
 	quotaRateLimitServiceHost := fs.String("quotaRateLimitServiceHost", "envoy-ai-gateway-ratelimit.envoy-gateway-system",
-		"Hostname for the AI Gateway quota rate limit service.")
+		"Host (or host:port) for the AI Gateway quota rate limit service. If no port is specified, 8081 is used.")
 	quotaRateLimitTimeout := fs.Int64("quotaRateLimitTimeout", 5,
 		"Timeout in seconds for the quota rate limit service.")
 	quotaRateLimitFailureModeDeny := fs.Bool("quotaRateLimitFailureModeDeny", false,
