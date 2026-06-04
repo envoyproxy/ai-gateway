@@ -1769,6 +1769,30 @@ func TestBuildDynamicMetadata_routeScoped(t *testing.T) {
 			routeName:      "ns/paid",
 			wantCostValues: map[string]float64{"billing": 3},
 		},
+		{
+			name: "model filter skips non-matching model",
+			requestCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "quota_cost", RouteName: "ns/r", Type: filterapi.LLMRequestCostTypeInputToken, Model: "claude"}},
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "quota_cost", RouteName: "ns/r", Type: filterapi.LLMRequestCostTypeTotalToken, Model: "gpt-4"}},
+			},
+			inputTokens:    10,
+			totalTokens:    25,
+			requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"},
+			backendName:    "be",
+			routeName:      "ns/r",
+			wantCostValues: map[string]float64{"quota_cost": 25},
+		},
+		{
+			name: "empty model field matches any model",
+			requestCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "cost", RouteName: "ns/r", Type: filterapi.LLMRequestCostTypeInputToken, Model: ""}},
+			},
+			inputTokens:    7,
+			requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "any-model"},
+			backendName:    "be",
+			routeName:      "ns/r",
+			wantCostValues: map[string]float64{"cost": 7},
+		},
 	}
 
 	for _, tt := range tests {

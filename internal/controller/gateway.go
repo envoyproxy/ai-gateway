@@ -841,22 +841,22 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 					"policy", qp.Name, "model", *pmq.ModelName, "expression", expr)
 				continue
 			}
-			metadataKey := QuotaCostMetadataKey(*pmq.ModelName)
-			// One LLMRequestCost per target backend with the Backend filter.
-			// ext_proc only evaluates the entry matching the serving backend,
+			// One LLMRequestCost per target backend with the Backend and Model filters.
+			// ext_proc only evaluates the entry matching the serving backend and model,
 			// storing the result under the shared metadata key.
 			for _, ref := range qp.Spec.TargetRefs {
 				backendKey := route.Namespace + "/" + string(ref.Name)
-				dedupeKey := metadataKey + "\x00" + backendKey
+				dedupeKey := QuotaCostMetadataKey + "\x00" + *pmq.ModelName + "\x00" + backendKey
 				if _, exists := injectedQuotaCosts[dedupeKey]; exists {
 					continue
 				}
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, filterapi.LLMRequestCost{
 					Type:        filterapi.LLMRequestCostTypeCEL,
-					MetadataKey: metadataKey,
+					MetadataKey: QuotaCostMetadataKey,
 					CEL:         expr,
 					Backend:     backendKey,
 					RouteName:   routeName,
+					Model:       *pmq.ModelName,
 				})
 				injectedQuotaCosts[dedupeKey] = struct{}{}
 			}
@@ -864,13 +864,11 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 	}
 }
 
-// QuotaCostMetadataKey returns the dynamic metadata key used to store a
-// QuotaPolicy's computed cost for a given model. This key is shared between
-// the gateway controller (injecting LLMRequestCost) and the extension server
-// (building HitsAddend).
-func QuotaCostMetadataKey(modelName string) string {
-	return "quota_cost_" + modelName
-}
+// QuotaCostMetadataKey is the dynamic metadata key used to store a
+// QuotaPolicy's computed cost. A single key suffices because only one model
+// is active per request, and ext_proc filters cost entries by Model before
+// writing to this key.
+const QuotaCostMetadataKey = "quota_cost"
 
 // backendWithMaybeBSP retrieves the AIServiceBackend and its associated BackendSecurityPolicy if it exists.
 func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, name string) (backend *aigv1b1.AIServiceBackend, bsp *aigv1b1.BackendSecurityPolicy, err error) {

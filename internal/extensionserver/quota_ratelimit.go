@@ -48,9 +48,9 @@ const (
 	// defaultQuotaRateLimitServicePort is the default gRPC port for the rate limit service.
 	defaultQuotaRateLimitServicePort = 8081
 
-	// quotaCostMetadataKeyPrefix is the prefix for dynamic metadata keys where ext_proc
-	// stores computed quota costs. The full key is "quota_cost_<modelName>".
-	quotaCostMetadataKeyPrefix = "quota_cost_"
+	// quotaCostMetadataKey is the dynamic metadata key where ext_proc stores
+	// the computed quota cost for the current request.
+	quotaCostMetadataKey = "quota_cost"
 )
 
 // maybeInjectQuotaRateLimiting injects the rate limit HTTP filter into the HCM
@@ -567,46 +567,46 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 				entries := buildSimpleModelEntries(modelName, policy.Namespace, policy.Spec.TargetRefs, backendModels)
 				rateLimitActions = append(rateLimitActions, entries...)
 				// Simple case: 2-level stream-done (backend_name + model_name_override).
-				if !seenStreamDoneKeys[modelName] {
-					seenStreamDoneKeys[modelName] = true
+				// All simple entries are identical (metadata-only actions, same hits_addend).
+				const simpleStreamDoneKey = "_simple_"
+				if !seenStreamDoneKeys[simpleStreamDoneKey] {
+					seenStreamDoneKeys[simpleStreamDoneKey] = true
 					streamDoneActions = append(streamDoneActions, &routev3.RateLimit{
 						Actions:           baseDescriptorActions(),
-						HitsAddend:        quotaHitsAddend(modelName),
+						HitsAddend:        quotaHitsAddend(),
 						ApplyOnStreamDone: true,
 					})
 				}
 			} else if len(pmq.Quota.BucketRules) > 0 {
 				bucketActions := buildBucketRuleLimitEntries(modelName, policy.Namespace, &pmq.Quota, policy.Spec.TargetRefs, backendModels)
 				rateLimitActions = append(rateLimitActions, bucketActions...)
-				// Bucket rules: one stream-done per (target, rule, full header set).
-				// The dedup key covers all sorted headers so rules with
-				// different selector sets are never collapsed.
+				// Bucket rules: one stream-done per unique rule/header structure.
+				// Stream-done actions read backend/model from dynamic metadata and
+				// hits_addend uses a single quota_cost key, so entries are identical
+				// regardless of target or model.
 				for rIdx, rule := range pmq.Quota.BucketRules {
 					headers := flattenAndSortClientSelectorHeaders(rule.ClientSelectors)
-					for _, target := range policy.Spec.TargetRefs {
-						targetName := string(target.Name)
-						dupKey := targetName + "|" + modelName
-						for mIdx, hdr := range headers {
-							dupKey += "|" + translator.BucketRuleDescriptorKey(rIdx, mIdx, hdr.Name, headerMatchKeyValue(hdr))
-						}
-						if len(headers) == 0 {
-							dupKey += "|" + translator.BucketRuleDescriptorKey(rIdx, 0, "", "")
-						}
-						if !seenStreamDoneKeys[dupKey] {
-							seenStreamDoneKeys[dupKey] = true
-							clientActions := buildClientSelectorStreamDoneActions(rIdx, rule.ClientSelectors)
-							streamDoneActions = append(streamDoneActions, &routev3.RateLimit{
-								Actions:           append(baseDescriptorActions(), clientActions...),
-								HitsAddend:        quotaHitsAddend(modelName),
-								ApplyOnStreamDone: true,
-							})
-						}
+					var dupKey string
+					for mIdx, hdr := range headers {
+						dupKey += "|" + translator.BucketRuleDescriptorKey(rIdx, mIdx, hdr.Name, headerMatchKeyValue(hdr))
+					}
+					if len(headers) == 0 {
+						dupKey += "|" + translator.BucketRuleDescriptorKey(rIdx, 0, "", "")
+					}
+					if !seenStreamDoneKeys[dupKey] {
+						seenStreamDoneKeys[dupKey] = true
+						clientActions := buildClientSelectorStreamDoneActions(rIdx, rule.ClientSelectors)
+						streamDoneActions = append(streamDoneActions, &routev3.RateLimit{
+							Actions:           append(baseDescriptorActions(), clientActions...),
+							HitsAddend:        quotaHitsAddend(),
+							ApplyOnStreamDone: true,
+						})
 					}
 				}
 				// Default bucket: 3-level stream-done with GenericKey (always fires).
 				if pmq.Quota.DefaultBucket.Limit > 0 {
 					defaultKey := translator.DefaultBucketDescriptorKey(len(pmq.Quota.BucketRules))
-					dupDefaultKey := modelName + "|" + defaultKey
+					dupDefaultKey := defaultKey
 					if !seenStreamDoneKeys[dupDefaultKey] {
 						seenStreamDoneKeys[dupDefaultKey] = true
 						streamDoneActions = append(streamDoneActions, &routev3.RateLimit{
@@ -618,7 +618,7 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 									},
 								},
 							}),
-							HitsAddend:        quotaHitsAddend(modelName),
+							HitsAddend:        quotaHitsAddend(),
 							ApplyOnStreamDone: true,
 						})
 					}
@@ -710,12 +710,11 @@ func buildSimpleModelEntries(modelName, policyNamespace string, targets []gwapiv
 }
 
 // quotaHitsAddend returns the HitsAddend that reads the quota cost from dynamic
-// metadata stored by the ext_proc filter. The metadata key is derived from the
-// model name (quota_cost_<modelName>) matching what the gateway controller injects.
-func quotaHitsAddend(modelName string) *routev3.RateLimit_HitsAddend {
+// metadata stored by the ext_proc filter.
+func quotaHitsAddend() *routev3.RateLimit_HitsAddend {
 	return &routev3.RateLimit_HitsAddend{
-		Format: fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s%s)%%",
-			aigv1b1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKeyPrefix, modelName),
+		Format: fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s)%%",
+			aigv1b1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey),
 	}
 }
 

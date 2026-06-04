@@ -415,9 +415,9 @@ func TestEnableQuotaRateLimitOnRoute_DescriptorChain(t *testing.T) {
 }
 
 func TestQuotaHitsAddend(t *testing.T) {
-	ha := quotaHitsAddend("gpt-4")
+	ha := quotaHitsAddend()
 	require.NotNil(t, ha)
-	expectedFormat := fmt.Sprintf("%%DYNAMIC_METADATA(%s:%sgpt-4)%%", aigv1b1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKeyPrefix)
+	expectedFormat := fmt.Sprintf("%%DYNAMIC_METADATA(%s:%s)%%", aigv1b1.AIGatewayFilterMetadataNamespace, quotaCostMetadataKey)
 	require.Equal(t, expectedFormat, ha.Format)
 }
 
@@ -860,8 +860,8 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 		require.NoError(t, route.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
 		// gpt-4: 1 bucket req + 1 default req = 2; claude: 1 bucket req = 1;
-		// + 3 stream-done (gpt-4 rule, gpt-4 default, claude rule) = 6
-		require.Len(t, perRoute.RateLimits, 6)
+		// + 2 stream-done (rule-0 deduped across models, gpt-4 default) = 5
+		require.Len(t, perRoute.RateLimits, 5)
 	})
 
 	t.Run("nil model name in per-model quota is skipped", func(t *testing.T) {
@@ -1132,9 +1132,9 @@ func TestEnableQuotaRateLimitOnRoute_WithBucketRules(t *testing.T) {
 
 		// Policy 1: 1 bucket req + 1 default req = 2
 		// Policy 2: 1 bucket req + 1 default req = 2
-		// Stream-done: 2 bucket rules (different backends → different keys, not deduped) + 1 default (deduped) = 3
-		// Total: 4 req-time + 3 stream-done = 7
-		require.Len(t, perRoute.RateLimits, 7)
+		// Stream-done: 1 bucket rule (same model+headers deduped across backends) + 1 default = 2
+		// Total: 4 req-time + 2 stream-done = 6
+		require.Len(t, perRoute.RateLimits, 6)
 	})
 
 	t.Run("nil policies list", func(t *testing.T) {
@@ -1358,8 +1358,8 @@ func TestEnableQuotaRateLimitOnRoute_MultiplePerModelQuotas(t *testing.T) {
 		perRoute := &ratelimitfilterv3.RateLimitPerRoute{}
 		require.NoError(t, route2.TypedPerFilterConfig[quotaRateLimitFilterName].UnmarshalTo(perRoute))
 
-		// Both models included: 2 req-time + 2 stream-done at end = 4.
-		require.Len(t, perRoute.RateLimits, 4)
+		// Both models included: 2 req-time + 1 stream-done (simple deduped across models) = 3.
+		require.Len(t, perRoute.RateLimits, 3)
 	})
 
 	t.Run("model with bucket rules and model without are handled correctly", func(t *testing.T) {
@@ -1412,9 +1412,9 @@ func TestEnableQuotaRateLimitOnRoute_MultiplePerModelQuotas(t *testing.T) {
 
 		// claude-sonnet-4-6 with bucket rules: 2 targets × (1 bucket + 1 default) = 4 req-time
 		// claude-haiku-4-5 simple: 2 targets × 1 = 2 req-time
-		// stream-done: 2 sonnet rule (one per target) + 1 sonnet default + 1 haiku simple = 4
-		// Total: 6 + 4 = 10
-		require.Len(t, perRoute.RateLimits, 10)
+		// stream-done: 1 sonnet rule (deduped across targets) + 1 sonnet default + 1 haiku simple = 3
+		// Total: 6 + 3 = 9
+		require.Len(t, perRoute.RateLimits, 9)
 
 		// Verify sonnet bucket rule uses policy model name (not ModelNameOverride).
 		sonnetBucketReqTime := perRoute.RateLimits[0]
@@ -1428,7 +1428,7 @@ func TestEnableQuotaRateLimitOnRoute_MultiplePerModelQuotas(t *testing.T) {
 		require.NotNil(t, sdHvm)
 		require.Equal(t, translator.BucketRuleDescriptorKey(0, 0, "x-tier", "premium"), sdHvm.DescriptorKey)
 
-		sonnetDefaultSD := perRoute.RateLimits[8]
+		sonnetDefaultSD := perRoute.RateLimits[7]
 		require.True(t, sonnetDefaultSD.ApplyOnStreamDone)
 		sdGk := sonnetDefaultSD.Actions[2].GetGenericKey()
 		require.NotNil(t, sdGk)

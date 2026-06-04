@@ -802,6 +802,8 @@ func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCos
 		shortBackend = parts[0] + "/" + parts[1]
 	}
 
+	actualModel := requestHeaders[internalapi.ModelNameHeaderKeyDefault]
+
 	// First, process route-scoped costs that match this route.
 	// Route-scoped costs must have a RouteName set (validated at runtime config creation).
 	for i := range requestCosts {
@@ -810,6 +812,9 @@ func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCos
 			continue
 		}
 		if rc.RouteName != routeName {
+			continue
+		}
+		if rc.Model != "" && rc.Model != actualModel {
 			continue
 		}
 		cost, err := evalRuntimeRequestCost(rc, costs, requestHeaders, backendName, routeName)
@@ -833,9 +838,6 @@ func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCos
 		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
 	}
 
-	// Add the actual request model that was used (after any backend overrides were applied).
-	// At this point, the header contains the final model that was sent to the upstream.
-	actualModel := requestHeaders[internalapi.ModelNameHeaderKeyDefault]
 	metadata["model_name_override"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: actualModel}}
 
 	if backendName != "" {
