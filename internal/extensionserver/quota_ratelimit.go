@@ -458,10 +458,11 @@ func (s *Server) backendKeysForCluster(ctx context.Context, clusterName string) 
 
 // routeModelInfo holds the resolved model information for an Envoy route.
 type routeModelInfo struct {
-	// backendModels maps backend name → ModelNameOverride from the AIGatewayRoute.
+	// backendModels maps backend name → ModelNameOverrides from the AIGatewayRoute.
+	// A single backend may appear multiple times in a rule with different overrides.
 	// Used for filtering (a QuotaPolicy's target+modelName must match) and for
 	// request-time descriptors (the actual value ext_proc will set).
-	backendModels map[string]string
+	backendModels map[string][]string
 }
 
 // resolveRouteModelInfo determines the model information for an Envoy route by
@@ -473,8 +474,9 @@ func (s *Server) resolveRouteModelInfo(ctx context.Context, route *routev3.Route
 	}
 
 	info := &routeModelInfo{
-		backendModels: make(map[string]string),
+		backendModels: make(map[string][]string),
 	}
+	seen := make(map[string]map[string]bool)
 
 	collectFromCluster := func(clusterName string) {
 		resolved := s.resolveClusterRule(ctx, clusterName)
@@ -484,7 +486,13 @@ func (s *Server) resolveRouteModelInfo(ctx context.Context, route *routev3.Route
 
 		for _, br := range resolved.rule.BackendRefs {
 			if br.ModelNameOverride != "" {
-				info.backendModels[br.Name] = br.ModelNameOverride
+				if seen[br.Name] == nil {
+					seen[br.Name] = make(map[string]bool)
+				}
+				if !seen[br.Name][br.ModelNameOverride] {
+					seen[br.Name][br.ModelNameOverride] = true
+					info.backendModels[br.Name] = append(info.backendModels[br.Name], br.ModelNameOverride)
+				}
 			}
 		}
 	}
@@ -518,7 +526,7 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 	var streamDoneActions []*routev3.RateLimit
 	seenStreamDoneKeys := make(map[string]bool)
 
-	var backendModels map[string]string
+	var backendModels map[string][]string
 	if modelInfo != nil {
 		backendModels = modelInfo.backendModels
 	}
@@ -538,9 +546,16 @@ func enableQuotaRateLimitOnRoute(_ logr.Logger, route *routev3.Route, policies [
 				matched := false
 				for _, target := range policy.Spec.TargetRefs {
 					targetName := string(target.Name)
-					if override, ok := modelInfo.backendModels[targetName]; ok && override == modelName {
-						matched = true
-						break
+					if overrides, ok := modelInfo.backendModels[targetName]; ok {
+						for _, override := range overrides {
+							if override == modelName {
+								matched = true
+								break
+							}
+						}
+						if matched {
+							break
+						}
 					}
 				}
 				if !matched {
@@ -674,7 +689,7 @@ func baseDescriptorActions() []*routev3.RateLimit_Action {
 // buildSimpleModelEntries creates RateLimit entries for a model with no bucket rules.
 // Produces 2-level descriptors (backend_name, model_name_override) matching the
 // translator's simple case where rate_limit is directly on the model descriptor.
-func buildSimpleModelEntries(modelName, policyNamespace string, targets []gwapiv1a2.LocalPolicyTargetReference, routeModelNames map[string]string) []*routev3.RateLimit {
+func buildSimpleModelEntries(modelName, policyNamespace string, targets []gwapiv1a2.LocalPolicyTargetReference, routeModelNames map[string][]string) []*routev3.RateLimit {
 	var entries []*routev3.RateLimit
 
 	// Request-time entries only. Stream-done is added once per model in enableQuotaRateLimitOnRoute.
@@ -705,7 +720,7 @@ func quotaHitsAddend(modelName string) *routev3.RateLimit_HitsAddend {
 //
 // Action order matches the translator's service config tree:
 // backend_name (Level 0) → model_name_override (Level 1) → bucket_rule_key (Level 2)
-func buildBucketRuleLimitEntries(modelName, policyNamespace string, quota *aigv1a1.QuotaDefinition, targets []gwapiv1a2.LocalPolicyTargetReference, routeModelNames map[string]string) []*routev3.RateLimit {
+func buildBucketRuleLimitEntries(modelName, policyNamespace string, quota *aigv1a1.QuotaDefinition, targets []gwapiv1a2.LocalPolicyTargetReference, routeModelNames map[string][]string) []*routev3.RateLimit {
 	var entries []*routev3.RateLimit
 
 	for _, target := range targets {
@@ -738,12 +753,15 @@ func buildBucketRuleLimitEntries(modelName, policyNamespace string, quota *aigv1
 }
 
 // resolveModelName returns the model name to use for request-time descriptors.
-// If routeModelNames has an entry for the backend, that value is used (the actual
-// ModelNameOverride from the AIGatewayRoute). Otherwise falls back to the
-// QuotaPolicy's modelName.
-func resolveModelName(backendName, fallback string, routeModelNames map[string]string) string {
-	if m, ok := routeModelNames[backendName]; ok {
-		return m
+// If routeModelNames has an entry for the backend that matches fallback, that
+// value is used. Otherwise falls back to the QuotaPolicy's modelName.
+func resolveModelName(backendName, fallback string, routeModelNames map[string][]string) string {
+	if models, ok := routeModelNames[backendName]; ok {
+		for _, m := range models {
+			if m == fallback {
+				return m
+			}
+		}
 	}
 	return fallback
 }
