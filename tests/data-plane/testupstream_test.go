@@ -1188,6 +1188,17 @@ data: {"type":"message_stop","amazon-bedrock-invocationMetrics":{"inputTokenCoun
 			expResponseBody: `{"id":"resp_67cc","object":"response","created_at":1741476542,"status":"completed","model":"something","output":[{"type":"message","id":"msg_67c","status":"completed","role":"assistant","content":[{"type":"output_text","text":"This is a test."}]}],"parallel_tool_calls":true,"store":true,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","top_p":1,"truncation":"disabled","usage":{"input_tokens":16,"input_tokens_details":{"cached_tokens":5},"output_tokens":6,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":22}}`,
 		},
 		{
+			name:            "azure-openai - /v1/responses",
+			backend:         "azure-openai",
+			path:            "/v1/responses",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"something","input": "Say this is a test."}`,
+			expPath:         "/openai/responses",
+			responseBody:    `{"id":"resp_67cc","object":"response","created_at":1741476542,"status":"completed","model":"something","output":[{"type":"message","id":"msg_67c","status":"completed","role":"assistant","content":[{"type":"output_text","text":"This is a test."}]}],"parallel_tool_calls":true,"store":true,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","top_p":1,"truncation":"disabled","usage":{"input_tokens":16,"input_tokens_details":{"cached_tokens":5},"output_tokens":6,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":22}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"id":"resp_67cc","object":"response","created_at":1741476542,"status":"completed","model":"something","output":[{"type":"message","id":"msg_67c","status":"completed","role":"assistant","content":[{"type":"output_text","text":"This is a test."}]}],"parallel_tool_calls":true,"store":true,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","top_p":1,"truncation":"disabled","usage":{"input_tokens":16,"input_tokens_details":{"cached_tokens":5},"output_tokens":6,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":22}}`,
+		},
+		{
 			name:           "openai - /v1/responses - stream",
 			backend:        "openai",
 			path:           "/v1/responses",

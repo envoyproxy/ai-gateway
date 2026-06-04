@@ -1296,8 +1296,9 @@ type (
 	// ThinkingEnabled enables extended thinking with a token budget.
 	// https://platform.claude.com/docs/en/api/messages#thinking_config_enabled
 	ThinkingEnabled struct {
-		Type         string  `json:"type"`          // Always "enabled".
-		BudgetTokens float64 `json:"budget_tokens"` // Must be >= 1024 and < max_tokens.
+		Type         string  `json:"type"`              // Always "enabled".
+		BudgetTokens float64 `json:"budget_tokens"`     // Must be >= 1024 and < max_tokens.
+		Display      string  `json:"display,omitempty"` // "summarized" or "omitted".
 	}
 
 	// ThinkingDisabled disables extended thinking.
@@ -1309,7 +1310,8 @@ type (
 	// ThinkingAdaptive lets the model decide whether to use extended thinking.
 	// https://platform.claude.com/docs/en/api/messages#thinking_config_adaptive
 	ThinkingAdaptive struct {
-		Type string `json:"type"` // Always "adaptive".
+		Type    string `json:"type"`              // Always "adaptive".
+		Display string `json:"display,omitempty"` // "summarized" or "omitted".
 	}
 )
 
