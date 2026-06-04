@@ -1079,6 +1079,18 @@ func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 			},
 			expectedError: "failed to get secret missing-aws-secret",
 		},
+		{
+			name:    "aws credentials type with nil AWSCredentials",
+			bspName: "aws-nil-creds-bsp",
+			bsp: &aigv1b1.BackendSecurityPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "aws-nil-creds-bsp", Namespace: namespace},
+				Spec: aigv1b1.BackendSecurityPolicySpec{
+					Type:           aigv1b1.BackendSecurityPolicyTypeAWSCredentials,
+					AWSCredentials: nil,
+				},
+			},
+			expectedError: "AWSCredentials is nil for BackendSecurityPolicy aws-nil-creds-bsp",
+		},
 	}
 
 	for _, tt := range tests {

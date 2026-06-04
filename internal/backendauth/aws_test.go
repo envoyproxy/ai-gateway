@@ -303,6 +303,12 @@ func TestInferAWSServiceFromHost(t *testing.T) {
 		{name: "host with port", host: "bedrock-mantle.us-east-2.api.aws:443", want: "bedrock"},
 		{name: "unknown aws", host: "execute-api.us-east-1.amazonaws.com", want: "execute-api"},
 		{name: "empty", host: "", want: "bedrock"},
+		{name: "localhost", host: "localhost", want: "bedrock"},
+		{name: "localhost with port", host: "localhost:8080", want: "bedrock"},
+		{name: "ipv4 address", host: "192.168.1.1", want: "bedrock"},
+		{name: "ipv4 address with port", host: "192.168.1.1:8080", want: "bedrock"},
+		{name: "ipv6 address", host: "::1", want: "bedrock"},
+		{name: "ipv6 address with port", host: "[::1]:8080", want: "bedrock"},
 	}
 
 	for _, tt := range tests {

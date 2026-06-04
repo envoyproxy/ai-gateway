@@ -156,11 +156,16 @@ func inferAWSServiceFromHost(host string) string {
 		h = parsedHost
 	}
 
-	if strings.HasPrefix(h, "bedrock-runtime.") || strings.HasPrefix(h, "bedrock-mantle.") || strings.HasPrefix(h, "bedrock.") {
+	if h == "" || h == "localhost" {
 		return "bedrock"
 	}
 
-	if h == "" {
+	// Fall back to "bedrock" for bare IP addresses (v4 or v6).
+	if net.ParseIP(h) != nil {
+		return "bedrock"
+	}
+
+	if strings.HasPrefix(h, "bedrock-runtime.") || strings.HasPrefix(h, "bedrock-mantle.") || strings.HasPrefix(h, "bedrock.") {
 		return "bedrock"
 	}
 

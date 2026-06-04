@@ -696,6 +696,9 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		return &filterapi.BackendAuth{AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: apiKey}}, nil
 	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
 		awsCred := backendSecurityPolicy.Spec.AWSCredentials
+		if awsCred == nil {
+			return nil, fmt.Errorf("AWSCredentials is nil for BackendSecurityPolicy %s", backendSecurityPolicy.Name)
+		}
 		service := ""
 		signingHost := ""
 		if awsCred.Service != nil {
