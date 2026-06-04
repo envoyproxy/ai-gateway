@@ -17,6 +17,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
@@ -59,7 +60,7 @@ func newTestRunner(t *testing.T) *runner.Runner {
 func TestQuotaPolicyController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesForQuotaPolicy(t)
 	rateLimitRunner := newTestRunner(t)
-	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner)
+	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner, make(chan event.GenericEvent, 100))
 	namespace := "default"
 
 	// Create an AIServiceBackend.
@@ -111,7 +112,7 @@ func TestQuotaPolicyController_Reconcile(t *testing.T) {
 func TestQuotaPolicyController_Reconcile_NotFound(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesForQuotaPolicy(t)
 	rateLimitRunner := newTestRunner(t)
-	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner)
+	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner, make(chan event.GenericEvent, 100))
 
 	// Reconcile a non-existent QuotaPolicy - this triggers the deletion path
 	// (rebuilds all configs, which should succeed with no policies).
@@ -126,7 +127,7 @@ func TestQuotaPolicyController_Reconcile_SyncError(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesForQuotaPolicy(t)
 	// Use a runner whose cache is not initialized to trigger UpdateConfigs error.
 	uninitializedRunner := runner.New(ctrl.Log, 0)
-	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, uninitializedRunner)
+	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, uninitializedRunner, make(chan event.GenericEvent, 100))
 	namespace := "default"
 
 	// Create an AIServiceBackend.
@@ -175,7 +176,7 @@ func TestQuotaPolicyController_Reconcile_SyncError(t *testing.T) {
 func TestQuotaPolicyController_Reconcile_InvalidDuration(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesForQuotaPolicy(t)
 	rateLimitRunner := newTestRunner(t)
-	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner)
+	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner, make(chan event.GenericEvent, 100))
 	namespace := "default"
 
 	// Create an AIServiceBackend.
@@ -225,7 +226,7 @@ func TestQuotaPolicyController_Reconcile_InvalidDuration(t *testing.T) {
 func TestQuotaPolicyController_Reconcile_Deletion(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesForQuotaPolicy(t)
 	rateLimitRunner := newTestRunner(t)
-	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner)
+	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner, make(chan event.GenericEvent, 100))
 	namespace := "default"
 
 	// Create an AIServiceBackend.
@@ -284,7 +285,7 @@ func TestQuotaPolicyController_Reconcile_Deletion(t *testing.T) {
 func TestQuotaPolicyController_Reconcile_MultipleBackends(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesForQuotaPolicy(t)
 	rateLimitRunner := newTestRunner(t)
-	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner)
+	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner, make(chan event.GenericEvent, 100))
 	namespace := "default"
 
 	// Create two AIServiceBackends.
@@ -339,7 +340,7 @@ func TestQuotaPolicyController_Reconcile_MultipleBackends(t *testing.T) {
 func TestQuotaPolicyController_Reconcile_PerModelQuotas(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesForQuotaPolicy(t)
 	rateLimitRunner := newTestRunner(t)
-	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner)
+	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner, make(chan event.GenericEvent, 100))
 	namespace := "default"
 
 	backend := &aigv1b1.AIServiceBackend{
@@ -392,7 +393,7 @@ func TestQuotaPolicyController_Reconcile_PerModelQuotas(t *testing.T) {
 func TestQuotaPolicyController_BackendToQuotaPolicy(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesForQuotaPolicy(t)
 	rateLimitRunner := newTestRunner(t)
-	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner)
+	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner, make(chan event.GenericEvent, 100))
 	namespace := "default"
 
 	// Create QuotaPolicies targeting different backends.
@@ -481,7 +482,7 @@ func TestQuotaPolicyController_BackendToQuotaPolicy(t *testing.T) {
 func TestQuotaPolicyController_Reconcile_MultiplePolicies(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesForQuotaPolicy(t)
 	rateLimitRunner := newTestRunner(t)
-	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner)
+	c := NewQuotaPolicyController(fakeClient, fake2.NewClientset(), ctrl.Log, rateLimitRunner, make(chan event.GenericEvent, 100))
 	namespace := "default"
 
 	// Create backends.

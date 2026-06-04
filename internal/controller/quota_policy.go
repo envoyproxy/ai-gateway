@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
@@ -28,10 +29,11 @@ import (
 
 // QuotaPolicyController implements [reconcile.TypedReconciler] for [aigv1a1.QuotaPolicy].
 type QuotaPolicyController struct {
-	client          client.Client
-	kube            kubernetes.Interface
-	logger          logr.Logger
-	rateLimitRunner *runner.Runner
+	client             client.Client
+	kube               kubernetes.Interface
+	logger             logr.Logger
+	rateLimitRunner    *runner.Runner
+	aiGatewayRouteChan chan event.GenericEvent
 	// configCache stores rate limit configs per QuotaPolicy namespace/name.
 	// This allows incremental updates when only one policy changes.
 	configCache map[string][]*rlsconfv3.RateLimitConfig
@@ -44,13 +46,15 @@ func NewQuotaPolicyController(
 	kube kubernetes.Interface,
 	logger logr.Logger,
 	rateLimitRunner *runner.Runner,
+	aiGatewayRouteChan chan event.GenericEvent,
 ) *QuotaPolicyController {
 	return &QuotaPolicyController{
-		client:          client,
-		kube:            kube,
-		logger:          logger,
-		rateLimitRunner: rateLimitRunner,
-		configCache:     make(map[string][]*rlsconfv3.RateLimitConfig),
+		client:             client,
+		kube:               kube,
+		logger:             logger,
+		rateLimitRunner:    rateLimitRunner,
+		aiGatewayRouteChan: aiGatewayRouteChan,
+		configCache:        make(map[string][]*rlsconfv3.RateLimitConfig),
 	}
 }
 
@@ -61,8 +65,11 @@ func (c *QuotaPolicyController) Reconcile(ctx context.Context, req reconcile.Req
 		if client.IgnoreNotFound(err) == nil {
 			c.logger.Info("Deleting QuotaPolicy",
 				"namespace", req.Namespace, "name", req.Name)
-			// On deletion, remove from cache and update xDS.
-			return ctrl.Result{}, c.deleteQuotaPolicyConfig(ctx, req.NamespacedName)
+			if err = c.deleteQuotaPolicyConfig(ctx, req.NamespacedName); err != nil {
+				return ctrl.Result{}, err
+			}
+			c.notifyAllAIGatewayRoutesInNamespace(ctx, req.Namespace)
+			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
@@ -80,6 +87,7 @@ func (c *QuotaPolicyController) Reconcile(ctx context.Context, req reconcile.Req
 		return ctrl.Result{}, err
 	}
 	c.updateQuotaPolicyStatus(ctx, &quotaPolicy, aigv1a1.ConditionTypeAccepted, "QuotaPolicy reconciled successfully")
+	c.notifyAIGatewayRoutes(ctx, &quotaPolicy)
 	return ctrl.Result{}, nil
 }
 
@@ -198,6 +206,46 @@ func (c *QuotaPolicyController) BackendToQuotaPolicy(ctx context.Context, obj cl
 		})
 	}
 	return requests
+}
+
+// notifyAIGatewayRoutes sends events to the AIGatewayRoute controller for all
+// routes that reference the backends targeted by the given QuotaPolicy.
+// This triggers re-reconciliation of the HTTPRoute, which causes Envoy Gateway
+// to re-translate xDS and call PostTranslateModify with the updated QuotaPolicy.
+func (c *QuotaPolicyController) notifyAIGatewayRoutes(ctx context.Context, policy *aigv1a1.QuotaPolicy) {
+	for _, ref := range policy.Spec.TargetRefs {
+		key := fmt.Sprintf("%s.%s", ref.Name, policy.Namespace)
+		var aiGatewayRoutes aigv1b1.AIGatewayRouteList
+		if err := c.client.List(ctx, &aiGatewayRoutes,
+			client.MatchingFields{k8sClientIndexBackendToReferencingAIGatewayRoute: key}); err != nil {
+			c.logger.Error(err, "failed to list AIGatewayRoutes for backend", "backend", key)
+			continue
+		}
+		for i := range aiGatewayRoutes.Items {
+			route := &aiGatewayRoutes.Items[i]
+			c.logger.Info("notifying AIGatewayRoute of QuotaPolicy change",
+				"route", route.Name, "namespace", route.Namespace,
+				"quotaPolicy", policy.Name)
+			c.aiGatewayRouteChan <- event.GenericEvent{Object: route}
+		}
+	}
+}
+
+// notifyAllAIGatewayRoutesInNamespace sends events for all AIGatewayRoutes in
+// the given namespace. Used on QuotaPolicy deletion when targetRefs are no
+// longer available.
+func (c *QuotaPolicyController) notifyAllAIGatewayRoutesInNamespace(ctx context.Context, namespace string) {
+	var aiGatewayRoutes aigv1b1.AIGatewayRouteList
+	if err := c.client.List(ctx, &aiGatewayRoutes, client.InNamespace(namespace)); err != nil {
+		c.logger.Error(err, "failed to list AIGatewayRoutes in namespace", "namespace", namespace)
+		return
+	}
+	for i := range aiGatewayRoutes.Items {
+		route := &aiGatewayRoutes.Items[i]
+		c.logger.Info("notifying AIGatewayRoute of QuotaPolicy deletion",
+			"route", route.Name, "namespace", route.Namespace)
+		c.aiGatewayRouteChan <- event.GenericEvent{Object: route}
+	}
 }
 
 // updateQuotaPolicyStatus updates the status of the QuotaPolicy.

@@ -240,7 +240,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 
 	// QuotaPolicy controller for backend quota rate limiting.
 	if options.RateLimitRunner != nil {
-		quotaPolicyC := NewQuotaPolicyController(c, kube, logger.WithName("quota-policy"), options.RateLimitRunner)
+		quotaPolicyC := NewQuotaPolicyController(c, kube, logger.WithName("quota-policy"), options.RateLimitRunner, aiGatewayRouteEventChan)
 		if err = TypedControllerBuilderForCRD(mgr, &aigv1a1.QuotaPolicy{}).
 			Watches(&aigv1b1.AIServiceBackend{}, handler.EnqueueRequestsFromMapFunc(quotaPolicyC.BackendToQuotaPolicy)).
 			Complete(quotaPolicyC); err != nil {
