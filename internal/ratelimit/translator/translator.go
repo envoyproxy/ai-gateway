@@ -91,20 +91,13 @@ func DefaultBucketDescriptorKey(numRules int) string {
 // BuildRateLimitConfigs translates a QuotaPolicy and its resolved target
 // AIServiceBackends into a single rate limit service configuration.
 // All backends share the same domain, distinguished by backend_name descriptors.
-//
-// backendModelOverrides maps backend name to the set of ModelNameOverride values
-// from AIGatewayRoutes that reference it. When provided, the translator creates
-// descriptor entries using the actual model names ext_proc will set instead of
-// the QuotaPolicy's modelName. This ensures the service config tree matches the
-// descriptors sent by Envoy at request time.
 func BuildRateLimitConfigs(
 	policy *aigv1a1.QuotaPolicy,
 	backends []*aigv1b1.AIServiceBackend,
-	backendModelOverrides map[string][]string,
 ) ([]*rlsconfv3.RateLimitConfig, error) {
 	var backendDescriptors []*rlsconfv3.RateLimitDescriptor
 	for _, backend := range backends {
-		desc, err := buildBackendDescriptor(policy, backend, backendModelOverrides[backend.Name])
+		desc, err := buildBackendDescriptor(policy, backend)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build descriptors for backend %s/%s: %w",
 				backend.Namespace, backend.Name, err)
@@ -126,17 +119,11 @@ func BuildRateLimitConfigs(
 	}, nil
 }
 
-// buildBackendDescriptor creates a backend_name descriptor containing
-// model-level descriptors for a single backend.
-// modelOverrides contains the ModelNameOverride values from AIGatewayRoutes
-// referencing this backend. When non-empty, descriptors are created using the
-// override values instead of the QuotaPolicy's modelName.
 func buildBackendDescriptor(
 	policy *aigv1a1.QuotaPolicy,
 	backend *aigv1b1.AIServiceBackend,
-	modelOverrides []string,
 ) (*rlsconfv3.RateLimitDescriptor, error) {
-	desc, _, err := buildBackendDescriptorKeyed(policy, backend, modelOverrides)
+	desc, _, err := buildBackendDescriptorKeyed(policy, backend)
 	return desc, err
 }
 
@@ -145,7 +132,6 @@ func buildBackendDescriptor(
 func buildBackendDescriptorKeyed(
 	policy *aigv1a1.QuotaPolicy,
 	backend *aigv1b1.AIServiceBackend,
-	modelOverrides []string,
 ) (*rlsconfv3.RateLimitDescriptor, []KeyedDescriptor, error) {
 	backendValue := BackendDomainValue(backend.Namespace, backend.Name)
 	backendKeySegment := ComparableKeySegment(BackendNameDescriptorKey, 0, backendValue)
@@ -157,16 +143,13 @@ func buildBackendDescriptorKeyed(
 		if pmq.ModelName == nil {
 			continue
 		}
-		routeModelName := *pmq.ModelName
-		descriptorModelNames := resolveModelNames(routeModelName, modelOverrides)
-		for _, descriptorModelName := range descriptorModelNames {
-			desc, keyed, err := buildPerModelDescriptorKeyed(descriptorModelName, &pmq.Quota, backendKeySegment)
-			if err != nil {
-				return nil, nil, fmt.Errorf("model %q: %w", descriptorModelName, err)
-			}
-			modelDescriptors = append(modelDescriptors, desc)
-			allKeyed = append(allKeyed, keyed...)
+		modelName := *pmq.ModelName
+		desc, keyed, err := buildPerModelDescriptorKeyed(modelName, &pmq.Quota, backendKeySegment)
+		if err != nil {
+			return nil, nil, fmt.Errorf("model %q: %w", modelName, err)
 		}
+		modelDescriptors = append(modelDescriptors, desc)
+		allKeyed = append(allKeyed, keyed...)
 	}
 
 	if policy.Spec.ServiceQuota.Quota.Limit > 0 {
@@ -442,12 +425,3 @@ func BackendNameFromDomain(domain string) (namespace, name string, ok bool) {
 	return parts[0], parts[1], true
 }
 
-// resolveModelNames returns the model names to use for descriptor creation.
-// If modelOverrides is non-empty, it returns those (the actual ModelNameOverride
-// values from AIGatewayRoutes). Otherwise falls back to the policy's modelName.
-func resolveModelNames(policyModelName string, modelOverrides []string) []string {
-	if len(modelOverrides) > 0 {
-		return modelOverrides
-	}
-	return []string{policyModelName}
-}

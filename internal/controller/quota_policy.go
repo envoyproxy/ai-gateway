@@ -112,23 +112,11 @@ func (c *QuotaPolicyController) syncQuotaPolicy(ctx context.Context, policy *aig
 			len(policy.Spec.TargetRefs), policy.Namespace, policy.Name)
 	}
 
-	policyModelNames := make(map[string]bool)
-	for _, pmq := range policy.Spec.PerModelQuotas {
-		if pmq.ModelName != nil {
-			policyModelNames[*pmq.ModelName] = true
-		}
-	}
-
-	// Resolve ModelNameOverrides only from AIGatewayRoutes whose name matches
-	// a model in this policy. This prevents a policy for "claude-sonnet-4-6"
-	// from picking up overrides from unrelated routes like "claude-haiku-4-5".
-	backendModelOverrides := c.resolveBackendModelOverrides(ctx, policy.Namespace, backends, policyModelNames)
-
 	// Build rate limit configs for this policy.
 	var configs []*rlsconfv3.RateLimitConfig
 	if len(backends) > 0 {
 		var err error
-		configs, err = translator.BuildRateLimitConfigs(policy, backends, backendModelOverrides)
+		configs, err = translator.BuildRateLimitConfigs(policy, backends)
 		if err != nil {
 			return fmt.Errorf("failed to build rate limit configs for QuotaPolicy %s/%s: %w",
 				policy.Namespace, policy.Name, err)
@@ -188,46 +176,6 @@ func (c *QuotaPolicyController) getMergedConfigsLocked() []*rlsconfv3.RateLimitC
 			Descriptors: merged,
 		},
 	}
-}
-
-// resolveBackendModelOverrides finds AIGatewayRoutes whose name matches one of
-// the policyModelNames and collects the unique ModelNameOverride values for each
-// backend. This ensures a policy for "claude-sonnet-4-6" only picks up overrides
-// from the "claude-sonnet-4-6" route, not from unrelated routes.
-func (c *QuotaPolicyController) resolveBackendModelOverrides(ctx context.Context, namespace string, backends []*aigv1b1.AIServiceBackend, policyModelNames map[string]bool) map[string][]string {
-	backendNames := make(map[string]bool, len(backends))
-	for _, b := range backends {
-		backendNames[b.Name] = true
-	}
-
-	var routes aigv1b1.AIGatewayRouteList
-	if err := c.client.List(ctx, &routes, client.InNamespace(namespace)); err != nil {
-		c.logger.Error(err, "failed to list AIGatewayRoutes for model overrides")
-		return nil
-	}
-
-	result := make(map[string][]string)
-	seen := make(map[string]map[string]bool)
-	for i := range routes.Items {
-		if !policyModelNames[routes.Items[i].Name] {
-			continue
-		}
-		for _, rule := range routes.Items[i].Spec.Rules {
-			for _, br := range rule.BackendRefs {
-				if !backendNames[br.Name] || br.ModelNameOverride == "" {
-					continue
-				}
-				if seen[br.Name] == nil {
-					seen[br.Name] = make(map[string]bool)
-				}
-				if !seen[br.Name][br.ModelNameOverride] {
-					seen[br.Name][br.ModelNameOverride] = true
-					result[br.Name] = append(result[br.Name], br.ModelNameOverride)
-				}
-			}
-		}
-	}
-	return result
 }
 
 // BackendToQuotaPolicy maps AIServiceBackend changes to QuotaPolicy reconcile
