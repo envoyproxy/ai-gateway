@@ -61,15 +61,27 @@ func getAwsBedrockThinkingMap(tu *openai.ThinkingUnion) map[string]any {
 
 	resultMap := make(map[string]any)
 
-	if tu.OfEnabled != nil {
+	switch {
+	case tu.OfEnabled != nil:
 		reasoningConfigMap := map[string]any{
 			"type":          "enabled",
 			"budget_tokens": tu.OfEnabled.BudgetTokens,
 		}
+		if tu.OfEnabled.Display != "" {
+			reasoningConfigMap["display"] = tu.OfEnabled.Display
+		}
 		resultMap["thinking"] = reasoningConfigMap
-	} else if tu.OfDisabled != nil {
+	case tu.OfDisabled != nil:
 		reasoningConfigMap := map[string]any{
 			"type": "disabled",
+		}
+		resultMap["thinking"] = reasoningConfigMap
+	case tu.OfAdaptive != nil:
+		reasoningConfigMap := map[string]any{
+			"type": "adaptive",
+		}
+		if tu.OfAdaptive.Display != "" {
+			reasoningConfigMap["display"] = tu.OfAdaptive.Display
 		}
 		resultMap["thinking"] = reasoningConfigMap
 	}
