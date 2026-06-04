@@ -152,11 +152,13 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 
 // applyFirstTokenTimeouts walks the generated route configurations and sets the per-try idle
 // timeout on every AIGatewayRoute route whose rule configures FirstTokenTimeout.
+// Lookups are cached to avoid hitting the API server more than once per route.
 func (s *Server) applyFirstTokenTimeouts(ctx context.Context, routeConfigs []*routev3.RouteConfiguration) error {
+	cache := make(map[client.ObjectKey]*aigv1b1.AIGatewayRoute)
 	for _, rc := range routeConfigs {
 		for _, vh := range rc.VirtualHosts {
 			for _, route := range vh.Routes {
-				if err := s.maybeSetFirstTokenTimeout(ctx, route); err != nil {
+				if err := s.maybeSetFirstTokenTimeout(ctx, route, cache); err != nil {
 					return err
 				}
 			}
@@ -169,7 +171,7 @@ func (s *Server) applyFirstTokenTimeouts(ctx context.Context, routeConfigs []*ro
 // FirstTokenTimeout. Envoy resets the upstream stream when no bytes arrive within that
 // duration, so a retry policy covering `reset` falls over to the next backend before any
 // response reaches the downstream client.
-func (s *Server) maybeSetFirstTokenTimeout(ctx context.Context, route *routev3.Route) error {
+func (s *Server) maybeSetFirstTokenTimeout(ctx context.Context, route *routev3.Route, cache map[client.ObjectKey]*aigv1b1.AIGatewayRoute) error {
 	action := route.GetRoute()
 	if action == nil {
 		// Not a forwarding route (e.g. DirectResponse, Redirect).
@@ -186,12 +188,13 @@ func (s *Server) maybeSetFirstTokenTimeout(ctx context.Context, route *routev3.R
 		return nil
 	}
 
-	var aigwRoute aigv1b1.AIGatewayRoute
-	if err := s.k8sClient.Get(ctx, client.ObjectKey{Namespace: parts[1], Name: parts[2]}, &aigwRoute); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return fmt.Errorf("failed to get AIGatewayRoute %s/%s: %w", parts[1], parts[2], err)
+	aigwRoute, err := s.retrieveAndCacheAIGatewayRoute(ctx, cache, client.ObjectKey{Namespace: parts[1], Name: parts[2]})
+	if err != nil {
+		return err
+	}
+	if aigwRoute == nil {
+		// Not an AIGatewayRoute-owned route, or it was deleted during translation.
+		return nil
 	}
 	if ruleIndex >= len(aigwRoute.Spec.Rules) {
 		return nil
@@ -207,6 +210,24 @@ func (s *Server) maybeSetFirstTokenTimeout(ctx context.Context, route *routev3.R
 	}
 	action.RetryPolicy.PerTryIdleTimeout = durationpb.New(timeout)
 	return nil
+}
+
+// retrieveAndCacheAIGatewayRoute returns the AIGatewayRoute for the key and saves the result.
+// If the route is not found it will be  cached as nil, so one translation pass hits the API server at most once per route.
+func (s *Server) retrieveAndCacheAIGatewayRoute(ctx context.Context, cache map[client.ObjectKey]*aigv1b1.AIGatewayRoute, key client.ObjectKey) (*aigv1b1.AIGatewayRoute, error) {
+	if cached, ok := cache[key]; ok {
+		return cached, nil
+	}
+	var aigwRoute aigv1b1.AIGatewayRoute
+	if err := s.k8sClient.Get(ctx, key, &aigwRoute); err != nil {
+		if apierrors.IsNotFound(err) {
+			cache[key] = nil
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get AIGatewayRoute %s/%s: %w", key.Namespace, key.Name, err)
+	}
+	cache[key] = &aigwRoute
+	return &aigwRoute, nil
 }
 
 // maybeModifyCluster modifies clusters generated from AIGatewayRoute resources to add

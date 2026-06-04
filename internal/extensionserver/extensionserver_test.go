@@ -1524,6 +1524,22 @@ func TestMaybeSetFirstTokenTimeout(t *testing.T) {
 		call(t, route)
 		require.Nil(t, route.GetRoute().RetryPolicy)
 	})
+	t.Run("reuses cached lookups across routes", func(t *testing.T) {
+		cache := make(map[client.ObjectKey]*aigv1b1.AIGatewayRoute)
+		// Two routes for the same AIGatewayRoute, plus a repeated missing one, all sharing
+		// the cache so the second lookup of each key is served from memory.
+		for _, name := range []string{
+			"httproute/default/ttft-route/rule/0/match/0",
+			"httproute/default/ttft-route/rule/0/match/1",
+			"httproute/default/missing/rule/0/match/0",
+			"httproute/default/missing/rule/0/match/1",
+		} {
+			route := forwardingRoute(name)
+			require.NoError(t, s.maybeSetFirstTokenTimeout(context.Background(), route, cache))
+		}
+		require.Contains(t, cache, client.ObjectKey{Namespace: "default", Name: "ttft-route"})
+		require.Nil(t, cache[client.ObjectKey{Namespace: "default", Name: "missing"}])
+	})
 }
 
 // TestConstructInferencePoolsFrom tests the constructInferencePoolsFrom method.
