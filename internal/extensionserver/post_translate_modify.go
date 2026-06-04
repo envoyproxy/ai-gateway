@@ -180,7 +180,7 @@ func (s *Server) maybeSetFirstTokenTimeout(ctx context.Context, route *routev3.R
 
 	// Route name format: "httproute/<namespace>/<name>/rule/<index>/match/<...>".
 	parts := strings.Split(route.Name, "/")
-	if len(parts) < 5 || parts[0] != "httproute" || parts[3] != "rule" {
+	if len(parts) < 5 || parts[0] != "httproute" || parts[3] != "rule" || parts[1] == "" || parts[2] == "" {
 		return nil
 	}
 	ruleIndex, err := strconv.Atoi(parts[4])
