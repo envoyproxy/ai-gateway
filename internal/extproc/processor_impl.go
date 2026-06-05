@@ -441,8 +441,20 @@ func createUserFacingErrorResponse(statusCode int, errorType string, message str
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+	var (
+		originalModel       internalapi.OriginalModel
+		body                *ReqT
+		stream              bool
+		mutatedOriginalBody []byte
+		err                 error
+	)
 	costConfigured := len(r.config.RequestCosts) > 0 || len(r.config.GlobalRequestCosts) > 0
-	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body, costConfigured, r.requestHeaders)
+	contentType := r.requestHeaders["content-type"]
+	if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
+		originalModel, body, stream, mutatedOriginalBody, err = r.eh.ParseMultipartBody(rawBody.Body, contentType, costConfigured)
+	} else {
+		originalModel, body, stream, mutatedOriginalBody, err = r.eh.ParseBody(rawBody.Body, costConfigured, r.requestHeaders)
+	}
 	if err != nil {
 		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
 			// return to user as 400 -  e.g., "malformed request: failed to parse JSON for /v1/chat/completions"
@@ -859,6 +871,9 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	if err != nil {
 		return fmt.Errorf("failed to create translator for backend %s: %w", backend.Backend.Name, err)
 	}
+	if setter, ok := u.translator.(translator.ContentTypeSetter); ok {
+		setter.SetContentType(rp.requestHeaders["content-type"])
+	}
 	rp.upstreamFilter = u // Only assign after translator is confirmed valid
 
 	if headerSetter, ok := u.translator.(translator.RequestHeadersSetter); ok {
@@ -1032,7 +1047,6 @@ func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.Tok
 // This function is called by the upstream filter only at the end of the stream (body.EndOfStream=true)
 // when the response is successfully completed. It is not called for failed requests or partial responses.
 // The metadata includes token usage costs and model information for downstream processing.
-//
 // Two-tier precedence: for each metadataKey, check route-scoped requestCosts first (matching RouteName == routeName).
 // If found, use it. Otherwise, fall back to globalRequestCosts. If neither exists, the key is not emitted.
 func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCost, requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string) (*structpb.Struct, error) {
@@ -1041,11 +1055,24 @@ func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCos
 	// Track which metadata keys have been populated by route-scoped costs.
 	populatedKeys := make(map[string]struct{})
 
+	shortBackend := backendName
+	if parts := strings.SplitN(backendName, "/", 3); len(parts) >= 2 {
+		shortBackend = parts[0] + "/" + parts[1]
+	}
+
+	actualModel := requestHeaders[internalapi.ModelNameHeaderKeyDefault]
+
 	// First, process route-scoped costs that match this route.
 	// Route-scoped costs must have a RouteName set (validated at runtime config creation).
 	for i := range requestCosts {
 		rc := &requestCosts[i]
+		if rc.Backend != "" && rc.Backend != shortBackend {
+			continue
+		}
 		if rc.RouteName != routeName {
+			continue
+		}
+		if rc.Model != "" && rc.Model != actualModel {
 			continue
 		}
 		cost, err := evalRuntimeRequestCost(rc, costs, requestHeaders, backendName, routeName)
@@ -1069,13 +1096,20 @@ func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCos
 		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
 	}
 
-	// Add the actual request model that was used (after any backend overrides were applied).
-	// At this point, the header contains the final model that was sent to the upstream.
-	actualModel := requestHeaders[internalapi.ModelNameHeaderKeyDefault]
 	metadata["model_name_override"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: actualModel}}
 
 	if backendName != "" {
 		metadata["backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: backendName}}
+		// ai_service_backend_name stores the short "namespace/name" format extracted
+		// from the full PerRouteRuleRefBackendName ("{namespace}/{name}/route/...").
+		// This is used by the quota rate limit descriptor actions to match the
+		// rate limit service config which keys on "namespace/backendName".
+		parts := strings.SplitN(backendName, "/", 3)
+		shortName := backendName
+		if len(parts) >= 2 {
+			shortName = parts[0] + "/" + parts[1]
+		}
+		metadata["ai_service_backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: shortName}}
 	}
 	if routeName != "" {
 		metadata["route_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: routeName}}

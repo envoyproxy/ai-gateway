@@ -918,6 +918,110 @@ data: [DONE]
 		require.False(t, inputSet)
 		require.False(t, outputSet)
 	})
+
+	t.Run("response.incomplete carries usage", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+
+		chunks := []byte(`data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
+
+data: {"type":"response.incomplete","response":{"id":"resp_1","object":"response","status":"incomplete","model":"gpt-4o-2024-11-20","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":12,"input_tokens_details":{"cached_tokens":3},"output_tokens":7,"output_tokens_details":{"reasoning_tokens":4},"total_tokens":19}}}
+
+data: [DONE]
+
+`)
+
+		translator.buffered = chunks
+		tokenUsage := translator.extractUsageFromBufferEvent(nil)
+
+		inputTokens, ok := tokenUsage.InputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(12), inputTokens)
+
+		outputTokens, ok := tokenUsage.OutputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(7), outputTokens)
+
+		totalTokens, ok := tokenUsage.TotalTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(19), totalTokens)
+
+		cachedTokens, ok := tokenUsage.CachedInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(3), cachedTokens)
+
+		reasoningTokens, ok := tokenUsage.ReasoningTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(4), reasoningTokens)
+	})
+
+	t.Run("response.failed carries usage when present", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+
+		chunks := []byte(`data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
+
+data: {"type":"response.failed","response":{"id":"resp_1","object":"response","status":"failed","model":"gpt-4o-2024-11-20","error":{"code":"server_error","message":"boom"},"usage":{"input_tokens":8,"input_tokens_details":{"cached_tokens":0},"output_tokens":2,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":10}}}
+
+data: [DONE]
+
+`)
+
+		translator.buffered = chunks
+		tokenUsage := translator.extractUsageFromBufferEvent(nil)
+
+		inputTokens, ok := tokenUsage.InputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(8), inputTokens)
+
+		outputTokens, ok := tokenUsage.OutputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(2), outputTokens)
+
+		totalTokens, ok := tokenUsage.TotalTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(10), totalTokens)
+	})
+
+	t.Run("response.failed with nil usage does not panic", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+
+		// Pre-generation failure: no usage object in the response.
+		chunks := []byte(`data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
+
+data: {"type":"response.failed","response":{"id":"resp_1","object":"response","status":"failed","model":"gpt-4o-2024-11-20","error":{"code":"invalid_request_error","message":"bad input"}}}
+
+data: [DONE]
+
+`)
+
+		translator.buffered = chunks
+		tokenUsage := translator.extractUsageFromBufferEvent(nil)
+
+		_, inputSet := tokenUsage.InputTokens()
+		_, outputSet := tokenUsage.OutputTokens()
+		_, totalSet := tokenUsage.TotalTokens()
+		require.False(t, inputSet)
+		require.False(t, outputSet)
+		require.False(t, totalSet)
+	})
+
+	t.Run("response.completed with nil usage does not panic", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+
+		// Non-compliant backend: response.completed without usage.
+		chunks := []byte(`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","status":"completed","model":"gpt-4o-2024-11-20"}}
+
+data: [DONE]
+
+`)
+
+		translator.buffered = chunks
+		tokenUsage := translator.extractUsageFromBufferEvent(nil)
+
+		_, inputSet := tokenUsage.InputTokens()
+		_, outputSet := tokenUsage.OutputTokens()
+		require.False(t, inputSet)
+		require.False(t, outputSet)
+	})
 }
 
 func TestResponsesOpenAIToOpenAITranslator_ResponseError(t *testing.T) {

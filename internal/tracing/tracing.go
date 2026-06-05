@@ -34,6 +34,8 @@ type tracingImpl struct {
 	embeddingsTracer          tracingapi.EmbeddingsTracer
 	responsesTracer           tracingapi.ResponsesTracer
 	speechTracer              tracingapi.SpeechTracer
+	transcriptionTracer   tracingapi.TranscriptionTracer
+	translationTracer     tracingapi.TranslationTracer
 	rerankTracer              tracingapi.RerankTracer
 	messageTracer             tracingapi.MessageTracer
 	mcpTracer                 tracingapi.MCPTracer
@@ -73,6 +75,16 @@ func (t *tracingImpl) ResponsesTracer() tracingapi.ResponsesTracer {
 // SpeechTracer implements the same method as documented on tracingapi.Tracing.
 func (t *tracingImpl) SpeechTracer() tracingapi.SpeechTracer {
 	return t.speechTracer
+}
+
+// TranscriptionTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) TranscriptionTracer() tracingapi.TranscriptionTracer {
+	return t.transcriptionTracer
+}
+
+// TranslationTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) TranslationTracer() tracingapi.TranslationTracer {
+	return t.translationTracer
 }
 
 // RerankTracer implements the same method as documented on tracingapi.Tracing.
@@ -225,6 +237,8 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 	embeddingsRecorder := openai.NewEmbeddingsRecorderFromEnv()
 	responsesRecorder := openai.NewResponsesRecorderFromEnv()
 	speechRecorder := openai.NewSpeechRecorderFromEnv()
+	transcriptionRecorder := openai.NewTranscriptionRecorderFromEnv()
+	translationRecorder := openai.NewTranslationRecorderFromEnv()
 	rerankRecorder := cohere.NewRerankRecorderFromEnv()
 	messageRecorder := anthropic.NewMessageRecorderFromEnv()
 	createFileRecorder := openai.NewCreateFileRecorderFromEnv()
@@ -267,6 +281,18 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			tracer,
 			propagator,
 			speechRecorder,
+			headerAttrs,
+		),
+		transcriptionTracer: newTranscriptionTracer(
+			tracer,
+			propagator,
+			transcriptionRecorder,
+			headerAttrs,
+		),
+		translationTracer: newTranslationTracer(
+			tracer,
+			propagator,
+			translationRecorder,
 			headerAttrs,
 		),
 		rerankTracer: newRerankTracer(

@@ -142,6 +142,13 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 		return nil, fmt.Errorf("failed to insert request header metadata filter: %w", err)
 	}
 
+	// Inject rate limit filter into listener HCM filter chains, add rate limit service cluster,
+	// and patch routes with rate limit actions for QuotaPolicy enforcement.
+	req.Clusters, err = s.maybeInjectQuotaRateLimiting(ctx, req.Clusters, req.Listeners, req.Routes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to inject quota rate limiting: %w", err)
+	}
+
 	response := &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets, Listeners: req.Listeners, Routes: req.Routes}
 	return response, nil
 }

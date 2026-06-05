@@ -18,7 +18,6 @@ import (
 	anthropicParam "github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
-	openaisdk "github.com/openai/openai-go/v3"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
@@ -581,6 +580,7 @@ func getThinkingConfigParamUnion(tu *openai.ThinkingUnion) *anthropic.ThinkingCo
 		result.OfEnabled = &anthropic.ThinkingConfigEnabledParam{
 			BudgetTokens: tu.OfEnabled.BudgetTokens,
 			Type:         constant.Enabled(tu.OfEnabled.Type),
+			Display:      anthropic.ThinkingConfigEnabledDisplay(tu.OfEnabled.Display),
 		}
 	case tu.OfDisabled != nil:
 		result.OfDisabled = &anthropic.ThinkingConfigDisabledParam{
@@ -588,7 +588,8 @@ func getThinkingConfigParamUnion(tu *openai.ThinkingUnion) *anthropic.ThinkingCo
 		}
 	case tu.OfAdaptive != nil:
 		result.OfAdaptive = &anthropic.ThinkingConfigAdaptiveParam{
-			Type: constant.Adaptive(tu.OfAdaptive.Type),
+			Type:    constant.Adaptive(tu.OfAdaptive.Type),
+			Display: anthropic.ThinkingConfigAdaptiveDisplay(tu.OfAdaptive.Display),
 		}
 	}
 
@@ -622,12 +623,14 @@ func outputConfigAvailable(model internalapi.RequestModel) bool {
 }
 
 // effortModels lists model identifiers that support the output_config.effort parameter.
-// The effort parameter is supported by Claude Opus 4.6, Claude Sonnet 4.6, and Claude Opus 4.5.
+// The effort parameter is supported by Claude Mythos Preview, Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 4.6, and Claude Opus 4.5.
 // See: https://platform.claude.com/docs/en/build-with-claude/effort
 var effortModels = []string{
-	"opus-4-5",   // Claude Opus 4.5
-	"opus-4-6",   // Claude Opus 4.6
-	"sonnet-4-6", // Claude Sonnet 4.6
+	"opus-4-5",       // Claude Opus 4.5
+	"opus-4-6",       // Claude Opus 4.6
+	"opus-4-7",       // Claude Opus 4.7
+	"sonnet-4-6",     // Claude Sonnet 4.6
+	"mythos-preview", // Claude Mythos Preview
 }
 
 func effortAvailable(model internalapi.RequestModel) bool {
@@ -635,23 +638,21 @@ func effortAvailable(model internalapi.RequestModel) bool {
 }
 
 // mapReasoningEffortToOutputConfigEffort converts OpenAI reasoning effort levels to Anthropic output config effort levels.
-// Currently supports:
-// - "low" → OutputConfigEffortLow
-// - "medium" → OutputConfigEffortMedium
-// - "high" → OutputConfigEffortHigh
-// - "xhigh" → OutputConfigEffortMax
-func mapReasoningEffortToOutputConfigEffort(reasonEffort openaisdk.ReasoningEffort) (anthropic.OutputConfigEffort, error) {
+// Supported levels: "low", "medium", "high", "xhigh", "max".
+func mapReasoningEffortToOutputConfigEffort(reasonEffort openai.ReasoningEffort) (anthropic.OutputConfigEffort, error) {
 	switch reasonEffort {
-	case openaisdk.ReasoningEffortLow:
+	case openai.ReasoningEffortLow:
 		return anthropic.OutputConfigEffortLow, nil
-	case openaisdk.ReasoningEffortMedium:
+	case openai.ReasoningEffortMedium:
 		return anthropic.OutputConfigEffortMedium, nil
-	case openaisdk.ReasoningEffortHigh:
+	case openai.ReasoningEffortHigh:
 		return anthropic.OutputConfigEffortHigh, nil
-	case openaisdk.ReasoningEffortXhigh:
+	case openai.ReasoningEffortXhigh:
+		return anthropic.OutputConfigEffortXhigh, nil
+	case openai.ReasoningEffortMax:
 		return anthropic.OutputConfigEffortMax, nil
 	default:
-		return "", fmt.Errorf("%w: unsupported reasoning effort level: %q (supported: low, medium, high, xhigh)", internalapi.ErrInvalidRequestBody, reasonEffort)
+		return "", fmt.Errorf("%w: unsupported reasoning effort level: %q (supported: low, medium, high, xhigh, max)", internalapi.ErrInvalidRequestBody, reasonEffort)
 	}
 }
 

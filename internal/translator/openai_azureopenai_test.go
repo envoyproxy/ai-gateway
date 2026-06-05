@@ -53,6 +53,63 @@ func TestOpenAIToAzureOpenAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 	})
 }
 
+func TestOpenAIToAzureOpenAITranslatorV1Responses_RequestBody(t *testing.T) {
+	t.Run("valid body", func(t *testing.T) {
+		for _, stream := range []bool{true, false} {
+			t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+				originalReq := &openai.ResponseRequest{Model: "foo-bar-ai", Stream: stream}
+				o := NewResponsesOpenAIToAzureOpenAITranslator("some-version", "").(*openAIToAzureOpenAITranslatorV1Responses)
+
+				hm, bm, err := o.RequestBody([]byte(`{"model":"foo-bar-ai","input":"Hi"}`), originalReq, false)
+				require.Nil(t, bm)
+				require.NoError(t, err)
+				require.Equal(t, stream, o.stream)
+				require.NotNil(t, hm)
+
+				require.Equal(t, pathHeaderName, hm[0].Key())
+				require.Equal(t, "/openai/responses?api-version=some-version", hm[0].Value())
+			})
+		}
+	})
+	t.Run("model override", func(t *testing.T) {
+		modelName := "gpt-4-turbo-2024-04-09"
+		originalReq := &openai.ResponseRequest{Model: "gpt-4-turbo", Stream: false}
+		o := NewResponsesOpenAIToAzureOpenAITranslator("some-version", modelName).(*openAIToAzureOpenAITranslatorV1Responses)
+
+		hm, bm, err := o.RequestBody([]byte(`{"model":"gpt-4-turbo","input":"Hi"}`), originalReq, false)
+		require.NoError(t, err)
+		require.NotNil(t, hm)
+		require.Len(t, hm, 2)
+		require.Equal(t, pathHeaderName, hm[0].Key())
+		require.Equal(t, "/openai/responses?api-version=some-version", hm[0].Value())
+		require.Equal(t, contentLengthHeaderName, hm[1].Key())
+		require.JSONEq(t, `{"model":"gpt-4-turbo-2024-04-09","input":"Hi"}`, string(bm))
+	})
+	t.Run("configured path", func(t *testing.T) {
+		originalReq := &openai.ResponseRequest{Model: "gpt-4-turbo", Stream: false}
+		o := &openAIToAzureOpenAITranslatorV1Responses{
+			apiVersion: "some-version",
+			openAIToOpenAITranslatorV1Responses: openAIToOpenAITranslatorV1Responses{
+				path: "/custom/responses?foo=bar",
+			},
+		}
+
+		hm, bm, err := o.RequestBody([]byte(`{"model":"gpt-4-turbo","input":"Hi"}`), originalReq, false)
+		require.NoError(t, err)
+		require.Nil(t, bm)
+		require.NotNil(t, hm)
+		require.Len(t, hm, 1)
+		require.Equal(t, pathHeaderName, hm[0].Key())
+		require.Equal(t, "/custom/responses?foo=bar&api-version=some-version", hm[0].Value())
+	})
+}
+
+func TestAppendAzureOpenAIAPIVersion(t *testing.T) {
+	require.Equal(t, "/custom/path?foo=bar&api-version=some-version", appendAzureOpenAIAPIVersion("/custom/path?foo=bar", "some-version"))
+	require.Equal(t, "/custom/path?api-version=some-version", appendAzureOpenAIAPIVersion("/custom/path?", "some-version"))
+	require.Equal(t, "/custom/path?foo=bar&api-version=some-version", appendAzureOpenAIAPIVersion("/custom/path?foo=bar&", "some-version"))
+}
+
 // TestResponseModel_AzureOpenAI tests that Azure OpenAI returns the actual model version from response
 // Azure ignores the model field in the request and uses URI-based resolution
 func TestResponseModel_AzureOpenAI(t *testing.T) {

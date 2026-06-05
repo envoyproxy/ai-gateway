@@ -285,6 +285,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	imageGenerationMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationImageGeneration)
 	responsesMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationResponses)
 	speechMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationSpeech)
+	transcriptionMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationTranscription)
+	translationMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationTranslation)
 	rerankMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationRerank)
 	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
@@ -330,6 +332,14 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages")+"$"),
 		http.MethodPost,
 		extproc.NewFactory(messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/transcriptions")+"$"),
+		http.MethodPost,
+		extproc.NewFactory(transcriptionMetricsFactory, tracing.TranscriptionTracer(), endpointspec.TranscriptionEndpointSpec{}))
+	server.Register(
+		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/translations")+"$"),
+		http.MethodPost,
+		extproc.NewFactory(translationMetricsFactory, tracing.TranslationTracer(), endpointspec.TranslationEndpointSpec{}))
 	server.Register(
 		regexp.MustCompile("^"+path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files")+"$"),
 		http.MethodPost,
