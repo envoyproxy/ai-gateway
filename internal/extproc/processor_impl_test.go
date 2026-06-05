@@ -371,6 +371,43 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		require.Equal(t, "some_model", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["response_model"].GetStringValue())
 	})
 
+	// Mirror (shadow) backends must not emit LLMRequestCost dynamic metadata.
+	// The primary leg has already emitted it; the mirror leg emitting again would
+	// double-count tokens in the downstream access-log / billing pipeline.
+	t.Run("mirror_backend_skips_cost_metadata", func(t *testing.T) {
+		inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
+		mm := &mockMetrics{}
+		mt := &mockTranslator{
+			t: t, expResponseBody: inBody,
+			retHeaderMutation: []internalapi.Header{{"foo", "bar"}},
+			retResponseModel:  internalapi.ResponseModel("some_model"),
+		}
+		mt.retUsedToken.SetOutputTokens(123)
+		mt.retUsedToken.SetInputTokens(1)
+
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator: mt,
+			metrics:    mm,
+			parent: &chatCompletionProcessorRouterFilter{
+				config: &filterapi.RuntimeConfig{
+					RequestCosts: []filterapi.RuntimeRequestCost{
+						{LLMRequestCost: &filterapi.LLMRequestCost{RouteName: "some_route", Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
+					},
+				},
+			},
+			requestHeaders:    map[string]string{internalapi.ModelNameHeaderKeyDefault: "ai_gateway_llm"},
+			responseHeaders:   map[string]string{":status": "200"},
+			backendName:       "some_mirror_backend",
+			routeName:         "some_route",
+			modelNameOverride: "ai_gateway_llm",
+			isMirror:          true,
+		}
+		res, err := p.ProcessResponseBody(t.Context(), inBody)
+		require.NoError(t, err)
+		require.Nil(t, res.DynamicMetadata,
+			"mirror backends must not emit DynamicMetadata to avoid double-counting LLMRequestCost")
+	})
+
 	// Verify we record failure for non-2xx responses and do it exactly once (defer suppressed).
 	t.Run("non-2xx status failure once", func(t *testing.T) {
 		inBody := &extprocv3.HttpBody{Body: []byte("error-body"), EndOfStream: true}

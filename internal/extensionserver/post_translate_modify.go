@@ -180,11 +180,46 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 	httpRouteNamespace := parts[1]
 	httpRouteName := parts[2]
 	httpRouteRuleIndexStr := parts[4]
-	httpRouteRuleIndex, err := strconv.Atoi(httpRouteRuleIndexStr)
-	if err != nil {
-		s.log.Error(err, "failed to parse HTTPRoute rule index",
-			"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndexStr)
-		return nil
+	// Envoy Gateway names mirror backend clusters
+	// "httproute/<ns>/<name>/rule/<ruleIdx>-mirror-<mirrorIdx>". Mirror clusters get
+	// the same ExtProc/header-mutation upstream filters as primary clusters so the
+	// shadow backend honors ModelNameOverride and other per-backend transformations.
+	var (
+		httpRouteRuleIndex int
+		mirrorIndex        int
+		isMirror           bool
+		err                error
+	)
+	if idx := strings.Index(httpRouteRuleIndexStr, "-mirror-"); idx >= 0 {
+		isMirror = true
+		httpRouteRuleIndex, err = strconv.Atoi(httpRouteRuleIndexStr[:idx])
+		if err != nil {
+			s.log.Error(err, "failed to parse mirror rule index",
+				"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndexStr)
+			return nil
+		}
+		// Envoy Gateway names mirror clusters with 1-based indexing — the
+		// first mirror of rule 0 is "0-mirror-1". Convert to 0-based for
+		// slice access into httpRouteRule.Mirrors.
+		mirrorIndex, err = strconv.Atoi(httpRouteRuleIndexStr[idx+len("-mirror-"):])
+		if err != nil {
+			s.log.Error(err, "failed to parse mirror index",
+				"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndexStr)
+			return nil
+		}
+		mirrorIndex--
+		if mirrorIndex < 0 {
+			s.log.Info("mirror index below zero after 1-based conversion",
+				"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndexStr)
+			return nil
+		}
+	} else {
+		httpRouteRuleIndex, err = strconv.Atoi(httpRouteRuleIndexStr)
+		if err != nil {
+			s.log.Error(err, "failed to parse HTTPRoute rule index",
+				"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndexStr)
+			return nil
+		}
 	}
 
 	// Check if this rule has InferencePool backends.
@@ -213,7 +248,56 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 
 	// Only process LoadAssignment for non-InferencePool backends.
 	if pool == nil {
-		if cluster.LoadAssignment == nil {
+		switch {
+		case isMirror:
+			if mirrorIndex >= len(httpRouteRule.Mirrors) {
+				s.log.Info("mirror index out of range",
+					"cluster_name", cluster.Name, "mirror_index", mirrorIndex,
+					"mirrors_len", len(httpRouteRule.Mirrors))
+				return nil
+			}
+			mirror := &httpRouteRule.Mirrors[mirrorIndex]
+			mirrorBackendName := internalapi.PerRouteRuleMirrorBackendName(
+				aigwRoute.Namespace, mirror.BackendRef.Name, aigwRoute.Name,
+				httpRouteRuleIndex, mirrorIndex,
+			)
+			// Mirror clusters are always single-destination (one BackendRef per mirror entry).
+			// Set cluster-level metadata unconditionally so extproc resolves the shadow
+			// backend's overrides via XDSClusterMetadataBackendNamePath even when
+			// LoadAssignment is nil (EDS) and endpoint-level metadata as well when present.
+			setClusterMetadataBackendName(cluster, aigwRoute.Namespace, mirror.BackendRef.Name,
+				aigwRoute.Name, httpRouteRuleIndex, mirrorIndex)
+			// Overwrite with the mirror-specific name (setClusterMetadataBackendName uses
+			// PerRouteRuleRefBackendName; we need the mirror variant).
+			cluster.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace].
+				Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(mirrorBackendName)
+			// Mark this cluster as a mirror leg so the cost emitter in extproc can
+			// skip LLMRequestCost emission and avoid double-billing.
+			cluster.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace].
+				Fields[internalapi.InternalMetadataMirrorKey] = structpb.NewBoolValue(true)
+			if cluster.LoadAssignment != nil {
+				for _, endpoints := range cluster.LoadAssignment.Endpoints {
+					for _, endpoint := range endpoints.LbEndpoints {
+						if endpoint.Metadata == nil {
+							endpoint.Metadata = &corev3.Metadata{}
+						}
+						if endpoint.Metadata.FilterMetadata == nil {
+							endpoint.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
+						}
+						m, ok := endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+						if !ok {
+							m = &structpb.Struct{}
+							endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
+						}
+						if m.Fields == nil {
+							m.Fields = make(map[string]*structpb.Value)
+						}
+						m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(mirrorBackendName)
+						m.Fields[internalapi.InternalMetadataMirrorKey] = structpb.NewBoolValue(true)
+					}
+				}
+			}
+		case cluster.LoadAssignment == nil:
 			// When LoadAssignment is nil (e.g. EDS-managed endpoints in standalone mode),
 			// set backend name on cluster-level metadata so the upstream ext_proc filter
 			// can resolve the backend via XDSClusterMetadataBackendNamePath fallback.
@@ -222,7 +306,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				backendRef := httpRouteRule.BackendRefs[0]
 				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, 0)
 			}
-		} else {
+		default:
 			// Populate the metadata for each endpoint in the LoadAssignment.
 			var lbEndpointIndex int
 			for i, backendRef := range httpRouteRule.BackendRefs {

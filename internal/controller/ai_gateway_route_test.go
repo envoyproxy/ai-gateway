@@ -472,6 +472,108 @@ func Test_newHTTPRoute_InferencePool(t *testing.T) {
 	require.Empty(t, httpRoute.Spec.Rules[1].BackendRefs) // No backend refs for default rule.
 }
 
+func Test_newHTTPRoute_Mirrors(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	s := NewAIGatewayRouteController(fakeClient, nil, logr.Discard(), eventCh.Ch, "/")
+
+	// Primary and shadow backends both resolve to Envoy Gateway Backends.
+	for _, backend := range []*aigv1b1.AIServiceBackend{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "primary", Namespace: "test-ns"},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "primary-svc", Namespace: ptr.To(gwapiv1.Namespace("test-ns"))},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "shadow", Namespace: "test-ns"},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "shadow-svc", Namespace: ptr.To(gwapiv1.Namespace("test-ns"))},
+			},
+		},
+	} {
+		require.NoError(t, s.client.Create(t.Context(), backend, &client.CreateOptions{}))
+	}
+
+	mirrorPercent := int32(50)
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "mirror-route", Namespace: "test-ns"},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "primary"}},
+					Matches: []aigv1b1.AIGatewayRouteRuleMatch{
+						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "mirror-rule"}}},
+					},
+					Mirrors: []aigv1b1.AIGatewayRouteRuleMirror{
+						{
+							BackendRef: aigv1b1.AIGatewayRouteRuleBackendRef{
+								Name:              "shadow",
+								ModelNameOverride: "shadow-overridden",
+							},
+							Percent: &mirrorPercent,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	httpRoute := &gwapiv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: "mirror-route", Namespace: "test-ns"}}
+	require.NoError(t, s.newHTTPRoute(t.Context(), httpRoute, aiGatewayRoute))
+
+	// First rule carries the host-rewrite filter plus the RequestMirror filter.
+	require.Greater(t, len(httpRoute.Spec.Rules), 1)
+	var mirrorFilter *gwapiv1.HTTPRequestMirrorFilter
+	for i := range httpRoute.Spec.Rules[0].Filters {
+		f := &httpRoute.Spec.Rules[0].Filters[i]
+		if f.Type == gwapiv1.HTTPRouteFilterRequestMirror {
+			mirrorFilter = f.RequestMirror
+		}
+	}
+	require.NotNil(t, mirrorFilter, "expected a RequestMirror filter on the mirror rule")
+	require.Equal(t, "shadow-svc", string(mirrorFilter.BackendRef.Name))
+	require.Equal(t, "test-ns", string(*mirrorFilter.BackendRef.Namespace))
+	require.NotNil(t, mirrorFilter.Percent)
+	require.Equal(t, int32(50), *mirrorFilter.Percent)
+}
+
+func Test_newHTTPRoute_Mirrors_RejectsInferencePool(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	s := NewAIGatewayRouteController(fakeClient, nil, logr.Discard(), eventCh.Ch, "/")
+
+	require.NoError(t, s.client.Create(t.Context(), &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "primary", Namespace: "test-ns"},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "primary-svc", Namespace: ptr.To(gwapiv1.Namespace("test-ns"))},
+		},
+	}, &client.CreateOptions{}))
+
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "mirror-route", Namespace: "test-ns"},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "primary"}},
+					Mirrors: []aigv1b1.AIGatewayRouteRuleMirror{
+						{
+							BackendRef: aigv1b1.AIGatewayRouteRuleBackendRef{
+								Name:  "pool",
+								Group: ptr.To("inference.networking.k8s.io"),
+								Kind:  ptr.To("InferencePool"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	httpRoute := &gwapiv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: "mirror-route", Namespace: "test-ns"}}
+	err := s.newHTTPRoute(t.Context(), httpRoute, aiGatewayRoute)
+	require.ErrorContains(t, err, "mirror backendRef cannot reference an InferencePool")
+}
+
 func Test_newHTTPRoute_LabelAndAnnotationPropagation(t *testing.T) {
 	c := requireNewFakeClientWithIndexes(t)
 

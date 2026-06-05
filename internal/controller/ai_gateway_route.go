@@ -309,10 +309,43 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 				Path:    &gwapiv1.HTTPPathMatch{Value: &c.rootPrefix},
 			})
 		}
+		// Translate each mirror entry into a Gateway API RequestMirror filter so Envoy
+		// clones the matched request to the shadow backend. The mirror cluster picks up
+		// the AI Gateway upstream ExtProc chain in the extension server, so per-mirror
+		// ModelNameOverride / HeaderMutation / BodyMutation are applied on the shadow leg.
+		filters := make([]gwapiv1.HTTPRouteFilter, 0, len(rewriteFilters)+len(rule.Mirrors))
+		filters = append(filters, rewriteFilters...)
+		for j := range rule.Mirrors {
+			mirror := &rule.Mirrors[j]
+			mirrorBR := &mirror.BackendRef
+			if mirrorBR.IsInferencePool() {
+				// Mirroring to InferencePool is unsupported because the endpoint picker's
+				// stateful selection is incompatible with fire-and-forget shadow traffic.
+				return fmt.Errorf("mirror backendRef cannot reference an InferencePool (rule %d, mirror %d)", i, j)
+			}
+			mirrorBackend, err := c.validateAndGetBackend(ctx, aiGatewayRoute, mirrorBR)
+			if err != nil {
+				return fmt.Errorf("failed to get AIServiceBackend for mirror %s.%s: %w",
+					mirrorBR.Name, mirrorBR.GetNamespace(aiGatewayRoute.Namespace), err)
+			}
+			mirrorObjRef := mirrorBackend.Spec.BackendRef
+			if mirrorObjRef.Namespace == nil && mirrorBackend.Namespace != "" && mirrorBackend.Namespace != aiGatewayRoute.Namespace {
+				ns := gwapiv1.Namespace(mirrorBackend.Namespace)
+				mirrorObjRef.Namespace = &ns
+			}
+			filters = append(filters, gwapiv1.HTTPRouteFilter{
+				Type: gwapiv1.HTTPRouteFilterRequestMirror,
+				RequestMirror: &gwapiv1.HTTPRequestMirrorFilter{
+					BackendRef: mirrorObjRef,
+					Percent:    mirror.Percent,
+					Fraction:   mirror.Fraction,
+				},
+			})
+		}
 		rules = append(rules, gwapiv1.HTTPRouteRule{
 			BackendRefs: backendRefs,
 			Matches:     matches,
-			Filters:     rewriteFilters,
+			Filters:     filters,
 			Timeouts:    rule.GetTimeoutsOrDefault(),
 		})
 	}

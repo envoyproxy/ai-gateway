@@ -1,0 +1,212 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+#
+# Manifest for TestMirrorModelNameOverride.
+#
+# Wires one AIGatewayRoute with:
+#   - primary backendRef pointing at the "mirror-primary" testupstream (no override)
+#   - mirrors[] pointing at the "mirror-shadow" testupstream with
+#     modelNameOverride: shadow-overridden
+#
+# The e2e test verifies that the mirror-shadow upstream observes the request body
+# rewritten with the overridden model, proving that ExtProc ran on the mirror cluster.
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: mirror-modelnameoverride
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: mirror-modelnameoverride
+  namespace: default
+spec:
+  gatewayClassName: mirror-modelnameoverride
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: mirror-modelnameoverride
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: mirror-modelnameoverride
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          resources: {}
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: mirror-modelnameoverride
+  namespace: default
+spec:
+  parentRefs:
+    - name: mirror-modelnameoverride
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: client-original
+      backendRefs:
+        - name: mirror-primary-backend
+      mirrors:
+        - backendRef:
+            name: mirror-shadow-backend
+            modelNameOverride: shadow-overridden
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: mirror-primary-backend
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: mirror-primary
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: mirror-shadow-backend
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: mirror-shadow
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: mirror-primary
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: mirror-primary.default.svc.cluster.local
+        port: 80
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: mirror-shadow
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: mirror-shadow.default.svc.cluster.local
+        port: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mirror-primary
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mirror-primary
+  template:
+    metadata:
+      labels:
+        app: mirror-primary
+    spec:
+      containers:
+        - name: testupstream
+          image: docker.io/envoyproxy/ai-gateway-testupstream:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TESTUPSTREAM_ID
+              value: mirror-primary
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mirror-primary
+  namespace: default
+spec:
+  selector:
+    app: mirror-primary
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mirror-shadow
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mirror-shadow
+  template:
+    metadata:
+      labels:
+        app: mirror-shadow
+    spec:
+      containers:
+        - name: testupstream
+          image: docker.io/envoyproxy/ai-gateway-testupstream:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TESTUPSTREAM_ID
+              value: mirror-shadow
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mirror-shadow
+  namespace: default
+spec:
+  selector:
+    app: mirror-shadow
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
