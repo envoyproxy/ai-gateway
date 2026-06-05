@@ -16,6 +16,7 @@ import (
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/redaction"
 )
@@ -1350,4 +1351,223 @@ func TestParseMultipartBody_RejectsJSONOnlyEndpoints(t *testing.T) {
 
 	_, _, _, _, err = SpeechEndpointSpec{}.ParseMultipartBody(nil, "", false)
 	require.ErrorContains(t, err, "multipart body not supported")
+}
+
+// --- Files API tests ---
+
+// buildFileUploadBody constructs a multipart/form-data body for /v1/files endpoint tests.
+// When includeModelName is true, a model field is added to ExtraBody.
+func buildFileUploadBody(t *testing.T, includeModelName bool, modelName, backendName string) ([]byte, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	part, err := writer.CreateFormFile("file", "test.txt")
+	require.NoError(t, err)
+	_, err = part.Write([]byte("hello"))
+	require.NoError(t, err)
+	require.NoError(t, writer.WriteField("purpose", "assistants"))
+	if includeModelName {
+		require.NoError(t, writer.WriteField("model", modelName))
+	}
+	if backendName != "" {
+		require.NoError(t, writer.WriteField("backend", backendName))
+	}
+	require.NoError(t, writer.Close())
+	return buf.Bytes(), writer.FormDataContentType()
+}
+
+func TestCreateFileEndpointSpec_ParseBody(t *testing.T) {
+	spec := CreateFileEndpointSpec{}
+	// ParseBody for CreateFile always returns an error directing callers to use multipart.
+	_, _, _, _, err := spec.ParseBody(nil, false)
+	require.ErrorContains(t, err, "expected multipart/form-data content type for /v1/files")
+}
+
+func TestCreateFileEndpointSpec_ParseMultipartBody(t *testing.T) {
+	spec := CreateFileEndpointSpec{}
+
+	t.Run("missing_content_type", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseMultipartBody(nil, "", false)
+		require.ErrorContains(t, err, "failed to parse Content-Type header")
+	})
+
+	t.Run("wrong_content_type", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseMultipartBody([]byte(`{}`), "application/json", false)
+		require.ErrorContains(t, err, "only multipart/form-data is supported")
+	})
+
+	t.Run("missing_boundary", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseMultipartBody([]byte("body"), "multipart/form-data", false)
+		require.ErrorContains(t, err, "missing boundary parameter")
+	})
+
+	t.Run("malformed_multipart", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseMultipartBody([]byte("not-valid-multipart"), "multipart/form-data; boundary=xxx", false)
+		require.ErrorContains(t, err, "failed to parse multipart form-data")
+	})
+
+	t.Run("missing_model_name", func(t *testing.T) {
+		body, contentType := buildFileUploadBody(t, false, "", "")
+		_, _, _, _, err := spec.ParseMultipartBody(body, contentType, false)
+		require.ErrorContains(t, err, "'model' parameter should be passed as extra field for file upload operations")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		body, contentType := buildFileUploadBody(t, true, "gpt-4o", "")
+		model, parsed, stream, mutated, err := spec.ParseMultipartBody(body, contentType, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o", model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
+		require.NotNil(t, mutated)
+	})
+
+	t.Run("success_with_optional_backend", func(t *testing.T) {
+		body, contentType := buildFileUploadBody(t, true, "gpt-4o", "openai-primary")
+		model, parsed, stream, mutated, err := spec.ParseMultipartBody(body, contentType, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o", model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
+		require.NotNil(t, mutated)
+		// Backend is in ExtraBody; ExtractBackendName moves it to request headers.
+		headers := map[string]string{}
+		spec.ExtractBackendName(parsed, headers)
+		require.Equal(t, "openai-primary", headers[internalapi.BackendNameHeaderKey])
+	})
+}
+
+func TestCreateFileEndpointSpec_GetTranslator(t *testing.T) {
+	spec := CreateFileEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestCreateFileEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := CreateFileEndpointSpec{}
+	req := &openai.FileNewParams{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestListFilesEndpointSpec_ParseBody(t *testing.T) {
+	spec := ListFilesEndpointSpec{}
+	body := []byte("irrelevant")
+	// ParseBody for ListFiles is a pass-through; backend routing is handled by the processor at headers time.
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+	require.NoError(t, err)
+	require.Empty(t, model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+}
+
+func TestListFilesEndpointSpec_GetTranslator(t *testing.T) {
+	spec := ListFilesEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestListFilesEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := ListFilesEndpointSpec{}
+	req := &struct{}{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestRetrieveFileEndpointSpec_ParseBody(t *testing.T) {
+	spec := RetrieveFileEndpointSpec{}
+	body := []byte("irrelevant")
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+	require.NoError(t, err)
+	require.Empty(t, model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+}
+
+func TestRetrieveFileEndpointSpec_GetTranslator(t *testing.T) {
+	spec := RetrieveFileEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestRetrieveFileEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := RetrieveFileEndpointSpec{}
+	req := &struct{}{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestRetrieveFileContentEndpointSpec_ParseBody(t *testing.T) {
+	spec := RetrieveFileContentEndpointSpec{}
+	body := []byte("irrelevant")
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+	require.NoError(t, err)
+	require.Empty(t, model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+}
+
+func TestRetrieveFileContentEndpointSpec_GetTranslator(t *testing.T) {
+	spec := RetrieveFileContentEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestRetrieveFileContentEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := RetrieveFileContentEndpointSpec{}
+	req := &struct{}{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
+}
+
+func TestDeleteFileEndpointSpec_ParseBody(t *testing.T) {
+	spec := DeleteFileEndpointSpec{}
+	body := []byte("irrelevant")
+	model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+	require.NoError(t, err)
+	require.Empty(t, model)
+	require.NotNil(t, parsed)
+	require.False(t, stream)
+	require.NotNil(t, mutated)
+}
+
+func TestDeleteFileEndpointSpec_GetTranslator(t *testing.T) {
+	spec := DeleteFileEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestDeleteFileEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := DeleteFileEndpointSpec{}
+	req := &struct{}{}
+	result, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, req, result)
 }

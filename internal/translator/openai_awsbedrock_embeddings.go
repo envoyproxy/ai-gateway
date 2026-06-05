@@ -32,7 +32,7 @@ type openAIToAWSBedrockTranslatorV1Embedding struct {
 }
 
 // RequestBody implements [OpenAIEmbeddingTranslator.RequestBody].
-func (o *openAIToAWSBedrockTranslatorV1Embedding) RequestBody(_ []byte, req *openai.EmbeddingRequest, _ bool) (
+func (o *openAIToAWSBedrockTranslatorV1Embedding) RequestBody(_ map[string]string, _ []byte, req *openai.EmbeddingRequest, _ bool) (
 	newHeaders []internalapi.Header, mutatedBody []byte, err error,
 ) {
 	model := req.Model

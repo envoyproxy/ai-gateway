@@ -33,6 +33,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -187,24 +188,88 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		return nil
 	}
 
+	// Check if this is a per-backend sticky HTTPRoute (name ends with "-<backend>-sticky").
+	aigatewayRouteName := httpRouteName
+	aigatewayRouteNamespace := httpRouteNamespace
+	isStickyRoute := strings.HasSuffix(httpRouteName, "-sticky")
+	stickyBackendName := ""
+	stickyBackendRefIndex := -1
+
+	if isStickyRoute {
+		// For sticky per-backend routes, use labels as the source of truth:
+		// - internalapi.AIGatewayStickyRouteOwnerLabel: original AIGatewayRoute name
+		// - internalapi.AIGatewayStickyRouteOwnerNamespaceLabel: original AIGatewayRoute namespace
+		// - internalapi.AIGatewayStickyRouteBackendLabel: backend ref name
+		var perBackendHTTPRoute gwapiv1.HTTPRoute
+		if err = s.k8sClient.Get(ctx, client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &perBackendHTTPRoute); err != nil {
+			if !apierrors.IsNotFound(err) {
+				s.log.Error(err, "failed to get per-backend HTTPRoute", "namespace", httpRouteNamespace, "name", httpRouteName)
+				return err
+			}
+		} else {
+			if owner := perBackendHTTPRoute.Labels[internalapi.AIGatewayStickyRouteOwnerLabel]; owner != "" {
+				aigatewayRouteName = owner
+			}
+			if ownerNamespace := perBackendHTTPRoute.Labels[internalapi.AIGatewayStickyRouteOwnerNamespaceLabel]; ownerNamespace != "" {
+				aigatewayRouteNamespace = ownerNamespace
+			}
+			stickyBackendName = perBackendHTTPRoute.Labels[internalapi.AIGatewayStickyRouteBackendLabel]
+		}
+	}
+
 	// Check if this rule has InferencePool backends.
 	pool := getInferencePoolByMetadata(cluster.Metadata)
 	// Get the HTTPRoute object from the cluster name.
 	var aigwRoute aigv1b1.AIGatewayRoute
-	err = s.k8sClient.Get(ctx, client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &aigwRoute)
+	err = s.k8sClient.Get(ctx, client.ObjectKey{Namespace: aigatewayRouteNamespace, Name: aigatewayRouteName}, &aigwRoute)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			s.log.Info("Skipping non-AIGatewayRoute HTTPRoute cluster modification",
-				"namespace", httpRouteNamespace, "name", httpRouteName)
+				"namespace", aigatewayRouteNamespace, "name", aigatewayRouteName)
 			return nil
 		}
 		s.log.Error(err, "failed to get AIGatewayRoute object",
-			"namespace", httpRouteNamespace, "name", httpRouteName)
+			"namespace", aigatewayRouteNamespace, "name", aigatewayRouteName)
 		return err
 	}
 
-	// Get the backend from the HTTPRoute object.
+	// For per-backend sticky HTTPRoutes (which have only one sticky rule),
+	// we need to find the original spec rule and backend ref index.
+	if isStickyRoute {
+		if stickyBackendName == "" {
+			s.log.Info("Could not extract backend name from per-backend HTTPRoute",
+				"cluster_name", cluster.Name, "httproute_name", httpRouteName, "aigw_route_name", aigatewayRouteName)
+			return nil
+		}
+
+		// Find the spec rule and backend ref that matches this backend
+		found := false
+		for specIdx, rule := range aigwRoute.Spec.Rules {
+			for refIdx, br := range rule.BackendRefs {
+				if br.Name == stickyBackendName {
+					httpRouteRuleIndex = specIdx
+					stickyBackendRefIndex = refIdx
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			s.log.Info("Could not find matching spec rule for sticky backend",
+				"cluster_name", cluster.Name, "backend_name", stickyBackendName)
+			return nil
+		}
+	}
+
+	// Validate that the rule index is within bounds.
+	// Sticky rules are now in separate per-backend HTTPRoutes, so the main HTTPRoute
+	// only contains regular rules (Spec.Rules) and the route-not-found rule at the end.
 	if httpRouteRuleIndex >= len(aigwRoute.Spec.Rules) {
+		// This could be the route-not-found rule or an out-of-range index.
+		// Skip processing for these cases.
 		s.log.Info("HTTPRoute rule index out of range",
 			"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndexStr)
 		return nil
@@ -213,23 +278,41 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 
 	// Only process LoadAssignment for non-InferencePool backends.
 	if pool == nil {
+		// For regular rules, use all backendRefs as defined in the spec.
+		// For sticky per-backend HTTPRoutes, use only the matched backend ref.
+		backendRefs := httpRouteRule.BackendRefs
+		backendRefIdxOffset := 0
+		if isStickyRoute {
+			if stickyBackendRefIndex < 0 || stickyBackendRefIndex >= len(httpRouteRule.BackendRefs) {
+				s.log.Info("Sticky backend ref index out of range",
+					"cluster_name", cluster.Name, "backend_ref_index", stickyBackendRefIndex)
+				return nil
+			}
+			backendRefIdxOffset = stickyBackendRefIndex
+			backendRefs = []aigv1b1.AIGatewayRouteRuleBackendRef{httpRouteRule.BackendRefs[stickyBackendRefIndex]}
+		}
 		if cluster.LoadAssignment == nil {
 			// When LoadAssignment is nil (e.g. EDS-managed endpoints in standalone mode),
 			// set backend name on cluster-level metadata so the upstream ext_proc filter
 			// can resolve the backend via XDSClusterMetadataBackendNamePath fallback.
 			s.log.Info("LoadAssignment is nil, setting cluster-level metadata", "cluster_name", cluster.Name)
-			if len(httpRouteRule.BackendRefs) > 0 {
-				backendRef := httpRouteRule.BackendRefs[0]
-				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, 0)
+			if len(backendRefs) > 0 {
+				backendRef := backendRefs[0]
+				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, backendRefIdxOffset)
 			}
 		} else {
 			// Populate the metadata for each endpoint in the LoadAssignment.
 			var lbEndpointIndex int
-			for i, backendRef := range httpRouteRule.BackendRefs {
+			for i, backendRef := range backendRefs {
 				// The weight of 0 means this backend is disabled and is not included in the LoadAssignment by EG,
 				// so we skip it here.
 				if backendRef.Weight != nil && *backendRef.Weight == 0 {
 					continue
+				}
+				if lbEndpointIndex >= len(cluster.LoadAssignment.Endpoints) {
+					s.log.Info("LoadAssignment has fewer endpoint groups than non-zero-weight backend refs; skipping remaining refs",
+						"cluster_name", cluster.Name, "backend_ref_index", i, "endpoints_count", len(cluster.LoadAssignment.Endpoints))
+					return fmt.Errorf("LoadAssignment has fewer endpoint groups than non-zero-weight backend refs")
 				}
 				endpoints := cluster.LoadAssignment.Endpoints[lbEndpointIndex]
 				lbEndpointIndex++
@@ -256,7 +339,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 						m.Fields = make(map[string]*structpb.Value)
 					}
 					m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
-						internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i),
+						internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i+backendRefIdxOffset),
 					)
 				}
 			}

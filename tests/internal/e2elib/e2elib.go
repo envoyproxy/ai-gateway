@@ -113,14 +113,18 @@ func SetupAll(ctx context.Context, clusterName string, aigwOpts AIGatewayHelmOpt
 			return fmt.Errorf("failed to install inference pool environment: %w", err)
 		}
 	}
-	if err := initEnvoyGateway(ctx, aigwOpts.GetNamespace(), inferenceExtension); err != nil {
-		return fmt.Errorf("failed to initialize Envoy Gateway: %w", err)
+	if err := installEnvoyGateway(ctx, aigwOpts.GetNamespace(), inferenceExtension); err != nil {
+		return fmt.Errorf("failed to install Envoy Gateway: %w", err)
 	}
 
+	// Install AI Gateway after Envoy Gateway CRDs exist, but before waiting for the Envoy Gateway
+	// deployment to become available, since Envoy Gateway needs inferencepool clusterrole created by the AI Gateway Helm chart to be able to initialize properly.
 	if err := InstallOrUpgradeAIGateway(ctx, aigwOpts); err != nil {
 		return fmt.Errorf("failed to install or upgrade AI Gateway: %w", err)
 	}
-
+	if err := waitForEnvoyGateway(ctx); err != nil {
+		return fmt.Errorf("failed to initialize Envoy Gateway: %w", err)
+	}
 	if needPrometheus {
 		if err := initPrometheus(ctx); err != nil {
 			return fmt.Errorf("failed to initialize Prometheus: %w", err)
@@ -395,9 +399,9 @@ func installInferencePoolEnvironment(ctx context.Context) (err error) {
 	return nil
 }
 
-// initEnvoyGateway initializes the Envoy Gateway in the kind cluster following the quickstart guide:
+// installEnvoyGateway installs the Envoy Gateway Helm release following the quickstart guide:
 // https://gateway.envoyproxy.io/latest/tasks/quickstart/
-func initEnvoyGateway(ctx context.Context, namespace string, inferenceExtension bool) (err error) {
+func installEnvoyGateway(ctx context.Context, namespace string, inferenceExtension bool) (err error) {
 	egVersion := cmp.Or(os.Getenv("EG_VERSION"), "v0.0.0-latest")
 	initLog("Installing Envoy Gateway")
 	start := time.Now()
@@ -424,7 +428,10 @@ func initEnvoyGateway(ctx context.Context, namespace string, inferenceExtension 
 	if err = helm.Run(); err != nil {
 		return
 	}
+	return nil
+}
 
+func waitForEnvoyGateway(ctx context.Context) (err error) {
 	initLog("\tWaiting for Envoy Gateway deployment to be ready")
 	return kubectlWaitForDeploymentReady(ctx, "envoy-gateway-system", "envoy-gateway")
 }

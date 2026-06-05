@@ -20,7 +20,7 @@ func TestTranscriptionTranslator_RequestBody_NoOverride(t *testing.T) {
 	req := &openai.TranscriptionRequest{Model: "whisper-1", FileName: "test.mp3", FileSize: 1024}
 	original := []byte("multipart-body-data")
 
-	hm, bm, err := tr.RequestBody(original, req, false)
+	hm, bm, err := tr.RequestBody(nil, original, req, false)
 	require.NoError(t, err)
 	require.Len(t, hm, 1)
 	require.Equal(t, pathHeaderName, hm[0].Key())
@@ -33,7 +33,7 @@ func TestTranscriptionTranslator_RequestBody_ForceMutation(t *testing.T) {
 	req := &openai.TranscriptionRequest{Model: "whisper-1"}
 	original := []byte("multipart-body-data")
 
-	hm, bm, err := tr.RequestBody(original, req, true)
+	hm, bm, err := tr.RequestBody(nil, original, req, true)
 	require.NoError(t, err)
 	require.NotNil(t, bm)
 	require.Equal(t, original, bm)
@@ -55,7 +55,7 @@ func TestTranscriptionTranslator_RequestBody_ModelOverride(t *testing.T) {
 
 	req := &openai.TranscriptionRequest{Model: "whisper-1", FileName: "test.mp3", FileSize: 5}
 
-	hm, bm, err := tr.RequestBody(body, req, false)
+	hm, bm, err := tr.RequestBody(nil, body, req, false)
 	require.NoError(t, err)
 	require.NotNil(t, bm)
 
@@ -94,7 +94,7 @@ func TestTranscriptionTranslator_ResponseHeaders_NoOp(t *testing.T) {
 func TestTranscriptionTranslator_ResponseBody_NoSpan(t *testing.T) {
 	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
 	req := &openai.TranscriptionRequest{Model: "whisper-1"}
-	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	_, _, _ = tr.RequestBody(nil, []byte("body"), req, false)
 
 	resp := openai.TranscriptionResponse{Text: "hello world"}
 	respBytes, _ := json.Marshal(resp)
@@ -111,7 +111,7 @@ func TestTranscriptionTranslator_ResponseBody_WithSpan(t *testing.T) {
 	mockSpan := &mockTranscriptionSpan{}
 	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
 	req := &openai.TranscriptionRequest{Model: "whisper-1"}
-	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	_, _, _ = tr.RequestBody(nil, []byte("body"), req, false)
 
 	resp := openai.TranscriptionResponse{Text: "hello world", Language: "en", Duration: 5.5}
 	respBytes, _ := json.Marshal(resp)
@@ -126,7 +126,7 @@ func TestTranscriptionTranslator_ResponseBody_WithSpan_NonJSON(t *testing.T) {
 	mockSpan := &mockTranscriptionSpan{}
 	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
 	req := &openai.TranscriptionRequest{Model: "whisper-1"}
-	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	_, _, _ = tr.RequestBody(nil, []byte("body"), req, false)
 
 	rawResponse := "hello world\nwith new line and \"quotes\""
 	_, _, _, _, err := tr.ResponseBody(nil, bytes.NewReader([]byte(rawResponse)), true, mockSpan)
@@ -143,7 +143,7 @@ func TestTranscriptionTranslator_ResponseBody_Streaming_FullSSE(t *testing.T) {
 	mockSpan := &mockTranscriptionSpan{}
 	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Transcription)
 	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
-	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	_, _, _ = tr.RequestBody(nil, []byte("body"), req, false)
 
 	sse := "" +
 		`data: {"type":"transcript.text.delta","delta":"Imagine "}` + "\n" +
@@ -175,7 +175,7 @@ func TestTranscriptionTranslator_ResponseBody_Streaming_SplitAcrossChunks(t *tes
 	mockSpan := &mockTranscriptionSpan{}
 	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
 	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
-	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	_, _, _ = tr.RequestBody(nil, []byte("body"), req, false)
 
 	headers := map[string]string{contentTypeHeaderName: eventStreamContentType}
 
@@ -203,7 +203,7 @@ func TestTranscriptionTranslator_ResponseBody_Streaming_NonDataLinesSkipped(t *t
 	mockSpan := &mockTranscriptionSpan{}
 	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
 	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
-	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	_, _, _ = tr.RequestBody(nil, []byte("body"), req, false)
 
 	sse := "" +
 		"event: transcript.text.delta\n" +
@@ -229,7 +229,7 @@ func TestTranscriptionTranslator_ResponseBody_Streaming_DoneSentinelSkipped(t *t
 	mockSpan := &mockTranscriptionSpan{}
 	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
 	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
-	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	_, _, _ = tr.RequestBody(nil, []byte("body"), req, false)
 
 	sse := "" +
 		`data: {"type":"transcript.text.delta","delta":"hi"}` + "\n" +
@@ -251,7 +251,7 @@ func TestTranscriptionTranslator_ResponseBody_Streaming_MalformedJSONSkipped(t *
 	mockSpan := &mockTranscriptionSpan{}
 	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
 	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
-	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	_, _, _ = tr.RequestBody(nil, []byte("body"), req, false)
 
 	sse := "" +
 		"data: not-json\n" +
@@ -272,7 +272,7 @@ func TestTranscriptionTranslator_ResponseBody_Streaming_UnknownEventTypeForwarde
 	mockSpan := &mockTranscriptionSpan{}
 	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
 	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
-	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	_, _, _ = tr.RequestBody(nil, []byte("body"), req, false)
 
 	sse := `data: {"type":"transcript.experimental","delta":"hi"}` + "\n"
 
@@ -293,7 +293,7 @@ func TestTranscriptionTranslator_ResponseBody_Streaming_CRLFLineEndings(t *testi
 	mockSpan := &mockTranscriptionSpan{}
 	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
 	req := &openai.TranscriptionRequest{Model: "gpt-4o-transcribe", Stream: true}
-	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	_, _, _ = tr.RequestBody(nil, []byte("body"), req, false)
 
 	sse := `data: {"type":"transcript.text.done","text":"hi"}` + "\r\n"
 
@@ -316,7 +316,7 @@ func TestTranscriptionTranslator_ResponseBody_Whisper1WithStreamTrue(t *testing.
 	mockSpan := &mockTranscriptionSpan{}
 	tr := NewTranscriptionOpenAIToOpenAITranslator("v1", "")
 	req := &openai.TranscriptionRequest{Model: "whisper-1", Stream: true}
-	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	_, _, _ = tr.RequestBody(nil, []byte("body"), req, false)
 
 	respJSON := `{"text": "hello"}`
 	_, _, _, _, err := tr.ResponseBody(

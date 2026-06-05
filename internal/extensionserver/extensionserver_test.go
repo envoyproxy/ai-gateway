@@ -41,6 +41,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
@@ -467,6 +468,60 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+
+	t.Run("sticky per-backend route resolves owner/backend labels", func(t *testing.T) {
+		err := c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-route",
+				Namespace: "ns",
+			},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+						{Name: "first-backend"},
+						{Name: "azure-openai"},
+					},
+				}},
+			},
+		})
+		require.NoError(t, err)
+
+		err = c.Create(t.Context(), &gwapiv1.HTTPRoute{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-route-azure-openai-sticky",
+				Namespace: "ns",
+				Labels: map[string]string{
+					internalapi.AIGatewayStickyRouteOwnerLabel:          "my-route",
+					internalapi.AIGatewayStickyRouteOwnerNamespaceLabel: "ns",
+					internalapi.AIGatewayStickyRouteBackendLabel:        "azure-openai",
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+		require.NoError(t, err)
+
+		cluster := &clusterv3.Cluster{
+			Name: "httproute/ns/my-route-azure-openai-sticky/rule/0",
+			LoadAssignment: &endpointv3.ClusterLoadAssignment{
+				Endpoints: []*endpointv3.LocalityLbEndpoints{{
+					LbEndpoints: []*endpointv3.LbEndpoint{{}},
+				}},
+			},
+		}
+
+		err = s.maybeModifyCluster(t.Context(), cluster)
+		require.NoError(t, err)
+
+		got := cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata.
+			FilterMetadata[internalapi.InternalEndpointMetadataNamespace].
+			Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue()
+		require.Equal(t,
+			internalapi.PerRouteRuleRefBackendName("ns", "azure-openai", "my-route", 0, 1),
+			got,
+		)
+	})
 
 	t.Run("AIGatewayRoute not found", func(t *testing.T) {
 		var buf bytes.Buffer
