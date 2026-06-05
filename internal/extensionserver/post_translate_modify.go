@@ -225,10 +225,15 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 					continue
 				}
 				if lbEndpointIndex >= len(cluster.LoadAssignment.Endpoints) {
-					// envoy-gateway emitted a LoadAssignment with fewer Endpoints entries
-					// than the rule has active (non-zero-weight) BackendRefs. This is a
-					// transient translation mismatch; skip the remaining backendRefs rather
-					// than indexing out of range and crashing the controller.
+					// The active (non-zero-weight) BackendRefs come from the AIGatewayRoute we
+					// just fetched from Kubernetes, while LoadAssignment.Endpoints comes from an
+					// earlier envoy-gateway translation. These two snapshots normally agree 1:1
+					// but can briefly diverge when backend resources (Backend,
+					// BackendSecurityPolicy, etc.) are patched in rapid succession (e.g. by an
+					// external controller), making EG re-translate continuously: we then observe
+					// an intermediate cluster with fewer Endpoints than active BackendRefs.
+					// Indexing here would panic; the mismatch is self-healing on the next
+					// translation, so we skip the remaining backendRefs instead.
 					s.log.Info("LoadAssignment has fewer Endpoints than active BackendRefs; skipping remaining",
 						"cluster_name", cluster.Name,
 						"namespace", aigwRoute.Namespace,
