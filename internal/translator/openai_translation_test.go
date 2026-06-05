@@ -20,7 +20,7 @@ func TestTranslationTranslator_RequestBody_NoOverride(t *testing.T) {
 	req := &openai.TranslationRequest{Model: "whisper-1", FileName: "test.mp3", FileSize: 2048}
 	original := []byte("multipart-body-data")
 
-	hm, bm, err := tr.RequestBody(original, req, false)
+	hm, bm, err := tr.RequestBody(nil, original, req, false)
 	require.NoError(t, err)
 	require.Len(t, hm, 1)
 	require.Equal(t, pathHeaderName, hm[0].Key())
@@ -33,7 +33,7 @@ func TestTranslationTranslator_RequestBody_ForceMutation(t *testing.T) {
 	req := &openai.TranslationRequest{Model: "whisper-1"}
 	original := []byte("multipart-body-data")
 
-	hm, bm, err := tr.RequestBody(original, req, true)
+	hm, bm, err := tr.RequestBody(nil, original, req, true)
 	require.NoError(t, err)
 	require.NotNil(t, bm)
 	require.Equal(t, original, bm)
@@ -54,7 +54,7 @@ func TestTranslationTranslator_RequestBody_ModelOverride(t *testing.T) {
 
 	req := &openai.TranslationRequest{Model: "whisper-1", FileName: "test.mp3", FileSize: 5}
 
-	hm, bm, err := tr.RequestBody(body, req, false)
+	hm, bm, err := tr.RequestBody(nil, body, req, false)
 	require.NoError(t, err)
 	require.NotNil(t, bm)
 
@@ -88,7 +88,7 @@ func TestTranslationTranslator_ResponseHeaders_NoOp(t *testing.T) {
 func TestTranslationTranslator_ResponseBody_NoSpan(t *testing.T) {
 	tr := NewTranslationOpenAIToOpenAITranslator("v1", "")
 	req := &openai.TranslationRequest{Model: "whisper-1"}
-	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	_, _, _ = tr.RequestBody(nil, []byte("body"), req, false)
 
 	resp := openai.TranslationResponse{Text: "translated text"}
 	respBytes, _ := json.Marshal(resp)
@@ -105,7 +105,7 @@ func TestTranslationTranslator_ResponseBody_WithSpan(t *testing.T) {
 	mockSpan := &mockTranslationSpan{}
 	tr := NewTranslationOpenAIToOpenAITranslator("v1", "")
 	req := &openai.TranslationRequest{Model: "whisper-1"}
-	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	_, _, _ = tr.RequestBody(nil, []byte("body"), req, false)
 
 	resp := openai.TranslationResponse{Text: "translated text"}
 	respBytes, _ := json.Marshal(resp)
@@ -120,7 +120,7 @@ func TestTranslationTranslator_ResponseBody_WithSpan_NonJSON(t *testing.T) {
 	mockSpan := &mockTranslationSpan{}
 	tr := NewTranslationOpenAIToOpenAITranslator("v1", "")
 	req := &openai.TranslationRequest{Model: "whisper-1"}
-	_, _, _ = tr.RequestBody([]byte("body"), req, false)
+	_, _, _ = tr.RequestBody(nil, []byte("body"), req, false)
 
 	rawResponse := "translated text\nwith new line and \"quotes\""
 	_, _, _, _, err := tr.ResponseBody(nil, bytes.NewReader([]byte(rawResponse)), true, mockSpan)

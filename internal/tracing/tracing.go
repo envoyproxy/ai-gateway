@@ -34,8 +34,8 @@ type tracingImpl struct {
 	embeddingsTracer          tracingapi.EmbeddingsTracer
 	responsesTracer           tracingapi.ResponsesTracer
 	speechTracer              tracingapi.SpeechTracer
-	transcriptionTracer   tracingapi.TranscriptionTracer
-	translationTracer     tracingapi.TranslationTracer
+	transcriptionTracer       tracingapi.TranscriptionTracer
+	translationTracer         tracingapi.TranslationTracer
 	rerankTracer              tracingapi.RerankTracer
 	messageTracer             tracingapi.MessageTracer
 	mcpTracer                 tracingapi.MCPTracer

@@ -37,8 +37,8 @@ var (
 	_ tracingapi.ImageGenerationTracer     = (*imageGenerationTracer)(nil)
 	_ tracingapi.ResponsesTracer           = (*responsesTracer)(nil)
 	_ tracingapi.SpeechTracer              = (*speechTracer)(nil)
-	_ tracingapi.TranscriptionTracer   = (*transcriptionTracer)(nil)
-	_ tracingapi.TranslationTracer     = (*translationTracer)(nil)
+	_ tracingapi.TranscriptionTracer       = (*transcriptionTracer)(nil)
+	_ tracingapi.TranslationTracer         = (*translationTracer)(nil)
 	_ tracingapi.RerankTracer              = (*rerankTracer)(nil)
 	_ tracingapi.CreateFileTracer          = (*createFileTracer)(nil)
 	_ tracingapi.RetrieveFileTracer        = (*retrieveFileTracer)(nil)
@@ -53,8 +53,8 @@ type (
 	imageGenerationTracer     = requestTracerImpl[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
 	responsesTracer           = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	speechTracer              = requestTracerImpl[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
-	transcriptionTracer   = requestTracerImpl[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
-	translationTracer     = requestTracerImpl[openai.TranslationRequest, openai.TranslationResponse, struct{}]
+	transcriptionTracer       = requestTracerImpl[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
+	translationTracer         = requestTracerImpl[openai.TranslationRequest, openai.TranslationResponse, struct{}]
 	rerankTracer              = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
 	createFileTracer          = requestTracerImpl[openai.FileNewParams, openai.FileObject, struct{}]
 	retrieveFileTracer        = requestTracerImpl[struct{}, openai.FileObject, struct{}]

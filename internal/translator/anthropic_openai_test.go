@@ -882,7 +882,7 @@ func TestAnthropicToOpenAITranslator_RequestBody_ThinkingConfig(t *testing.T) {
 		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Think"}}},
 		Thinking:  &anthropic.Thinking{Enabled: &anthropic.ThinkingEnabled{Type: "enabled", BudgetTokens: 4096}},
 	}
-	headers, newBody, err := translator.RequestBody(nil, body, false)
+	headers, newBody, err := translator.RequestBody(map[string]string{}, nil, body, false)
 	require.NoError(t, err)
 	require.NotNil(t, newBody)
 	require.Len(t, headers, 2)
@@ -926,7 +926,7 @@ func TestAnthropicToOpenAITranslator_RequestBody_MultiTurnWithThinking(t *testin
 			{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Turn 3 question"}},
 		},
 	}
-	_, newBody, err := translator.RequestBody(nil, body, false)
+	_, newBody, err := translator.RequestBody(map[string]string{}, nil, body, false)
 	require.NoError(t, err)
 	require.NotNil(t, newBody)
 
@@ -946,7 +946,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_NonStreaming_Thinking(t *testi
 		MaxTokens: 100,
 		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
 	}
-	_, _, err := translator.RequestBody(nil, reqBody, false)
+	_, _, err := translator.RequestBody(map[string]string{}, nil, reqBody, false)
 	require.NoError(t, err)
 
 	content := "The answer is 42."
@@ -998,7 +998,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_Streaming_Thinking(t *testing.
 		Stream:    true,
 		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Think"}}},
 	}
-	_, _, err := translator.RequestBody(nil, reqBody, false)
+	_, _, err := translator.RequestBody(map[string]string{}, nil, reqBody, false)
 	require.NoError(t, err)
 
 	// Simulate OpenAI streaming with reasoning content followed by text content

@@ -499,7 +499,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		s, err := New(c, logr.Discard(), udsPath, false, nil, nil)
+		s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
 		cluster := &clusterv3.Cluster{

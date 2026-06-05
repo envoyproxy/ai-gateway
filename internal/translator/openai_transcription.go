@@ -46,7 +46,7 @@ type openAIToOpenAITranslatorV1Transcription struct {
 }
 
 // RequestBody implements [OpenAIAudioTranscriptionTranslator.RequestBody].
-func (o *openAIToOpenAITranslatorV1Transcription) RequestBody(original []byte, req *openai.TranscriptionRequest, forceBodyMutation bool) (
+func (o *openAIToOpenAITranslatorV1Transcription) RequestBody(_ map[string]string, original []byte, req *openai.TranscriptionRequest, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	o.requestModel = req.Model

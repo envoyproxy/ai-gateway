@@ -1042,7 +1042,7 @@ func buildMultipartBody(t *testing.T, fields map[string]string, fileName string,
 
 func TestTranscriptionEndpointSpec_ParseBody_RejectsJSON(t *testing.T) {
 	spec := TranscriptionEndpointSpec{}
-	_, _, _, _, err := spec.ParseBody([]byte(`{"model":"whisper-1"}`), false)
+	_, _, _, _, err := spec.ParseBody([]byte(`{"model":"whisper-1"}`), false, map[string]string{})
 	require.ErrorContains(t, err, "expected multipart/form-data")
 }
 
@@ -1230,7 +1230,7 @@ func TestTranscriptionEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) 
 
 func TestTranslationEndpointSpec_ParseBody_RejectsJSON(t *testing.T) {
 	spec := TranslationEndpointSpec{}
-	_, _, _, _, err := spec.ParseBody([]byte(`{"model":"whisper-1"}`), false)
+	_, _, _, _, err := spec.ParseBody([]byte(`{"model":"whisper-1"}`), false, map[string]string{})
 	require.ErrorContains(t, err, "expected multipart/form-data")
 }
 
@@ -1376,42 +1376,47 @@ func buildFileUploadBody(t *testing.T, includeModelName bool, modelName, backend
 	return buf.Bytes(), writer.FormDataContentType()
 }
 
+
+
 func TestCreateFileEndpointSpec_ParseBody(t *testing.T) {
+	spec := CreateFileEndpointSpec{}
+	// ParseBody for CreateFile always returns an error directing callers to use multipart.
+	_, _, _, _, err := spec.ParseBody(nil, false, map[string]string{})
+	require.ErrorContains(t, err, "expected multipart/form-data content type for /v1/files")
+}
+
+func TestCreateFileEndpointSpec_ParseMultipartBody(t *testing.T) {
 	spec := CreateFileEndpointSpec{}
 
 	t.Run("missing_content_type", func(t *testing.T) {
-		model, parsed, stream, mutated, err := spec.ParseBody(nil, false, map[string]string{})
+		_, _, _, _, err := spec.ParseMultipartBody(nil, "", false)
 		require.ErrorContains(t, err, "failed to parse Content-Type header")
-		require.Empty(t, model)
-		require.Nil(t, parsed)
-		require.False(t, stream)
-		require.Nil(t, mutated)
 	})
 
 	t.Run("wrong_content_type", func(t *testing.T) {
-		_, _, _, _, err := spec.ParseBody([]byte(`{}`), false, map[string]string{"content-type": "application/json"})
+		_, _, _, _, err := spec.ParseMultipartBody([]byte(`{}`), "application/json", false)
 		require.ErrorContains(t, err, "only multipart/form-data is supported")
 	})
 
 	t.Run("missing_boundary", func(t *testing.T) {
-		_, _, _, _, err := spec.ParseBody([]byte("body"), false, map[string]string{"content-type": "multipart/form-data"})
+		_, _, _, _, err := spec.ParseMultipartBody([]byte("body"), "multipart/form-data", false)
 		require.ErrorContains(t, err, "missing boundary parameter")
 	})
 
 	t.Run("malformed_multipart", func(t *testing.T) {
-		_, _, _, _, err := spec.ParseBody([]byte("not-valid-multipart"), false, map[string]string{"content-type": "multipart/form-data; boundary=xxx"})
+		_, _, _, _, err := spec.ParseMultipartBody([]byte("not-valid-multipart"), "multipart/form-data; boundary=xxx", false)
 		require.ErrorContains(t, err, "failed to parse multipart form-data")
 	})
 
 	t.Run("missing_model_name", func(t *testing.T) {
 		body, contentType := buildFileUploadBody(t, false, "", "")
-		_, _, _, _, err := spec.ParseBody(body, false, map[string]string{"content-type": contentType})
+		_, _, _, _, err := spec.ParseMultipartBody(body, contentType, false)
 		require.ErrorContains(t, err, "'model' parameter should be passed as extra field for file upload operations")
 	})
 
 	t.Run("success", func(t *testing.T) {
 		body, contentType := buildFileUploadBody(t, true, "gpt-4o", "")
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false, map[string]string{"content-type": contentType})
+		model, parsed, stream, mutated, err := spec.ParseMultipartBody(body, contentType, false)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4o", model)
 		require.NotNil(t, parsed)
@@ -1421,13 +1426,15 @@ func TestCreateFileEndpointSpec_ParseBody(t *testing.T) {
 
 	t.Run("success_with_optional_backend", func(t *testing.T) {
 		body, contentType := buildFileUploadBody(t, true, "gpt-4o", "openai-primary")
-		headers := map[string]string{"content-type": contentType}
-		model, parsed, stream, mutated, err := spec.ParseBody(body, false, headers)
+		model, parsed, stream, mutated, err := spec.ParseMultipartBody(body, contentType, false)
 		require.NoError(t, err)
 		require.Equal(t, "gpt-4o", model)
 		require.NotNil(t, parsed)
 		require.False(t, stream)
 		require.NotNil(t, mutated)
+		// Backend is in ExtraBody; ExtractBackendName moves it to request headers.
+		headers := map[string]string{}
+		spec.ExtractBackendName(parsed, headers)
 		require.Equal(t, "openai-primary", headers[internalapi.BackendNameHeaderKey])
 	})
 }

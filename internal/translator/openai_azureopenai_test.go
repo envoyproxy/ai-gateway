@@ -60,7 +60,7 @@ func TestOpenAIToAzureOpenAITranslatorV1Responses_RequestBody(t *testing.T) {
 				originalReq := &openai.ResponseRequest{Model: "foo-bar-ai", Stream: stream}
 				o := NewResponsesOpenAIToAzureOpenAITranslator("some-version", "").(*openAIToAzureOpenAITranslatorV1Responses)
 
-				hm, bm, err := o.RequestBody([]byte(`{"model":"foo-bar-ai","input":"Hi"}`), originalReq, false)
+				hm, bm, err := o.RequestBody(map[string]string{}, []byte(`{"model":"foo-bar-ai","input":"Hi"}`), originalReq, false)
 				require.Nil(t, bm)
 				require.NoError(t, err)
 				require.Equal(t, stream, o.stream)
@@ -76,7 +76,7 @@ func TestOpenAIToAzureOpenAITranslatorV1Responses_RequestBody(t *testing.T) {
 		originalReq := &openai.ResponseRequest{Model: "gpt-4-turbo", Stream: false}
 		o := NewResponsesOpenAIToAzureOpenAITranslator("some-version", modelName).(*openAIToAzureOpenAITranslatorV1Responses)
 
-		hm, bm, err := o.RequestBody([]byte(`{"model":"gpt-4-turbo","input":"Hi"}`), originalReq, false)
+		hm, bm, err := o.RequestBody(map[string]string{}, []byte(`{"model":"gpt-4-turbo","input":"Hi"}`), originalReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, hm)
 		require.Len(t, hm, 2)
@@ -94,7 +94,7 @@ func TestOpenAIToAzureOpenAITranslatorV1Responses_RequestBody(t *testing.T) {
 			},
 		}
 
-		hm, bm, err := o.RequestBody([]byte(`{"model":"gpt-4-turbo","input":"Hi"}`), originalReq, false)
+		hm, bm, err := o.RequestBody(map[string]string{}, []byte(`{"model":"gpt-4-turbo","input":"Hi"}`), originalReq, false)
 		require.NoError(t, err)
 		require.Nil(t, bm)
 		require.NotNil(t, hm)

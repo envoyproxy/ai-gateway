@@ -456,12 +456,22 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 		originalModel, body, stream, mutatedOriginalBody, err = r.eh.ParseBody(rawBody.Body, costConfigured, r.requestHeaders)
 	}
 	if err != nil {
+		if be, ok := any(r.eh).(endpointspec.BackendNameExtractor[ReqT]); ok {
+			be.ExtractBackendName(body, r.requestHeaders)
+		}
 		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
 			// return to user as 400 -  e.g., "malformed request: failed to parse JSON for /v1/chat/completions"
 			r.logger.Error("returning user-facing error for malformed request", slog.String("error", err.Error()))
 			return createUserFacingErrorResponse(400, "BadRequest", userFacingErr.Error()), nil
 		}
 		return nil, fmt.Errorf("failed to parse request body: %w", err)
+	}
+	// Allow multipart-only specs (e.g. file uploads) to extract routing hints (e.g. backend name)
+	// from the parsed body into request headers, since ParseMultipartBody cannot mutate headers directly.
+	if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
+		if be, ok := any(r.eh).(endpointspec.BackendNameExtractor[ReqT]); ok {
+			be.ExtractBackendName(body, r.requestHeaders)
+		}
 	}
 
 	// Use the request-scoped logger from context if available, otherwise fall back to processor logger

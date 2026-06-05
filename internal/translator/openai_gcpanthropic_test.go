@@ -370,7 +370,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			},
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, body, err := translator.RequestBody(nil, thinkingReq, false)
+		_, body, err := translator.RequestBody(map[string]string{}, nil, thinkingReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, body)
 
@@ -393,7 +393,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 			},
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, body, err := translator.RequestBody(nil, thinkingReq, false)
+		_, body, err := translator.RequestBody(map[string]string{}, nil, thinkingReq, false)
 		require.NoError(t, err)
 		require.NotNil(t, body)
 

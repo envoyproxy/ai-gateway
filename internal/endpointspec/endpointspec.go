@@ -129,6 +129,14 @@ type (
 
 var errMultipartNotSupported = fmt.Errorf("%w: multipart body not supported for this endpoint", internalapi.ErrMalformedRequest)
 
+// BackendNameExtractor is an optional interface for Spec implementations that can extract
+// a backend name from the parsed request body for sticky backend routing. This is called
+// by the processor after ParseMultipartBody succeeds, so that multipart-only endpoints
+// (e.g. file uploads) can influence backend selection without altering the Spec interface.
+type BackendNameExtractor[ReqT any] interface {
+	ExtractBackendName(req *ReqT, requestHeaders map[string]string)
+}
+
 // ParseBody implements [EndpointSpec.ParseBody].
 func (ChatCompletionsEndpointSpec) ParseBody(
 	body []byte,
@@ -437,13 +445,22 @@ func (RerankEndpointSpec) RedactSensitiveInfoFromRequest(req *cohereschema.Reran
 	return req, nil
 }
 
-// ParseBody implements [EndpointSpec.ParseBody].
+// ParseBody implements [EndpointSpec.ParseBody]. CreateFile uses multipart, so JSON body is not expected.
 func (CreateFileEndpointSpec) ParseBody(
-	body []byte,
+	_ []byte,
 	_ bool,
-	requestHeaders map[string]string,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.FileNewParams, bool, []byte, error) {
-	mediaType, params, err := mime.ParseMediaType(requestHeaders["content-type"])
+	return "", nil, false, nil, fmt.Errorf("%w: expected multipart/form-data content type for /v1/files", internalapi.ErrMalformedRequest)
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (CreateFileEndpointSpec) ParseMultipartBody(
+	body []byte,
+	contentType string,
+	_ bool,
+) (internalapi.OriginalModel, *openai.FileNewParams, bool, []byte, error) {
+	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		return "", nil, false, nil, fmt.Errorf("%w: failed to parse Content-Type header: %w", internalapi.ErrUnsupportedMediaType, err)
 	}
@@ -466,17 +483,6 @@ func (CreateFileEndpointSpec) ParseBody(
 		return "", nil, false, nil, fmt.Errorf("%w: invalid 'model' parameter type for file upload operations", internalapi.ErrInvalidRequestBody)
 	}
 
-	// Optional backend can be provided as multipart extra field for sticky backend routing.
-	if backendNameRaw, ok := req.ExtraBody["backend"]; ok {
-		backendNameBytes, ok := backendNameRaw.([]byte)
-		if !ok {
-			return "", nil, false, nil, fmt.Errorf("%w: invalid 'backend' parameter type for file upload operations", internalapi.ErrInvalidRequestBody)
-		}
-		if len(backendNameBytes) > 0 {
-			requestHeaders[internalapi.BackendNameHeaderKey] = string(backendNameBytes)
-		}
-	}
-
 	return string(modelNameBytes), &req, false, body, nil
 }
 
@@ -494,6 +500,23 @@ func (CreateFileEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema,
 func (CreateFileEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.FileNewParams) (redactedReq *openai.FileNewParams, err error) {
 	// Placeholder if redaction is required in future
 	return req, nil
+}
+
+// ExtractBackendName implements [BackendNameExtractor]. It reads the optional "backend"
+// field from the multipart extra body and sets it as the sticky backend routing header,
+// allowing callers to pin a file-upload request to a specific backend.
+func (CreateFileEndpointSpec) ExtractBackendName(req *openai.FileNewParams, requestHeaders map[string]string) {
+	if req == nil {
+		return
+	}
+	backendNameRaw, ok := req.ExtraBody["backend"]
+	if !ok {
+		return
+	}
+	backendNameBytes, ok := backendNameRaw.([]byte)
+	if ok && len(backendNameBytes) > 0 {
+		requestHeaders[internalapi.BackendNameHeaderKey] = string(backendNameBytes)
+	}
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -525,6 +548,11 @@ func (ListFilesEndpointSpec) ParseBody(
 	return "", &struct{}{}, false, body, nil
 }
 
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (ListFilesEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
+}
+
 // GetTranslator implements [EndpointSpec.GetTranslator].
 func (ListFilesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIListFilesTranslator, error) {
 	switch schema.Name {
@@ -549,6 +577,11 @@ func (RetrieveFileEndpointSpec) ParseBody(
 ) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
 	// RetrieveFile endpoint does not have a body.
 	return "", &struct{}{}, false, body, nil
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (RetrieveFileEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
@@ -577,6 +610,11 @@ func (RetrieveFileContentEndpointSpec) ParseBody(
 	return "", &struct{}{}, false, body, nil
 }
 
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (RetrieveFileContentEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
+}
+
 // GetTranslator implements [EndpointSpec.GetTranslator].
 func (RetrieveFileContentEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIRetrieveFileContentTranslator, error) {
 	switch schema.Name {
@@ -600,6 +638,11 @@ func (DeleteFileEndpointSpec) ParseBody(body []byte,
 ) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
 	// DeleteFile endpoint does not have a body.
 	return "", &struct{}{}, false, body, nil
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (DeleteFileEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
@@ -847,7 +890,9 @@ func (SpeechEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.SpeechReque
 
 // ParseBody implements [Spec.ParseBody]. Transcription uses multipart, so JSON body is not expected.
 func (TranscriptionEndpointSpec) ParseBody(
-	_ []byte, _ bool,
+	_ []byte,
+	_ bool,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.TranscriptionRequest, bool, []byte, error) {
 	return "", nil, false, nil, fmt.Errorf("%w: expected multipart/form-data content type for /v1/audio/transcriptions", internalapi.ErrMalformedRequest)
 }
@@ -968,7 +1013,9 @@ func (TranscriptionEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Tran
 
 // ParseBody implements [Spec.ParseBody]. Translation uses multipart, so JSON body is not expected.
 func (TranslationEndpointSpec) ParseBody(
-	_ []byte, _ bool,
+	_ []byte,
+	_ bool,
+	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.TranslationRequest, bool, []byte, error) {
 	return "", nil, false, nil, fmt.Errorf("%w: expected multipart/form-data content type for /v1/audio/translations", internalapi.ErrMalformedRequest)
 }

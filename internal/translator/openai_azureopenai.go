@@ -80,10 +80,10 @@ type openAIToAzureOpenAITranslatorV1Responses struct {
 }
 
 // RequestBody implements [OpenAIResponsesTranslator.RequestBody].
-func (o *openAIToAzureOpenAITranslatorV1Responses) RequestBody(raw []byte, req *openai.ResponseRequest, forceBodyMutation bool) (
+func (o *openAIToAzureOpenAITranslatorV1Responses) RequestBody(reqHeaders map[string]string, raw []byte, req *openai.ResponseRequest, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	newHeaders, newBody, err = o.openAIToOpenAITranslatorV1Responses.RequestBody(raw, req, forceBodyMutation)
+	newHeaders, newBody, err = o.openAIToOpenAITranslatorV1Responses.RequestBody(reqHeaders, raw, req, forceBodyMutation)
 	if err != nil {
 		return nil, nil, err
 	}
