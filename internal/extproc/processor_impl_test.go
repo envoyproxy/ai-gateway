@@ -74,12 +74,11 @@ func TestNewFactory(t *testing.T) {
 type (
 	chatCompletionProcessorRouterFilter      = routerProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
 	chatCompletionProcessorUpstreamFilter    = upstreamProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
-	transcriptionProcessorRouterFilter    = routerProcessor[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent, endpointspec.TranscriptionEndpointSpec]
-	transcriptionProcessorUpstreamFilter  = upstreamProcessor[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent, endpointspec.TranscriptionEndpointSpec]
+	transcriptionProcessorRouterFilter       = routerProcessor[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent, endpointspec.TranscriptionEndpointSpec]
+	transcriptionProcessorUpstreamFilter     = upstreamProcessor[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent, endpointspec.TranscriptionEndpointSpec]
 	messagesProcessorRouterFilter            = routerProcessor[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
 	messagesProcessorUpstreamFilter          = upstreamProcessor[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
 	retrieveFileContentProcessorRouterFilter = routerProcessor[struct{}, struct{}, struct{}, endpointspec.RetrieveFileContentEndpointSpec]
-	// filesProcessorUpstreamFilter = upstreamProcessor[openai.FileRequest, openai.FileResponse, openai.FileResponseChunk, endpointspec.FilesEndpointSpec]
 )
 
 type mockTracer struct {

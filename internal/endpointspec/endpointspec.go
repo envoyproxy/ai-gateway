@@ -14,7 +14,6 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
-	"net/url"
 	"strconv"
 	"strings"
 
@@ -58,7 +57,7 @@ type (
 		// * stream: A boolean indicating if the request is for streaming responses.
 		// * mutatedBody: The possibly mutated request body as a byte slice. Or nil if no mutation is needed.
 		// * err: An error if parsing fails.
-		ParseBody(body []byte, costConfigured bool, requestHeaders map[string]string) (originalModel internalapi.OriginalModel, req *ReqT, stream bool, mutatedBody []byte, err error)
+		ParseBody(body []byte, costConfigured bool) (originalModel internalapi.OriginalModel, req *ReqT, stream bool, mutatedBody []byte, err error)
 		// GetTranslator selects the appropriate translator based on the output API schema
 		// and an optional model name override.
 		//
@@ -141,7 +140,6 @@ type BackendNameExtractor[ReqT any] interface {
 func (ChatCompletionsEndpointSpec) ParseBody(
 	body []byte,
 	costConfigured bool,
-	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.ChatCompletionRequest, bool, []byte, error) {
 	var req openai.ChatCompletionRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -222,7 +220,6 @@ func (ChatCompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Ch
 func (CompletionsEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.CompletionRequest, bool, []byte, error) {
 	var openAIReq openai.CompletionRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
@@ -256,7 +253,6 @@ func (CompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Comple
 func (EmbeddingsEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.EmbeddingRequest, bool, []byte, error) {
 	var openAIReq openai.EmbeddingRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
@@ -295,7 +291,6 @@ func (EmbeddingsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Embeddi
 func (ImageGenerationEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.ImageGenerationRequest, bool, []byte, error) {
 	var openAIReq openai.ImageGenerationRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
@@ -329,7 +324,6 @@ func (ImageGenerationEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Im
 func (ResponsesEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.ResponseRequest, bool, []byte, error) {
 	var openAIReq openai.ResponseRequest
 	if err := json.Unmarshal(body, &openAIReq); err != nil {
@@ -365,7 +359,6 @@ func (ResponsesEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Response
 func (MessagesEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-	_ map[string]string,
 ) (internalapi.OriginalModel, *anthropic.MessagesRequest, bool, []byte, error) {
 	var anthropicReq anthropic.MessagesRequest
 	if err := json.Unmarshal(body, &anthropicReq); err != nil {
@@ -415,7 +408,6 @@ func (MessagesEndpointSpec) RedactSensitiveInfoFromRequest(req *anthropic.Messag
 func (RerankEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-	_ map[string]string,
 ) (internalapi.OriginalModel, *cohereschema.RerankV2Request, bool, []byte, error) {
 	var req cohereschema.RerankV2Request
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -449,7 +441,6 @@ func (RerankEndpointSpec) RedactSensitiveInfoFromRequest(req *cohereschema.Reran
 func (CreateFileEndpointSpec) ParseBody(
 	_ []byte,
 	_ bool,
-	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.FileNewParams, bool, []byte, error) {
 	return "", nil, false, nil, fmt.Errorf("%w: expected multipart/form-data content type for /v1/files", internalapi.ErrMalformedRequest)
 }
@@ -523,27 +514,7 @@ func (CreateFileEndpointSpec) ExtractBackendName(req *openai.FileNewParams, requ
 func (ListFilesEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-	requestHeaders map[string]string,
 ) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
-	originalPath := requestHeaders[internalapi.OriginalPathHeader]
-	if originalPath == "" {
-		originalPath = requestHeaders[":path"]
-	}
-	_, rawQuery, found := strings.Cut(originalPath, "?")
-	if !found || rawQuery == "" {
-		return "", nil, false, nil, fmt.Errorf("%w: missing required 'backend' query parameter for /v1/files", internalapi.ErrInvalidRequestBody)
-	}
-	query, err := url.ParseQuery(rawQuery)
-	if err != nil {
-		return "", nil, false, nil, fmt.Errorf("%w: failed to parse query parameters for /v1/files: %w", internalapi.ErrMalformedRequest, err)
-	}
-	if query.Has("model") {
-		return "", nil, false, nil, fmt.Errorf("%w: 'model' query parameter is not supported for /v1/files. use 'backend' query parameter instead", internalapi.ErrInvalidRequestBody)
-	}
-	backendName := query.Get("backend")
-	if backendName == "" {
-		return "", nil, false, nil, fmt.Errorf("%w: missing required 'backend' query parameter for /v1/files", internalapi.ErrInvalidRequestBody)
-	}
 	// ListFiles endpoint does not have a body.
 	return "", &struct{}{}, false, body, nil
 }
@@ -573,7 +544,6 @@ func (ListFilesEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (reda
 func (RetrieveFileEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-	_ map[string]string,
 ) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
 	// RetrieveFile endpoint does not have a body.
 	return "", &struct{}{}, false, body, nil
@@ -604,7 +574,6 @@ func (RetrieveFileEndpointSpec) RedactSensitiveInfoFromRequest(req *struct{}) (r
 func (RetrieveFileContentEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-	_ map[string]string,
 ) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
 	// RetrieveFileContent endpoint does not have a body.
 	return "", &struct{}{}, false, body, nil
@@ -634,7 +603,6 @@ func (RetrieveFileContentEndpointSpec) RedactSensitiveInfoFromRequest(req *struc
 // ParseBody implements [EndpointSpec.ParseBody].
 func (DeleteFileEndpointSpec) ParseBody(body []byte,
 	_ bool,
-	_ map[string]string,
 ) (internalapi.OriginalModel, *struct{}, bool, []byte, error) {
 	// DeleteFile endpoint does not have a body.
 	return "", &struct{}{}, false, body, nil
@@ -837,7 +805,6 @@ func redactUserContentPart(part openai.ChatCompletionContentPartUserUnionParam) 
 func (SpeechEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.SpeechRequest, bool, []byte, error) {
 	var req openai.SpeechRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -892,7 +859,6 @@ func (SpeechEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.SpeechReque
 func (TranscriptionEndpointSpec) ParseBody(
 	_ []byte,
 	_ bool,
-	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.TranscriptionRequest, bool, []byte, error) {
 	return "", nil, false, nil, fmt.Errorf("%w: expected multipart/form-data content type for /v1/audio/transcriptions", internalapi.ErrMalformedRequest)
 }
@@ -1015,7 +981,6 @@ func (TranscriptionEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Tran
 func (TranslationEndpointSpec) ParseBody(
 	_ []byte,
 	_ bool,
-	_ map[string]string,
 ) (internalapi.OriginalModel, *openai.TranslationRequest, bool, []byte, error) {
 	return "", nil, false, nil, fmt.Errorf("%w: expected multipart/form-data content type for /v1/audio/translations", internalapi.ErrMalformedRequest)
 }

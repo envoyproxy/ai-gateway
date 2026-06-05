@@ -453,7 +453,7 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 	if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
 		originalModel, body, stream, mutatedOriginalBody, err = r.eh.ParseMultipartBody(rawBody.Body, contentType, costConfigured)
 	} else {
-		originalModel, body, stream, mutatedOriginalBody, err = r.eh.ParseBody(rawBody.Body, costConfigured, r.requestHeaders)
+		originalModel, body, stream, mutatedOriginalBody, err = r.eh.ParseBody(rawBody.Body, costConfigured)
 	}
 	if err != nil {
 		if be, ok := any(r.eh).(endpointspec.BackendNameExtractor[ReqT]); ok {
