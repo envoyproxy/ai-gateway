@@ -586,7 +586,8 @@ func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, m
 	if ref.SecurityPolicy != nil && ref.SecurityPolicy.APIKey != nil {
 		apiKey := ref.SecurityPolicy.APIKey
 
-		if apiKey.QueryParam != nil {
+		switch {
+		case apiKey.QueryParam != nil:
 			// Query parameter injection cannot use Envoy Gateway's credentialInjection filter;
 			// embed directly in the URL rewrite path.
 			// TODO: evaluate alternatives to avoid embedding the secret in the HTTPRoute manifest.
@@ -595,7 +596,7 @@ func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, m
 				return gwapiv1.HTTPRouteRule{}, fmt.Errorf("failed to read API key for backend %s: %w", ref.Name, err)
 			}
 			fullPathPtr = fmt.Sprintf("%s?%s=%s", fullPathPtr, *apiKey.QueryParam, apiKeyLiteral)
-		} else if apiKey.Inline != nil {
+		case apiKey.Inline != nil:
 			// Inline API key: inject via RequestHeaderModifier directly. The value is already
 			// visible in the MCPRoute manifest, so a separate Secret adds no security benefit.
 			header := ptr.Deref(apiKey.Header, "Authorization")
@@ -611,7 +612,7 @@ func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, m
 					},
 				},
 			}
-		} else if apiKey.SecretRef != nil {
+		case apiKey.SecretRef != nil:
 			// SecretRef API key: create a managed credential Secret and use the
 			// HTTPRouteFilter's credentialInjection to keep plaintext out of non-Secret resources.
 			credSecretName := mcpCredentialSecretName(mcpRoute, ref.Name)
@@ -620,14 +621,6 @@ func (c *MCPRouteController) mcpBackendRefToHTTPRouteRule(ctx context.Context, m
 			}
 			credentialSecretName = credSecretName
 			credentialHeader = apiKey.Header
-		}
-	}
-
-	// Clean up any previously created credential secret when credential injection is no longer needed.
-	if credentialSecretName == "" {
-		staleSecretName := mcpCredentialSecretName(mcpRoute, ref.Name)
-		if err := c.kube.CoreV1().Secrets(mcpRoute.Namespace).Delete(ctx, staleSecretName, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-			return gwapiv1.HTTPRouteRule{}, fmt.Errorf("failed to delete stale credential secret for backend %s: %w", ref.Name, err)
 		}
 	}
 
@@ -743,6 +736,18 @@ func (c *MCPRouteController) ensureMCPBackendRefHTTPFilter(ctx context.Context, 
 			return fmt.Errorf("failed to create HTTPRouteFilter: %w", err)
 		}
 	} else {
+		previousCredentialSecretName := ""
+		if existingFilter.Spec.CredentialInjection != nil {
+			previousCredentialSecretName = string(existingFilter.Spec.CredentialInjection.Credential.ValueRef.Name)
+		}
+		// Delete only on credential-injection transitions to avoid per-reconcile Delete calls.
+		if previousCredentialSecretName != "" && previousCredentialSecretName != credentialSecretName {
+			deleteErr := c.kube.CoreV1().Secrets(mcpRoute.Namespace).Delete(ctx, previousCredentialSecretName, metav1.DeleteOptions{})
+			if deleteErr != nil && !apierrors.IsNotFound(deleteErr) {
+				return fmt.Errorf("failed to delete stale credential secret %s: %w", previousCredentialSecretName, deleteErr)
+			}
+		}
+
 		// Update existing filter unconditionally to ensure it matches the desired state.
 		existingFilter.Spec = filter.Spec
 		c.logger.Info("Updating HTTPRouteFilter", "namespace", existingFilter.Namespace, "name", existingFilter.Name)
@@ -779,8 +784,9 @@ func (c *MCPRouteController) ensureCredentialSecret(ctx context.Context, secretN
 			egv1a1.InjectedCredentialKey: []byte(credentialValue),
 		},
 	}
-	if err := ctrlutil.SetControllerReference(mcpRoute, desired, c.client.Scheme()); err != nil {
-		return fmt.Errorf("failed to set controller reference for credential secret: %w", err)
+	setRefErr := ctrlutil.SetControllerReference(mcpRoute, desired, c.client.Scheme())
+	if setRefErr != nil {
+		return fmt.Errorf("failed to set controller reference for credential secret: %w", setRefErr)
 	}
 
 	existing, err := c.kube.CoreV1().Secrets(mcpRoute.Namespace).Get(ctx, secretName, metav1.GetOptions{})

@@ -369,7 +369,8 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 			require.NotNil(t, httpFilter.Spec.URLRewrite.Hostname)
 			require.Equal(t, egv1a1.BackendHTTPHostnameModifier, httpFilter.Spec.URLRewrite.Hostname.Type)
 
-			if tt.expCredentialValue != "" {
+			switch {
+			case tt.expCredentialValue != "":
 				// SecretRef path: credentialInjection on HTTPRouteFilter, no RequestHeaderModifier.
 				require.NotNil(t, httpFilter.Spec.CredentialInjection, "expected credentialInjection on the HTTPRouteFilter")
 				credSecretName := string(httpFilter.Spec.CredentialInjection.Credential.ValueRef.Name)
@@ -377,8 +378,8 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 				require.Equal(t, tt.expCredentialHeader, httpFilter.Spec.CredentialInjection.Header)
 				require.True(t, *httpFilter.Spec.CredentialInjection.Overwrite)
 
-				credSecret, err := kubeClient.CoreV1().Secrets("default").Get(t.Context(), credSecretName, metav1.GetOptions{})
-				require.NoError(t, err)
+				credSecret, getSecretErr := kubeClient.CoreV1().Secrets("default").Get(t.Context(), credSecretName, metav1.GetOptions{})
+				require.NoError(t, getSecretErr)
 				require.Equal(t, tt.expCredentialValue, string(credSecret.Data[egv1a1.InjectedCredentialKey]))
 
 				// No plaintext should appear in any RequestHeaderModifier filter.
@@ -389,7 +390,7 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 						}
 					}
 				}
-			} else if tt.expInlineHeader != nil {
+			case tt.expInlineHeader != nil:
 				// Inline path: RequestHeaderModifier, no credentialInjection, no credential Secret.
 				require.Nil(t, httpFilter.Spec.CredentialInjection, "inline key should not use credentialInjection")
 
@@ -410,7 +411,7 @@ func TestMCPRouteController_mcpRuleWithAPIKeyBackendSecurity(t *testing.T) {
 				credSecretName := mcpCredentialSecretName(mcpRoute, "svc-a")
 				_, err = kubeClient.CoreV1().Secrets("default").Get(t.Context(), credSecretName, metav1.GetOptions{})
 				require.True(t, apierrors.IsNotFound(err), "no credential secret should exist for inline API key")
-			} else {
+			default:
 				// Query param path: no credentialInjection, no RequestHeaderModifier.
 				require.Nil(t, httpFilter.Spec.CredentialInjection, "expected no credentialInjection for query param case")
 			}
