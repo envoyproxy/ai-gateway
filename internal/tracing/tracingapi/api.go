@@ -34,6 +34,10 @@ type (
 		ResponsesTracer() ResponsesTracer
 		// SpeechTracer creates spans for OpenAI speech synthesis requests on /v1/audio/speech endpoint.
 		SpeechTracer() SpeechTracer
+		// TranscriptionTracer creates spans for OpenAI audio transcription requests on /v1/audio/transcriptions endpoint.
+		TranscriptionTracer() TranscriptionTracer
+		// TranslationTracer creates spans for OpenAI audio translation requests on /v1/audio/translations endpoint.
+		TranslationTracer() TranslationTracer
 		// RerankTracer creates spans for rerank requests.
 		RerankTracer() RerankTracer
 		// MessageTracer creates spans for Anthropic messages requests.
@@ -69,6 +73,15 @@ type (
 	ResponsesTracer = RequestTracer[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	// SpeechTracer creates spans for OpenAI speech synthesis requests.
 	SpeechTracer = RequestTracer[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
+	// TranscriptionTracer creates spans for OpenAI audio transcription requests.
+	// The chunk type is openai.TranscriptionStreamEvent because gpt-4o-transcribe and
+	// gpt-4o-mini-transcribe emit SSE events when stream=true. whisper-1 and gpt-4o-transcribe-diarize
+	// never stream, but the chunk recorder is still invoked with a zero-length slice for those — same
+	// as any other non-streaming endpoint.
+	TranscriptionTracer = RequestTracer[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
+	// TranslationTracer creates spans for OpenAI audio translation requests.
+	// Translation has no streaming per the OpenAI spec, so the chunk type stays struct{}.
+	TranslationTracer = RequestTracer[openai.TranslationRequest, openai.TranslationResponse, struct{}]
 	// RerankTracer creates spans for rerank requests.
 	RerankTracer = RequestTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageTracer creates spans for Anthropic messages requests.
@@ -100,6 +113,10 @@ type (
 	ResponsesSpan = Span[openai.Response, openai.ResponseStreamEventUnion]
 	// SpeechSpan represents an OpenAI speech synthesis request span.
 	SpeechSpan = Span[[]byte, openai.SpeechStreamChunk]
+	// TranscriptionSpan represents an OpenAI audio transcription request span.
+	TranscriptionSpan = Span[openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
+	// TranslationSpan represents an OpenAI audio translation request span.
+	TranslationSpan = Span[openai.TranslationResponse, struct{}]
 	// RerankSpan represents a rerank request span.
 	RerankSpan = Span[cohere.RerankV2Response, struct{}]
 	// MessageSpan represents an Anthropic messages request span.
@@ -145,6 +162,10 @@ type (
 	ResponsesRecorder = SpanRecorder[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	// SpeechRecorder records attributes to a span according to a semantic convention.
 	SpeechRecorder = SpanRecorder[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
+	// TranscriptionRecorder records attributes to a span according to a semantic convention.
+	TranscriptionRecorder = SpanRecorder[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
+	// TranslationRecorder records attributes to a span according to a semantic convention.
+	TranslationRecorder = SpanRecorder[openai.TranslationRequest, openai.TranslationResponse, struct{}]
 	// RerankRecorder records attributes to a span according to a semantic convention.
 	RerankRecorder = SpanRecorder[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageRecorder records attributes to a span according to a semantic convention.
@@ -194,6 +215,16 @@ func (NoopTracing) SpeechTracer() SpeechTracer {
 	return NoopSpeechTracer{}
 }
 
+// TranscriptionTracer implements Tracing.TranscriptionTracer.
+func (NoopTracing) TranscriptionTracer() TranscriptionTracer {
+	return NoopTranscriptionTracer{}
+}
+
+// TranslationTracer implements Tracing.TranslationTracer.
+func (NoopTracing) TranslationTracer() TranslationTracer {
+	return NoopTranslationTracer{}
+}
+
 // RerankTracer implements Tracing.RerankTracer.
 func (NoopTracing) RerankTracer() RerankTracer {
 	return NoopRerankTracer{}
@@ -223,6 +254,10 @@ type (
 	NoopResponsesTracer = NoopTracer[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	// NoopSpeechTracer implements SpeechTracer.
 	NoopSpeechTracer = NoopTracer[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
+	// NoopTranscriptionTracer implements TranscriptionTracer.
+	NoopTranscriptionTracer = NoopTracer[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
+	// NoopTranslationTracer implements TranslationTracer.
+	NoopTranslationTracer = NoopTracer[openai.TranslationRequest, openai.TranslationResponse, struct{}]
 	// NoopRerankTracer implements RerankTracer.
 	NoopRerankTracer = NoopTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// NoopMessageTracer implements MessageTracer.
