@@ -70,8 +70,18 @@ func (o *openAIToOpenAITranslatorV1Embedding) ResponseHeaders(map[string]string)
 func (o *openAIToOpenAITranslatorV1Embedding) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.EmbeddingsSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
+	buf, err := io.ReadAll(body)
+	if err != nil {
+		return nil, nil, tokenUsage, "", fmt.Errorf("failed to read body: %w", err)
+	}
+	// An empty body is the empty trailing chunk envoy can deliver after the real
+	// body when chained behind FULL_DUPLEX_STREAMED ext_proc filters. No-op rather
+	// than surfacing a synthesized 500.
+	if len(buf) == 0 {
+		return nil, nil, tokenUsage, "", nil
+	}
 	var resp openai.EmbeddingResponse
-	if err := json.NewDecoder(body).Decode(&resp); err != nil {
+	if err := json.Unmarshal(buf, &resp); err != nil {
 		return nil, nil, tokenUsage, "", fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 

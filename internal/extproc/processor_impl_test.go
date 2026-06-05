@@ -290,7 +290,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 			parent:     &chatCompletionProcessorRouterFilter{},
 		}
 		mt.retErr = errors.New("test error")
-		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{})
+		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{EndOfStream: true})
 		require.ErrorContains(t, err, "test error")
 		mm.RequireRequestFailure(t)
 		require.Zero(t, mm.inputTokenCount)
@@ -436,6 +436,114 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		require.Equal(t, 138, mm.streamingOutputTokens) // accumulated output tokens from stream
 		require.Equal(t, 3, mm.cachedInputTokenCount)
 		require.Equal(t, 21, mm.cacheCreationInputTokenCount)
+	})
+}
+
+// eofOnEmptyBodyTranslator mimics the production behaviour of the
+// non-streaming OpenAI translators (openai_embeddings.go, openai_openai.go
+// non-stream branch): it calls json.NewDecoder(body).Decode(...) on every
+// invocation, so an empty body returns io.EOF wrapped as
+// "failed to unmarshal body: EOF". It also records each body it sees so a
+// test can assert "translator was invoked once with the full body" once the
+// processor-level multi-chunk buffering fix lands.
+type eofOnEmptyBodyTranslator struct {
+	mockTranslator
+	receivedBodies [][]byte
+}
+
+func (m *eofOnEmptyBodyTranslator) ResponseBody(
+	_ map[string]string, body io.Reader, _ bool, _ tracingapi.ChatCompletionSpan,
+) (
+	newHeaders []internalapi.Header, newBody []byte,
+	tokenUsage metrics.TokenUsage, responseModel string, err error,
+) {
+	buf, readErr := io.ReadAll(body)
+	require.NoError(m.t, readErr)
+	m.receivedBodies = append(m.receivedBodies, buf)
+
+	var resp openai.ChatCompletionResponse
+	if err := json.NewDecoder(bytes.NewReader(buf)).Decode(&resp); err != nil {
+		return nil, nil, tokenUsage, "", fmt.Errorf("failed to unmarshal body: %w", err)
+	}
+	tokenUsage.SetInputTokens(uint32(resp.Usage.PromptTokens)) //nolint:gosec
+	tokenUsage.SetTotalTokens(uint32(resp.Usage.TotalTokens))  //nolint:gosec
+	return nil, nil, tokenUsage, resp.Model, nil
+}
+
+// Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody_MultiChunkBug
+// is the processor-layer regression test for the multi-chunk EOF bug.
+//
+// When ai-gateway-extproc is chained behind FULL_DUPLEX_STREAMED ext_proc
+// filters in envoy, the response body for a non-streaming request can arrive
+// across multiple HttpBody messages — most commonly a single full-body chunk
+// followed by an empty trailing chunk with EndOfStream=true. The processor
+// currently invokes the translator on every chunk, so the empty trailing
+// chunk triggers io.EOF in json.Decode, which the processor wraps as a
+// gRPC error and envoy converts into a synthesised 500 (bytes_sent=0).
+//
+// Expected behaviour after the fix: ProcessResponseBody buffers non-streaming
+// response bodies until EndOfStream=true, then invokes the translator
+// exactly once with the full body. Both subtests below assert that contract.
+func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody_MultiChunkBug(t *testing.T) {
+	fullBody := []byte(`{"id":"x","object":"chat.completion","model":"m",` +
+		`"choices":[],"usage":{"prompt_tokens":7,"total_tokens":7}}`)
+
+	newProcessor := func(t *testing.T) (
+		*chatCompletionProcessorUpstreamFilter, *eofOnEmptyBodyTranslator, *mockMetrics,
+	) {
+		mm := &mockMetrics{}
+		mt := &eofOnEmptyBodyTranslator{mockTranslator: mockTranslator{t: t}}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:      mt,
+			metrics:         mm,
+			responseHeaders: map[string]string{":status": "200"},
+			parent:          &chatCompletionProcessorRouterFilter{config: &filterapi.RuntimeConfig{}},
+		}
+		return p, mt, mm
+	}
+
+	// Case A — observed in production: a single non-empty chunk with
+	// EndOfStream=false, followed by an empty chunk with EndOfStream=true.
+	t.Run("empty_trailing_chunk", func(t *testing.T) {
+		p, mt, mm := newProcessor(t)
+
+		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{
+			Body: fullBody, EndOfStream: false,
+		})
+		require.NoError(t, err)
+
+		_, err = p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{
+			Body: []byte{}, EndOfStream: true,
+		})
+		require.NoError(t, err,
+			"empty trailing chunk after EndOfStream=true must not surface json.Decode EOF")
+
+		// Translator invoked exactly once, with the full buffered body.
+		require.Len(t, mt.receivedBodies, 1)
+		require.Equal(t, fullBody, mt.receivedBodies[0])
+		mm.RequireRequestSuccess(t)
+	})
+
+	// Case B — body split across two non-empty chunks. Demonstrates that the
+	// fix must buffer (a translator-side empty-body guard alone would not
+	// catch this shape).
+	t.Run("body_split_across_two_chunks", func(t *testing.T) {
+		p, mt, mm := newProcessor(t)
+
+		_, err := p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{
+			Body: fullBody[:len(fullBody)/2], EndOfStream: false,
+		})
+		require.NoError(t, err,
+			"partial body chunk must not be decoded — buffer until EndOfStream")
+
+		_, err = p.ProcessResponseBody(t.Context(), &extprocv3.HttpBody{
+			Body: fullBody[len(fullBody)/2:], EndOfStream: true,
+		})
+		require.NoError(t, err)
+
+		require.Len(t, mt.receivedBodies, 1)
+		require.Equal(t, fullBody, mt.receivedBodies[0])
+		mm.RequireRequestSuccess(t)
 	})
 }
 

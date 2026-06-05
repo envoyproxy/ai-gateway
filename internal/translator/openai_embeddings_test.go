@@ -161,6 +161,61 @@ func TestOpenAIToOpenAITranslatorV1EmbeddingResponseBody(t *testing.T) {
 	}
 }
 
+// TestOpenAIToOpenAITranslatorV1EmbeddingResponseBody_MultiChunkBug is a
+// regression test for the multi-chunk EOF bug. When ai-gateway-extproc is
+// chained behind FULL_DUPLEX_STREAMED ext_proc filters in envoy, the response
+// body can arrive in multiple HttpBody messages — including an empty trailing
+// chunk with EndOfStream=true. The translator currently ignores the
+// endOfStream argument and calls json.NewDecoder(body).Decode(&resp) on every
+// invocation, returning io.EOF (wrapped as "failed to unmarshal body: EOF")
+// on the empty chunk. Envoy converts that into a synthesised 500.
+//
+// Expected behaviour after a translator-side fix: when the body is empty,
+// the translator returns no error and a zero TokenUsage regardless of the
+// endOfStream flag. A processor-side buffering fix would prevent the
+// translator from being called with an empty body in the first place; either
+// resolution makes the assertions below pass.
+func TestOpenAIToOpenAITranslatorV1EmbeddingResponseBody_MultiChunkBug(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		body        string
+		endOfStream bool
+	}{
+		{
+			// The exact shape observed in production: an empty trailing chunk
+			// delivered with EndOfStream=true after the real body chunk was
+			// already consumed. The translator must treat this as a no-op.
+			name:        "empty_body_end_of_stream",
+			body:        "",
+			endOfStream: true,
+		},
+		{
+			// A mid-stream empty chunk (no EndOfStream yet). Translator must
+			// not attempt to decode an empty body.
+			name:        "empty_body_not_end_of_stream",
+			body:        "",
+			endOfStream: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			translator := NewEmbeddingOpenAIToOpenAITranslator("v1", "")
+			respHeaders := map[string]string{
+				"content-type":   "application/json",
+				statusHeaderName: "200",
+			}
+
+			_, _, tokenUsage, _, err := translator.ResponseBody(
+				respHeaders,
+				strings.NewReader(tc.body),
+				tc.endOfStream,
+				nil,
+			)
+			require.NoError(t, err)
+			require.Equal(t, metrics.TokenUsage{}, tokenUsage)
+		})
+	}
+}
+
 func TestOpenAIToOpenAITranslatorV1EmbeddingResponseError(t *testing.T) {
 	translator := NewEmbeddingOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Embedding)
 
