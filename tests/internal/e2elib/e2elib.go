@@ -97,7 +97,7 @@ func TestMain(m *testing.M, aigwOpts AIGatewayHelmOption, inferenceExtension, ne
 // SetupAll sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
 func SetupAll(ctx context.Context, clusterName string, aigwOpts AIGatewayHelmOption, inferenceExtension, needPrometheus bool) error {
 	var cancel context.CancelFunc
-	ctx, cancel = context.WithDeadline(ctx, time.Now().Add(7*time.Minute))
+	ctx, cancel = context.WithDeadline(ctx, time.Now().Add(5*time.Minute))
 	defer cancel()
 	// The following code sets up the kind cluster, installs the Envoy Gateway, and installs the AI Gateway.
 	// They must be idempotent and can be run multiple times so that we can run the tests multiple times on
@@ -425,6 +425,44 @@ func initEnvoyGateway(ctx context.Context, namespace string, inferenceExtension 
 		return
 	}
 
+	// EG v1.8.1+ gates readiness on cache sync (cacheReadyCheck), which requires all
+	// informer caches—including those for backendResources—to complete an initial List.
+	// The EG Helm chart RBAC doesn't cover extension-managed CRDs like InferencePool,
+	// so the informer gets 403s and the pod never becomes ready. Grant access explicitly.
+	if inferenceExtension {
+		initLog("\tGranting Envoy Gateway RBAC for InferencePool resources")
+		if err = KubectlApplyManifestStdin(ctx, `
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: eg-inference-pool-access
+rules:
+- apiGroups:
+  - inference.networking.k8s.io
+  resources:
+  - inferencepools
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: eg-inference-pool-access
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: eg-inference-pool-access
+subjects:
+- kind: ServiceAccount
+  name: envoy-gateway
+  namespace: envoy-gateway-system
+`); err != nil {
+			return fmt.Errorf("failed to apply InferencePool RBAC: %w", err)
+		}
+	}
+
 	initLog("\tWaiting for Envoy Gateway deployment to be ready")
 	return kubectlWaitForDeploymentReady(ctx, "envoy-gateway-system", "envoy-gateway")
 }
@@ -522,13 +560,13 @@ func KubectlRestartDeployment(ctx context.Context, namespace, deployment string)
 }
 
 func kubectlWaitForDeploymentReady(ctx context.Context, namespace, deployment string) (err error) {
-	cmd := Kubectl(ctx, "wait", "--timeout=3m", "-n", namespace,
+	cmd := Kubectl(ctx, "wait", "--timeout=2m", "-n", namespace,
 		"deployment/"+deployment, "--for=create")
 	if err = cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for deployment %s in namespace %s: %w", deployment, namespace, err)
 	}
 
-	cmd = Kubectl(ctx, "wait", "--timeout=3m", "-n", namespace,
+	cmd = Kubectl(ctx, "wait", "--timeout=2m", "-n", namespace,
 		"deployment/"+deployment, "--for=condition=Available")
 	if err = cmd.Run(); err != nil {
 		return fmt.Errorf("error waiting for deployment %s in namespace %s: %w", deployment, namespace, err)
