@@ -1,0 +1,182 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This example shows how to connect Envoy AI Gateway to MCP servers fronted by
+# AWS IAM. Requests to such backends must be signed with AWS Signature Version 4
+# (SigV4) instead of using a bearer token / API key. The gateway effectively acts
+# as a centralized, server-side replacement for the local "mcp-proxy-for-aws":
+# clients talk plain MCP to the gateway, and the gateway signs each outbound
+# request with SigV4.
+#
+# It covers the two AWS MCP flavors, each as its own MCPRoute below:
+#   1. An MCP server hosted on Amazon Bedrock AgentCore
+#      (host: bedrock-agentcore.<region>.amazonaws.com, service: bedrock-agentcore).
+#   2. The managed "AWS MCP Server" that exposes AWS APIs + docs
+#      (host: aws-mcp.<region>.api.aws). Here the SigV4 service name is omitted and
+#      inferred from the hostname, which works for both ".amazonaws.com" and
+#      ".api.aws" endpoints.
+#
+# The gateway signs every outbound request to the backend with a single AWS
+# identity that it resolves from the configured source:
+#   * the default AWS credential chain (environment variables, IRSA, EKS Pod
+#     Identity, EC2 instance role, ...), which is the recommended option on EKS, or
+#   * an explicit credentials file stored in a Kubernetes secret (shown below,
+#     commented out).
+---
+# 1. MCP server hosted on Amazon Bedrock AgentCore. Exposed by the gateway at /mcp.
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: MCPRoute
+metadata:
+  name: mcp-aws-agentcore-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: aigw-run
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  path: "/mcp"
+  backendRefs:
+    - name: aws-mcp-agentcore
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/mcp"
+      securityPolicy:
+        awsCredentials:
+          # Region used for SigV4 signing.
+          region: us-east-1
+          # SigV4 service name. For MCP servers hosted on Bedrock AgentCore this is
+          # "bedrock-agentcore". If omitted, the gateway infers the service name from
+          # the backend hostname (works for standard "<service>.<region>.amazonaws.com"
+          # endpoints).
+          service: bedrock-agentcore
+          # mode defaults to ServiceIdentity: all requests are signed with the
+          # gateway's own AWS identity resolved from the default credential chain.
+          mode: ServiceIdentify
+          # Alternatively, sign with credentials from a Kubernetes secret instead of
+          # the default credential chain:
+          #
+          # credentialsFile:
+          #   secretRef:
+          #     name: aws-mcp-credentials
+          #   profile: default
+---
+# 2. The managed "AWS MCP Server" (AWS APIs + docs). Exposed by the gateway at
+# /aws-mcp. Note that "service" is omitted here: the gateway infers it as "aws-mcp"
+# from the "aws-mcp.us-east-1.api.aws" hostname.
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: MCPRoute
+metadata:
+  name: mcp-aws-managed-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: aigw-run
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  path: "/aws-mcp"
+  backendRefs:
+    - name: aws-mcp-managed
+      kind: Backend
+      group: gateway.envoyproxy.io
+      path: "/mcp"
+      securityPolicy:
+        awsCredentials:
+          region: us-east-1
+          # service omitted on purpose; inferred from the ".api.aws" hostname.
+          mode: ServiceIdentify
+---
+# Uncomment to provide AWS credentials via a secret instead of the default
+# credential chain. The secret must contain the credentials file keyed on
+# "credentials".
+#
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: aws-mcp-credentials
+#   namespace: default
+# type: Opaque
+# stringData:
+#   credentials: |
+#     [default]
+#     aws_access_key_id = <access-key-id>
+#     aws_secret_access_key = <secret-access-key>
+#     aws_session_token = <session-token>
+---
+###################################################################################
+############################### Backend Definitions ###############################
+###################################################################################
+# Backend + TLS for the Bedrock AgentCore-hosted MCP server.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: aws-mcp-agentcore
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: bedrock-agentcore.us-east-1.amazonaws.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: aws-mcp-agentcore-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: "gateway.envoyproxy.io"
+      kind: Backend
+      name: aws-mcp-agentcore
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: bedrock-agentcore.us-east-1.amazonaws.com
+---
+# Backend + TLS for the managed AWS MCP Server.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: aws-mcp-managed
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: aws-mcp.us-east-1.api.aws
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: aws-mcp-managed-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: "gateway.envoyproxy.io"
+      kind: Backend
+      name: aws-mcp-managed
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: aws-mcp.us-east-1.api.aws
+---
+###################################################################################
+############################### Gateway Definitions ###############################
+###################################################################################
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: aigw-run
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: aigw-run
+  namespace: default
+spec:
+  gatewayClassName: aigw-run
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 1975

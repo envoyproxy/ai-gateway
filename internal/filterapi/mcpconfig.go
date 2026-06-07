@@ -47,6 +47,41 @@ type MCPBackend struct {
 	// ForwardHeaders specifies HTTP headers to extract from the incoming request and forward to this backend.
 	// Each entry maps a source header name to an optional destination header name.
 	ForwardHeaders []MCPHeaderForward `json:"forwardHeaders,omitempty"`
+
+	// AWSAuth, when set, instructs the MCP proxy to sign each outbound request to
+	// this backend with AWS SigV4 before forwarding it. This is used for MCP servers
+	// fronted by AWS IAM (e.g. the AWS MCP Server, or Bedrock AgentCore-hosted MCP servers).
+	// When nil, no AWS signing is performed.
+	AWSAuth *MCPBackendAWSAuth `json:"awsAuth,omitempty"`
+}
+
+type MCPBackendAWSAuth struct {
+	// Region is the AWS region used for SigV4 signing.
+	Region string `json:"region"`
+
+	// Service is the AWS SigV4 service name to sign for (e.g. "bedrock-agentcore").
+	// It is resolved by the control plane: either the user-provided value, or inferred
+	// from Host when the user did not specify one.
+	Service string `json:"service"`
+
+	// Host is the upstream host that AWS will see, i.e. the value Envoy rewrites the
+	// request authority to before it reaches AWS. SigV4 signs over this host, so the
+	// proxy must sign against the same value.
+	Host string `json:"host"`
+
+	// Path is the upstream request path that AWS will see, i.e. the value Envoy
+	// rewrites the request path to before it reaches AWS. SigV4 signs over the
+	// canonical URI, so the proxy must sign against the same path.
+	Path string `json:"path"`
+
+	// CredentialFileLiteral is the literal contents of an AWS credentials file. When
+	// empty, the gateway uses the default AWS credential chain (env vars, IRSA, EKS
+	// Pod Identity, instance role, etc.).
+	CredentialFileLiteral string `json:"credentialFileLiteral,omitempty"`
+
+	// Profile is the profile to select within CredentialFileLiteral. Ignored when
+	// CredentialFileLiteral is empty.
+	Profile string `json:"profile,omitempty"`
 }
 
 // MCPHeaderForward specifies a header to extract from the incoming request and forward to a backend.

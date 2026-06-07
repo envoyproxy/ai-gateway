@@ -44,12 +44,12 @@ func translate(ctx context.Context, paths []string, output, stderr io.Writer) er
 	if err != nil {
 		return err
 	}
-	aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSConfigs, originalGateways, originalSecrets, _, err := collectObjects(yaml, output, stderrLogger)
+	aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSConfigs, egBackends, originalGateways, originalSecrets, _, err := collectObjects(yaml, output, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error translating: %w", err)
 	}
 
-	_, _, httpRoutes, extensionPolicies, httpRouteFilter, backends, secrets, backendTrafficPolicies, securityPolicies, err := translateCustomResourceObjects(ctx, aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSConfigs, originalGateways, originalSecrets, stderrLogger)
+	_, _, httpRoutes, extensionPolicies, httpRouteFilter, backends, secrets, backendTrafficPolicies, securityPolicies, err := translateCustomResourceObjects(ctx, aigwRoutes, mcpRoutes, aigwBackends, backendSecurityPolicies, backendTLSConfigs, egBackends, originalGateways, originalSecrets, stderrLogger)
 	if err != nil {
 		return fmt.Errorf("error emitting: %w", err)
 	}
@@ -117,6 +117,7 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 	aigwBackends []*aigv1b1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1b1.BackendSecurityPolicy,
 	backendTLSConfigs []*gwapiv1.BackendTLSPolicy,
+	egBackends []*egv1a1.Backend,
 	gws []*gwapiv1.Gateway,
 	secrets []*corev1.Secret,
 	envoyProxies []*egv1a1.EnvoyProxy,
@@ -175,6 +176,11 @@ func collectObjects(yamlInput string, out io.Writer, logger *slog.Logger) (
 			// need to reconcile them; just create them as-is.
 			mustExtractAndAppend(obj, &backendTLSConfigs)
 			mustWriteObj(nil, obj, out)
+		case "Backend":
+			// Envoy Gateway Backends referenced by MCPRoute (e.g. AWS SigV4) must exist in the fake client
+			// before the gateway controller resolves backend hosts. They are re-emitted from the fake
+			// client (see backends.Items), so we must not also write them here to avoid duplicates.
+			mustExtractAndAppend(obj, &egBackends)
 		case "GatewayConfig":
 			// GatewayConfig is gateway-scoped configuration for extproc containers.
 			// Write it back as-is to the output.
@@ -196,6 +202,7 @@ func translateCustomResourceObjects(
 	aigwBackends []*aigv1b1.AIServiceBackend,
 	backendSecurityPolicies []*aigv1b1.BackendSecurityPolicy,
 	backendTLSPolicies []*gwapiv1.BackendTLSPolicy,
+	egBackends []*egv1a1.Backend,
 	gws []*gwapiv1.Gateway,
 	usedDefinedSecrets []*corev1.Secret,
 	logger *slog.Logger,
@@ -253,6 +260,9 @@ func translateCustomResourceObjects(
 	// Note that the order of creation is important as some objects depend on others.
 	for _, btp := range backendTLSPolicies {
 		mustCreate(ctx, fakeClient, btp, logger)
+	}
+	for _, backend := range egBackends {
+		mustCreate(ctx, fakeClient, backend, logger)
 	}
 	for _, bsp := range backendSecurityPolicies {
 		mustCreateAndReconcile(ctx, fakeClient, bsp, bspC, logger)
