@@ -431,6 +431,13 @@ func TestAnthropicToOpenAITranslator_ResponseError(t *testing.T) {
 			wantErrMsg:  "Bad request",
 		},
 		{
+			name:        "JSON error with numeric code from vLLM-like backend",
+			headers:     map[string]string{contentTypeHeaderName: "application/json"},
+			body:        `{"error":{"message":"tool choice requires --enable-auto-tool-choice","type":"BadRequestError","param":null,"code":400}}`,
+			wantErrType: "BadRequestError",
+			wantErrMsg:  "tool choice requires --enable-auto-tool-choice",
+		},
+		{
 			name:        "non-JSON 400 error",
 			headers:     map[string]string{statusHeaderName: "400", contentTypeHeaderName: "text/plain"},
 			body:        "Bad request body",

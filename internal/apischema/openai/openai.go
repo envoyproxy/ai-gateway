@@ -1662,6 +1662,34 @@ type ErrorType struct {
 	EventID *string `json:"event_id,omitempty"`
 }
 
+// UnmarshalJSON handles backends (e.g. vLLM) that return "code" as a JSON number instead of a string.
+func (e *ErrorType) UnmarshalJSON(data []byte) error {
+	type errorTypeAlias ErrorType
+	var raw struct {
+		errorTypeAlias
+		Code json.RawMessage `json:"code,omitempty"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*e = ErrorType(raw.errorTypeAlias)
+	if len(raw.Code) == 0 || string(raw.Code) == "null" {
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(raw.Code, &s); err == nil {
+		e.Code = &s
+		return nil
+	}
+	var n float64
+	if err := json.Unmarshal(raw.Code, &n); err == nil {
+		s = strconv.FormatFloat(n, 'f', -1, 64)
+		e.Code = &s
+		return nil
+	}
+	return fmt.Errorf("error.code: expected string or number, got %s", string(raw.Code))
+}
+
 // ModelList is described in the OpenAI API documentation
 // https://platform.openai.com/docs/api-reference/models/list
 type ModelList struct {

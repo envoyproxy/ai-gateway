@@ -13774,3 +13774,56 @@ func TestResponseContentPartDoneEventPartUnionUnmarshalJSON(t *testing.T) {
 		})
 	}
 }
+
+func TestErrorTypeUnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		expCode *string
+		expMsg  string
+		expErr  string
+	}{
+		{
+			name:    "string code",
+			input:   `{"type":"invalid_request_error","code":"invalid_api_key","message":"bad key"}`,
+			expCode: ptr.To("invalid_api_key"),
+			expMsg:  "bad key",
+		},
+		{
+			name:    "numeric integer code",
+			input:   `{"type":"BadRequestError","code":400,"message":"bad request"}`,
+			expCode: ptr.To("400"),
+			expMsg:  "bad request",
+		},
+		{
+			name:    "null code",
+			input:   `{"type":"server_error","code":null,"message":"internal error"}`,
+			expCode: nil,
+			expMsg:  "internal error",
+		},
+		{
+			name:    "missing code",
+			input:   `{"type":"server_error","message":"internal error"}`,
+			expCode: nil,
+			expMsg:  "internal error",
+		},
+		{
+			name:   "invalid code type",
+			input:  `{"type":"error","code":["not","valid"],"message":"msg"}`,
+			expErr: "error.code: expected string or number",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var et ErrorType
+			err := json.Unmarshal([]byte(tc.input), &et)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expCode, et.Code)
+			require.Equal(t, tc.expMsg, et.Message)
+		})
+	}
+}
