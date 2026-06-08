@@ -107,3 +107,47 @@ type Prediction struct {
 type PredictResponse struct {
 	Predictions []*Prediction `json:"predictions"`
 }
+
+// EmbedContentRequest is the request body for the embedContent endpoint used by newer embedding models
+// (e.g. gemini-embedding-2-*).
+// All input texts are packed as parts in a single Content object and we drop deprecated top-level fields
+// (taskType, outputDimensionality, etc.)
+//
+// See https://docs.cloud.google.com/vertex-ai/docs/reference/rest/v1/projects.locations.publishers.models/embedContent
+type EmbedContentRequest struct {
+	Content genai.Content       `json:"content"`
+	Config  *EmbedContentConfig `json:"embedContentConfig,omitempty"`
+}
+
+// EmbedContentConfig contains optional parameters for the embedContent method.
+// https://github.com/googleapis/go-genai/blob/v1.54.0/models.go#L727
+type EmbedContentConfig struct {
+	TaskType             openai.EmbeddingTaskType `json:"taskType,omitempty"`
+	Title                string                   `json:"title,omitempty"`
+	OutputDimensionality int                      `json:"outputDimensionality,omitempty"`
+	AutoTruncate         *bool                    `json:"autoTruncate,omitempty"`
+}
+
+// EmbedContentResponse is the response from the embedContent endpoint.
+// The REST API returns a single embedding (not an array), plus usage metadata.
+// https://docs.cloud.google.com/vertex-ai/docs/reference/rest/v1/projects.locations.publishers.models/embedContent
+type EmbedContentResponse struct {
+	// The embedding generated from the input content (singular object, not an array).
+	Embedding *EmbedContentEmbedding `json:"embedding,omitempty"`
+	// Usage metadata about the response.
+	UsageMetadata *EmbedContentUsageMetadata `json:"usageMetadata,omitempty"`
+	// Whether the input content was truncated before generating the embedding.
+	Truncated bool `json:"truncated,omitempty"`
+}
+
+// EmbedContentEmbedding represents the embedding values from the embedContent response.
+type EmbedContentEmbedding struct {
+	// The embedding values.
+	Values []float32 `json:"values,omitempty"`
+}
+
+// EmbedContentUsageMetadata contains token usage from the embedContent response.
+type EmbedContentUsageMetadata struct {
+	PromptTokenCount int `json:"promptTokenCount,omitempty"`
+	TotalTokenCount  int `json:"totalTokenCount,omitempty"`
+}
