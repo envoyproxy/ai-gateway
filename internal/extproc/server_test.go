@@ -862,6 +862,9 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 	s.Register("/anthropic/v1/messages", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
 		return mockProc, nil
 	})
+	s.Register("/anthropic/v1/messages/count_tokens", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
+		return mockProc, nil
+	})
 
 	tests := []struct {
 		name           string
@@ -898,6 +901,14 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 			name: "anthropic_path_with_beta_param",
 			requestHeaders: map[string]string{
 				":path": "/anthropic/v1/messages?beta=true",
+			},
+			isUpstream:    false,
+			expectSuccess: true,
+		},
+		{
+			name: "count_tokens_path_with_query_param",
+			requestHeaders: map[string]string{
+				":path": "/anthropic/v1/messages/count_tokens?beta=true",
 			},
 			isUpstream:    false,
 			expectSuccess: true,
