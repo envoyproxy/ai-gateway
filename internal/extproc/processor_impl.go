@@ -601,7 +601,13 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	if !ok {
 		panic(fmt.Sprintf("BUG: expected routeProcessor to be of type *routerProcessor[%T], got %T", rp, routeProcessor))
 	}
-	rp.upstreamFilterCount++
+	// Mirror (shadow) legs run their own upstream filter but are fire-and-forget:
+	// their response never returns downstream. They must not count as an upstream
+	// leg, otherwise the primary leg is misclassified as a retry (onRetry) when a
+	// mirror is configured on the rule.
+	if !backend.Backend.IsMirror {
+		rp.upstreamFilterCount++
+	}
 	u.metrics.SetBackend(backend.Backend)
 	u.modelNameOverride = backend.Backend.ModelNameOverride
 	u.backendName = backend.Backend.Name
@@ -623,7 +629,18 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	if setter, ok := u.translator.(translator.ContentTypeSetter); ok {
 		setter.SetContentType(rp.requestHeaders["content-type"])
 	}
-	rp.upstreamFilter = u // Only assign after translator is confirmed valid
+	// The router processor delegates response handling to rp.upstreamFilter. Mirror
+	// legs must never claim that slot: both the primary and mirror upstream filters
+	// call SetBackend on the same shared router processor, and whichever runs last
+	// would otherwise own the response path. If the mirror won that race, the
+	// client-facing (primary) response would be processed by the mirror's processor,
+	// whose isMirror=true guard suppresses LLMRequestCost emission — silently
+	// dropping token/cost metadata from the access-log/billing pipeline for the
+	// entire request. Only non-mirror legs may own the response path; mirror cost
+	// suppression then becomes belt-and-suspenders at ProcessResponseBody.
+	if !backend.Backend.IsMirror {
+		rp.upstreamFilter = u // Only assign after translator is confirmed valid
+	}
 
 	if headerSetter, ok := u.translator.(translator.RequestHeadersSetter); ok {
 		headerSetter.SetRequestHeaders(u.requestHeaders)

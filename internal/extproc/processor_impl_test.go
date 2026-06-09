@@ -513,6 +513,87 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	require.Nil(t, r.upstreamFilter, "upstreamFilter must remain nil when SetBackend fails")
 }
 
+// Test_chatCompletionProcessorUpstreamFilter_SetBackend_mirrorDoesNotOwnResponsePath
+// verifies that a mirror (shadow) upstream leg never claims rp.upstreamFilter and
+// never counts as an upstream leg, regardless of the order in which the primary and
+// mirror legs call SetBackend on the shared router processor. If the mirror won the
+// rp.upstreamFilter race, the primary (client-facing) response would be processed by
+// the mirror's processor whose isMirror guard suppresses LLMRequestCost emission,
+// silently dropping token/cost metadata for the entire request.
+func Test_chatCompletionProcessorUpstreamFilter_SetBackend_mirrorDoesNotOwnResponsePath(t *testing.T) {
+	openaiSchema := filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
+	newLeg := func() *chatCompletionProcessorUpstreamFilter {
+		return &chatCompletionProcessorUpstreamFilter{
+			requestHeaders: map[string]string{":path": "/v1/chat/completions"},
+			metrics:        &mockMetrics{},
+		}
+	}
+	primaryBackend := &filterapi.RuntimeBackend{Backend: &filterapi.Backend{Name: "primary", Schema: openaiSchema}}
+	mirrorBackend := &filterapi.RuntimeBackend{Backend: &filterapi.Backend{Name: "mirror", Schema: openaiSchema, IsMirror: true}}
+
+	t.Run("mirror SetBackend runs last", func(t *testing.T) {
+		rp := &chatCompletionProcessorRouterFilter{requestHeaders: map[string]string{":path": "/v1/chat/completions"}}
+		primary, mirror := newLeg(), newLeg()
+		require.NoError(t, primary.SetBackend(t.Context(), primaryBackend, "route", rp))
+		require.NoError(t, mirror.SetBackend(t.Context(), mirrorBackend, "route", rp))
+
+		require.Same(t, primary, rp.upstreamFilter, "primary must own the response path")
+		require.Equal(t, 1, rp.upstreamFilterCount, "mirror leg must not count as an upstream leg")
+		require.False(t, primary.onRetry(), "primary must not be misclassified as a retry")
+	})
+
+	t.Run("mirror SetBackend runs first", func(t *testing.T) {
+		rp := &chatCompletionProcessorRouterFilter{requestHeaders: map[string]string{":path": "/v1/chat/completions"}}
+		primary, mirror := newLeg(), newLeg()
+		require.NoError(t, mirror.SetBackend(t.Context(), mirrorBackend, "route", rp))
+		require.NoError(t, primary.SetBackend(t.Context(), primaryBackend, "route", rp))
+
+		require.Same(t, primary, rp.upstreamFilter, "primary must own the response path")
+		require.Equal(t, 1, rp.upstreamFilterCount, "mirror leg must not count as an upstream leg")
+		require.False(t, primary.onRetry(), "primary must not be misclassified as a retry")
+	})
+}
+
+// Test_chatCompletionProcessorRouterFilter_mirrorPresent_emitsCostMetadata is the
+// end-to-end regression for missing genai_tokens_* (LLMRequestCost) metadata at a
+// gateway tier whose route has a mirror backend. With the mirror's SetBackend running
+// last, the router must still delegate the client-facing response to the primary leg
+// and emit cost metadata.
+func Test_chatCompletionProcessorRouterFilter_mirrorPresent_emitsCostMetadata(t *testing.T) {
+	openaiSchema := filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}
+	rp := &chatCompletionProcessorRouterFilter{
+		requestHeaders: map[string]string{":path": "/v1/chat/completions"},
+		config: &filterapi.RuntimeConfig{
+			RequestCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{RouteName: "route", Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_token_usage"}},
+			},
+		},
+	}
+	primary := &chatCompletionProcessorUpstreamFilter{requestHeaders: map[string]string{":path": "/v1/chat/completions"}, metrics: &mockMetrics{}}
+	mirror := &chatCompletionProcessorUpstreamFilter{requestHeaders: map[string]string{":path": "/v1/chat/completions"}, metrics: &mockMetrics{}}
+
+	require.NoError(t, primary.SetBackend(t.Context(),
+		&filterapi.RuntimeBackend{Backend: &filterapi.Backend{Name: "primary", Schema: openaiSchema}}, "route", rp))
+	require.NoError(t, mirror.SetBackend(t.Context(),
+		&filterapi.RuntimeBackend{Backend: &filterapi.Backend{Name: "mirror", Schema: openaiSchema, IsMirror: true}}, "route", rp))
+	require.Same(t, primary, rp.upstreamFilter)
+
+	// Replace the real translator (installed by SetBackend) with a mock that yields
+	// deterministic token usage, then drive the response through the router.
+	inBody := &extprocv3.HttpBody{Body: []byte("some-body"), EndOfStream: true}
+	mt := &mockTranslator{t: t, expResponseBody: inBody, retResponseModel: internalapi.ResponseModel("some_model")}
+	mt.retUsedToken.SetOutputTokens(123)
+	primary.translator = mt
+	primary.responseHeaders = map[string]string{":status": "200"}
+
+	res, err := rp.ProcessResponseBody(t.Context(), inBody)
+	require.NoError(t, err)
+	require.NotNil(t, res.DynamicMetadata,
+		"primary leg must emit cost metadata even when a mirror is configured on the rule")
+	require.Equal(t, float64(123), res.DynamicMetadata.Fields[internalapi.AIGatewayFilterMetadataNamespace].
+		GetStructValue().Fields["output_token_usage"].GetNumberValue())
+}
+
 // Test_chatCompletionProcessorUpstreamFilter_SetBackend_unsupportedSchema_noResponsePanic
 // verifies that when SetBackend fails due to an unsupported schema, subsequent
 // response processing does not panic. Before the fix for #1941, upstreamFilter
