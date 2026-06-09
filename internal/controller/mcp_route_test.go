@@ -488,6 +488,21 @@ func TestMCPRouteController_Reconcile_GatewayNotFound(t *testing.T) {
 	require.Len(t, current.Status.Conditions, 1)
 	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, current.Status.Conditions[0].Type)
 	require.Contains(t, current.Status.Conditions[0].Message, "not found")
+
+	// create the gateway now so that the reconcile succeeds.
+	err = fakeClient.Create(t.Context(), &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: "non-existent", Namespace: "default"}})
+	require.NoError(t, err)
+
+	// Reconcile should succeed.
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "broken-route"}})
+	require.NoError(t, err)
+
+	// Verify the MCPRoute status is Accepted.
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "broken-route"}, &current)
+	require.NoError(t, err)
+	require.Len(t, current.Status.Conditions, 1)
+	require.Equal(t, aigv1b1.ConditionTypeAccepted, current.Status.Conditions[0].Type)
+	require.Contains(t, current.Status.Conditions[0].Message, "reconciled successfully")
 }
 
 func TestMCPRouteController_Reconcile_DeletionWithMissingGateway(t *testing.T) {
