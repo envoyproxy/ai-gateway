@@ -475,12 +475,13 @@ func TestMCPRouteController_staleCredentialSecretCleanup(t *testing.T) {
 func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 	c := requireNewFakeClientWithIndexesForMCP(t)
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
-	ctrlr := NewMCPRouteController(c, fakekube.NewClientset(
+	kubeClient := fakekube.NewClientset(
 		&corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-secret", Namespace: "default"},
 			Data:       map[string][]byte{"apiKey": []byte("test-api-key")},
 		},
-	), logr.Discard(), eventCh.Ch)
+	)
+	ctrlr := NewMCPRouteController(c, kubeClient, logr.Discard(), eventCh.Ch)
 
 	mcpRoute := &aigv1b1.MCPRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
@@ -503,7 +504,7 @@ func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 
 	t.Run("with credential injection", func(t *testing.T) {
 		customHeader := "X-Custom-Key"
-		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, "my-cred-secret", &customHeader)
+		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, "managed-ref-primary", &customHeader)
 		require.NoError(t, err)
 
 		var httpFilter egv1a1.HTTPRouteFilter
@@ -513,7 +514,145 @@ func TestMCPRouteController_ensureMCPBackendRefHTTPFilter(t *testing.T) {
 		require.NotNil(t, httpFilter.Spec.CredentialInjection)
 		require.Equal(t, &customHeader, httpFilter.Spec.CredentialInjection.Header)
 		require.True(t, *httpFilter.Spec.CredentialInjection.Overwrite)
-		require.Equal(t, gwapiv1.ObjectName("my-cred-secret"), httpFilter.Spec.CredentialInjection.Credential.ValueRef.Name)
+		require.Equal(t, gwapiv1.ObjectName("managed-ref-primary"), httpFilter.Spec.CredentialInjection.Credential.ValueRef.Name)
+	})
+
+	t.Run("deletes stale secret when transitioning away from credential injection", func(t *testing.T) {
+		staleRefName := "stale-managed-ref"
+		_, createErr := kubeClient.CoreV1().Secrets("default").Create(t.Context(), &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: staleRefName, Namespace: "default"},
+			Data:       map[string][]byte{egv1a1.InjectedCredentialKey: []byte("stale")},
+		}, metav1.CreateOptions{})
+		require.NoError(t, createErr)
+
+		authorizationHeader := "Authorization"
+		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, staleRefName, &authorizationHeader)
+		require.NoError(t, err)
+
+		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, "", nil)
+		require.NoError(t, err)
+
+		_, getErr := kubeClient.CoreV1().Secrets("default").Get(t.Context(), staleRefName, metav1.GetOptions{})
+		require.True(t, apierrors.IsNotFound(getErr), "expected stale credential secret to be deleted")
+	})
+
+	t.Run("deletes old secret when rotating credential injection secret", func(t *testing.T) {
+		oldRefName := "old-managed-ref"
+		newRefName := "new-managed-ref"
+		_, createErr := kubeClient.CoreV1().Secrets("default").Create(t.Context(), &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: oldRefName, Namespace: "default"},
+			Data:       map[string][]byte{egv1a1.InjectedCredentialKey: []byte("old")},
+		}, metav1.CreateOptions{})
+		require.NoError(t, createErr)
+
+		customHeader := "X-Custom-Key"
+		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, oldRefName, &customHeader)
+		require.NoError(t, err)
+
+		err = ctrlr.ensureMCPBackendRefHTTPFilter(t.Context(), filterName, mcpRoute, newRefName, &customHeader)
+		require.NoError(t, err)
+
+		_, getErr := kubeClient.CoreV1().Secrets("default").Get(t.Context(), oldRefName, metav1.GetOptions{})
+		require.True(t, apierrors.IsNotFound(getErr), "expected old credential secret to be deleted")
+	})
+}
+
+func TestMCPRouteController_credentialHelpers(t *testing.T) {
+	c := requireNewFakeClientWithIndexesForMCP(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	kubeClient := fakekube.NewClientset(
+		&corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "api-secret", Namespace: "default"},
+			Data:       map[string][]byte{"apiKey": []byte("initial-key")},
+		},
+		&corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "missing-api-key", Namespace: "default"},
+			Data:       map[string][]byte{"other": []byte("value")},
+		},
+	)
+	ctrlr := NewMCPRouteController(c, kubeClient, logr.Discard(), eventCh.Ch)
+
+	mcpRoute := &aigv1b1.MCPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-route", Namespace: "default"},
+	}
+	err := c.Create(t.Context(), mcpRoute)
+	require.NoError(t, err)
+
+	t.Run("ensureCredentialSecret", func(t *testing.T) {
+		secretRefKey := &aigv1b1.MCPBackendAPIKey{
+			SecretRef: &gwapiv1.SecretObjectReference{Name: "api-secret"},
+		}
+
+		err = ctrlr.ensureCredentialSecret(t.Context(), "managed-ref-secret", mcpRoute, secretRefKey)
+		require.NoError(t, err)
+
+		credSecret, getErr := kubeClient.CoreV1().Secrets("default").Get(t.Context(), "managed-ref-secret", metav1.GetOptions{})
+		require.NoError(t, getErr)
+		require.Equal(t, "Bearer initial-key", string(credSecret.Data[egv1a1.InjectedCredentialKey]))
+
+		_, updateErr := kubeClient.CoreV1().Secrets("default").Update(t.Context(), &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "api-secret", Namespace: "default"},
+			Data:       map[string][]byte{"apiKey": []byte("rotated-key")},
+		}, metav1.UpdateOptions{})
+		require.NoError(t, updateErr)
+
+		err = ctrlr.ensureCredentialSecret(t.Context(), "managed-ref-secret", mcpRoute, secretRefKey)
+		require.NoError(t, err)
+
+		credSecret, getErr = kubeClient.CoreV1().Secrets("default").Get(t.Context(), "managed-ref-secret", metav1.GetOptions{})
+		require.NoError(t, getErr)
+		require.Equal(t, "Bearer rotated-key", string(credSecret.Data[egv1a1.InjectedCredentialKey]))
+
+		header := "X-API-Key"
+		inlineKey := &aigv1b1.MCPBackendAPIKey{
+			Inline: ptr.To("inline-key"),
+			Header: &header,
+		}
+		err = ctrlr.ensureCredentialSecret(t.Context(), "managed-ref-inline", mcpRoute, inlineKey)
+		require.NoError(t, err)
+
+		credSecret, getErr = kubeClient.CoreV1().Secrets("default").Get(t.Context(), "managed-ref-inline", metav1.GetOptions{})
+		require.NoError(t, getErr)
+		require.Equal(t, "inline-key", string(credSecret.Data[egv1a1.InjectedCredentialKey]))
+	})
+
+	t.Run("readAPIKey", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			keySpec   *aigv1b1.MCPBackendAPIKey
+			wantKey   string
+			wantError string
+		}{
+			{
+				name:    "inline key",
+				keySpec: &aigv1b1.MCPBackendAPIKey{Inline: ptr.To("inline-value")},
+				wantKey: "inline-value",
+			},
+			{
+				name:    "secretRef key",
+				keySpec: &aigv1b1.MCPBackendAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "api-secret"}},
+				wantKey: "rotated-key",
+			},
+			{
+				name:      "missing apiKey in secret",
+				keySpec:   &aigv1b1.MCPBackendAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "missing-api-key"}},
+				wantError: "does not contain 'apiKey' key",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				gotKey, readErr := ctrlr.readAPIKey(t.Context(), "default", tt.keySpec)
+				if tt.wantError != "" {
+					require.Error(t, readErr)
+					require.Contains(t, readErr.Error(), tt.wantError)
+					return
+				}
+
+				require.NoError(t, readErr)
+				require.Equal(t, tt.wantKey, gotKey)
+			})
+		}
 	})
 }
 
