@@ -1,0 +1,158 @@
+---
+title: Envoy AI Gateway v0.7.x Release Series
+description: Hostname-based routing, Anthropic-to-Bedrock Converse translation, audio transcription/translation endpoints, Azure OpenAI Responses API, quota-aware rate limiting, Claude Opus 4.7 reasoning, and MCP authorization-aware tool listing
+toc_min_heading_level: 2
+toc_max_heading_level: 4
+---
+
+import Link from '@docusaurus/Link';
+import {
+  ReleaseSeriesLayout,
+  ReleaseHeader,
+  FeatureSectionCard,
+  PatchRelease,
+  ItemList,
+  Dependencies
+} from '../../components/ReleaseNotes';
+import releaseData from '../../data/releases/v0.7.json';
+import React from 'react';
+
+export const { series, releases, navigation } = releaseData;
+export const mainRelease = releases[0];
+export const patchReleases = releases.slice(1).reverse();
+
+<ReleaseSeriesLayout
+  title={series.title}
+  subtitle={series.subtitle}
+  seriesVersion={series.version}
+  badgeText={series.badge}
+  badgeType={series.badgeType}
+  previousSeries={navigation.previous}
+>
+
+<ReleaseHeader
+  version={mainRelease.version}
+  date={mainRelease.date}
+  type={mainRelease.type}
+  tags={mainRelease.tags}
+>
+
+{mainRelease.overview}
+
+</ReleaseHeader>
+
+## ✨ New Features
+
+{mainRelease.features.map((featureSection, index) => (
+  <FeatureSectionCard key={index} section={featureSection} />
+))}
+
+## 🔗 API Updates
+
+{mainRelease.apiChanges.length > 0 && (
+  <ItemList items={mainRelease.apiChanges} />
+)}
+
+{mainRelease.deprecations?.length > 0 && (
+  <>
+    ### Deprecations
+    <ItemList items={mainRelease.deprecations} />
+  </>
+)}
+
+{mainRelease.breakingChanges?.length > 0 && (
+  <>
+    ## ⚠️ Breaking Changes
+    <ItemList items={mainRelease.breakingChanges} />
+  </>
+)}
+
+## 🐛 Bug Fixes
+
+{mainRelease.bugFixes?.length > 0 && (
+  <ItemList items={mainRelease.bugFixes} />
+)}
+
+## 📖 Upgrade Guidance
+
+### Using Hostname-Based Routing
+
+To serve different model sets per hostname, add `hostnames` to your `AIGatewayRoute`:
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: team-a-route
+spec:
+  hostnames:
+    - "team-a.ai.example.com"
+  rules:
+    - matches:
+        - headers:
+            - name: x-ai-eg-model
+              value: gpt-4o
+      backendRefs:
+        - name: openai-backend
+```
+
+Routes without `hostnames` remain accessible on all hosts. When at least one route uses hostname scoping, the `/v1/models` endpoint automatically returns only the models for the matching host.
+
+### Rules-Per-Route Limit
+
+`AIGatewayRoute.spec.rules` is now capped at 15 (down from 128) to match the Gateway API HTTPRoute limit. If you have routes with more than 15 rules, split them across multiple `AIGatewayRoute` resources attached to the same Gateway.
+
+### Using Anthropic Prefix
+
+If you route Anthropic traffic to a provider with a non-standard path, use the `prefix` field:
+
+```yaml
+schema:
+  name: Anthropic
+  prefix: /custom/v2    # produces /custom/v2/messages
+```
+
+Note: `prefix` is ignored for `AWSAnthropic` and `GCPAnthropic` backends as they override paths internally.
+
+### Adopting Claude Opus 4.7 Reasoning
+
+If you use Claude Opus 4.7 or Mythos Preview models, note that `display` defaults to `omitted` (unlike earlier Claude models which default to `summarized`). To receive summarized thinking content, set `display: "summarized"` explicitly. The new `xhigh` reasoning effort tier is available for long-horizon agentic tasks.
+
+## 📦 Dependencies Versions
+
+<Dependencies dependencies={mainRelease.dependencies} />
+
+## ⏩ Patch Releases
+
+{patchReleases.map((release, index) => (
+  <PatchRelease
+    key={index}
+    version={release.version}
+    date={release.date}
+    type={release.type}
+    tags={release.tags}
+    overview={release.overview}
+    features={release.features}
+    bugFixes={release.bugFixes}
+  />
+))}
+
+## 🙏 Acknowledgements
+
+We extend our gratitude to all contributors who made this release possible. Special thanks to:
+
+- The growing community of adopters for their valuable feedback and production insights
+- Everyone who reported bugs, submitted PRs, and participated in design discussions
+- The Envoy Gateway team for their continued collaboration
+
+## 🔮 What's Next
+
+We're already working on features for future releases:
+
+- **Full quota-aware routing** — building on the rate limit filter injection landed in v0.7 to route around rate-limited upstreams automatically across multiple backends
+- **MCPBackend CRD** — a dedicated custom resource for MCP backend servers, decoupling MCP backend configuration from MCPRoute
+- **Expanded multimodal support** — additional audio, video, and image generation backends across cloud providers
+- **Deeper MCP authorization** — finer-grained policy across tools, resources, and prompts
+- **More provider translation paths** — filling coverage gaps across Anthropic, Bedrock, and Vertex AI
+
+</ReleaseSeriesLayout>
