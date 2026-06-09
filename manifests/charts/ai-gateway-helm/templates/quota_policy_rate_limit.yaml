@@ -1,4 +1,5 @@
 {{- if .Values.rateLimiter.enabled }}
+# Rate limit service that reads QuotaPolicy configs via xDS from the AI Gateway controller
 # and enforces quota-based rate limiting for upstream clusters.
 apiVersion: apps/v1
 kind: Deployment
@@ -25,7 +26,7 @@ spec:
             - containerPort: {{ .Values.rateLimiter.port }}
               name: grpc
           env:
-            {{- toYaml .Values.rateLimiter.env | nindent 12 }}
+            {{- tpl (toYaml .Values.rateLimiter.env) $ | nindent 12 }}
 ---
 apiVersion: v1
 kind: Service
