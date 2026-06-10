@@ -254,7 +254,7 @@ func (c *MCPRouteController) deleteOrphanedPerBackendResources(ctx context.Conte
 
 		// Credential secrets are only created for backends with secretRef-based API keys, but we
 		// unconditionally attempt the delete to avoid an extra GET call.
-		credSecretName := strings.Replace(name, internalapi.MCPPerBackendRefHTTPRoutePrefix, internalapi.MCPPerBackendCredentialSecretPrefix, 1)
+		credSecretName := internalapi.MCPPerBackendCredentialSecretPrefix + strings.TrimPrefix(name, internalapi.MCPPerBackendRefHTTPRoutePrefix)
 		if err := c.kube.CoreV1().Secrets(mcpRoute.Namespace).Delete(ctx, credSecretName, metav1.DeleteOptions{}); err != nil {
 			if !apierrors.IsNotFound(err) {
 				return fmt.Errorf("failed to delete orphaned credential secret %s: %w", credSecretName, err)
