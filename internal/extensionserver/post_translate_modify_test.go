@@ -340,6 +340,29 @@ func Test_shouldAIGatewayExtProcBeInserted(t *testing.T) {
 	}
 }
 
+func TestServer_insertRouterLevelAIGatewayExtProc_setsSchemeHeaderTransformation(t *testing.T) {
+	hcm := &httpconnectionmanagerv3.HttpConnectionManager{
+		HttpFilters: []*httpconnectionmanagerv3.HttpFilter{{Name: wellknown.Router}},
+	}
+	listener := &listenerv3.Listener{
+		DefaultFilterChain: &listenerv3.FilterChain{
+			Filters: []*listenerv3.Filter{
+				{
+					Name:       wellknown.HTTPConnectionManager,
+					ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
+				},
+			},
+		},
+	}
+	s := &Server{log: zap.New()}
+	require.NoError(t, s.insertRouterLevelAIGatewayExtProc(listener))
+
+	updatedHCM, _, err := findHCM(listener.DefaultFilterChain)
+	require.NoError(t, err)
+	require.True(t, updatedHCM.GetSchemeHeaderTransformation().GetMatchUpstream(),
+		"SchemeHeaderTransformation.MatchUpstream must be true so :scheme matches upstream TLS transport")
+}
+
 func Test_findListenerRouteConfigs(t *testing.T) {
 	newHCM := func(name string) *httpconnectionmanagerv3.HttpConnectionManager {
 		return &httpconnectionmanagerv3.HttpConnectionManager{
