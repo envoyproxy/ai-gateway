@@ -5742,6 +5742,9 @@ spec:
                                 "?api_key=mysecretkey".
 
                                 Either one of Header or QueryParam can be specified to inject the API key.
+
+                                Note: Embedding credentials in URLs (including query parameters) is generally not recommended because URLs can be exposed in logs
+                                and intermediary systems; prefer header-based injection when possible.
                               minLength: 1
                               type: string
                             secretRef:
