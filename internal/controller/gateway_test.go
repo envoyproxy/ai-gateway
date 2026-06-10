@@ -416,7 +416,7 @@ func TestGatewayController_reconcileFilterConfigSecret_Mirrors(t *testing.T) {
 	}
 	require.NotNil(t, mirror, "expected a mirror backend in the filter config")
 	require.Equal(t, wantMirrorName, mirror.Name)
-	require.Equal(t, "shadow-overridden", string(mirror.ModelNameOverride))
+	require.Equal(t, "shadow-overridden", mirror.ModelNameOverride)
 	require.Equal(t, filterapi.APISchemaOpenAI, mirror.Schema.Name)
 	// Route-level and backend-level header mutations are both present (merged).
 	require.NotNil(t, mirror.HeaderMutation)
