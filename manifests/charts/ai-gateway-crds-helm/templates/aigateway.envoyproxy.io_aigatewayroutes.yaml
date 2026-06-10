@@ -731,6 +731,309 @@ spec:
                         type: object
                       maxItems: 128
                       type: array
+                    mirrors:
+                      description: |-
+                        Mirrors specifies backends that receive a mirrored copy of every matched request.
+                        Responses from mirror backends are always discarded; only the primary backendRefs
+                        respond to the client. Mirror traffic is cloned via the Gateway API HTTPRequestMirror
+                        filter, but each mirror's BackendRef supports the same AI-specific transformations
+                        (ModelNameOverride, HeaderMutation, BodyMutation) as primary backendRefs, so the
+                        shadow backend can be addressed with a different model name or modified request body.
+                        Each entry corresponds to one shadow backend; use Percent or Fraction to sample.
+                      items:
+                        description: |-
+                          AIGatewayRouteRuleMirror specifies a shadow backend that receives a copy of every
+                          matched request. Mirror requests run through the same AI Gateway processing pipeline
+                          as primary requests, so per-backend AI transformations (ModelNameOverride,
+                          HeaderMutation, BodyMutation) defined on the embedded BackendRef are honored.
+                          Responses from mirror backends are always discarded.
+                        properties:
+                          backendRef:
+                            description: |-
+                              BackendRef is the shadow destination. Reuses AIGatewayRouteRuleBackendRef so it
+                              carries the same AI-specific fields (ModelNameOverride, HeaderMutation,
+                              BodyMutation) as primary backendRefs. Weight and Priority are ignored for
+                              mirror backends — each mirror entry is a single fire-and-forget destination.
+                            properties:
+                              bodyMutation:
+                                description: |-
+                                  BodyMutation defines the request body mutation to be applied to this backend.
+                                  This allows modification of JSON fields in the request body before sending to the backend.
+                                  When both route-level and backend-level BodyMutation are defined,
+                                  route-level takes precedence over backend-level for conflicting operations.
+                                  This field is ignored when referencing InferencePool resources.
+                                properties:
+                                  remove:
+                                    description: |-
+                                      Remove the given JSON field(s) from the HTTP request body before sending to the backend.
+                                      The value of Remove is a list of top-level field names to remove.
+
+                                      Input:
+                                        {
+                                          "model": "gpt-4",
+                                          "service_tier": "default",
+                                          "internal_flag": true
+                                        }
+
+                                      Config:
+                                        remove: ["service_tier", "internal_flag"]
+
+                                      Output:
+                                        {
+                                          "model": "gpt-4"
+                                        }
+                                    items:
+                                      type: string
+                                    maxItems: 16
+                                    type: array
+                                    x-kubernetes-list-type: set
+                                  set:
+                                    description: |-
+                                      Set overwrites/adds the request body with the given JSON field (name, value)
+                                      before sending to the backend. Only top-level fields are currently supported.
+
+                                      Input:
+                                        {
+                                          "model": "gpt-4",
+                                          "service_tier": "default"
+                                        }
+
+                                      Config:
+                                        set:
+                                        - path: "service_tier"
+                                          value: "scale"
+
+                                      Output:
+                                        {
+                                          "model": "gpt-4",
+                                          "service_tier": "scale"
+                                        }
+                                    items:
+                                      description: HTTPBodyField represents a JSON
+                                        field name and value for body mutation
+                                      properties:
+                                        path:
+                                          description: |-
+                                            Path is the top-level field name to set in the request body.
+                                            Examples: "service_tier", "max_tokens", "temperature"
+                                          minLength: 1
+                                          type: string
+                                        value:
+                                          description: |-
+                                            Value is the JSON value to set at the specified field. This can be any valid JSON value:
+                                            string, number, boolean, object, array, or null.
+                                            The value will be parsed as JSON and inserted at the specified field.
+
+                                            Examples:
+                                              - "\"scale\"" (string)
+                                              - "42" (number)
+                                              - "true" (boolean)
+                                              - "{\"key\": \"value\"}" (object)
+                                              - "[1, 2, 3]" (array)
+                                              - "null" (null)
+                                          type: string
+                                      required:
+                                      - path
+                                      - value
+                                      type: object
+                                    maxItems: 16
+                                    type: array
+                                    x-kubernetes-list-map-keys:
+                                    - path
+                                    x-kubernetes-list-type: map
+                                type: object
+                              group:
+                                description: |-
+                                  Group is the group of the backend resource.
+                                  When not specified, defaults to aigateway.envoyproxy.io (AIServiceBackend).
+                                  Currently, only "inference.networking.k8s.io" is supported for InferencePool resources.
+                                maxLength: 253
+                                pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                                type: string
+                              headerMutation:
+                                description: |-
+                                  HeaderMutation defines the request header mutation to be applied to this backend.
+                                  When both route-level and backend-level HeaderMutation are defined,
+                                  route-level takes precedence over backend-level for conflicting operations.
+                                  This field is ignored when referencing InferencePool resources.
+                                properties:
+                                  remove:
+                                    description: |-
+                                      Remove the given header(s) from the HTTP request before the action. The
+                                      value of Remove is a list of HTTP header names. Note that the header
+                                      names are case-insensitive (see
+                                      https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).
+
+                                      Input:
+                                        GET /foo HTTP/1.1
+                                        my-header1: foo
+                                        my-header2: bar
+                                        my-header3: baz
+
+                                      Config:
+                                        remove: ["my-header1", "my-header3"]
+
+                                      Output:
+                                        GET /foo HTTP/1.1
+                                        my-header2: bar
+                                    items:
+                                      type: string
+                                    maxItems: 16
+                                    type: array
+                                    x-kubernetes-list-type: set
+                                  set:
+                                    description: |-
+                                      Set overwrites/adds the request with the given header (name, value)
+                                      before the action.
+
+                                      Input:
+                                        GET /foo HTTP/1.1
+                                        my-header: foo
+
+                                      Config:
+                                        set:
+                                        - name: "my-header"
+                                          value: "bar"
+
+                                      Output:
+                                        GET /foo HTTP/1.1
+                                        my-header: bar
+                                    items:
+                                      description: HTTPHeader represents an HTTP Header
+                                        name and value as defined by RFC 7230.
+                                      properties:
+                                        name:
+                                          description: |-
+                                            Name is the name of the HTTP Header to be matched. Name matching MUST be
+                                            case-insensitive. (See https://tools.ietf.org/html/rfc7230#section-3.2).
+
+                                            If multiple entries specify equivalent header names, the first entry with
+                                            an equivalent name MUST be considered for a match. Subsequent entries
+                                            with an equivalent header name MUST be ignored. Due to the
+                                            case-insensitivity of header names, "foo" and "Foo" are considered
+                                            equivalent.
+                                          maxLength: 256
+                                          minLength: 1
+                                          pattern: ^[A-Za-z0-9!#$%&'*+\-.^_\x60|~]+$
+                                          type: string
+                                        value:
+                                          description: Value is the value of HTTP
+                                            Header to be matched.
+                                          maxLength: 4096
+                                          minLength: 1
+                                          type: string
+                                      required:
+                                      - name
+                                      - value
+                                      type: object
+                                    maxItems: 16
+                                    type: array
+                                    x-kubernetes-list-map-keys:
+                                    - name
+                                    x-kubernetes-list-type: map
+                                type: object
+                              kind:
+                                description: |-
+                                  Kind is the kind of the backend resource.
+                                  When not specified, defaults to AIServiceBackend.
+                                  Currently, only "InferencePool" is supported when Group is specified.
+                                maxLength: 63
+                                pattern: ^$|^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                                type: string
+                              modelNameOverride:
+                                description: |-
+                                  Name of the model in the backend. If provided this will override the name provided in the request.
+                                  This field is ignored when referencing InferencePool resources.
+                                type: string
+                              name:
+                                description: |-
+                                  Name is the name of the backend resource.
+                                  When Group and Kind are not specified, this refers to an AIServiceBackend.
+                                  When Group and Kind are specified, this refers to the resource of the specified type.
+                                minLength: 1
+                                type: string
+                              namespace:
+                                description: |-
+                                  Namespace is the namespace of the backend resource.
+                                  When unspecified (or empty string), this refers to the local namespace of the AIGatewayRoute.
+
+                                  Note that when a namespace different than the local namespace is specified,
+                                  a ReferenceGrant object is required in the referent namespace to allow that
+                                  namespace's owner to accept the reference. See the ReferenceGrant
+                                  documentation for details.
+                                maxLength: 63
+                                minLength: 1
+                                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                                type: string
+                              priority:
+                                default: 0
+                                description: |-
+                                  Priority is the priority of the backend. This sets the priority on the underlying endpoints.
+                                  See: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/load_balancing/priority
+                                  Note: This will override the `faillback` property of the underlying Envoy Gateway Backend
+                                  This field is ignored when referencing InferencePool resources.
+
+                                  Default is 0.
+                                format: int32
+                                minimum: 0
+                                type: integer
+                              weight:
+                                default: 1
+                                description: |-
+                                  Weight is the weight of the backend. This is exactly the same as the weight in
+                                  the BackendRef in the Gateway API. See for the details:
+                                  https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
+
+                                  Default is 1.
+                                format: int32
+                                minimum: 0
+                                type: integer
+                            required:
+                            - name
+                            type: object
+                            x-kubernetes-validations:
+                            - message: group and kind must be specified together
+                              rule: '!has(self.group) && !has(self.kind) || (has(self.group)
+                                && has(self.kind))'
+                            - message: only InferencePool from inference.networking.k8s.io
+                                group is supported
+                              rule: '!has(self.group) || (self.group == ''inference.networking.k8s.io''
+                                && self.kind == ''InferencePool'')'
+                          fraction:
+                            description: |-
+                              Fraction is the fractional percentage of requests to mirror. Maps to the
+                              Gateway API HTTPRequestMirrorFilter Fraction field. Takes precedence over
+                              Percent if both are set.
+                            properties:
+                              denominator:
+                                default: 100
+                                format: int32
+                                minimum: 1
+                                type: integer
+                              numerator:
+                                format: int32
+                                minimum: 0
+                                type: integer
+                            required:
+                            - numerator
+                            type: object
+                            x-kubernetes-validations:
+                            - message: numerator must be less than or equal to denominator
+                              rule: self.numerator <= self.denominator
+                          percent:
+                            description: |-
+                              Percent is the percentage of requests to mirror (0-100). Maps to the
+                              Gateway API HTTPRequestMirrorFilter Percent field. If both Percent and
+                              Fraction are unset, every matched request is mirrored.
+                            format: int32
+                            maximum: 100
+                            minimum: 0
+                            type: integer
+                        required:
+                        - backendRef
+                        type: object
+                      maxItems: 16
+                      type: array
                     modelsCreatedAt:
                       description: |-
                         ModelsCreatedAt represents the creation timestamp of the running models serving by the backends,
