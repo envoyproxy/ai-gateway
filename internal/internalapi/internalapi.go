@@ -45,6 +45,8 @@ const (
 	MCPPerBackendRefHTTPRoutePrefix = MCPGeneratedResourceCommonPrefix + "br-"
 	// MCPPerBackendHTTPRouteFilterPrefix is the prefix for the HTTP route filter names for per-backend resources.
 	MCPPerBackendHTTPRouteFilterPrefix = MCPGeneratedResourceCommonPrefix + "brf-"
+	// MCPPerBackendCredentialSecretPrefix is the prefix for the credential secrets created for per-backend credential injection.
+	MCPPerBackendCredentialSecretPrefix = MCPGeneratedResourceCommonPrefix + "cred-"
 
 	// MCPMetadataHeaderPrefix is the prefix for special headers used to pass metadata in the filter metadata.
 	// These headers are added internally to the requests to the upstream servers so they can be populated in the filter
