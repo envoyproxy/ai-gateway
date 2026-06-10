@@ -95,6 +95,17 @@ type LLMRequestCost struct {
 	// CEL is the CEL expression to calculate the cost of the request.
 	// This is not empty when the Type is LLMRequestCostTypeCEL.
 	CEL string `json:"cel,omitempty"`
+	// Backend is an optional filter set exclusively by the QuotaPolicy controller.
+	// It is NOT exposed in any user-facing CRD. When non-empty, this cost entry is
+	// only evaluated when the serving backend's short name (namespace/name) matches.
+	// This allows different QuotaPolicies targeting different backends to use different
+	// cost expressions while sharing the same metadata key.
+	Backend string `json:"backend,omitempty"`
+	// Model is an optional filter set exclusively by the QuotaPolicy controller.
+	// It is NOT exposed in any user-facing CRD. When non-empty, this cost entry is
+	// only evaluated when the request's model name matches. This allows a single
+	// metadata key to be shared across models without conflicting overwrites.
+	Model string `json:"model,omitempty"`
 }
 
 // LLMRequestCostType specifies the kind of the request cost calculation.
