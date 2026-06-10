@@ -367,24 +367,30 @@ func (c *AIGatewayRouteController) syncGateways(ctx context.Context, aiGatewayRo
 		if p.Namespace != nil {
 			gwNamespace = string(*p.Namespace)
 		}
-		c.syncGateway(ctx, gwNamespace, string(p.Name))
+		if err := c.syncGateway(ctx, gwNamespace, string(p.Name)); err != nil {
+			if aiGatewayRoute.DeletionTimestamp != nil && apierrors.IsNotFound(err) {
+				continue
+			}
+			return err
+		}
 	}
 	return nil
 }
 
 // syncGateway is a helper function for syncGateways that sends one GenericEvent to the gateway controller.
-func (c *AIGatewayRouteController) syncGateway(ctx context.Context, namespace, name string) {
+func (c *AIGatewayRouteController) syncGateway(ctx context.Context, namespace, name string) error {
 	var gw gwapiv1.Gateway
 	if err := c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &gw); err != nil {
 		if apierrors.IsNotFound(err) {
 			c.logger.Info("Gateway not found", "namespace", namespace, "name", name)
-			return
+			return fmt.Errorf("gateway %s/%s not found: %w", namespace, name, err)
 		}
 		c.logger.Error(err, "failed to get Gateway", "namespace", namespace, "name", name)
-		return
+		return fmt.Errorf("failed to get Gateway %s/%s: %w", namespace, name, err)
 	}
 	c.logger.Info("syncing Gateway", "namespace", gw.Namespace, "name", gw.Name)
 	c.gatewayEventChan <- event.GenericEvent{Object: &gw}
+	return nil
 }
 
 func (c *AIGatewayRouteController) backend(ctx context.Context, namespace, name string) (*aigv1b1.AIServiceBackend, error) {

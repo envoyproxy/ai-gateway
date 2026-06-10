@@ -234,21 +234,31 @@ func translateCustomResourceObjects(
 		userDefinedSecretKeys[fmt.Sprintf("%s/%s", s.Namespace, s.Name)] = struct{}{}
 	}
 
+	// Use buffered event channels so that controllers can push gateway sync events without blocking,
+	// This mirrors the production code at controller/controller.go:128
+	const eventChanBuffer = 100
 	bspC := controller.NewBackendSecurityPolicyController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
-		make(chan event.GenericEvent), make(chan event.GenericEvent))
+		make(chan event.GenericEvent, eventChanBuffer), make(chan event.GenericEvent, eventChanBuffer))
 	aisbC := controller.NewAIServiceBackendController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
-		make(chan event.GenericEvent))
+		make(chan event.GenericEvent, eventChanBuffer))
 	airC := controller.NewAIGatewayRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
-		make(chan event.GenericEvent), "/",
+		make(chan event.GenericEvent, eventChanBuffer), "/",
 	)
 	mcpC := controller.NewMCPRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
-		make(chan event.GenericEvent),
+		make(chan event.GenericEvent, eventChanBuffer),
 	)
 	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "debug", true, func() string {
 			return "aigw-translate"
 		}, false,
 	)
+	// Pre-create Gateways (without reconciling) before reconciling resources so that
+	// syncGateways can resolve the parent Gateway via the fake client.
+	// Otherwise the reconcile would fail with "gateway not found" because the
+	// Gateway is not yet present in the cache at this point.
+	for _, gw := range gws {
+		mustCreate(ctx, fakeClient, gw, logger)
+	}
 	// Create and reconcile the custom resources to store the translated objects.
 	// Note that the order of creation is important as some objects depend on others.
 	for _, btp := range backendTLSPolicies {
@@ -267,7 +277,7 @@ func translateCustomResourceObjects(
 		mustCreateAndReconcile(ctx, fakeClient, mcpRoute, mcpC, logger)
 	}
 	for _, gw := range gws {
-		mustCreateAndReconcile(ctx, fakeClient, gw, gwC, logger)
+		mustReconcile(ctx, gw, gwC, logger)
 	}
 
 	// Now you can retrieve the translated objects from the fake client.
@@ -347,6 +357,16 @@ func mustCreateAndReconcile(
 	logger *slog.Logger,
 ) {
 	mustCreate(ctx, fakeClient, obj, logger)
+	mustReconcile(ctx, obj, c, logger)
+}
+
+// mustReconcile reconciles the object using the provided reconciler.
+func mustReconcile(
+	ctx context.Context,
+	obj client.Object,
+	c reconcile.TypedReconciler[reconcile.Request],
+	logger *slog.Logger,
+) {
 	logger.Info("Fake reconciling", "kind", obj.GetObjectKind().GroupVersionKind().Kind, "name", obj.GetName())
 	_, err := c.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
 	if err != nil {
