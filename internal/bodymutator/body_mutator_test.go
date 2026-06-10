@@ -236,8 +236,7 @@ func TestBodyMutator_MutateResponseSSE_RemovesFieldsFromDataLines(t *testing.T) 
 	mutator := NewBodyMutator(bodyMutations, nil)
 
 	chunk := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\",\"choices\":[]}\n\ndata: {\"id\":\"chatcmpl-124\",\"provider\":\"openai\",\"choices\":[]}")
-	mutated, err := mutator.MutateResponseSSE(chunk)
-	require.NoError(t, err)
+	mutated := mutator.MutateResponseSSE(chunk, true)
 
 	expected := bytes.Join([][]byte{
 		[]byte("data: {\"id\":\"chatcmpl-123\",\"choices\":[]}"),
@@ -254,8 +253,7 @@ func TestBodyMutator_MutateResponseSSE_PassesThroughDONELine(t *testing.T) {
 	mutator := NewBodyMutator(bodyMutations, nil)
 
 	chunk := []byte("data: [DONE]")
-	mutated, err := mutator.MutateResponseSSE(chunk)
-	require.NoError(t, err)
+	mutated := mutator.MutateResponseSSE(chunk, true)
 	require.Equal(t, chunk, mutated)
 }
 
@@ -266,8 +264,7 @@ func TestBodyMutator_MutateResponseSSE_PassesThroughNonDataLines(t *testing.T) {
 	mutator := NewBodyMutator(bodyMutations, nil)
 
 	chunk := []byte("event: message\ndata: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\"}")
-	mutated, err := mutator.MutateResponseSSE(chunk)
-	require.NoError(t, err)
+	mutated := mutator.MutateResponseSSE(chunk, true)
 
 	require.Contains(t, string(mutated), "event: message")
 	require.NotContains(t, string(mutated), "provider")
@@ -277,7 +274,117 @@ func TestBodyMutator_MutateResponseSSE_PassesThroughNonDataLines(t *testing.T) {
 func TestBodyMutator_MutateResponseSSE_NoMutations(t *testing.T) {
 	mutator := NewBodyMutator(nil, nil)
 	chunk := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\"}")
-	mutated, err := mutator.MutateResponseSSE(chunk)
-	require.NoError(t, err)
+	mutated := mutator.MutateResponseSSE(chunk, true)
 	require.Equal(t, chunk, mutated)
+}
+
+// TestBodyMutator_MutateResponseSSE_SplitAcrossCalls verifies that an SSE event
+// split mid-JSON across two ProcessResponseBody calls is correctly reassembled,
+// with the configured field stripped from the completed line.
+func TestBodyMutator_MutateResponseSSE_SplitAcrossCalls(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
+
+	full := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\",\"choices\":[]}\n")
+	// Split mid-JSON so the first chunk lacks a trailing newline and an
+	// incomplete JSON payload.
+	splitAt := 30
+	first := mutator.MutateResponseSSE(full[:splitAt], false)
+	// First call has no complete line: everything is buffered.
+	require.NotNil(t, first)
+	require.Empty(t, first)
+
+	second := mutator.MutateResponseSSE(full[splitAt:], true)
+
+	combined := append(append([]byte{}, first...), second...)
+	require.Equal(t, []byte("data: {\"id\":\"chatcmpl-123\",\"choices\":[]}\n"), combined)
+	require.NotContains(t, string(combined), "provider")
+}
+
+// TestBodyMutator_MutateResponseSSE_CompletePlusPartial verifies that a chunk
+// containing one complete event plus a partial second event emits the complete
+// event (mutated) and buffers the partial.
+func TestBodyMutator_MutateResponseSSE_CompletePlusPartial(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
+
+	chunk := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\"}\ndata: {\"id\":\"chatcmpl-124\",\"prov")
+	out := mutator.MutateResponseSSE(chunk, false)
+
+	require.Equal(t, []byte("data: {\"id\":\"chatcmpl-123\"}\n"), out)
+	require.NotContains(t, string(out), "chatcmpl-124")
+
+	// Complete the second event.
+	rest := mutator.MutateResponseSSE([]byte("ider\":\"openai\"}\n"), true)
+	require.Equal(t, []byte("data: {\"id\":\"chatcmpl-124\"}\n"), rest)
+	require.NotContains(t, string(rest), "provider")
+}
+
+// TestBodyMutator_MutateResponseSSE_SplitAtNewlineBoundary verifies that a chunk
+// ending exactly at the line-terminating newline emits the complete line, leaving
+// nothing buffered for the next call.
+func TestBodyMutator_MutateResponseSSE_SplitAtNewlineBoundary(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
+
+	first := mutator.MutateResponseSSE([]byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\"}\n"), false)
+	require.Equal(t, []byte("data: {\"id\":\"chatcmpl-123\"}\n"), first)
+
+	second := mutator.MutateResponseSSE([]byte("data: [DONE]\n"), true)
+	require.Equal(t, []byte("data: [DONE]\n"), second)
+}
+
+// TestBodyMutator_MutateResponseSSE_InvalidJSONLinePassthrough verifies that a data
+// line whose payload is not valid JSON is passed through unchanged while other
+// data lines in the same chunk are still mutated.
+func TestBodyMutator_MutateResponseSSE_InvalidJSONLinePassthrough(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
+
+	chunk := []byte("data: not-json\ndata: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\"}\n")
+	out := mutator.MutateResponseSSE(chunk, true)
+
+	require.Equal(t, []byte("data: not-json\ndata: {\"id\":\"chatcmpl-123\"}\n"), out)
+}
+
+// TestBodyMutator_MutateResponseSSE_FlushOnEndOfStream verifies that a buffered
+// partial line without a trailing newline is flushed and mutated at end of stream.
+func TestBodyMutator_MutateResponseSSE_FlushOnEndOfStream(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
+
+	// No trailing newline; the whole line is buffered.
+	buffered := mutator.MutateResponseSSE([]byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\"}"), false)
+	require.NotNil(t, buffered)
+	require.Empty(t, buffered)
+
+	// End of stream flushes the buffer with mutation applied.
+	flushed := mutator.MutateResponseSSE(nil, true)
+	require.Equal(t, []byte("data: {\"id\":\"chatcmpl-123\"}"), flushed)
+	require.NotContains(t, string(flushed), "provider")
+}
+
+// TestBodyMutator_MutateResponseSSE_AllBytesBuffered verifies that when all input
+// bytes are buffered (no complete line, not end of stream), a non-nil empty slice
+// is returned so the caller replaces the chunk with an empty body rather than
+// treating it as "no mutation".
+func TestBodyMutator_MutateResponseSSE_AllBytesBuffered(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
+
+	out := mutator.MutateResponseSSE([]byte("data: {\"id\":\"chatcmpl"), false)
+	require.NotNil(t, out)
+	require.Empty(t, out)
 }

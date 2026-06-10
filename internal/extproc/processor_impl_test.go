@@ -1417,6 +1417,54 @@ func Test_chatCompletionProcessorUpstreamFilter_ResponseBodyMutation(t *testing.
 		mm.RequireRequestSuccess(t)
 	})
 
+	t.Run("streaming: SSE event split across two ProcessResponseBody calls", func(t *testing.T) {
+		// A single "data: {...}" line is split mid-JSON across two ext_proc
+		// chunks. The mutator must buffer the partial line and only strip the
+		// configured field once the line is complete.
+		full := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\",\"choices\":[]}\ndata: [DONE]")
+		splitAt := 30
+		firstChunk := &extprocv3.HttpBody{Body: full[:splitAt], EndOfStream: false}
+		secondChunk := &extprocv3.HttpBody{Body: full[splitAt:], EndOfStream: true}
+
+		mm := &mockMetrics{}
+		// The translator passes the body through unchanged; expResponseBody and
+		// retBodyMutation are updated per call below.
+		mt := &mockTranslator{t: t}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator: mt,
+			metrics:    mm,
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: true,
+				config: &filterapi.RuntimeConfig{},
+			},
+			requestHeaders:      map[string]string{},
+			responseHeaders:     map[string]string{":status": "200"},
+			responseBodyMutator: bodymutator.NewBodyMutator(&filterapi.HTTPBodyMutation{Remove: []string{"provider"}}, nil),
+		}
+
+		// First call: partial line, nothing complete yet -> buffered.
+		mt.expResponseBody = firstChunk
+		mt.retBodyMutation = firstChunk.Body
+		res1, err := p.ProcessResponseBody(t.Context(), firstChunk)
+		require.NoError(t, err)
+		body1 := res1.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response.BodyMutation.GetBody()
+		require.NotNil(t, body1)
+		require.Empty(t, body1, "first chunk must be fully buffered with nothing forwarded")
+
+		// Second call: completes the first line and emits [DONE].
+		mt.expResponseBody = secondChunk
+		mt.retBodyMutation = secondChunk.Body
+		res2, err := p.ProcessResponseBody(t.Context(), secondChunk)
+		require.NoError(t, err)
+		body2 := res2.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response.BodyMutation.GetBody()
+		require.NotNil(t, body2)
+
+		combined := string(body1) + string(body2)
+		require.Equal(t, "data: {\"id\":\"chatcmpl-123\",\"choices\":[]}\ndata: [DONE]", combined)
+		require.NotContains(t, combined, "provider")
+		require.Contains(t, combined, "[DONE]")
+	})
+
 	t.Run("no mutation configured: body passes through unchanged", func(t *testing.T) {
 		responseBody := []byte(`{"id":"chatcmpl-123","provider":"openai","choices":[]}`)
 		inBody := &extprocv3.HttpBody{Body: responseBody, EndOfStream: true}

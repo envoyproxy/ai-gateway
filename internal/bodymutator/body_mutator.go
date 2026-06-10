@@ -21,6 +21,11 @@ type BodyMutator struct {
 
 	// bodyMutations is the body mutations to apply
 	bodyMutations *filterapi.HTTPBodyMutation
+
+	// sseBuffer holds an incomplete trailing SSE line carried over between
+	// MutateResponseSSE calls, since streamed chunks may split SSE events
+	// at arbitrary byte boundaries.
+	sseBuffer []byte
 }
 
 func NewBodyMutator(bodyMutations *filterapi.HTTPBodyMutation, originalBody []byte) *BodyMutator {
@@ -143,34 +148,66 @@ func (b *BodyMutator) MutateResponse(body []byte) ([]byte, error) {
 }
 
 // MutateResponseSSE removes configured fields from SSE chunk data lines.
-// It processes each line: if it starts with "data: " and contains JSON, the fields are removed.
-// Lines that are not data lines (e.g., "[DONE]", empty lines) are passed through unchanged.
-func (b *BodyMutator) MutateResponseSSE(chunk []byte) ([]byte, error) {
+//
+// It is stateful: Envoy ext_proc delivers arbitrary byte chunks, so a single
+// SSE "data: {...}" line may be split across two calls. Incomplete trailing
+// lines are buffered and carried over to the next call; only complete lines
+// (terminated by '\n') are emitted. When endOfStream is true, any remaining
+// buffered data is flushed and mutated.
+//
+// Each emitted line is processed: if it starts with "data: " and contains
+// JSON, the configured fields are removed. Lines that are not data lines
+// (e.g., "[DONE]", empty lines) are passed through unchanged.
+//
+// The returned slice is never nil when mutations are configured: if all input
+// bytes were buffered, a non-nil empty slice is returned so the caller treats
+// it as "replace chunk with empty body" rather than "no body mutation".
+// When no mutations are configured, the input chunk is returned unmodified
+// (and may be nil).
+func (b *BodyMutator) MutateResponseSSE(chunk []byte, endOfStream bool) []byte {
 	if b.bodyMutations == nil || len(b.bodyMutations.Remove) == 0 {
-		return chunk, nil
+		return chunk
 	}
-	lines := bytes.Split(chunk, []byte("\n"))
-	for i, line := range lines {
-		if !bytes.HasPrefix(line, []byte("data: ")) {
-			continue
+	b.sseBuffer = append(b.sseBuffer, chunk...)
+	out := []byte{}
+	for {
+		i := bytes.IndexByte(b.sseBuffer, '\n')
+		if i < 0 {
+			break
 		}
-		data := bytes.TrimRight(line[len("data: "):], "\r")
-		if bytes.Equal(data, []byte("[DONE]")) {
-			continue
-		}
-		mutated := data
-		var err error
-		for _, fieldName := range b.bodyMutations.Remove {
-			if fieldName != "" {
-				mutated, err = sjson.DeleteBytes(mutated, fieldName)
-				if err != nil {
-					// If we can't parse this line as JSON, leave it unchanged
-					mutated = data
-					break
-				}
+		out = append(out, b.mutateSSELine(b.sseBuffer[:i])...)
+		out = append(out, '\n')
+		b.sseBuffer = b.sseBuffer[i+1:]
+	}
+	if endOfStream && len(b.sseBuffer) > 0 {
+		out = append(out, b.mutateSSELine(b.sseBuffer)...)
+		b.sseBuffer = nil
+	}
+	return out
+}
+
+// mutateSSELine removes configured fields from a single SSE line. Non-"data: "
+// lines and "data: [DONE]" are returned unchanged. On any sjson error the
+// original line is returned unchanged, preserving the behavior of leaving
+// unparseable lines alone.
+func (b *BodyMutator) mutateSSELine(line []byte) []byte {
+	if !bytes.HasPrefix(line, []byte("data: ")) {
+		return line
+	}
+	data := bytes.TrimRight(line[len("data: "):], "\r")
+	if bytes.Equal(data, []byte("[DONE]")) {
+		return line
+	}
+	mutated := data
+	for _, fieldName := range b.bodyMutations.Remove {
+		if fieldName != "" {
+			var err error
+			mutated, err = sjson.DeleteBytes(mutated, fieldName)
+			if err != nil {
+				// If we can't parse this line as JSON, leave it unchanged.
+				return line
 			}
 		}
-		lines[i] = append([]byte("data: "), mutated...)
 	}
-	return bytes.Join(lines, []byte("\n")), nil
+	return append([]byte("data: "), mutated...)
 }

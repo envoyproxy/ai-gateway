@@ -486,22 +486,23 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		if bodyToMutate == nil {
 			bodyToMutate = body.Body
 		}
-		var mutatedBody []byte
-		var mutateErr error
 		if u.parent.stream {
-			mutatedBody, mutateErr = u.responseBodyMutator.MutateResponseSSE(bodyToMutate)
-		} else {
-			mutatedBody, mutateErr = u.responseBodyMutator.MutateResponse(bodyToMutate)
-		}
-		if mutateErr != nil {
-			u.logger.Error("failed to apply response body mutation", "error", mutateErr)
-		} else {
-			newBody = mutatedBody
+			// Streaming mutation is stateful and never errors: per-line sjson
+			// failures leave the line unchanged, and incomplete trailing lines
+			// are buffered across calls.
+			newBody = u.responseBodyMutator.MutateResponseSSE(bodyToMutate, body.EndOfStream)
 			// Recompute mutations after body changed.
-			headerMutation, bodyMutation = mutationsFromTranslationResult(newHeaders, newBody)
-			// Update content-length only for non-streaming responses.
+			// Content-length is intentionally not updated for streaming responses:
 			// SSE uses Transfer-Encoding: chunked; setting content-length per chunk is incorrect.
-			if !u.parent.stream {
+			headerMutation, bodyMutation = mutationsFromTranslationResult(newHeaders, newBody)
+		} else {
+			mutatedBody, mutateErr := u.responseBodyMutator.MutateResponse(bodyToMutate)
+			if mutateErr != nil {
+				u.logger.Error("failed to apply response body mutation", "error", mutateErr)
+			} else {
+				newBody = mutatedBody
+				// Recompute mutations after body changed.
+				headerMutation, bodyMutation = mutationsFromTranslationResult(newHeaders, newBody)
 				headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 					AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
 					Header:       &corev3.HeaderValue{Key: "content-length", RawValue: []byte(strconv.Itoa(len(newBody)))},
