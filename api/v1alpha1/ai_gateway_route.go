@@ -257,25 +257,20 @@ type AIGatewayRouteRule struct {
 	// +optional
 	Timeouts *gwapiv1.HTTPRouteTimeouts `json:"timeouts,omitempty"`
 
-	// FirstTokenTimeout is the maximum time to wait for the first response byte
-	// from the upstream model backend before Envoy resets the upstream stream.
+	// StreamIdleTimeout is the maximum time Envoy will wait without receiving any bytes from the upstream.
+	// If the timer fires before the first response byte arrives, Envoy resets the upstream stream and a
+	// retry policy can fall over to the next backend. If it fires mid-stream after
+	// bytes have already arrived, the stream is cut and the client receives a 504.
 	//
-	// The AI Gateway extension server sets route.retry_policy.per_try_idle_timeout
-	// to this value on every xDS route generated from this rule before it is sent
-	// to the data plane. The timer fires when no upstream bytes have been received
-	// for the configured duration. Once any byte arrives, the timer resets.
+	// The AI Gateway extension server sets route.retry_policy.per_try_idle_timeout to this value on
+	// every xDS route generated from this rule before it is sent to the data plane.
 	//
-	// When the timeout fires, Envoy resets the upstream stream before any response
-	// headers reach the downstream client, so a properly configured retry policy
-	// can fall over to the next backend in the rule transparently.
-	//
-	// Pair this field with the existing Timeouts.Request, which acts as the overall
-	// deadline.
+	// Pair this field with Timeouts.Request, which acts as the overall deadline.
 	//
 	// If this field is not set, no per-try idle timeout is applied.
 	//
 	// +optional
-	FirstTokenTimeout *gwapiv1.Duration `json:"firstTokenTimeout,omitempty"`
+	StreamIdleTimeout *gwapiv1.Duration `json:"streamIdleTimeout,omitempty"`
 
 	// ModelsOwnedBy represents the owner of the running models serving by the backends,
 	// which will be exported as the field of "OwnedBy" in openai-compatible API "/models".

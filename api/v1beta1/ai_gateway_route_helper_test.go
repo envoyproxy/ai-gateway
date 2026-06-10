@@ -14,7 +14,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-func TestAIGatewayRouteRule_GetFirstTokenTimeout(t *testing.T) {
+func TestAIGatewayRouteRule_GetStreamIdleTimeout(t *testing.T) {
 	tests := []struct {
 		name     string
 		rule     *AIGatewayRouteRule
@@ -24,23 +24,23 @@ func TestAIGatewayRouteRule_GetFirstTokenTimeout(t *testing.T) {
 		{name: "unset field disables deadline", rule: &AIGatewayRouteRule{}, expected: 0},
 		{
 			name:     "valid 5s duration is parsed",
-			rule:     &AIGatewayRouteRule{FirstTokenTimeout: ptr.To(gwapiv1.Duration("5s"))},
+			rule:     &AIGatewayRouteRule{StreamIdleTimeout: ptr.To(gwapiv1.Duration("5s"))},
 			expected: 5 * time.Second,
 		},
 		{
 			name:     "negative duration is treated as unset",
-			rule:     &AIGatewayRouteRule{FirstTokenTimeout: ptr.To(gwapiv1.Duration("-1s"))},
+			rule:     &AIGatewayRouteRule{StreamIdleTimeout: ptr.To(gwapiv1.Duration("-1s"))},
 			expected: 0,
 		},
 		{
 			name:     "malformed duration falls back to zero rather than panicking",
-			rule:     &AIGatewayRouteRule{FirstTokenTimeout: ptr.To(gwapiv1.Duration("nope"))},
+			rule:     &AIGatewayRouteRule{StreamIdleTimeout: ptr.To(gwapiv1.Duration("nope"))},
 			expected: 0,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.expected, tt.rule.GetFirstTokenTimeout())
+			require.Equal(t, tt.expected, tt.rule.GetStreamIdleTimeout())
 		})
 	}
 }

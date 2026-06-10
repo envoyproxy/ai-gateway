@@ -76,9 +76,9 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 		return nil, fmt.Errorf("failed to modify listeners and routes for InferencePool support: %w", err)
 	}
 
-	// Apply the per-rule first-token timeout to the generated routes.
-	if err = s.applyFirstTokenTimeouts(ctx, req.Routes); err != nil {
-		return nil, fmt.Errorf("failed to apply first-token timeouts: %w", err)
+	// Apply the per-rule stream idle timeout to the generated routes.
+	if err = s.applyStreamIdleTimeouts(ctx, req.Routes); err != nil {
+		return nil, fmt.Errorf("failed to apply stream idle timeouts: %w", err)
 	}
 
 	// Ensure the AI Gateway external processor UDS cluster exists.
@@ -150,15 +150,15 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	return response, nil
 }
 
-// applyFirstTokenTimeouts walks the generated route configurations and sets the per-try idle
-// timeout on every AIGatewayRoute route whose rule configures FirstTokenTimeout.
+// applyStreamIdleTimeouts walks the generated route configurations and sets the per-try idle
+// timeout on every AIGatewayRoute route whose rule configures StreamIdleTimeout.
 // Lookups are cached to avoid hitting the API server more than once per route.
-func (s *Server) applyFirstTokenTimeouts(ctx context.Context, routeConfigs []*routev3.RouteConfiguration) error {
+func (s *Server) applyStreamIdleTimeouts(ctx context.Context, routeConfigs []*routev3.RouteConfiguration) error {
 	cache := make(map[client.ObjectKey]*aigv1b1.AIGatewayRoute)
 	for _, rc := range routeConfigs {
 		for _, vh := range rc.VirtualHosts {
 			for _, route := range vh.Routes {
-				if err := s.maybeSetFirstTokenTimeout(ctx, route, cache); err != nil {
+				if err := s.maybeSetStreamIdleTimeout(ctx, route, cache); err != nil {
 					return err
 				}
 			}
@@ -167,11 +167,11 @@ func (s *Server) applyFirstTokenTimeouts(ctx context.Context, routeConfigs []*ro
 	return nil
 }
 
-// maybeSetFirstTokenTimeout sets route.retry_policy.per_try_idle_timeout from the rule's
-// FirstTokenTimeout. Envoy resets the upstream stream when no bytes arrive within that
+// maybeSetStreamIdleTimeout sets route.retry_policy.per_try_idle_timeout from the rule's
+// StreamIdleTimeout. Envoy resets the upstream stream when no bytes arrive within that
 // duration, so a retry policy covering `reset` falls over to the next backend before any
 // response reaches the downstream client.
-func (s *Server) maybeSetFirstTokenTimeout(ctx context.Context, route *routev3.Route, cache map[client.ObjectKey]*aigv1b1.AIGatewayRoute) error {
+func (s *Server) maybeSetStreamIdleTimeout(ctx context.Context, route *routev3.Route, cache map[client.ObjectKey]*aigv1b1.AIGatewayRoute) error {
 	action := route.GetRoute()
 	if action == nil {
 		// Not a forwarding route (e.g. DirectResponse, Redirect).
@@ -203,7 +203,7 @@ func (s *Server) maybeSetFirstTokenTimeout(ctx context.Context, route *routev3.R
 		return nil
 	}
 
-	timeout := aigwRoute.Spec.Rules[ruleIndex].GetFirstTokenTimeout()
+	timeout := aigwRoute.Spec.Rules[ruleIndex].GetStreamIdleTimeout()
 	if timeout <= 0 {
 		return nil
 	}

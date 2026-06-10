@@ -22,13 +22,12 @@ const (
 	inferencePoolKind = "InferencePool"
 )
 
-// GetFirstTokenTimeout returns the configured first-token (TTFT) timeout for streaming
-// responses on this rule, or zero when not configured.
-func (r *AIGatewayRouteRule) GetFirstTokenTimeout() time.Duration {
-	if r == nil || r.FirstTokenTimeout == nil {
+// GetStreamIdleTimeout returns the configured stream idle timeout for this rule, or zero when not configured.
+func (r *AIGatewayRouteRule) GetStreamIdleTimeout() time.Duration {
+	if r == nil || r.StreamIdleTimeout == nil {
 		return 0
 	}
-	d, err := time.ParseDuration(string(*r.FirstTokenTimeout))
+	d, err := time.ParseDuration(string(*r.StreamIdleTimeout))
 	if err != nil || d <= 0 {
 		return 0
 	}

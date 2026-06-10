@@ -98,8 +98,8 @@ func (in *AIGatewayRouteRule) DeepCopyInto(out *AIGatewayRouteRule) {
 		*out = new(v1.HTTPRouteTimeouts)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.FirstTokenTimeout != nil {
-		in, out := &in.FirstTokenTimeout, &out.FirstTokenTimeout
+	if in.StreamIdleTimeout != nil {
+		in, out := &in.StreamIdleTimeout, &out.StreamIdleTimeout
 		*out = new(v1.Duration)
 		**out = **in
 	}

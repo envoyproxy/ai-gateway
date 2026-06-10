@@ -1455,16 +1455,16 @@ func TestPostRouteModify(t *testing.T) {
 	})
 }
 
-// TestMaybeSetFirstTokenTimeout tests that the route's per_try_idle_timeout is set
-// from the AIGatewayRoute rule's FirstTokenTimeout.
-func TestMaybeSetFirstTokenTimeout(t *testing.T) {
+// TestMaybeSetStreamIdleTimeout tests that the route's per_try_idle_timeout is set
+// from the AIGatewayRoute rule's StreamIdleTimeout.
+func TestMaybeSetStreamIdleTimeout(t *testing.T) {
 	c := newFakeClient()
 	err := c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "ttft-route", Namespace: "default"},
 		Spec: aigv1b1.AIGatewayRouteSpec{
 			Rules: []aigv1b1.AIGatewayRouteRule{
-				{FirstTokenTimeout: ptr.To(gwapiv1.Duration("10s"))},
-				{}, // No FirstTokenTimeout.
+				{StreamIdleTimeout: ptr.To(gwapiv1.Duration("10s"))},
+				{}, // No StreamIdleTimeout.
 			},
 		},
 	})
@@ -1477,7 +1477,7 @@ func TestMaybeSetFirstTokenTimeout(t *testing.T) {
 	}
 	call := func(t *testing.T, route *routev3.Route) {
 		cache := make(map[client.ObjectKey]*aigv1b1.AIGatewayRoute)
-		require.NoError(t, s.maybeSetFirstTokenTimeout(context.Background(), route, cache))
+		require.NoError(t, s.maybeSetStreamIdleTimeout(context.Background(), route, cache))
 	}
 
 	t.Run("sets per_try_idle_timeout when configured", func(t *testing.T) {
@@ -1545,21 +1545,21 @@ func TestMaybeSetFirstTokenTimeout(t *testing.T) {
 			"httproute/default/missing/rule/0/match/1",
 		} {
 			route := forwardingRoute(name)
-			require.NoError(t, s.maybeSetFirstTokenTimeout(context.Background(), route, cache))
+			require.NoError(t, s.maybeSetStreamIdleTimeout(context.Background(), route, cache))
 		}
 		require.Contains(t, cache, client.ObjectKey{Namespace: "default", Name: "ttft-route"})
 		require.Nil(t, cache[client.ObjectKey{Namespace: "default", Name: "missing"}])
 	})
 }
 
-// TestApplyFirstTokenTimeouts tests that the per-try idle timeout is applied while walking
+// TestApplyStreamIdleTimeouts tests that the per-try idle timeout is applied while walking
 // the route configurations, and that unrelated routes are left untouched.
-func TestApplyFirstTokenTimeouts(t *testing.T) {
+func TestApplyStreamIdleTimeouts(t *testing.T) {
 	c := newFakeClient()
 	require.NoError(t, c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{Name: "ttft-route", Namespace: "default"},
 		Spec: aigv1b1.AIGatewayRouteSpec{
-			Rules: []aigv1b1.AIGatewayRouteRule{{FirstTokenTimeout: ptr.To(gwapiv1.Duration("7s"))}},
+			Rules: []aigv1b1.AIGatewayRouteRule{{StreamIdleTimeout: ptr.To(gwapiv1.Duration("7s"))}},
 		},
 	}))
 	s, err := New(c, logr.Discard(), udsPath, false, nil, nil)
@@ -1574,7 +1574,7 @@ func TestApplyFirstTokenTimeouts(t *testing.T) {
 		VirtualHosts: []*routev3.VirtualHost{{Routes: []*routev3.Route{configured, other}}},
 	}}
 
-	require.NoError(t, s.applyFirstTokenTimeouts(context.Background(), routeConfigs))
+	require.NoError(t, s.applyStreamIdleTimeouts(context.Background(), routeConfigs))
 	require.Equal(t, durationpb.New(7*time.Second), configured.GetRoute().RetryPolicy.GetPerTryIdleTimeout())
 	require.Nil(t, other.GetRoute().RetryPolicy)
 
@@ -1588,7 +1588,7 @@ func TestApplyFirstTokenTimeouts(t *testing.T) {
 			}).Build(),
 		logr.Discard(), udsPath, false, nil, nil)
 	require.NoError(t, err)
-	err = failing.applyFirstTokenTimeouts(context.Background(),
+	err = failing.applyStreamIdleTimeouts(context.Background(),
 		[]*routev3.RouteConfiguration{{VirtualHosts: []*routev3.VirtualHost{{Routes: []*routev3.Route{
 			forwarding("httproute/default/ttft-route/rule/0/match/0"),
 		}}}}})
