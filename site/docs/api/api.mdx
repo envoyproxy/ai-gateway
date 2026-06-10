@@ -4243,7 +4243,7 @@ When both `header` and `queryParam` are unspecified, the API key will be injecte
   name="queryParam"
   type="string"
   required="false"
-  description="QueryParam is the HTTP query parameter to inject the API key into.<br />For example, if QueryParam is set to `api_key`, and the API key is `mysecretkey`, the request URL will be modified to include<br />`?api_key=mysecretkey`.<br />Either one of Header or QueryParam can be specified to inject the API key."
+  description="QueryParam is the HTTP query parameter to inject the API key into.<br />For example, if QueryParam is set to `api_key`, and the API key is `mysecretkey`, the request URL will be modified to include<br />`?api_key=mysecretkey`.<br />Either one of Header or QueryParam can be specified to inject the API key.<br />Note: Embedding credentials in URLs (including query parameters) is generally not recommended because URLs can be exposed in logs<br />and intermediary systems; prefer header-based injection when possible."
 />
 
 
