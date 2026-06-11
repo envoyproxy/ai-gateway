@@ -1645,6 +1645,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ResponseBodyMutation(t *testing.
 		mm.RequireRequestSuccess(t)
 	})
 }
+
 func Test_buildDynamicMetadata(t *testing.T) {
 	t.Run("sets model_name_override from request headers", func(t *testing.T) {
 		costs := &metrics.TokenUsage{}

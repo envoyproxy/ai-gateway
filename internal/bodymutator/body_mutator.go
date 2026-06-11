@@ -139,7 +139,7 @@ func (b *BodyMutator) Mutate(requestBody []byte) ([]byte, error) {
 
 // MutateResponse removes configured fields from a non-streaming response body.
 func (b *BodyMutator) MutateResponse(body []byte) ([]byte, error) {
-	if b.bodyMutations == nil || len(b.bodyMutations.Remove) == 0 {
+	if b.bodyMutations == nil || len(b.bodyMutations.Remove) == 0 || len(body) == 0 {
 		return body, nil
 	}
 	mutated := body
@@ -180,18 +180,28 @@ func (b *BodyMutator) MutateResponseSSE(chunk []byte, endOfStream bool) []byte {
 	// Preallocate to the buffered size: removal only shrinks lines, so the
 	// output never exceeds what is currently buffered.
 	out := make([]byte, 0, len(b.sseBuffer))
+	// Consume complete lines from a local view, leaving b.sseBuffer's start
+	// fixed so the backing array can be reused below.
+	working := b.sseBuffer
 	for {
-		i := bytes.IndexByte(b.sseBuffer, '\n')
+		i := bytes.IndexByte(working, '\n')
 		if i < 0 {
 			break
 		}
-		out = append(out, b.mutateSSELine(b.sseBuffer[:i])...)
+		out = append(out, b.mutateSSELine(working[:i])...)
 		out = append(out, '\n')
-		b.sseBuffer = b.sseBuffer[i+1:]
+		working = working[i+1:]
 	}
-	if endOfStream && len(b.sseBuffer) > 0 {
-		out = append(out, b.mutateSSELine(b.sseBuffer)...)
+	if endOfStream && len(working) > 0 {
+		out = append(out, b.mutateSSELine(working)...)
 		b.sseBuffer = nil
+	} else {
+		// Slide the unconsumed tail back to the front of the backing array so
+		// it stays reusable across calls instead of marching the slice start
+		// forward and forcing reallocation churn on long streams. copy handles
+		// the overlapping forward case correctly; an empty working yields
+		// b.sseBuffer[:0], reusing the array.
+		b.sseBuffer = b.sseBuffer[:copy(b.sseBuffer, working)]
 	}
 	return out
 }
@@ -204,7 +214,13 @@ func (b *BodyMutator) mutateSSELine(line []byte) []byte {
 	if !bytes.HasPrefix(line, sseDataPrefix) {
 		return line
 	}
-	data := bytes.TrimRight(line[len(sseDataPrefix):], "\r")
+	data := line[len(sseDataPrefix):]
+	// Detect and strip a CRLF carriage return so the payload is compared and
+	// parsed cleanly; re-append it to the mutated output to preserve framing.
+	hasCR := bytes.HasSuffix(data, []byte("\r"))
+	if hasCR {
+		data = data[:len(data)-1]
+	}
 	if bytes.Equal(data, sseDoneMessage) {
 		return line
 	}
@@ -219,7 +235,11 @@ func (b *BodyMutator) mutateSSELine(line []byte) []byte {
 			}
 		}
 	}
-	out := make([]byte, 0, len(sseDataPrefix)+len(mutated))
+	out := make([]byte, 0, len(sseDataPrefix)+len(mutated)+1)
 	out = append(out, sseDataPrefix...)
-	return append(out, mutated...)
+	out = append(out, mutated...)
+	if hasCR {
+		out = append(out, '\r')
+	}
+	return out
 }

@@ -229,6 +229,17 @@ func TestBodyMutator_MutateResponse_EmptyRemoveList(t *testing.T) {
 	require.Equal(t, body, mutated)
 }
 
+func TestBodyMutator_MutateResponse_EmptyBody(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
+
+	mutated, err := mutator.MutateResponse([]byte{})
+	require.NoError(t, err)
+	require.Empty(t, mutated)
+}
+
 func TestBodyMutator_MutateResponseSSE_RemovesFieldsFromDataLines(t *testing.T) {
 	bodyMutations := &filterapi.HTTPBodyMutation{
 		Remove: []string{"provider"},
@@ -387,4 +398,65 @@ func TestBodyMutator_MutateResponseSSE_AllBytesBuffered(t *testing.T) {
 	out := mutator.MutateResponseSSE([]byte("data: {\"id\":\"chatcmpl"), false)
 	require.NotNil(t, out)
 	require.Empty(t, out)
+}
+
+// TestBodyMutator_MutateResponseSSE_PreservesCRLFFraming verifies that mutated
+// CRLF-terminated data lines retain their trailing "\r\n" framing rather than
+// being silently converted to bare "\n".
+func TestBodyMutator_MutateResponseSSE_PreservesCRLFFraming(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
+
+	chunk := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\",\"choices\":[]}\r\ndata: {\"id\":\"chatcmpl-124\",\"provider\":\"openai\",\"choices\":[]}\r\n")
+	out := mutator.MutateResponseSSE(chunk, true)
+
+	expected := []byte("data: {\"id\":\"chatcmpl-123\",\"choices\":[]}\r\ndata: {\"id\":\"chatcmpl-124\",\"choices\":[]}\r\n")
+	require.Equal(t, expected, out)
+	require.NotContains(t, string(out), "provider")
+}
+
+// TestBodyMutator_MutateResponseSSE_CRLFSplitAcrossCalls verifies that when a
+// CRLF-terminated event is split mid-line across two calls, the carryover still
+// preserves the trailing "\r" on the reassembled, mutated line.
+func TestBodyMutator_MutateResponseSSE_CRLFSplitAcrossCalls(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
+
+	full := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\",\"choices\":[]}\r\n")
+	// Split mid-JSON so the first chunk holds an incomplete line that gets
+	// buffered, including before the trailing "\r\n".
+	splitAt := 30
+	first := mutator.MutateResponseSSE(full[:splitAt], false)
+	require.NotNil(t, first)
+	require.Empty(t, first)
+
+	second := mutator.MutateResponseSSE(full[splitAt:], true)
+
+	combined := append(append([]byte{}, first...), second...)
+	require.Equal(t, []byte("data: {\"id\":\"chatcmpl-123\",\"choices\":[]}\r\n"), combined)
+	require.NotContains(t, string(combined), "provider")
+}
+
+// TestBodyMutator_MutateResponseSSE_ChunkBoundaryAtNewline exercises the
+// empty-leftover slide path: each chunk completes exactly at a line terminator,
+// so nothing is carried over between calls, and the output is correct across the
+// multi-call sequence.
+func TestBodyMutator_MutateResponseSSE_ChunkBoundaryAtNewline(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
+
+	first := mutator.MutateResponseSSE([]byte("data: {\"id\":\"chatcmpl-1\",\"provider\":\"openai\"}\n"), false)
+	require.Equal(t, []byte("data: {\"id\":\"chatcmpl-1\"}\n"), first)
+
+	second := mutator.MutateResponseSSE([]byte("data: {\"id\":\"chatcmpl-2\",\"provider\":\"openai\"}\n"), false)
+	require.Equal(t, []byte("data: {\"id\":\"chatcmpl-2\"}\n"), second)
+
+	third := mutator.MutateResponseSSE([]byte("data: [DONE]\n"), true)
+	require.Equal(t, []byte("data: [DONE]\n"), third)
 }
