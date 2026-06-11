@@ -1662,6 +1662,47 @@ type ErrorType struct {
 	EventID *string `json:"event_id,omitempty"`
 }
 
+// UnmarshalJSON allows OpenAI-compatible backends to provide `error.code` as either a JSON string or number.
+func (e *ErrorType) UnmarshalJSON(data []byte) error {
+	type errorTypeAlias ErrorType
+	aux := struct {
+		errorTypeAlias
+		Code json.RawMessage `json:"code,omitempty"`
+	}{}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	*e = ErrorType(aux.errorTypeAlias)
+	if len(aux.Code) == 0 || string(aux.Code) == "null" {
+		e.Code = nil
+		return nil
+	}
+
+	var code string
+	if err := json.Unmarshal(aux.Code, &code); err == nil {
+		e.Code = &code
+		return nil
+	}
+
+	var codeInt int64
+	if err := json.Unmarshal(aux.Code, &codeInt); err == nil {
+		code = strconv.FormatInt(codeInt, 10)
+		e.Code = &code
+		return nil
+	}
+
+	var codeFloat float64
+	if err := json.Unmarshal(aux.Code, &codeFloat); err == nil {
+		code = strconv.FormatFloat(codeFloat, 'f', -1, 64)
+		e.Code = &code
+		return nil
+	}
+
+	return fmt.Errorf("error.code must be string or number")
+}
+
 // ModelList is described in the OpenAI API documentation
 // https://platform.openai.com/docs/api-reference/models/list
 type ModelList struct {
