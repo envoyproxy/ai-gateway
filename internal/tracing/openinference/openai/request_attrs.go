@@ -256,16 +256,40 @@ func buildEmbeddingsRequestAttributes(embRequest *openai.EmbeddingRequest, body 
 	// 4. Azure deployments don't affect this (they only host OpenAI models with cl100k_base)
 	// Following OpenInference spec guidance to only record human-readable text.
 	if !config.HideInputs && !config.HideEmbeddingsText {
-		switch input := embRequest.Input.Value.(type) {
-		case string:
-			attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(0), input))
-		case []string:
-			for i, text := range input {
-				attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(i), text))
+		switch {
+		case embRequest.OfCompletion != nil:
+			switch input := embRequest.OfCompletion.Input.Value.(type) {
+			case string:
+				attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(0), input))
+			case []string:
+				for i, text := range input {
+					attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(i), text))
+				}
+			// Token inputs are not recorded to reduce span size.
+			case []int64:
+			case [][]int64:
 			}
-		// Token inputs are not recorded to reduce span size.
-		case []int64:
-		case [][]int64:
+		case embRequest.OfChat != nil:
+			idx := 0
+			for _, msg := range embRequest.OfChat.Messages {
+				if msg.OfUser == nil {
+					continue
+				}
+				switch content := msg.OfUser.Content.Value.(type) {
+				case string:
+					if content != "" {
+						attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(idx), content))
+						idx++
+					}
+				case []openai.ChatCompletionContentPartUserUnionParam:
+					for _, part := range content {
+						if part.OfText != nil && part.OfText.Text != "" {
+							attrs = append(attrs, attribute.String(openinference.EmbeddingTextAttribute(idx), part.OfText.Text))
+							idx++
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -589,22 +613,32 @@ func setInputMsgContentAttrs(content []openai.ResponseInputContentUnionParam, at
 
 func setOutputMsgAttrs(output *openai.ResponseOutputMessage, attrs []attribute.KeyValue, config *openinference.TraceConfig, index int) []attribute.KeyValue {
 	attrs = append(attrs, attribute.String(openinference.InputMessageAttribute(index, openinference.MessageRole), output.Role))
-	for i, part := range output.Content {
-		switch {
-		case part.OfOutputText != nil:
-			attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "type"), "text"))
-			if config.HideInputText {
-				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), openinference.RedactedValue))
-			} else {
-				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), part.OfOutputText.Text))
+	switch {
+	case output.Content.OfContentArray != nil:
+		for i, part := range output.Content.OfContentArray {
+			switch {
+			case part.OfOutputText != nil:
+				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "type"), "text"))
+				if config.HideInputText {
+					attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), openinference.RedactedValue))
+				} else {
+					attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), part.OfOutputText.Text))
+				}
+			case part.OfRefusal != nil:
+				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "type"), "text"))
+				if config.HideInputText {
+					attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), openinference.RedactedValue))
+				} else {
+					attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), part.OfRefusal.Refusal))
+				}
 			}
-		case part.OfRefusal != nil:
-			attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "type"), "text"))
-			if config.HideInputText {
-				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), openinference.RedactedValue))
-			} else {
-				attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, i, "text"), part.OfRefusal.Refusal))
-			}
+		}
+	case output.Content.OfString != nil:
+		attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, 0, "type"), "text"))
+		if config.HideInputText {
+			attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, 0, "text"), openinference.RedactedValue))
+		} else {
+			attrs = append(attrs, attribute.String(openinference.InputMessageContentAttribute(index, 0, "text"), *output.Content.OfString))
 		}
 	}
 	return attrs

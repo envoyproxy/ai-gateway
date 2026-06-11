@@ -27,7 +27,7 @@ spec:
       kind: EnvoyProxy
       name: envoy-mcp-gateway-ext-auth
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-route-ext-auth

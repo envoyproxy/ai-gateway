@@ -114,10 +114,11 @@ func TestWriteConfig(t *testing.T) {
 						NeedsTLS: true,
 					},
 					{
-						Name:     "otel",
-						Hostname: "otel-collector.monitoring",
-						Port:     443,
-						NeedsTLS: true,
+						Name:        "otel",
+						Hostname:    "otel-collector.monitoring",
+						Port:        443,
+						NeedsTLS:    true,
+						IsTelemetry: true,
 					},
 				},
 				OpenAI: &OpenAIConfig{
@@ -151,10 +152,11 @@ func TestWriteConfig(t *testing.T) {
 						NeedsTLS: false,
 					},
 					{
-						Name:     "otel",
-						IP:       "127.0.0.1",
-						Port:     4317,
-						NeedsTLS: false,
+						Name:        "otel",
+						IP:          "127.0.0.1",
+						Port:        4317,
+						NeedsTLS:    false,
+						IsTelemetry: true,
 					},
 				},
 				OpenAI: &OpenAIConfig{

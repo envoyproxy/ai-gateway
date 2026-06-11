@@ -22,25 +22,28 @@ type VersionedAPISchema struct {
 	//
 	// When the name is set to AzureOpenAI, this version maps to "API Version" in the
 	// Azure OpenAI API documentation (https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning).
-	//
-	// **Deprecated Behavior**: When the name is set to "OpenAI", this version field will behave as the
-	// prefix field. This is to maintain backward compatibility. This will be removed in future releases.
+	// This field is ignored for OpenAI, AWSBedrock, GCPVertexAI, and Anthropic.
+	// For OpenAI and Anthropic, use prefix to configure custom request paths.
 	//
 	// See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details.
+	// +optional
 	Version *string `json:"version,omitempty"`
 
 	// Prefix is the prefix for the API.
 	//
 	// When the name is set to "OpenAI", "chat completions" API endpoint will be "${this_field}/chat/completions".
+	// When the name is set to "Anthropic", the "messages" API endpoint will be "${this_field}/messages".
 	// It can be with or without a leading slash ("/").
+	// This field is ignored for AWSAnthropic and GCPAnthropic.
 	//
-	// This is especially useful when routing to the backend that has an OpenAI compatible API but has a different
+	// This is especially useful when routing to a backend that has an OpenAI or Anthropic compatible API but has a different
 	// prefix. For example, Gemini OpenAI compatible API (https://ai.google.dev/gemini-api/docs/openai) uses
 	// "/v1beta/openai" prefix. Another example is that Cohere AI (https://docs.cohere.com/v2/docs/compatibility-api)
 	// uses "/compatibility/v1" prefix. On the other hand, DeepSeek (https://api-docs.deepseek.com/) doesn't
 	// use prefix, so you can leave this field unset.
 	//
 	// See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details.
+	// +optional
 	Prefix *string `json:"prefix,omitempty"`
 }
 
@@ -102,9 +105,9 @@ type LLMRequestCost struct {
 	MetadataKey string `json:"metadataKey"`
 	// Type specifies the type of the request cost. The default is "OutputToken",
 	// and it uses "output token" as the cost. The other types are "InputToken", "TotalToken",
-	// "CachedInputToken", "CacheCreationInputToken", and "CEL".
+	// "CachedInputToken", "CacheCreationInputToken", "ReasoningToken", and "CEL".
 	//
-	// +kubebuilder:validation:Enum=OutputToken;InputToken;CachedInputToken;CacheCreationInputToken;TotalToken;CEL
+	// +kubebuilder:validation:Enum=OutputToken;InputToken;CachedInputToken;CacheCreationInputToken;TotalToken;ReasoningToken;CEL
 	Type LLMRequestCostType `json:"type"`
 	// CEL is the CEL expression to calculate the cost of the request.
 	// The CEL expression must return a signed or unsigned integer. If the
@@ -119,6 +122,7 @@ type LLMRequestCost struct {
 	//	* cache_creation_input_tokens: the number of cache creation input tokens. Type: unsigned integer.
 	//	* output_tokens: the number of output tokens. Type: unsigned integer.
 	//	* total_tokens: the total number of tokens. Type: unsigned integer.
+	//	* reasoning_tokens: the number of reasoning tokens. Type: unsigned integer.
 	//
 	// For example, the following expressions are valid:
 	//
@@ -146,6 +150,8 @@ const (
 	LLMRequestCostTypeOutputToken LLMRequestCostType = "OutputToken"
 	// LLMRequestCostTypeTotalToken is the cost type of the total token.
 	LLMRequestCostTypeTotalToken LLMRequestCostType = "TotalToken"
+	// LLMRequestCostTypeReasoningToken is the cost type of the reasoning token.
+	LLMRequestCostTypeReasoningToken LLMRequestCostType = "ReasoningToken"
 	// LLMRequestCostTypeCEL is for calculating the cost using the CEL expression.
 	LLMRequestCostTypeCEL LLMRequestCostType = "CEL"
 )

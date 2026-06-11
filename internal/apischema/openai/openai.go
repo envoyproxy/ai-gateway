@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/openai/openai-go/v2"
+	"github.com/openai/openai-go/v3"
 	"github.com/tidwall/gjson"
 	"google.golang.org/genai"
 
@@ -76,6 +76,12 @@ type ChatCompletionContentPartTextType string
 // ChatCompletionContentPartImageType The type of the content part.
 type ChatCompletionContentPartImageType string
 
+// ChatCompletionContentPartAudioType The type of the content part.
+type ChatCompletionContentPartAudioType string
+
+// ChatCompletionContentPartVideoType The type of the content part.
+type ChatCompletionContentPartVideoType string
+
 // ChatCompletionContentPartFileType The type of the content part.
 type ChatCompletionContentPartFileType string
 
@@ -84,6 +90,8 @@ const (
 	ChatCompletionContentPartRefusalTypeRefusal       ChatCompletionContentPartRefusalType    = "refusal"
 	ChatCompletionContentPartInputAudioTypeInputAudio ChatCompletionContentPartInputAudioType = "input_audio"
 	ChatCompletionContentPartImageTypeImageURL        ChatCompletionContentPartImageType      = "image_url"
+	ChatCompletionContentPartAudioTypeAudioURL        ChatCompletionContentPartAudioType      = "audio_url"
+	ChatCompletionContentPartVideoTypeVideoURL        ChatCompletionContentPartVideoType      = "video_url"
 	ChatCompletionContentPartFileTypeFile             ChatCompletionContentPartFileType       = "file"
 )
 
@@ -153,6 +161,34 @@ type ChatCompletionContentPartImageParam struct {
 	*AnthropicContentFields `json:",inline,omitempty"`
 }
 
+type ChatCompletionContentPartAudioAudioURLParam struct {
+	// Either a URL of the audio or the base64 encoded audio data.
+	URL string `json:"url"`
+}
+
+// ChatCompletionContentPartAudioParam Learn more in the
+// [Multimodal Inputs - vLLM](https://docs.vllm.ai/en/latest/features/multimodal_inputs/#audio-inputs_1).
+type ChatCompletionContentPartAudioParam struct {
+	AudioURL ChatCompletionContentPartAudioAudioURLParam `json:"audio_url"`
+	// The type of the content part.
+	Type                    ChatCompletionContentPartAudioType `json:"type"`
+	*AnthropicContentFields `json:",inline,omitempty"`
+}
+
+type ChatCompletionContentPartVideoVideoURLParam struct {
+	// Either a URL of the video or the base64 encoded video data.
+	URL string `json:"url"`
+}
+
+// ChatCompletionContentPartVideoParam Learn more in the
+// [Multimodal Inputs - vLLM](https://docs.vllm.ai/en/latest/features/multimodal_inputs/#video-inputs_1).
+type ChatCompletionContentPartVideoParam struct {
+	VideoURL ChatCompletionContentPartVideoVideoURLParam `json:"video_url"`
+	// The type of the content part.
+	Type                    ChatCompletionContentPartVideoType `json:"type"`
+	*AnthropicContentFields `json:",inline,omitempty"`
+}
+
 type ChatCompletionContentPartFileFileParam struct {
 	// The base64 encoded file data, used when passing the file to the model as a
 	// string.
@@ -179,6 +215,8 @@ type ChatCompletionContentPartUserUnionParam struct {
 	OfText       *ChatCompletionContentPartTextParam       `json:",omitzero,inline"`
 	OfInputAudio *ChatCompletionContentPartInputAudioParam `json:",omitzero,inline"`
 	OfImageURL   *ChatCompletionContentPartImageParam      `json:",omitzero,inline"`
+	OfAudioURL   *ChatCompletionContentPartAudioParam      `json:",omitzero,inline"`
+	OfVideoURL   *ChatCompletionContentPartVideoParam      `json:",omitzero,inline"`
 	OfFile       *ChatCompletionContentPartFileParam       `json:",omitzero,inline"`
 }
 
@@ -210,6 +248,18 @@ func (c *ChatCompletionContentPartUserUnionParam) UnmarshalJSON(data []byte) err
 			return err
 		}
 		c.OfImageURL = &imageContent
+	case string(ChatCompletionContentPartAudioTypeAudioURL):
+		var audioContent ChatCompletionContentPartAudioParam
+		if err := json.Unmarshal(data, &audioContent); err != nil {
+			return err
+		}
+		c.OfAudioURL = &audioContent
+	case string(ChatCompletionContentPartVideoTypeVideoURL):
+		var videoContent ChatCompletionContentPartVideoParam
+		if err := json.Unmarshal(data, &videoContent); err != nil {
+			return err
+		}
+		c.OfVideoURL = &videoContent
 	case string(ChatCompletionContentPartFileTypeFile):
 		var fileContent ChatCompletionContentPartFileParam
 		if err := json.Unmarshal(data, &fileContent); err != nil {
@@ -232,6 +282,12 @@ func (c ChatCompletionContentPartUserUnionParam) MarshalJSON() ([]byte, error) {
 	}
 	if c.OfImageURL != nil {
 		return json.Marshal(c.OfImageURL)
+	}
+	if c.OfAudioURL != nil {
+		return json.Marshal(c.OfAudioURL)
+	}
+	if c.OfVideoURL != nil {
+		return json.Marshal(c.OfVideoURL)
 	}
 	return nil, errors.New("no content to marshal")
 }
@@ -882,6 +938,9 @@ type ThinkingEnabled struct {
 
 	// Optional. Indicates the thinking budget in tokens.
 	IncludeThoughts bool `json:"includeThoughts,omitempty"`
+
+	// Optional. Controls how thinking content appears in the response ("summarized" or "omitted").
+	Display string `json:"display,omitempty"`
 }
 
 type ThinkingDisabled struct {
@@ -890,6 +949,9 @@ type ThinkingDisabled struct {
 
 type ThinkingAdaptive struct {
 	Type string `json:"type,"`
+
+	// Optional. Controls how thinking content appears in the response ("summarized" or "omitted").
+	Display string `json:"display,omitempty"`
 }
 
 // MarshalJSON implements the json.Marshaler interface for ThinkingUnion.
@@ -943,6 +1005,19 @@ func (t *ThinkingUnion) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
+
+// ReasoningEffort is an alias for the OpenAI SDK's ReasoningEffort type.
+type ReasoningEffort = openai.ReasoningEffort
+
+// ReasoningEffort constants for the reasoning_effort field.
+const (
+	ReasoningEffortNone   ReasoningEffort = "none"
+	ReasoningEffortLow    ReasoningEffort = "low"
+	ReasoningEffortMedium ReasoningEffort = "medium"
+	ReasoningEffortHigh   ReasoningEffort = "high"
+	ReasoningEffortXhigh  ReasoningEffort = "xhigh"
+	ReasoningEffortMax    ReasoningEffort = "max"
+)
 
 type ChatCompletionRequest struct {
 	// Messages: A list of messages comprising the conversation so far.
@@ -1021,12 +1096,13 @@ type ChatCompletionRequest struct {
 
 	// Constrains effort on reasoning for
 	// [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently
-	// supported values are `minimal`, `low`, `medium`, and `high`. Reducing reasoning
+	// supported values are `none`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning
 	// effort can result in faster responses and fewer tokens used on reasoning in a
 	// response.
+	// Note: `max` is an Anthropic-specific extension not defined in the OpenAI SDK.
 	//
-	// Any of "minimal", "low", "medium", "high".
-	ReasoningEffort openai.ReasoningEffort `json:"reasoning_effort,omitzero"`
+	// Any of "none", "low", "medium", "high", "xhigh", "max".
+	ReasoningEffort ReasoningEffort `json:"reasoning_effort,omitzero"`
 
 	// ServiceTier:string or null
 	// Specifies the processing type used for serving the request.
@@ -1308,10 +1384,16 @@ type ChatCompletionResponse struct {
 type ChatCompletionChoicesFinishReason string
 
 const (
-	ChatCompletionChoicesFinishReasonStop          ChatCompletionChoicesFinishReason = "stop"
-	ChatCompletionChoicesFinishReasonLength        ChatCompletionChoicesFinishReason = "length"
-	ChatCompletionChoicesFinishReasonToolCalls     ChatCompletionChoicesFinishReason = "tool_calls"
-	ChatCompletionChoicesFinishReasonContentFilter ChatCompletionChoicesFinishReason = "content_filter"
+	ChatCompletionChoicesFinishReasonStop                  ChatCompletionChoicesFinishReason = "stop"
+	ChatCompletionChoicesFinishReasonLength                ChatCompletionChoicesFinishReason = "length"
+	ChatCompletionChoicesFinishReasonToolCalls             ChatCompletionChoicesFinishReason = "tool_calls"
+	ChatCompletionChoicesFinishReasonContentFilter         ChatCompletionChoicesFinishReason = "content_filter"
+	ChatCompletionChoicesFinishReasonRecitation            ChatCompletionChoicesFinishReason = "recitation"
+	ChatCompletionChoicesFinishReasonMalformedFunctionCall ChatCompletionChoicesFinishReason = "malformed_function_call"
+	ChatCompletionChoicesFinishReasonUnexpectedToolCall    ChatCompletionChoicesFinishReason = "unexpected_tool_call"
+	ChatCompletionChoicesFinishReasonLanguage              ChatCompletionChoicesFinishReason = "language"
+	ChatCompletionChoicesFinishReasonNoImage               ChatCompletionChoicesFinishReason = "no_image"
+	ChatCompletionChoicesFinishReasonError                 ChatCompletionChoicesFinishReason = "error"
 )
 
 type ChatCompletionTokenLogprobTopLogprob struct {
@@ -1395,6 +1477,12 @@ type ChatCompletionResponseChoiceMessage struct {
 	// like "reasoningContent" from AWS Bedrock.
 	ReasoningContent *ReasoningContentUnion `json:"reasoning_content,omitempty"`
 
+	// ThinkingBlocks holds structured thinking metadata (signatures, redacted content) from providers
+	// that expose it (Anthropic, Bedrock, Gemini). This preserves full fidelity without breaking
+	// clients that expect reasoning_content to be a plain string.
+	// See https://docs.litellm.ai/docs/reasoning_content for the convention.
+	ThinkingBlocks []ThinkingBlock `json:"thinking_blocks,omitempty"`
+
 	// GCPVertexAI specific fields.
 
 	// SafetyRatings contains safety ratings copied from the GCP Vertex AI response as-is.
@@ -1438,6 +1526,16 @@ type ChatCompletionResponseChoiceMessageAudio struct {
 	Transcript string `json:"transcript"`
 }
 
+// ThinkingBlock represents a structured block of thinking/reasoning content from a model.
+// This follows the convention established by LiteLLM for preserving provider-specific
+// metadata (signatures, redacted content) alongside the plain-string reasoning_content.
+type ThinkingBlock struct {
+	Type      string `json:"type"` // "thinking" or "redacted_thinking"
+	Thinking  string `json:"thinking,omitempty"`
+	Signature string `json:"signature,omitempty"`
+	Data      string `json:"data,omitempty"` // base64 redacted_thinking
+}
+
 // CompletionTokensDetails breakdown of tokens used in a completion.
 type CompletionTokensDetails struct {
 	// Text input tokens present in the prompt.
@@ -1477,7 +1575,7 @@ type ChatCompletionResponseChunk struct {
 	ID string `json:"id,omitempty"`
 	// Choices are described in the OpenAI API documentation:
 	// https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-choices
-	Choices []ChatCompletionResponseChunkChoice `json:"choices,omitempty"`
+	Choices []ChatCompletionResponseChunkChoice `json:"choices"`
 
 	// Created is the Unix timestamp (in seconds) of when the chat completion was created.
 	Created JSONUNIXTime `json:"created,omitzero"`
@@ -1564,6 +1662,47 @@ type ErrorType struct {
 	EventID *string `json:"event_id,omitempty"`
 }
 
+// UnmarshalJSON allows OpenAI-compatible backends to provide `error.code` as either a JSON string or number.
+func (e *ErrorType) UnmarshalJSON(data []byte) error {
+	type errorTypeAlias ErrorType
+	aux := struct {
+		errorTypeAlias
+		Code json.RawMessage `json:"code,omitempty"`
+	}{}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	*e = ErrorType(aux.errorTypeAlias)
+	if len(aux.Code) == 0 || string(aux.Code) == "null" {
+		e.Code = nil
+		return nil
+	}
+
+	var code string
+	if err := json.Unmarshal(aux.Code, &code); err == nil {
+		e.Code = &code
+		return nil
+	}
+
+	var codeInt int64
+	if err := json.Unmarshal(aux.Code, &codeInt); err == nil {
+		code = strconv.FormatInt(codeInt, 10)
+		e.Code = &code
+		return nil
+	}
+
+	var codeFloat float64
+	if err := json.Unmarshal(aux.Code, &codeFloat); err == nil {
+		code = strconv.FormatFloat(codeFloat, 'f', -1, 64)
+		e.Code = &code
+		return nil
+	}
+
+	return fmt.Errorf("error.code must be string or number")
+}
+
 // ModelList is described in the OpenAI API documentation
 // https://platform.openai.com/docs/api-reference/models/list
 type ModelList struct {
@@ -1586,15 +1725,8 @@ type Model struct {
 	OwnedBy string `json:"owned_by"`
 }
 
-// EmbeddingRequest represents a request structure for embeddings API.
-type EmbeddingRequest struct {
-	// Input: Input text to embed, encoded as a string or array of tokens.
-	// To embed multiple inputs in a single request, pass an array of strings or array of token arrays.
-	// The input must not exceed the max input tokens for the model (8192 tokens for text-embedding-ada-002),
-	// cannot be an empty string, and any array must be 2048 dimensions or less.
-	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-input
-	Input EmbeddingRequestInput `json:"input"`
-
+// EmbeddingBaseRequest holds fields shared by both embedding request variants.
+type EmbeddingBaseRequest struct {
 	// Model: ID of the model to use.
 	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-model
 	Model string `json:"model"`
@@ -1616,6 +1748,76 @@ type EmbeddingRequest struct {
 	*GCPVertexAIEmbeddingVendorFields `json:",inline,omitempty"`
 }
 
+// EmbeddingCompletionRequest is the text-only embedding request (classic OpenAI style).
+// https://developers.openai.com/api/reference/resources/embeddings/methods/create
+type EmbeddingCompletionRequest struct {
+	EmbeddingBaseRequest
+	// Input: Input text to embed, encoded as a string or array of tokens.
+	// To embed multiple inputs in a single request, pass an array of strings or array of token arrays.
+	// The input must not exceed the max input tokens for the model (8192 tokens for text-embedding-ada-002),
+	// cannot be an empty string, and any array must be 2048 dimensions or less.
+	Input EmbeddingRequestInput `json:"input"`
+}
+
+// EmbeddingChatRequest is the chat-style embedding request (supports multimodal).
+// Following vLLM convention: https://github.com/vllm-project/vllm/blob/2a16ece2d342c0c154a4949ad317b521f8c04ec4/vllm/entrypoints/pooling/embed/protocol.py#L83
+type EmbeddingChatRequest struct {
+	EmbeddingBaseRequest
+	// Messages: Chat messages for multimodal embedding.
+	// Uses the same chat message format as /v1/chat/completions.
+	// Only user messages are processed; system/assistant/tool messages are ignored.
+	Messages []ChatCompletionMessageParamUnion `json:"messages"`
+}
+
+// EmbeddingRequest is a discriminated union: exactly one of OfCompletion or OfChat is set.
+// Discrimination is by presence of "input" (→ completion) vs "messages" (→ chat) in JSON.
+type EmbeddingRequest struct {
+	EmbeddingBaseRequest                             // promoted shared fields
+	OfCompletion         *EmbeddingCompletionRequest // set when JSON has "input"
+	OfChat               *EmbeddingChatRequest       // set when JSON has "messages"
+}
+
+// UnmarshalJSON discriminates between completion and chat embedding requests.
+func (r *EmbeddingRequest) UnmarshalJSON(data []byte) error {
+	hasInput := gjson.GetBytes(data, "input").Exists()
+	hasMessages := gjson.GetBytes(data, "messages").Exists()
+
+	if hasInput && hasMessages {
+		return fmt.Errorf("embedding request must have either 'input' or 'messages', not both")
+	}
+
+	if hasMessages {
+		var chat EmbeddingChatRequest
+		if err := json.Unmarshal(data, &chat); err != nil {
+			return err
+		}
+		r.EmbeddingBaseRequest = chat.EmbeddingBaseRequest
+		r.OfChat = &chat
+		return nil
+	}
+
+	// Default to completion (input-based) — this handles both explicit "input" and legacy cases.
+	var comp EmbeddingCompletionRequest
+	if err := json.Unmarshal(data, &comp); err != nil {
+		return err
+	}
+	r.EmbeddingBaseRequest = comp.EmbeddingBaseRequest
+	r.OfCompletion = &comp
+	return nil
+}
+
+// MarshalJSON delegates to the active variant.
+func (r EmbeddingRequest) MarshalJSON() ([]byte, error) {
+	if r.OfChat != nil {
+		return json.Marshal(r.OfChat)
+	}
+	if r.OfCompletion != nil {
+		return json.Marshal(r.OfCompletion)
+	}
+	// Fallback: marshal just the base fields.
+	return json.Marshal(r.EmbeddingBaseRequest)
+}
+
 type EmbeddingTaskType string
 
 const (
@@ -1629,16 +1831,20 @@ const (
 	EmbeddingTaskTypeCodeRetrievalQuery EmbeddingTaskType = "CODE_RETRIEVAL_QUERY"
 )
 
-// GCPVertexAIEmbeddingVendorFields contains GCP Vertex AI (Gemini) vendor-specific fields for embeddings.
+// GCPVertexAIEmbeddingVendorFields contains GCP Vertex AI vendor-specific fields for embeddings.
+// The translator maps these to the appropriate wire format per endpoint:
+//   - predict: parameters.auto_truncate, instances[].task_type, instances[].title
+//   - embedContent: embedContentConfig.autoTruncate, embedContentConfig.taskType, embedContentConfig.title
 type GCPVertexAIEmbeddingVendorFields struct {
-	// When set to true, input text will be truncated. When set to false, an error is returned if the input text is longer than the maximum length supported by the model. Defaults to true.
-	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings-api#parameter-list
+	// Auto-truncate input text if it exceeds the model's max length. Defaults to true.
+	AutoTruncate *bool `json:"auto_truncate,omitempty"`
 
-	AutoTruncate bool `json:"auto_truncate,omitempty"`
-
-	// This is global task_type set, which is convenient for users. If left blank, the default used is RETRIEVAL_QUERY.
-	// For more information about task types, see https://docs.cloud.google.com/vertex-ai/generative-ai/docs/embeddings/task-types
+	// Global task type for the request. Defaults to RETRIEVAL_QUERY if unset.
+	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/embeddings/task-types
 	TaskType EmbeddingTaskType `json:"task_type,omitempty"`
+
+	// Title for the embedding content. Helps the model produce better embeddings.
+	Title string `json:"title,omitempty"`
 }
 
 // EmbeddingResponse represents a response from /v1/embeddings.
@@ -2225,7 +2431,7 @@ type ResponseRequest struct {
 	// [Learn more](https://platform.openai.com/docs/guides/safety-best-practices#safety-identifiers).
 	SafetyIdentifier string `json:"safety_identifier,omitzero"`
 
-	// This field is being replaced by `safety_identifier` and `prompt_cache_key`. Use
+	// Deprecated: This field is being replaced by `safety_identifier` and `prompt_cache_key`. Use
 	// `prompt_cache_key` instead to maintain caching optimizations. A stable
 	// identifier for your end-users. Used to boost cache hit rates by better bucketing
 	// similar requests and to help OpenAI detect and prevent abuse.
@@ -2369,6 +2575,12 @@ type ResponseRequest struct {
 	//     [function calling](https://platform.openai.com/docs/guides/function-calling).
 	//     You can also use custom tools to call your own code.
 	Tools []ResponseToolUnion `json:"tools,omitzero"`
+
+	// Penalizes new tokens based on whether they appear in the text so far.
+	PresencePenalty *float32 `json:"presence_penalty,omitempty"`
+
+	// Penalizes new tokens based on their frequency in the text so far.
+	FrequencyPenalty *float32 `json:"frequency_penalty,omitempty"`
 }
 
 // Context management configuration
@@ -3539,7 +3751,8 @@ type ResponseNewParamsInputUnion struct {
 func (r *ResponseNewParamsInputUnion) UnmarshalJSON(data []byte) error {
 	// Try string
 	var s string
-	if err := json.Unmarshal(data, &s); err == nil {
+	var err error
+	if err = json.Unmarshal(data, &s); err == nil {
 		r.OfString = &s
 		r.OfInputItemList = nil
 		return nil
@@ -3547,13 +3760,13 @@ func (r *ResponseNewParamsInputUnion) UnmarshalJSON(data []byte) error {
 
 	// Try input item list
 	var items []ResponseInputItemUnionParam
-	if err := json.Unmarshal(data, &items); err == nil {
+	if err = json.Unmarshal(data, &items); err == nil {
 		r.OfString = nil
 		r.OfInputItemList = items
 		return nil
 	}
 
-	return errors.New("input must be either a string or an array of input items")
+	return err
 }
 
 func (r ResponseNewParamsInputUnion) MarshalJSON() ([]byte, error) {
@@ -3662,7 +3875,16 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 	// Handle messages without explicit type field (for compatibility with simple message arrays)
 	// This allows arrays like [{"role": "user", "content": "Hello"}] to work without requiring type field
 	if typ.String() == "" {
-		if gjson.GetBytes(data, "role").Exists() && gjson.GetBytes(data, "content").Exists() {
+		role := gjson.GetBytes(data, "role")
+		if role.Exists() && gjson.GetBytes(data, "content").Exists() {
+			if role.String() == "assistant" {
+				// Assistant history may be sent as output_message content without type: "message".
+				var om ResponseOutputMessage
+				if err := json.Unmarshal(data, &om); err == nil {
+					r.OfOutputMessage = &om
+					return nil
+				}
+			}
 			// Treat as EasyInputMessageParam
 			var msg EasyInputMessageParam
 			if err := json.Unmarshal(data, &msg); err != nil {
@@ -3675,24 +3897,20 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 
 	switch typ.String() {
 	case "message":
-		// Check for id field or assistant role to determine if this is an output message.
-		// ResponseOutputMessage has id field (required property) and role is always "assistant".
-		// Assistant messages without id (e.g., from multi-turn conversation history) also
-		// contain output_text content that only ResponseOutputMessage can parse.
-		if gjson.GetBytes(data, "id").Exists() {
+
+		// If role is assistant Unmarshal as ResponseOutputMessage
+		if gjson.GetBytes(data, "role").String() == "assistant" {
+			// Check for assistant role to determine if this is an output message.
+			// ResponseOutputMessage has id field (required property) and role is always "assistant".
+			// Assistant messages without id (e.g., from multi-turn conversation history) also
+			// contain output_text content that only ResponseOutputMessage can parse.
+
 			var om ResponseOutputMessage
 			if err := json.Unmarshal(data, &om); err != nil {
 				return err
 			}
 			r.OfOutputMessage = &om
 			return nil
-		}
-		if gjson.GetBytes(data, "role").String() == "assistant" {
-			var om ResponseOutputMessage
-			if err := json.Unmarshal(data, &om); err == nil {
-				r.OfOutputMessage = &om
-				return nil
-			}
 		}
 
 		// Try ResponseInputItemMessageParam (has status field for tracking)
@@ -3978,6 +4196,8 @@ type ResponseInputItemMessageParam struct {
 	Status string `json:"status,omitzero"`
 	// The type of the message input. Always set to `message`.
 	Type string `json:"type,omitzero"`
+	// The unique ID of this message item.
+	ID string `json:"id,omitzero"`
 }
 
 // An output message from the model.
@@ -3987,7 +4207,7 @@ type ResponseOutputMessage struct {
 	// The unique ID of the output message.
 	ID string `json:"id,omitzero"`
 	// The content of the output message.
-	Content []ResponseOutputMessageContentUnion `json:"content,omitzero"`
+	Content ResponseOutputMessageContentUnion `json:"content,omitzero"`
 	// The status of the message input. One of `in_progress`, `completed`, or
 	// `incomplete`. Populated when input items are returned via API.
 	//
@@ -4002,11 +4222,51 @@ type ResponseOutputMessage struct {
 // ResponseOutputMessageContentUnion is a union type for different output message content parameters.
 // Only one field can be non-zero.
 type ResponseOutputMessageContentUnion struct {
+	OfString       *string
+	OfContentArray []ResponseOutputMessageContentArrayUnion
+}
+
+func (r ResponseOutputMessageContentUnion) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfString != nil:
+		return json.Marshal(r.OfString)
+	case r.OfContentArray != nil:
+		return json.Marshal(r.OfContentArray)
+	default:
+		return nil, errors.New("no output message content to marshal")
+	}
+}
+
+func (r *ResponseOutputMessageContentUnion) UnmarshalJSON(data []byte) error {
+	switch data[0] {
+	case '"':
+		// Try to parse as string
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		r.OfString = &s
+	case '[':
+		// Try to parse as array
+		var ot []ResponseOutputMessageContentArrayUnion
+		if err := json.Unmarshal(data, &ot); err != nil {
+			return err
+		}
+		r.OfContentArray = ot
+	default:
+		return errors.New("unable to unmarshal output message content")
+	}
+	return nil
+}
+
+// ResponseOutputMessageContentArrayUnion is a union type for different output message content array parameters.
+// Only one field can be non-zero.
+type ResponseOutputMessageContentArrayUnion struct {
 	OfOutputText *ResponseOutputTextParam
 	OfRefusal    *ResponseOutputRefusalParam
 }
 
-func (r ResponseOutputMessageContentUnion) MarshalJSON() ([]byte, error) {
+func (r ResponseOutputMessageContentArrayUnion) MarshalJSON() ([]byte, error) {
 	switch {
 	case r.OfOutputText != nil:
 		return json.Marshal(r.OfOutputText)
@@ -4017,7 +4277,7 @@ func (r ResponseOutputMessageContentUnion) MarshalJSON() ([]byte, error) {
 	}
 }
 
-func (r *ResponseOutputMessageContentUnion) UnmarshalJSON(data []byte) error {
+func (r *ResponseOutputMessageContentArrayUnion) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
 	switch typ.String() {
 	case "output_text":
@@ -4653,7 +4913,7 @@ func (r *ResponseFunctionWebSearchActionUnionParam) UnmarshalJSON(data []byte) e
 			return err
 		}
 		r.OfOpenPage = &op
-	case "find":
+	case "find", "find_in_page":
 		var f ResponseFunctionWebSearchActionFindParam
 		if err := json.Unmarshal(data, &f); err != nil {
 			return err
@@ -4756,7 +5016,7 @@ type ResponseInputItemFunctionCallOutputParam struct {
 // Only one field can be non-zero.
 type ResponseInputItemFunctionCallOutputOutputUnionParam struct {
 	OfString                              *string
-	OfResponseFunctionCallOutputItemArray []ResponseFunctionCallOutputItemUnionParam
+	OfResponseFunctionCallOutputItemArray []ResponseInputItemFunctionCallOutputItemUnionParam
 }
 
 func (r ResponseInputItemFunctionCallOutputOutputUnionParam) MarshalJSON() ([]byte, error) {
@@ -4779,7 +5039,7 @@ func (r *ResponseInputItemFunctionCallOutputOutputUnionParam) UnmarshalJSON(data
 		}
 		r.OfString = &s
 	case '[':
-		var arr []ResponseFunctionCallOutputItemUnionParam
+		var arr []ResponseInputItemFunctionCallOutputItemUnionParam
 		if err := json.Unmarshal(data, &arr); err != nil {
 			return err
 		}
@@ -4790,15 +5050,16 @@ func (r *ResponseInputItemFunctionCallOutputOutputUnionParam) UnmarshalJSON(data
 	return nil
 }
 
-// ResponseFunctionCallOutputItemUnionParam is a union type for different function call output item parameters.
+// ResponseInputItemFunctionCallOutputItemUnionParam is a union type for different function call output item parameters.
 // Only one field can be non-zero.
-type ResponseFunctionCallOutputItemUnionParam struct {
+type ResponseInputItemFunctionCallOutputItemUnionParam struct {
 	OfInputText  *ResponseInputTextContentParam
 	OfInputImage *ResponseInputImageContentParam
 	OfInputFile  *ResponseInputFileContentParam
+	OfInputVideo *ResponseInputVideoContentParam
 }
 
-func (r ResponseFunctionCallOutputItemUnionParam) MarshalJSON() ([]byte, error) {
+func (r ResponseInputItemFunctionCallOutputItemUnionParam) MarshalJSON() ([]byte, error) {
 	switch {
 	case r.OfInputText != nil:
 		return json.Marshal(r.OfInputText)
@@ -4806,12 +5067,14 @@ func (r ResponseFunctionCallOutputItemUnionParam) MarshalJSON() ([]byte, error) 
 		return json.Marshal(r.OfInputImage)
 	case r.OfInputFile != nil:
 		return json.Marshal(r.OfInputFile)
+	case r.OfInputVideo != nil:
+		return json.Marshal(r.OfInputVideo)
 	default:
 		return nil, errors.New("no function call output item to marshal in function call output item")
 	}
 }
 
-func (r *ResponseFunctionCallOutputItemUnionParam) UnmarshalJSON(data []byte) error {
+func (r *ResponseInputItemFunctionCallOutputItemUnionParam) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
 	switch typ.String() {
 	case "input_text":
@@ -4832,6 +5095,12 @@ func (r *ResponseFunctionCallOutputItemUnionParam) UnmarshalJSON(data []byte) er
 			return err
 		}
 		r.OfInputFile = &ifp
+	case "input_video":
+		var ivp ResponseInputVideoContentParam
+		if err := json.Unmarshal(data, &ivp); err != nil {
+			return err
+		}
+		r.OfInputVideo = &ivp
 	default:
 		return errors.New("unknown type for function call output item: " + typ.String())
 	}
@@ -4881,6 +5150,15 @@ type ResponseInputFileContentParam struct {
 	Filename string `json:"filename,omitzero"`
 	// The type of the input item. Always `input_file`.
 	Type string `json:"type"`
+}
+
+// A content block representing a video input to the model.
+// The properties Type, VideoURL are required.
+type ResponseInputVideoContentParam struct {
+	// The type of the input content. Always `input_video`.
+	Type string `json:"type"`
+	// A base64 or remote url that resolves to a video file.
+	VideoURL string `json:"video_url"`
 }
 
 // A description of the chain of thought used by a reasoning model while generating
@@ -5942,6 +6220,15 @@ type Response struct {
 	//
 	// Deprecated: deprecated
 	User string `json:"user,omitzero"`
+
+	// Penalizes new tokens based on whether they appear in the text so far.
+	PresencePenalty *float32 `json:"presence_penalty,omitempty"`
+
+	// Penalizes new tokens based on their frequency in the text so far.
+	FrequencyPenalty *float32 `json:"frequency_penalty,omitempty"`
+
+	// Whether this response was stored so it can be retrieved later.
+	Store *bool `json:"store,omitempty"`
 }
 
 // ResponseInstructionsUnion contains all possible properties and values from
@@ -5988,6 +6275,7 @@ type ResponseOutputItemUnion struct {
 	OfFileSearchCall       *ResponseFileSearchToolCall
 	OfComputerCall         *ResponseComputerToolCall
 	OfFunctionCall         *ResponseFunctionToolCall
+	OfFunctionCallOutput   *ResponseFunctionCallOutput
 	OfWebSearchCall        *ResponseFunctionWebSearch
 	OfReasoning            *ResponseReasoningItem
 	OfCompaction           *ResponseCompactionItem
@@ -6014,6 +6302,8 @@ func (r ResponseOutputItemUnion) MarshalJSON() ([]byte, error) { // nolint:gocri
 		return json.Marshal(r.OfComputerCall)
 	case r.OfFunctionCall != nil:
 		return json.Marshal(r.OfFunctionCall)
+	case r.OfFunctionCallOutput != nil:
+		return json.Marshal(r.OfFunctionCallOutput)
 	case r.OfWebSearchCall != nil:
 		return json.Marshal(r.OfWebSearchCall)
 	case r.OfReasoning != nil:
@@ -6068,6 +6358,12 @@ func (r *ResponseOutputItemUnion) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		r.OfFunctionCall = &f
+	case "function_call_output":
+		var o ResponseFunctionCallOutput
+		if err := json.Unmarshal(data, &o); err != nil {
+			return err
+		}
+		r.OfFunctionCallOutput = &o
 	case "web_search_call":
 		var w ResponseFunctionWebSearch
 		if err := json.Unmarshal(data, &w); err != nil {
@@ -6160,6 +6456,112 @@ func (r *ResponseOutputItemUnion) UnmarshalJSON(data []byte) error {
 		r.OfCustomToolCall = &c
 	default:
 		return fmt.Errorf("unknown type field value '%s' for response output item union", typ.String())
+	}
+	return nil
+}
+
+// The output of a function tool call.
+//
+// The properties CallID, Output, Type are required.
+type ResponseFunctionCallOutput struct {
+	// The unique ID of the function tool call generated by the model.
+	CallID string `json:"call_id"`
+	// Text, image, or file output of the function tool call.
+	Output ResponseFunctionCallOutputOutputUnionParam `json:"output,omitzero"`
+	// The unique ID of the function tool call output. Populated when this item is
+	// returned via API.
+	ID string `json:"id,omitzero"`
+	// The status of the item. One of `in_progress`, `completed`, or `incomplete`.
+	// Populated when items are returned via API.
+	//
+	// Any of "in_progress", "completed", "incomplete".
+	Status string `json:"status,omitzero"`
+	// The type of the function tool call output. Always `function_call_output`.
+	Type string `json:"type"`
+}
+
+// ResponseFunctionCallOutputOutputUnionParam is a union type for different function call output parameters.
+// Only one field can be non-zero.
+type ResponseFunctionCallOutputOutputUnionParam struct {
+	OfString                              *string
+	OfResponseFunctionCallOutputItemArray []ResponseFunctionCallOutputItemUnionParam
+}
+
+func (r ResponseFunctionCallOutputOutputUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfString != nil:
+		return json.Marshal(r.OfString)
+	case r.OfResponseFunctionCallOutputItemArray != nil:
+		return json.Marshal(r.OfResponseFunctionCallOutputItemArray)
+	default:
+		return nil, errors.New("no function call output to marshal in function call output")
+	}
+}
+
+func (r *ResponseFunctionCallOutputOutputUnionParam) UnmarshalJSON(data []byte) error {
+	switch data[0] {
+	case '"':
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		r.OfString = &s
+	case '[':
+		var arr []ResponseFunctionCallOutputItemUnionParam
+		if err := json.Unmarshal(data, &arr); err != nil {
+			return err
+		}
+		r.OfResponseFunctionCallOutputItemArray = arr
+	default:
+		return errors.New("unknown type for function call output in function call output")
+	}
+	return nil
+}
+
+// ResponseFunctionCallOutputItemUnionParam is a union type for different function call output item parameters.
+// Only one field can be non-zero.
+type ResponseFunctionCallOutputItemUnionParam struct {
+	OfInputText  *ResponseInputTextContentParam
+	OfInputImage *ResponseInputImageContentParam
+	OfInputFile  *ResponseInputFileContentParam
+}
+
+func (r ResponseFunctionCallOutputItemUnionParam) MarshalJSON() ([]byte, error) {
+	switch {
+	case r.OfInputText != nil:
+		return json.Marshal(r.OfInputText)
+	case r.OfInputImage != nil:
+		return json.Marshal(r.OfInputImage)
+	case r.OfInputFile != nil:
+		return json.Marshal(r.OfInputFile)
+	default:
+		return nil, errors.New("no function call output item to marshal in function call output item")
+	}
+}
+
+func (r *ResponseFunctionCallOutputItemUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "input_text":
+		var it ResponseInputTextContentParam
+		if err := json.Unmarshal(data, &it); err != nil {
+			return err
+		}
+		r.OfInputText = &it
+	case "input_image":
+		var ii ResponseInputImageContentParam
+		if err := json.Unmarshal(data, &ii); err != nil {
+			return err
+		}
+		r.OfInputImage = &ii
+	case "input_file":
+		var ifp ResponseInputFileContentParam
+		if err := json.Unmarshal(data, &ifp); err != nil {
+			return err
+		}
+		r.OfInputFile = &ifp
+	default:
+		return errors.New("unknown type for function call output item: " + typ.String())
 	}
 	return nil
 }
@@ -8194,3 +8596,85 @@ const (
 	SpeechModelGPT4oMiniTTS         = "gpt-4o-mini-tts"
 	SpeechModelGPT4oMiniTTS20251215 = "gpt-4o-mini-tts-2025-12-15"
 )
+
+// TranscriptionRequest represents parsed form fields from a /v1/audio/transcriptions multipart request.
+// The actual audio file bytes are not stored here; they remain in the raw body for passthrough.
+type TranscriptionRequest struct {
+	Model                  string   `json:"model"`
+	Language               string   `json:"language,omitempty"`
+	Prompt                 string   `json:"prompt,omitempty"`
+	ResponseFormat         string   `json:"response_format,omitempty"`
+	Temperature            *float64 `json:"temperature,omitempty"`
+	TimestampGranularities []string `json:"timestamp_granularities,omitempty"`
+	Stream                 bool     `json:"stream,omitempty"`
+	FileName               string   `json:"file_name,omitempty"`
+	FileSize               int64    `json:"file_size,omitempty"`
+}
+
+// TranslationRequest represents parsed form fields from a /v1/audio/translations multipart request.
+type TranslationRequest struct {
+	Model          string   `json:"model"`
+	Prompt         string   `json:"prompt,omitempty"`
+	ResponseFormat string   `json:"response_format,omitempty"`
+	Temperature    *float64 `json:"temperature,omitempty"`
+	FileName       string   `json:"file_name,omitempty"`
+	FileSize       int64    `json:"file_size,omitempty"`
+}
+
+// TranscriptionResponse represents the JSON response from /v1/audio/transcriptions.
+type TranscriptionResponse struct {
+	Text     string                 `json:"text"`
+	Task     string                 `json:"task,omitempty"`
+	Language string                 `json:"language,omitempty"`
+	Duration float64                `json:"duration,omitempty"`
+	Segments []TranscriptionSegment `json:"segments,omitempty"`
+	Words    []TranscriptionWord    `json:"words,omitempty"`
+}
+
+// TranscriptionSegment represents a segment in verbose transcription output.
+// Field names/types match openai.TranscriptionSegment from the SDK.
+type TranscriptionSegment struct {
+	ID               int64   `json:"id"`
+	Seek             int64   `json:"seek"`
+	Start            float64 `json:"start"`
+	End              float64 `json:"end"`
+	Text             string  `json:"text"`
+	Tokens           []int64 `json:"tokens"`
+	Temperature      float64 `json:"temperature"`
+	AvgLogprob       float64 `json:"avg_logprob"`
+	CompressionRatio float64 `json:"compression_ratio"`
+	NoSpeechProb     float64 `json:"no_speech_prob"`
+}
+
+// TranscriptionWord represents a word with timestamp in transcription output.
+// Field names/types match openai.TranscriptionWord from the SDK.
+type TranscriptionWord struct {
+	Word  string  `json:"word"`
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+}
+
+// TranscriptionStreamEvent is one SSE event from /v1/audio/transcriptions when stream=true
+// (gpt-4o-transcribe and gpt-4o-mini-transcribe only; whisper-1 silently ignores the flag).
+//
+// The `Type` field discriminates:
+//   - "transcript.text.delta" — intermediate event carrying a `Delta` text chunk.
+//   - "transcript.text.done"  — terminal event carrying the full `Text`.
+type TranscriptionStreamEvent struct {
+	Type  string `json:"type"`
+	Delta string `json:"delta,omitempty"`
+	Text  string `json:"text,omitempty"`
+}
+
+// Transcription stream event type constants.
+const (
+	// TranscriptionStreamEventTypeDelta is emitted for each intermediate text chunk during streaming.
+	TranscriptionStreamEventTypeDelta = "transcript.text.delta"
+	// TranscriptionStreamEventTypeDone is the terminal event in a transcription stream.
+	TranscriptionStreamEventTypeDone = "transcript.text.done"
+)
+
+// TranslationResponse represents the JSON response from /v1/audio/translations.
+type TranslationResponse struct {
+	Text string `json:"text"`
+}

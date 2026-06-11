@@ -12,7 +12,6 @@
 package filterapi
 
 import (
-	"cmp"
 	"os"
 	"time"
 
@@ -32,6 +31,9 @@ type Config struct {
 	Version string `json:"version,omitempty"`
 	// UUID is the unique identifier of the filter configuration assigned by the AI Gateway when the configuration is updated.
 	UUID string `json:"uuid,omitempty"`
+	// GlobalLLMRequestCosts configures gateway-level default costs for LLM requests.
+	// These costs apply to all routes unless overridden by route-specific LLMRequestCosts.
+	GlobalLLMRequestCosts []GlobalLLMRequestCost `json:"globalLLMRequestCosts,omitempty"`
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
@@ -39,6 +41,14 @@ type Config struct {
 	Backends []Backend `json:"backends,omitempty"`
 	// Models is the list of models that this route is aware of. Used to populate the "/models" endpoint in OpenAI-compatible APIs.
 	Models []Model `json:"models,omitempty"`
+	// ModelsByHost is the list of models keyed by hostname. When present, the extproc "/v1/models" processor will prefer
+	// the hostname-specific list over the global Models slice. Each per-host list also includes UnscopedModels so that
+	// routes without hostname scoping remain visible alongside the host-specific routes.
+	ModelsByHost map[string][]Model `json:"modelsByHost,omitempty"`
+	// UnscopedModels is the list of models contributed by routes that did NOT declare hostnames. When ModelsByHost is
+	// configured, requests to a host that doesn't match any entry fall back to this list (rather than to Models, which
+	// would leak host-scoped models to unknown hosts).
+	UnscopedModels []Model `json:"unscopedModels,omitempty"`
 	// MCPConfig is the configuration for the MCPRoute implementations.
 	MCPConfig *MCPConfig `json:"mcpConfig,omitempty"`
 }
@@ -54,6 +64,19 @@ type Model struct {
 	CreatedAt time.Time
 }
 
+// GlobalLLMRequestCost specifies gateway-level default request cost configuration.
+// This is identical to LLMRequestCost but without the RouteName field, as global costs
+// apply to all routes and are not scoped to a specific route.
+type GlobalLLMRequestCost struct {
+	// MetadataKey is the key of the metadata storing the request cost.
+	MetadataKey string `json:"metadataKey"`
+	// Type is the kind of the request cost calculation.
+	Type LLMRequestCostType `json:"type"`
+	// CEL is the CEL expression to calculate the cost of the request.
+	// This is not empty when the Type is LLMRequestCostTypeCEL.
+	CEL string `json:"cel,omitempty"`
+}
+
 // LLMRequestCost specifies "where" the request cost is stored in the filter metadata as well as
 // "how" the cost is calculated. By default, the cost is retrieved from "output token" in the response body.
 //
@@ -64,11 +87,25 @@ type Model struct {
 type LLMRequestCost struct {
 	// MetadataKey is the key of the metadata storing the request cost.
 	MetadataKey string `json:"metadataKey"`
+	// RouteName scopes this cost to a single AIGatewayRoute (format "namespace/name").
+	// When empty, the cost applies to any request (wildcard). The controller sets this for each route.
+	RouteName string `json:"routeName,omitempty"`
 	// Type is the kind of the request cost calculation.
 	Type LLMRequestCostType `json:"type"`
 	// CEL is the CEL expression to calculate the cost of the request.
 	// This is not empty when the Type is LLMRequestCostTypeCEL.
 	CEL string `json:"cel,omitempty"`
+	// Backend is an optional filter set exclusively by the QuotaPolicy controller.
+	// It is NOT exposed in any user-facing CRD. When non-empty, this cost entry is
+	// only evaluated when the serving backend's short name (namespace/name) matches.
+	// This allows different QuotaPolicies targeting different backends to use different
+	// cost expressions while sharing the same metadata key.
+	Backend string `json:"backend,omitempty"`
+	// Model is an optional filter set exclusively by the QuotaPolicy controller.
+	// It is NOT exposed in any user-facing CRD. When non-empty, this cost entry is
+	// only evaluated when the request's model name matches. This allows a single
+	// metadata key to be shared across models without conflicting overwrites.
+	Model string `json:"model,omitempty"`
 }
 
 // LLMRequestCostType specifies the kind of the request cost calculation.
@@ -85,6 +122,8 @@ const (
 	LLMRequestCostTypeCacheCreationInputToken LLMRequestCostType = "CacheCreationInputToken"
 	// LLMRequestCostTypeTotalToken specifies that the request cost is calculated from the total token.
 	LLMRequestCostTypeTotalToken LLMRequestCostType = "TotalToken"
+	// LLMRequestCostTypeReasoningToken specifies that the request cost is calculated from the reasoning token.
+	LLMRequestCostTypeReasoningToken LLMRequestCostType = "ReasoningToken"
 	// LLMRequestCostTypeCEL specifies that the request cost is calculated from the CEL expression.
 	LLMRequestCostTypeCEL LLMRequestCostType = "CEL"
 )
@@ -95,15 +134,21 @@ type VersionedAPISchema struct {
 	Name APISchemaName `json:"name"`
 	// Version is the version of the API schema. Optional.
 	Version string `json:"version,omitempty"`
-	// Prefix is the prefix of the API schema. Optional. Currently, only used for OpenAI.
+	// Prefix is the prefix of the API schema. Optional. Used for OpenAI and Anthropic schemas.
 	Prefix string `json:"prefix,omitempty"`
 }
 
 // OpenAIPrefix returns the OpenAI API prefix for the VersionedAPISchema.
-// This is for backwards compatibility with existing users. This won't be
-// necessary after v0.5 release when we can use Prefix directly.
 func (v VersionedAPISchema) OpenAIPrefix() string {
-	return cmp.Or(v.Version, v.Prefix)
+	return v.Prefix
+}
+
+// AnthropicPrefix returns the Anthropic API prefix for the VersionedAPISchema.
+func (v VersionedAPISchema) AnthropicPrefix() string {
+	if v.Prefix == "" {
+		return "v1"
+	}
+	return v.Prefix
 }
 
 // APISchemaName corresponds to APISchemaName in api/v1alpha1/api.go.
@@ -114,7 +159,9 @@ const (
 	APISchemaOpenAI APISchemaName = "OpenAI"
 	// APISchemaCohere represents the Cohere API schema.
 	APISchemaCohere APISchemaName = "Cohere"
-	// APISchemaAWSBedrock represents the AWS Bedrock Converse API schema.
+	// APISchemaAWSBedrock represents the AWS Bedrock API schema.
+	// Used for models hosted on AWS Bedrock. Chat completions use the Converse API,
+	// while embeddings use the InvokeModel API.
 	APISchemaAWSBedrock APISchemaName = "AWSBedrock"
 	// APISchemaAzureOpenAI represents the Azure OpenAI API schema.
 	APISchemaAzureOpenAI APISchemaName = "AzureOpenAI"

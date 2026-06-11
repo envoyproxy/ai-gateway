@@ -20,7 +20,7 @@ spec:
   gatewayClassName: aigw-run
   listeners: []
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: aigw-run
@@ -51,7 +51,7 @@ spec:
         hostname: localhost
         port: 11434
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: openai

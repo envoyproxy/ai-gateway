@@ -56,7 +56,7 @@ type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	params, err := buildAnthropicParams(openAIReq, "GCPAnthropic")
+	params, err := buildAnthropicParams(openAIReq, "GCPAnthropic", o.modelNameOverride)
 	if err != nil {
 		return
 	}
@@ -194,12 +194,12 @@ func redactGCPAnthropicResponseMessage(msg *openai.ChatCompletionResponseChoiceM
 		redactedMsg.Content = &redactedContent
 	}
 
-	// Redact tool calls (may contain sensitive function arguments)
+	// Redact tool call arguments (may contain data derived from user messages).
+	// Function name is kept — it is the tool API name, not user data.
 	if len(msg.ToolCalls) > 0 {
 		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.ToolCalls))
 		for i, tc := range msg.ToolCalls {
 			redactedToolCall := tc
-			redactedToolCall.Function.Name = redaction.RedactString(tc.Function.Name)
 			redactedToolCall.Function.Arguments = redaction.RedactString(tc.Function.Arguments)
 			redactedMsg.ToolCalls[i] = redactedToolCall
 		}
@@ -250,7 +250,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) ResponseBody(_ map[stri
 
 	responseModel = o.requestModel
 	if anthropicResp.Model != "" {
-		responseModel = string(anthropicResp.Model)
+		responseModel = anthropicResp.Model
 	}
 
 	openAIResp, tokenUsage, err := messageToChatCompletion(&anthropicResp, responseModel)

@@ -42,7 +42,7 @@ spec:
   connection:
     bufferLimit: 50Mi
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: envoy-ai-gateway-basic
@@ -61,7 +61,7 @@ spec:
       backendRefs:
         - name: envoy-ai-gateway-basic-testupstream
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: envoy-ai-gateway-basic-testupstream

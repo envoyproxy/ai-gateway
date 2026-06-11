@@ -33,6 +33,14 @@ const (
 	tempNotSupportedError = "temperature %.2f is not supported by Anthropic (must be between 0.0 and 1.0)"
 )
 
+// anthropicInputSchemaKeysToSkip defines the keys from an OpenAI function parameter map
+// that are handled explicitly and should not go into the ExtraFields map.
+var anthropicInputSchemaKeysToSkip = map[string]struct{}{
+	"required":   {},
+	"type":       {},
+	"properties": {},
+}
+
 func anthropicToOpenAIFinishReason(stopReason anthropic.StopReason) (openai.ChatCompletionChoicesFinishReason, error) {
 	switch stopReason {
 	// The most common stop reason. Indicates Claude finished its response naturally.
@@ -147,16 +155,6 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 
 				inputSchema := anthropic.ToolInputSchemaParam{}
 
-				// Dereference json schema
-				// If the paramsMap contains $refs we need to dereference them
-				var dereferencedParamsMap any
-				if dereferencedParamsMap, err = jsonSchemaDereference(paramsMap); err != nil {
-					return nil, anthropic.ToolChoiceUnionParam{}, fmt.Errorf("failed to dereference tool parameters: %w", err)
-				}
-				if paramsMap, ok = dereferencedParamsMap.(map[string]any); !ok {
-					return nil, anthropic.ToolChoiceUnionParam{}, fmt.Errorf("failed to cast dereferenced tool parameters to map[string]interface{}")
-				}
-
 				var typeVal string
 				if typeVal, ok = paramsMap["type"].(string); ok {
 					inputSchema.Type = constant.Object(typeVal)
@@ -177,6 +175,21 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 					}
 					inputSchema.Required = requiredSlice
 				}
+
+				// ExtraFieldsMap to construct
+				ExtraFieldsMap := make(map[string]any)
+
+				// Iterate over the original map from openai
+				for key, value := range paramsMap {
+					// Check if the current key should be skipped
+					if _, found := anthropicInputSchemaKeysToSkip[key]; found {
+						continue
+					}
+
+					// If not skipped, add the key-value pair to extra field map
+					ExtraFieldsMap[key] = value
+				}
+				inputSchema.ExtraFields = ExtraFieldsMap
 
 				toolParam.InputSchema = inputSchema
 			}
@@ -498,19 +511,19 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 				var toolContent []anthropic.ToolResultBlockParamContentUnion
 				var cacheControl *anthropic.CacheControlEphemeralParam
 
-				for _, c := range contentBlocks {
+				for i := range contentBlocks {
 					var trb anthropic.ToolResultBlockParamContentUnion
 					// Check if the translated part has caching enabled.
 					switch {
-					case c.OfText != nil:
-						trb.OfText = c.OfText
-						cacheControl = &c.OfText.CacheControl
-					case c.OfImage != nil:
-						trb.OfImage = c.OfImage
-						cacheControl = &c.OfImage.CacheControl
-					case c.OfDocument != nil:
-						trb.OfDocument = c.OfDocument
-						cacheControl = &c.OfDocument.CacheControl
+					case contentBlocks[i].OfText != nil:
+						trb.OfText = contentBlocks[i].OfText
+						cacheControl = &contentBlocks[i].OfText.CacheControl
+					case contentBlocks[i].OfImage != nil:
+						trb.OfImage = contentBlocks[i].OfImage
+						cacheControl = &contentBlocks[i].OfImage.CacheControl
+					case contentBlocks[i].OfDocument != nil:
+						trb.OfDocument = contentBlocks[i].OfDocument
+						cacheControl = &contentBlocks[i].OfDocument.CacheControl
 					}
 					toolContent = append(toolContent, trb)
 				}
@@ -562,38 +575,97 @@ func getThinkingConfigParamUnion(tu *openai.ThinkingUnion) *anthropic.ThinkingCo
 
 	result := &anthropic.ThinkingConfigParamUnion{}
 
-	if tu.OfEnabled != nil {
+	switch {
+	case tu.OfEnabled != nil:
 		result.OfEnabled = &anthropic.ThinkingConfigEnabledParam{
 			BudgetTokens: tu.OfEnabled.BudgetTokens,
 			Type:         constant.Enabled(tu.OfEnabled.Type),
+			Display:      anthropic.ThinkingConfigEnabledDisplay(tu.OfEnabled.Display),
 		}
-	} else if tu.OfDisabled != nil {
+	case tu.OfDisabled != nil:
 		result.OfDisabled = &anthropic.ThinkingConfigDisabledParam{
 			Type: constant.Disabled(tu.OfDisabled.Type),
+		}
+	case tu.OfAdaptive != nil:
+		result.OfAdaptive = &anthropic.ThinkingConfigAdaptiveParam{
+			Type:    constant.Adaptive(tu.OfAdaptive.Type),
+			Display: anthropic.ThinkingConfigAdaptiveDisplay(tu.OfAdaptive.Display),
 		}
 	}
 
 	return result
 }
 
-// outputConfigAvailable checks if the model supports structured outputs (OutputConfig).
-// Structured outputs are available on Claude Opus 4.6, Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
-// See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
-func outputConfigAvailable(model internalapi.RequestModel) bool {
+// modelContainsAny checks if the model string contains any of the given identifiers (case-insensitive).
+func modelContainsAny(model internalapi.RequestModel, identifiers []string) bool {
 	modelLower := strings.ToLower(model)
-	return strings.Contains(modelLower, "4-5") ||
-		strings.Contains(modelLower, "4-6")
+	for _, id := range identifiers {
+		if strings.Contains(modelLower, id) {
+			return true
+		}
+	}
+	return false
+}
+
+// outputConfigModels lists model identifiers that support structured outputs (OutputConfig).
+// Structured outputs are available on Claude Opus 4.6, Claude Sonnet 4.6, Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
+// See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+var outputConfigModels = []string{
+	"opus-4-5",   // Claude Opus 4.5
+	"sonnet-4-5", // Claude Sonnet 4.5
+	"haiku-4-5",  // Claude Haiku 4.5
+	"opus-4-6",   // Claude Opus 4.6
+	"sonnet-4-6", // Claude Sonnet 4.6
+}
+
+func outputConfigAvailable(model internalapi.RequestModel) bool {
+	return modelContainsAny(model, outputConfigModels)
+}
+
+// effortModels lists model identifiers that support the output_config.effort parameter.
+// The effort parameter is supported by Claude Mythos Preview, Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 4.6, and Claude Opus 4.5.
+// See: https://platform.claude.com/docs/en/build-with-claude/effort
+var effortModels = []string{
+	"opus-4-5",       // Claude Opus 4.5
+	"opus-4-6",       // Claude Opus 4.6
+	"opus-4-7",       // Claude Opus 4.7
+	"sonnet-4-6",     // Claude Sonnet 4.6
+	"mythos-preview", // Claude Mythos Preview
+}
+
+func effortAvailable(model internalapi.RequestModel) bool {
+	return modelContainsAny(model, effortModels)
+}
+
+// mapReasoningEffortToOutputConfigEffort converts OpenAI reasoning effort levels to Anthropic output config effort levels.
+// Supported levels: "low", "medium", "high", "xhigh", "max".
+func mapReasoningEffortToOutputConfigEffort(reasonEffort openai.ReasoningEffort) (anthropic.OutputConfigEffort, error) {
+	switch reasonEffort {
+	case openai.ReasoningEffortLow:
+		return anthropic.OutputConfigEffortLow, nil
+	case openai.ReasoningEffortMedium:
+		return anthropic.OutputConfigEffortMedium, nil
+	case openai.ReasoningEffortHigh:
+		return anthropic.OutputConfigEffortHigh, nil
+	case openai.ReasoningEffortXhigh:
+		return anthropic.OutputConfigEffortXhigh, nil
+	case openai.ReasoningEffortMax:
+		return anthropic.OutputConfigEffortMax, nil
+	default:
+		return "", fmt.Errorf("%w: unsupported reasoning effort level: %q (supported: low, medium, high, xhigh, max)", internalapi.ErrInvalidRequestBody, reasonEffort)
+	}
 }
 
 // buildAnthropicParams is a helper function that translates an OpenAI request
 // into the parameter struct required by the Anthropic SDK.
 // The apiSchema parameter indicates the backend API schema (e.g., "AWSAnthropic", "GCPAnthropic").
-func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string) (params *anthropic.MessageNewParams, err error) {
-	// 1. Handle simple parameters and defaults.
-	maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
-	if maxTokens == nil {
-		err = fmt.Errorf("%w: max_tokens or max_completion_tokens is required", internalapi.ErrInvalidRequestBody)
-		return
+func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string, modelNameOverride internalapi.ModelNameOverride) (params *anthropic.MessageNewParams, err error) {
+	// 1. Handle simple parameters.
+	// max_tokens is required by the Anthropic API but optional in the OpenAI API.
+	// If not set, pass 0 and let the Anthropic API reject the request.
+	var maxTokensVal int64
+	if maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens); maxTokens != nil {
+		maxTokensVal = *maxTokens
 	}
 
 	// Translate openAI contents to anthropic params.
@@ -612,7 +684,7 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 	// 4. Construct the final struct in one place.
 	params = &anthropic.MessageNewParams{
 		Messages:   messages,
-		MaxTokens:  *maxTokens,
+		MaxTokens:  maxTokensVal,
 		System:     systemBlocks,
 		Tools:      tools,
 		ToolChoice: toolChoice,
@@ -620,9 +692,15 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 
 	// 5. Handle structured outputs (ResponseFormat -> OutputConfig).
 	// See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
-	// Currently, GCP Vertex AI does not support output_config.
+	// Currently, GCP Vertex AI does not support structured output.
+	// Use modelNameOverride for feature checks when available, as it is more
+	// reliable than the user-provided model name which may be arbitrarily set.
+	featureCheckModel := openAIReq.Model
+	if modelNameOverride != "" {
+		featureCheckModel = modelNameOverride
+	}
 	isGCPBackend := strings.HasPrefix(apiSchema, "GCP")
-	if !isGCPBackend && openAIReq.ResponseFormat != nil && openAIReq.ResponseFormat.OfJSONSchema != nil && outputConfigAvailable(openAIReq.Model) {
+	if !isGCPBackend && openAIReq.ResponseFormat != nil && openAIReq.ResponseFormat.OfJSONSchema != nil && outputConfigAvailable(featureCheckModel) {
 		// Convert OpenAI JSON schema to Anthropic OutputConfig format
 		var schemaMap map[string]any
 		if err = json.Unmarshal(openAIReq.ResponseFormat.OfJSONSchema.JSONSchema.Schema, &schemaMap); err != nil {
@@ -634,6 +712,15 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 				Schema: schemaMap,
 			},
 		}
+	}
+
+	// Map OpenAI reasoning_effort to Anthropic output_config.effort.
+	if openAIReq.ReasoningEffort != "" && effortAvailable(featureCheckModel) {
+		effort, effortErr := mapReasoningEffortToOutputConfigEffort(openAIReq.ReasoningEffort)
+		if effortErr != nil {
+			return nil, effortErr
+		}
+		params.OutputConfig.Effort = effort
 	}
 
 	if openAIReq.Temperature != nil {
@@ -777,6 +864,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		totalTokens, _ := p.tokenUsage.TotalTokens()
 		cachedTokens, _ := p.tokenUsage.CachedInputTokens()
 		cacheCreationTokens, _ := p.tokenUsage.CacheCreationInputTokens()
+		reasoningTokens, _ := p.tokenUsage.ReasoningTokens()
 		finalChunk := openai.ChatCompletionResponseChunk{
 			ID:      p.activeMessageID,
 			Created: p.created,
@@ -789,6 +877,9 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 				PromptTokensDetails: &openai.PromptTokensDetails{
 					CachedTokens:        int(cachedTokens),
 					CacheCreationTokens: int(cacheCreationTokens),
+				},
+				CompletionTokensDetails: &openai.CompletionTokensDetails{
+					ReasoningTokens: int(reasoningTokens),
 				},
 			},
 			Model: p.requestModel,
@@ -977,6 +1068,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			// Accumulate cache creation tokens
 			p.tokenUsage.AddCacheCreationInputTokens(cacheCreation)
 		}
+		p.tokenUsage.SetReasoningTokens(uint32(u.OutputTokensDetails.ThinkingTokens)) //nolint:gosec
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}
@@ -1091,11 +1183,13 @@ func messageToChatCompletion(anthropicResp *anthropic.Message, responseModel int
 		&usage.CacheReadInputTokens,
 		&usage.CacheCreationInputTokens,
 	)
+	tokenUsage.SetReasoningTokens(uint32(usage.OutputTokensDetails.ThinkingTokens)) //nolint:gosec
 	inputTokens, _ := tokenUsage.InputTokens()
 	outputTokens, _ := tokenUsage.OutputTokens()
 	totalTokens, _ := tokenUsage.TotalTokens()
 	cachedTokens, _ := tokenUsage.CachedInputTokens()
 	cacheCreationTokens, _ := tokenUsage.CacheCreationInputTokens()
+	reasoningTokens, _ := tokenUsage.ReasoningTokens()
 	openAIResp.Usage = openai.Usage{
 		CompletionTokens: int(outputTokens),
 		PromptTokens:     int(inputTokens),
@@ -1103,6 +1197,9 @@ func messageToChatCompletion(anthropicResp *anthropic.Message, responseModel int
 		PromptTokensDetails: &openai.PromptTokensDetails{
 			CachedTokens:        int(cachedTokens),
 			CacheCreationTokens: int(cacheCreationTokens),
+		},
+		CompletionTokensDetails: &openai.CompletionTokensDetails{
+			ReasoningTokens: int(reasoningTokens),
 		},
 	}
 

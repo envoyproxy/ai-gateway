@@ -135,7 +135,7 @@ func TestOpenAIToOpenAISpeechTranslator_ResponseBody_BinaryAudio(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, hm)
 	require.Nil(t, bm)
-	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), usage)
+	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), usage)
 	require.Equal(t, "tts-1", respModel)
 }
 
@@ -164,7 +164,7 @@ data: [DONE]
 	require.NoError(t, err)
 	require.Nil(t, hm)
 	require.Nil(t, bm)
-	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1), usage)
+	require.Equal(t, tokenUsageFrom(-1, -1, -1, -1, -1, -1), usage)
 	require.Equal(t, "gpt-4o-mini-tts", respModel)
 }
 
@@ -208,6 +208,37 @@ func TestOpenAIToOpenAISpeechTranslator_ResponseBody_RecordsSpan_Streaming(t *te
 	require.NoError(t, err)
 	require.NotNil(t, mockSpan.recordedChunks)
 	require.Len(t, mockSpan.recordedChunks, 1)
+}
+
+func TestOpenAIToOpenAISpeechTranslator_ResponseBody_RecordsSpan_StreamingSplitEvent(t *testing.T) {
+	mockSpan := &mockSpeechSpan{}
+	tr := NewSpeechOpenAIToOpenAITranslator("v1", "gpt-4o-mini-tts").(*openAIToOpenAITranslatorV1Speech)
+
+	// Set up translator state for streaming
+	sseFormat := "sse"
+	req := &openai.SpeechRequest{
+		Model:        "gpt-4o-mini-tts",
+		Input:        "Test",
+		Voice:        "alloy",
+		StreamFormat: &sseFormat,
+	}
+	original, _ := json.Marshal(req)
+	_, _, _ = tr.RequestBody(original, req, false)
+
+	firstChunk := []byte(`data: {"data":"dGVz`)
+	_, _, _, respModel, err := tr.ResponseBody(map[string]string{}, bytes.NewReader(firstChunk), false, mockSpan)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-4o-mini-tts", respModel)
+	require.Empty(t, mockSpan.recordedChunks)
+	require.Equal(t, firstChunk, tr.buffered)
+
+	secondChunk := []byte("dA==\"}\n\n")
+	_, _, _, respModel, err = tr.ResponseBody(map[string]string{}, bytes.NewReader(secondChunk), true, mockSpan)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-4o-mini-tts", respModel)
+	require.Len(t, mockSpan.recordedChunks, 1)
+	require.Equal(t, []byte("test"), mockSpan.recordedChunks[0].Data)
+	require.Empty(t, tr.buffered)
 }
 
 func TestOpenAIToOpenAISpeechTranslator_ResponseError_NonJSON(t *testing.T) {

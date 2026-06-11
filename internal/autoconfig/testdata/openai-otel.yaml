@@ -65,7 +65,7 @@ spec:
               # the ones defined in the AIGatewayRoute llmRequestCosts field or
               # header-mapped attributes via OTEL_*_REQUEST_HEADER_ATTRIBUTES.
               gen_ai.request.model: "%REQ(X-AI-EG-MODEL)%"
-              gen_ai.response.model: "%DYNAMIC_METADATA(io.envoy.ai_gateway:model_name_override)%"
+              gen_ai.response.model: "%DYNAMIC_METADATA(io.envoy.ai_gateway:response_model)%"
               gen_ai.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:backend_name)%"
               gen_ai.usage.input_tokens: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%"
               gen_ai.usage.output_tokens: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
@@ -107,12 +107,13 @@ spec:
                   service.name: "ai-gateway-service"
                   service.version: "1.2.3"
           format:
-            text: "[%START_TIME%] %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% mcp_method=%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)% mcp_backend=%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)% %RESPONSE_CODE% %DURATION%ms"
+            text: "[%START_TIME%] %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% mcp_method=%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)% mcp_tool_name=%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_tool_name)% mcp_backend=%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)% %RESPONSE_CODE% %DURATION%ms"
             json:
               # MCP specific fields
               jsonrpc.request.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
               mcp.session.id: "%REQ(MCP-SESSION-ID)%"
               mcp.method.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
+              mcp.tool.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_tool_name)%"
               session.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:session.id)%"
               mcp.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
               # Common fields
@@ -137,7 +138,7 @@ spec:
               downstream_remote_address: "%DOWNSTREAM_REMOTE_ADDRESS%"
 
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: aigw-run
@@ -187,8 +188,12 @@ spec:
     - fqdn:
         hostname: otel-collector.monitoring
         port: 443
+  # TODO: Use BackendTLSPolicy once EG processBackendRefs supports BackendTLSPolicy for telemetry backends.
+  tls:
+    wellKnownCACertificates: System
+    sni: otel-collector.monitoring
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
   name: openai
@@ -218,20 +223,6 @@ spec:
     wellKnownCACertificates: "System"
     hostname: api.openai.com
 ---
-apiVersion: gateway.networking.k8s.io/v1alpha3
-kind: BackendTLSPolicy
-metadata:
-  name: otel-tls
-  namespace: default
-spec:
-  targetRefs:
-    - group: 'gateway.envoyproxy.io'
-      kind: Backend
-      name: otel
-  validation:
-    wellKnownCACertificates: "System"
-    hostname: otel-collector.monitoring
----
 # By default, Envoy Gateway sets the buffer limit to 32kiB which is not
 # sufficient for AI workloads. This ClientTrafficPolicy sets the buffer limit
 # to 50MiB as an example.
@@ -258,7 +249,7 @@ type: Opaque
 stringData:
   apiKey: ${OPENAI_API_KEY}
 ---
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
   name: openai-apikey

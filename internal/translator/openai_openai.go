@@ -163,6 +163,9 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 		tokenUsage.SetCachedInputTokens(uint32(resp.Usage.PromptTokensDetails.CachedTokens))               //nolint:gosec
 		tokenUsage.SetCacheCreationInputTokens(uint32(resp.Usage.PromptTokensDetails.CacheCreationTokens)) //nolint:gosec
 	}
+	if resp.Usage.CompletionTokensDetails != nil {
+		tokenUsage.SetReasoningTokens(uint32(resp.Usage.CompletionTokensDetails.ReasoningTokens)) //nolint:gosec
+	}
 	// Fallback to request model for test or non-compliant OpenAI backends
 	responseModel = cmp.Or(resp.Model, o.requestModel)
 	if span != nil {
@@ -202,6 +205,9 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(s
 			if usage.PromptTokensDetails != nil {
 				tokenUsage.SetCachedInputTokens(uint32(usage.PromptTokensDetails.CachedTokens))               //nolint:gosec
 				tokenUsage.SetCacheCreationInputTokens(uint32(usage.PromptTokensDetails.CacheCreationTokens)) //nolint:gosec
+			}
+			if usage.CompletionTokensDetails != nil {
+				tokenUsage.SetReasoningTokens(uint32(usage.CompletionTokensDetails.ReasoningTokens)) //nolint:gosec
 			}
 			// Do not mark buffering done; keep scanning to return the latest usage in this batch.
 		}
@@ -248,12 +254,12 @@ func redactResponseMessage(msg *openai.ChatCompletionResponseChoiceMessage) open
 		redactedMsg.Content = &redactedContent
 	}
 
-	// Redact tool calls (may contain sensitive function arguments)
+	// Redact tool call arguments (may contain data derived from user messages).
+	// Function name is kept — it is the tool API name, not user data.
 	if len(msg.ToolCalls) > 0 {
 		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.ToolCalls))
 		for i, tc := range msg.ToolCalls {
 			redactedToolCall := tc
-			redactedToolCall.Function.Name = redaction.RedactString(tc.Function.Name)
 			redactedToolCall.Function.Arguments = redaction.RedactString(tc.Function.Arguments)
 			redactedMsg.ToolCalls[i] = redactedToolCall
 		}

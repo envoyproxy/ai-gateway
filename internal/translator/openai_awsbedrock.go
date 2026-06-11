@@ -61,15 +61,27 @@ func getAwsBedrockThinkingMap(tu *openai.ThinkingUnion) map[string]any {
 
 	resultMap := make(map[string]any)
 
-	if tu.OfEnabled != nil {
+	switch {
+	case tu.OfEnabled != nil:
 		reasoningConfigMap := map[string]any{
 			"type":          "enabled",
 			"budget_tokens": tu.OfEnabled.BudgetTokens,
 		}
+		if tu.OfEnabled.Display != "" {
+			reasoningConfigMap["display"] = tu.OfEnabled.Display
+		}
 		resultMap["thinking"] = reasoningConfigMap
-	} else if tu.OfDisabled != nil {
+	case tu.OfDisabled != nil:
 		reasoningConfigMap := map[string]any{
 			"type": "disabled",
+		}
+		resultMap["thinking"] = reasoningConfigMap
+	case tu.OfAdaptive != nil:
+		reasoningConfigMap := map[string]any{
+			"type": "adaptive",
+		}
+		if tu.OfAdaptive.Display != "" {
+			reasoningConfigMap["display"] = tu.OfAdaptive.Display
 		}
 		resultMap["thinking"] = reasoningConfigMap
 	}
@@ -735,6 +747,17 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 	if err = json.NewDecoder(body).Decode(&bedrockResp); err != nil {
 		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to unmarshal body: %w", err)
 	}
+	// Bedrock can return HTTP 200 with a body that has no "output" field
+	// (e.g. Coral framework errors like UnknownOperationException, guardrail
+	// interventions, or empty/null responses). Guard the dereference so we
+	// surface a real error to the caller instead of panicking with a nil
+	// pointer dereference on bedrockResp.Output.Message below.
+	if bedrockResp.Output == nil {
+		return nil, nil, metrics.TokenUsage{}, responseModel, fmt.Errorf(
+			"bedrock response missing 'output' (stopReason=%q)",
+			ptr.Deref(bedrockResp.StopReason, ""),
+		)
+	}
 	openAIResp := &openai.ChatCompletionResponse{
 		// We use request model as response model since bedrock does not return the modelName in the response.
 		Model:   o.requestModel,
@@ -860,6 +883,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 	chunk := &openai.ChatCompletionResponseChunk{
 		Object: object, Model: o.requestModel, ID: o.responseID,
 		Created: openai.JSONUNIXTime(time.Now()),
+		Choices: []openai.ChatCompletionResponseChunkChoice{},
 	}
 
 	switch event.EventType {
@@ -1046,12 +1070,12 @@ func redactAWSBedrockResponseMessage(msg *openai.ChatCompletionResponseChoiceMes
 		redactedMsg.Content = &redactedContent
 	}
 
-	// Redact tool calls (may contain sensitive function arguments)
+	// Redact tool call arguments (may contain data derived from user messages).
+	// Function name is kept — it is the tool API name, not user data.
 	if len(msg.ToolCalls) > 0 {
 		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.ToolCalls))
 		for i, tc := range msg.ToolCalls {
 			redactedToolCall := tc
-			redactedToolCall.Function.Name = redaction.RedactString(tc.Function.Name)
 			redactedToolCall.Function.Arguments = redaction.RedactString(tc.Function.Arguments)
 			redactedMsg.ToolCalls[i] = redactedToolCall
 		}

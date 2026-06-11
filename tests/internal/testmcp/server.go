@@ -103,6 +103,29 @@ func NewServer(opts *Options) (*http.Server, *mcp.Server) {
 		})
 	}
 
+	// Setup claim header validation when environment variable TEST_EXPECTED_CLAIM_HEADERS is set.
+	// Format: "header1=value1,header2=value2"
+	expectedClaimHeaders := os.Getenv("TEST_EXPECTED_CLAIM_HEADERS")
+	if expectedClaimHeaders != "" {
+		expected := map[string]string{}
+		for _, pair := range strings.Split(expectedClaimHeaders, ",") {
+			k, v, ok := strings.Cut(pair, "=")
+			if ok {
+				expected[k] = v
+			}
+		}
+		s.AddReceivingMiddleware(func(handler mcp.MethodHandler) mcp.MethodHandler {
+			return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+				for header, value := range expected {
+					if got := req.GetExtra().Header.Get(header); got != value {
+						return nil, fmt.Errorf("expected header %q=%q, got %q", header, value, got)
+					}
+				}
+				return handler(ctx, method, req)
+			}
+		})
+	}
+
 	s.AddPrompt(CodeReviewPrompt, codReviewPromptHandler)
 	s.AddResource(DummyResource, DummyResourceHandler())
 	s.AddResourceTemplate(DummyResourceTemplate, DummyResourceHandler())
@@ -164,8 +187,26 @@ func NewServer(opts *Options) (*http.Server, *mcp.Server) {
 func newDumbServer(port int) (*http.Server, *mcp.Server) {
 	s := mcp.NewServer(
 		&mcp.Implementation{Name: "dumb-echo-server", Version: "0.1.0"},
-		&mcp.ServerOptions{HasTools: true},
+		&mcp.ServerOptions{
+			// Explicitly set empty capabilities so the server does NOT advertise logging support.
+			// The default (nil) would advertise logging for historical reasons in the SDK.
+			Capabilities: &mcp.ServerCapabilities{
+				Tools: &mcp.ToolCapabilities{ListChanged: true},
+			},
+		},
 	)
+
+	// Add a middleware that rejects logging/setLevel requests with an error.
+	// The dumb server does not advertise logging capability, so the gateway should never
+	// forward logging/setLevel to it. If it does, this middleware will cause a test-visible error.
+	s.AddReceivingMiddleware(func(handler mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			if method == "logging/setLevel" {
+				return nil, fmt.Errorf("logging/setLevel is not supported by dumb-echo-server")
+			}
+			return handler(ctx, method, req)
+		}
+	})
 
 	mcp.AddTool(s, ToolDumbEcho.Tool, ToolDumbEcho.Handler)
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s }, &mcp.StreamableHTTPOptions{})

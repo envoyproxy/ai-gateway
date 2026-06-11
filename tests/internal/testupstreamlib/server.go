@@ -242,8 +242,12 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch r.Header.Get(ResponseTypeKey) {
-	case "sse":
+	case "sse", "sse-gzip":
+		isSSEGzip := r.Header.Get(ResponseTypeKey) == "sse-gzip"
 		w.Header().Set("Content-Type", "text/event-stream")
+		if isSSEGzip {
+			w.Header().Set("Content-Encoding", "gzip")
+		}
 
 		var expResponseBody []byte
 		expResponseBody, err = base64.StdEncoding.DecodeString(r.Header.Get(ResponseBodyHeaderKey))
@@ -253,6 +257,26 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.WriteHeader(status)
+
+		// writer is either the raw http.ResponseWriter or a gzip.Writer wrapping it.
+		var writer io.Writer = w
+		var gz *gzip.Writer
+		if isSSEGzip {
+			gz = gzip.NewWriter(w)
+			writer = gz
+		}
+		flush := func() {
+			if gz != nil {
+				// Flush the gzip writer to emit a complete compressed block,
+				// ensuring the downstream sees distinct gzip frames per chunk.
+				_ = gz.Flush()
+			}
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			} else {
+				panic("expected http.ResponseWriter to be an http.Flusher")
+			}
+		}
 
 		// Auto-detect the SSE format. If the body contains the event message separator "\n\n",
 		// we treat it as a stream of pre-formatted "raw" SSE events. Otherwise, we treat it
@@ -268,16 +292,12 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 				time.Sleep(s.streamingInterval)
 
 				// Write the complete event block followed by the required double newline delimiter.
-				if _, err = w.Write(append(block, "\n\n"...)); err != nil {
+				if _, err = writer.Write(append(block, "\n\n"...)); err != nil {
 					s.Logger.Println("failed to write the response body")
 					return
 				}
 
-				if f, ok := w.(http.Flusher); ok {
-					f.Flush()
-				} else {
-					panic("expected http.ResponseWriter to be an http.Flusher")
-				}
+				flush()
 				s.Logger.Println("response block sent:", string(block))
 			}
 
@@ -292,20 +312,19 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 				time.Sleep(s.streamingInterval)
 
 				// Format the line as an SSE 'data' message.
-				if _, err = fmt.Fprintf(w, "data: %s\n\n", line); err != nil {
+				if _, err = fmt.Fprintf(writer, "data: %s\n\n", line); err != nil {
 					s.Logger.Println("failed to write the response body")
 					return
 				}
 
-				if f, ok := w.(http.Flusher); ok {
-					f.Flush()
-				} else {
-					panic("expected http.ResponseWriter to be an http.Flusher")
-				}
+				flush()
 				s.Logger.Println("response line sent:", string(line))
 			}
 		}
 
+		if gz != nil {
+			_ = gz.Close()
+		}
 		s.Logger.Println("response sent")
 		r.Context().Done()
 	case "aws-event-stream":

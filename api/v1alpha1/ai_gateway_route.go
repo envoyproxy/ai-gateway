@@ -6,7 +6,6 @@
 package v1alpha1
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -34,6 +33,7 @@ import (
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].type`
+// +kubebuilder:deprecatedversion:warning="aigateway.envoyproxy.io/v1alpha1 is deprecated; use aigateway.envoyproxy.io/v1beta1 instead"
 type AIGatewayRoute struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -64,6 +64,16 @@ type AIGatewayRouteSpec struct {
 	// +optional
 	ParentRefs []gwapiv1.ParentReference `json:"parentRefs,omitempty"`
 
+	// Hostnames is a list of hostnames matched against the HTTP Host header to select an AIGatewayRoute
+	// used to process the request. This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec.
+	// When specified, the generated HTTPRoute will include these hostnames for hostname-based filtering.
+	// See https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteSpec
+	// for the details of the Hostnames field in the Gateway API.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	Hostnames []gwapiv1.Hostname `json:"hostnames,omitempty"`
+
 	// Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.
 	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 	//
@@ -78,24 +88,23 @@ type AIGatewayRouteSpec struct {
 	// How multiple rules are matched is the same as the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRoute
 	//
+	// At most 15 rules are allowed per AIGatewayRoute, corresponding to the Gateway API's limit on
+	// HTTPRoute.spec.rules (one slot is reserved for a controller-injected catch-all rule). To
+	// configure more rules on the same Gateway, split them across multiple AIGatewayRoute resources.
+	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MaxItems=128
+	// +kubebuilder:validation:MaxItems=15
 	Rules []AIGatewayRouteRule `json:"rules"`
-
-	// FilterConfig is the configuration for the AI Gateway filter inserted in the generated HTTPRoute.
-	//
-	// An AI Gateway filter is responsible for the transformation of the request and response
-	// as well as the routing behavior based on the model name extracted from the request content, etc.
-	//
-	// Currently, the filter is only implemented as an external processor filter, which might be
-	// extended to other types of filters in the future. See https://github.com/envoyproxy/ai-gateway/issues/90
-	//
-	// +optional
-	FilterConfig *AIGatewayFilterConfig `json:"filterConfig,omitempty"`
 
 	// LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.
 	// The AI Gateway filter will capture each specified number and store it in the Envoy's dynamic
-	// metadata per HTTP request. The namespaced key is "io.envoy.ai_gateway",
+	// metadata per HTTP request. The namespaced key is "io.envoy.ai_gateway".
+	//
+	// These route-level costs override any global defaults defined in GatewayConfig.Spec.GlobalLLMRequestCosts
+	// for the same metadataKey. If a metadataKey is not defined in either place, no cost is calculated for it.
+	//
+	// This allows you to define common cost formulas once at the gateway level (e.g., via GatewayConfig)
+	// and only override them in specific routes when needed (e.g., premium routes with different pricing).
 	//
 	// For example, let's say we have the following LLMRequestCosts configuration:
 	// ```yaml
@@ -189,8 +198,9 @@ type AIGatewayRouteSpec struct {
 	// ```
 	//
 	// Note that when multiple AIGatewayRoute resources are attached to the same Gateway, and
-	// different costs are configured for the same metadata key, the ai-gateway will pick one of them
-	// to configure the metadata key in the generated HTTPRoute, and ignore the rest.
+	// different costs are configured for the same metadata key, each route's rule is carried in
+	// the filter configuration with the route identity; the data plane selects the matching rule
+	// per request (by route), so each route can define its own cost for the same metadata key.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=36
@@ -371,48 +381,6 @@ type AIGatewayRouteRuleMatch struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=16
 	Headers []gwapiv1.HTTPHeaderMatch `json:"headers,omitempty"`
-}
-
-type AIGatewayFilterConfig struct {
-	// Type specifies the type of the filter configuration.
-	//
-	// Currently, only ExternalProcessor is supported, and default is ExternalProcessor.
-	//
-	// +kubebuilder:default=ExternalProcessor
-	Type AIGatewayFilterConfigType `json:"type"`
-
-	// ExternalProcessor is the configuration for the external processor filter.
-	// This is optional, and if not set, the default values of Deployment spec will be used.
-	//
-	// +optional
-	ExternalProcessor *AIGatewayFilterConfigExternalProcessor `json:"externalProcessor,omitempty"`
-}
-
-// AIGatewayFilterConfigType specifies the type of the filter configuration.
-//
-// +kubebuilder:validation:Enum=ExternalProcessor;DynamicModule
-type AIGatewayFilterConfigType string
-
-const (
-	AIGatewayFilterConfigTypeExternalProcessor AIGatewayFilterConfigType = "ExternalProcessor"
-	AIGatewayFilterConfigTypeDynamicModule     AIGatewayFilterConfigType = "DynamicModule" // Reserved for https://github.com/envoyproxy/ai-gateway/issues/90
-)
-
-type AIGatewayFilterConfigExternalProcessor struct {
-	// Resources required by the external processor container.
-	// More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
-	//
-	// Deprecated: Use GatewayConfig for gateway-scoped resource configuration instead.
-	// Configure resources using GatewayConfig.spec.extProc.resources and reference it
-	// from the Gateway via the "aigateway.envoyproxy.io/gateway-config" annotation.
-	// This field will be removed in a future version.
-	//
-	// Note: when multiple AIGatewayRoute resources are attached to the same Gateway, and each
-	// AIGatewayRoute has a different resource configuration, the ai-gateway will pick one of them
-	// to configure the resource requirements of the external processor container.
-	//
-	// +optional
-	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request

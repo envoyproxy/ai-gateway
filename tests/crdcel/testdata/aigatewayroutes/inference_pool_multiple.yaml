@@ -5,7 +5,7 @@
 
 # This should fail validation: only one InferencePool backend is allowed per rule
 
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
 metadata:
   name: inference-pool-multiple

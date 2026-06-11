@@ -21,7 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	openaigo "github.com/openai/openai-go/v2"
+	openaigo "github.com/openai/openai-go/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	"k8s.io/utils/ptr"
@@ -1160,6 +1160,71 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			},
 		},
 		{
+			name: "test thinking enabled config with display",
+			input: openai.ChatCompletionRequest{
+				Model: "bedrock.unit-test-model",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+						},
+					},
+				},
+				Thinking: &openai.ThinkingUnion{
+					OfEnabled: &openai.ThinkingEnabled{
+						Type:         "enabled",
+						BudgetTokens: 1024,
+						Display:      "omitted",
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				AdditionalModelRequestFields: map[string]interface{}{
+					"thinking": map[string]interface{}{"type": "enabled", "budget_tokens": float64(1024), "display": "omitted"},
+				},
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{{Text: ptr.To("Hello")}},
+					},
+				},
+			},
+		},
+		{
+			name: "test thinking adaptive config with display",
+			input: openai.ChatCompletionRequest{
+				Model: "bedrock.unit-test-model",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+						},
+					},
+				},
+				Thinking: &openai.ThinkingUnion{
+					OfAdaptive: &openai.ThinkingAdaptive{
+						Type:    "adaptive",
+						Display: "summarized",
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				AdditionalModelRequestFields: map[string]interface{}{
+					"thinking": map[string]interface{}{"type": "adaptive", "display": "summarized"},
+				},
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{{Text: ptr.To("Hello")}},
+					},
+				},
+			},
+		},
+		{
 			name: "test thinking disabled config",
 			input: openai.ChatCompletionRequest{
 				Model: "bedrock.unit-test-model",
@@ -1383,7 +1448,7 @@ data: {"id":"123","choices":[{"index":0,"delta":{"role":"assistant","tool_calls"
 
 data: {"id":"123","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"created":1731679200,"model":"claude-sonnet-4","object":"chat.completion.chunk"}
 
-data: {"id":"123","created":1731679200,"model":"claude-sonnet-4","service_tier":"default","object":"chat.completion.chunk","usage":{"prompt_tokens":386,"completion_tokens":75,"total_tokens":461}}
+data: {"id":"123","choices":[],"created":1731679200,"model":"claude-sonnet-4","service_tier":"default","object":"chat.completion.chunk","usage":{"prompt_tokens":386,"completion_tokens":75,"total_tokens":461}}
 
 data: [DONE]
 `, string(normalizedResults))
@@ -1749,6 +1814,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					-1,
 					int32(tt.output.Usage.CompletionTokens), // nolint:gosec
 					int32(tt.output.Usage.TotalTokens),      // nolint:gosec
+					-1,
 				)
 				if tt.input.Usage.CacheReadInputTokens != nil {
 					expectedUsage.SetCachedInputTokens(uint32(tt.output.Usage.PromptTokensDetails.CachedTokens)) //nolint:gosec
@@ -1757,7 +1823,7 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T)
 					expectedUsage.SetCacheCreationInputTokens(uint32(tt.output.Usage.PromptTokensDetails.CacheCreationTokens)) //nolint:gosec
 				}
 			} else {
-				expectedUsage = tokenUsageFrom(-1, -1, -1, -1, -1)
+				expectedUsage = tokenUsageFrom(-1, -1, -1, -1, -1, -1)
 			}
 			require.Equal(t, expectedUsage, usedToken)
 		})
@@ -1958,6 +2024,7 @@ func TestOpenAIToAWSBedrockTranslator_convertEvent(t *testing.T) {
 				Model:   "claude-sonnet-4",
 				Created: openai.JSONUNIXTime(time.Unix(releaseDateUnix, 0)), // 0 nanoseconds
 				Object:  "chat.completion.chunk",
+				Choices: []openai.ChatCompletionResponseChunkChoice{},
 				Usage: &openai.Usage{
 					TotalTokens:      35,
 					PromptTokens:     15,

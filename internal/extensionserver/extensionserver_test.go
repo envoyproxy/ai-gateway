@@ -42,7 +42,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
@@ -60,29 +60,29 @@ func mustToAny(t *testing.T, msg proto.Message) *anypb.Any {
 
 func newFakeClient() client.Client {
 	builder := fake.NewClientBuilder().WithScheme(controller.Scheme).
-		WithStatusSubresource(&aigv1a1.AIGatewayRoute{}).
-		WithStatusSubresource(&aigv1a1.AIServiceBackend{}).
-		WithStatusSubresource(&aigv1a1.BackendSecurityPolicy{})
+		WithStatusSubresource(&aigv1b1.AIGatewayRoute{}).
+		WithStatusSubresource(&aigv1b1.AIServiceBackend{}).
+		WithStatusSubresource(&aigv1b1.BackendSecurityPolicy{})
 	return builder.Build()
 }
 
 const udsPath = "/tmp/uds/test.sock"
 
 func TestNew(t *testing.T) {
-	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 	require.NotNil(t, s)
 }
 
 func TestCheck(t *testing.T) {
-	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 	_, err = s.Check(t.Context(), nil)
 	require.NoError(t, err)
 }
 
 func TestWatch(t *testing.T) {
-	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 	err = s.Watch(nil, nil)
 	require.Error(t, err)
@@ -91,7 +91,7 @@ func TestWatch(t *testing.T) {
 
 func TestServerPostTranslateModify(t *testing.T) {
 	t.Run("existing", func(t *testing.T) {
-		s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+		s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 		req := &egextension.PostTranslateModifyRequest{Clusters: []*clusterv3.Cluster{{Name: extProcUDSClusterName}}}
 		res, err := s.PostTranslateModify(t.Context(), req)
@@ -101,7 +101,7 @@ func TestServerPostTranslateModify(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("not existing", func(t *testing.T) {
-		s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+		s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 		res, err := s.PostTranslateModify(t.Context(), &egextension.PostTranslateModifyRequest{
 			Clusters: []*clusterv3.Cluster{{Name: "foo"}},
@@ -118,15 +118,15 @@ func Test_maybeModifyCluster(t *testing.T) {
 	c := newFakeClient()
 
 	// Create some fake AIGatewayRoute objects.
-	require.NoError(t, c.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+	require.NoError(t, c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "myroute",
 			Namespace: "ns",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "aaa", Priority: ptr.To[uint32](0)},
 						{Name: "to-be-ignored", Weight: ptr.To[int32](0)},
 						{Name: "bbb", Priority: ptr.To[uint32](1)},
@@ -153,9 +153,9 @@ func Test_maybeModifyCluster(t *testing.T) {
 	} {
 		t.Run("error/"+tc.errLog, func(t *testing.T) {
 			var buf bytes.Buffer
-			s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
+			s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 			require.NoError(t, err)
-			err = s.maybeModifyCluster(tc.c)
+			err = s.maybeModifyCluster(t.Context(), tc.c)
 			require.NoError(t, err)
 			t.Logf("buf: %s", buf.String())
 			require.Contains(t, buf.String(), tc.errLog)
@@ -201,13 +201,14 @@ func Test_maybeModifyCluster(t *testing.T) {
 									TypedConfig: mustToAny(t, &extprocv3.ExternalProcessor{
 										MetadataOptions: &extprocv3.MetadataOptions{
 											ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
-												Untyped: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
+												Untyped: []string{aigv1b1.AIGatewayFilterMetadataNamespace},
 											},
 										},
 										AllowModeOverride: true,
 										RequestAttributes: []string{
 											internalapi.XDSUpstreamHostMetadataBackendNamePath,
 											internalapi.XDSClusterMetadataBackendNamePath,
+											internalapi.XDSRouteMetadataRouteNamePath,
 										},
 										ProcessingMode: &extprocv3.ProcessingMode{
 											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
@@ -239,7 +240,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 															AppendAction: corev3.HeaderValueOption_ADD_IF_ABSENT,
 															Header: &corev3.HeaderValue{
 																Key:   "content-length",
-																Value: `%DYNAMIC_METADATA(` + aigv1a1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
+																Value: `%DYNAMIC_METADATA(` + aigv1b1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
 															},
 														},
 													},
@@ -334,13 +335,14 @@ func Test_maybeModifyCluster(t *testing.T) {
 									TypedConfig: mustToAny(t, &extprocv3.ExternalProcessor{
 										MetadataOptions: &extprocv3.MetadataOptions{
 											ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
-												Untyped: []string{aigv1a1.AIGatewayFilterMetadataNamespace},
+												Untyped: []string{aigv1b1.AIGatewayFilterMetadataNamespace},
 											},
 										},
 										AllowModeOverride: true,
 										RequestAttributes: []string{
 											internalapi.XDSUpstreamHostMetadataBackendNamePath,
 											internalapi.XDSClusterMetadataBackendNamePath,
+											internalapi.XDSRouteMetadataRouteNamePath,
 										},
 										ProcessingMode: &extprocv3.ProcessingMode{
 											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
@@ -372,7 +374,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 															AppendAction: corev3.HeaderValueOption_ADD_IF_ABSENT,
 															Header: &corev3.HeaderValue{
 																Key:   "content-length",
-																Value: `%DYNAMIC_METADATA(` + aigv1a1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
+																Value: `%DYNAMIC_METADATA(` + aigv1b1.AIGatewayFilterMetadataNamespace + `:content_length)%`,
 															},
 														},
 													},
@@ -404,9 +406,9 @@ func Test_maybeModifyCluster(t *testing.T) {
 					return a
 				},
 			})
-			s, err := New(c, logr.FromSlogHandler(handler), udsPath, false, nil, nil)
+			s, err := New(c, logr.FromSlogHandler(handler), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 			require.NoError(t, err)
-			err = s.maybeModifyCluster(tc.cluster)
+			err = s.maybeModifyCluster(t.Context(), tc.cluster)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expectedLog, buf.String())
@@ -449,15 +451,15 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 	c := newFakeClient()
 
 	// Create AIGatewayRoute with InferencePool backend.
-	err := c.Create(t.Context(), &aigv1a1.AIGatewayRoute{
+	err := c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "inference-route",
 			Namespace: "test-ns",
 		},
-		Spec: aigv1a1.AIGatewayRouteSpec{
-			Rules: []aigv1a1.AIGatewayRouteRule{
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
 				{
-					BackendRefs: []aigv1a1.AIGatewayRouteRuleBackendRef{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 						{Name: "inference-backend"},
 					},
 				},
@@ -468,17 +470,17 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 
 	t.Run("AIGatewayRoute not found", func(t *testing.T) {
 		var buf bytes.Buffer
-		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
+		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 		cluster := &clusterv3.Cluster{Name: "httproute/test-ns/nonexistent-route/rule/0", Metadata: &corev3.Metadata{}}
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 		require.Contains(t, buf.String(), "kipping non-AIGatewayRoute HTTPRoute cluster modification")
 	})
 
 	t.Run("cluster with InferencePool metadata and existing route", func(t *testing.T) {
 		var buf bytes.Buffer
-		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
+		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
 		cluster := &clusterv3.Cluster{
@@ -494,7 +496,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify InferencePool metadata was added to cluster.
@@ -508,7 +510,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 	})
 
 	t.Run("cluster with existing HttpProtocolOptions", func(t *testing.T) {
-		s, err := New(c, logr.Discard(), udsPath, false, nil, nil)
+		s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
 		// Create existing HttpProtocolOptions.
@@ -537,7 +539,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify filters were added correctly.
@@ -557,7 +559,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 	})
 
 	t.Run("cluster with existing ext_proc filter", func(t *testing.T) {
-		s, err := New(c, logr.Discard(), udsPath, false, nil, nil)
+		s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
 		// Create HttpProtocolOptions with existing ext_proc filter.
@@ -586,7 +588,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify no additional filters were added since ext_proc already exists.
@@ -601,7 +603,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 	})
 
 	t.Run("cluster with no existing HttpFilters", func(t *testing.T) {
-		s, err := New(c, logr.Discard(), udsPath, false, nil, nil)
+		s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
 		cluster := &clusterv3.Cluster{
@@ -615,7 +617,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.NoError(t, err)
 
 		// Verify filters were added correctly.
@@ -635,7 +637,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 
 	t.Run("invalid HttpProtocolOptions unmarshal", func(t *testing.T) {
 		var buf bytes.Buffer
-		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
+		s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
 		// Create invalid Any message.
@@ -658,7 +660,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 			},
 		}
 
-		err = s.maybeModifyCluster(cluster)
+		err = s.maybeModifyCluster(t.Context(), cluster)
 		require.Error(t, err)
 		require.Contains(t, buf.String(), "failed to unmarshal HttpProtocolOptions")
 	})
@@ -666,7 +668,7 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 
 // TestMaybeModifyListenerAndRoutes tests the maybeModifyListenerAndRoutes function.
 func TestMaybeModifyListenerAndRoutes(t *testing.T) {
-	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 
 	// Helper function to create a basic listener.
@@ -868,7 +870,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 
 // TestPatchListenerWithInferencePoolFilters tests the patchListenerWithInferencePoolFilters function.
 func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
-	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 
 	// Helper function to create an InferencePool.
@@ -918,7 +920,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 
 	t.Run("listener with filter chains but no HCM", func(t *testing.T) {
 		var buf bytes.Buffer
-		server, err := New(newFakeClient(), logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
+		server, err := New(newFakeClient(), logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
 		listener := &listenerv3.Listener{
@@ -1046,7 +1048,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 
 	t.Run("error marshaling updated HCM", func(_ *testing.T) {
 		var buf bytes.Buffer
-		server, err := New(newFakeClient(), logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil)
+		server, err := New(newFakeClient(), logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
 		// Create a listener with an HCM that will cause marshaling issues.
@@ -1065,7 +1067,7 @@ func TestPatchListenerWithInferencePoolFilters(t *testing.T) {
 
 // TestPatchVirtualHostWithInferencePool tests the patchVirtualHostWithInferencePool function.
 func TestPatchVirtualHostWithInferencePool(t *testing.T) {
-	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil)
+	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 
 	// Helper function to create an InferencePool.
@@ -1274,7 +1276,7 @@ func TestPatchVirtualHostWithInferencePool(t *testing.T) {
 // TestPostClusterModify tests the PostClusterModify method.
 func TestPostClusterModify(t *testing.T) {
 	logger := logr.Discard()
-	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil)
+	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 
 	t.Run("nil cluster", func(t *testing.T) {
@@ -1314,7 +1316,7 @@ func TestPostClusterModify(t *testing.T) {
 		// Use a logger that captures output for debugging.
 		var buf bytes.Buffer
 		logger := logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{}))
-		s, err := New(newFakeClient(), logger, udsPath, false, nil, nil)
+		s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 
 		cluster := &clusterv3.Cluster{
@@ -1359,7 +1361,7 @@ func TestPostClusterModify(t *testing.T) {
 // TestPostRouteModify tests the PostRouteModify method.
 func TestPostRouteModify(t *testing.T) {
 	logger := logr.Discard()
-	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil)
+	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 
 	t.Run("nil route", func(t *testing.T) {
@@ -1418,12 +1420,42 @@ func TestPostRouteModify(t *testing.T) {
 		require.Equal(t, wrapperspb.Bool(false), route.GetRoute().GetAutoHostRewrite())
 		require.NotNil(t, route.TypedPerFilterConfig)
 	})
+
+	t.Run("with InferencePool extension and DirectResponse route action", func(t *testing.T) {
+		// When a route has a DirectResponse action (not Route_Route), GetRoute() returns nil.
+		// This should not cause a panic. Regression test for https://github.com/envoyproxy/ai-gateway/issues/1889.
+		route := &routev3.Route{
+			Name: "test-route-direct-response",
+			Action: &routev3.Route_DirectResponse{
+				DirectResponse: &routev3.DirectResponseAction{
+					Status: 403,
+				},
+			},
+		}
+		inferencePool := createInferencePoolExtensionResource("test-pool", "default")
+		req := &egextension.PostRouteModifyRequest{
+			Route: route,
+			PostRouteContext: &egextension.PostRouteExtensionContext{
+				ExtensionResources: []*egextension.ExtensionResource{inferencePool},
+			},
+		}
+		resp, err := s.PostRouteModify(context.Background(), req)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, route, resp.Route)
+
+		// Verify that GetRoute() is still nil (DirectResponse, not Route_Route).
+		require.Nil(t, route.GetRoute())
+		// Verify that no InferencePool configuration was applied to the non-forwarding route.
+		require.Nil(t, route.TypedPerFilterConfig)
+		require.Nil(t, route.Metadata)
+	})
 }
 
 // TestConstructInferencePoolsFrom tests the constructInferencePoolsFrom method.
 func TestConstructInferencePoolsFrom(t *testing.T) {
 	logger := logr.Discard()
-	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil)
+	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 
 	t.Run("empty resources", func(t *testing.T) {
@@ -1900,7 +1932,7 @@ func TestBuildClustersForInferencePoolEndpointPickers(t *testing.T) {
 // TestPostTranslateModify tests the PostTranslateModify method.
 func TestPostTranslateModify(t *testing.T) {
 	logger := logr.Discard()
-	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil)
+	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 
 	t.Run("empty request", func(t *testing.T) {
@@ -1925,7 +1957,7 @@ func TestPostTranslateModify(t *testing.T) {
 	})
 
 	t.Run("with log header mapping inserts header_to_metadata filter", func(t *testing.T) {
-		s, err := New(newFakeClient(), logger, udsPath, false, nil, ptr.To("agent-session-id:session.id"))
+		s, err := New(newFakeClient(), logger, udsPath, false, nil, ptr.To("agent-session-id:session.id"), "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 		hcm := &httpconnectionmanagerv3.HttpConnectionManager{
 			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{{Name: wellknown.Router}},
@@ -1962,14 +1994,14 @@ func TestPostTranslateModify(t *testing.T) {
 	})
 
 	t.Run("with existing header_to_metadata merges log mapping", func(t *testing.T) {
-		s, err := New(newFakeClient(), logger, udsPath, false, nil, ptr.To("agent-session-id:session.id"))
+		s, err := New(newFakeClient(), logger, udsPath, false, nil, ptr.To("agent-session-id:session.id"), "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 		existingCfg := &htomv3.Config{
 			RequestRules: []*htomv3.Config_Rule{
 				{
 					Header: "x-ai-eg-mcp-backend",
 					OnHeaderPresent: &htomv3.Config_KeyValuePair{
-						MetadataNamespace: aigv1a1.AIGatewayFilterMetadataNamespace,
+						MetadataNamespace: aigv1b1.AIGatewayFilterMetadataNamespace,
 						Key:               "mcp_backend",
 						Type:              htomv3.Config_STRING,
 					},
@@ -2015,7 +2047,7 @@ func TestPostTranslateModify(t *testing.T) {
 	})
 
 	t.Run("without log header mapping leaves filters untouched", func(t *testing.T) {
-		s, err := New(newFakeClient(), logger, udsPath, false, nil, ptr.To(""))
+		s, err := New(newFakeClient(), logger, udsPath, false, nil, ptr.To(""), "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 		require.NoError(t, err)
 		hcm := &httpconnectionmanagerv3.HttpConnectionManager{
 			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{{Name: wellknown.Router}},
@@ -2047,7 +2079,7 @@ func TestPostTranslateModify(t *testing.T) {
 // TestList tests the List method (health check).
 func TestList(t *testing.T) {
 	logger := logr.Discard()
-	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil)
+	s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 
 	t.Run("list health statuses", func(t *testing.T) {
@@ -2056,5 +2088,117 @@ func TestList(t *testing.T) {
 		require.NotNil(t, resp)
 		require.NotEmpty(t, resp.Statuses)
 		require.Contains(t, resp.Statuses, "envoy-gateway-extension-server")
+	})
+}
+
+// TestQuotaRateLimitConfiguration tests that quota rate limit parameters are correctly configured.
+func TestQuotaRateLimitConfiguration(t *testing.T) {
+	logger := logr.Discard()
+
+	t.Run("default quota rate limit configuration", func(t *testing.T) {
+		s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+		require.NoError(t, err)
+		require.NotNil(t, s)
+		require.Equal(t, int64(5), s.quotaRateLimitTimeout)
+		require.False(t, s.quotaRateLimitFailureModeDeny)
+		require.Equal(t, "envoy-ai-gateway-ratelimit.envoy-gateway-system", s.quotaRateLimitServiceHost)
+		require.Equal(t, uint32(8081), s.quotaRateLimitServicePort)
+	})
+
+	t.Run("custom quota rate limit timeout", func(t *testing.T) {
+		s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "custom-ratelimit-service", 10, false)
+		require.NoError(t, err)
+		require.NotNil(t, s)
+		require.Equal(t, int64(10), s.quotaRateLimitTimeout)
+		require.False(t, s.quotaRateLimitFailureModeDeny)
+		require.Equal(t, "custom-ratelimit-service", s.quotaRateLimitServiceHost)
+		require.Equal(t, uint32(8081), s.quotaRateLimitServicePort)
+	})
+
+	t.Run("quota rate limit with failure mode deny enabled", func(t *testing.T) {
+		s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, true)
+		require.NoError(t, err)
+		require.NotNil(t, s)
+		require.Equal(t, int64(5), s.quotaRateLimitTimeout)
+		require.True(t, s.quotaRateLimitFailureModeDeny)
+		require.Equal(t, "envoy-ai-gateway-ratelimit.envoy-gateway-system", s.quotaRateLimitServiceHost)
+		require.Equal(t, uint32(8081), s.quotaRateLimitServicePort)
+	})
+
+	t.Run("custom quota rate limit with both parameters", func(t *testing.T) {
+		s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "my-custom-ratelimit", 30, true)
+		require.NoError(t, err)
+		require.NotNil(t, s)
+		require.Equal(t, int64(30), s.quotaRateLimitTimeout)
+		require.True(t, s.quotaRateLimitFailureModeDeny)
+		require.Equal(t, "my-custom-ratelimit", s.quotaRateLimitServiceHost)
+		require.Equal(t, uint32(8081), s.quotaRateLimitServicePort)
+	})
+
+	t.Run("custom quota rate limit host with port", func(t *testing.T) {
+		s, err := New(newFakeClient(), logger, udsPath, false, nil, nil, "my-custom-ratelimit:9090", 5, false)
+		require.NoError(t, err)
+		require.NotNil(t, s)
+		require.Equal(t, "my-custom-ratelimit", s.quotaRateLimitServiceHost)
+		require.Equal(t, uint32(9090), s.quotaRateLimitServicePort)
+	})
+}
+
+func TestRouteNameFromRouteConfigName(t *testing.T) {
+	t.Run("extract namespaced route name", func(t *testing.T) {
+		require.Equal(t, "ns/myroute", routeNameFromRouteConfigName("httproute/ns/myroute/rule/0"))
+	})
+
+	t.Run("ignore unexpected format", func(t *testing.T) {
+		require.Empty(t, routeNameFromRouteConfigName("not-a-route-config-name"))
+	})
+}
+
+func TestRouteNameFromEnvoyGatewayMetadata(t *testing.T) {
+	t.Run("prefer namespaced resource identity", func(t *testing.T) {
+		route := &routev3.Route{
+			Metadata: &corev3.Metadata{
+				FilterMetadata: map[string]*structpb.Struct{
+					"envoy-gateway": {
+						Fields: map[string]*structpb.Value{
+							"resources": structpb.NewListValue(&structpb.ListValue{
+								Values: []*structpb.Value{
+									structpb.NewStructValue(&structpb.Struct{
+										Fields: map[string]*structpb.Value{
+											"name":      structpb.NewStringValue("myroute"),
+											"namespace": structpb.NewStringValue("default"),
+										},
+									}),
+								},
+							}),
+						},
+					},
+				},
+			},
+		}
+		require.Equal(t, "default/myroute", routeNameFromEnvoyGatewayMetadata(route))
+	})
+
+	t.Run("fallback to legacy name-only metadata", func(t *testing.T) {
+		route := &routev3.Route{
+			Metadata: &corev3.Metadata{
+				FilterMetadata: map[string]*structpb.Struct{
+					"envoy-gateway": {
+						Fields: map[string]*structpb.Value{
+							"resources": structpb.NewListValue(&structpb.ListValue{
+								Values: []*structpb.Value{
+									structpb.NewStructValue(&structpb.Struct{
+										Fields: map[string]*structpb.Value{
+											"name": structpb.NewStringValue("legacy-route"),
+										},
+									}),
+								},
+							}),
+						},
+					},
+				},
+			},
+		}
+		require.Equal(t, "legacy-route", routeNameFromEnvoyGatewayMetadata(route))
 	})
 }

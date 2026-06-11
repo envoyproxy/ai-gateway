@@ -53,7 +53,8 @@ func TestWithTestUpstream(t *testing.T) {
 
 	config := &filterapi.Config{
 		Version: version.Parse(),
-		LLMRequestCosts: []filterapi.LLMRequestCost{
+		// Dataplane Envoy does not set per-route xDS route_name metadata; use gateway defaults so costs still emit.
+		GlobalLLMRequestCosts: []filterapi.GlobalLLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 		},
 		Backends: []filterapi.Backend{
@@ -179,13 +180,19 @@ func TestWithTestUpstream(t *testing.T) {
 			expResponseBody: `unsupported path: /unknown`,
 		},
 		{
-			name:            "openai - /v1/chat/completions - malformed JSON request",
-			backend:         "openai",
-			path:            "/v1/chat/completions",
-			method:          http.MethodPost,
-			requestBody:     `{"model": "something", "messages": [invalid json`,
-			expStatus:       http.StatusBadRequest,
-			expResponseBody: `{"type":"error","error":{"type":"BadRequest","code":"400","message":"malformed request: failed to parse JSON for /v1/chat/completions"}}`,
+			name:        "openai - /v1/chat/completions - malformed JSON request",
+			backend:     "openai",
+			path:        "/v1/chat/completions",
+			method:      http.MethodPost,
+			requestBody: `{"model": "something", "messages": [invalid json`,
+			expStatus:   http.StatusBadRequest,
+			expResponseBodyFunc: func(t require.TestingT, body []byte) {
+				bodyStr := string(body)
+				require.Contains(t, bodyStr, `"type":"error"`)
+				require.Contains(t, bodyStr, `"type":"BadRequest"`)
+				require.Contains(t, bodyStr, `"code":"400"`)
+				require.Contains(t, bodyStr, `malformed request: failed to parse JSON for /v1/chat/completions:`)
+			},
 		},
 		{
 			name:            "gcp-anthropicai - /v1/chat/completions - missing max_tokens",
@@ -193,8 +200,26 @@ func TestWithTestUpstream(t *testing.T) {
 			path:            "/v1/chat/completions",
 			method:          http.MethodPost,
 			requestBody:     `{"model":"claude-3-sonnet","messages":[{"role":"user","content":"Hello"}]}`,
-			expStatus:       http.StatusUnprocessableEntity,
-			expResponseBody: `{"type":"error","error":{"type":"UnprocessableEntity","code":"422","message":"invalid request body: max_tokens or max_completion_tokens is required"}}`,
+			expRequestBody:  `{"max_tokens":0,"messages":[{"content":[{"text":"Hello","type":"text"}],"role":"user"}],"anthropic_version":"vertex-2023-10-16"}`,
+			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:rawPredict",
+			responseStatus:  strconv.Itoa(http.StatusBadRequest),
+			responseBody:    `{"error":{"type":"invalid_request_error","message":"max_tokens: Value must be greater than or equal to 1"}}`,
+			expStatus:       http.StatusBadRequest,
+			expResponseBody: `{"type":"error","error":{"type":"invalid_request_error","code":"400","message":"max_tokens: Value must be greater than or equal to 1"}}`,
+		},
+		{
+			name:            "aws-anthropic - /v1/chat/completions - missing max_tokens",
+			backend:         "aws-anthropic",
+			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"anthropic.claude-3-sonnet-20240229-v1:0","messages":[{"role":"user","content":"Hello"}]}`,
+			expRequestBody:  `{"max_tokens":0,"messages":[{"content":[{"text":"Hello","type":"text"}],"role":"user"}],"anthropic_version":"bedrock-2023-05-31"}`,
+			expPath:         "/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke",
+			responseHeaders: "x-amzn-errortype:invalid_request_error",
+			responseStatus:  strconv.Itoa(http.StatusBadRequest),
+			responseBody:    `{"message":"max_tokens: Value must be greater than or equal to 1"}`,
+			expStatus:       http.StatusBadRequest,
+			expResponseBody: `{"type":"error","error":{"type":"invalid_request_error","code":"400","message":"max_tokens: Value must be greater than or equal to 1"}}`,
 		},
 		{
 			name:            "aws system role - /v1/chat/completions",
@@ -265,7 +290,7 @@ func TestWithTestUpstream(t *testing.T) {
 			requestBody:     toolCallResultsRequestBody,
 			expRequestBody:  `{"max_tokens":1024,"messages":[{"content":[{"text":"List the files in the /tmp directory","type":"text"}],"role":"user"},{"content":[{"id":"call_abc123","input":{"path":"/tmp"},"name":"list_files","type":"tool_use"}],"role":"assistant"},{"content":[{"tool_use_id":"call_abc123","is_error":false,"content":[{"text":"[\"foo.txt\", \"bar.log\", \"data.csv\"]","type":"text"}],"type":"tool_result"}],"role":"user"}],"anthropic_version":"vertex-2023-10-16"}`,
 			responseBody:    `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":25,"cache_read_input_tokens":10}}`,
-			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"created":123, "id":"msg_123","model":"gpt-4-0613","object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":20,"total_tokens":45,"prompt_tokens_details":{"cached_tokens":10}}}`,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"created":123, "id":"msg_123","model":"gpt-4-0613","object":"chat.completion","usage":{"completion_tokens":25,"completion_tokens_details":{},"prompt_tokens":20,"total_tokens":45,"prompt_tokens_details":{"cached_tokens":10}}}`,
 			expStatus:       http.StatusOK,
 		},
 		{
@@ -333,7 +358,7 @@ func TestWithTestUpstream(t *testing.T) {
 			responseStatus:    strconv.Itoa(http.StatusOK),
 			responseBody:      `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":25}}`,
 			expStatus:         http.StatusOK,
-			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"created":123, "id":"msg_123","model":"claude-3-sonnet","object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":10,"total_tokens":35,"prompt_tokens_details":{}}}`,
+			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from Anthropic!","role":"assistant"}}],"created":123, "id":"msg_123","model":"claude-3-sonnet","object":"chat.completion","usage":{"completion_tokens":25,"completion_tokens_details":{},"prompt_tokens":10,"total_tokens":35,"prompt_tokens_details":{}}}`,
 		},
 		{
 			name:              "gcp-anthropicai - /v1/chat/completions - with cache",
@@ -347,7 +372,7 @@ func TestWithTestUpstream(t *testing.T) {
 			responseStatus:    strconv.Itoa(http.StatusOK),
 			responseBody:      `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from cached Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":25, "cache_read_input_tokens": 8}}`,
 			expStatus:         http.StatusOK,
-			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from cached Anthropic!","role":"assistant"}}], "created":123, "id":"msg_123", "model":"claude-3-sonnet","object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":18,"total_tokens":43,"prompt_tokens_details":{"cached_tokens":8}}}`,
+			expResponseBody:   `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from cached Anthropic!","role":"assistant"}}], "created":123, "id":"msg_123", "model":"claude-3-sonnet","object":"chat.completion","usage":{"completion_tokens":25,"completion_tokens_details":{},"prompt_tokens":18,"total_tokens":43,"prompt_tokens_details":{"cached_tokens":8}}}`,
 		},
 		{
 			name:            "modelname-override - /v1/chat/completions",
@@ -417,7 +442,7 @@ data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta"
 
 data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls"}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","created":123,"model":"something","object":"chat.completion.chunk","usage":{"prompt_tokens":41,"completion_tokens":36,"total_tokens":77}}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[],"created":123,"model":"something","object":"chat.completion.chunk","usage":{"prompt_tokens":41,"completion_tokens":36,"total_tokens":77}}
 
 data: [DONE]
 `,
@@ -476,98 +501,6 @@ data: [DONE]
 `,
 		},
 		{
-			name:           "openai - /v1/chat/completions - streaming - forced to include usage",
-			backend:        "openai",
-			path:           "/v1/chat/completions",
-			responseType:   "sse",
-			method:         http.MethodPost,
-			requestBody:    `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true, "stream_options": {"include_usage": false}}`,
-			expRequestBody: `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true, "stream_options": {"include_usage": true}}`,
-			expPath:        "/v1/chat/completions",
-			responseBody: `
-{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
-{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
-[DONE]
-`,
-			expStatus: http.StatusOK,
-			expResponseBody: `data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
-
-data: [DONE]
-
-`,
-		},
-		{
-			name:           "openai - /v1/chat/completions - streaming - forced to include usage without steam_options",
-			backend:        "openai",
-			path:           "/v1/chat/completions",
-			responseType:   "sse",
-			method:         http.MethodPost,
-			requestBody:    `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
-			expRequestBody: `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true,"stream_options":{"include_usage":true}}`,
-			expPath:        "/v1/chat/completions",
-			responseBody: `
-{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
-{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
-[DONE]
-`,
-			expStatus: http.StatusOK,
-			expResponseBody: `data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
-
-data: [DONE]
-
-`,
-		},
-		{
-			name:           "openai - /v1/chat/completions - streaming - forced to include usage with model override",
-			backend:        "modelname-override",
-			path:           "/v1/chat/completions",
-			responseType:   "sse",
-			method:         http.MethodPost,
-			requestBody:    `{"model":"requested-model","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true, "stream_options": {"include_usage": false}}`,
-			expRequestBody: `{"model":"override-model","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true, "stream_options": {"include_usage": true}}`,
-			expPath:        "/v1/chat/completions",
-			responseBody: `
-{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
-{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
-[DONE]
-`,
-			expStatus: http.StatusOK,
-			expResponseBody: `data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
-
-data: [DONE]
-
-`,
-		},
-		{
-			name:           "openai - /v1/chat/completions - streaming - forced to include usage without steam_options with model override",
-			backend:        "modelname-override",
-			path:           "/v1/chat/completions",
-			responseType:   "sse",
-			method:         http.MethodPost,
-			requestBody:    `{"model":"requested-model","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
-			expRequestBody: `{"model":"override-model","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true,"stream_options":{"include_usage":true}}`,
-			expPath:        "/v1/chat/completions",
-			responseBody: `
-{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
-{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
-[DONE]
-`,
-			expStatus: http.StatusOK,
-			expResponseBody: `data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
-
-data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
-
-data: [DONE]
-
-`,
-		},
-		{
 			name:              "gcp-vertexai - /v1/chat/completions - streaming",
 			backend:           "gcp-vertexai",
 			path:              "/v1/chat/completions",
@@ -601,7 +534,7 @@ data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":" today","role":"
 
 data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":"?","role":"assistant"},"finish_reason":"stop"}],"created":123,"model":"gemini-1.5-pro","object":"chat.completion.chunk"}
 
-data: {"id":"msg_123","created":123,"model":"gemini-1.5-pro","object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":7,"total_tokens":17,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+data: {"id":"msg_123","choices":[],"created":123,"model":"gemini-1.5-pro","object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":7,"total_tokens":17,"completion_tokens_details":{},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `,
@@ -645,7 +578,7 @@ data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":" due to Rayleigh
 
 data: {"id":"msg_123","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk"}
 
-data: {"id":"msg_123","created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk","usage":{"prompt_tokens":25,"completion_tokens":12,"total_tokens":37,"prompt_tokens_details":{"cached_tokens":10}}}
+data: {"id":"msg_123","choices":[],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk","usage":{"prompt_tokens":25,"completion_tokens":12,"total_tokens":37,"completion_tokens_details":{},"prompt_tokens_details":{"cached_tokens":10}}}
 
 data: [DONE]
 
@@ -709,7 +642,7 @@ data: {"id":"msg_123","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"i
 
 data: {"id":"msg_123","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk"}
 
-data: {"id":"msg_123","created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk","usage":{"prompt_tokens":50,"completion_tokens":20,"total_tokens":70,"prompt_tokens_details":{}}}
+data: {"id":"msg_123","choices":[],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk","usage":{"prompt_tokens":50,"completion_tokens":20,"total_tokens":70,"completion_tokens_details":{},"prompt_tokens_details":{}}}
 
 data: [DONE]
 
@@ -1085,6 +1018,48 @@ data: {"type":"message_stop"       }
 			expStatus: http.StatusOK,
 		},
 		{
+			name:              "anthropic - /anthropic/v1/messages - streaming with gzip content-encoding",
+			backend:           "anthropic",
+			path:              "/anthropic/v1/messages",
+			method:            http.MethodPost,
+			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key"},
+			responseType:      "sse-gzip",
+			requestBody: `{
+    "model": "foo",
+    "max_tokens": 1000,
+    "messages": [
+      {
+        "role": "user",
+        "content": "say hi"
+      }
+    ], "stream": true
+  }`,
+			expPath: "/v1/messages",
+			responseBody: `
+event: message_start
+data: {"type":"message_start","message":{"model":"foo","id":"msg_gzip_test","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":9,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":1}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"! How can I help?"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":9,"output_tokens":10}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`,
+			expStatus: http.StatusOK,
+		},
+		{
 			name:            "aws-anthropic - /anthropic/v1/messages",
 			backend:         "aws-anthropic",
 			path:            "/anthropic/v1/messages",
@@ -1164,6 +1139,20 @@ data: {"type":"message_stop","amazon-bedrock-invocationMetrics":{"inputTokenCoun
 			expResponseBody: `{"type":"error","error":{"type":"validation_error","message":"Invalid request format"}}`,
 		},
 		{
+			name:            "aws-bedrock - /anthropic/v1/messages",
+			backend:         "aws-bedrock",
+			path:            "/anthropic/v1/messages",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"anthropic.claude-3-sonnet-20240229-v1:0","max_tokens":100,"messages":[{"role":"user","content":[{"type":"text","text":"Hello from AWS Bedrock messages!"}]}]}`,
+			expRequestBody:  `{"inferenceConfig":{"maxTokens":100},"messages":[{"content":[{"text":"Hello from AWS Bedrock messages!"}],"role":"user"}]}`,
+			expPath:         "/model/anthropic.claude-3-sonnet-20240229-v1:0/converse",
+			responseStatus:  strconv.Itoa(http.StatusOK),
+			responseHeaders: "x-amzn-requestid:bedrock-msg-123",
+			responseBody:    `{"output":{"message":{"content":[{"text":"Hello from AWS Bedrock!"}],"role":"assistant"}},"stopReason":"end_turn","usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"id":"bedrock-msg-123","type":"message","role":"assistant","content":[{"type":"text","text":"Hello from AWS Bedrock!"}],"model":"anthropic.claude-3-sonnet-20240229-v1:0","stop_reason":"end_turn","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":10,"output_tokens":20}}`,
+		},
+		{
 			name:            "body-mutation - /v1/chat/completions - OpenAI backend with route-level body mutations",
 			backend:         "body-mutation",
 			path:            "/v1/chat/completions",
@@ -1194,6 +1183,17 @@ data: {"type":"message_stop","amazon-bedrock-invocationMetrics":{"inputTokenCoun
 			method:          http.MethodPost,
 			requestBody:     `{"model":"something","input": "Say this is a test."}`,
 			expPath:         "/v1/responses",
+			responseBody:    `{"id":"resp_67cc","object":"response","created_at":1741476542,"status":"completed","model":"something","output":[{"type":"message","id":"msg_67c","status":"completed","role":"assistant","content":[{"type":"output_text","text":"This is a test."}]}],"parallel_tool_calls":true,"store":true,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","top_p":1,"truncation":"disabled","usage":{"input_tokens":16,"input_tokens_details":{"cached_tokens":5},"output_tokens":6,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":22}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"id":"resp_67cc","object":"response","created_at":1741476542,"status":"completed","model":"something","output":[{"type":"message","id":"msg_67c","status":"completed","role":"assistant","content":[{"type":"output_text","text":"This is a test."}]}],"parallel_tool_calls":true,"store":true,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","top_p":1,"truncation":"disabled","usage":{"input_tokens":16,"input_tokens_details":{"cached_tokens":5},"output_tokens":6,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":22}}`,
+		},
+		{
+			name:            "azure-openai - /v1/responses",
+			backend:         "azure-openai",
+			path:            "/v1/responses",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"something","input": "Say this is a test."}`,
+			expPath:         "/openai/responses",
 			responseBody:    `{"id":"resp_67cc","object":"response","created_at":1741476542,"status":"completed","model":"something","output":[{"type":"message","id":"msg_67c","status":"completed","role":"assistant","content":[{"type":"output_text","text":"This is a test."}]}],"parallel_tool_calls":true,"store":true,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","top_p":1,"truncation":"disabled","usage":{"input_tokens":16,"input_tokens_details":{"cached_tokens":5},"output_tokens":6,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":22}}`,
 			expStatus:       http.StatusOK,
 			expResponseBody: `{"id":"resp_67cc","object":"response","created_at":1741476542,"status":"completed","model":"something","output":[{"type":"message","id":"msg_67c","status":"completed","role":"assistant","content":[{"type":"output_text","text":"This is a test."}]}],"parallel_tool_calls":true,"store":true,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","top_p":1,"truncation":"disabled","usage":{"input_tokens":16,"input_tokens_details":{"cached_tokens":5},"output_tokens":6,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":22}}`,
@@ -1274,6 +1274,128 @@ data: {"type":"response.output_item.done","sequence_number":9,"output_index":0,"
 event: response.completed
 data: {"type":"response.completed","sequence_number":10,"response":{"id":"resp_67c","object":"response","created_at":1741290958,"status":"completed","error":null,"incomplete_details":null,"instructions":"You are a helpful assistant.","max_output_tokens":null,"model":"gpt-4.1-2025-04-14","output":[{"id":"msg_67c","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"This is a test.","annotations":[]}]}],"parallel_tool_calls":true,"previous_response_id":null,"reasoning":{"effort":null,"summary":null},"store":true,"temperature":1.0,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":37,"output_tokens":11,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":48},"user":null,"metadata":{}}}
 `,
+		},
+		{
+			name:            "anthropic-openai - /anthropic/v1/messages - OpenAI Backend with Anthropic messages endpoint",
+			backend:         "openai",
+			path:            "/anthropic/v1/messages",
+			method:          http.MethodPost,
+			requestBody:     `{"model": "foo","max_tokens": 1000, "messages": [{"role": "user", "content": "say hi"}]}`,
+			expRequestBody:  `{"messages":[{"content":"say hi","role":"user"}],"model":"foo","max_completion_tokens":1000}`,
+			expPath:         "/v1/chat/completions",
+			responseBody:    `{"choices":[{"message":{"content":"hi, this is a test."}}]}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"id":"","type":"message","role":"assistant","content":[{"type":"text","text":"hi, this is a test."}],"model":"foo","stop_reason":"end_turn","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":0,"output_tokens":0}}`,
+		},
+		{
+			name:            "anthropic-openai - /anthropic/v1/messages - non-streaming with system prompt",
+			backend:         "openai",
+			path:            "/anthropic/v1/messages",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"claude-test","max_tokens":100,"system":"You are a helpful assistant.","messages":[{"role":"user","content":"Hello"}]}`,
+			expRequestBody:  `{"messages":[{"content":"You are a helpful assistant.","role":"system"},{"content":"Hello","role":"user"}],"model":"claude-test","max_completion_tokens":100}`,
+			expPath:         "/v1/chat/completions",
+			responseBody:    `{"id":"chatcmpl-sys","model":"gpt-4o","choices":[{"message":{"content":"Hello! How can I help you today?","role":"assistant"},"finish_reason":"stop"}],"usage":{"prompt_tokens":25,"completion_tokens":10}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"id":"chatcmpl-sys","type":"message","role":"assistant","content":[{"type":"text","text":"Hello! How can I help you today?"}],"model":"gpt-4o","stop_reason":"end_turn","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":25,"output_tokens":10}}`,
+		},
+		{
+			name:            "anthropic-openai - /anthropic/v1/messages - non-streaming tool call",
+			backend:         "openai",
+			path:            "/anthropic/v1/messages",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"claude-test","max_tokens":200,"messages":[{"role":"user","content":"What's the weather in Paris?"}],"tools":[{"type":"custom","name":"get_weather","description":"Get weather info","input_schema":{"type":"object","properties":{"location":{"type":"string"}},"required":["location"]}}]}`,
+			expRequestBody:  `{"messages":[{"content":"What's the weather in Paris?","role":"user"}],"model":"claude-test","max_completion_tokens":200,"tools":[{"type":"function","function":{"name":"get_weather","description":"Get weather info","parameters":{"type":"object","properties":{"location":{"type":"string"}},"required":["location"]}}}]}`,
+			expPath:         "/v1/chat/completions",
+			responseBody:    `{"id":"chatcmpl-tool","model":"gpt-4o","choices":[{"message":{"role":"assistant","tool_calls":[{"id":"call_abc","type":"function","function":{"name":"get_weather","arguments":"{\"location\":\"Paris\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":50,"completion_tokens":15}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"id":"chatcmpl-tool","type":"message","role":"assistant","content":[{"type":"tool_use","id":"call_abc","name":"get_weather","input":{"location":"Paris"}}],"model":"gpt-4o","stop_reason":"tool_use","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":50,"output_tokens":15}}`,
+		},
+		{
+			name:           "anthropic-openai - /anthropic/v1/messages - streaming text response",
+			backend:        "openai",
+			path:           "/anthropic/v1/messages",
+			method:         http.MethodPost,
+			responseType:   "sse",
+			requestBody:    `{"model":"claude-test","max_tokens":100,"messages":[{"role":"user","content":"Say hi"}],"stream":true}`,
+			expRequestBody: `{"messages":[{"content":"Say hi","role":"user"}],"model":"claude-test","max_completion_tokens":100,"stream":true,"stream_options":{"include_usage":true}}`,
+			expPath:        "/v1/chat/completions",
+			responseBody: `{"id":"chatcmpl-stream","model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-stream","model":"gpt-4o","choices":[{"index":0,"delta":{"content":" there!"},"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-stream","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":null}
+{"id":"chatcmpl-stream","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":3}}
+[DONE]`,
+			expStatus: http.StatusOK,
+			expResponseBody: `event: message_start
+data: {"type":"message_start","message":{"id":"chatcmpl-stream","type":"message","role":"assistant","content":[],"model":"gpt-4o","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" there!"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":3}}
+
+event: message_stop
+data: {"type":"message_stop"}`,
+		},
+		{
+			name:           "anthropic-openai - /anthropic/v1/messages - streaming tool call",
+			backend:        "openai",
+			path:           "/anthropic/v1/messages",
+			method:         http.MethodPost,
+			responseType:   "sse",
+			requestBody:    `{"model":"claude-test","max_tokens":100,"messages":[{"role":"user","content":"Get the weather in Paris"}],"stream":true,"tools":[{"type":"custom","name":"get_weather","description":"Get weather info","input_schema":{"type":"object","properties":{"location":{"type":"string"}},"required":["location"]}}]}`,
+			expRequestBody: `{"messages":[{"content":"Get the weather in Paris","role":"user"}],"model":"claude-test","max_completion_tokens":100,"stream":true,"stream_options":{"include_usage":true},"tools":[{"type":"function","function":{"name":"get_weather","description":"Get weather info","parameters":{"type":"object","properties":{"location":{"type":"string"}},"required":["location"]}}}]}`,
+			expPath:        "/v1/chat/completions",
+			responseBody: `{"id":"chatcmpl-tool","model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_abc","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-tool","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"location\":"}}]},"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-tool","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Paris\"}"}}]},"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-tool","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":null}
+{"id":"chatcmpl-tool","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":50,"completion_tokens":15}}
+[DONE]`,
+			expStatus: http.StatusOK,
+			expResponseBody: `event: message_start
+data: {"type":"message_start","message":{"id":"chatcmpl-tool","type":"message","role":"assistant","content":[],"model":"gpt-4o","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call_abc","name":"get_weather","input":{}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"location\":"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"Paris\"}"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":15}}
+
+event: message_stop
+data: {"type":"message_stop"}`,
+		},
+		{
+			name:            "anthropic-openai - /anthropic/v1/messages - OpenAI JSON error translated to Anthropic error",
+			backend:         "openai",
+			path:            "/anthropic/v1/messages",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"claude-test","max_tokens":100,"messages":[{"role":"user","content":"Hello"}]}`,
+			expPath:         "/v1/chat/completions",
+			expRequestBody:  `{"messages":[{"content":"Hello","role":"user"}],"model":"claude-test","max_completion_tokens":100}`,
+			responseBody:    `{"error":{"type":"invalid_request_error","message":"Model not found","code":"model_not_found"}}`,
+			responseStatus:  "400",
+			expStatus:       http.StatusBadRequest,
+			expResponseBody: `{"error":{"message":"Model not found","type":"invalid_request_error"},"request_id":"","type":"error"}`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1484,3 +1606,158 @@ const (
   ]
 }`
 )
+
+// TestStreamingUsageInclusionWithCosts tests that streaming responses include usage
+// when LLM request costs are configured (both global and route-scoped).
+func TestStreamingUsageInclusionWithCosts(t *testing.T) {
+	// Test cases that verify usage is forced to be included when costs are configured
+	type testCase struct {
+		name            string
+		backend         string
+		requestBody     string
+		expRequestBody  string
+		responseBody    string
+		expResponseBody string
+	}
+
+	testCases := []testCase{
+		{
+			name:           "streaming - forced to include usage",
+			backend:        "openai",
+			requestBody:    `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true, "stream_options": {"include_usage": false}}`,
+			expRequestBody: `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true, "stream_options": {"include_usage": true}}`,
+			responseBody: `
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+[DONE]
+`,
+			expResponseBody: `data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+
+data: [DONE]
+
+`,
+		},
+		{
+			name:           "streaming - forced to include usage without stream_options",
+			backend:        "openai",
+			requestBody:    `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
+			expRequestBody: `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true,"stream_options":{"include_usage":true}}`,
+			responseBody: `
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+[DONE]
+`,
+			expResponseBody: `data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+
+data: [DONE]
+
+`,
+		},
+		{
+			name:           "streaming - model override forced to include usage",
+			backend:        "modelname-override",
+			requestBody:    `{"model":"requested-model","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true, "stream_options": {"include_usage": false}}`,
+			expRequestBody: `{"model":"override-model","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true, "stream_options": {"include_usage": true}}`,
+			responseBody: `
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+[DONE]
+`,
+			expResponseBody: `data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+
+data: [DONE]
+
+`,
+		},
+		{
+			name:           "streaming - model override without stream_options forced to include usage",
+			backend:        "modelname-override",
+			requestBody:    `{"model":"requested-model","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true}`,
+			expRequestBody: `{"model":"override-model","messages":[{"role":"system","content":"You are a chatbot."}], "stream": true,"stream_options":{"include_usage":true}}`,
+			responseBody: `
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+{"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+[DONE]
+`,
+			expResponseBody: `data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-foo","object":"chat.completion.chunk","created":1731618222,"model":"gpt-4o-mini-2024-07-18","system_fingerprint":"fp_0ba0d124f1","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":12,"total_tokens":25,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}}}
+
+data: [DONE]
+
+`,
+		},
+	}
+
+	// Test with both global and route-scoped costs
+	costTypes := []struct {
+		name        string
+		globalCosts []filterapi.GlobalLLMRequestCost
+		routeCosts  []filterapi.LLMRequestCost
+	}{
+		{
+			name: "global costs",
+			globalCosts: []filterapi.GlobalLLMRequestCost{
+				{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
+			},
+		},
+		{
+			name: "route-scoped costs",
+			routeCosts: []filterapi.LLMRequestCost{
+				{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken, RouteName: "test-ns/openai-route"},
+				{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken, RouteName: "test-ns/modelname-override-route"},
+			},
+		},
+	}
+
+	for _, costType := range costTypes {
+		t.Run(costType.name, func(t *testing.T) {
+			config := &filterapi.Config{
+				Version:               version.Parse(),
+				GlobalLLMRequestCosts: costType.globalCosts,
+				LLMRequestCosts:       costType.routeCosts,
+				Backends: []filterapi.Backend{
+					testUpstreamOpenAIBackend,
+					testUpstreamModelNameOverride,
+				},
+			}
+
+			configBytes, err := yaml.Marshal(config)
+			require.NoError(t, err)
+			env := startTestEnvironment(t, string(configBytes), true, false)
+			listenerPort := env.EnvoyListenerPort()
+
+			for _, tc := range testCases {
+				t.Run(tc.name, func(t *testing.T) {
+					listenerAddress := fmt.Sprintf("http://localhost:%d", listenerPort)
+					req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, listenerAddress+"/v1/chat/completions", strings.NewReader(tc.requestBody))
+					require.NoError(t, err)
+					req.Header.Set("x-test-backend", tc.backend)
+					req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.responseBody)))
+					req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
+					req.Header.Set(testupstreamlib.ResponseTypeKey, "sse")
+
+					if tc.expRequestBody != "" {
+						req.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expRequestBody)))
+					}
+
+					resp, err := http.DefaultClient.Do(req)
+					require.NoError(t, err)
+					defer resp.Body.Close()
+
+					require.Equal(t, http.StatusOK, resp.StatusCode)
+
+					actualBody, err := io.ReadAll(resp.Body)
+					require.NoError(t, err)
+					require.Equal(t, tc.expResponseBody, string(actualBody))
+				})
+			}
+		})
+	}
+}

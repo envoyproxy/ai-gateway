@@ -54,7 +54,7 @@ spec:
           resources: {}
 ---
 # This is the ONLY MCPRoute in this test to avoid side effects from reconciliation of other routes.
-apiVersion: aigateway.envoyproxy.io/v1alpha1
+apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: MCPRoute
 metadata:
   name: mcp-tenant-route

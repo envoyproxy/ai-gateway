@@ -22,7 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
+	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
 )
 
@@ -30,7 +30,7 @@ import (
 func requireNewFakeClientForGatewayConfig(t *testing.T) client.Client {
 	t.Helper()
 	builder := fake.NewClientBuilder().WithScheme(Scheme).
-		WithStatusSubresource(&aigv1a1.GatewayConfig{}).
+		WithStatusSubresource(&aigv1b1.GatewayConfig{}).
 		WithIndex(&gwapiv1.Gateway{}, k8sClientIndexGatewayToGatewayConfig, gatewayToGatewayConfigIndexFunc)
 	return builder.Build()
 }
@@ -53,13 +53,13 @@ func TestGatewayConfigController_Reconcile(t *testing.T) {
 	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
 
 	// Create a GatewayConfig.
-	gatewayConfig := &aigv1a1.GatewayConfig{
+	gatewayConfig := &aigv1b1.GatewayConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-config",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.GatewayConfigSpec{
-			ExtProc: &aigv1a1.GatewayConfigExtProc{
+		Spec: aigv1b1.GatewayConfigSpec{
+			ExtProc: &aigv1b1.GatewayConfigExtProc{
 				Kubernetes: &egv1a1.KubernetesContainerSpec{
 					Env: []corev1.EnvVar{
 						{Name: "OTEL_EXPORTER_OTLP_ENDPOINT", Value: "http://otel-collector:4317"},
@@ -85,11 +85,11 @@ func TestGatewayConfigController_Reconcile(t *testing.T) {
 	require.Equal(t, ctrl.Result{}, result)
 
 	// Verify status was updated to Accepted.
-	var updated aigv1a1.GatewayConfig
+	var updated aigv1b1.GatewayConfig
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "test-config", Namespace: "default"}, &updated)
 	require.NoError(t, err)
 	require.Len(t, updated.Status.Conditions, 1)
-	require.Equal(t, aigv1a1.ConditionTypeAccepted, updated.Status.Conditions[0].Type)
+	require.Equal(t, aigv1b1.ConditionTypeAccepted, updated.Status.Conditions[0].Type)
 }
 
 func TestGatewayConfigController_NotifyGateways(t *testing.T) {
@@ -98,13 +98,13 @@ func TestGatewayConfigController_NotifyGateways(t *testing.T) {
 	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
 
 	// Create a GatewayConfig.
-	gatewayConfig := &aigv1a1.GatewayConfig{
+	gatewayConfig := &aigv1b1.GatewayConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-config",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.GatewayConfigSpec{
-			ExtProc: &aigv1a1.GatewayConfigExtProc{
+		Spec: aigv1b1.GatewayConfigSpec{
+			ExtProc: &aigv1b1.GatewayConfigExtProc{
 				Kubernetes: &egv1a1.KubernetesContainerSpec{
 					Env: []corev1.EnvVar{
 						{Name: "LOG_LEVEL", Value: "debug"},
@@ -122,7 +122,7 @@ func TestGatewayConfigController_NotifyGateways(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	var updatedConfig aigv1a1.GatewayConfig
+	var updatedConfig aigv1b1.GatewayConfig
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "test-config", Namespace: "default"}, &updatedConfig)
 	require.NoError(t, err)
 	require.Empty(t, updatedConfig.Finalizers)
@@ -171,13 +171,13 @@ func TestGatewayConfigController_MultipleGatewaysReferencing(t *testing.T) {
 	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
 
 	// Create a GatewayConfig.
-	gatewayConfig := &aigv1a1.GatewayConfig{
+	gatewayConfig := &aigv1b1.GatewayConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "shared-config",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.GatewayConfigSpec{
-			ExtProc: &aigv1a1.GatewayConfigExtProc{
+		Spec: aigv1b1.GatewayConfigSpec{
+			ExtProc: &aigv1b1.GatewayConfigExtProc{
 				Kubernetes: &egv1a1.KubernetesContainerSpec{
 					Env: []corev1.EnvVar{
 						{Name: "SHARED_VAR", Value: "shared-value"},
@@ -220,7 +220,7 @@ func TestGatewayConfigController_MultipleGatewaysReferencing(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	var updatedConfig aigv1a1.GatewayConfig
+	var updatedConfig aigv1b1.GatewayConfig
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "shared-config", Namespace: "default"}, &updatedConfig)
 	require.NoError(t, err)
 	require.Empty(t, updatedConfig.Finalizers)
@@ -238,13 +238,13 @@ func TestGatewayConfigController_DeletionDoesNotBlock(t *testing.T) {
 	deletionTime := metav1.NewTime(time.Now())
 
 	// Create a GatewayConfig marked for deletion.
-	gatewayConfig := &aigv1a1.GatewayConfig{
+	gatewayConfig := &aigv1b1.GatewayConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              "test-config",
 			Namespace:         "default",
 			DeletionTimestamp: &deletionTime,
 		},
-		Spec: aigv1a1.GatewayConfigSpec{},
+		Spec: aigv1b1.GatewayConfigSpec{},
 	}
 	err := fakeClient.Create(t.Context(), gatewayConfig)
 	require.NoError(t, err)
@@ -304,12 +304,12 @@ func TestGatewayConfigController_ListErrorSetsNotAcceptedStatus(t *testing.T) {
 	}
 	c := NewGatewayConfigController(errClient, ctrl.Log, eventCh.Ch)
 
-	gatewayConfig := &aigv1a1.GatewayConfig{
+	gatewayConfig := &aigv1b1.GatewayConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "list-error-config",
 			Namespace: "default",
 		},
-		Spec: aigv1a1.GatewayConfigSpec{},
+		Spec: aigv1b1.GatewayConfigSpec{},
 	}
 	err := fakeClient.Create(t.Context(), gatewayConfig)
 	require.NoError(t, err)
@@ -319,11 +319,11 @@ func TestGatewayConfigController_ListErrorSetsNotAcceptedStatus(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	var updated aigv1a1.GatewayConfig
+	var updated aigv1b1.GatewayConfig
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "list-error-config", Namespace: "default"}, &updated)
 	require.NoError(t, err)
 	require.Len(t, updated.Status.Conditions, 1)
-	require.Equal(t, aigv1a1.ConditionTypeNotAccepted, updated.Status.Conditions[0].Type)
+	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, updated.Status.Conditions[0].Type)
 	require.Equal(t, metav1.ConditionFalse, updated.Status.Conditions[0].Status)
 	require.Contains(t, updated.Status.Conditions[0].Message, "failed to find referencing Gateways")
 }
@@ -368,9 +368,9 @@ func TestGatewayConfigController_GatewayReferencesNonExistingConfig(t *testing.T
 }
 
 func TestGatewayConfigConditionsNotAccepted(t *testing.T) {
-	conds := gatewayConfigConditions(aigv1a1.ConditionTypeNotAccepted, "nope")
+	conds := gatewayConfigConditions(aigv1b1.ConditionTypeNotAccepted, "nope")
 	require.Len(t, conds, 1)
-	require.Equal(t, aigv1a1.ConditionTypeNotAccepted, conds[0].Type)
+	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, conds[0].Type)
 	require.Equal(t, metav1.ConditionFalse, conds[0].Status)
 	require.Equal(t, "nope", conds[0].Message)
 }

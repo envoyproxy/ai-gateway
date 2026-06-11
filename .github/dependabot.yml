@@ -9,6 +9,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
     groups:
       github-actions:
         patterns:
@@ -18,6 +20,8 @@ updates:
     directory: site
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
     groups:
       node:
         patterns:
@@ -28,6 +32,8 @@ updates:
       - "/"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
     groups:
       go:
         patterns:

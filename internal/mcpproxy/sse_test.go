@@ -24,6 +24,44 @@ func mustEncode(t *testing.T, m jsonrpc.Message) []byte {
 	return b
 }
 
+func TestTryDecodeJSONRPCMessage(t *testing.T) {
+	id, err := jsonrpc.MakeID("1")
+	require.NoError(t, err)
+	want := &jsonrpc.Response{ID: id, Result: []byte(`{"tools":[]}`)}
+	raw, err := jsonrpc.EncodeMessage(want)
+	require.NoError(t, err)
+
+	t.Run("valid JSON-RPC", func(t *testing.T) {
+		msg, ok := tryDecodeJSONRPCMessage(raw)
+		require.True(t, ok)
+		got, isResp := msg.(*jsonrpc.Response)
+		require.True(t, isResp)
+		require.Equal(t, want.ID, got.ID)
+	})
+	t.Run("BOM prefix stripped", func(t *testing.T) {
+		bomBody := append(append([]byte{}, utf8BOM...), raw...)
+		msg, ok := tryDecodeJSONRPCMessage(bomBody)
+		require.True(t, ok)
+		got, isResp := msg.(*jsonrpc.Response)
+		require.True(t, isResp)
+		require.Equal(t, want.ID, got.ID)
+	})
+	t.Run("leading whitespace stripped", func(t *testing.T) {
+		msg, ok := tryDecodeJSONRPCMessage(append([]byte("  \n"), raw...))
+		require.True(t, ok)
+		require.NotNil(t, msg)
+	})
+	t.Run("SSE body returns false", func(t *testing.T) {
+		sseBody := append(append([]byte("data: "), raw...), []byte("\n\n")...)
+		_, ok := tryDecodeJSONRPCMessage(sseBody)
+		require.False(t, ok)
+	})
+	t.Run("binary garbage returns false", func(t *testing.T) {
+		_, ok := tryDecodeJSONRPCMessage([]byte{0x13, 0x65, 0x70, 0x8c})
+		require.False(t, ok)
+	})
+}
+
 func TestSSEEventParser_SingleEvent(t *testing.T) {
 	id, err := jsonrpc.MakeID("1")
 	require.NoError(t, err)
@@ -76,6 +114,15 @@ func TestSSEEventParser_SingleEvent(t *testing.T) {
 				[]byte("event: message\r"),
 				[]byte("id: 42\r\n"),
 				append([]byte("data: "), encoded...),
+				[]byte("\n\n"),
+			}, nil),
+		},
+		{
+			"without space after colon",
+			bytes.Join([][]byte{
+				[]byte("event:message\n"),
+				[]byte("id:42\n"),
+				append([]byte("data:"), encoded...),
 				[]byte("\n\n"),
 			}, nil),
 		},
@@ -136,6 +183,13 @@ func TestSSEEventParser_MultipleEvents(t *testing.T) {
 			bytes.Join([][]byte{
 				[]byte("event: e1\n"), append([]byte("data: "), mustEncode(t, r1)...), []byte("\n\n"),
 				[]byte("event: e2\r\n"), append([]byte("data: "), mustEncode(t, r2)...), []byte("\r\r"),
+			}, nil),
+		},
+		{
+			"without space after colon",
+			bytes.Join([][]byte{
+				[]byte("event:e1\n"), append([]byte("data:"), mustEncode(t, r1)...), []byte("\n\n"),
+				[]byte("event:e2\n"), append([]byte("data:"), mustEncode(t, r2)...), []byte("\n\n"),
 			}, nil),
 		},
 	}
@@ -236,11 +290,15 @@ func TestSSEEventParser_IncompleteEvent(t *testing.T) {
 
 func TestSSEEventParser_InvalidJSONRPCMessage(t *testing.T) {
 	// Malformed JSON (not a jsonrpc message).
-	raw := []byte("data: {invalid json}\n\n")
-	p := newSSEEventParser(bytes.NewReader(raw), "mybackend")
-	ev, err := p.next()
-	require.Nil(t, ev)
-	require.Error(t, err)
+	for _, prefix := range []string{"data:", "data: "} {
+		t.Run(prefix, func(t *testing.T) {
+			raw := []byte(prefix + " {invalid json}\n\n")
+			p := newSSEEventParser(bytes.NewReader(raw), "mybackend")
+			ev, err := p.next()
+			require.Nil(t, ev)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestSSEEvent_WriteAndMaybeFlush(t *testing.T) {
@@ -285,6 +343,10 @@ func TestSSEEventParser_EndOfStream(t *testing.T) {
 		{
 			"with mixed separators",
 			bytes.Join([][]byte{append([]byte("id: 12\rdata: "), mustEncode(t, req)...), []byte("\r\n\r\n")}, nil),
+		},
+		{
+			"without space after colon",
+			bytes.Join([][]byte{append([]byte("id:12\ndata:"), mustEncode(t, req)...), []byte("\n\n")}, nil),
 		},
 	}
 

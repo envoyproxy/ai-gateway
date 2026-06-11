@@ -41,7 +41,8 @@ func TestWithRealProviders(t *testing.T) {
 
 	config := &filterapi.Config{
 		Version: version.Parse(),
-		LLMRequestCosts: []filterapi.LLMRequestCost{
+		// Dataplane Envoy does not set per-route xDS route_name metadata; use gateway defaults so costs still emit.
+		GlobalLLMRequestCosts: []filterapi.GlobalLLMRequestCost{
 			{MetadataKey: "used_token", Type: filterapi.LLMRequestCostTypeInputToken},
 			{MetadataKey: "some_cel", Type: filterapi.LLMRequestCostTypeCEL, CEL: "1+1"},
 		},
@@ -105,7 +106,7 @@ func TestWithRealProviders(t *testing.T) {
 				{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
 				{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
 				{name: "azure-openai", modelName: "o1", required: internaltesting.RequiredCredentialAzure},
-				{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
+				{name: "gemini", modelName: "gemini-3.1-flash-lite", required: internaltesting.RequiredCredentialGemini},
 				{name: "groq", modelName: "llama-3.1-8b-instant", required: internaltesting.RequiredCredentialGroq},
 				{name: "grok", modelName: "grok-3", required: internaltesting.RequiredCredentialGrok},
 				{name: "sambanova", modelName: "Meta-Llama-3.1-8B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
@@ -120,6 +121,7 @@ func TestWithRealProviders(t *testing.T) {
 		t.Run("embeddings", func(t *testing.T) {
 			for _, tc := range []realProvidersTestCase{
 				{name: "openai", modelName: "text-embedding-3-small", required: internaltesting.RequiredCredentialOpenAI},
+				{name: "aws-bedrock", modelName: "amazon.titan-embed-text-v2:0", required: internaltesting.RequiredCredentialAWS},
 				{name: "gemini", modelName: "gemini-embedding-001", required: internaltesting.RequiredCredentialGemini},
 				{name: "sambanova", modelName: "E5-Mistral-7B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
 				{name: "deepinfra", modelName: "BAAI/bge-base-en-v1.5", required: internaltesting.RequiredCredentialDeepInfra},
@@ -239,8 +241,8 @@ func TestWithRealProviders(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress+"/v1/"), option.WithMaxRetries(0))
 		for _, tc := range []realProvidersTestCase{
 			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
-			{name: "aws-bedrock", modelName: "us.anthropic.claude-3-5-sonnet-20240620-v1:0", required: internaltesting.RequiredCredentialAWS},
-			{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
+			{name: "aws-bedrock", modelName: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", required: internaltesting.RequiredCredentialAWS},
+			{name: "gemini", modelName: "gemini-3.1-flash-lite", required: internaltesting.RequiredCredentialGemini},
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
@@ -286,7 +288,18 @@ func TestWithRealProviders(t *testing.T) {
 						return false
 					}
 					// Step 3: Simulate the tool returning a response, add the tool response to the params, and check the second response.
-					params.Messages = append(params.Messages, completion.Choices[0].Message.ToParam())
+					// Build the assistant param using tc.ToParam() for each tool call to preserve provider-specific
+					// fields (e.g., Gemini's thought_signature which is required for multi-turn tool call conversations).
+					assistantMsg := completion.Choices[0].Message
+					toolCallParams := make([]openai.ChatCompletionMessageToolCallParam, len(assistantMsg.ToolCalls))
+					for i, tc := range assistantMsg.ToolCalls {
+						toolCallParams[i] = tc.ToParam()
+					}
+					params.Messages = append(params.Messages, openai.ChatCompletionMessageParamUnion{
+						OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+							ToolCalls: toolCallParams,
+						},
+					})
 					getWeatherCalled := false
 					for _, toolCall := range toolCalls {
 						if toolCall.Function.Name == "get_weather" {
@@ -397,7 +410,7 @@ func requireEventuallyMessagesRequestOK(t *testing.T, listenerAddress, modelName
 				Messages: []anthropic.MessageParam{
 					anthropic.NewUserMessage(anthropic.NewTextBlock("Say hi!")),
 				},
-				Model: anthropic.Model(modelName),
+				Model: modelName,
 			})
 			var contentBuilder strings.Builder
 			for stream.Next() {
@@ -423,7 +436,7 @@ func requireEventuallyMessagesRequestOK(t *testing.T, listenerAddress, modelName
 			Messages: []anthropic.MessageParam{
 				anthropic.NewUserMessage(anthropic.NewTextBlock("Say hi!")),
 			},
-			Model: anthropic.Model(modelName),
+			Model: modelName,
 		})
 		if err != nil {
 			t.Logf("messages error: %v", err)

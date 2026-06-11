@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/openai/openai-go/v2"
+	"github.com/openai/openai-go/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )

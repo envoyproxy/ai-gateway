@@ -462,11 +462,13 @@ func TestSetResponseOutputMsgAttrs(t *testing.T) {
 				ID:   "msg-123",
 				Role: "assistant",
 				Type: "message",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Type: "output_text",
-							Text: "Hello! This is a test response.",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Type: "output_text",
+								Text: "Hello! This is a test response.",
+							},
 						},
 					},
 				},
@@ -480,16 +482,54 @@ func TestSetResponseOutputMsgAttrs(t *testing.T) {
 			},
 		},
 		{
+			name: "output message with string content",
+			msg: &openai.ResponseOutputMessage{
+				ID:   "msg-123",
+				Role: "assistant",
+				Type: "message",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfString: ptr("Hello! This is a test response."),
+				},
+			},
+			config:       openinference.NewTraceConfig(),
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), "Hello! This is a test response."),
+			},
+		},
+		{
+			name: "output message with string content redacted",
+			msg: &openai.ResponseOutputMessage{
+				ID:   "msg-123",
+				Role: "assistant",
+				Type: "message",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfString: ptr("Hello! This is a test response."),
+				},
+			},
+			config:       &openinference.TraceConfig{HideOutputText: true},
+			messageIndex: 0,
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.OutputMessageAttribute(0, openinference.MessageRole), "assistant"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "type"), "text"),
+				attribute.String(openinference.OutputMessageContentAttribute(0, 0, "text"), openinference.RedactedValue),
+			},
+		},
+		{
 			name: "output message with refusal",
 			msg: &openai.ResponseOutputMessage{
 				ID:   "msg-124",
 				Role: "assistant",
 				Type: "message",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfRefusal: &openai.ResponseOutputRefusalParam{
-							Type:    "refusal",
-							Refusal: "I cannot provide that information.",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfRefusal: &openai.ResponseOutputRefusalParam{
+								Type:    "refusal",
+								Refusal: "I cannot provide that information.",
+							},
 						},
 					},
 				},
@@ -508,11 +548,13 @@ func TestSetResponseOutputMsgAttrs(t *testing.T) {
 				ID:   "msg-124",
 				Role: "assistant",
 				Type: "message",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfRefusal: &openai.ResponseOutputRefusalParam{
-							Type:    "refusal",
-							Refusal: "I cannot provide that information.",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfRefusal: &openai.ResponseOutputRefusalParam{
+								Type:    "refusal",
+								Refusal: "I cannot provide that information.",
+							},
 						},
 					},
 				},
@@ -531,11 +573,13 @@ func TestSetResponseOutputMsgAttrs(t *testing.T) {
 				ID:   "msg-125",
 				Role: "assistant",
 				Type: "message",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Type: "output_text",
-							Text: "Sensitive information",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Type: "output_text",
+								Text: "Sensitive information",
+							},
 						},
 					},
 				},
@@ -556,17 +600,19 @@ func TestSetResponseOutputMsgAttrs(t *testing.T) {
 				ID:   "msg-126",
 				Role: "assistant",
 				Type: "message",
-				Content: []openai.ResponseOutputMessageContentUnion{
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Type: "output_text",
-							Text: "First part",
+				Content: openai.ResponseOutputMessageContentUnion{
+					OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Type: "output_text",
+								Text: "First part",
+							},
 						},
-					},
-					{
-						OfOutputText: &openai.ResponseOutputTextParam{
-							Type: "output_text",
-							Text: "Second part",
+						{
+							OfOutputText: &openai.ResponseOutputTextParam{
+								Type: "output_text",
+								Text: "Second part",
+							},
 						},
 					},
 				},
@@ -1137,8 +1183,10 @@ func TestSetResponseOutputAttrs(t *testing.T) {
 	redactedConfig := &openinference.TraceConfig{HideOutputText: true}
 
 	// Minimal stubs for each union type
-	msgContent := []openai.ResponseOutputMessageContentUnion{
-		{OfOutputText: &openai.ResponseOutputTextParam{Text: "hi", Type: "output_text"}},
+	msgContent := openai.ResponseOutputMessageContentUnion{
+		OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+			{OfOutputText: &openai.ResponseOutputTextParam{Text: "hi", Type: "output_text"}},
+		},
 	}
 	msg := &openai.ResponseOutputMessage{Role: "assistant", Content: msgContent, Type: "message"}
 	fnCall := &openai.ResponseFunctionToolCall{ID: "id", Name: "fn", Arguments: "{}", CallID: "call_id", Type: "function_call"}
@@ -1482,11 +1530,13 @@ func TestBuildResponsesResponseAttributes(t *testing.T) {
 					{
 						OfOutputMessage: &openai.ResponseOutputMessage{
 							Role: "assistant",
-							Content: []openai.ResponseOutputMessageContentUnion{
-								{
-									OfOutputText: &openai.ResponseOutputTextParam{
-										Type: "output_text",
-										Text: "Hello!",
+							Content: openai.ResponseOutputMessageContentUnion{
+								OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+									{
+										OfOutputText: &openai.ResponseOutputTextParam{
+											Type: "output_text",
+											Text: "Hello!",
+										},
 									},
 								},
 							},
@@ -1524,11 +1574,13 @@ func TestBuildResponsesResponseAttributes(t *testing.T) {
 					{
 						OfOutputMessage: &openai.ResponseOutputMessage{
 							Role: "assistant",
-							Content: []openai.ResponseOutputMessageContentUnion{
-								{
-									OfOutputText: &openai.ResponseOutputTextParam{
-										Type: "output_text",
-										Text: "Hello!",
+							Content: openai.ResponseOutputMessageContentUnion{
+								OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+									{
+										OfOutputText: &openai.ResponseOutputTextParam{
+											Type: "output_text",
+											Text: "Hello!",
+										},
 									},
 								},
 							},
@@ -1569,11 +1621,13 @@ func TestBuildResponsesResponseAttributes(t *testing.T) {
 					{
 						OfOutputMessage: &openai.ResponseOutputMessage{
 							Role: "assistant",
-							Content: []openai.ResponseOutputMessageContentUnion{
-								{
-									OfOutputText: &openai.ResponseOutputTextParam{
-										Type: "output_text",
-										Text: "First message",
+							Content: openai.ResponseOutputMessageContentUnion{
+								OfContentArray: []openai.ResponseOutputMessageContentArrayUnion{
+									{
+										OfOutputText: &openai.ResponseOutputTextParam{
+											Type: "output_text",
+											Text: "First message",
+										},
 									},
 								},
 							},

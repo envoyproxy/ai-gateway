@@ -107,11 +107,12 @@ func PopulateOTELLogEnvConfig(data *ConfigData) error {
 
 	hostname, ip := splitHost(host)
 	if err := upsertBackend(data, Backend{
-		Name:     backendName,
-		Hostname: hostname,
-		IP:       ip,
-		Port:     port,
-		NeedsTLS: needsTLS,
+		Name:        backendName,
+		Hostname:    hostname,
+		IP:          ip,
+		Port:        port,
+		NeedsTLS:    needsTLS,
+		IsTelemetry: true,
 	}); err != nil {
 		return err
 	}

@@ -6,16 +6,21 @@
 package extproc
 
 import (
+	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"github.com/google/cel-go/cel"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -109,12 +114,15 @@ type (
 		requestHeaders      map[string]string
 		responseHeaders     map[string]string
 		responseEncoding    string
+		compressedBuf       []byte // accumulates raw compressed bytes across streaming chunks
+		decompressedOffset  int    // tracks decompressed bytes already returned
 		translator          translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]]
 		modelNameOverride   internalapi.ModelNameOverride
 		headerMutator       *headermutator.HeaderMutator
 		bodyMutator         *bodymutator.BodyMutator
 		responseBodyMutator *bodymutator.BodyMutator
 		backendName         string
+		routeName           string
 		handler             filterapi.BackendAuthHandler
 		// cost is the cost of the request that is accumulated during the processing of the response.
 		costs metrics.TokenUsage
@@ -203,7 +211,20 @@ func createUserFacingErrorResponse(statusCode int, errorType string, message str
 
 // ProcessRequestBody implements [Processor.ProcessRequestBody].
 func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestBody(ctx context.Context, rawBody *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	originalModel, body, stream, mutatedOriginalBody, err := r.eh.ParseBody(rawBody.Body, len(r.config.RequestCosts) > 0)
+	var (
+		originalModel       internalapi.OriginalModel
+		body                *ReqT
+		stream              bool
+		mutatedOriginalBody []byte
+		err                 error
+	)
+	costConfigured := len(r.config.RequestCosts) > 0 || len(r.config.GlobalRequestCosts) > 0
+	contentType := r.requestHeaders["content-type"]
+	if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
+		originalModel, body, stream, mutatedOriginalBody, err = r.eh.ParseMultipartBody(rawBody.Body, contentType, costConfigured)
+	} else {
+		originalModel, body, stream, mutatedOriginalBody, err = r.eh.ParseBody(rawBody.Body, costConfigured)
+	}
 	if err != nil {
 		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
 			// return to user as 400 -  e.g., "malformed request: failed to parse JSON for /v1/chat/completions"
@@ -407,6 +428,9 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	if enc := u.responseHeaders["content-encoding"]; enc != "" {
 		u.responseEncoding = enc
 	}
+	// Reset streaming decompression state for new response (important for retries).
+	u.compressedBuf = nil
+	u.decompressedOffset = 0
 	newHeaders, err := u.translator.ResponseHeaders(u.responseHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response headers: %w", err)
@@ -437,8 +461,15 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		}
 	}()
 
-	// Decompress the body if needed using common utility.
-	decodingResult, err := decodeContentIfNeeded(body.Body, u.responseEncoding)
+	// Decompress the body if needed.
+	// For streaming responses with content-encoding, use stateful decompression
+	// that accumulates compressed bytes across chunks.
+	var decodingResult contentDecodingResult
+	if u.parent.stream && u.responseEncoding != "" {
+		decodingResult, err = u.decodeStreamingContent(body.Body, body.EndOfStream)
+	} else {
+		decodingResult, err = decodeContentIfNeeded(body.Body, u.responseEncoding)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -545,8 +576,8 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		u.metrics.RecordTokenUsage(ctx, u.costs, u.requestHeaders)
 	}
 
-	if body.EndOfStream && len(u.parent.config.RequestCosts) > 0 {
-		metadata, err := buildDynamicMetadata(u.parent.config, &u.costs, u.requestHeaders, u.backendName)
+	if body.EndOfStream && (len(u.parent.config.GlobalRequestCosts) > 0 || len(u.parent.config.RequestCosts) > 0) {
+		metadata, err := buildDynamicMetadata(u.parent.config.GlobalRequestCosts, u.parent.config.RequestCosts, &u.costs, u.requestHeaders, u.backendName, u.routeName, responseModel)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
@@ -563,8 +594,31 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	return resp, nil
 }
 
+// decodeStreamingContent handles decompression for streaming responses with content-encoding.
+// It accumulates raw compressed bytes across chunks and re-decompresses from the beginning each time,
+// returning only the newly decompressed data. This is necessary because gzip streams are stateful
+// and a new decompressor cannot be created mid-stream without the full preceding data.
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) decodeStreamingContent(chunk []byte, endOfStream bool) (contentDecodingResult, error) {
+	u.compressedBuf = append(u.compressedBuf, chunk...)
+	decodingResult, err := decodeContentIfNeeded(u.compressedBuf, u.responseEncoding)
+	if err != nil {
+		return contentDecodingResult{}, err
+	}
+	allDecompressed, readErr := io.ReadAll(decodingResult.reader)
+	if readErr != nil {
+		if endOfStream || !errors.Is(readErr, io.ErrUnexpectedEOF) {
+			return contentDecodingResult{}, fmt.Errorf("failed to decompress streaming content: %w", readErr)
+		}
+		// For non-final chunks, ErrUnexpectedEOF is expected: the gzip stream is incomplete
+		// (footer not yet received), but all data up to this point is valid.
+	}
+	newData := allDecompressed[u.decompressedOffset:]
+	u.decompressedOffset = len(allDecompressed)
+	return contentDecodingResult{reader: bytes.NewReader(newData), isEncoded: true}, nil
+}
+
 // SetBackend implements [Processor.SetBackend].
-func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(ctx context.Context, b *filterapi.Backend, backendHandler filterapi.BackendAuthHandler, routeProcessor Processor) (err error) {
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(ctx context.Context, backend *filterapi.RuntimeBackend, routeName string, routeProcessor Processor) (err error) {
 	defer func() {
 		if err != nil {
 			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
@@ -572,26 +626,34 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	}()
 	rp, ok := routeProcessor.(*routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT])
 	if !ok {
-		panic("BUG: expected routeProcessor to be of type *chatCompletionProcessorRouterFilter")
+		panic(fmt.Sprintf("BUG: expected routeProcessor to be of type *routerProcessor[%T], got %T", rp, routeProcessor))
 	}
 	rp.upstreamFilterCount++
-	u.metrics.SetBackend(b)
-	u.modelNameOverride = b.ModelNameOverride
-	u.backendName = b.Name
-	u.handler = backendHandler
-	u.headerMutator = headermutator.NewHeaderMutator(b.HeaderMutation, rp.requestHeaders)
-	u.bodyMutator = bodymutator.NewBodyMutator(b.BodyMutation, rp.originalRequestBodyRaw)
-	u.responseBodyMutator = bodymutator.NewBodyMutator(b.ResponseBodyMutation, nil)
+	u.metrics.SetBackend(backend.Backend)
+	u.modelNameOverride = backend.Backend.ModelNameOverride
+	u.backendName = backend.Backend.Name
+	u.routeName = routeName
+	u.handler = backend.Handler
+	u.headerMutator = headermutator.NewHeaderMutator(backend.Backend.HeaderMutation, rp.requestHeaders)
+	u.bodyMutator = bodymutator.NewBodyMutator(backend.Backend.BodyMutation, rp.originalRequestBodyRaw)
+	u.responseBodyMutator = bodymutator.NewBodyMutator(backend.Backend.ResponseBodyMutation, nil)
 	// Header-derived labels/CEL must be able to see the overridden request model.
 	if u.modelNameOverride != "" {
 		u.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = u.modelNameOverride
 	}
-	rp.upstreamFilter = u
-	u.parent = rp
+	u.parent = rp // Set parent before GetTranslator so it can access rp.eh
 
-	u.translator, err = u.parent.eh.GetTranslator(b.Schema, u.modelNameOverride)
+	u.translator, err = u.parent.eh.GetTranslator(backend.Backend.Schema, u.modelNameOverride)
 	if err != nil {
-		return fmt.Errorf("failed to create translator for backend %s: %w", b.Name, err)
+		return fmt.Errorf("failed to create translator for backend %s: %w", backend.Backend.Name, err)
+	}
+	if setter, ok := u.translator.(translator.ContentTypeSetter); ok {
+		setter.SetContentType(rp.requestHeaders["content-type"])
+	}
+	rp.upstreamFilter = u // Only assign after translator is confirmed valid
+
+	if headerSetter, ok := u.translator.(translator.RequestHeadersSetter); ok {
+		headerSetter.SetRequestHeaders(u.requestHeaders)
 	}
 
 	switch redactor := u.translator.(type) {
@@ -601,7 +663,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 		redactor.SetRedactionConfig(u.parent.debugLogEnabled, u.parent.enableRedaction, u.logger)
 	default:
 		if u.parent.debugLogEnabled && u.parent.enableRedaction {
-			u.logger.Debug("translator does not support redaction", slog.String("backend", b.Name))
+			u.logger.Debug("translator does not support redaction", slog.String("backend", backend.Backend.Name))
 		}
 	}
 
@@ -695,59 +757,143 @@ func mergeDynamicMetadata(base, extra *structpb.Struct) *structpb.Struct {
 	return base
 }
 
+// evalCost is a helper function that computes the cost value based on the cost type and CEL program.
+func evalCost(costType filterapi.LLMRequestCostType, celProg cel.Program, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint64, error) {
+	var cost uint64
+	switch costType {
+	case filterapi.LLMRequestCostTypeInputToken:
+		v, _ := costs.InputTokens()
+		cost = uint64(v)
+	case filterapi.LLMRequestCostTypeCachedInputToken:
+		v, _ := costs.CachedInputTokens()
+		cost = uint64(v)
+	case filterapi.LLMRequestCostTypeCacheCreationInputToken:
+		v, _ := costs.CacheCreationInputTokens()
+		cost = uint64(v)
+	case filterapi.LLMRequestCostTypeOutputToken:
+		v, _ := costs.OutputTokens()
+		cost = uint64(v)
+	case filterapi.LLMRequestCostTypeTotalToken:
+		v, _ := costs.TotalTokens()
+		cost = uint64(v)
+	case filterapi.LLMRequestCostTypeReasoningToken:
+		v, _ := costs.ReasoningTokens()
+		cost = uint64(v)
+	case filterapi.LLMRequestCostTypeCEL:
+		var err error
+
+		in, _ := costs.InputTokens()
+		cachedIn, _ := costs.CachedInputTokens()
+		cacheCreation, _ := costs.CacheCreationInputTokens()
+		out, _ := costs.OutputTokens()
+		total, _ := costs.TotalTokens()
+		reasoning, _ := costs.ReasoningTokens()
+		cost, err = llmcostcel.EvaluateProgram(
+			celProg,
+			requestHeaders[internalapi.ModelNameHeaderKeyDefault],
+			backendName,
+			routeName,
+			in,
+			cachedIn,
+			cacheCreation,
+			out,
+			total,
+			reasoning,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("failed to evaluate CEL expression: %w", err)
+		}
+	default:
+		return 0, fmt.Errorf("unknown cost type: %s", costType)
+	}
+	return cost, nil
+}
+
+// evalRuntimeGlobalRequestCost computes the cost value for a single global runtime cost rule.
+func evalRuntimeGlobalRequestCost(rc *filterapi.RuntimeGlobalRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint64, error) {
+	return evalCost(rc.Type, rc.CELProg, costs, requestHeaders, backendName, routeName)
+}
+
+// evalRuntimeRequestCost computes the cost value for a single route-scoped runtime cost rule.
+func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName string) (uint64, error) {
+	return evalCost(rc.Type, rc.CELProg, costs, requestHeaders, backendName, routeName)
+}
+
 // buildDynamicMetadata creates metadata for rate limiting and cost tracking.
 // This function is called by the upstream filter only at the end of the stream (body.EndOfStream=true)
 // when the response is successfully completed. It is not called for failed requests or partial responses.
 // The metadata includes token usage costs and model information for downstream processing.
-func buildDynamicMetadata(config *filterapi.RuntimeConfig, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName string) (*structpb.Struct, error) {
-	metadata := make(map[string]*structpb.Value, len(config.RequestCosts)+2)
-	for i := range config.RequestCosts {
-		rc := &config.RequestCosts[i]
-		var cost uint32
-		switch rc.Type {
-		case filterapi.LLMRequestCostTypeInputToken:
-			cost, _ = costs.InputTokens()
-		case filterapi.LLMRequestCostTypeCachedInputToken:
-			cost, _ = costs.CachedInputTokens()
-		case filterapi.LLMRequestCostTypeCacheCreationInputToken:
-			cost, _ = costs.CacheCreationInputTokens()
-		case filterapi.LLMRequestCostTypeOutputToken:
-			cost, _ = costs.OutputTokens()
-		case filterapi.LLMRequestCostTypeTotalToken:
-			cost, _ = costs.TotalTokens()
-		case filterapi.LLMRequestCostTypeCEL:
-			in, _ := costs.InputTokens()
-			cachedIn, _ := costs.CachedInputTokens()
-			cacheCreation, _ := costs.CacheCreationInputTokens()
-			out, _ := costs.OutputTokens()
-			total, _ := costs.TotalTokens()
-			costU64, err := llmcostcel.EvaluateProgram(
-				rc.CELProg,
-				requestHeaders[internalapi.ModelNameHeaderKeyDefault],
-				backendName,
-				in,
-				cachedIn,
-				cacheCreation,
-				out,
-				total,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
-			}
-			cost = uint32(costU64) //nolint:gosec
-		default:
-			return nil, fmt.Errorf("unknown request cost kind: %s", rc.Type)
+// Two-tier precedence: for each metadataKey, check route-scoped requestCosts first (matching RouteName == routeName).
+// If found, use it. Otherwise, fall back to globalRequestCosts. If neither exists, the key is not emitted.
+func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCost, requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string) (*structpb.Struct, error) {
+	metadata := make(map[string]*structpb.Value, len(requestCosts)+len(globalRequestCosts)+3)
+
+	// Track which metadata keys have been populated by route-scoped costs.
+	populatedKeys := make(map[string]struct{})
+
+	shortBackend := backendName
+	if parts := strings.SplitN(backendName, "/", 3); len(parts) >= 2 {
+		shortBackend = parts[0] + "/" + parts[1]
+	}
+
+	actualModel := requestHeaders[internalapi.ModelNameHeaderKeyDefault]
+
+	// First, process route-scoped costs that match this route.
+	// Route-scoped costs must have a RouteName set (validated at runtime config creation).
+	for i := range requestCosts {
+		rc := &requestCosts[i]
+		if rc.Backend != "" && rc.Backend != shortBackend {
+			continue
+		}
+		if rc.RouteName != routeName {
+			continue
+		}
+		if rc.Model != "" && rc.Model != actualModel {
+			continue
+		}
+		cost, err := evalRuntimeRequestCost(rc, costs, requestHeaders, backendName, routeName)
+		if err != nil {
+			return nil, err
+		}
+		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
+		populatedKeys[rc.MetadataKey] = struct{}{}
+	}
+
+	// Then, process global costs for keys not already populated.
+	for i := range globalRequestCosts {
+		rc := &globalRequestCosts[i]
+		if _, exists := populatedKeys[rc.MetadataKey]; exists {
+			continue // Route-scoped cost already set this key.
+		}
+		cost, err := evalRuntimeGlobalRequestCost(rc, costs, requestHeaders, backendName, routeName)
+		if err != nil {
+			return nil, err
 		}
 		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
 	}
 
-	// Add the actual request model that was used (after any backend overrides were applied).
-	// At this point, the header contains the final model that was sent to the upstream.
-	actualModel := requestHeaders[internalapi.ModelNameHeaderKeyDefault]
 	metadata["model_name_override"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: actualModel}}
 
 	if backendName != "" {
 		metadata["backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: backendName}}
+		// ai_service_backend_name stores the short "namespace/name" format extracted
+		// from the full PerRouteRuleRefBackendName ("{namespace}/{name}/route/...").
+		// This is used by the quota rate limit descriptor actions to match the
+		// rate limit service config which keys on "namespace/backendName".
+		parts := strings.SplitN(backendName, "/", 3)
+		shortName := backendName
+		if len(parts) >= 2 {
+			shortName = parts[0] + "/" + parts[1]
+		}
+		metadata["ai_service_backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: shortName}}
+	}
+	if routeName != "" {
+		metadata["route_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: routeName}}
+	}
+
+	// responseModel is the actual model that served the request.
+	if responseModel != "" {
+		metadata["response_model"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: responseModel}}
 	}
 
 	if len(metadata) == 0 {

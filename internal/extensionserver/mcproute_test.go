@@ -89,6 +89,7 @@ func TestServer_createBackendListener(t *testing.T) {
 
 			hcm, _, err := findHCM(listener.FilterChains[0])
 			require.NoError(t, err)
+			require.True(t, hcm.GetSchemeHeaderTransformation().GetMatchUpstream(), "SchemeHeaderTransformation.MatchUpstream should be true")
 			require.Len(t, hcm.AccessLog, len(tt.accessLogConfig))
 			for i := range tt.accessLogConfig {
 				require.Equal(t, tt.accessLogConfig[i].Name, hcm.AccessLog[i].Name)

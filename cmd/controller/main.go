@@ -34,6 +34,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/pprof"
+	"github.com/envoyproxy/ai-gateway/internal/ratelimit/runner"
 )
 
 type flags struct {
@@ -56,6 +57,8 @@ type flags struct {
 	rootPrefix                     string
 	extProcExtraEnvVars            string
 	extProcImagePullSecrets        string
+	// webhookPort is the port for the mutating webhook server.
+	webhookPort int
 	// extProcMaxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
 	extProcMaxRecvMsgSize int
 	// maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive.
@@ -66,6 +69,9 @@ type flags struct {
 	mcpFallbackSessionEncryptionIterations int
 	watchNamespaces                        []string
 	cacheSyncTimeout                       time.Duration
+	quotaRateLimitServiceAddr              string
+	quotaRateLimitTimeout                  int64
+	quotaRateLimitFailureModeDeny          bool
 }
 
 func setOptionalString(dst **string) func(string) error {
@@ -136,6 +142,11 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		"port",
 		":1063",
 		"gRPC port for the extension server",
+	)
+	webhookPort := fs.Int(
+		"webhookPort",
+		9443,
+		"The port for the mutating webhook server.",
 	)
 	tlsCertDir := fs.String(
 		"tlsCertDir",
@@ -225,6 +236,12 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		"Optional fallback seed used for MCP session key rotation")
 	mcpFallbackSessionEncryptionIterations := fs.Int("mcpFallbackSessionEncryptionIterations", 100_000,
 		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
+	quotaRateLimitServiceAddr := fs.String("quotaRateLimitServiceAddr", "envoy-ai-gateway-ratelimit.envoy-gateway-system",
+		"Host (or host:port) for the AI Gateway quota rate limit service. If no port is specified, 8081 is used.")
+	quotaRateLimitTimeout := fs.Int64("quotaRateLimitTimeout", 5,
+		"Timeout in seconds for the quota rate limit service.")
+	quotaRateLimitFailureModeDeny := fs.Bool("quotaRateLimitFailureModeDeny", false,
+		"If true, the rate limit filter will deny requests when the rate limit service is unavailable.")
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -330,6 +347,7 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		rootPrefix:                             *rootPrefix,
 		extProcExtraEnvVars:                    *extProcExtraEnvVars,
 		extProcImagePullSecrets:                *extProcImagePullSecrets,
+		webhookPort:                            *webhookPort,
 		extProcMaxRecvMsgSize:                  *extProcMaxRecvMsgSize,
 		maxRecvMsgSize:                         *maxRecvMsgSize,
 		watchNamespaces:                        parseWatchNamespaces(*watchNamespaces),
@@ -338,6 +356,9 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		mcpFallbackSessionEncryptionSeed:       *mcpFallbackSessionEncryptionSeed,
 		mcpSessionEncryptionIterations:         *mcpSessionEncryptionIterations,
 		mcpFallbackSessionEncryptionIterations: *mcpFallbackSessionEncryptionIterations,
+		quotaRateLimitServiceAddr:              *quotaRateLimitServiceAddr,
+		quotaRateLimitTimeout:                  *quotaRateLimitTimeout,
+		quotaRateLimitFailureModeDeny:          *quotaRateLimitFailureModeDeny,
 	}, nil
 }
 
@@ -373,7 +394,7 @@ func main() {
 			CertDir:  parsedFlags.tlsCertDir,
 			CertName: parsedFlags.tlsCertName,
 			KeyName:  parsedFlags.tlsKeyName,
-			Port:     9443,
+			Port:     parsedFlags.webhookPort,
 		}),
 	}
 	mgr, err := ctrl.NewManager(k8sConfig, mgrOpts)
@@ -395,7 +416,7 @@ func main() {
 	// Start the extension server running alongside the controller.
 	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
 	s := grpc.NewServer(grpc.MaxRecvMsgSize(parsedFlags.maxRecvMsgSize))
-	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes)
+	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes, parsedFlags.quotaRateLimitServiceAddr, parsedFlags.quotaRateLimitTimeout, parsedFlags.quotaRateLimitFailureModeDeny)
 	if err != nil {
 		setupLog.Error(err, "failed to create extension server")
 		os.Exit(1)
@@ -409,6 +430,15 @@ func main() {
 	go func() {
 		if err := s.Serve(lis); err != nil {
 			setupLog.Error(err, "failed to serve extension server")
+		}
+	}()
+
+	// Start the rate limit xDS config server.
+	rlRunner := runner.New(ctrl.Log, runner.DefaultPort)
+	go func() {
+		if err := rlRunner.Start(ctx); err != nil {
+			setupLog.Error(err, "failed to start rate limit xDS server")
+			os.Exit(1)
 		}
 	}()
 
@@ -433,6 +463,7 @@ func main() {
 		MCPSessionEncryptionIterations:         parsedFlags.mcpSessionEncryptionIterations,
 		MCPFallbackSessionEncryptionSeed:       parsedFlags.mcpFallbackSessionEncryptionSeed,
 		MCPFallbackSessionEncryptionIterations: parsedFlags.mcpFallbackSessionEncryptionIterations,
+		RateLimitRunner:                        rlRunner,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

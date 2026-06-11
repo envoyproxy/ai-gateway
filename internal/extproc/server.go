@@ -143,6 +143,8 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 	var internalReqID string
 	var originalReqID string
 	var logger *slog.Logger
+	// Seed the context with the server-level logger as a fallback so that loggerFromContext never returns nil in processMsg.
+	ctx = context.WithValue(ctx, loggerContextKey, s.logger)
 	defer func() {
 		if !isUpstreamFilter {
 			s.routerProcessorsPerReqIDMutex.Lock()
@@ -283,11 +285,15 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 				)
 			}
 		}
-		if s.debugLogEnabled {
+		if s.debugLogEnabled && resp != nil && resp.Response != nil {
 			var logContent any
 			if s.enableRedaction {
-				rh := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
-				logContent = redactProcessingResponseRequestHeaders(rh, s.logger, sensitiveHeaderKeys)
+				switch val := resp.Response.(type) {
+				case *extprocv3.ProcessingResponse_RequestHeaders:
+					logContent = redactProcessingResponseRequestHeaders(val, s.logger, sensitiveHeaderKeys)
+				case *extprocv3.ProcessingResponse_ImmediateResponse:
+					logContent = val
+				}
 			} else {
 				logContent = resp
 			}
@@ -371,6 +377,7 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	if err != nil {
 		return err
 	}
+	routeName := resolveRouteName(attributes)
 
 	backend, ok := s.config.Backends[backendName]
 	if !ok {
@@ -385,7 +392,7 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 			internalReqID, backendName)
 	}
 
-	if err := p.SetBackend(ctx, backend.Backend, backend.Handler, routerProcessor); err != nil {
+	if err := p.SetBackend(ctx, backend, routeName, routerProcessor); err != nil {
 		return status.Errorf(codes.Internal, "cannot set backend: %v", err)
 	}
 	return nil
@@ -412,6 +419,16 @@ func resolveBackendName(isEndpointPicker bool, attributes *structpb.Struct) (str
 	}
 
 	return "", status.Errorf(codes.Internal, "missing backend name in attributes at path: %s", backendNamePath)
+}
+
+func resolveRouteName(attributes *structpb.Struct) string {
+	if routeName, ok := attributes.Fields[internalapi.XDSRouteMetadataRouteNamePath]; ok {
+		return routeName.GetStringValue()
+	}
+	// Route metadata is not always available (e.g. legacy dataplane configs).
+	// Keep request processing working and let CEL expressions decide behavior
+	// when route_name is empty.
+	return ""
 }
 
 // Check implements [grpc_health_v1.HealthServer].
