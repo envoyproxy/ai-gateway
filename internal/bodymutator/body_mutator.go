@@ -15,6 +15,14 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
+var (
+	// sseDataPrefix and sseDoneMessage mirror the SSE constants kept by the
+	// translator and mcpproxy packages, which follow the same convention of
+	// a package-local copy.
+	sseDataPrefix  = []byte("data: ")
+	sseDoneMessage = []byte("[DONE]")
+)
+
 type BodyMutator struct {
 	// originalBody is the original request body for retry scenarios
 	originalBody []byte
@@ -169,7 +177,9 @@ func (b *BodyMutator) MutateResponseSSE(chunk []byte, endOfStream bool) []byte {
 		return chunk
 	}
 	b.sseBuffer = append(b.sseBuffer, chunk...)
-	out := []byte{}
+	// Preallocate to the buffered size: removal only shrinks lines, so the
+	// output never exceeds what is currently buffered.
+	out := make([]byte, 0, len(b.sseBuffer))
 	for {
 		i := bytes.IndexByte(b.sseBuffer, '\n')
 		if i < 0 {
@@ -191,11 +201,11 @@ func (b *BodyMutator) MutateResponseSSE(chunk []byte, endOfStream bool) []byte {
 // original line is returned unchanged, preserving the behavior of leaving
 // unparseable lines alone.
 func (b *BodyMutator) mutateSSELine(line []byte) []byte {
-	if !bytes.HasPrefix(line, []byte("data: ")) {
+	if !bytes.HasPrefix(line, sseDataPrefix) {
 		return line
 	}
-	data := bytes.TrimRight(line[len("data: "):], "\r")
-	if bytes.Equal(data, []byte("[DONE]")) {
+	data := bytes.TrimRight(line[len(sseDataPrefix):], "\r")
+	if bytes.Equal(data, sseDoneMessage) {
 		return line
 	}
 	mutated := data
@@ -209,5 +219,7 @@ func (b *BodyMutator) mutateSSELine(line []byte) []byte {
 			}
 		}
 	}
-	return append([]byte("data: "), mutated...)
+	out := make([]byte, 0, len(sseDataPrefix)+len(mutated))
+	out = append(out, sseDataPrefix...)
+	return append(out, mutated...)
 }
