@@ -106,7 +106,7 @@ func TestWithRealProviders(t *testing.T) {
 				{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
 				{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
 				{name: "azure-openai", modelName: "o1", required: internaltesting.RequiredCredentialAzure},
-				{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
+				{name: "gemini", modelName: "gemini-3.1-flash-lite", required: internaltesting.RequiredCredentialGemini},
 				{name: "groq", modelName: "llama-3.1-8b-instant", required: internaltesting.RequiredCredentialGroq},
 				{name: "grok", modelName: "grok-3", required: internaltesting.RequiredCredentialGrok},
 				{name: "sambanova", modelName: "Meta-Llama-3.1-8B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
@@ -242,7 +242,7 @@ func TestWithRealProviders(t *testing.T) {
 		for _, tc := range []realProvidersTestCase{
 			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
 			{name: "aws-bedrock", modelName: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", required: internaltesting.RequiredCredentialAWS},
-			{name: "gemini", modelName: "gemini-2.0-flash-lite", required: internaltesting.RequiredCredentialGemini},
+			{name: "gemini", modelName: "gemini-3.1-flash-lite", required: internaltesting.RequiredCredentialGemini},
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
@@ -288,7 +288,18 @@ func TestWithRealProviders(t *testing.T) {
 						return false
 					}
 					// Step 3: Simulate the tool returning a response, add the tool response to the params, and check the second response.
-					params.Messages = append(params.Messages, completion.Choices[0].Message.ToParam())
+					// Build the assistant param using tc.ToParam() for each tool call to preserve provider-specific
+					// fields (e.g., Gemini's thought_signature which is required for multi-turn tool call conversations).
+					assistantMsg := completion.Choices[0].Message
+					toolCallParams := make([]openai.ChatCompletionMessageToolCallParam, len(assistantMsg.ToolCalls))
+					for i, tc := range assistantMsg.ToolCalls {
+						toolCallParams[i] = tc.ToParam()
+					}
+					params.Messages = append(params.Messages, openai.ChatCompletionMessageParamUnion{
+						OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+							ToolCalls: toolCallParams,
+						},
+					})
 					getWeatherCalled := false
 					for _, toolCall := range toolCalls {
 						if toolCall.Function.Name == "get_weather" {

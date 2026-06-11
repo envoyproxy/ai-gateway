@@ -13,6 +13,7 @@ import (
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	fake2 "k8s.io/client-go/kubernetes/fake"
@@ -420,7 +421,110 @@ func TestAIGatewayRouterController_syncGateway_notFound(t *testing.T) { // This 
 	kube := fake2.NewClientset()
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), eventCh.Ch, "/v1")
-	s.syncGateway(t.Context(), "ns", "non-exist")
+	err := s.syncGateway(context.Background(), "ns", "non-exist")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
+}
+
+func TestAIGatewayRouteController_Reconcile_GatewayNotFound(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, kube, ctrl.Log, eventCh.Ch, "/v1")
+
+	// Create AIGatewayRoute referencing a non-existent gateway.
+	route := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "broken-route",
+			Namespace: "default",
+		},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{{Name: gwapiv1.ObjectName("non-existent")}},
+		},
+	}
+	err := fakeClient.Create(t.Context(), route)
+	require.NoError(t, err)
+
+	// Reconcile should fail and mark status as NotAccepted.
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "broken-route"}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "non-existent")
+
+	// Verify the AIGatewayRoute status is NotAccepted.
+	var current aigv1b1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "broken-route"}, &current)
+	require.NoError(t, err)
+	require.Len(t, current.Status.Conditions, 1)
+	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, current.Status.Conditions[0].Type)
+	require.Contains(t, current.Status.Conditions[0].Message, "not found")
+
+	// create the gateway now so that the reconcile succeeds.
+	err = fakeClient.Create(t.Context(), &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: "non-existent", Namespace: "default"}})
+	require.NoError(t, err)
+
+	// Reconcile should succeed.
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "broken-route"}})
+	require.NoError(t, err)
+
+	// Verify the AIGatewayRoute status is Accepted.
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "broken-route"}, &current)
+	require.NoError(t, err)
+	require.Len(t, current.Status.Conditions, 1)
+	require.Equal(t, aigv1b1.ConditionTypeAccepted, current.Status.Conditions[0].Type)
+	require.Contains(t, current.Status.Conditions[0].Message, "reconciled successfully")
+}
+
+func TestAIGatewayRouteController_syncGateway_DeletionWithMissingGateway(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, kube, ctrl.Log, eventCh.Ch, "/v1")
+
+	// Create the gateway first so that the initial reconcile succeeds.
+	err := fakeClient.Create(t.Context(), &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: "temp-gw", Namespace: "default"}})
+	require.NoError(t, err)
+
+	route := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "route-to-delete",
+			Namespace: "default",
+		},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{{Name: gwapiv1.ObjectName("temp-gw")}},
+		},
+	}
+	err = fakeClient.Create(t.Context(), route)
+	require.NoError(t, err)
+
+	// Initial reconcile to add the finalizer.
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "route-to-delete"}})
+	require.NoError(t, err)
+
+	// Verify finalizer is present.
+	var current aigv1b1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "route-to-delete"}, &current)
+	require.NoError(t, err)
+	require.Contains(t, current.Finalizers, aiGatewayControllerFinalizer)
+
+	// Now delete the gateway (simulating it being removed before the AIGatewayRoute).
+	err = fakeClient.Delete(t.Context(), &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: "temp-gw", Namespace: "default"}})
+	require.NoError(t, err)
+
+	// Delete the AIGatewayRoute.
+	err = fakeClient.Delete(t.Context(), &current)
+	require.NoError(t, err)
+
+	// Reconcile the deletion — should succeed even though the gateway is gone.
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "route-to-delete"}})
+	require.NoError(t, err)
+
+	// Verify the AIGatewayRoute finalizer has been removed (object should be gone or have no finalizer).
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "route-to-delete"}, &current)
+	if err == nil {
+		require.NotContains(t, current.Finalizers, aiGatewayControllerFinalizer)
+	} else {
+		require.True(t, apierrors.IsNotFound(err))
+	}
 }
 
 func Test_newHTTPRoute_InferencePool(t *testing.T) {
