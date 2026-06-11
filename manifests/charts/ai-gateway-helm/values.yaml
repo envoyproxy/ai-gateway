@@ -70,6 +70,14 @@ controller:
   nameOverride: ""
   fullnameOverride: "ai-gateway-controller"
 
+  # Address (host or host:port) of the AI Gateway rate limit service used for QuotaPolicy enforcement.
+  # When no port is specified, defaults to 8081.
+  quotaRateLimitServiceAddr: "envoy-ai-gateway-ratelimit.envoy-gateway-system"
+  # Timeout in seconds for the quota rate limit service.
+  quotaRateLimitTimeout: 5
+  # If true, requests are denied when the quota rate limit service is unavailable.
+  quotaRateLimitFailureModeDeny: false
+
   # Comma-separated key-value pairs for mapping HTTP request headers to Otel attributes shared across metrics, spans, and access logs.
   # Format: "header1:attribute1,header2:attribute2"
   # Example: "x-tenant-id:tenant.id"
@@ -179,6 +187,11 @@ controller:
         appProtocol: http
         port: 8080
         targetPort: 8080
+      - name: ratelimit-xds
+        protocol: TCP
+        appProtocol: grpc
+        port: 18002
+        targetPort: 18002
 
   mutatingWebhook:
     # The port on which the mutating webhook server listens. Must match the service port defined in service.ports.
