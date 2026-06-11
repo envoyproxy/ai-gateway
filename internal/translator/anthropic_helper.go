@@ -922,6 +922,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		totalTokens, _ := p.tokenUsage.TotalTokens()
 		cachedTokens, _ := p.tokenUsage.CachedInputTokens()
 		cacheCreationTokens, _ := p.tokenUsage.CacheCreationInputTokens()
+		reasoningTokens, _ := p.tokenUsage.ReasoningTokens()
 		finalChunk := openai.ChatCompletionResponseChunk{
 			ID:      p.activeMessageID,
 			Created: p.created,
@@ -934,6 +935,9 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 				PromptTokensDetails: &openai.PromptTokensDetails{
 					CachedTokens:        int(cachedTokens),
 					CacheCreationTokens: int(cacheCreationTokens),
+				},
+				CompletionTokensDetails: &openai.CompletionTokensDetails{
+					ReasoningTokens: int(reasoningTokens),
 				},
 			},
 			Model: p.requestModel,
@@ -1122,6 +1126,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			// Accumulate cache creation tokens
 			p.tokenUsage.AddCacheCreationInputTokens(cacheCreation)
 		}
+		p.tokenUsage.SetReasoningTokens(uint32(u.OutputTokensDetails.ThinkingTokens)) //nolint:gosec
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}
@@ -1236,11 +1241,13 @@ func messageToChatCompletion(anthropicResp *anthropic.Message, responseModel int
 		&usage.CacheReadInputTokens,
 		&usage.CacheCreationInputTokens,
 	)
+	tokenUsage.SetReasoningTokens(uint32(usage.OutputTokensDetails.ThinkingTokens)) //nolint:gosec
 	inputTokens, _ := tokenUsage.InputTokens()
 	outputTokens, _ := tokenUsage.OutputTokens()
 	totalTokens, _ := tokenUsage.TotalTokens()
 	cachedTokens, _ := tokenUsage.CachedInputTokens()
 	cacheCreationTokens, _ := tokenUsage.CacheCreationInputTokens()
+	reasoningTokens, _ := tokenUsage.ReasoningTokens()
 	openAIResp.Usage = openai.Usage{
 		CompletionTokens: int(outputTokens),
 		PromptTokens:     int(inputTokens),
@@ -1248,6 +1255,9 @@ func messageToChatCompletion(anthropicResp *anthropic.Message, responseModel int
 		PromptTokensDetails: &openai.PromptTokensDetails{
 			CachedTokens:        int(cachedTokens),
 			CacheCreationTokens: int(cacheCreationTokens),
+		},
+		CompletionTokensDetails: &openai.CompletionTokensDetails{
+			ReasoningTokens: int(reasoningTokens),
 		},
 	}
 

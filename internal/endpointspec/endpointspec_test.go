@@ -146,14 +146,31 @@ func TestEmbeddingsEndpointSpec_ParseBody(t *testing.T) {
 		require.ErrorContains(t, err, "malformed request")
 	})
 
-	t.Run("success", func(t *testing.T) {
-		req := openai.EmbeddingRequest{Model: "text-embedding-3-large", Input: openai.EmbeddingRequestInput{Value: "input"}}
+	t.Run("success with input", func(t *testing.T) {
+		req := openai.EmbeddingRequest{
+			EmbeddingBaseRequest: openai.EmbeddingBaseRequest{Model: "text-embedding-3-large"},
+			OfCompletion: &openai.EmbeddingCompletionRequest{
+				EmbeddingBaseRequest: openai.EmbeddingBaseRequest{Model: "text-embedding-3-large"},
+				Input:                openai.EmbeddingRequestInput{Value: "input"},
+			},
+		}
 		body, err := json.Marshal(req)
 		require.NoError(t, err)
 
 		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
 		require.NoError(t, err)
 		require.Equal(t, "text-embedding-3-large", model)
+		require.False(t, stream)
+		require.NotNil(t, parsed)
+		require.Nil(t, mutated)
+	})
+
+	t.Run("success with messages", func(t *testing.T) {
+		body := []byte(`{"model":"gemini-embedding-2","messages":[{"role":"user","content":"embed this"}]}`)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gemini-embedding-2", model)
 		require.False(t, stream)
 		require.NotNil(t, parsed)
 		require.Nil(t, mutated)
