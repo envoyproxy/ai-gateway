@@ -380,7 +380,9 @@ jobs:
 
   docker_push:
     # Docker builds are verified in test_e2e job, so we only need to push the images when the event is a push event.
-    if: github.event_name == 'push'
+    # Pushing also requires registry credentials to be configured on the repository, so skip (instead of fail)
+    # when they are absent, e.g. on forks.
+    if: github.event_name == 'push' && vars.DOCKERHUB_USERNAME != ''
     name: Push Docker Images
     needs: [ci-required]
     uses: ./.github/workflows/docker_build_job.yaml
@@ -392,11 +394,19 @@ jobs:
     if: github.event_name == 'push'
     needs: [docker_push]
     runs-on: ubuntu-latest
+    env:
+      # Allows overriding the registry the chart is pushed to, e.g. for
+      # downstream distributions. Defaults to the upstream DockerHub organization.
+      OCI_REGISTRY: ${{ vars.OCI_REGISTRY || 'docker.io/envoyproxy' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-      - name: Login into DockerHub
+      - name: Determine OCI registry host
+        id: oci
+        run: echo "host=${OCI_REGISTRY%%/*}" >> "$GITHUB_OUTPUT"
+      - name: Login into Docker registry
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
+          registry: ${{ steps.oci.outputs.host }}
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
       - run: |
