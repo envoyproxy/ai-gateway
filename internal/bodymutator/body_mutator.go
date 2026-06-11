@@ -192,8 +192,10 @@ func (b *BodyMutator) MutateResponseSSE(chunk []byte, endOfStream bool) []byte {
 		out = append(out, '\n')
 		working = working[i+1:]
 	}
-	if endOfStream && len(working) > 0 {
-		out = append(out, b.mutateSSELine(working)...)
+	if endOfStream {
+		if len(working) > 0 {
+			out = append(out, b.mutateSSELine(working)...)
+		}
 		b.sseBuffer = nil
 	} else {
 		// Slide the unconsumed tail back to the front of the backing array so

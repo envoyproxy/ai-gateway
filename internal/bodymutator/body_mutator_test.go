@@ -460,3 +460,30 @@ func TestBodyMutator_MutateResponseSSE_ChunkBoundaryAtNewline(t *testing.T) {
 	third := mutator.MutateResponseSSE([]byte("data: [DONE]\n"), true)
 	require.Equal(t, []byte("data: [DONE]\n"), third)
 }
+
+// TestBodyMutator_MutateResponseSSE_CRLFSplitBetweenCRAndLF verifies that a
+// CRLF-terminated data line split exactly between the '\r' and the '\n' is
+// correctly reassembled: the first call receives bytes ending with '\r' (no
+// newline yet, so the whole line is buffered and an empty slice is returned);
+// the second call receives the lone '\n', completing the line, and the
+// reassembled output preserves the "\r\n" framing with the configured field
+// removed.
+func TestBodyMutator_MutateResponseSSE_CRLFSplitBetweenCRAndLF(t *testing.T) {
+	bodyMutations := &filterapi.HTTPBodyMutation{
+		Remove: []string{"provider"},
+	}
+	mutator := NewBodyMutator(bodyMutations, nil)
+
+	full := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\",\"choices\":[]}\r\n")
+	// Split between '\r' and '\n': first chunk ends with '\r', no newline yet.
+	first := mutator.MutateResponseSSE(full[:len(full)-1], false)
+	require.NotNil(t, first)
+	require.Empty(t, first)
+
+	// Second call delivers the lone '\n', completing the line.
+	second := mutator.MutateResponseSSE([]byte("\n"), true)
+
+	combined := append(append([]byte{}, first...), second...)
+	require.Equal(t, []byte("data: {\"id\":\"chatcmpl-123\",\"choices\":[]}\r\n"), combined)
+	require.NotContains(t, string(combined), "provider")
+}
