@@ -84,7 +84,12 @@ Each non-patch release should start with Release Candidate (RC) phase as follows
    Pushing a tag will trigger the pipeline to build the release candidate image and the helm chart tagged with the release candidate tag.
    The release candidate image will be available in the Docker Hub.
 
-4. The release candidate should be tested by the maintainers and the community. If there is any issue, the issue should be fixed in the main branch
+4. Generate the release notes using the Claude Code `/release-notes` command (defined in `.claude/commands/release-notes`).
+   This command analyzes commits since the last release, verifies features against the actual code, and generates
+   the release notes JSON data file, MDX page, plain-markdown copy, and navigation updates for the docs site.
+   Review the generated output and make any necessary adjustments.
+
+5. The release candidate should be tested by the maintainers and the community. If there is any issue, the issue should be fixed in the main branch
    and the new rc tag should be created. For example, if there is an issue in the release candidate v0.50.0-rc1, replace `v0.50.0-rc1` with `v0.50.0-rc2`
    in the above command and repeat the process.
 
