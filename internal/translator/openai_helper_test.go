@@ -930,55 +930,30 @@ func TestAppendAnthropicAssistantMessage_NoThinkingUnchanged(t *testing.T) {
 }
 
 func TestBuildOpenAIChatCompletionRequest_ThinkingConfig(t *testing.T) {
-	t.Run("thinking enabled with budget", func(t *testing.T) {
-		body := &anthropic.MessagesRequest{
-			Model:     "claude-3",
-			MaxTokens: 8192,
-			Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Think hard"}}},
-			Thinking:  &anthropic.Thinking{Enabled: &anthropic.ThinkingEnabled{Type: "enabled", BudgetTokens: 4096}},
+	// Anthropic thinking config must never be forwarded to the OpenAI backend.
+	// OpenAI's chat completions API rejects requests containing a "thinking" field
+	// with "thinking is not allowed".
+	for _, name := range []string{"thinking enabled", "thinking disabled", "thinking adaptive", "no thinking"} {
+		var thinking *anthropic.Thinking
+		switch name {
+		case "thinking enabled":
+			thinking = &anthropic.Thinking{Enabled: &anthropic.ThinkingEnabled{Type: "enabled", BudgetTokens: 4096}}
+		case "thinking disabled":
+			thinking = &anthropic.Thinking{Disabled: &anthropic.ThinkingDisabled{Type: "disabled"}}
+		case "thinking adaptive":
+			thinking = &anthropic.Thinking{Adaptive: &anthropic.ThinkingAdaptive{Type: "adaptive"}}
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
-		require.NotNil(t, req.Thinking)
-		require.NotNil(t, req.Thinking.OfEnabled)
-		assert.Equal(t, "enabled", req.Thinking.OfEnabled.Type)
-		assert.Equal(t, int64(4096), req.Thinking.OfEnabled.BudgetTokens)
-	})
-
-	t.Run("thinking disabled", func(t *testing.T) {
-		body := &anthropic.MessagesRequest{
-			Model:     "claude-3",
-			MaxTokens: 100,
-			Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
-			Thinking:  &anthropic.Thinking{Disabled: &anthropic.ThinkingDisabled{Type: "disabled"}},
-		}
-		req := buildOpenAIChatCompletionRequest(body, "")
-		require.NotNil(t, req.Thinking)
-		require.NotNil(t, req.Thinking.OfDisabled)
-		assert.Equal(t, "disabled", req.Thinking.OfDisabled.Type)
-	})
-
-	t.Run("thinking adaptive", func(t *testing.T) {
-		body := &anthropic.MessagesRequest{
-			Model:     "claude-3",
-			MaxTokens: 100,
-			Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
-			Thinking:  &anthropic.Thinking{Adaptive: &anthropic.ThinkingAdaptive{Type: "adaptive"}},
-		}
-		req := buildOpenAIChatCompletionRequest(body, "")
-		require.NotNil(t, req.Thinking)
-		require.NotNil(t, req.Thinking.OfAdaptive)
-		assert.Equal(t, "adaptive", req.Thinking.OfAdaptive.Type)
-	})
-
-	t.Run("no thinking config", func(t *testing.T) {
-		body := &anthropic.MessagesRequest{
-			Model:     "claude-3",
-			MaxTokens: 100,
-			Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
-		}
-		req := buildOpenAIChatCompletionRequest(body, "")
-		assert.Nil(t, req.Thinking)
-	})
+		t.Run(name, func(t *testing.T) {
+			body := &anthropic.MessagesRequest{
+				Model:     "claude-3",
+				MaxTokens: 100,
+				Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
+				Thinking:  thinking,
+			}
+			req := buildOpenAIChatCompletionRequest(body, "")
+			assert.Nil(t, req.Thinking, "thinking config must not be forwarded to OpenAI backends")
+		})
+	}
 }
 
 func TestAppendAnthropicUserMessage_Base64Image(t *testing.T) {
