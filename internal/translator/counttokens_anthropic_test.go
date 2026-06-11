@@ -111,6 +111,28 @@ func TestCountTokensToAnthropic_ResponseBody(t *testing.T) {
 	require.Equal(t, "claude-opus-4-1", responseModel)
 }
 
+func TestCountTokensToAnthropic_ResponseBodyNilBody(t *testing.T) {
+	translator := NewCountTokensToAnthropicTranslator("v1", "")
+	require.NotNil(t, translator)
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, nil, false, nil)
+	require.ErrorContains(t, err, "response body is nil")
+	_, ok := tokenUsage.InputTokens()
+	require.False(t, ok)
+	require.Empty(t, responseModel)
+}
+
+func TestCountTokensToAnthropic_ResponseBodyNegativeInputTokens(t *testing.T) {
+	translator := NewCountTokensToAnthropicTranslator("v1", "")
+	require.NotNil(t, translator)
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, strings.NewReader(`{"input_tokens": -1}`), false, nil)
+	require.ErrorContains(t, err, "invalid negative input_tokens: -1")
+	_, ok := tokenUsage.InputTokens()
+	require.False(t, ok)
+	require.Empty(t, responseModel)
+}
+
 func TestCountTokensToAnthropic_ResponseError(t *testing.T) {
 	translator := NewCountTokensToAnthropicTranslator("v1", "")
 	require.NotNil(t, translator)

@@ -70,9 +70,15 @@ func (t *countTokensToAnthropicTranslator) ResponseHeaders(_ map[string]string) 
 func (t *countTokensToAnthropicTranslator) ResponseBody(_ map[string]string, body io.Reader, _ bool, span tracingapi.CountTokensSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel internalapi.ResponseModel, err error,
 ) {
+	if body == nil {
+		return nil, nil, tokenUsage, "", fmt.Errorf("response body is nil")
+	}
 	resp := &anthropicschema.CountTokensResponse{}
 	if err := json.NewDecoder(body).Decode(resp); err != nil {
 		return nil, nil, tokenUsage, "", fmt.Errorf("failed to unmarshal body: %w", err)
+	}
+	if resp.InputTokens < 0 {
+		return nil, nil, tokenUsage, "", fmt.Errorf("invalid negative input_tokens: %d", resp.InputTokens)
 	}
 	if span != nil {
 		span.RecordResponse(resp)

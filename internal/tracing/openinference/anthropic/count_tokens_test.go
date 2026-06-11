@@ -44,6 +44,17 @@ func TestCountTokensRecorder_RecordRequest(t *testing.T) {
 	}, actualSpan.Attributes)
 }
 
+func TestCountTokensRecorder_RecordRequestNilRequest(t *testing.T) {
+	recorder := NewCountTokensRecorder(&openinference.TraceConfig{})
+
+	actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+		recorder.RecordRequest(span, nil, []byte(`{"model":"claude-opus-4-1"}`))
+		return false
+	})
+
+	require.Empty(t, actualSpan.Attributes)
+}
+
 func TestCountTokensRecorder_RecordRequestHideInputs(t *testing.T) {
 	recorder := NewCountTokensRecorder(&openinference.TraceConfig{HideInputs: true})
 
@@ -72,6 +83,18 @@ func TestCountTokensRecorder_RecordResponse(t *testing.T) {
 		attribute.Int(openinference.LLMTokenCountPrompt, 42),
 	}, actualSpan.Attributes)
 	require.Equal(t, codes.Ok, actualSpan.Status.Code)
+}
+
+func TestCountTokensRecorder_RecordResponseNilResponse(t *testing.T) {
+	recorder := NewCountTokensRecorder(&openinference.TraceConfig{})
+
+	actualSpan := testotel.RecordWithSpan(t, func(span oteltrace.Span) bool {
+		recorder.RecordResponse(span, nil)
+		return false
+	})
+
+	require.Empty(t, actualSpan.Attributes)
+	require.Equal(t, codes.Unset, actualSpan.Status.Code)
 }
 
 func TestCountTokensRecorder_RecordResponseOnError(t *testing.T) {
