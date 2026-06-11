@@ -504,6 +504,18 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		}, nil
 	}
 
+	// Capture the decoded body when response mutation is configured: passthrough
+	// translators return a nil newBody, in which case the mutator must operate on
+	// the decoded bytes rather than the (possibly compressed) raw chunk.
+	var decodedBody []byte
+	if u.responseBodyMutator.HasMutations() {
+		decodedBody, err = io.ReadAll(decodingResult.reader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read decoded response body: %w", err)
+		}
+		decodingResult.reader = bytes.NewReader(decodedBody)
+	}
+
 	newHeaders, newBody, tokenUsage, responseModel, err := u.translator.ResponseBody(u.responseHeaders, decodingResult.reader, body.EndOfStream, u.parent.span)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response: %w", err)
@@ -512,10 +524,10 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 
 	// Apply response body mutation (field stripping) if configured.
 	if u.responseBodyMutator.HasMutations() {
-		// Get the body to mutate: use newBody if translator already mutated it, else raw body.
+		// Get the body to mutate: use newBody if translator already mutated it, else the decoded body.
 		bodyToMutate := newBody
 		if bodyToMutate == nil {
-			bodyToMutate = body.Body
+			bodyToMutate = decodedBody
 		}
 		if u.parent.stream {
 			// Streaming mutation is stateful and never errors: per-line sjson
