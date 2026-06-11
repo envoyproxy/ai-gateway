@@ -265,16 +265,11 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 			// Set cluster-level metadata unconditionally so extproc resolves the shadow
 			// backend's overrides via XDSClusterMetadataBackendNamePath even when
 			// LoadAssignment is nil (EDS) and endpoint-level metadata as well when present.
-			setClusterMetadataBackendName(cluster, aigwRoute.Namespace, mirror.BackendRef.Name,
-				aigwRoute.Name, httpRouteRuleIndex, mirrorIndex)
-			// Overwrite with the mirror-specific name (setClusterMetadataBackendName uses
-			// PerRouteRuleRefBackendName; we need the mirror variant).
-			cluster.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace].
-				Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(mirrorBackendName)
+			clusterMeta := ensureClusterInternalMetadata(cluster)
+			clusterMeta.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(mirrorBackendName)
 			// Mark this cluster as a mirror leg so the cost emitter in extproc can
 			// skip LLMRequestCost emission and avoid double-billing.
-			cluster.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace].
-				Fields[internalapi.InternalMetadataMirrorKey] = structpb.NewBoolValue(true)
+			clusterMeta.Fields[internalapi.InternalMetadataMirrorKey] = structpb.NewBoolValue(true)
 			if cluster.LoadAssignment != nil {
 				for _, endpoints := range cluster.LoadAssignment.Endpoints {
 					for _, endpoint := range endpoints.LbEndpoints {
@@ -900,10 +895,10 @@ func ensureRouteInternalMetadata(route *routev3.Route) *structpb.Struct {
 	return m
 }
 
-// setClusterMetadataBackendName sets the backend name on cluster-level metadata.
-// This is used when endpoint-level metadata is unavailable (e.g. LoadAssignment is nil)
-// or for InferencePool backends where cluster-level metadata is preferred.
-func setClusterMetadataBackendName(cluster *clusterv3.Cluster, namespace, name, routeName string, routeRuleIndex, refIndex int) {
+// ensureClusterInternalMetadata ensures the cluster-level metadata struct for the
+// internal AI Gateway namespace is fully initialized and returns it, so callers
+// can write fields without re-traversing the (possibly nil) chain.
+func ensureClusterInternalMetadata(cluster *clusterv3.Cluster) *structpb.Struct {
 	if cluster.Metadata == nil {
 		cluster.Metadata = &corev3.Metadata{}
 	}
@@ -918,6 +913,14 @@ func setClusterMetadataBackendName(cluster *clusterv3.Cluster, namespace, name, 
 	if m.Fields == nil {
 		m.Fields = make(map[string]*structpb.Value)
 	}
+	return m
+}
+
+// setClusterMetadataBackendName sets the backend name on cluster-level metadata.
+// This is used when endpoint-level metadata is unavailable (e.g. LoadAssignment is nil)
+// or for InferencePool backends where cluster-level metadata is preferred.
+func setClusterMetadataBackendName(cluster *clusterv3.Cluster, namespace, name, routeName string, routeRuleIndex, refIndex int) {
+	m := ensureClusterInternalMetadata(cluster)
 	m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
 		internalapi.PerRouteRuleRefBackendName(namespace, name, routeName, routeRuleIndex, refIndex),
 	)
