@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -127,7 +128,7 @@ func isAnthropicSupportedImageMediaType(mediaType string) bool {
 
 // translateOpenAItoAnthropicTools translates OpenAI tool and tool_choice parameters
 // into the Anthropic format and returns translated tool & tool choice.
-func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice *openai.ChatCompletionToolChoiceUnion, parallelToolCalls *bool) (tools []anthropic.ToolUnionParam, toolChoice anthropic.ToolChoiceUnionParam, err error) {
+func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice *openai.ChatCompletionToolChoiceUnion, parallelToolCalls *bool, eagerInputStreaming *bool) (tools []anthropic.ToolUnionParam, toolChoice anthropic.ToolChoiceUnionParam, err error) {
 	if len(openAITools) > 0 {
 		anthropicTools := make([]anthropic.ToolUnionParam, 0, len(openAITools))
 		for _, openAITool := range openAITools {
@@ -138,6 +139,10 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 			toolParam := anthropic.ToolParam{
 				Name:        openAITool.Function.Name,
 				Description: anthropic.String(openAITool.Function.Description),
+			}
+
+			if eagerInputStreaming != nil && *eagerInputStreaming {
+				toolParam.EagerInputStreaming = anthropic.Bool(true)
 			}
 
 			if isCacheEnabled(openAITool.Function.AnthropicContentFields) {
@@ -676,7 +681,7 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 	}
 
 	// 3. Translate tools and tool choice.
-	tools, toolChoice, err := translateOpenAItoAnthropicTools(openAIReq.Tools, openAIReq.ToolChoice, openAIReq.ParallelToolCalls)
+	tools, toolChoice, err := translateOpenAItoAnthropicTools(openAIReq.Tools, openAIReq.ToolChoice, openAIReq.ParallelToolCalls, openAIReq.EagerInputStreaming)
 	if err != nil {
 		return
 	}
@@ -810,6 +815,13 @@ func newAnthropicStreamParser(requestModel string) *anthropicStreamParser {
 func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error {
 	chunk, err := p.parseAndHandleEvent(eventBlock)
 	if err != nil {
+		var streamErr anthropicStreamErrorEvent
+		if errors.As(err, &streamErr) {
+			*buf = append(*buf, sseDataPrefix...)
+			*buf = append(*buf, streamErr.payload...)
+			*buf = append(*buf, '\n', '\n')
+			return nil
+		}
 		return err
 	}
 	if chunk != nil {
@@ -921,6 +933,14 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 	}
 	tokenUsage = p.tokenUsage
 	return
+}
+
+type anthropicStreamErrorEvent struct {
+	payload []byte
+}
+
+func (e anthropicStreamErrorEvent) Error() string {
+	return "anthropic stream error event"
 }
 
 func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock []byte) (*openai.ChatCompletionResponseChunk, error) {
@@ -1133,7 +1153,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if err := json.Unmarshal(data, &errEvent); err != nil {
 			return nil, fmt.Errorf("unparsable error event: %s", string(data))
 		}
-		return nil, fmt.Errorf("anthropic stream error: %s - %s", errEvent.Error.Type, errEvent.Error.Message)
+		return nil, anthropicStreamErrorEvent{payload: data}
 
 	case "ping":
 		// Per documentation, ping events can be ignored.
