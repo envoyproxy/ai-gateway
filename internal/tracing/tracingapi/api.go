@@ -42,6 +42,8 @@ type (
 		RerankTracer() RerankTracer
 		// MessageTracer creates spans for Anthropic messages requests.
 		MessageTracer() MessageTracer
+		// CountTokensTracer creates spans for Anthropic count tokens requests.
+		CountTokensTracer() CountTokensTracer
 		// MCPTracer creates spans for MCP requests.
 		MCPTracer() MCPTracer
 		// Shutdown shuts down the tracer, flushing any buffered spans.
@@ -86,6 +88,8 @@ type (
 	RerankTracer = RequestTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageTracer creates spans for Anthropic messages requests.
 	MessageTracer = RequestTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// CountTokensTracer creates spans for Anthropic count tokens requests.
+	CountTokensTracer = RequestTracer[anthropicschema.MessagesRequest, anthropicschema.CountTokensResponse, struct{}]
 )
 
 type (
@@ -121,6 +125,8 @@ type (
 	RerankSpan = Span[cohere.RerankV2Response, struct{}]
 	// MessageSpan represents an Anthropic messages request span.
 	MessageSpan = Span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// CountTokensSpan represents an Anthropic count tokens request span.
+	CountTokensSpan = Span[anthropicschema.CountTokensResponse, struct{}]
 )
 
 type (
@@ -170,6 +176,8 @@ type (
 	RerankRecorder = SpanRecorder[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageRecorder records attributes to a span according to a semantic convention.
 	MessageRecorder = SpanRecorder[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// CountTokensRecorder records attributes to a span according to a semantic convention.
+	CountTokensRecorder = SpanRecorder[anthropicschema.MessagesRequest, anthropicschema.CountTokensResponse, struct{}]
 )
 
 // NoopChunkRecorder provides a no-op RecordResponseChunks implementation for recorders that don't emit streaming chunks.
@@ -234,6 +242,11 @@ func (NoopTracing) MessageTracer() MessageTracer {
 	return NoopMessageTracer{}
 }
 
+// CountTokensTracer implements Tracing.CountTokensTracer.
+func (NoopTracing) CountTokensTracer() CountTokensTracer {
+	return NoopCountTokensTracer{}
+}
+
 // Shutdown implements Tracing.Shutdown.
 func (NoopTracing) Shutdown(context.Context) error {
 	return nil
@@ -262,6 +275,8 @@ type (
 	NoopRerankTracer = NoopTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// NoopMessageTracer implements MessageTracer.
 	NoopMessageTracer = NoopTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// NoopCountTokensTracer implements CountTokensTracer.
+	NoopCountTokensTracer = NoopTracer[anthropicschema.MessagesRequest, anthropicschema.CountTokensResponse, struct{}]
 )
 
 // StartSpanAndInjectHeaders implements RequestTracer.StartSpanAndInjectHeaders.
