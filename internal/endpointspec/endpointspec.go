@@ -817,6 +817,11 @@ func (TranscriptionEndpointSpec) GetTranslator(
 	}
 }
 
+// EarlyTranslate implements [Spec.EarlyTranslate]. No-op for transcription.
+func (TranscriptionEndpointSpec) EarlyTranslate(_ *openai.TranscriptionRequest) ([]internalapi.Header, []byte, error) {
+	return nil, nil, nil
+}
+
 // RedactSensitiveInfoFromRequest implements [Spec.RedactSensitiveInfoFromRequest].
 func (TranscriptionEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.TranscriptionRequest) (*openai.TranscriptionRequest, error) {
 	redacted := *req
@@ -920,6 +925,11 @@ func (TranslationEndpointSpec) GetTranslator(
 	default:
 		return nil, fmt.Errorf("unsupported API schema for audio translation: backend=%s", schema)
 	}
+}
+
+// EarlyTranslate implements [Spec.EarlyTranslate]. No-op for translation.
+func (TranslationEndpointSpec) EarlyTranslate(_ *openai.TranslationRequest) ([]internalapi.Header, []byte, error) {
+	return nil, nil, nil
 }
 
 // RedactSensitiveInfoFromRequest implements [Spec.RedactSensitiveInfoFromRequest].
