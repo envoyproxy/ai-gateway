@@ -589,6 +589,7 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [HTTPBodyField](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpbodyfield)
 - [HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpbodymutation)
 - [HTTPHeaderMutation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpheadermutation)
+- [HTTPResponseBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpresponsebodymutation)
 - [JWKS](#github-com-envoyproxy-ai-gateway-api-v1alpha1-jwks)
 - [JWTSource](#github-com-envoyproxy-ai-gateway-api-v1alpha1-jwtsource)
 - [LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1alpha1-llmrequestcost)
@@ -836,6 +837,11 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   type="[HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpbodymutation)"
   required="false"
   description="BodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request<br />before sending it to the backend."
+/><ApiField
+  name="responseBodyMutation"
+  type="[HTTPResponseBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpresponsebodymutation)"
+  required="false"
+  description="ResponseBodyMutation defines the mutation of HTTP response body JSON fields that will be applied<br />to the response from the backend before returning to the client.<br />Only field removal is supported on the response path."
 />
 
 
@@ -1611,6 +1617,29 @@ HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to 
   type="string array"
   required="false"
   description="Remove the given header(s) from the HTTP request before the action. The<br />value of Remove is a list of HTTP header names. Note that the header<br />names are case-insensitive (see<br />https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).<br />Input:<br />  GET /foo HTTP/1.1<br />  my-header1: foo<br />  my-header2: bar<br />  my-header3: baz<br />Config:<br />  remove: [`my-header1`, `my-header3`]<br />Output:<br />  GET /foo HTTP/1.1<br />  my-header2: bar"
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-httpresponsebodymutation">HTTPResponseBodyMutation</a>
+
+
+
+**Appears in:**
+- [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendspec)
+
+HTTPResponseBodyMutation defines the mutation of HTTP response body JSON fields that will be applied
+to the response from the backend before returning to the client. Only field removal is supported on
+the response path.
+
+##### Fields
+
+
+
+<ApiField
+  name="remove"
+  type="string array"
+  required="false"
+  description="Remove the given JSON field(s) from the HTTP response body before returning to the client.<br />The value of Remove is a list of top-level field names to remove.<br />Input:<br />  \{<br />    `model`: `gpt-4`,<br />    `service_tier`: `default`,<br />    `internal_flag`: true<br />  \}<br />Config:<br />  remove: [`service_tier`, `internal_flag`]<br />Output:<br />  \{<br />    `model`: `gpt-4`<br />  \}"
 />
 
 
@@ -3012,6 +3041,7 @@ MCPRouteList contains a list of MCPRoute.
 - [HTTPBodyField](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodyfield)
 - [HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodymutation)
 - [HTTPHeaderMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpheadermutation)
+- [HTTPResponseBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpresponsebodymutation)
 - [JWKS](#github-com-envoyproxy-ai-gateway-api-v1beta1-jwks)
 - [JWTSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-jwtsource)
 - [LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcost)
@@ -3251,6 +3281,11 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   type="[HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodymutation)"
   required="false"
   description="BodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request<br />before sending it to the backend."
+/><ApiField
+  name="responseBodyMutation"
+  type="[HTTPResponseBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpresponsebodymutation)"
+  required="false"
+  description="ResponseBodyMutation defines the mutation of HTTP response body JSON fields that will be applied<br />to the response from the backend before returning to the client.<br />Only field removal is supported on the response path."
 />
 
 
@@ -4030,6 +4065,29 @@ HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to 
   type="string array"
   required="false"
   description="Remove the given header(s) from the HTTP request before the action. The<br />value of Remove is a list of HTTP header names. Note that the header<br />names are case-insensitive (see<br />https://datatracker.ietf.org/doc/html/rfc2616#section-4.2).<br />Input:<br />  GET /foo HTTP/1.1<br />  my-header1: foo<br />  my-header2: bar<br />  my-header3: baz<br />Config:<br />  remove: [`my-header1`, `my-header3`]<br />Output:<br />  GET /foo HTTP/1.1<br />  my-header2: bar"
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-httpresponsebodymutation">HTTPResponseBodyMutation</a>
+
+
+
+**Appears in:**
+- [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendspec)
+
+HTTPResponseBodyMutation defines the mutation of HTTP response body JSON fields that will be applied
+to the response from the backend before returning to the client. Only field removal is supported on
+the response path.
+
+##### Fields
+
+
+
+<ApiField
+  name="remove"
+  type="string array"
+  required="false"
+  description="Remove the given JSON field(s) from the HTTP response body before returning to the client.<br />The value of Remove is a list of top-level field names to remove.<br />Input:<br />  \{<br />    `model`: `gpt-4`,<br />    `service_tier`: `default`,<br />    `internal_flag`: true<br />  \}<br />Config:<br />  remove: [`service_tier`, `internal_flag`]<br />Output:<br />  \{<br />    `model`: `gpt-4`<br />  \}"
 />
 
 
