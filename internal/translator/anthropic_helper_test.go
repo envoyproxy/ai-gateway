@@ -53,6 +53,7 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 		expectedTools      []anthropic.ToolUnionParam
 		expectedToolChoice anthropic.ToolChoiceUnionParam
 		expectErr          bool
+		expectUserFacing   bool
 	}{
 		{
 			name: "auto tool choice",
@@ -248,45 +249,33 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 				Tools:      openaiTestTool,
 				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: "invalid_choice"},
 			},
-			expectErr: true,
+			expectErr:        true,
+			expectUserFacing: true,
 		},
 		{
-			name: "skips function tool with nil function definition",
+			name: "rejects tool with nil function definition",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools: []openai.Tool{
 					{
 						Type:     "function",
-						Function: nil, // This tool has the correct type but a nil definition and should be skipped.
-					},
-					{
-						Type:     "function",
-						Function: &openai.FunctionDefinition{Name: "get_weather"}, // This is a valid tool.
+						Function: nil,
 					},
 				},
 			},
-			// We expect only the valid function tool to be translated.
-			expectedTools: []anthropic.ToolUnionParam{
-				{OfTool: &anthropic.ToolParam{Name: "get_weather", Description: anthropic.String("")}},
-			},
-			expectErr: false,
+			expectErr:        true,
+			expectUserFacing: true,
 		},
 		{
-			name: "skips non-function tools",
+			name: "rejects non-function tool type",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools: []openai.Tool{
 					{
 						Type: "retrieval",
 					},
-					{
-						Type:     "function",
-						Function: &openai.FunctionDefinition{Name: "get_weather"},
-					},
 				},
 			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{OfTool: &anthropic.ToolParam{Name: "get_weather", Description: anthropic.String("")}},
-			},
-			expectErr: false,
+			expectErr:        true,
+			expectUserFacing: true,
 		},
 		{
 			name: "tool definition without type field",
@@ -359,7 +348,24 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 				Tools:      openaiTestTool,
 				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: 123}, // Use an integer to trigger the default case.
 			},
-			expectErr: true,
+			expectErr:        true,
+			expectUserFacing: true,
+		},
+		{
+			name: "invalid tool parameters type (not a map)",
+			openAIReq: &openai.ChatCompletionRequest{
+				Tools: []openai.Tool{
+					{
+						Type: "function",
+						Function: &openai.FunctionDefinition{
+							Name:       "bad_tool",
+							Parameters: "this is not a map",
+						},
+					},
+				},
+			},
+			expectErr:        true,
+			expectUserFacing: true,
 		},
 		{
 			name: "nested schema in tool's defintions",
@@ -439,6 +445,10 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			tools, toolChoice, err := translateOpenAItoAnthropicTools(tt.openAIReq.Tools, tt.openAIReq.ToolChoice, tt.openAIReq.ParallelToolCalls)
 			if tt.expectErr {
 				require.Error(t, err)
+				if tt.expectUserFacing {
+					require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody,
+						"error should be user-facing (wrapped with ErrInvalidRequestBody) to produce HTTP 422")
+				}
 			} else {
 				require.NoError(t, err)
 				if tt.openAIReq.ToolChoice != nil {
@@ -508,10 +518,11 @@ func TestFinishReasonTranslation(t *testing.T) {
 // TestContentTranslationCoverage adds specific coverage for the openAIToAnthropicContent helper.
 func TestContentTranslationCoverage(t *testing.T) {
 	tests := []struct {
-		name            string
-		inputContent    any
-		expectedContent []anthropic.ContentBlockParamUnion
-		expectErr       bool
+		name              string
+		inputContent      any
+		expectedContent   []anthropic.ContentBlockParamUnion
+		expectErr         bool
+		expectUserFacing  bool
 	}{
 		{
 			name:         "nil content",
@@ -577,9 +588,32 @@ func TestContentTranslationCoverage(t *testing.T) {
 			},
 		},
 		{
-			name:         "audio content error",
-			inputContent: []openai.ChatCompletionContentPartUserUnionParam{{OfInputAudio: &openai.ChatCompletionContentPartInputAudioParam{}}},
-			expectErr:    true,
+			name:             "audio content error",
+			inputContent:     []openai.ChatCompletionContentPartUserUnionParam{{OfInputAudio: &openai.ChatCompletionContentPartInputAudioParam{}}},
+			expectErr:        true,
+			expectUserFacing: true,
+		},
+		{
+			name: "invalid base64 image data URI",
+			inputContent: []openai.ChatCompletionContentPartUserUnionParam{
+				{OfImageURL: &openai.ChatCompletionContentPartImageParam{ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: "data:image/png;base64,NOT_VALID!!!"}}},
+			},
+			expectErr:        true,
+			expectUserFacing: true,
+		},
+		{
+			name: "unsupported image media type",
+			inputContent: []openai.ChatCompletionContentPartUserUnionParam{
+				{OfImageURL: &openai.ChatCompletionContentPartImageParam{ImageURL: openai.ChatCompletionContentPartImageImageURLParam{URL: "data:image/bmp;base64,dGVzdA=="}}},
+			},
+			expectErr:        true,
+			expectUserFacing: true,
+		},
+		{
+			name:             "file content error",
+			inputContent:     []openai.ChatCompletionContentPartUserUnionParam{{OfFile: &openai.ChatCompletionContentPartFileParam{}}},
+			expectErr:        true,
+			expectUserFacing: true,
 		},
 	}
 
@@ -588,6 +622,10 @@ func TestContentTranslationCoverage(t *testing.T) {
 			content, err := openAIToAnthropicContent(tt.inputContent)
 			if tt.expectErr {
 				require.Error(t, err)
+				if tt.expectUserFacing {
+					require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody,
+						"error should be user-facing (wrapped with ErrInvalidRequestBody) to produce HTTP 422")
+				}
 				return
 			}
 			require.NoError(t, err)

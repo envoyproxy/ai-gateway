@@ -95,7 +95,7 @@ func translateAnthropicToolChoice(openAIToolChoice *openai.ChatCompletionToolCho
 			toolChoice = anthropic.ToolChoiceUnionParam{OfTool: &anthropic.ToolChoiceToolParam{Name: choice}}
 			toolChoice.OfTool.DisableParallelToolUse = disableParallelToolUse
 		default:
-			return anthropic.ToolChoiceUnionParam{}, fmt.Errorf("unsupported tool_choice value: %s", choice)
+			return anthropic.ToolChoiceUnionParam{}, fmt.Errorf("%w: unsupported tool_choice value: %s", internalapi.ErrInvalidRequestBody, choice)
 		}
 	case openai.ChatCompletionNamedToolChoice:
 		if choice.Type == openai.ToolTypeFunction && choice.Function.Name != "" {
@@ -108,7 +108,7 @@ func translateAnthropicToolChoice(openAIToolChoice *openai.ChatCompletionToolCho
 			}
 		}
 	default:
-		return anthropic.ToolChoiceUnionParam{}, fmt.Errorf("unsupported tool_choice type: %T", openAIToolChoice)
+		return anthropic.ToolChoiceUnionParam{}, fmt.Errorf("%w: unsupported tool_choice type: %T", internalapi.ErrInvalidRequestBody, openAIToolChoice)
 	}
 	return toolChoice, nil
 }
@@ -131,9 +131,13 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 	if len(openAITools) > 0 {
 		anthropicTools := make([]anthropic.ToolUnionParam, 0, len(openAITools))
 		for _, openAITool := range openAITools {
-			if openAITool.Type != openai.ToolTypeFunction || openAITool.Function == nil {
-				// Anthropic only supports 'function' tools, so we skip others.
-				continue
+			if openAITool.Type != openai.ToolTypeFunction {
+				err = fmt.Errorf("%w: tool type must be 'function', got %q", internalapi.ErrInvalidRequestBody, openAITool.Type)
+				return
+			}
+			if openAITool.Function == nil {
+				err = fmt.Errorf("%w: tool function definition is required", internalapi.ErrInvalidRequestBody)
+				return
 			}
 			toolParam := anthropic.ToolParam{
 				Name:        openAITool.Function.Name,
@@ -149,7 +153,7 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 			if openAITool.Function.Parameters != nil {
 				paramsMap, ok := openAITool.Function.Parameters.(map[string]any)
 				if !ok {
-					err = fmt.Errorf("failed to cast tool parameters to map[string]interface{}")
+					err = fmt.Errorf("%w: failed to cast tool parameters to map[string]interface{}", internalapi.ErrInvalidRequestBody)
 					return
 				}
 
@@ -231,7 +235,7 @@ func convertImageContentToAnthropic(imageURL string, fields *openai.AnthropicCon
 	case strings.HasPrefix(imageURL, "data:"):
 		contentType, data, err := parseDataURI(imageURL)
 		if err != nil {
-			return anthropic.ContentBlockParamUnion{}, fmt.Errorf("failed to parse image URL: %w", err)
+			return anthropic.ContentBlockParamUnion{}, fmt.Errorf("%w: failed to parse image URL: %v", internalapi.ErrInvalidRequestBody, err)
 		}
 		base64Data := base64.StdEncoding.EncodeToString(data)
 		if contentType == string(constant.ValueOf[constant.ApplicationPDF]()) {
@@ -245,7 +249,7 @@ func convertImageContentToAnthropic(imageURL string, fields *openai.AnthropicCon
 			imgBlock.OfImage.CacheControl = cacheControlParam
 			return imgBlock, nil
 		}
-		return anthropic.ContentBlockParamUnion{}, fmt.Errorf("invalid media_type for image '%s'", contentType)
+		return anthropic.ContentBlockParamUnion{}, fmt.Errorf("%w: invalid media_type for image '%s'", internalapi.ErrInvalidRequestBody, contentType)
 	case strings.HasSuffix(strings.ToLower(imageURL), ".pdf"):
 		docBlock := anthropic.NewDocumentBlock(anthropic.URLPDFSourceParam{URL: imageURL})
 		docBlock.OfDocument.CacheControl = cacheControlParam
@@ -282,9 +286,9 @@ func convertContentPartsToAnthropic(parts []openai.ChatCompletionContentPartUser
 			resultContent = append(resultContent, block)
 
 		case contentPart.OfInputAudio != nil:
-			return nil, fmt.Errorf("input audio content not supported yet")
+			return nil, fmt.Errorf("%w: input audio content not supported yet", internalapi.ErrInvalidRequestBody)
 		case contentPart.OfFile != nil:
-			return nil, fmt.Errorf("file content not supported yet")
+			return nil, fmt.Errorf("%w: file content not supported yet", internalapi.ErrInvalidRequestBody)
 		}
 	}
 	return resultContent, nil
