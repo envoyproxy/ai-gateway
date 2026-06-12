@@ -283,6 +283,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	imageGenerationMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationImageGeneration)
 	responsesMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationResponses)
 	speechMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationSpeech)
+	transcriptionMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationTranscription)
+	translationMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationTranslation)
 	rerankMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationRerank)
 	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
@@ -302,6 +304,10 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		responsesMetricsFactory, tracing.ResponsesTracer(), endpointspec.ResponsesEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/speech"), extproc.NewFactory(
 		speechMetricsFactory, tracing.SpeechTracer(), endpointspec.SpeechEndpointSpec{}))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/transcriptions"), extproc.NewFactory(
+		transcriptionMetricsFactory, tracing.TranscriptionTracer(), endpointspec.TranscriptionEndpointSpec{}))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/translations"), extproc.NewFactory(
+		translationMetricsFactory, tracing.TranslationTracer(), endpointspec.TranslationEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/images/generations"), extproc.NewFactory(
 		imageGenerationMetricsFactory, tracing.ImageGenerationTracer(), endpointspec.ImageGenerationEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Cohere, "/v2/rerank"), extproc.NewFactory(
