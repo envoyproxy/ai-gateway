@@ -61,15 +61,27 @@ func getAwsBedrockThinkingMap(tu *openai.ThinkingUnion) map[string]any {
 
 	resultMap := make(map[string]any)
 
-	if tu.OfEnabled != nil {
+	switch {
+	case tu.OfEnabled != nil:
 		reasoningConfigMap := map[string]any{
 			"type":          "enabled",
 			"budget_tokens": tu.OfEnabled.BudgetTokens,
 		}
+		if tu.OfEnabled.Display != "" {
+			reasoningConfigMap["display"] = tu.OfEnabled.Display
+		}
 		resultMap["thinking"] = reasoningConfigMap
-	} else if tu.OfDisabled != nil {
+	case tu.OfDisabled != nil:
 		reasoningConfigMap := map[string]any{
 			"type": "disabled",
+		}
+		resultMap["thinking"] = reasoningConfigMap
+	case tu.OfAdaptive != nil:
+		reasoningConfigMap := map[string]any{
+			"type": "adaptive",
+		}
+		if tu.OfAdaptive.Display != "" {
+			reasoningConfigMap["display"] = tu.OfAdaptive.Display
 		}
 		resultMap["thinking"] = reasoningConfigMap
 	}
@@ -509,7 +521,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			if err != nil {
 				return err
 			}
-			bedrockReq.Messages = append(bedrockReq.Messages, bedrockMessage)
+			// Some clients, like OpenCode, can send assistant messages with nil or empty string content and no tool calls,
+			// which would translate to an empty content array that Bedrock Converse rejects.
+			if len(bedrockMessage.Content) > 0 {
+				bedrockReq.Messages = append(bedrockReq.Messages, bedrockMessage)
+			}
 		case msg.OfSystem != nil:
 			if bedrockReq.System == nil {
 				bedrockReq.System = make([]*awsbedrock.SystemContentBlock, 0)

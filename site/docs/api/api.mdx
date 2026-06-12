@@ -2199,7 +2199,7 @@ a tool must match an include rule AND not match any exclude rule to be allowed.
   name="modelName"
   type="string"
   required="true"
-  description="Model name for which the quota is specified."
+  description="Model name for which the quota is specified.<br />This must match the ModelNameOverride set in the AIGatewayRoute's BackendRef<br />for the quota policy to apply to that backend."
 /><ApiField
   name="quota"
   type="[QuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotadefinition)"
@@ -2269,15 +2269,11 @@ QuotaBucketMode specifies whether the default and per request buckets values are
 
 
 
+
 ##### Possible Values
 
 <ApiField
   name="Shared"
-  type="enum"
-  required="false"
-  description=""
-/><ApiField
-  name="Exclusive"
   type="enum"
   required="false"
   description=""
@@ -2303,8 +2299,9 @@ QuotaDefinition specified expression for computing request cost and rules for ma
 /><ApiField
   name="mode"
   type="[QuotaBucketMode](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotabucketmode)"
-  required="true"
-  description="The `Mode` determines how quota is charged to the `DefaultBucket` and matching `BucketRules`.<br />In the `exclusive` mode the quota is charged to matching BucketRules or the DefaultBucket<br />if no BucketRules match the request. The request is denied if all matching buckets are out of quota.<br />In the `shared` mode the quota is charged to all matching `BucketRules` AND the `DefaultBucket`<br />and request is allowed only if the quota is available in all matching buckets."
+  required="false"
+  defaultValue="Shared"
+  description="The `Mode` determines how quota is charged to the `DefaultBucket` and matching `BucketRules`.<br />In the `shared` mode the quota is charged to all matching `BucketRules` AND the `DefaultBucket`<br />and request is allowed only if the quota is available in all matching buckets.<br />Defaults to `Shared`."
 /><ApiField
   name="defaultBucket"
   type="[QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)"
@@ -2314,7 +2311,7 @@ QuotaDefinition specified expression for computing request cost and rules for ma
   name="bucketRules"
   type="[QuotaRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotarule) array"
   required="false"
-  description="BucketRules are a list of client selectors and quotas. If a request<br />matches multiple rules, each of their associated quotas get applied, so a<br />single request might burn down the quota for multiple rules."
+  description="BucketRules are a list of client selectors and quotas. If a request<br />matches multiple rules, each of their associated quotas get applied, so a<br />single request might burn down the quota for multiple rules.<br />Client selectors that match under the same model / service backend will be<br />combined with the first limit taking precedence."
 />
 
 
@@ -2345,7 +2342,7 @@ QuotaPolicySpec specifies rules for computing token based costs of requests.
   name="perModelQuotas"
   type="[PerModelQuota](#github-com-envoyproxy-ai-gateway-api-v1alpha1-permodelquota) array"
   required="false"
-  description="PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this<br />policy is attached."
+  description="PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this<br />policy is attached.<br />When multiple QuotaPolicies define the same Model for the same AIServiceBackend,<br />the policy whose namespace/name is alphabetically first takes precedence.<br />Keys are sorted to ensure deterministic snapshot generation."
 />
 
 
@@ -2425,7 +2422,7 @@ QuotaValue defines the quota limits using sliding window.
   name="duration"
   type="string"
   required="true"
-  description="Time window. The suffix is used to specify units. The following<br />suffixes are supported:<br />* s - seconds (the default unit)<br />* m - minutes<br />* h - hours"
+  description="Time window. Must be exactly one of: `1s` (1 second), `1m` (1 minute), `1h` (1 hour), or `1d` (1 day)."
 />
 
 
@@ -4246,7 +4243,7 @@ When both `header` and `queryParam` are unspecified, the API key will be injecte
   name="queryParam"
   type="string"
   required="false"
-  description="QueryParam is the HTTP query parameter to inject the API key into.<br />For example, if QueryParam is set to `api_key`, and the API key is `mysecretkey`, the request URL will be modified to include<br />`?api_key=mysecretkey`.<br />Either one of Header or QueryParam can be specified to inject the API key."
+  description="QueryParam is the HTTP query parameter to inject the API key into.<br />For example, if QueryParam is set to `api_key`, and the API key is `mysecretkey`, the request URL will be modified to include<br />`?api_key=mysecretkey`.<br />Either one of Header or QueryParam can be specified to inject the API key.<br />Note: Embedding credentials in URLs (including query parameters) is generally not recommended because URLs can be exposed in logs<br />and intermediary systems; prefer header-based injection when possible."
 />
 
 

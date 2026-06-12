@@ -1234,3 +1234,106 @@ func TestAnthropicToAWSBedrockTranslator_ResponseBody_StreamingToolUse(t *testin
 	assert.Contains(t, bodyStr, `"input_json_delta"`)
 	assert.Contains(t, bodyStr, `"tool_use"`)
 }
+
+func TestPromoteAnthropicSystemMessagesToParam(t *testing.T) {
+	t.Run("no system messages returns all messages", func(t *testing.T) {
+		body := &anthropicschema.MessagesRequest{
+			Messages: []anthropicschema.MessageParam{
+				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hello"}},
+			},
+		}
+		result := promoteAnthropicSystemMessagesToParam(body)
+		require.Len(t, result, 1)
+		require.Nil(t, body.System)
+	})
+
+	t.Run("single text system message is promoted", func(t *testing.T) {
+		body := &anthropicschema.MessagesRequest{
+			Messages: []anthropicschema.MessageParam{
+				{Role: "system", Content: anthropicschema.MessageContent{Text: "You are helpful."}},
+				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hi"}},
+			},
+		}
+		result := promoteAnthropicSystemMessagesToParam(body)
+		require.Len(t, result, 1)
+		require.Equal(t, "user", string(result[0].Role))
+		require.NotNil(t, body.System)
+		require.Equal(t, "You are helpful.", body.System.Text)
+	})
+
+	t.Run("system message with content blocks is promoted", func(t *testing.T) {
+		body := &anthropicschema.MessagesRequest{
+			Messages: []anthropicschema.MessageParam{
+				{
+					Role: "system",
+					Content: anthropicschema.MessageContent{
+						Array: []anthropicschema.ContentBlockParam{
+							{Text: &anthropicschema.TextBlockParam{Text: "You are Claude."}},
+						},
+					},
+				},
+				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hi"}},
+			},
+		}
+		result := promoteAnthropicSystemMessagesToParam(body)
+		require.Len(t, result, 1)
+		require.NotNil(t, body.System)
+		require.Equal(t, "You are Claude.", body.System.Text)
+	})
+
+	t.Run("multiple system messages are joined", func(t *testing.T) {
+		body := &anthropicschema.MessagesRequest{
+			Messages: []anthropicschema.MessageParam{
+				{Role: "system", Content: anthropicschema.MessageContent{Text: "Be concise."}},
+				{Role: "system", Content: anthropicschema.MessageContent{Text: "Be accurate."}},
+				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hello"}},
+			},
+		}
+		result := promoteAnthropicSystemMessagesToParam(body)
+		require.Len(t, result, 1)
+		require.NotNil(t, body.System)
+		require.Equal(t, "Be concise.\nBe accurate.", body.System.Text)
+	})
+
+	t.Run("system message is added to existing system param", func(t *testing.T) {
+		body := &anthropicschema.MessagesRequest{
+			System: &anthropicschema.SystemPrompt{Text: "You are Claude."},
+			Messages: []anthropicschema.MessageParam{
+				{Role: "system", Content: anthropicschema.MessageContent{Text: "Be concise."}},
+				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hi"}},
+			},
+		}
+		result := promoteAnthropicSystemMessagesToParam(body)
+		require.Len(t, result, 1)
+		require.NotNil(t, body.System)
+		// The existing system param is overwritten by the promoted messages.
+		require.Equal(t, "Be concise.", body.System.Text)
+	})
+
+	t.Run("integration with full request", func(t *testing.T) {
+		translator := NewAnthropicToAWSBedrockTranslator("")
+		req := &anthropicschema.MessagesRequest{
+			Model:     "anthropic.claude-3-sonnet-20240229-v1:0",
+			MaxTokens: 1024,
+			Messages: []anthropicschema.MessageParam{
+				{Role: "system", Content: anthropicschema.MessageContent{Text: "You are helpful."}},
+				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hello"}},
+			},
+		}
+		rawBody, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		_, body, err := translator.RequestBody(rawBody, req, false)
+		require.NoError(t, err)
+
+		var bedrockReq awsbedrock.ConverseInput
+		err = json.Unmarshal(body, &bedrockReq)
+		require.NoError(t, err)
+
+		require.Len(t, bedrockReq.Messages, 1)
+		assert.Equal(t, awsbedrock.ConversationRoleUser, bedrockReq.Messages[0].Role)
+		require.NotNil(t, bedrockReq.System)
+		require.Len(t, bedrockReq.System, 1)
+		assert.Equal(t, "You are helpful.", *bedrockReq.System[0].Text)
+	})
+}
