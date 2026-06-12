@@ -1048,6 +1048,77 @@ data: %s
 	require.Contains(t, rr.Body.String(), id.Raw())
 }
 
+func TestProxyResponseBody_SSEContentTypeUnframedJSON(t *testing.T) {
+	// Some backends advertise Content-Type: text/event-stream but send a plain JSON
+	// body with no SSE framing. The payload must not be silently dropped.
+	proxy := newTestMCPProxy()
+
+	id := mustJSONRPCRequestID()
+	resp := &jsonrpc.Response{ID: id, Result: []byte(`{"tools": [{"name": "test-tool"}]}`)}
+	body, err := jsonrpc.EncodeMessage(resp)
+	require.NoError(t, err)
+
+	httpResp := &http.Response{
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+		StatusCode: http.StatusOK,
+	}
+
+	rr := httptest.NewRecorder()
+
+	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
+
+	require.Contains(t, rr.Body.String(), "test-tool")
+	// Verify that the response ID matches the request ID.
+	require.Contains(t, rr.Body.String(), id.Raw())
+	require.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+}
+
+func TestProxyResponseBody_SSEContentTypeUnframedJSONWithLeadingWhitespace(t *testing.T) {
+	proxy := newTestMCPProxy()
+
+	id := mustJSONRPCRequestID()
+	resp := &jsonrpc.Response{ID: id, Result: []byte(`{"test": "whitespace"}`)}
+	body, err := jsonrpc.EncodeMessage(resp)
+	require.NoError(t, err)
+
+	httpResp := &http.Response{
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(bytes.NewReader(append([]byte("\r\n \n"), body...))),
+		StatusCode: http.StatusOK,
+	}
+
+	rr := httptest.NewRecorder()
+
+	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
+
+	require.Contains(t, rr.Body.String(), "whitespace")
+	require.Contains(t, rr.Body.String(), id.Raw())
+}
+
+func TestProxyResponseBody_SSEContentTypeInvalidJSONFallsBackToSSE(t *testing.T) {
+	// A body starting with '{' that is not a valid JSON-RPC message should fall back
+	// to SSE parsing without panicking or dropping the connection.
+	proxy := newTestMCPProxy()
+
+	httpResp := &http.Response{
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(`{not valid json at all`)),
+		StatusCode: http.StatusOK,
+	}
+
+	rr := httptest.NewRecorder()
+	sessionID := secureID(t, proxy, "@@backend1:"+base64.StdEncoding.EncodeToString([]byte("test-session")))
+	eventID := secureID(t, proxy, "@@backend1:"+base64.StdEncoding.EncodeToString([]byte("_1")))
+	s, err := proxy.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(eventID))
+	require.NoError(t, err)
+
+	id := mustJSONRPCRequestID()
+	proxy.proxyResponseBody(t.Context(), s, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
+
+	require.Equal(t, http.StatusOK, rr.Code)
+}
+
 func TestOnError(t *testing.T) {
 	rr := httptest.NewRecorder()
 	onErrorResponse(rr, http.StatusBadRequest, "test error")
