@@ -14,6 +14,8 @@ jobs:
     needs: [docker_push]
     name: Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # gh release create requires contents:write
     steps:
       - name: Set HELM_CHART_VERSION and TAG envs
         run: |
@@ -25,7 +27,7 @@ jobs:
       # To include the helm chart in the release artifact, we build and push it here instead of the separate job.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
       - name: Login into DockerHub
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}

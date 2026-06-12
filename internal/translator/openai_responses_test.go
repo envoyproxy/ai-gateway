@@ -594,6 +594,112 @@ data: [DONE]
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to read body")
 	})
+
+	t.Run("response completed split across response body calls", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+
+		req := &openai.ResponseRequest{
+			Model:  "gpt-4o",
+			Stream: true,
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
+			},
+		}
+		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
+		_, _, err := translator.RequestBody(original, req, false)
+		require.NoError(t, err)
+
+		firstChunk := []byte(`data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
+
+data: {"type":"response.completed","response":{"id":"resp_123","object":"response","created_at":1741476542,"status":"completed","model":"gpt-4o-2024-11-20","output":[],"usage":{"input_tokens":10,`)
+		secondChunk := []byte(`"input_tokens_details":{"cached_tokens":2},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":15}}}
+
+data: [DONE]
+
+`)
+
+		_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(firstChunk), false, nil)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o-2024-11-20", responseModel)
+		_, ok := tokenUsage.InputTokens()
+		require.False(t, ok)
+
+		_, _, tokenUsage, responseModel, err = translator.ResponseBody(nil, bytes.NewReader(secondChunk), true, nil)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o-2024-11-20", responseModel)
+
+		inputTokens, ok := tokenUsage.InputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(10), inputTokens)
+
+		outputTokens, ok := tokenUsage.OutputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(5), outputTokens)
+
+		totalTokens, ok := tokenUsage.TotalTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(15), totalTokens)
+
+		cachedTokens, ok := tokenUsage.CachedInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(2), cachedTokens)
+
+		cacheCreationTokens, ok := tokenUsage.CacheCreationInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), cacheCreationTokens)
+
+		reasoningTokens, ok := tokenUsage.ReasoningTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(0), reasoningTokens)
+	})
+
+	t.Run("complete event followed by next response body call", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+
+		req := &openai.ResponseRequest{
+			Model:  "gpt-4o",
+			Stream: true,
+			Input: openai.ResponseNewParamsInputUnion{
+				OfString: ptr.To("Hi"),
+			},
+		}
+		original := []byte(`{"model":"gpt-4o","input":"Hi","stream":true}`)
+		_, _, err := translator.RequestBody(original, req, false)
+		require.NoError(t, err)
+
+		firstChunk := []byte(`data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
+
+`)
+		secondChunk := []byte(`data: {"type":"response.completed","response":{"id":"resp_123","object":"response","created_at":1741476542,"status":"completed","model":"gpt-4o-2024-11-20","output":[],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":2},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":15}}}
+
+data: [DONE]
+
+`)
+
+		_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(firstChunk), false, nil)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o-2024-11-20", responseModel)
+		require.Empty(t, translator.buffered)
+		_, ok := tokenUsage.InputTokens()
+		require.False(t, ok)
+
+		_, _, tokenUsage, responseModel, err = translator.ResponseBody(nil, bytes.NewReader(secondChunk), true, nil)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o-2024-11-20", responseModel)
+		require.Empty(t, translator.buffered)
+
+		inputTokens, ok := tokenUsage.InputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(10), inputTokens)
+
+		outputTokens, ok := tokenUsage.OutputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(5), outputTokens)
+
+		totalTokens, ok := tokenUsage.TotalTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(15), totalTokens)
+	})
 }
 
 func TestResponses_HandleNonStreamingResponse(t *testing.T) {
@@ -711,7 +817,8 @@ data: [DONE]
 
 `)
 
-		tokenUsage := translator.extractUsageFromBufferEvent(nil, chunks)
+		translator.buffered = chunks
+		tokenUsage := translator.extractUsageFromBufferEvent(nil)
 
 		inputTokens, ok := tokenUsage.InputTokens()
 		require.True(t, ok)
@@ -761,7 +868,8 @@ data: [DONE]
 
 `)
 
-		translator.extractUsageFromBufferEvent(nil, chunks)
+		translator.buffered = chunks
+		translator.extractUsageFromBufferEvent(nil)
 		require.Equal(t, "gpt-4o-2024-11-20", translator.streamingResponseModel)
 	})
 
@@ -774,7 +882,8 @@ data: {"type":"response.completed","response":{"usage":{"input_tokens":5,"output
 
 `)
 
-		tokenUsage := translator.extractUsageFromBufferEvent(nil, chunks)
+		translator.buffered = chunks
+		tokenUsage := translator.extractUsageFromBufferEvent(nil)
 
 		inputTokens, ok := tokenUsage.InputTokens()
 		require.True(t, ok)
@@ -794,7 +903,8 @@ data: [DONE]
 
 `)
 
-		tokenUsage := translator.extractUsageFromBufferEvent(nil, chunks)
+		translator.buffered = chunks
+		tokenUsage := translator.extractUsageFromBufferEvent(nil)
 
 		_, inputSet := tokenUsage.InputTokens()
 		_, outputSet := tokenUsage.OutputTokens()
@@ -805,6 +915,110 @@ data: [DONE]
 		require.False(t, totalSet)
 		require.False(t, cachedSet)
 		require.False(t, cacheCreationSet)
+		require.False(t, inputSet)
+		require.False(t, outputSet)
+	})
+
+	t.Run("response.incomplete carries usage", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+
+		chunks := []byte(`data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
+
+data: {"type":"response.incomplete","response":{"id":"resp_1","object":"response","status":"incomplete","model":"gpt-4o-2024-11-20","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":12,"input_tokens_details":{"cached_tokens":3},"output_tokens":7,"output_tokens_details":{"reasoning_tokens":4},"total_tokens":19}}}
+
+data: [DONE]
+
+`)
+
+		translator.buffered = chunks
+		tokenUsage := translator.extractUsageFromBufferEvent(nil)
+
+		inputTokens, ok := tokenUsage.InputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(12), inputTokens)
+
+		outputTokens, ok := tokenUsage.OutputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(7), outputTokens)
+
+		totalTokens, ok := tokenUsage.TotalTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(19), totalTokens)
+
+		cachedTokens, ok := tokenUsage.CachedInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(3), cachedTokens)
+
+		reasoningTokens, ok := tokenUsage.ReasoningTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(4), reasoningTokens)
+	})
+
+	t.Run("response.failed carries usage when present", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+
+		chunks := []byte(`data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
+
+data: {"type":"response.failed","response":{"id":"resp_1","object":"response","status":"failed","model":"gpt-4o-2024-11-20","error":{"code":"server_error","message":"boom"},"usage":{"input_tokens":8,"input_tokens_details":{"cached_tokens":0},"output_tokens":2,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":10}}}
+
+data: [DONE]
+
+`)
+
+		translator.buffered = chunks
+		tokenUsage := translator.extractUsageFromBufferEvent(nil)
+
+		inputTokens, ok := tokenUsage.InputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(8), inputTokens)
+
+		outputTokens, ok := tokenUsage.OutputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(2), outputTokens)
+
+		totalTokens, ok := tokenUsage.TotalTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(10), totalTokens)
+	})
+
+	t.Run("response.failed with nil usage does not panic", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+
+		// Pre-generation failure: no usage object in the response.
+		chunks := []byte(`data: {"type":"response.created","response":{"model":"gpt-4o-2024-11-20"}}
+
+data: {"type":"response.failed","response":{"id":"resp_1","object":"response","status":"failed","model":"gpt-4o-2024-11-20","error":{"code":"invalid_request_error","message":"bad input"}}}
+
+data: [DONE]
+
+`)
+
+		translator.buffered = chunks
+		tokenUsage := translator.extractUsageFromBufferEvent(nil)
+
+		_, inputSet := tokenUsage.InputTokens()
+		_, outputSet := tokenUsage.OutputTokens()
+		_, totalSet := tokenUsage.TotalTokens()
+		require.False(t, inputSet)
+		require.False(t, outputSet)
+		require.False(t, totalSet)
+	})
+
+	t.Run("response.completed with nil usage does not panic", func(t *testing.T) {
+		translator := NewResponsesOpenAIToOpenAITranslator("v1", "").(*openAIToOpenAITranslatorV1Responses)
+
+		// Non-compliant backend: response.completed without usage.
+		chunks := []byte(`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","status":"completed","model":"gpt-4o-2024-11-20"}}
+
+data: [DONE]
+
+`)
+
+		translator.buffered = chunks
+		tokenUsage := translator.extractUsageFromBufferEvent(nil)
+
+		_, inputSet := tokenUsage.InputTokens()
+		_, outputSet := tokenUsage.OutputTokens()
 		require.False(t, inputSet)
 		require.False(t, outputSet)
 	})

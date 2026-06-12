@@ -76,7 +76,7 @@ Create the name of the cluster role to use
 {{- if $existing }}
 {{- (include "ai-gateway-helm.controller.serviceAccountName" .) }}
 {{- else }}
-{{- printf "%s:%s" (include "ai-gateway-helm.controller.serviceAccountName" .) .Release.Namespace }}
+{{- printf "%s:%s" (include "ai-gateway-helm.controller.serviceAccountName" .) (default "default" .Release.Namespace) }}
 {{- end }}
 {{- end }}
 
@@ -85,7 +85,7 @@ Create the name of the cluster role to use
 {{- if $existing }}
 {{- "envoy-ai-gateway-inference-pool-reader" }}
 {{- else }}
-{{- printf "%s:%s" "envoy-ai-gateway-inference-pool-reader" .Release.Namespace}}
+{{- printf "%s:%s" "envoy-ai-gateway-inference-pool-reader" (default "default" .Release.Namespace)}}
 {{- end}}
 {{- end -}}
 
@@ -94,7 +94,7 @@ Create the name of the cluster role to use
 {{- if $existing }}
 {{- "envoy-ai-gateway-inference-pool-reader-binding" }}
 {{- else }}
-{{- printf "%s:%s" "envoy-ai-gateway-inference-pool-reader-binding" .Release.Namespace}}
+{{- printf "%s:%s" "envoy-ai-gateway-inference-pool-reader-binding" (default "default" .Release.Namespace)}}
 {{- end}}
 {{- end -}}
 
