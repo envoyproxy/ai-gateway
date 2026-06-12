@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 
+	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -312,6 +313,17 @@ func TestMessagesCountTokensEndpointSpec_ParseBody(t *testing.T) {
 	})
 }
 
+func TestMessagesCountTokensEndpointSpec_ParseMultipartBody(t *testing.T) {
+	spec := MessagesCountTokensEndpointSpec{}
+
+	model, parsed, stream, mutated, err := spec.ParseMultipartBody(nil, "", false)
+	require.ErrorIs(t, err, errMultipartNotSupported)
+	require.Empty(t, model)
+	require.Nil(t, parsed)
+	require.False(t, stream)
+	require.Nil(t, mutated)
+}
+
 func TestMessagesCountTokensEndpointSpec_GetTranslator(t *testing.T) {
 	spec := MessagesCountTokensEndpointSpec{}
 
@@ -324,6 +336,15 @@ func TestMessagesCountTokensEndpointSpec_GetTranslator(t *testing.T) {
 
 	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
 	require.ErrorContains(t, err, "only supports Anthropic schema")
+}
+
+func TestMessagesCountTokensEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	spec := MessagesCountTokensEndpointSpec{}
+	req := &anthropicschema.MessagesRequest{Model: "claude-opus-4-1"}
+
+	redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Same(t, req, redacted)
 }
 
 func TestRerankEndpointSpec_ParseBody(t *testing.T) {

@@ -102,13 +102,24 @@ func TestCountTokensToAnthropic_ResponseBody(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, bodyMutation, tokenUsage, responseModel, err := translator.ResponseBody(nil, strings.NewReader(`{"input_tokens": 42}`), false, nil)
+	span := &recordingCountTokensSpan{}
+	_, bodyMutation, tokenUsage, responseModel, err := translator.ResponseBody(nil, strings.NewReader(`{"input_tokens": 42}`), false, span)
 	require.NoError(t, err)
 	require.Nil(t, bodyMutation)
 	inputTokens, ok := tokenUsage.InputTokens()
 	require.True(t, ok)
 	require.Equal(t, uint32(42), inputTokens)
 	require.Equal(t, "claude-opus-4-1", responseModel)
+	require.Equal(t, int64(42), span.response.InputTokens)
+}
+
+func TestCountTokensToAnthropic_ResponseHeaders(t *testing.T) {
+	translator := NewCountTokensToAnthropicTranslator("v1", "")
+	require.NotNil(t, translator)
+
+	headers, err := translator.ResponseHeaders(map[string]string{"content-type": "application/json"})
+	require.NoError(t, err)
+	require.Nil(t, headers)
 }
 
 func TestCountTokensToAnthropic_ResponseBodyNilBody(t *testing.T) {
@@ -117,6 +128,17 @@ func TestCountTokensToAnthropic_ResponseBodyNilBody(t *testing.T) {
 
 	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, nil, false, nil)
 	require.ErrorContains(t, err, "response body is nil")
+	_, ok := tokenUsage.InputTokens()
+	require.False(t, ok)
+	require.Empty(t, responseModel)
+}
+
+func TestCountTokensToAnthropic_ResponseBodyInvalidJSON(t *testing.T) {
+	translator := NewCountTokensToAnthropicTranslator("v1", "")
+	require.NotNil(t, translator)
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, strings.NewReader("{bad"), false, nil)
+	require.ErrorContains(t, err, "failed to unmarshal body")
 	_, ok := tokenUsage.InputTokens()
 	require.False(t, ok)
 	require.Empty(t, responseModel)
@@ -133,6 +155,18 @@ func TestCountTokensToAnthropic_ResponseBodyNegativeInputTokens(t *testing.T) {
 	require.Empty(t, responseModel)
 }
 
+func TestCountTokensToAnthropic_ResponseBodyUnknownModelFallback(t *testing.T) {
+	translator := NewCountTokensToAnthropicTranslator("v1", "")
+	require.NotNil(t, translator)
+
+	_, _, tokenUsage, responseModel, err := translator.ResponseBody(nil, strings.NewReader(`{"input_tokens": 7}`), false, nil)
+	require.NoError(t, err)
+	inputTokens, ok := tokenUsage.InputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(7), inputTokens)
+	require.Equal(t, "unknown", responseModel)
+}
+
 func TestCountTokensToAnthropic_ResponseError(t *testing.T) {
 	translator := NewCountTokensToAnthropicTranslator("v1", "")
 	require.NotNil(t, translator)
@@ -142,3 +176,17 @@ func TestCountTokensToAnthropic_ResponseError(t *testing.T) {
 	require.Nil(t, hdrs)
 	require.Nil(t, body)
 }
+
+type recordingCountTokensSpan struct {
+	response *anthropicschema.CountTokensResponse
+}
+
+func (*recordingCountTokensSpan) RecordResponseChunk(*struct{}) {}
+
+func (s *recordingCountTokensSpan) RecordResponse(resp *anthropicschema.CountTokensResponse) {
+	s.response = resp
+}
+
+func (*recordingCountTokensSpan) EndSpanOnError(int, []byte) {}
+
+func (*recordingCountTokensSpan) EndSpan() {}

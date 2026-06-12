@@ -124,6 +124,13 @@ func TestNewTracingFromEnv_DisabledByEnv(t *testing.T) {
 	}
 }
 
+func TestTracingImpl_CountTokensTracer(t *testing.T) {
+	expected := tracingapi.NoopCountTokensTracer{}
+	tr := &tracingImpl{countTokensTracer: expected}
+
+	require.Equal(t, expected, tr.CountTokensTracer())
+}
+
 // TestNewTracingFromEnv_EndpointHierarchy tests the OTEL endpoint hierarchy.
 // according to the OTEL spec where signal-specific endpoints override generic ones.
 func TestNewTracingFromEnv_EndpointHierarchy(t *testing.T) {
