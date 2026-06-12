@@ -11,6 +11,7 @@ import (
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
@@ -56,4 +57,5 @@ type (
 	translationSpan     = span[openai.TranslationResponse, struct{}]
 	rerankSpan          = span[cohereschema.RerankV2Response, struct{}]
 	messageSpan         = span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	tokenizeSpan        = span[tokenize.Response, struct{}]
 )

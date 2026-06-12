@@ -29,6 +29,7 @@ const (
 	gcpModelPublisherAnthropic     = "anthropic"
 	gcpMethodGenerateContent       = "generateContent"
 	gcpMethodStreamGenerateContent = "streamGenerateContent"
+	gcpMethodCountTokens           = "countTokens"
 	gcpMethodRawPredict            = "rawPredict"
 )
 

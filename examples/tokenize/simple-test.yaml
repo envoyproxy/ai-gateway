@@ -1,0 +1,79 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Simple tokenize configuration for local testing
+# This minimal example demonstrates basic tokenize setup with a single backend
+
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-simple-tokenize
+  namespace: default
+spec:
+  gatewayClassName: envoy-ai-gateway
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-simple-tokenize-route
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-simple-tokenize
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - backendRefs:
+        - name: envoy-ai-gateway-test-backend
+---
+# Simple backend (can be OpenAI or any OpenAI-compatible service)
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-test-backend
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+    version: v1
+  backendRef:
+    name: test-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: test-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: api.openai.com # Replace with your test backend
+        port: 443
+---
+# Basic API key authentication
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: BackendSecurityPolicy
+metadata:
+  name: test-backend-auth
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-test-backend
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: test-api-secret
+      key: api-key
+---
+# Create the secret:
+# kubectl create secret generic test-api-secret --from-literal=api-key="your-api-key"

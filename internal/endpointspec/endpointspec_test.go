@@ -384,6 +384,31 @@ func TestResponsesEndpointSpec_GetTranslator(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestTokenizeEndpointSpec_GetTranslator(t *testing.T) {
+	spec := TokenizeEndpointSpec{}
+	supported := []filterapi.VersionedAPISchema{
+		{Name: filterapi.APISchemaOpenAI},
+		{Name: filterapi.APISchemaGCPVertexAI},
+		{Name: filterapi.APISchemaGCPAnthropic},
+		{Name: filterapi.APISchemaAWSBedrock},
+	}
+
+	for _, schema := range supported {
+		s := schema
+		t.Run("supported_"+string(s.Name), func(t *testing.T) {
+			t.Parallel()
+			translator, err := spec.GetTranslator(s, "override")
+			require.NoError(t, err)
+			require.NotNil(t, translator)
+		})
+	}
+
+	t.Run("unsupported", func(t *testing.T) {
+		_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: "Unknown"}, "override")
+		require.ErrorContains(t, err, "unsupported API schema for tokenize endpoint")
+	})
+}
+
 func TestChatCompletionsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
 	spec := ChatCompletionsEndpointSpec{}
 
