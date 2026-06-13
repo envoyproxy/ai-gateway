@@ -385,6 +385,16 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 		spec := aiGatewayRoute.Spec
 		routeBackendNamesSet := map[string]struct{}{}
 		routeBackendNames := []string{}
+		// addBackend appends a built backend to the shared filter config and records its
+		// name once per route for downstream LLM-request-cost wiring. Shared by the
+		// primary backendRef and mirror loops.
+		addBackend := func(b filterapi.Backend) {
+			ec.Backends = append(ec.Backends, b)
+			if _, exists := routeBackendNamesSet[b.Name]; !exists {
+				routeBackendNamesSet[b.Name] = struct{}{}
+				routeBackendNames = append(routeBackendNames, b.Name)
+			}
+		}
 		injectedQuotaCosts := make(map[string]struct{})
 		for ruleIndex := range spec.Rules {
 			rule := &spec.Rules[ruleIndex]
@@ -424,7 +434,6 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				b.Name = internalapi.PerRouteRuleRefBackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, ruleIndex, backendRefIndex)
 				b.ModelNameOverride = backendRef.ModelNameOverride
 
-				var bsp *aigv1b1.BackendSecurityPolicy
 				backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
 
 				if backendRef.IsInferencePool() {
@@ -435,6 +444,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 						Version: "v1", Prefix: "v1",
 					}
 
+					var bsp *aigv1b1.BackendSecurityPolicy
 					bsp, err = c.getBSPForInferencePool(ctx, backendNamespace, backendRef.Name)
 					if err != nil {
 						c.logger.Error(err, "failed to get backend security policy for inference pool",
@@ -442,50 +452,50 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 							"namespace", backendNamespace)
 						continue
 					}
-				} else {
-					var backendObj *aigv1b1.AIServiceBackend
-					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, backendNamespace, backendRef.Name)
-					if err != nil {
-						c.logger.Error(err, "failed to get backend or backend security policy. Skipping this backend.",
-							"backend_name", backendRef.Name, "aigatewayroute", aiGatewayRoute.Name,
-							"namespace", backendNamespace)
-						continue
+					if bsp != nil {
+						b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)
+						if err != nil {
+							c.logger.Error(err, "failed to get backend auth from backend security policy. Skipping this backend.",
+								"backend_name", backendRef.Name, "backend_security_policy", bsp.Name,
+								"aigatewayroute", aiGatewayRoute.Name, "namespace", aiGatewayRoute.Namespace)
+							continue
+						}
 					}
-
-					// Extract HeaderMutation from both route and backend levels
-					routeHeaderMutation := backendRef.HeaderMutation
-					backendHeaderMutation := backendObj.Spec.HeaderMutation
-
-					// Merge with route-level taking precedence over backend-level
-					mergedHeaderMutation := mergeHeaderMutations(routeHeaderMutation, backendHeaderMutation)
-
-					// Convert to FilterAPI format
-					b.HeaderMutation = headerMutationToFilterAPI(mergedHeaderMutation)
-
-					routeBodyMutation := backendRef.BodyMutation
-					backendBodyMutation := backendObj.Spec.BodyMutation
-					// Merge with route-level taking precedence over backend-level
-					mergedBodyMutation := mergeBodyMutations(routeBodyMutation, backendBodyMutation)
-					b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
-
-					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
+				} else if err = c.populateAIServiceBackendFields(ctx, &b, backendNamespace, backendRef); err != nil {
+					c.logger.Error(err, "failed to build backend. Skipping this backend.",
+						"backend_name", backendRef.Name, "aigatewayroute", aiGatewayRoute.Name,
+						"namespace", backendNamespace)
+					continue
 				}
 
-				if bsp != nil {
-					b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)
-					if err != nil {
-						c.logger.Error(err, "failed to get backend auth from backend security policy. Skipping this backend.",
-							"backend_name", backendRef.Name, "backend_security_policy", bsp.Name,
-							"aigatewayroute", aiGatewayRoute.Name, "namespace", aiGatewayRoute.Namespace)
-						continue
-					}
+				addBackend(b)
+			}
+			// Emit a filterapi.Backend entry for each mirror destination so that
+			// extproc, running on the upstream HTTP filter chain of the mirror
+			// cluster, can resolve the shadow backend's ModelNameOverride and
+			// header/body mutations by cluster-metadata backend name lookup.
+			for mirrorIndex := range rule.Mirrors {
+				mirror := &rule.Mirrors[mirrorIndex]
+				mirrorBR := &mirror.BackendRef
+				if mirrorBR.IsInferencePool() {
+					// Validated at the HTTPRoute translation step; defensive guard here.
+					c.logger.Info("skipping InferencePool mirror backend; not supported",
+						"backend_name", mirrorBR.Name, "aigatewayroute", aiGatewayRoute.Name)
+					continue
+				}
+				b := filterapi.Backend{IsMirror: true}
+				b.Name = internalapi.PerRouteRuleMirrorBackendName(aiGatewayRoute.Namespace, mirrorBR.Name, aiGatewayRoute.Name, ruleIndex, mirrorIndex)
+				b.ModelNameOverride = mirrorBR.ModelNameOverride
+
+				backendNamespace := mirrorBR.GetNamespace(aiGatewayRoute.Namespace)
+				if err = c.populateAIServiceBackendFields(ctx, &b, backendNamespace, mirrorBR); err != nil {
+					c.logger.Error(err, "failed to build mirror backend. Skipping this mirror.",
+						"backend_name", mirrorBR.Name, "aigatewayroute", aiGatewayRoute.Name,
+						"namespace", backendNamespace)
+					continue
 				}
 
-				ec.Backends = append(ec.Backends, b)
-				if _, exists := routeBackendNamesSet[b.Name]; !exists {
-					routeBackendNamesSet[b.Name] = struct{}{}
-					routeBackendNames = append(routeBackendNames, b.Name)
-				}
+				addBackend(b)
 			}
 		}
 		if len(routeBackendNames) > 0 {
@@ -869,6 +879,35 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 // is active per request, and ext_proc filters cost entries by Model before
 // writing to this key.
 const QuotaCostMetadataKey = "quota_cost"
+
+// populateAIServiceBackendFields resolves the AIServiceBackend referenced by ref (and its
+// optional BackendSecurityPolicy) and fills b's HeaderMutation, BodyMutation, Schema, and Auth.
+// Request mutations are merged with the route-level ref taking precedence over the
+// backend-level definition. It is shared by the primary backendRef and mirror loops in
+// reconcileFilterConfigSecret; InferencePool references are handled separately by the caller.
+func (c *GatewayController) populateAIServiceBackendFields(
+	ctx context.Context,
+	b *filterapi.Backend,
+	namespace string,
+	ref *aigv1b1.AIGatewayRouteRuleBackendRef,
+) error {
+	backendObj, bsp, err := c.backendWithMaybeBSP(ctx, namespace, ref.Name)
+	if err != nil {
+		return fmt.Errorf("failed to get backend or backend security policy: %w", err)
+	}
+
+	// Merge with route-level taking precedence over backend-level.
+	b.HeaderMutation = headerMutationToFilterAPI(mergeHeaderMutations(ref.HeaderMutation, backendObj.Spec.HeaderMutation))
+	b.BodyMutation = bodyMutationToFilterAPI(mergeBodyMutations(ref.BodyMutation, backendObj.Spec.BodyMutation))
+	b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
+
+	if bsp != nil {
+		if b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp); err != nil {
+			return fmt.Errorf("failed to get backend auth from backend security policy %s: %w", bsp.Name, err)
+		}
+	}
+	return nil
+}
 
 // backendWithMaybeBSP retrieves the AIServiceBackend and its associated BackendSecurityPolicy if it exists.
 func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, name string) (backend *aigv1b1.AIServiceBackend, bsp *aigv1b1.BackendSecurityPolicy, err error) {

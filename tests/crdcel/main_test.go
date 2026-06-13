@@ -57,6 +57,11 @@ func TestAIGatewayRoutes(t *testing.T) {
 			name:   "too_many_rules.yaml",
 			expErr: "spec.rules: Too many: 16: must have at most 15 items",
 		},
+		{name: "mirror_basic.yaml"},
+		{
+			name:   "mirror_unsupported_group.yaml",
+			expErr: "spec.rules[0].mirrors[0].backendRef: Invalid value: \"object\": only InferencePool from inference.networking.k8s.io group is supported",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := testdata.ReadFile(path.Join("testdata/aigatewayroutes", tc.name))

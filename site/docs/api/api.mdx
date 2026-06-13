@@ -560,6 +560,7 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [AIGatewayRouteRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterule)
 - [AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulebackendref)
 - [AIGatewayRouteRuleMatch](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulematch)
+- [AIGatewayRouteRuleMirror](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulemirror)
 - [AIGatewayRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroutespec)
 - [AIGatewayRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayroutestatus)
 - [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aiservicebackendspec)
@@ -658,6 +659,11 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   type="[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#time-v1-meta)"
   required="false"
   description="ModelsCreatedAt represents the creation timestamp of the running models serving by the backends,<br />which will be exported as the field of `Created` in openai-compatible API `/models`.<br />It follows the format of RFC 3339, for example `2024-05-21T10:00:00Z`.<br />This is used only when this rule contains `x-ai-eg-model` in its header matching<br />where the header value will be recognized as a `model` in `/models` endpoint.<br />All the matched models will share the same creation time.<br />Default to the creation timestamp of the AIGatewayRoute if not set."
+/><ApiField
+  name="mirrors"
+  type="[AIGatewayRouteRuleMirror](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulemirror) array"
+  required="false"
+  description="Mirrors specifies backends that receive a mirrored copy of every matched request.<br />Responses from mirror backends are always discarded; only the primary backendRefs<br />respond to the client. Mirror traffic is cloned via the Gateway API HTTPRequestMirror<br />filter, but each mirror's BackendRef supports the same AI-specific transformations<br />(ModelNameOverride, HeaderMutation, BodyMutation) as primary backendRefs, so the<br />shadow backend can be addressed with a different model name or modified request body.<br />Each entry corresponds to one shadow backend; use Percent or Fraction to sample."
 />
 
 
@@ -667,6 +673,7 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
 
 **Appears in:**
 - [AIGatewayRouteRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterule)
+- [AIGatewayRouteRuleMirror](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulemirror)
 
 AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
 It can reference either an AIServiceBackend or an InferencePool resource.
@@ -743,6 +750,41 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   type="[HTTPHeaderMatch](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httpheadermatch) array"
   required="false"
   description="Headers specifies HTTP request header matchers. See HeaderMatch in the Gateway API for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPHeaderMatch"
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulemirror">AIGatewayRouteRuleMirror</a>
+
+
+
+**Appears in:**
+- [AIGatewayRouteRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterule)
+
+AIGatewayRouteRuleMirror specifies a shadow backend that receives a copy of every
+matched request. Mirror requests run through the same AI Gateway processing pipeline
+as primary requests, so per-backend AI transformations (ModelNameOverride,
+HeaderMutation, BodyMutation) defined on the embedded BackendRef are honored.
+Responses from mirror backends are always discarded.
+
+##### Fields
+
+
+
+<ApiField
+  name="backendRef"
+  type="[AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulebackendref)"
+  required="true"
+  description="BackendRef is the shadow destination. Reuses AIGatewayRouteRuleBackendRef so it<br />carries the same AI-specific fields (ModelNameOverride, HeaderMutation,<br />BodyMutation) as primary backendRefs. Weight and Priority are ignored for<br />mirror backends — each mirror entry is a single fire-and-forget destination."
+/><ApiField
+  name="percent"
+  type="integer"
+  required="false"
+  description="Percent is the percentage of requests to mirror (0-100). Maps to the<br />Gateway API HTTPRequestMirrorFilter Percent field. If both Percent and<br />Fraction are unset, every matched request is mirrored."
+/><ApiField
+  name="fraction"
+  type="[Fraction](#sigs-k8s-io-gateway-api-apis-v1-fraction)"
+  required="false"
+  description="Fraction is the fractional percentage of requests to mirror. Maps to the<br />Gateway API HTTPRequestMirrorFilter Fraction field. Takes precedence over<br />Percent if both are set."
 />
 
 
@@ -2983,6 +3025,7 @@ MCPRouteList contains a list of MCPRoute.
 - [AIGatewayRouteRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterule)
 - [AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulebackendref)
 - [AIGatewayRouteRuleMatch](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulematch)
+- [AIGatewayRouteRuleMirror](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulemirror)
 - [AIGatewayRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroutespec)
 - [AIGatewayRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayroutestatus)
 - [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendspec)
@@ -3073,6 +3116,11 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   type="[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#time-v1-meta)"
   required="false"
   description="ModelsCreatedAt represents the creation timestamp of the running models serving by the backends,<br />which will be exported as the field of `Created` in openai-compatible API `/models`.<br />It follows the format of RFC 3339, for example `2024-05-21T10:00:00Z`.<br />This is used only when this rule contains `x-ai-eg-model` in its header matching<br />where the header value will be recognized as a `model` in `/models` endpoint.<br />All the matched models will share the same creation time.<br />Default to the creation timestamp of the AIGatewayRoute if not set."
+/><ApiField
+  name="mirrors"
+  type="[AIGatewayRouteRuleMirror](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulemirror) array"
+  required="false"
+  description="Mirrors specifies backends that receive a mirrored copy of every matched request.<br />Responses from mirror backends are always discarded; only the primary backendRefs<br />respond to the client. Mirror traffic is cloned via the Gateway API HTTPRequestMirror<br />filter, but each mirror's BackendRef supports the same AI-specific transformations<br />(ModelNameOverride, HeaderMutation, BodyMutation) as primary backendRefs, so the<br />shadow backend can be addressed with a different model name or modified request body.<br />Each entry corresponds to one shadow backend; use Percent or Fraction to sample."
 />
 
 
@@ -3082,6 +3130,7 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
 
 **Appears in:**
 - [AIGatewayRouteRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterule)
+- [AIGatewayRouteRuleMirror](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulemirror)
 
 AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
 It can reference either an AIServiceBackend or an InferencePool resource.
@@ -3158,6 +3207,41 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   type="[HTTPHeaderMatch](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httpheadermatch) array"
   required="false"
   description="Headers specifies HTTP request header matchers. See HeaderMatch in the Gateway API for the details:<br />https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPHeaderMatch"
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulemirror">AIGatewayRouteRuleMirror</a>
+
+
+
+**Appears in:**
+- [AIGatewayRouteRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterule)
+
+AIGatewayRouteRuleMirror specifies a shadow backend that receives a copy of every
+matched request. Mirror requests run through the same AI Gateway processing pipeline
+as primary requests, so per-backend AI transformations (ModelNameOverride,
+HeaderMutation, BodyMutation) defined on the embedded BackendRef are honored.
+Responses from mirror backends are always discarded.
+
+##### Fields
+
+
+
+<ApiField
+  name="backendRef"
+  type="[AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulebackendref)"
+  required="true"
+  description="BackendRef is the shadow destination. Reuses AIGatewayRouteRuleBackendRef so it<br />carries the same AI-specific fields (ModelNameOverride, HeaderMutation,<br />BodyMutation) as primary backendRefs. Weight and Priority are ignored for<br />mirror backends — each mirror entry is a single fire-and-forget destination."
+/><ApiField
+  name="percent"
+  type="integer"
+  required="false"
+  description="Percent is the percentage of requests to mirror (0-100). Maps to the<br />Gateway API HTTPRequestMirrorFilter Percent field. If both Percent and<br />Fraction are unset, every matched request is mirrored."
+/><ApiField
+  name="fraction"
+  type="[Fraction](#sigs-k8s-io-gateway-api-apis-v1-fraction)"
+  required="false"
+  description="Fraction is the fractional percentage of requests to mirror. Maps to the<br />Gateway API HTTPRequestMirrorFilter Fraction field. Takes precedence over<br />Percent if both are set."
 />
 
 

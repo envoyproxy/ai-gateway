@@ -319,6 +319,119 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	}
 }
 
+// TestGatewayController_reconcileFilterConfigSecret_Mirrors verifies that each rule's
+// mirror destination is emitted as its own filterapi.Backend with IsMirror=true, keyed
+// by the mirror backend name, carrying the per-mirror ModelNameOverride, schema, and
+// merged (route+backend) header mutation so extproc can resolve it on the mirror cluster.
+func TestGatewayController_reconcileFilterConfigSecret_Mirrors(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	const gwNamespace = "ns"
+	routes := []aigv1b1.AIGatewayRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: gwNamespace},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "primary"}},
+						Mirrors: []aigv1b1.AIGatewayRouteRuleMirror{
+							{
+								BackendRef: aigv1b1.AIGatewayRouteRuleBackendRef{
+									Name:              "shadow",
+									ModelNameOverride: "shadow-overridden",
+									HeaderMutation: &aigv1b1.HTTPHeaderMutation{
+										Set: []gwapiv1.HTTPHeader{{Name: "X-Shadow", Value: "route-level"}},
+									},
+								},
+							},
+							// Mirror to a non-existent backend: skipped without failing reconcile.
+							{BackendRef: aigv1b1.AIGatewayRouteRuleBackendRef{Name: "non-existent-shadow"}},
+							// Mirror to a backend with an invalid BSP: auth resolution fails, skipped.
+							{BackendRef: aigv1b1.AIGatewayRouteRuleBackendRef{Name: "invalid-bsp-shadow"}},
+						},
+					},
+				},
+			},
+		},
+	}
+	for _, backend := range []*aigv1b1.AIServiceBackend{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "primary", Namespace: gwNamespace},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "shadow", Namespace: gwNamespace},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				APISchema:  aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaOpenAI},
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend2", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+				// Backend-level header mutation merges with the route-level one above.
+				HeaderMutation: &aigv1b1.HTTPHeaderMutation{Remove: []string{"X-Drop"}},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "invalid-bsp-shadow", Namespace: gwNamespace},
+			Spec: aigv1b1.AIServiceBackendSpec{
+				BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend3", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+			},
+		},
+	} {
+		require.NoError(t, fakeClient.Create(t.Context(), backend))
+	}
+
+	// An invalid BackendSecurityPolicy (missing secret) targeting invalid-bsp-shadow,
+	// so the mirror's auth resolution fails and the mirror is skipped.
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "invalid-bsp-shadow-policy", Namespace: gwNamespace},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type:   aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			APIKey: &aigv1b1.BackendSecurityPolicyAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "non-existent-secret"}},
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+				{Kind: "AIServiceBackend", Group: "aigateway.envoyproxy.io", Name: "invalid-bsp-shadow"},
+			},
+		},
+	}))
+
+	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, "some-namespace", routes, nil, "foouuid", nil)
+	require.NoError(t, err)
+	require.True(t, effective)
+
+	secret, err := kube.CoreV1().Secrets("some-namespace").Get(t.Context(), configName, metav1.GetOptions{})
+	require.NoError(t, err)
+	var fc filterapi.Config
+	require.NoError(t, yaml.Unmarshal([]byte(secret.StringData[FilterConfigKeyInSecret]), &fc))
+
+	wantMirrorName := internalapi.PerRouteRuleMirrorBackendName(gwNamespace, "shadow", "route1", 0, 0)
+	var mirror *filterapi.Backend
+	for i := range fc.Backends {
+		if fc.Backends[i].IsMirror {
+			mirror = &fc.Backends[i]
+		}
+	}
+	require.NotNil(t, mirror, "expected a mirror backend in the filter config")
+	require.Equal(t, wantMirrorName, mirror.Name)
+	require.Equal(t, "shadow-overridden", mirror.ModelNameOverride)
+	require.Equal(t, filterapi.APISchemaOpenAI, mirror.Schema.Name)
+	// Route-level and backend-level header mutations are both present (merged).
+	require.NotNil(t, mirror.HeaderMutation)
+	require.Equal(t, "x-shadow", mirror.HeaderMutation.Set[0].Name)
+	require.Equal(t, "route-level", mirror.HeaderMutation.Set[0].Value)
+	require.Equal(t, "x-drop", mirror.HeaderMutation.Remove[0])
+
+	// The primary backend must NOT be flagged as a mirror.
+	for i := range fc.Backends {
+		if fc.Backends[i].Name == internalapi.PerRouteRuleRefBackendName(gwNamespace, "primary", "route1", 0, 0) {
+			require.False(t, fc.Backends[i].IsMirror, "primary backend must not be a mirror")
+		}
+	}
+}
+
 // TestGatewayController_reconcileFilterConfigSecret_HostnameScopedModels verifies that mixing routes
 // with and without Spec.Hostnames produces a filter config where:
 //   - each per-host list contains the host's own models AND every unscoped model (so the unscoped

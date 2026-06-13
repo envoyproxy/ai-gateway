@@ -196,6 +196,11 @@ type Backend struct {
 	HeaderMutation *HTTPHeaderMutation `json:"httpHeaderMutation,omitempty"`
 	// Body mutations to be applied to the request before sending to the backend. Optional.
 	BodyMutation *HTTPBodyMutation `json:"httpBodyMutation,omitempty"`
+	// IsMirror is true when this backend entry corresponds to a shadow (mirror) destination.
+	// When set, the upstream processor skips LLMRequestCost dynamic-metadata emission for
+	// the mirror leg so that cost metrics are not double-counted by the access-log /
+	// billing pipeline (the primary leg has already emitted them).
+	IsMirror bool `json:"isMirror,omitempty"`
 }
 
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.
