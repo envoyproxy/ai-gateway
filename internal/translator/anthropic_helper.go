@@ -140,6 +140,10 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 				Description: anthropic.String(openAITool.Function.Description),
 			}
 
+			if openAITool.Function.Strict {
+				toolParam.Strict = anthropic.Bool(true)
+			}
+
 			if isCacheEnabled(openAITool.Function.AnthropicContentFields) {
 				toolParam.CacheControl = anthropic.NewCacheControlEphemeralParam()
 			}
