@@ -477,6 +477,79 @@ func Test_chatCompletionProcessorUpstreamFilter_SetBackend(t *testing.T) {
 	require.Nil(t, r.upstreamFilter, "upstreamFilter must remain nil when SetBackend fails")
 }
 
+// Test_chatCompletionProcessorUpstreamFilter_SetBackend_RecordsRetriedAttempt verifies that when a
+// new upstream attempt begins (retry / fallback), the previous attempt's failure is recorded against
+// the previous attempt's own metrics instance with the previous attempt's ordinal.
+func Test_chatCompletionProcessorUpstreamFilter_SetBackend_RecordsRetriedAttempt(t *testing.T) {
+	headers := map[string]string{":path": "/v1/chat/completions"}
+	r := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{},
+		logger: slog.Default(),
+	}
+	openAIBackend := func(name string) *filterapi.RuntimeBackend {
+		return &filterapi.RuntimeBackend{
+			Backend: &filterapi.Backend{
+				Name:   name,
+				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			},
+		}
+	}
+
+	// First attempt: no previous filter, so nothing is recorded as a retried attempt.
+	mm1 := &mockMetrics{}
+	p1 := &chatCompletionProcessorUpstreamFilter{requestHeaders: headers, metrics: mm1}
+	require.NoError(t, p1.SetBackend(t.Context(), openAIBackend("backend-a"), "test-route", r))
+	require.Equal(t, p1, r.upstreamFilter)
+	require.Equal(t, 1, r.upstreamFilterCount)
+	require.Zero(t, mm1.retriedAttemptCount)
+	require.False(t, p1.completionRecorded)
+
+	// Second attempt (retry): the first attempt must be recorded as a retried-away failure with the
+	// previous attempt's ordinal (1), against the first attempt's own metrics instance.
+	mm2 := &mockMetrics{}
+	p2 := &chatCompletionProcessorUpstreamFilter{requestHeaders: headers, metrics: mm2}
+	require.NoError(t, p2.SetBackend(t.Context(), openAIBackend("backend-b"), "test-route", r))
+	require.Equal(t, p2, r.upstreamFilter)
+	require.Equal(t, 2, r.upstreamFilterCount)
+	require.Equal(t, 1, mm1.retriedAttemptCount)
+	require.Equal(t, 1, mm1.lastRetriedAttemptNumber)
+	require.True(t, p1.completionRecorded)
+	require.Zero(t, mm2.retriedAttemptCount)
+}
+
+// Test_chatCompletionProcessorUpstreamFilter_SetBackend_RetryGuard verifies that if the previous
+// attempt already recorded a completion (e.g. a local error in its request phase), starting a new
+// attempt does not double-count it as a retried failure.
+func Test_chatCompletionProcessorUpstreamFilter_SetBackend_RetryGuard(t *testing.T) {
+	headers := map[string]string{":path": "/v1/chat/completions"}
+	r := &chatCompletionProcessorRouterFilter{
+		config: &filterapi.RuntimeConfig{},
+		logger: slog.Default(),
+	}
+	openAIBackend := func(name string) *filterapi.RuntimeBackend {
+		return &filterapi.RuntimeBackend{
+			Backend: &filterapi.Backend{
+				Name:   name,
+				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			},
+		}
+	}
+
+	mm1 := &mockMetrics{}
+	p1 := &chatCompletionProcessorUpstreamFilter{requestHeaders: headers, metrics: mm1}
+	require.NoError(t, p1.SetBackend(t.Context(), openAIBackend("backend-a"), "test-route", r))
+	// Simulate the first attempt already having recorded a terminal completion.
+	p1.recordRequestCompletion(t.Context(), false)
+	require.True(t, p1.completionRecorded)
+	require.Equal(t, 1, mm1.requestErrorCount)
+
+	mm2 := &mockMetrics{}
+	p2 := &chatCompletionProcessorUpstreamFilter{requestHeaders: headers, metrics: mm2}
+	require.NoError(t, p2.SetBackend(t.Context(), openAIBackend("backend-b"), "test-route", r))
+	// The retried-attempt metric must NOT be recorded because the attempt was already completed.
+	require.Zero(t, mm1.retriedAttemptCount)
+}
+
 // Test_chatCompletionProcessorUpstreamFilter_SetBackend_unsupportedSchema_noResponsePanic
 // verifies that when SetBackend fails due to an unsupported schema, subsequent
 // response processing does not panic. Before the fix for #1941, upstreamFilter

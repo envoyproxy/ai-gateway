@@ -190,6 +190,43 @@ func testRecordRequestCompletion(t *testing.T) {
 	assert.Equal(t, 2*10*time.Millisecond.Seconds(), sum)
 }
 
+func TestRecordRetriedAttempt(t *testing.T) {
+	synctest.Test(t, testRecordRetriedAttempt)
+}
+
+func testRecordRetriedAttempt(t *testing.T) {
+	t.Helper()
+
+	var (
+		mr    = metric.NewManualReader()
+		meter = metric.NewMeterProvider(metric.WithReader(mr)).Meter("test")
+		pm    = NewMetricsFactory(meter, nil, GenAIOperationCompletion).NewMetrics().(*metricsImpl)
+		attrs = []attribute.KeyValue{
+			attribute.Key(genaiAttributeOperationName).String(string(GenAIOperationCompletion)),
+			attribute.Key(genaiAttributeProviderName).String("custom"),
+			attribute.Key(genaiAttributeOriginalModel).String("test-model"),
+			attribute.Key(genaiAttributeRequestModel).String("test-model"),
+			attribute.Key(genaiAttributeResponseModel).String("test-model"),
+		}
+		attrsRetry = attribute.NewSet(append(attrs,
+			attribute.Key(genaiAttributeErrorType).String(genaiErrorTypeRetry),
+			attribute.Key(genaiAttributeAttemptNumber).Int(1),
+		)...)
+	)
+
+	pm.StartRequest(nil)
+	pm.SetOriginalModel("test-model")
+	pm.SetRequestModel("test-model")
+	pm.SetResponseModel("test-model")
+	pm.SetBackend(&filterapi.Backend{Name: "custom"})
+
+	time.Sleep(10 * time.Millisecond)
+	pm.RecordRetriedAttempt(t.Context(), 1, nil)
+	count, sum := testotel.GetHistogramValues(t, mr, genaiMetricServerRequestDuration, attrsRetry)
+	assert.Equal(t, uint64(1), count)
+	assert.Equal(t, 10*time.Millisecond.Seconds(), sum)
+}
+
 func TestGetTimeToFirstTokenMsAndGetInterTokenLatencyMs(t *testing.T) {
 	t.Parallel()
 	c := metricsImpl{timeToFirstToken: 1 * time.Second, interTokenLatencySec: 2}

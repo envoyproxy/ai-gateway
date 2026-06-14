@@ -111,6 +111,14 @@ type Metrics interface {
 	SetBackend(backend *filterapi.Backend)
 	// RecordRequestCompletion records the completion of the request, including success status.
 	RecordRequestCompletion(ctx context.Context, success bool, requestHeaders map[string]string)
+	// RecordRetriedAttempt records an upstream attempt that failed and was retried or fell back to
+	// another backend. Unlike RecordRequestCompletion, this is emitted for non-terminal attempts
+	// whose response phase never ran in the upstream filter, so that per-backend reliability stays
+	// accurate. The record is tagged with error.type=gateway_retry and the attempt number.
+	//
+	// Parameters:
+	//   - attemptNumber: the ordinal of the failed attempt (1 for the first attempt, etc.).
+	RecordRetriedAttempt(ctx context.Context, attemptNumber int, requestHeaders map[string]string)
 	// RecordTokenUsage records token usage metrics.
 	//
 	// Depending on the endpoint, some token types are not available and should be passed as OptUint32None.

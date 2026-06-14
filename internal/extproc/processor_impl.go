@@ -127,6 +127,10 @@ type (
 		costs metrics.TokenUsage
 		// metrics tracking.
 		metrics metrics.Metrics
+		// completionRecorded is set once this attempt has recorded a terminal completion or has been
+		// recorded as a retried-away failure. It guards against double-counting an attempt that both
+		// recorded a completion (e.g. a local error in the request phase) and is then retried.
+		completionRecorded bool
 	}
 )
 
@@ -311,6 +315,14 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) onRetry() bo
 	return u.parent.upstreamFilterCount > 1
 }
 
+// recordRequestCompletion records a terminal completion for this attempt and marks it as recorded
+// so a subsequent retry/fallback (which records the previous attempt as a failure in SetBackend)
+// does not double-count this attempt.
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) recordRequestCompletion(ctx context.Context, success bool) {
+	u.completionRecorded = true
+	u.metrics.RecordRequestCompletion(ctx, success, u.requestHeaders)
+}
+
 // ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
 //
 // At the upstream filter, we already have the original request body at request headers phase.
@@ -320,7 +332,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) onRetry() bo
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestHeaders(ctx context.Context, _ *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
-			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
+			u.recordRequestCompletion(ctx, false)
 		}
 	}()
 
@@ -343,7 +355,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 			// return to user as 422 -  e.g., "invalid request body: tool_choice type not supported"
 			u.logger.Info("returning user-facing error for invalid request", slog.String("error", err.Error()))
 			// Record this as a failed request in metrics
-			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
+			u.recordRequestCompletion(ctx, false)
 			return createUserFacingErrorResponse(422, "UnprocessableEntity", userFacingErr.Error()), nil
 		}
 		return nil, fmt.Errorf("failed to transform request: %w", err)
@@ -446,7 +458,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessResponseHeaders(ctx context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
 	defer func() {
 		if err != nil {
-			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
+			u.recordRequestCompletion(ctx, false)
 		}
 	}()
 
@@ -479,11 +491,11 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	recordRequestCompletionErr := false
 	defer func() {
 		if err != nil || recordRequestCompletionErr {
-			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
+			u.recordRequestCompletion(ctx, false)
 			return
 		}
 		if body.EndOfStream {
-			u.metrics.RecordRequestCompletion(ctx, true, u.requestHeaders)
+			u.recordRequestCompletion(ctx, true)
 		}
 	}()
 
@@ -615,12 +627,22 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) decodeStream
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(ctx context.Context, backend *filterapi.RuntimeBackend, routeName string, routeProcessor Processor) (err error) {
 	defer func() {
 		if err != nil {
-			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
+			u.recordRequestCompletion(ctx, false)
 		}
 	}()
 	rp, ok := routeProcessor.(*routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT])
 	if !ok {
 		panic(fmt.Sprintf("BUG: expected routeProcessor to be of type *routerProcessor[%T], got %T", rp, routeProcessor))
+	}
+	// A non-nil previous upstream filter means this SetBackend begins a retry / fallback attempt.
+	// The previous attempt was abandoned by Envoy before its response phase ran in the upstream
+	// filter (the upstream filter's ResponseHeaderMode is SKIP), so its failure was never recorded.
+	// Record it now against the previous attempt's own metrics instance so the failure is attributed
+	// to the backend that actually failed. rp.upstreamFilterCount still holds the previous attempt's
+	// ordinal at this point (it is incremented below).
+	if prev := rp.upstreamFilter; prev != nil && !prev.completionRecorded {
+		prev.completionRecorded = true
+		prev.metrics.RecordRetriedAttempt(ctx, rp.upstreamFilterCount, prev.requestHeaders)
 	}
 	rp.upstreamFilterCount++
 	u.metrics.SetBackend(backend.Backend)

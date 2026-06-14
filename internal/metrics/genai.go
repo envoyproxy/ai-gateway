@@ -23,6 +23,10 @@ const (
 	genaiAttributeResponseModel = "gen_ai.response.model"
 	genaiAttributeTokenType     = "gen_ai.token.type" //nolint:gosec // metric name, not credential
 	genaiAttributeErrorType     = "error.type"
+	// genaiAttributeAttemptNumber is the ordinal of an upstream attempt (1, 2, ...). It is attached
+	// to per-attempt failure records emitted when a request is retried or falls back to another
+	// backend. This is not part of the OTel GenAI semconv; it is a custom AI Gateway attribute.
+	genaiAttributeAttemptNumber = "gen_ai.request.attempt_number"
 
 	GenAIOperationChat            GenAIOperation = "chat"
 	GenAIOperationCompletion      GenAIOperation = "completion"
@@ -56,6 +60,12 @@ const (
 	genaiTokenTypeCacheCreationInput = "cache_creation_input"
 	genaiTokenTypeReasoning          = "reasoning"
 	genaiErrorTypeFallback           = "_OTHER"
+	// genaiErrorTypeRetry marks a request-duration record produced for an upstream attempt that
+	// failed and was retried / fell back to another backend. It is intentionally distinct from
+	// genaiErrorTypeFallback ("_OTHER", used for terminal failures) so operators can fold these
+	// into per-backend error rates while excluding their partial latency from end-user latency
+	// percentiles.
+	genaiErrorTypeRetry = "gateway_retry"
 )
 
 // GenAIOperation represents the type of generative AI operation i.e. the endpoint being called.

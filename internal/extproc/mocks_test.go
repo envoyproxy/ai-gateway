@@ -188,6 +188,10 @@ type mockMetrics struct {
 	interTokenLatency     float64
 	timeToFirstTokenMs    float64
 	interTokenLatencyMs   float64
+	// retriedAttemptCount tracks how many times RecordRetriedAttempt was called on this instance.
+	retriedAttemptCount int
+	// lastRetriedAttemptNumber holds the attemptNumber from the most recent RecordRetriedAttempt call.
+	lastRetriedAttemptNumber int
 }
 
 // StartRequest implements [metrics.Metrics].
@@ -262,6 +266,12 @@ func (m *mockMetrics) RecordRequestCompletion(_ context.Context, success bool, _
 	} else {
 		m.requestErrorCount++
 	}
+}
+
+// RecordRetriedAttempt implements [metrics.Metrics].
+func (m *mockMetrics) RecordRetriedAttempt(_ context.Context, attemptNumber int, _ map[string]string) {
+	m.retriedAttemptCount++
+	m.lastRetriedAttemptNumber = attemptNumber
 }
 
 // RequireSelectedModel asserts the models set on the metrics.
