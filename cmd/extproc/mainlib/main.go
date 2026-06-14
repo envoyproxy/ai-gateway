@@ -28,10 +28,15 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/extproc"
+	"github.com/envoyproxy/ai-gateway/internal/extproc/wrapper"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/mcpproxy"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/internal/piiredaction"
+	// piiredaction/peyeeye is imported for its registration side effect only,
+	// so --pii-provider peyeeye resolves.
+	_ "github.com/envoyproxy/ai-gateway/internal/piiredaction/peyeeye"
 	"github.com/envoyproxy/ai-gateway/internal/requestheaderattrs"
 	"github.com/envoyproxy/ai-gateway/internal/tracing"
 	"github.com/envoyproxy/ai-gateway/internal/version"
@@ -60,6 +65,10 @@ type extProcFlags struct {
 	maxRecvMsgSize int
 	// endpointPrefixes is the comma-separated key-value pairs for endpoint prefixes.
 	endpointPrefixes string
+	// piiProvider selects the PII redaction & rehydration provider that wraps
+	// every registered processor. Empty disables redaction; "peyeeye" selects
+	// the Peyeeye backend.
+	piiProvider string
 }
 
 func setOptionalString(dst **string) func(string) error {
@@ -138,6 +147,11 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
 	fs.DurationVar(&flags.mcpWriteTimeout, "mcpWriteTimeout", 120*time.Second,
 		"The maximum duration before timing out writes of the MCP response")
+	fs.StringVar(&flags.piiProvider, "pii-provider", "",
+		"Enable PII redaction & rehydration of request/response bodies using the "+
+			"named provider. One of '' (disabled, default) or 'peyeeye'. The "+
+			"'peyeeye' provider requires the PEYEEYE_API_KEY environment variable; "+
+			"see https://peyeeye.ai for details.")
 
 	if err := fs.Parse(args); err != nil {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
@@ -294,14 +308,31 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/chat/completions"), extproc.NewFactory(
-		chatCompletionMetricsFactory, tracing.ChatCompletionTracer(), endpointspec.ChatCompletionsEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/completions"), extproc.NewFactory(
-		completionMetricsFactory, tracing.CompletionTracer(), endpointspec.CompletionsEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/embeddings"), extproc.NewFactory(
-		embeddingsMetricsFactory, tracing.EmbeddingsTracer(), endpointspec.EmbeddingsEndpointSpec{}))
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/responses"), extproc.NewFactory(
-		responsesMetricsFactory, tracing.ResponsesTracer(), endpointspec.ResponsesEndpointSpec{}))
+
+	// Optionally wrap every registered processor with the configured PII
+	// redaction provider. An empty provider leaves the factories untouched.
+	wrap := func(f extproc.ProcessorFactory) extproc.ProcessorFactory { return f }
+	if flags.piiProvider != "" {
+		piiLogger := l.With("component", "pii-redaction", "provider", flags.piiProvider)
+		transformer, perr := piiredaction.New(piiredaction.Provider(flags.piiProvider), piiLogger)
+		if perr != nil {
+			return fmt.Errorf("failed to initialize PII redaction provider %q: %w", flags.piiProvider, perr)
+		}
+		if transformer != nil {
+			wrap = func(f extproc.ProcessorFactory) extproc.ProcessorFactory {
+				return wrapper.WrapFactory(f, transformer, piiLogger)
+			}
+		}
+	}
+
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/chat/completions"), wrap(extproc.NewFactory(
+		chatCompletionMetricsFactory, tracing.ChatCompletionTracer(), endpointspec.ChatCompletionsEndpointSpec{})))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/completions"), wrap(extproc.NewFactory(
+		completionMetricsFactory, tracing.CompletionTracer(), endpointspec.CompletionsEndpointSpec{})))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/embeddings"), wrap(extproc.NewFactory(
+		embeddingsMetricsFactory, tracing.EmbeddingsTracer(), endpointspec.EmbeddingsEndpointSpec{})))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/responses"), wrap(extproc.NewFactory(
+		responsesMetricsFactory, tracing.ResponsesTracer(), endpointspec.ResponsesEndpointSpec{})))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/speech"), extproc.NewFactory(
 		speechMetricsFactory, tracing.SpeechTracer(), endpointspec.SpeechEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/transcriptions"), extproc.NewFactory(
@@ -313,8 +344,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Cohere, "/v2/rerank"), extproc.NewFactory(
 		rerankMetricsFactory, tracing.RerankTracer(), endpointspec.RerankEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/models"), extproc.NewModelsProcessor)
-	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages"), extproc.NewFactory(
-		messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{}))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages"), wrap(extproc.NewFactory(
+		messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{})))
 
 	// Create and register gRPC server with ExternalProcessorServer (the service Envoy calls).
 	if err = filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {

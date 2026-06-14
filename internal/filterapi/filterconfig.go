@@ -51,6 +51,46 @@ type Config struct {
 	UnscopedModels []Model `json:"unscopedModels,omitempty"`
 	// MCPConfig is the configuration for the MCPRoute implementations.
 	MCPConfig *MCPConfig `json:"mcpConfig,omitempty"`
+	// PIIRedaction, if non-nil, enables PII redaction & rehydration of
+	// request/response bodies via the configured Provider. The processor
+	// wraps every standard endpoint registration with a pre-call redact and
+	// a post-call rehydrate. When nil, the gateway behaves as if no redaction
+	// processor were installed.
+	PIIRedaction *PIIRedactionConfig `json:"piiRedaction,omitempty"`
+}
+
+// PIIRedactionConfig is the provider-neutral on-disk shape of the PII
+// redaction section of filterapi.Config. Provider selects the backend and the
+// matching provider-specific sub-config carries its settings, so adding a new
+// backend (e.g. Presidio) means adding a field here rather than reshaping the
+// top-level config.
+type PIIRedactionConfig struct {
+	// Provider selects the redaction backend: "peyeeye" (others such as
+	// "presidio" are reserved). Empty disables redaction.
+	Provider string `json:"provider,omitempty"`
+	// Peyeeye holds Peyeeye-specific settings; consulted when Provider is
+	// "peyeeye".
+	Peyeeye *PeyeEyeFilterConfig `json:"peyeeye,omitempty"`
+}
+
+// PeyeEyeFilterConfig is the on-disk shape of the Peyeeye section of
+// PIIRedactionConfig. It is the same JSON shape as
+// piiredaction/peyeeye.PEyeEyeConfig but kept in the filterapi package to keep
+// the two layers decoupled (the runtime layer reads the env vars and
+// resolves defaults).
+type PeyeEyeFilterConfig struct {
+	// APIKey is the Peyeeye API key. Falls back to PEYEEYE_API_KEY.
+	APIKey string `json:"apiKey,omitempty"`
+	// APIBase overrides the Peyeeye API base. Falls back to
+	// PEYEEYE_API_BASE, then https://api.peyeeye.ai.
+	APIBase string `json:"apiBase,omitempty"`
+	// Locale is the BCP-47 locale hint passed to /v1/redact.
+	Locale string `json:"locale,omitempty"`
+	// Entities optionally restricts detection to a subset of Peyeeye
+	// entity ids.
+	Entities []string `json:"entities,omitempty"`
+	// SessionMode is "stateful" (default) or "stateless".
+	SessionMode string `json:"sessionMode,omitempty"`
 }
 
 // Model corresponds to the OpenAI model object in the OpenAI-compatible APIs
