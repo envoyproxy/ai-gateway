@@ -24,6 +24,14 @@ var (
 		URI:      "file:///another-dummy.txt",
 	}
 
+	// UIRendererResource is a ui:// resource used to test _meta.ui.resourceUri round-trip
+	// in multiplexing mode (gateway must namespace bare ui:// URIs returned by tool results).
+	UIRendererResource = &mcp.Resource{
+		Name:     "ui-renderer",
+		MIMEType: "text/html",
+		URI:      "ui://prefab/tool/renderer.html",
+	}
+
 	DummyResourceTemplate = &mcp.ResourceTemplate{
 		Name:        "dummy-template",
 		Description: "A dummy resource template for testing",
@@ -38,19 +46,16 @@ func DummyResourceHandler() mcp.ResourceHandler {
 		switch req.Params.URI {
 		case DummyResource.URI:
 			return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{
-				{
-					URI:  req.Params.URI,
-					Blob: []byte("dummy"),
-				},
+				{URI: req.Params.URI, Blob: []byte("dummy")},
 			}}, nil
 		case AnotherDummyResource.URI:
 			return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{
-				{
-					URI:  req.Params.URI,
-					Blob: []byte("another-dummy"),
-				},
+				{URI: req.Params.URI, Blob: []byte("another-dummy")},
 			}}, nil
-
+		case UIRendererResource.URI:
+			return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{
+				{URI: req.Params.URI, MIMEType: "text/html", Blob: []byte("<html>renderer</html>")},
+			}}, nil
 		}
 
 		return nil, mcp.ResourceNotFoundError(req.Params.URI)

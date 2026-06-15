@@ -638,6 +638,48 @@ func TestMergeToolsList_AuthorizationFiltering(t *testing.T) {
 	}
 }
 
+func TestMergeToolsList_MetaRewrite(t *testing.T) {
+	responses := []broadCastResponse[mcp.ListToolsResult]{
+		{
+			backendName: "backend1",
+			res: mcp.ListToolsResult{
+				Tools: []*mcp.Tool{
+					{
+						Name: "ui-tool",
+						Meta: mcp.Meta{"ui": map[string]any{"resourceUri": "ui://prefab/tool/renderer.html"}},
+					},
+					{
+						Name: "plain-tool",
+					},
+				},
+			},
+		},
+	}
+	proxy := newTestMCPProxy()
+	proxy.routes["test-route"].toolSelectors = nil
+	proxy.routes["test-route"].authorization = nil
+	proxy.requestHeaders = http.Header{}
+	session := &session{route: "test-route"}
+
+	result := proxy.mergeToolsList(session, responses)
+	require.Len(t, result.Tools, 2)
+
+	byName := map[string]*mcp.Tool{}
+	for _, tool := range result.Tools {
+		byName[tool.Name] = tool
+	}
+
+	uiTool := byName["backend1__ui-tool"]
+	require.NotNil(t, uiTool)
+	uiMeta, ok := uiTool.Meta["ui"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "backend1+ui://prefab/tool/renderer.html", uiMeta["resourceUri"])
+
+	plainTool := byName["backend1__plain-tool"]
+	require.NotNil(t, plainTool)
+	require.Nil(t, plainTool.Meta)
+}
+
 func TestServePOST_ToolsCallRequest(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -1298,6 +1340,192 @@ func Test_upstreamResourceURI(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_rewriteMetaResourceURIs(t *testing.T) {
+	cases := []struct {
+		name    string
+		meta    mcp.Meta
+		backend filterapi.MCPBackendName
+		want    mcp.Meta
+		changed bool
+	}{
+		{
+			name:    "rewrite _meta.ui.resourceUri",
+			meta:    mcp.Meta{"ui": map[string]any{"resourceUri": "ui://prefab/tool/xxx/renderer.html"}},
+			backend: "backend1",
+			want:    mcp.Meta{"ui": map[string]any{"resourceUri": "backend1+ui://prefab/tool/xxx/renderer.html"}},
+			changed: true,
+		},
+		{
+			name:    "nil meta — no-op, no panic",
+			meta:    nil,
+			backend: "backend1",
+			want:    nil,
+			changed: false,
+		},
+		{
+			name:    "empty meta — no-op",
+			meta:    mcp.Meta{},
+			backend: "backend1",
+			want:    mcp.Meta{},
+			changed: false,
+		},
+		{
+			name:    "ui present but resourceUri missing — no-op",
+			meta:    mcp.Meta{"ui": map[string]any{"other": "val"}},
+			backend: "backend1",
+			want:    mcp.Meta{"ui": map[string]any{"other": "val"}},
+			changed: false,
+		},
+		{
+			name:    "resourceUri is non-string — no-op, no panic",
+			meta:    mcp.Meta{"ui": map[string]any{"resourceUri": 42}},
+			backend: "backend1",
+			want:    mcp.Meta{"ui": map[string]any{"resourceUri": 42}},
+			changed: false,
+		},
+		{
+			name:    "ui value is non-map — no-op, no panic",
+			meta:    mcp.Meta{"ui": "not-a-map"},
+			backend: "backend1",
+			want:    mcp.Meta{"ui": "not-a-map"},
+			changed: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			changed := rewriteMetaResourceURIs(tc.meta, tc.backend)
+			require.Equal(t, tc.changed, changed)
+			require.Equal(t, tc.want, tc.meta)
+		})
+	}
+}
+
+func Test_rewriteToolResultURIs(t *testing.T) {
+	backend := filterapi.MCPBackendName("backend1")
+
+	t.Run("rewrites ResourceLink URI", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.ResourceLink{URI: "ui://prefab/link.html"},
+			},
+		}
+		require.True(t, rewriteToolResultURIs(result, backend))
+		require.Equal(t, "backend1+ui://prefab/link.html", result.Content[0].(*mcp.ResourceLink).URI)
+	})
+
+	t.Run("rewrites EmbeddedResource URI", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.EmbeddedResource{Resource: &mcp.ResourceContents{URI: "ui://prefab/embed.html"}},
+			},
+		}
+		require.True(t, rewriteToolResultURIs(result, backend))
+		require.Equal(t, "backend1+ui://prefab/embed.html", result.Content[0].(*mcp.EmbeddedResource).Resource.URI)
+	})
+
+	t.Run("nil EmbeddedResource.Resource — no panic", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.EmbeddedResource{Resource: nil}},
+		}
+		require.False(t, rewriteToolResultURIs(result, backend))
+	})
+
+	t.Run("rewrites _meta.ui.resourceUri", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Meta: mcp.Meta{"ui": map[string]any{"resourceUri": "ui://meta/renderer.html"}},
+		}
+		require.True(t, rewriteToolResultURIs(result, backend))
+		require.Equal(t, "backend1+ui://meta/renderer.html",
+			result.Meta["ui"].(map[string]any)["resourceUri"])
+	})
+
+	t.Run("no routable URIs — unchanged, returns false", func(t *testing.T) {
+		result := &mcp.CallToolResult{Content: []mcp.Content{}}
+		require.False(t, rewriteToolResultURIs(result, backend))
+	})
+
+	t.Run("idempotent — second call returns false and leaves URIs unchanged", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Meta:    mcp.Meta{"ui": map[string]any{"resourceUri": "ui://prefab/idem.html"}},
+			Content: []mcp.Content{&mcp.ResourceLink{URI: "ui://prefab/link.html"}},
+		}
+		require.True(t, rewriteToolResultURIs(result, backend))
+		// Second call: URIs are already namespaced; must not double-namespace.
+		require.False(t, rewriteToolResultURIs(result, backend))
+		require.Equal(t, "backend1+ui://prefab/idem.html",
+			result.Meta["ui"].(map[string]any)["resourceUri"])
+		require.Equal(t, "backend1+ui://prefab/link.html", result.Content[0].(*mcp.ResourceLink).URI)
+	})
+}
+
+func Test_maybeResponseModify(t *testing.T) {
+	ctx := context.Background()
+	m := &mcpRequestContext{ProxyConfig: &ProxyConfig{l: slog.Default()}}
+	backend := filterapi.MCPBackendName("backend1")
+
+	t.Run("tools/call rewrites _meta.ui.resourceUri", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Meta: mcp.Meta{"ui": map[string]any{"resourceUri": "ui://prefab/renderer.html"}},
+		}
+		raw, err := json.Marshal(result)
+		require.NoError(t, err)
+		req := &jsonrpc.Request{Method: "tools/call"}
+		msg := &jsonrpc.Response{Result: raw}
+		require.NoError(t, m.maybeResponseModify(ctx, req, msg, backend))
+		var got mcp.CallToolResult
+		require.NoError(t, json.Unmarshal(msg.Result, &got))
+		require.Equal(t, "backend1+ui://prefab/renderer.html",
+			got.Meta["ui"].(map[string]any)["resourceUri"])
+	})
+
+	t.Run("tools/call rewrites ResourceLink in Content", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.ResourceLink{URI: "ui://prefab/link.html"}},
+		}
+		raw, err := json.Marshal(result)
+		require.NoError(t, err)
+		req := &jsonrpc.Request{Method: "tools/call"}
+		msg := &jsonrpc.Response{Result: raw}
+		require.NoError(t, m.maybeResponseModify(ctx, req, msg, backend))
+		var got mcp.CallToolResult
+		require.NoError(t, json.Unmarshal(msg.Result, &got))
+		require.Equal(t, "backend1+ui://prefab/link.html", got.Content[0].(*mcp.ResourceLink).URI)
+	})
+
+	t.Run("tools/call with no routable URIs — result bytes unchanged", func(t *testing.T) {
+		result := &mcp.CallToolResult{Content: []mcp.Content{}}
+		raw, err := json.Marshal(result)
+		require.NoError(t, err)
+		before := append([]byte(nil), raw...)
+		req := &jsonrpc.Request{Method: "tools/call"}
+		msg := &jsonrpc.Response{Result: raw}
+		require.NoError(t, m.maybeResponseModify(ctx, req, msg, backend))
+		require.Equal(t, before, []byte(msg.Result))
+	})
+
+	t.Run("resources/read still rewrites Contents URIs", func(t *testing.T) {
+		result := &mcp.ReadResourceResult{
+			Contents: []*mcp.ResourceContents{{URI: "file:///tmp/file.txt"}},
+		}
+		raw, err := json.Marshal(result)
+		require.NoError(t, err)
+		req := &jsonrpc.Request{Method: "resources/read"}
+		msg := &jsonrpc.Response{Result: raw}
+		require.NoError(t, m.maybeResponseModify(ctx, req, msg, backend))
+		var got mcp.ReadResourceResult
+		require.NoError(t, json.Unmarshal(msg.Result, &got))
+		require.Equal(t, "backend1+file:///tmp/file.txt", got.Contents[0].URI)
+	})
+
+	t.Run("nil Result — no-op", func(t *testing.T) {
+		req := &jsonrpc.Request{Method: "tools/call"}
+		msg := &jsonrpc.Response{Result: nil}
+		require.NoError(t, m.maybeResponseModify(ctx, req, msg, backend))
+		require.Nil(t, msg.Result)
+	})
 }
 
 func TestExtractSubject(t *testing.T) {
