@@ -69,6 +69,12 @@ const (
 
 	// MimeTypeJSON for JSON content.
 	MimeTypeJSON = "application/json"
+
+	// OutputAudioDuration is the attribute key for audio duration in transcription/translation responses.
+	OutputAudioDuration = "output.audio_duration"
+
+	// OutputLanguage is the attribute key for detected language in transcription/translation responses.
+	OutputLanguage = "output.language"
 )
 
 // Completions API constants (Legacy Text Completion).

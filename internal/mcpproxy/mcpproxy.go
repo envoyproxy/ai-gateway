@@ -14,6 +14,8 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +41,20 @@ type mcpRequestContext struct {
 	perBackendMetricsRecorded bool
 }
 
+// defaultMaxRequestBodySize is the default maximum allowed POST body size in bytes (4 MiB).
+const defaultMaxRequestBodySize = 4 * 1024 * 1024
+
+// getMaxRequestBodySize returns the configured POST body limit from the environment variable,
+// falling back to 4 MiB if the variable is unset or invalid.
+func getMaxRequestBodySize() int64 {
+	if v, ok := os.LookupEnv("MCP_PROXY_MAX_REQUEST_BODY_SIZE"); ok {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			return n
+		}
+	}
+	return defaultMaxRequestBodySize
+}
+
 // NewMCPProxy creates a new MCPProxy instance.
 func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingapi.MCPTracer, sessionCrypto SessionCrypto, logRequestHeaderAttributes map[string]string) (*ProxyConfig, *http.ServeMux, error) {
 	toolChangeSignaler := newMultiWatcherSignaler() // used to signal changes to all active sessions.
@@ -49,6 +65,7 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingap
 		l:                          l,
 		client:                     http.Client{}, // No timeout as it's enforced at Envoy level.
 		logRequestHeaderAttributes: maps.Clone(logRequestHeaderAttributes),
+		maxRequestBodySize:         getMaxRequestBodySize(),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc(

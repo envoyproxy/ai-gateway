@@ -24,22 +24,45 @@ import (
 // Test data.
 var (
 	basicEmbeddingReq = &openai.EmbeddingRequest{
-		Model: "text-embedding-3-small",
-		Input: openai.EmbeddingRequestInput{Value: "How do I reset my password?"},
+		EmbeddingBaseRequest: openai.EmbeddingBaseRequest{Model: "text-embedding-3-small"},
+		OfCompletion: &openai.EmbeddingCompletionRequest{
+			EmbeddingBaseRequest: openai.EmbeddingBaseRequest{Model: "text-embedding-3-small"},
+			Input:                openai.EmbeddingRequestInput{Value: "How do I reset my password?"},
+		},
 	}
 	basicEmbeddingReqBody = []byte(`{"model":"text-embedding-3-small","input":"How do I reset my password?"}`)
 
 	multiInputEmbeddingReq = &openai.EmbeddingRequest{
-		Model: "text-embedding-3-small",
-		Input: openai.EmbeddingRequestInput{Value: []string{"How", "do", "I", "reset", "my", "password?"}},
+		EmbeddingBaseRequest: openai.EmbeddingBaseRequest{Model: "text-embedding-3-small"},
+		OfCompletion: &openai.EmbeddingCompletionRequest{
+			EmbeddingBaseRequest: openai.EmbeddingBaseRequest{Model: "text-embedding-3-small"},
+			Input:                openai.EmbeddingRequestInput{Value: []string{"How", "do", "I", "reset", "my", "password?"}},
+		},
 	}
 	multiInputEmbeddingReqBody = []byte(`{"model":"text-embedding-3-small","input":["How","do","I","reset","my","password?"]}`)
 
 	tokenInputEmbeddingReq = &openai.EmbeddingRequest{
-		Model: "text-embedding-3-small",
-		Input: openai.EmbeddingRequestInput{Value: []int{14438, 656, 358, 7738, 856, 3636, 30}},
+		EmbeddingBaseRequest: openai.EmbeddingBaseRequest{Model: "text-embedding-3-small"},
+		OfCompletion: &openai.EmbeddingCompletionRequest{
+			EmbeddingBaseRequest: openai.EmbeddingBaseRequest{Model: "text-embedding-3-small"},
+			Input:                openai.EmbeddingRequestInput{Value: []int64{4438, 656, 358, 7738, 856, 3636, 30}},
+		},
 	}
 	tokenInputEmbeddingReqBody = []byte(`{"model":"text-embedding-3-small","input":[4438,656,358,7738,856,3636,30]}`)
+
+	chatEmbeddingReq = &openai.EmbeddingRequest{
+		EmbeddingBaseRequest: openai.EmbeddingBaseRequest{Model: "gemini-embedding-2"},
+		OfChat: &openai.EmbeddingChatRequest{
+			EmbeddingBaseRequest: openai.EmbeddingBaseRequest{Model: "gemini-embedding-2"},
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfUser: &openai.ChatCompletionUserMessageParam{
+					Role:    "user",
+					Content: openai.StringOrUserRoleContentUnion{Value: "embed this text"},
+				}},
+			},
+		},
+	}
+	chatEmbeddingReqBody = []byte(`{"model":"gemini-embedding-2","messages":[{"role":"user","content":"embed this text"}]}`)
 
 	basicEmbeddingResp = &openai.EmbeddingResponse{
 		Model: "text-embedding-3-small",
@@ -93,6 +116,12 @@ func TestEmbeddingsRecorder_StartParams(t *testing.T) {
 			name:             "multi input request",
 			req:              multiInputEmbeddingReq,
 			reqBody:          multiInputEmbeddingReqBody,
+			expectedSpanName: "CreateEmbeddings",
+		},
+		{
+			name:             "chat embedding request",
+			req:              chatEmbeddingReq,
+			reqBody:          chatEmbeddingReqBody,
 			expectedSpanName: "CreateEmbeddings",
 		},
 	}
@@ -170,6 +199,19 @@ func TestEmbeddingsRecorder_RecordRequest(t *testing.T) {
 				attribute.String(openinference.SpanKind, openinference.SpanKindEmbedding),
 				attribute.String(openinference.InputValue, openinference.RedactedValue),
 				attribute.String(openinference.EmbeddingInvocationParameters, `{"model":"text-embedding-3-small"}`),
+			},
+		},
+		{
+			name:    "chat embedding request",
+			req:     chatEmbeddingReq,
+			reqBody: chatEmbeddingReqBody,
+			config:  &openinference.TraceConfig{},
+			expectedAttrs: []attribute.KeyValue{
+				attribute.String(openinference.SpanKind, openinference.SpanKindEmbedding),
+				attribute.String(openinference.InputValue, string(chatEmbeddingReqBody)),
+				attribute.String(openinference.InputMimeType, openinference.MimeTypeJSON),
+				attribute.String(openinference.EmbeddingInvocationParameters, `{"model":"gemini-embedding-2"}`),
+				attribute.String(openinference.EmbeddingTextAttribute(0), "embed this text"),
 			},
 		},
 		{

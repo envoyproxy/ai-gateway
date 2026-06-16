@@ -106,6 +106,11 @@ func requestMatcher(httpReq *http.Request, cassReq cassette.Request) bool { // n
 		return matchJSONBodies(liveBody, cassReq.Body)
 	}
 
+	// For multipart content, skip body comparison since boundaries differ between runs.
+	if slices.ContainsFunc(httpReq.Header["Content-Type"], isMultipart) {
+		return true
+	}
+
 	// For non-JSON content, do exact string comparison.
 	return liveBody == cassReq.Body
 }
@@ -141,6 +146,12 @@ func afterCaptureHook(i *cassette.Interaction) error {
 			return err
 		}
 		i.Request.Body = pretty
+	}
+	// For multipart requests, replace body with a placeholder since binary audio
+	// data produces non-deterministic YAML and is not useful for cassette matching.
+	isMultipartReq := slices.ContainsFunc(i.Request.Headers["Content-Type"], isMultipart)
+	if isMultipartReq {
+		i.Request.Body = "[multipart form data omitted]"
 	}
 	i.Request.ContentLength = int64(len(i.Request.Body))
 	// Update Content-Length header to match the actual body size.

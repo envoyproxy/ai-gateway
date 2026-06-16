@@ -4950,6 +4950,20 @@ func TestResponseInputItemUnionParamUnmarshalJSON(t *testing.T) {
 			input: []byte(`{"role": "user", "content": "Hello"}`),
 		},
 		{
+			name: "unmarshal assistant output_message without type field",
+			expRes: ResponseInputItemUnionParam{
+				OfOutputMessage: &ResponseOutputMessage{
+					Role: "assistant",
+					Content: ResponseOutputMessageContentUnion{
+						OfContentArray: []ResponseOutputMessageContentArrayUnion{
+							{OfOutputText: &ResponseOutputTextParam{Text: "Hi! I'm here and working.", Type: "output_text"}},
+						},
+					},
+				},
+			},
+			input: []byte(`{"role": "assistant", "content": [{"text": "Hi! I'm here and working.", "type": "output_text"}]}`),
+		},
+		{
 			name:   "unmarshal message without type field (role missing, should error)",
 			expRes: ResponseInputItemUnionParam{},
 			input:  []byte(`{"content": "Hello"}`),
