@@ -43,9 +43,12 @@ func NewBodyMutator(bodyMutations *filterapi.HTTPBodyMutation, originalBody []by
 	}
 }
 
-// HasMutations reports whether this mutator has any mutations configured.
+// HasMutations reports whether this BodyMutator was constructed with a
+// non-nil HTTPBodyMutation config. When false, Mutate is a no-op that
+// returns its input unchanged, so callers can short-circuit the
+// upstream filter's body-replacement path entirely.
 func (b *BodyMutator) HasMutations() bool {
-	return b != nil && b.bodyMutations != nil && len(b.bodyMutations.Remove) > 0
+	return b != nil && b.bodyMutations != nil
 }
 
 // isJSONValue checks if a string represents a JSON value (not a plain string)
