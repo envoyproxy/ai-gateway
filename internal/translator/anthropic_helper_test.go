@@ -755,6 +755,172 @@ func TestOutputConfigAvailable(t *testing.T) {
 	}
 }
 
+func TestAnthropicStreamParserTokenUsage_NoDoubleCounting(t *testing.T) {
+	// This test verifies that cache tokens are not double-counted when
+	// both message_start and message_delta report cache token usage.
+	// The Anthropic API reports cumulative totals in message_delta, not
+	// incremental deltas, so we must use Set (override) not Add (accumulate)
+	// for cache tokens from message_delta.
+	tests := []struct {
+		name                       string
+		messageStartInputTokens    int64
+		messageStartCacheRead      int64
+		messageStartCacheCreation  int64
+		messageDeltaInputTokens    int64
+		messageDeltaCacheRead      int64
+		messageDeltaCacheCreation  int64
+		messageDeltaOutputTokens   int64
+		expectedInputTokens        uint32
+		expectedCachedTokens       uint32
+		expectedCacheCreationToken uint32
+		expectedOutputTokens       uint32
+	}{
+		{
+			name:                       "cache tokens in both message_start and message_delta should not double count",
+			messageStartInputTokens:    9,
+			messageStartCacheRead:      1,
+			messageStartCacheCreation:  0,
+			messageDeltaInputTokens:    9,
+			messageDeltaCacheRead:      1,
+			messageDeltaCacheCreation:  0,
+			messageDeltaOutputTokens:   16,
+			expectedInputTokens:        10, // 9 base + 1 cache_read, NOT 11 (9+1+1 double counted)
+			expectedCachedTokens:       1,  // NOT 2 (1+1 double counted)
+			expectedCacheCreationToken: 0,
+			expectedOutputTokens:       16,
+		},
+		{
+			name:                       "cache creation tokens in both message_start and message_delta should not double count",
+			messageStartInputTokens:    5,
+			messageStartCacheRead:      0,
+			messageStartCacheCreation:  3,
+			messageDeltaInputTokens:    5,
+			messageDeltaCacheRead:      0,
+			messageDeltaCacheCreation:  3,
+			messageDeltaOutputTokens:   10,
+			expectedInputTokens:        8, // 5 base + 3 cache_creation, NOT 11
+			expectedCachedTokens:       0,
+			expectedCacheCreationToken: 3, // NOT 6
+			expectedOutputTokens:       10,
+		},
+		{
+			name:                       "both cache_read and cache_creation in both events should not double count",
+			messageStartInputTokens:    9,
+			messageStartCacheRead:      2,
+			messageStartCacheCreation:  3,
+			messageDeltaInputTokens:    9,
+			messageDeltaCacheRead:      2,
+			messageDeltaCacheCreation:  3,
+			messageDeltaOutputTokens:   20,
+			expectedInputTokens:        14, // 9 + 2 + 3, NOT 19 (9+2+3+2+3)
+			expectedCachedTokens:       2,  // NOT 4
+			expectedCacheCreationToken: 3,  // NOT 6
+			expectedOutputTokens:       20,
+		},
+		{
+			name:                       "no cache tokens - baseline correctness",
+			messageStartInputTokens:    9,
+			messageStartCacheRead:      0,
+			messageStartCacheCreation:  0,
+			messageDeltaInputTokens:    0,
+			messageDeltaCacheRead:      0,
+			messageDeltaCacheCreation:  0,
+			messageDeltaOutputTokens:   16,
+			expectedInputTokens:        9,
+			expectedCachedTokens:       0,
+			expectedCacheCreationToken: 0,
+			expectedOutputTokens:       16,
+		},
+		{
+			name:                       "cache only in message_start, not in message_delta",
+			messageStartInputTokens:    9,
+			messageStartCacheRead:      5,
+			messageStartCacheCreation:  2,
+			messageDeltaInputTokens:    0,
+			messageDeltaCacheRead:      0,
+			messageDeltaCacheCreation:  0,
+			messageDeltaOutputTokens:   16,
+			expectedInputTokens:        16, // 9 + 5 + 2
+			expectedCachedTokens:       5,
+			expectedCacheCreationToken: 2,
+			expectedOutputTokens:       16,
+		},
+		{
+			// When message_start has no cache tokens but message_delta reports them,
+			// the delta cache tokens are NOT used because MessageDeltaUsage uses
+			// non-pointer int64 fields that default to 0 when absent from JSON.
+			// Since we cannot distinguish "not provided" from "actually zero",
+			// we skip cache tokens from message_delta entirely to avoid
+			// overwriting correct message_start values with zero defaults.
+			// In practice, the Anthropic API always reports cache tokens in
+			// message_start, so this edge case should not occur.
+			name:                       "cache tokens only in message_delta are ignored - message_start values preserved",
+			messageStartInputTokens:    9,
+			messageStartCacheRead:      0,
+			messageStartCacheCreation:  0,
+			messageDeltaInputTokens:    9,
+			messageDeltaCacheRead:      5,
+			messageDeltaCacheCreation:  2,
+			messageDeltaOutputTokens:   16,
+			expectedInputTokens:        9, // only from message_start, delta cache tokens ignored
+			expectedCachedTokens:       0, // delta cache tokens not applied
+			expectedCacheCreationToken: 0, // delta cache tokens not applied
+			expectedOutputTokens:       16,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parser := newAnthropicStreamParser("test-model")
+
+			// Build the SSE stream with message_start and message_delta events.
+			sseStream := fmt.Sprintf(`event: message_start
+data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":%d,"cache_read_input_tokens":%d,"cache_creation_input_tokens":%d,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":%d,"input_tokens":%d,"cache_read_input_tokens":%d,"cache_creation_input_tokens":%d}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`,
+				tt.messageStartInputTokens,
+				tt.messageStartCacheRead,
+				tt.messageStartCacheCreation,
+				tt.messageDeltaOutputTokens,
+				tt.messageDeltaInputTokens,
+				tt.messageDeltaCacheRead,
+				tt.messageDeltaCacheCreation,
+			)
+
+			_, _, tokenUsage, _, err := parser.Process(strings.NewReader(sseStream), true, nil)
+			require.NoError(t, err)
+
+			inputTokens, inputSet := tokenUsage.InputTokens()
+			cachedTokens, cachedSet := tokenUsage.CachedInputTokens()
+			cacheCreationTokens, cacheCreationSet := tokenUsage.CacheCreationInputTokens()
+			outputTokens, outputSet := tokenUsage.OutputTokens()
+
+			assert.True(t, inputSet, "input tokens should be set")
+			assert.Equal(t, tt.expectedInputTokens, inputTokens, "input tokens mismatch")
+			assert.True(t, cachedSet, "cached tokens should be set")
+			assert.Equal(t, tt.expectedCachedTokens, cachedTokens, "cached tokens mismatch")
+			assert.True(t, cacheCreationSet, "cache creation tokens should be set")
+			assert.Equal(t, tt.expectedCacheCreationToken, cacheCreationTokens, "cache creation tokens mismatch")
+			assert.True(t, outputSet, "output tokens should be set")
+			assert.Equal(t, tt.expectedOutputTokens, outputTokens, "output tokens mismatch")
+		})
+	}
+}
+
 func TestEffortAvailable(t *testing.T) {
 	tests := []struct {
 		name     string

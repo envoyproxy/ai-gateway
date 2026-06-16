@@ -1051,17 +1051,25 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			return nil, fmt.Errorf("unmarshal message_delta: %w", err)
 		}
 		u := event.Usage
-		usage := metrics.ExtractTokenUsageFromExplicitCaching(
-			u.InputTokens,
-			u.OutputTokens,
-			&u.CacheReadInputTokens,
-			&u.CacheCreationInputTokens,
-		)
-		// For message_delta, accumulate the incremental output tokens
-		if output, ok := usage.OutputTokens(); ok {
-			p.tokenUsage.AddOutputTokens(output)
+		// message_delta provides cumulative (not incremental) token counts.
+		// Input tokens and cache tokens were already set from message_start
+		// (which also reports cumulative values), so we must not Add them again
+		// or we would double-count. We also cannot use Set to override from
+		// message_delta because the MessageDeltaUsage struct uses non-pointer
+		// int64 fields that default to 0 when absent from JSON, making it
+		// impossible to distinguish "not provided" from "actually zero".
+		// Overriding with 0 would erase the correct values from message_start.
+		// Only update output tokens from message_delta since message_start
+		// typically reports output_tokens=0 and message_delta provides the
+		// final count. Use Set (not Add) because the value is cumulative,
+		// not incremental. This matches the pattern used in
+		// anthropic_anthropic.go's reflectStreamingEvent.
+		if u.OutputTokens >= 0 {
+			p.tokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
 		}
-		p.tokenUsage.SetReasoningTokens(uint32(u.OutputTokensDetails.ThinkingTokens)) //nolint:gosec
+		if u.OutputTokensDetails.ThinkingTokens >= 0 {
+			p.tokenUsage.SetReasoningTokens(uint32(u.OutputTokensDetails.ThinkingTokens)) //nolint:gosec
+		}
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}
