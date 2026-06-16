@@ -638,6 +638,22 @@ func TestSendRequestPerBackend_AWSSigningIsolation(t *testing.T) {
 	require.Empty(t, plainHdr.Get("X-Amz-Date"), "non-AWS backend must not receive SigV4 headers")
 }
 
+func TestSendRequestPerBackend_AWSSigningError(t *testing.T) {
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = "http://127.0.0.1:1"
+	proxy.routes["test-route"].awsSigners = map[filterapi.MCPBackendName]*awsBackendSigner{
+		"backend1": brokenAWSBackendSigner(),
+	}
+
+	s := &session{reqCtx: proxy}
+	ch := make(chan *backendEvent, 1)
+	err := s.sendRequestPerBackend(t.Context(), ch, "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+		sessionID: "sess1",
+	}, http.MethodPost, &jsonrpc.Request{Method: "tools/call"}, nil)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to sign request for backend")
+}
+
 func TestSendRequestPerBackend_AcceptEncoding(t *testing.T) {
 	headersCh := make(chan http.Header, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

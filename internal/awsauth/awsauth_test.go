@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/stretchr/testify/require"
 )
 
@@ -110,6 +113,40 @@ func TestSigner_Sign_PathAndQueryAreSigned(t *testing.T) {
 
 	// The path itself is signed too.
 	require.NotEqual(t, sign(base), sign("https://bedrock-agentcore.us-east-1.amazonaws.com/mcp"))
+}
+
+func TestNewSigner_InvalidProfile(t *testing.T) {
+	_, err := NewSigner(t.Context(), Config{
+		Region:                "us-east-1",
+		CredentialFileLiteral: testCredentialsFile,
+		Profile:               "nonexistent-profile",
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, `cannot load shared config profile "nonexistent-profile"`)
+}
+
+func TestNewSigner_EmptyCredentialsProfile(t *testing.T) {
+	_, err := NewSigner(t.Context(), Config{
+		Region:                "us-east-1",
+		CredentialFileLiteral: "[empty]\n",
+		Profile:               "empty",
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, `does not contain any credentials`)
+}
+
+func TestSigner_SignHTTP_EmptyCredentials(t *testing.T) {
+	signer := &Signer{
+		credentialsProvider: credentials.StaticCredentialsProvider{Value: aws.Credentials{}},
+		signer:              v4.NewSigner(),
+	}
+
+	req, err := http.NewRequest(http.MethodPost, "https://example.us-east-1.amazonaws.com/mcp", nil)
+	require.NoError(t, err)
+
+	err = signer.SignHTTP(t.Context(), req, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "execute-api", "us-east-1", time.Now())
+	require.Error(t, err)
+	require.ErrorContains(t, err, "cannot retrieve AWS credentials")
 }
 
 func TestSigner_ConcurrentSign(t *testing.T) {

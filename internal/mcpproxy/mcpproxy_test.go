@@ -516,3 +516,49 @@ func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
+
+func TestSignRequestIfAWS_NoRouteOrSigner(t *testing.T) {
+	req, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:1", nil)
+	require.NoError(t, err)
+
+	m := &mcpRequestContext{ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{
+		routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{},
+	}}}
+	require.NoError(t, m.signRequestIfAWS(t.Context(), "missing-route", "backend", req, nil))
+
+	m.routes["route"] = &mcpProxyConfigRoute{awsSigners: map[filterapi.MCPBackendName]*awsBackendSigner{}}
+	require.NoError(t, m.signRequestIfAWS(t.Context(), "route", "missing-backend", req, nil))
+}
+
+func TestSignRequestIfAWS_SigningError(t *testing.T) {
+	req, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:1", nil)
+	require.NoError(t, err)
+
+	m := &mcpRequestContext{ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{
+		routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
+			"aws-route": {awsSigners: map[filterapi.MCPBackendName]*awsBackendSigner{"aws-backend": brokenAWSBackendSigner()}},
+		},
+	}}}
+
+	err = m.signRequestIfAWS(t.Context(), "aws-route", "aws-backend", req, []byte(`{}`))
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to sign request for backend aws-backend")
+}
+
+func TestInvokeJSONRPCRequest_AWSSigningError(t *testing.T) {
+	m := newTestMCPProxy()
+	m.backendListenerAddr = "http://127.0.0.1:1"
+	m.routes["aws-route"] = &mcpProxyConfigRoute{
+		backends:   map[filterapi.MCPBackendName]filterapi.MCPBackend{"aws-backend": {Name: "aws-backend"}},
+		awsSigners: map[filterapi.MCPBackendName]*awsBackendSigner{"aws-backend": brokenAWSBackendSigner()},
+	}
+
+	resp, err := m.invokeJSONRPCRequest(t.Context(), "aws-route", filterapi.MCPBackend{Name: "aws-backend"}, &compositeSessionEntry{
+		sessionID: "test-session",
+	}, &jsonrpc.Request{Method: "tools/call"}, nil)
+	if resp != nil {
+		require.NoError(t, resp.Body.Close())
+	}
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to sign request for backend")
+}

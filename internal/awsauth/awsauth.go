@@ -45,6 +45,15 @@ func NewSigner(ctx context.Context, cfg Config) (*Signer, error) {
 	}, nil
 }
 
+// NewSignerWithProvider constructs a Signer that uses the given credentials provider.
+// It is primarily intended for unit tests that need to exercise signing failure paths.
+func NewSignerWithProvider(provider aws.CredentialsProvider) *Signer {
+	return &Signer{
+		credentialsProvider: provider,
+		signer:              v4.NewSigner(),
+	}
+}
+
 func loadConfig(ctx context.Context, cfg Config) (aws.Config, error) {
 	if len(cfg.CredentialFileLiteral) != 0 {
 		return loadConfigFromCredentialsFile(ctx, cfg)

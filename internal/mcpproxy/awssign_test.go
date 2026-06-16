@@ -9,8 +9,11 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/stretchr/testify/require"
 
+	"github.com/envoyproxy/ai-gateway/internal/awsauth"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
@@ -70,6 +73,25 @@ func TestAWSBackendSigner_Sign_PathWithQuery(t *testing.T) {
 	require.NotEmpty(t, req.Header.Get("X-Amz-Date"))
 	// The local listener address must remain the request target; signing only adds headers.
 	require.Equal(t, "127.0.0.1:1234", req.URL.Host)
+}
+
+func brokenAWSBackendSigner() *awsBackendSigner {
+	return &awsBackendSigner{
+		signer:  awsauth.NewSignerWithProvider(credentials.StaticCredentialsProvider{Value: aws.Credentials{}}),
+		region:  "us-east-1",
+		service: "aws-mcp",
+		host:    "aws-mcp.us-east-1.api.aws",
+		path:    "/mcp",
+	}
+}
+
+func TestAWSBackendSigner_Sign_EmptyCredentials(t *testing.T) {
+	req, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:1234", nil)
+	require.NoError(t, err)
+
+	err = brokenAWSBackendSigner().sign(t.Context(), req, []byte(`{"jsonrpc":"2.0"}`))
+	require.Error(t, err)
+	require.ErrorContains(t, err, "cannot retrieve AWS credentials")
 }
 
 func TestLoadConfig_BuildsAWSSigners(t *testing.T) {

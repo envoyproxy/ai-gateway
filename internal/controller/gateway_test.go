@@ -2998,3 +2998,100 @@ func Test_mcpConfig_AWSCredentials_MissingBackendFQDN(t *testing.T) {
 	}))
 	require.ErrorContains(t, err, "no FQDN/hostname endpoint")
 }
+
+func Test_readMCPAWSCredentialsFile(t *testing.T) {
+	kube := fake2.NewClientset()
+	_, err := kube.CoreV1().Secrets("ns").Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "aws-creds-data", Namespace: "ns"},
+		Data:       map[string][]byte{"credentials": []byte("[data]\naws_access_key_id=x\n")},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+	_, err = kube.CoreV1().Secrets("other-ns").Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "aws-creds-string", Namespace: "other-ns"},
+		StringData: map[string]string{"credentials": "[stringdata]\naws_access_key_id=y\n"},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	c := NewGatewayController(requireNewFakeClientWithIndexes(t), kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	t.Run("data key", func(t *testing.T) {
+		literal, profile, err := c.readMCPAWSCredentialsFile(t.Context(), "ns", &aigv1b1.MCPAWSCredentialsFile{
+			SecretRef: &gwapiv1.SecretObjectReference{Name: "aws-creds-data"},
+			Profile:   "data",
+		})
+		require.NoError(t, err)
+		require.Equal(t, "data", profile)
+		require.Equal(t, "[data]\naws_access_key_id=x\n", literal)
+	})
+
+	t.Run("stringData key", func(t *testing.T) {
+		literal, profile, err := c.readMCPAWSCredentialsFile(t.Context(), "ns", &aigv1b1.MCPAWSCredentialsFile{
+			SecretRef: &gwapiv1.SecretObjectReference{
+				Name:      "aws-creds-string",
+				Namespace: ptr.To(gwapiv1.Namespace("other-ns")),
+			},
+			Profile: "stringdata",
+		})
+		require.NoError(t, err)
+		require.Equal(t, "stringdata", profile)
+		require.Equal(t, "[stringdata]\naws_access_key_id=y\n", literal)
+	})
+
+	t.Run("secret not found", func(t *testing.T) {
+		_, _, err := c.readMCPAWSCredentialsFile(t.Context(), "ns", &aigv1b1.MCPAWSCredentialsFile{
+			SecretRef: &gwapiv1.SecretObjectReference{Name: "missing"},
+		})
+		require.ErrorContains(t, err, "failed to get AWS credentials secret ns/missing")
+	})
+
+	t.Run("missing credentials key", func(t *testing.T) {
+		_, err := kube.CoreV1().Secrets("ns").Create(t.Context(), &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "no-creds-key", Namespace: "ns"},
+			Data:       map[string][]byte{"other": []byte("x")},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+		_, _, err = c.readMCPAWSCredentialsFile(t.Context(), "ns", &aigv1b1.MCPAWSCredentialsFile{
+			SecretRef: &gwapiv1.SecretObjectReference{Name: "no-creds-key"},
+		})
+		require.ErrorContains(t, err, "does not contain key 'credentials'")
+	})
+}
+
+func Test_mcpConfig_AWSCredentials_BackendHostnameEndpoint(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	require.NoError(t, fakeClient.Create(t.Context(), &egv1a1.Backend{
+		ObjectMeta: metav1.ObjectMeta{Name: "aws-mcp", Namespace: "ns"},
+		Spec: egv1a1.BackendSpec{
+			Endpoints: []egv1a1.BackendEndpoint{{
+				Hostname: ptr.To("aws-mcp.us-east-1.api.aws"),
+			}},
+		},
+	}))
+	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	mc, effective, err := c.mcpConfig(t.Context(), mcpRouteWithAWSCredentials(&aigv1b1.MCPBackendAWSCredentials{
+		Region: "us-east-1",
+	}))
+	require.NoError(t, err)
+	require.True(t, effective)
+	require.Equal(t, "aws-mcp.us-east-1.api.aws", mc.Routes[0].Backends[0].AWSAuth.Host)
+	require.Equal(t, "aws-mcp", mc.Routes[0].Backends[0].AWSAuth.Service)
+}
+
+func Test_mcpConfig_AWSCredentials_SecretNotFound(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	awsBackend(t, fakeClient, "aws-mcp.us-east-1.api.aws")
+	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	_, _, err := c.mcpConfig(t.Context(), mcpRouteWithAWSCredentials(&aigv1b1.MCPBackendAWSCredentials{
+		Region:  "us-east-1",
+		Service: ptr.To("aws-mcp"),
+		CredentialsFile: &aigv1b1.MCPAWSCredentialsFile{
+			SecretRef: &gwapiv1.SecretObjectReference{Name: "missing-secret"},
+		},
+	}))
+	require.ErrorContains(t, err, "failed to get AWS credentials secret")
+}
