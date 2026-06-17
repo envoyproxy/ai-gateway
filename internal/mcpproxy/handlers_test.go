@@ -1110,6 +1110,29 @@ func TestProxyResponseBody_SSEContentTypeUnframedJSONWithLeadingWhitespace(t *te
 	require.Contains(t, rr.Body.String(), id.Raw())
 }
 
+func TestProxyResponseBody_SSEContentTypeUnframedJSONWithBOM(t *testing.T) {
+	proxy := newTestMCPProxy()
+
+	id := mustJSONRPCRequestID()
+	resp := &jsonrpc.Response{ID: id, Result: []byte(`{"tools": [{"name": "bom-tool"}]}`)}
+	body, err := jsonrpc.EncodeMessage(resp)
+	require.NoError(t, err)
+
+	httpResp := &http.Response{
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(bytes.NewReader(append(append([]byte{}, utf8BOM...), body...))),
+		StatusCode: http.StatusOK,
+	}
+
+	rr := httptest.NewRecorder()
+
+	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
+
+	require.Contains(t, rr.Body.String(), "bom-tool")
+	require.Contains(t, rr.Body.String(), id.Raw())
+	require.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+}
+
 func TestProxyResponseBody_SSEContentTypeInvalidJSONFallsBackToSSE(t *testing.T) {
 	// A body starting with '{' that is not a valid JSON-RPC message should fall back
 	// to SSE parsing without panicking or dropping the connection.

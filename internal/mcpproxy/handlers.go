@@ -838,6 +838,9 @@ func (m *mcpRequestContext) writeSingleJSONRPCMessage(ctx context.Context, w htt
 // startsWithJSONObject reports whether the stream begins with '{', consuming only
 // leading whitespace, which is insignificant to both SSE and JSON parsing.
 func startsWithJSONObject(br *bufio.Reader) bool {
+	if buf, _ := br.Peek(len(utf8BOM)); bytes.Equal(buf, utf8BOM) {
+		_, _ = br.Discard(len(utf8BOM))
+	}
 	for {
 		b, err := br.ReadByte()
 		if err != nil {
