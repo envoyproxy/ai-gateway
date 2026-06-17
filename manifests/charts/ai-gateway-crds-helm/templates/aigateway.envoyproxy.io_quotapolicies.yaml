@@ -370,6 +370,8 @@ spec:
                 description: |-
                   Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the "PerModelQuotas"
                   configuration.
+
+                  Currently, the rate limit configuration is properly set up, but the descriptor set is not being set in the Envoy Configuration
                 properties:
                   costExpression:
                     description: |-

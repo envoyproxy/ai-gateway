@@ -40,6 +40,9 @@ type QuotaPolicySpec struct {
 	// Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the "PerModelQuotas"
 	// configuration.
 	//
+	// Currently, the rate limit configuration is properly set up, but the descriptor set is not being set in the Envoy Configuration
+	// TODO: Add changes in the extension server to support ServiceQuota enforcement.
+	//
 	// +optional
 	ServiceQuota ServiceQuotaDefinition `json:"serviceQuota,omitempty"`
 	// PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this

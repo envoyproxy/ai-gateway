@@ -2337,7 +2337,7 @@ QuotaPolicySpec specifies rules for computing token based costs of requests.
   name="serviceQuota"
   type="[ServiceQuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-servicequotadefinition)"
   required="false"
-  description="Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the `PerModelQuotas`<br />configuration."
+  description="Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the `PerModelQuotas`<br />configuration.<br />Currently, the rate limit configuration is properly set up, but the descriptor set is not being set in the Envoy Configuration"
 /><ApiField
   name="perModelQuotas"
   type="[PerModelQuota](#github-com-envoyproxy-ai-gateway-api-v1alpha1-permodelquota) array"
