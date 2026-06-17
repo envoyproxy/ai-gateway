@@ -254,42 +254,27 @@ func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 			expectErr: true,
 		},
 		{
-			name: "skips function tool with nil function definition",
+			name: "rejects function tool with nil function definition",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools: []openai.Tool{
 					{
 						Type:     "function",
-						Function: nil, // This tool has the correct type but a nil definition and should be skipped.
-					},
-					{
-						Type:     "function",
-						Function: &openai.FunctionDefinition{Name: "get_weather"}, // This is a valid tool.
+						Function: nil,
 					},
 				},
 			},
-			// We expect only the valid function tool to be translated.
-			expectedTools: []anthropic.ToolUnionParam{
-				{OfTool: &anthropic.ToolParam{Name: "get_weather", Description: anthropic.String("")}},
-			},
-			expectErr: false,
+			expectErr: true,
 		},
 		{
-			name: "skips non-function tools",
+			name: "rejects non-function tools",
 			openAIReq: &openai.ChatCompletionRequest{
 				Tools: []openai.Tool{
 					{
 						Type: "retrieval",
 					},
-					{
-						Type:     "function",
-						Function: &openai.FunctionDefinition{Name: "get_weather"},
-					},
 				},
 			},
-			expectedTools: []anthropic.ToolUnionParam{
-				{OfTool: &anthropic.ToolParam{Name: "get_weather", Description: anthropic.String("")}},
-			},
-			expectErr: false,
+			expectErr: true,
 		},
 		{
 			name: "tool definition without type field",
