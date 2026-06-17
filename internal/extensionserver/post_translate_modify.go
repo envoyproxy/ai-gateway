@@ -854,9 +854,20 @@ func shouldAIGatewayExtProcBeInserted(filters []*httpconnectionmanagerv3.HttpFil
 
 // insertAIGatewayExtProcFilter inserts the AI Gateway extproc filter into the HTTP connection manager.
 //
-// The order is simple: make sure that the AI Gateway extproc filter is the very first extproc filter in the standard
-// Envoy Gateway order. See:
+// The order is mostly simple: make sure that the AI Gateway extproc filter is the first extproc filter in the
+// standard Envoy Gateway order. See:
 // https://github.com/envoyproxy/gateway/blob/f1e6dab770fabc70d175237380eedfc1f9b1a9e5/internal/xds/translator/httpfilters.go#L93
+//
+// There is one exception: the HTTP buffer filter (envoy.filters.http.buffer). In Envoy Gateway's canonical
+// filter order the buffer filter is placed *before* the ext_proc filters, so a user who raises the request
+// buffer limit via the buffer filter (e.g. through an EnvoyPatchPolicy) expects that limit to apply to the AI
+// Gateway extproc as well. The AI Gateway extproc runs with RequestBodyMode: BUFFERED, so inserting it ahead of
+// the buffer filter would make it buffer the request body against the (smaller) default per-connection buffer
+// limit and reject large request bodies with a 413 before the buffer filter's larger limit can take effect. To
+// avoid this, when a buffer filter sits at or after the chosen insertion point we insert the AI Gateway extproc
+// immediately after the last buffer filter instead. The AI Gateway extproc is then the first ext_proc filter to
+// run after the buffer filter (not necessarily the first ext_proc filter overall), so a user-supplied ext_proc
+// placed ahead of the buffer filter, e.g. api-key auth, still runs before it.
 func insertAIGatewayExtProcFilter(mgr *httpconnectionmanagerv3.HttpConnectionManager, filter *httpconnectionmanagerv3.HttpFilter) error {
 	insertIndex := -1
 outer:
@@ -871,6 +882,21 @@ outer:
 	if insertIndex == -1 {
 		return errors.New("failed to find insertion point for AI Gateway extproc filter")
 	}
+
+	// Find the last buffer filter so we can insert the AI Gateway extproc after it (see the buffer-filter
+	// exception in the function doc above).
+	lastBufferIndex := -1
+	for i, existingFilter := range mgr.HttpFilters {
+		if strings.HasPrefix(existingFilter.Name, egv1a1.EnvoyFilterBuffer.String()) {
+			lastBufferIndex = i
+		}
+	}
+	// When the buffer filter sits at or after the ext_proc insertion point, insert the AI Gateway extproc
+	// immediately after it instead. Behavior is unchanged when no buffer filter exists (lastBufferIndex == -1).
+	if lastBufferIndex >= insertIndex {
+		insertIndex = lastBufferIndex + 1
+	}
+
 	mgr.HttpFilters = append(mgr.HttpFilters, filter)
 	copy(mgr.HttpFilters[insertIndex+1:], mgr.HttpFilters[insertIndex:])
 	mgr.HttpFilters[insertIndex] = filter
