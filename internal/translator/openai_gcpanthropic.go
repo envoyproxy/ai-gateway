@@ -79,7 +79,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		if err != nil {
 			return
 		}
-		o.streamParser = newAnthropicStreamParser(o.requestModel)
+		o.streamParser = newAnthropicStreamParser(o.requestModel, false)
 	}
 
 	path := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, o.requestModel, specifier)

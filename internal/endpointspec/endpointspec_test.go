@@ -16,6 +16,7 @@ import (
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/redaction"
 )
@@ -87,7 +88,7 @@ func TestChatCompletionsEndpointSpec_GetTranslator(t *testing.T) {
 		{Name: filterapi.APISchemaAzureOpenAI, Version: "2024-02-01"},
 		{Name: filterapi.APISchemaGCPVertexAI},
 		{Name: filterapi.APISchemaGCPAnthropic, Version: "2024-05-01"},
-		{Name: filterapi.APISchemaAnthropic, Version: "2023-06-01"},
+		{Name: filterapi.APISchemaAnthropic, Prefix: "v1"},
 	}
 
 	for _, schema := range supported {
@@ -103,6 +104,30 @@ func TestChatCompletionsEndpointSpec_GetTranslator(t *testing.T) {
 	t.Run("unsupported", func(t *testing.T) {
 		_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: "Unknown"}, "override")
 		require.ErrorContains(t, err, "unsupported API schema")
+	})
+
+	t.Run("anthropic prefix", func(t *testing.T) {
+		tr, err := spec.GetTranslator(filterapi.VersionedAPISchema{
+			Name:   filterapi.APISchemaAnthropic,
+			Prefix: "gateway/v1",
+		}, "")
+		require.NoError(t, err)
+
+		headers, _, err := tr.RequestBody(nil, &openai.ChatCompletionRequest{
+			Model:     "claude-3-opus-20240229",
+			MaxTokens: ptr.To(int64(100)),
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{
+					OfUser: &openai.ChatCompletionUserMessageParam{
+						Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+						Role:    openai.ChatMessageRoleUser,
+					},
+				},
+			},
+		}, false)
+		require.NoError(t, err)
+		require.Contains(t, headers, internalapi.Header{":path", "/gateway/v1/messages"})
+		require.Contains(t, headers, internalapi.Header{"anthropic-version", "2023-06-01"})
 	})
 }
 

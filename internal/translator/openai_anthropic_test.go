@@ -21,7 +21,6 @@ import (
 
 	anthropicSchema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
-	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
@@ -130,23 +129,15 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 		require.Equal(t, "/v1/messages", pathHeader.Value())
 	})
 
-	t.Run("Custom API Version", func(t *testing.T) {
-		customAPIVersion := "2024-01-01"
-		translator := NewChatCompletionOpenAIToAnthropicTranslator(customAPIVersion, "")
+	t.Run("Custom Prefix", func(t *testing.T) {
+		translator := NewChatCompletionOpenAIToAnthropicTranslator("gateway/v1", "")
 
-		hm, body, err := translator.RequestBody(nil, openAIReq, false)
+		hm, _, err := translator.RequestBody(nil, openAIReq, false)
 		require.NoError(t, err)
 
-		var versionHeader internalapi.Header
-		for _, h := range hm {
-			if h.Key() == anthropicVersionHeaderName {
-				versionHeader = h
-				break
-			}
-		}
-		require.Equal(t, anthropicVersionHeaderName, versionHeader.Key())
-		require.Equal(t, customAPIVersion, versionHeader.Value())
-		require.False(t, gjson.GetBytes(body, "anthropic_version").Exists())
+		pathHeader := hm[0]
+		require.Equal(t, pathHeaderName, pathHeader.Key())
+		require.Equal(t, "/gateway/v1/messages", pathHeader.Value())
 	})
 
 	t.Run("Image Content Request", func(t *testing.T) {
@@ -597,6 +588,52 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
 		require.NotNil(t, body)
 		require.Contains(t, string(body), "Hello")
 	})
+}
+
+func TestOpenAIToAnthropicTranslatorV1ChatCompletion_StreamingResponseModel(t *testing.T) {
+	translator := NewChatCompletionOpenAIToAnthropicTranslator("", "").(*openAIToAnthropicTranslatorV1ChatCompletion)
+	req := &openai.ChatCompletionRequest{
+		Model:     "claude-alias",
+		Stream:    true,
+		MaxTokens: ptr.To(int64(100)),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+					Role:    openai.ChatMessageRoleUser,
+				},
+			},
+		},
+	}
+	_, _, err := translator.RequestBody(nil, req, false)
+	require.NoError(t, err)
+
+	messageStart := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_123","type":"message","role":"assistant","content":[],"model":"claude-3-opus-20240229","stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}
+
+`
+	_, body, _, responseModel, err := translator.ResponseBody(nil, bytes.NewReader([]byte(messageStart)), false, nil)
+	require.NoError(t, err)
+	require.Empty(t, body)
+	require.Equal(t, "claude-3-opus-20240229", responseModel)
+
+	contentDelta := `event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+
+`
+	_, body, _, responseModel, err = translator.ResponseBody(nil, bytes.NewReader([]byte(contentDelta)), false, nil)
+	require.NoError(t, err)
+	require.Contains(t, string(body), `"model":"claude-3-opus-20240229"`)
+	require.Equal(t, "claude-3-opus-20240229", responseModel)
+
+	messageStop := `event: message_stop
+data: {"type":"message_stop"}
+
+`
+	_, body, _, responseModel, err = translator.ResponseBody(nil, bytes.NewReader([]byte(messageStop)), true, nil)
+	require.NoError(t, err)
+	require.Contains(t, string(body), `"model":"claude-3-opus-20240229"`)
+	require.Equal(t, "claude-3-opus-20240229", responseModel)
 }
 
 func TestOpenAIToAnthropicTranslatorV1ChatCompletion_EdgeCases(t *testing.T) {

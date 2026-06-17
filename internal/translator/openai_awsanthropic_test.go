@@ -710,7 +710,7 @@ func TestAWSAnthropicStreamParser_ErrorHandling(t *testing.T) {
 	}
 
 	t.Run("body read error", func(t *testing.T) {
-		parser := newAnthropicStreamParser("test-model")
+		parser := newAnthropicStreamParser("test-model", false)
 		_, _, _, _, err := parser.Process(&mockErrorReader{}, false, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to read from stream body")
@@ -729,7 +729,7 @@ func TestOpenAIToAWSAnthropicTranslator_ResponseHeaders(t *testing.T) {
 
 	t.Run("streaming request", func(t *testing.T) {
 		translator := &openAIToAWSAnthropicTranslatorV1ChatCompletion{
-			streamParser: newAnthropicStreamParser("test-model"),
+			streamParser: newAnthropicStreamParser("test-model", false),
 		}
 		headers, err := translator.ResponseHeaders(nil)
 		require.NoError(t, err)

@@ -67,7 +67,7 @@ func (o *openAIToAWSAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 	pathTemplate := "/model/%s/invoke"
 	if openAIReq.Stream {
 		pathTemplate = "/model/%s/invoke-with-response-stream"
-		o.streamParser = newAnthropicStreamParser(o.requestModel)
+		o.streamParser = newAnthropicStreamParser(o.requestModel, false)
 	}
 
 	params, err := buildAnthropicParams(openAIReq, "AWSAnthropic", o.modelNameOverride)

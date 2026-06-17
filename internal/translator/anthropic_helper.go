@@ -848,25 +848,34 @@ type streamingToolCall struct {
 // anthropicStreamParser manages the stateful translation of an Anthropic SSE stream
 // to an OpenAI-compatible SSE stream.
 type anthropicStreamParser struct {
-	buffer          bytes.Buffer
-	activeMessageID string
-	activeToolCalls map[int64]*streamingToolCall
-	toolIndex       int64
-	tokenUsage      metrics.TokenUsage
-	stopReason      anthropic.StopReason
-	requestModel    internalapi.RequestModel
-	sentFirstChunk  bool
-	created         openai.JSONUNIXTime
+	buffer           bytes.Buffer
+	activeMessageID  string
+	activeToolCalls  map[int64]*streamingToolCall
+	toolIndex        int64
+	tokenUsage       metrics.TokenUsage
+	stopReason       anthropic.StopReason
+	requestModel     internalapi.RequestModel
+	responseModel    internalapi.ResponseModel
+	useResponseModel bool
+	sentFirstChunk   bool
+	created          openai.JSONUNIXTime
 }
 
-// newAnthropicStreamParser creates a new parser for a streaming request.
-func newAnthropicStreamParser(requestModel string) *anthropicStreamParser {
+func newAnthropicStreamParser(requestModel string, useResponseModel bool) *anthropicStreamParser {
 	toolIdx := int64(-1)
 	return &anthropicStreamParser{
-		requestModel:    requestModel,
-		activeToolCalls: make(map[int64]*streamingToolCall),
-		toolIndex:       toolIdx,
+		requestModel:     requestModel,
+		useResponseModel: useResponseModel,
+		activeToolCalls:  make(map[int64]*streamingToolCall),
+		toolIndex:        toolIdx,
 	}
+}
+
+func (p *anthropicStreamParser) model() string {
+	if p.useResponseModel && p.responseModel != "" {
+		return p.responseModel
+	}
+	return p.requestModel
 }
 
 func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error {
@@ -890,7 +899,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 ) {
 	newBody = make([]byte, 0)
 	_ = span // TODO: add support for streaming chunks in tracing.
-	responseModel = p.requestModel
+	responseModel = p.model()
 	if _, err = p.buffer.ReadFrom(body); err != nil {
 		err = fmt.Errorf("failed to read from stream body: %w", err)
 		return
@@ -927,6 +936,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		cachedTokens, _ := p.tokenUsage.CachedInputTokens()
 		cacheCreationTokens, _ := p.tokenUsage.CacheCreationInputTokens()
 		reasoningTokens, _ := p.tokenUsage.ReasoningTokens()
+		responseModel = p.model()
 		finalChunk := openai.ChatCompletionResponseChunk{
 			ID:      p.activeMessageID,
 			Created: p.created,
@@ -944,10 +954,9 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 					ReasoningTokens: int(reasoningTokens),
 				},
 			},
-			Model: p.requestModel,
+			Model: responseModel,
 		}
 
-		// Add active tool calls to the final chunk.
 		var toolCalls []openai.ChatCompletionChunkChoiceDeltaToolCall
 		for toolIndex, tool := range p.activeToolCalls {
 			toolCalls = append(toolCalls, openai.ChatCompletionChunkChoiceDeltaToolCall{
@@ -976,12 +985,12 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 				return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to marshal final stream chunk: %w", err)
 			}
 		}
-		// Add the final [DONE] message to indicate the end of the stream.
 		newBody = append(newBody, sseDataPrefix...)
 		newBody = append(newBody, sseDoneMessage...)
 		newBody = append(newBody, '\n', '\n')
 	}
 	tokenUsage = p.tokenUsage
+	responseModel = p.model()
 	return
 }
 
@@ -1016,6 +1025,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			return nil, fmt.Errorf("unmarshal message_start: %w", err)
 		}
 		p.activeMessageID = event.Message.ID
+		p.responseModel = event.Message.Model
 		p.created = openai.JSONUNIXTime(time.Now())
 		u := event.Message.Usage
 		usage := metrics.ExtractTokenUsageFromExplicitCaching(
@@ -1036,7 +1046,6 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			p.tokenUsage.SetCacheCreationInputTokens(cacheCreation)
 		}
 
-		// reset the toolIndex for each message
 		p.toolIndex = -1
 		return nil, nil
 
@@ -1048,7 +1057,6 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if event.ContentBlock.Type == string(constant.ValueOf[constant.ToolUse]()) || event.ContentBlock.Type == string(constant.ValueOf[constant.ServerToolUse]()) {
 			p.toolIndex++
 			var argsJSON string
-			// Check if the input field is provided directly in the start event.
 			if event.ContentBlock.Input != nil {
 				switch input := event.ContentBlock.Input.(type) {
 				case map[string]any:
@@ -1068,7 +1076,6 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 				}
 			}
 
-			// Store the complete input JSON in our state.
 			p.activeToolCalls[p.toolIndex] = &streamingToolCall{
 				id:        event.ContentBlock.ID,
 				name:      event.ContentBlock.Name,
@@ -1082,8 +1089,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 						ID:    &event.ContentBlock.ID,
 						Type:  openai.ChatCompletionMessageToolCallTypeFunction,
 						Function: openai.ChatCompletionMessageToolCallFunctionParam{
-							Name: event.ContentBlock.Name,
-							// Include the arguments if they are available.
+							Name:      event.ContentBlock.Name,
 							Arguments: argsJSON,
 						},
 					},
@@ -1225,7 +1231,7 @@ func (p *anthropicStreamParser) constructOpenAIChatCompletionChunk(delta openai.
 				FinishReason: finishReason,
 			},
 		},
-		Model: p.requestModel,
+		Model: p.model(),
 	}
 }
 

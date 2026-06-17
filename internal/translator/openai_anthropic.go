@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path"
 	"strconv"
 	"strings"
 
@@ -23,25 +24,27 @@ import (
 )
 
 const (
-	// Default Anthropic API version used when schema version is unset.
 	// https://docs.anthropic.com/en/api/versioning
 	anthropicDefaultVersion = "2023-06-01"
 	anthropicBackendError   = "AnthropicBackendError"
 )
 
 // NewChatCompletionOpenAIToAnthropicTranslator implements [Factory] for direct Anthropic translation.
-func NewChatCompletionOpenAIToAnthropicTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
+func NewChatCompletionOpenAIToAnthropicTranslator(prefix string, modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
+	if prefix == "" {
+		prefix = "v1"
+	}
 	return &openAIToAnthropicTranslatorV1ChatCompletion{
-		apiVersion:        apiVersion,
 		modelNameOverride: modelNameOverride,
+		path:              path.Join("/", prefix, "messages"),
 	}
 }
 
 // openAIToAnthropicTranslatorV1ChatCompletion translates OpenAI Chat Completions API to Anthropic Messages API.
 // This uses the direct Anthropic API: https://docs.anthropic.com/en/api/messages
 type openAIToAnthropicTranslatorV1ChatCompletion struct {
-	apiVersion        string
 	modelNameOverride internalapi.ModelNameOverride
+	path              string
 	streamParser      *anthropicStreamParser
 	requestModel      internalapi.RequestModel
 	debugLogEnabled   bool
@@ -53,8 +56,6 @@ type openAIToAnthropicTranslatorV1ChatCompletion struct {
 func (o *openAIToAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	// Resolve the request model up front so it's always recorded, even if
-	// buildAnthropicParams fails. This keeps response-side fallbacks consistent.
 	o.requestModel = openAIReq.Model
 	if o.modelNameOverride != "" {
 		o.requestModel = o.modelNameOverride
@@ -80,23 +81,14 @@ func (o *openAIToAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, open
 		if err != nil {
 			return
 		}
-		o.streamParser = newAnthropicStreamParser(o.requestModel)
+		o.streamParser = newAnthropicStreamParser(o.requestModel, true)
 	}
 
 	newBody = body
 
-	// The direct Anthropic API requires the version to be sent as the
-	// `anthropic-version` HTTP header (https://docs.anthropic.com/en/api/versioning).
-	// Note: `anthropic_version` in the JSON body is specific to AWS Bedrock and GCP
-	// Vertex AI variants and is not used here.
-	anthropicVersion := anthropicDefaultVersion
-	if o.apiVersion != "" {
-		anthropicVersion = o.apiVersion
-	}
-
 	newHeaders = []internalapi.Header{
-		{pathHeaderName, "/v1/messages"},
-		{anthropicVersionHeaderName, anthropicVersion},
+		{pathHeaderName, o.path},
+		{anthropicVersionHeaderName, anthropicDefaultVersion},
 		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
 	}
 	return
