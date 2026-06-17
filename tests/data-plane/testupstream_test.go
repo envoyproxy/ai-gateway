@@ -195,31 +195,34 @@ func TestWithTestUpstream(t *testing.T) {
 			},
 		},
 		{
-			name:            "gcp-anthropicai - /v1/chat/completions - missing max_tokens",
-			backend:         "gcp-anthropicai",
-			path:            "/v1/chat/completions",
-			method:          http.MethodPost,
-			requestBody:     `{"model":"claude-3-sonnet","messages":[{"role":"user","content":"Hello"}]}`,
-			expRequestBody:  `{"max_tokens":0,"messages":[{"content":[{"text":"Hello","type":"text"}],"role":"user"}],"anthropic_version":"vertex-2023-10-16"}`,
-			expPath:         "/v1/projects/gcp-project-name/locations/gcp-region/publishers/anthropic/models/claude-3-sonnet:rawPredict",
-			responseStatus:  strconv.Itoa(http.StatusBadRequest),
-			responseBody:    `{"error":{"type":"invalid_request_error","message":"max_tokens: Value must be greater than or equal to 1"}}`,
-			expStatus:       http.StatusBadRequest,
-			expResponseBody: `{"type":"error","error":{"type":"invalid_request_error","code":"400","message":"max_tokens: Value must be greater than or equal to 1"}}`,
+			name:        "gcp-anthropicai - /v1/chat/completions - missing max_tokens",
+			backend:     "gcp-anthropicai",
+			path:        "/v1/chat/completions",
+			method:      http.MethodPost,
+			requestBody: `{"model":"claude-3-sonnet","messages":[{"role":"user","content":"Hello"}]}`,
+			expStatus:   http.StatusUnprocessableEntity,
+			expResponseBodyFunc: func(t require.TestingT, body []byte) {
+				bodyStr := string(body)
+				require.Contains(t, bodyStr, `"type":"error"`)
+				require.Contains(t, bodyStr, `"type":"UnprocessableEntity"`)
+				require.Contains(t, bodyStr, `"code":"422"`)
+				require.Contains(t, bodyStr, `max_tokens or max_completion_tokens is required for Anthropic-backed OpenAI-compatible requests`)
+			},
 		},
 		{
-			name:            "aws-anthropic - /v1/chat/completions - missing max_tokens",
-			backend:         "aws-anthropic",
-			path:            "/v1/chat/completions",
-			method:          http.MethodPost,
-			requestBody:     `{"model":"anthropic.claude-3-sonnet-20240229-v1:0","messages":[{"role":"user","content":"Hello"}]}`,
-			expRequestBody:  `{"max_tokens":0,"messages":[{"content":[{"text":"Hello","type":"text"}],"role":"user"}],"anthropic_version":"bedrock-2023-05-31"}`,
-			expPath:         "/model/anthropic.claude-3-sonnet-20240229-v1:0/invoke",
-			responseHeaders: "x-amzn-errortype:invalid_request_error",
-			responseStatus:  strconv.Itoa(http.StatusBadRequest),
-			responseBody:    `{"message":"max_tokens: Value must be greater than or equal to 1"}`,
-			expStatus:       http.StatusBadRequest,
-			expResponseBody: `{"type":"error","error":{"type":"invalid_request_error","code":"400","message":"max_tokens: Value must be greater than or equal to 1"}}`,
+			name:        "aws-anthropic - /v1/chat/completions - missing max_tokens",
+			backend:     "aws-anthropic",
+			path:        "/v1/chat/completions",
+			method:      http.MethodPost,
+			requestBody: `{"model":"anthropic.claude-3-sonnet-20240229-v1:0","messages":[{"role":"user","content":"Hello"}]}`,
+			expStatus:   http.StatusUnprocessableEntity,
+			expResponseBodyFunc: func(t require.TestingT, body []byte) {
+				bodyStr := string(body)
+				require.Contains(t, bodyStr, `"type":"error"`)
+				require.Contains(t, bodyStr, `"type":"UnprocessableEntity"`)
+				require.Contains(t, bodyStr, `"code":"422"`)
+				require.Contains(t, bodyStr, `max_tokens or max_completion_tokens is required for Anthropic-backed OpenAI-compatible requests`)
+			},
 		},
 		{
 			name:            "aws system role - /v1/chat/completions",

@@ -108,17 +108,40 @@ func (o *openAIToAWSAnthropicTranslatorV1ChatCompletion) ResponseError(respHeade
 	statusCode := respHeaders[statusHeaderName]
 	var openaiError openai.Error
 	if v, ok := respHeaders[contentTypeHeaderName]; ok && strings.Contains(v, jsonContentType) {
-		var bedrockError awsbedrock.BedrockException
-		if err = json.NewDecoder(body).Decode(&bedrockError); err != nil {
-			return nil, nil, fmt.Errorf("failed to unmarshal error body: %w", err)
-		}
-		openaiError = openai.Error{
-			Type: "error",
-			Error: openai.ErrorType{
-				Type:    respHeaders[awsErrorTypeHeaderName],
-				Message: bedrockError.Message,
-				Code:    &statusCode,
-			},
+		if _, ok := respHeaders[awsErrorTypeHeaderName]; !ok {
+			var buf []byte
+			buf, err = io.ReadAll(body)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to read error body: %w", err)
+			}
+			if err = json.Unmarshal(buf, &openaiError); err == nil && openaiError.Type == "error" && openaiError.Error.Type != "" {
+				newHeaders = []internalapi.Header{
+					{contentTypeHeaderName, jsonContentType},
+					{contentLengthHeaderName, strconv.Itoa(len(buf))},
+				}
+				return newHeaders, buf, nil
+			}
+			openaiError = openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type:    awsBedrockBackendError,
+					Message: string(buf),
+					Code:    &statusCode,
+				},
+			}
+		} else {
+			var bedrockError awsbedrock.BedrockException
+			if err = json.NewDecoder(body).Decode(&bedrockError); err != nil {
+				return nil, nil, fmt.Errorf("failed to unmarshal error body: %w", err)
+			}
+			openaiError = openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type:    respHeaders[awsErrorTypeHeaderName],
+					Message: bedrockError.Message,
+					Code:    &statusCode,
+				},
+			}
 		}
 	} else {
 		var buf []byte

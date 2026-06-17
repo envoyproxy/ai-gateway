@@ -129,6 +129,17 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.Equal(t, anthropicVertex.DefaultVersion, gjson.GetBytes(body, "anthropic_version").String())
 	})
 
+	t.Run("Missing MaxTokens Returns Error", func(t *testing.T) {
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		missingTokensReq := *openAIReq
+		missingTokensReq.MaxTokens = nil
+		missingTokensReq.MaxCompletionTokens = nil
+
+		_, _, err := translator.RequestBody(nil, &missingTokensReq, false)
+		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
+		require.Contains(t, err.Error(), "max_tokens or max_completion_tokens is required")
+	})
+
 	t.Run("Model Name Override", func(t *testing.T) {
 		overrideModelName := "claude-3"
 		// Instantiate the translator with the model name override.
@@ -284,15 +295,15 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
 	})
 
-	t.Run("Missing MaxTokens Passes With Zero", func(t *testing.T) {
+	t.Run("Missing MaxTokens Without Messages Returns Error", func(t *testing.T) {
 		missingTokensReq := &openai.ChatCompletionRequest{
 			Model:    claudeTestModel,
 			Messages: []openai.ChatCompletionMessageParamUnion{},
 		}
 		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
-		_, body, err := translator.RequestBody(nil, missingTokensReq, false)
-		require.NoError(t, err)
-		require.Equal(t, int64(0), gjson.GetBytes(body, "max_tokens").Int())
+		_, _, err := translator.RequestBody(nil, missingTokensReq, false)
+		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
+		require.Contains(t, err.Error(), "max_tokens or max_completion_tokens is required")
 	})
 	t.Run("API Version Override", func(t *testing.T) {
 		customAPIVersion := "bedrock-2023-05-31"

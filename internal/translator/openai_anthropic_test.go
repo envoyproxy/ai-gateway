@@ -21,6 +21,7 @@ import (
 
 	anthropicSchema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
@@ -113,6 +114,25 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T) {
 		require.Equal(t, anthropicVersionHeaderName, hm[1].Key())
 		require.Equal(t, anthropicDefaultVersion, hm[1].Value())
 		require.False(t, gjson.GetBytes(body, "anthropic_version").Exists())
+	})
+
+	t.Run("Missing MaxTokens Returns Error", func(t *testing.T) {
+		translator := NewChatCompletionOpenAIToAnthropicTranslator("", "")
+		missingTokensReq := &openai.ChatCompletionRequest{
+			Model: "claude-3-opus-20240229",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{
+					OfUser: &openai.ChatCompletionUserMessageParam{
+						Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+						Role:    openai.ChatMessageRoleUser,
+					},
+				},
+			},
+		}
+
+		_, _, err := translator.RequestBody(nil, missingTokensReq, false)
+		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
+		require.Contains(t, err.Error(), "max_tokens or max_completion_tokens is required")
 	})
 
 	t.Run("Model Name Override", func(t *testing.T) {

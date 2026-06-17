@@ -27,6 +27,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
@@ -284,15 +285,15 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.Contains(t, err.Error(), fmt.Sprintf(tempNotSupportedError, *invalidTempReq.Temperature))
 	})
 
-	t.Run("Missing MaxTokens Passes With Zero", func(t *testing.T) {
+	t.Run("Missing MaxTokens Returns Error", func(t *testing.T) {
 		missingTokensReq := &openai.ChatCompletionRequest{
 			Model:    "anthropic.claude-3-opus-20240229-v1:0",
 			Messages: []openai.ChatCompletionMessageParamUnion{},
 		}
 		translator := NewChatCompletionOpenAIToAWSAnthropicTranslator("", "")
-		_, body, err := translator.RequestBody(nil, missingTokensReq, false)
-		require.NoError(t, err)
-		require.Equal(t, int64(0), gjson.GetBytes(body, "max_tokens").Int())
+		_, _, err := translator.RequestBody(nil, missingTokensReq, false)
+		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
+		require.Contains(t, err.Error(), "max_tokens or max_completion_tokens is required")
 	})
 }
 
@@ -472,6 +473,38 @@ func TestOpenAIToAWSAnthropicTranslator_ResponseError(t *testing.T) {
 					Type:    "ValidationException",
 					Code:    ptr.To("400"),
 					Message: "messages: field is required",
+				},
+			},
+		},
+		{
+			name: "json error response without aws error header passes through",
+			responseHeaders: map[string]string{
+				statusHeaderName:      "422",
+				contentTypeHeaderName: "application/json",
+			},
+			inputBody: `{"type":"error","error":{"type":"UnprocessableEntity","code":"422","message":"invalid request body: max_tokens or max_completion_tokens is required"}}`,
+			expectedOutput: openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type:    "UnprocessableEntity",
+					Code:    ptr.To("422"),
+					Message: "invalid request body: max_tokens or max_completion_tokens is required",
+				},
+			},
+		},
+		{
+			name: "bedrock-shaped json error without aws error header is wrapped",
+			responseHeaders: map[string]string{
+				statusHeaderName:      "400",
+				contentTypeHeaderName: "application/json",
+			},
+			inputBody: `{"message":"messages: field is required"}`,
+			expectedOutput: openai.Error{
+				Type: "error",
+				Error: openai.ErrorType{
+					Type:    awsBedrockBackendError,
+					Code:    ptr.To("400"),
+					Message: `{"message":"messages: field is required"}`,
 				},
 			},
 		},
