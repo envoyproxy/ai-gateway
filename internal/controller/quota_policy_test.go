@@ -86,8 +86,8 @@ func TestQuotaPolicyController_Reconcile(t *testing.T) {
 					Name:  gwapiv1.ObjectName("mybackend"),
 				},
 			},
-			ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-				Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
+			ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+				Quota: &aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 			},
 		},
 	}
@@ -153,8 +153,8 @@ func TestQuotaPolicyController_Reconcile_SyncError(t *testing.T) {
 					Name:  gwapiv1.ObjectName(backend.Name),
 				},
 			},
-			ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-				Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
+			ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+				Quota: &aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 			},
 		},
 	}
@@ -202,8 +202,8 @@ func TestQuotaPolicyController_Reconcile_InvalidDuration(t *testing.T) {
 					Name:  gwapiv1.ObjectName(backend.Name),
 				},
 			},
-			ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-				Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "invalid"},
+			ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+				Quota: &aigv1a1.QuotaValue{Limit: 100, Duration: "invalid"},
 			},
 		},
 	}
@@ -252,8 +252,8 @@ func TestQuotaPolicyController_Reconcile_Deletion(t *testing.T) {
 					Name:  gwapiv1.ObjectName(backend.Name),
 				},
 			},
-			ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-				Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
+			ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+				Quota: &aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 			},
 		},
 	}
@@ -318,8 +318,8 @@ func TestQuotaPolicyController_Reconcile_MultipleBackends(t *testing.T) {
 					Name:  "backend-2",
 				},
 			},
-			ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-				Quota: aigv1a1.QuotaValue{Limit: 500, Duration: "1h"},
+			ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+				Quota: &aigv1a1.QuotaValue{Limit: 500, Duration: "1h"},
 			},
 		},
 	}
@@ -407,8 +407,8 @@ func TestQuotaPolicyController_BackendToQuotaPolicy(t *testing.T) {
 					Name:  "backend-a",
 				},
 			},
-			ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-				Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
+			ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+				Quota: &aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 			},
 		},
 	}
@@ -422,8 +422,8 @@ func TestQuotaPolicyController_BackendToQuotaPolicy(t *testing.T) {
 					Name:  "backend-a",
 				},
 			},
-			ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-				Quota: aigv1a1.QuotaValue{Limit: 200, Duration: "1h"},
+			ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+				Quota: &aigv1a1.QuotaValue{Limit: 200, Duration: "1h"},
 			},
 		},
 	}
@@ -437,8 +437,8 @@ func TestQuotaPolicyController_BackendToQuotaPolicy(t *testing.T) {
 					Name:  "backend-b",
 				},
 			},
-			ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-				Quota: aigv1a1.QuotaValue{Limit: 300, Duration: "1m"},
+			ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+				Quota: &aigv1a1.QuotaValue{Limit: 300, Duration: "1m"},
 			},
 		},
 	}
@@ -506,8 +506,8 @@ func TestQuotaPolicyController_Reconcile_MultiplePolicies(t *testing.T) {
 			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
 				{Kind: "AIServiceBackend", Group: "aigateway.envoyproxy.io", Name: "be-1"},
 			},
-			ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-				Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
+			ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+				Quota: &aigv1a1.QuotaValue{Limit: 100, Duration: "1m"},
 			},
 		},
 	}
@@ -517,8 +517,8 @@ func TestQuotaPolicyController_Reconcile_MultiplePolicies(t *testing.T) {
 			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
 				{Kind: "AIServiceBackend", Group: "aigateway.envoyproxy.io", Name: "be-2"},
 			},
-			ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-				Quota: aigv1a1.QuotaValue{Limit: 200, Duration: "1h"},
+			ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+				Quota: &aigv1a1.QuotaValue{Limit: 200, Duration: "1h"},
 			},
 		},
 	}

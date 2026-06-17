@@ -52,6 +52,8 @@ type (
 
 		MCPSessionEncryptionIterations int `name:"mcp-session-encryption-iterations" help:"Number of iterations for MCP session encryption key derivation." default:"100000"`
 
+		EnableJWTGroupFanout bool `help:"Enable the Lua JWT group claim fan-out filter for hierarchical rate limiting."`
+
 		mcpConfig *autoconfig.MCPServers `kong:"-"` // Internal field: normalized MCP JSON data
 		dirs      *xdg.Directories       `kong:"-"` // Internal field: XDG directories, set by BeforeApply
 		runOpts   *runOpts               `kong:"-"` // Internal field: run options, set by Validate

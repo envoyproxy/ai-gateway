@@ -103,7 +103,7 @@ The AI Gateway Controller manages AI-specific components and configurations:
 - Works alongside Envoy Gateway Controller (not directly configuring Envoy)
 - Creates resources, such as `HTTPRoute`, that Envoy Gateway translates into Envoy configuration with AI-specific processing rules
 - Serves the [Envoy Gateway Extension Server] to fine-tune the Envoy configuration (xDS)
-- Enables token-based rate limiting through metadata
+- Runs an in-process rate limit gRPC service for token-based rate limiting (QuotaPolicy)
 
 ### 2. Envoy Gateway Controller
 

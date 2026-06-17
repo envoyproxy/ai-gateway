@@ -42,12 +42,15 @@ type Server struct {
 	quotaRateLimitTimeout int64
 	// quotaRateLimitFailureModeDeny sets the failure mode for the rate limit filter.
 	quotaRateLimitFailureModeDeny bool
+	// enableJWTGroupFanout enables the Lua filter that fans out JWT group claims
+	// from dynamic metadata to repeated x-jwt-groups headers for rate limit matching.
+	enableJWTGroupFanout bool
 }
 
 const serverName = "envoy-gateway-extension-server"
 
 // New creates a new instance of the extension server that implements the EnvoyGatewayExtensionServer interface.
-func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, requestHeaderAttributes, logRequestHeaderAttributes *string, quotaRateLimitServiceAddr string, quotaRateLimitTimeout int64, quotaRateLimitFailureModeDeny bool) (*Server, error) {
+func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAloneMode bool, requestHeaderAttributes, logRequestHeaderAttributes *string, quotaRateLimitServiceAddr string, quotaRateLimitTimeout int64, quotaRateLimitFailureModeDeny bool, enableJWTGroupFanout bool) (*Server, error) {
 	logger = logger.WithName(serverName)
 	logAttrs, err := requestheaderattrs.ResolveLog(requestHeaderAttributes, logRequestHeaderAttributes)
 	if err != nil {
@@ -69,6 +72,7 @@ func New(k8sClient client.Client, logger logr.Logger, udsPath string, isStandAlo
 		quotaRateLimitServicePort:     port,
 		quotaRateLimitTimeout:         quotaRateLimitTimeout,
 		quotaRateLimitFailureModeDeny: quotaRateLimitFailureModeDeny,
+		enableJWTGroupFanout:          enableJWTGroupFanout,
 	}, nil
 }
 

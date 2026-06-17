@@ -18,6 +18,9 @@ import (
 	"time"
 
 	egextension "github.com/envoyproxy/gateway/proto/extension"
+	ratelimitv3 "github.com/envoyproxy/go-control-plane/envoy/service/ratelimit/v3"
+	rlsconfv3 "github.com/envoyproxy/go-control-plane/ratelimit/config/ratelimit/v3"
+	"github.com/go-logr/logr"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -35,6 +38,11 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/pprof"
 	"github.com/envoyproxy/ai-gateway/internal/ratelimit/runner"
+	ratelimitservice "github.com/envoyproxy/ai-gateway/internal/ratelimit/service"
+	"github.com/envoyproxy/ai-gateway/internal/ratelimit/storage"
+	"github.com/envoyproxy/ai-gateway/internal/ratelimit/storage/file"
+	"github.com/envoyproxy/ai-gateway/internal/ratelimit/storage/postgres"
+	redisstore "github.com/envoyproxy/ai-gateway/internal/ratelimit/storage/redis"
 )
 
 type flags struct {
@@ -72,6 +80,16 @@ type flags struct {
 	quotaRateLimitServiceAddr              string
 	quotaRateLimitTimeout                  int64
 	quotaRateLimitFailureModeDeny          bool
+	storageBackend                         string
+	storagePostgresDSN                     string
+	storagePostgresDSNFromEnv              string
+	storageFileDir                         string
+	storageRedisURL                        string
+	storageRedisTLS                        bool
+	storagePostgresMaxOpenConns            int
+	storagePostgresMaxIdleConns            int
+	storagePostgresConnMaxLifetimeSeconds  int
+	enableJWTGroupFanout                   bool
 }
 
 func setOptionalString(dst **string) func(string) error {
@@ -243,6 +261,27 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 	quotaRateLimitFailureModeDeny := fs.Bool("quotaRateLimitFailureModeDeny", false,
 		"If true, the rate limit filter will deny requests when the rate limit service is unavailable.")
 
+	storageBackend := fs.String("storageBackend", "redis",
+		"Rate limit storage backend: 'postgres', 'file', or 'redis'. Default: redis")
+	storagePostgresDSN := fs.String("storagePostgresDSN", "",
+		"PostgreSQL connection string (DSN). Required when --storageBackend=postgres. Example: postgres://user:pass@host:5432/dbname?sslmode=disable")
+	storagePostgresDSNFromEnv := fs.String("storagePostgresDSNFromEnv", "",
+		"Name of env var containing the PostgreSQL DSN. Prefer this for production with valueFrom.secretKeyRef.")
+	storageFileDir := fs.String("storageFileDir", "/data/ratelimit",
+		"Directory for file-based rate limit storage. Required when --storageBackend=file.")
+	storageRedisURL := fs.String("storageRedisURL", "redis.redis-system.svc.cluster.local:6379",
+		"Redis URL when --storageBackend=redis")
+	storageRedisTLS := fs.Bool("storageRedisTLS", false,
+		"Enable TLS for Redis connections")
+	storagePostgresMaxOpenConns := fs.Int("storagePostgresMaxOpenConns", 25,
+		"Maximum number of open connections to the PostgreSQL database.")
+	storagePostgresMaxIdleConns := fs.Int("storagePostgresMaxIdleConns", 5,
+		"Maximum number of idle connections to the PostgreSQL database.")
+	storagePostgresConnMaxLifetimeSeconds := fs.Int("storagePostgresConnMaxLifetimeSeconds", 300,
+		"Maximum lifetime (in seconds) of a connection to the PostgreSQL database.")
+	enableJWTGroupFanout := fs.Bool("enableJWTGroupFanout", false,
+		"Enable the Lua JWT group claim fan-out filter. When enabled, JWT group claims are fanned out to repeated x-jwt-groups headers before rate limit evaluation.")
+
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
 		return nil, err
@@ -359,6 +398,16 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		quotaRateLimitServiceAddr:              *quotaRateLimitServiceAddr,
 		quotaRateLimitTimeout:                  *quotaRateLimitTimeout,
 		quotaRateLimitFailureModeDeny:          *quotaRateLimitFailureModeDeny,
+		storageBackend:                         *storageBackend,
+		storagePostgresDSN:                     *storagePostgresDSN,
+		storagePostgresDSNFromEnv:              *storagePostgresDSNFromEnv,
+		storageFileDir:                         *storageFileDir,
+		storageRedisURL:                        *storageRedisURL,
+		storageRedisTLS:                        *storageRedisTLS,
+		storagePostgresMaxOpenConns:            *storagePostgresMaxOpenConns,
+		storagePostgresMaxIdleConns:            *storagePostgresMaxIdleConns,
+		storagePostgresConnMaxLifetimeSeconds:  *storagePostgresConnMaxLifetimeSeconds,
+		enableJWTGroupFanout:                   *enableJWTGroupFanout,
 	}, nil
 }
 
@@ -416,7 +465,7 @@ func main() {
 	// Start the extension server running alongside the controller.
 	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
 	s := grpc.NewServer(grpc.MaxRecvMsgSize(parsedFlags.maxRecvMsgSize))
-	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes, parsedFlags.quotaRateLimitServiceAddr, parsedFlags.quotaRateLimitTimeout, parsedFlags.quotaRateLimitFailureModeDeny)
+	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes, parsedFlags.quotaRateLimitServiceAddr, parsedFlags.quotaRateLimitTimeout, parsedFlags.quotaRateLimitFailureModeDeny, parsedFlags.enableJWTGroupFanout)
 	if err != nil {
 		setupLog.Error(err, "failed to create extension server")
 		os.Exit(1)
@@ -428,7 +477,8 @@ func main() {
 		s.GracefulStop()
 	}()
 	go func() {
-		if err := s.Serve(lis); err != nil {
+		err = s.Serve(lis)
+		if err != nil {
 			setupLog.Error(err, "failed to serve extension server")
 		}
 	}()
@@ -436,9 +486,46 @@ func main() {
 	// Start the rate limit xDS config server.
 	rlRunner := runner.New(ctrl.Log, runner.DefaultPort)
 	go func() {
-		if err := rlRunner.Start(ctx); err != nil {
-			setupLog.Error(err, "failed to start rate limit xDS server")
+		if startErr := rlRunner.Start(ctx); startErr != nil {
+			setupLog.Error(startErr, "failed to start rate limit xDS server")
 			os.Exit(1)
+		}
+	}()
+
+	// Initialize the rate limit storage backend and in-process gRPC service.
+	rateLimitStore, err := initRateLimitStore(ctx, parsedFlags, setupLog)
+	if err != nil {
+		setupLog.Error(err, "failed to initialize rate limit storage")
+		os.Exit(1)
+	}
+
+	rlService := ratelimitservice.New(rateLimitStore, ctrl.Log.WithName("ratelimit-service"))
+	// Wire the in-process rate limit service to receive merged configs
+	// whenever the QuotaPolicy controller pushes updates via the runner.
+	// This must happen before the gRPC server starts accepting connections
+	// so that initial requests from Envoy have config available.
+	rlRunner.SetConfigObserver(func(config *rlsconfv3.RateLimitConfig) {
+		rlService.UpdateConfig(config)
+	})
+
+	// Start the in-process rate limit gRPC server on the quota rate limit port.
+	rlAddr := net.JoinHostPort("0.0.0.0", "8081")
+	rlLis, err := net.Listen("tcp", rlAddr)
+	if err != nil {
+		setupLog.Error(err, "failed to listen for rate limit service", "addr", rlAddr)
+		os.Exit(1)
+	}
+	defer rateLimitStore.Close()
+	rlGrpcServer := grpc.NewServer()
+	ratelimitv3.RegisterRateLimitServiceServer(rlGrpcServer, rlService)
+	go func() {
+		<-ctx.Done()
+		rlGrpcServer.GracefulStop()
+	}()
+	go func() {
+		setupLog.Info("starting in-process rate limit gRPC service", "address", rlAddr)
+		if err := rlGrpcServer.Serve(rlLis); err != nil {
+			setupLog.Error(err, "rate limit gRPC service failed")
 		}
 	}()
 
@@ -513,5 +600,38 @@ func setupCache(f *flags) cache.Options {
 	return cache.Options{
 		DefaultNamespaces: namespaceCacheConfig,
 		DefaultTransform:  cache.TransformStripManagedFields(),
+	}
+}
+
+// initRateLimitStore creates the storage backend based on the provided flags.
+func initRateLimitStore(ctx context.Context, f *flags, log logr.Logger) (storage.Store, error) {
+	switch f.storageBackend {
+	case "postgres":
+		dsn := f.storagePostgresDSN
+		if f.storagePostgresDSNFromEnv != "" {
+			dsn = os.Getenv(f.storagePostgresDSNFromEnv)
+		}
+		if dsn == "" {
+			return nil, fmt.Errorf("--storagePostgresDSN or --storagePostgresDSNFromEnv is required when --storageBackend=postgres")
+		}
+		if f.storagePostgresDSNFromEnv == "" {
+			log.Info("WARNING: PostgreSQL DSN passed via --storagePostgresDSN CLI flag. This exposes credentials in the pod spec. Use --storagePostgresDSNFromEnv with a Kubernetes Secret instead.")
+		}
+		return postgres.New(ctx, postgres.Config{
+			DSN:             dsn,
+			MaxOpenConns:    f.storagePostgresMaxOpenConns,
+			MaxIdleConns:    f.storagePostgresMaxIdleConns,
+			ConnMaxLifetime: time.Duration(f.storagePostgresConnMaxLifetimeSeconds) * time.Second,
+		})
+	case "file":
+		return file.New(ctx, f.storageFileDir)
+	case "redis":
+		return redisstore.New(ctx, redisstore.Config{
+			URL:      f.storageRedisURL,
+			TLS:      f.storageRedisTLS,
+			Password: os.Getenv("REDIS_PASSWORD"),
+		})
+	default:
+		return nil, fmt.Errorf("unknown storage backend: %q (valid: postgres, file, redis)", f.storageBackend)
 	}
 }
