@@ -971,13 +971,6 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if input, ok := usage.InputTokens(); ok {
 			p.tokenUsage.SetInputTokens(input)
 		}
-		if cached, ok := usage.CachedInputTokens(); ok {
-			p.tokenUsage.SetCachedInputTokens(cached)
-		}
-		if cacheCreation, ok := usage.CacheCreationInputTokens(); ok {
-			p.tokenUsage.SetCacheCreationInputTokens(cacheCreation)
-		}
-
 		// reset the toolIndex for each message
 		p.toolIndex = -1
 		return nil, nil

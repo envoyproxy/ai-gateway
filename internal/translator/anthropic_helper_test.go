@@ -1157,3 +1157,35 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 		require.Equal(t, anthropic.OutputConfigEffort(""), params.OutputConfig.Effort)
 	})
 }
+
+// TestAnthropicStreamParser_CacheTokensNotSetFromMessageStart verifies that cache tokens are not
+// written during message_start processing. Before the fix, message_start called SetCachedInputTokens
+// and SetCacheCreationInputTokens; if message_delta then called AddCachedInputTokens with the same
+// values, both would be counted, doubling the result.
+func TestAnthropicStreamParser_CacheTokensNotSetFromMessageStart(t *testing.T) {
+	p := newAnthropicStreamParser("claude-3-5-sonnet")
+
+	// Simulate message_start with cache tokens.
+	messageStart := []byte(`{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"claude-3-5-sonnet","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"cache_read_input_tokens":5,"cache_creation_input_tokens":2,"output_tokens":0}}}`)
+	_, err := p.handleAnthropicStreamEvent([]byte("message_start"), messageStart)
+	require.NoError(t, err)
+
+	// Cache tokens must NOT be set after message_start; only input tokens are set.
+	_, cachedSet := p.tokenUsage.CachedInputTokens()
+	require.False(t, cachedSet, "cache_read tokens must not be set from message_start")
+	_, cacheCreationSet := p.tokenUsage.CacheCreationInputTokens()
+	require.False(t, cacheCreationSet, "cache_creation tokens must not be set from message_start")
+
+	// Simulate message_delta carrying the authoritative cache and output counts.
+	messageDelta := []byte(`{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":8,"cache_read_input_tokens":5,"cache_creation_input_tokens":2}}`)
+	_, err = p.handleAnthropicStreamEvent([]byte("message_delta"), messageDelta)
+	require.NoError(t, err)
+
+	cachedTokens, cachedSet := p.tokenUsage.CachedInputTokens()
+	require.True(t, cachedSet)
+	require.Equal(t, uint32(5), cachedTokens, "cache_read tokens must not be double-counted")
+
+	cacheCreationTokens, cacheCreationSet := p.tokenUsage.CacheCreationInputTokens()
+	require.True(t, cacheCreationSet)
+	require.Equal(t, uint32(2), cacheCreationTokens, "cache_creation tokens must not be double-counted")
+}
