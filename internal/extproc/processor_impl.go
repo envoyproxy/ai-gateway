@@ -573,8 +573,11 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		u.metrics.RecordTokenUsage(ctx, u.costs, u.requestHeaders)
 	}
 
-	if body.EndOfStream && (len(u.parent.config.GlobalRequestCosts) > 0 || len(u.parent.config.RequestCosts) > 0) {
-		metadata, err := buildDynamicMetadata(u.parent.config.GlobalRequestCosts, u.parent.config.RequestCosts, &u.costs, u.requestHeaders, u.backendName, u.routeName, responseModel)
+	if body.EndOfStream && (len(u.parent.config.GlobalRequestCosts) > 0 || len(u.parent.config.RequestCosts) > 0 ||
+		len(u.parent.config.GlobalRateLimitsFromHeaders) > 0 || len(u.parent.config.RateLimitsFromHeaders) > 0) {
+		metadata, err := buildDynamicMetadata(u.parent.config.GlobalRequestCosts, u.parent.config.RequestCosts,
+			u.parent.config.GlobalRateLimitsFromHeaders, u.parent.config.RateLimitsFromHeaders,
+			&u.costs, u.requestHeaders, u.backendName, u.routeName, responseModel)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
@@ -821,8 +824,11 @@ func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.Tok
 // The metadata includes token usage costs and model information for downstream processing.
 // Two-tier precedence: for each metadataKey, check route-scoped requestCosts first (matching RouteName == routeName).
 // If found, use it. Otherwise, fall back to globalRequestCosts. If neither exists, the key is not emitted.
-func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCost, requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string) (*structpb.Struct, error) {
-	metadata := make(map[string]*structpb.Value, len(requestCosts)+len(globalRequestCosts)+3)
+func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCost, requestCosts []filterapi.RuntimeRequestCost,
+	globalRateLimitsFromHeaders []filterapi.GlobalRateLimitFromHeader, rateLimitsFromHeaders []filterapi.RateLimitFromHeader,
+	costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string,
+) (*structpb.Struct, error) {
+	metadata := make(map[string]*structpb.Value, len(requestCosts)+len(globalRequestCosts)+len(rateLimitsFromHeaders)+len(globalRateLimitsFromHeaders)+3)
 
 	// Track which metadata keys have been populated by route-scoped costs.
 	populatedKeys := make(map[string]struct{})
@@ -866,6 +872,56 @@ func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCos
 			return nil, err
 		}
 		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
+	}
+
+	// Emit rate-limit override structs from trusted request headers.
+	// Header value format: "<count>/<unit>" (e.g. "100000/HOUR").
+	// Parsed and written as { "requests_per_unit": N, "unit": U } — the struct
+	// Envoy's RateLimit.Override.DynamicMetadata reads. Global entries apply unconditionally;
+	// route-scoped entries apply only when RouteName matches the current route.
+	// Route-scoped entries overwrite global entries for the same MetadataKey.
+	emitLimitOverride := func(metadataKey, header string) {
+		val, ok := requestHeaders[header]
+		if !ok {
+			return
+		}
+		parts := strings.SplitN(val, "/", 2)
+		if len(parts) != 2 {
+			slog.Default().Debug("malformed rate-limit header value, expected <count>/<unit>",
+				slog.String("header", header), slog.String("value", val))
+			return
+		}
+		n, err := strconv.ParseUint(parts[0], 10, 64)
+		if err != nil {
+			slog.Default().Debug("non-numeric count in rate-limit header",
+				slog.String("header", header), slog.String("value", val))
+			return
+		}
+		unit := strings.ToUpper(parts[1])
+		switch unit {
+		case "SECOND", "MINUTE", "HOUR", "DAY":
+		default:
+			slog.Default().Debug("invalid unit in rate-limit header, expected SECOND/MINUTE/HOUR/DAY",
+				slog.String("header", header), slog.String("unit", unit))
+			return
+		}
+		metadata[metadataKey] = &structpb.Value{Kind: &structpb.Value_StructValue{
+			StructValue: &structpb.Struct{Fields: map[string]*structpb.Value{
+				"requests_per_unit": {Kind: &structpb.Value_NumberValue{NumberValue: float64(n)}},
+				"unit":              {Kind: &structpb.Value_StringValue{StringValue: unit}},
+			}},
+		}}
+	}
+	for i := range globalRateLimitsFromHeaders {
+		h := &globalRateLimitsFromHeaders[i]
+		emitLimitOverride(h.MetadataKey, h.Header)
+	}
+	for i := range rateLimitsFromHeaders {
+		h := &rateLimitsFromHeaders[i]
+		if h.RouteName != routeName {
+			continue
+		}
+		emitLimitOverride(h.MetadataKey, h.Header)
 	}
 
 	metadata["model_name_override"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: actualModel}}

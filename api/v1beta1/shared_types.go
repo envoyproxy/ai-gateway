@@ -165,6 +165,23 @@ const (
 	AIGatewayFilterMetadataNamespace = "io.envoy.ai_gateway"
 )
 
+// RateLimitFromHeader emits a per-request rate-limit override struct into io.envoy.ai_gateway
+// dynamic metadata from a trusted request header. The header value must be formatted as
+// "<count>/<unit>" (e.g. "100000/HOUR"). The gateway parses it and writes
+// { "requests_per_unit": <count>, "unit": <unit> } under MetadataKey — the struct
+// Envoy's RateLimit.Override.DynamicMetadata reads. If the header is absent or malformed the key is omitted.
+type RateLimitFromHeader struct {
+	// MetadataKey is the key written under io.envoy.ai_gateway in the dynamic metadata.
+	//
+	// +kubebuilder:validation:Required
+	MetadataKey string `json:"metadataKey"`
+	// Header is the trusted request header whose value encodes the rate limit as "<count>/<unit>",
+	// where unit is one of SECOND, MINUTE, HOUR, DAY.
+	//
+	// +kubebuilder:validation:Required
+	Header string `json:"header"`
+}
+
 // HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
 type HTTPHeaderMutation struct {
 	// Set overwrites/adds the request with the given header (name, value)
