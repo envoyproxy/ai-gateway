@@ -78,6 +78,39 @@ controller:
   # If true, requests are denied when the quota rate limit service is unavailable.
   quotaRateLimitFailureModeDeny: false
 
+  # Rate limit storage backend configuration.
+  storage:
+    # Backend type: "redis" (default), "postgres", or "file".
+    backend: "redis"
+    # PostgreSQL connection string (required when backend is "postgres").
+    # WARNING: Passes credentials via CLI args visible in kubectl describe pod.
+    # Prefer postgresDSNSecretKeyRef for production.
+    postgresDSN: ""
+    # Kubernetes Secret reference for the PostgreSQL DSN. Required when backend is "postgres".
+    # The controller reads this via --storagePostgresDSNFromEnv=PG_DSN.
+    # WARNING: postgresDSN (plaintext value above) is deprecated and will be removed in a future version.
+    # It exposes credentials in the pod spec (visible via kubectl describe pod). Use this secretKeyRef instead.
+    postgresDSNSecretKeyRef:
+      name: ""
+      key: ""
+    # Directory for file-based storage (required when backend is "file").
+    # Should be backed by a ReadWriteMany PVC for multi-replica deployments.
+    fileDir: "/data/ratelimit"
+    # Redis URL (required when backend is "redis").
+    redisURL: "redis.redis-system.svc.cluster.local:6379"
+    # Enable TLS for Redis connections.
+    redisTLS: false
+    # Kubernetes Secret reference for the Redis password. Sets REDIS_PASSWORD via valueFrom.secretKeyRef.
+    # Required if the Redis instance uses AUTH.
+    redisPasswordSecretKeyRef:
+      name: ""
+      key: ""
+
+  # Enable the Lua JWT group claim fan-out filter.
+  # When enabled, JWT group claims are fanned out to repeated x-jwt-groups headers
+  # before rate limit evaluation, enabling bucket rule matching on group membership.
+  enableJWTGroupFanout: false
+
   # Comma-separated key-value pairs for mapping HTTP request headers to Otel attributes shared across metrics, spans, and access logs.
   # Format: "header1:attribute1,header2:attribute2"
   # Example: "x-tenant-id:tenant.id"
@@ -192,6 +225,11 @@ controller:
         appProtocol: grpc
         port: 18002
         targetPort: 18002
+      - name: ratelimit-grpc
+        protocol: TCP
+        appProtocol: grpc
+        port: 8081
+        targetPort: 8081
 
   mutatingWebhook:
     # The port on which the mutating webhook server listens. Must match the service port defined in service.ports.
@@ -236,6 +274,14 @@ controller:
   # When enabled, dnsPolicy defaults to "ClusterFirstWithHostNet" so that
   # DNS resolution continues to work correctly inside the pod.
   hostNetwork: false
+
+  # NetworkPolicy for the controller pod.
+  # When enabled, restricts ingress to the rate-limit gRPC (8081) and xDS (18002) ports
+  # to the Envoy Gateway namespace only. This prevents unauthorized access to
+  # unauthenticated internal services from other pods in the cluster.
+  networkPolicy:
+    enabled: true
+    envoyGatewayNamespace: envoy-gateway-system
 
   resources: {}
   nodeSelector: {}

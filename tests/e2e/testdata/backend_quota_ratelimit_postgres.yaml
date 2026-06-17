@@ -1,0 +1,68 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# E2E test manifest for backend quota rate limiting using PostgreSQL storage.
+# Requires a PostgreSQL instance (e.g., postgres:16-alpine) in the cluster.
+# The rate limit gRPC service runs in-process in the AI Gateway controller,
+# storing counters in a PostgreSQL table.
+#
+# Prerequisites:
+# - PostgreSQL deployed (see postgres-deployment below or use an external RDS/Aurora)
+# - Controller deployed via Helm with:
+#     controller.storage.backend=postgres
+#     controller.storage.postgresDSNSecretKeyRef.name=<secret-name>
+#     controller.storage.postgresDSNSecretKeyRef.key=<key>
+#   (or --storagePostgresDSNFromEnv=PG_DSN with a pre-created Secret)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: postgres-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: postgres-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_USER
+              value: ratelimit
+            - name: POSTGRES_PASSWORD
+              value: ratelimit
+            - name: POSTGRES_DB
+              value: ratelimit
+          ports:
+            - containerPort: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: postgres-system
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+# The remaining resources mirror backend_quota_ratelimit.yaml but with
+# PostgreSQL instead of Redis:
+# - No envoy-ai-gateway-ratelimit Deployment (rate limit runs in-process)
+# - No Redis
+# - Controller needs --storageBackend=postgres with DSN set via Helm secret ref or env var.
+# - Verification uses psql queries: SELECT count FROM ratelimit_counters WHERE key = '...'

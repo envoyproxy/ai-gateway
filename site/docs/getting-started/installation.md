@@ -70,6 +70,53 @@ helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm --version v${var
 
 :::
 
+### Step 3: Configure Rate Limit Storage (Optional)
+
+The AI Gateway controller runs rate limiting in-process with a pluggable storage backend. By default, it expects a Redis instance at `redis.redis-system.svc.cluster.local:6379`.
+
+To use a different backend, pass Helm values:
+
+<Tabs>
+<TabItem value="redis" label="Redis (default)" default>
+
+```shell
+helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
+    --version v${vars.aigwVersion} \
+    --namespace envoy-ai-gateway-system \
+    --create-namespace \
+    --set controller.storage.backend=redis \
+    --set controller.storage.redisURL=my-redis.namespace.svc.cluster.local:6379
+```
+
+</TabItem>
+<TabItem value="postgres" label="PostgreSQL">
+
+```shell
+helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
+    --version v${vars.aigwVersion} \
+    --namespace envoy-ai-gateway-system \
+    --create-namespace \
+    --set controller.storage.backend=postgres \
+    --set controller.storage.postgresDSN="postgres://user:password@host:5432/db?sslmode=require"
+```
+
+</TabItem>
+<TabItem value="file" label="File">
+
+```shell
+helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
+    --version v${vars.aigwVersion} \
+    --namespace envoy-ai-gateway-system \
+    --create-namespace \
+    --set controller.storage.backend=file \
+    --set controller.storage.fileDir=/data/ratelimit
+```
+
+For multi-replica deployments with the file backend, ensure the `fileDir` is backed by a ReadWriteMany PVC.
+
+</TabItem>
+</Tabs>
+
 ## Next Steps
 
 After completing the installation:

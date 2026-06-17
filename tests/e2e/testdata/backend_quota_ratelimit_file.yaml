@@ -1,0 +1,180 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# E2E test manifest for backend quota rate limiting using the file-based storage backend.
+# This variant removes the external envoyproxy/ratelimit container and Redis entirely.
+# The rate limit gRPC service runs in-process in the AI Gateway controller, and
+# counters are stored as files on an emptyDir volume.
+#
+# Differences from backend_quota_ratelimit.yaml:
+# - No external envoy-ai-gateway-ratelimit Deployment/Service (runs in-process)
+# - No Redis dependency
+# - Controller uses --storageBackend=file with an emptyDir volume mount
+# - Verification uses kubectl exec + ls/cat on the volume instead of redis-cli
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy-ai-gateway-quota-ratelimit-file
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-quota-ratelimit-file
+  namespace: default
+spec:
+  gatewayClassName: envoy-ai-gateway-quota-ratelimit-file
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-ai-gateway-quota-ratelimit-file
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-ai-gateway-quota-ratelimit-file
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          resources: {}
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: quota-test-model-file
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-quota-ratelimit-file
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: quota-test-model-file
+      backendRefs:
+        - name: envoy-ai-gateway-quota-ratelimit-file-testupstream
+          modelNameOverride: quota-test-model-file
+  llmRequestCosts:
+    - metadataKey: llm_input_token
+      type: InputToken
+    - metadataKey: llm_output_token
+      type: OutputToken
+    - metadataKey: llm_total_token
+      type: TotalToken
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-quota-ratelimit-file-testupstream
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: envoy-ai-gateway-quota-ratelimit-file-testupstream
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-quota-ratelimit-file-testupstream
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: envoy-ai-gateway-quota-ratelimit-file-testupstream.default.svc.cluster.local
+        port: 80
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: QuotaPolicy
+metadata:
+  name: envoy-ai-gateway-quota-ratelimit-file-policy
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-quota-ratelimit-file-testupstream
+  perModelQuotas:
+    - modelName: "quota-test-model-file"
+      quota:
+        mode: Shared
+        defaultBucket:
+          limit: 10
+          duration: "1h"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: envoy-ai-gateway-quota-ratelimit-file-testupstream
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: envoy-ai-gateway-quota-ratelimit-file-testupstream
+  template:
+    metadata:
+      labels:
+        app: envoy-ai-gateway-quota-ratelimit-file-testupstream
+    spec:
+      containers:
+        - name: testupstream
+          image: docker.io/envoyproxy/ai-gateway-testupstream:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TESTUPSTREAM_ID
+              value: test
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: envoy-ai-gateway-quota-ratelimit-file-testupstream
+  namespace: default
+spec:
+  selector:
+    app: envoy-ai-gateway-quota-ratelimit-file-testupstream
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+# The envoy-ai-gateway-ratelimit Deployment is REMOVED.
+# Rate limit gRPC is served in-process by the controller on port 8081.
+# Envoy sends rate limit requests directly to the controller's service
+# (ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local:8081).
+# The controller must be deployed with:
+#   --storageBackend=file --storageFileDir=/tmp/ratelimit
+#   --quotaRateLimitServiceAddr=ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local:8081

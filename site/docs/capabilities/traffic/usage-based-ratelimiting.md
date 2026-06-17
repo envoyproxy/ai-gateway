@@ -53,11 +53,15 @@ For model providers with OpenAI schema transformations (like AWS Bedrock), AI Ga
 
 :::tip Prerequisites
 
-Rate limiting requires two components to be configured:
+Rate limiting runs in-process within the AI Gateway controller with pluggable storage backends. No external Redis or `envoyproxy/ratelimit` container is required.
 
-1. **Redis Deployment**: A Redis instance must be running to store rate limit data. See the [redis.yaml example](https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/redis.yaml) for a simple deployment.
+**Storage Backend**: The AI Gateway controller supports three storage backends, configured via Helm values:
 
-2. **Envoy Gateway Configuration**: Envoy Gateway must be configured at installation time to enable rate limiting and point to your Redis instance. See [Envoy Gateway Installation Guide](../../getting-started/prerequisites.md#additional-features-rate-limiting-inferencepool-etc)
+- **Redis** (default): `controller.storage.backend=redis` with `controller.storage.redisURL` pointing to your Redis instance
+- **PostgreSQL**: `controller.storage.backend=postgres` with `controller.storage.postgresDSN` connection string
+- **File**: `controller.storage.backend=file` with `controller.storage.fileDir` on a shared volume (for multi-replica deployments, use a ReadWriteMany PVC)
+
+See the [Helm chart values](https://github.com/envoyproxy/ai-gateway/blob/main/manifests/charts/ai-gateway-helm/values.yaml) for all storage options.
 
 :::
 

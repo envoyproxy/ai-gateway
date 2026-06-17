@@ -18,6 +18,11 @@ func TestMain(m *testing.M) {
 			"--set", "controller.spanRequestHeaderAttributes=x-tenant-id:" + tenantIDAttribute,
 			"--set", "controller.metricsRequestHeaderAttributes=x-tenant-id:" + tenantIDAttribute,
 			"--set", "controller.logRequestHeaderAttributes=x-tenant-id:" + tenantIDAttribute,
+			// Use file storage by default so the controller can start without Redis.
+			"--set", "controller.storage.backend=file",
+			"--set", "controller.storage.fileDir=/tmp/ratelimit",
+			// Enable JWT group claim fan-out (no-op when no JWT authn filter is present).
+			"--set", "controller.enableJWTGroupFanout=true",
 		},
 	}, false, true,
 	)

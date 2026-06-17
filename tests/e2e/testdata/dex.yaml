@@ -1,0 +1,121 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Dex OIDC provider for nested budget E2E tests.
+# Provides JWT tokens with group claims for testing hierarchical rate limit budgets.
+# Token acquisition: POST /dex/token with grant_type=password
+# JWKS endpoint: GET /dex/keys
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dex
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dex-config
+  namespace: dex
+data:
+  config.yaml: |
+    issuer: http://dex.dex.svc.cluster.local:5556/dex
+
+    storage:
+      type: memory
+
+    web:
+      http: 0.0.0.0:5556
+
+    telemetry:
+      http: 0.0.0.0:5558
+
+    oauth2:
+      skipApprovalScreen: true
+      responseTypes: ["code", "token", "id_token"]
+      passwordConnector: local
+
+    staticClients:
+      - id: ai-gateway
+        name: ai-gateway
+        secret: ai-gateway-secret
+        redirectURIs:
+          - "http://localhost/callback"
+
+    enablePasswordDB: true
+    staticPasswords:
+      - email: "alice@example.com"
+        hash: "$2b$10$5OBWZwEfRHrv3qxN.IvcveRiUKsbWRHDt1wHrxws7p3lRMrmOeMJq"
+        username: "alice"
+        userID: "alice"
+        groups:
+          - "engineering"
+          - "ml-team"
+      - email: "bob@example.com"
+        hash: "$2b$10$aIU8yLggx263KXCjtENrwOGY9CgxjduaTDsa/MOSsAm3OxLImyDDu"
+        username: "bob"
+        userID: "bob"
+        groups:
+          - "engineering"
+      - email: "charlie@example.com"
+        hash: "$2b$10$kshBEtsj9RSi2wrSC9eRCe4hInsz/qEXdxI95bRYBdVnyAwSDw4Ma"
+        username: "charlie"
+        userID: "charlie"
+        groups: []
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dex
+  namespace: dex
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dex
+  template:
+    metadata:
+      labels:
+        app: dex
+    spec:
+      containers:
+        - name: dex
+          image: ghcr.io/dexidp/dex:v2.45.0
+          imagePullPolicy: IfNotPresent
+          args: ["dex", "serve", "/etc/dex/config.yaml"]
+          ports:
+            - containerPort: 5556
+              name: http
+          volumeMounts:
+            - name: config
+              mountPath: /etc/dex/config.yaml
+              subPath: config.yaml
+          readinessProbe:
+            httpGet:
+              path: /dex/healthz
+              port: 5556
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: dex-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dex
+  namespace: dex
+  labels:
+    app: dex
+spec:
+  selector:
+    app: dex
+  ports:
+    - port: 5556
+      targetPort: 5556
+      name: http

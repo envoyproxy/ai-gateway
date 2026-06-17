@@ -125,28 +125,30 @@ Arguments:
               is set.
 
 Flags:
-  -h, --help                  Show context-sensitive help.
-      --config-home=STRING    Configuration files directory. Defaults to
-                              ~/.config/aigw ($AIGW_CONFIG_HOME)
-      --data-home=STRING      Downloaded Envoy binaries directory. Defaults to
-                              ~/.local/share/aigw ($AIGW_DATA_HOME)
-      --state-home=STRING     Persistent state and logs directory. Defaults to
-                              ~/.local/state/aigw ($AIGW_STATE_HOME)
-      --runtime-dir=STRING    Ephemeral runtime files directory. Defaults to
-                              /tmp/aigw-$UID ($AIGW_RUNTIME_DIR)
+  -h, --help                       Show context-sensitive help.
+      --config-home=STRING         Configuration files directory. Defaults to
+                                   ~/.config/aigw ($AIGW_CONFIG_HOME)
+      --data-home=STRING           Downloaded Envoy binaries directory. Defaults
+                                   to ~/.local/share/aigw ($AIGW_DATA_HOME)
+      --state-home=STRING          Persistent state and logs directory. Defaults
+                                   to ~/.local/state/aigw ($AIGW_STATE_HOME)
+      --runtime-dir=STRING         Ephemeral runtime files directory. Defaults
+                                   to /tmp/aigw-$UID ($AIGW_RUNTIME_DIR)
 
-      --debug                 Enable debug logging emitted to stderr
-                              ($AIGW_DEBUG).
-      --admin-port=1064       HTTP port for the admin server (serves /metrics
-                              and /health endpoints).
-      --mcp-config=STRING     Path to MCP servers configuration file.
-      --mcp-json=STRING       JSON string of MCP servers configuration.
-      --run-id=STRING         Run identifier for this invocation. Defaults to
-                              timestamp-based ID or $AIGW_RUN_ID. Use '0' for
-                              Docker/Kubernetes ($AIGW_RUN_ID).
+      --debug                      Enable debug logging emitted to stderr
+                                   ($AIGW_DEBUG).
+      --admin-port=1064            HTTP port for the admin server (serves
+                                   /metrics and /health endpoints).
+      --mcp-config=STRING          Path to MCP servers configuration file.
+      --mcp-json=STRING            JSON string of MCP servers configuration.
+      --run-id=STRING              Run identifier for this invocation. Defaults
+                                   to timestamp-based ID or $AIGW_RUN_ID.
+                                   Use '0' for Docker/Kubernetes ($AIGW_RUN_ID).
       --mcp-session-encryption-iterations=100000
-                              Number of iterations for MCP session encryption
-                              key derivation.
+                                   Number of iterations for MCP session
+                                   encryption key derivation.
+      --enable-jwt-group-fanout    Enable the Lua JWT group claim fan-out filter
+                                   for hierarchical rate limiting.
 `,
 			expPanicCode: ptr.To(0),
 		},

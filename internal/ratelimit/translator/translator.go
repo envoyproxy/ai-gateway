@@ -152,8 +152,8 @@ func buildBackendDescriptorKeyed(
 		allKeyed = append(allKeyed, keyed...)
 	}
 
-	if policy.Spec.ServiceQuota.Quota.Limit > 0 {
-		desc, err := buildServiceQuotaDescriptor(&policy.Spec.ServiceQuota)
+	if policy.Spec.ServiceQuota != nil && policy.Spec.ServiceQuota.Quota != nil && policy.Spec.ServiceQuota.Quota.Limit > 0 {
+		desc, err := buildServiceQuotaDescriptor(policy.Spec.ServiceQuota)
 		if err != nil {
 			return nil, nil, fmt.Errorf("service quota: %w", err)
 		}
@@ -294,7 +294,7 @@ func findLeafDescriptor(desc *rlsconfv3.RateLimitDescriptor) *rlsconfv3.RateLimi
 // all models (when no PerModelQuota matches). Uses only the key without a
 // specific value so that any model name will match.
 func buildServiceQuotaDescriptor(sq *aigv1a1.ServiceQuotaDefinition) (*rlsconfv3.RateLimitDescriptor, error) {
-	policy, err := quotaValueToPolicy(&sq.Quota)
+	policy, err := quotaValueToPolicy(sq.Quota)
 	if err != nil {
 		return nil, err
 	}

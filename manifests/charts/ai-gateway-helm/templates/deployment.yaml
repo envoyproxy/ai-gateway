@@ -103,6 +103,22 @@ spec:
             - --quotaRateLimitServiceAddr={{ .Values.controller.quotaRateLimitServiceAddr }}
             - --quotaRateLimitTimeout={{ .Values.controller.quotaRateLimitTimeout }}
             - --quotaRateLimitFailureModeDeny={{ .Values.controller.quotaRateLimitFailureModeDeny }}
+            - --storageBackend={{ .Values.controller.storage.backend }}
+            {{- if .Values.controller.storage.postgresDSNSecretKeyRef.name }}
+            - --storagePostgresDSNFromEnv=PG_DSN
+            {{- end }}
+            {{- if .Values.controller.storage.fileDir }}
+            - --storageFileDir={{ .Values.controller.storage.fileDir }}
+            {{- end }}
+            {{- if .Values.controller.storage.redisURL }}
+            - --storageRedisURL={{ .Values.controller.storage.redisURL }}
+            {{- end }}
+            {{- if .Values.controller.storage.redisTLS }}
+            - --storageRedisTLS=true
+            {{- end }}
+            {{- if .Values.controller.enableJWTGroupFanout }}
+            - --enableJWTGroupFanout=true
+            {{- end }}
             - --mcpSessionEncryptionSeed={{ .Values.controller.mcp.sessionEncryption.seed }}
             - --mcpSessionEncryptionIterations={{ .Values.controller.mcp.sessionEncryption.iterations }}
             {{- if .Values.controller.mcp.sessionEncryption.fallback.seed }}
@@ -119,6 +135,20 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            {{- if .Values.controller.storage.postgresDSNSecretKeyRef.name }}
+            - name: PG_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.controller.storage.postgresDSNSecretKeyRef.name }}
+                  key: {{ .Values.controller.storage.postgresDSNSecretKeyRef.key }}
+            {{- end }}
+            {{- if .Values.controller.storage.redisPasswordSecretKeyRef.name }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.controller.storage.redisPasswordSecretKeyRef.name }}
+                  key: {{ .Values.controller.storage.redisPasswordSecretKeyRef.key }}
+            {{- end }}
           {{- if .Values.controller.podEnv }}
           {{- range $key, $val := .Values.controller.podEnv }}
             - name: {{ $key }}

@@ -1,0 +1,204 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Nested budget E2E test manifest.
+# Tests hierarchical rate limit budgets with bucket rules:
+# - Default model budget: 50 tokens/hour
+# - Engineering department: 30 tokens/hour
+# - ml-team (sub-group): 10 tokens/hour
+# Uses Dex OIDC for JWT issuance and SecurityPolicy for JWT authentication.
+# The Lua JWT group fanout filter copies the groups claim to x-jwt-groups headers
+# for rate limit bucket rule matching.
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy-ai-gateway-nested-budget
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-nested-budget
+  namespace: default
+spec:
+  gatewayClassName: envoy-ai-gateway-nested-budget
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-ai-gateway-nested-budget
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-ai-gateway-nested-budget
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          resources: {}
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: nested-budget-model
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-nested-budget
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: mock-model
+      backendRefs:
+        - name: mockllm-backend
+          modelNameOverride: mock-model
+  llmRequestCosts:
+    - metadataKey: llm_input_token
+      type: InputToken
+    - metadataKey: llm_output_token
+      type: OutputToken
+    - metadataKey: llm_total_token
+      type: TotalToken
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: mockllm-backend
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: mockllm-backend
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: mockllm-backend
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: mockllm.default.svc.cluster.local
+        port: 80
+---
+apiVersion: aigateway.envoyproxy.io/v1alpha1
+kind: QuotaPolicy
+metadata:
+  name: nested-budget-policy
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: mockllm-backend
+  perModelQuotas:
+    - modelName: "mock-model"
+      quota:
+        mode: Shared
+        defaultBucket:
+          limit: 50
+          duration: "1h"
+        bucketRules:
+          - clientSelectors:
+              - headers:
+                  - name: x-jwt-groups
+                    value: "engineering"
+                    type: Exact
+            quota:
+              limit: 30
+              duration: "1h"
+          - clientSelectors:
+              - headers:
+                  - name: x-jwt-groups
+                    value: "ml-team"
+                    type: Exact
+            quota:
+              limit: 10
+              duration: "1h"
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: nested-budget-jwt
+  namespace: default
+spec:
+  jwt:
+    providers:
+      - name: dex
+        issuer: http://dex.dex.svc.cluster.local:5556/dex
+        remoteJWKS:
+          uri: http://dex.dex.svc.cluster.local:5556/dex/keys
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: nested-budget-model
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mockllm
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mockllm
+  template:
+    metadata:
+      labels:
+        app: mockllm
+    spec:
+      containers:
+        - name: mockllm
+          image: docker.io/envoyproxy/ai-gateway-mockllm:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: LISTENER_PORT
+              value: "8080"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mockllm
+  namespace: default
+spec:
+  selector:
+    app: mockllm
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP

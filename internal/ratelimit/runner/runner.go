@@ -32,6 +32,9 @@ const (
 	DefaultPort = 18002
 )
 
+// ConfigObserver is called with the merged rate limit config whenever configs are updated.
+type ConfigObserver func(config *rlsconfv3.RateLimitConfig)
+
 // Runner manages the xDS gRPC server that serves RateLimitConfig resources
 // to the rate limit service. It is modeled after Envoy Gateway's
 // internal/globalratelimit/runner/runner.go.
@@ -42,6 +45,7 @@ type Runner struct {
 	snapshotVersion int64
 	port            int
 	mu              sync.Mutex
+	configObserver  ConfigObserver
 }
 
 // New creates a new rate limit xDS config server runner.
@@ -53,6 +57,15 @@ func New(logger logr.Logger, port int) *Runner {
 		logger: logger.WithName("ratelimit-xds-runner"),
 		port:   port,
 	}
+}
+
+// SetConfigObserver sets a callback that receives the merged rate limit config
+// whenever UpdateConfigs is called. This is used to keep the in-process rate
+// limit service in sync with the xDS config served to external clients.
+func (r *Runner) SetConfigObserver(observer ConfigObserver) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.configObserver = observer
 }
 
 // Start starts the xDS gRPC server. It blocks until ctx is cancelled.
@@ -86,7 +99,8 @@ func (r *Runner) Start(ctx context.Context) error {
 
 // UpdateConfigs updates the xDS snapshot cache with the provided rate limit
 // configurations. This is called by the QuotaPolicy controller whenever
-// a QuotaPolicy is reconciled.
+// a QuotaPolicy is reconciled. The merged config is also pushed to the
+// in-process rate limit service via the ConfigObserver.
 func (r *Runner) UpdateConfigs(ctx context.Context, configs []*rlsconfv3.RateLimitConfig) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -125,5 +139,32 @@ func (r *Runner) UpdateConfigs(ctx context.Context, configs []*rlsconfv3.RateLim
 		"version", r.snapshotVersion,
 		"numConfigs", len(resources),
 	)
+
+	// Notify the in-process rate limit service of the merged config.
+	if r.configObserver != nil {
+		merged := mergeConfigs(configs)
+		r.configObserver(merged)
+	}
+
 	return nil
+}
+
+// mergeConfigs merges multiple RateLimitConfigs into a single one by
+// concatenating all descriptors. The merged config uses the first config's
+// domain and name.
+func mergeConfigs(configs []*rlsconfv3.RateLimitConfig) *rlsconfv3.RateLimitConfig {
+	var result *rlsconfv3.RateLimitConfig
+	for _, cfg := range configs {
+		if cfg == nil {
+			continue
+		}
+		if result == nil {
+			result = &rlsconfv3.RateLimitConfig{
+				Name:   cfg.Name,
+				Domain: cfg.Domain,
+			}
+		}
+		result.Descriptors = append(result.Descriptors, cfg.Descriptors...)
+	}
+	return result
 }

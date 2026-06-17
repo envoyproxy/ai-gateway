@@ -24,3 +24,7 @@ exclude:
     - internal/testing/
     # TODO: Remove this exclusion.
     - internal/controller/controller.go
+    # Storage backends that require external infrastructure
+    # (Redis server, PostgreSQL database) and are tested via E2E tests.
+    - internal/ratelimit/storage/redis/redis.go
+    - internal/ratelimit/storage/postgres/postgres.go

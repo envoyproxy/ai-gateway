@@ -140,6 +140,9 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	if err = s.insertRequestHeaderToMetadataFilters(req.Listeners); err != nil {
 		return nil, fmt.Errorf("failed to insert request header metadata filter: %w", err)
 	}
+	if err = s.injectJWTGroupFanoutFilters(req.Listeners); err != nil {
+		return nil, fmt.Errorf("failed to inject JWT group fanout filters: %w", err)
+	}
 
 	// Inject rate limit filter into listener HCM filter chains, add rate limit service cluster,
 	// and patch routes with rate limit actions for QuotaPolicy enforcement.
