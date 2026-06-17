@@ -37,6 +37,14 @@ type Config struct {
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
+	// GlobalRateLimitsFromHeaders configures gateway-level mappings that copy trusted request headers
+	// into io.envoy.ai_gateway dynamic metadata as per-request rate-limit override structs.
+	// These apply to all routes unless overridden by route-specific RateLimitsFromHeaders entries
+	// with the same MetadataKey.
+	GlobalRateLimitsFromHeaders []GlobalRateLimitFromHeader `json:"globalRateLimitsFromHeaders,omitempty"`
+	// RateLimitsFromHeaders configures route-scoped mappings that copy trusted request headers
+	// into io.envoy.ai_gateway dynamic metadata as per-request rate-limit override structs.
+	RateLimitsFromHeaders []RateLimitFromHeader `json:"rateLimitsFromHeaders,omitempty"`
 	// Backends is the list of backends that this listener can route to.
 	Backends []Backend `json:"backends,omitempty"`
 	// Models is the list of models that this route is aware of. Used to populate the "/models" endpoint in OpenAI-compatible APIs.
@@ -106,6 +114,25 @@ type LLMRequestCost struct {
 	// only evaluated when the request's model name matches. This allows a single
 	// metadata key to be shared across models without conflicting overwrites.
 	Model string `json:"model,omitempty"`
+}
+
+// GlobalRateLimitFromHeader is the gateway-level configuration for emitting a rate-limit override
+// struct from a trusted request header into io.envoy.ai_gateway dynamic metadata.
+// Applies to all routes (no RouteName). Header value format: "<count>/<unit>".
+type GlobalRateLimitFromHeader struct {
+	MetadataKey string `json:"metadataKey"`
+	Header      string `json:"header"`
+}
+
+// RateLimitFromHeader is the route-scoped configuration for emitting a rate-limit override
+// struct from a trusted request header into io.envoy.ai_gateway dynamic metadata.
+// Header value format: "<count>/<unit>".
+type RateLimitFromHeader struct {
+	MetadataKey string `json:"metadataKey"`
+	Header      string `json:"header"`
+	// RouteName scopes this entry to a specific AIGatewayRoute (format "namespace/name").
+	// Must be non-empty for route-scoped entries.
+	RouteName string `json:"routeName,omitempty"`
 }
 
 // LLMRequestCostType specifies the kind of the request cost calculation.

@@ -1263,6 +1263,38 @@ spec:
                 x-kubernetes-validations:
                 - message: only Gateway is supported
                   rule: self.all(match, match.kind == 'Gateway')
+              rateLimitsFromHeaders:
+                description: |-
+                  RateLimitsFromHeaders emits per-request rate-limit override structs from trusted request
+                  headers into io.envoy.ai_gateway dynamic metadata. Each header value must be formatted as
+                  "<count>/<unit>" (e.g. "100000/HOUR"). Overrides the global defaults from GatewayConfig
+                  for entries with the same MetadataKey.
+                items:
+                  description: |-
+                    RateLimitFromHeader emits a per-request rate-limit override struct into io.envoy.ai_gateway
+                    dynamic metadata from a trusted request header. The header value must be formatted as
+                    "<count>/<unit>" (e.g. "100000/HOUR"). The gateway parses it and writes
+                    { "requests_per_unit": <count>, "unit": <unit> } under MetadataKey — the struct
+                    Envoy's RateLimit.Override.DynamicMetadata reads. If the header is absent or malformed the key is omitted.
+                  properties:
+                    header:
+                      description: |-
+                        Header is the trusted request header whose value encodes the rate limit as "<count>/<unit>",
+                        where unit is one of SECOND, MINUTE, HOUR, DAY.
+                      type: string
+                    metadataKey:
+                      description: MetadataKey is the key written under io.envoy.ai_gateway
+                        in the dynamic metadata.
+                      type: string
+                  required:
+                  - header
+                  - metadataKey
+                  type: object
+                maxItems: 36
+                type: array
+                x-kubernetes-list-map-keys:
+                - metadataKey
+                x-kubernetes-list-type: map
               rules:
                 description: |-
                   Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.

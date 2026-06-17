@@ -138,14 +138,16 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 	var defaultLLMCosts []aigv1b1.LLMRequestCost
+	var defaultRateLimitsFromHeaders []aigv1b1.RateLimitFromHeader
 	if gwConfig != nil {
 		defaultLLMCosts = gwConfig.Spec.GlobalLLMRequestCosts
+		defaultRateLimitsFromHeaders = gwConfig.Spec.GlobalRateLimitsFromHeaders
 	}
 
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	var hasEffectiveRoutes bool // indicates whether the filter config is effective (i.e., there is at least one active route).
-	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, aiRoutes.Items, mcpRoutes.Items, uid, defaultLLMCosts)
+	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, aiRoutes.Items, mcpRoutes.Items, uid, defaultLLMCosts, defaultRateLimitsFromHeaders)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -246,6 +248,14 @@ func aigwLLMRequestCostToFilterAPI(cost aigv1b1.LLMRequestCost, routeName string
 		out.CEL = celExpr
 	}
 	return out, nil
+}
+
+func aigwGlobalRateLimitFromHeaderToFilterAPI(h aigv1b1.RateLimitFromHeader) filterapi.GlobalRateLimitFromHeader {
+	return filterapi.GlobalRateLimitFromHeader{MetadataKey: h.MetadataKey, Header: strings.ToLower(h.Header)}
+}
+
+func aigwRateLimitFromHeaderToFilterAPI(h aigv1b1.RateLimitFromHeader, routeName string) filterapi.RateLimitFromHeader {
+	return filterapi.RateLimitFromHeader{MetadataKey: h.MetadataKey, Header: strings.ToLower(h.Header), RouteName: routeName}
 }
 
 // mergeBodyMutations merges route-level and backend-level BodyMutation with route-level taking precedence.
@@ -351,6 +361,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	mcpRoutes []aigv1b1.MCPRoute,
 	uuid string,
 	defaultLLMCosts []aigv1b1.LLMRequestCost,
+	defaultRateLimitsFromHeaders []aigv1b1.RateLimitFromHeader,
 ) (hasEffectiveRoute bool, _ error) {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	ec := &filterapi.Config{UUID: uuid, Version: version.Parse()}
@@ -366,6 +377,11 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			return false, fmt.Errorf("failed to convert global LLMRequestCosts: %w", convErr)
 		}
 		ec.GlobalLLMRequestCosts = append(ec.GlobalLLMRequestCosts, fc)
+	}
+	// Process global RateLimitsFromHeaders from GatewayConfig.
+	// CRD enforces uniqueness via +listType=map, so no deduplication needed.
+	for _, h := range defaultRateLimitsFromHeaders {
+		ec.GlobalRateLimitsFromHeaders = append(ec.GlobalRateLimitsFromHeaders, aigwGlobalRateLimitFromHeaderToFilterAPI(h))
 	}
 
 	// Models contributed by routes with no Spec.Hostnames. We only promote these to
@@ -505,6 +521,14 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 
 			for _, fc := range dedup {
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
+			}
+
+			dedupRL := map[string]filterapi.RateLimitFromHeader{}
+			for _, h := range aiGatewayRoute.Spec.RateLimitsFromHeaders {
+				dedupRL[h.MetadataKey] = aigwRateLimitFromHeaderToFilterAPI(h, routeName)
+			}
+			for _, h := range dedupRL {
+				ec.RateLimitsFromHeaders = append(ec.RateLimitsFromHeaders, h)
 			}
 		}
 	}

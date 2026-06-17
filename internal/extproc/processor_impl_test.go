@@ -1625,7 +1625,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, "", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1638,7 +1638,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		// After backend override, the header contains the backend-specific model name.
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "us.anthropic.claude-sonnet-4.5-v2"}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "default/my-backend", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, "default/my-backend", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1650,7 +1650,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "ns/backend-a", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, "ns/backend-a", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1662,7 +1662,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, "", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1682,7 +1682,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs.SetInputTokens(50)
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "claude-sonnet"}
 
-		md, err := buildDynamicMetadata(nil, config.RequestCosts, costs, headers, "default/backend", "", "")
+		md, err := buildDynamicMetadata(nil, config.RequestCosts, nil, nil, costs, headers, "default/backend", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1697,7 +1697,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, "", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1923,7 +1923,7 @@ func TestBuildDynamicMetadata_routeScoped(t *testing.T) {
 			tu.SetInputTokens(tt.inputTokens)
 			tu.SetTotalTokens(tt.totalTokens)
 
-			md, err := buildDynamicMetadata(nil, tt.requestCosts, &tu, tt.requestHeaders, tt.backendName, tt.routeName, "")
+			md, err := buildDynamicMetadata(nil, tt.requestCosts, nil, nil, &tu, tt.requestHeaders, tt.backendName, tt.routeName, "")
 			require.NoError(t, err)
 
 			ns := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
@@ -2092,7 +2092,7 @@ func TestBuildDynamicMetadata_GlobalAndRouteScoped(t *testing.T) {
 			tu.SetOutputTokens(tt.outputTokens)
 			tu.SetTotalTokens(tt.totalTokens)
 
-			md, err := buildDynamicMetadata(tt.globalCosts, tt.routeCosts, &tu, tt.requestHeaders, tt.backendName, tt.routeName, "")
+			md, err := buildDynamicMetadata(tt.globalCosts, tt.routeCosts, nil, nil, &tu, tt.requestHeaders, tt.backendName, tt.routeName, "")
 			require.NoError(t, err)
 
 			ns := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
@@ -2105,6 +2105,192 @@ func TestBuildDynamicMetadata_GlobalAndRouteScoped(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildDynamicMetadata_RateLimitsFromHeaders(t *testing.T) {
+	emptyTokens := &metrics.TokenUsage{}
+	baseHeaders := map[string]string{internalapi.ModelNameHeaderKeyDefault: "m"}
+
+	tests := []struct {
+		name                        string
+		globalRateLimitsFromHeaders []filterapi.GlobalRateLimitFromHeader
+		rateLimitsFromHeaders       []filterapi.RateLimitFromHeader
+		requestHeaders              map[string]string
+		routeName                   string
+		wantStructs                 map[string]struct {
+			requestsPerUnit float64
+			unit            string
+		}
+		wantAbsent []string
+	}{
+		{
+			name: "global entry emits struct when header present",
+			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
+				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+			},
+			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-input": "100000/HOUR"}),
+			wantStructs: map[string]struct {
+				requestsPerUnit float64
+				unit            string
+			}{
+				"llm_input_token_limit": {requestsPerUnit: 100000, unit: "HOUR"},
+			},
+		},
+		{
+			name: "header absent: key omitted",
+			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
+				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+			},
+			requestHeaders: baseHeaders,
+			wantAbsent:     []string{"llm_input_token_limit"},
+		},
+		{
+			name: "header malformed (no slash): key omitted",
+			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
+				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+			},
+			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-input": "100000"}),
+			wantAbsent:     []string{"llm_input_token_limit"},
+		},
+		{
+			name: "header non-numeric count: key omitted",
+			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
+				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+			},
+			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-input": "bad/HOUR"}),
+			wantAbsent:     []string{"llm_input_token_limit"},
+		},
+		{
+			name: "header invalid unit: key omitted",
+			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
+				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+			},
+			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-input": "100000/WEEK"}),
+			wantAbsent:     []string{"llm_input_token_limit"},
+		},
+		{
+			name: "lowercase unit normalized to uppercase: key emitted",
+			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
+				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+			},
+			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-input": "100000/hour"}),
+			wantStructs: map[string]struct {
+				requestsPerUnit float64
+				unit            string
+			}{
+				"llm_input_token_limit": {requestsPerUnit: 100000, unit: "HOUR"},
+			},
+		},
+		{
+			name: "zero count emits struct with requests_per_unit 0",
+			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
+				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+			},
+			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-input": "0/HOUR"}),
+			wantStructs: map[string]struct {
+				requestsPerUnit float64
+				unit            string
+			}{
+				"llm_input_token_limit": {requestsPerUnit: 0, unit: "HOUR"},
+			},
+		},
+		{
+			name: "route-scoped entry matches route",
+			rateLimitsFromHeaders: []filterapi.RateLimitFromHeader{
+				{MetadataKey: "llm_total_limit", Header: "x-aigw-limit-total", RouteName: "ns/r"},
+			},
+			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-total": "500/MINUTE"}),
+			routeName:      "ns/r",
+			wantStructs: map[string]struct {
+				requestsPerUnit float64
+				unit            string
+			}{
+				"llm_total_limit": {requestsPerUnit: 500, unit: "MINUTE"},
+			},
+		},
+		{
+			name: "route-scoped entry skipped for non-matching route",
+			rateLimitsFromHeaders: []filterapi.RateLimitFromHeader{
+				{MetadataKey: "llm_total_limit", Header: "x-aigw-limit-total", RouteName: "ns/other"},
+			},
+			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-total": "500/MINUTE"}),
+			routeName:      "ns/r",
+			wantAbsent:     []string{"llm_total_limit"},
+		},
+		{
+			name: "route-scoped overrides global for same MetadataKey",
+			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
+				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-global-limit"},
+			},
+			rateLimitsFromHeaders: []filterapi.RateLimitFromHeader{
+				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-route-limit", RouteName: "ns/r"},
+			},
+			requestHeaders: mergeHeaders(baseHeaders, map[string]string{
+				"x-aigw-global-limit": "1000/HOUR",
+				"x-aigw-route-limit":  "200/DAY",
+			}),
+			routeName: "ns/r",
+			wantStructs: map[string]struct {
+				requestsPerUnit float64
+				unit            string
+			}{
+				"llm_input_token_limit": {requestsPerUnit: 200, unit: "DAY"},
+			},
+		},
+		{
+			name: "multiple entries emitted with different units",
+			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
+				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+				{MetadataKey: "llm_output_token_limit", Header: "x-aigw-limit-output"},
+			},
+			requestHeaders: mergeHeaders(baseHeaders, map[string]string{
+				"x-aigw-limit-input":  "100000/HOUR",
+				"x-aigw-limit-output": "50000/DAY",
+			}),
+			wantStructs: map[string]struct {
+				requestsPerUnit float64
+				unit            string
+			}{
+				"llm_input_token_limit":  {requestsPerUnit: 100000, unit: "HOUR"},
+				"llm_output_token_limit": {requestsPerUnit: 50000, unit: "DAY"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			md, err := buildDynamicMetadata(nil, nil, tt.globalRateLimitsFromHeaders, tt.rateLimitsFromHeaders,
+				emptyTokens, tt.requestHeaders, "", tt.routeName, "")
+			require.NoError(t, err)
+			require.NotNil(t, md)
+
+			ns := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
+			for k, want := range tt.wantStructs {
+				got, exists := ns[k]
+				require.True(t, exists, "key %q should be present", k)
+				s := got.GetStructValue()
+				require.NotNil(t, s, "key %q should be a struct", k)
+				require.Equal(t, want.requestsPerUnit, s.Fields["requests_per_unit"].GetNumberValue(), "key %q requests_per_unit", k)
+				require.Equal(t, want.unit, s.Fields["unit"].GetStringValue(), "key %q unit", k)
+			}
+			for _, k := range tt.wantAbsent {
+				_, exists := ns[k]
+				require.False(t, exists, "key %q should be absent", k)
+			}
+		})
+	}
+}
+
+// mergeHeaders returns a new map combining base and extra, with extra taking precedence.
+func mergeHeaders(base, extra map[string]string) map[string]string {
+	out := make(map[string]string, len(base)+len(extra))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range extra {
+		out[k] = v
+	}
+	return out
 }
 
 // mustCompileCEL is a test helper that compiles a CEL expression or fails the test.
