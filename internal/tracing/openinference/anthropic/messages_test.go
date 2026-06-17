@@ -210,6 +210,62 @@ func TestConvertSSEToResponse(t *testing.T) {
 				StopSequence: func() *string { s := ""; return &s }(),
 			},
 		},
+		{
+			name: "negative content block index is ignored",
+			chunks: []*anthropic.MessagesStreamChunk{
+				{
+					MessageStart: &anthropic.MessagesStreamChunkMessageStart{
+						ID:    "msg_neg",
+						Model: "claude-3",
+						Role:  "assistant",
+						Usage: &anthropic.Usage{InputTokens: 5},
+					},
+				},
+				{
+					ContentBlockStart: &anthropic.MessagesStreamChunkContentBlockStart{
+						Index: -1,
+						ContentBlock: anthropic.MessagesContentBlock{
+							Text: &anthropic.TextBlock{Type: "text", Text: "bad"},
+						},
+					},
+				},
+			},
+			want: &anthropic.MessagesResponse{
+				ID:      "msg_neg",
+				Model:   "claude-3",
+				Role:    "assistant",
+				Usage:   &anthropic.Usage{InputTokens: 5},
+				Content: []anthropic.MessagesContentBlock{},
+			},
+		},
+		{
+			name: "content block index at cap is ignored",
+			chunks: []*anthropic.MessagesStreamChunk{
+				{
+					MessageStart: &anthropic.MessagesStreamChunkMessageStart{
+						ID:    "msg_cap",
+						Model: "claude-3",
+						Role:  "assistant",
+						Usage: &anthropic.Usage{InputTokens: 5},
+					},
+				},
+				{
+					ContentBlockStart: &anthropic.MessagesStreamChunkContentBlockStart{
+						Index: 1000, // == maxContentBlocks, should be rejected
+						ContentBlock: anthropic.MessagesContentBlock{
+							Text: &anthropic.TextBlock{Type: "text", Text: "bad"},
+						},
+					},
+				},
+			},
+			want: &anthropic.MessagesResponse{
+				ID:      "msg_cap",
+				Model:   "claude-3",
+				Role:    "assistant",
+				Usage:   &anthropic.Usage{InputTokens: 5},
+				Content: []anthropic.MessagesContentBlock{},
+			},
+		},
 	}
 
 	for _, tt := range tests {
