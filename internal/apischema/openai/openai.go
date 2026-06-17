@@ -14,6 +14,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
+	"net/textproto"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -8804,6 +8807,140 @@ type FileNewParams struct {
 	Purpose FilePurpose `json:"purpose,omitzero"`
 	// The expiration policy for a file.
 	ExpiresAfter FileNewParamsExpiresAfter `json:"expires_after,omitzero"`
+	// Used for providing extra parameters that are not part of the standard OpenAI Files API.
+	ExtraBody map[string]any `json:"extra_body,omitzero"`
+}
+
+const fileNewParamsMultipartFieldMaxBytes int64 = 1 << 20 // 1 MiB
+
+func readMultipartFieldWithLimit(part *multipart.Part, fieldName string, maxBytes int64) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(part, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > maxBytes {
+		return nil, fmt.Errorf("multipart field %q exceeds maximum allowed size of %d bytes", fieldName, maxBytes)
+	}
+	return b, nil
+}
+
+func (f *FileNewParams) UnmarshalMultipart(data []byte, boundary string) error {
+	reader := multipart.NewReader(bytes.NewReader(data), boundary)
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		switch part.FormName() {
+		case "file":
+			f.File = part
+		case "purpose":
+			purpose, err := readMultipartFieldWithLimit(part, "purpose", fileNewParamsMultipartFieldMaxBytes)
+			if err != nil {
+				return err
+			}
+			f.Purpose = FilePurpose(purpose)
+		case "expires_after.anchor":
+			anchor, err := readMultipartFieldWithLimit(part, "expires_after.anchor", fileNewParamsMultipartFieldMaxBytes)
+			if err != nil {
+				return err
+			}
+			f.ExpiresAfter.Anchor = CreatedAt(anchor)
+		case "expires_after.seconds":
+			seconds, err := readMultipartFieldWithLimit(part, "expires_after.seconds", fileNewParamsMultipartFieldMaxBytes)
+			if err != nil {
+				return err
+			}
+			secondsParsed, err := strconv.ParseInt(string(seconds), 10, 64)
+			if err != nil {
+				return err
+			}
+			f.ExpiresAfter.Seconds = secondsParsed
+		default:
+			// handles any non standard extra parameters.
+			fieldName := part.FormName()
+			extraBodyBytes, err := readMultipartFieldWithLimit(part, fieldName, fileNewParamsMultipartFieldMaxBytes)
+			if err != nil {
+				return err
+			}
+			extraBodyVal := any(extraBodyBytes)
+			if f.ExtraBody == nil {
+				f.ExtraBody = map[string]any{fieldName: extraBodyVal}
+			} else {
+				f.ExtraBody[fieldName] = extraBodyVal
+			}
+		}
+	}
+	return nil
+}
+
+var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
+func escapeQuotes(s string) string {
+	return quoteEscaper.Replace(s)
+}
+
+func (f FileNewParams) MarshalMultipart() ([]byte, string, error) {
+	buf := &bytes.Buffer{}
+	writer := multipart.NewWriter(buf)
+
+	if f.File == nil {
+		return nil, "", fmt.Errorf("file is required")
+	}
+	filename := "anonymous_file"
+	contentType := "application/octet-stream"
+	if named, ok := f.File.(interface{ Filename() string }); ok {
+		filename = named.Filename()
+	} else if named, ok := f.File.(interface{ Name() string }); ok {
+		filename = path.Base(named.Name())
+	}
+	if typed, ok := f.File.(interface{ ContentType() string }); ok {
+		contentType = typed.ContentType()
+	}
+
+	// Below is taken almost 1-for-1 from [multipart.CreateFormFile]
+	key := "file"
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, escapeQuotes(key), escapeQuotes(filename)))
+	h.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(h)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if _, err := io.Copy(part, f.File); err != nil {
+		return nil, "", err
+	}
+
+	if f.Purpose == "" {
+		return nil, "", fmt.Errorf("purpose is required")
+	}
+
+	if err := writer.WriteField("purpose", string(f.Purpose)); err != nil {
+		return nil, "", err
+	}
+
+	if f.ExpiresAfter.Anchor != "" {
+		if err := writer.WriteField("expires_after.anchor", string(f.ExpiresAfter.Anchor)); err != nil {
+			return nil, "", err
+		}
+	}
+
+	if f.ExpiresAfter.Seconds != 0 {
+		if err := writer.WriteField("expires_after.seconds", strconv.FormatInt(f.ExpiresAfter.Seconds, 10)); err != nil {
+			return nil, "", err
+		}
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, "", err
+	}
+
+	return buf.Bytes(), writer.FormDataContentType(), nil
 }
 
 // The intended purpose of the uploaded file. One of:
