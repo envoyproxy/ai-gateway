@@ -1282,39 +1282,45 @@ spec:
                   rule: self.all(match, match.kind == 'Gateway')
               rateLimits:
                 description: |-
-                  RateLimits emits per-request rate-limit override structs from filter dynamic metadata
-                  into io.envoy.ai_gateway dynamic metadata. The source metadata value must be formatted as
-                  "<count>/<unit>" (e.g. "100000/HOUR"). Overrides the global defaults from GatewayConfig
-                  for entries with the same MetadataKey.
+                  RateLimits defines per-route rate-limit override entries that emit per-request limit structs
+                  into io.envoy.ai_gateway dynamic metadata. Entries with the same MetadataKey override the
+                  gateway-level GlobalRateLimits defined in GatewayConfig.
                 items:
                   description: |-
-                    RateLimitOverride reads a per-request rate-limit value from filter dynamic metadata
-                    (e.g. written by ext_authz) and emits a { requests_per_unit, unit } struct into
-                    io.envoy.ai_gateway dynamic metadata under MetadataKey — the struct
-                    Envoy's RateLimit.Override.DynamicMetadata reads. If the source key is absent or
-                    malformed the MetadataKey is omitted.
+                    RateLimitOverride emits a per-request rate-limit override struct into io.envoy.ai_gateway
+                    dynamic metadata. The source value must be formatted as "COUNT/UNIT" (e.g. "100000/HOUR").
+                    The gateway parses it and writes { requests_per_unit, unit } under MetadataKey — the struct
+                    Envoy's RateLimit.Override.DynamicMetadata reads. If the source value is absent or malformed
+                    the key is omitted and the BackendTrafficPolicy static default applies.
                   properties:
                     metadataKey:
-                      description: MetadataKey is the key written under io.envoy.ai_gateway
-                        in the dynamic metadata.
+                      description: |-
+                        MetadataKey is the key written under io.envoy.ai_gateway in the dynamic metadata,
+                        referenced by BackendTrafficPolicy.rateLimit.global.rules[].limit.fromMetadata.key.
                       type: string
                     source:
-                      description: Source defines where to read the rate limit value
-                        from.
+                      description: |-
+                        Source defines where the rate-limit value is read from.
+                        Exactly one field within Source must be set.
                       properties:
                         fromMetadata:
                           description: |-
-                            FromMetadata reads the rate limit from filter dynamic metadata.
-                            The value at Namespace/Key must be a string formatted as "<count>/<unit>"
-                            (e.g. "100000/HOUR").
+                            FromMetadata reads the rate-limit value from filter dynamic metadata set by a preceding
+                            Envoy filter (typically ext_authz). The value at the referenced namespace/key must be a
+                            string formatted as "<count>/<unit>" (e.g. "100000/HOUR"), where unit is one of
+                            SECOND, MINUTE, HOUR, DAY.
+
+                            Because dynamic metadata can only be set by Envoy filters — not by downstream clients —
+                            this source is safe against client spoofing with no additional configuration required.
                           properties:
                             key:
-                              description: Key is the field name within the namespace's
-                                struct value.
+                              description: Key is the field name within Namespace
+                                whose string value encodes the rate limit.
                               type: string
                             namespace:
-                              description: Namespace is the filter metadata namespace
-                                (e.g. "envoy.filters.http.ext_authz").
+                              description: |-
+                                Namespace is the filter metadata namespace to read from.
+                                For ext_authz this is typically "envoy.filters.http.ext_authz".
                               type: string
                           required:
                           - key
