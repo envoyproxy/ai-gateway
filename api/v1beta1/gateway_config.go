@@ -82,8 +82,11 @@ type GatewayConfigSpec struct {
 	GlobalLLMRequestCosts []LLMRequestCost `json:"globalLLMRequestCosts,omitempty"`
 
 	// GlobalRateLimitsFromHeaders defines gateway-level defaults for emitting per-request
-	// rate-limit override structs from trusted request headers into io.envoy.ai_gateway dynamic metadata.
+	// rate-limit override structs from request headers into io.envoy.ai_gateway dynamic metadata.
 	// Route-scoped entries with the same MetadataKey take precedence.
+	//
+	// See RateLimitFromHeader for the security requirement to strip these headers from client
+	// requests using ClientTrafficPolicy.spec.headers.earlyRequestHeaders.remove.
 	//
 	// +optional
 	// +listType=map

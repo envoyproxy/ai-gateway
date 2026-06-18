@@ -206,10 +206,13 @@ type AIGatewayRouteSpec struct {
 	// +kubebuilder:validation:MaxItems=36
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
 
-	// RateLimitsFromHeaders emits per-request rate-limit override structs from trusted request
-	// headers into io.envoy.ai_gateway dynamic metadata. Each header value must be formatted as
+	// RateLimitsFromHeaders emits per-request rate-limit override structs from request headers
+	// into io.envoy.ai_gateway dynamic metadata. Each header value must be formatted as
 	// "<count>/<unit>" (e.g. "100000/HOUR"). Overrides the global defaults from GatewayConfig
 	// for entries with the same MetadataKey.
+	//
+	// See RateLimitFromHeader for the security requirement to strip these headers from client
+	// requests using ClientTrafficPolicy.spec.headers.earlyRequestHeaders.remove.
 	//
 	// +optional
 	// +listType=map
