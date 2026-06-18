@@ -102,7 +102,15 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	require.Equal(t, "/mcp", *mainHTTPRoute.Spec.Rules[0].Matches[0].Path.Value)
 	require.Equal(t, route.Spec.Headers, mainHTTPRoute.Spec.Rules[0].Matches[0].Headers)
 	require.Len(t, mainHTTPRoute.Spec.Rules[0].BackendRefs, 1)
-	require.Equal(t, gwapiv1.ObjectName("default-myroute-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
+	require.Equal(t, gwapiv1.ObjectName(mcpProxySharedBackendName), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
+
+	// Verify the shared Backend exists in the MCPRoute namespace and has no controller owner
+	// (it is shared across all MCPRoutes/Gateways in the namespace).
+	var sharedBackend egv1a1.Backend
+	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: mcpProxySharedBackendName, Namespace: "default"}, &sharedBackend)
+	require.NoError(t, err)
+	require.Nil(t, metav1.GetControllerOf(&sharedBackend))
+
 	// Since HTTPRouteRule name is experimental in Gateway API, and some vendors (e.g. GKE Gateway) do not
 	// support it yet, we currently do not set the sectionName to avoid compatibility issues.
 	// The jwt filter will be removed from backend routes in the extension server.
@@ -154,7 +162,7 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	require.Len(t, mainHTTPRoute.Spec.Rules, 1)
 	require.Equal(t, "/custom/", *mainHTTPRoute.Spec.Rules[0].Matches[0].Path.Value)
 	require.Len(t, mainHTTPRoute.Spec.Rules[0].BackendRefs, 1)
-	require.Equal(t, gwapiv1.ObjectName("default-myroute-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
+	require.Equal(t, gwapiv1.ObjectName(mcpProxySharedBackendName), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
 
 	// svc-a (still in BackendRefs) per-backend HTTPRoute should still exist.
 	var keptRoute gwapiv1.HTTPRoute
@@ -172,11 +180,81 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: filterName, Namespace: "default"}, &orphanedFilter)
 	require.True(t, apierrors.IsNotFound(err), "orphaned HTTPRouteFilter for svc-b should have been deleted")
 
-	// Delete flow shouldn't error.
+	// Delete flow shouldn't error, and deleting the last MCPRoute should clean up the shared Backend.
 	err = fakeClient.Delete(t.Context(), &aigv1b1.MCPRoute{ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "default"}})
 	require.NoError(t, err)
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}})
 	require.NoError(t, err)
+
+	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: mcpProxySharedBackendName, Namespace: "default"}, &sharedBackend)
+	require.True(t, apierrors.IsNotFound(err), "shared MCP proxy Backend should be deleted after the last MCPRoute is removed")
+}
+
+// TestMCPRouteController_SharedBackendPerNamespace verifies that all MCPRoutes in a namespace —
+// including one attached to multiple Gateways — share a single mcp-proxy Backend, and that the
+// Backend is removed only once the last MCPRoute in the namespace is gone.
+func TestMCPRouteController_SharedBackendPerNamespace(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexesForMCP(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewMCPRouteController(fakeClient, fakekube.NewClientset(), ctrl.Log, eventCh.Ch)
+
+	// Two Gateways in the same namespace.
+	for _, gw := range []string{"gw1", "gw2"} {
+		require.NoError(t, fakeClient.Create(t.Context(), &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: gw, Namespace: "default"}}))
+	}
+
+	newRoute := func(name string, parents ...gwapiv1.ObjectName) *aigv1b1.MCPRoute {
+		refs := make([]gwapiv1.ParentReference, len(parents))
+		for i, p := range parents {
+			refs[i] = gwapiv1.ParentReference{Name: p}
+		}
+		return &aigv1b1.MCPRoute{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+			Spec: aigv1b1.MCPRouteSpec{
+				ParentRefs: refs,
+				BackendRefs: []aigv1b1.MCPRouteBackendRef{{BackendObjectReference: gwapiv1.BackendObjectReference{
+					Name: gwapiv1.ObjectName("svc-" + name), Namespace: ptr.To(gwapiv1.Namespace("default")),
+				}}},
+			},
+		}
+	}
+	// r1 attaches to both Gateways; r2 attaches to one. Both live in the same namespace.
+	r1, r2 := newRoute("r1", "gw1", "gw2"), newRoute("r2", "gw1")
+	require.NoError(t, fakeClient.Create(t.Context(), r1))
+	require.NoError(t, fakeClient.Create(t.Context(), r2))
+
+	reconcile := func(name string) {
+		_, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: name}})
+		require.NoError(t, err)
+	}
+	reconcile("r1")
+	reconcile("r2")
+
+	// Exactly one shared Backend for the namespace, with no controller owner.
+	var backends egv1a1.BackendList
+	require.NoError(t, fakeClient.List(t.Context(), &backends, client.InNamespace("default")))
+	require.Len(t, backends.Items, 1)
+	require.Equal(t, mcpProxySharedBackendName, backends.Items[0].Name)
+	require.Nil(t, metav1.GetControllerOf(&backends.Items[0]))
+
+	// Both main HTTPRoutes reference the shared Backend.
+	for _, name := range []string{"r1", "r2"} {
+		var hr gwapiv1.HTTPRoute
+		require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: internalapi.MCPMainHTTPRoutePrefix + name, Namespace: "default"}, &hr))
+		require.Equal(t, gwapiv1.ObjectName(mcpProxySharedBackendName), hr.Spec.Rules[0].BackendRefs[0].Name)
+	}
+
+	// Deleting r1 must NOT remove the Backend, because r2 still uses it.
+	require.NoError(t, fakeClient.Delete(t.Context(), r1))
+	reconcile("r1")
+	var backend egv1a1.Backend
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: mcpProxySharedBackendName, Namespace: "default"}, &backend))
+
+	// Deleting r2 (the last MCPRoute) removes the shared Backend.
+	require.NoError(t, fakeClient.Delete(t.Context(), r2))
+	reconcile("r2")
+	err := fakeClient.Get(t.Context(), client.ObjectKey{Name: mcpProxySharedBackendName, Namespace: "default"}, &backend)
+	require.True(t, apierrors.IsNotFound(err), "shared Backend should be deleted after the last MCPRoute in the namespace is removed")
 }
 
 func Test_newHTTPRoute_MCP_PathAndBackendsAndMetadata(t *testing.T) {
@@ -199,13 +277,13 @@ func Test_newHTTPRoute_MCP_PathAndBackendsAndMetadata(t *testing.T) {
 		},
 	}
 
-	err := ctrlr.newMainHTTPRoute(httpRoute, mcpRoute)
+	err := ctrlr.newMainHTTPRoute(httpRoute, mcpRoute, mcpProxySharedBackendName)
 	require.NoError(t, err)
 
 	require.Len(t, httpRoute.Spec.Rules, 1)
 	require.Equal(t, "/custom/", *httpRoute.Spec.Rules[0].Matches[0].Path.Value)
 	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
-	require.Equal(t, gwapiv1.ObjectName("ns-mcp-route-mcp-proxy"), httpRoute.Spec.Rules[0].BackendRefs[0].Name)
+	require.Equal(t, gwapiv1.ObjectName(mcpProxySharedBackendName), httpRoute.Spec.Rules[0].BackendRefs[0].Name)
 
 	// Metadata propagated.
 	require.Equal(t, "v1", httpRoute.Labels["k1"])
@@ -231,7 +309,7 @@ func Test_newHTTPRoute_MCPOauth(t *testing.T) {
 		},
 	}
 
-	err := ctrlr.newMainHTTPRoute(httpRoute, mcpRoute)
+	err := ctrlr.newMainHTTPRoute(httpRoute, mcpRoute, mcpProxySharedBackendName)
 	require.NoError(t, err)
 
 	require.Len(t, httpRoute.Spec.Rules, 4) // 3 default routes for oauth which begins from index 1.
