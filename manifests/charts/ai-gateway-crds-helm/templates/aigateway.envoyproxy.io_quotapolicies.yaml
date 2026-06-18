@@ -28,10 +28,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: |-
+        description: |
           QuotaPolicy specifies token quota configuration for inference services.
-          Providing a list of backends in the AIGatewayRouteRule allows failover to a different service
-          if token quota for a service had been exceeded.
+          Generates rate limit configuration and tracks quota usage.
+          Reject requests with 429 once all related quota to that request has been exceeded.
         properties:
           apiVersion:
             description: |-

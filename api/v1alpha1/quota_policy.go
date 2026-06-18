@@ -12,8 +12,10 @@ import (
 )
 
 // QuotaPolicy specifies token quota configuration for inference services.
-// Providing a list of backends in the AIGatewayRouteRule allows failover to a different service
-// if token quota for a service had been exceeded.
+// Generates rate limit configuration and tracks quota usage.
+// Reject requests with 429 once all related quota to that request has been exceeded.
+//
+// TODO: Waiting on next release of Envoyproxy that will support routing based on non-exceeded quotas.
 //
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
