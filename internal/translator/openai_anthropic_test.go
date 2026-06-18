@@ -9,7 +9,9 @@ import (
 	"bytes"
 	"encoding/base64"
 	stdjson "encoding/json" // nolint: depguard
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"testing"
 
@@ -24,6 +26,24 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 )
+
+type testAnthropicChatCompletionSpan struct {
+	response *openai.ChatCompletionResponse
+}
+
+func (s *testAnthropicChatCompletionSpan) RecordResponseChunk(*openai.ChatCompletionResponseChunk) {}
+
+func (s *testAnthropicChatCompletionSpan) RecordResponse(resp *openai.ChatCompletionResponse) {
+	s.response = resp
+}
+
+func (s *testAnthropicChatCompletionSpan) EndSpanOnError(int, []byte) {}
+
+func (s *testAnthropicChatCompletionSpan) EndSpan() {}
+
+type errAnthropicReader struct{}
+
+func (errAnthropicReader) Read([]byte) (int, error) { return 0, errors.New("read error") }
 
 func TestResponseModel_Anthropic(t *testing.T) {
 	modelName := "claude-3-opus-20240229"
@@ -399,6 +419,56 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) 
 		require.Equal(t, "toolu_123", *openAIResp.Choices[0].Message.ToolCalls[0].ID)
 		require.Equal(t, "get_weather", openAIResp.Choices[0].Message.ToolCalls[0].Function.Name)
 	})
+
+	t.Run("Invalid Response Body", func(t *testing.T) {
+		translator := NewChatCompletionOpenAIToAnthropicTranslator("", "claude-3-opus-20240229")
+
+		_, _, _, _, err := translator.ResponseBody(nil, bytes.NewReader([]byte("not-json")), true, nil)
+		require.ErrorContains(t, err, "failed to unmarshal body")
+	})
+
+	t.Run("Request Model Fallback With Span And Redaction Logging", func(t *testing.T) {
+		translator := NewChatCompletionOpenAIToAnthropicTranslator("", "claude-3-opus-20240229").(*openAIToAnthropicTranslatorV1ChatCompletion)
+		translator.SetRedactionConfig(true, true, slog.Default())
+
+		req := &openai.ChatCompletionRequest{
+			Model:     "claude-3-opus-20240229",
+			MaxTokens: ptr.To(int64(100)),
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{
+					OfUser: &openai.ChatCompletionUserMessageParam{
+						Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+						Role:    openai.ChatMessageRoleUser,
+					},
+				},
+			},
+		}
+		_, _, err := translator.RequestBody(nil, req, false)
+		require.NoError(t, err)
+
+		anthropicResp := anthropic.Message{
+			ID:   "msg_fallback",
+			Type: constant.ValueOf[constant.Message](),
+			Role: constant.ValueOf[constant.Assistant](),
+			Content: []anthropic.ContentBlockUnion{
+				{
+					Type: "text",
+					Text: "Hello!",
+				},
+			},
+			StopReason: anthropic.StopReasonEndTurn,
+		}
+
+		body, err := json.Marshal(anthropicResp)
+		require.NoError(t, err)
+
+		span := &testAnthropicChatCompletionSpan{}
+		_, _, _, responseModel, err := translator.ResponseBody(nil, bytes.NewReader(body), true, span)
+		require.NoError(t, err)
+		require.Equal(t, "claude-3-opus-20240229", responseModel)
+		require.NotNil(t, span.response)
+		require.Equal(t, "msg_fallback", span.response.ID)
+	})
 }
 
 func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseError(t *testing.T) {
@@ -462,7 +532,29 @@ func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseError(t *testing.T)
 
 		require.Len(t, newHeaders, 2)
 	})
+
+	t.Run("Invalid JSON Error Response", func(t *testing.T) {
+		headers := map[string]string{
+			statusHeaderName:      "400",
+			contentTypeHeaderName: "application/json",
+		}
+
+		_, _, err := translator.ResponseError(headers, bytes.NewReader([]byte("not-json")))
+		require.ErrorContains(t, err, "failed to unmarshal Anthropic error body")
+	})
+
+	t.Run("Raw Error Read Failure", func(t *testing.T) {
+		headers := map[string]string{
+			statusHeaderName:      "503",
+			contentTypeHeaderName: "text/plain",
+		}
+
+		_, _, err := translator.ResponseError(headers, errAnthropicReader{})
+		require.ErrorContains(t, err, "failed to read raw error body")
+	})
 }
+
+var _ io.Reader = errAnthropicReader{}
 
 func TestOpenAIToAnthropicTranslatorV1ChatCompletion_ResponseHeaders(t *testing.T) {
 	t.Run("Non-Streaming", func(t *testing.T) {
