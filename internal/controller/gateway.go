@@ -140,16 +140,16 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 	var defaultLLMCosts []aigv1b1.LLMRequestCost
-	var defaultRateLimitsFromHeaders []aigv1b1.RateLimitFromHeader
+	var defaultRateLimits []aigv1b1.RateLimitOverride
 	if gwConfig != nil {
 		defaultLLMCosts = gwConfig.Spec.GlobalLLMRequestCosts
-		defaultRateLimitsFromHeaders = gwConfig.Spec.GlobalRateLimitsFromHeaders
+		defaultRateLimits = gwConfig.Spec.GlobalRateLimits
 	}
 
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	var hasEffectiveRoutes bool // indicates whether the filter config is effective (i.e., there is at least one active route).
-	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, gw.Name, gw.Namespace, namespace, aiRoutes.Items, mcpRoutes.Items, uid, defaultLLMCosts, defaultRateLimitsFromHeaders)
+	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, gw.Name, gw.Namespace, namespace, aiRoutes.Items, mcpRoutes.Items, uid, defaultLLMCosts, defaultRateLimits)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -252,12 +252,21 @@ func aigwLLMRequestCostToFilterAPI(cost aigv1b1.LLMRequestCost, routeName string
 	return out, nil
 }
 
-func aigwGlobalRateLimitFromHeaderToFilterAPI(h aigv1b1.RateLimitFromHeader) filterapi.GlobalRateLimitFromHeader {
-	return filterapi.GlobalRateLimitFromHeader{MetadataKey: h.MetadataKey, Header: strings.ToLower(h.Header)}
+func aigwGlobalRateLimitToFilterAPI(h aigv1b1.RateLimitOverride) filterapi.GlobalRateLimitOverride {
+	return filterapi.GlobalRateLimitOverride{
+		MetadataKey: h.MetadataKey,
+		Namespace:   h.Source.FromMetadata.Namespace,
+		Key:         h.Source.FromMetadata.Key,
+	}
 }
 
-func aigwRateLimitFromHeaderToFilterAPI(h aigv1b1.RateLimitFromHeader, routeName string) filterapi.RateLimitFromHeader {
-	return filterapi.RateLimitFromHeader{MetadataKey: h.MetadataKey, Header: strings.ToLower(h.Header), RouteName: routeName}
+func aigwRateLimitToFilterAPI(h aigv1b1.RateLimitOverride, routeName string) filterapi.RateLimitOverride {
+	return filterapi.RateLimitOverride{
+		MetadataKey: h.MetadataKey,
+		Namespace:   h.Source.FromMetadata.Namespace,
+		Key:         h.Source.FromMetadata.Key,
+		RouteName:   routeName,
+	}
 }
 
 // mergeBodyMutations merges route-level and backend-level BodyMutation with route-level taking precedence.
@@ -364,7 +373,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	mcpRoutes []aigv1b1.MCPRoute,
 	uuid string,
 	defaultLLMCosts []aigv1b1.LLMRequestCost,
-	defaultRateLimitsFromHeaders []aigv1b1.RateLimitFromHeader,
+	defaultRateLimits []aigv1b1.RateLimitOverride,
 ) (hasEffectiveRoute bool, _ error) {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	ec := &filterapi.Config{UUID: uuid, Version: version.Parse()}
@@ -381,10 +390,10 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 		}
 		ec.GlobalLLMRequestCosts = append(ec.GlobalLLMRequestCosts, fc)
 	}
-	// Process global RateLimitsFromHeaders from GatewayConfig.
+	// Process global RateLimits from GatewayConfig.
 	// CRD enforces uniqueness via +listType=map, so no deduplication needed.
-	for _, h := range defaultRateLimitsFromHeaders {
-		ec.GlobalRateLimitsFromHeaders = append(ec.GlobalRateLimitsFromHeaders, aigwGlobalRateLimitFromHeaderToFilterAPI(h))
+	for _, h := range defaultRateLimits {
+		ec.GlobalRateLimits = append(ec.GlobalRateLimits, aigwGlobalRateLimitToFilterAPI(h))
 	}
 
 	// Models contributed by routes with no Spec.Hostnames. We only promote these to
@@ -536,12 +545,12 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
 			}
 
-			dedupRL := map[string]filterapi.RateLimitFromHeader{}
-			for _, h := range aiGatewayRoute.Spec.RateLimitsFromHeaders {
-				dedupRL[h.MetadataKey] = aigwRateLimitFromHeaderToFilterAPI(h, routeName)
+			dedupRL := map[string]filterapi.RateLimitOverride{}
+			for _, h := range aiGatewayRoute.Spec.RateLimits {
+				dedupRL[h.MetadataKey] = aigwRateLimitToFilterAPI(h, routeName)
 			}
 			for _, h := range dedupRL {
-				ec.RateLimitsFromHeaders = append(ec.RateLimitsFromHeaders, h)
+				ec.RateLimits = append(ec.RateLimits, h)
 			}
 		}
 	}

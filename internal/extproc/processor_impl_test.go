@@ -47,7 +47,7 @@ func TestNewFactory(t *testing.T) {
 		t.Parallel()
 
 		factory := NewFactory(nil, tracingapi.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{})
-		proc, err := factory(cfg, headers, slog.Default(), false, false)
+		proc, err := factory(cfg, headers, nil, slog.Default(), false, false)
 		require.NoError(t, err)
 		require.IsType(t, &chatCompletionProcessorRouterFilter{}, proc)
 
@@ -62,7 +62,7 @@ func TestNewFactory(t *testing.T) {
 		t.Parallel()
 
 		factory := NewFactory(&mockMetricsFactory{}, tracingapi.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{})
-		proc, err := factory(cfg, headers, slog.Default(), true, false)
+		proc, err := factory(cfg, headers, nil, slog.Default(), true, false)
 		require.NoError(t, err)
 		require.IsType(t, &chatCompletionProcessorUpstreamFilter{}, proc)
 
@@ -1662,7 +1662,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, "", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, nil, "", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1675,7 +1675,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		// After backend override, the header contains the backend-specific model name.
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "us.anthropic.claude-sonnet-4.5-v2"}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, "default/my-backend", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, nil, "default/my-backend", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1687,7 +1687,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, "ns/backend-a", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, nil, "ns/backend-a", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1699,7 +1699,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, "", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, nil, "", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1719,7 +1719,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs.SetInputTokens(50)
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "claude-sonnet"}
 
-		md, err := buildDynamicMetadata(nil, config.RequestCosts, nil, nil, costs, headers, "default/backend", "", "")
+		md, err := buildDynamicMetadata(nil, config.RequestCosts, nil, nil, costs, headers, nil, "default/backend", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1734,7 +1734,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, "", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, nil, "", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1960,7 +1960,7 @@ func TestBuildDynamicMetadata_routeScoped(t *testing.T) {
 			tu.SetInputTokens(tt.inputTokens)
 			tu.SetTotalTokens(tt.totalTokens)
 
-			md, err := buildDynamicMetadata(nil, tt.requestCosts, nil, nil, &tu, tt.requestHeaders, tt.backendName, tt.routeName, "")
+			md, err := buildDynamicMetadata(nil, tt.requestCosts, nil, nil, &tu, tt.requestHeaders, nil, tt.backendName, tt.routeName, "")
 			require.NoError(t, err)
 
 			ns := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
@@ -2129,7 +2129,7 @@ func TestBuildDynamicMetadata_GlobalAndRouteScoped(t *testing.T) {
 			tu.SetOutputTokens(tt.outputTokens)
 			tu.SetTotalTokens(tt.totalTokens)
 
-			md, err := buildDynamicMetadata(tt.globalCosts, tt.routeCosts, nil, nil, &tu, tt.requestHeaders, tt.backendName, tt.routeName, "")
+			md, err := buildDynamicMetadata(tt.globalCosts, tt.routeCosts, nil, nil, &tu, tt.requestHeaders, nil, tt.backendName, tt.routeName, "")
 			require.NoError(t, err)
 
 			ns := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
@@ -2144,28 +2144,37 @@ func TestBuildDynamicMetadata_GlobalAndRouteScoped(t *testing.T) {
 	}
 }
 
-func TestBuildDynamicMetadata_RateLimitsFromHeaders(t *testing.T) {
+func TestBuildDynamicMetadata_RateLimitOverrides(t *testing.T) {
 	emptyTokens := &metrics.TokenUsage{}
 	baseHeaders := map[string]string{internalapi.ModelNameHeaderKeyDefault: "m"}
+	const extAuthzNS = "envoy.filters.http.ext_authz"
+
+	makeFilterMeta := func(keyVals ...string) map[string]*structpb.Struct {
+		fields := map[string]*structpb.Value{}
+		for i := 0; i+1 < len(keyVals); i += 2 {
+			fields[keyVals[i]] = structpb.NewStringValue(keyVals[i+1])
+		}
+		return map[string]*structpb.Struct{extAuthzNS: {Fields: fields}}
+	}
 
 	tests := []struct {
-		name                        string
-		globalRateLimitsFromHeaders []filterapi.GlobalRateLimitFromHeader
-		rateLimitsFromHeaders       []filterapi.RateLimitFromHeader
-		requestHeaders              map[string]string
-		routeName                   string
-		wantStructs                 map[string]struct {
+		name             string
+		globalRateLimits []filterapi.GlobalRateLimitOverride
+		rateLimits       []filterapi.RateLimitOverride
+		filterMetadata   map[string]*structpb.Struct
+		routeName        string
+		wantStructs      map[string]struct {
 			requestsPerUnit float64
 			unit            string
 		}
 		wantAbsent []string
 	}{
 		{
-			name: "global entry emits struct when header present",
-			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
-				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+			name: "global entry emits struct when metadata present",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
-			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-input": "100000/HOUR"}),
+			filterMetadata: makeFilterMeta("input_limit", "100000/HOUR"),
 			wantStructs: map[string]struct {
 				requestsPerUnit float64
 				unit            string
@@ -2174,43 +2183,51 @@ func TestBuildDynamicMetadata_RateLimitsFromHeaders(t *testing.T) {
 			},
 		},
 		{
-			name: "header absent: key omitted",
-			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
-				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+			name: "metadata key absent: key omitted",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
-			requestHeaders: baseHeaders,
+			filterMetadata: makeFilterMeta(),
 			wantAbsent:     []string{"llm_input_token_limit"},
 		},
 		{
-			name: "header malformed (no slash): key omitted",
-			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
-				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+			name: "namespace absent: key omitted",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
-			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-input": "100000"}),
+			filterMetadata: nil,
 			wantAbsent:     []string{"llm_input_token_limit"},
 		},
 		{
-			name: "header non-numeric count: key omitted",
-			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
-				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+			name: "malformed value (no slash): key omitted",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
-			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-input": "bad/HOUR"}),
+			filterMetadata: makeFilterMeta("input_limit", "100000"),
 			wantAbsent:     []string{"llm_input_token_limit"},
 		},
 		{
-			name: "header invalid unit: key omitted",
-			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
-				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+			name: "non-numeric count: key omitted",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
-			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-input": "100000/WEEK"}),
+			filterMetadata: makeFilterMeta("input_limit", "bad/HOUR"),
 			wantAbsent:     []string{"llm_input_token_limit"},
 		},
 		{
-			name: "lowercase unit normalized to uppercase: key emitted",
-			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
-				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+			name: "invalid unit: key omitted",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
-			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-input": "100000/hour"}),
+			filterMetadata: makeFilterMeta("input_limit", "100000/WEEK"),
+			wantAbsent:     []string{"llm_input_token_limit"},
+		},
+		{
+			name: "lowercase unit normalized to uppercase",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+			},
+			filterMetadata: makeFilterMeta("input_limit", "100000/hour"),
 			wantStructs: map[string]struct {
 				requestsPerUnit float64
 				unit            string
@@ -2220,10 +2237,10 @@ func TestBuildDynamicMetadata_RateLimitsFromHeaders(t *testing.T) {
 		},
 		{
 			name: "zero count emits struct with requests_per_unit 0",
-			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
-				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
-			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-input": "0/HOUR"}),
+			filterMetadata: makeFilterMeta("input_limit", "0/HOUR"),
 			wantStructs: map[string]struct {
 				requestsPerUnit float64
 				unit            string
@@ -2233,10 +2250,10 @@ func TestBuildDynamicMetadata_RateLimitsFromHeaders(t *testing.T) {
 		},
 		{
 			name: "route-scoped entry matches route",
-			rateLimitsFromHeaders: []filterapi.RateLimitFromHeader{
-				{MetadataKey: "llm_total_limit", Header: "x-aigw-limit-total", RouteName: "ns/r"},
+			rateLimits: []filterapi.RateLimitOverride{
+				{MetadataKey: "llm_total_limit", Namespace: extAuthzNS, Key: "total_limit", RouteName: "ns/r"},
 			},
-			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-total": "500/MINUTE"}),
+			filterMetadata: makeFilterMeta("total_limit", "500/MINUTE"),
 			routeName:      "ns/r",
 			wantStructs: map[string]struct {
 				requestsPerUnit float64
@@ -2247,25 +2264,25 @@ func TestBuildDynamicMetadata_RateLimitsFromHeaders(t *testing.T) {
 		},
 		{
 			name: "route-scoped entry skipped for non-matching route",
-			rateLimitsFromHeaders: []filterapi.RateLimitFromHeader{
-				{MetadataKey: "llm_total_limit", Header: "x-aigw-limit-total", RouteName: "ns/other"},
+			rateLimits: []filterapi.RateLimitOverride{
+				{MetadataKey: "llm_total_limit", Namespace: extAuthzNS, Key: "total_limit", RouteName: "ns/other"},
 			},
-			requestHeaders: mergeHeaders(baseHeaders, map[string]string{"x-aigw-limit-total": "500/MINUTE"}),
+			filterMetadata: makeFilterMeta("total_limit", "500/MINUTE"),
 			routeName:      "ns/r",
 			wantAbsent:     []string{"llm_total_limit"},
 		},
 		{
 			name: "route-scoped overrides global for same MetadataKey",
-			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
-				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-global-limit"},
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "global_limit"},
 			},
-			rateLimitsFromHeaders: []filterapi.RateLimitFromHeader{
-				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-route-limit", RouteName: "ns/r"},
+			rateLimits: []filterapi.RateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "route_limit", RouteName: "ns/r"},
 			},
-			requestHeaders: mergeHeaders(baseHeaders, map[string]string{
-				"x-aigw-global-limit": "1000/HOUR",
-				"x-aigw-route-limit":  "200/DAY",
-			}),
+			filterMetadata: map[string]*structpb.Struct{extAuthzNS: {Fields: map[string]*structpb.Value{
+				"global_limit": structpb.NewStringValue("1000/HOUR"),
+				"route_limit":  structpb.NewStringValue("200/DAY"),
+			}}},
 			routeName: "ns/r",
 			wantStructs: map[string]struct {
 				requestsPerUnit float64
@@ -2276,14 +2293,14 @@ func TestBuildDynamicMetadata_RateLimitsFromHeaders(t *testing.T) {
 		},
 		{
 			name: "multiple entries emitted with different units",
-			globalRateLimitsFromHeaders: []filterapi.GlobalRateLimitFromHeader{
-				{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
-				{MetadataKey: "llm_output_token_limit", Header: "x-aigw-limit-output"},
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+				{MetadataKey: "llm_output_token_limit", Namespace: extAuthzNS, Key: "output_limit"},
 			},
-			requestHeaders: mergeHeaders(baseHeaders, map[string]string{
-				"x-aigw-limit-input":  "100000/HOUR",
-				"x-aigw-limit-output": "50000/DAY",
-			}),
+			filterMetadata: map[string]*structpb.Struct{extAuthzNS: {Fields: map[string]*structpb.Value{
+				"input_limit":  structpb.NewStringValue("100000/HOUR"),
+				"output_limit": structpb.NewStringValue("50000/DAY"),
+			}}},
 			wantStructs: map[string]struct {
 				requestsPerUnit float64
 				unit            string
@@ -2296,8 +2313,8 @@ func TestBuildDynamicMetadata_RateLimitsFromHeaders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			md, err := buildDynamicMetadata(nil, nil, tt.globalRateLimitsFromHeaders, tt.rateLimitsFromHeaders,
-				emptyTokens, tt.requestHeaders, "", tt.routeName, "")
+			md, err := buildDynamicMetadata(nil, nil, tt.globalRateLimits, tt.rateLimits,
+				emptyTokens, baseHeaders, tt.filterMetadata, "", tt.routeName, "")
 			require.NoError(t, err)
 			require.NotNil(t, md)
 
@@ -2316,18 +2333,6 @@ func TestBuildDynamicMetadata_RateLimitsFromHeaders(t *testing.T) {
 			}
 		})
 	}
-}
-
-// mergeHeaders returns a new map combining base and extra, with extra taking precedence.
-func mergeHeaders(base, extra map[string]string) map[string]string {
-	out := make(map[string]string, len(base)+len(extra))
-	for k, v := range base {
-		out[k] = v
-	}
-	for k, v := range extra {
-		out[k] = v
-	}
-	return out
 }
 
 // mustCompileCEL is a test helper that compiles a CEL expression or fails the test.

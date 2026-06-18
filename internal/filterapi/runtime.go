@@ -35,12 +35,12 @@ type RuntimeConfig struct {
 	// RequestCosts is the list of route-scoped request costs.
 	// Each entry has a RouteName identifying the route it applies to.
 	RequestCosts []RuntimeRequestCost
-	// GlobalRateLimitsFromHeaders is the list of gateway-level header→metadata mappings.
+	// GlobalRateLimits is the list of gateway-level metadata→metadata mappings.
 	// These apply to all routes unless a route-scoped entry with the same MetadataKey overrides them.
-	GlobalRateLimitsFromHeaders []GlobalRateLimitFromHeader
-	// RateLimitsFromHeaders is the list of route-scoped header→metadata mappings.
+	GlobalRateLimits []GlobalRateLimitOverride
+	// RateLimits is the list of route-scoped metadata→metadata mappings.
 	// Each entry has a RouteName identifying the route it applies to.
-	RateLimitsFromHeaders []RateLimitFromHeader
+	RateLimits []RateLimitOverride
 	// DeclaredModels is the list of declared models.
 	DeclaredModels []Model
 	// ModelsByHost maps hostnames to their specific model lists for per-host filtering. Each entry already includes
@@ -129,37 +129,43 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 		costs = append(costs, RuntimeRequestCost{LLMRequestCost: c, CELProg: prog})
 	}
 
-	for i := range config.GlobalRateLimitsFromHeaders {
-		h := &config.GlobalRateLimitsFromHeaders[i]
+	for i := range config.GlobalRateLimits {
+		h := &config.GlobalRateLimits[i]
 		if h.MetadataKey == "" {
-			return nil, fmt.Errorf("GlobalRateLimitFromHeader must have non-empty MetadataKey")
+			return nil, fmt.Errorf("GlobalRateLimitOverride must have non-empty MetadataKey")
 		}
-		if h.Header == "" {
-			return nil, fmt.Errorf("GlobalRateLimitFromHeader with metadataKey=%q must have non-empty Header", h.MetadataKey)
+		if h.Namespace == "" {
+			return nil, fmt.Errorf("GlobalRateLimitOverride with metadataKey=%q must have non-empty Namespace", h.MetadataKey)
+		}
+		if h.Key == "" {
+			return nil, fmt.Errorf("GlobalRateLimitOverride with metadataKey=%q must have non-empty Key", h.MetadataKey)
 		}
 	}
-	for i := range config.RateLimitsFromHeaders {
-		h := &config.RateLimitsFromHeaders[i]
+	for i := range config.RateLimits {
+		h := &config.RateLimits[i]
 		if h.MetadataKey == "" {
-			return nil, fmt.Errorf("RateLimitFromHeader must have non-empty MetadataKey")
+			return nil, fmt.Errorf("RateLimitOverride must have non-empty MetadataKey")
 		}
-		if h.Header == "" {
-			return nil, fmt.Errorf("RateLimitFromHeader with metadataKey=%q must have non-empty Header", h.MetadataKey)
+		if h.Namespace == "" {
+			return nil, fmt.Errorf("RateLimitOverride with metadataKey=%q must have non-empty Namespace", h.MetadataKey)
+		}
+		if h.Key == "" {
+			return nil, fmt.Errorf("RateLimitOverride with metadataKey=%q must have non-empty Key", h.MetadataKey)
 		}
 		if h.RouteName == "" {
-			return nil, fmt.Errorf("route-scoped RateLimitFromHeader with metadataKey=%q must have non-empty RouteName", h.MetadataKey)
+			return nil, fmt.Errorf("route-scoped RateLimitOverride with metadataKey=%q must have non-empty RouteName", h.MetadataKey)
 		}
 	}
 
 	return &RuntimeConfig{
-		UUID:                        config.UUID,
-		Backends:                    backends,
-		GlobalRequestCosts:          globalCosts,
-		RequestCosts:                costs,
-		GlobalRateLimitsFromHeaders: config.GlobalRateLimitsFromHeaders,
-		RateLimitsFromHeaders:       config.RateLimitsFromHeaders,
-		DeclaredModels:              config.Models,
-		ModelsByHost:                config.ModelsByHost,
-		UnscopedModels:              config.UnscopedModels,
+		UUID:               config.UUID,
+		Backends:           backends,
+		GlobalRequestCosts: globalCosts,
+		RequestCosts:       costs,
+		GlobalRateLimits:   config.GlobalRateLimits,
+		RateLimits:         config.RateLimits,
+		DeclaredModels:     config.Models,
+		ModelsByHost:       config.ModelsByHost,
+		UnscopedModels:     config.UnscopedModels,
 	}, nil
 }

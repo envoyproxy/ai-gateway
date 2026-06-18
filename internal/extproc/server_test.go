@@ -37,7 +37,7 @@ func requireNewServerWithMockProcessor(t *testing.T) (*Server, *mockProcessor) {
 	s.config = &filterapi.RuntimeConfig{}
 
 	m := newMockProcessor(s.config, s.logger)
-	s.Register("/", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
+	s.Register("/", func(*filterapi.RuntimeConfig, map[string]string, map[string]*structpb.Struct, *slog.Logger, bool, bool) (Processor, error) {
 		return m, nil
 	})
 
@@ -421,11 +421,11 @@ func TestServer_ProcessorSelection(t *testing.T) {
 	require.NotNil(t, s)
 
 	s.config = &filterapi.RuntimeConfig{}
-	s.Register("/one", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
+	s.Register("/one", func(*filterapi.RuntimeConfig, map[string]string, map[string]*structpb.Struct, *slog.Logger, bool, bool) (Processor, error) {
 		// Returning nil guarantees that the test will fail if this processor is selected.
 		return nil, nil
 	})
-	s.Register("/two", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
+	s.Register("/two", func(*filterapi.RuntimeConfig, map[string]string, map[string]*structpb.Struct, *slog.Logger, bool, bool) (Processor, error) {
 		return &mockProcessor{
 			t:                     t,
 			expHeaderMap:          &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":path", Value: "/two"}, {Key: "x-request-id", Value: "original-req-id"}}},
@@ -856,10 +856,10 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 
 	// Register processors for different base paths.
 	mockProc := &mockProcessor{}
-	s.Register("/v1/messages", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
+	s.Register("/v1/messages", func(*filterapi.RuntimeConfig, map[string]string, map[string]*structpb.Struct, *slog.Logger, bool, bool) (Processor, error) {
 		return mockProc, nil
 	})
-	s.Register("/anthropic/v1/messages", func(*filterapi.RuntimeConfig, map[string]string, *slog.Logger, bool, bool) (Processor, error) {
+	s.Register("/anthropic/v1/messages", func(*filterapi.RuntimeConfig, map[string]string, map[string]*structpb.Struct, *slog.Logger, bool, bool) (Processor, error) {
 		return mockProc, nil
 	})
 
@@ -958,7 +958,7 @@ func TestServer_ProcessorForPath_QueryParameterStripping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			processor, err := s.processorForPath(tt.requestHeaders, tt.isUpstream, slog.Default())
+			processor, err := s.processorForPath(tt.requestHeaders, nil, tt.isUpstream, slog.Default())
 
 			if tt.expectSuccess {
 				require.NoError(t, err)

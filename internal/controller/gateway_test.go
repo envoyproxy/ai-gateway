@@ -843,9 +843,9 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 	require.Contains(t, fc.Backends[0].Name, "apple")
 }
 
-// TestGatewayController_reconcileFilterConfigSecret_RateLimitsFromHeaders verifies that
-// route-scoped RateLimitsFromHeaders and global RateLimitsFromHeaders are projected into the filter config.
-func TestGatewayController_reconcileFilterConfigSecret_RateLimitsFromHeaders(t *testing.T) {
+// TestGatewayController_reconcileFilterConfigSecret_RateLimits verifies that
+// route-scoped RateLimits and global RateLimits are projected into the filter config.
+func TestGatewayController_reconcileFilterConfigSecret_RateLimits(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
@@ -860,9 +860,9 @@ func TestGatewayController_reconcileFilterConfigSecret_RateLimitsFromHeaders(t *
 				Rules: []aigv1b1.AIGatewayRouteRule{
 					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "some-backend"}}},
 				},
-				RateLimitsFromHeaders: []aigv1b1.RateLimitFromHeader{
-					{MetadataKey: "llm_input_token_limit", Header: "x-aigw-limit-input"},
-					{MetadataKey: "llm_output_token_limit", Header: "x-aigw-limit-output"},
+				RateLimits: []aigv1b1.RateLimitOverride{
+					{MetadataKey: "llm_input_token_limit", Source: aigv1b1.RateLimitOverrideSource{FromMetadata: aigv1b1.RateLimitMetadataSource{Namespace: "my.ext_authz", Key: "input_limit"}}},
+					{MetadataKey: "llm_output_token_limit", Source: aigv1b1.RateLimitOverrideSource{FromMetadata: aigv1b1.RateLimitMetadataSource{Namespace: "my.ext_authz", Key: "output_limit"}}},
 				},
 			},
 		},
@@ -876,8 +876,8 @@ func TestGatewayController_reconcileFilterConfigSecret_RateLimitsFromHeaders(t *
 	})
 	require.NoError(t, err)
 
-	globalRateLimits := []aigv1b1.RateLimitFromHeader{
-		{MetadataKey: "llm_total_token_limit", Header: "x-aigw-limit-total"},
+	globalRateLimits := []aigv1b1.RateLimitOverride{
+		{MetadataKey: "llm_total_token_limit", Source: aigv1b1.RateLimitOverrideSource{FromMetadata: aigv1b1.RateLimitMetadataSource{Namespace: "my.ext_authz", Key: "total_limit"}}},
 	}
 
 	const someNamespace = "some-namespace"
@@ -887,15 +887,16 @@ func TestGatewayController_reconcileFilterConfigSecret_RateLimitsFromHeaders(t *
 
 	fc := requireFilterConfigFromBundle(t, kube, someNamespace, "gw", gwNamespace)
 
-	require.Len(t, fc.GlobalRateLimitsFromHeaders, 1)
-	require.Equal(t, "llm_total_token_limit", fc.GlobalRateLimitsFromHeaders[0].MetadataKey)
-	require.Equal(t, "x-aigw-limit-total", fc.GlobalRateLimitsFromHeaders[0].Header)
+	require.Len(t, fc.GlobalRateLimits, 1)
+	require.Equal(t, "llm_total_token_limit", fc.GlobalRateLimits[0].MetadataKey)
+	require.Equal(t, "my.ext_authz", fc.GlobalRateLimits[0].Namespace)
+	require.Equal(t, "total_limit", fc.GlobalRateLimits[0].Key)
 
-	require.Len(t, fc.RateLimitsFromHeaders, 2)
-	for _, h := range fc.RateLimitsFromHeaders {
+	require.Len(t, fc.RateLimits, 2)
+	for _, h := range fc.RateLimits {
 		require.Equal(t, "ns/tenant-route", h.RouteName)
 	}
-	metadataKeys := []string{fc.RateLimitsFromHeaders[0].MetadataKey, fc.RateLimitsFromHeaders[1].MetadataKey}
+	metadataKeys := []string{fc.RateLimits[0].MetadataKey, fc.RateLimits[1].MetadataKey}
 	require.ElementsMatch(t, []string{"llm_input_token_limit", "llm_output_token_limit"}, metadataKeys)
 }
 

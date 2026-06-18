@@ -61,10 +61,10 @@ func NewFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.
 	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
 	_ EndpointSpecT, // This is a type marker to bind EndpointSpecT without specifying ReqT, RespT, RespChunkT explicitly.
 ) ProcessorFactory {
-	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool, enableRedaction bool) (Processor, error) {
+	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, filterMetadata map[string]*structpb.Struct, logger *slog.Logger, isUpstreamFilter bool, enableRedaction bool) (Processor, error) {
 		logger = logger.With("isUpstreamFilter", fmt.Sprintf("%v", isUpstreamFilter))
 		if !isUpstreamFilter {
-			return newRouterProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer, enableRedaction), nil
+			return newRouterProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, filterMetadata, logger, tracer, enableRedaction), nil
 		}
 		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](requestHeaders, f.NewMetrics(), logger), nil
 	}
@@ -87,6 +87,9 @@ type (
 		logger         *slog.Logger
 		config         *filterapi.RuntimeConfig
 		requestHeaders map[string]string
+		// filterMetadata holds the Envoy filter dynamic metadata received in ProcessingRequest.MetadataContext,
+		// keyed by filter namespace. Used by buildDynamicMetadata to read rate-limit overrides set by ext_authz.
+		filterMetadata map[string]*structpb.Struct
 		// originalRequestBody is the original request body that is passed to the upstream filter.
 		// This is used to perform the transformation of the request body on the original input
 		// when the request is retried.
@@ -134,6 +137,7 @@ type (
 func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]](
 	config *filterapi.RuntimeConfig,
 	requestHeaders map[string]string,
+	filterMetadata map[string]*structpb.Struct,
 	logger *slog.Logger,
 	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
 	enableRedaction bool,
@@ -142,6 +146,7 @@ func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.
 	return &routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]{
 		config:            config,
 		requestHeaders:    requestHeaders,
+		filterMetadata:    filterMetadata,
 		logger:            logger,
 		tracer:            tracer,
 		forceBodyMutation: false,
@@ -574,10 +579,10 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	}
 
 	if body.EndOfStream && (len(u.parent.config.GlobalRequestCosts) > 0 || len(u.parent.config.RequestCosts) > 0 ||
-		len(u.parent.config.GlobalRateLimitsFromHeaders) > 0 || len(u.parent.config.RateLimitsFromHeaders) > 0) {
+		len(u.parent.config.GlobalRateLimits) > 0 || len(u.parent.config.RateLimits) > 0) {
 		metadata, err := buildDynamicMetadata(u.parent.config.GlobalRequestCosts, u.parent.config.RequestCosts,
-			u.parent.config.GlobalRateLimitsFromHeaders, u.parent.config.RateLimitsFromHeaders,
-			&u.costs, u.requestHeaders, u.backendName, u.routeName, responseModel)
+			u.parent.config.GlobalRateLimits, u.parent.config.RateLimits,
+			&u.costs, u.requestHeaders, u.parent.filterMetadata, u.backendName, u.routeName, responseModel)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build dynamic metadata: %w", err)
 		}
@@ -825,10 +830,10 @@ func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.Tok
 // Two-tier precedence: for each metadataKey, check route-scoped requestCosts first (matching RouteName == routeName).
 // If found, use it. Otherwise, fall back to globalRequestCosts. If neither exists, the key is not emitted.
 func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCost, requestCosts []filterapi.RuntimeRequestCost,
-	globalRateLimitsFromHeaders []filterapi.GlobalRateLimitFromHeader, rateLimitsFromHeaders []filterapi.RateLimitFromHeader,
-	costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string,
+	globalRateLimits []filterapi.GlobalRateLimitOverride, rateLimits []filterapi.RateLimitOverride,
+	costs *metrics.TokenUsage, requestHeaders map[string]string, filterMetadata map[string]*structpb.Struct, backendName, routeName, responseModel string,
 ) (*structpb.Struct, error) {
-	metadata := make(map[string]*structpb.Value, len(requestCosts)+len(globalRequestCosts)+len(rateLimitsFromHeaders)+len(globalRateLimitsFromHeaders)+3)
+	metadata := make(map[string]*structpb.Value, len(requestCosts)+len(globalRequestCosts)+len(rateLimits)+len(globalRateLimits)+3)
 
 	// Track which metadata keys have been populated by route-scoped costs.
 	populatedKeys := make(map[string]struct{})
@@ -874,35 +879,43 @@ func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCos
 		metadata[rc.MetadataKey] = &structpb.Value{Kind: &structpb.Value_NumberValue{NumberValue: float64(cost)}}
 	}
 
-	// Emit rate-limit override structs from trusted request headers.
-	// Header value format: "<count>/<unit>" (e.g. "100000/HOUR").
+	// Emit rate-limit override structs from filter dynamic metadata (written by ext_authz or similar filters).
+	// Metadata value format: "<count>/<unit>" string (e.g. "100000/HOUR") stored at filterMetadata[namespace][key].
 	// Parsed and written as { "requests_per_unit": N, "unit": U } — the struct
 	// Envoy's RateLimit.Override.DynamicMetadata reads. Global entries apply unconditionally;
 	// route-scoped entries apply only when RouteName matches the current route.
 	// Route-scoped entries overwrite global entries for the same MetadataKey.
-	emitLimitOverride := func(metadataKey, header string) {
-		val, ok := requestHeaders[header]
+	emitLimitOverride := func(metadataKey, namespace, key string) {
+		ns, ok := filterMetadata[namespace]
 		if !ok {
+			return
+		}
+		field, ok := ns.Fields[key]
+		if !ok {
+			return
+		}
+		val := field.GetStringValue()
+		if val == "" {
 			return
 		}
 		parts := strings.SplitN(val, "/", 2)
 		if len(parts) != 2 {
-			slog.Default().Debug("malformed rate-limit header value, expected <count>/<unit>",
-				slog.String("header", header), slog.String("value", val))
+			slog.Default().Debug("malformed rate-limit metadata value, expected <count>/<unit>",
+				slog.String("namespace", namespace), slog.String("key", key), slog.String("value", val))
 			return
 		}
 		n, err := strconv.ParseUint(parts[0], 10, 64)
 		if err != nil {
-			slog.Default().Debug("non-numeric count in rate-limit header",
-				slog.String("header", header), slog.String("value", val))
+			slog.Default().Debug("non-numeric count in rate-limit metadata",
+				slog.String("namespace", namespace), slog.String("key", key), slog.String("value", val))
 			return
 		}
 		unit := strings.ToUpper(parts[1])
 		switch unit {
 		case "SECOND", "MINUTE", "HOUR", "DAY":
 		default:
-			slog.Default().Debug("invalid unit in rate-limit header, expected SECOND/MINUTE/HOUR/DAY",
-				slog.String("header", header), slog.String("unit", unit))
+			slog.Default().Debug("invalid unit in rate-limit metadata, expected SECOND/MINUTE/HOUR/DAY",
+				slog.String("namespace", namespace), slog.String("key", key), slog.String("unit", unit))
 			return
 		}
 		metadata[metadataKey] = &structpb.Value{Kind: &structpb.Value_StructValue{
@@ -912,16 +925,16 @@ func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCos
 			}},
 		}}
 	}
-	for i := range globalRateLimitsFromHeaders {
-		h := &globalRateLimitsFromHeaders[i]
-		emitLimitOverride(h.MetadataKey, h.Header)
+	for i := range globalRateLimits {
+		h := &globalRateLimits[i]
+		emitLimitOverride(h.MetadataKey, h.Namespace, h.Key)
 	}
-	for i := range rateLimitsFromHeaders {
-		h := &rateLimitsFromHeaders[i]
+	for i := range rateLimits {
+		h := &rateLimits[i]
 		if h.RouteName != routeName {
 			continue
 		}
-		emitLimitOverride(h.MetadataKey, h.Header)
+		emitLimitOverride(h.MetadataKey, h.Namespace, h.Key)
 	}
 
 	metadata["model_name_override"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: actualModel}}
