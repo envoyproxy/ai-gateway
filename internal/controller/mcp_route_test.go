@@ -102,7 +102,17 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	require.Equal(t, "/mcp", *mainHTTPRoute.Spec.Rules[0].Matches[0].Path.Value)
 	require.Equal(t, route.Spec.Headers, mainHTTPRoute.Spec.Rules[0].Matches[0].Headers)
 	require.Len(t, mainHTTPRoute.Spec.Rules[0].BackendRefs, 1)
-	require.Equal(t, gwapiv1.ObjectName("default-myroute-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
+	require.Equal(t, gwapiv1.ObjectName("default-mytarget-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
+
+	// Verify the shared Backend exists and is owned by the Gateway, not the MCPRoute.
+	var sharedBackend egv1a1.Backend
+	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "default-mytarget-mcp-proxy", Namespace: "default"}, &sharedBackend)
+	require.NoError(t, err)
+	backendOwner := metav1.GetControllerOf(&sharedBackend)
+	require.NotNil(t, backendOwner)
+	require.Equal(t, "Gateway", backendOwner.Kind)
+	require.Equal(t, "mytarget", backendOwner.Name)
+
 	// Since HTTPRouteRule name is experimental in Gateway API, and some vendors (e.g. GKE Gateway) do not
 	// support it yet, we currently do not set the sectionName to avoid compatibility issues.
 	// The jwt filter will be removed from backend routes in the extension server.
@@ -154,7 +164,7 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	require.Len(t, mainHTTPRoute.Spec.Rules, 1)
 	require.Equal(t, "/custom/", *mainHTTPRoute.Spec.Rules[0].Matches[0].Path.Value)
 	require.Len(t, mainHTTPRoute.Spec.Rules[0].BackendRefs, 1)
-	require.Equal(t, gwapiv1.ObjectName("default-myroute-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
+	require.Equal(t, gwapiv1.ObjectName("default-mytarget-mcp-proxy"), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
 
 	// svc-a (still in BackendRefs) per-backend HTTPRoute should still exist.
 	var keptRoute gwapiv1.HTTPRoute
@@ -199,13 +209,13 @@ func Test_newHTTPRoute_MCP_PathAndBackendsAndMetadata(t *testing.T) {
 		},
 	}
 
-	err := ctrlr.newMainHTTPRoute(httpRoute, mcpRoute)
+	err := ctrlr.newMainHTTPRoute(httpRoute, mcpRoute, mcpProxySharedBackendName("ns", "gw"))
 	require.NoError(t, err)
 
 	require.Len(t, httpRoute.Spec.Rules, 1)
 	require.Equal(t, "/custom/", *httpRoute.Spec.Rules[0].Matches[0].Path.Value)
 	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
-	require.Equal(t, gwapiv1.ObjectName("ns-mcp-route-mcp-proxy"), httpRoute.Spec.Rules[0].BackendRefs[0].Name)
+	require.Equal(t, gwapiv1.ObjectName("ns-gw-mcp-proxy"), httpRoute.Spec.Rules[0].BackendRefs[0].Name)
 
 	// Metadata propagated.
 	require.Equal(t, "v1", httpRoute.Labels["k1"])
@@ -231,7 +241,7 @@ func Test_newHTTPRoute_MCPOauth(t *testing.T) {
 		},
 	}
 
-	err := ctrlr.newMainHTTPRoute(httpRoute, mcpRoute)
+	err := ctrlr.newMainHTTPRoute(httpRoute, mcpRoute, mcpProxySharedBackendName("ns", "gw"))
 	require.NoError(t, err)
 
 	require.Len(t, httpRoute.Spec.Rules, 4) // 3 default routes for oauth which begins from index 1.
