@@ -3199,7 +3199,7 @@ AIGatewayRouteSpec details the AIGatewayRoute configuration.
   name="rateLimitsFromHeaders"
   type="[RateLimitFromHeader](#github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitfromheader) array"
   required="false"
-  description="RateLimitsFromHeaders emits per-request rate-limit override structs from trusted request<br />headers into io.envoy.ai_gateway dynamic metadata. Each header value must be formatted as<br />`<count>/<unit>` (e.g. `100000/HOUR`). Overrides the global defaults from GatewayConfig<br />for entries with the same MetadataKey."
+  description="RateLimitsFromHeaders emits per-request rate-limit override structs from request headers<br />into io.envoy.ai_gateway dynamic metadata. Each header value must be formatted as<br />`<count>/<unit>` (e.g. `100000/HOUR`). Overrides the global defaults from GatewayConfig<br />for entries with the same MetadataKey.<br /><br />See RateLimitFromHeader for the security requirement to strip these headers from client<br />requests using ClientTrafficPolicy.spec.headers.earlyRequestHeaders.remove."
 />
 
 
@@ -3939,7 +3939,7 @@ GatewayConfigSpec defines the configuration for the AI Gateway.
   name="globalRateLimitsFromHeaders"
   type="[RateLimitFromHeader](#github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitfromheader) array"
   required="false"
-  description="GlobalRateLimitsFromHeaders defines gateway-level defaults for emitting per-request<br />rate-limit override structs from trusted request headers into io.envoy.ai_gateway dynamic metadata.<br />Route-scoped entries with the same MetadataKey take precedence."
+  description="GlobalRateLimitsFromHeaders defines gateway-level defaults for emitting per-request<br />rate-limit override structs from request headers into io.envoy.ai_gateway dynamic metadata.<br />Route-scoped entries with the same MetadataKey take precedence.<br /><br />See RateLimitFromHeader for the security requirement to strip these headers from client<br />requests using ClientTrafficPolicy.spec.headers.earlyRequestHeaders.remove."
 />
 
 
@@ -4671,10 +4671,31 @@ References:
 - [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigspec)
 
 RateLimitFromHeader emits a per-request rate-limit override struct into io.envoy.ai_gateway
-dynamic metadata from a trusted request header. The header value must be formatted as
+dynamic metadata from a request header. The header value must be formatted as
 "COUNT/UNIT" (e.g. "100000/HOUR"). The gateway parses it and writes a struct with
 requests_per_unit and unit fields under MetadataKey — the struct
 Envoy's RateLimit.Override.DynamicMetadata reads. If the header is absent or malformed the key is omitted.
+
+**Security note**: this feature reads the rate-limit value from an incoming request header.
+A client that can set this header can inflate its own quota. To prevent spoofing, you MUST strip
+the header from client requests before the HTTP filter chain (including ext-authz) processes it.
+Use `ClientTrafficPolicy.spec.headers.earlyRequestHeaders.remove` on the associated Gateway:
+
+```yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: <your-gateway>
+  headers:
+    earlyRequestHeaders:
+      remove: ["<header-name>"]
+```
+
+After stripping, only a trusted component such as ext-authz (running after the strip) can set
+the header, ensuring the value reflects the actual tenant quota.
 
 ##### Fields
 
@@ -4689,7 +4710,7 @@ Envoy's RateLimit.Override.DynamicMetadata reads. If the header is absent or mal
   name="header"
   type="string"
   required="true"
-  description="Header is the trusted request header whose value encodes the rate limit as `<count>/<unit>`,<br />where unit is one of SECOND, MINUTE, HOUR, DAY."
+  description="Header is the request header whose value encodes the rate limit as `<count>/<unit>`,<br />where unit is one of SECOND, MINUTE, HOUR, DAY.<br /><br />This header must be set exclusively by a trusted component (e.g. ext-authz). See the security<br />note on RateLimitFromHeader for how to prevent client spoofing."
 />
 
 

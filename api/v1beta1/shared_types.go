@@ -170,13 +170,35 @@ const (
 // "COUNT/UNIT" (e.g. "100000/HOUR"). The gateway parses it and writes a struct with
 // requests_per_unit and unit fields under MetadataKey — the struct
 // Envoy's RateLimit.Override.DynamicMetadata reads. If the header is absent or malformed the key is omitted.
+//
+// Security note: this feature reads the rate-limit value directly from an incoming request header.
+// A client that can set this header can inflate its own quota. To prevent spoofing, you MUST strip
+// the header from client requests before the HTTP filter chain (including ext-authz) processes it.
+// Use ClientTrafficPolicy.spec.headers.earlyRequestHeaders.remove on the associated Gateway:
+//
+//	apiVersion: gateway.envoyproxy.io/v1alpha1
+//	kind: ClientTrafficPolicy
+//	spec:
+//	  targetRefs:
+//	    - group: gateway.networking.k8s.io
+//	      kind: Gateway
+//	      name: <your-gateway>
+//	  headers:
+//	    earlyRequestHeaders:
+//	      remove: ["<header-name>"]
+//
+// After stripping, only the trusted ext-authz (or another filter running after the strip)
+// can set the header, ensuring the value reflects the actual tenant quota.
 type RateLimitFromHeader struct {
 	// MetadataKey is the key written under io.envoy.ai_gateway in the dynamic metadata.
 	//
 	// +kubebuilder:validation:Required
 	MetadataKey string `json:"metadataKey"`
-	// Header is the trusted request header whose value encodes the rate limit as "<count>/<unit>",
+	// Header is the request header whose value encodes the rate limit as "<count>/<unit>",
 	// where unit is one of SECOND, MINUTE, HOUR, DAY.
+	//
+	// This header must be set exclusively by a trusted component (e.g. ext-authz).
+	// See the security note on RateLimitFromHeader for how to prevent client spoofing.
 	//
 	// +kubebuilder:validation:Required
 	Header string `json:"header"`
