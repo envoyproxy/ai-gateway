@@ -167,7 +167,7 @@ const (
 
 // RateLimitOverride emits a per-request rate-limit override struct into io.envoy.ai_gateway
 // dynamic metadata. The source value must be formatted as "COUNT/UNIT" (e.g. "100000/HOUR").
-// The gateway parses it and writes { requests_per_unit, unit } under MetadataKey — the struct
+// The gateway parses it and writes a requests_per_unit/unit struct under MetadataKey — the struct
 // Envoy's RateLimit.Override.DynamicMetadata reads. If the source value is absent or malformed
 // the key is omitted and the BackendTrafficPolicy static default applies.
 type RateLimitOverride struct {
