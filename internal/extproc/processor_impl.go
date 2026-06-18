@@ -267,12 +267,10 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 		Header: &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
 	})
 	originalPath := r.requestHeaders[":path"]
-	if r.requestHeaders[originalPathHeader] == "" {
-		r.requestHeaders[originalPathHeader] = originalPath
-		additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
-			Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(originalPath)},
-		})
-	}
+	r.requestHeaders[originalPathHeader] = originalPath
+	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
+		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(originalPath)},
+	})
 	if r.requestHeaders[internalapi.EnvoyOriginalPathHeader] == "" {
 		r.requestHeaders[internalapi.EnvoyOriginalPathHeader] = originalPath
 		additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
