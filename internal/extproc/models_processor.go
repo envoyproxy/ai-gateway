@@ -16,6 +16,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -36,7 +37,7 @@ type modelsProcessor struct {
 var _ Processor = (*modelsProcessor)(nil)
 
 // NewModelsProcessor creates a new processor that returns the list of declared models.
-func NewModelsProcessor(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool, _ bool) (Processor, error) {
+func NewModelsProcessor(config *filterapi.RuntimeConfig, requestHeaders map[string]string, _ map[string]*structpb.Struct, logger *slog.Logger, isUpstreamFilter bool, _ bool) (Processor, error) {
 	if isUpstreamFilter {
 		return passThroughProcessor{}, nil
 	}

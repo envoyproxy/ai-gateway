@@ -132,31 +132,32 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Contains(t, err.Error(), "missing_route")
 	})
 
-	t.Run("RateLimitsFromHeaders passed through to RuntimeConfig", func(t *testing.T) {
+	t.Run("RateLimits passed through to RuntimeConfig", func(t *testing.T) {
 		config := &Config{
-			GlobalRateLimitsFromHeaders: []GlobalRateLimitFromHeader{
-				{MetadataKey: "llm_input_limit", Header: "x-aigw-limit-input"},
+			GlobalRateLimits: []GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_limit", Namespace: "my.ext_authz", Key: "input_limit"},
 			},
-			RateLimitsFromHeaders: []RateLimitFromHeader{
-				{MetadataKey: "llm_output_limit", Header: "x-aigw-limit-output", RouteName: "ns/r"},
+			RateLimits: []RateLimitOverride{
+				{MetadataKey: "llm_output_limit", Namespace: "my.ext_authz", Key: "output_limit", RouteName: "ns/r"},
 			},
 		}
 		rc, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
 			return nil, nil
 		})
 		require.NoError(t, err)
-		require.Len(t, rc.GlobalRateLimitsFromHeaders, 1)
-		require.Equal(t, "llm_input_limit", rc.GlobalRateLimitsFromHeaders[0].MetadataKey)
-		require.Equal(t, "x-aigw-limit-input", rc.GlobalRateLimitsFromHeaders[0].Header)
-		require.Len(t, rc.RateLimitsFromHeaders, 1)
-		require.Equal(t, "llm_output_limit", rc.RateLimitsFromHeaders[0].MetadataKey)
-		require.Equal(t, "ns/r", rc.RateLimitsFromHeaders[0].RouteName)
+		require.Len(t, rc.GlobalRateLimits, 1)
+		require.Equal(t, "llm_input_limit", rc.GlobalRateLimits[0].MetadataKey)
+		require.Equal(t, "my.ext_authz", rc.GlobalRateLimits[0].Namespace)
+		require.Equal(t, "input_limit", rc.GlobalRateLimits[0].Key)
+		require.Len(t, rc.RateLimits, 1)
+		require.Equal(t, "llm_output_limit", rc.RateLimits[0].MetadataKey)
+		require.Equal(t, "ns/r", rc.RateLimits[0].RouteName)
 	})
 
-	t.Run("error - route-scoped RateLimitFromHeader with empty RouteName", func(t *testing.T) {
+	t.Run("error - route-scoped RateLimitOverride with empty RouteName", func(t *testing.T) {
 		config := &Config{
-			RateLimitsFromHeaders: []RateLimitFromHeader{
-				{MetadataKey: "llm_limit", Header: "x-aigw-limit", RouteName: ""},
+			RateLimits: []RateLimitOverride{
+				{MetadataKey: "llm_limit", Namespace: "my.ext_authz", Key: "limit", RouteName: ""},
 			},
 		}
 		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
@@ -167,23 +168,23 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Contains(t, err.Error(), "llm_limit")
 	})
 
-	t.Run("error - route-scoped RateLimitFromHeader with empty Header", func(t *testing.T) {
+	t.Run("error - route-scoped RateLimitOverride with empty Key", func(t *testing.T) {
 		config := &Config{
-			RateLimitsFromHeaders: []RateLimitFromHeader{
-				{MetadataKey: "llm_limit", Header: "", RouteName: "ns/r"},
+			RateLimits: []RateLimitOverride{
+				{MetadataKey: "llm_limit", Namespace: "my.ext_authz", Key: "", RouteName: "ns/r"},
 			},
 		}
 		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
 			return nil, nil
 		})
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "must have non-empty Header")
+		require.Contains(t, err.Error(), "non-empty Key")
 	})
 
-	t.Run("error - route-scoped RateLimitFromHeader with empty MetadataKey", func(t *testing.T) {
+	t.Run("error - route-scoped RateLimitOverride with empty MetadataKey", func(t *testing.T) {
 		config := &Config{
-			RateLimitsFromHeaders: []RateLimitFromHeader{
-				{MetadataKey: "", Header: "x-aigw-limit", RouteName: "ns/r"},
+			RateLimits: []RateLimitOverride{
+				{MetadataKey: "", Namespace: "my.ext_authz", Key: "limit", RouteName: "ns/r"},
 			},
 		}
 		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
@@ -193,24 +194,24 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Contains(t, err.Error(), "non-empty MetadataKey")
 	})
 
-	t.Run("error - global RateLimitFromHeader with empty Header", func(t *testing.T) {
+	t.Run("error - global RateLimitOverride with empty Key", func(t *testing.T) {
 		config := &Config{
-			GlobalRateLimitsFromHeaders: []GlobalRateLimitFromHeader{
-				{MetadataKey: "llm_limit", Header: ""},
+			GlobalRateLimits: []GlobalRateLimitOverride{
+				{MetadataKey: "llm_limit", Namespace: "my.ext_authz", Key: ""},
 			},
 		}
 		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
 			return nil, nil
 		})
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "must have non-empty Header")
+		require.Contains(t, err.Error(), "non-empty Key")
 		require.Contains(t, err.Error(), "llm_limit")
 	})
 
-	t.Run("error - global RateLimitFromHeader with empty MetadataKey", func(t *testing.T) {
+	t.Run("error - global RateLimitOverride with empty MetadataKey", func(t *testing.T) {
 		config := &Config{
-			GlobalRateLimitsFromHeaders: []GlobalRateLimitFromHeader{
-				{MetadataKey: "", Header: "x-aigw-limit"},
+			GlobalRateLimits: []GlobalRateLimitOverride{
+				{MetadataKey: "", Namespace: "my.ext_authz", Key: "limit"},
 			},
 		}
 		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {

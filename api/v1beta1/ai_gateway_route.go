@@ -206,19 +206,15 @@ type AIGatewayRouteSpec struct {
 	// +kubebuilder:validation:MaxItems=36
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
 
-	// RateLimitsFromHeaders emits per-request rate-limit override structs from request headers
-	// into io.envoy.ai_gateway dynamic metadata. Each header value must be formatted as
-	// "<count>/<unit>" (e.g. "100000/HOUR"). Overrides the global defaults from GatewayConfig
-	// for entries with the same MetadataKey.
-	//
-	// See RateLimitFromHeader for the security requirement to strip these headers from client
-	// requests using ClientTrafficPolicy.spec.headers.earlyRequestHeaders.remove.
+	// RateLimits defines per-route rate-limit override entries that emit per-request limit structs
+	// into io.envoy.ai_gateway dynamic metadata. Entries with the same MetadataKey override the
+	// gateway-level GlobalRateLimits defined in GatewayConfig.
 	//
 	// +optional
 	// +listType=map
 	// +listMapKey=metadataKey
 	// +kubebuilder:validation:MaxItems=36
-	RateLimitsFromHeaders []RateLimitFromHeader `json:"rateLimitsFromHeaders,omitempty"`
+	RateLimits []RateLimitOverride `json:"rateLimits,omitempty"`
 }
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.

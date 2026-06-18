@@ -1263,32 +1263,55 @@ spec:
                 x-kubernetes-validations:
                 - message: only Gateway is supported
                   rule: self.all(match, match.kind == 'Gateway')
-              rateLimitsFromHeaders:
+              rateLimits:
                 description: |-
-                  RateLimitsFromHeaders emits per-request rate-limit override structs from trusted request
-                  headers into io.envoy.ai_gateway dynamic metadata. Each header value must be formatted as
+                  RateLimits emits per-request rate-limit override structs from filter dynamic metadata
+                  into io.envoy.ai_gateway dynamic metadata. The source metadata value must be formatted as
                   "<count>/<unit>" (e.g. "100000/HOUR"). Overrides the global defaults from GatewayConfig
                   for entries with the same MetadataKey.
                 items:
                   description: |-
-                    RateLimitFromHeader emits a per-request rate-limit override struct into io.envoy.ai_gateway
-                    dynamic metadata from a trusted request header. The header value must be formatted as
-                    "COUNT/UNIT" (e.g. "100000/HOUR"). The gateway parses it and writes a struct with
-                    requests_per_unit and unit fields under MetadataKey — the struct
-                    Envoy's RateLimit.Override.DynamicMetadata reads. If the header is absent or malformed the key is omitted.
+                    RateLimitOverride reads a per-request rate-limit value from filter dynamic metadata
+                    (e.g. written by ext_authz) and emits a { requests_per_unit, unit } struct into
+                    io.envoy.ai_gateway dynamic metadata under MetadataKey — the struct
+                    Envoy's RateLimit.Override.DynamicMetadata reads. If the source key is absent or
+                    malformed the MetadataKey is omitted.
                   properties:
-                    header:
-                      description: |-
-                        Header is the trusted request header whose value encodes the rate limit as "<count>/<unit>",
-                        where unit is one of SECOND, MINUTE, HOUR, DAY.
-                      type: string
                     metadataKey:
                       description: MetadataKey is the key written under io.envoy.ai_gateway
                         in the dynamic metadata.
                       type: string
+                    source:
+                      description: Source defines where to read the rate limit value
+                        from.
+                      properties:
+                        fromMetadata:
+                          description: |-
+                            FromMetadata reads the rate limit from filter dynamic metadata.
+                            The value at Namespace/Key must be a string formatted as "<count>/<unit>"
+                            (e.g. "100000/HOUR").
+                          properties:
+                            key:
+                              description: Key is the field name within the namespace's
+                                struct value.
+                              type: string
+                            namespace:
+                              description: Namespace is the filter metadata namespace
+                                (e.g. "envoy.filters.http.ext_authz").
+                              type: string
+                          required:
+                          - key
+                          - namespace
+                          type: object
+                      required:
+                      - fromMetadata
+                      type: object
+                      x-kubernetes-validations:
+                      - message: exactly one of fromMetadata must be set
+                        rule: has(self.fromMetadata)
                   required:
-                  - header
                   - metadataKey
+                  - source
                   type: object
                 maxItems: 36
                 type: array
