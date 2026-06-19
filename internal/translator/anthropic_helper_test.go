@@ -766,9 +766,9 @@ func TestAnthropicStreamParserTokenUsage_NoDoubleCounting(t *testing.T) {
 		messageStartInputTokens    int64
 		messageStartCacheRead      int64
 		messageStartCacheCreation  int64
-		messageDeltaInputTokens    int64
-		messageDeltaCacheRead      int64
-		messageDeltaCacheCreation  int64
+		messageDeltaInputTokens    *int64
+		messageDeltaCacheRead      *int64
+		messageDeltaCacheCreation  *int64
 		messageDeltaOutputTokens   int64
 		expectedInputTokens        uint32
 		expectedCachedTokens       uint32
@@ -780,9 +780,9 @@ func TestAnthropicStreamParserTokenUsage_NoDoubleCounting(t *testing.T) {
 			messageStartInputTokens:    9,
 			messageStartCacheRead:      1,
 			messageStartCacheCreation:  0,
-			messageDeltaInputTokens:    9,
-			messageDeltaCacheRead:      1,
-			messageDeltaCacheCreation:  0,
+			messageDeltaInputTokens:    ptr.To[int64](9),
+			messageDeltaCacheRead:      ptr.To[int64](1),
+			messageDeltaCacheCreation:  ptr.To[int64](0),
 			messageDeltaOutputTokens:   16,
 			expectedInputTokens:        10, // 9 base + 1 cache_read, NOT 11 (9+1+1 double counted)
 			expectedCachedTokens:       1,  // NOT 2 (1+1 double counted)
@@ -794,9 +794,9 @@ func TestAnthropicStreamParserTokenUsage_NoDoubleCounting(t *testing.T) {
 			messageStartInputTokens:    5,
 			messageStartCacheRead:      0,
 			messageStartCacheCreation:  3,
-			messageDeltaInputTokens:    5,
-			messageDeltaCacheRead:      0,
-			messageDeltaCacheCreation:  3,
+			messageDeltaInputTokens:    ptr.To[int64](5),
+			messageDeltaCacheRead:      ptr.To[int64](0),
+			messageDeltaCacheCreation:  ptr.To[int64](3),
 			messageDeltaOutputTokens:   10,
 			expectedInputTokens:        8, // 5 base + 3 cache_creation, NOT 11
 			expectedCachedTokens:       0,
@@ -808,9 +808,9 @@ func TestAnthropicStreamParserTokenUsage_NoDoubleCounting(t *testing.T) {
 			messageStartInputTokens:    9,
 			messageStartCacheRead:      2,
 			messageStartCacheCreation:  3,
-			messageDeltaInputTokens:    9,
-			messageDeltaCacheRead:      2,
-			messageDeltaCacheCreation:  3,
+			messageDeltaInputTokens:    ptr.To[int64](9),
+			messageDeltaCacheRead:      ptr.To[int64](2),
+			messageDeltaCacheCreation:  ptr.To[int64](3),
 			messageDeltaOutputTokens:   20,
 			expectedInputTokens:        14, // 9 + 2 + 3, NOT 19 (9+2+3+2+3)
 			expectedCachedTokens:       2,  // NOT 4
@@ -822,9 +822,6 @@ func TestAnthropicStreamParserTokenUsage_NoDoubleCounting(t *testing.T) {
 			messageStartInputTokens:    9,
 			messageStartCacheRead:      0,
 			messageStartCacheCreation:  0,
-			messageDeltaInputTokens:    0,
-			messageDeltaCacheRead:      0,
-			messageDeltaCacheCreation:  0,
 			messageDeltaOutputTokens:   16,
 			expectedInputTokens:        9,
 			expectedCachedTokens:       0,
@@ -836,9 +833,6 @@ func TestAnthropicStreamParserTokenUsage_NoDoubleCounting(t *testing.T) {
 			messageStartInputTokens:    9,
 			messageStartCacheRead:      5,
 			messageStartCacheCreation:  2,
-			messageDeltaInputTokens:    0,
-			messageDeltaCacheRead:      0,
-			messageDeltaCacheCreation:  0,
 			messageDeltaOutputTokens:   16,
 			expectedInputTokens:        16, // 9 + 5 + 2
 			expectedCachedTokens:       5,
@@ -846,25 +840,31 @@ func TestAnthropicStreamParserTokenUsage_NoDoubleCounting(t *testing.T) {
 			expectedOutputTokens:       16,
 		},
 		{
-			// When message_start has no cache tokens but message_delta reports them,
-			// the delta cache tokens are NOT used because MessageDeltaUsage uses
-			// non-pointer int64 fields that default to 0 when absent from JSON.
-			// Since we cannot distinguish "not provided" from "actually zero",
-			// we skip cache tokens from message_delta entirely to avoid
-			// overwriting correct message_start values with zero defaults.
-			// In practice, the Anthropic API always reports cache tokens in
-			// message_start, so this edge case should not occur.
-			name:                       "cache tokens only in message_delta are ignored - message_start values preserved",
+			name:                       "cache tokens only in message_delta are applied",
 			messageStartInputTokens:    9,
 			messageStartCacheRead:      0,
 			messageStartCacheCreation:  0,
-			messageDeltaInputTokens:    9,
-			messageDeltaCacheRead:      5,
-			messageDeltaCacheCreation:  2,
+			messageDeltaInputTokens:    ptr.To[int64](9),
+			messageDeltaCacheRead:      ptr.To[int64](5),
+			messageDeltaCacheCreation:  ptr.To[int64](2),
 			messageDeltaOutputTokens:   16,
-			expectedInputTokens:        9, // only from message_start, delta cache tokens ignored
-			expectedCachedTokens:       0, // delta cache tokens not applied
-			expectedCacheCreationToken: 0, // delta cache tokens not applied
+			expectedInputTokens:        16, // 9 + 5 + 2 from message_delta
+			expectedCachedTokens:       5,
+			expectedCacheCreationToken: 2,
+			expectedOutputTokens:       16,
+		},
+		{
+			name:                       "corrected cache tokens in message_delta override message_start",
+			messageStartInputTokens:    9,
+			messageStartCacheRead:      5,
+			messageStartCacheCreation:  2,
+			messageDeltaInputTokens:    ptr.To[int64](9),
+			messageDeltaCacheRead:      ptr.To[int64](1),
+			messageDeltaCacheCreation:  ptr.To[int64](0),
+			messageDeltaOutputTokens:   16,
+			expectedInputTokens:        10, // corrected 9 + 1 + 0, NOT stale 9 + 5 + 2
+			expectedCachedTokens:       1,
+			expectedCacheCreationToken: 0,
 			expectedOutputTokens:       16,
 		},
 	}
@@ -872,6 +872,17 @@ func TestAnthropicStreamParserTokenUsage_NoDoubleCounting(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			parser := newAnthropicStreamParser("test-model")
+
+			messageDeltaUsageFields := []string{fmt.Sprintf(`"output_tokens":%d`, tt.messageDeltaOutputTokens)}
+			if tt.messageDeltaInputTokens != nil {
+				messageDeltaUsageFields = append(messageDeltaUsageFields, fmt.Sprintf(`"input_tokens":%d`, *tt.messageDeltaInputTokens))
+			}
+			if tt.messageDeltaCacheRead != nil {
+				messageDeltaUsageFields = append(messageDeltaUsageFields, fmt.Sprintf(`"cache_read_input_tokens":%d`, *tt.messageDeltaCacheRead))
+			}
+			if tt.messageDeltaCacheCreation != nil {
+				messageDeltaUsageFields = append(messageDeltaUsageFields, fmt.Sprintf(`"cache_creation_input_tokens":%d`, *tt.messageDeltaCacheCreation))
+			}
 
 			// Build the SSE stream with message_start and message_delta events.
 			sseStream := fmt.Sprintf(`event: message_start
@@ -887,7 +898,7 @@ event: content_block_stop
 data: {"type":"content_block_stop","index":0}
 
 event: message_delta
-data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":%d,"input_tokens":%d,"cache_read_input_tokens":%d,"cache_creation_input_tokens":%d}}
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{%s}}
 
 event: message_stop
 data: {"type":"message_stop"}
@@ -895,10 +906,7 @@ data: {"type":"message_stop"}
 				tt.messageStartInputTokens,
 				tt.messageStartCacheRead,
 				tt.messageStartCacheCreation,
-				tt.messageDeltaOutputTokens,
-				tt.messageDeltaInputTokens,
-				tt.messageDeltaCacheRead,
-				tt.messageDeltaCacheCreation,
+				strings.Join(messageDeltaUsageFields, ","),
 			)
 
 			_, _, tokenUsage, _, err := parser.Process(strings.NewReader(sseStream), true, nil)

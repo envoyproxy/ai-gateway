@@ -825,6 +825,60 @@ func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error
 	return nil
 }
 
+type messageDeltaUsageFields struct {
+	Usage *struct {
+		InputTokens              *int64 `json:"input_tokens"`
+		CacheReadInputTokens     *int64 `json:"cache_read_input_tokens"`
+		CacheCreationInputTokens *int64 `json:"cache_creation_input_tokens"`
+	} `json:"usage"`
+}
+
+func (p *anthropicStreamParser) updateInputUsageFromMessageDelta(data []byte) error {
+	var event messageDeltaUsageFields
+	if err := json.Unmarshal(data, &event); err != nil {
+		return fmt.Errorf("unmarshal message_delta usage fields: %w", err)
+	}
+	if event.Usage == nil {
+		return nil
+	}
+
+	u := event.Usage
+	inputPresent := u.InputTokens != nil && *u.InputTokens >= 0
+	cacheReadPresent := u.CacheReadInputTokens != nil && *u.CacheReadInputTokens >= 0
+	cacheCreationPresent := u.CacheCreationInputTokens != nil && *u.CacheCreationInputTokens >= 0
+	if !inputPresent && !cacheReadPresent && !cacheCreationPresent {
+		return nil
+	}
+
+	baseInputTokens := uint32(0)
+	if inputPresent {
+		baseInputTokens = uint32(*u.InputTokens) //nolint:gosec
+	} else if inputTokens, ok := p.tokenUsage.InputTokens(); ok {
+		baseInputTokens = inputTokens
+		if cachedTokens, ok := p.tokenUsage.CachedInputTokens(); ok && baseInputTokens >= cachedTokens {
+			baseInputTokens -= cachedTokens
+		}
+		if cacheCreationTokens, ok := p.tokenUsage.CacheCreationInputTokens(); ok && baseInputTokens >= cacheCreationTokens {
+			baseInputTokens -= cacheCreationTokens
+		}
+	}
+
+	cachedTokens, _ := p.tokenUsage.CachedInputTokens()
+	if cacheReadPresent {
+		cachedTokens = uint32(*u.CacheReadInputTokens) //nolint:gosec
+		p.tokenUsage.SetCachedInputTokens(cachedTokens)
+	}
+
+	cacheCreationTokens, _ := p.tokenUsage.CacheCreationInputTokens()
+	if cacheCreationPresent {
+		cacheCreationTokens = uint32(*u.CacheCreationInputTokens) //nolint:gosec
+		p.tokenUsage.SetCacheCreationInputTokens(cacheCreationTokens)
+	}
+
+	p.tokenUsage.SetInputTokens(baseInputTokens + cachedTokens + cacheCreationTokens)
+	return nil
+}
+
 // Process reads from the Anthropic SSE stream, translates events to OpenAI chunks,
 // and returns the mutations for Envoy.
 func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span tracingapi.ChatCompletionSpan) (
@@ -1050,20 +1104,12 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, fmt.Errorf("unmarshal message_delta: %w", err)
 		}
+		if err := p.updateInputUsageFromMessageDelta(data); err != nil {
+			return nil, err
+		}
 		u := event.Usage
 		// message_delta provides cumulative (not incremental) token counts.
-		// Input tokens and cache tokens were already set from message_start
-		// (which also reports cumulative values), so we must not Add them again
-		// or we would double-count. We also cannot use Set to override from
-		// message_delta because the MessageDeltaUsage struct uses non-pointer
-		// int64 fields that default to 0 when absent from JSON, making it
-		// impossible to distinguish "not provided" from "actually zero".
-		// Overriding with 0 would erase the correct values from message_start.
-		// Only update output tokens from message_delta since message_start
-		// typically reports output_tokens=0 and message_delta provides the
-		// final count. Use Set (not Add) because the value is cumulative,
-		// not incremental. This matches the pattern used in
-		// anthropic_anthropic.go's reflectStreamingEvent.
+		// Use Set (not Add) because the value is cumulative, not incremental.
 		if u.OutputTokens >= 0 {
 			p.tokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
 		}
