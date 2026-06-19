@@ -1469,7 +1469,7 @@ func TestMaybeSetStreamIdleTimeout(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	s, err := New(c, logr.Discard(), udsPath, false, nil, nil)
+	s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 
 	forwardingRoute := func(name string) *routev3.Route {
@@ -1562,7 +1562,7 @@ func TestApplyStreamIdleTimeouts(t *testing.T) {
 			Rules: []aigv1b1.AIGatewayRouteRule{{StreamIdleTimeout: ptr.To(gwapiv1.Duration("7s"))}},
 		},
 	}))
-	s, err := New(c, logr.Discard(), udsPath, false, nil, nil)
+	s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 
 	forwarding := func(name string) *routev3.Route {
@@ -1586,7 +1586,7 @@ func TestApplyStreamIdleTimeouts(t *testing.T) {
 					return errors.New("boom")
 				},
 			}).Build(),
-		logr.Discard(), udsPath, false, nil, nil)
+		logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
 	err = failing.applyStreamIdleTimeouts(context.Background(),
 		[]*routev3.RouteConfiguration{{VirtualHosts: []*routev3.VirtualHost{{Routes: []*routev3.Route{
