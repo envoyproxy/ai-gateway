@@ -78,11 +78,23 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 		msg := &messages[i]
 		switch msg.Role {
 		case anthropicschema.MessageRoleUser:
-			bedrockMsg, convErr := a.convertUserMessage(msg)
-			if convErr != nil {
-				return nil, nil, convErr
+			if hasToolResult(msg) {
+				bedrockMsg := a.convertToolResultMessage(msg)
+				// Coalesce consecutive tool result messages.
+				for i+1 < msgLen && hasToolResult(&messages[i+1]) {
+					nextMsg := &messages[i+1]
+					nextBedrockMsg := a.convertToolResultMessage(nextMsg)
+					bedrockMsg.Content = append(bedrockMsg.Content, nextBedrockMsg.Content...)
+					i++
+				}
+				bedrockReq.Messages = append(bedrockReq.Messages, bedrockMsg)
+			} else {
+				bedrockMsg, convErr := a.convertUserMessage(msg)
+				if convErr != nil {
+					return nil, nil, convErr
+				}
+				bedrockReq.Messages = append(bedrockReq.Messages, bedrockMsg)
 			}
-			bedrockReq.Messages = append(bedrockReq.Messages, bedrockMsg)
 			i++
 		case anthropicschema.MessageRoleAssistant:
 			bedrockMsg, convErr := a.convertAssistantMessage(msg)
@@ -92,22 +104,7 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 			bedrockReq.Messages = append(bedrockReq.Messages, bedrockMsg)
 			i++
 		default:
-			// Check for tool_result content blocks (these come as "user" role in Anthropic
-			// but we handle them specially).
-			if hasToolResult(msg) {
-				bedrockMsg := a.convertToolResultMessage(msg)
-				// Coalesce consecutive tool result messages.
-				for i+1 < msgLen && hasToolResult(&body.Messages[i+1]) {
-					nextMsg := &body.Messages[i+1]
-					nextBedrockMsg := a.convertToolResultMessage(nextMsg)
-					bedrockMsg.Content = append(bedrockMsg.Content, nextBedrockMsg.Content...)
-					i++
-				}
-				bedrockReq.Messages = append(bedrockReq.Messages, bedrockMsg)
-			} else {
-				return nil, nil, fmt.Errorf("%w: unexpected role: %s", internalapi.ErrInvalidRequestBody, msg.Role)
-			}
-			i++
+			return nil, nil, fmt.Errorf("%w: unexpected role: %s", internalapi.ErrInvalidRequestBody, msg.Role)
 		}
 	}
 
