@@ -955,6 +955,39 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_UserArrayContent(t *testing
 	assert.Equal(t, []string{"END", "STOP"}, bedrockReq.InferenceConfig.StopSequences)
 }
 
+func TestAnthropicToAWSBedrockTranslator_RequestBody_UserArrayContentError(t *testing.T) {
+	translator := NewAnthropicToAWSBedrockTranslator("")
+	req := &anthropicschema.MessagesRequest{
+		Model:     "test-model",
+		MaxTokens: 100,
+		Messages: []anthropicschema.MessageParam{
+			{
+				Role: anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{
+					Array: []anthropicschema.ContentBlockParam{
+						{Image: &anthropicschema.ImageBlockParam{
+							Type: "image",
+							Source: anthropicschema.ImageSource{
+								Base64: &anthropicschema.Base64ImageSource{
+									Type:      "base64",
+									MediaType: "application/pdf",
+									Data:      "not-used",
+								},
+							},
+						}},
+					},
+				},
+			},
+		},
+	}
+	rawBody, err := json.Marshal(req)
+	require.NoError(t, err)
+
+	_, _, err = translator.RequestBody(rawBody, req, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported image format application/pdf")
+}
+
 func TestAnthropicToAWSBedrockTranslator_RequestBody_ToolResultMessages(t *testing.T) {
 	translator := NewAnthropicToAWSBedrockTranslator("")
 	req := &anthropicschema.MessagesRequest{

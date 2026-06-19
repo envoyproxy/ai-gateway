@@ -97,11 +97,7 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 			}
 			i++
 		case anthropicschema.MessageRoleAssistant:
-			bedrockMsg, convErr := a.convertAssistantMessage(msg)
-			if convErr != nil {
-				return nil, nil, convErr
-			}
-			bedrockReq.Messages = append(bedrockReq.Messages, bedrockMsg)
+			bedrockReq.Messages = append(bedrockReq.Messages, a.convertAssistantMessage(msg))
 			i++
 		default:
 			return nil, nil, fmt.Errorf("%w: unexpected role: %s", internalapi.ErrInvalidRequestBody, msg.Role)
@@ -233,13 +229,13 @@ func (a *anthropicToAWSBedrockTranslator) convertUserMessage(msg *anthropicschem
 	return bedrockMsg, nil
 }
 
-func (a *anthropicToAWSBedrockTranslator) convertAssistantMessage(msg *anthropicschema.MessageParam) (*awsbedrock.Message, error) {
+func (a *anthropicToAWSBedrockTranslator) convertAssistantMessage(msg *anthropicschema.MessageParam) *awsbedrock.Message {
 	bedrockMsg := &awsbedrock.Message{Role: awsbedrock.ConversationRoleAssistant}
 	if msg.Content.Text != "" {
 		bedrockMsg.Content = []*awsbedrock.ContentBlock{
 			{Text: ptr.To(msg.Content.Text)},
 		}
-		return bedrockMsg, nil
+		return bedrockMsg
 	}
 	bedrockMsg.Content = make([]*awsbedrock.ContentBlock, 0, len(msg.Content.Array))
 	for i := range msg.Content.Array {
@@ -274,7 +270,7 @@ func (a *anthropicToAWSBedrockTranslator) convertAssistantMessage(msg *anthropic
 			})
 		}
 	}
-	return bedrockMsg, nil
+	return bedrockMsg
 }
 
 func (a *anthropicToAWSBedrockTranslator) convertToolResultMessage(msg *anthropicschema.MessageParam) *awsbedrock.Message {
