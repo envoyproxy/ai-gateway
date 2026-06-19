@@ -276,8 +276,18 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	body, err := io.ReadAll(r.Body)
+	limit := m.maxRequestBodySize
+	if limit <= 0 {
+		limit = defaultMaxRequestBodySize
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			errType = metrics.MCPErrorInternal
+			onErrorResponse(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
 		errType = metrics.MCPErrorInternal
 		onErrorResponse(w, http.StatusBadRequest, err.Error())
 		return

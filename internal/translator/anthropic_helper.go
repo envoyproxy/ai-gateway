@@ -18,7 +18,6 @@ import (
 	anthropicParam "github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	openAIconstant "github.com/openai/openai-go/shared/constant"
-	openaisdk "github.com/openai/openai-go/v3"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
@@ -139,6 +138,10 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 			toolParam := anthropic.ToolParam{
 				Name:        openAITool.Function.Name,
 				Description: anthropic.String(openAITool.Function.Description),
+			}
+
+			if openAITool.Function.Strict {
+				toolParam.Strict = anthropic.Bool(true)
 			}
 
 			if isCacheEnabled(openAITool.Function.AnthropicContentFields) {
@@ -581,6 +584,7 @@ func getThinkingConfigParamUnion(tu *openai.ThinkingUnion) *anthropic.ThinkingCo
 		result.OfEnabled = &anthropic.ThinkingConfigEnabledParam{
 			BudgetTokens: tu.OfEnabled.BudgetTokens,
 			Type:         constant.Enabled(tu.OfEnabled.Type),
+			Display:      anthropic.ThinkingConfigEnabledDisplay(tu.OfEnabled.Display),
 		}
 	case tu.OfDisabled != nil:
 		result.OfDisabled = &anthropic.ThinkingConfigDisabledParam{
@@ -588,7 +592,8 @@ func getThinkingConfigParamUnion(tu *openai.ThinkingUnion) *anthropic.ThinkingCo
 		}
 	case tu.OfAdaptive != nil:
 		result.OfAdaptive = &anthropic.ThinkingConfigAdaptiveParam{
-			Type: constant.Adaptive(tu.OfAdaptive.Type),
+			Type:    constant.Adaptive(tu.OfAdaptive.Type),
+			Display: anthropic.ThinkingConfigAdaptiveDisplay(tu.OfAdaptive.Display),
 		}
 	}
 
@@ -622,12 +627,14 @@ func outputConfigAvailable(model internalapi.RequestModel) bool {
 }
 
 // effortModels lists model identifiers that support the output_config.effort parameter.
-// The effort parameter is supported by Claude Opus 4.6, Claude Sonnet 4.6, and Claude Opus 4.5.
+// The effort parameter is supported by Claude Mythos Preview, Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 4.6, and Claude Opus 4.5.
 // See: https://platform.claude.com/docs/en/build-with-claude/effort
 var effortModels = []string{
-	"opus-4-5",   // Claude Opus 4.5
-	"opus-4-6",   // Claude Opus 4.6
-	"sonnet-4-6", // Claude Sonnet 4.6
+	"opus-4-5",       // Claude Opus 4.5
+	"opus-4-6",       // Claude Opus 4.6
+	"opus-4-7",       // Claude Opus 4.7
+	"sonnet-4-6",     // Claude Sonnet 4.6
+	"mythos-preview", // Claude Mythos Preview
 }
 
 func effortAvailable(model internalapi.RequestModel) bool {
@@ -635,23 +642,21 @@ func effortAvailable(model internalapi.RequestModel) bool {
 }
 
 // mapReasoningEffortToOutputConfigEffort converts OpenAI reasoning effort levels to Anthropic output config effort levels.
-// Currently supports:
-// - "low" → OutputConfigEffortLow
-// - "medium" → OutputConfigEffortMedium
-// - "high" → OutputConfigEffortHigh
-// - "xhigh" → OutputConfigEffortMax
-func mapReasoningEffortToOutputConfigEffort(reasonEffort openaisdk.ReasoningEffort) (anthropic.OutputConfigEffort, error) {
+// Supported levels: "low", "medium", "high", "xhigh", "max".
+func mapReasoningEffortToOutputConfigEffort(reasonEffort openai.ReasoningEffort) (anthropic.OutputConfigEffort, error) {
 	switch reasonEffort {
-	case openaisdk.ReasoningEffortLow:
+	case openai.ReasoningEffortLow:
 		return anthropic.OutputConfigEffortLow, nil
-	case openaisdk.ReasoningEffortMedium:
+	case openai.ReasoningEffortMedium:
 		return anthropic.OutputConfigEffortMedium, nil
-	case openaisdk.ReasoningEffortHigh:
+	case openai.ReasoningEffortHigh:
 		return anthropic.OutputConfigEffortHigh, nil
-	case openaisdk.ReasoningEffortXhigh:
+	case openai.ReasoningEffortXhigh:
+		return anthropic.OutputConfigEffortXhigh, nil
+	case openai.ReasoningEffortMax:
 		return anthropic.OutputConfigEffortMax, nil
 	default:
-		return "", fmt.Errorf("%w: unsupported reasoning effort level: %q (supported: low, medium, high, xhigh)", internalapi.ErrInvalidRequestBody, reasonEffort)
+		return "", fmt.Errorf("%w: unsupported reasoning effort level: %q (supported: low, medium, high, xhigh, max)", internalapi.ErrInvalidRequestBody, reasonEffort)
 	}
 }
 
@@ -863,6 +868,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		totalTokens, _ := p.tokenUsage.TotalTokens()
 		cachedTokens, _ := p.tokenUsage.CachedInputTokens()
 		cacheCreationTokens, _ := p.tokenUsage.CacheCreationInputTokens()
+		reasoningTokens, _ := p.tokenUsage.ReasoningTokens()
 		finalChunk := openai.ChatCompletionResponseChunk{
 			ID:      p.activeMessageID,
 			Created: p.created,
@@ -875,6 +881,9 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 				PromptTokensDetails: &openai.PromptTokensDetails{
 					CachedTokens:        int(cachedTokens),
 					CacheCreationTokens: int(cacheCreationTokens),
+				},
+				CompletionTokensDetails: &openai.CompletionTokensDetails{
+					ReasoningTokens: int(reasoningTokens),
 				},
 			},
 			Model: p.requestModel,
@@ -957,8 +966,8 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			&u.CacheReadInputTokens,
 			&u.CacheCreationInputTokens,
 		)
-		// For message_start, we store the initial usage but don't add to the accumulated
-		// The message_delta event will contain the final totals
+		// Set all input token counts (input, cache read, cache creation) from message_start.
+		// message_delta may also contain these fields but only output_tokens is used from it.
 		if input, ok := usage.InputTokens(); ok {
 			p.tokenUsage.SetInputTokens(input)
 		}
@@ -1052,17 +1061,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if output, ok := usage.OutputTokens(); ok {
 			p.tokenUsage.AddOutputTokens(output)
 		}
-		// Update input tokens to include any cache tokens from delta
-		if cached, ok := usage.CachedInputTokens(); ok {
-			p.tokenUsage.AddInputTokens(cached)
-			// Accumulate any additional cache tokens from delta
-			p.tokenUsage.AddCachedInputTokens(cached)
-		}
-		if cacheCreation, ok := usage.CacheCreationInputTokens(); ok {
-			p.tokenUsage.AddInputTokens(cacheCreation)
-			// Accumulate cache creation tokens
-			p.tokenUsage.AddCacheCreationInputTokens(cacheCreation)
-		}
+		p.tokenUsage.SetReasoningTokens(uint32(u.OutputTokensDetails.ThinkingTokens)) //nolint:gosec
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}
@@ -1177,11 +1176,13 @@ func messageToChatCompletion(anthropicResp *anthropic.Message, responseModel int
 		&usage.CacheReadInputTokens,
 		&usage.CacheCreationInputTokens,
 	)
+	tokenUsage.SetReasoningTokens(uint32(usage.OutputTokensDetails.ThinkingTokens)) //nolint:gosec
 	inputTokens, _ := tokenUsage.InputTokens()
 	outputTokens, _ := tokenUsage.OutputTokens()
 	totalTokens, _ := tokenUsage.TotalTokens()
 	cachedTokens, _ := tokenUsage.CachedInputTokens()
 	cacheCreationTokens, _ := tokenUsage.CacheCreationInputTokens()
+	reasoningTokens, _ := tokenUsage.ReasoningTokens()
 	openAIResp.Usage = openai.Usage{
 		CompletionTokens: int(outputTokens),
 		PromptTokens:     int(inputTokens),
@@ -1189,6 +1190,9 @@ func messageToChatCompletion(anthropicResp *anthropic.Message, responseModel int
 		PromptTokensDetails: &openai.PromptTokensDetails{
 			CachedTokens:        int(cachedTokens),
 			CacheCreationTokens: int(cacheCreationTokens),
+		},
+		CompletionTokensDetails: &openai.CompletionTokensDetails{
+			ReasoningTokens: int(reasoningTokens),
 		},
 	}
 

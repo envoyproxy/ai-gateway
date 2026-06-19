@@ -356,6 +356,53 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RequestBody(t *testing.T
 		require.True(t, thinkingBlock.IsObject(), "The 'thinking' field should be a JSON object")
 		require.Equal(t, "disabled", thinkingBlock.Map()["type"].String())
 	})
+	t.Run("Request with Thinking enabled and display", func(t *testing.T) {
+		thinkingReq := &openai.ChatCompletionRequest{
+			Model:     claudeTestModel,
+			Messages:  []openai.ChatCompletionMessageParamUnion{},
+			MaxTokens: ptr.To(int64(100)),
+			Thinking: &openai.ThinkingUnion{
+				OfEnabled: &openai.ThinkingEnabled{
+					BudgetTokens: 100,
+					Type:         "enabled",
+					Display:      "omitted",
+				},
+			},
+		}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		_, body, err := translator.RequestBody(nil, thinkingReq, false)
+		require.NoError(t, err)
+		require.NotNil(t, body)
+
+		thinkingBlock := gjson.GetBytes(body, "thinking")
+		require.True(t, thinkingBlock.Exists(), "The 'thinking' field should exist in the request body")
+		require.True(t, thinkingBlock.IsObject(), "The 'thinking' field should be a JSON object")
+		require.Equal(t, "enabled", thinkingBlock.Map()["type"].String())
+		require.Equal(t, "omitted", thinkingBlock.Map()["display"].String())
+	})
+	t.Run("Request with Thinking adaptive and display", func(t *testing.T) {
+		thinkingReq := &openai.ChatCompletionRequest{
+			Model:     claudeTestModel,
+			Messages:  []openai.ChatCompletionMessageParamUnion{},
+			MaxTokens: ptr.To(int64(100)),
+			Thinking: &openai.ThinkingUnion{
+				OfAdaptive: &openai.ThinkingAdaptive{
+					Type:    "adaptive",
+					Display: "summarized",
+				},
+			},
+		}
+		translator := NewChatCompletionOpenAIToGCPAnthropicTranslator("", "")
+		_, body, err := translator.RequestBody(nil, thinkingReq, false)
+		require.NoError(t, err)
+		require.NotNil(t, body)
+
+		thinkingBlock := gjson.GetBytes(body, "thinking")
+		require.True(t, thinkingBlock.Exists(), "The 'thinking' field should exist in the request body")
+		require.True(t, thinkingBlock.IsObject(), "The 'thinking' field should be a JSON object")
+		require.Equal(t, "adaptive", thinkingBlock.Map()["type"].String())
+		require.Equal(t, "summarized", thinkingBlock.Map()["display"].String())
+	})
 }
 
 func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
@@ -396,6 +443,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 						CachedTokens:        5,
 						CacheCreationTokens: 3,
 					},
+					CompletionTokensDetails: &openai.CompletionTokensDetails{},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -431,6 +479,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 						CachedTokens:        10,
 						CacheCreationTokens: 7,
 					},
+					CompletionTokensDetails: &openai.CompletionTokensDetails{},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -477,6 +526,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens: 2,
 					},
+					CompletionTokensDetails: &openai.CompletionTokensDetails{},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -510,6 +560,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens: 3,
 					},
+					CompletionTokensDetails: &openai.CompletionTokensDetails{},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -555,6 +606,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens: 1,
 					},
+					CompletionTokensDetails: &openai.CompletionTokensDetails{},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -604,7 +656,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				int32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CacheCreationTokens), // nolint:gosec
 				int32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                        // nolint:gosec
 				int32(tt.expectedOpenAIResponse.Usage.TotalTokens),                             // nolint:gosec
-				-1,
+				int32(tt.expectedOpenAIResponse.Usage.CompletionTokensDetails.ReasoningTokens), // nolint:gosec
 			)
 			require.Equal(t, expectedTokenUsage, usedToken)
 
@@ -1811,8 +1863,8 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_RedactBody(t *testing.T)
 		require.NotNil(t, result)
 		require.Len(t, result.Choices, 1)
 		require.Len(t, result.Choices[0].Message.ToolCalls, 1)
-		// Tool call name and arguments should be redacted
-		require.NotEqual(t, "get_secret", result.Choices[0].Message.ToolCalls[0].Function.Name)
+		// Tool call name is kept (API name, not user data); arguments are redacted
+		require.Equal(t, "get_secret", result.Choices[0].Message.ToolCalls[0].Function.Name)
 		require.NotEqual(t, `{"password": "secret123"}`, result.Choices[0].Message.ToolCalls[0].Function.Arguments)
 	})
 
