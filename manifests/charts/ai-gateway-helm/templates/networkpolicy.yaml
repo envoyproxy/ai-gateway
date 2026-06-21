@@ -1,0 +1,37 @@
+{{/*
+ Copyright Envoy AI Gateway Authors
+ SPDX-License-Identifier: Apache-2.0
+ The full text of the Apache license is available in the LICENSE file at
+ the root of the repo.
+*/}}
+
+{{- if .Values.controller.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ai-gateway-helm.controller.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-gateway-helm.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "ai-gateway-helm.controller.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow Envoy proxies to reach the rate-limit gRPC service (port 8081)
+    # and the rate-limit xDS config server (port 18002).
+    # Also allow Envoy Gateway to reach the extension server gRPC (port 1063).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.controller.networkPolicy.envoyGatewayNamespace }}
+      ports:
+        - protocol: TCP
+          port: 8081
+        - protocol: TCP
+          port: 18002
+        - protocol: TCP
+          port: 1063
+{{- end }}

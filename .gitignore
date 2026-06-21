@@ -52,3 +52,6 @@ inference-extension-conformance-test-report.yaml
 /aigw
 site/.cursorrules
 /.cursor
+.dirge/
+/PLAN*.md
+/controller

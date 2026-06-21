@@ -403,8 +403,6 @@ spec:
                     - duration
                     - limit
                     type: object
-                required:
-                - quota
                 type: object
               targetRefs:
                 description: TargetRefs are the names of the AIServiceBackend resources

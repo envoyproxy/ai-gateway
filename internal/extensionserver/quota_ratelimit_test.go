@@ -1650,7 +1650,7 @@ func newTestServerWithRoute(t *testing.T, route *aigv1b1.AIGatewayRoute, policie
 	for i := range policies {
 		require.NoError(t, c.Create(t.Context(), &policies[i]))
 	}
-	s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+	s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false, false)
 	require.NoError(t, err)
 	return s
 }

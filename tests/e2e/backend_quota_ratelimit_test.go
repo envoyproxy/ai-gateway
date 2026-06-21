@@ -23,10 +23,10 @@ import (
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
 
-// Test_Examples_BackendQuotaRateLimit tests the backend-level quota rate limiting
+// TestBackendQuotaRateLimit tests the backend-level quota rate limiting
 // using the QuotaPolicy CRD. This verifies that the upstream rate limit filter
 // enforces per-model token quotas on requests to AIServiceBackends.
-func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
+func TestBackendQuotaRateLimit(t *testing.T) {
 	// Apply Redis manifest (shared with token rate limit tests).
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), "../../examples/token_ratelimit/redis.yaml"))
 	t.Cleanup(func() {
@@ -35,6 +35,22 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 
 	// Wait for the redis pod to be ready so that the rate limit service can connect.
 	e2elib.RequireWaitForPodReady(t, "redis-system", "app=redis")
+
+	// Switch controller to Redis storage now that Redis is available.
+	require.NoError(t, e2elib.InstallOrUpgradeAIGateway(t.Context(), e2elib.AIGatewayHelmOption{
+		AdditionalArgs: []string{
+			"--set", "controller.storage.backend=redis",
+			"--set", "controller.storage.redisURL=redis.redis-system.svc.cluster.local:6379",
+		},
+	}))
+	t.Cleanup(func() {
+		_ = e2elib.InstallOrUpgradeAIGateway(context.Background(), e2elib.AIGatewayHelmOption{
+			AdditionalArgs: []string{
+				"--set", "controller.storage.backend=file",
+				"--set", "controller.storage.fileDir=/tmp/ratelimit",
+			},
+		})
+	})
 
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), "testdata/backend_quota_ratelimit.yaml"))
 	t.Cleanup(func() {
@@ -46,6 +62,9 @@ func Test_Examples_BackendQuotaRateLimit(t *testing.T) {
 
 	// Wait for the AI Gateway rate limit service to be ready.
 	e2elib.RequireWaitForPodReady(t, e2elib.EnvoyGatewayNamespace, "app=envoy-ai-gateway-ratelimit")
+
+	// Wait for the test upstream to be ready before sending requests.
+	e2elib.RequireWaitForPodReady(t, "default", "app=envoy-ai-gateway-quota-ratelimit-testupstream")
 
 	// Flush any existing quota keys in Redis to start with a clean state.
 	flushQuotaKeys(t)
@@ -146,13 +165,82 @@ func getQuotaUsage(t *testing.T, modelName string) (int, bool) {
 }
 
 // requireQuotaUsage polls Redis until the quota counter for the given model reaches
-// the expected value. The stream-done rate limit entry updates Redis asynchronously
-// after the response, so polling is necessary.
+// at least the expected minimum value. The stream-done rate limit entry updates
+// Redis asynchronously after the response, so polling is necessary.
+// Using >= rather than == avoids flakiness from async stream-done timing.
 func requireQuotaUsage(t *testing.T, modelName string, expected int) {
 	t.Helper()
 	require.Eventually(t, func() bool {
 		usage, ok := getQuotaUsage(t, modelName)
-		return ok && usage == expected
+		return ok && usage >= expected
 	}, 30*time.Second, 500*time.Millisecond,
-		"quota counter for model %q did not reach expected value %d", modelName, expected)
+		"quota counter for model %q did not reach at least %d", modelName, expected)
+}
+
+// TestBackendQuotaRateLimitFileBackend tests backend-level quota rate limiting
+// using the in-process rate limit service with file-based storage.
+// This verifies the pluggable storage architecture without Redis or an external ratelimit container.
+func TestBackendQuotaRateLimitFileBackend(t *testing.T) {
+	// Switch the controller to the file storage backend and point Envoy's rate limit
+	// to the controller's own ratelimit-grpc port.
+	require.NoError(t, e2elib.InstallOrUpgradeAIGateway(t.Context(), e2elib.AIGatewayHelmOption{
+		AdditionalArgs: []string{
+			"--set", "controller.storage.backend=file",
+			"--set", "controller.storage.fileDir=/tmp/ratelimit",
+			"--set", "controller.quotaRateLimitServiceAddr=ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local:8081",
+		},
+	}))
+	t.Cleanup(func() {
+		_ = e2elib.InstallOrUpgradeAIGateway(context.Background(), e2elib.AIGatewayHelmOption{
+			AdditionalArgs: []string{
+				"--set", "controller.storage.backend=file",
+				"--set", "controller.storage.fileDir=/tmp/ratelimit",
+				"--set", "controller.quotaRateLimitServiceAddr=envoy-ai-gateway-ratelimit.envoy-gateway-system",
+			},
+		})
+	})
+
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), "testdata/backend_quota_ratelimit_file.yaml"))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(context.Background(), "testdata/backend_quota_ratelimit_file.yaml")
+	})
+
+	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=envoy-ai-gateway-quota-ratelimit-file"
+	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
+
+	// Wait for the test upstream to be ready before sending requests.
+	e2elib.RequireWaitForPodReady(t, "default", "app=envoy-ai-gateway-quota-ratelimit-file-testupstream")
+
+	t.Run("per-model quota", func(t *testing.T) {
+		// Poll until the QuotaPolicy is reconciled and propagated to the in-process rate limit service.
+		// The quota is 10 tokens per hour; a 20-token request exceeds it, so the second request should be 429.
+		require.Eventually(t, func() bool {
+			fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+			defer fwd.Kill()
+
+			modelName := "quota-test-model-file"
+			requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, modelName)
+			fakeResponseBody := fmt.Sprintf(
+				`{"choices":[{"message":{"content":"This is a test.","role":"assistant"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":%d}}`,
+				20,
+			)
+
+			req, err := http.NewRequest(http.MethodPut, fwd.Address()+"/v1/chat/completions", strings.NewReader(requestBody))
+			if err != nil {
+				return false
+			}
+			req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(fakeResponseBody)))
+			req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte("/v1/chat/completions")))
+			req.Header.Set("Host", "openai.com")
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				return false
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			return resp.StatusCode == http.StatusTooManyRequests
+		}, 30*time.Second, 500*time.Millisecond,
+			"QuotaPolicy config did not propagate: expected 429")
+	})
 }

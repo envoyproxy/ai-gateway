@@ -134,7 +134,7 @@ func TestQuotaValueToPolicy(t *testing.T) {
 func TestBuildServiceQuotaDescriptor(t *testing.T) {
 	t.Run("basic service quota", func(t *testing.T) {
 		sq := &aigv1a1.ServiceQuotaDefinition{
-			Quota: aigv1a1.QuotaValue{Limit: 1000, Duration: "1h"},
+			Quota: &aigv1a1.QuotaValue{Limit: 1000, Duration: "1h"},
 		}
 		desc, err := buildServiceQuotaDescriptor(sq)
 		require.NoError(t, err)
@@ -147,7 +147,7 @@ func TestBuildServiceQuotaDescriptor(t *testing.T) {
 
 	t.Run("invalid duration returns error", func(t *testing.T) {
 		sq := &aigv1a1.ServiceQuotaDefinition{
-			Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "xyz"},
+			Quota: &aigv1a1.QuotaValue{Limit: 100, Duration: "xyz"},
 		}
 		_, err := buildServiceQuotaDescriptor(sq)
 		require.Error(t, err)
@@ -533,8 +533,8 @@ func TestBuildBackendDescriptor(t *testing.T) {
 	t.Run("service quota adds catch-all descriptor", func(t *testing.T) {
 		policy := &aigv1a1.QuotaPolicy{
 			Spec: aigv1a1.QuotaPolicySpec{
-				ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-					Quota: aigv1a1.QuotaValue{Limit: 5000, Duration: "1h"},
+				ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+					Quota: &aigv1a1.QuotaValue{Limit: 5000, Duration: "1h"},
 				},
 			},
 		}
@@ -567,8 +567,8 @@ func TestBuildBackendDescriptor(t *testing.T) {
 						},
 					},
 				},
-				ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-					Quota: aigv1a1.QuotaValue{Limit: 10000, Duration: "1h"},
+				ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+					Quota: &aigv1a1.QuotaValue{Limit: 10000, Duration: "1h"},
 				},
 			},
 		}
@@ -589,8 +589,8 @@ func TestBuildBackendDescriptor(t *testing.T) {
 	t.Run("service quota with zero limit is not added", func(t *testing.T) {
 		policy := &aigv1a1.QuotaPolicy{
 			Spec: aigv1a1.QuotaPolicySpec{
-				ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-					Quota: aigv1a1.QuotaValue{Limit: 0, Duration: "1h"},
+				ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+					Quota: &aigv1a1.QuotaValue{Limit: 0, Duration: "1h"},
 				},
 			},
 		}
@@ -628,8 +628,8 @@ func TestBuildBackendDescriptor(t *testing.T) {
 	t.Run("invalid service quota duration returns wrapped error", func(t *testing.T) {
 		policy := &aigv1a1.QuotaPolicy{
 			Spec: aigv1a1.QuotaPolicySpec{
-				ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-					Quota: aigv1a1.QuotaValue{Limit: 100, Duration: "xyz"},
+				ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+					Quota: &aigv1a1.QuotaValue{Limit: 100, Duration: "xyz"},
 				},
 			},
 		}
@@ -768,8 +768,8 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 						},
 					},
 				},
-				ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-					Quota: aigv1a1.QuotaValue{Limit: 10000, Duration: "1h"},
+				ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+					Quota: &aigv1a1.QuotaValue{Limit: 10000, Duration: "1h"},
 				},
 			},
 		}
@@ -825,8 +825,8 @@ func TestBuildRateLimitConfigs(t *testing.T) {
 	t.Run("only service quota", func(t *testing.T) {
 		policy := &aigv1a1.QuotaPolicy{
 			Spec: aigv1a1.QuotaPolicySpec{
-				ServiceQuota: aigv1a1.ServiceQuotaDefinition{
-					Quota: aigv1a1.QuotaValue{Limit: 5000, Duration: "1h"},
+				ServiceQuota: &aigv1a1.ServiceQuotaDefinition{
+					Quota: &aigv1a1.QuotaValue{Limit: 5000, Duration: "1h"},
 				},
 			},
 		}

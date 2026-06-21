@@ -169,21 +169,17 @@ kubectl wait --timeout=2m -n envoy-gateway-system deployment/envoy-gateway --for
 
 Note that we have included the AI Gateway-specific helm values file via the `-f` flag. This file contains the necessary configuration for AI Gateway integration.
 
-### Additional Features (Rate Limiting, InferencePool, etc.)
+### Additional Features (InferencePool, etc.)
 
-Depending on the additional features you want (like rate limiting or InferencePool), you need to pass additional addon values files to modify the Envoy Gateway installation.
+Depending on the additional features you want (like InferencePool), you need to pass additional addon values files to modify the Envoy Gateway installation.
 Currently, supported addons are:
 
-- [**Rate Limiting**](../capabilities/traffic/usage-based-ratelimiting.md):
-  <Link href={`https://github.com/envoyproxy/ai-gateway/blob/${vars.aigwGitRef}/examples/token_ratelimit/envoy-gateway-values-addon.yaml`}>
-  {`https://github.com/envoyproxy/ai-gateway/blob/${vars.aigwGitRef}/examples/token_ratelimit/envoy-gateway-values-addon.yaml`}
-  </Link>
 - [**InferencePool**](../capabilities/inference/index.md):
   <Link href={`https://github.com/envoyproxy/ai-gateway/blob/${vars.aigwGitRef}/examples/inference-pool/envoy-gateway-values-addon.yaml`}>
   {`https://github.com/envoyproxy/ai-gateway/blob/${vars.aigwGitRef}/examples/inference-pool/envoy-gateway-values-addon.yaml`}
   </Link>
 
-For example, to install with all addons enabled, run:
+For example, to install with InferencePool enabled, run:
 
 <CodeBlock language="shell">
 {`helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \\
@@ -191,6 +187,9 @@ For example, to install with all addons enabled, run:
     --namespace envoy-gateway-system \\
     --create-namespace \\
     -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/manifests/envoy-gateway-values.yaml \\
-    -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/token_ratelimit/envoy-gateway-values-addon.yaml \\
     -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/${vars.aigwGitRef}/examples/inference-pool/envoy-gateway-values-addon.yaml`}
 </CodeBlock>
+
+:::tip Rate Limiting is Built-In
+Rate limiting no longer requires a separate Envoy Gateway addon or Redis. It runs in-process in the AI Gateway controller with pluggable storage backends. See [Usage-based Rate Limiting](../capabilities/traffic/usage-based-ratelimiting.md) for configuration details.
+:::

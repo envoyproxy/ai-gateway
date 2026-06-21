@@ -167,6 +167,89 @@ func TestStart(t *testing.T) {
 	})
 }
 
+func TestSetConfigObserver(t *testing.T) {
+	r := New(logr.Discard(), 0)
+	require.Nil(t, r.configObserver)
+
+	var observed *rlsconfv3.RateLimitConfig
+	r.SetConfigObserver(func(cfg *rlsconfv3.RateLimitConfig) {
+		observed = cfg
+	})
+	require.NotNil(t, r.configObserver)
+
+	// Snarf a cache to satisfy UpdateConfigs.
+	r.cache = cachev3.NewSnapshotCache(false, cachev3.IDHash{}, nil)
+
+	cfg := []*rlsconfv3.RateLimitConfig{
+		{Name: "a", Domain: "d", Descriptors: []*rlsconfv3.RateLimitDescriptor{
+			{Key: "k", Value: "v"},
+		}},
+	}
+	require.NoError(t, r.UpdateConfigs(t.Context(), cfg))
+	require.NotNil(t, observed)
+	require.Equal(t, "a", observed.Name)
+	require.Equal(t, "d", observed.Domain)
+	require.Len(t, observed.Descriptors, 1)
+}
+
+func TestMergeConfigs(t *testing.T) {
+	t.Run("single config", func(t *testing.T) {
+		cfg := &rlsconfv3.RateLimitConfig{
+			Name:   "name1",
+			Domain: "domain1",
+			Descriptors: []*rlsconfv3.RateLimitDescriptor{
+				{Key: "k1", Value: "v1"},
+			},
+		}
+		merged := mergeConfigs([]*rlsconfv3.RateLimitConfig{cfg})
+		require.NotNil(t, merged)
+		require.Equal(t, "name1", merged.Name)
+		require.Equal(t, "domain1", merged.Domain)
+		require.Len(t, merged.Descriptors, 1)
+	})
+
+	t.Run("multiple configs concatenate descriptors", func(t *testing.T) {
+		configs := []*rlsconfv3.RateLimitConfig{
+			{
+				Name:        "first",
+				Domain:      "d1",
+				Descriptors: []*rlsconfv3.RateLimitDescriptor{{Key: "a"}},
+			},
+			{
+				Name:        "second",
+				Domain:      "d2",
+				Descriptors: []*rlsconfv3.RateLimitDescriptor{{Key: "b"}, {Key: "c"}},
+			},
+		}
+		merged := mergeConfigs(configs)
+		require.NotNil(t, merged)
+		require.Equal(t, "first", merged.Name)
+		require.Equal(t, "d1", merged.Domain)
+		require.Len(t, merged.Descriptors, 3)
+	})
+
+	t.Run("all nil returns nil", func(t *testing.T) {
+		merged := mergeConfigs([]*rlsconfv3.RateLimitConfig{nil, nil})
+		require.Nil(t, merged)
+	})
+
+	t.Run("nil configs are skipped", func(t *testing.T) {
+		configs := []*rlsconfv3.RateLimitConfig{
+			nil,
+			{
+				Name:        "second",
+				Domain:      "d2",
+				Descriptors: []*rlsconfv3.RateLimitDescriptor{{Key: "only"}},
+			},
+			nil,
+		}
+		merged := mergeConfigs(configs)
+		require.NotNil(t, merged)
+		require.Equal(t, "second", merged.Name)
+		require.Len(t, merged.Descriptors, 1)
+	})
+}
+
 // newRunnerWithCache creates a Runner with an initialized snapshot cache
 // (simulating the state after Start has set up the cache).
 func newRunnerWithCache(t *testing.T) *Runner {
