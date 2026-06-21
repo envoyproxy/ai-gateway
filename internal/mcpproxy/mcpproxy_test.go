@@ -471,3 +471,41 @@ func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
+
+// Issue #2219: when a backend's initialize SSE response starts with a non-response
+// event (an empty/keep-alive data line) before the real JSON-RPC response, session
+// creation must still succeed rather than failing with "MCP message is not a response".
+func TestNewSession_SSEWithLeadingKeepAlive(t *testing.T) {
+	var callCount perBackendCallCount
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backend := r.Header.Get(internalapi.MCPBackendHeader)
+		if callCount.inc(backend)%2 == 1 {
+			// Odd calls: initialize requests. Emit a leading empty keep-alive
+			// event, then the real response event.
+			w.Header().Set(sessionIDHeader, "test-session-123")
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`id: keepalive_0000
+data:
+
+event: message
+id: msg_0001
+data: {"jsonrpc":"2.0","id":"ff3964c5-4c79-4567-96e2-29e905754e58","result":{"capabilities":{"logging":{},"tools":{"listChanged":true}},"protocolVersion":"2025-06-18","serverInfo":{"name":"dumb-echo-server","version":"0.1.0"}}}
+
+`))
+		} else {
+			// Even calls: notifications/initialized requests.
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	defer backendServer.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = backendServer.URL
+
+	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil, time.Now())
+
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	require.NotEmpty(t, s.clientGatewaySessionID())
+}

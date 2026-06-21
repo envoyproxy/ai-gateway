@@ -352,17 +352,19 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 		}
 		if rawMsg == nil {
 			parser := newSSEEventParser(sseReader, backend.Name)
-			for {
+			for rawMsg == nil {
 				event, parseErr := parser.next()
 				// TODO: handle reconnect. We need to re-arrange the event ID so that it will also contain the backend name and the original session ID.
 				// 	Since event ID can be arbitrary string, we can shove each backend's last even ID into the event ID just like the session ID.
 				if event != nil {
-					// TODO: there's no session here what should we do?
-					if len(event.messages) < 1 {
-						return nil, errors.New("failed to get message from MCP sse event")
+					// Some backends emit non-response events (keep-alives with an
+					// empty data line, notifications) before the initialize result.
+					// Skip those and keep reading until we find the JSON-RPC response.
+					for _, msg := range event.messages {
+						if _, ok := msg.(*jsonrpc.Response); ok {
+							rawMsg = msg
+						}
 					}
-					// Last event is the actual response.
-					rawMsg = event.messages[len(event.messages)-1]
 				}
 				if parseErr != nil {
 					if errors.Is(parseErr, io.EOF) || strings.Contains(parseErr.Error(), "context deadline exceeded") {
