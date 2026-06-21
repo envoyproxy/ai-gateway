@@ -95,13 +95,7 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 	method := requestHeaders[":method"]
 	path := requestHeaders[":path"]
 
-	host := a.signingHost
-	if host == "" {
-		host = requestHeaders[":authority"]
-	}
-	if host == "" {
-		host = fmt.Sprintf("bedrock-runtime.%s.amazonaws.com", a.region)
-	}
+	host := resolveAWSSigningHost(a.signingHost, requestHeaders[":authority"], a.region)
 
 	service := a.service
 	if service == "" {
@@ -175,4 +169,28 @@ func inferAWSServiceFromHost(host string) string {
 	}
 
 	return "bedrock"
+}
+
+func resolveAWSSigningHost(explicitSigningHost, authority, region string) string {
+	if explicitSigningHost != "" {
+		return explicitSigningHost
+	}
+
+	host := authority
+	if host == "" {
+		return fmt.Sprintf("bedrock-runtime.%s.amazonaws.com", region)
+	}
+
+	parsedHost := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		parsedHost = h
+	} else if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		parsedHost = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	}
+
+	if parsedHost == "" || parsedHost == "localhost" || net.ParseIP(parsedHost) != nil {
+		return fmt.Sprintf("bedrock-runtime.%s.amazonaws.com", region)
+	}
+
+	return host
 }

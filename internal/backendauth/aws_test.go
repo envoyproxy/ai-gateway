@@ -138,12 +138,17 @@ func TestAWSHandler_Do(t *testing.T) {
 		for range 100 {
 			go func() {
 				defer wg.Done()
-				hdrs, err := handler.Do(t.Context(), map[string]string{":method": "POST", ":path": "/model/some-random-model/converse"}, []byte(`{"messages": [{"role": "user", "content": [{"text": "Say this is a test!"}]}]}`))
+				hdrs, err := handler.Do(t.Context(), map[string]string{
+					":method":    "POST",
+					":path":      "/model/some-random-model/converse",
+					":authority": "bedrock-runtime.us-east-1.amazonaws.com",
+				}, []byte(`{"messages": [{"role": "user", "content": [{"text": "Say this is a test!"}]}]}`))
 				require.NoError(t, err)
 
 				headers := stringPairsToMap(hdrs)
 				require.Contains(t, headers, "X-Amz-Date")
 				require.Contains(t, headers, "Authorization")
+				require.Contains(t, headers["Authorization"], "/bedrock/")
 			}()
 		}
 		wg.Wait()
@@ -314,6 +319,66 @@ func TestInferAWSServiceFromHost(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, inferAWSServiceFromHost(tt.host))
+		})
+	}
+}
+
+func TestResolveAWSSigningHost(t *testing.T) {
+	tests := []struct {
+		name                string
+		explicitSigningHost string
+		authority           string
+		region              string
+		want                string
+	}{
+		{
+			name:                "explicit signing host wins",
+			explicitSigningHost: "bedrock-mantle.us-east-1.api.aws",
+			authority:           "localhost:61701",
+			region:              "us-east-1",
+			want:                "bedrock-mantle.us-east-1.api.aws",
+		},
+		{
+			name:      "regular authority is used",
+			authority: "bedrock-runtime.us-east-1.amazonaws.com",
+			region:    "us-east-1",
+			want:      "bedrock-runtime.us-east-1.amazonaws.com",
+		},
+		{
+			name:      "localhost authority falls back to runtime host",
+			authority: "localhost:61701",
+			region:    "us-east-1",
+			want:      "bedrock-runtime.us-east-1.amazonaws.com",
+		},
+		{
+			name:      "ipv4 authority falls back to runtime host",
+			authority: "127.0.0.1:61701",
+			region:    "us-east-1",
+			want:      "bedrock-runtime.us-east-1.amazonaws.com",
+		},
+		{
+			name:      "ipv6 authority falls back to runtime host",
+			authority: "[::1]:61701",
+			region:    "us-east-1",
+			want:      "bedrock-runtime.us-east-1.amazonaws.com",
+		},
+		{
+			name:      "bare bracket ipv6 authority falls back to runtime host",
+			authority: "[::1]",
+			region:    "us-east-1",
+			want:      "bedrock-runtime.us-east-1.amazonaws.com",
+		},
+		{
+			name:   "empty authority falls back to runtime host",
+			region: "us-east-1",
+			want:   "bedrock-runtime.us-east-1.amazonaws.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveAWSSigningHost(tt.explicitSigningHost, tt.authority, tt.region)
+			require.Equal(t, tt.want, got)
 		})
 	}
 }

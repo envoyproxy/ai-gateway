@@ -104,7 +104,7 @@ func TestWithRealProviders(t *testing.T) {
 		t.Run("chat/completions", func(t *testing.T) {
 			for _, tc := range []realProvidersTestCase{
 				{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
-				{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
+				{name: "aws-bedrock", modelName: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", required: internaltesting.RequiredCredentialAWS},
 				{name: "azure-openai", modelName: "o1", required: internaltesting.RequiredCredentialAzure},
 				{name: "gemini", modelName: "gemini-3.1-flash-lite", required: internaltesting.RequiredCredentialGemini},
 				{name: "groq", modelName: "llama-3.1-8b-instant", required: internaltesting.RequiredCredentialGroq},
@@ -190,7 +190,7 @@ func TestWithRealProviders(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 		for _, tc := range []realProvidersTestCase{
 			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
-			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
+			{name: "aws-bedrock", modelName: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", required: internaltesting.RequiredCredentialAWS},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
