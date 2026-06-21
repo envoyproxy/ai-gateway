@@ -64,7 +64,7 @@ type ServiceQuotaDefinition struct {
 	// If no expression is specified the "total_tokens" value is used.
 	// For example:
 	//
-	//  * "input_tokens + cached_input_tokens * 0.1 + output_tokens * 6"
+	//  "input_tokens + cached_input_tokens + output_tokens"
 	//
 	// +optional
 	CostExpression *string `json:"costExpression,omitempty"`
@@ -138,7 +138,7 @@ type QuotaRule struct {
 	// specific clients using attributes from the traffic flow.
 	// All individual select conditions must hold True for this rule
 	// and its limit to be applied.
-	//
+	// Currently, only header types are honored.
 	//
 	// If no client selectors are specified, the rule applies to all traffic of
 	// the targeted AIServiceBackend.
