@@ -234,6 +234,85 @@ func TestAnthropicToAWSAnthropicTranslator_URLEncoding(t *testing.T) {
 	}
 }
 
+func TestAnthropicToAWSAnthropicTranslator_RequestBody_AnthropicBetaHeader(t *testing.T) {
+	tests := []struct {
+		name     string
+		headers  map[string]string
+		expected []string
+	}{
+		{
+			name:     "single beta header",
+			headers:  map[string]string{"anthropic-beta": "context-1m-2025-08-07"},
+			expected: []string{"context-1m-2025-08-07"},
+		},
+		{
+			name:     "multiple beta header values",
+			headers:  map[string]string{"anthropic-beta": "interleaved-thinking-2025-05-14,context-1m-2025-08-07"},
+			expected: []string{"interleaved-thinking-2025-05-14", "context-1m-2025-08-07"},
+		},
+		{
+			name:     "trims whitespace",
+			headers:  map[string]string{"anthropic-beta": " interleaved-thinking-2025-05-14 , context-1m-2025-08-07 "},
+			expected: []string{"interleaved-thinking-2025-05-14", "context-1m-2025-08-07"},
+		},
+		{
+			name:    "no beta header",
+			headers: map[string]string{},
+		},
+		{
+			name:    "empty beta header",
+			headers: map[string]string{"anthropic-beta": ""},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			translator := NewAnthropicToAWSAnthropicTranslator("bedrock-2023-05-31", "")
+			headerSetter, ok := translator.(RequestHeadersSetter)
+			require.True(t, ok)
+			headerSetter.SetRequestHeaders(tt.headers)
+
+			originalReq := &anthropicschema.MessagesRequest{
+				Model: "anthropic.claude-3-sonnet-20240229-v1:0",
+				Messages: []anthropicschema.MessageParam{
+					{
+						Role: anthropicschema.MessageRoleUser,
+						Content: anthropicschema.MessageContent{
+							Array: []anthropicschema.ContentBlockParam{
+								{Text: &anthropicschema.TextBlockParam{Text: "Hello"}},
+							},
+						},
+					},
+				},
+			}
+
+			rawBody, err := json.Marshal(originalReq)
+			require.NoError(t, err)
+
+			_, bodyMutation, err := translator.RequestBody(rawBody, originalReq, false)
+			require.NoError(t, err)
+
+			var modifiedReq map[string]any
+			err = json.Unmarshal(bodyMutation, &modifiedReq)
+			require.NoError(t, err)
+
+			betaRaw, hasBeta := modifiedReq["anthropic_beta"]
+			if len(tt.expected) == 0 {
+				require.False(t, hasBeta)
+				return
+			}
+
+			require.True(t, hasBeta)
+			betaValues, ok := betaRaw.([]any)
+			require.True(t, ok)
+			require.Len(t, betaValues, len(tt.expected))
+			for i, expected := range tt.expected {
+				require.Equal(t, expected, betaValues[i])
+			}
+		})
+	}
+}
+
 func TestAnthropicToAWSAnthropicTranslator_ResponseBody(t *testing.T) {
 	t.Run("non-streaming response", func(t *testing.T) {
 		// This is mostly for the coverage as it's the same as AnthropicToAnthropicTranslator.ResponseBody.

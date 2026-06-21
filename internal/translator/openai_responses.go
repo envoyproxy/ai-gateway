@@ -44,6 +44,8 @@ type openAIToOpenAITranslatorV1Responses struct {
 	// requestModel serves as fallback for non-compliant OpenAI backends that
 	// don't return model in responses, ensuring metrics/tracing always have a model.
 	requestModel internalapi.RequestModel
+	// buffered stores incomplete SSE bytes across ResponseBody calls.
+	buffered []byte
 }
 
 // RequestBody implements [OpenAIResponsesTranslator.RequestBody].
@@ -102,12 +104,12 @@ func (o *openAIToOpenAITranslatorV1Responses) ResponseBody(_ map[string]string, 
 func (o *openAIToOpenAITranslatorV1Responses) handleStreamingResponse(body io.Reader, span tracingapi.ResponsesSpan) (
 	newHeaders []internalapi.Header, newBody []byte, tokenUsage metrics.TokenUsage, responseModel string, err error,
 ) {
-	// Buffer the incoming SSE data
 	chunks, err := io.ReadAll(body)
 	if err != nil {
 		return nil, nil, tokenUsage, "", fmt.Errorf("failed to read body: %w", err)
 	}
-	tokenUsage = o.extractUsageFromBufferEvent(span, chunks)
+	o.buffered = append(o.buffered, chunks...)
+	tokenUsage = o.extractUsageFromBufferEvent(span)
 	// Use stored streaming response model, fallback to request model for non-compliant backends
 	responseModel = cmp.Or(o.streamingResponseModel, o.requestModel)
 	return
@@ -141,12 +143,33 @@ func (o *openAIToOpenAITranslatorV1Responses) handleNonStreamingResponse(body io
 	return
 }
 
+// setTokenUsageFromResponse populates tokenUsage from a Response's Usage field,
+// guarding against a nil Usage (e.g. response.failed before any tokens were generated).
+func setTokenUsageFromResponse(tokenUsage *metrics.TokenUsage, resp *openai.Response) {
+	if resp == nil || resp.Usage == nil {
+		return
+	}
+	tokenUsage.SetInputTokens(uint32(resp.Usage.InputTokens))                           // #nosec G115
+	tokenUsage.SetOutputTokens(uint32(resp.Usage.OutputTokens))                         // #nosec G115
+	tokenUsage.SetTotalTokens(uint32(resp.Usage.TotalTokens))                           // #nosec G115
+	tokenUsage.SetCachedInputTokens(uint32(resp.Usage.InputTokensDetails.CachedTokens)) // #nosec G115
+	// Openai does not support cache creation response.
+	tokenUsage.SetCacheCreationInputTokens(uint32(0))                                     // #nosec G115
+	tokenUsage.SetReasoningTokens(uint32(resp.Usage.OutputTokensDetails.ReasoningTokens)) // #nosec G115
+}
+
 // extractUsageFromBufferEvent extracts the token usage and model from the buffered SSE events.
-// It scans complete lines and returns the latest usage found in response.completed event.
-func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span tracingapi.ResponsesSpan, chunks []byte) (tokenUsage metrics.TokenUsage) {
-	// Parse SSE events from the buffered data
-	// SSE format: "data: {json}\n\n"
-	for event := range bytes.SplitSeq(chunks, []byte("\n\n")) {
+// It scans complete SSE events and returns the latest usage found in response.completed,
+// response.incomplete or response.failed events.
+func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span tracingapi.ResponsesSpan) (tokenUsage metrics.TokenUsage) {
+	for {
+		// SSE event boundary is a blank line: "data: {json}\n\n".
+		i := bytes.Index(o.buffered, []byte("\n\n"))
+		if i == -1 {
+			return tokenUsage
+		}
+		event := o.buffered[:i]
+		o.buffered = o.buffered[i+2:]
 		for line := range bytes.SplitSeq(event, []byte("\n")) {
 			// Look for lines starting with "data: "
 			if !bytes.HasPrefix(line, sseDataPrefix) {
@@ -171,16 +194,16 @@ func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span t
 					o.streamingResponseModel = respCreatedEvent.Response.Model
 				}
 			case "response.completed":
-				// Extract token usage from response.completed event.
-				// Only response.completed contains usage information.
-				respComplEvent := eventUnion.OfResponseCompleted
-				tokenUsage.SetInputTokens(uint32(respComplEvent.Response.Usage.InputTokens))                           // #nosec G115
-				tokenUsage.SetOutputTokens(uint32(respComplEvent.Response.Usage.OutputTokens))                         // #nosec G115
-				tokenUsage.SetTotalTokens(uint32(respComplEvent.Response.Usage.TotalTokens))                           // #nosec G115
-				tokenUsage.SetCachedInputTokens(uint32(respComplEvent.Response.Usage.InputTokensDetails.CachedTokens)) // #nosec G115
-				// Openai does not support cache creation response.
-				tokenUsage.SetCacheCreationInputTokens(uint32(0))                                                        // #nosec G115
-				tokenUsage.SetReasoningTokens(uint32(respComplEvent.Response.Usage.OutputTokensDetails.ReasoningTokens)) // #nosec G115
+				// response.completed always carries a populated usage object.
+				setTokenUsageFromResponse(&tokenUsage, &eventUnion.OfResponseCompleted.Response)
+			case "response.incomplete":
+				// response.incomplete (e.g. hit max_output_tokens or content filter)
+				// reports tokens generated so far.
+				setTokenUsageFromResponse(&tokenUsage, &eventUnion.OfResponseIncomplete.Response)
+			case "response.failed":
+				// response.failed may carry usage if the failure happened after
+				// generation started; pre-generation failures leave it nil.
+				setTokenUsageFromResponse(&tokenUsage, &eventUnion.OfResponseFailed.Response)
 			}
 			// Record streaming chunk to span if tracing is enabled.
 			if span != nil {
@@ -188,7 +211,6 @@ func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span t
 			}
 		}
 	}
-	return tokenUsage
 }
 
 // ResponseError implements [OpenAIResponsesTranslator.ResponseError].

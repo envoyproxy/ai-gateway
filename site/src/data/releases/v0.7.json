@@ -1,0 +1,186 @@
+{
+  "series": {
+    "version": "v0.7",
+    "title": "Envoy AI Gateway v0.7.x",
+    "subtitle": "Hostname-based routing, Anthropic-to-Bedrock Converse translation, audio transcription/translation endpoints, Azure OpenAI Responses API, quota-aware rate limiting, Claude Opus 4.7 reasoning, and MCP authorization-aware tool listing.",
+    "badge": "Latest",
+    "badgeType": "milestone"
+  },
+  "releases": [
+    {
+      "version": "v0.7.0",
+      "date": "June 4, 2026",
+      "type": "minor",
+      "tags": [
+        { "text": "Hostname Routing", "type": "feature" },
+        { "text": "Anthropic → Bedrock", "type": "feature" },
+        { "text": "Audio Transcription", "type": "feature" },
+        { "text": "Azure Responses API", "type": "feature" },
+        { "text": "Quota Rate Limiting", "type": "feature" },
+        { "text": "Opus 4.7 Reasoning", "type": "feature" },
+        { "text": "MCP Auth Filtering", "type": "feature" },
+        { "text": "Multimodal A/V", "type": "feature" }
+      ],
+      "overview": "Envoy AI Gateway v0.7.0 adds hostname-based routing to AIGatewayRoute, enabling multi-tenant deployments where different hostnames expose different model sets through a single Gateway. A new Anthropic Messages → AWS Bedrock Converse translator lets Anthropic-native clients reach Bedrock without switching protocols. OpenAI audio transcription and translation endpoints arrive alongside Azure OpenAI Responses API support. Quota-aware rate limiting takes its first step with backend rate limit filter injection for QuotaPolicy. Claude Opus 4.7 gains full reasoning support including the display parameter and xhigh effort tier. Anthropic-to-OpenAI translation now handles reasoning blocks and images end-to-end. MCP tools/list responses respect authorization rules, and multimodal support grows with audio_url and video_url content types. Several SSE streaming and provider translation bugs are fixed.",
+      "features": [
+        {
+          "title": "Multi-Tenant Hostname Routing",
+          "items": [
+            {
+              "title": "Hostname-based model scoping on <code>AIGatewayRoute</code>",
+              "description": "Serve different model sets from a single Gateway by assigning hostnames to each <code>AIGatewayRoute</code>. The <code>/v1/models</code> endpoint automatically returns only the models declared by routes matching the request's <code>Host</code> header, so tenants on <code>teamA.ai.example.com</code> and <code>teamB.ai.example.com</code> each see their own catalog without separate Gateways. Wildcard hostnames (<code>*.ai.example.com</code>) are supported following the Gateway API hostname matching rules."
+            }
+          ]
+        },
+        {
+          "title": "Provider Translation",
+          "items": [
+            {
+              "title": "Anthropic <code>/v1/messages</code> → AWS Bedrock Converse API",
+              "description": "Send requests in Anthropic Messages format and have them translated to Bedrock's Converse and ConverseStream APIs automatically. Supports text, images, tool use, thinking blocks, and streaming — so Anthropic-native clients can reach any Bedrock model without changing their integration. Complements the existing OpenAI → Bedrock Converse and Anthropic → Bedrock InvokeModel paths."
+            },
+            {
+              "title": "Reasoning and image support for Anthropic-to-OpenAI translation",
+              "description": "The Anthropic <code>/v1/messages</code> → OpenAI <code>/v1/chat/completions</code> path now handles thinking/reasoning content and image blocks end-to-end. Thinking config (enabled/disabled/adaptive) passes through, thinking and redacted_thinking blocks are preserved in multi-turn conversations, and image blocks (base64 and URL) convert to OpenAI <code>image_url</code> format. Previously these were silently dropped."
+            },
+            {
+              "title": "Claude Opus 4.7 and Mythos Preview reasoning",
+              "description": "Full support for Claude Opus 4.7's reasoning features: the <code>display</code> parameter (<code>summarized</code>/<code>omitted</code>) controls thinking content visibility, and <code>xhigh</code> joins the reasoning effort tiers for long-horizon agentic and coding tasks. Both <code>claude-opus-4-7</code> and <code>claude-mythos-preview</code> models are recognized for effort-based thinking control."
+            },
+            {
+              "title": "Custom request paths for Anthropic backends via <code>prefix</code>",
+              "description": "The <code>prefix</code> field on <code>VersionedAPISchema</code> now works for Anthropic-schema backends, producing endpoints like <code>/{prefix}/messages</code> instead of the default <code>/v1/messages</code>. Useful for routing to Anthropic-compatible providers that use a non-standard path."
+            },
+            {
+              "title": "Anthropic <code>anthropic-beta</code> header forwarded to AWSAnthropic",
+              "description": "The <code>anthropic-beta</code> request header is now mapped into the <code>anthropic_beta</code> body field when routing to AWSAnthropic backends, so beta features like extended thinking and token counting work through the gateway without manual body rewriting."
+            }
+          ]
+        },
+        {
+          "title": "OpenAI API Compatibility",
+          "items": [
+            {
+              "title": "Audio transcription and translation endpoints",
+              "description": "Full data-plane support for OpenAI's <code>/v1/audio/transcriptions</code> (Whisper transcription) and <code>/v1/audio/translations</code> (Whisper translation) endpoints. These accept <code>multipart/form-data</code> requests containing audio files, enabling speech-to-text workloads to flow through the gateway with the same auth, rate limiting, and observability as other traffic."
+            },
+            {
+              "title": "Azure OpenAI Responses API",
+              "description": "The OpenAI-compatible <code>/v1/responses</code> endpoint now works with Azure OpenAI backends, routing requests to Azure's <code>/openai/responses?api-version=...</code> path while preserving existing request and response handling. Azure users get Responses API support without changing client code."
+            },
+            {
+              "title": "<code>audio_url</code> and <code>video_url</code> content types",
+              "description": "OpenAI chat completion requests can now include <code>audio_url</code> and <code>video_url</code> content parts, enabling multimodal audio and video inputs for compatible backends like vLLM with phi-4-mm and Qwen 3.5 models."
+            }
+          ]
+        },
+        {
+          "title": "Quota-Aware Routing",
+          "items": [
+            {
+              "title": "Backend quota rate limit filter injection",
+              "description": "First step toward quota-aware routing: the controller now injects a backend rate limit filter when a <code>QuotaPolicy</code> is attached to an <code>AIServiceBackend</code>. The QuotaPolicy controller reconciles the policy, builds rate limit descriptor trees, and configures the rate limit service. This enables per-backend request throttling based on upstream provider quotas."
+            }
+          ]
+        },
+        {
+          "title": "MCP Gateway",
+          "items": [
+            {
+              "title": "Authorization-filtered <code>tools/list</code> responses",
+              "description": "MCP <code>tools/list</code> now applies the same authorization rules used by <code>tools/call</code>, omitting tools the caller isn't authorized to invoke. Prevents unauthorized callers from discovering tool names and avoids wasted LLM turns on tools that would fail at call time."
+            }
+          ]
+        },
+        {
+          "title": "Observability",
+          "items": [
+            {
+              "title": "Smarter log redaction preserves developer-authored metadata",
+              "description": "Debug log redaction (<code>--enableRedaction</code>) no longer masks developer-authored schema metadata that was previously over-redacted: tool definition <code>description</code> and <code>parameters</code>, tool call <code>function.name</code>, <code>response_format.json_schema</code>, and <code>guided_json</code> are now visible in debug logs. User-provided content and AI-generated text remain redacted, making debug logs significantly more useful without compromising privacy."
+            }
+          ]
+        }
+      ],
+      "apiChanges": [
+        {
+          "title": "<code>AIGatewayRoute.spec.hostnames</code>",
+          "description": "New optional field accepting a list of hostnames for hostname-based request filtering. When specified, the generated <code>HTTPRoute</code> includes these hostnames, and the <code>/v1/models</code> endpoint scopes its response to models from matching routes. Follows Gateway API hostname semantics including wildcard support."
+        },
+        {
+          "title": "<code>AIGatewayRoute.spec.rules</code> capped at 15",
+          "description": "Maximum rules per <code>AIGatewayRoute</code> reduced from 128 to 15 to match the Gateway API <code>HTTPRoute</code> limit (one slot is reserved for a controller-injected catch-all rule). To configure more rules on the same Gateway, split them across multiple <code>AIGatewayRoute</code> resources."
+        },
+        {
+          "title": "<code>VersionedAPISchema.prefix</code> supported for Anthropic",
+          "description": "The <code>prefix</code> field now applies to Anthropic-schema backends in addition to OpenAI. The <code>version</code> field is ignored for Anthropic; use <code>prefix</code> for custom paths. Note: <code>prefix</code> is ignored for <code>AWSAnthropic</code> and <code>GCPAnthropic</code> as these override paths internally."
+        },
+        {
+          "title": "<code>QuotaPolicy</code> rate limit filter injection (runtime enforcement)",
+          "description": "The <code>QuotaPolicy</code> CRD (introduced as API-only in v0.6) now has its first runtime behavior: when attached to an <code>AIServiceBackend</code>, a backend rate limit filter is injected to enforce quota-based throttling. Full quota-aware routing across multiple backends is planned for future releases."
+        }
+      ],
+      "deprecations": [],
+      "bugFixes": [
+        {
+          "title": "SSE parser handles fields without space after colon",
+          "description": "The SSE event parser now correctly handles fields formatted as <code>data:{json}</code> (no space after the colon), in addition to the standard <code>data: {json}</code>. Fixes silent field drops when proxying responses from providers that omit the optional space."
+        },
+        {
+          "title": "Responses API streaming SSE buffering",
+          "description": "OpenAI Responses API and speech streaming translators now buffer incomplete SSE events across response body chunks instead of treating each chunk as self-contained. Fixes dropped or mangled events when TCP segment boundaries split an SSE event mid-frame."
+        },
+        {
+          "title": "Responses API token usage from incomplete and failed streams",
+          "description": "Token usage is now captured from <code>response.incomplete</code> and <code>response.failed</code> SSE events, not just <code>response.completed</code>. Streams that hit <code>max_output_tokens</code> or encounter post-generation failures no longer report zero tokens."
+        },
+        {
+          "title": "Nil output guard in AWS Bedrock response translator",
+          "description": "Bedrock can return HTTP 200 with no <code>output</code> field (e.g. guardrail interventions or <code>UnknownOperationException</code>). Previously this caused a nil-pointer panic in the ext-proc; now it returns a clean error to the caller."
+        },
+        {
+          "title": "Comprehensive Gemini finish-reason mapping",
+          "description": "Gemini finish reasons like <code>SAFETY</code>, <code>BLOCKLIST</code>, <code>RECITATION</code>, <code>MALFORMED_FUNCTION_CALL</code>, and others now map to their correct OpenAI equivalents instead of all falling through to <code>content_filter</code>. Unknown reasons map to <code>error</code> rather than silently misreporting as a content filter event."
+        },
+        {
+          "title": "Empty delta in GCP Vertex AI streaming chunks",
+          "description": "Streaming response chunks from GCP Vertex AI that lack candidate content now emit an empty <code>delta</code> object instead of omitting the field, conforming to the OpenAI streaming contract and fixing parse errors in strict clients."
+        },
+        {
+          "title": "Typeless assistant output messages in Responses API",
+          "description": "Multi-turn Responses API inputs that include assistant messages without an explicit <code>type: \"message\"</code> field (e.g. from OpenCode) now parse correctly. Previously these were treated as easy-input messages, causing unmarshalling failures on <code>output_text</code> content blocks."
+        }
+      ],
+      "breakingChanges": [],
+      "dependencies": [
+        {
+          "title": "Go 1.26.2",
+          "description": "Continues on Go 1.26.2, same as v0.6."
+        },
+        {
+          "title": "Envoy Gateway v1.7.0",
+          "description": "Built on Envoy Gateway v1.7.0 for proven data plane capabilities."
+        },
+        {
+          "title": "Envoy v1.37",
+          "description": "Leveraging Envoy Proxy v1.37.0 for battle-tested networking."
+        },
+        {
+          "title": "Gateway API v1.4.1",
+          "description": "Support for Gateway API v1.4.1 specifications."
+        },
+        {
+          "title": "Gateway API Inference Extension v1.0.2",
+          "description": "Continued integration with Gateway API Inference Extension v1.0.2 for intelligent endpoint selection."
+        },
+        {
+          "title": "MCP Go SDK v1.6.0",
+          "description": "Updated from v1.4.1 to v1.6.0 for the latest MCP protocol features and fixes."
+        }
+      ]
+    }
+  ],
+  "navigation": {
+    "previous": { "version": "v0.6.x Series", "path": "/release-notes/v0.6" }
+  }
+}

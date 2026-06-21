@@ -1314,7 +1314,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "reasoning effort low",
 			input: &openai.ChatCompletionRequest{
-				ReasoningEffort: openaigo.ReasoningEffortLow,
+				ReasoningEffort: openai.ReasoningEffortLow,
 			},
 			expectedGenerationConfig: &genai.GenerationConfig{
 				ThinkingConfig: &genai.ThinkingConfig{
@@ -1327,7 +1327,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "reasoning effort medium",
 			input: &openai.ChatCompletionRequest{
-				ReasoningEffort: openaigo.ReasoningEffortMedium,
+				ReasoningEffort: openai.ReasoningEffortMedium,
 			},
 			expectedGenerationConfig: &genai.GenerationConfig{
 				ThinkingConfig: &genai.ThinkingConfig{
@@ -1340,7 +1340,7 @@ func TestOpenAIReqToGeminiGenerationConfig(t *testing.T) {
 		{
 			name: "high reasoning effort maps to ThinkingLevelHigh",
 			input: &openai.ChatCompletionRequest{
-				ReasoningEffort: openaigo.ReasoningEffortHigh,
+				ReasoningEffort: openai.ReasoningEffortHigh,
 			},
 			expectedGenerationConfig: &genai.GenerationConfig{
 				ThinkingConfig: &genai.ThinkingConfig{
@@ -2251,22 +2251,88 @@ func TestGeminiFinishReasonToOpenAI(t *testing.T) {
 			expected:  openai.ChatCompletionChoicesFinishReasonContentFilter,
 		},
 		{
+			name:      "blocklist reason",
+			input:     genai.FinishReasonBlocklist,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonContentFilter,
+		},
+		{
+			name:      "prohibited content reason",
+			input:     genai.FinishReasonProhibitedContent,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonContentFilter,
+		},
+		{
+			name:      "spii reason",
+			input:     genai.FinishReasonSPII,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonContentFilter,
+		},
+		{
+			name:      "image safety reason",
+			input:     genai.FinishReasonImageSafety,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonContentFilter,
+		},
+		{
+			name:      "image prohibited content reason",
+			input:     genai.FinishReasonImageProhibitedContent,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonContentFilter,
+		},
+		{
 			name:      "recitation reason",
 			input:     genai.FinishReasonRecitation,
 			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
-			expected:  openai.ChatCompletionChoicesFinishReasonContentFilter,
+			expected:  openai.ChatCompletionChoicesFinishReasonRecitation,
+		},
+		{
+			name:      "image recitation reason",
+			input:     genai.FinishReasonImageRecitation,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonRecitation,
+		},
+		{
+			name:      "malformed function call reason",
+			input:     genai.FinishReasonMalformedFunctionCall,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonMalformedFunctionCall,
+		},
+		{
+			name:      "unexpected tool call reason",
+			input:     genai.FinishReasonUnexpectedToolCall,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonUnexpectedToolCall,
+		},
+		{
+			name:      "language reason",
+			input:     genai.FinishReasonLanguage,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonLanguage,
+		},
+		{
+			name:      "no image reason",
+			input:     genai.FinishReasonNoImage,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonNoImage,
 		},
 		{
 			name:      "other reason",
 			input:     genai.FinishReasonOther,
 			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
-			expected:  openai.ChatCompletionChoicesFinishReasonContentFilter,
+			expected:  openai.ChatCompletionChoicesFinishReasonError,
+		},
+		{
+			name:      "image other reason",
+			input:     genai.FinishReasonImageOther,
+			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
+			expected:  openai.ChatCompletionChoicesFinishReasonError,
 		},
 		{
 			name:      "unknown reason",
 			input:     genai.FinishReason("unknown_reason"),
 			toolCalls: []openai.ChatCompletionMessageToolCallParam{},
-			expected:  openai.ChatCompletionChoicesFinishReasonContentFilter,
+			expected:  openai.ChatCompletionChoicesFinishReasonError,
 		},
 	}
 
@@ -3086,7 +3152,7 @@ func TestMapDetailMediaResolution(t *testing.T) {
 func TestMapReasoningEffortToThinkingLevel(t *testing.T) {
 	tests := []struct {
 		name             string
-		reasoningEffort  openaigo.ReasoningEffort
+		reasoningEffort  openai.ReasoningEffort
 		model            internalapi.RequestModel
 		expectedThinking genai.ThinkingLevel
 		expectedErrorMsg string
@@ -3105,25 +3171,25 @@ func TestMapReasoningEffortToThinkingLevel(t *testing.T) {
 		},
 		{
 			name:             "low effort maps to ThinkingLevelLow",
-			reasoningEffort:  openaigo.ReasoningEffortLow,
+			reasoningEffort:  openai.ReasoningEffortLow,
 			model:            "gemini-3-flash",
 			expectedThinking: genai.ThinkingLevelLow,
 		},
 		{
 			name:             "medium effort on Flash maps to ThinkingLevelMedium",
-			reasoningEffort:  openaigo.ReasoningEffortMedium,
+			reasoningEffort:  openai.ReasoningEffortMedium,
 			model:            "gemini-3-flash",
 			expectedThinking: genai.ThinkingLevelMedium,
 		},
 		{
 			name:             "medium effort on Pro maps to ThinkingLevelHigh",
-			reasoningEffort:  openaigo.ReasoningEffortMedium,
+			reasoningEffort:  openai.ReasoningEffortMedium,
 			model:            "gemini-3-pro",
 			expectedThinking: genai.ThinkingLevelHigh,
 		},
 		{
 			name:             "high effort maps to ThinkingLevelHigh",
-			reasoningEffort:  openaigo.ReasoningEffortHigh,
+			reasoningEffort:  openai.ReasoningEffortHigh,
 			model:            "gemini-3-flash",
 			expectedThinking: genai.ThinkingLevelHigh,
 		},

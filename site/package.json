@@ -15,21 +15,21 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "@docusaurus/core": "^3.10.0",
-    "@docusaurus/preset-classic": "^3.10.0",
+    "@docusaurus/core": "^3.10.1",
+    "@docusaurus/preset-classic": "^3.10.1",
     "@docusaurus/theme-classic": "^3.9.1",
-    "@docusaurus/theme-mermaid": "^3.10.0",
+    "@docusaurus/theme-mermaid": "^3.10.1",
     "@mdx-js/react": "^3.1.1",
     "clsx": "^2.1.1",
     "glob": "^13.0.6",
     "gray-matter": "^4.0.3",
     "prism-react-renderer": "^2.4.1",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "^3.9.1",
-    "@docusaurus/tsconfig": "^3.10.0",
+    "@docusaurus/tsconfig": "^3.10.1",
     "@docusaurus/types": "^3.9.1",
     "@types/glob": "^9.0.0",
     "typescript": "~6.0.3"
@@ -49,5 +49,9 @@
   "engines": {
     "node": ">=22.0"
   },
-  "packageManager": "npm@10.9.0"
+  "packageManager": "npm@10.9.0",
+  "overrides": {
+    "serialize-javascript": "^7.0.5",
+    "uuid": "^11.1.1"
+  }
 }

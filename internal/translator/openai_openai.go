@@ -254,12 +254,12 @@ func redactResponseMessage(msg *openai.ChatCompletionResponseChoiceMessage) open
 		redactedMsg.Content = &redactedContent
 	}
 
-	// Redact tool calls (may contain sensitive function arguments)
+	// Redact tool call arguments (may contain data derived from user messages).
+	// Function name is kept — it is the tool API name, not user data.
 	if len(msg.ToolCalls) > 0 {
 		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.ToolCalls))
 		for i, tc := range msg.ToolCalls {
 			redactedToolCall := tc
-			redactedToolCall.Function.Name = redaction.RedactString(tc.Function.Name)
 			redactedToolCall.Function.Arguments = redaction.RedactString(tc.Function.Arguments)
 			redactedMsg.ToolCalls[i] = redactedToolCall
 		}

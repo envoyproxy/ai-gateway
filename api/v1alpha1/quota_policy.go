@@ -12,8 +12,10 @@ import (
 )
 
 // QuotaPolicy specifies token quota configuration for inference services.
-// Providing a list of backends in the AIGatewayRouteRule allows failover to a different service
-// if token quota for a service had been exceeded.
+// Generates rate limit configuration and tracks quota usage.
+// Reject requests with 429 once all related quota to that request has been exceeded.
+//
+// TODO: Waiting on next release of Envoyproxy that will support routing based on non-exceeded quotas.
 //
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -40,10 +42,17 @@ type QuotaPolicySpec struct {
 	// Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the "PerModelQuotas"
 	// configuration.
 	//
+	// Currently, the rate limit configuration is properly set up, but the descriptor set is not being set in the Envoy Configuration
+	// TODO: Add changes in the extension server to support ServiceQuota enforcement.
+	//
 	// +optional
 	ServiceQuota ServiceQuotaDefinition `json:"serviceQuota,omitempty"`
 	// PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this
 	// policy is attached.
+	//
+	// When multiple QuotaPolicies define the same Model for the same AIServiceBackend,
+	// the policy whose namespace/name is alphabetically first takes precedence.
+	// Keys are sorted to ensure deterministic snapshot generation.
 	//
 	// +kubebuilder:validation:MaxItems=128
 	// +optional
@@ -67,6 +76,8 @@ type ServiceQuotaDefinition struct {
 
 type PerModelQuota struct {
 	// Model name for which the quota is specified.
+	// This must match the ModelNameOverride set in the AIGatewayRoute's BackendRef
+	// for the quota policy to apply to that backend.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
@@ -89,11 +100,13 @@ type QuotaDefinition struct {
 	// +optional
 	CostExpression *string `json:"costExpression,omitempty"`
 	// The "Mode" determines how quota is charged to the "DefaultBucket" and matching "BucketRules".
-	// In the "exclusive" mode the quota is charged to matching BucketRules or the DefaultBucket
-	// if no BucketRules match the request. The request is denied if all matching buckets are out of quota.
 	// In the "shared" mode the quota is charged to all matching "BucketRules" AND the "DefaultBucket"
 	// and request is allowed only if the quota is available in all matching buckets.
-	Mode QuotaBucketMode `json:"mode"`
+	// Defaults to "Shared".
+	//
+	// +optional
+	// +kubebuilder:default=Shared
+	Mode QuotaBucketMode `json:"mode,omitempty"`
 	// Quota applicable to all traffic. This value can be overridden for specific classes of requests
 	// using the "BucketRules" configuration.
 	//
@@ -103,18 +116,21 @@ type QuotaDefinition struct {
 	// matches multiple rules, each of their associated quotas get applied, so a
 	// single request might burn down the quota for multiple rules.
 	//
+	// Client selectors that match under the same model / service backend will be
+	// combined with the first limit taking precedence.
+	//
 	// +optional
-	BucketRules []QuotaRule `json:"bucketRules"`
+	BucketRules []QuotaRule `json:"bucketRules,omitempty"`
 }
 
 // QuotaBucketMode specifies whether the default and per request buckets values are exclusive or inclusive.
 //
-// +kubebuilder:validation:Enum=Exclusive;Shared
+// TODO: Add Exclusive mode in the future.
+// +kubebuilder:validation:Enum=Shared
 type QuotaBucketMode string
 
 const (
-	QuoteBucketModeShared    QuotaBucketMode = "Shared"
-	QuoteBucketModeExclusive QuotaBucketMode = "Exclusive"
+	QuotaBucketModeShared QuotaBucketMode = "Shared"
 )
 
 type QuotaRule struct {
@@ -122,6 +138,7 @@ type QuotaRule struct {
 	// specific clients using attributes from the traffic flow.
 	// All individual select conditions must hold True for this rule
 	// and its limit to be applied.
+	//
 	//
 	// If no client selectors are specified, the rule applies to all traffic of
 	// the targeted AIServiceBackend.
@@ -148,11 +165,9 @@ type QuotaRule struct {
 type QuotaValue struct {
 	// The limit alloted for a specified time window.
 	Limit uint `json:"limit"`
-	// Time window. The suffix is used to specify units. The following
-	// suffixes are supported:
-	// * s - seconds (the default unit)
-	// * m - minutes
-	// * h - hours
+	// Time window. Must be exactly one of: "1s" (1 second), "1m" (1 minute), "1h" (1 hour), or "1d" (1 day).
+	//
+	// +kubebuilder:validation:Enum="1s";"1m";"1h";"1d"
 	Duration string `json:"duration"`
 }
 

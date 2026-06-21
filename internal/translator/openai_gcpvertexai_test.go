@@ -8,6 +8,7 @@ package translator
 import (
 	"bytes"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -79,12 +80,12 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
         }
     ],
     "tools": null,
-    "generation_config": {
+    "generationConfig": {
         "maxOutputTokens": 100,
         "stopSequences": ["stop1", "stop2"],
         "temperature": 0.1
     },
-    "system_instruction": {
+    "systemInstruction": {
         "parts": [
             {
                 "text": "You are a helpful assistant"
@@ -129,8 +130,8 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
             ]
         }
     ],
-    "generation_config": {},
-    "system_instruction": {
+    "generationConfig": {},
+    "systemInstruction": {
         "parts": [
             {
                 "text": "You are a helpful assistant"
@@ -169,7 +170,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
             ]
         }
     ],
-    "generation_config": {
+    "generationConfig": {
         "maxOutputTokens": 1024,
         "stopSequences": ["stop"],
         "temperature": 0.7,
@@ -209,7 +210,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
             ]
         }
     ],
-    "generation_config": {
+    "generationConfig": {
         "maxOutputTokens": 1024,
         "temperature": 0.7
     },
@@ -245,7 +246,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
             ]
         }
     ],
-    "generation_config": {
+    "generationConfig": {
         "maxOutputTokens": 1024,
 		"mediaResolution": "high",
         "temperature": 0.7
@@ -281,7 +282,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
       ]
     }
   ],
-  "generation_config": {
+  "generationConfig": {
     "maxOutputTokens": 1024,
     "temperature": 0.7,
     "responseMimeType": "text/x.enum",
@@ -324,7 +325,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
       ]
     }
   ],
-  "generation_config": {
+  "generationConfig": {
     "maxOutputTokens": 1024,
     "temperature": 0.7,
     "responseMimeType": "application/json",
@@ -351,7 +352,7 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
             "enterpriseWebSearch": {}
         }
     ],
-    "generation_config": {
+    "generationConfig": {
         "maxOutputTokens": 1024,
         "temperature": 0.7
     }
@@ -400,7 +401,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			// Since these are stub implementations, we expect nil mutations.
 			wantHeaderMut: []internalapi.Header{
 				{":path", "publishers/google/models/gemini-pro:generateContent"},
-				{"content-length", "258"},
 			},
 			wantBody: wantBdy,
 		},
@@ -438,7 +438,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			// Since these are stub implementations, we expect nil mutations.
 			wantHeaderMut: []internalapi.Header{
 				{":path", "publishers/google/models/gemini-pro:streamGenerateContent?alt=sse"},
-				{"content-length", "258"},
 			},
 			wantBody: wantBdy,
 		},
@@ -477,7 +476,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			// Since these are stub implementations, we expect nil mutations.
 			wantHeaderMut: []internalapi.Header{
 				{":path", "publishers/google/models/gemini-flash:generateContent"},
-				{"content-length", "258"},
 			},
 			wantBody: wantBdy,
 		},
@@ -532,7 +530,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			wantError: false,
 			wantHeaderMut: []internalapi.Header{
 				{":path", "publishers/google/models/gemini-pro:generateContent"},
-				{"content-length", "518"},
 			},
 			wantBody: wantBdyWithTools,
 		},
@@ -582,7 +579,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			wantError: false,
 			wantHeaderMut: []internalapi.Header{
 				{":path", "publishers/google/models/gemini-1.5-pro:generateContent"},
-				{"content-length", "396"},
 			},
 			wantBody: wantBdyWithVendorFields,
 		},
@@ -630,7 +626,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			wantError: false,
 			wantHeaderMut: []internalapi.Header{
 				{":path", "publishers/google/models/gemini-1.5-pro:generateContent"},
-				{"content-length", "395"},
 			},
 			wantBody: wantBdyWithSafetySettingFields,
 		},
@@ -675,7 +670,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			wantError: false,
 			wantHeaderMut: []internalapi.Header{
 				{":path", "publishers/google/models/gemini-3-pro:generateContent"},
-				{"content-length", "343"},
 			},
 			wantBody: wantBdyWithMediaResolutionFields,
 		},
@@ -716,7 +710,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			wantError: false,
 			wantHeaderMut: []internalapi.Header{
 				{":path", "publishers/google/models/gemini-1.5-pro:generateContent"},
-				{"content-length", "404"},
 			},
 			wantBody: wantBdyWithGuidedChoice,
 		},
@@ -757,7 +750,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			wantError: false,
 			wantHeaderMut: []internalapi.Header{
 				{":path", "publishers/google/models/gemini-1.5-pro:generateContent"},
-				{"content-length", "408"},
 			},
 			wantBody: wantBdyWithGuidedRegex,
 		},
@@ -785,7 +777,6 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			wantError: false,
 			wantHeaderMut: []internalapi.Header{
 				{":path", "publishers/google/models/gemini-1.5-pro:generateContent"},
-				{"content-length", "190"},
 			},
 			wantBody: wantBdyWithEnterpriseWebSearch,
 		},
@@ -801,7 +792,23 @@ func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_RequestBody(t *testing.T)
 			}
 			require.NoError(t, err)
 
-			if diff := cmp.Diff(tc.wantHeaderMut, headerMut); diff != "" {
+			// Separate the content-length header from the others and assert it
+			// matches the serialized body length, rather than hardcoding a
+			// byte count that breaks whenever the body changes by a byte.
+			var gotHeaders []internalapi.Header
+			foundContentLength := false
+			for _, h := range headerMut {
+				if h.Key() == contentLengthHeaderName {
+					assert.Equal(t, strconv.Itoa(len(bodyMut)), h.Value(),
+						"content-length header should equal the serialized body length")
+					foundContentLength = true
+					continue
+				}
+				gotHeaders = append(gotHeaders, h)
+			}
+			assert.True(t, foundContentLength, "content-length header should be set")
+
+			if diff := cmp.Diff(tc.wantHeaderMut, gotHeaders); diff != "" {
 				t.Errorf("HeaderMutation mismatch (-want +got):\n%s", diff)
 			}
 
@@ -2601,9 +2608,9 @@ func TestGCPVertexAIRedactBody(t *testing.T) {
 		require.Equal(t, "search_web", resp.Choices[0].Message.ToolCalls[0].Function.Name)
 		require.Contains(t, resp.Choices[0].Message.ToolCalls[0].Function.Arguments, "GCP Vertex AI")
 
-		// Verify redacted copy has redacted tool calls
+		// Verify redacted copy: name kept, arguments redacted
 		require.Len(t, redacted.Choices[0].Message.ToolCalls, 1)
-		require.Contains(t, redacted.Choices[0].Message.ToolCalls[0].Function.Name, "[REDACTED")
+		require.Equal(t, "search_web", redacted.Choices[0].Message.ToolCalls[0].Function.Name)
 		require.Contains(t, redacted.Choices[0].Message.ToolCalls[0].Function.Arguments, "[REDACTED")
 		require.NotContains(t, redacted.Choices[0].Message.ToolCalls[0].Function.Arguments, "GCP Vertex AI")
 	})

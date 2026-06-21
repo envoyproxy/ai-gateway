@@ -41,6 +41,14 @@ type Config struct {
 	Backends []Backend `json:"backends,omitempty"`
 	// Models is the list of models that this route is aware of. Used to populate the "/models" endpoint in OpenAI-compatible APIs.
 	Models []Model `json:"models,omitempty"`
+	// ModelsByHost is the list of models keyed by hostname. When present, the extproc "/v1/models" processor will prefer
+	// the hostname-specific list over the global Models slice. Each per-host list also includes UnscopedModels so that
+	// routes without hostname scoping remain visible alongside the host-specific routes.
+	ModelsByHost map[string][]Model `json:"modelsByHost,omitempty"`
+	// UnscopedModels is the list of models contributed by routes that did NOT declare hostnames. When ModelsByHost is
+	// configured, requests to a host that doesn't match any entry fall back to this list (rather than to Models, which
+	// would leak host-scoped models to unknown hosts).
+	UnscopedModels []Model `json:"unscopedModels,omitempty"`
 	// MCPConfig is the configuration for the MCPRoute implementations.
 	MCPConfig *MCPConfig `json:"mcpConfig,omitempty"`
 }
@@ -87,6 +95,17 @@ type LLMRequestCost struct {
 	// CEL is the CEL expression to calculate the cost of the request.
 	// This is not empty when the Type is LLMRequestCostTypeCEL.
 	CEL string `json:"cel,omitempty"`
+	// Backend is an optional filter set exclusively by the QuotaPolicy controller.
+	// It is NOT exposed in any user-facing CRD. When non-empty, this cost entry is
+	// only evaluated when the serving backend's short name (namespace/name) matches.
+	// This allows different QuotaPolicies targeting different backends to use different
+	// cost expressions while sharing the same metadata key.
+	Backend string `json:"backend,omitempty"`
+	// Model is an optional filter set exclusively by the QuotaPolicy controller.
+	// It is NOT exposed in any user-facing CRD. When non-empty, this cost entry is
+	// only evaluated when the request's model name matches. This allows a single
+	// metadata key to be shared across models without conflicting overwrites.
+	Model string `json:"model,omitempty"`
 }
 
 // LLMRequestCostType specifies the kind of the request cost calculation.
@@ -115,12 +134,20 @@ type VersionedAPISchema struct {
 	Name APISchemaName `json:"name"`
 	// Version is the version of the API schema. Optional.
 	Version string `json:"version,omitempty"`
-	// Prefix is the prefix of the API schema. Optional. Currently, only used for OpenAI.
+	// Prefix is the prefix of the API schema. Optional. Used for OpenAI and Anthropic schemas.
 	Prefix string `json:"prefix,omitempty"`
 }
 
 // OpenAIPrefix returns the OpenAI API prefix for the VersionedAPISchema.
 func (v VersionedAPISchema) OpenAIPrefix() string {
+	return v.Prefix
+}
+
+// AnthropicPrefix returns the Anthropic API prefix for the VersionedAPISchema.
+func (v VersionedAPISchema) AnthropicPrefix() string {
+	if v.Prefix == "" {
+		return "v1"
+	}
 	return v.Prefix
 }
 

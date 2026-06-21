@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	openaisdk "github.com/openai/openai-go/v3"
 	"google.golang.org/genai"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -579,23 +578,23 @@ func isGeminiFlashModel(model internalapi.RequestModel) bool {
 // - "medium" → ThinkingLevelMedium for Flash, ThinkingLevelHigh for Pro
 // - "high" → ThinkingLevelHigh
 // https://docs.cloud.google.com/vertex-ai/generative-ai/docs/start/get-started-with-gemini-3#openai-example
-func mapReasoningEffortToThinkingLevel(reasonEffort openaisdk.ReasoningEffort, model internalapi.RequestModel) (genai.ThinkingLevel, error) {
+func mapReasoningEffortToThinkingLevel(reasonEffort openai.ReasoningEffort, model internalapi.RequestModel) (genai.ThinkingLevel, error) {
 	isFlash := isGeminiFlashModel(model)
 
 	switch reasonEffort {
-	case "none":
+	case openai.ReasoningEffortNone:
 		if !isFlash {
 			return "", fmt.Errorf("%w: reasoning effort 'none' is only supported for Gemini Flash models", internalapi.ErrInvalidRequestBody)
 		}
 		return genai.ThinkingLevelMinimal, nil
-	case openaisdk.ReasoningEffortLow:
+	case openai.ReasoningEffortLow:
 		return genai.ThinkingLevelLow, nil
-	case openaisdk.ReasoningEffortMedium:
+	case openai.ReasoningEffortMedium:
 		if isFlash {
 			return genai.ThinkingLevelMedium, nil
 		}
 		return genai.ThinkingLevelHigh, nil
-	case openaisdk.ReasoningEffortHigh:
+	case openai.ReasoningEffortHigh:
 		if !isFlash {
 			return "", fmt.Errorf("%w: reasoning effort 'high' is only supported for Gemini Flash models", internalapi.ErrInvalidRequestBody)
 		}
@@ -842,12 +841,25 @@ func geminiFinishReasonToOpenAI[T toolCallSlice](reason genai.FinishReason, tool
 		return openai.ChatCompletionChoicesFinishReasonStop
 	case genai.FinishReasonMaxTokens:
 		return openai.ChatCompletionChoicesFinishReasonLength
+	case genai.FinishReasonSafety, genai.FinishReasonBlocklist, genai.FinishReasonProhibitedContent,
+		genai.FinishReasonSPII, genai.FinishReasonImageSafety, genai.FinishReasonImageProhibitedContent:
+		return openai.ChatCompletionChoicesFinishReasonContentFilter
+	case genai.FinishReasonRecitation, genai.FinishReasonImageRecitation:
+		return openai.ChatCompletionChoicesFinishReasonRecitation
+	case genai.FinishReasonMalformedFunctionCall:
+		return openai.ChatCompletionChoicesFinishReasonMalformedFunctionCall
+	case genai.FinishReasonUnexpectedToolCall:
+		return openai.ChatCompletionChoicesFinishReasonUnexpectedToolCall
+	case genai.FinishReasonLanguage:
+		return openai.ChatCompletionChoicesFinishReasonLanguage
+	case genai.FinishReasonNoImage:
+		return openai.ChatCompletionChoicesFinishReasonNoImage
 	case "":
 		// For intermediate chunks in a streaming response, the finish reason is an empty string.
 		// This is normal behavior and should not be treated as an error.
 		return ""
 	default:
-		return openai.ChatCompletionChoicesFinishReasonContentFilter
+		return openai.ChatCompletionChoicesFinishReasonError
 	}
 }
 

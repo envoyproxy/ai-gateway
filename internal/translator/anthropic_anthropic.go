@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path"
 	"strconv"
 	"strings"
 
@@ -26,16 +27,18 @@ import (
 )
 
 // NewAnthropicToAnthropicTranslator creates a passthrough translator for Anthropic.
-func NewAnthropicToAnthropicTranslator(version string, modelNameOverride internalapi.ModelNameOverride) AnthropicMessagesTranslator {
-	// TODO: use "version" in APISchema struct to set the specific prefix if needed like OpenAI does. However, two questions:
-	// 	* Is there any "Anthropic compatible" API that uses a different prefix like OpenAI does?
-	// 	* Even if there is, we should refactor the APISchema struct to have "prefix" field instead of abusing "version" field.
-	_ = version
-	return &anthropicToAnthropicTranslator{modelNameOverride: modelNameOverride}
+// The prefix defaults to "v1" via schemaToFilterAPI, producing "/v1/messages".
+// AWS and GCP Anthropic wrappers pass empty prefix as they override the request path entirely.
+func NewAnthropicToAnthropicTranslator(prefix string, modelNameOverride internalapi.ModelNameOverride) AnthropicMessagesTranslator {
+	return &anthropicToAnthropicTranslator{
+		modelNameOverride: modelNameOverride,
+		path:              path.Join("/", prefix, "messages"),
+	}
 }
 
 type anthropicToAnthropicTranslator struct {
 	modelNameOverride      internalapi.ModelNameOverride
+	path                   string
 	requestModel           internalapi.RequestModel
 	stream                 bool
 	buffered               []byte
@@ -68,7 +71,7 @@ func (a *anthropicToAnthropicTranslator) RequestBody(original []byte, body *anth
 		newBody = original
 	}
 
-	newHeaders = []internalapi.Header{{pathHeaderName, "/v1/messages"}}
+	newHeaders = []internalapi.Header{{pathHeaderName, a.path}}
 	if len(newBody) > 0 {
 		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
 	}

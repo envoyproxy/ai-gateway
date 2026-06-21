@@ -64,6 +64,16 @@ type AIGatewayRouteSpec struct {
 	// +optional
 	ParentRefs []gwapiv1.ParentReference `json:"parentRefs,omitempty"`
 
+	// Hostnames is a list of hostnames matched against the HTTP Host header to select an AIGatewayRoute
+	// used to process the request. This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec.
+	// When specified, the generated HTTPRoute will include these hostnames for hostname-based filtering.
+	// See https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRouteSpec
+	// for the details of the Hostnames field in the Gateway API.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	Hostnames []gwapiv1.Hostname `json:"hostnames,omitempty"`
+
 	// Rules is the list of AIGatewayRouteRule that this AIGatewayRoute will match the traffic to.
 	// Each rule is a subset of the HTTPRoute in the Gateway API (https://gateway-api.sigs.k8s.io/api-types/httproute/).
 	//
@@ -78,8 +88,12 @@ type AIGatewayRouteSpec struct {
 	// How multiple rules are matched is the same as the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRoute
 	//
+	// At most 15 rules are allowed per AIGatewayRoute, corresponding to the Gateway API's limit on
+	// HTTPRoute.spec.rules (one slot is reserved for a controller-injected catch-all rule). To
+	// configure more rules on the same Gateway, split them across multiple AIGatewayRoute resources.
+	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MaxItems=128
+	// +kubebuilder:validation:MaxItems=15
 	Rules []AIGatewayRouteRule `json:"rules"`
 
 	// LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.

@@ -24,9 +24,11 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 		body              anthropicschema.MessagesRequest
 		forceBodyMutation bool
 		modelNameOverride string
+		prefix            string
 
 		expRequestModel internalapi.RequestModel
 		expNewBody      []byte
+		expPath         string
 	}{
 		{
 			name:              "no mutation",
@@ -34,8 +36,10 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 			body:              anthropicschema.MessagesRequest{Stream: false, Model: "claude-2"},
 			forceBodyMutation: false,
 			modelNameOverride: "",
+			prefix:            "v1",
 			expRequestModel:   "claude-2",
 			expNewBody:        nil,
+			expPath:           "/v1/messages",
 		},
 		{
 			name:              "model override",
@@ -43,8 +47,10 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 			body:              anthropicschema.MessagesRequest{Stream: true, Model: "claude-2"},
 			forceBodyMutation: false,
 			modelNameOverride: "claude-100.1",
+			prefix:            "v1",
 			expRequestModel:   "claude-100.1",
 			expNewBody:        []byte(`{"model":"claude-100.1","messages":[{"role":"user","content":"Hello!"}], Stream: true}`),
+			expPath:           "/v1/messages",
 		},
 		{
 			name:              "force mutation",
@@ -52,18 +58,53 @@ func TestAnthropicToAnthropic_RequestBody(t *testing.T) {
 			body:              anthropicschema.MessagesRequest{Stream: false, Model: "claude-2"},
 			forceBodyMutation: true,
 			modelNameOverride: "",
+			prefix:            "v1",
 			expRequestModel:   "claude-2",
 			expNewBody:        []byte(`{"model":"claude-2","messages":[{"role":"user","content":"Hello!"}]}`),
+			expPath:           "/v1/messages",
+		},
+		{
+			name:              "empty prefix yields /messages",
+			original:          []byte(`{"model":"claude-2","messages":[{"role":"user","content":"Hello!"}]}`),
+			body:              anthropicschema.MessagesRequest{Stream: false, Model: "claude-2"},
+			forceBodyMutation: false,
+			modelNameOverride: "",
+			prefix:            "",
+			expRequestModel:   "claude-2",
+			expNewBody:        nil,
+			expPath:           "/messages",
+		},
+		{
+			name:              "custom prefix",
+			original:          []byte(`{"model":"claude-2","messages":[{"role":"user","content":"Hello!"}]}`),
+			body:              anthropicschema.MessagesRequest{Stream: false, Model: "claude-2"},
+			forceBodyMutation: false,
+			modelNameOverride: "",
+			prefix:            "gateway/v1",
+			expRequestModel:   "claude-2",
+			expNewBody:        nil,
+			expPath:           "/gateway/v1/messages",
+		},
+		{
+			name:              "custom prefix with leading slash",
+			original:          []byte(`{"model":"claude-2","messages":[{"role":"user","content":"Hello!"}]}`),
+			body:              anthropicschema.MessagesRequest{Stream: false, Model: "claude-2"},
+			forceBodyMutation: false,
+			modelNameOverride: "",
+			prefix:            "/custom",
+			expRequestModel:   "claude-2",
+			expNewBody:        nil,
+			expPath:           "/custom/messages",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			translator := NewAnthropicToAnthropicTranslator("", tc.modelNameOverride)
+			translator := NewAnthropicToAnthropicTranslator(tc.prefix, tc.modelNameOverride)
 			require.NotNil(t, translator)
 
 			headerMutation, bodyMutation, err := translator.RequestBody(tc.original, &tc.body, tc.forceBodyMutation)
 			require.NoError(t, err)
 			expHeaders := []internalapi.Header{
-				{pathHeaderName, "/v1/messages"},
+				{pathHeaderName, tc.expPath},
 			}
 			if bodyMutation != nil {
 				expHeaders = append(expHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(bodyMutation))})

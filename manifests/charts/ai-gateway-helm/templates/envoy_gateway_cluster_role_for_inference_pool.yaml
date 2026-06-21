@@ -10,7 +10,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "ai-gateway-helm.inference-pool.clusterRoleName" . }}
+  name: {{ include "ai-gateway-helm.inference-pool.clusterRoleName" . | quote }}
 rules:
   - apiGroups:
       - "inference.networking.k8s.io"
@@ -24,11 +24,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "ai-gateway-helm.inference-pool.clusterRoleBindingName" . }}
+  name: {{ include "ai-gateway-helm.inference-pool.clusterRoleBindingName" . | quote }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "ai-gateway-helm.inference-pool.clusterRoleName" . }}
+  name: {{ include "ai-gateway-helm.inference-pool.clusterRoleName" . | quote }}
 subjects:
   - kind: ServiceAccount
     # The service account name is hardcoded to "envoy-gateway":
