@@ -399,6 +399,33 @@ func TestInitializeSession_InitializeFailure(t *testing.T) {
 	require.Contains(t, err.Error(), "failed with status code")
 }
 
+func TestInitializeSession_SSEEndsBeforeResponse(t *testing.T) {
+	// Backend returns a 200 text/event-stream whose initialize response contains
+	// only non-response events (a keep-alive) and then closes before ever sending
+	// the JSON-RPC response. This must produce a clear error rather than the
+	// misleading "MCP message is not a response: <nil>".
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(sessionIDHeader, "test-session-123")
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`id: keepalive_0000
+data:
+
+`))
+	}))
+	defer backendServer.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = backendServer.URL
+
+	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{}, time.Now())
+
+	require.Error(t, err)
+	require.Empty(t, sessionID)
+	require.Contains(t, err.Error(), "ended before a JSON-RPC response was received")
+	require.NotContains(t, err.Error(), "is not a response")
+}
+
 func TestInitializeSession_NotificationsInitializedFailure(t *testing.T) {
 	// Mock backend server.
 	var callCount perBackendCallCount

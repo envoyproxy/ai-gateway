@@ -352,6 +352,7 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 		}
 		if rawMsg == nil {
 			parser := newSSEEventParser(sseReader, backend.Name)
+			var readErr error
 			for rawMsg == nil {
 				event, parseErr := parser.next()
 				// TODO: handle reconnect. We need to re-arrange the event ID so that it will also contain the backend name and the original session ID.
@@ -366,13 +367,26 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 						}
 					}
 				}
-				if parseErr != nil {
-					if errors.Is(parseErr, io.EOF) || strings.Contains(parseErr.Error(), "context deadline exceeded") {
-						break
-					}
-					m.l.Error("failed to read MCP GET response body", slog.String("error", parseErr.Error()))
+				if rawMsg != nil {
+					// Found the response; a trailing EOF on this same event is not a failure.
 					break
 				}
+				if parseErr != nil {
+					readErr = parseErr
+					if !errors.Is(parseErr, io.EOF) && !strings.Contains(parseErr.Error(), "context deadline exceeded") {
+						m.l.Error("failed to read MCP GET response body", slog.String("error", parseErr.Error()))
+					}
+					break
+				}
+			}
+			if rawMsg == nil {
+				// The SSE stream ended (EOF/deadline) or errored before any JSON-RPC
+				// response arrived. Surface a clear error instead of falling through to
+				// the misleading "MCP message is not a response: <nil>".
+				if readErr != nil && !errors.Is(readErr, io.EOF) && !strings.Contains(readErr.Error(), "context deadline exceeded") {
+					return nil, fmt.Errorf("failed to read MCP initialize response from backend %q: %w", backend.Name, readErr)
+				}
+				return nil, fmt.Errorf("MCP initialize stream from backend %q ended before a JSON-RPC response was received", backend.Name)
 			}
 		}
 
