@@ -1066,6 +1066,16 @@ they approach expiration (typically hourly for IRSA and Pod Identity).
   required="true"
   description="Region specifies the AWS region associated with the policy."
 /><ApiField
+  name="service"
+  type="string"
+  required="false"
+  description="Service specifies the AWS service name used for SigV4 signing.<br />If not set, the service is inferred from the backend host at request time."
+/><ApiField
+  name="signingHost"
+  type="string"
+  required="false"
+  description="SigningHost specifies the host used for SigV4 signing.<br />If not set, the backend host (`:authority`) is used at request time."
+/><ApiField
   name="credentialsFile"
   type="[AWSCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1alpha1-awscredentialsfile)"
   required="false"
@@ -3480,6 +3490,16 @@ they approach expiration (typically hourly for IRSA and Pod Identity).
   type="string"
   required="true"
   description="Region specifies the AWS region associated with the policy."
+/><ApiField
+  name="service"
+  type="string"
+  required="false"
+  description="Service specifies the AWS service name used for SigV4 signing.<br />If not set, the service is inferred from the backend host at request time."
+/><ApiField
+  name="signingHost"
+  type="string"
+  required="false"
+  description="SigningHost specifies the host used for SigV4 signing.<br />If not set, the backend host (`:authority`) is used at request time."
 /><ApiField
   name="credentialsFile"
   type="[AWSCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1beta1-awscredentialsfile)"
