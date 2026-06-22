@@ -344,6 +344,8 @@ func TestServer_setBackend(t *testing.T) {
 
 func TestResolveBackendName(t *testing.T) {
 	const backendName = "default/openai/route/aigw-run/rule/0/ref/0"
+	// A distinct value so precedence between metadata sources is observable.
+	const routeBackendName = "default/anthropic/route/aigw-run/rule/1/ref/0"
 
 	for _, tc := range []struct {
 		name             string
@@ -373,6 +375,26 @@ func TestResolveBackendName(t *testing.T) {
 				internalapi.XDSClusterMetadataBackendNamePath: structpb.NewStringValue(backendName),
 			},
 			expected: backendName,
+		},
+		{
+			// MergeBackends: the per-route backend name is authoritative and must win over the
+			// (ambiguous) upstream-host metadata of a shared cluster.
+			name: "route metadata takes precedence over upstream host (non-endpoint-picker)",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSRouteMetadataBackendNamePath:        structpb.NewStringValue(routeBackendName),
+				internalapi.XDSUpstreamHostMetadataBackendNamePath: structpb.NewStringValue(backendName),
+			},
+			expected: routeBackendName,
+		},
+		{
+			// Endpoint-picker flows resolve from cluster metadata only; route metadata must be ignored.
+			name: "route metadata ignored for endpoint picker",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSRouteMetadataBackendNamePath:   structpb.NewStringValue(routeBackendName),
+				internalapi.XDSClusterMetadataBackendNamePath: structpb.NewStringValue(backendName),
+			},
+			isEndpointPicker: true,
+			expected:         backendName,
 		},
 		{
 			name:        "missing backend name for router",

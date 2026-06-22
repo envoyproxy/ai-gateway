@@ -406,6 +406,16 @@ func resolveBackendName(isEndpointPicker bool, attributes *structpb.Struct) (str
 		backendNamePath = internalapi.XDSUpstreamHostMetadataBackendNamePath
 	}
 
+	// Route metadata is authoritative when Envoy Gateway MergeBackends collapses sister routes
+	// onto a shared cluster — cluster/upstream-host metadata can carry only one identity, but
+	// each route has its own. Tried first for non-endpoint-picker flows; legacy per-rule clusters
+	// also populate this path, so the change is safe across both shapes.
+	if !isEndpointPicker {
+		if b, ok := attributes.Fields[internalapi.XDSRouteMetadataBackendNamePath]; ok {
+			return b.GetStringValue(), nil
+		}
+	}
+
 	// Try the direct metadata path first. (e.g. xds.upstream_host_metadata...['per_route_rule_backend_name'])
 	if b, ok := attributes.Fields[backendNamePath]; ok {
 		return b.GetStringValue(), nil
