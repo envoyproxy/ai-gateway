@@ -12,8 +12,10 @@ import (
 )
 
 // QuotaPolicy specifies token quota configuration for inference services.
-// Providing a list of backends in the AIGatewayRouteRule allows failover to a different service
-// if token quota for a service had been exceeded.
+// Generates rate limit configuration and tracks quota usage.
+// Reject requests with 429 once all related quota to that request has been exceeded.
+//
+// TODO: Waiting on next release of Envoyproxy that will support routing based on non-exceeded quotas.
 //
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -40,6 +42,9 @@ type QuotaPolicySpec struct {
 	// Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the "PerModelQuotas"
 	// configuration.
 	//
+	// Currently, the rate limit configuration is properly set up, but the descriptor set is not being set in the Envoy Configuration
+	// TODO: Add changes in the extension server to support ServiceQuota enforcement.
+	//
 	// +optional
 	ServiceQuota ServiceQuotaDefinition `json:"serviceQuota,omitempty"`
 	// PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this
@@ -59,7 +64,7 @@ type ServiceQuotaDefinition struct {
 	// If no expression is specified the "total_tokens" value is used.
 	// For example:
 	//
-	//  * "input_tokens + cached_input_tokens * 0.1 + output_tokens * 6"
+	//  "input_tokens + cached_input_tokens + output_tokens"
 	//
 	// +optional
 	CostExpression *string `json:"costExpression,omitempty"`
@@ -133,7 +138,7 @@ type QuotaRule struct {
 	// specific clients using attributes from the traffic flow.
 	// All individual select conditions must hold True for this rule
 	// and its limit to be applied.
-	//
+	// Currently, only header types are honored.
 	//
 	// If no client selectors are specified, the rule applies to all traffic of
 	// the targeted AIServiceBackend.
