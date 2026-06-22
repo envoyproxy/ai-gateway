@@ -106,6 +106,8 @@ type Options struct {
 	EndpointPrefixes string
 	// RateLimitRunner is the xDS runner that serves rate limit configs to the rate limit service.
 	RateLimitRunner *runner.Runner
+	// EnvoyGatewayNamespace is the namespace where Envoy Gateway is deployed.
+	EnvoyGatewayNamespace string
 }
 
 // StartControllers starts the controllers for the AI Gateway.
@@ -127,7 +129,8 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 
 	gatewayEventChan := make(chan event.GenericEvent, 100)
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
-		logger.WithName("gateway"), options.ExtProcImage, options.ExtProcLogLevel, false, uuid.NewString, isKubernetes133OrLater(versionInfo, logger))
+		logger.WithName("gateway"), options.EnvoyGatewayNamespace, options.ExtProcImage, options.ExtProcLogLevel,
+		false, uuid.NewString, isKubernetes133OrLater(versionInfo, logger))
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
 		WatchesRawSource(source.Channel(
 			gatewayEventChan,
