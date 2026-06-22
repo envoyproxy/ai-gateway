@@ -450,6 +450,70 @@ func TestInvokeJSONRPCRequest_Success(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
+// TestInvokeJSONRPCRequest_SignsAWSBackend guards against a regression where the
+// single-backend send path (initialize, notifications/initialized, tools/call) was not
+// applying AWS SigV4 signing, so requests reached the backend completely unsigned.
+func TestInvokeJSONRPCRequest_SignsAWSBackend(t *testing.T) {
+	var gotAuth, gotDate string
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotDate = r.Header.Get("X-Amz-Date")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"result": "success"}`))
+	}))
+	defer backendServer.Close()
+
+	signer, err := newAWSBackendSigner(t.Context(), &filterapi.MCPBackendAWSAuth{
+		Region:                "us-east-1",
+		Service:               "aws-mcp",
+		Host:                  "aws-mcp.us-east-1.api.aws",
+		Path:                  "/mcp",
+		CredentialFileLiteral: testAWSCredentialsFile,
+	})
+	require.NoError(t, err)
+
+	m := newTestMCPProxy()
+	m.backendListenerAddr = backendServer.URL
+	m.routes["aws-route"] = &mcpProxyConfigRoute{
+		backends:   map[filterapi.MCPBackendName]filterapi.MCPBackend{"aws-backend": {Name: "aws-backend"}},
+		awsSigners: map[filterapi.MCPBackendName]*awsBackendSigner{"aws-backend": signer},
+	}
+
+	resp, err := m.invokeJSONRPCRequest(t.Context(), "aws-route", filterapi.MCPBackend{Name: "aws-backend"}, &compositeSessionEntry{
+		sessionID: "test-session",
+	}, &jsonrpc.Request{Method: "tools/call"}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NoError(t, resp.Body.Close())
+
+	// The request must carry a valid SigV4 signature for the configured service/region.
+	require.Contains(t, gotAuth, "AWS4-HMAC-SHA256")
+	require.Contains(t, gotAuth, "Credential=AKIAIOSFODNN7EXAMPLE")
+	require.Contains(t, gotAuth, "/us-east-1/aws-mcp/aws4_request")
+	require.NotEmpty(t, gotDate)
+}
+
+// TestInvokeJSONRPCRequest_NoSignerNoAuthHeader ensures non-AWS backends are left unsigned.
+func TestInvokeJSONRPCRequest_NoSignerNoAuthHeader(t *testing.T) {
+	var gotAuth string
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"result": "success"}`))
+	}))
+	defer backendServer.Close()
+
+	m := newTestMCPProxy()
+	m.backendListenerAddr = backendServer.URL
+	resp, err := m.invokeJSONRPCRequest(t.Context(), "test-route", filterapi.MCPBackend{Name: "backend1"}, &compositeSessionEntry{
+		sessionID: "test-session",
+	}, &jsonrpc.Request{Method: "tools/call"}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NoError(t, resp.Body.Close())
+	require.Empty(t, gotAuth)
+}
+
 func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/", r.URL.Path)
@@ -470,4 +534,50 @@ func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
+}
+
+func TestSignRequestIfAWS_NoRouteOrSigner(t *testing.T) {
+	req, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:1", nil)
+	require.NoError(t, err)
+
+	m := &mcpRequestContext{ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{
+		routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{},
+	}}}
+	require.NoError(t, m.signRequestIfAWS(t.Context(), "missing-route", "backend", req, nil))
+
+	m.routes["route"] = &mcpProxyConfigRoute{awsSigners: map[filterapi.MCPBackendName]*awsBackendSigner{}}
+	require.NoError(t, m.signRequestIfAWS(t.Context(), "route", "missing-backend", req, nil))
+}
+
+func TestSignRequestIfAWS_SigningError(t *testing.T) {
+	req, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:1", nil)
+	require.NoError(t, err)
+
+	m := &mcpRequestContext{ProxyConfig: &ProxyConfig{mcpProxyConfig: &mcpProxyConfig{
+		routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
+			"aws-route": {awsSigners: map[filterapi.MCPBackendName]*awsBackendSigner{"aws-backend": brokenAWSBackendSigner()}},
+		},
+	}}}
+
+	err = m.signRequestIfAWS(t.Context(), "aws-route", "aws-backend", req, []byte(`{}`))
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to sign request for backend aws-backend")
+}
+
+func TestInvokeJSONRPCRequest_AWSSigningError(t *testing.T) {
+	m := newTestMCPProxy()
+	m.backendListenerAddr = "http://127.0.0.1:1"
+	m.routes["aws-route"] = &mcpProxyConfigRoute{
+		backends:   map[filterapi.MCPBackendName]filterapi.MCPBackend{"aws-backend": {Name: "aws-backend"}},
+		awsSigners: map[filterapi.MCPBackendName]*awsBackendSigner{"aws-backend": brokenAWSBackendSigner()},
+	}
+
+	resp, err := m.invokeJSONRPCRequest(t.Context(), "aws-route", filterapi.MCPBackend{Name: "aws-backend"}, &compositeSessionEntry{
+		sessionID: "test-session",
+	}, &jsonrpc.Request{Method: "tools/call"}, nil)
+	if resp != nil {
+		require.NoError(t, resp.Body.Close())
+	}
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to sign request for backend")
 }

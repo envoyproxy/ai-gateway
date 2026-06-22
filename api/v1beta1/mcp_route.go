@@ -192,10 +192,82 @@ type MCPToolFilter struct {
 }
 
 // MCPBackendSecurityPolicy defines the security policy for a backend MCP server.
+//
+// +kubebuilder:validation:XValidation:rule="!(has(self.apiKey) && has(self.awsCredentials))", message="only one of apiKey or awsCredentials can be set"
 type MCPBackendSecurityPolicy struct {
 	// APIKey is a mechanism to access a backend. The API key will be injected into the request headers.
 	// +optional
 	APIKey *MCPBackendAPIKey `json:"apiKey,omitempty"`
+
+	// AWSCredentials authenticates requests to the backend MCP server using AWS
+	// Signature Version 4 (SigV4). Use this to connect to MCP servers fronted by AWS IAM
+	// such as the AWS MCP Server or MCP servers hosted on Amazon Bedrock AgentCore.
+	//
+	// The gateway signs each outbound request with the AWS credentials it resolves
+	// from the configured source: a referenced credentials file, or the default AWS
+	// credential chain (which supports environment variables, IRSA, and EKS Pod
+	// Identity). All requests to the backend are signed with this single gateway identity.
+	//
+	// +optional
+	AWSCredentials *MCPBackendAWSCredentials `json:"awsCredentials,omitempty"`
+}
+
+// AWSCredentialsMode selects which identity is used to sign requests to an
+// AWS-authenticated MCP backend.
+type AWSCredentialsMode string
+
+const (
+	// AWSCredentialsModeServiceIdentify signs every request with the gateway's own
+	// AWS identity (the credentials resolved from the configured source). This is the
+	// default and currently the only supported mode.
+	AWSCredentialsModeServiceIdentify AWSCredentialsMode = "ServiceIdentify"
+)
+
+type MCPBackendAWSCredentials struct {
+	// Region is the AWS region used for SigV4 signing, e.g. "us-east-1".
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Region string `json:"region"`
+
+	// Service is the AWS SigV4 service name to sign for, e.g. "bedrock-agentcore"
+	// for Bedrock AgentCore-hosted MCP servers, or the service name of the AWS MCP Server.
+	// When omitted, the gateway infers the service name from the backend hostname.
+	//
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	Service *string `json:"service,omitempty"`
+
+	// Mode selects the signing identity. Currently, only "ServiceIdentify" is
+	// supported, which signs all requests with the gateway's own AWS identity.
+	//
+	// +optional
+	// +kubebuilder:default:=ServiceIdentify
+	Mode AWSCredentialsMode `json:"mode"`
+
+	// CredentialsFile references a Kubernetes secret containing an AWS credentials file
+	// to use for signing. When specified, this takes precedence over the default credential
+	// chain (environment variables, IRSA, EKS Pod Identity, EC2 instance role, etc.), with
+	// automatic credential rotation.
+	//
+	// +optional
+	CredentialsFile *MCPAWSCredentialsFile `json:"credentialsFile,omitempty"`
+}
+
+type MCPAWSCredentialsFile struct {
+	// SecretRef is the reference to the credential file secret.
+	//
+	// The secret should contain the AWS credentials file keyed on "credentials".
+	//
+	// +kubebuilder:validation:Required
+	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
+
+	// Profile is the profile to use in the credentials file.
+	//
+	// +kubebuilder:default=default
+	// +kubebuilder:validation:Optional
+	// +optional
+	Profile string `json:"profile,omitempty"`
 }
 
 // MCPBackendAPIKey defines the configuration for the API Key Authentication to a backend.

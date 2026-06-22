@@ -44,6 +44,7 @@ type (
 		toolSelectors  map[filterapi.MCPBackendName]*toolSelector
 		authorization  *compiledAuthorization
 		forwardHeaders []string
+		awsSigners     map[filterapi.MCPBackendName]*awsBackendSigner
 	}
 
 	// toolSelector filters tools using include and exclude patterns with exact matches or regular expressions.
@@ -178,7 +179,7 @@ func (t *toolSelector) allows(tool string) bool {
 
 // LoadConfig implements [extproc.ConfigReceiver.LoadConfig] which will be called
 // when the configuration is updated on the file system.
-func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) error {
+func (p *ProxyConfig) LoadConfig(ctx context.Context, config *filterapi.Config) error {
 	newConfig := &mcpProxyConfig{}
 	mcpConfig := config.MCPConfig
 	if config.MCPConfig == nil {
@@ -206,6 +207,18 @@ func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) er
 			forwardHeaders: route.ForwardHeaders,
 		}
 		for _, backend := range route.Backends {
+			if backend.AWSAuth != nil {
+				signer, err := newAWSBackendSigner(ctx, backend.AWSAuth)
+				if err != nil {
+					return fmt.Errorf("failed to build AWS signer for backend %q in rout %q: %w", backend.Name, route.Name, err)
+				}
+
+				if r.awsSigners == nil {
+					r.awsSigners = make(map[filterapi.MCPBackendName]*awsBackendSigner)
+				}
+				r.awsSigners[backend.Name] = signer
+			}
+
 			r.backends[backend.Name] = backend
 			if s := backend.ToolSelector; s != nil {
 				ts := &toolSelector{

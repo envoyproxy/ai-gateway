@@ -423,6 +423,25 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 	}, nil
 }
 
+// signRequestIfAWS signs req in place with AWS SigV4 when the backend is configured for AWS auth.
+// The SigV4 Authorization/X-Amz-* headers are computed by the proxy's signer (they are not
+// forwarded from the client), so this must run on every backend send path: session
+// initialization, single-backend calls (e.g. tools/call), and the fan-out path.
+func (m *mcpRequestContext) signRequestIfAWS(ctx context.Context, routeName filterapi.MCPRouteName, backendName filterapi.MCPBackendName, req *http.Request, body []byte) error {
+	route := m.routes[routeName]
+	if route == nil {
+		return nil
+	}
+	signer := route.awsSigners[backendName]
+	if signer == nil {
+		return nil
+	}
+	if err := signer.sign(ctx, req, body); err != nil {
+		return fmt.Errorf("failed to sign request for backend %s with AWS SigV4: %w", backendName, err)
+	}
+	return nil
+}
+
 func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry, msg jsonrpc.Message, params mcp.Params) (*http.Response, error) {
 	encoded, err := jsonrpc.EncodeMessage(msg)
 	if err != nil {
@@ -462,6 +481,13 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 				}
 			}
 		}
+	}
+
+	// Sign with AWS SigV4 last, so the signature covers the final request (host/path that
+	// Envoy rewrites to the backend's). This path handles initialize, notifications/initialized
+	// and single-backend tools/call.
+	if err = m.signRequestIfAWS(ctx, routeName, backend.Name, req, encoded); err != nil {
+		return nil, err
 	}
 
 	resp, err := m.client.Do(req)

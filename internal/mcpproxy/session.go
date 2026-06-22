@@ -348,8 +348,10 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 	httpMethod string, request *jsonrpc.Request, params mcpsdk.Params,
 ) error {
 	var body io.Reader
+	var encodedReq []byte
 	if request != nil {
-		encodedReq, err := jsonrpc.EncodeMessage(request)
+		var err error
+		encodedReq, err = jsonrpc.EncodeMessage(request)
 		if err != nil {
 			return fmt.Errorf("failed to encode request: %w", err)
 		}
@@ -388,6 +390,14 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 	if lastEventID := cse.lastEventID; lastEventID != "" {
 		req.Header.Set(lastEventIDHeader, lastEventID)
 	}
+
+	// Sign the request with AWS SigV4 when this backend is configured for AWS auth.
+	// Envoy rewrites the request authority and path to the backend's before it reaches
+	// AWS, so the signer signs against those final values rather than the local listener.
+	if err = s.reqCtx.signRequestIfAWS(ctx, routeName, backend.Name, req, encodedReq); err != nil {
+		return err
+	}
+
 	if s.reqCtx.l.Enabled(ctx, slog.LevelDebug) {
 		args := []any{
 			slog.String("backend", backend.Name),
