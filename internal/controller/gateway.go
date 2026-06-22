@@ -49,7 +49,7 @@ const (
 // extProcImage is the image of the external processor sidecar container which will be used
 // to check if the pods of the gateway deployment need to be rolled out.
 func NewGatewayController(
-	client client.Client, kube kubernetes.Interface, logger logr.Logger,
+	client client.Client, kube kubernetes.Interface, logger logr.Logger, envoyGatewayNamespace string,
 	extProcImage string, extProcLogLevel string, standAlone bool, uuidFn func() string, extProcAsSideCar bool,
 ) *GatewayController {
 	uf := uuidFn
@@ -57,24 +57,26 @@ func NewGatewayController(
 		uf = uuid.NewString
 	}
 	return &GatewayController{
-		client:           client,
-		kube:             kube,
-		logger:           logger,
-		extProcImage:     extProcImage,
-		extProcLogLevel:  extProcLogLevel,
-		standAlone:       standAlone,
-		uuidFn:           uf,
-		extProcAsSideCar: extProcAsSideCar,
+		client:                client,
+		kube:                  kube,
+		logger:                logger,
+		envoyGatewayNamespace: envoyGatewayNamespace,
+		extProcImage:          extProcImage,
+		extProcLogLevel:       extProcLogLevel,
+		standAlone:            standAlone,
+		uuidFn:                uf,
+		extProcAsSideCar:      extProcAsSideCar,
 	}
 }
 
 // GatewayController implements reconcile.TypedReconciler for gwapiv1.Gateway.
 type GatewayController struct {
-	client          client.Client
-	kube            kubernetes.Interface
-	logger          logr.Logger
-	extProcImage    string // The image of the external processor sidecar container.
-	extProcLogLevel string // The log level for the extproc container.
+	client                client.Client
+	kube                  kubernetes.Interface
+	logger                logr.Logger
+	envoyGatewayNamespace string // The namespace where Envoy Gateway is deployed.
+	extProcImage          string // The image of the external processor sidecar container.
+	extProcLogLevel       string // The log level for the extproc container.
 	// standAlone indicates whether the controller is running in standalone mode.
 	standAlone bool
 	uuidFn     func() string // Function to generate a new UUID for the filter config.
@@ -1145,32 +1147,45 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 	listOption := metav1.ListOptions{LabelSelector: fmt.Sprintf(
 		"%s=%s,%s=%s", egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace,
 	)}
-	var ps *corev1.PodList
-	ps, err = c.kube.CoreV1().Pods("").List(ctx, listOption)
-	if err != nil {
-		err = fmt.Errorf("failed to list pods: %w", err)
+
+	var distinctNamespaces []string
+	for _, ns := range []string{gw.Namespace, c.envoyGatewayNamespace} {
+		var ps *corev1.PodList
+		ps, err = c.kube.CoreV1().Pods(ns).List(ctx, listOption)
+		if err != nil {
+			err = fmt.Errorf("failed to list pods in namespace %s: %w", ns, err)
+			return
+		}
+		pods = append(pods, ps.Items...)
+
+		var ds *appsv1.DeploymentList
+		ds, err = c.kube.AppsV1().Deployments(ns).List(ctx, listOption)
+		if err != nil {
+			err = fmt.Errorf("failed to list deployments in namespace %s: %w", ns, err)
+			return
+		}
+		deployments = append(deployments, ds.Items...)
+
+		var dss *appsv1.DaemonSetList
+		dss, err = c.kube.AppsV1().DaemonSets(ns).List(ctx, listOption)
+		if err != nil {
+			err = fmt.Errorf("failed to list daemonsets in namespace %s: %w", ns, err)
+			return
+		}
+		daemonSets = append(daemonSets, dss.Items...)
+
+		if len(ps.Items) > 0 || len(ds.Items) > 0 || len(dss.Items) > 0 {
+			distinctNamespaces = append(distinctNamespaces, ns)
+		}
+	}
+
+	// All pods, deployments, and daemonsets should be in the same namespace.
+	// Otherwise, it would be a bug in the EG or the disruptive configuration change of EG.
+	if len(distinctNamespaces) > 1 {
+		err = fmt.Errorf("found gateway-labeled objects in multiple namespaces: %v", distinctNamespaces)
 		return
 	}
-	pods = ps.Items
 
-	var ds *appsv1.DeploymentList
-	ds, err = c.kube.AppsV1().Deployments("").List(ctx, listOption)
-	if err != nil {
-		err = fmt.Errorf("failed to list deployments: %w", err)
-		return
-	}
-	deployments = ds.Items
-
-	var dss *appsv1.DaemonSetList
-	dss, err = c.kube.AppsV1().DaemonSets("").List(ctx, listOption)
-	if err != nil {
-		err = fmt.Errorf("failed to list daemonsets: %w", err)
-		return
-	}
-	daemonSets = dss.Items
-
-	// We assume that all pods, deployments, and daemonsets are in the same namespace. Otherwise, it would be a bug in the EG
-	// or the disruptive configuration change of EG.
 	if len(pods) > 0 {
 		namespace = pods[0].Namespace
 	}
