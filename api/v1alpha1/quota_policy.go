@@ -101,7 +101,7 @@ type QuotaDefinition struct {
 	CostExpression *string `json:"costExpression,omitempty"`
 	// The "Mode" determines how quota is charged to the "DefaultBucket" and matching "BucketRules".
 	// In the "shared" mode the quota is charged to all matching "BucketRules" AND the "DefaultBucket"
-	// and request is allowed only if the quota is available in all matching buckets.
+	// and request is allowed only if the quota is available in at least one matching buckets.
 	// Defaults to "Shared".
 	//
 	// +optional
