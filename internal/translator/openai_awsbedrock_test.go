@@ -381,6 +381,486 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			},
 		},
 		{
+			name: "test pdf document",
+			input: openai.ChatCompletionRequest{
+				Stream: false,
+				Model:  "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: []openai.ChatCompletionContentPartUserUnionParam{
+									{OfText: &openai.ChatCompletionContentPartTextParam{
+										Text: "summarize this",
+									}},
+									{OfImageURL: &openai.ChatCompletionContentPartImageParam{
+										ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+											URL: "data:application/pdf;base64,dGVzdA==",
+										},
+									}},
+								},
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("summarize this"),
+							},
+							{
+								Document: &awsbedrock.DocumentBlock{
+									Format: "pdf",
+									Name:   "document",
+									Source: awsbedrock.DocumentSource{
+										Bytes: []byte("test"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "test pdf document with text",
+			input: openai.ChatCompletionRequest{
+				Stream: false,
+				Model:  "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: []openai.ChatCompletionContentPartUserUnionParam{
+									{OfText: &openai.ChatCompletionContentPartTextParam{
+										Text: "summarize this pdf",
+									}},
+									{OfImageURL: &openai.ChatCompletionContentPartImageParam{
+										ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+											URL: "data:application/pdf;base64,dGVzdA==",
+										},
+									}},
+								},
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("summarize this pdf"),
+							},
+							{
+								Document: &awsbedrock.DocumentBlock{
+									Format: "pdf",
+									Name:   "document",
+									Source: awsbedrock.DocumentSource{
+										Bytes: []byte("test"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "test csv document",
+			input: openai.ChatCompletionRequest{
+				Stream: false,
+				Model:  "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: []openai.ChatCompletionContentPartUserUnionParam{
+									{OfText: &openai.ChatCompletionContentPartTextParam{
+										Text: "analyze this",
+									}},
+									{OfImageURL: &openai.ChatCompletionContentPartImageParam{
+										ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+											URL: "data:text/csv;base64,dGVzdA==",
+										},
+									}},
+								},
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("analyze this"),
+							},
+							{
+								Document: &awsbedrock.DocumentBlock{
+									Format: "csv",
+									Name:   "document",
+									Source: awsbedrock.DocumentSource{
+										Bytes: []byte("test"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "test docx document",
+			input: openai.ChatCompletionRequest{
+				Stream: false,
+				Model:  "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: []openai.ChatCompletionContentPartUserUnionParam{
+									{OfText: &openai.ChatCompletionContentPartTextParam{
+										Text: "summarize this",
+									}},
+									{OfImageURL: &openai.ChatCompletionContentPartImageParam{
+										ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+											URL: "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,dGVzdA==",
+										},
+									}},
+								},
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("summarize this"),
+							},
+							{
+								Document: &awsbedrock.DocumentBlock{
+									Format: "docx",
+									Name:   "document",
+									Source: awsbedrock.DocumentSource{
+										Bytes: []byte("test"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "test doc document",
+			input: openai.ChatCompletionRequest{
+				Stream: false,
+				Model:  "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: []openai.ChatCompletionContentPartUserUnionParam{
+									{OfText: &openai.ChatCompletionContentPartTextParam{
+										Text: "summarize this",
+									}},
+									{OfImageURL: &openai.ChatCompletionContentPartImageParam{
+										ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+											URL: "data:application/msword;base64,dGVzdA==",
+										},
+									}},
+								},
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("summarize this"),
+							},
+							{
+								Document: &awsbedrock.DocumentBlock{
+									Format: "doc",
+									Name:   "document",
+									Source: awsbedrock.DocumentSource{
+										Bytes: []byte("test"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "test xls document",
+			input: openai.ChatCompletionRequest{
+				Stream: false,
+				Model:  "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: []openai.ChatCompletionContentPartUserUnionParam{
+									{OfText: &openai.ChatCompletionContentPartTextParam{
+										Text: "analyze this",
+									}},
+									{OfImageURL: &openai.ChatCompletionContentPartImageParam{
+										ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+											URL: "data:application/vnd.ms-excel;base64,dGVzdA==",
+										},
+									}},
+								},
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("analyze this"),
+							},
+							{
+								Document: &awsbedrock.DocumentBlock{
+									Format: "xls",
+									Name:   "document",
+									Source: awsbedrock.DocumentSource{
+										Bytes: []byte("test"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "test xlsx document",
+			input: openai.ChatCompletionRequest{
+				Stream: false,
+				Model:  "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: []openai.ChatCompletionContentPartUserUnionParam{
+									{OfText: &openai.ChatCompletionContentPartTextParam{
+										Text: "analyze this",
+									}},
+									{OfImageURL: &openai.ChatCompletionContentPartImageParam{
+										ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+											URL: "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,dGVzdA==",
+										},
+									}},
+								},
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("analyze this"),
+							},
+							{
+								Document: &awsbedrock.DocumentBlock{
+									Format: "xlsx",
+									Name:   "document",
+									Source: awsbedrock.DocumentSource{
+										Bytes: []byte("test"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "test html document",
+			input: openai.ChatCompletionRequest{
+				Stream: false,
+				Model:  "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: []openai.ChatCompletionContentPartUserUnionParam{
+									{OfText: &openai.ChatCompletionContentPartTextParam{
+										Text: "summarize this",
+									}},
+									{OfImageURL: &openai.ChatCompletionContentPartImageParam{
+										ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+											URL: "data:text/html;base64,dGVzdA==",
+										},
+									}},
+								},
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("summarize this"),
+							},
+							{
+								Document: &awsbedrock.DocumentBlock{
+									Format: "html",
+									Name:   "document",
+									Source: awsbedrock.DocumentSource{
+										Bytes: []byte("test"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "test plain text document",
+			input: openai.ChatCompletionRequest{
+				Stream: false,
+				Model:  "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: []openai.ChatCompletionContentPartUserUnionParam{
+									{OfText: &openai.ChatCompletionContentPartTextParam{
+										Text: "summarize this",
+									}},
+									{OfImageURL: &openai.ChatCompletionContentPartImageParam{
+										ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+											URL: "data:text/plain;base64,dGVzdA==",
+										},
+									}},
+								},
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("summarize this"),
+							},
+							{
+								Document: &awsbedrock.DocumentBlock{
+									Format: "txt",
+									Name:   "document",
+									Source: awsbedrock.DocumentSource{
+										Bytes: []byte("test"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "test markdown document",
+			input: openai.ChatCompletionRequest{
+				Stream: false,
+				Model:  "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: []openai.ChatCompletionContentPartUserUnionParam{
+									{OfText: &openai.ChatCompletionContentPartTextParam{
+										Text: "summarize this",
+									}},
+									{OfImageURL: &openai.ChatCompletionContentPartImageParam{
+										ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+											URL: "data:text/markdown;base64,dGVzdA==",
+										},
+									}},
+								},
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role: openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{
+							{
+								Text: ptr.To("summarize this"),
+							},
+							{
+								Document: &awsbedrock.DocumentBlock{
+									Format: "md",
+									Name:   "document",
+									Source: awsbedrock.DocumentSource{
+										Bytes: []byte("test"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "test parameters",
 			input: openai.ChatCompletionRequest{
 				Stream:      false,
@@ -1901,6 +2381,29 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBodyErr(t *testing.
 					},
 				},
 				ToolChoice: &openai.ChatCompletionToolChoiceUnion{Value: 123},
+			},
+			err: internalapi.ErrInvalidRequestBody,
+		},
+		{
+			name: "test document without text block",
+			input: openai.ChatCompletionRequest{
+				Model: "gpt-4o",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Content: openai.StringOrUserRoleContentUnion{
+								Value: []openai.ChatCompletionContentPartUserUnionParam{
+									{OfImageURL: &openai.ChatCompletionContentPartImageParam{
+										ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
+											URL: "data:application/pdf;base64,dGVzdA==",
+										},
+									}},
+								},
+							},
+							Role: openai.ChatMessageRoleUser,
+						},
+					},
+				},
 			},
 			err: internalapi.ErrInvalidRequestBody,
 		},

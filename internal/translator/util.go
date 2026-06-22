@@ -15,13 +15,21 @@ import (
 )
 
 const (
-	mimeTypeImageJPEG       = "image/jpeg"
-	mimeTypeImagePNG        = "image/png"
-	mimeTypeImageGIF        = "image/gif"
-	mimeTypeImageWEBP       = "image/webp"
-	mimeTypeTextPlain       = "text/plain"
-	mimeTypeApplicationJSON = "application/json"
-	mimeTypeApplicationEnum = "text/x.enum"
+	mimeTypeImageJPEG          = "image/jpeg"
+	mimeTypeImagePNG           = "image/png"
+	mimeTypeImageGIF           = "image/gif"
+	mimeTypeImageWEBP          = "image/webp"
+	mimeTypeTextPlain          = "text/plain"
+	mimeTypeTextCSV            = "text/csv"
+	mimeTypeTextHTML           = "text/html"
+	mimeTypeTextMarkdown       = "text/markdown"
+	mimeTypeApplicationJSON    = "application/json"
+	mimeTypeApplicationPDF     = "application/pdf"
+	mimeTypeApplicationMSWord  = "application/msword"
+	mimeTypeApplicationDocx    = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	mimeTypeApplicationMSExcel = "application/vnd.ms-excel"
+	mimeTypeApplicationXlsx    = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	mimeTypeApplicationEnum    = "text/x.enum"
 )
 
 var (
