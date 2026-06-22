@@ -481,8 +481,9 @@ MCPRouteList contains a list of MCPRoute.
 - [QuotaPolicyList](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicylist)
 
 QuotaPolicy specifies token quota configuration for inference services.
-Providing a list of backends in the AIGatewayRouteRule allows failover to a different service
-if token quota for a service had been exceeded.
+Generates rate limit configuration and tracks quota usage.
+Reject requests with 429 once all related quota to that request has been exceeded.
+
 
 ##### Fields
 
@@ -2199,7 +2200,7 @@ a tool must match an include rule AND not match any exclude rule to be allowed.
   name="modelName"
   type="string"
   required="true"
-  description="Model name for which the quota is specified."
+  description="Model name for which the quota is specified.<br />This must match the ModelNameOverride set in the AIGatewayRoute's BackendRef<br />for the quota policy to apply to that backend."
 /><ApiField
   name="quota"
   type="[QuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotadefinition)"
@@ -2269,15 +2270,11 @@ QuotaBucketMode specifies whether the default and per request buckets values are
 
 
 
+
 ##### Possible Values
 
 <ApiField
   name="Shared"
-  type="enum"
-  required="false"
-  description=""
-/><ApiField
-  name="Exclusive"
   type="enum"
   required="false"
   description=""
@@ -2303,8 +2300,9 @@ QuotaDefinition specified expression for computing request cost and rules for ma
 /><ApiField
   name="mode"
   type="[QuotaBucketMode](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotabucketmode)"
-  required="true"
-  description="The `Mode` determines how quota is charged to the `DefaultBucket` and matching `BucketRules`.<br />In the `exclusive` mode the quota is charged to matching BucketRules or the DefaultBucket<br />if no BucketRules match the request. The request is denied if all matching buckets are out of quota.<br />In the `shared` mode the quota is charged to all matching `BucketRules` AND the `DefaultBucket`<br />and request is allowed only if the quota is available in all matching buckets."
+  required="false"
+  defaultValue="Shared"
+  description="The `Mode` determines how quota is charged to the `DefaultBucket` and matching `BucketRules`.<br />In the `shared` mode the quota is charged to all matching `BucketRules` AND the `DefaultBucket`<br />and request is allowed only if the quota is available in all matching buckets.<br />Defaults to `Shared`."
 /><ApiField
   name="defaultBucket"
   type="[QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)"
@@ -2314,7 +2312,7 @@ QuotaDefinition specified expression for computing request cost and rules for ma
   name="bucketRules"
   type="[QuotaRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotarule) array"
   required="false"
-  description="BucketRules are a list of client selectors and quotas. If a request<br />matches multiple rules, each of their associated quotas get applied, so a<br />single request might burn down the quota for multiple rules."
+  description="BucketRules are a list of client selectors and quotas. If a request<br />matches multiple rules, each of their associated quotas get applied, so a<br />single request might burn down the quota for multiple rules.<br />Client selectors that match under the same model / service backend will be<br />combined with the first limit taking precedence."
 />
 
 
@@ -2340,12 +2338,12 @@ QuotaPolicySpec specifies rules for computing token based costs of requests.
   name="serviceQuota"
   type="[ServiceQuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-servicequotadefinition)"
   required="false"
-  description="Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the `PerModelQuotas`<br />configuration."
+  description="Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the `PerModelQuotas`<br />configuration.<br />Currently, the rate limit configuration is properly set up, but the descriptor set is not being set in the Envoy Configuration"
 /><ApiField
   name="perModelQuotas"
   type="[PerModelQuota](#github-com-envoyproxy-ai-gateway-api-v1alpha1-permodelquota) array"
   required="false"
-  description="PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this<br />policy is attached."
+  description="PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this<br />policy is attached.<br />When multiple QuotaPolicies define the same Model for the same AIServiceBackend,<br />the policy whose namespace/name is alphabetically first takes precedence.<br />Keys are sorted to ensure deterministic snapshot generation."
 />
 
 
@@ -2387,7 +2385,7 @@ QuotaPolicyStatus contains the conditions by the reconciliation result.
   name="clientSelectors"
   type="RateLimitSelectCondition array"
   required="false"
-  description="ClientSelectors holds the list of conditions to select<br />specific clients using attributes from the traffic flow.<br />All individual select conditions must hold True for this rule<br />and its limit to be applied.<br />If no client selectors are specified, the rule applies to all traffic of<br />the targeted AIServiceBackend."
+  description="ClientSelectors holds the list of conditions to select<br />specific clients using attributes from the traffic flow.<br />All individual select conditions must hold True for this rule<br />and its limit to be applied.<br />Currently, only header types are honored.<br />If no client selectors are specified, the rule applies to all traffic of<br />the targeted AIServiceBackend."
 /><ApiField
   name="quota"
   type="[QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)"
@@ -2425,7 +2423,7 @@ QuotaValue defines the quota limits using sliding window.
   name="duration"
   type="string"
   required="true"
-  description="Time window. The suffix is used to specify units. The following<br />suffixes are supported:<br />* s - seconds (the default unit)<br />* m - minutes<br />* h - hours"
+  description="Time window. Must be exactly one of: `1s` (1 second), `1m` (1 minute), `1h` (1 hour), or `1d` (1 day)."
 />
 
 
@@ -2446,7 +2444,7 @@ QuotaValue defines the quota limits using sliding window.
   name="costExpression"
   type="string"
   required="false"
-  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> * `input_tokens + cached_input_tokens * 0.1 + output_tokens * 6`"
+  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> `input_tokens + cached_input_tokens + output_tokens`"
 /><ApiField
   name="quota"
   type="[QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)"
@@ -4246,7 +4244,7 @@ When both `header` and `queryParam` are unspecified, the API key will be injecte
   name="queryParam"
   type="string"
   required="false"
-  description="QueryParam is the HTTP query parameter to inject the API key into.<br />For example, if QueryParam is set to `api_key`, and the API key is `mysecretkey`, the request URL will be modified to include<br />`?api_key=mysecretkey`.<br />Either one of Header or QueryParam can be specified to inject the API key."
+  description="QueryParam is the HTTP query parameter to inject the API key into.<br />For example, if QueryParam is set to `api_key`, and the API key is `mysecretkey`, the request URL will be modified to include<br />`?api_key=mysecretkey`.<br />Either one of Header or QueryParam can be specified to inject the API key.<br />Note: Embedding credentials in URLs (including query parameters) is generally not recommended because URLs can be exposed in logs<br />and intermediary systems; prefer header-based injection when possible."
 />
 
 

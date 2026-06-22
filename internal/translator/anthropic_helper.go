@@ -140,6 +140,10 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 				Description: anthropic.String(openAITool.Function.Description),
 			}
 
+			if openAITool.Function.Strict {
+				toolParam.Strict = anthropic.Bool(true)
+			}
+
 			if isCacheEnabled(openAITool.Function.AnthropicContentFields) {
 				toolParam.CacheControl = anthropic.NewCacheControlEphemeralParam()
 			}
@@ -864,6 +868,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		totalTokens, _ := p.tokenUsage.TotalTokens()
 		cachedTokens, _ := p.tokenUsage.CachedInputTokens()
 		cacheCreationTokens, _ := p.tokenUsage.CacheCreationInputTokens()
+		reasoningTokens, _ := p.tokenUsage.ReasoningTokens()
 		finalChunk := openai.ChatCompletionResponseChunk{
 			ID:      p.activeMessageID,
 			Created: p.created,
@@ -876,6 +881,9 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 				PromptTokensDetails: &openai.PromptTokensDetails{
 					CachedTokens:        int(cachedTokens),
 					CacheCreationTokens: int(cacheCreationTokens),
+				},
+				CompletionTokensDetails: &openai.CompletionTokensDetails{
+					ReasoningTokens: int(reasoningTokens),
 				},
 			},
 			Model: p.requestModel,
@@ -958,8 +966,8 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			&u.CacheReadInputTokens,
 			&u.CacheCreationInputTokens,
 		)
-		// For message_start, we store the initial usage but don't add to the accumulated
-		// The message_delta event will contain the final totals
+		// Set all input token counts (input, cache read, cache creation) from message_start.
+		// message_delta may also contain these fields but only output_tokens is used from it.
 		if input, ok := usage.InputTokens(); ok {
 			p.tokenUsage.SetInputTokens(input)
 		}
@@ -1053,17 +1061,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if output, ok := usage.OutputTokens(); ok {
 			p.tokenUsage.AddOutputTokens(output)
 		}
-		// Update input tokens to include any cache tokens from delta
-		if cached, ok := usage.CachedInputTokens(); ok {
-			p.tokenUsage.AddInputTokens(cached)
-			// Accumulate any additional cache tokens from delta
-			p.tokenUsage.AddCachedInputTokens(cached)
-		}
-		if cacheCreation, ok := usage.CacheCreationInputTokens(); ok {
-			p.tokenUsage.AddInputTokens(cacheCreation)
-			// Accumulate cache creation tokens
-			p.tokenUsage.AddCacheCreationInputTokens(cacheCreation)
-		}
+		p.tokenUsage.SetReasoningTokens(uint32(u.OutputTokensDetails.ThinkingTokens)) //nolint:gosec
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}
@@ -1178,11 +1176,13 @@ func messageToChatCompletion(anthropicResp *anthropic.Message, responseModel int
 		&usage.CacheReadInputTokens,
 		&usage.CacheCreationInputTokens,
 	)
+	tokenUsage.SetReasoningTokens(uint32(usage.OutputTokensDetails.ThinkingTokens)) //nolint:gosec
 	inputTokens, _ := tokenUsage.InputTokens()
 	outputTokens, _ := tokenUsage.OutputTokens()
 	totalTokens, _ := tokenUsage.TotalTokens()
 	cachedTokens, _ := tokenUsage.CachedInputTokens()
 	cacheCreationTokens, _ := tokenUsage.CacheCreationInputTokens()
+	reasoningTokens, _ := tokenUsage.ReasoningTokens()
 	openAIResp.Usage = openai.Usage{
 		CompletionTokens: int(outputTokens),
 		PromptTokens:     int(inputTokens),
@@ -1190,6 +1190,9 @@ func messageToChatCompletion(anthropicResp *anthropic.Message, responseModel int
 		PromptTokensDetails: &openai.PromptTokensDetails{
 			CachedTokens:        int(cachedTokens),
 			CacheCreationTokens: int(cacheCreationTokens),
+		},
+		CompletionTokensDetails: &openai.CompletionTokensDetails{
+			ReasoningTokens: int(reasoningTokens),
 		},
 	}
 

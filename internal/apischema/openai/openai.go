@@ -1662,6 +1662,47 @@ type ErrorType struct {
 	EventID *string `json:"event_id,omitempty"`
 }
 
+// UnmarshalJSON allows OpenAI-compatible backends to provide `error.code` as either a JSON string or number.
+func (e *ErrorType) UnmarshalJSON(data []byte) error {
+	type errorTypeAlias ErrorType
+	aux := struct {
+		errorTypeAlias
+		Code json.RawMessage `json:"code,omitempty"`
+	}{}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	*e = ErrorType(aux.errorTypeAlias)
+	if len(aux.Code) == 0 || string(aux.Code) == "null" {
+		e.Code = nil
+		return nil
+	}
+
+	var code string
+	if err := json.Unmarshal(aux.Code, &code); err == nil {
+		e.Code = &code
+		return nil
+	}
+
+	var codeInt int64
+	if err := json.Unmarshal(aux.Code, &codeInt); err == nil {
+		code = strconv.FormatInt(codeInt, 10)
+		e.Code = &code
+		return nil
+	}
+
+	var codeFloat float64
+	if err := json.Unmarshal(aux.Code, &codeFloat); err == nil {
+		code = strconv.FormatFloat(codeFloat, 'f', -1, 64)
+		e.Code = &code
+		return nil
+	}
+
+	return fmt.Errorf("error.code must be string or number")
+}
+
 // ModelList is described in the OpenAI API documentation
 // https://platform.openai.com/docs/api-reference/models/list
 type ModelList struct {
@@ -1684,15 +1725,8 @@ type Model struct {
 	OwnedBy string `json:"owned_by"`
 }
 
-// EmbeddingRequest represents a request structure for embeddings API.
-type EmbeddingRequest struct {
-	// Input: Input text to embed, encoded as a string or array of tokens.
-	// To embed multiple inputs in a single request, pass an array of strings or array of token arrays.
-	// The input must not exceed the max input tokens for the model (8192 tokens for text-embedding-ada-002),
-	// cannot be an empty string, and any array must be 2048 dimensions or less.
-	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-input
-	Input EmbeddingRequestInput `json:"input"`
-
+// EmbeddingBaseRequest holds fields shared by both embedding request variants.
+type EmbeddingBaseRequest struct {
 	// Model: ID of the model to use.
 	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-model
 	Model string `json:"model"`
@@ -1714,6 +1748,76 @@ type EmbeddingRequest struct {
 	*GCPVertexAIEmbeddingVendorFields `json:",inline,omitempty"`
 }
 
+// EmbeddingCompletionRequest is the text-only embedding request (classic OpenAI style).
+// https://developers.openai.com/api/reference/resources/embeddings/methods/create
+type EmbeddingCompletionRequest struct {
+	EmbeddingBaseRequest
+	// Input: Input text to embed, encoded as a string or array of tokens.
+	// To embed multiple inputs in a single request, pass an array of strings or array of token arrays.
+	// The input must not exceed the max input tokens for the model (8192 tokens for text-embedding-ada-002),
+	// cannot be an empty string, and any array must be 2048 dimensions or less.
+	Input EmbeddingRequestInput `json:"input"`
+}
+
+// EmbeddingChatRequest is the chat-style embedding request (supports multimodal).
+// Following vLLM convention: https://github.com/vllm-project/vllm/blob/2a16ece2d342c0c154a4949ad317b521f8c04ec4/vllm/entrypoints/pooling/embed/protocol.py#L83
+type EmbeddingChatRequest struct {
+	EmbeddingBaseRequest
+	// Messages: Chat messages for multimodal embedding.
+	// Uses the same chat message format as /v1/chat/completions.
+	// Only user messages are processed; system/assistant/tool messages are ignored.
+	Messages []ChatCompletionMessageParamUnion `json:"messages"`
+}
+
+// EmbeddingRequest is a discriminated union: exactly one of OfCompletion or OfChat is set.
+// Discrimination is by presence of "input" (→ completion) vs "messages" (→ chat) in JSON.
+type EmbeddingRequest struct {
+	EmbeddingBaseRequest                             // promoted shared fields
+	OfCompletion         *EmbeddingCompletionRequest // set when JSON has "input"
+	OfChat               *EmbeddingChatRequest       // set when JSON has "messages"
+}
+
+// UnmarshalJSON discriminates between completion and chat embedding requests.
+func (r *EmbeddingRequest) UnmarshalJSON(data []byte) error {
+	hasInput := gjson.GetBytes(data, "input").Exists()
+	hasMessages := gjson.GetBytes(data, "messages").Exists()
+
+	if hasInput && hasMessages {
+		return fmt.Errorf("embedding request must have either 'input' or 'messages', not both")
+	}
+
+	if hasMessages {
+		var chat EmbeddingChatRequest
+		if err := json.Unmarshal(data, &chat); err != nil {
+			return err
+		}
+		r.EmbeddingBaseRequest = chat.EmbeddingBaseRequest
+		r.OfChat = &chat
+		return nil
+	}
+
+	// Default to completion (input-based) — this handles both explicit "input" and legacy cases.
+	var comp EmbeddingCompletionRequest
+	if err := json.Unmarshal(data, &comp); err != nil {
+		return err
+	}
+	r.EmbeddingBaseRequest = comp.EmbeddingBaseRequest
+	r.OfCompletion = &comp
+	return nil
+}
+
+// MarshalJSON delegates to the active variant.
+func (r EmbeddingRequest) MarshalJSON() ([]byte, error) {
+	if r.OfChat != nil {
+		return json.Marshal(r.OfChat)
+	}
+	if r.OfCompletion != nil {
+		return json.Marshal(r.OfCompletion)
+	}
+	// Fallback: marshal just the base fields.
+	return json.Marshal(r.EmbeddingBaseRequest)
+}
+
 type EmbeddingTaskType string
 
 const (
@@ -1727,16 +1831,20 @@ const (
 	EmbeddingTaskTypeCodeRetrievalQuery EmbeddingTaskType = "CODE_RETRIEVAL_QUERY"
 )
 
-// GCPVertexAIEmbeddingVendorFields contains GCP Vertex AI (Gemini) vendor-specific fields for embeddings.
+// GCPVertexAIEmbeddingVendorFields contains GCP Vertex AI vendor-specific fields for embeddings.
+// The translator maps these to the appropriate wire format per endpoint:
+//   - predict: parameters.auto_truncate, instances[].task_type, instances[].title
+//   - embedContent: embedContentConfig.autoTruncate, embedContentConfig.taskType, embedContentConfig.title
 type GCPVertexAIEmbeddingVendorFields struct {
-	// When set to true, input text will be truncated. When set to false, an error is returned if the input text is longer than the maximum length supported by the model. Defaults to true.
-	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings-api#parameter-list
+	// Auto-truncate input text if it exceeds the model's max length. Defaults to true.
+	AutoTruncate *bool `json:"auto_truncate,omitempty"`
 
-	AutoTruncate bool `json:"auto_truncate,omitempty"`
-
-	// This is global task_type set, which is convenient for users. If left blank, the default used is RETRIEVAL_QUERY.
-	// For more information about task types, see https://docs.cloud.google.com/vertex-ai/generative-ai/docs/embeddings/task-types
+	// Global task type for the request. Defaults to RETRIEVAL_QUERY if unset.
+	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/embeddings/task-types
 	TaskType EmbeddingTaskType `json:"task_type,omitempty"`
+
+	// Title for the embedding content. Helps the model produce better embeddings.
+	Title string `json:"title,omitempty"`
 }
 
 // EmbeddingResponse represents a response from /v1/embeddings.

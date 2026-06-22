@@ -66,11 +66,16 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 
 	var bedrockReq awsbedrock.ConverseInput
 
+	// Promote any role: "system" messages from the messages array to the top-level system field.
+	// This handles clients (e.g. Claude Code with mid-conversation-system beta) that send
+	// system prompts as messages rather than the top-level parameter.
+	messages := promoteAnthropicSystemMessagesToParam(body)
+
 	// Convert messages.
-	bedrockReq.Messages = make([]*awsbedrock.Message, 0, len(body.Messages))
-	msgLen := len(body.Messages)
+	bedrockReq.Messages = make([]*awsbedrock.Message, 0, len(messages))
+	msgLen := len(messages)
 	for i := 0; i < msgLen; {
-		msg := &body.Messages[i]
+		msg := &messages[i]
 		switch msg.Role {
 		case anthropicschema.MessageRoleUser:
 			bedrockMsg, convErr := a.convertUserMessage(msg)
@@ -160,6 +165,34 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 		{contentLengthHeaderName, strconv.Itoa(len(newBody))},
 	}
 	return
+}
+
+// promoteAnthropicSystemMessagesToParam promotes role: "system" messages from the messages
+// array to the top-level system parameter. Returns the filtered messages (without system messages).
+// This handles clients (e.g. Claude Code with mid-conversation-system beta) that send
+// system prompts as messages rather than the top-level parameter.
+func promoteAnthropicSystemMessagesToParam(body *anthropicschema.MessagesRequest) []anthropicschema.MessageParam {
+	var systemTexts []string
+	var filtered []anthropicschema.MessageParam
+	for _, msg := range body.Messages {
+		if msg.Role == "system" {
+			if msg.Content.Text != "" {
+				systemTexts = append(systemTexts, msg.Content.Text)
+			}
+			for i := range msg.Content.Array {
+				if msg.Content.Array[i].Text != nil && msg.Content.Array[i].Text.Text != "" {
+					systemTexts = append(systemTexts, msg.Content.Array[i].Text.Text)
+				}
+			}
+		} else {
+			filtered = append(filtered, msg)
+		}
+	}
+	if len(systemTexts) > 0 {
+		systemText := strings.Join(systemTexts, "\n")
+		body.System = &anthropicschema.SystemPrompt{Text: systemText}
+	}
+	return filtered
 }
 
 func hasToolResult(msg *anthropicschema.MessageParam) bool {

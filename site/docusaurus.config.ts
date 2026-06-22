@@ -99,6 +99,11 @@ const config: Config = {
               path: '/',
               banner: 'none'
             },
+            '0.7': {
+              label: '0.7',
+              path: '0.7',
+              banner: 'none'
+            },
             '0.6': {
               label: '0.6',
               path: '0.6',

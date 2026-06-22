@@ -333,6 +333,7 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens: 5,
 					},
+					CompletionTokensDetails: &openai.CompletionTokensDetails{},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -367,6 +368,7 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens: 10,
 					},
+					CompletionTokensDetails: &openai.CompletionTokensDetails{},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -420,7 +422,7 @@ func TestOpenAIToAWSAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				int32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CacheCreationTokens), // nolint:gosec
 				int32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                        // nolint:gosec
 				int32(tt.expectedOpenAIResponse.Usage.TotalTokens),                             // nolint:gosec
-				-1,
+				int32(tt.expectedOpenAIResponse.Usage.CompletionTokensDetails.ReasoningTokens), // nolint:gosec
 			)
 			require.Equal(t, expectedTokenUsage, usedToken)
 
