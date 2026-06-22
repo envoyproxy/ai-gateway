@@ -2385,7 +2385,7 @@ QuotaPolicyStatus contains the conditions by the reconciliation result.
   name="clientSelectors"
   type="RateLimitSelectCondition array"
   required="false"
-  description="ClientSelectors holds the list of conditions to select<br />specific clients using attributes from the traffic flow.<br />All individual select conditions must hold True for this rule<br />and its limit to be applied.<br />If no client selectors are specified, the rule applies to all traffic of<br />the targeted AIServiceBackend."
+  description="ClientSelectors holds the list of conditions to select<br />specific clients using attributes from the traffic flow.<br />All individual select conditions must hold True for this rule<br />and its limit to be applied.<br />Currently, only header types are honored.<br />If no client selectors are specified, the rule applies to all traffic of<br />the targeted AIServiceBackend."
 /><ApiField
   name="quota"
   type="[QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)"
@@ -2444,7 +2444,7 @@ QuotaValue defines the quota limits using sliding window.
   name="costExpression"
   type="string"
   required="false"
-  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> * `input_tokens + cached_input_tokens * 0.1 + output_tokens * 6`"
+  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> `input_tokens + cached_input_tokens + output_tokens`"
 /><ApiField
   name="quota"
   type="[QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)"
