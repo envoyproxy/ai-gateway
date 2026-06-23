@@ -95,7 +95,7 @@ type QuotaDefinition struct {
 	// If no expression is specified the "total_tokens" value is used.
 	// For example:
 	//
-	//  * "input_tokens + cached_input_tokens * 0.1 + output_tokens * 6"
+	//  "input_tokens + cached_input_tokens + output_tokens"
 	//
 	// +optional
 	CostExpression *string `json:"costExpression,omitempty"`

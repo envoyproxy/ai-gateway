@@ -10,7 +10,8 @@ This document provides compatibility information for Envoy AI Gateway releases w
 
 | AI Gateway | Envoy Gateway                 | Kubernetes | Gateway API | Support Status |
 | ---------- | ----------------------------- | ---------- | ----------- | -------------- |
-| main       | v1.7.x+ (Envoy Proxy v1.38.x) | v1.32+     | v1.5.x      | Development    |
+| main       | v1.8.1+ (Envoy Proxy v1.38.x) | v1.32+     | v1.5.x      | Development    |
+| v1.0.x     | v1.8.1+ (Envoy Proxy v1.38.x) | v1.32+     | v1.5.x      | Supported      |
 | v0.7.x     | v1.8.x+ (Envoy Proxy v1.38.x) | v1.32+     | v1.5.x      | Supported      |
 | v0.6.x     | v1.7.x+ (Envoy Proxy v1.37.x) | v1.32+     | v1.4.x      | Supported      |
 | v0.5.x     | v1.6.x+ (Envoy Proxy v1.35.x) | v1.32+     | v1.4.x      | Supported      |
