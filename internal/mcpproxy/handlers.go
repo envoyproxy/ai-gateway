@@ -302,17 +302,17 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 
 	switch msg := rawMsg.(type) {
 	case *jsonrpc.Response:
+		// We do require a Session ID. If it is not present, a 400 Bad Request response should be returned:
+		// https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#session-management
+		if s == nil {
+			errType = metrics.MCPErrorInvalidSessionID
+			onErrorResponse(w, http.StatusBadRequest, "missing session ID")
+			return
+		}
 		if doNotForwardResponseToBackends(msg) {
 			w.Header().Set(sessionIDHeader, string(s.clientGatewaySessionID()))
 			w.WriteHeader(http.StatusAccepted)
 		} else {
-			// We do require a Session ID. If it is not present, a 400 Bad Request response should be returned:
-			// https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#session-management
-			if s == nil {
-				errType = metrics.MCPErrorInvalidSessionID
-				onErrorResponse(w, http.StatusBadRequest, "missing session ID")
-				return
-			}
 			m.l.Debug("Decoded MCP response", slog.Any("response", msg))
 			result, err = m.handleClientToServerResponse(ctx, s, w, msg)
 		}
