@@ -87,4 +87,28 @@ func TestHeaderMutator_Mutate(t *testing.T) {
 		require.Equal(t, "original", headers["only-in-original"])
 		require.Equal(t, "pikachu", headers["in-original-too-but-previous-attempt-set"])
 	})
+
+	t.Run("allow model header mutation", func(t *testing.T) {
+		headers := map[string]string{
+			internalapi.ModelNameHeaderKeyDefault: "some-model",
+			internalapi.OriginalPathHeader:        "/v1/chat/completions",
+		}
+		mutations := &filterapi.HTTPHeaderMutation{
+			Set: []filterapi.HTTPHeader{{
+				Name:  internalapi.ModelNameHeaderKeyDefault,
+				Value: "different-model",
+			}},
+		}
+
+		mutator := NewHeaderMutator(mutations, nil)
+		sets, removes := mutator.Mutate(headers, false)
+
+		require.Empty(t, removes)
+		require.Len(t, sets, 1)
+		require.Equal(t, internalapi.ModelNameHeaderKeyDefault, sets[0][0])
+		require.Equal(t, "different-model", sets[0][1])
+		require.Equal(t, "different-model", headers[internalapi.ModelNameHeaderKeyDefault])
+		// Other internal AI Gateway headers should remain protected.
+		require.Equal(t, "/v1/chat/completions", headers[internalapi.OriginalPathHeader])
+	})
 }

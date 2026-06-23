@@ -110,14 +110,19 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) (sets []
 //
 // Skip Envoy AI Gateway headers since some of them are populated after the originalHeaders are captured.
 // This should be safe since these headers are managed by Envoy AI Gateway itself, not expected to be
-// modified by users via header mutation API.
+// modified by users via header mutation API. The exception is x-ai-eg-model: it is user-visible in
+// AIGatewayRoute matching and can be useful to rewrite before forwarding upstream.
 //
 // Also, skip Envoy pseudo-headers beginning with ':', such as ":method", ":path", etc.
 // This is important because these headers are not only sensitive to our implementation detail as well as
 // it can cause unexpected behavior if they are modified unexpectedly. User shouldn't need to
 // modify these headers via header mutation API.
 func shouldIgnoreHeader(key string) bool {
-	return strings.HasPrefix(key, ":") ||
-		strings.HasPrefix(key, internalapi.EnvoyAIGatewayHeaderPrefix) ||
-		strings.EqualFold(key, internalapi.EnvoyOriginalPathHeader)
+	if strings.HasPrefix(key, ":") || strings.EqualFold(key, internalapi.EnvoyOriginalPathHeader) {
+		return true
+	}
+	if strings.EqualFold(key, internalapi.ModelNameHeaderKeyDefault) {
+		return false
+	}
+	return strings.HasPrefix(key, internalapi.EnvoyAIGatewayHeaderPrefix)
 }
