@@ -702,7 +702,80 @@ data: [DONE]
 			expResponseBody: `{"type":"error","error":{"type":"invalid_request_error","code":"400","message":"Invalid request: missing required field"}}`,
 		},
 		{
-			name:            "openai - /v1/embeddings",
+			name:              "anthropic - /v1/chat/completions",
+			backend:           "anthropic",
+			path:              "/v1/chat/completions",
+			method:            http.MethodPost,
+			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key", "anthropic-version": "2023-06-01"},
+			requestBody:       `{"model":"claude-3-sonnet","max_completion_tokens":1024, "messages":[{"role":"system","content":"You are an Anthropic assistant."},{"role":"user","content":"Hello!"}]}`,
+			// First-party /v1/messages requires model in the body and has no anthropic_version body key.
+			expRequestBody:  `{"max_tokens":1024,"messages":[{"content":[{"text":"Hello!","type":"text"}],"role":"user"}],"system":[{"text":"You are an Anthropic assistant.","type":"text"}],"model":"claude-3-sonnet"}`,
+			expPath:         "/v1/messages",
+			responseStatus:  strconv.Itoa(http.StatusOK),
+			responseBody:    `{"id":"msg_123","type":"message","role":"assistant","stop_reason": "end_turn", "content":[{"type":"text","text":"Hello from native Anthropic!"}],"usage":{"input_tokens":10,"output_tokens":25}}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from native Anthropic!","role":"assistant"}}],"created":123, "id":"msg_123","model":"claude-3-sonnet","object":"chat.completion","usage":{"completion_tokens":25,"completion_tokens_details":{},"prompt_tokens":10,"total_tokens":35,"prompt_tokens_details":{}}}`,
+		},
+		{
+			name:              "anthropic - /v1/chat/completions - streaming",
+			backend:           "anthropic",
+			path:              "/v1/chat/completions",
+			method:            http.MethodPost,
+			responseType:      "sse",
+			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key", "anthropic-version": "2023-06-01"},
+			requestBody:       `{"model":"claude-3-sonnet","max_completion_tokens":1024, "messages":[{"role":"user","content":"Why is the sky blue?"}], "stream": true}`,
+			expRequestBody:    `{"max_tokens":1024,"messages":[{"content":[{"text":"Why is the sky blue?","type":"text"}],"role":"user"}],"model":"claude-3-sonnet","stream":true}`,
+			expPath:           "/v1/messages",
+			responseStatus:    strconv.Itoa(http.StatusOK),
+			responseBody: `event: message_start
+data: {"type": "message_start", "message": {"id": "msg_123", "usage": {"input_tokens": 15, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 10, "output_tokens": 1}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "The sky appears blue"}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text":" due to Rayleigh scattering."}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"input_tokens": 15, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 10, "output_tokens": 12}}
+
+event: message_stop
+data: {"type": "message_stop"}
+`,
+			expStatus: http.StatusOK,
+			expResponseBody: `data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":"The sky appears blue","role":"assistant"}}],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk"}
+
+data: {"id":"msg_123","choices":[{"index":0,"delta":{"content":" due to Rayleigh scattering."}}],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk"}
+
+data: {"id":"msg_123","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk"}
+
+data: {"id":"msg_123","choices":[],"created":123,"model":"claude-3-sonnet","object":"chat.completion.chunk","usage":{"prompt_tokens":25,"completion_tokens":12,"total_tokens":37,"completion_tokens_details":{},"prompt_tokens_details":{"cached_tokens":10}}}
+
+data: [DONE]
+
+`,
+		},
+		{
+			name:              "anthropic - /v1/chat/completions - error response",
+			backend:           "anthropic",
+			path:              "/v1/chat/completions",
+			responseType:      "",
+			method:            http.MethodPost,
+			expRequestHeaders: map[string]string{"x-api-key": "anthropic-api-key", "anthropic-version": "2023-06-01"},
+			requestBody:       `{"model":"claude-3-sonnet", "max_completion_tokens":1024, "messages":[{"role":"system","content":"You are a helpful assistant."}]}`,
+			expPath:           "/v1/messages",
+			responseStatus:    "400",
+			expStatus:         http.StatusBadRequest,
+			responseBody:      `{"type":"error","error":{"type":"invalid_request_error","message":"Invalid request: missing required field"}}`,
+			expResponseBody:   `{"type":"error","error":{"type":"invalid_request_error","code":"400","message":"Invalid request: missing required field"}}`,
+		},
+		{
 			backend:         "openai",
 			path:            "/v1/embeddings",
 			method:          http.MethodPost,

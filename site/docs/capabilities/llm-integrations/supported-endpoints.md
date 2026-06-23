@@ -35,6 +35,7 @@ The Envoy AI Gateway acts as a proxy that accepts OpenAI-compatible and Anthropi
 **Supported Providers:**
 
 - OpenAI
+- Anthropic (with automatic translation)
 - AWS Bedrock (with automatic translation)
 - Azure OpenAI (with automatic translation)
 - GCP VertexAI (with automatic translation)

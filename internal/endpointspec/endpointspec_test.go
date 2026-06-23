@@ -87,6 +87,7 @@ func TestChatCompletionsEndpointSpec_GetTranslator(t *testing.T) {
 		{Name: filterapi.APISchemaAzureOpenAI, Version: "2024-02-01"},
 		{Name: filterapi.APISchemaGCPVertexAI},
 		{Name: filterapi.APISchemaGCPAnthropic, Version: "2024-05-01"},
+		{Name: filterapi.APISchemaAnthropic, Prefix: "v1"},
 	}
 
 	for _, schema := range supported {
@@ -103,6 +104,47 @@ func TestChatCompletionsEndpointSpec_GetTranslator(t *testing.T) {
 		_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: "Unknown"}, "override")
 		require.ErrorContains(t, err, "unsupported API schema")
 	})
+}
+
+// TestChatCompletionsEndpointSpec_GetTranslator_Anthropic probes the
+// APISchemaAnthropic translator's wire-level behavior to distinguish it from
+// the GCP sibling. First-party Anthropic sends the version as the
+// `anthropic-version` HTTP header and targets `/v1/messages`; GCP instead
+// embeds `anthropic_version` in the body and targets a rawPredict URL with no
+// version header.
+func TestChatCompletionsEndpointSpec_GetTranslator_Anthropic(t *testing.T) {
+	spec := ChatCompletionsEndpointSpec{}
+	tr, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}, "override")
+	require.NoError(t, err)
+	require.NotNil(t, tr)
+
+	openAIReq := &openai.ChatCompletionRequest{
+		Model:    "claude-3-5-sonnet-20241022",
+		Messages: []openai.ChatCompletionMessageParamUnion{{OfUser: &openai.ChatCompletionUserMessageParam{Content: openai.StringOrUserRoleContentUnion{Value: "hi"}, Role: openai.ChatMessageRoleUser}}},
+		// MaxTokens is required by the Anthropic API; use a minimal value.
+	}
+	hm, body, err := tr.RequestBody(nil, openAIReq, false)
+	require.NoError(t, err)
+	require.NotNil(t, hm)
+	require.NotNil(t, body)
+
+	var pathValue, versionValue string
+	var hasVersion bool
+	for _, h := range hm {
+		switch h.Key() {
+		case ":path":
+			pathValue = h.Value()
+		case "anthropic-version":
+			hasVersion = true
+			versionValue = h.Value()
+		}
+	}
+	require.Equal(t, "/v1/messages", pathValue, "first-party Anthropic must target /v1/messages")
+	require.True(t, hasVersion, "first-party Anthropic must send the anthropic-version header (GCP does not)")
+	require.Equal(t, "2023-06-01", versionValue, "default anthropic-version must be the SDK-pinned version")
+	// And the version must NOT leak into the body as anthropic_version (that is
+	// the GCP/Bedrock contract, not the first-party one).
+	require.NotContains(t, string(body), `"anthropic_version"`)
 }
 
 func TestCompletionsEndpointSpec_ParseBody(t *testing.T) {
