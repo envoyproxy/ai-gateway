@@ -414,6 +414,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 
 	for i := range openAiMessage.ToolCalls {
 		toolCall := &openAiMessage.ToolCalls[i]
+		if toolCall.ID == nil {
+			return nil, fmt.Errorf("%w: tool_call at index %d is missing required field 'id'", internalapi.ErrInvalidRequestBody, i)
+		}
 		input, err := unmarshalToolCallArguments(toolCall.Function.Arguments)
 		if err != nil {
 			return nil, err
