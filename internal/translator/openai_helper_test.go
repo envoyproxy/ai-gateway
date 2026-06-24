@@ -612,10 +612,50 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_TextStreaming(t *testing.T) 
 	require.JSONEq(t, `{"type":"content_block_stop","index":0}`, events[4].data)
 
 	assert.Equal(t, "message_delta", events[5].eventType)
-	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":5}}`, events[5].data)
+	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}`, events[5].data)
 
 	assert.Equal(t, "message_stop", events[6].eventType)
 	require.JSONEq(t, `{"type":"message_stop"}`, events[6].data)
+}
+
+func TestOpenAIStreamToAnthropicState_ProcessBuffer_CachedTokens(t *testing.T) {
+	// Verify that OpenAI's prompt_tokens_details (cached_tokens / cache_creation_input_tokens)
+	// is forwarded into the Anthropic message_delta.usage cache fields, not hardcoded to zero.
+	state := &openAIStreamToAnthropicState{
+		activeTools:  make(map[int64]*streamToolCall),
+		requestModel: "claude-3",
+	}
+
+	input := "data: {\"id\":\"chatcmpl-cache\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hi\"}}],\"model\":\"gpt-4o\"}\n\n" +
+		"data: {\"id\":\"chatcmpl-cache\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
+		"data: {\"id\":\"chatcmpl-cache\",\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":5,\"prompt_tokens_details\":{\"cached_tokens\":80,\"cache_creation_input_tokens\":20}}}\n\n" +
+		"data: [DONE]\n\n"
+
+	state.buffer.WriteString(input)
+
+	var out []byte
+	err := state.processBuffer(&out, true)
+	require.NoError(t, err)
+
+	events := parseSSEEventsFromBytes(out)
+
+	var msgDeltaData string
+	for _, e := range events {
+		if e.eventType == "message_delta" {
+			msgDeltaData = e.data
+			break
+		}
+	}
+	require.NotEmpty(t, msgDeltaData)
+	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":100,"output_tokens":5,"cache_creation_input_tokens":20,"cache_read_input_tokens":80}}`, msgDeltaData)
+
+	// Also verify the gateway's internal cost-tracking TokenUsage picks up the real cache counts.
+	cached, ok := state.tokenUsage.CachedInputTokens()
+	require.True(t, ok)
+	assert.Equal(t, uint32(80), cached)
+	cacheCreation, ok := state.tokenUsage.CacheCreationInputTokens()
+	require.True(t, ok)
+	assert.Equal(t, uint32(20), cacheCreation)
 }
 
 func TestOpenAIStreamToAnthropicState_ProcessBuffer_ToolCallStreaming(t *testing.T) {
@@ -656,7 +696,7 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_ToolCallStreaming(t *testing
 	require.JSONEq(t, `{"type":"content_block_stop","index":0}`, events[3].data)
 
 	assert.Equal(t, "message_delta", events[4].eventType)
-	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":10}}`, events[4].data)
+	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":15,"output_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}`, events[4].data)
 
 	assert.Equal(t, "message_stop", events[5].eventType)
 	require.JSONEq(t, `{"type":"message_stop"}`, events[5].data)
@@ -693,7 +733,7 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_EndOfStreamClosing(t *testin
 		}
 	}
 	require.NotEmpty(t, msgDeltaData)
-	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":0}}`, msgDeltaData)
+	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}`, msgDeltaData)
 }
 
 func TestOpenAIStreamToAnthropicState_ProcessBuffer_EmptyInput(t *testing.T) {

@@ -630,7 +630,10 @@ type sseMessageDeltaBody struct {
 }
 
 type sseOutputUsage struct {
-	OutputTokens int `json:"output_tokens"`
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 }
 
 type sseMessageStop struct {
@@ -639,20 +642,22 @@ type sseMessageStop struct {
 
 // openAIStreamToAnthropicState tracks the state for converting OpenAI SSE chunks to Anthropic SSE events.
 type openAIStreamToAnthropicState struct {
-	buffer           bytes.Buffer
-	messageStarted   bool // flag indicating emitted message_start
-	hasOpenBlock     bool // flag indicating emitted content_block_start but not content_block_stop
-	hasThinkingBlock bool // flag indicating the open block is a thinking block
-	closingEmitted   bool // flag indicating emitted content_block_stop + message_delta + message_stop
-	messageID        string
-	model            string
-	stopReason       string // Anthropic stop_reason, mapped from OpenAI finish_reason
-	inputTokens      int
-	outputTokens     int
-	tokenUsage       metrics.TokenUsage
-	blockIndex       int                       // current Anthropic content block index
-	activeTools      map[int64]*streamToolCall // keyed by OpenAI tool_call index
-	requestModel     string
+	buffer              bytes.Buffer
+	messageStarted      bool // flag indicating emitted message_start
+	hasOpenBlock        bool // flag indicating emitted content_block_start but not content_block_stop
+	hasThinkingBlock    bool // flag indicating the open block is a thinking block
+	closingEmitted      bool // flag indicating emitted content_block_stop + message_delta + message_stop
+	messageID           string
+	model               string
+	stopReason          string // Anthropic stop_reason, mapped from OpenAI finish_reason
+	inputTokens         int
+	outputTokens        int
+	cacheReadTokens     int // prompt tokens served from OpenAI's prompt cache (prompt_tokens_details.cached_tokens)
+	cacheCreationTokens int // tokens written to OpenAI's prompt cache (prompt_tokens_details.cache_creation_input_tokens)
+	tokenUsage          metrics.TokenUsage
+	blockIndex          int                       // current Anthropic content block index
+	activeTools         map[int64]*streamToolCall // keyed by OpenAI tool_call index
+	requestModel        string
 }
 
 type streamToolCall struct {
@@ -738,11 +743,15 @@ func (s *openAIStreamToAnthropicState) handleChunk(chunk *openai.ChatCompletionR
 	if len(chunk.Choices) == 0 && chunk.Usage != nil {
 		s.inputTokens = chunk.Usage.PromptTokens
 		s.outputTokens = chunk.Usage.CompletionTokens
+		if details := chunk.Usage.PromptTokensDetails; details != nil {
+			s.cacheReadTokens = details.CachedTokens
+			s.cacheCreationTokens = details.CacheCreationTokens
+		}
 		s.tokenUsage = metrics.ExtractTokenUsageFromExplicitCaching(
 			int64(s.inputTokens),
 			int64(s.outputTokens),
-			ptr.To(int64(0)),
-			ptr.To(int64(0)),
+			ptr.To(int64(s.cacheReadTokens)),
+			ptr.To(int64(s.cacheCreationTokens)),
 		)
 		return s.emitClosingEvents(out)
 	}
@@ -1050,11 +1059,18 @@ func (s *openAIStreamToAnthropicState) emitClosingEvents(out *[]byte) error {
 		stopReason = string(anthropic.StopReasonEndTurn)
 	}
 
-	// Emit message_delta with stop_reason and final output token count.
+	// message_delta.usage is cumulative per the Anthropic API spec, so we
+	// backfill input_tokens and cache counters here rather than in
+	// message_start, since OpenAI doesn't report prompt token usage until now.
 	msgDeltaPayload := sseMessageDelta{
 		Type:  "message_delta",
 		Delta: sseMessageDeltaBody{StopReason: stopReason, StopSequence: nil},
-		Usage: sseOutputUsage{OutputTokens: s.outputTokens},
+		Usage: sseOutputUsage{
+			InputTokens:              s.inputTokens,
+			OutputTokens:             s.outputTokens,
+			CacheCreationInputTokens: s.cacheCreationTokens,
+			CacheReadInputTokens:     s.cacheReadTokens,
+		},
 	}
 	data, err := json.Marshal(msgDeltaPayload)
 	if err != nil {
