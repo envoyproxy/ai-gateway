@@ -90,10 +90,21 @@ func (c *MCPRouteController) syncMCPRoute(ctx context.Context, mcpRoute *aigv1b1
 		return nil
 	}
 
-	// Ensure the MCP proxy Backend exists before creating/updating the HTTPRoute.
-	if err := c.ensureMCPProxyBackend(ctx, mcpRoute); err != nil {
+	// Resolve the first referenced Gateway to use its namespace/name for the shared Backend.
+	gw, err := c.getFirstGateway(ctx, mcpRoute)
+	if err != nil {
+		return fmt.Errorf("failed to get Gateway for MCPRoute: %w", err)
+	}
+
+	// Ensure one shared MCP proxy Backend exists per Gateway before creating/updating the HTTPRoute.
+	sharedBackendName, err := c.ensureMCPProxyBackend(ctx, gw)
+	if err != nil {
 		return fmt.Errorf("failed to ensure MCP proxy Backend: %w", err)
 	}
+
+	// Clean up the old per-MCPRoute Backend left from before the per-Gateway sharing refactor.
+	c.deleteOldMCPRouteBackend(ctx, mcpRoute)
+
 	c.logger.Info("Syncing MCPRoute", "namespace", mcpRoute.Namespace, "name", mcpRoute.Name)
 
 	// First, we create or update the main HTTPRoute that routes to the MCP proxy.
@@ -103,7 +114,7 @@ func (c *MCPRouteController) syncMCPRoute(ctx context.Context, mcpRoute *aigv1b1
 	if err != nil {
 		return fmt.Errorf("failed to get or create HTTPRoute: %w", err)
 	}
-	if err = c.newMainHTTPRoute(mainHTTPRoute, mcpRoute); err != nil {
+	if err = c.newMainHTTPRoute(mainHTTPRoute, mcpRoute, sharedBackendName); err != nil {
 		return fmt.Errorf("failed to construct a new HTTPRoute: %w", err)
 	}
 
@@ -267,7 +278,7 @@ func (c *MCPRouteController) deleteOrphanedPerBackendResources(ctx context.Conte
 }
 
 // newMainHTTPRoute updates the main HTTPRoute with the MCPRoute.
-func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *aigv1b1.MCPRoute) error {
+func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *aigv1b1.MCPRoute, backendName string) error {
 	// This routes incoming MCP client requests to the MCP proxy in the ext proc.
 	servingPath := ptr.Deref(mcpRoute.Spec.Path, defaultMCPPath)
 	rules := []gwapiv1.HTTPRouteRule{{
@@ -286,7 +297,7 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 					BackendObjectReference: gwapiv1.BackendObjectReference{
 						Group:     ptr.To(gwapiv1.Group("gateway.envoyproxy.io")),
 						Kind:      ptr.To(gwapiv1.Kind("Backend")),
-						Name:      gwapiv1.ObjectName(mcpProxyBackendName(mcpRoute)),
+						Name:      gwapiv1.ObjectName(backendName),
 						Namespace: ptr.To(gwapiv1.Namespace(mcpRoute.Namespace)),
 						Port:      ptr.To(gwapiv1.PortNumber(internalapi.MCPProxyPort)),
 					},
@@ -516,15 +527,15 @@ func (c *MCPRouteController) updateMCPRouteStatus(ctx context.Context, route *ai
 	}
 }
 
-// ensureMCPProxyBackend ensures that the MCP proxy Backend resource exists.
-// This Backend is used by the HTTPRoute to route MCP requests to the ext proc MCP proxy.
-// It only creates the Backend once - subsequent calls are no-ops if the Backend already exists.
-func (c *MCPRouteController) ensureMCPProxyBackend(ctx context.Context, mcpRoute *aigv1b1.MCPRoute) error {
-	name := mcpProxyBackendName(mcpRoute)
+// ensureMCPProxyBackend ensures that the shared MCP proxy Backend exists for the given Gateway.
+// All MCPRoutes attached to the same Gateway share one Backend, owned by that Gateway.
+// Returns the Backend's name.
+func (c *MCPRouteController) ensureMCPProxyBackend(ctx context.Context, gw *gwapiv1.Gateway) (string, error) {
+	name := mcpProxySharedBackendName(gw.Namespace, gw.Name)
 	var backend egv1a1.Backend
-	err := c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: mcpRoute.Namespace}, &backend)
+	err := c.client.Get(ctx, client.ObjectKey{Name: name, Namespace: gw.Namespace}, &backend)
 	if err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("failed to get MCP proxy Backend: %w", err)
+		return "", fmt.Errorf("failed to get MCP proxy Backend: %w", err)
 	}
 
 	if apierrors.IsNotFound(err) {
@@ -532,7 +543,7 @@ func (c *MCPRouteController) ensureMCPProxyBackend(ctx context.Context, mcpRoute
 		backend = egv1a1.Backend{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
-				Namespace: mcpRoute.Namespace,
+				Namespace: gw.Namespace,
 			},
 			Spec: egv1a1.BackendSpec{
 				Endpoints: []egv1a1.BackendEndpoint{
@@ -545,22 +556,63 @@ func (c *MCPRouteController) ensureMCPProxyBackend(ctx context.Context, mcpRoute
 				},
 			},
 		}
-		// Set owner reference to mcpRoute for garbage collection.
-		if err = ctrlutil.SetControllerReference(mcpRoute, &backend, c.client.Scheme()); err != nil {
+		// Owner is the Gateway so the Backend is GC'd when the Gateway is deleted.
+		if err = ctrlutil.SetControllerReference(gw, &backend, c.client.Scheme()); err != nil {
 			panic(fmt.Errorf("BUG: failed to set controller reference for MCP proxy Backend: %w", err))
 		}
 
-		c.logger.Info("Creating MCP proxy Backend", "namespace", mcpRoute.Namespace, "name", name)
+		c.logger.Info("Creating shared MCP proxy Backend", "namespace", gw.Namespace, "name", name)
 		if err = c.client.Create(ctx, &backend); err != nil {
-			return fmt.Errorf("failed to create MCP proxy Backend: %w", err)
+			if !apierrors.IsAlreadyExists(err) {
+				return "", fmt.Errorf("failed to create MCP proxy Backend: %w", err)
+			}
+			// Another concurrent MCPRoute reconcile already created it; that is fine.
 		}
 	}
 
-	return nil
+	return name, nil
 }
 
-func mcpProxyBackendName(mcpRoute *aigv1b1.MCPRoute) string {
-	return fmt.Sprintf("%s-%s-mcp-proxy", mcpRoute.Namespace, mcpRoute.Name)
+// mcpProxySharedBackendName returns the name of the shared MCP proxy Backend for a given Gateway.
+func mcpProxySharedBackendName(gatewayNamespace, gatewayName string) string {
+	return fmt.Sprintf("%s-%s-mcp-proxy", gatewayNamespace, gatewayName)
+}
+
+// getFirstGateway returns the Gateway object referenced by the first ParentRef of the MCPRoute.
+func (c *MCPRouteController) getFirstGateway(ctx context.Context, mcpRoute *aigv1b1.MCPRoute) (*gwapiv1.Gateway, error) {
+	if len(mcpRoute.Spec.ParentRefs) == 0 {
+		return nil, fmt.Errorf("MCPRoute %s/%s has no parentRefs", mcpRoute.Namespace, mcpRoute.Name)
+	}
+	p := mcpRoute.Spec.ParentRefs[0]
+	gwNamespace := mcpRoute.Namespace
+	if p.Namespace != nil {
+		gwNamespace = string(*p.Namespace)
+	}
+	var gw gwapiv1.Gateway
+	if err := c.client.Get(ctx, client.ObjectKey{Name: string(p.Name), Namespace: gwNamespace}, &gw); err != nil {
+		return nil, fmt.Errorf("failed to get Gateway %s/%s: %w", gwNamespace, p.Name, err)
+	}
+	return &gw, nil
+}
+
+// deleteOldMCPRouteBackend deletes the legacy per-MCPRoute Backend if it still exists and is
+// owned by this MCPRoute. This is a one-time migration cleanup from the old naming scheme
+// ({ns}-{routeName}-mcp-proxy) to the new per-Gateway scheme ({ns}-{gwName}-mcp-proxy).
+func (c *MCPRouteController) deleteOldMCPRouteBackend(ctx context.Context, mcpRoute *aigv1b1.MCPRoute) {
+	oldName := fmt.Sprintf("%s-%s-mcp-proxy", mcpRoute.Namespace, mcpRoute.Name)
+	var backend egv1a1.Backend
+	if err := c.client.Get(ctx, client.ObjectKey{Name: oldName, Namespace: mcpRoute.Namespace}, &backend); err != nil {
+		return // Already gone or unreadable — nothing to do.
+	}
+	// Only delete if this MCPRoute is the controller owner; skip Gateway-owned shared Backends.
+	owner := metav1.GetControllerOf(&backend)
+	if owner == nil || owner.UID != mcpRoute.UID {
+		return
+	}
+	c.logger.Info("Deleting legacy per-MCPRoute mcp-proxy Backend", "namespace", mcpRoute.Namespace, "name", oldName)
+	if err := c.client.Delete(ctx, &backend); err != nil && !apierrors.IsNotFound(err) {
+		c.logger.Error(err, "failed to delete legacy mcp-proxy Backend", "name", oldName)
+	}
 }
 
 func mcpBackendRefFilterName(mcpRoute *aigv1b1.MCPRoute, backendName gwapiv1.ObjectName) string {
