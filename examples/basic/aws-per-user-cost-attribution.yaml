@@ -1,0 +1,372 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# This example demonstrates how to configure AWS Bedrock with per-user cost attribution
+# using STS AssumeRole session tags injected via ext-auth headers.
+#
+# This implements AWS Scenario 4: "Per-user tracking through an LLM gateway"
+# from the AWS Bedrock granular cost attribution blog:
+# https://aws.amazon.com/blogs/machine-learning/granular-cost-attribution-for-amazon-bedrock/
+#
+# Architecture:
+# 1. External authentication service (ext-auth) validates user requests
+# 2. ext-auth calls STS AssumeRole with per-user session tags
+# 3. ext-auth caches temporary credentials (50-min TTL)
+# 4. ext-auth injects credentials as headers: x-aws-access-key-id, x-aws-secret-access-key, x-aws-session-token
+# 5. AI Gateway uses per-request credentials for AWS SigV4 signing
+# 6. AWS Bedrock InvokeModel calls appear in CloudTrail with user identity
+# 7. Session tags appear in AWS Cost and Usage Reports (CUR 2.0) for cost attribution
+#
+# Benefits:
+# - Per-user cost tracking in AWS Cost Explorer
+# - Team/department/tenant cost allocation
+# - Environment-based cost splitting (dev/staging/prod)
+# - Compliance audit trails (which user accessed which model)
+# - No need to create hundreds of IAM users
+#
+# Prerequisites:
+# 1. Kubernetes cluster (EKS, self-managed, etc.) or EC2/ECS/Lambda deployment with external authentication service
+# 2. IAM role for AI Gateway with Bedrock permissions (fallback for non-user requests)
+#    - Can be: IRSA (EKS), Pod Identity (EKS), EC2 instance role, ECS task role, Lambda execution role, etc.
+# 3. IAM role for ext-auth with sts:AssumeRole and sts:TagSession permissions
+# 4. Target IAM role for per-user sessions with Bedrock permissions
+# 5. CUR 2.0 enabled in AWS for session tag cost attribution
+#
+# Note: This example uses EKS/IRSA for demonstration, but the per-request credentials feature
+# works with ANY AWS credential source (EC2 instance roles, ECS task roles, Lambda, environment variables, etc.)
+
+---
+# Step 1: Create a custom ServiceAccount with IRSA for fallback credentials
+# (used when no per-request credentials are provided)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ai-gateway-dataplane-aws
+  namespace: envoy-gateway-system
+  annotations:
+    # Fallback IAM role for non-authenticated or system requests
+    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/ai-gateway-bedrock-default-role
+---
+# Step 2: Create minimal RBAC for the ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ai-gateway-dataplane-aws
+  namespace: envoy-gateway-system
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ai-gateway-dataplane-aws
+  namespace: envoy-gateway-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ai-gateway-dataplane-aws
+subjects:
+  - kind: ServiceAccount
+    name: ai-gateway-dataplane-aws
+    namespace: envoy-gateway-system
+---
+# Step 3: Create custom EnvoyProxy configuration that uses the ServiceAccount
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: ai-gateway-with-aws
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        pod:
+          serviceAccountName: ai-gateway-dataplane-aws
+---
+# Step 4: Create Gateway that references the custom EnvoyProxy
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-cost-attribution
+  namespace: default
+spec:
+  gatewayClassName: envoy-ai-gateway
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: ai-gateway-with-aws
+---
+# Step 5: Create SecurityPolicy for external authentication
+# This policy calls your ext-auth service to validate requests and inject AWS credentials
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: ext-auth-policy
+  namespace: default
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-ai-gateway-cost-attribution
+  extAuth:
+    http:
+      # Your external authentication service
+      backendRef:
+        name: ext-auth-service
+        port: 8080
+      # Headers to forward to ext-auth for validation
+      headersToBackend:
+        - authorization
+        - x-api-key
+      # Don't fail open - require auth
+      failOpen: false
+---
+# Step 6: Create Service for your external authentication service
+# This is a placeholder - you'll need to implement your ext-auth service
+apiVersion: v1
+kind: Service
+metadata:
+  name: ext-auth-service
+  namespace: default
+spec:
+  selector:
+    app: ext-auth
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+# Step 7: Create AIGatewayRoute for routing to Bedrock
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-cost-attribution
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: anthropic.claude-v2
+      backendRefs:
+        - name: envoy-ai-gateway-aws-cost-attr
+---
+# Step 8: Create AIServiceBackend for AWS Bedrock
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr
+  namespace: default
+spec:
+  schema:
+    name: AWSBedrock
+  backendRef:
+    name: envoy-ai-gateway-aws-cost-attr
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+# Step 9: Create BackendSecurityPolicy using AWS credentials
+# The AI Gateway will:
+# 1. Check for x-aws-access-key-id, x-aws-secret-access-key, x-aws-session-token headers
+# 2. If present, use those per-request credentials for signing
+# 3. If not present, fall back to IRSA credentials from ServiceAccount
+# 4. Remove credential headers after use to prevent leakage
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr
+  namespace: default
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: envoy-ai-gateway-aws-cost-attr
+  type: AWSCredentials
+  awsCredentials:
+    region: us-east-1
+    # No credentialsFile needed!
+    # The AWS handler will automatically:
+    # - Use per-request credentials from x-aws-* headers (if present)
+    # - Fall back to IRSA/default credential chain (if headers not present)
+---
+# Step 10: Create Backend pointing to AWS Bedrock
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: bedrock-runtime.us-east-1.amazonaws.com
+        port: 443
+---
+# Step 11: Create BackendTLSPolicy for HTTPS
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: envoy-ai-gateway-aws-cost-attr-tls
+  namespace: default
+spec:
+  targetRefs:
+    - group: "gateway.envoyproxy.io"
+      kind: Backend
+      name: envoy-ai-gateway-aws-cost-attr
+  validation:
+    wellKnownCACertificates: "System"
+    hostname: bedrock-runtime.us-east-1.amazonaws.com
+
+---
+# Example ext-auth service implementation (Python/FastAPI):
+#
+# import boto3
+# import redis
+# from fastapi import FastAPI, Request, Response
+#
+# app = FastAPI()
+# sts_client = boto3.client("sts")
+# redis_client = redis.Redis(host="redis", port=6379, db=0)
+#
+# @app.post("/check")
+# async def check_auth(request: Request):
+#     # 1. Validate user (JWT, API key, etc.)
+#     user_id = validate_user(request.headers.get("authorization"))
+#     if not user_id:
+#         return Response(status_code=403, content="Unauthorized")
+#
+#     # 2. Get cached credentials or create new ones
+#     cache_key = f"aws-creds:{user_id}"
+#     cached = redis_client.get(cache_key)
+#
+#     if cached:
+#         creds = json.loads(cached)
+#     else:
+#         # 3. Call STS AssumeRole with session tags
+#         session_name = user_id.replace("@", "_at_")
+#         response = sts_client.assume_role(
+#             RoleArn="arn:aws:iam::ACCOUNT_ID:role/ai-gateway-bedrock-tagging",
+#             RoleSessionName=session_name,
+#             DurationSeconds=3600,  # 1 hour
+#             Tags=[
+#                 {"Key": "user-id", "Value": user_id},
+#                 {"Key": "tier", "Value": get_user_tier(user_id)},
+#                 {"Key": "team", "Value": get_user_team(user_id)},
+#                 {"Key": "environment", "Value": "production"}
+#             ]
+#         )
+#
+#         creds = {
+#             "AccessKeyId": response["Credentials"]["AccessKeyId"],
+#             "SecretAccessKey": response["Credentials"]["SecretAccessKey"],
+#             "SessionToken": response["Credentials"]["SessionToken"]
+#         }
+#
+#         # Cache for 50 minutes (credentials valid for 60 minutes)
+#         redis_client.setex(cache_key, 3000, json.dumps(creds))
+#
+#     # 4. Inject credentials as headers for AI Gateway
+#     return Response(
+#         status_code=200,
+#         headers={
+#             "x-aws-access-key-id": creds["AccessKeyId"],
+#             "x-aws-secret-access-key": creds["SecretAccessKey"],
+#             "x-aws-session-token": creds["SessionToken"],
+#             "x-user-id": user_id  # Optional: for logging
+#         }
+#     )
+#
+# IAM Policy for ext-auth service role:
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Action": [
+#         "sts:AssumeRole",
+#         "sts:TagSession"
+#       ],
+#       "Resource": "arn:aws:iam::ACCOUNT_ID:role/ai-gateway-bedrock-tagging"
+#     }
+#   ]
+# }
+#
+# IAM Trust Policy for target role (ai-gateway-bedrock-tagging):
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Principal": {
+#         "AWS": "arn:aws:iam::ACCOUNT_ID:role/ext-auth-role"
+#       },
+#       "Action": [
+#         "sts:AssumeRole",
+#         "sts:TagSession"
+#       ]
+#     }
+#   ]
+# }
+#
+# IAM Policy for target role (ai-gateway-bedrock-tagging):
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [
+#     {
+#       "Effect": "Allow",
+#       "Action": [
+#         "bedrock:InvokeModel",
+#         "bedrock:InvokeModelWithResponseStream"
+#       ],
+#       "Resource": "*"
+#     }
+#   ]
+# }
+#
+# Testing:
+# 1. Deploy the configuration
+# 2. Make a request with authentication:
+#    curl -H "Authorization: Bearer <jwt>" \
+#         -H "x-ai-eg-model: anthropic.claude-v2" \
+#         -H "Content-Type: application/json" \
+#         -d '{"messages": [{"role": "user", "content": "Hello"}]}' \
+#         http://<gateway-ip>/v1/chat/completions
+#
+# 3. Check AWS CloudTrail for userIdentity:
+#    {
+#      "userIdentity": {
+#        "principalId": "AROAEXAMPLE:user_at_example_com",
+#        "arn": "arn:aws:sts::ACCOUNT_ID:assumed-role/ai-gateway-bedrock-tagging/user_at_example_com",
+#        "sessionContext": {
+#          "sessionIssuer": {
+#            "principalId": "AROAEXAMPLE"
+#          }
+#        }
+#      },
+#      "requestParameters": {
+#        "tags": {
+#          "user-id": "user@example.com",
+#          "tier": "standard",
+#          "team": "engineering"
+#        }
+#      }
+#    }
+#
+# 4. Query AWS Cost Explorer or CUR 2.0:
+#    - Filter by iamPrincipal/user-id tag for per-user costs
+#    - Filter by iamPrincipal/team tag for per-team costs
+#    - Filter by iamPrincipal/tier tag for per-tier costs
