@@ -1,0 +1,170 @@
+{
+  "series": {
+    "version": "v1.0",
+    "title": "Envoy AI Gateway v1.0.x",
+    "subtitle": "The first stable, generally available release. The v1beta1 control-plane API is now covered by our stability guarantee — with 16 LLM providers, an MCP gateway, multimodal and audio endpoints, enterprise observability, and multi-tenant routing, all on the proven Envoy Gateway foundation.",
+    "badge": "GA",
+    "badgeType": "major"
+  },
+  "releases": [
+    {
+      "version": "v1.0.0",
+      "date": "June 23, 2026",
+      "type": "major",
+      "tags": [
+        { "text": "General Availability", "type": "major" },
+        { "text": "Stable v1beta1 API", "type": "milestone" },
+        { "text": "SemVer Guarantee", "type": "milestone" },
+        { "text": "16 Providers", "type": "feature" },
+        { "text": "MCP Gateway", "type": "feature" },
+        { "text": "Multimodal & Audio", "type": "feature" },
+        { "text": "Enterprise Observability", "type": "feature" },
+        { "text": "Multi-Tenant Routing", "type": "feature" }
+      ],
+      "overview": "Envoy AI Gateway v1.0.0 marks General Availability. With this release the core control-plane API — AIGatewayRoute, AIServiceBackend, BackendSecurityPolicy, GatewayConfig, and MCPRoute, all served at v1beta1 — is declared stable: within the 1.x series we will not make breaking changes to it unless required by a critical security fix, and any such change will ship with a documented migration path. Upgrading from v0.7 requires no changes to your resources. 1.0 brings together everything built since the first release in February 2025: a single OpenAI-compatible API across 16 providers with cross-provider translation, a full Model Context Protocol gateway, multimodal and audio endpoints, enterprise-grade observability, and multi-tenant, quota-aware routing — all as an additive layer on CNCF Envoy Gateway. This is the foundation we set out to build when we said “Onward to 1.0”: a stable base you can run production AI infrastructure on.",
+      "features": [
+        {
+          "title": "A Stable, Versioned Control-Plane API",
+          "items": [
+            {
+              "title": "Core CRDs now covered by the stability guarantee",
+              "description": "The control-plane API you build on — <code>AIGatewayRoute</code>, <code>AIServiceBackend</code>, <code>BackendSecurityPolicy</code>, <code>GatewayConfig</code>, and <code>MCPRoute</code>, all served at <code>v1beta1</code> — is now a stable contract. Within the 1.x series these APIs will not change in a breaking way unless required by a critical security fix, and any such change will ship with a documented migration path. You can standardize on Envoy AI Gateway without tracking a moving target."
+            }
+          ]
+        },
+        {
+          "title": "Universal LLM Access",
+          "items": [
+            {
+              "title": "One OpenAI-compatible API across 16 providers",
+              "description": "Reach OpenAI, Azure OpenAI, Google Gemini, Google Vertex AI, AWS Bedrock, Anthropic, Mistral, Cohere, Groq, Together AI, DeepInfra, DeepSeek, Hunyuan, SambaNova, Grok, and the Tetrate Agent Router Service through a single endpoint. Point your application at the gateway once and switch or mix providers without changing client code."
+            },
+            {
+              "title": "Cross-provider request/response translation",
+              "description": "Translate between provider protocols transparently — Anthropic <code>/v1/messages</code> to OpenAI <code>/v1/chat/completions</code>, and Anthropic Messages to AWS Bedrock Converse and InvokeModel — including streaming, tool use, reasoning/thinking blocks, and images, so clients reach any backend without rewriting their integration."
+            },
+            {
+              "title": "Model virtualization with <code>modelNameOverride</code>",
+              "description": "Expose stable, application-facing model names while the gateway maps them to provider-specific models. Enables A/B testing, gradual migrations, and multi-provider strategies without touching client code, and guards against provider lock-in."
+            }
+          ]
+        },
+        {
+          "title": "Full Endpoint Coverage",
+          "items": [
+            {
+              "title": "Chat, completions, embeddings, and images",
+              "description": "<code>/v1/chat/completions</code>, <code>/v1/completions</code>, <code>/v1/embeddings</code>, and <code>/v1/images/generations</code> are supported across compatible providers, all behind the same auth, rate limiting, and observability."
+            },
+            {
+              "title": "Audio: transcription, translation, and speech",
+              "description": "<code>/v1/audio/transcriptions</code>, <code>/v1/audio/translations</code>, and <code>/v1/audio/speech</code> bring speech-to-text and text-to-speech workloads through the gateway alongside the rest of your AI traffic."
+            },
+            {
+              "title": "OpenAI Responses API and multimodal inputs",
+              "description": "The <code>/v1/responses</code> endpoint is supported, including on Azure OpenAI backends, and chat requests accept image, <code>audio_url</code>, and <code>video_url</code> content parts for compatible backends."
+            }
+          ]
+        },
+        {
+          "title": "MCP Gateway",
+          "items": [
+            {
+              "title": "Aggregate and route Model Context Protocol servers",
+              "description": "Multiplex multiple MCP servers behind one endpoint with <code>MCPRoute</code>, including tool routing and include/exclude filtering, so clients see one unified tool surface."
+            },
+            {
+              "title": "Fine-grained, CEL-based authorization",
+              "description": "Enforce per-tool authorization. <code>tools/list</code> applies the same rules as <code>tools/call</code>, so callers only discover the tools they are allowed to invoke — no leaked tool names, no wasted LLM turns."
+            },
+            {
+              "title": "Per-backend header forwarding with JWT claim projection",
+              "description": "Forward selected request headers and project JWT claims to individual MCP backends, enabling identity-aware access to downstream tool servers."
+            }
+          ]
+        },
+        {
+          "title": "Traffic Management & Multi-Tenancy",
+          "items": [
+            {
+              "title": "Hostname-based multi-tenant routing",
+              "description": "Serve different model sets per hostname from a single Gateway with <code>AIGatewayRoute.spec.hostnames</code>; the <code>/v1/models</code> endpoint scopes its response to the models for the matching host."
+            },
+            {
+              "title": "Token- and quota-aware rate limiting",
+              "description": "Rate limit on model tokens and per <code>QuotaPolicy</code>, with backend rate limit filter injection to enforce quota-based throttling against upstream provider limits."
+            },
+            {
+              "title": "Provider fallback and InferencePool support",
+              "description": "Automatic failover across providers, plus intelligent endpoint selection for self-hosted models via the Gateway API Inference Extension."
+            }
+          ]
+        },
+        {
+          "title": "Provider Authentication & Compliance",
+          "items": [
+            {
+              "title": "<code>BackendSecurityPolicy</code> for upstream authentication",
+              "description": "Centralize provider credentials with API key, AWS, Azure, and GCP cloud-native identity — including GKE Workload Identity via Application Default Credentials — keeping secrets out of application code."
+            },
+            {
+              "title": "Request/response body redaction",
+              "description": "Redact sensitive request and response bodies to meet compliance requirements without losing the rest of your observability."
+            }
+          ]
+        },
+        {
+          "title": "Enterprise Observability",
+          "items": [
+            {
+              "title": "OpenTelemetry tracing with OpenInference",
+              "description": "Full request-lifecycle tracing, compatible with AI evaluation tools like Arize Phoenix, for deep visibility into every LLM and MCP request."
+            },
+            {
+              "title": "GenAI token metrics and reasoning-token accounting",
+              "description": "Prometheus metrics for token usage, time-to-first-token, and inter-token latency, with separate accounting for reasoning tokens so cost attribution stays accurate for thinking models."
+            }
+          ]
+        }
+      ],
+      "apiChanges": [
+        {
+          "title": "The <code>v1beta1</code> API is now stable",
+          "description": "v1.0 does not change the API surface. Instead it elevates the existing <code>v1beta1</code> CRDs to a stable contract under our <a href=\"https://github.com/envoyproxy/ai-gateway/blob/main/RELEASES.md#support-policy\">support policy</a>: no new apiVersion is introduced and no resource migration is required. New fields added during the 1.x series will remain backward compatible."
+        }
+      ],
+      "deprecations": [],
+      "bugFixes": [],
+      "breakingChanges": [],
+      "dependencies": [
+        {
+          "title": "Go 1.26.4",
+          "description": "Built with Go 1.26.4."
+        },
+        {
+          "title": "Envoy Gateway v1.8.1",
+          "description": "Built on Envoy Gateway v1.8.1 for proven data plane capabilities."
+        },
+        {
+          "title": "Envoy v1.38",
+          "description": "Leveraging Envoy Proxy v1.38.1 for battle-tested networking."
+        },
+        {
+          "title": "Gateway API v1.5.1",
+          "description": "Support for Gateway API v1.5.1 specifications."
+        },
+        {
+          "title": "Gateway API Inference Extension v1.0.2",
+          "description": "Continued integration with Gateway API Inference Extension v1.0.2 for intelligent endpoint selection."
+        },
+        {
+          "title": "MCP Go SDK v1.6.1",
+          "description": "Built on MCP Go SDK v1.6.1 for the latest Model Context Protocol features."
+        }
+      ]
+    }
+  ],
+  "navigation": {
+    "previous": { "version": "v0.7.x Series", "path": "/release-notes/v0.7" }
+  }
+}
