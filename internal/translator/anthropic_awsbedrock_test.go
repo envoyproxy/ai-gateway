@@ -955,6 +955,39 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_UserArrayContent(t *testing
 	assert.Equal(t, []string{"END", "STOP"}, bedrockReq.InferenceConfig.StopSequences)
 }
 
+func TestAnthropicToAWSBedrockTranslator_RequestBody_UserArrayContentError(t *testing.T) {
+	translator := NewAnthropicToAWSBedrockTranslator("")
+	req := &anthropicschema.MessagesRequest{
+		Model:     "test-model",
+		MaxTokens: 100,
+		Messages: []anthropicschema.MessageParam{
+			{
+				Role: anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{
+					Array: []anthropicschema.ContentBlockParam{
+						{Image: &anthropicschema.ImageBlockParam{
+							Type: "image",
+							Source: anthropicschema.ImageSource{
+								Base64: &anthropicschema.Base64ImageSource{
+									Type:      "base64",
+									MediaType: "application/pdf",
+									Data:      "not-used",
+								},
+							},
+						}},
+					},
+				},
+			},
+		},
+	}
+	rawBody, err := json.Marshal(req)
+	require.NoError(t, err)
+
+	_, _, err = translator.RequestBody(rawBody, req, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported image format application/pdf")
+}
+
 func TestAnthropicToAWSBedrockTranslator_RequestBody_ToolResultMessages(t *testing.T) {
 	translator := NewAnthropicToAWSBedrockTranslator("")
 	req := &anthropicschema.MessagesRequest{
@@ -1032,33 +1065,263 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_ToolResultMessages(t *testi
 	err = json.Unmarshal(body, &bedrockReq)
 	require.NoError(t, err)
 
-	// Should be: user, assistant, user (tool result 1), user (tool result 2).
-	// Tool result messages with role "user" go through convertUserMessage individually.
-	require.Len(t, bedrockReq.Messages, 4)
+	// Should be: user, assistant, user (coalesced tool results).
+	// Consecutive tool_result messages are coalesced into a single Bedrock message.
+	require.Len(t, bedrockReq.Messages, 3)
 
-	// First tool result message.
-	toolResultMsg1 := bedrockReq.Messages[2]
-	assert.Equal(t, awsbedrock.ConversationRoleUser, toolResultMsg1.Role)
-	require.Len(t, toolResultMsg1.Content, 1)
-	require.NotNil(t, toolResultMsg1.Content[0].ToolResult)
-	assert.Equal(t, "tu_abc", *toolResultMsg1.Content[0].ToolResult.ToolUseID)
-	require.Len(t, toolResultMsg1.Content[0].ToolResult.Content, 1)
-	assert.Equal(t, "72°F and sunny", *toolResultMsg1.Content[0].ToolResult.Content[0].Text)
+	// Coalesced tool result message contains both tool results.
+	toolResultMsg := bedrockReq.Messages[2]
+	assert.Equal(t, awsbedrock.ConversationRoleUser, toolResultMsg.Role)
+	require.Len(t, toolResultMsg.Content, 2)
 
-	// Second tool result message (error).
-	toolResultMsg2 := bedrockReq.Messages[3]
-	assert.Equal(t, awsbedrock.ConversationRoleUser, toolResultMsg2.Role)
-	require.Len(t, toolResultMsg2.Content, 1)
-	require.NotNil(t, toolResultMsg2.Content[0].ToolResult)
-	assert.Equal(t, "tu_def", *toolResultMsg2.Content[0].ToolResult.ToolUseID)
-	assert.Equal(t, "error", *toolResultMsg2.Content[0].ToolResult.Status)
-	require.Len(t, toolResultMsg2.Content[0].ToolResult.Content, 1)
-	assert.Equal(t, "Error: city not found", *toolResultMsg2.Content[0].ToolResult.Content[0].Text)
+	// First tool result.
+	require.NotNil(t, toolResultMsg.Content[0].ToolResult)
+	assert.Equal(t, "tu_abc", *toolResultMsg.Content[0].ToolResult.ToolUseID)
+	require.Len(t, toolResultMsg.Content[0].ToolResult.Content, 1)
+	assert.Equal(t, "72°F and sunny", *toolResultMsg.Content[0].ToolResult.Content[0].Text)
+
+	// Second tool result (error) coalesced into the same message.
+	require.NotNil(t, toolResultMsg.Content[1].ToolResult)
+	assert.Equal(t, "tu_def", *toolResultMsg.Content[1].ToolResult.ToolUseID)
+	assert.Equal(t, "error", *toolResultMsg.Content[1].ToolResult.Status)
+	require.Len(t, toolResultMsg.Content[1].ToolResult.Content, 1)
+	assert.Equal(t, "Error: city not found", *toolResultMsg.Content[1].ToolResult.Content[0].Text)
 
 	// Verify tool choice "any".
 	require.NotNil(t, bedrockReq.ToolConfig)
 	require.NotNil(t, bedrockReq.ToolConfig.ToolChoice)
 	assert.NotNil(t, bedrockReq.ToolConfig.ToolChoice.Any)
+}
+
+func TestAnthropicToAWSBedrockTranslator_RequestBody_ToolResultMessagesWithSystemMessages(t *testing.T) {
+	// Regression test: when system messages are present in the messages array,
+	// promoteAnthropicSystemMessagesToParam filters them out, creating a shorter
+	// `messages` slice. The coalescing loop must use the filtered `messages` slice
+	// (not body.Messages) to avoid index misalignment and potential out-of-bounds access.
+	translator := NewAnthropicToAWSBedrockTranslator("")
+	req := &anthropicschema.MessagesRequest{
+		Model:     "test-model",
+		MaxTokens: 100,
+		Tools: []anthropicschema.ToolUnion{
+			{Tool: &anthropicschema.Tool{
+				Type:        "custom",
+				Name:        "get_weather",
+				Description: "Get weather",
+				InputSchema: anthropicschema.ToolInputSchema{Type: "object"},
+			}},
+		},
+		Messages: []anthropicschema.MessageParam{
+			// System message at the start — will be promoted out of the messages slice.
+			{
+				Role:    "system",
+				Content: anthropicschema.MessageContent{Text: "You are a helpful assistant."},
+			},
+			// Another system message — also promoted.
+			{
+				Role:    "system",
+				Content: anthropicschema.MessageContent{Text: "Always be concise."},
+			},
+			{
+				Role:    anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{Text: "What's the weather?"},
+			},
+			{
+				Role: anthropicschema.MessageRoleAssistant,
+				Content: anthropicschema.MessageContent{
+					Array: []anthropicschema.ContentBlockParam{
+						{ToolUse: &anthropicschema.ToolUseBlockParam{
+							Type:  "tool_use",
+							ID:    "tu_abc",
+							Name:  "get_weather",
+							Input: map[string]any{"city": "NYC"},
+						}},
+					},
+				},
+			},
+			// First tool result message.
+			{
+				Role: anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{
+					Array: []anthropicschema.ContentBlockParam{
+						{ToolResult: &anthropicschema.ToolResultBlockParam{
+							Type:      "tool_result",
+							ToolUseID: "tu_abc",
+							Content:   &anthropicschema.ToolResultContent{Text: "72°F and sunny"},
+						}},
+					},
+				},
+			},
+			// Second consecutive tool result message (should be coalesced with the first).
+			{
+				Role: anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{
+					Array: []anthropicschema.ContentBlockParam{
+						{ToolResult: &anthropicschema.ToolResultBlockParam{
+							Type:      "tool_result",
+							ToolUseID: "tu_def",
+							IsError:   true,
+							Content: &anthropicschema.ToolResultContent{
+								Array: []anthropicschema.ToolResultContentItem{
+									{Text: &anthropicschema.TextBlockParam{Type: "text", Text: "Error: city not found"}},
+								},
+							},
+						}},
+					},
+				},
+			},
+		},
+	}
+	rawBody, err := json.Marshal(req)
+	require.NoError(t, err)
+
+	_, body, err := translator.RequestBody(rawBody, req, false)
+	require.NoError(t, err)
+
+	var bedrockReq awsbedrock.ConverseInput
+	err = json.Unmarshal(body, &bedrockReq)
+	require.NoError(t, err)
+
+	// After promoting 2 system messages, messages has 4 entries:
+	//   user, assistant, user(tool_result), user(tool_result)
+	// The two consecutive tool_result messages should be coalesced into one,
+	// yielding 3 Bedrock messages: user, assistant, user(coalesced tool results).
+	require.Len(t, bedrockReq.Messages, 3)
+
+	// First message: user text.
+	assert.Equal(t, awsbedrock.ConversationRoleUser, bedrockReq.Messages[0].Role)
+	require.Len(t, bedrockReq.Messages[0].Content, 1)
+	assert.NotNil(t, bedrockReq.Messages[0].Content[0].Text)
+
+	// Second message: assistant tool_use.
+	assert.Equal(t, awsbedrock.ConversationRoleAssistant, bedrockReq.Messages[1].Role)
+
+	// Third message: coalesced tool results (both tool_use_ids in one message).
+	toolResultMsg := bedrockReq.Messages[2]
+	assert.Equal(t, awsbedrock.ConversationRoleUser, toolResultMsg.Role)
+	require.Len(t, toolResultMsg.Content, 2)
+	require.NotNil(t, toolResultMsg.Content[0].ToolResult)
+	assert.Equal(t, "tu_abc", *toolResultMsg.Content[0].ToolResult.ToolUseID)
+	assert.Equal(t, "72°F and sunny", *toolResultMsg.Content[0].ToolResult.Content[0].Text)
+	require.NotNil(t, toolResultMsg.Content[1].ToolResult)
+	assert.Equal(t, "tu_def", *toolResultMsg.Content[1].ToolResult.ToolUseID)
+	assert.Equal(t, "error", *toolResultMsg.Content[1].ToolResult.Status)
+	assert.Equal(t, "Error: city not found", *toolResultMsg.Content[1].ToolResult.Content[0].Text)
+
+	// Verify system prompt was promoted.
+	require.NotNil(t, bedrockReq.System)
+	require.Len(t, bedrockReq.System, 1)
+	assert.Contains(t, *bedrockReq.System[0].Text, "You are a helpful assistant.")
+	assert.Contains(t, *bedrockReq.System[0].Text, "Always be concise.")
+}
+
+func TestAnthropicToAWSBedrockTranslator_RequestBody_SingleToolResultNotCoalesced(t *testing.T) {
+	// Verify that a single tool_result message (without a consecutive one) is NOT coalesced
+	// but still goes through the tool result path (not convertUserMessage).
+	translator := NewAnthropicToAWSBedrockTranslator("")
+	req := &anthropicschema.MessagesRequest{
+		Model:     "test-model",
+		MaxTokens: 100,
+		Tools: []anthropicschema.ToolUnion{
+			{Tool: &anthropicschema.Tool{
+				Type:        "custom",
+				Name:        "get_weather",
+				Description: "Get weather",
+				InputSchema: anthropicschema.ToolInputSchema{Type: "object"},
+			}},
+		},
+		Messages: []anthropicschema.MessageParam{
+			{
+				Role:    anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{Text: "What's the weather?"},
+			},
+			{
+				Role: anthropicschema.MessageRoleAssistant,
+				Content: anthropicschema.MessageContent{
+					Array: []anthropicschema.ContentBlockParam{
+						{ToolUse: &anthropicschema.ToolUseBlockParam{
+							Type:  "tool_use",
+							ID:    "tu_abc",
+							Name:  "get_weather",
+							Input: map[string]any{"city": "NYC"},
+						}},
+					},
+				},
+			},
+			// Single tool result — no consecutive tool result to coalesce with.
+			{
+				Role: anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{
+					Array: []anthropicschema.ContentBlockParam{
+						{ToolResult: &anthropicschema.ToolResultBlockParam{
+							Type:      "tool_result",
+							ToolUseID: "tu_abc",
+							Content:   &anthropicschema.ToolResultContent{Text: "72°F and sunny"},
+						}},
+					},
+				},
+			},
+			// Follow-up user text message — should NOT be coalesced with tool result.
+			{
+				Role:    anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{Text: "Thanks!"},
+			},
+		},
+	}
+	rawBody, err := json.Marshal(req)
+	require.NoError(t, err)
+
+	_, body, err := translator.RequestBody(rawBody, req, false)
+	require.NoError(t, err)
+
+	var bedrockReq awsbedrock.ConverseInput
+	err = json.Unmarshal(body, &bedrockReq)
+	require.NoError(t, err)
+
+	// 4 messages: user, assistant, user(tool_result), user(text)
+	require.Len(t, bedrockReq.Messages, 4)
+
+	// Third message: tool result (not coalesced).
+	toolResultMsg := bedrockReq.Messages[2]
+	assert.Equal(t, awsbedrock.ConversationRoleUser, toolResultMsg.Role)
+	require.Len(t, toolResultMsg.Content, 1)
+	require.NotNil(t, toolResultMsg.Content[0].ToolResult)
+	assert.Equal(t, "tu_abc", *toolResultMsg.Content[0].ToolResult.ToolUseID)
+
+	// Fourth message: plain text (not coalesced with tool result).
+	textMsg := bedrockReq.Messages[3]
+	assert.Equal(t, awsbedrock.ConversationRoleUser, textMsg.Role)
+	require.Len(t, textMsg.Content, 1)
+	assert.NotNil(t, textMsg.Content[0].Text)
+	assert.Equal(t, "Thanks!", *textMsg.Content[0].Text)
+}
+
+func TestAnthropicToAWSBedrockTranslator_RequestBody_UnexpectedRole(t *testing.T) {
+	// Verify that an unexpected role returns an error.
+	translator := NewAnthropicToAWSBedrockTranslator("")
+	req := &anthropicschema.MessagesRequest{
+		Model:     "test-model",
+		MaxTokens: 100,
+		Messages: []anthropicschema.MessageParam{
+			{
+				Role:    anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{Text: "Hello"},
+			},
+			{
+				Role:    "system", // Will be promoted to system param.
+				Content: anthropicschema.MessageContent{Text: "You are helpful."},
+			},
+			{
+				Role:    "invalid_role",
+				Content: anthropicschema.MessageContent{Text: "This should fail"},
+			},
+		},
+	}
+	rawBody, err := json.Marshal(req)
+	require.NoError(t, err)
+
+	_, _, err = translator.RequestBody(rawBody, req, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unexpected role: invalid_role")
 }
 
 func TestAnthropicToAWSBedrockTranslator_ResponseBody_NonStreamingToolUseAndReasoning(t *testing.T) {

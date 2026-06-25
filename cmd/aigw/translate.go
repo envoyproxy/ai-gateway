@@ -247,7 +247,7 @@ func translateCustomResourceObjects(
 	mcpC := controller.NewMCPRouteController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
 		make(chan event.GenericEvent, eventChanBuffer),
 	)
-	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()),
+	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()), "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "debug", true, func() string {
 			return "aigw-translate"
 		}, false,
