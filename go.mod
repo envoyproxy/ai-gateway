@@ -4,16 +4,16 @@ module github.com/envoyproxy/ai-gateway
 go 1.26.4
 
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.1
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.22.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1
 	github.com/a8m/envsubst v1.4.3
 	github.com/alecthomas/kong v1.15.0
 	github.com/andybalholm/brotli v1.2.1
-	github.com/anthropics/anthropic-sdk-go v1.46.0
-	github.com/aws/aws-sdk-go-v2 v1.41.11
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.12
-	github.com/aws/aws-sdk-go-v2/config v1.32.22
-	github.com/aws/aws-sdk-go-v2/service/sts v1.43.1
+	github.com/anthropics/anthropic-sdk-go v1.50.1
+	github.com/aws/aws-sdk-go-v2 v1.42.0
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.13
+	github.com/aws/aws-sdk-go-v2/config v1.32.25
+	github.com/aws/aws-sdk-go-v2/service/sts v1.43.3
 	github.com/bytedance/sonic v1.15.2
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cohere-ai/cohere-go/v2 v2.18.0
@@ -55,10 +55,10 @@ require (
 	go.uber.org/zap v1.28.0
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sync v0.20.0
+	golang.org/x/sync v0.21.0
 	golang.org/x/tools v0.45.0
-	google.golang.org/api v0.283.0
-	google.golang.org/genai v1.59.0
+	google.golang.org/api v0.284.0
+	google.golang.org/genai v1.60.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
@@ -90,17 +90,17 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/avast/retry-go/v5 v5.0.0 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.21 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.27 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.27 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.27 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.28 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.11 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.27 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.1.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.31.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.4 // indirect
-	github.com/aws/smithy-go v1.27.0 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.24 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.29 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.29 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.29 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.30 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.12 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.29 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.2.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.31.3 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.6 // indirect
+	github.com/aws/smithy-go v1.27.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
@@ -174,7 +174,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/invopop/jsonschema v0.13.0 // indirect
+	github.com/invopop/jsonschema v0.14.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kelseyhightower/envconfig v1.4.0 // indirect
@@ -202,6 +202,7 @@ require (
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
+	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
@@ -227,7 +228,6 @@ require (
 	github.com/ulikunitz/lz v0.6.11 // indirect
 	github.com/ulikunitz/xz/v2 v2.0.0-dev.4 // indirect
 	github.com/vbatts/tar-split v0.12.2 // indirect
-	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yuin/gopher-lua v1.1.2 // indirect
