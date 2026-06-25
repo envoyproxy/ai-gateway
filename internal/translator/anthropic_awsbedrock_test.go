@@ -1598,7 +1598,7 @@ func TestPromoteAnthropicSystemMessagesToParam(t *testing.T) {
 		require.NotNil(t, bedrockReq.System)
 		require.Len(t, bedrockReq.System, 1)
 		assert.Equal(t, "You are helpful.", *bedrockReq.System[0].Text)
-		})
+	})
 }
 
 func TestIsOnlyToolResult(t *testing.T) {
