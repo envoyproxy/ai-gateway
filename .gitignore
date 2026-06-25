@@ -52,3 +52,4 @@ inference-extension-conformance-test-report.yaml
 /aigw
 site/.cursorrules
 /.cursor
+.worktrees/
