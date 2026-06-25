@@ -2685,3 +2685,52 @@ func requireNoEmptyAssistantContent(t *testing.T, messages []*awsbedrock.Message
 		}
 	}
 }
+
+func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody_MarshalError(t *testing.T) {
+	// Build a valid Bedrock streaming event that will be successfully decoded,
+	// but inject a json.Marshal failure to exercise the error return path
+	// that was previously a panic.
+	inputEvents := []awsbedrock.ConverseStreamEvent{
+		{Role: ptr.To(awsbedrock.ConversationRoleAssistant)},
+		{
+			ContentBlockIndex: 0,
+			EventType:         awsbedrock.ConverseStreamEventTypeContentBlockDelta.String(),
+			Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+				Text: ptr.To("hello"),
+			},
+		},
+		{StopReason: ptr.To(awsbedrock.StopReasonEndTurn)},
+	}
+
+	buf := bytes.NewBuffer(nil)
+	encoder := eventstream.NewEncoder()
+	for _, event := range inputEvents {
+		payload, err := json.Marshal(event)
+		require.NoError(t, err)
+		err = encoder.Encode(buf, eventstream.Message{
+			Headers: eventstream.Headers{
+				{Name: ":event-type", Value: eventstream.StringValue("chunk")},
+			},
+			Payload: payload,
+		})
+		require.NoError(t, err)
+	}
+
+	// Override json.Marshal to force a failure during serializeOpenAIChatCompletionChunk.
+	orig := json.Marshal
+	t.Cleanup(func() { json.Marshal = orig })
+	json.Marshal = func(v interface{}) ([]byte, error) {
+		// Allow the eventstream decoding (internal json.Unmarshal) to succeed
+		// by only failing on ChatCompletionResponseChunk marshaling.
+		if _, ok := v.(*openai.ChatCompletionResponseChunk); ok {
+			return nil, fmt.Errorf("injected marshal error")
+		}
+		return orig(v)
+	}
+
+	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true, requestModel: "test-model"}
+	_, _, _, _, err := o.ResponseBody(nil, buf, true, nil)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to marshal streaming event")
+	require.ErrorContains(t, err, "injected marshal error")
+}
