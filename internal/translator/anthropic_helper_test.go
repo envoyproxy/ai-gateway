@@ -872,7 +872,7 @@ func TestAnthropicStreamParserTokenUsage_NoDoubleCounting(t *testing.T) {
 			messageStartInputTokens:    10,
 			messageStartCacheRead:      0,
 			messageStartCacheCreation:  0,
-			messageDeltaInputTokens:    nil, // not present in message_delta
+			messageDeltaInputTokens:    nil,              // not present in message_delta
 			messageDeltaCacheRead:      ptr.To[int64](3), // only cache_read in delta
 			messageDeltaCacheCreation:  nil,
 			messageDeltaOutputTokens:   20,
