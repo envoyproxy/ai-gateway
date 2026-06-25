@@ -24,15 +24,36 @@ func TestCountTokensToGCPAnthropic_RequestBody(t *testing.T) {
 		name     string
 		override string
 		model    string
+		expModel string
 	}{
 		{
-			name:  "no override keeps original model in body",
-			model: "claude-opus-4-6",
+			name:     "no override keeps original model in body",
+			model:    "claude-opus-4-6",
+			expModel: "claude-opus-4-6",
 		},
 		{
 			name:     "with override replaces model in body",
 			override: "claude-sonnet-4-20250514",
 			model:    "claude-opus-4-6",
+			expModel: "claude-sonnet-4-20250514",
+		},
+		{
+			name:     "strips @default version tag from override",
+			override: "claude-sonnet-4-6@default",
+			model:    "claude-opus-4-6",
+			expModel: "claude-sonnet-4-6",
+		},
+		{
+			name:     "keeps explicit @version tag in override",
+			override: "claude-haiku-4-5@20251001",
+			model:    "claude-opus-4-6",
+			expModel: "claude-haiku-4-5@20251001",
+		},
+		{
+			name:     "strips @latest version tag from override",
+			override: "claude-sonnet-4-6@latest",
+			model:    "claude-opus-4-6",
+			expModel: "claude-sonnet-4-6",
 		},
 	}
 
@@ -58,11 +79,7 @@ func TestCountTokensToGCPAnthropic_RequestBody(t *testing.T) {
 			var parsed map[string]any
 			require.NoError(t, json.Unmarshal(bodyMutation, &parsed))
 			assert.Equal(t, "vertex-2023-10-16", parsed["anthropic_version"])
-			if tt.override != "" {
-				assert.Equal(t, tt.override, parsed["model"])
-			} else {
-				assert.Equal(t, tt.model, parsed["model"])
-			}
+			assert.Equal(t, tt.expModel, parsed["model"])
 		})
 	}
 }
