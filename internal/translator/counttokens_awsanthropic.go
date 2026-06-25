@@ -77,14 +77,20 @@ func (t *countTokensToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *
 	// a real InvokeModel request. Anthropic requires max_tokens, but count_tokens
 	// clients don't send it. Add a default if missing.
 	if !gjson.GetBytes(invokeBody, "max_tokens").Exists() {
-		invokeBody, _ = sjson.SetBytesOptions(invokeBody, "max_tokens", 1, sjsonOptions)
+		invokeBody, err = sjson.SetBytesOptions(invokeBody, "max_tokens", 1, sjsonOptions)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to set max_tokens: %w", err)
+		}
 	}
 
 	// Wrap in Bedrock CountTokens request format:
 	// {"input":{"invokeModel":{"body":"<base64-encoded invokeBody>"}}}
 	encodedBody := base64.StdEncoding.EncodeToString(invokeBody)
-	newBody = []byte(`{}`)
-	newBody, _ = sjson.SetBytesOptions(newBody, "input.invokeModel.body", encodedBody, sjsonOptions)
+	newBody = []byte("{}")
+	newBody, err = sjson.SetBytesOptions(newBody, "input.invokeModel.body", encodedBody, sjsonOptions)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to wrap body: %w", err)
+	}
 
 	// URL encode the model ID for the path.
 	encodedModelID := url.PathEscape(model)
