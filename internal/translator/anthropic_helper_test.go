@@ -867,6 +867,48 @@ func TestAnthropicStreamParserTokenUsage_NoDoubleCounting(t *testing.T) {
 			expectedCacheCreationToken: 0,
 			expectedOutputTokens:       16,
 		},
+		{
+			name:                       "message_delta with only cache_read, no input_tokens field",
+			messageStartInputTokens:    10,
+			messageStartCacheRead:      0,
+			messageStartCacheCreation:  0,
+			messageDeltaInputTokens:    nil, // not present in message_delta
+			messageDeltaCacheRead:      ptr.To[int64](3), // only cache_read in delta
+			messageDeltaCacheCreation:  nil,
+			messageDeltaOutputTokens:   20,
+			expectedInputTokens:        13, // 10 base + 3 cache_read
+			expectedCachedTokens:       3,
+			expectedCacheCreationToken: 0,
+			expectedOutputTokens:       20,
+		},
+		{
+			name:                       "message_delta with only cache_creation, no input_tokens field",
+			messageStartInputTokens:    8,
+			messageStartCacheRead:      0,
+			messageStartCacheCreation:  0,
+			messageDeltaInputTokens:    nil, // not present in message_delta
+			messageDeltaCacheRead:      nil,
+			messageDeltaCacheCreation:  ptr.To[int64](4), // only cache_creation in delta
+			messageDeltaOutputTokens:   15,
+			expectedInputTokens:        12, // 8 base + 4 cache_creation
+			expectedCachedTokens:       0,
+			expectedCacheCreationToken: 4,
+			expectedOutputTokens:       15,
+		},
+		{
+			name:                       "message_delta with both cache fields but no input_tokens field",
+			messageStartInputTokens:    7,
+			messageStartCacheRead:      0,
+			messageStartCacheCreation:  0,
+			messageDeltaInputTokens:    nil, // not present in message_delta
+			messageDeltaCacheRead:      ptr.To[int64](2),
+			messageDeltaCacheCreation:  ptr.To[int64](3),
+			messageDeltaOutputTokens:   12,
+			expectedInputTokens:        12, // 7 base + 2 cache_read + 3 cache_creation
+			expectedCachedTokens:       2,
+			expectedCacheCreationToken: 3,
+			expectedOutputTokens:       12,
+		},
 	}
 
 	for _, tt := range tests {
@@ -927,6 +969,43 @@ data: {"type":"message_stop"}
 			assert.Equal(t, tt.expectedOutputTokens, outputTokens, "output tokens mismatch")
 		})
 	}
+}
+
+func TestAnthropicStreamParserTokenUsage_MessageDeltaNoUsage(t *testing.T) {
+	// Test that message_delta without usage field is handled correctly
+	// When usage is absent, the struct defaults to zero values which are still applied
+	parser := newAnthropicStreamParser("test-model")
+
+	sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+
+	_, _, tokenUsage, _, err := parser.Process(strings.NewReader(sseStream), true, nil)
+	require.NoError(t, err)
+
+	inputTokens, inputSet := tokenUsage.InputTokens()
+	outputTokens, outputSet := tokenUsage.OutputTokens()
+
+	assert.True(t, inputSet, "input tokens should be set")
+	assert.Equal(t, uint32(10), inputTokens, "input tokens should be from message_start")
+	// When message_delta has no usage field, the default zero values are still set
+	assert.True(t, outputSet, "output tokens should be set (default zero from message_delta)")
+	assert.Equal(t, uint32(0), outputTokens, "output tokens should be zero")
 }
 
 func TestEffortAvailable(t *testing.T) {

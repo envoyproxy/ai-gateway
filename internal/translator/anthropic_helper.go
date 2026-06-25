@@ -838,6 +838,13 @@ type messageDeltaUsageFields struct {
 }
 
 func (p *anthropicStreamParser) updateInputUsageFromMessageDelta(data []byte) error {
+	// message_delta provides cumulative (not incremental) token counts.
+	// This function handles input_tokens, cache_read_input_tokens, and cache_creation_input_tokens
+	// from message_delta. We use Set (not Add) because these are cumulative totals.
+	// This prevents double-counting when both message_start and message_delta report the same
+	// cache tokens, and also handles cases where:
+	// - Cache tokens are reported only in message_delta (not in message_start)
+	// - message_delta provides corrected/updated cache token values that override message_start
 	var event messageDeltaUsageFields
 	if err := json.Unmarshal(data, &event); err != nil {
 		return fmt.Errorf("unmarshal message_delta usage fields: %w", err)
@@ -1108,12 +1115,17 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, fmt.Errorf("unmarshal message_delta: %w", err)
 		}
+		// Update input and cache token usage from message_delta.
+		// This handles cases where cache tokens are only in message_delta,
+		// or where message_delta provides corrected totals that override message_start.
 		if err := p.updateInputUsageFromMessageDelta(data); err != nil {
 			return nil, err
 		}
 		u := event.Usage
-		// message_delta provides cumulative (not incremental) token counts.
-		// Use Set (not Add) because the value is cumulative, not incremental.
+		// message_delta provides cumulative (not incremental) output token counts.
+		// Use Set (not Add) because the value is cumulative.
+		// message_start typically reports output_tokens=0, and message_delta
+		// provides the final output token count.
 		if u.OutputTokens >= 0 {
 			p.tokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
 		}
