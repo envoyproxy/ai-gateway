@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -49,6 +50,19 @@ func (t *countTokensToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	model := cmp.Or(t.modelNameOverride, body.Model)
+
+	// AWS Bedrock's CountTokens API (POST /model/{modelId}/count-tokens) does not support
+	// cross-region inference (CRIS) model IDs (e.g., "us.anthropic.claude-sonnet-4-6" returns
+	// "The provided model doesn't support counting tokens"). The CRIS prefix is required for
+	// inference endpoints (InvokeModel, Converse) which share the same modelNameOverride,
+	// so we strip it here for count-tokens only.
+	// See: https://docs.aws.amazon.com/bedrock/latest/userguide/count-tokens.html
+	if i := strings.IndexByte(model, '.'); i >= 0 {
+		prefix := model[:i]
+		if len(prefix) <= 2 {
+			model = model[i+1:]
+		}
+	}
 
 	// Build the Anthropic body for the InvokeModel format:
 	// add anthropic_version, remove model and stream fields.
