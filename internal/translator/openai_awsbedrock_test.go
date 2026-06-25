@@ -1518,6 +1518,35 @@ func TestOpenAIToAWSBedrockTranslator_ResponseError(t *testing.T) {
 	}
 }
 
+// TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_MarshalError verifies that a failure
+// to serialize a converted streaming chunk is returned to the caller instead of panicking and
+// crashing extproc. See https://github.com/envoyproxy/ai-gateway/issues/2288.
+func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_MarshalError(t *testing.T) {
+	// Valid chunks never fail to marshal, so inject a marshal failure on the serialization path.
+	original := jsonMarshal
+	jsonMarshal = func(any) ([]byte, error) { return nil, fmt.Errorf("injected marshal failure") }
+	t.Cleanup(func() { jsonMarshal = original })
+
+	// Encode a single content-block delta so convertEvent yields a chunk that is then serialized.
+	buf := bytes.NewBuffer(nil)
+	encoder := eventstream.NewEncoder()
+	payload, err := json.Marshal(awsbedrock.ConverseStreamEvent{
+		EventType: awsbedrock.ConverseStreamEventTypeContentBlockDelta.String(),
+		Delta:     &awsbedrock.ConverseStreamEventContentBlockDelta{Text: ptr.To("hello")},
+	})
+	require.NoError(t, err)
+	require.NoError(t, encoder.Encode(buf, eventstream.Message{
+		Headers: eventstream.Headers{{Name: ":event-type", Value: eventstream.StringValue("chunk")}},
+		Payload: payload,
+	}))
+
+	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true, requestModel: "claude-sonnet-4"}
+	require.NotPanics(t, func() {
+		_, _, _, _, err = o.ResponseBody(nil, buf, true, nil)
+	})
+	require.ErrorContains(t, err, "injected marshal failure")
+}
+
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody(t *testing.T) {
 	t.Run("invalid body", func(t *testing.T) {
 		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}

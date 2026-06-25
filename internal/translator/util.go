@@ -30,6 +30,10 @@ var (
 	sseDoneFullLine = append(append(sseDataPrefix, sseDoneMessage...), '\n')
 )
 
+// jsonMarshal indirects [json.Marshal] so tests can simulate marshalling
+// failures on the streaming serialization path, which valid chunks never trigger.
+var jsonMarshal = json.Marshal
+
 // regDataURI follows the web uri regex definition.
 // https://developer.mozilla.org/en-US/docs/Web/URI/Schemes/data#syntax
 var regDataURI = regexp.MustCompile(`\Adata:(.+?)?(;base64)?,`)
@@ -63,7 +67,7 @@ func systemMsgToDeveloperMsg(msg openai.ChatCompletionSystemMessageParam) openai
 // serialize a ChatCompletionResponseChunk, this is common for all chat completion request
 func serializeOpenAIChatCompletionChunk(chunk *openai.ChatCompletionResponseChunk, buf *[]byte) error {
 	var chunkBytes []byte
-	chunkBytes, err := json.Marshal(chunk)
+	chunkBytes, err := jsonMarshal(chunk)
 	if err != nil {
 		return fmt.Errorf("failed to marshal stream chunk: %w", err)
 	}

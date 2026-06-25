@@ -737,7 +737,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			}
 			err = serializeOpenAIChatCompletionChunk(oaiEvent, &newBody)
 			if err != nil {
-				panic(fmt.Errorf("failed to marshal event: %w", err))
+				// Return the error so Envoy can handle the failure gracefully instead of
+				// panicking, which would crash extproc and disrupt all in-flight requests.
+				return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to marshal streaming event: %w", err)
 			}
 			if span != nil {
 				span.RecordResponseChunk(oaiEvent)
