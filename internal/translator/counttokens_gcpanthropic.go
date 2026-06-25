@@ -42,7 +42,10 @@ func (t *countTokensToGCPAnthropicTranslator) RequestBody(raw []byte, _ *anthrop
 	}
 
 	// Add anthropic_version field required by GCP.
-	newBody, _ = sjson.SetBytesOptions(raw, anthropicVersionKey, t.apiVersion, sjsonOptions)
+	newBody, err = sjson.SetBytesOptions(raw, anthropicVersionKey, t.apiVersion, sjsonOptions)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to set anthropic_version: %w", err)
+	}
 
 	// Override model name in the body if configured.
 	// GCP Vertex AI's count-tokens endpoint does not accept the "@default" or "@latest"
@@ -56,7 +59,10 @@ func (t *countTokensToGCPAnthropicTranslator) RequestBody(raw []byte, _ *anthrop
 		if strings.HasSuffix(model, "@default") || strings.HasSuffix(model, "@latest") {
 			model = model[:strings.LastIndexByte(model, '@')]
 		}
-		newBody, _ = sjson.SetBytesOptions(newBody, "model", model, sjsonOptions)
+		newBody, err = sjson.SetBytesOptions(newBody, "model", model, sjsonOptions)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to set model: %w", err)
+		}
 	}
 
 	// GCP Vertex AI uses the special "count-tokens" model path with rawPredict.
