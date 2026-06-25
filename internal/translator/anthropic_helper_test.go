@@ -1008,6 +1008,80 @@ data: {"type":"message_stop"}
 	assert.Equal(t, uint32(0), outputTokens, "output tokens should be zero")
 }
 
+func TestAnthropicStreamParserTokenUsage_MessageDeltaCacheWhenInputAlreadyHasCache(t *testing.T) {
+	// Test the case where message_start has cache tokens and input_tokens,
+	// and message_delta provides cache tokens but NOT input_tokens.
+	// The code must subtract the existing cache tokens from the base input_tokens
+	// before adding the new cache tokens from message_delta.
+	parser := newAnthropicStreamParser("test-model")
+
+	sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":20,"cache_read_input_tokens":5,"cache_creation_input_tokens":3,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"cache_read_input_tokens":7,"cache_creation_input_tokens":2}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+
+	_, _, tokenUsage, _, err := parser.Process(strings.NewReader(sseStream), true, nil)
+	require.NoError(t, err)
+
+	inputTokens, inputSet := tokenUsage.InputTokens()
+	cachedTokens, cachedSet := tokenUsage.CachedInputTokens()
+	cacheCreationTokens, cacheCreationSet := tokenUsage.CacheCreationInputTokens()
+
+	assert.True(t, inputSet, "input tokens should be set")
+	// message_start: inputTokens is set to 20+5+3=28 (total)
+	// message_delta without input_tokens field:
+	//   - baseInputTokens = 28 (total) - 5 (old cache_read) - 3 (old cache_creation) = 20 (base)
+	//   - Then add new cache: 20 + 7 (new cache_read) + 2 (new cache_creation) = 29
+	assert.Equal(t, uint32(29), inputTokens, "input tokens should be 29 (20 base + 7 cache_read + 2 cache_creation)")
+	assert.True(t, cachedSet, "cached tokens should be set")
+	assert.Equal(t, uint32(7), cachedTokens, "cached tokens should be from message_delta (7)")
+	assert.True(t, cacheCreationSet, "cache creation tokens should be set")
+	assert.Equal(t, uint32(2), cacheCreationTokens, "cache creation tokens should be from message_delta (2)")
+}
+
+func TestAnthropicStreamParserTokenUsage_MessageDeltaInvalidJSON(t *testing.T) {
+	// Test that message_delta with invalid JSON in usage fields returns an error
+	parser := newAnthropicStreamParser("test-model")
+
+	sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":"invalid"}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+
+	_, _, _, _, err := parser.Process(strings.NewReader(sseStream), true, nil)
+	// Should return error due to invalid JSON in usage field
+	require.Error(t, err, "should return error for invalid JSON in message_delta usage")
+	assert.Contains(t, err.Error(), "unmarshal message_delta usage fields", "error message should mention message_delta usage unmarshal")
+}
+
 func TestEffortAvailable(t *testing.T) {
 	tests := []struct {
 		name     string
