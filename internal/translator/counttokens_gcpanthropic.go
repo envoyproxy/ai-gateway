@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 
 	"github.com/tidwall/sjson"
 
@@ -44,8 +45,18 @@ func (t *countTokensToGCPAnthropicTranslator) RequestBody(raw []byte, _ *anthrop
 	newBody, _ = sjson.SetBytesOptions(raw, anthropicVersionKey, t.apiVersion, sjsonOptions)
 
 	// Override model name in the body if configured.
+	// GCP Vertex AI's count-tokens endpoint does not accept the "@default" or "@latest"
+	// version aliases (e.g., "claude-sonnet-4-6@default" returns "not supported for token
+	// counting"). Explicit version tags like "@20251001" are accepted. The "@default" alias
+	// is required for inference endpoints (messages, chat) which share the same
+	// modelNameOverride, so we strip it here for count-tokens only.
+	// See: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/count-tokens
 	if t.modelNameOverride != "" {
-		newBody, _ = sjson.SetBytesOptions(newBody, "model", t.modelNameOverride, sjsonOptions)
+		model := t.modelNameOverride
+		if strings.HasSuffix(model, "@default") || strings.HasSuffix(model, "@latest") {
+			model = model[:strings.LastIndexByte(model, '@')]
+		}
+		newBody, _ = sjson.SetBytesOptions(newBody, "model", model, sjsonOptions)
 	}
 
 	// GCP Vertex AI uses the special "count-tokens" model path with rawPredict.
