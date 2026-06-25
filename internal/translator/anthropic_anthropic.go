@@ -178,9 +178,22 @@ func (a *anthropicToAnthropicTranslator) reflectStreamingEvent(eventUnion *anthr
 		}
 	case eventUnion.MessageDelta != nil:
 		u := eventUnion.MessageDelta.Usage
-		// message_delta events provide final counts for specific token types
-		// Update output tokens from message_delta (final count)
-		if u.OutputTokens >= 0 {
+		// message_delta events provide final counts for specific token types.
+		// Standard Anthropic only reports output_tokens here, but some Anthropic-compatible
+		// backends report the final input/cache token counts on message_delta instead of
+		// message_start. When those fields are present, merge them so they are not dropped.
+		// They are only merged when non-zero to avoid clobbering message_start values with a
+		// delta that carries output tokens only. See https://github.com/envoyproxy/ai-gateway/issues/2290.
+		if u.InputTokens > 0 || u.CacheReadInputTokens > 0 || u.CacheCreationInputTokens > 0 {
+			messageDeltaUsage := metrics.ExtractTokenUsageFromExplicitCaching(
+				int64(u.InputTokens),
+				int64(u.OutputTokens),
+				ptr.To(int64(u.CacheReadInputTokens)),
+				ptr.To(int64(u.CacheCreationInputTokens)),
+			)
+			a.streamingTokenUsage.Override(messageDeltaUsage)
+		} else if u.OutputTokens >= 0 {
+			// Update output tokens from message_delta (final count).
 			a.streamingTokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
 		}
 	}
