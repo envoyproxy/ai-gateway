@@ -92,12 +92,12 @@ func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (filterapi.B
 func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, mutatedBody []byte) ([]internalapi.Header, error) {
 	method := requestHeaders[":method"]
 	path := requestHeaders[":path"]
-	authority := requestHeaders[":authority"]
-	if authority == "" {
-		authority = requestHeaders["host"]
+	host := requestHeaders[":authority"]
+	if host == "" {
+		host = requestHeaders["host"]
 	}
-	if authority == "" {
-		authority = fmt.Sprintf("bedrock-runtime.%s.amazonaws.com", a.region)
+	if host == "" {
+		host = fmt.Sprintf("bedrock-runtime.%s.amazonaws.com", a.region)
 	}
 
 	var body []byte
@@ -107,7 +107,7 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 
 	payloadHash := sha256.Sum256(body)
 	req, err := http.NewRequest(method,
-		fmt.Sprintf("https://%s%s", authority, path),
+		fmt.Sprintf("https://%s%s", host, path),
 		bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("cannot create request: %w", err)
