@@ -843,8 +843,8 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 	require.Contains(t, fc.Backends[0].Name, "apple")
 }
 
-// TestGatewayController_reconcileFilterConfigSecret_RateLimits verifies that
-// route-scoped RateLimits and global RateLimits are projected into the filter config.
+// TestGatewayController_reconcileFilterConfigSecret_RateLimits verifies that gateway-level
+// GlobalRateLimits are projected into the filter config.
 func TestGatewayController_reconcileFilterConfigSecret_RateLimits(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
@@ -860,10 +860,6 @@ func TestGatewayController_reconcileFilterConfigSecret_RateLimits(t *testing.T) 
 				Rules: []aigv1b1.AIGatewayRouteRule{
 					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "some-backend"}}},
 				},
-				RateLimits: []aigv1b1.RateLimitOverride{
-					{MetadataKey: "llm_input_token_limit", Source: aigv1b1.RateLimitOverrideSource{FromMetadata: aigv1b1.RateLimitMetadataSource{Namespace: "my.ext_authz", Key: "input_limit"}}},
-					{MetadataKey: "llm_output_token_limit", Source: aigv1b1.RateLimitOverrideSource{FromMetadata: aigv1b1.RateLimitMetadataSource{Namespace: "my.ext_authz", Key: "output_limit"}}},
-				},
 			},
 		},
 	}
@@ -878,6 +874,7 @@ func TestGatewayController_reconcileFilterConfigSecret_RateLimits(t *testing.T) 
 
 	globalRateLimits := []aigv1b1.RateLimitOverride{
 		{MetadataKey: "llm_total_token_limit", Source: aigv1b1.RateLimitOverrideSource{FromMetadata: aigv1b1.RateLimitMetadataSource{Namespace: "my.ext_authz", Key: "total_limit"}}},
+		{MetadataKey: "llm_input_token_limit", Source: aigv1b1.RateLimitOverrideSource{FromMetadata: aigv1b1.RateLimitMetadataSource{Namespace: "my.ext_authz", Key: "input_limit"}}},
 	}
 
 	const someNamespace = "some-namespace"
@@ -887,17 +884,12 @@ func TestGatewayController_reconcileFilterConfigSecret_RateLimits(t *testing.T) 
 
 	fc := requireFilterConfigFromBundle(t, kube, someNamespace, "gw", gwNamespace)
 
-	require.Len(t, fc.GlobalRateLimits, 1)
+	require.Len(t, fc.GlobalRateLimits, 2)
 	require.Equal(t, "llm_total_token_limit", fc.GlobalRateLimits[0].MetadataKey)
 	require.Equal(t, "my.ext_authz", fc.GlobalRateLimits[0].Namespace)
 	require.Equal(t, "total_limit", fc.GlobalRateLimits[0].Key)
-
-	require.Len(t, fc.RateLimits, 2)
-	for _, h := range fc.RateLimits {
-		require.Equal(t, "ns/tenant-route", h.RouteName)
-	}
-	metadataKeys := []string{fc.RateLimits[0].MetadataKey, fc.RateLimits[1].MetadataKey}
-	require.ElementsMatch(t, []string{"llm_input_token_limit", "llm_output_token_limit"}, metadataKeys)
+	require.Equal(t, "llm_input_token_limit", fc.GlobalRateLimits[1].MetadataKey)
+	require.Equal(t, "input_limit", fc.GlobalRateLimits[1].Key)
 }
 
 func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {

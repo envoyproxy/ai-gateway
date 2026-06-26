@@ -260,15 +260,6 @@ func aigwGlobalRateLimitToFilterAPI(h aigv1b1.RateLimitOverride) filterapi.Globa
 	}
 }
 
-func aigwRateLimitToFilterAPI(h aigv1b1.RateLimitOverride, routeName string) filterapi.RateLimitOverride {
-	return filterapi.RateLimitOverride{
-		MetadataKey: h.MetadataKey,
-		Namespace:   h.Source.FromMetadata.Namespace,
-		Key:         h.Source.FromMetadata.Key,
-		RouteName:   routeName,
-	}
-}
-
 // mergeBodyMutations merges route-level and backend-level BodyMutation with route-level taking precedence.
 // Returns the merged BodyMutation where route-level operations override backend-level operations for conflicting body fields.
 func mergeBodyMutations(routeLevel, backendLevel *aigv1b1.HTTPBodyMutation) *aigv1b1.HTTPBodyMutation {
@@ -543,14 +534,6 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 
 			for _, fc := range dedup {
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
-			}
-
-			dedupRL := map[string]filterapi.RateLimitOverride{}
-			for _, h := range aiGatewayRoute.Spec.RateLimits {
-				dedupRL[h.MetadataKey] = aigwRateLimitToFilterAPI(h, routeName)
-			}
-			for _, h := range dedupRL {
-				ec.RateLimits = append(ec.RateLimits, h)
 			}
 		}
 	}

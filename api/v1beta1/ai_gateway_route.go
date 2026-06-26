@@ -205,16 +205,6 @@ type AIGatewayRouteSpec struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=36
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
-
-	// RateLimits defines per-route rate-limit override entries that emit per-request limit structs
-	// into io.envoy.ai_gateway dynamic metadata. Entries with the same MetadataKey override the
-	// gateway-level GlobalRateLimits defined in GatewayConfig.
-	//
-	// +optional
-	// +listType=map
-	// +listMapKey=metadataKey
-	// +kubebuilder:validation:MaxItems=36
-	RateLimits []RateLimitOverride `json:"rateLimits,omitempty"`
 }
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
