@@ -24,16 +24,17 @@ const (
 	genaiAttributeTokenType     = "gen_ai.token.type" //nolint:gosec // metric name, not credential
 	genaiAttributeErrorType     = "error.type"
 
-	GenAIOperationChat            GenAIOperation = "chat"
-	GenAIOperationCompletion      GenAIOperation = "completion"
-	GenAIOperationEmbedding       GenAIOperation = "embeddings"
-	GenAIOperationMessages        GenAIOperation = "messages"
-	GenAIOperationImageGeneration GenAIOperation = "image_generation"
-	GenAIOperationResponses       GenAIOperation = "responses"
-	GenAIOperationSpeech          GenAIOperation = "speech"
-	GenAIOperationTranscription   GenAIOperation = "transcription"
-	GenAIOperationTranslation     GenAIOperation = "translation"
-	GenAIOperationRerank          GenAIOperation = "rerank"
+	GenAIOperationChat                 GenAIOperation = "chat"
+	GenAIOperationCompletion           GenAIOperation = "completion"
+	GenAIOperationEmbedding            GenAIOperation = "embeddings"
+	GenAIOperationMessages             GenAIOperation = "messages"
+	GenAIOperationImageGeneration      GenAIOperation = "image_generation"
+	GenAIOperationResponses            GenAIOperation = "responses"
+	GenAIOperationSpeech               GenAIOperation = "speech"
+	GenAIOperationTranscription        GenAIOperation = "transcription"
+	GenAIOperationTranslation          GenAIOperation = "translation"
+	GenAIOperationRerank               GenAIOperation = "rerank"
+	GenAIOperationResponsesInputTokens GenAIOperation = "responses_input_tokens"
 
 	// Provider names according to the Semantic Conventions for Generative AI Metrics.
 	// See: https://opentelemetry.io/docs/specs/semconv/attributes-registry/gen-ai/
