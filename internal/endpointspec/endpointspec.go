@@ -882,10 +882,6 @@ func (ResponsesInputTokensEndpointSpec) ParseBody(
 		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/responses/input_tokens: %w", internalapi.ErrMalformedRequest, err)
 	}
 
-	if req.Model == "" {
-		return "", nil, false, nil, fmt.Errorf("%w: model field is required", internalapi.ErrInvalidRequestBody)
-	}
-
 	return req.Model, &req, false, nil, nil
 }
 

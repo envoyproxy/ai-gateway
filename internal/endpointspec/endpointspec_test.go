@@ -1380,9 +1380,12 @@ func TestResponsesInputTokensEndpointSpec_ParseBody(t *testing.T) {
 		require.ErrorContains(t, err, "malformed request")
 	})
 
-	t.Run("missing model", func(t *testing.T) {
-		_, _, _, _, err := spec.ParseBody([]byte(`{"input":"hello"}`), false)
-		require.ErrorContains(t, err, "invalid request body")
+	t.Run("empty model allowed", func(t *testing.T) {
+		model, parsed, stream, _, err := spec.ParseBody([]byte(`{"input":"hello"}`), false)
+		require.NoError(t, err)
+		require.Empty(t, model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
 	})
 
 	t.Run("success", func(t *testing.T) {

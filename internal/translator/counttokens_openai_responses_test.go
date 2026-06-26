@@ -100,4 +100,3 @@ func TestResponsesInputTokensOpenAIToOpenAI_ResponseBody(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, uint32(100), inputTokens)
 }
-
