@@ -91,23 +91,18 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 	method := requestHeaders[":method"]
 	path := requestHeaders[":path"]
 	authority := requestHeaders[":authority"]
-	scheme := requestHeaders[":scheme"]
+	if authority == "" {
+		authority = fmt.Sprintf("bedrock-runtime.%s.amazonaws.com", a.region)
+	}
 
 	var body []byte
 	if len(mutatedBody) > 0 {
 		body = mutatedBody
 	}
 
-	if authority == "" {
-		authority = fmt.Sprintf("bedrock-runtime.%s.amazonaws.com", a.region)
-	}
-	if scheme == "" {
-		scheme = "https"
-	}
-
 	payloadHash := sha256.Sum256(body)
 	req, err := http.NewRequest(method,
-		fmt.Sprintf("%s://%s%s", scheme, authority, path),
+		fmt.Sprintf("https://%s%s", authority, path),
 		bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("cannot create request: %w", err)
