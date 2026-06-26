@@ -235,27 +235,6 @@ func TestAWSHandler_Do(t *testing.T) {
 		require.Contains(t, headers, "X-Amz-Date")
 	})
 
-	t.Run("custom scheme from :scheme header", func(t *testing.T) {
-		awsFileBody := "[default]\naws_access_key_id=test\naws_secret_access_key=secret\n"
-		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
-			CredentialFileLiteral: awsFileBody,
-			Region:                "us-east-1",
-		})
-		require.NoError(t, err)
-
-		// When :scheme is present, Do must use it instead of the default "https".
-		hdrs, err := handler.Do(t.Context(), map[string]string{
-			":method": "POST",
-			":path":   "/model/test-model/invoke",
-			":scheme": "https",
-		}, []byte(`{"test": "data"}`))
-		require.NoError(t, err)
-
-		headers := stringPairsToMap(hdrs)
-		require.Contains(t, headers, "Authorization")
-		require.Contains(t, headers, "X-Amz-Date")
-	})
-
 	t.Run("multiple regions", func(t *testing.T) {
 		awsFileBody := "[default]\naws_access_key_id=test\naws_secret_access_key=secret\n"
 		regions := []string{"us-east-1", "eu-west-1", "ap-southeast-1"}

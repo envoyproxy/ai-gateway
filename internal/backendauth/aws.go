@@ -80,10 +80,9 @@ func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (filterapi.B
 
 // Do implements [Handler.Do].
 //
-// The method reads :method, :path, :authority, and :scheme from requestHeaders (HTTP/2 pseudo-headers).
+// The method reads :method, :path, and :authority from requestHeaders (HTTP/2 pseudo-headers).
 // When :authority is present, the signed request targets that host; when absent, the host defaults to
 // the standard AWS Bedrock endpoint for the configured region (bedrock-runtime.<region>.amazonaws.com).
-// When :scheme is present, it is used as the URL scheme; when absent, "https" is used.
 //
 // The transformation must set :path in the header mutation and provide the request body
 // before this method is called.
