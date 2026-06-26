@@ -80,9 +80,12 @@ func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (filterapi.B
 
 // Do implements [Handler.Do].
 //
-// The method reads :method, :path, and :authority from requestHeaders (HTTP/2 pseudo-headers).
-// When :authority is present, the signed request targets that host; when absent, the host defaults to
-// the standard AWS Bedrock endpoint for the configured region (bedrock-runtime.<region>.amazonaws.com).
+// The method reads :method, :path, :authority, and host from requestHeaders. It resolves the host
+// for the signed request in the following order:
+//  1. the :authority pseudo-header, when present;
+//  2. the host header, when :authority is absent;
+//  3. the standard AWS Bedrock endpoint for the configured region
+//     (bedrock-runtime.<region>.amazonaws.com), when both host and :authority are absent.
 //
 // The transformation must set :path in the header mutation and provide the request body
 // before this method is called.
@@ -90,6 +93,9 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 	method := requestHeaders[":method"]
 	path := requestHeaders[":path"]
 	authority := requestHeaders[":authority"]
+	if authority == "" {
+		authority = requestHeaders["host"]
+	}
 	if authority == "" {
 		authority = fmt.Sprintf("bedrock-runtime.%s.amazonaws.com", a.region)
 	}
