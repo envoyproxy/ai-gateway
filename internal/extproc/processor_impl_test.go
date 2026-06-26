@@ -1625,7 +1625,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, nil, "", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1638,7 +1638,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		// After backend override, the header contains the backend-specific model name.
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "us.anthropic.claude-sonnet-4.5-v2"}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, nil, "default/my-backend", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "default/my-backend", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1650,7 +1650,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, nil, "ns/backend-a", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "ns/backend-a", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1662,7 +1662,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, nil, "", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1682,7 +1682,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs.SetInputTokens(50)
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "claude-sonnet"}
 
-		md, err := buildDynamicMetadata(nil, config.RequestCosts, nil, nil, costs, headers, nil, "default/backend", "", "")
+		md, err := buildDynamicMetadata(nil, config.RequestCosts, costs, headers, "default/backend", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1697,7 +1697,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{}
 
-		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, nil, nil, costs, headers, nil, "", "", "")
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "", "", "")
 		require.NoError(t, err)
 		require.NotNil(t, md)
 
@@ -1923,7 +1923,7 @@ func TestBuildDynamicMetadata_routeScoped(t *testing.T) {
 			tu.SetInputTokens(tt.inputTokens)
 			tu.SetTotalTokens(tt.totalTokens)
 
-			md, err := buildDynamicMetadata(nil, tt.requestCosts, nil, nil, &tu, tt.requestHeaders, nil, tt.backendName, tt.routeName, "")
+			md, err := buildDynamicMetadata(nil, tt.requestCosts, &tu, tt.requestHeaders, tt.backendName, tt.routeName, "")
 			require.NoError(t, err)
 
 			ns := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
@@ -2092,7 +2092,7 @@ func TestBuildDynamicMetadata_GlobalAndRouteScoped(t *testing.T) {
 			tu.SetOutputTokens(tt.outputTokens)
 			tu.SetTotalTokens(tt.totalTokens)
 
-			md, err := buildDynamicMetadata(tt.globalCosts, tt.routeCosts, nil, nil, &tu, tt.requestHeaders, nil, tt.backendName, tt.routeName, "")
+			md, err := buildDynamicMetadata(tt.globalCosts, tt.routeCosts, &tu, tt.requestHeaders, tt.backendName, tt.routeName, "")
 			require.NoError(t, err)
 
 			ns := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
@@ -2107,9 +2107,7 @@ func TestBuildDynamicMetadata_GlobalAndRouteScoped(t *testing.T) {
 	}
 }
 
-func TestBuildDynamicMetadata_RateLimitOverrides(t *testing.T) {
-	emptyTokens := &metrics.TokenUsage{}
-	baseHeaders := map[string]string{internalapi.ModelNameHeaderKeyDefault: "m"}
+func TestBuildRateLimitOverrideMetadata(t *testing.T) {
 	const extAuthzNS = "envoy.filters.http.ext_authz"
 
 	makeFilterMeta := func(keyVals ...string) map[string]*structpb.Struct {
@@ -2120,17 +2118,16 @@ func TestBuildDynamicMetadata_RateLimitOverrides(t *testing.T) {
 		return map[string]*structpb.Struct{extAuthzNS: {Fields: fields}}
 	}
 
+	type wantStruct struct {
+		requestsPerUnit float64
+		unit            string
+	}
+	// An empty wantStructs means the call must return nil (nothing emitted).
 	tests := []struct {
 		name             string
 		globalRateLimits []filterapi.GlobalRateLimitOverride
-		rateLimits       []filterapi.RateLimitOverride
 		filterMetadata   map[string]*structpb.Struct
-		routeName        string
-		wantStructs      map[string]struct {
-			requestsPerUnit float64
-			unit            string
-		}
-		wantAbsent []string
+		wantStructs      map[string]wantStruct
 	}{
 		{
 			name: "global entry emits struct when metadata present",
@@ -2138,52 +2135,42 @@ func TestBuildDynamicMetadata_RateLimitOverrides(t *testing.T) {
 				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
 			filterMetadata: makeFilterMeta("input_limit", "100000/HOUR"),
-			wantStructs: map[string]struct {
-				requestsPerUnit float64
-				unit            string
-			}{
-				"llm_input_token_limit": {requestsPerUnit: 100000, unit: "HOUR"},
-			},
+			wantStructs:    map[string]wantStruct{"llm_input_token_limit": {100000, "HOUR"}},
 		},
 		{
-			name: "metadata key absent: key omitted",
+			name: "metadata key absent: nothing emitted",
 			globalRateLimits: []filterapi.GlobalRateLimitOverride{
 				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
 			filterMetadata: makeFilterMeta(),
-			wantAbsent:     []string{"llm_input_token_limit"},
 		},
 		{
-			name: "namespace absent: key omitted",
+			name: "namespace absent: nothing emitted",
 			globalRateLimits: []filterapi.GlobalRateLimitOverride{
 				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
 			filterMetadata: nil,
-			wantAbsent:     []string{"llm_input_token_limit"},
 		},
 		{
-			name: "malformed value (no slash): key omitted",
+			name: "malformed value (no slash): nothing emitted",
 			globalRateLimits: []filterapi.GlobalRateLimitOverride{
 				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
 			filterMetadata: makeFilterMeta("input_limit", "100000"),
-			wantAbsent:     []string{"llm_input_token_limit"},
 		},
 		{
-			name: "non-numeric count: key omitted",
+			name: "non-numeric count: nothing emitted",
 			globalRateLimits: []filterapi.GlobalRateLimitOverride{
 				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
 			filterMetadata: makeFilterMeta("input_limit", "bad/HOUR"),
-			wantAbsent:     []string{"llm_input_token_limit"},
 		},
 		{
-			name: "invalid unit: key omitted",
+			name: "invalid unit: nothing emitted",
 			globalRateLimits: []filterapi.GlobalRateLimitOverride{
 				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
 			filterMetadata: makeFilterMeta("input_limit", "100000/WEEK"),
-			wantAbsent:     []string{"llm_input_token_limit"},
 		},
 		{
 			name: "lowercase unit normalized to uppercase",
@@ -2191,12 +2178,7 @@ func TestBuildDynamicMetadata_RateLimitOverrides(t *testing.T) {
 				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
 			filterMetadata: makeFilterMeta("input_limit", "100000/hour"),
-			wantStructs: map[string]struct {
-				requestsPerUnit float64
-				unit            string
-			}{
-				"llm_input_token_limit": {requestsPerUnit: 100000, unit: "HOUR"},
-			},
+			wantStructs:    map[string]wantStruct{"llm_input_token_limit": {100000, "HOUR"}},
 		},
 		{
 			name: "zero count emits struct with requests_per_unit 0",
@@ -2204,55 +2186,7 @@ func TestBuildDynamicMetadata_RateLimitOverrides(t *testing.T) {
 				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
 			},
 			filterMetadata: makeFilterMeta("input_limit", "0/HOUR"),
-			wantStructs: map[string]struct {
-				requestsPerUnit float64
-				unit            string
-			}{
-				"llm_input_token_limit": {requestsPerUnit: 0, unit: "HOUR"},
-			},
-		},
-		{
-			name: "route-scoped entry matches route",
-			rateLimits: []filterapi.RateLimitOverride{
-				{MetadataKey: "llm_total_limit", Namespace: extAuthzNS, Key: "total_limit", RouteName: "ns/r"},
-			},
-			filterMetadata: makeFilterMeta("total_limit", "500/MINUTE"),
-			routeName:      "ns/r",
-			wantStructs: map[string]struct {
-				requestsPerUnit float64
-				unit            string
-			}{
-				"llm_total_limit": {requestsPerUnit: 500, unit: "MINUTE"},
-			},
-		},
-		{
-			name: "route-scoped entry skipped for non-matching route",
-			rateLimits: []filterapi.RateLimitOverride{
-				{MetadataKey: "llm_total_limit", Namespace: extAuthzNS, Key: "total_limit", RouteName: "ns/other"},
-			},
-			filterMetadata: makeFilterMeta("total_limit", "500/MINUTE"),
-			routeName:      "ns/r",
-			wantAbsent:     []string{"llm_total_limit"},
-		},
-		{
-			name: "route-scoped overrides global for same MetadataKey",
-			globalRateLimits: []filterapi.GlobalRateLimitOverride{
-				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "global_limit"},
-			},
-			rateLimits: []filterapi.RateLimitOverride{
-				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "route_limit", RouteName: "ns/r"},
-			},
-			filterMetadata: map[string]*structpb.Struct{extAuthzNS: {Fields: map[string]*structpb.Value{
-				"global_limit": structpb.NewStringValue("1000/HOUR"),
-				"route_limit":  structpb.NewStringValue("200/DAY"),
-			}}},
-			routeName: "ns/r",
-			wantStructs: map[string]struct {
-				requestsPerUnit float64
-				unit            string
-			}{
-				"llm_input_token_limit": {requestsPerUnit: 200, unit: "DAY"},
-			},
+			wantStructs:    map[string]wantStruct{"llm_input_token_limit": {0, "HOUR"}},
 		},
 		{
 			name: "multiple entries emitted with different units",
@@ -2264,24 +2198,26 @@ func TestBuildDynamicMetadata_RateLimitOverrides(t *testing.T) {
 				"input_limit":  structpb.NewStringValue("100000/HOUR"),
 				"output_limit": structpb.NewStringValue("50000/DAY"),
 			}}},
-			wantStructs: map[string]struct {
-				requestsPerUnit float64
-				unit            string
-			}{
-				"llm_input_token_limit":  {requestsPerUnit: 100000, unit: "HOUR"},
-				"llm_output_token_limit": {requestsPerUnit: 50000, unit: "DAY"},
+			wantStructs: map[string]wantStruct{
+				"llm_input_token_limit":  {100000, "HOUR"},
+				"llm_output_token_limit": {50000, "DAY"},
 			},
+		},
+		{
+			name: "no overrides configured returns nil",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			md, err := buildDynamicMetadata(nil, nil, tt.globalRateLimits, tt.rateLimits,
-				emptyTokens, baseHeaders, tt.filterMetadata, "", tt.routeName, "")
-			require.NoError(t, err)
+			md := buildRateLimitOverrideMetadata(tt.globalRateLimits, tt.filterMetadata)
+			if len(tt.wantStructs) == 0 {
+				require.Nil(t, md)
+				return
+			}
 			require.NotNil(t, md)
-
 			ns := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
+			require.Len(t, ns, len(tt.wantStructs))
 			for k, want := range tt.wantStructs {
 				got, exists := ns[k]
 				require.True(t, exists, "key %q should be present", k)
@@ -2290,12 +2226,46 @@ func TestBuildDynamicMetadata_RateLimitOverrides(t *testing.T) {
 				require.Equal(t, want.requestsPerUnit, s.Fields["requests_per_unit"].GetNumberValue(), "key %q requests_per_unit", k)
 				require.Equal(t, want.unit, s.Fields["unit"].GetStringValue(), "key %q unit", k)
 			}
-			for _, k := range tt.wantAbsent {
-				_, exists := ns[k]
-				require.False(t, exists, "key %q should be absent", k)
-			}
 		})
 	}
+}
+
+func Test_chatCompletionProcessorRouterFilter_ProcessRequestHeaders_rateLimitOverride(t *testing.T) {
+	const extAuthzNS = "envoy.filters.http.ext_authz"
+
+	t.Run("no rate limits configured: no dynamic metadata", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{config: &filterapi.RuntimeConfig{}, logger: slog.Default()}
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
+		require.True(t, ok, "must return a RequestHeaders response")
+		require.Nil(t, resp.DynamicMetadata, "no override configured, so no dynamic metadata")
+	})
+
+	t.Run("emits override struct from filter metadata on the request path", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				GlobalRateLimits: []filterapi.GlobalRateLimitOverride{
+					{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+				},
+			},
+			filterMetadata: map[string]*structpb.Struct{
+				extAuthzNS: {Fields: map[string]*structpb.Value{
+					"input_limit": structpb.NewStringValue("100000/HOUR"),
+				}},
+			},
+			logger: slog.Default(),
+		}
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp.DynamicMetadata, "override must be emitted on the request path")
+		ns := resp.DynamicMetadata.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
+		s := ns["llm_input_token_limit"].GetStructValue()
+		require.NotNil(t, s)
+		require.Equal(t, float64(100000), s.Fields["requests_per_unit"].GetNumberValue())
+		require.Equal(t, "HOUR", s.Fields["unit"].GetStringValue())
+	})
 }
 
 // mustCompileCEL is a test helper that compiles a CEL expression or fails the test.

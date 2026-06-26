@@ -81,10 +81,13 @@ type GatewayConfigSpec struct {
 	// +listMapKey=metadataKey
 	GlobalLLMRequestCosts []LLMRequestCost `json:"globalLLMRequestCosts,omitempty"`
 
-	// GlobalRateLimits defines gateway-level defaults for emitting per-request rate-limit
-	// override structs into io.envoy.ai_gateway dynamic metadata. Each entry maps a metadata
-	// key to a source that supplies the per-request limit value. Route-scoped entries with the
-	// same MetadataKey take precedence over these global defaults.
+	// GlobalRateLimits defines gateway-wide mappings for emitting per-request rate-limit override
+	// structs into io.envoy.ai_gateway dynamic metadata. Each entry maps a metadata key to a source
+	// that supplies the per-request limit value, and applies to every request handled by the gateway.
+	//
+	// Per-route rate limiting is expressed on the consuming side: each MetadataKey is referenced by a
+	// route's BackendTrafficPolicy.rateLimit.global.rules[].limit.fromMetadata.key, so a given route
+	// only applies the limits whose keys its policy reads. MetadataKeys must therefore be unique.
 	//
 	// +optional
 	// +listType=map

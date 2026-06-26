@@ -714,7 +714,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 	}
 
 	t.Run("empty listeners and routes", func(_ *testing.T) {
-		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{}, []*routev3.RouteConfiguration{})
+		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{}, []*routev3.RouteConfiguration{}, nil)
 		require.NoError(t, err)
 	})
 
@@ -738,7 +738,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes, nil)
 		require.NoError(t, err)
 		// Should process only normal-listener, not envoy-gateway-listener.
 	})
@@ -765,7 +765,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{})
+		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{}, nil)
 		require.NoError(t, err)
 		// Should handle gracefully when no RDS route config name is found.
 	})
@@ -776,7 +776,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			// No DefaultFilterChain set.
 		}
 
-		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{})
+		err := s.maybeModifyListenerAndRoutes([]*listenerv3.Listener{listener}, []*routev3.RouteConfiguration{}, nil)
 		require.NoError(t, err)
 		// Should handle gracefully when no default filter chain exists.
 	})
@@ -801,7 +801,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes, nil)
 		require.NoError(t, err)
 		// Should identify and process InferencePool routes.
 	})
@@ -837,7 +837,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes, nil)
 		require.NoError(t, err)
 
 		// Should handle multiple listeners with different route configurations.
@@ -862,7 +862,7 @@ func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 			},
 		}
 
-		err := s.maybeModifyListenerAndRoutes(listeners, routes)
+		err := s.maybeModifyListenerAndRoutes(listeners, routes, nil)
 		require.NoError(t, err)
 		// Should handle gracefully when referenced route config is not found.
 	})
@@ -2200,5 +2200,103 @@ func TestRouteNameFromEnvoyGatewayMetadata(t *testing.T) {
 			},
 		}
 		require.Equal(t, "legacy-route", routeNameFromEnvoyGatewayMetadata(route))
+	})
+}
+
+func TestServer_collectRateLimitSourceNamespaces(t *testing.T) {
+	rlOverride := func(metadataKey, ns, key string) aigv1b1.RateLimitOverride {
+		return aigv1b1.RateLimitOverride{
+			MetadataKey: metadataKey,
+			Source: aigv1b1.RateLimitOverrideSource{
+				FromMetadata: aigv1b1.RateLimitMetadataSource{Namespace: ns, Key: key},
+			},
+		}
+	}
+
+	t.Run("no rate limits configured returns nil", func(t *testing.T) {
+		c := fake.NewClientBuilder().WithScheme(controller.Scheme).Build()
+		s := &Server{log: logr.Discard(), k8sClient: c}
+		require.Nil(t, s.collectRateLimitSourceNamespaces(t.Context()))
+	})
+
+	t.Run("collects and de-duplicates across GatewayConfigs, sorted", func(t *testing.T) {
+		gc1 := &aigv1b1.GatewayConfig{
+			ObjectMeta: metav1.ObjectMeta{Name: "gc1", Namespace: "ns"},
+			Spec: aigv1b1.GatewayConfigSpec{
+				GlobalRateLimits: []aigv1b1.RateLimitOverride{
+					rlOverride("input_limit", "envoy.filters.http.ext_authz", "input"),
+					// Duplicate namespace via a second key.
+					rlOverride("output_limit", "envoy.filters.http.ext_authz", "output"),
+				},
+			},
+		}
+		gc2 := &aigv1b1.GatewayConfig{
+			ObjectMeta: metav1.ObjectMeta{Name: "gc2", Namespace: "ns"},
+			Spec: aigv1b1.GatewayConfigSpec{
+				GlobalRateLimits: []aigv1b1.RateLimitOverride{
+					rlOverride("custom_limit", "custom.metadata.ns", "limit"),
+				},
+			},
+		}
+		c := fake.NewClientBuilder().WithScheme(controller.Scheme).WithObjects(gc1, gc2).Build()
+		s := &Server{log: logr.Discard(), k8sClient: c}
+		require.Equal(t, []string{"custom.metadata.ns", "envoy.filters.http.ext_authz"},
+			s.collectRateLimitSourceNamespaces(t.Context()))
+	})
+}
+
+func TestServer_insertRouterLevelAIGatewayExtProc_setsForwardingNamespaces(t *testing.T) {
+	newListener := func() *listenerv3.Listener {
+		hcm := &httpconnectionmanagerv3.HttpConnectionManager{
+			HttpFilters: []*httpconnectionmanagerv3.HttpFilter{{Name: wellknown.Router}},
+		}
+		return &listenerv3.Listener{
+			DefaultFilterChain: &listenerv3.FilterChain{
+				Filters: []*listenerv3.Filter{
+					{
+						Name:       wellknown.HTTPConnectionManager,
+						ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: mustToAny(t, hcm)},
+					},
+				},
+			},
+		}
+	}
+	// extProcConfig extracts the AI Gateway ext_proc filter's typed config from the listener.
+	extProcConfig := func(t *testing.T, listener *listenerv3.Listener) *extprocv3.ExternalProcessor {
+		hcm, _, err := findHCM(listener.DefaultFilterChain)
+		require.NoError(t, err)
+		for _, f := range hcm.HttpFilters {
+			if f.Name == aiGatewayExtProcName {
+				ep := &extprocv3.ExternalProcessor{}
+				require.NoError(t, f.GetTypedConfig().UnmarshalTo(ep))
+				return ep
+			}
+		}
+		t.Fatalf("AI Gateway ext_proc filter %q not found", aiGatewayExtProcName)
+		return nil
+	}
+
+	t.Run("no namespaces leaves ForwardingNamespaces unset", func(t *testing.T) {
+		listener := newListener()
+		s := &Server{log: logr.Discard()}
+		require.NoError(t, s.insertRouterLevelAIGatewayExtProc(listener, nil))
+
+		ep := extProcConfig(t, listener)
+		require.Nil(t, ep.MetadataOptions.GetForwardingNamespaces())
+		// ReceivingNamespaces is always set so the filter may write io.envoy.ai_gateway.
+		require.Equal(t, []string{aigv1b1.AIGatewayFilterMetadataNamespace},
+			ep.MetadataOptions.GetReceivingNamespaces().GetUntyped())
+	})
+
+	t.Run("configured namespaces are forwarded", func(t *testing.T) {
+		listener := newListener()
+		s := &Server{log: logr.Discard()}
+		namespaces := []string{"custom.metadata.ns", "envoy.filters.http.ext_authz"}
+		require.NoError(t, s.insertRouterLevelAIGatewayExtProc(listener, namespaces))
+
+		ep := extProcConfig(t, listener)
+		require.Equal(t, namespaces, ep.MetadataOptions.GetForwardingNamespaces().GetUntyped())
+		require.Equal(t, []string{aigv1b1.AIGatewayFilterMetadataNamespace},
+			ep.MetadataOptions.GetReceivingNamespaces().GetUntyped())
 	})
 }

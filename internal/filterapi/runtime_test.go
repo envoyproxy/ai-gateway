@@ -132,13 +132,10 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Contains(t, err.Error(), "missing_route")
 	})
 
-	t.Run("RateLimits passed through to RuntimeConfig", func(t *testing.T) {
+	t.Run("GlobalRateLimits passed through to RuntimeConfig", func(t *testing.T) {
 		config := &Config{
 			GlobalRateLimits: []GlobalRateLimitOverride{
 				{MetadataKey: "llm_input_limit", Namespace: "my.ext_authz", Key: "input_limit"},
-			},
-			RateLimits: []RateLimitOverride{
-				{MetadataKey: "llm_output_limit", Namespace: "my.ext_authz", Key: "output_limit", RouteName: "ns/r"},
 			},
 		}
 		rc, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
@@ -149,49 +146,6 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Equal(t, "llm_input_limit", rc.GlobalRateLimits[0].MetadataKey)
 		require.Equal(t, "my.ext_authz", rc.GlobalRateLimits[0].Namespace)
 		require.Equal(t, "input_limit", rc.GlobalRateLimits[0].Key)
-		require.Len(t, rc.RateLimits, 1)
-		require.Equal(t, "llm_output_limit", rc.RateLimits[0].MetadataKey)
-		require.Equal(t, "ns/r", rc.RateLimits[0].RouteName)
-	})
-
-	t.Run("error - route-scoped RateLimitOverride with empty RouteName", func(t *testing.T) {
-		config := &Config{
-			RateLimits: []RateLimitOverride{
-				{MetadataKey: "llm_limit", Namespace: "my.ext_authz", Key: "limit", RouteName: ""},
-			},
-		}
-		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
-			return nil, nil
-		})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "must have non-empty RouteName")
-		require.Contains(t, err.Error(), "llm_limit")
-	})
-
-	t.Run("error - route-scoped RateLimitOverride with empty Key", func(t *testing.T) {
-		config := &Config{
-			RateLimits: []RateLimitOverride{
-				{MetadataKey: "llm_limit", Namespace: "my.ext_authz", Key: "", RouteName: "ns/r"},
-			},
-		}
-		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
-			return nil, nil
-		})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "non-empty Key")
-	})
-
-	t.Run("error - route-scoped RateLimitOverride with empty MetadataKey", func(t *testing.T) {
-		config := &Config{
-			RateLimits: []RateLimitOverride{
-				{MetadataKey: "", Namespace: "my.ext_authz", Key: "limit", RouteName: "ns/r"},
-			},
-		}
-		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
-			return nil, nil
-		})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "non-empty MetadataKey")
 	})
 
 	t.Run("error - global RateLimitOverride with empty Key", func(t *testing.T) {

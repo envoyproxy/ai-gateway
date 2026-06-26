@@ -169,6 +169,99 @@ When configuring rate limits:
 3. Ensure both user and model identifiers are used in rate limiting rules
    :::
 
+## Dynamic Per-Request Limits
+
+The rate limits above use a static limit value defined in the `BackendTrafficPolicy` (for example `requests: 1000`). AI Gateway can instead drive a **dynamic** limit value that is decided at request time by a preceding Envoy filter — typically an `ext_authz` auth server. This is useful when the limit is per-tenant and looked up from an external system rather than known ahead of time, so a single policy can apply a different quota to each tenant without enumerating them in configuration.
+
+Keep the distinction with token cost clear:
+
+- **Limit** is a request-time gate. It is the maximum (`requests_per_unit`) for the current request and must be known _before_ the request is forwarded, so it is read on the **request** path.
+- **Cost** (covered above) is a response-time charge. It is the amount the request consumes from that limit and is read on the **response** path from token usage.
+
+### How it works
+
+1. A preceding filter (typically `ext_authz` / the auth server) emits the per-request limit as a string `"<count>/<unit>"` — for example `"100000/HOUR"`, where unit is one of `SECOND`, `MINUTE`, `HOUR`, or `DAY` (case-insensitive) — into its **dynamic metadata**. Dynamic metadata is used deliberately rather than a request header: it can only be set by Envoy filters, not by downstream clients, so the limit cannot be spoofed.
+
+2. You configure `GatewayConfig.Spec.GlobalRateLimits`, a gateway-wide list that maps a `metadataKey` to the source that supplies the limit value.
+
+3. On the request path, AI Gateway's external processor reads the source value, parses `"<count>/<unit>"`, and writes it into the `io.envoy.ai_gateway` dynamic metadata namespace under `metadataKey` as the struct `{ requests_per_unit, unit }` that Envoy's rate-limit override expects. If the source value is absent or malformed, the key is simply not emitted and the static default in the `BackendTrafficPolicy` applies.
+
+4. The consumer is a `BackendTrafficPolicy` whose rule reads that key via `limit.fromMetadata`.
+
+The producer (`GlobalRateLimits`) is gateway-wide: every configured `metadataKey` is emitted on every request. Per-route differences are expressed on the **consumer** side — each route's `BackendTrafficPolicy` chooses which `metadataKey` to read — not on the `AIGatewayRoute`. This is why each `metadataKey` must be unique across the gateway. It mirrors how token cost is consumed per-route via `cost.response.fromMetadata`.
+
+### 1. Emit the limit from a preceding filter
+
+Your `ext_authz` auth server decides the limit for the request (for example, by looking up the tenant) and returns it in its dynamic metadata. For `ext_authz` the metadata namespace is typically `envoy.filters.http.ext_authz`. The value for our example tenant would be the string:
+
+```text
+100000/HOUR
+```
+
+### 2. Map the source into `io.envoy.ai_gateway` metadata
+
+Configure `GlobalRateLimits` on the `GatewayConfig` referenced by your Gateway. Each entry names the destination `metadataKey` and the `fromMetadata` source (the namespace and key the preceding filter wrote to):
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: GatewayConfig
+metadata:
+  name: envoy-ai-gateway
+  namespace: default
+spec:
+  globalRateLimits:
+    - metadataKey: tenant_request_limit
+      source:
+        fromMetadata:
+          namespace: envoy.filters.http.ext_authz # where ext_authz wrote the value
+          key: rate_limit # the field name ext_authz set
+```
+
+With this in place, when `ext_authz` sets `rate_limit: "100000/HOUR"`, AI Gateway emits the following into the `io.envoy.ai_gateway` dynamic metadata on the request path:
+
+```yaml
+tenant_request_limit:
+  requests_per_unit: 100000
+  unit: HOUR
+```
+
+### 3. Consume the dynamic limit in a `BackendTrafficPolicy`
+
+On the route whose limit should be dynamic, configure a `BackendTrafficPolicy` rule that reads the limit from metadata via `limit.fromMetadata`. The static `requests`/`unit` remain as the default that applies when the metadata key is absent (for example, if `ext_authz` did not set a value for this request):
+
+```yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: tenant-dynamic-limit-policy
+  namespace: default
+spec:
+  targetRefs:
+    - name: envoy-ai-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rateLimit:
+    type: Global
+    global:
+      rules:
+        - clientSelectors:
+            - headers:
+                - name: x-tenant-id
+                  type: Distinct
+          limit:
+            requests: 1000 # default used when the metadata key is absent
+            unit: Hour
+            fromMetadata:
+              namespace: io.envoy.ai_gateway
+              key: tenant_request_limit # matches the GlobalRateLimits metadataKey above
+```
+
+:::note
+The `limit.fromMetadata` field is added to Envoy Gateway's `BackendTrafficPolicy` by [envoyproxy/gateway#9216](https://github.com/envoyproxy/gateway/pull/9216). At the time of writing this is merged on Envoy Gateway `main` but not yet in a tagged release, so using it requires an Envoy Gateway build that includes the change.
+
+Until a release that includes it is available, you can wire the same override with an `EnvoyPatchPolicy` that injects the native Envoy rate-limit `limit.dynamic_metadata` override directly, pointing at the same `io.envoy.ai_gateway` namespace and `metadataKey`. AI Gateway emits the `{ requests_per_unit, unit }` struct either way; only the consumer-side configuration differs.
+:::
+
 ## Making Requests
 
 For proper cost control and rate limiting, requests must include:

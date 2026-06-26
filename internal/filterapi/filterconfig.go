@@ -37,14 +37,11 @@ type Config struct {
 	// LLMRequestCost configures the cost of each LLM-related request. Optional. If this is provided, the filter will populate
 	// the "calculated" cost in the filter metadata at the end of the response body processing.
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
-	// GlobalRateLimits configures gateway-level mappings that emit per-request rate-limit override
+	// GlobalRateLimits configures gateway-wide mappings that emit per-request rate-limit override
 	// structs into io.envoy.ai_gateway dynamic metadata from filter metadata set by a preceding
-	// filter (typically ext_authz). These apply to all routes unless overridden by route-specific
-	// RateLimits entries with the same MetadataKey.
+	// filter (typically ext_authz). They apply to every request; per-route application is selected by
+	// which MetadataKey each route's BackendTrafficPolicy reads.
 	GlobalRateLimits []GlobalRateLimitOverride `json:"globalRateLimits,omitempty"`
-	// RateLimits configures route-scoped mappings that emit per-request rate-limit override
-	// structs into io.envoy.ai_gateway dynamic metadata.
-	RateLimits []RateLimitOverride `json:"rateLimits,omitempty"`
 	// Backends is the list of backends that this listener can route to.
 	Backends []Backend `json:"backends,omitempty"`
 	// Models is the list of models that this route is aware of. Used to populate the "/models" endpoint in OpenAI-compatible APIs.
@@ -116,8 +113,9 @@ type LLMRequestCost struct {
 	Model string `json:"model,omitempty"`
 }
 
-// GlobalRateLimitOverride is the gateway-level configuration for emitting a rate-limit override
-// struct from filter dynamic metadata into io.envoy.ai_gateway. Applies to all routes.
+// GlobalRateLimitOverride is the gateway-wide configuration for emitting a rate-limit override
+// struct from filter dynamic metadata into io.envoy.ai_gateway. It applies to every request; per-route
+// application is selected by which MetadataKey each route's BackendTrafficPolicy reads.
 // The source value must be a string formatted as "<count>/<unit>" (e.g. "100000/HOUR").
 type GlobalRateLimitOverride struct {
 	MetadataKey string `json:"metadataKey"`
@@ -125,20 +123,6 @@ type GlobalRateLimitOverride struct {
 	Namespace string `json:"namespace"`
 	// Key is the field name within Namespace.
 	Key string `json:"key"`
-}
-
-// RateLimitOverride is the route-scoped configuration for emitting a rate-limit override
-// struct from filter dynamic metadata into io.envoy.ai_gateway.
-// The source value must be a string formatted as "<count>/<unit>" (e.g. "100000/HOUR").
-type RateLimitOverride struct {
-	MetadataKey string `json:"metadataKey"`
-	// Namespace is the filter metadata namespace to read from (e.g. "envoy.filters.http.ext_authz").
-	Namespace string `json:"namespace"`
-	// Key is the field name within Namespace.
-	Key string `json:"key"`
-	// RouteName scopes this entry to a specific AIGatewayRoute (format "namespace/name").
-	// Must be non-empty for route-scoped entries.
-	RouteName string `json:"routeName,omitempty"`
 }
 
 // LLMRequestCostType specifies the kind of the request cost calculation.
