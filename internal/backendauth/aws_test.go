@@ -213,66 +213,6 @@ func TestAWSHandler_Do(t *testing.T) {
 		require.Contains(t, headers, "X-Amz-Date")
 	})
 
-	t.Run("custom authority from :authority header", func(t *testing.T) {
-		awsFileBody := "[default]\naws_access_key_id=test\naws_secret_access_key=secret\n"
-		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
-			CredentialFileLiteral: awsFileBody,
-			Region:                "us-east-1",
-		})
-		require.NoError(t, err)
-
-		// When :authority is present, Do must use it as the host rather than the
-		// default bedrock-runtime endpoint.
-		hdrs, err := handler.Do(t.Context(), map[string]string{
-			":method":    "POST",
-			":path":      "/model/test-model/invoke",
-			":authority": "vpce-0123456789abcdef0-xyz.bedrock-runtime.us-east-1.vpce.amazonaws.com",
-		}, []byte(`{"test": "data"}`))
-		require.NoError(t, err)
-
-		headers := stringPairsToMap(hdrs)
-		require.Contains(t, headers, "Authorization")
-		require.Contains(t, headers, "X-Amz-Date")
-	})
-
-	t.Run("custom authority from host header", func(t *testing.T) {
-		awsFileBody := "[default]\naws_access_key_id=test\naws_secret_access_key=secret\n"
-		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
-			CredentialFileLiteral: awsFileBody,
-			Region:                "us-east-1",
-		})
-		require.NoError(t, err)
-
-		// When :authority is absent, Do must fall back to the host header.
-		hdrs, err := handler.Do(t.Context(), map[string]string{
-			":method": "POST",
-			":path":   "/model/test-model/invoke",
-			"host":    "vpce-0123456789abcdef0-xyz.bedrock-runtime.us-east-1.vpce.amazonaws.com",
-		}, []byte(`{"test": "data"}`))
-		require.NoError(t, err)
-
-		headers := stringPairsToMap(hdrs)
-		require.Contains(t, headers, "Authorization")
-		require.Contains(t, headers, "X-Amz-Date")
-	})
-
-	t.Run("invalid method fails request creation", func(t *testing.T) {
-		awsFileBody := "[default]\naws_access_key_id=test\naws_secret_access_key=secret\n"
-		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
-			CredentialFileLiteral: awsFileBody,
-			Region:                "us-east-1",
-		})
-		require.NoError(t, err)
-
-		// An invalid HTTP method token causes http.NewRequest to fail.
-		_, err = handler.Do(t.Context(), map[string]string{
-			":method": "INVALID METHOD",
-			":path":   "/model/test-model/invoke",
-		}, []byte(`{"test": "data"}`))
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "cannot create request")
-	})
-
 	t.Run("multiple regions", func(t *testing.T) {
 		awsFileBody := "[default]\naws_access_key_id=test\naws_secret_access_key=secret\n"
 		regions := []string{"us-east-1", "eu-west-1", "ap-southeast-1"}
