@@ -1045,6 +1045,160 @@ func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 	}
 }
 
+func TestResolveCredentialOverride(t *testing.T) {
+	truePtr := ptr.To(true)
+	falsePtr := ptr.To(false)
+
+	t.Run("nil override returns nil", func(t *testing.T) {
+		result, err := resolveCredentialOverride(aigv1b1.BackendSecurityPolicyTypeAPIKey, nil, true)
+		require.NoError(t, err)
+		require.Nil(t, result)
+	})
+
+	t.Run("fromRequestHeaders default header for APIKey", func(t *testing.T) {
+		result, err := resolveCredentialOverride(
+			aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			&aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{},
+			},
+			true,
+		)
+		require.NoError(t, err)
+		require.Equal(t, "x-aigw-api-key", result.HeaderName)
+		require.Equal(t, "x-aigw-api-key", result.InputHeaderToRemove)
+		require.True(t, result.FallbackToConfigured)
+	})
+
+	t.Run("fromRequestHeaders custom header name", func(t *testing.T) {
+		result, err := resolveCredentialOverride(
+			aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			&aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{
+					Header:               "X-My-Key",
+					FallbackToConfigured: falsePtr,
+				},
+			},
+			true,
+		)
+		require.NoError(t, err)
+		require.Equal(t, "x-my-key", result.HeaderName, "header name should be lowercased")
+		require.False(t, result.FallbackToConfigured)
+	})
+
+	t.Run("fromRequestHeaders default header for AnthropicAPIKey", func(t *testing.T) {
+		result, err := resolveCredentialOverride(
+			aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey,
+			&aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{},
+			},
+			true,
+		)
+		require.NoError(t, err)
+		require.Equal(t, "x-aigw-anthropic-api-key", result.HeaderName)
+	})
+
+	t.Run("fromDynamicMetadata", func(t *testing.T) {
+		result, err := resolveCredentialOverride(
+			aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			&aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromDynamicMetadata: &aigv1b1.CredentialOverrideFromDynamicMetadata{
+					Namespace:            "envoy.filters.http.ext_authz",
+					Key:                  "upstream_key",
+					FallbackToConfigured: truePtr,
+				},
+			},
+			true,
+		)
+		require.NoError(t, err)
+		require.Equal(t, "envoy.filters.http.ext_authz", result.DynamicMetadataNamespace)
+		require.Equal(t, "upstream_key", result.DynamicMetadataKey)
+		require.True(t, result.FallbackToConfigured)
+		require.Empty(t, result.InputHeaderToRemove, "dynamic metadata source has no strip header")
+	})
+
+	t.Run("fromDynamicMetadata default key for GCPCredentials", func(t *testing.T) {
+		result, err := resolveCredentialOverride(
+			aigv1b1.BackendSecurityPolicyTypeGCPCredentials,
+			&aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromDynamicMetadata: &aigv1b1.CredentialOverrideFromDynamicMetadata{
+					Namespace: "my.filter",
+				},
+			},
+			true,
+		)
+		require.NoError(t, err)
+		require.Equal(t, "x-aigw-gcp-access-token", result.DynamicMetadataKey)
+	})
+
+	t.Run("fallbackToConfigured=true with no static credential returns error", func(t *testing.T) {
+		_, err := resolveCredentialOverride(
+			aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			&aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{
+					FallbackToConfigured: truePtr,
+				},
+			},
+			false, // no static credential
+		)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "fallbackToConfigured=true requires a static credential")
+	})
+
+	t.Run("fallbackToConfigured=false with no static credential is valid", func(t *testing.T) {
+		result, err := resolveCredentialOverride(
+			aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			&aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{
+					FallbackToConfigured: falsePtr,
+				},
+			},
+			false,
+		)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.False(t, result.FallbackToConfigured)
+	})
+}
+
+func TestGatewayController_bspToFilterAPIBackendAuth_WithOverride(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	const namespace = "ns"
+
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "bsp-with-override", Namespace: namespace},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type: aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			APIKey: &aigv1b1.BackendSecurityPolicyAPIKey{
+				SecretRef: &gwapiv1.SecretObjectReference{Name: "api-key-secret"},
+			},
+			CredentialOverride: &aigv1b1.BackendSecurityPolicyCredentialOverride{
+				FromRequestHeaders: &aigv1b1.CredentialOverrideFromRequestHeaders{},
+			},
+		},
+	}))
+	_, err := kube.CoreV1().Secrets(namespace).Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "api-key-secret", Namespace: namespace},
+		StringData: map[string]string{apiKeyInSecret: "thisisapikey"},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	bsp := &aigv1b1.BackendSecurityPolicy{}
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: "bsp-with-override", Namespace: namespace}, bsp))
+
+	auth, err := c.bspToFilterAPIBackendAuth(t.Context(), bsp)
+	require.NoError(t, err)
+	require.NotNil(t, auth.APIKey)
+	require.Equal(t, "thisisapikey", auth.APIKey.Key)
+	require.NotNil(t, auth.CredentialOverride)
+	require.Equal(t, "x-aigw-api-key", auth.CredentialOverride.HeaderName)
+	require.Equal(t, "x-aigw-api-key", auth.CredentialOverride.InputHeaderToRemove)
+	require.True(t, auth.CredentialOverride.FallbackToConfigured)
+}
+
 func TestGatewayController_GetSecretData_ErrorCases(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log, "envoy-gateway-system",

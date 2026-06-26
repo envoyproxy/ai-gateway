@@ -1,8 +1,3 @@
-# Copyright Envoy AI Gateway Authors
-# SPDX-License-Identifier: Apache-2.0
-# The full text of the Apache license is available in the LICENSE file at
-# the root of the repo.
-
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -5987,7 +5982,7 @@ spec:
               Only one mechanism to access a backend(s) can be specified.
 
               Only one type of BackendSecurityPolicy can be defined.
-            maxProperties: 3
+            maxProperties: 4
             properties:
               anthropicAPIKey:
                 description: |-
@@ -9822,6 +9817,64 @@ spec:
                     be specified
                   rule: (has(self.clientSecretRef) && !has(self.oidcExchangeToken))
                     || (!has(self.clientSecretRef) && has(self.oidcExchangeToken))
+              credentialOverride:
+                description: |-
+                  CredentialOverride, when set, sources the upstream credential per-request instead of using
+                  the static credential configured above. Supported for all types except AWSCredentials.
+                maxProperties: 1
+                minProperties: 1
+                properties:
+                  fromDynamicMetadata:
+                    description: |-
+                      FromDynamicMetadata sources the credential from Envoy dynamic metadata set by a trusted
+                      filter (e.g. ext_authz). Metadata cannot be forged by the client and is the preferred source.
+                    properties:
+                      fallbackToConfigured:
+                        default: true
+                        description: |-
+                          FallbackToConfigured controls behaviour when the metadata key is absent.
+                          true (default) falls back to the static credential configured in the policy.
+                          false returns a 401 to the client without forwarding the request.
+                        type: boolean
+                      key:
+                        description: Key is the metadata key within the namespace.
+                          Defaults to the x-aigw-* name for the auth type.
+                        type: string
+                      namespace:
+                        description: |-
+                          Namespace is the Envoy metadata namespace written by the trusted filter.
+                          Example: "envoy.filters.http.ext_authz"
+                        minLength: 1
+                        type: string
+                    required:
+                    - namespace
+                    type: object
+                  fromRequestHeaders:
+                    description: |-
+                      FromRequestHeaders sources the credential from a request header injected by a trusted
+                      ingress filter. The gateway strips the header before forwarding to the upstream backend.
+                      Because any client can set request headers, this source is only safe when a trusted filter
+                      removes any client-supplied copy and writes the canonical value.
+                    properties:
+                      fallbackToConfigured:
+                        default: true
+                        description: |-
+                          FallbackToConfigured controls behaviour when the header is absent.
+                          true (default) falls back to the static credential configured in the policy.
+                          false returns a 401 to the client without forwarding the request.
+                        type: boolean
+                      header:
+                        description: |-
+                          Header is the name of the request header that carries the credential.
+                          Defaults to the x-aigw-* header for the configured auth type:
+                            APIKey          → x-aigw-api-key
+                            AnthropicAPIKey → x-aigw-anthropic-api-key
+                            AzureAPIKey     → x-aigw-azure-api-key
+                            AzureCredentials → x-aigw-azure-access-token
+                            GCPCredentials  → x-aigw-gcp-access-token
+                        type: string
+                    type: object
+                type: object
               gcpCredentials:
                 description: GCPCredentials is a mechanism to access a backend(s).
                   GCP specific logic will be applied.
@@ -11811,6 +11864,8 @@ spec:
               rule: 'self.type == ''AnthropicAPIKey'' ? (has(self.anthropicAPIKey)
                 && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey)
                 && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true'
+            - message: credentialOverride is not supported for AWSCredentials
+              rule: '!has(self.credentialOverride) || self.type != ''AWSCredentials'''
           status:
             description: Status defines the status details of the BackendSecurityPolicy.
             properties:
