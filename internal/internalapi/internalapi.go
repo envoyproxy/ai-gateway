@@ -83,6 +83,10 @@ const (
 	XDSUpstreamHostMetadataBackendNamePath = "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
 	// XDSRouteMetadataRouteNamePath is the full attribute path to access the route name in route metadata in xDS attributes.
 	XDSRouteMetadataRouteNamePath = "xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']"
+	// XDSRouteMetadataBackendNamePath is the full attribute path to access the backend name in route metadata in xDS attributes.
+	// Used when clusters are shared across routes (e.g. Envoy Gateway MergeBackends): cluster/upstream-host
+	// metadata can carry only one identity, so per-route backend identity lives in route metadata instead.
+	XDSRouteMetadataBackendNamePath = "xds.route_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
 )
 
 // PerRouteRuleRefBackendName generates a unique backend name for a per-route rule,
