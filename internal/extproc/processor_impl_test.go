@@ -1620,6 +1620,153 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 	})
 }
 
+func Test_chatCompletionProcessorUpstreamFilter_ResponseBodyMutation(t *testing.T) {
+	t.Run("non-streaming: removes configured field from response", func(t *testing.T) {
+		// The translator returns a body with a "provider" field that should be stripped.
+		responseBody := []byte(`{"id":"chatcmpl-123","provider":"openai","choices":[]}`)
+		inBody := &extprocv3.HttpBody{Body: responseBody, EndOfStream: true}
+		mm := &mockMetrics{}
+		mt := &mockTranslator{
+			t: t, expResponseBody: inBody,
+			retBodyMutation: responseBody,
+		}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator: mt,
+			metrics:    mm,
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: false,
+				config: &filterapi.RuntimeConfig{},
+			},
+			requestHeaders:      map[string]string{},
+			responseHeaders:     map[string]string{":status": "200"},
+			responseBodyMutator: bodymutator.NewBodyMutator(&filterapi.HTTPBodyMutation{Remove: []string{"provider"}}, nil),
+		}
+		res, err := p.ProcessResponseBody(t.Context(), inBody)
+		require.NoError(t, err)
+		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
+		mutatedBody := commonRes.BodyMutation.GetBody()
+		require.NotNil(t, mutatedBody)
+		require.NotContains(t, string(mutatedBody), "provider")
+		require.Contains(t, string(mutatedBody), "chatcmpl-123")
+		// content-length header should be updated.
+		var hasContentLength bool
+		for _, h := range commonRes.HeaderMutation.SetHeaders {
+			if h.Header.Key == "content-length" {
+				hasContentLength = true
+				break
+			}
+		}
+		require.True(t, hasContentLength, "expected content-length header to be set")
+		mm.RequireRequestSuccess(t)
+	})
+
+	t.Run("streaming: removes configured field from SSE chunks", func(t *testing.T) {
+		sseChunk := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\",\"choices\":[]}\n\ndata: [DONE]")
+		inBody := &extprocv3.HttpBody{Body: sseChunk, EndOfStream: true}
+		mm := &mockMetrics{}
+		mt := &mockTranslator{
+			t: t, expResponseBody: inBody,
+			retBodyMutation: sseChunk,
+		}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator: mt,
+			metrics:    mm,
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: true,
+				config: &filterapi.RuntimeConfig{},
+			},
+			requestHeaders:      map[string]string{},
+			responseHeaders:     map[string]string{":status": "200"},
+			responseBodyMutator: bodymutator.NewBodyMutator(&filterapi.HTTPBodyMutation{Remove: []string{"provider"}}, nil),
+		}
+		res, err := p.ProcessResponseBody(t.Context(), inBody)
+		require.NoError(t, err)
+		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
+		mutatedBody := commonRes.BodyMutation.GetBody()
+		require.NotNil(t, mutatedBody)
+		require.NotContains(t, string(mutatedBody), "provider")
+		require.Contains(t, string(mutatedBody), "chatcmpl-123")
+		require.Contains(t, string(mutatedBody), "[DONE]")
+		mm.RequireRequestSuccess(t)
+	})
+
+	t.Run("streaming: SSE event split across two ProcessResponseBody calls", func(t *testing.T) {
+		// A single "data: {...}" line is split mid-JSON across two ext_proc
+		// chunks. The mutator must buffer the partial line and only strip the
+		// configured field once the line is complete.
+		full := []byte("data: {\"id\":\"chatcmpl-123\",\"provider\":\"openai\",\"choices\":[]}\ndata: [DONE]")
+		splitAt := 30
+		firstChunk := &extprocv3.HttpBody{Body: full[:splitAt], EndOfStream: false}
+		secondChunk := &extprocv3.HttpBody{Body: full[splitAt:], EndOfStream: true}
+
+		mm := &mockMetrics{}
+		// The translator passes the body through unchanged; expResponseBody and
+		// retBodyMutation are updated per call below.
+		mt := &mockTranslator{t: t}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator: mt,
+			metrics:    mm,
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: true,
+				config: &filterapi.RuntimeConfig{},
+			},
+			requestHeaders:      map[string]string{},
+			responseHeaders:     map[string]string{":status": "200"},
+			responseBodyMutator: bodymutator.NewBodyMutator(&filterapi.HTTPBodyMutation{Remove: []string{"provider"}}, nil),
+		}
+
+		// First call: partial line, nothing complete yet -> buffered.
+		mt.expResponseBody = firstChunk
+		mt.retBodyMutation = firstChunk.Body
+		res1, err := p.ProcessResponseBody(t.Context(), firstChunk)
+		require.NoError(t, err)
+		body1 := res1.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response.BodyMutation.GetBody()
+		require.NotNil(t, body1)
+		require.Empty(t, body1, "first chunk must be fully buffered with nothing forwarded")
+
+		// Second call: completes the first line and emits [DONE].
+		mt.expResponseBody = secondChunk
+		mt.retBodyMutation = secondChunk.Body
+		res2, err := p.ProcessResponseBody(t.Context(), secondChunk)
+		require.NoError(t, err)
+		body2 := res2.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response.BodyMutation.GetBody()
+		require.NotNil(t, body2)
+
+		combined := string(body1) + string(body2)
+		require.Equal(t, "data: {\"id\":\"chatcmpl-123\",\"choices\":[]}\ndata: [DONE]", combined)
+		require.NotContains(t, combined, "provider")
+		require.Contains(t, combined, "[DONE]")
+	})
+
+	t.Run("no mutation configured: body passes through unchanged", func(t *testing.T) {
+		responseBody := []byte(`{"id":"chatcmpl-123","provider":"openai","choices":[]}`)
+		inBody := &extprocv3.HttpBody{Body: responseBody, EndOfStream: true}
+		mm := &mockMetrics{}
+		mt := &mockTranslator{
+			t: t, expResponseBody: inBody,
+			retBodyMutation: responseBody,
+		}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:          mt,
+			metrics:             mm,
+			responseBodyMutator: bodymutator.NewBodyMutator(nil, nil),
+			parent: &chatCompletionProcessorRouterFilter{
+				stream: false,
+				config: &filterapi.RuntimeConfig{},
+			},
+			requestHeaders:  map[string]string{},
+			responseHeaders: map[string]string{":status": "200"},
+		}
+		res, err := p.ProcessResponseBody(t.Context(), inBody)
+		require.NoError(t, err)
+		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseBody).ResponseBody.Response
+		mutatedBody := commonRes.BodyMutation.GetBody()
+		// Body should be unchanged (contains provider field).
+		require.Contains(t, string(mutatedBody), "provider")
+		mm.RequireRequestSuccess(t)
+	})
+}
+
 func Test_buildDynamicMetadata(t *testing.T) {
 	t.Run("sets model_name_override from request headers", func(t *testing.T) {
 		costs := &metrics.TokenUsage{}

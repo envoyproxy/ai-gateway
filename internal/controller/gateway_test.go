@@ -2499,6 +2499,59 @@ func Test_bodyMutationToFilterAPI(t *testing.T) {
 	}
 }
 
+func Test_responseBodyMutationToFilterAPI(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *aigv1b1.HTTPResponseBodyMutation
+		expected *filterapi.HTTPBodyMutation
+	}{
+		{
+			name:     "nil input",
+			input:    nil,
+			expected: nil,
+		},
+		{
+			name: "empty remove",
+			input: &aigv1b1.HTTPResponseBodyMutation{
+				Remove: []string{},
+			},
+			expected: &filterapi.HTTPBodyMutation{
+				Remove: []string{},
+			},
+		},
+		{
+			name:  "nil remove field",
+			input: &aigv1b1.HTTPResponseBodyMutation{},
+			expected: &filterapi.HTTPBodyMutation{
+				Remove: []string{},
+			},
+		},
+		{
+			name: "populated remove",
+			input: &aigv1b1.HTTPResponseBodyMutation{
+				Remove: []string{"service_tier", "internal_flag", "debug_mode"},
+			},
+			expected: &filterapi.HTTPBodyMutation{
+				Remove: []string{"service_tier", "internal_flag", "debug_mode"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := responseBodyMutationToFilterAPI(tt.input)
+			if tt.expected == nil {
+				require.Nil(t, result)
+				return
+			}
+			require.NotNil(t, result)
+			if d := cmp.Diff(tt.expected, result); d != "" {
+				t.Errorf("responseBodyMutationToFilterAPI() mismatch (-expected +got):\n%s", d)
+			}
+		})
+	}
+}
+
 // TestGatewayController_reconcileFilterConfigSecret_GlobalDefaults tests that
 // global LLM request costs from GatewayConfig are properly included in the filter config
 // when no routes override them.
