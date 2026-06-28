@@ -1148,8 +1148,22 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 		"%s=%s,%s=%s", egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace,
 	)}
 
+	// Envoy Gateway may run either in the Gateway's own namespace (controller
+	// colocated with the Gateways) or in a separate Envoy Gateway system
+	// namespace, so we look in both. When the two are the same namespace —
+	// common when Envoy Gateway is installed alongside the Gateways it manages —
+	// we must scan it only once. Listing the same namespace twice double-counts
+	// the same objects and records the namespace twice in distinctNamespaces,
+	// spuriously tripping the multiple-namespaces guard below and breaking
+	// reconciliation for an otherwise valid single-namespace deployment.
 	var distinctNamespaces []string
+	seenNamespaces := make(map[string]struct{}, 2)
 	for _, ns := range []string{gw.Namespace, c.envoyGatewayNamespace} {
+		if _, ok := seenNamespaces[ns]; ok {
+			continue
+		}
+		seenNamespaces[ns] = struct{}{}
+
 		var ps *corev1.PodList
 		ps, err = c.kube.CoreV1().Pods(ns).List(ctx, listOption)
 		if err != nil {

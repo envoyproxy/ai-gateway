@@ -2837,3 +2837,43 @@ func TestGatewayController_getObjectsForGatewayNamespaceInconsistency(t *testing
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "found gateway-labeled objects in multiple namespaces")
 }
+
+// TestGatewayController_getObjectsForGatewaySameNamespace verifies that when Envoy
+// Gateway is colocated with the Gateways it manages (gw.Namespace ==
+// envoyGatewayNamespace), the gateway-labeled objects in that single namespace are
+// scanned only once instead of being double-counted. Without de-duplicating the
+// namespaces to scan, the same objects are found on both passes, the namespace is
+// recorded twice, and the controller spuriously fails with "found gateway-labeled
+// objects in multiple namespaces" — breaking reconciliation for an otherwise valid
+// single-namespace deployment.
+func TestGatewayController_getObjectsForGatewaySameNamespace(t *testing.T) {
+	const gwName, namespace = "gw", "inference"
+	labels := map[string]string{
+		egOwningGatewayNameLabel:      gwName,
+		egOwningGatewayNamespaceLabel: namespace,
+	}
+	gw := &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: namespace}}
+
+	kube := fake2.NewClientset()
+	// Envoy Gateway is deployed in the same namespace as the Gateway, so
+	// gw.Namespace and the envoyGatewayNamespace passed below are identical.
+	c := NewGatewayController(requireNewFakeClientWithIndexes(t), kube, ctrl.Log, namespace,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	_, err := kube.CoreV1().Pods(namespace).Create(t.Context(), &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: namespace, Labels: labels},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+	_, err = kube.AppsV1().Deployments(namespace).Create(t.Context(), &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "deploy", Namespace: namespace, Labels: labels},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	gotNamespace, pods, deployments, _, err := c.getObjectsForGateway(t.Context(), gw)
+	require.NoError(t, err)
+	require.Equal(t, namespace, gotNamespace)
+	// The shared namespace must be scanned exactly once; scanning it twice would
+	// double-count the same objects.
+	require.Len(t, pods, 1)
+	require.Len(t, deployments, 1)
+}
