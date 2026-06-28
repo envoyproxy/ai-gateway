@@ -111,6 +111,52 @@ func TestAESGCMCodec_KindPrefixCrossCheck(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidID)
 }
 
+func TestAESGCMCodec_ListCursor(t *testing.T) {
+	c := NewAESGCMCodec(newCrypto("primary-seed"), nil)
+
+	// cursorCharset matches the URL-safe shape a list cursor must keep (it travels as a query
+	// parameter and a JSON string value).
+	cursorCharset := regexp.MustCompile(`^flcur-[A-Za-z0-9_-]+$`)
+
+	for _, tc := range []BackendID{
+		// Walk position with a non-empty packed native cursor.
+		{Namespace: "ns1", Name: "apple", Kind: KindListCursor, NativeID: "ns1/apple|file-after-99"},
+		// "Start of backend" position: the packed payload keeps it non-empty.
+		{Namespace: "ns2", Name: "banana", Kind: KindListCursor, NativeID: "ns1/apple|"},
+	} {
+		t.Run(tc.NativeID, func(t *testing.T) {
+			id, err := c.Encode(tc)
+			require.NoError(t, err)
+			require.Regexp(t, cursorCharset, id)
+			require.True(t, strings.HasPrefix(id, listCursorPrefix))
+
+			out, err := c.Decode(id)
+			require.NoError(t, err)
+			require.Equal(t, tc, out)
+		})
+	}
+
+	// A list cursor must not decode as a file id (and vice versa): kinds are cross-checked
+	// against the prefix, and the prefixes themselves differ.
+	cursor, err := c.Encode(BackendID{Namespace: "ns1", Name: "apple", Kind: KindListCursor, NativeID: "ns1/apple|x"})
+	require.NoError(t, err)
+	swapped := filePrefix + strings.TrimPrefix(cursor, listCursorPrefix)
+	_, err = c.Decode(swapped)
+	require.ErrorIs(t, err, ErrInvalidID)
+
+	// A list cursor survives key rotation via the fallback.
+	rotated, err := NewAESGCMCodec(newCrypto("new-seed"), newCrypto("primary-seed")).Decode(cursor)
+	require.NoError(t, err)
+	require.Equal(t, KindListCursor, rotated.Kind)
+	require.Equal(t, "ns1/apple|x", rotated.NativeID)
+
+	// Tampering with the body fails authentication.
+	idx := len(listCursorPrefix) + (len(cursor)-len(listCursorPrefix))/2
+	tampered := cursor[:idx] + flipChar(cursor[idx]) + cursor[idx+1:]
+	_, err = c.Decode(tampered)
+	require.ErrorIs(t, err, ErrInvalidID)
+}
+
 func TestAESGCMCodec_InvalidInputs(t *testing.T) {
 	c := NewAESGCMCodec(newCrypto("primary-seed"), nil)
 

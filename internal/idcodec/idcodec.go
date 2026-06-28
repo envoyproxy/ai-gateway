@@ -21,6 +21,11 @@ const (
 	KindFile = "file"
 	// KindBatch identifies a Batch API object id ("batch-…").
 	KindBatch = "batch"
+	// KindListCursor identifies an opaque Files API list pagination cursor ("flcur-…").
+	// It is not an OpenAI object id; it is minted by the gateway as the list endpoint's
+	// pagination token (returned as last_id and accepted back via the after query param),
+	// carrying the cross-backend walk position inside the encrypted payload.
+	KindListCursor = "list_cursor"
 )
 
 // ErrInvalidID is returned by [Codec.Decode] when a gateway id cannot be decoded: an

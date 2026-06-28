@@ -15,6 +15,10 @@ import (
 const (
 	filePrefix  = "file-"
 	batchPrefix = "batch-"
+	// listCursorPrefix marks an opaque Files API list pagination cursor. It is not an OpenAI
+	// object id, so it does not need to match an OpenAI id shape; it only needs to be URL-safe
+	// (it travels as the after query parameter and the last_id response field).
+	listCursorPrefix = "flcur-"
 )
 
 // payloadSeparator separates the kind, "namespace/name", and native id fields in the
@@ -42,6 +46,8 @@ func prefixForKind(kind string) (string, error) {
 		return filePrefix, nil
 	case KindBatch:
 		return batchPrefix, nil
+	case KindListCursor:
+		return listCursorPrefix, nil
 	default:
 		return "", fmt.Errorf("idcodec: unsupported kind %q", kind)
 	}
@@ -83,6 +89,8 @@ func (c *aesGCMCodec) Decode(id string) (BackendID, error) {
 		kind, body = KindFile, id[len(filePrefix):]
 	case strings.HasPrefix(id, batchPrefix):
 		kind, body = KindBatch, id[len(batchPrefix):]
+	case strings.HasPrefix(id, listCursorPrefix):
+		kind, body = KindListCursor, id[len(listCursorPrefix):]
 	default:
 		return BackendID{}, ErrInvalidID
 	}
