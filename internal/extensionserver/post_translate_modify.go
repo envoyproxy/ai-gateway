@@ -76,6 +76,17 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 		return nil, fmt.Errorf("failed to modify listeners and routes for InferencePool support: %w", err)
 	}
 
+	// Synthesize per-backend sticky routes for backend-sticky routing. This runs after
+	// maybeModifyListenerAndRoutes so the cloned sticky routes inherit the ext_proc per-filter
+	// config and route metadata enabled on the originals. stickyBackends is derived from the
+	// selected_backnd tags applied to cluster endpoints in maybeModifyCluster above.
+	stickyBackends := collectStickyBackends(req.Clusters)
+	for _, routeCfg := range req.Routes {
+		for _, vh := range routeCfg.VirtualHosts {
+			synthesizeStickyBackendRoutes(vh, stickyBackends)
+		}
+	}
+
 	// Ensure the AI Gateway external processor UDS cluster exists.
 	// This cluster is used for communication with the AI Gateway's main external processor.
 	if !extProcUDSExist {
@@ -238,6 +249,8 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				if backendRef.Priority != nil {
 					endpoints.Priority = *backendRef.Priority
 				}
+				// backendValue is the stable identity used for backend-sticky routing.
+				backendValue := internalapi.SelectedBackendMetadataValue(namespace, name)
 				// We populate the same metadata for all endpoints in the LoadAssignment.
 				// This is because currently, an extproc cannot retrieve the endpoint set level metadata.
 				for _, endpoint := range endpoints.LbEndpoints {
@@ -258,7 +271,16 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 					m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
 						internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i),
 					)
+					// Tag the endpoint for subset load balancing so a request carrying selected_backnd
+					// can be pinned to this backend's endpoints.
+					tagLbEndpointWithStickyBackend(endpoint, backendValue)
 				}
+			}
+			// Wrap the cluster's LB policy in a subset policy keyed on selected_backnd so the tags
+			// above take effect. With no selection metadata the ANY_ENDPOINT fallback preserves
+			// normal weighted load balancing.
+			if err := wrapClusterLbPolicyWithStickySubset(cluster); err != nil {
+				return fmt.Errorf("failed to wrap cluster %s LB policy with sticky subset: %w", cluster.Name, err)
 			}
 		}
 	} else {
