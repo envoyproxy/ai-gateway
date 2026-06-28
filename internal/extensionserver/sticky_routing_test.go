@@ -31,13 +31,13 @@ func TestTagLbEndpointWithStickyBackend(t *testing.T) {
 
 	lb := ep.Metadata.FilterMetadata[internalapi.EnvoyLbMetadataNamespace]
 	require.NotNil(t, lb)
-	require.Equal(t, "ns.aaa", lb.Fields[internalapi.AIGatewaySelectedBackndMetadataKey].GetStringValue())
+	require.Equal(t, "ns.aaa", lb.Fields[internalapi.AIGatewaySelectedBackendMetadataKey].GetStringValue())
 
 	// Tagging again with a different value overwrites and does not clobber other namespaces.
 	ep.Metadata.FilterMetadata["other.ns"] = nil
 	tagLbEndpointWithStickyBackend(ep, "ns.bbb")
 	require.Equal(t, "ns.bbb", ep.Metadata.FilterMetadata[internalapi.EnvoyLbMetadataNamespace].
-		Fields[internalapi.AIGatewaySelectedBackndMetadataKey].GetStringValue())
+		Fields[internalapi.AIGatewaySelectedBackendMetadataKey].GetStringValue())
 	require.Contains(t, ep.Metadata.FilterMetadata, "other.ns")
 }
 
@@ -54,7 +54,7 @@ func TestWrapClusterLbPolicyWithStickySubset(t *testing.T) {
 		require.NoError(t, outer.TypedConfig.UnmarshalTo(subset))
 		require.Equal(t, subsetv3.Subset_ANY_ENDPOINT, subset.FallbackPolicy)
 		require.Len(t, subset.SubsetSelectors, 1)
-		require.Equal(t, []string{internalapi.AIGatewaySelectedBackndMetadataKey}, subset.SubsetSelectors[0].Keys)
+		require.Equal(t, []string{internalapi.AIGatewaySelectedBackendMetadataKey}, subset.SubsetSelectors[0].Keys)
 		require.True(t, subset.LocalityWeightAware)
 		require.True(t, subset.ScaleLocalityWeight)
 		require.Equal(t, roundRobinLbPolicyName, subset.SubsetLbPolicy.Policies[0].TypedExtensionConfig.Name)
@@ -147,23 +147,23 @@ func TestSynthesizeStickyBackendRoutes(t *testing.T) {
 		require.Nil(t, sticky.Match.Headers)
 		require.Nil(t, sticky.Match.QueryParameters)
 		require.Equal(t, "/v1/files", sticky.Match.GetPrefix())
-		// Dynamic metadata matcher gates on selected_backnd.
+		// Dynamic metadata matcher gates on selected_backend.
 		require.Len(t, sticky.Match.DynamicMetadata, 1)
 		dm := sticky.Match.DynamicMetadata[0]
 		require.Equal(t, internalapi.AIGatewayFilterMetadataNamespace, dm.Filter)
-		require.Equal(t, internalapi.AIGatewaySelectedBackndMetadataKey, dm.Path[0].GetKey())
+		require.Equal(t, internalapi.AIGatewaySelectedBackendMetadataKey, dm.Path[0].GetKey())
 		require.Equal(t, "ns.aaa", dm.Value.GetStringMatch().GetExact())
 		// MetadataMatch pins the subset LB.
 		require.Equal(t, "ns.aaa", sticky.GetRoute().MetadataMatch.
 			FilterMetadata[internalapi.EnvoyLbMetadataNamespace].
-			Fields[internalapi.AIGatewaySelectedBackndMetadataKey].GetStringValue())
+			Fields[internalapi.AIGatewaySelectedBackendMetadataKey].GetStringValue())
 		// Original route is untouched.
 		require.NotNil(t, vh.Routes[2].Match.Headers)
 	})
 
 	t.Run("single backend is pinned", func(t *testing.T) {
 		// Even a single backend gets a sticky route: id-bearing requests (e.g. Files API)
-		// route purely by selected_backnd and carry no model header, so without the sticky
+		// route purely by selected_backend and carry no model header, so without the sticky
 		// route they would match no route after the route cache is cleared.
 		vh := &routev3.VirtualHost{
 			Name:   "vh",

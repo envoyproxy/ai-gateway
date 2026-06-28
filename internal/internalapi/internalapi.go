@@ -33,15 +33,14 @@ const (
 	// subset metadata, used both on endpoints (LbEndpoint.Metadata) and on a route's
 	// RouteAction.MetadataMatch to pin a request to an endpoint subset.
 	EnvoyLbMetadataNamespace = "envoy.lb"
-	// AIGatewaySelectedBackndMetadataKey is the metadata key used for backend-sticky routing.
+	// AIGatewaySelectedBackendMetadataKey is the metadata key used for backend-sticky routing.
 	// It appears in three places, all carrying the value SelectedBackendMetadataValue(namespace, name):
 	//   1. As request dynamic metadata under AIGatewayFilterMetadataNamespace, emitted by the
 	//      router-level ext_proc when it decodes a backend from an opaque id.
 	//   2. As endpoint metadata under EnvoyLbMetadataNamespace, tagged on each backend's endpoints.
 	//   3. As a route's MetadataMatch under EnvoyLbMetadataNamespace, on synthesized sticky routes.
 	// The subset load balancer uses (2)+(3) to pin the request to the selected backend's endpoints.
-	// The intentional spelling ("backnd") matches the on-the-wire key and must not be "corrected".
-	AIGatewaySelectedBackndMetadataKey = "selected_backnd"
+	AIGatewaySelectedBackendMetadataKey = "selected_backend"
 	// MCPBackendHeader is the special header key used to specify the target backend name.
 	MCPBackendHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend"
 	// MCPRouteHeader is the special header key used to identify the mcp route.
@@ -117,7 +116,7 @@ func NamespaceAndNameFromBackendName(backendName string) (namespace, name string
 }
 
 // SelectedBackendMetadataValue returns the stable backend identity used as the value of
-// AIGatewaySelectedBackndMetadataKey for backend-sticky routing: "<namespace>.<name>".
+// AIGatewaySelectedBackendMetadataKey for backend-sticky routing: "<namespace>.<name>".
 // Kubernetes namespaces and AIServiceBackend names are DNS-1123 labels and cannot contain
 // ".", so the composed value is unambiguous.
 func SelectedBackendMetadataValue(namespace, name string) string {

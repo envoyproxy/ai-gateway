@@ -27,7 +27,7 @@ import (
 // Some endpoints (e.g. the OpenAI Files/Batch APIs) must route every id-bearing request back
 // to the exact backend that produced the id, even though a route rule's backends are all
 // endpoints of a single cluster. This primitive provides that affinity with three cooperating
-// pieces, all keyed on internalapi.AIGatewaySelectedBackndMetadataKey:
+// pieces, all keyed on internalapi.AIGatewaySelectedBackendMetadataKey:
 //
 //  1. Each backend's endpoints are tagged (under the "envoy.lb" namespace) with the backend's
 //     identity value (see tagLbEndpointWithStickyBackend).
@@ -35,10 +35,10 @@ import (
 //     key, so a request can be confined to a single backend's endpoints
 //     (see wrapClusterLbPolicyWithStickySubset). When a request carries no selection, the
 //     ANY_ENDPOINT fallback makes it behave like normal weighted load balancing.
-//  3. Per-backend "sticky" routes are synthesized; each matches on the request's selected_backnd
+//  3. Per-backend "sticky" routes are synthesized; each matches on the request's selected_backend
 //     dynamic metadata and pins the subset LB to that backend (see synthesizeStickyBackendRoutes).
 //
-// The router-level ext_proc emits the selected_backnd dynamic metadata (and clears the route
+// The router-level ext_proc emits the selected_backend dynamic metadata (and clears the route
 // cache) once it decodes the target backend from an opaque id, which triggers a re-match onto
 // the corresponding sticky route.
 
@@ -52,7 +52,7 @@ const (
 )
 
 // tagLbEndpointWithStickyBackend records the owning backend's identity on an endpoint under the
-// "envoy.lb" namespace so the subset load balancer can select it by selected_backnd value.
+// "envoy.lb" namespace so the subset load balancer can select it by selected_backend value.
 func tagLbEndpointWithStickyBackend(endpoint *endpointv3.LbEndpoint, backendValue string) {
 	if endpoint.Metadata == nil {
 		endpoint.Metadata = &corev3.Metadata{}
@@ -68,11 +68,11 @@ func tagLbEndpointWithStickyBackend(endpoint *endpointv3.LbEndpoint, backendValu
 	if lb.Fields == nil {
 		lb.Fields = make(map[string]*structpb.Value)
 	}
-	lb.Fields[internalapi.AIGatewaySelectedBackndMetadataKey] = structpb.NewStringValue(backendValue)
+	lb.Fields[internalapi.AIGatewaySelectedBackendMetadataKey] = structpb.NewStringValue(backendValue)
 }
 
 // wrapClusterLbPolicyWithStickySubset wraps a cluster's load-balancing policy in a subset policy
-// keyed on selected_backnd, delegating endpoint-picking within a subset to the cluster's existing
+// keyed on selected_backend, delegating endpoint-picking within a subset to the cluster's existing
 // typed policy (or round robin if none). It is idempotent: a cluster already wrapped is left as is.
 //
 // Note: Envoy rejects combining the modern typed load_balancing_policy with the legacy
@@ -106,7 +106,7 @@ func wrapClusterLbPolicyWithStickySubset(cluster *clusterv3.Cluster) error {
 		// No selection metadata on a request => fall back to load balancing across all endpoints.
 		FallbackPolicy: subsetv3.Subset_ANY_ENDPOINT,
 		SubsetSelectors: []*subsetv3.Subset_LbSubsetSelector{
-			{Keys: []string{internalapi.AIGatewaySelectedBackndMetadataKey}},
+			{Keys: []string{internalapi.AIGatewaySelectedBackendMetadataKey}},
 		},
 		LocalityWeightAware: true,
 		ScaleLocalityWeight: true,
@@ -128,11 +128,11 @@ func wrapClusterLbPolicyWithStickySubset(cluster *clusterv3.Cluster) error {
 }
 
 // synthesizeStickyBackendRoutes adds, for every backend of each AI Gateway route in the virtual
-// host, a cloned "sticky" route gated on the selected_backnd dynamic metadata and pinned to that
+// host, a cloned "sticky" route gated on the selected_backend dynamic metadata and pinned to that
 // backend's endpoint subset. stickyBackends maps a cluster name to the backend identity values
 // (SelectedBackendMetadataValue) of the endpoints it contains.
 //
-// Sticky routes are prepended so that, after the router-level ext_proc emits selected_backnd and
+// Sticky routes are prepended so that, after the router-level ext_proc emits selected_backend and
 // clears the route cache, the re-match lands on the pinned route. The function is idempotent.
 func synthesizeStickyBackendRoutes(vh *routev3.VirtualHost, stickyBackends map[string][]string) {
 	if len(stickyBackends) == 0 {
@@ -156,7 +156,7 @@ func synthesizeStickyBackendRoutes(vh *routev3.VirtualHost, stickyBackends map[s
 		backends := stickyBackends[ra.GetCluster()]
 		// A cluster with no recorded backends (e.g. a non-AI-Gateway route) cannot be pinned.
 		// A sticky route is synthesized even for a single backend: requests that route purely by
-		// selected_backnd (e.g. the Files API id-bearing requests) carry no model header, so the
+		// selected_backend (e.g. the Files API id-bearing requests) carry no model header, so the
 		// original model-matched route would not match them after the route cache is cleared —
 		// the sticky route is the only route they can match.
 		if len(backends) == 0 {
@@ -176,7 +176,7 @@ func synthesizeStickyBackendRoutes(vh *routev3.VirtualHost, stickyBackends map[s
 	}
 }
 
-// newStickyBackendRoute clones src into a route that matches only when the request's selected_backnd
+// newStickyBackendRoute clones src into a route that matches only when the request's selected_backend
 // dynamic metadata equals backendValue, and pins the subset LB to that backend.
 func newStickyBackendRoute(src *routev3.Route, backendValue string) *routev3.Route {
 	r, _ := proto.Clone(src).(*routev3.Route)
@@ -192,7 +192,7 @@ func newStickyBackendRoute(src *routev3.Route, backendValue string) *routev3.Rou
 	r.Match.DynamicMetadata = []*matcherv3.MetadataMatcher{{
 		Filter: internalapi.AIGatewayFilterMetadataNamespace,
 		Path: []*matcherv3.MetadataMatcher_PathSegment{{
-			Segment: &matcherv3.MetadataMatcher_PathSegment_Key{Key: internalapi.AIGatewaySelectedBackndMetadataKey},
+			Segment: &matcherv3.MetadataMatcher_PathSegment_Key{Key: internalapi.AIGatewaySelectedBackendMetadataKey},
 		}},
 		Value: &matcherv3.ValueMatcher{
 			MatchPattern: &matcherv3.ValueMatcher_StringMatch{
@@ -208,7 +208,7 @@ func newStickyBackendRoute(src *routev3.Route, backendValue string) *routev3.Rou
 			FilterMetadata: map[string]*structpb.Struct{
 				internalapi.EnvoyLbMetadataNamespace: {
 					Fields: map[string]*structpb.Value{
-						internalapi.AIGatewaySelectedBackndMetadataKey: structpb.NewStringValue(backendValue),
+						internalapi.AIGatewaySelectedBackendMetadataKey: structpb.NewStringValue(backendValue),
 					},
 				},
 			},
@@ -223,7 +223,7 @@ func isStickyBackendRoute(route *routev3.Route) bool {
 }
 
 // collectStickyBackends builds a map from cluster name to the distinct backend identity values
-// (selected_backnd) tagged on its endpoints by tagLbEndpointWithStickyBackend. It is the input to
+// (selected_backend) tagged on its endpoints by tagLbEndpointWithStickyBackend. It is the input to
 // synthesizeStickyBackendRoutes, derived purely from the clusters already modified in this pass.
 func collectStickyBackends(clusters []*clusterv3.Cluster) map[string][]string {
 	result := make(map[string][]string)
@@ -253,7 +253,7 @@ func collectStickyBackends(clusters []*clusterv3.Cluster) map[string][]string {
 	return result
 }
 
-// stickyBackendValueOfEndpoint returns the selected_backnd value tagged on an endpoint, or "".
+// stickyBackendValueOfEndpoint returns the selected_backend value tagged on an endpoint, or "".
 func stickyBackendValueOfEndpoint(ep *endpointv3.LbEndpoint) string {
 	if ep.Metadata == nil {
 		return ""
@@ -262,5 +262,5 @@ func stickyBackendValueOfEndpoint(ep *endpointv3.LbEndpoint) string {
 	if !ok || lb.Fields == nil {
 		return ""
 	}
-	return lb.Fields[internalapi.AIGatewaySelectedBackndMetadataKey].GetStringValue()
+	return lb.Fields[internalapi.AIGatewaySelectedBackendMetadataKey].GetStringValue()
 }

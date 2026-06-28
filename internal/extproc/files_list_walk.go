@@ -15,7 +15,7 @@ import (
 )
 
 // backendKey identifies a route backend by its AIServiceBackend namespace/name — the same
-// granularity as the selected_backnd sticky-routing metadata value.
+// granularity as the selected_backend sticky-routing metadata value.
 type backendKey struct {
 	namespace string
 	name      string

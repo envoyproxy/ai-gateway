@@ -79,7 +79,7 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	// Synthesize per-backend sticky routes for backend-sticky routing. This runs after
 	// maybeModifyListenerAndRoutes so the cloned sticky routes inherit the ext_proc per-filter
 	// config and route metadata enabled on the originals. stickyBackends is derived from the
-	// selected_backnd tags applied to cluster endpoints in maybeModifyCluster above.
+	// selected_backend tags applied to cluster endpoints in maybeModifyCluster above.
 	stickyBackends := collectStickyBackends(req.Clusters)
 	for _, routeCfg := range req.Routes {
 		for _, vh := range routeCfg.VirtualHosts {
@@ -271,12 +271,12 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 					m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
 						internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i),
 					)
-					// Tag the endpoint for subset load balancing so a request carrying selected_backnd
+					// Tag the endpoint for subset load balancing so a request carrying selected_backend
 					// can be pinned to this backend's endpoints.
 					tagLbEndpointWithStickyBackend(endpoint, backendValue)
 				}
 			}
-			// Wrap the cluster's LB policy in a subset policy keyed on selected_backnd so the tags
+			// Wrap the cluster's LB policy in a subset policy keyed on selected_backend so the tags
 			// above take effect. With no selection metadata the ANY_ENDPOINT fallback preserves
 			// normal weighted load balancing.
 			if err := wrapClusterLbPolicyWithStickySubset(cluster); err != nil {

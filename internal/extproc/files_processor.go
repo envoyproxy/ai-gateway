@@ -60,7 +60,7 @@ const (
 //   - Upload is routed by the model carried in the multipart `model` form field; the response
 //     id is rewritten to encode the serving backend (learned via SetBackend).
 //   - Retrieve/content/delete decode the backend from the path id, pin the request to that
-//     backend via the selected_backnd sticky dynamic metadata, and rewrite the path to the
+//     backend via the selected_backend sticky dynamic metadata, and rewrite the path to the
 //     backend-native id.
 //   - List presents a single cross-backend view by walking the route's backends one page at a
 //     time, carrying the walk position in an encrypted pagination cursor (see files_list_walk.go).
@@ -167,7 +167,7 @@ func (p *filesProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.Head
 //     starting backend, which is captured via SetBackend.
 //   - Subsequent pages ("after=<cursor>"): the encrypted cursor (or a gateway file id, for stock
 //     SDK pagination) is decoded to recover the backend to serve from; the request is pinned to
-//     it via selected_backnd sticky metadata, and the upstream "after" is rewritten to the
+//     it via selected_backend sticky metadata, and the upstream "after" is rewritten to the
 //     backend-native cursor.
 //
 // An "after" value that is present but not a gateway cursor/id is rejected with 400. The original
@@ -695,7 +695,7 @@ func stickyBackendDynamicMetadata(namespace, name string) *structpb.Struct {
 		Fields: map[string]*structpb.Value{
 			internalapi.AIGatewayFilterMetadataNamespace: structpb.NewStructValue(&structpb.Struct{
 				Fields: map[string]*structpb.Value{
-					internalapi.AIGatewaySelectedBackndMetadataKey: structpb.NewStringValue(
+					internalapi.AIGatewaySelectedBackendMetadataKey: structpb.NewStringValue(
 						internalapi.SelectedBackendMetadataValue(namespace, name),
 					),
 				},

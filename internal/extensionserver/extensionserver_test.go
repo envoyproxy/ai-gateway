@@ -302,7 +302,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 											},
 											internalapi.EnvoyLbMetadataNamespace: {
 												Fields: map[string]*structpb.Value{
-													internalapi.AIGatewaySelectedBackndMetadataKey: structpb.NewStringValue(
+													internalapi.AIGatewaySelectedBackendMetadataKey: structpb.NewStringValue(
 														internalapi.SelectedBackendMetadataValue("ns", "aaa"),
 													),
 												},
@@ -327,7 +327,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 											},
 											internalapi.EnvoyLbMetadataNamespace: {
 												Fields: map[string]*structpb.Value{
-													internalapi.AIGatewaySelectedBackndMetadataKey: structpb.NewStringValue(
+													internalapi.AIGatewaySelectedBackendMetadataKey: structpb.NewStringValue(
 														internalapi.SelectedBackendMetadataValue("ns", "bbb"),
 													),
 												},
@@ -346,7 +346,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 							TypedConfig: mustToAny(t, &subsetv3.Subset{
 								FallbackPolicy: subsetv3.Subset_ANY_ENDPOINT,
 								SubsetSelectors: []*subsetv3.Subset_LbSubsetSelector{
-									{Keys: []string{internalapi.AIGatewaySelectedBackndMetadataKey}},
+									{Keys: []string{internalapi.AIGatewaySelectedBackendMetadataKey}},
 								},
 								LocalityWeightAware: true,
 								ScaleLocalityWeight: true,

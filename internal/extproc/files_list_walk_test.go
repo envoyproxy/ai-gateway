@@ -176,7 +176,7 @@ func stickyValue(resp *extprocv3.ProcessingResponse) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	v, ok := ns.GetStructValue().Fields[internalapi.AIGatewaySelectedBackndMetadataKey]
+	v, ok := ns.GetStructValue().Fields[internalapi.AIGatewaySelectedBackendMetadataKey]
 	if !ok {
 		return "", false
 	}
