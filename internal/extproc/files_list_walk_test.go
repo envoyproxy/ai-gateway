@@ -36,7 +36,12 @@ func runtimeConfigWithBackends(t *testing.T, specs ...[3]string) *filterapi.Runt
 	backends := map[string]*filterapi.RuntimeBackend{}
 	for i, s := range specs {
 		key := backendComposite(s[0], s[1], s[2], 0, i)
-		backends[key] = &filterapi.RuntimeBackend{Backend: &filterapi.Backend{Name: key}}
+		backends[key] = &filterapi.RuntimeBackend{
+			Backend: &filterapi.Backend{
+				Name:   key,
+				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+			},
+		}
 	}
 	return &filterapi.RuntimeConfig{Backends: backends}
 }
@@ -264,7 +269,10 @@ func TestBuildListWalkResponse_AdvanceAndComplete(t *testing.T) {
 	// Page 1: served by apple (start), apple exhausted -> advance to banana.
 	p := &filesProcessor{codec: codec, config: config, logger: slog.Default(), op: filesOpList}
 	require.NoError(t, p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
-		Backend: &filterapi.Backend{Name: backendComposite("ns", "apple", "myroute", 0, 0)},
+		Backend: &filterapi.Backend{
+			Name:   backendComposite("ns", "apple", "myroute", 0, 0),
+			Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+		},
 	}, "", p))
 
 	body := []byte(`{"object":"list","data":[{"id":"native-a1"},{"id":"native-a2"}],"has_more":false}`)
@@ -291,7 +299,10 @@ func TestBuildListWalkResponse_AdvanceAndComplete(t *testing.T) {
 	p2 := &filesProcessor{codec: codec, config: config, logger: slog.Default(), op: filesOpList}
 	p2.listStart, p2.listStartKnown = backendKey{namespace: "ns", name: "apple"}, true
 	require.NoError(t, p2.SetBackend(context.Background(), &filterapi.RuntimeBackend{
-		Backend: &filterapi.Backend{Name: backendComposite("ns", "banana", "myroute", 0, 1)},
+		Backend: &filterapi.Backend{
+			Name:   backendComposite("ns", "banana", "myroute", 0, 1),
+			Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+		},
 	}, "", p2))
 
 	body2 := []byte(`{"object":"list","data":[{"id":"native-b1"}],"has_more":false}`)
@@ -309,7 +320,10 @@ func TestBuildListWalkResponse_WithinBackend(t *testing.T) {
 	codec := testCodec()
 	p := &filesProcessor{codec: codec, config: config, logger: slog.Default(), op: filesOpList}
 	require.NoError(t, p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
-		Backend: &filterapi.Backend{Name: backendComposite("ns", "apple", "myroute", 0, 0)},
+		Backend: &filterapi.Backend{
+			Name:   backendComposite("ns", "apple", "myroute", 0, 0),
+			Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+		},
 	}, "", p))
 
 	// apple still has more: continue within apple using the last native id.
@@ -329,7 +343,10 @@ func TestBuildListWalkResponse_NonListPassThrough(t *testing.T) {
 	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"})
 	p := &filesProcessor{codec: testCodec(), config: config, logger: slog.Default(), op: filesOpList}
 	require.NoError(t, p.SetBackend(context.Background(), &filterapi.RuntimeBackend{
-		Backend: &filterapi.Backend{Name: backendComposite("ns", "apple", "myroute", 0, 0)},
+		Backend: &filterapi.Backend{
+			Name:   backendComposite("ns", "apple", "myroute", 0, 0),
+			Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+		},
 	}, "", p))
 
 	// An error envelope (no data array) passes through unmodified.
