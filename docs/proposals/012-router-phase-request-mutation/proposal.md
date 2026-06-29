@@ -1,4 +1,4 @@
-# Router-Phase Request Mutation via an External Chat-Completions Service
+# Router-Phase Request Mutation via a Generic External Service
 
 ## Table of Contents
 
@@ -35,10 +35,13 @@ patches, which are brittle to maintain and risky to the whole listener.
 
 This proposal makes that step a capability of the **existing router-phase AI Gateway
 filter**: during request-body processing, and **gated purely by a request header**, the
-filter calls a **general external chat-completions service** that accepts the request
-body, mutates it (e.g., model selection, message/param rewriting), and returns the mutated
-body. The gateway then re-derives `x-ai-eg-model` from the returned body and lets native
-routing proceed — reusing the existing route-cache-clear mechanism.
+filter calls a **generic external service**, forwarding the request **to the same endpoint
+URL and in the same schema it arrived in**. The service mutates the body (e.g., model
+selection, message/param rewriting) and returns it in that same schema. The gateway then
+re-derives `x-ai-eg-model` from the returned body and lets native routing proceed —
+reusing the existing route-cache-clear mechanism. The gateway does **not** impose any
+particular request schema (e.g., chat-completions); whatever the client sent is what the
+service receives and returns.
 
 There is **no new CRD field** and no change to how routes are generated. The mutation
 service endpoint is part of the filter's static configuration; whether the call fires for
@@ -222,18 +225,20 @@ serious **maintenance** and **stability** concerns:
 ### Overview
 
 Instead of adding a second filter, let the **existing router-phase AI Gateway filter**
-make a synchronous, third-party **HTTP call to a general chat-completions mutation
-service** during request-body processing — *before* it derives `x-ai-eg-model` and clears
-the route cache. The call is **gated by a request header**: it fires only when a
-configured gating header is present, and is skipped otherwise, so the existing behavior is
-completely unchanged for traffic that is not opted in.
+make a synchronous, third-party **HTTP call to a generic mutation service** during
+request-body processing — *before* it derives `x-ai-eg-model` and clears the route cache.
+The call is **gated by a request header**: it fires only when a configured gating header
+is present, and is skipped otherwise, so the existing behavior is completely unchanged for
+traffic that is not opted in.
 
-The mutation service is intentionally generic: it speaks the OpenAI **chat-completions
-schema** in both directions. It receives the request body, may change anything in it
-(most importantly `model`, but also `messages`, `temperature`, injected params, etc.), and
-returns the **mutated chat-completion body**. It is a pure **"body in → body out"**
-transformation and is unaware of Envoy, routes, or the gateway internals. A general
-semantic-router is one example of such a service, but any conforming service works.
+The mutation service is intentionally **schema-agnostic**. The gateway forwards the
+request to the service **on the same endpoint URL (the inbound request path) and in the
+same schema/body it received from the client**. The service may change anything in the
+body (most importantly the model, but also messages, parameters, injected fields, etc.)
+and returns it in **that same schema**. It is a pure **"body in → body out"**
+transformation and is unaware of Envoy, routes, or the gateway internals. The gateway does
+not parse or impose a fixed request schema for this call. A general semantic-router is one
+example of such a service, but any conforming service works.
 
 ### Request flow
 
@@ -268,8 +273,10 @@ semantic-router is one example of such a service, but any conforming service wor
       │◄──────────────────────────────── response ────────────────────────────│
 ```
 
-When the gating header is **absent**, step (2) short-circuits: the filter skips the call
-and proceeds exactly as today (no mutation, no added latency).
+The body shown above is a chat-completions request only as an example; the gateway
+forwards whatever the client sent — same endpoint path, same schema — and the service
+returns the same schema. When the gating header is **absent**, step (2) short-circuits:
+the filter skips the call and proceeds exactly as today (no mutation, no added latency).
 
 The key point: steps (3)–(4) happen **inside** the single AI Gateway filter while the
 request is on the catch-all route. The existing `ClearRouteCache` re-match (step 7) then
@@ -278,16 +285,18 @@ landing-route machinery is reused exactly as-is.
 
 ### The mutation-service contract
 
-- **Request:** `POST <path>` (default `/v1/chat/completions`) with the buffered request
-  body unchanged, `Content-Type: application/json`. A configurable allow-list of request
-  headers may be forwarded for context.
-- **Response (success):** `200 OK` with a JSON body in the **same chat-completions request
-  schema**. The gateway treats the returned body as the new working request body. Returned
-  response headers (optional, behind an allow-list) may be applied as request-header
-  mutations.
+- **Request:** the gateway calls the service at the **same endpoint URL as the inbound
+  request** (i.e., it mirrors the original request path and method) and forwards the
+  **buffered request body unchanged**, preserving the original `Content-Type`. The body is
+  treated as opaque — the gateway does not require it to be any particular schema. A
+  configurable allow-list of request headers may be forwarded for context.
+- **Response (success):** `200 OK` with a body in the **same schema as the request that
+  was sent** (i.e., the same schema the client used). The gateway treats the returned body
+  as the new working request body. Returned response headers (optional, behind an
+  allow-list) may be applied as request-header mutations.
 - **No-op:** returning the body unchanged (or `204 No Content`) means "no mutation".
-- **Idempotency/scope:** the service must return a request body, never a completion
-  response — it sits on the request path only.
+- **Idempotency/scope:** the service must return a *request* body in the same schema, never
+  a completion/response payload — it sits on the request path only.
 
 ### Header-based gating and configuration
 
@@ -302,8 +311,9 @@ root prefix and endpoint prefixes). Sketch:
 ```yaml
 # AI Gateway ext_proc filter configuration (NOT a field on the AIGatewayRoute CRD)
 requestMutation:
-  endpoint: http://semantic-router.svc:8080   # any conforming chat-completions service
-  path: /v1/chat/completions                   # default
+  endpoint: http://semantic-router.svc:8080   # host/authority of any conforming service
+  # No fixed path/schema: the gateway calls the service at the SAME endpoint URL as the
+  # inbound request (mirrors the original request path) and forwards the body as-is.
   gatingHeader: x-ai-eg-route-mutate           # call ONLY when this header is present
   gatingHeaderValue: ""                         # optional: require an exact value
   timeoutMs: 250
@@ -437,8 +447,11 @@ fragile part (a second filter ordered by patches) is removed entirely.
    header be stripped before the request leaves the gateway?
 2. **Streaming requests:** the call is request-path only and unaffected by `stream=true`,
    but should we cap mutation for very large buffered bodies?
-3. **Schema neutrality:** should the contract be strictly chat-completions, or a thin
-   envelope that also carries non-chat endpoints (embeddings, completions)?
+3. **Schema neutrality:** the body is forwarded opaquely on the same endpoint URL, so the
+   contract is schema-agnostic by design. Open: how does the gateway re-derive
+   `x-ai-eg-model` from the *returned* body across schemas — reuse the same model-extraction
+   it already applies per endpoint, or have the service additionally return the model via a
+   response header?
 4. **Observability:** standard metrics for mutation latency, fail-open rate, and
    model-change rate (original vs. mutated model) — align with the original-model tracking
    proposal.
