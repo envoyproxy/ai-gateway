@@ -2842,6 +2842,8 @@ type ResponseToolUnion struct {
 	OfCustom           *CustomToolParam
 	OfWebSearchPreview *WebSearchPreviewToolParam
 	OfApplyPatch       *ApplyPatchToolParam
+	OfNamespace        *ToolNamespaceParam
+	OfToolSearch       *ToolSearchParam
 }
 
 func (t ResponseToolUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
@@ -2870,6 +2872,10 @@ func (t ResponseToolUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
 		return json.Marshal(t.OfWebSearchPreview)
 	case t.OfApplyPatch != nil:
 		return json.Marshal(t.OfApplyPatch)
+	case t.OfNamespace != nil:
+		return json.Marshal(t.OfNamespace)
+	case t.OfToolSearch != nil:
+		return json.Marshal(t.OfToolSearch)
 	default:
 		return nil, errors.New("no tool to marshal in ToolUnionParam")
 	}
@@ -2950,6 +2956,18 @@ func (t *ResponseToolUnion) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		t.OfApplyPatch = &ap
+	case "namespace":
+		var ns ToolNamespaceParam
+		if err := json.Unmarshal(data, &ns); err != nil {
+			return err
+		}
+		t.OfNamespace = &ns
+	case "tool_search":
+		var ts ToolSearchParam
+		if err := json.Unmarshal(data, &ts); err != nil {
+			return err
+		}
+		t.OfToolSearch = &ts
 	default:
 		return errors.New("unknown tool type")
 	}
@@ -3653,6 +3671,35 @@ type WebSearchPreviewToolUserLocationParam struct {
 type ApplyPatchToolParam struct {
 	// The type of the tool. Always `apply_patch`.
 	Type string `json:"type"`
+}
+
+// ToolNamespaceParam mirrors the "namespace" tool type emitted by the OpenAI
+// Codex CLI. It groups multiple sub-tools to keep large tool inventories
+// organised. See https://github.com/openai/codex/blob/main/codex-rs/tools/src/responses_api.rs
+type ToolNamespaceParam struct {
+	// The type of the namespace tool. Always `namespace`.
+	Type string `json:"type"`
+	// The name of the namespace.
+	Name string `json:"name,omitzero"`
+	// A description of the namespace.
+	Description string `json:"description,omitzero"`
+	// The sub-tools grouped under this namespace. Stored as raw JSON so that
+	// any tool shape is accepted and forwarded transparently.
+	Tools json.RawMessage `json:"tools,omitzero"`
+}
+
+// ToolSearchParam mirrors the "tool_search" tool type emitted by the OpenAI
+// Codex CLI. It is Codex's dynamic-tool-discovery meta-tool.
+// See https://github.com/openai/codex/blob/main/codex-rs/tools/src/tool_spec.rs
+type ToolSearchParam struct {
+	// The type of the tool search tool. Always `tool_search`.
+	Type string `json:"type"`
+	// The execution mode for tool search (e.g. "remote").
+	Execution string `json:"execution,omitzero"`
+	// A description of the tool search.
+	Description string `json:"description,omitzero"`
+	// A JSON Schema describing the parameters accepted by tool search.
+	Parameters json.RawMessage `json:"parameters,omitzero"`
 }
 
 // A text input to the model.
