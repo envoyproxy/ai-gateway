@@ -829,6 +829,67 @@ func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error
 	return nil
 }
 
+type messageDeltaUsageFields struct {
+	Usage *struct {
+		InputTokens              *int64 `json:"input_tokens"`
+		CacheReadInputTokens     *int64 `json:"cache_read_input_tokens"`
+		CacheCreationInputTokens *int64 `json:"cache_creation_input_tokens"`
+	} `json:"usage"`
+}
+
+func (p *anthropicStreamParser) updateInputUsageFromMessageDelta(data []byte) error {
+	// message_delta provides cumulative (not incremental) token counts.
+	// This function handles input_tokens, cache_read_input_tokens, and cache_creation_input_tokens
+	// from message_delta. We use Set (not Add) because these are cumulative totals.
+	// This prevents double-counting when both message_start and message_delta report the same
+	// cache tokens, and also handles cases where:
+	// - Cache tokens are reported only in message_delta (not in message_start)
+	// - message_delta provides corrected/updated cache token values that override message_start
+	var event messageDeltaUsageFields
+	if err := json.Unmarshal(data, &event); err != nil {
+		return fmt.Errorf("unmarshal message_delta usage fields: %w", err)
+	}
+	if event.Usage == nil {
+		return nil
+	}
+
+	u := event.Usage
+	inputPresent := u.InputTokens != nil && *u.InputTokens >= 0
+	cacheReadPresent := u.CacheReadInputTokens != nil && *u.CacheReadInputTokens >= 0
+	cacheCreationPresent := u.CacheCreationInputTokens != nil && *u.CacheCreationInputTokens >= 0
+	if !inputPresent && !cacheReadPresent && !cacheCreationPresent {
+		return nil
+	}
+
+	baseInputTokens := uint32(0)
+	if inputPresent {
+		baseInputTokens = uint32(*u.InputTokens) //nolint:gosec
+	} else if inputTokens, ok := p.tokenUsage.InputTokens(); ok {
+		baseInputTokens = inputTokens
+		if cachedTokens, ok := p.tokenUsage.CachedInputTokens(); ok && baseInputTokens >= cachedTokens {
+			baseInputTokens -= cachedTokens
+		}
+		if cacheCreationTokens, ok := p.tokenUsage.CacheCreationInputTokens(); ok && baseInputTokens >= cacheCreationTokens {
+			baseInputTokens -= cacheCreationTokens
+		}
+	}
+
+	cachedTokens, _ := p.tokenUsage.CachedInputTokens()
+	if cacheReadPresent {
+		cachedTokens = uint32(*u.CacheReadInputTokens) //nolint:gosec
+		p.tokenUsage.SetCachedInputTokens(cachedTokens)
+	}
+
+	cacheCreationTokens, _ := p.tokenUsage.CacheCreationInputTokens()
+	if cacheCreationPresent {
+		cacheCreationTokens = uint32(*u.CacheCreationInputTokens) //nolint:gosec
+		p.tokenUsage.SetCacheCreationInputTokens(cacheCreationTokens)
+	}
+
+	p.tokenUsage.SetInputTokens(baseInputTokens + cachedTokens + cacheCreationTokens)
+	return nil
+}
+
 // Process reads from the Anthropic SSE stream, translates events to OpenAI chunks,
 // and returns the mutations for Envoy.
 func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span tracingapi.ChatCompletionSpan) (
@@ -1054,18 +1115,23 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, fmt.Errorf("unmarshal message_delta: %w", err)
 		}
-		u := event.Usage
-		usage := metrics.ExtractTokenUsageFromExplicitCaching(
-			u.InputTokens,
-			u.OutputTokens,
-			&u.CacheReadInputTokens,
-			&u.CacheCreationInputTokens,
-		)
-		// For message_delta, accumulate the incremental output tokens
-		if output, ok := usage.OutputTokens(); ok {
-			p.tokenUsage.AddOutputTokens(output)
+		// Update input and cache token usage from message_delta.
+		// This handles cases where cache tokens are only in message_delta,
+		// or where message_delta provides corrected totals that override message_start.
+		if err := p.updateInputUsageFromMessageDelta(data); err != nil {
+			return nil, err
 		}
-		p.tokenUsage.SetReasoningTokens(uint32(u.OutputTokensDetails.ThinkingTokens)) //nolint:gosec
+		u := event.Usage
+		// message_delta provides cumulative (not incremental) output token counts.
+		// Use Set (not Add) because the value is cumulative.
+		// message_start typically reports output_tokens=0, and message_delta
+		// provides the final output token count.
+		if u.OutputTokens >= 0 {
+			p.tokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
+		}
+		if u.OutputTokensDetails.ThinkingTokens >= 0 {
+			p.tokenUsage.SetReasoningTokens(uint32(u.OutputTokensDetails.ThinkingTokens)) //nolint:gosec
+		}
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
 		}
