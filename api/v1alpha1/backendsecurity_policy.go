@@ -291,6 +291,20 @@ type BackendSecurityPolicyAWSCredentials struct {
 	// +kubebuilder:validation:MinLength=1
 	Region string `json:"region"`
 
+	// Service specifies the AWS service name used for SigV4 signing.
+	// If not set, the service is inferred from the backend host at request time.
+	//
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	Service *string `json:"service,omitempty"`
+
+	// SigningHost specifies the host used for SigV4 signing.
+	// If not set, the backend host (":authority") is used at request time.
+	//
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	SigningHost *string `json:"signingHost,omitempty"`
+
 	// CredentialsFile specifies the credentials file to use for the AWS provider.
 	// When specified, this takes precedence over the default credential chain.
 	//
