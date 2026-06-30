@@ -2838,13 +2838,6 @@ func TestGatewayController_getObjectsForGatewayNamespaceInconsistency(t *testing
 	require.Contains(t, err.Error(), "found gateway-labeled objects in multiple namespaces")
 }
 
-// TestGatewayController_getObjectsForGatewaySameNamespace verifies that when the Gateway
-// resource lives in the same namespace as the Envoy Gateway controller (a common deployment
-// shape: controller-namespace mode with EG installed alongside the AI workloads), the
-// consistency check does not spuriously fire. Without the dedup of candidate namespaces, the
-// loop would list the same objects twice and report
-// `found gateway-labeled objects in multiple namespaces: [<ns> <ns>]` even though
-// everything is correctly scoped to a single namespace.
 func TestGatewayController_getObjectsForGatewaySameNamespace(t *testing.T) {
 	const gwName, ns = "gw", "shared"
 	labels := map[string]string{
@@ -2854,7 +2847,6 @@ func TestGatewayController_getObjectsForGatewaySameNamespace(t *testing.T) {
 	gw := &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: ns}}
 
 	kube := fake2.NewClientset()
-	// envoyGatewayNamespace == gw.Namespace.
 	c := NewGatewayController(requireNewFakeClientWithIndexes(t), kube, ctrl.Log, ns,
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
@@ -2870,6 +2862,6 @@ func TestGatewayController_getObjectsForGatewaySameNamespace(t *testing.T) {
 	namespace, pods, deployments, _, err := c.getObjectsForGateway(t.Context(), gw)
 	require.NoError(t, err)
 	require.Equal(t, ns, namespace)
-	require.Len(t, pods, 1, "pod should not be double-counted when gw.Namespace == envoyGatewayNamespace")
-	require.Len(t, deployments, 1, "deployment should not be double-counted when gw.Namespace == envoyGatewayNamespace")
+	require.Len(t, pods, 1)
+	require.Len(t, deployments, 1)
 }

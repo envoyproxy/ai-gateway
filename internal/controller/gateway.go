@@ -1148,12 +1148,6 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 		"%s=%s,%s=%s", egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace,
 	)}
 
-	// Dedup the candidate namespaces: when Envoy Gateway runs in the same namespace as the
-	// Gateway resource (i.e. controller-namespace mode with EG installed alongside the workload),
-	// gw.Namespace and c.envoyGatewayNamespace are equal. Without dedup the loop below would
-	// list the same objects twice and the consistency check at the end would incorrectly report
-	// `found gateway-labeled objects in multiple namespaces: [<ns> <ns>]` even though everything
-	// is correctly scoped to a single namespace.
 	candidateNamespaces := make([]string, 1, 2)
 	candidateNamespaces[0] = gw.Namespace
 	if c.envoyGatewayNamespace != gw.Namespace {
