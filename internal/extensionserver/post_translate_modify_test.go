@@ -6,8 +6,10 @@
 package extensionserver
 
 import (
+	"context"
 	"testing"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	routev3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
@@ -16,8 +18,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
+	"github.com/envoyproxy/ai-gateway/internal/controller"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
@@ -437,4 +443,298 @@ func Test_findListenerRouteConfigs(t *testing.T) {
 	}
 	names := findListenerRouteConfigs(l)
 	require.ElementsMatch(t, []string{"foo", "bar"}, names)
+}
+
+// routeWithLuaMetadata builds a routev3.Route that carries Envoy Gateway metadata.
+func routeWithLuaMetadata(t *testing.T, namespace, name string, luaSlots []string) *routev3.Route {
+	t.Helper()
+	resources, err := structpb.NewStruct(map[string]any{
+		"resources": []any{
+			map[string]any{
+				"namespace": namespace,
+				"name":      name,
+			},
+		},
+	})
+	require.NoError(t, err)
+	route := &routev3.Route{
+		Metadata: &corev3.Metadata{
+			FilterMetadata: map[string]*structpb.Struct{
+				"envoy-gateway": resources,
+			},
+		},
+		TypedPerFilterConfig: make(map[string]*anypb.Any),
+	}
+	for _, slot := range luaSlots {
+		route.TypedPerFilterConfig[slot] = &anypb.Any{}
+	}
+	return route
+}
+
+func TestBuildBeforeExtProcLuaFilterNames(t *testing.T) {
+	makePolicy := func(namespace, name, targetName string, annotated bool) egv1a1.EnvoyExtensionPolicy {
+		annotations := map[string]string{}
+		if annotated {
+			annotations[internalapi.LuaFilterOrderAnnotation] = internalapi.LuaFilterOrderBeforeExtProc
+		}
+		return egv1a1.EnvoyExtensionPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:   namespace,
+				Name:        name,
+				Annotations: annotations,
+			},
+			Spec: egv1a1.EnvoyExtensionPolicySpec{
+				PolicyTargetReferences: egv1a1.PolicyTargetReferences{
+					TargetRefs: []gwapiv1.LocalPolicyTargetReferenceWithSectionName{
+						{LocalPolicyTargetReference: gwapiv1.LocalPolicyTargetReference{Name: gwapiv1.ObjectName(targetName)}},
+					},
+				},
+			},
+		}
+	}
+
+	t.Run("no policies — no names", func(t *testing.T) {
+		result := buildBeforeExtProcLuaFilterNames(nil, nil)
+		require.Empty(t, result)
+	})
+
+	t.Run("unannotated policy — no names", func(t *testing.T) {
+		policy := makePolicy("ns", "p1", "myroute", false)
+		routes := []*routev3.RouteConfiguration{{
+			VirtualHosts: []*routev3.VirtualHost{{
+				Routes: []*routev3.Route{
+					routeWithLuaMetadata(t, "ns", "myroute", []string{"envoy.filters.http.lua/0"}),
+				},
+			}},
+		}}
+		result := buildBeforeExtProcLuaFilterNames([]egv1a1.EnvoyExtensionPolicy{policy}, routes)
+		require.Empty(t, result)
+	})
+
+	t.Run("annotated policy — collects lua slot names from route", func(t *testing.T) {
+		policy := makePolicy("ns", "p1", "myroute", true)
+		routes := []*routev3.RouteConfiguration{{
+			VirtualHosts: []*routev3.VirtualHost{{
+				Routes: []*routev3.Route{
+					routeWithLuaMetadata(t, "ns", "myroute", []string{"envoy.filters.http.lua/0", "envoy.filters.http.lua/1"}),
+				},
+			}},
+		}}
+		result := buildBeforeExtProcLuaFilterNames([]egv1a1.EnvoyExtensionPolicy{policy}, routes)
+		require.Equal(t, map[string]bool{
+			"envoy.filters.http.lua/0": true,
+			"envoy.filters.http.lua/1": true,
+		}, result)
+	})
+
+	t.Run("annotated policy — does not collect non-lua filter names", func(t *testing.T) {
+		policy := makePolicy("ns", "p1", "myroute", true)
+		routes := []*routev3.RouteConfiguration{{
+			VirtualHosts: []*routev3.VirtualHost{{
+				Routes: []*routev3.Route{
+					routeWithLuaMetadata(t, "ns", "myroute", []string{"envoy.filters.http.lua/0"}),
+				},
+			}},
+		}}
+		routes[0].VirtualHosts[0].Routes[0].TypedPerFilterConfig["envoy.filters.http.rbac"] = &anypb.Any{}
+		result := buildBeforeExtProcLuaFilterNames([]egv1a1.EnvoyExtensionPolicy{policy}, routes)
+		require.Equal(t, map[string]bool{"envoy.filters.http.lua/0": true}, result)
+	})
+
+	t.Run("mix of annotated and unannotated policies", func(t *testing.T) {
+		policies := []egv1a1.EnvoyExtensionPolicy{
+			makePolicy("ns", "annotated", "route-a", true),
+			makePolicy("ns", "plain", "route-b", false),
+		}
+		routes := []*routev3.RouteConfiguration{{
+			VirtualHosts: []*routev3.VirtualHost{{
+				Routes: []*routev3.Route{
+					routeWithLuaMetadata(t, "ns", "route-a", []string{"envoy.filters.http.lua/0"}),
+					routeWithLuaMetadata(t, "ns", "route-b", []string{"envoy.filters.http.lua/1"}),
+				},
+			}},
+		}}
+		result := buildBeforeExtProcLuaFilterNames(policies, routes)
+		require.Equal(t, map[string]bool{"envoy.filters.http.lua/0": true}, result)
+	})
+}
+
+func TestMoveFiltersBeforeAIGatewayExtProc(t *testing.T) {
+	f := func(name string) *httpconnectionmanagerv3.HttpFilter {
+		return &httpconnectionmanagerv3.HttpFilter{Name: name}
+	}
+	mgr := func(names ...string) *httpconnectionmanagerv3.HttpConnectionManager {
+		filters := make([]*httpconnectionmanagerv3.HttpFilter, len(names))
+		for i, n := range names {
+			filters[i] = f(n)
+		}
+		return &httpconnectionmanagerv3.HttpConnectionManager{HttpFilters: filters}
+	}
+	filterNames := func(m *httpconnectionmanagerv3.HttpConnectionManager) []string {
+		names := make([]string, len(m.HttpFilters))
+		for i, fi := range m.HttpFilters {
+			names[i] = fi.Name
+		}
+		return names
+	}
+
+	t.Run("no names to move — chain unchanged", func(t *testing.T) {
+		m := mgr(aiGatewayExtProcName, "envoy.filters.http.lua/0", "envoy.filters.http.router")
+		moved := moveFiltersBeforeAIGatewayExtProc(m, map[string]bool{})
+		require.False(t, moved)
+		require.Equal(t, []string{aiGatewayExtProcName, "envoy.filters.http.lua/0", "envoy.filters.http.router"}, filterNames(m))
+	})
+
+	t.Run("ext_proc absent — chain unchanged", func(t *testing.T) {
+		m := mgr("envoy.filters.http.lua/0", "envoy.filters.http.router")
+		moved := moveFiltersBeforeAIGatewayExtProc(m, map[string]bool{"envoy.filters.http.lua/0": true})
+		require.False(t, moved)
+		require.Equal(t, []string{"envoy.filters.http.lua/0", "envoy.filters.http.router"}, filterNames(m))
+	})
+
+	t.Run("single lua filter moved to before AI GW ext_proc", func(t *testing.T) {
+		// input: ext_proc before lua/0.
+		m := mgr(aiGatewayExtProcName, "envoy.filters.http.lua/0", "envoy.filters.http.rbac", "envoy.filters.http.router")
+		moved := moveFiltersBeforeAIGatewayExtProc(m, map[string]bool{"envoy.filters.http.lua/0": true})
+		require.True(t, moved)
+		// expected: lua/0 moved before AI-GW-ext_proc so response path runs lua after ext_proc.
+		require.Equal(t, []string{
+			"envoy.filters.http.lua/0",
+			aiGatewayExtProcName,
+			"envoy.filters.http.rbac",
+			"envoy.filters.http.router",
+		}, filterNames(m))
+	})
+
+	t.Run("multiple lua filters moved, order among them preserved", func(t *testing.T) {
+		m := mgr(
+			aiGatewayExtProcName,
+			"envoy.filters.http.lua/0",
+			"envoy.filters.http.lua/1",
+			"envoy.filters.http.rbac",
+			"envoy.filters.http.router",
+		)
+		moved := moveFiltersBeforeAIGatewayExtProc(m, map[string]bool{
+			"envoy.filters.http.lua/0": true,
+			"envoy.filters.http.lua/1": true,
+		})
+		require.True(t, moved)
+		require.Equal(t, []string{
+			"envoy.filters.http.lua/0",
+			"envoy.filters.http.lua/1",
+			aiGatewayExtProcName,
+			"envoy.filters.http.rbac",
+			"envoy.filters.http.router",
+		}, filterNames(m))
+	})
+
+	t.Run("only annotated lua filter moved, others stay in place", func(t *testing.T) {
+		// lua/0 is not annotated, lua/1 is annotated. only lua/1 should move before ext_proc.
+		m := mgr(
+			aiGatewayExtProcName,
+			"envoy.filters.http.lua/0",
+			"envoy.filters.http.lua/1",
+			"envoy.filters.http.router",
+		)
+		moved := moveFiltersBeforeAIGatewayExtProc(m, map[string]bool{"envoy.filters.http.lua/1": true})
+		require.True(t, moved)
+		require.Equal(t, []string{
+			"envoy.filters.http.lua/1",
+			aiGatewayExtProcName,
+			"envoy.filters.http.lua/0",
+			"envoy.filters.http.router",
+		}, filterNames(m))
+	})
+}
+
+func TestMaybeReorderBeforeExtProcLuaFilters(t *testing.T) {
+	makeListener := func(t *testing.T, filters ...*httpconnectionmanagerv3.HttpFilter) *listenerv3.Listener {
+		t.Helper()
+		hcm := &httpconnectionmanagerv3.HttpConnectionManager{HttpFilters: filters}
+		hcmAny := mustToAny(t, hcm)
+		return &listenerv3.Listener{
+			FilterChains: []*listenerv3.FilterChain{{
+				Filters: []*listenerv3.Filter{{
+					Name:       wellknown.HTTPConnectionManager,
+					ConfigType: &listenerv3.Filter_TypedConfig{TypedConfig: hcmAny},
+				}},
+			}},
+		}
+	}
+
+	extractFilterNames := func(t *testing.T, listener *listenerv3.Listener) []string {
+		t.Helper()
+		hcm, _, err := findHCM(listener.FilterChains[0])
+		require.NoError(t, err)
+		names := make([]string, len(hcm.HttpFilters))
+		for i, f := range hcm.HttpFilters {
+			names[i] = f.Name
+		}
+		return names
+	}
+
+	makePolicy := func(namespace, name, targetName string) *egv1a1.EnvoyExtensionPolicy {
+		return &egv1a1.EnvoyExtensionPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: namespace,
+				Name:      name,
+				Annotations: map[string]string{
+					internalapi.LuaFilterOrderAnnotation: internalapi.LuaFilterOrderBeforeExtProc,
+				},
+			},
+			Spec: egv1a1.EnvoyExtensionPolicySpec{
+				PolicyTargetReferences: egv1a1.PolicyTargetReferences{
+					TargetRefs: []gwapiv1.LocalPolicyTargetReferenceWithSectionName{
+						{LocalPolicyTargetReference: gwapiv1.LocalPolicyTargetReference{Name: gwapiv1.ObjectName(targetName)}},
+					},
+				},
+			},
+		}
+	}
+
+	t.Run("no annotated policies — chain unchanged", func(t *testing.T) {
+		k8sClient := fake.NewClientBuilder().WithScheme(controller.Scheme).Build()
+		s := &Server{log: zap.New(), k8sClient: k8sClient}
+
+		// input mirrors the real state: ext_proc before lua/0.
+		listener := makeListener(t,
+			&httpconnectionmanagerv3.HttpFilter{Name: aiGatewayExtProcName},
+			&httpconnectionmanagerv3.HttpFilter{Name: "envoy.filters.http.lua/0"},
+			&httpconnectionmanagerv3.HttpFilter{Name: "envoy.filters.http.router"},
+		)
+		require.NoError(t, s.maybeReorderBeforeExtProcLuaFilters(context.Background(), []*listenerv3.Listener{listener}, nil))
+		// chain must be unchanged, no annotation, nothing moved.
+		require.Equal(t,
+			[]string{aiGatewayExtProcName, "envoy.filters.http.lua/0", "envoy.filters.http.router"},
+			extractFilterNames(t, listener),
+		)
+	})
+
+	t.Run("annotated policy — lua filter moved before AI GW ext_proc", func(t *testing.T) {
+		policy := makePolicy("ns", "wrap", "myroute")
+		k8sClient := fake.NewClientBuilder().WithScheme(controller.Scheme).WithObjects(policy).Build()
+		s := &Server{log: zap.New(), k8sClient: k8sClient}
+
+		// input: ext_proc before lua/0.
+		listener := makeListener(t,
+			&httpconnectionmanagerv3.HttpFilter{Name: aiGatewayExtProcName},
+			&httpconnectionmanagerv3.HttpFilter{Name: "envoy.filters.http.lua/0"},
+			&httpconnectionmanagerv3.HttpFilter{Name: "envoy.filters.http.router"},
+		)
+
+		routes := []*routev3.RouteConfiguration{{
+			VirtualHosts: []*routev3.VirtualHost{{
+				Routes: []*routev3.Route{
+					routeWithLuaMetadata(t, "ns", "myroute", []string{"envoy.filters.http.lua/0"}),
+				},
+			}},
+		}}
+
+		require.NoError(t, s.maybeReorderBeforeExtProcLuaFilters(context.Background(), []*listenerv3.Listener{listener}, routes))
+		// after reorder: lua/0 before AI-GW-ext_proc.
+		require.Equal(t,
+			[]string{"envoy.filters.http.lua/0", aiGatewayExtProcName, "envoy.filters.http.router"},
+			extractFilterNames(t, listener),
+		)
+	})
 }
