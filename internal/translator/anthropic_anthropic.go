@@ -178,10 +178,43 @@ func (a *anthropicToAnthropicTranslator) reflectStreamingEvent(eventUnion *anthr
 		}
 	case eventUnion.MessageDelta != nil:
 		u := eventUnion.MessageDelta.Usage
-		// message_delta events provide final counts for specific token types
-		// Update output tokens from message_delta (final count)
+		// message_delta carries the final counts. Standard Anthropic only reports output_tokens
+		// here, but some Anthropic-compatible backends report the final input/cache counts on
+		// message_delta instead of message_start. See https://github.com/envoyproxy/ai-gateway/issues/2290.
+		//
+		// output_tokens is always the final value on message_delta, so take it unconditionally.
 		if u.OutputTokens >= 0 {
 			a.streamingTokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
+		}
+		// Merge the input/cache counts per field rather than replacing the whole usage snapshot:
+		// a delta may report only the fields that apply (the rest arrive as zero), so overwriting
+		// every field would clobber values already set on message_start. We can only treat a field
+		// as "present" when it is non-zero, since the upstream usage fields are not pointers.
+		if u.InputTokens > 0 || u.CacheReadInputTokens > 0 || u.CacheCreationInputTokens > 0 {
+			// The unified input_tokens is the sum of raw input + cache-read + cache-creation, so
+			// recover the latest known value of each component and overwrite only the ones present
+			// on this delta before recomputing the sum.
+			cacheRead, _ := a.streamingTokenUsage.CachedInputTokens()
+			cacheCreation, _ := a.streamingTokenUsage.CacheCreationInputTokens()
+			unifiedInput, _ := a.streamingTokenUsage.InputTokens()
+			var rawInput uint32
+			if unifiedInput >= cacheRead+cacheCreation {
+				rawInput = unifiedInput - cacheRead - cacheCreation
+			}
+
+			if u.InputTokens > 0 {
+				rawInput = uint32(u.InputTokens) //nolint:gosec
+			}
+			if u.CacheReadInputTokens > 0 {
+				cacheRead = uint32(u.CacheReadInputTokens) //nolint:gosec
+			}
+			if u.CacheCreationInputTokens > 0 {
+				cacheCreation = uint32(u.CacheCreationInputTokens) //nolint:gosec
+			}
+
+			a.streamingTokenUsage.SetCachedInputTokens(cacheRead)
+			a.streamingTokenUsage.SetCacheCreationInputTokens(cacheCreation)
+			a.streamingTokenUsage.SetInputTokens(rawInput + cacheRead + cacheCreation)
 		}
 	}
 }
