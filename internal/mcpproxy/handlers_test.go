@@ -1019,6 +1019,34 @@ func TestProxyResponseBody_JSONResponseWithBOM(t *testing.T) {
 	require.Contains(t, rr.Body.String(), id.Raw())
 }
 
+func TestProxyResponseBody_JSONResponseWithCharset(t *testing.T) {
+	proxy := newTestMCPProxy()
+
+	reqID := mustJSONRPCRequestID()
+	backendURI := "file://backend-resource"
+	respBody := fmt.Sprintf(`{"jsonrpc":"2.0","id":"backend-id","result":{"contents":[{"uri":%q,"mimeType":"text/plain","text":"hello"}]}}`, backendURI)
+	httpResp := &http.Response{
+		Header:     http.Header{"Content-Type": []string{"application/json; charset=utf-8"}},
+		Body:       io.NopCloser(strings.NewReader(respBody)),
+		StatusCode: http.StatusOK,
+	}
+
+	rr := httptest.NewRecorder()
+	req := &jsonrpc.Request{ID: reqID, Method: "resources/read"}
+
+	err := proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, req, filterapi.MCPBackend{Name: "backend1"})
+	require.NoError(t, err)
+
+	rawMsg, err := jsonrpc.DecodeMessage(rr.Body.Bytes())
+	require.NoError(t, err)
+	msg, ok := rawMsg.(*jsonrpc.Response)
+	require.True(t, ok)
+	require.Equal(t, reqID, msg.ID)
+	require.JSONEq(t, fmt.Sprintf(`{
+		"contents":[{"uri":%q,"mimeType":"text/plain","text":"hello"}]
+	}`, downstreamResourceURI(backendURI, "backend1")), string(msg.Result))
+}
+
 func TestProxyResponseBody_SSEResponse(t *testing.T) {
 	proxy := newTestMCPProxy()
 
@@ -1734,6 +1762,43 @@ func TestMCPPRoxy_handleResourceReadRequest(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.Contains(t, rr.Body.String(), `{"jsonrpc":"2.0","id":"id","result":{"contents":[]}}`)
+}
+
+func TestMCPPRoxy_handleResourceReadRequest_JSONCharsetResponse(t *testing.T) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "backend1", r.Header.Get(internalapi.MCPBackendHeader))
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), `"uri":"file://foo-resource"`)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"id","result":{"contents":[{"uri":"file://foo-resource","mimeType":"text/plain","text":"hello"}]}}`))
+	}))
+
+	t.Cleanup(testServer.Close)
+
+	reqID, _ := jsonrpc.MakeID("id")
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = testServer.URL
+	rr := httptest.NewRecorder()
+	s := &session{
+		reqCtx:             proxy,
+		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "test-session"}},
+		route:              "test-route",
+	}
+	_, err := proxy.handleResourceReadRequest(t.Context(), s, rr, &jsonrpc.Request{ID: reqID, Method: "resources/read"}, &mcp.ReadResourceParams{
+		URI: downstreamResourceURI("file://foo-resource", "backend1"),
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.JSONEq(t, `{
+		"jsonrpc":"2.0",
+		"id":"id",
+		"result":{
+			"contents":[{"uri":"backend1+file://foo-resource","mimeType":"text/plain","text":"hello"}]
+		}
+	}`, rr.Body.String())
 }
 
 func TestMCPProxy_maybeUpdateProgressTokenMetadata(t *testing.T) {
