@@ -77,6 +77,9 @@ var tests = []struct {
 	{name: "ListPrompts", testFn: testListPrompts},
 	{name: "CodeReviewPrompts", testFn: testCodeReviewPrompts},
 	{name: "PromptChangeNotifications", testFn: testPromptChangeNotifications},
+	{name: "ToolCallUIResourceURI", testFn: testToolCallUIResourceURI},
+	{name: "ToolCallResourceLink", testFn: testToolCallResourceLink},
+	{name: "ToolCallEmbeddedResource", testFn: testToolCallEmbeddedResource},
 	{name: "ListResources", testFn: testListResources},
 	{name: "ReadResource", testFn: testReadResource},
 	{name: "ReadResourceNotFound", testFn: testReadResourceNotFound},
@@ -211,6 +214,9 @@ func testListTools(t *testing.T, m *mcpEnv) {
 		defaultMCPBackendResourcePrefix + testmcp.ToolNotificationCountsName,
 		defaultMCPBackendResourcePrefix + testmcp.ToolElicitEmail.Tool.Name,
 		defaultMCPBackendResourcePrefix + testmcp.ToolCreateMessage.Tool.Name,
+		defaultMCPBackendResourcePrefix + testmcp.ToolUIResource.Tool.Name,
+		defaultMCPBackendResourcePrefix + testmcp.ToolResourceLink.Tool.Name,
+		defaultMCPBackendResourcePrefix + testmcp.ToolEmbeddedResource.Tool.Name,
 	})
 }
 
@@ -330,7 +336,93 @@ func testToolCallError(t *testing.T, m *mcpEnv) {
 	})
 }
 
-// TestToolCountDown tests a tool that sends progress notifications.
+// testToolCallUIResourceURI verifies the full round-trip for issue #2228:
+// tool result carries _meta.ui.resourceUri → gateway rewrites to <backend>+ui://... →
+// agent reads it back via resources/read without a 400.
+func testToolCallUIResourceURI(t *testing.T, m *mcpEnv) {
+	s := m.newSession(t)
+
+	res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name: defaultMCPBackendResourcePrefix + testmcp.ToolUIResource.Tool.Name,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError)
+
+	wantURI := defaultMCPBackendResourceURIPrefix + testmcp.UIRendererResource.URI
+	uiMeta, ok := res.Meta["ui"].(map[string]any)
+	require.True(t, ok, "_meta.ui must be a map")
+	require.Equal(t, wantURI, uiMeta["resourceUri"], "_meta.ui.resourceUri must be namespaced")
+	requireToolSpan(t, m.collector.TakeSpan(), defaultMCPBackend, testmcp.ToolUIResource.Tool.Name, false, "")
+
+	// Round-trip: read the resource back using the rewritten URI.
+	readRes, err := s.session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: wantURI})
+	require.NoError(t, err)
+	require.Len(t, readRes.Contents, 1)
+	require.Equal(t, wantURI, readRes.Contents[0].URI)
+	require.Equal(t, testmcp.UIRendererResource.MIMEType, readRes.Contents[0].MIMEType)
+	requireMCPSpan(t, m.collector.TakeSpan(), "ReadResource", map[string]string{
+		"mcp.method.name":  "resources/read",
+		"mcp.resource.uri": wantURI,
+	})
+}
+
+// testToolCallResourceLink verifies the full round-trip for the ResourceLink surface of #2228.
+func testToolCallResourceLink(t *testing.T, m *mcpEnv) {
+	s := m.newSession(t)
+
+	res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name: defaultMCPBackendResourcePrefix + testmcp.ToolResourceLink.Tool.Name,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError)
+	require.Len(t, res.Content, 1)
+
+	wantURI := defaultMCPBackendResourceURIPrefix + testmcp.UIRendererResource.URI
+	link, ok := res.Content[0].(*mcp.ResourceLink)
+	require.True(t, ok, "Content[0] must be a ResourceLink")
+	require.Equal(t, wantURI, link.URI, "ResourceLink.URI must be namespaced")
+	requireToolSpan(t, m.collector.TakeSpan(), defaultMCPBackend, testmcp.ToolResourceLink.Tool.Name, false, "")
+
+	// Round-trip: read the resource back using the rewritten URI.
+	readRes, err := s.session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: wantURI})
+	require.NoError(t, err)
+	require.Len(t, readRes.Contents, 1)
+	require.Equal(t, wantURI, readRes.Contents[0].URI)
+	requireMCPSpan(t, m.collector.TakeSpan(), "ReadResource", map[string]string{
+		"mcp.method.name":  "resources/read",
+		"mcp.resource.uri": wantURI,
+	})
+}
+
+// testToolCallEmbeddedResource verifies the full round-trip for the EmbeddedResource surface of #2228.
+func testToolCallEmbeddedResource(t *testing.T, m *mcpEnv) {
+	s := m.newSession(t)
+
+	res, err := s.session.CallTool(t.Context(), &mcp.CallToolParams{
+		Name: defaultMCPBackendResourcePrefix + testmcp.ToolEmbeddedResource.Tool.Name,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError)
+	require.Len(t, res.Content, 1)
+
+	wantURI := defaultMCPBackendResourceURIPrefix + testmcp.UIRendererResource.URI
+	embedded, ok := res.Content[0].(*mcp.EmbeddedResource)
+	require.True(t, ok, "Content[0] must be an EmbeddedResource")
+	require.Equal(t, wantURI, embedded.Resource.URI, "EmbeddedResource.Resource.URI must be namespaced")
+	requireToolSpan(t, m.collector.TakeSpan(), defaultMCPBackend, testmcp.ToolEmbeddedResource.Tool.Name, false, "")
+
+	// Round-trip: read the resource back using the rewritten URI.
+	readRes, err := s.session.ReadResource(t.Context(), &mcp.ReadResourceParams{URI: wantURI})
+	require.NoError(t, err)
+	require.Len(t, readRes.Contents, 1)
+	require.Equal(t, wantURI, readRes.Contents[0].URI)
+	requireMCPSpan(t, m.collector.TakeSpan(), "ReadResource", map[string]string{
+		"mcp.method.name":  "resources/read",
+		"mcp.resource.uri": wantURI,
+	})
+}
+
+// testToolCountDown tests a tool that sends progress notifications.
 //
 // Inside the tool handler, it will send progress notifications every interval
 // until it reaches zero. The test verifies that the notifications are received
@@ -521,10 +613,15 @@ func testListResources(t *testing.T, m *mcpEnv) {
 	s := m.newSession(t)
 	list, err := s.session.ListResources(t.Context(), &mcp.ListResourcesParams{})
 	require.NoError(t, err)
-	require.Len(t, list.Resources, 1)
-	require.Equal(t, defaultMCPBackendResourcePrefix+testmcp.DummyResource.Name, list.Resources[0].Name)
-	require.Equal(t, defaultMCPBackendResourceURIPrefix+testmcp.DummyResource.URI, list.Resources[0].URI)
-	require.Equal(t, testmcp.DummyResource.Description, list.Resources[0].Description)
+	require.Len(t, list.Resources, 2)
+	names := map[string]string{}
+	for _, r := range list.Resources {
+		names[r.Name] = r.URI
+	}
+	require.Equal(t, defaultMCPBackendResourceURIPrefix+testmcp.DummyResource.URI,
+		names[defaultMCPBackendResourcePrefix+testmcp.DummyResource.Name])
+	require.Equal(t, defaultMCPBackendResourceURIPrefix+testmcp.UIRendererResource.URI,
+		names[defaultMCPBackendResourcePrefix+testmcp.UIRendererResource.Name])
 	requireMCPSpan(t, m.collector.TakeSpan(), "ListResources", map[string]string{
 		"mcp.method.name": "resources/list",
 	})
@@ -577,10 +674,17 @@ func testResourceSubscribe(t *testing.T, m *mcpEnv) {
 	s := m.newSession(t)
 	list, err := s.session.ListResources(t.Context(), &mcp.ListResourcesParams{})
 	require.NoError(t, err)
-	require.Len(t, list.Resources, 1)
-	require.Equal(t, defaultMCPBackendResourcePrefix+testmcp.DummyResource.Name, list.Resources[0].Name)
-	require.Equal(t, defaultMCPBackendResourceURIPrefix+testmcp.DummyResource.URI, list.Resources[0].URI)
-	require.Equal(t, testmcp.DummyResource.Description, list.Resources[0].Description)
+	require.Len(t, list.Resources, 2)
+	// Find DummyResource by name — order is not guaranteed.
+	var dummyResourceURI string
+	for _, r := range list.Resources {
+		if r.Name == defaultMCPBackendResourcePrefix+testmcp.DummyResource.Name {
+			require.Equal(t, defaultMCPBackendResourceURIPrefix+testmcp.DummyResource.URI, r.URI)
+			require.Equal(t, testmcp.DummyResource.Description, r.Description)
+			dummyResourceURI = r.URI
+		}
+	}
+	require.NotEmpty(t, dummyResourceURI, "DummyResource not found in list")
 	requireMCPSpan(t, m.collector.TakeSpan(), "ListResources", map[string]string{
 		"mcp.method.name": "resources/list",
 	})
@@ -588,12 +692,12 @@ func testResourceSubscribe(t *testing.T, m *mcpEnv) {
 	// It is important to be able to use the resource URI returned by the List method *as-is*, because this is what real MCP
 	// clients will do.
 	err = s.session.Subscribe(t.Context(), &mcp.SubscribeParams{
-		URI: list.Resources[0].URI,
+		URI: dummyResourceURI,
 	})
 	require.NoError(t, err)
 	requireMCPSpan(t, m.collector.TakeSpan(), "Subscribe", map[string]string{
 		"mcp.method.name":  "resources/subscribe",
-		"mcp.resource.uri": list.Resources[0].URI,
+		"mcp.resource.uri": dummyResourceURI,
 	})
 
 	// Update the resource.
@@ -623,12 +727,12 @@ func testResourceSubscribe(t *testing.T, m *mcpEnv) {
 	require.Equal(t, req.Params.URI, defaultMCPBackendResourceURIPrefix+testmcp.DummyResource.URI)
 
 	err = s.session.Unsubscribe(t.Context(), &mcp.UnsubscribeParams{
-		URI: list.Resources[0].URI,
+		URI: dummyResourceURI,
 	})
 	require.NoError(t, err)
 	requireMCPSpan(t, m.collector.TakeSpan(), "Unsubscribe", map[string]string{
 		"mcp.method.name":  "resources/unsubscribe",
-		"mcp.resource.uri": list.Resources[0].URI,
+		"mcp.resource.uri": dummyResourceURI,
 	})
 	// Wait for the unsubscribe notification.
 	requireEventuallyNotificationCountMessages(t, s, m, "unsubscribe: 1")
@@ -655,7 +759,7 @@ func testResourceListChangeNotifications(t *testing.T, m *mcpEnv) {
 	s := m.newSession(t)
 	list, err := s.session.ListResources(t.Context(), &mcp.ListResourcesParams{})
 	require.NoError(t, err)
-	require.Len(t, list.Resources, 1)
+	require.Len(t, list.Resources, 2)
 	requireMCPSpan(t, m.collector.TakeSpan(), "ListResources", map[string]string{
 		"mcp.method.name": "resources/list",
 	})
@@ -694,7 +798,7 @@ func testResourceListChangeNotifications(t *testing.T, m *mcpEnv) {
 	// Verify the resource was added.
 	list, err = s.session.ListResources(t.Context(), &mcp.ListResourcesParams{})
 	require.NoError(t, err)
-	require.Len(t, list.Resources, 2)
+	require.Len(t, list.Resources, 3)
 	requireMCPSpan(t, m.collector.TakeSpan(), "ListResources", map[string]string{
 		"mcp.method.name": "resources/list",
 	})
