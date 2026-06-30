@@ -12,7 +12,7 @@ instructions: |
   You are a helpful assistant that helps users find flights from New York to Los Angeles.
 
 prompt: |
-  Use the search-flight tool to search for flights from New York to Los Angeles on {{flight_date}}.
+  Use the search-flights-structured tool to search for flights from New York to Los Angeles on {{flight_date}}.
   When specifying the departureDate parameter, use the format dd/mm/yyyy.
   Display the first 3 results with the `final_output` tool in a specific JSON format.
   The output is in the following format where price includes the currency symbol:

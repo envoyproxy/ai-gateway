@@ -38,7 +38,7 @@ var (
 		// "context7__query-docs",
 		// "context7__resolve-library-id",
 		"kiwi__feedback-to-devs",
-		"kiwi__search-flight",
+		"kiwi__search-flights-structured",
 	}
 )
 
@@ -97,7 +97,7 @@ func TestMCP_standalone(t *testing.T) {
 			// 	},
 			// },
 			{
-				toolName: "kiwi__search-flight",
+				toolName: "kiwi__search-flights-structured",
 				params: map[string]any{
 					"flyFrom":                "LAX",
 					"flyTo":                  "HND",
