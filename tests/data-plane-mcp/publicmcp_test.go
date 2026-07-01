@@ -88,7 +88,7 @@ func TestPublicMCPServers(t *testing.T) {
 		exps := []string{
 			// "context7__resolve-library-id",
 			// "context7__query-docs",
-			"kiwi__search-flight",
+			"kiwi__search-flights-structured",
 			"kiwi__feedback-to-devs",
 		}
 
@@ -130,7 +130,7 @@ func TestPublicMCPServers(t *testing.T) {
 			// 	},
 			// },
 			{
-				toolName: "kiwi__search-flight",
+				toolName: "kiwi__search-flights-structured",
 				params: map[string]any{
 					"flyFrom":                "LAX",
 					"flyTo":                  "HND",
