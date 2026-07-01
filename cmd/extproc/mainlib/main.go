@@ -77,8 +77,8 @@ func setOptionalString(dst **string) func(string) error {
 // newFileIDCodec builds the backend id codec used by the Files API processors from the
 // configured encryption seeds, mirroring the MCP session encryption setup (PBKDF2 + AES-GCM
 // with optional fallback seed for key rotation).
-func newFileIDCodec(flags extProcFlags) idcodec.Codec {
-	var crypto mcpproxy.SessionCrypto = mcpproxy.NewPBKDF2AesGcmSessionCrypto(
+func newFileIDCodec(flags *extProcFlags) idcodec.Codec {
+	crypto := mcpproxy.NewPBKDF2AesGcmSessionCrypto(
 		flags.fileIDEncryptionSeed, flags.fileIDEncryptionIterations)
 	if flags.fileIDFallbackEncryptionSeed != "" {
 		crypto = &mcpproxy.FallbackEnabledSessionCrypto{
@@ -348,7 +348,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	// Register the OpenAI Files API endpoints (/v1/files, /v1/files/{id}, /v1/files/{id}/content)
 	// under a single prefix processor that routes by encoded backend id.
 	server.RegisterPrefix(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/files"),
-		extproc.NewFilesProcessorFactory(newFileIDCodec(flags)))
+		extproc.NewFilesProcessorFactory(newFileIDCodec(&flags)))
 
 	// Create and register gRPC server with ExternalProcessorServer (the service Envoy calls).
 	if err = filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {

@@ -279,7 +279,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 			// Wrap the cluster's LB policy in a subset policy keyed on selected_backend so the tags
 			// above take effect. With no selection metadata the ANY_ENDPOINT fallback preserves
 			// normal weighted load balancing.
-			if err := wrapClusterLbPolicyWithStickySubset(cluster); err != nil {
+			if err = wrapClusterLbPolicyWithStickySubset(cluster); err != nil {
 				return fmt.Errorf("failed to wrap cluster %s LB policy with sticky subset: %w", cluster.Name, err)
 			}
 		}

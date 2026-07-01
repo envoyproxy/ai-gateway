@@ -83,7 +83,7 @@ func TestListWalkCursorRoundTrip(t *testing.T) {
 		current:     backendKey{namespace: "ns", name: "banana"},
 		nativeAfter: "file-native-42",
 	}
-	token, err := encodeListWalkCursor(codec, in)
+	token, err := encodeListWalkCursor(codec, &in)
 	require.NoError(t, err)
 
 	decoded, err := codec.Decode(token)
@@ -94,7 +94,7 @@ func TestListWalkCursorRoundTrip(t *testing.T) {
 
 	// Empty native after (start of a backend) round-trips too.
 	in.nativeAfter = ""
-	token, err = encodeListWalkCursor(codec, in)
+	token, err = encodeListWalkCursor(codec, &in)
 	require.NoError(t, err)
 	decoded, err = codec.Decode(token)
 	require.NoError(t, err)
@@ -206,7 +206,7 @@ func TestHandleListRequestHeaders_FirstPageNoPin(t *testing.T) {
 func TestHandleListRequestHeaders_CursorPins(t *testing.T) {
 	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"}, [3]string{"ns", "banana", "myroute"})
 	codec := testCodec()
-	token, err := encodeListWalkCursor(codec, listWalkCursor{
+	token, err := encodeListWalkCursor(codec, &listWalkCursor{
 		start:       backendKey{namespace: "ns", name: "apple"},
 		current:     backendKey{namespace: "ns", name: "banana"},
 		nativeAfter: "file-native-7",
@@ -317,7 +317,7 @@ func TestHandleListRequestHeaders_FirstPageNoModelUsesDeclared(t *testing.T) {
 func TestHandleListRequestHeaders_CursorStripsStrayModel(t *testing.T) {
 	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"}, [3]string{"ns", "banana", "myroute"})
 	codec := testCodec()
-	token, err := encodeListWalkCursor(codec, listWalkCursor{
+	token, err := encodeListWalkCursor(codec, &listWalkCursor{
 		start:       backendKey{namespace: "ns", name: "apple"},
 		current:     backendKey{namespace: "ns", name: "banana"},
 		nativeAfter: "file-native-7",

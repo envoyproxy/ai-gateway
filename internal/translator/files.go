@@ -53,8 +53,8 @@ type FilesTranslator = Translator[FilesRequest, any]
 
 // NewFileUploadTranslator selects the POST /v1/files translator.
 func NewFileUploadTranslator(schema filterapi.VersionedAPISchema) (FilesTranslator, error) {
-	switch {
-	case schema.Name == filterapi.APISchemaOpenAI:
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
 		return &openAIFileUploadTranslator{}, nil
 	default:
 		return nil, errUnsupportedFilesSchema(schema)
@@ -65,8 +65,8 @@ func NewFileUploadTranslator(schema filterapi.VersionedAPISchema) (FilesTranslat
 // for GET /v1/files/{id}/content solely to apply the fail-closed schema gate; the content body
 // itself is raw bytes and is never passed through the translator.
 func NewFileRetrieveTranslator(schema filterapi.VersionedAPISchema) (FilesTranslator, error) {
-	switch {
-	case schema.Name == filterapi.APISchemaOpenAI:
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
 		return &openAIFileRetrieveTranslator{}, nil
 	default:
 		return nil, errUnsupportedFilesSchema(schema)
@@ -75,8 +75,8 @@ func NewFileRetrieveTranslator(schema filterapi.VersionedAPISchema) (FilesTransl
 
 // NewFileDeleteTranslator selects the DELETE /v1/files/{id} translator.
 func NewFileDeleteTranslator(schema filterapi.VersionedAPISchema) (FilesTranslator, error) {
-	switch {
-	case schema.Name == filterapi.APISchemaOpenAI:
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
 		return &openAIFileDeleteTranslator{}, nil
 	default:
 		return nil, errUnsupportedFilesSchema(schema)
@@ -85,8 +85,8 @@ func NewFileDeleteTranslator(schema filterapi.VersionedAPISchema) (FilesTranslat
 
 // NewFileListTranslator selects the GET /v1/files translator.
 func NewFileListTranslator(schema filterapi.VersionedAPISchema) (FilesTranslator, error) {
-	switch {
-	case schema.Name == filterapi.APISchemaOpenAI:
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
 		return &openAIFileListTranslator{}, nil
 	default:
 		return nil, errUnsupportedFilesSchema(schema)

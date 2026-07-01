@@ -83,8 +83,6 @@ func NewFilesProcessorFactory(codec idcodec.Codec) ProcessorFactory {
 // instance only captures the load-balancer-selected backend via SetBackend and pushes it into
 // the linked router instance.
 type filesProcessor struct {
-	passThroughProcessor
-
 	codec            idcodec.Codec
 	config           *filterapi.RuntimeConfig
 	requestHeaders   map[string]string
@@ -222,15 +220,15 @@ func (p *filesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingRespon
 
 	var current backendKey
 	var nativeAfter string
-	switch {
-	case decoded.Kind == idcodec.KindListCursor:
+	switch decoded.Kind {
+	case idcodec.KindListCursor:
 		cur, ok := decodeListWalkCursor(decoded)
 		if !ok {
 			return createUserFacingErrorResponse(http.StatusBadRequest, "invalid_request_error", "invalid after cursor"), nil
 		}
 		current, nativeAfter = cur.current, cur.nativeAfter
 		p.listStart, p.listStartKnown = cur.start, true
-	case decoded.Kind == idcodec.KindFile:
+	case idcodec.KindFile:
 		// Stock SDK pagination passes after=data[-1].id (a gateway file id). Continue within that
 		// file's backend; the walk then proceeds through the deterministic cycle from there.
 		current = backendKey{namespace: decoded.Namespace, name: decoded.Name}
@@ -585,7 +583,7 @@ func (p *filesProcessor) buildListWalkResponse(raw []byte) *extprocv3.Processing
 	hasMore, next := nextWalkStep(ordered, start, current, lastNativeID, upstreamHasMore)
 
 	if hasMore {
-		token, e := encodeListWalkCursor(p.codec, next)
+		token, e := encodeListWalkCursor(p.codec, &next)
 		if e != nil {
 			// If we cannot mint a cursor, end pagination rather than emit a native cursor.
 			p.logger.Warn("failed to encode list cursor, ending pagination", slog.String("error", e.Error()))

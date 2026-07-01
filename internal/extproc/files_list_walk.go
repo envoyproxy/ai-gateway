@@ -44,7 +44,7 @@ const listCursorPackSeparator = "|"
 // encodeListWalkCursor packs a walk position into an encrypted, tamper-resistant KindListCursor
 // token. start (and the native after) are packed into the BackendID NativeID field; current is
 // carried in Namespace/Name.
-func encodeListWalkCursor(codec idcodec.Codec, c listWalkCursor) (string, error) {
+func encodeListWalkCursor(codec idcodec.Codec, c *listWalkCursor) (string, error) {
 	native := c.start.namespace + "/" + c.start.name + listCursorPackSeparator + c.nativeAfter
 	return codec.Encode(idcodec.BackendID{
 		Kind:      idcodec.KindListCursor,
