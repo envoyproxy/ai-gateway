@@ -1600,3 +1600,187 @@ func TestPromoteAnthropicSystemMessagesToParam(t *testing.T) {
 		assert.Equal(t, "You are helpful.", *bedrockReq.System[0].Text)
 	})
 }
+
+func TestIsOnlyToolResult(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected bool
+		msg      anthropicschema.MessageParam
+	}{
+		{
+			name:     "single tool_result block",
+			expected: true,
+			msg: anthropicschema.MessageParam{
+				Role: anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{
+					Array: []anthropicschema.ContentBlockParam{
+						{ToolResult: &anthropicschema.ToolResultBlockParam{
+							Type:      "tool_result",
+							ToolUseID: "tu_1",
+							Content:   &anthropicschema.ToolResultContent{Text: "result"},
+						}},
+					},
+				},
+			},
+		},
+		{
+			name:     "multiple tool_result blocks",
+			expected: true,
+			msg: anthropicschema.MessageParam{
+				Role: anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{
+					Array: []anthropicschema.ContentBlockParam{
+						{ToolResult: &anthropicschema.ToolResultBlockParam{
+							Type:      "tool_result",
+							ToolUseID: "tu_1",
+							Content:   &anthropicschema.ToolResultContent{Text: "result 1"},
+						}},
+						{ToolResult: &anthropicschema.ToolResultBlockParam{
+							Type:      "tool_result",
+							ToolUseID: "tu_2",
+							Content:   &anthropicschema.ToolResultContent{Text: "result 2"},
+						}},
+					},
+				},
+			},
+		},
+		{
+			name:     "mixed text and tool_result blocks",
+			expected: false,
+			msg: anthropicschema.MessageParam{
+				Role: anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{
+					Array: []anthropicschema.ContentBlockParam{
+						{Text: &anthropicschema.TextBlockParam{Type: "text", Text: "Here is the result:"}},
+						{ToolResult: &anthropicschema.ToolResultBlockParam{
+							Type:      "tool_result",
+							ToolUseID: "tu_1",
+							Content:   &anthropicschema.ToolResultContent{Text: "72°F and sunny"},
+						}},
+					},
+				},
+			},
+		},
+		{
+			name:     "plain text user message",
+			expected: false,
+			msg: anthropicschema.MessageParam{
+				Role:    anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{Text: "Hello"},
+			},
+		},
+		{
+			name:     "assistant message is never tool-result-only",
+			expected: false,
+			msg: anthropicschema.MessageParam{
+				Role: anthropicschema.MessageRoleAssistant,
+				Content: anthropicschema.MessageContent{
+					Array: []anthropicschema.ContentBlockParam{
+						{ToolResult: &anthropicschema.ToolResultBlockParam{
+							Type:      "tool_result",
+							ToolUseID: "tu_1",
+							Content:   &anthropicschema.ToolResultContent{Text: "result"},
+						}},
+					},
+				},
+			},
+		},
+		{
+			name:     "empty content array",
+			expected: false,
+			msg: anthropicschema.MessageParam{
+				Role:    anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{},
+			},
+		},
+		{
+			name:     "text array without tool_result",
+			expected: false,
+			msg: anthropicschema.MessageParam{
+				Role: anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{
+					Array: []anthropicschema.ContentBlockParam{
+						{Text: &anthropicschema.TextBlockParam{Type: "text", Text: "Hello"}},
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, isOnlyToolResult(&tt.msg))
+		})
+	}
+}
+
+func TestAnthropicToAWSBedrockTranslator_RequestBody_MixedUserContentWithToolResult(t *testing.T) {
+	// Regression test: a user message containing both text and tool_result blocks
+	// must preserve all content blocks, not silently drop the text.
+	translator := NewAnthropicToAWSBedrockTranslator("")
+	req := &anthropicschema.MessagesRequest{
+		Model:     "test-model",
+		MaxTokens: 100,
+		Messages: []anthropicschema.MessageParam{
+			{
+				Role:    anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{Text: "What's the weather?"},
+			},
+			{
+				Role: anthropicschema.MessageRoleAssistant,
+				Content: anthropicschema.MessageContent{
+					Array: []anthropicschema.ContentBlockParam{
+						{ToolUse: &anthropicschema.ToolUseBlockParam{
+							Type:  "tool_use",
+							ID:    "tu_abc",
+							Name:  "get_weather",
+							Input: map[string]any{"city": "NYC"},
+						}},
+					},
+				},
+			},
+			// Mixed content: text + tool_result in the same user message.
+			// This should go through convertUserMessage (not convertToolResultMessage),
+			// preserving the text block.
+			{
+				Role: anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{
+					Array: []anthropicschema.ContentBlockParam{
+						{Text: &anthropicschema.TextBlockParam{Type: "text", Text: "Here is the result:"}},
+						{ToolResult: &anthropicschema.ToolResultBlockParam{
+							Type:      "tool_result",
+							ToolUseID: "tu_abc",
+							Content:   &anthropicschema.ToolResultContent{Text: "72°F and sunny"},
+						}},
+					},
+				},
+			},
+		},
+	}
+	rawBody, err := json.Marshal(req)
+	require.NoError(t, err)
+
+	_, body, err := translator.RequestBody(rawBody, req, false)
+	require.NoError(t, err)
+
+	var bedrockReq awsbedrock.ConverseInput
+	err = json.Unmarshal(body, &bedrockReq)
+	require.NoError(t, err)
+
+	// 3 messages: user(text), assistant(tool_use), user(text+tool_result)
+	require.Len(t, bedrockReq.Messages, 3)
+
+	// The third message should have both a text block and a tool_result block.
+	mixedMsg := bedrockReq.Messages[2]
+	assert.Equal(t, awsbedrock.ConversationRoleUser, mixedMsg.Role)
+	require.Len(t, mixedMsg.Content, 2, "mixed user message should preserve both text and tool_result blocks")
+
+	// First block: text.
+	require.NotNil(t, mixedMsg.Content[0].Text)
+	assert.Equal(t, "Here is the result:", *mixedMsg.Content[0].Text)
+
+	// Second block: tool result.
+	require.NotNil(t, mixedMsg.Content[1].ToolResult)
+	assert.Equal(t, "tu_abc", *mixedMsg.Content[1].ToolResult.ToolUseID)
+	require.Len(t, mixedMsg.Content[1].ToolResult.Content, 1)
+	assert.Equal(t, "72°F and sunny", *mixedMsg.Content[1].ToolResult.Content[0].Text)
+}

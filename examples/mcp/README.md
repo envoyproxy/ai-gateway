@@ -40,7 +40,7 @@ $ npx @modelcontextprotocol/inspector --cli http://localhost:1975/mcp --transpor
 "context7__resolve-library-id"
 "context7__query-docs"
 "github__pull_request_read"
-"kiwi__search-flight"
+"kiwi__search-flights-structured"
 ```
 
 ### Accessing GitHub Pull Request Info
@@ -172,7 +172,7 @@ Now you can explore the available tools:
 ╭────────────────────────────────────────────────────────────────────╮
 │ Tools for mcp-gateway (3 tools)                                    │
 │                                                                    │
-│ ❯ 1. search-flight                                                 │
+│ ❯ 1. search-flights-structured                                      │
 │   2. microsoft_docs_search                                         │
 │   3. microsoft_docs_fetch                                          │
 ╰────────────────────────────────────────────────────────────────────╯
@@ -186,7 +186,7 @@ From here, you can start using the tools inside Claude.
 
 ⏺ I'll help you find the cheapest flight tickets from LA to San Francisco. Let me search for flights for today's date.
 
-⏺ mcp-gateway - search-flight (MCP)(flyFrom: "Los Angeles", flyTo: "San Francisco", departureDate: "13/09/2025", sort: "price", curr: "USD")
+⏺ mcp-gateway - search-flights-structured (MCP)(flyFrom: "Los Angeles", flyTo: "San Francisco", departureDate: "13/09/2025", sort: "price", curr: "USD")
   ⎿  [
        {
          "flyFrom": "LAX",

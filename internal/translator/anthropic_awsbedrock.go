@@ -78,10 +78,10 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 		msg := &messages[i]
 		switch msg.Role {
 		case anthropicschema.MessageRoleUser:
-			if hasToolResult(msg) {
+			if isOnlyToolResult(msg) {
 				bedrockMsg := a.convertToolResultMessage(msg)
-				// Coalesce consecutive tool result messages.
-				for i+1 < msgLen && hasToolResult(&messages[i+1]) {
+				// Coalesce consecutive tool-result-only messages.
+				for i+1 < msgLen && isOnlyToolResult(&messages[i+1]) {
 					nextMsg := &messages[i+1]
 					nextBedrockMsg := a.convertToolResultMessage(nextMsg)
 					bedrockMsg.Content = append(bedrockMsg.Content, nextBedrockMsg.Content...)
@@ -188,16 +188,28 @@ func promoteAnthropicSystemMessagesToParam(body *anthropicschema.MessagesRequest
 	return filtered
 }
 
-func hasToolResult(msg *anthropicschema.MessageParam) bool {
+// isOnlyToolResult returns true if the message is a user message whose content
+// array consists entirely of tool_result blocks. This is used to decide whether
+// the message should go through the tool-result coalescing path.
+// Mixed-content messages (e.g. text + tool_result) are handled by
+// convertUserMessage, which preserves all block types.
+func isOnlyToolResult(msg *anthropicschema.MessageParam) bool {
 	if msg.Role != anthropicschema.MessageRoleUser {
 		return false
 	}
+	// Simple text-only content is never a tool-result-only message.
+	if msg.Content.Text != "" {
+		return false
+	}
+	if len(msg.Content.Array) == 0 {
+		return false
+	}
 	for i := range msg.Content.Array {
-		if msg.Content.Array[i].ToolResult != nil {
-			return true
+		if msg.Content.Array[i].ToolResult == nil {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 func (a *anthropicToAWSBedrockTranslator) convertUserMessage(msg *anthropicschema.MessageParam) (*awsbedrock.Message, error) {
