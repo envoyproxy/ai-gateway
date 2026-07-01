@@ -175,7 +175,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RedactBody(resp *openai
 		redacted.Choices = make([]openai.ChatCompletionResponseChoice, len(resp.Choices))
 		for i := range resp.Choices {
 			redactedChoice := resp.Choices[i]
-			redactedChoice.Message = redactGCPAnthropicResponseMessage(&resp.Choices[i].Message)
+			redactedChoice.Message = redactAnthropicResponseMessage(&resp.Choices[i].Message)
 			redacted.Choices[i] = redactedChoice
 		}
 	}
@@ -183,9 +183,11 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RedactBody(resp *openai
 	return &redacted
 }
 
-// redactGCPAnthropicResponseMessage redacts sensitive content from a GCP Anthropic response message
-// that has been converted to OpenAI format.
-func redactGCPAnthropicResponseMessage(msg *openai.ChatCompletionResponseChoiceMessage) openai.ChatCompletionResponseChoiceMessage {
+// redactAnthropicResponseMessage redacts sensitive content from an Anthropic
+// response message that has been converted to OpenAI format. It is shared by
+// the first-party and GCP Anthropic translators since both convert responses
+// to the same OpenAI shape before redaction.
+func redactAnthropicResponseMessage(msg *openai.ChatCompletionResponseChoiceMessage) openai.ChatCompletionResponseChoiceMessage {
 	redactedMsg := *msg
 
 	// Redact message content (AI-generated text)
