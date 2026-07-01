@@ -42,38 +42,35 @@ const (
 	maxRetryElapsedTime = 10 * time.Second
 )
 
+// CORS values shared by the native SecurityPolicy.CORS (MCP route) and the manual header helpers used on
+// the OAuth direct-response endpoints. MCP clients send their bearer token in an explicit Authorization
+// header (not credentialed/cookie mode), so the "*" origin is valid per the WHATWG Fetch standard.
+var (
+	corsAllowOrigin  = "*"
+	corsAllowMethods = []string{"GET", "POST", "DELETE"} // OPTIONS is the preflight method itself, never matched here.
+	corsAllowHeaders = []string{"Content-Type", "Authorization", "Mcp-Session-Id", "Mcp-Protocol-Version"}
+	// corsExposeHeaders lets browsers read Mcp-Session-Id and the WWW-Authenticate OAuth challenge (RFC 9728).
+	corsExposeHeaders = []string{"Mcp-Session-Id", "WWW-Authenticate"}
+)
+
 // syncMCPRouteSecurityPolicy reconciles MCPRouteSecurityPolicy and creates/updates its associated envoy gateway resources.
 func (c *MCPRouteController) syncMCPRouteSecurityPolicy(ctx context.Context, mcpRoute *aigv1b1.MCPRoute, httpRouteName string) error {
 	securityPolicy := mcpRoute.Spec.SecurityPolicy
 	hasOAuth := securityPolicy != nil && securityPolicy.OAuth != nil
-	hasAPIKeyAuth := securityPolicy != nil && securityPolicy.APIKeyAuth != nil
-	hasExtAuth := securityPolicy != nil && securityPolicy.ExtAuth != nil
-	securityPolicyConfigured := hasOAuth || hasAPIKeyAuth || hasExtAuth
 
-	if securityPolicyConfigured {
-		// Create and manage SecurityPolicy to enforce client authentication on the MCP proxy rule.
-		if secErr := c.ensureSecurityPolicy(ctx, mcpRoute, httpRouteName); secErr != nil {
-			return fmt.Errorf("failed to ensure SecurityPolicy: %w", secErr)
-		}
+	// The SecurityPolicy always exists: it carries CORS for every MCP route (see ensureSecurityPolicy),
+	// plus any configured authentication. It is garbage-collected via its owner reference when the
+	// MCPRoute is deleted, so there is no unconditional-cleanup branch.
+	if secErr := c.ensureSecurityPolicy(ctx, mcpRoute, httpRouteName); secErr != nil {
+		return fmt.Errorf("failed to ensure SecurityPolicy: %w", secErr)
+	}
 
-		// Create OAuth-related resources if OAuth is configured.
-		if hasOAuth {
-			if err := c.ensureOAuthResources(ctx, mcpRoute, httpRouteName); err != nil {
-				return fmt.Errorf("failed to ensure OAuth resources: %w", err)
-			}
-		} else {
-			// Clean up any OAuth-specific resources if OAuth is no longer configured.
-			if err := c.cleanupOAuthResources(ctx, mcpRoute); err != nil {
-				return fmt.Errorf("failed to cleanup OAuth resources: %w", err)
-			}
+	// Create OAuth-related resources if OAuth is configured, otherwise clean them up.
+	if hasOAuth {
+		if err := c.ensureOAuthResources(ctx, mcpRoute, httpRouteName); err != nil {
+			return fmt.Errorf("failed to ensure OAuth resources: %w", err)
 		}
 	} else {
-		// Clean up existing SecurityPolicy resources if no authentication is configured.
-		if err := c.cleanupSecurityPolicyResources(ctx, mcpRoute); err != nil {
-			return fmt.Errorf("failed to cleanup SecurityPolicy resources: %w", err)
-		}
-
-		// Clean up any existing OAuth-specific resources if no authentication is configured.
 		if err := c.cleanupOAuthResources(ctx, mcpRoute); err != nil {
 			return fmt.Errorf("failed to cleanup OAuth resources: %w", err)
 		}
@@ -107,8 +104,23 @@ func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute 
 
 	securityPolicySpec := egv1a1.SecurityPolicySpec{}
 
+	// CORS applies to every MCP route (browser MCP requests are always preflighted). Envoy Gateway orders
+	// the cors filter ahead of the auth filters, so a preflight OPTIONS is answered and short-circuited
+	// before jwt_authn/ext_authz — the preflight is never authenticated.
+	securityPolicySpec.CORS = &egv1a1.CORS{
+		AllowOrigins:  []egv1a1.Origin{egv1a1.Origin(corsAllowOrigin)},
+		AllowMethods:  corsAllowMethods,
+		AllowHeaders:  corsAllowHeaders,
+		ExposeHeaders: corsExposeHeaders,
+	}
+
+	// Authentication methods are configured only when a SecurityPolicy spec is present; the CORS block
+	// above is unconditional, so this function also runs for routes with no authentication.
+	sp := mcpRoute.Spec.SecurityPolicy
+
 	// Configure JWT authentication to validate access tokens if OAuth is enabled.
-	if oauth := mcpRoute.Spec.SecurityPolicy.OAuth; oauth != nil {
+	if sp != nil && sp.OAuth != nil {
+		oauth := sp.OAuth
 		c.logger.Info("Configuring OAuth in SecurityPolicy")
 
 		name := "mcp-jwt-provider"
@@ -156,14 +168,14 @@ func (c *MCPRouteController) ensureSecurityPolicy(ctx context.Context, mcpRoute 
 	}
 
 	// Configure API Key authentication if enabled.
-	if apiKeyAuth := mcpRoute.Spec.SecurityPolicy.APIKeyAuth; apiKeyAuth != nil {
+	if sp != nil && sp.APIKeyAuth != nil {
 		c.logger.Info("Configuring API Key in SecurityPolicy")
-		securityPolicySpec.APIKeyAuth = apiKeyAuth.DeepCopy()
+		securityPolicySpec.APIKeyAuth = sp.APIKeyAuth.DeepCopy()
 	}
 	// Configure External Auth if set up.
-	if extAuth := mcpRoute.Spec.SecurityPolicy.ExtAuth; extAuth != nil {
+	if sp != nil && sp.ExtAuth != nil {
 		c.logger.Info("Configuring Ext Auth in SecurityPolicy")
-		securityPolicySpec.ExtAuth = extAuth.DeepCopy()
+		securityPolicySpec.ExtAuth = sp.ExtAuth.DeepCopy()
 	}
 
 	// The SecurityPolicy should only apply to the HTTPRoute MCP proxy rule.
@@ -252,7 +264,7 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataBTP(ctx context
 		},
 	}
 
-	ensureCORSHeaders(backendTrafficPolicy.Spec.ResponseOverride[0].Response.Header)
+	ensureUnauthorizedChallengeCORSHeaders(backendTrafficPolicy.Spec.ResponseOverride[0].Response.Header)
 
 	// Target the HTTPRoute MCP proxy rule only.
 	backendTrafficPolicy.Spec.TargetRefs = []gwapiv1.LocalPolicyTargetReferenceWithSectionName{
@@ -379,7 +391,7 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataHRF(ctx context
 			Header: &gwapiv1.HTTPHeaderFilter{},
 		},
 	}
-	ensureCORSHeaders(httpRouteFilter.Spec.DirectResponse.Header)
+	ensureWellKnownCORSHeaders(httpRouteFilter.Spec.DirectResponse.Header)
 
 	if existingFilter {
 		c.logger.Info("Updating HTTPRouteFilter", "namespace", httpRouteFilter.Namespace, "name", httpRouteFilter.Name)
@@ -396,19 +408,31 @@ func (c *MCPRouteController) ensureOAuthProtectedResourceMetadataHRF(ctx context
 	return nil
 }
 
-// ensureCORSHeaders ensures that the HTTPHeaderFilter resource exists with CORS headers.
-// This is required by the MCP inspector, which is running in the browser on a different origin.
-func ensureCORSHeaders(httpHeaderFilter *gwapiv1.HTTPHeaderFilter) {
-	// Add CORS headers.
+// ensureWellKnownCORSHeaders sets CORS for the OAuth .well-known metadata direct responses. Native
+// SecurityPolicy.CORS does not decorate direct responses, so these are set manually. The endpoints are
+// public JSON documents fetched with a simple cross-origin GET (no preflight), so only
+// Access-Control-Allow-Origin is needed to let the browser read the body.
+func ensureWellKnownCORSHeaders(httpHeaderFilter *gwapiv1.HTTPHeaderFilter) {
 	httpHeaderFilter.Set = append(httpHeaderFilter.Set, gwapiv1.HTTPHeader{
 		Name:  "Access-Control-Allow-Origin",
-		Value: "*",
+		Value: corsAllowOrigin,
+	})
+}
+
+// ensureUnauthorizedChallengeCORSHeaders sets CORS for the 401 (Unauthorized) WWW-Authenticate challenge
+// produced by the BackendTrafficPolicy response override — native SecurityPolicy.CORS does not decorate
+// such override responses. Access-Control-Allow-Origin lets the browser read the response;
+// Access-Control-Expose-Headers lets it read the WWW-Authenticate OAuth challenge (RFC 9728) and Mcp-Session-Id.
+//
+// NOTE: this does NOT cover the 403 step-up "insufficient_scope" challenge, which the MCP proxy emits as a
+// real upstream response (internal/mcpproxy/handlers.go) and is therefore decorated by native SecurityPolicy.CORS.
+func ensureUnauthorizedChallengeCORSHeaders(httpHeaderFilter *gwapiv1.HTTPHeaderFilter) {
+	httpHeaderFilter.Set = append(httpHeaderFilter.Set, gwapiv1.HTTPHeader{
+		Name:  "Access-Control-Allow-Origin",
+		Value: corsAllowOrigin,
 	}, gwapiv1.HTTPHeader{
-		Name:  "Access-Control-Allow-Methods",
-		Value: "GET",
-	}, gwapiv1.HTTPHeader{
-		Name:  "Access-Control-Allow-Headers",
-		Value: "mcp-protocol-version",
+		Name:  "Access-Control-Expose-Headers",
+		Value: strings.Join(corsExposeHeaders, ", "),
 	})
 }
 
@@ -450,7 +474,7 @@ func (c *MCPRouteController) ensureOAuthAuthServerMetadataHRF(ctx context.Contex
 			Header: &gwapiv1.HTTPHeaderFilter{},
 		},
 	}
-	ensureCORSHeaders(httpRouteFilter.Spec.DirectResponse.Header)
+	ensureWellKnownCORSHeaders(httpRouteFilter.Spec.DirectResponse.Header)
 
 	if existingFilter {
 		c.logger.Info("Updating AuthServer HTTPRouteFilter", "namespace", httpRouteFilter.Namespace, "name", httpRouteFilter.Name)
@@ -551,23 +575,6 @@ func (c *MCPRouteController) buildOAuthAuthServerMetadataJSON(oauth *aigv1b1.MCP
 	// Convert to JSON string.
 	jsonBytes, _ := json.Marshal(response)
 	return string(jsonBytes)
-}
-
-// cleanupSecurityPolicyResources deletes existing SecurityPolicy-related resources when SecurityPolicy is nil.
-func (c *MCPRouteController) cleanupSecurityPolicyResources(ctx context.Context, mcpRoute *aigv1b1.MCPRoute) error {
-	// Delete SecurityPolicy.
-	securityPolicyName := internalapi.MCPGeneratedResourceCommonPrefix + mcpRoute.Name
-	var securityPolicy egv1a1.SecurityPolicy
-	err := c.client.Get(ctx, client.ObjectKey{Name: securityPolicyName, Namespace: mcpRoute.Namespace}, &securityPolicy)
-	if err == nil {
-		c.logger.Info("Deleting SecurityPolicy", "namespace", securityPolicy.Namespace, "name", securityPolicy.Name)
-		if err = c.client.Delete(ctx, &securityPolicy); err != nil {
-			return fmt.Errorf("failed to delete SecurityPolicy: %w", err)
-		}
-	} else if !apierrors.IsNotFound(err) {
-		return fmt.Errorf("failed to get SecurityPolicy for deletion: %w", err)
-	}
-	return nil
 }
 
 func (c *MCPRouteController) ensureOAuthResources(ctx context.Context, mcpRoute *aigv1b1.MCPRoute, httpRouteName string) error {
