@@ -219,6 +219,54 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 	})
 }
 
+func Test_messagesProcessorRouterFilter_ProcessRequestBody_EarlyTranslate(t *testing.T) {
+	reqBody, err := json.Marshal(&anthropicschema.MessagesRequest{
+		Model:     "claude-3-5-sonnet-20241022",
+		MaxTokens: 100,
+		Messages:  []anthropicschema.MessageParam{{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "hello"}}},
+	})
+	require.NoError(t, err)
+
+	p := &messagesProcessorRouterFilter{
+		config:         &filterapi.RuntimeConfig{},
+		requestHeaders: map[string]string{":path": "/v1/messages"},
+		logger:         slog.Default(),
+		tracer:         tracingapi.NoopTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]{},
+	}
+
+	resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: reqBody})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	re, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	require.True(t, ok)
+	commonResp := re.RequestBody.GetResponse()
+
+	// EarlyTranslate must have produced an OpenAI-format body mutation.
+	mutatedBody := commonResp.GetBodyMutation().GetBody()
+	require.NotEmpty(t, mutatedBody)
+	var openaiReq openai.ChatCompletionRequest
+	require.NoError(t, json.Unmarshal(mutatedBody, &openaiReq))
+	require.Equal(t, "claude-3-5-sonnet-20241022", openaiReq.Model)
+
+	// forceBodyMutation must be set so the upstream translator overwrites the EPP-facing body.
+	require.True(t, p.forceBodyMutation)
+
+	// :path must be rewritten to /v1/chat/completions for the EPP to select the right parser.
+	var pathHeader string
+	for _, h := range commonResp.GetHeaderMutation().SetHeaders {
+		if h.Header.Key == ":path" {
+			pathHeader = string(h.Header.RawValue)
+		}
+	}
+	require.Equal(t, "/v1/chat/completions", pathHeader)
+
+	// ResponseBodyMode must be pre-empted to NONE so Envoy does not buffer the response
+	// body before the upstream filter has a chance to re-enable body processing.
+	require.NotNil(t, resp.ModeOverride)
+	require.Equal(t, extprocv3http.ProcessingMode_NONE, resp.ModeOverride.ResponseBodyMode)
+}
+
 func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseHeaders(t *testing.T) {
 	t.Run("error translation", func(t *testing.T) {
 		mm := &mockMetrics{}
@@ -249,7 +297,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseHeaders(t *testin
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
 		require.Empty(t, commonRes.HeaderMutation.SetHeaders)
 		mm.RequireRequestNotCompleted(t)
-		require.Nil(t, res.ModeOverride)
+		require.Equal(t, &extprocv3http.ProcessingMode{ResponseBodyMode: extprocv3http.ProcessingMode_BUFFERED}, res.ModeOverride)
 	})
 	t.Run("ok/streaming", func(t *testing.T) {
 		inHeaders := &corev3.HeaderMap{
@@ -277,7 +325,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseHeaders(t *testin
 		require.NoError(t, err)
 		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
 		require.Empty(t, commonRes.HeaderMutation)
-		require.Nil(t, res.ModeOverride)
+		require.Equal(t, &extprocv3http.ProcessingMode{ResponseBodyMode: extprocv3http.ProcessingMode_BUFFERED}, res.ModeOverride)
 	})
 }
 
