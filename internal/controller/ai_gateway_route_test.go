@@ -576,6 +576,47 @@ func Test_newHTTPRoute_InferencePool(t *testing.T) {
 	require.Empty(t, httpRoute.Spec.Rules[1].BackendRefs) // No backend refs for default rule.
 }
 
+func Test_newHTTPRoute_InferencePool_CrossNamespace(t *testing.T) {
+	c := requireNewFakeClientWithIndexes(t)
+
+	// Create an AIGatewayRoute in namespace "gw-ns" with an InferencePool
+	// backend in a different namespace "pool-ns".
+	aiGatewayRoute := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cross-ns-route",
+			Namespace: "gw-ns",
+		},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+						{
+							Name:      "my-pool",
+							Group:     ptr.To("inference.networking.k8s.io"),
+							Kind:      ptr.To("InferencePool"),
+							Namespace: ptr.To(gwapiv1.Namespace("pool-ns")),
+							Weight:    ptr.To(int32(100)),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	controller := &AIGatewayRouteController{client: c}
+	httpRoute := &gwapiv1.HTTPRoute{}
+
+	err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
+	require.NoError(t, err)
+
+	require.Len(t, httpRoute.Spec.Rules, 2)
+	backendRef := httpRoute.Spec.Rules[0].BackendRefs[0]
+	require.Equal(t, "inference.networking.k8s.io", string(*backendRef.Group))
+	require.Equal(t, "InferencePool", string(*backendRef.Kind))
+	require.Equal(t, "my-pool", string(backendRef.Name))
+	require.Equal(t, "pool-ns", string(*backendRef.Namespace))
+}
+
 func Test_newHTTPRoute_LabelAndAnnotationPropagation(t *testing.T) {
 	c := requireNewFakeClientWithIndexes(t)
 

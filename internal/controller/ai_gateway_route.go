@@ -263,13 +263,14 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 
 			if br.IsInferencePool() {
 				// Handle InferencePool backend reference.
+				poolNamespace := gwapiv1.Namespace(backendNamespace)
 				backendRefs = append(backendRefs,
 					gwapiv1.HTTPBackendRef{BackendRef: gwapiv1.BackendRef{
 						BackendObjectReference: gwapiv1.BackendObjectReference{
 							Group:     (*gwapiv1.Group)(br.Group),
 							Kind:      (*gwapiv1.Kind)(br.Kind),
 							Name:      gwapiv1.ObjectName(br.Name),
-							Namespace: (*gwapiv1.Namespace)(&aiGatewayRoute.Namespace),
+							Namespace: &poolNamespace,
 						},
 						Weight: br.Weight,
 					}},
