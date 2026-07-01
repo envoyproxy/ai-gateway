@@ -354,3 +354,64 @@ func TestBuildListWalkResponse_NonListPassThrough(t *testing.T) {
 	resp := p.buildListWalkResponse(body)
 	require.Nil(t, resp.GetResponseBody().GetResponse())
 }
+
+func TestStripQueryParam(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		path string
+		key  string
+		want string
+	}{
+		{
+			name: "no query returns path unchanged",
+			path: "/v1/files",
+			key:  "model",
+			want: "/v1/files",
+		},
+		{
+			name: "param absent returns path unchanged",
+			path: "/v1/files?limit=2",
+			key:  "model",
+			want: "/v1/files?limit=2",
+		},
+		{
+			name: "only param removed leaves bare path",
+			path: "/v1/files?model=gpt-4",
+			key:  "model",
+			want: "/v1/files",
+		},
+		{
+			name: "param removed, others preserved",
+			path: "/v1/files?model=gpt-4&limit=2",
+			key:  "model",
+			want: "/v1/files?limit=2",
+		},
+		{
+			name: "last param removed, others preserved",
+			path: "/v1/files?limit=2&model=gpt-4",
+			key:  "model",
+			want: "/v1/files?limit=2",
+		},
+		{
+			name: "malformed query returns path unchanged",
+			path: "/v1/files?%zz",
+			key:  "model",
+			want: "/v1/files?%zz",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, stripQueryParam(tc.path, tc.key))
+		})
+	}
+}
+
+// TestStripQueryParam_DropsModelFromMultiParam confirms the model param is stripped while other
+// list params (after/limit/order) survive, which is the property handleListRequestHeaders relies
+// on to avoid leaking the routing-only model param upstream.
+func TestStripQueryParam_DropsModelFromMultiParam(t *testing.T) {
+	got := stripQueryParam("/v1/files?after=file-x&limit=2&model=gpt-4&order=asc", "model")
+	require.Equal(t, "file-x", queryParam(got, "after"))
+	require.Equal(t, "2", queryParam(got, "limit"))
+	require.Equal(t, "asc", queryParam(got, "order"))
+	require.Empty(t, queryParam(got, "model"))
+}

@@ -747,6 +747,30 @@ func rewriteAfterParam(path, nativeAfter string) string {
 	return pathOnly
 }
 
+// stripQueryParam returns path with the named query parameter removed, preserving all others.
+// It returns path unchanged when there is no query, when the parameter is absent, or when the
+// query is malformed. This mirrors rewriteAfterParam and is used to drop the routing-only "model"
+// query parameter before a Files list request is forwarded upstream (the OpenAI Files list API
+// accepts only after/limit/order/purpose, so a leaked "model" param would be rejected).
+func stripQueryParam(path, name string) string {
+	pathOnly, rawQuery := splitQuery(path)
+	if rawQuery == "" {
+		return path
+	}
+	values, err := url.ParseQuery(strings.TrimPrefix(rawQuery, "?"))
+	if err != nil {
+		return path
+	}
+	if _, ok := values[name]; !ok {
+		return path
+	}
+	values.Del(name)
+	if encoded := values.Encode(); encoded != "" {
+		return pathOnly + "?" + encoded
+	}
+	return pathOnly
+}
+
 // multipartBoundary extracts the boundary from a multipart/form-data content-type header,
 // returning "" if the content type is not multipart or has no boundary.
 func multipartBoundary(contentType string) string {
