@@ -1148,8 +1148,14 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 		"%s=%s,%s=%s", egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace,
 	)}
 
+	candidateNamespaces := make([]string, 1, 2)
+	candidateNamespaces[0] = gw.Namespace
+	if c.envoyGatewayNamespace != gw.Namespace {
+		candidateNamespaces = append(candidateNamespaces, c.envoyGatewayNamespace)
+	}
+
 	var distinctNamespaces []string
-	for _, ns := range []string{gw.Namespace, c.envoyGatewayNamespace} {
+	for _, ns := range candidateNamespaces {
 		var ps *corev1.PodList
 		ps, err = c.kube.CoreV1().Pods(ns).List(ctx, listOption)
 		if err != nil {
