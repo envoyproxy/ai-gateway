@@ -262,6 +262,86 @@ func TestHandleListRequestHeaders_InvalidAfter(t *testing.T) {
 	require.Equal(t, int32(http.StatusBadRequest), int32(resp.GetImmediateResponse().Status.Code))
 }
 
+// TestHandleListRequestHeaders_FirstPageModelOverride verifies that a "?model=" query param on the
+// first page routes by that model (not the first declared model) and is stripped from the upstream
+// path so it never reaches the provider.
+func TestHandleListRequestHeaders_FirstPageModelOverride(t *testing.T) {
+	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"})
+	config.DeclaredModels = []filterapi.Model{{Name: "m1"}}
+	p := newListProcessor("/v1/files?model=m2&limit=2", config)
+
+	resp, err := p.handleListRequestHeaders()
+	require.NoError(t, err)
+
+	// Routed by the override, not DeclaredModels[0].
+	model, ok := setHeaderValue(resp, internalapi.ModelNameHeaderKeyDefault)
+	require.True(t, ok)
+	require.Equal(t, "m2", model)
+	require.Equal(t, "m2", p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
+	require.True(t, resp.GetRequestHeaders().Response.ClearRouteCache)
+
+	// The routing-only model param is stripped from the upstream path; other params survive.
+	newPath, ok := setHeaderValue(resp, ":path")
+	require.True(t, ok)
+	require.Empty(t, queryParam(newPath, "model"))
+	require.Equal(t, "2", queryParam(newPath, "limit"))
+
+	// The original (client) path is preserved for upstream-filter processor resolution.
+	orig, ok := setHeaderValue(resp, originalPathHeader)
+	require.True(t, ok)
+	require.Equal(t, "/v1/files?model=m2&limit=2", orig)
+}
+
+// TestHandleListRequestHeaders_FirstPageNoModelUsesDeclared is the regression guard: with no
+// "?model=", the first declared model is used and the path is not rewritten.
+func TestHandleListRequestHeaders_FirstPageNoModelUsesDeclared(t *testing.T) {
+	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"})
+	config.DeclaredModels = []filterapi.Model{{Name: "m1"}}
+	p := newListProcessor("/v1/files?limit=2", config)
+
+	resp, err := p.handleListRequestHeaders()
+	require.NoError(t, err)
+
+	model, ok := setHeaderValue(resp, internalapi.ModelNameHeaderKeyDefault)
+	require.True(t, ok)
+	require.Equal(t, "m1", model)
+
+	// No model param present, so the path must NOT be rewritten (byte-for-byte legacy behavior).
+	_, pathRewritten := setHeaderValue(resp, ":path")
+	require.False(t, pathRewritten)
+}
+
+// TestHandleListRequestHeaders_CursorStripsStrayModel verifies that a stray "?model=" carried onto a
+// cursor page (e.g. copied across pages by the OpenAI SDK) is stripped from the upstream path, which
+// still carries the backend-native "after" cursor.
+func TestHandleListRequestHeaders_CursorStripsStrayModel(t *testing.T) {
+	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"}, [3]string{"ns", "banana", "myroute"})
+	codec := testCodec()
+	token, err := encodeListWalkCursor(codec, listWalkCursor{
+		start:       backendKey{namespace: "ns", name: "apple"},
+		current:     backendKey{namespace: "ns", name: "banana"},
+		nativeAfter: "file-native-7",
+	})
+	require.NoError(t, err)
+
+	p := newListProcessor("/v1/files?limit=2&model=m2&after="+token, config)
+	p.codec = codec
+	resp, err := p.handleListRequestHeaders()
+	require.NoError(t, err)
+
+	// Still pins the cursor's backend.
+	v, pinned := stickyValue(resp)
+	require.True(t, pinned)
+	require.Equal(t, internalapi.SelectedBackendMetadataValue("ns", "banana"), v)
+
+	// Upstream path carries the native after cursor, keeps limit, and drops the stray model param.
+	newPath, ok := setHeaderValue(resp, ":path")
+	require.True(t, ok)
+	require.Equal(t, "file-native-7", queryParam(newPath, "after"))
+	require.Equal(t, "2", queryParam(newPath, "limit"))
+	require.Empty(t, queryParam(newPath, "model"))
+}
+
 func TestBuildListWalkResponse_AdvanceAndComplete(t *testing.T) {
 	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"}, [3]string{"ns", "banana", "myroute"})
 	codec := testCodec()

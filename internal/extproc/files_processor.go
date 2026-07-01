@@ -177,16 +177,31 @@ func (p *filesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingRespon
 	headerMutation := &extprocv3.HeaderMutation{}
 	setHeader(headerMutation, originalPathHeader, path)
 
+	// "?model=" is an AI Gateway routing extension (mirroring the upload multipart model field): it
+	// selects which model's route/backends the list is served from. It is not a valid OpenAI Files
+	// list parameter (only after/limit/order/purpose are), so it must never be forwarded upstream.
+	// Read it for routing, then compute the model-stripped path used for the upstream request.
+	modelOverride := queryParam(path, "model")
+	upstreamPath := stripQueryParam(path, "model")
+
 	after := queryParam(path, "after")
 	if after == "" {
 		// First page: there is no cursor to pin a backend with, so the request must match the
 		// route on its own. AIGatewayRoutes match on the x-ai-eg-model header, which a list
 		// request does not carry; set it so the route matches and the load balancer selects the
-		// starting backend (captured via SetBackend). Subsequent pages pin the backend directly
-		// via the cursor and need no model header.
-		model := p.firstDeclaredModel()
+		// starting backend (captured via SetBackend). A client MAY override the routed model via
+		// "?model="; otherwise the first declared model is used. Subsequent pages pin the backend
+		// directly via the cursor and need no model header.
+		model := modelOverride
+		if model == "" {
+			model = p.firstDeclaredModel()
+		}
 		setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, model)
 		p.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = model
+		// Drop the routing-only "model" param before forwarding upstream.
+		if upstreamPath != path {
+			setHeader(headerMutation, ":path", upstreamPath)
+		}
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_RequestHeaders{
 				RequestHeaders: &extprocv3.HeadersResponse{
@@ -228,7 +243,9 @@ func (p *filesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingRespon
 	p.backendNamespace = current.namespace
 	p.backendName = current.name
 	p.backendKnown = true
-	setHeader(headerMutation, ":path", rewriteAfterParam(path, nativeAfter))
+	// Rewrite from upstreamPath (model already stripped) so a stray "?model=" carried across pages
+	// by the OpenAI SDK is not forwarded upstream.
+	setHeader(headerMutation, ":path", rewriteAfterParam(upstreamPath, nativeAfter))
 
 	// TASK-005: Router-resolvable translator selection (clean 501 for non-OpenAI schemas) on cursor pages.
 	schema, ok := p.schemaForBackend(p.config, current.namespace, current.name)
@@ -243,9 +260,9 @@ func (p *filesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingRespon
 
 	// TASK-007: Invoke RequestBody translator at the list seam (cursor page).
 	if p.translator != nil {
-		_, queryPart := splitQuery(path)
+		_, queryPart := splitQuery(upstreamPath)
 		req := &translator.FilesRequest{
-			Path:   rewriteAfterParam(path, nativeAfter),
+			Path:   rewriteAfterParam(upstreamPath, nativeAfter),
 			Method: p.requestHeaders[":method"],
 			Query:  queryPart,
 		}
