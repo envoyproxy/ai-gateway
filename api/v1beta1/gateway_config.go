@@ -80,6 +80,20 @@ type GatewayConfigSpec struct {
 	// +listType=map
 	// +listMapKey=metadataKey
 	GlobalLLMRequestCosts []LLMRequestCost `json:"globalLLMRequestCosts,omitempty"`
+
+	// GlobalRateLimits defines gateway-wide mappings for emitting per-request rate-limit override
+	// structs into io.envoy.ai_gateway dynamic metadata. Each entry maps a metadata key to a source
+	// that supplies the per-request limit value, and applies to every request handled by the gateway.
+	//
+	// Per-route rate limiting is expressed on the consuming side: each MetadataKey is referenced by a
+	// route's BackendTrafficPolicy.rateLimit.global.rules[].limit.fromMetadata.key, so a given route
+	// only applies the limits whose keys its policy reads. MetadataKeys must therefore be unique.
+	//
+	// +optional
+	// +listType=map
+	// +listMapKey=metadataKey
+	// +kubebuilder:validation:MaxItems=36
+	GlobalRateLimits []RateLimitOverride `json:"globalRateLimits,omitempty"`
 }
 
 // GatewayConfigExtProc holds runtime-specific configuration for the external processor.

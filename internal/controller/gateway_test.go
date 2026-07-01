@@ -275,7 +275,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	for range 2 { // Reconcile twice to make sure the secret update path is working.
 		const someNamespace = "some-namespace"
 		configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
-		effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+		effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil, nil)
 		require.NoError(t, err)
 		require.True(t, effective, "expected filter config to be effective")
 
@@ -386,7 +386,7 @@ func TestGatewayController_reconcileFilterConfigSecret_HostnameScopedModels(t *t
 
 	const someNamespace = "some-namespace"
 	configName := FilterConfigSecretPerGatewayName("gw-hostname", gwNamespace)
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil, nil)
 	require.NoError(t, err)
 	require.True(t, effective, "expected filter config to be effective")
 
@@ -456,7 +456,7 @@ func TestGatewayController_reconcileFilterConfigSecret_AllUnscopedRoutesLeaveUns
 
 	const someNamespace = "some-namespace"
 	configName := FilterConfigSecretPerGatewayName("gw-unscoped-only", gwNamespace)
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil, nil)
 	require.NoError(t, err)
 	require.True(t, effective)
 
@@ -533,7 +533,7 @@ func TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostA
 
 	const someNamespace = "some-namespace"
 	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil, nil)
 	require.NoError(t, err)
 	require.True(t, effective, "expected filter config to be effective")
 
@@ -609,7 +609,7 @@ func TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostA
 
 	const someNamespace = "some-namespace"
 	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil, nil)
 	require.NoError(t, err)
 	require.True(t, effective, "expected filter config to be effective")
 
@@ -666,7 +666,7 @@ func TestGatewayController_reconcileFilterConfigSecret_InvalidCELExpression(t *t
 
 	const someNamespace = "some-namespace"
 	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
-	_, err = c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+	_, err = c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid CEL expression")
 }
@@ -760,7 +760,7 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
 
 	// Reconcile filter config secret.
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil, nil)
 	require.NoError(t, err)
 	require.True(t, effective, "expected filter config to be effective")
 
@@ -780,6 +780,62 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 	// Should only have one backend (from the active route).
 	require.Len(t, fc.Backends, 1)
 	require.Contains(t, fc.Backends[0].Name, "apple")
+}
+
+// TestGatewayController_reconcileFilterConfigSecret_RateLimits verifies that gateway-level
+// GlobalRateLimits are projected into the filter config.
+func TestGatewayController_reconcileFilterConfigSecret_RateLimits(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	const gwNamespace = "ns"
+	routes := []aigv1b1.AIGatewayRoute{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "tenant-route", Namespace: gwNamespace},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "some-backend"}}},
+				},
+			},
+		},
+	}
+
+	err := fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "some-backend", Namespace: gwNamespace},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+		},
+	})
+	require.NoError(t, err)
+
+	globalRateLimits := []aigv1b1.RateLimitOverride{
+		{MetadataKey: "llm_total_token_limit", Source: aigv1b1.RateLimitOverrideSource{FromMetadata: aigv1b1.RateLimitMetadataSource{Namespace: "my.ext_authz", Key: "total_limit"}}},
+		{MetadataKey: "llm_input_token_limit", Source: aigv1b1.RateLimitOverrideSource{FromMetadata: aigv1b1.RateLimitMetadataSource{Namespace: "my.ext_authz", Key: "input_limit"}}},
+	}
+
+	const someNamespace = "some-namespace"
+	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil, globalRateLimits)
+	require.NoError(t, err)
+	require.True(t, effective)
+
+	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
+	require.NoError(t, err)
+	configStr, ok := secret.StringData[FilterConfigKeyInSecret]
+	require.True(t, ok)
+
+	var fc filterapi.Config
+	require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+
+	require.Len(t, fc.GlobalRateLimits, 2)
+	require.Equal(t, "llm_total_token_limit", fc.GlobalRateLimits[0].MetadataKey)
+	require.Equal(t, "my.ext_authz", fc.GlobalRateLimits[0].Namespace)
+	require.Equal(t, "total_limit", fc.GlobalRateLimits[0].Key)
+	require.Equal(t, "llm_input_token_limit", fc.GlobalRateLimits[1].MetadataKey)
+	require.Equal(t, "input_limit", fc.GlobalRateLimits[1].Key)
 }
 
 func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
@@ -2144,10 +2200,10 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 	const someNamespace = "some-namespace"
 	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
 
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, nil, nil, "mcp-uuid", nil)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, nil, nil, "mcp-uuid", nil, nil)
 	require.NoError(t, err)
 	require.False(t, effective) // No MCP routes, so not effective.
-	effective, err = c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, nil, mcpRoutes, "mcp-uuid", nil)
+	effective, err = c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, nil, mcpRoutes, "mcp-uuid", nil, nil)
 	require.NoError(t, err)
 	require.True(t, effective)
 
@@ -2615,7 +2671,7 @@ func TestGatewayController_reconcileFilterConfigSecret_GlobalDefaults(t *testing
 
 			const someNamespace = "some-namespace"
 			configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
-			effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, tt.routes, nil, "test-uuid", tt.globalCosts)
+			effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, tt.routes, nil, "test-uuid", tt.globalCosts, nil)
 			require.NoError(t, err)
 			require.True(t, effective)
 

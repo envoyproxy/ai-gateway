@@ -46,7 +46,7 @@ func TestNewFactory(t *testing.T) {
 		t.Parallel()
 
 		factory := NewFactory(nil, tracingapi.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{})
-		proc, err := factory(cfg, headers, slog.Default(), false, false)
+		proc, err := factory(cfg, headers, nil, slog.Default(), false, false)
 		require.NoError(t, err)
 		require.IsType(t, &chatCompletionProcessorRouterFilter{}, proc)
 
@@ -61,7 +61,7 @@ func TestNewFactory(t *testing.T) {
 		t.Parallel()
 
 		factory := NewFactory(&mockMetricsFactory{}, tracingapi.NoopChatCompletionTracer{}, endpointspec.ChatCompletionsEndpointSpec{})
-		proc, err := factory(cfg, headers, slog.Default(), true, false)
+		proc, err := factory(cfg, headers, nil, slog.Default(), true, false)
 		require.NoError(t, err)
 		require.IsType(t, &chatCompletionProcessorUpstreamFilter{}, proc)
 
@@ -2105,6 +2105,167 @@ func TestBuildDynamicMetadata_GlobalAndRouteScoped(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildRateLimitOverrideMetadata(t *testing.T) {
+	const extAuthzNS = "envoy.filters.http.ext_authz"
+
+	makeFilterMeta := func(keyVals ...string) map[string]*structpb.Struct {
+		fields := map[string]*structpb.Value{}
+		for i := 0; i+1 < len(keyVals); i += 2 {
+			fields[keyVals[i]] = structpb.NewStringValue(keyVals[i+1])
+		}
+		return map[string]*structpb.Struct{extAuthzNS: {Fields: fields}}
+	}
+
+	type wantStruct struct {
+		requestsPerUnit float64
+		unit            string
+	}
+	// An empty wantStructs means the call must return nil (nothing emitted).
+	tests := []struct {
+		name             string
+		globalRateLimits []filterapi.GlobalRateLimitOverride
+		filterMetadata   map[string]*structpb.Struct
+		wantStructs      map[string]wantStruct
+	}{
+		{
+			name: "global entry emits struct when metadata present",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+			},
+			filterMetadata: makeFilterMeta("input_limit", "100000/HOUR"),
+			wantStructs:    map[string]wantStruct{"llm_input_token_limit": {100000, "HOUR"}},
+		},
+		{
+			name: "metadata key absent: nothing emitted",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+			},
+			filterMetadata: makeFilterMeta(),
+		},
+		{
+			name: "namespace absent: nothing emitted",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+			},
+			filterMetadata: nil,
+		},
+		{
+			name: "malformed value (no slash): nothing emitted",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+			},
+			filterMetadata: makeFilterMeta("input_limit", "100000"),
+		},
+		{
+			name: "non-numeric count: nothing emitted",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+			},
+			filterMetadata: makeFilterMeta("input_limit", "bad/HOUR"),
+		},
+		{
+			name: "invalid unit: nothing emitted",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+			},
+			filterMetadata: makeFilterMeta("input_limit", "100000/WEEK"),
+		},
+		{
+			name: "lowercase unit normalized to uppercase",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+			},
+			filterMetadata: makeFilterMeta("input_limit", "100000/hour"),
+			wantStructs:    map[string]wantStruct{"llm_input_token_limit": {100000, "HOUR"}},
+		},
+		{
+			name: "zero count emits struct with requests_per_unit 0",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+			},
+			filterMetadata: makeFilterMeta("input_limit", "0/HOUR"),
+			wantStructs:    map[string]wantStruct{"llm_input_token_limit": {0, "HOUR"}},
+		},
+		{
+			name: "multiple entries emitted with different units",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+				{MetadataKey: "llm_output_token_limit", Namespace: extAuthzNS, Key: "output_limit"},
+			},
+			filterMetadata: map[string]*structpb.Struct{extAuthzNS: {Fields: map[string]*structpb.Value{
+				"input_limit":  structpb.NewStringValue("100000/HOUR"),
+				"output_limit": structpb.NewStringValue("50000/DAY"),
+			}}},
+			wantStructs: map[string]wantStruct{
+				"llm_input_token_limit":  {100000, "HOUR"},
+				"llm_output_token_limit": {50000, "DAY"},
+			},
+		},
+		{
+			name: "no overrides configured returns nil",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			md := buildRateLimitOverrideMetadata(tt.globalRateLimits, tt.filterMetadata)
+			if len(tt.wantStructs) == 0 {
+				require.Nil(t, md)
+				return
+			}
+			require.NotNil(t, md)
+			ns := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
+			require.Len(t, ns, len(tt.wantStructs))
+			for k, want := range tt.wantStructs {
+				got, exists := ns[k]
+				require.True(t, exists, "key %q should be present", k)
+				s := got.GetStructValue()
+				require.NotNil(t, s, "key %q should be a struct", k)
+				require.Equal(t, want.requestsPerUnit, s.Fields["requests_per_unit"].GetNumberValue(), "key %q requests_per_unit", k)
+				require.Equal(t, want.unit, s.Fields["unit"].GetStringValue(), "key %q unit", k)
+			}
+		})
+	}
+}
+
+func Test_chatCompletionProcessorRouterFilter_ProcessRequestHeaders_rateLimitOverride(t *testing.T) {
+	const extAuthzNS = "envoy.filters.http.ext_authz"
+
+	t.Run("no rate limits configured: no dynamic metadata", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{config: &filterapi.RuntimeConfig{}, logger: slog.Default()}
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
+		require.True(t, ok, "must return a RequestHeaders response")
+		require.Nil(t, resp.DynamicMetadata, "no override configured, so no dynamic metadata")
+	})
+
+	t.Run("emits override struct from filter metadata on the request path", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			config: &filterapi.RuntimeConfig{
+				GlobalRateLimits: []filterapi.GlobalRateLimitOverride{
+					{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+				},
+			},
+			filterMetadata: map[string]*structpb.Struct{
+				extAuthzNS: {Fields: map[string]*structpb.Value{
+					"input_limit": structpb.NewStringValue("100000/HOUR"),
+				}},
+			},
+			logger: slog.Default(),
+		}
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp.DynamicMetadata, "override must be emitted on the request path")
+		ns := resp.DynamicMetadata.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields
+		s := ns["llm_input_token_limit"].GetStructValue()
+		require.NotNil(t, s)
+		require.Equal(t, float64(100000), s.Fields["requests_per_unit"].GetNumberValue())
+		require.Equal(t, "HOUR", s.Fields["unit"].GetStringValue())
+	})
 }
 
 // mustCompileCEL is a test helper that compiles a CEL expression or fails the test.

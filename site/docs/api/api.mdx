@@ -3031,6 +3031,9 @@ MCPRouteList contains a list of MCPRoute.
 - [MCPRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutestatus)
 - [MCPToolFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcptoolfilter)
 - [ProtectedResourceMetadata](#github-com-envoyproxy-ai-gateway-api-v1beta1-protectedresourcemetadata)
+- [RateLimitMetadataSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitmetadatasource)
+- [RateLimitOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitoverride)
+- [RateLimitOverrideSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitoverridesource)
 - [ToolCall](#github-com-envoyproxy-ai-gateway-api-v1beta1-toolcall)
 - [VersionedAPISchema](#github-com-envoyproxy-ai-gateway-api-v1beta1-versionedapischema)
 
@@ -3930,6 +3933,11 @@ GatewayConfigSpec defines the configuration for the AI Gateway.
   type="[LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcost) array"
   required="false"
   description="GlobalLLMRequestCosts defines default LLM request costs that apply to all<br />routes referencing this GatewayConfig. These costs can be overridden on a<br />per-route basis via AIGatewayRoute.Spec.LLMRequestCosts.<br />When a request matches a route, the cost calculation proceeds as follows:<br /> 1. If the route defines LLMRequestCosts with a matching metadataKey, use that.<br /> 2. Otherwise, fall back to the global cost with that metadataKey (if defined here).<br /> 3. If neither exists, the cost is not calculated for that metadataKey.<br />This allows you to define common cost formulas once at the gateway level<br />(e.g., billing_charges = input_tokens + output_tokens) and only override<br />them in specific routes when needed (e.g., premium routes with different pricing)."
+/><ApiField
+  name="globalRateLimits"
+  type="[RateLimitOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitoverride) array"
+  required="false"
+  description="GlobalRateLimits defines gateway-wide mappings for emitting per-request rate-limit override<br />structs into io.envoy.ai_gateway dynamic metadata. Each entry maps a metadata key to a source<br />that supplies the per-request limit value, and applies to every request handled by the gateway.<br />Per-route rate limiting is expressed on the consuming side: each MetadataKey is referenced by a<br />route's BackendTrafficPolicy.rateLimit.global.rules[].limit.fromMetadata.key, so a given route<br />only applies the limits whose keys its policy reads. MetadataKeys must therefore be unique."
 />
 
 
@@ -4649,6 +4657,84 @@ References:
   type="string"
   required="false"
   description="ResourcePolicyURI is a URL that points to the resource server's policy document."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitmetadatasource">RateLimitMetadataSource</a>
+
+
+
+**Appears in:**
+- [RateLimitOverrideSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitoverridesource)
+
+RateLimitMetadataSource identifies a string field in Envoy filter dynamic metadata.
+
+##### Fields
+
+
+
+<ApiField
+  name="namespace"
+  type="string"
+  required="true"
+  description="Namespace is the filter metadata namespace to read from.<br />For ext_authz this is typically `envoy.filters.http.ext_authz`."
+/><ApiField
+  name="key"
+  type="string"
+  required="true"
+  description="Key is the field name within Namespace whose string value encodes the rate limit."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitoverride">RateLimitOverride</a>
+
+
+
+**Appears in:**
+- [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigspec)
+
+RateLimitOverride emits a per-request rate-limit override struct into io.envoy.ai_gateway
+dynamic metadata. The source value must be formatted as "COUNT/UNIT" (e.g. "100000/HOUR").
+The gateway parses it and writes a requests_per_unit/unit struct under MetadataKey — the struct
+Envoy's RateLimit.Override.DynamicMetadata reads. If the source value is absent or malformed
+the key is omitted and the BackendTrafficPolicy static default applies.
+
+##### Fields
+
+
+
+<ApiField
+  name="metadataKey"
+  type="string"
+  required="true"
+  description="MetadataKey is the key written under io.envoy.ai_gateway in the dynamic metadata,<br />referenced by BackendTrafficPolicy.rateLimit.global.rules[].limit.fromMetadata.key."
+/><ApiField
+  name="source"
+  type="[RateLimitOverrideSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitoverridesource)"
+  required="true"
+  description="Source defines where the rate-limit value is read from.<br />Exactly one field within Source must be set."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitoverridesource">RateLimitOverrideSource</a>
+
+
+
+**Appears in:**
+- [RateLimitOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitoverride)
+
+RateLimitOverrideSource defines the origin of the rate-limit value.
+Exactly one field must be set.
+
+##### Fields
+
+
+
+<ApiField
+  name="fromMetadata"
+  type="[RateLimitMetadataSource](#github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitmetadatasource)"
+  required="true"
+  description="FromMetadata reads the rate-limit value from filter dynamic metadata set by a preceding<br />Envoy filter (typically ext_authz). The value at the referenced namespace/key must be a<br />string formatted as `<count>/<unit>` (e.g. `100000/HOUR`), where unit is one of<br />SECOND, MINUTE, HOUR, DAY.<br />Because dynamic metadata can only be set by Envoy filters — not by downstream clients —<br />this source is safe against client spoofing with no additional configuration required."
 />
 
 

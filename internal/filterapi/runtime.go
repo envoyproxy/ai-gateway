@@ -35,6 +35,10 @@ type RuntimeConfig struct {
 	// RequestCosts is the list of route-scoped request costs.
 	// Each entry has a RouteName identifying the route it applies to.
 	RequestCosts []RuntimeRequestCost
+	// GlobalRateLimits is the list of gateway-wide metadata→metadata mappings.
+	// They apply to every request; per-route application is selected by which MetadataKey each route's
+	// BackendTrafficPolicy reads.
+	GlobalRateLimits []GlobalRateLimitOverride
 	// DeclaredModels is the list of declared models.
 	DeclaredModels []Model
 	// ModelsByHost maps hostnames to their specific model lists for per-host filtering. Each entry already includes
@@ -123,11 +127,24 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 		costs = append(costs, RuntimeRequestCost{LLMRequestCost: c, CELProg: prog})
 	}
 
+	for i := range config.GlobalRateLimits {
+		h := &config.GlobalRateLimits[i]
+		if h.MetadataKey == "" {
+			return nil, fmt.Errorf("GlobalRateLimitOverride must have non-empty MetadataKey")
+		}
+		if h.Namespace == "" {
+			return nil, fmt.Errorf("GlobalRateLimitOverride with metadataKey=%q must have non-empty Namespace", h.MetadataKey)
+		}
+		if h.Key == "" {
+			return nil, fmt.Errorf("GlobalRateLimitOverride with metadataKey=%q must have non-empty Key", h.MetadataKey)
+		}
+	}
 	return &RuntimeConfig{
 		UUID:               config.UUID,
 		Backends:           backends,
 		GlobalRequestCosts: globalCosts,
 		RequestCosts:       costs,
+		GlobalRateLimits:   config.GlobalRateLimits,
 		DeclaredModels:     config.Models,
 		ModelsByHost:       config.ModelsByHost,
 		UnscopedModels:     config.UnscopedModels,

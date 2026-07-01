@@ -165,6 +165,54 @@ const (
 	AIGatewayFilterMetadataNamespace = "io.envoy.ai_gateway"
 )
 
+// RateLimitOverride emits a per-request rate-limit override struct into io.envoy.ai_gateway
+// dynamic metadata. The source value must be formatted as "COUNT/UNIT" (e.g. "100000/HOUR").
+// The gateway parses it and writes a requests_per_unit/unit struct under MetadataKey — the struct
+// Envoy's RateLimit.Override.DynamicMetadata reads. If the source value is absent or malformed
+// the key is omitted and the BackendTrafficPolicy static default applies.
+type RateLimitOverride struct {
+	// MetadataKey is the key written under io.envoy.ai_gateway in the dynamic metadata,
+	// referenced by BackendTrafficPolicy.rateLimit.global.rules[].limit.fromMetadata.key.
+	//
+	// +kubebuilder:validation:Required
+	MetadataKey string `json:"metadataKey"`
+	// Source defines where the rate-limit value is read from.
+	// Exactly one field within Source must be set.
+	//
+	// +kubebuilder:validation:Required
+	Source RateLimitOverrideSource `json:"source"`
+}
+
+// RateLimitOverrideSource defines the origin of the rate-limit value.
+// Exactly one field must be set.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.fromMetadata)",message="exactly one of fromMetadata must be set"
+type RateLimitOverrideSource struct {
+	// FromMetadata reads the rate-limit value from filter dynamic metadata set by a preceding
+	// Envoy filter (typically ext_authz). The value at the referenced namespace/key must be a
+	// string formatted as "<count>/<unit>" (e.g. "100000/HOUR"), where unit is one of
+	// SECOND, MINUTE, HOUR, DAY.
+	//
+	// Because dynamic metadata can only be set by Envoy filters — not by downstream clients —
+	// this source is safe against client spoofing with no additional configuration required.
+	//
+	// +kubebuilder:validation:Required
+	FromMetadata RateLimitMetadataSource `json:"fromMetadata"`
+}
+
+// RateLimitMetadataSource identifies a string field in Envoy filter dynamic metadata.
+type RateLimitMetadataSource struct {
+	// Namespace is the filter metadata namespace to read from.
+	// For ext_authz this is typically "envoy.filters.http.ext_authz".
+	//
+	// +kubebuilder:validation:Required
+	Namespace string `json:"namespace"`
+	// Key is the field name within Namespace whose string value encodes the rate limit.
+	//
+	// +kubebuilder:validation:Required
+	Key string `json:"key"`
+}
+
 // HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
 type HTTPHeaderMutation struct {
 	// Set overwrites/adds the request with the given header (name, value)

@@ -140,14 +140,16 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 	var defaultLLMCosts []aigv1b1.LLMRequestCost
+	var defaultRateLimits []aigv1b1.RateLimitOverride
 	if gwConfig != nil {
 		defaultLLMCosts = gwConfig.Spec.GlobalLLMRequestCosts
+		defaultRateLimits = gwConfig.Spec.GlobalRateLimits
 	}
 
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	var hasEffectiveRoutes bool // indicates whether the filter config is effective (i.e., there is at least one active route).
-	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, aiRoutes.Items, mcpRoutes.Items, uid, defaultLLMCosts)
+	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, aiRoutes.Items, mcpRoutes.Items, uid, defaultLLMCosts, defaultRateLimits)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -248,6 +250,14 @@ func aigwLLMRequestCostToFilterAPI(cost aigv1b1.LLMRequestCost, routeName string
 		out.CEL = celExpr
 	}
 	return out, nil
+}
+
+func aigwGlobalRateLimitToFilterAPI(h aigv1b1.RateLimitOverride) filterapi.GlobalRateLimitOverride {
+	return filterapi.GlobalRateLimitOverride{
+		MetadataKey: h.MetadataKey,
+		Namespace:   h.Source.FromMetadata.Namespace,
+		Key:         h.Source.FromMetadata.Key,
+	}
 }
 
 // mergeBodyMutations merges route-level and backend-level BodyMutation with route-level taking precedence.
@@ -353,6 +363,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	mcpRoutes []aigv1b1.MCPRoute,
 	uuid string,
 	defaultLLMCosts []aigv1b1.LLMRequestCost,
+	defaultRateLimits []aigv1b1.RateLimitOverride,
 ) (hasEffectiveRoute bool, _ error) {
 	// Precondition: aiGatewayRoutes is not empty as we early return if it is empty.
 	ec := &filterapi.Config{UUID: uuid, Version: version.Parse()}
@@ -368,6 +379,11 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			return false, fmt.Errorf("failed to convert global LLMRequestCosts: %w", convErr)
 		}
 		ec.GlobalLLMRequestCosts = append(ec.GlobalLLMRequestCosts, fc)
+	}
+	// Process global RateLimits from GatewayConfig.
+	// CRD enforces uniqueness via +listType=map, so no deduplication needed.
+	for _, h := range defaultRateLimits {
+		ec.GlobalRateLimits = append(ec.GlobalRateLimits, aigwGlobalRateLimitToFilterAPI(h))
 	}
 
 	// Models contributed by routes with no Spec.Hostnames. We only promote these to
