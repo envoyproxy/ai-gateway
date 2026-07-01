@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,12 @@ func newTempDirectories(t *testing.T) *xdg.Directories {
 		StateHome:  t.TempDir(),
 		RuntimeDir: t.TempDir(),
 	}
+}
+
+func expectedDirPerm(perm os.FileMode) os.FileMode {
+	mask := syscall.Umask(0)
+	syscall.Umask(mask)
+	return perm &^ os.FileMode(mask) //nolint:gosec // syscall.Umask returns permission bits.
 }
 
 func TestNewRunOpts(t *testing.T) {
@@ -87,21 +94,21 @@ func TestNewRunOpts_Permissions(t *testing.T) {
 	info, err := os.Stat(expectedRunDir)
 	require.NoError(t, err)
 	require.True(t, info.IsDir())
-	require.Equal(t, os.FileMode(0o750), info.Mode().Perm())
+	require.Equal(t, expectedDirPerm(0o750), info.Mode().Perm())
 
 	// Verify egResourcesPath parent created with correct permissions
 	expectedResourcesDir := filepath.Dir(actual.egResourcesPath)
 	info, err = os.Stat(expectedResourcesDir)
 	require.NoError(t, err)
 	require.True(t, info.IsDir())
-	require.Equal(t, os.FileMode(0o750), info.Mode().Perm())
+	require.Equal(t, expectedDirPerm(0o750), info.Mode().Perm())
 
 	// Verify RuntimeDir/{runID} created with correct permissions
 	expectedRuntimeRunDir := filepath.Join(dirs.RuntimeDir, runID)
 	info, err = os.Stat(expectedRuntimeRunDir)
 	require.NoError(t, err)
 	require.True(t, info.IsDir())
-	require.Equal(t, os.FileMode(0o700), info.Mode().Perm())
+	require.Equal(t, expectedDirPerm(0o700), info.Mode().Perm())
 }
 
 func TestNewRunOpts_DirectoryContents(t *testing.T) {

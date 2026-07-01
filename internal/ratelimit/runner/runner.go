@@ -7,6 +7,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -78,7 +79,7 @@ func (r *Runner) Start(ctx context.Context) error {
 	}()
 
 	r.logger.Info("starting rate limit xDS config server", "address", addr)
-	if err := r.grpcServer.Serve(lis); err != nil {
+	if err := r.grpcServer.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 		return fmt.Errorf("failed to serve rate limit xDS config: %w", err)
 	}
 	return nil
