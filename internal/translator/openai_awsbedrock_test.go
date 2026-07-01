@@ -1345,6 +1345,10 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 	})
 }
 
+func TestGetAwsBedrockThinkingMap_Nil(t *testing.T) {
+	require.Nil(t, getAwsBedrockThinkingMap(nil))
+}
+
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseHeaders(t *testing.T) {
 	t.Run("streaming", func(t *testing.T) {
 		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true}

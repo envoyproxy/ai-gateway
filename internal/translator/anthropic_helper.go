@@ -25,12 +25,70 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
+	"github.com/envoyproxy/ai-gateway/internal/redaction"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
+// redactAnthropicChatCompletionResponse returns a copy of resp with AI-generated
+// fields redacted for safe debug logging. Direct, GCP Vertex AI, and AWS Bedrock
+// Anthropic translators share this because they all produce the same OpenAI
+// ChatCompletionResponse shape.
+func redactAnthropicChatCompletionResponse(resp *openai.ChatCompletionResponse) *openai.ChatCompletionResponse {
+	if resp == nil {
+		return nil
+	}
+
+	redacted := *resp
+
+	if len(resp.Choices) > 0 {
+		redacted.Choices = make([]openai.ChatCompletionResponseChoice, len(resp.Choices))
+		for i := range resp.Choices {
+			redactedChoice := resp.Choices[i]
+			redactedChoice.Message = redactAnthropicChatCompletionMessage(&resp.Choices[i].Message)
+			redacted.Choices[i] = redactedChoice
+		}
+	}
+
+	return &redacted
+}
+
+// redactAnthropicChatCompletionMessage redacts sensitive content from an
+// Anthropic response message that has been converted to OpenAI format.
+func redactAnthropicChatCompletionMessage(msg *openai.ChatCompletionResponseChoiceMessage) openai.ChatCompletionResponseChoiceMessage {
+	redactedMsg := *msg
+
+	if msg.Content != nil {
+		redactedContent := redaction.RedactString(*msg.Content)
+		redactedMsg.Content = &redactedContent
+	}
+
+	if len(msg.ToolCalls) > 0 {
+		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.ToolCalls))
+		for i, tc := range msg.ToolCalls {
+			redactedToolCall := tc
+			redactedToolCall.Function.Arguments = redaction.RedactString(tc.Function.Arguments)
+			redactedMsg.ToolCalls[i] = redactedToolCall
+		}
+	}
+
+	if msg.Audio != nil {
+		redactedAudio := *msg.Audio
+		redactedAudio.Data = redaction.RedactString(msg.Audio.Data)
+		redactedAudio.Transcript = redaction.RedactString(msg.Audio.Transcript)
+		redactedMsg.Audio = &redactedAudio
+	}
+
+	if msg.ReasoningContent != nil {
+		redactedMsg.ReasoningContent = redactReasoningContent(msg.ReasoningContent)
+	}
+
+	return redactedMsg
+}
+
 const (
-	anthropicVersionKey   = "anthropic_version"
-	tempNotSupportedError = "temperature %.2f is not supported by Anthropic (must be between 0.0 and 1.0)"
+	anthropicVersionKey        = "anthropic_version"
+	anthropicVersionHeaderName = "anthropic-version"
+	tempNotSupportedError      = "temperature %.2f is not supported by Anthropic (must be between 0.0 and 1.0)"
 )
 
 // anthropicInputSchemaKeysToSkip defines the keys from an OpenAI function parameter map
@@ -669,12 +727,14 @@ func mapReasoningEffortToOutputConfigEffort(reasonEffort openai.ReasoningEffort)
 // The apiSchema parameter indicates the backend API schema (e.g., "AWSAnthropic", "GCPAnthropic").
 func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string, modelNameOverride internalapi.ModelNameOverride) (params *anthropic.MessageNewParams, err error) {
 	// 1. Handle simple parameters.
-	// max_tokens is required by the Anthropic API but optional in the OpenAI API.
-	// If not set, pass 0 and let the Anthropic API reject the request.
-	var maxTokensVal int64
-	if maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens); maxTokens != nil {
-		maxTokensVal = *maxTokens
+	// max_tokens is required by Anthropic but optional in OpenAI chat completions.
+	// Reject omitted values locally instead of treating them as Anthropic's
+	// explicit max_tokens:0 cache prewarming mode.
+	maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens)
+	if maxTokens == nil {
+		return nil, fmt.Errorf("%w: max_tokens or max_completion_tokens is required for Anthropic-backed OpenAI-compatible requests", internalapi.ErrInvalidRequestBody)
 	}
+	maxTokensVal := *maxTokens
 
 	// Translate openAI contents to anthropic params.
 	// 2. Translate messages and system prompts.
@@ -794,25 +854,34 @@ type streamingToolCall struct {
 // anthropicStreamParser manages the stateful translation of an Anthropic SSE stream
 // to an OpenAI-compatible SSE stream.
 type anthropicStreamParser struct {
-	buffer          bytes.Buffer
-	activeMessageID string
-	activeToolCalls map[int64]*streamingToolCall
-	toolIndex       int64
-	tokenUsage      metrics.TokenUsage
-	stopReason      anthropic.StopReason
-	requestModel    internalapi.RequestModel
-	sentFirstChunk  bool
-	created         openai.JSONUNIXTime
+	buffer           bytes.Buffer
+	activeMessageID  string
+	activeToolCalls  map[int64]*streamingToolCall
+	toolIndex        int64
+	tokenUsage       metrics.TokenUsage
+	stopReason       anthropic.StopReason
+	requestModel     internalapi.RequestModel
+	responseModel    internalapi.ResponseModel
+	useResponseModel bool
+	sentFirstChunk   bool
+	created          openai.JSONUNIXTime
 }
 
-// newAnthropicStreamParser creates a new parser for a streaming request.
-func newAnthropicStreamParser(requestModel string) *anthropicStreamParser {
+func newAnthropicStreamParser(requestModel string, useResponseModel bool) *anthropicStreamParser {
 	toolIdx := int64(-1)
 	return &anthropicStreamParser{
-		requestModel:    requestModel,
-		activeToolCalls: make(map[int64]*streamingToolCall),
-		toolIndex:       toolIdx,
+		requestModel:     requestModel,
+		useResponseModel: useResponseModel,
+		activeToolCalls:  make(map[int64]*streamingToolCall),
+		toolIndex:        toolIdx,
 	}
+}
+
+func (p *anthropicStreamParser) model() string {
+	if p.useResponseModel && p.responseModel != "" {
+		return p.responseModel
+	}
+	return p.requestModel
 }
 
 func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error {
@@ -836,7 +905,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 ) {
 	newBody = make([]byte, 0)
 	_ = span // TODO: add support for streaming chunks in tracing.
-	responseModel = p.requestModel
+	responseModel = p.model()
 	if _, err = p.buffer.ReadFrom(body); err != nil {
 		err = fmt.Errorf("failed to read from stream body: %w", err)
 		return
@@ -873,6 +942,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		cachedTokens, _ := p.tokenUsage.CachedInputTokens()
 		cacheCreationTokens, _ := p.tokenUsage.CacheCreationInputTokens()
 		reasoningTokens, _ := p.tokenUsage.ReasoningTokens()
+		responseModel = p.model()
 		finalChunk := openai.ChatCompletionResponseChunk{
 			ID:      p.activeMessageID,
 			Created: p.created,
@@ -890,10 +960,9 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 					ReasoningTokens: int(reasoningTokens),
 				},
 			},
-			Model: p.requestModel,
+			Model: responseModel,
 		}
 
-		// Add active tool calls to the final chunk.
 		var toolCalls []openai.ChatCompletionChunkChoiceDeltaToolCall
 		for toolIndex, tool := range p.activeToolCalls {
 			toolCalls = append(toolCalls, openai.ChatCompletionChunkChoiceDeltaToolCall{
@@ -922,12 +991,12 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 				return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to marshal final stream chunk: %w", err)
 			}
 		}
-		// Add the final [DONE] message to indicate the end of the stream.
 		newBody = append(newBody, sseDataPrefix...)
 		newBody = append(newBody, sseDoneMessage...)
 		newBody = append(newBody, '\n', '\n')
 	}
 	tokenUsage = p.tokenUsage
+	responseModel = p.model()
 	return
 }
 
@@ -962,6 +1031,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			return nil, fmt.Errorf("unmarshal message_start: %w", err)
 		}
 		p.activeMessageID = event.Message.ID
+		p.responseModel = event.Message.Model
 		p.created = openai.JSONUNIXTime(time.Now())
 		u := event.Message.Usage
 		usage := metrics.ExtractTokenUsageFromExplicitCaching(
@@ -982,7 +1052,6 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			p.tokenUsage.SetCacheCreationInputTokens(cacheCreation)
 		}
 
-		// reset the toolIndex for each message
 		p.toolIndex = -1
 		return nil, nil
 
@@ -994,7 +1063,6 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if event.ContentBlock.Type == string(constant.ValueOf[constant.ToolUse]()) || event.ContentBlock.Type == string(constant.ValueOf[constant.ServerToolUse]()) {
 			p.toolIndex++
 			var argsJSON string
-			// Check if the input field is provided directly in the start event.
 			if event.ContentBlock.Input != nil {
 				switch input := event.ContentBlock.Input.(type) {
 				case map[string]any:
@@ -1014,7 +1082,6 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 				}
 			}
 
-			// Store the complete input JSON in our state.
 			p.activeToolCalls[p.toolIndex] = &streamingToolCall{
 				id:        event.ContentBlock.ID,
 				name:      event.ContentBlock.Name,
@@ -1028,8 +1095,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 						ID:    &event.ContentBlock.ID,
 						Type:  openai.ChatCompletionMessageToolCallTypeFunction,
 						Function: openai.ChatCompletionMessageToolCallFunctionParam{
-							Name: event.ContentBlock.Name,
-							// Include the arguments if they are available.
+							Name:      event.ContentBlock.Name,
 							Arguments: argsJSON,
 						},
 					},
@@ -1160,7 +1226,7 @@ func (p *anthropicStreamParser) constructOpenAIChatCompletionChunk(delta openai.
 				FinishReason: finishReason,
 			},
 		},
-		Model: p.requestModel,
+		Model: p.model(),
 	}
 }
 

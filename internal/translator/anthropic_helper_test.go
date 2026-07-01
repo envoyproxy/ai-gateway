@@ -1256,7 +1256,7 @@ data: {"type": "message_stop"}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parser := newAnthropicStreamParser("claude-sonnet-4-6")
+			parser := newAnthropicStreamParser("claude-sonnet-4-6", true)
 
 			// Feed each event block separately (simulating chunked SSE delivery),
 			// with the last chunk marked as endOfStream.

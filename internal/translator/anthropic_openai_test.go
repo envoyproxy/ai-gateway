@@ -882,6 +882,9 @@ func TestAnthropicMessagesToOpenAI_ToolConversation(t *testing.T) {
 }
 
 func TestAnthropicToOpenAITranslator_RequestBody_ThinkingConfig(t *testing.T) {
+	// Anthropic thinking config must NOT be forwarded to the OpenAI backend.
+	// OpenAI's chat completions API does not support a "thinking" parameter and
+	// will reject the request with "thinking is not allowed".
 	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
 	body := &anthropic.MessagesRequest{
 		Model:     "claude-3",
@@ -896,10 +899,8 @@ func TestAnthropicToOpenAITranslator_RequestBody_ThinkingConfig(t *testing.T) {
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(newBody, &req))
-	thinking, ok := req["thinking"].(map[string]any)
-	require.True(t, ok, "expected thinking config in request body")
-	assert.Equal(t, "enabled", thinking["type"])
-	assert.Equal(t, float64(4096), thinking["budget_tokens"])
+	_, ok := req["thinking"]
+	assert.False(t, ok, "thinking config must not be forwarded to OpenAI backends")
 }
 
 func TestAnthropicToOpenAITranslator_RequestBody_MultiTurnWithThinking(t *testing.T) {
