@@ -281,6 +281,49 @@ type AIGatewayRouteRule struct {
 	// +optional
 	// +kubebuilder:validation:Format=date-time
 	ModelsCreatedAt *metav1.Time `json:"modelsCreatedAt,omitempty"`
+
+	// Mirrors specifies backends that receive a mirrored copy of every matched request.
+	// Responses from mirror backends are always discarded; only the primary backendRefs
+	// respond to the client. Mirror traffic is cloned via the Gateway API HTTPRequestMirror
+	// filter, but each mirror's BackendRef supports the same AI-specific transformations
+	// (ModelNameOverride, HeaderMutation, BodyMutation) as primary backendRefs, so the
+	// shadow backend can be addressed with a different model name or modified request body.
+	// Each entry corresponds to one shadow backend; use Percent or Fraction to sample.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	Mirrors []AIGatewayRouteRuleMirror `json:"mirrors,omitempty"`
+}
+
+// AIGatewayRouteRuleMirror specifies a shadow backend that receives a copy of every
+// matched request. Mirror requests run through the same AI Gateway processing pipeline
+// as primary requests, so per-backend AI transformations (ModelNameOverride,
+// HeaderMutation, BodyMutation) defined on the embedded BackendRef are honored.
+// Responses from mirror backends are always discarded.
+type AIGatewayRouteRuleMirror struct {
+	// BackendRef is the shadow destination. Reuses AIGatewayRouteRuleBackendRef so it
+	// carries the same AI-specific fields (ModelNameOverride, HeaderMutation,
+	// BodyMutation) as primary backendRefs. Weight and Priority are ignored for
+	// mirror backends — each mirror entry is a single fire-and-forget destination.
+	//
+	// +kubebuilder:validation:Required
+	BackendRef AIGatewayRouteRuleBackendRef `json:"backendRef"`
+
+	// Percent is the percentage of requests to mirror (0-100). Maps to the
+	// Gateway API HTTPRequestMirrorFilter Percent field. If both Percent and
+	// Fraction are unset, every matched request is mirrored.
+	//
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=100
+	Percent *int32 `json:"percent,omitempty"`
+
+	// Fraction is the fractional percentage of requests to mirror. Maps to the
+	// Gateway API HTTPRequestMirrorFilter Fraction field. Takes precedence over
+	// Percent if both are set.
+	//
+	// +optional
+	Fraction *gwapiv1.Fraction `json:"fraction,omitempty"`
 }
 
 // AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.

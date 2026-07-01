@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
@@ -37,6 +38,14 @@ type Server struct {
 	Logger *log.Logger
 
 	streamingInterval time.Duration
+
+	// lastReceivedMu guards lastReceivedBody. The body is the raw bytes of the most
+	// recently observed non-health request; exposed via GET /last-received-body so
+	// tests can inspect what an upstream actually saw (used to verify mirror-traffic
+	// transformations like ModelNameOverride from shadow upstreams that don't
+	// influence the client-visible response).
+	lastReceivedMu   sync.Mutex
+	lastReceivedBody []byte
 }
 
 // DoMain starts the server and listens on the given listener.
@@ -53,6 +62,7 @@ func (s *Server) DoMain(ct context.Context, l net.Listener) {
 	}()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(writer http.ResponseWriter, _ *http.Request) { writer.WriteHeader(http.StatusOK) })
+	mux.HandleFunc("/last-received-body", s.handleLastReceivedBody)
 	mux.HandleFunc("/", s.handler)
 	server.Handler = mux
 	s.Logger.Printf("starting test upstream server %q on %s\n", s.ID, l.Addr().String())
@@ -60,6 +70,23 @@ func (s *Server) DoMain(ct context.Context, l net.Listener) {
 		s.Logger.Fatalf("failed to serve: %v", err)
 	}
 	s.Logger.Println("server shutdown gracefully")
+}
+
+// handleLastReceivedBody returns the most recently received non-health request body,
+// regardless of whether the original request 2xx'd or 4xx'd. Tests use this endpoint
+// to verify what an upstream actually saw — essential for shadow/mirror traffic where
+// the client never sees the upstream's response.
+func (s *Server) handleLastReceivedBody(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	s.lastReceivedMu.Lock()
+	body := append([]byte(nil), s.lastReceivedBody...)
+	s.lastReceivedMu.Unlock()
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }
 
 // s.logAndSendError logs the error and sends a proper error response with details
@@ -170,6 +197,12 @@ func (s *Server) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Logger.Printf("Request body (%d bytes)", len(requestBody))
+	// Stash the body so tests can verify what an upstream actually received without
+	// relying on response codes (essential for shadow/mirror traffic whose responses
+	// are discarded by Envoy).
+	s.lastReceivedMu.Lock()
+	s.lastReceivedBody = append(s.lastReceivedBody[:0], requestBody...)
+	s.lastReceivedMu.Unlock()
 
 	// At least for the endpoints we want to support, all requests should have a Content-Length header
 	// and should not use chunked transfer encoding.
