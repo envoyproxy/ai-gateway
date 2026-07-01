@@ -306,6 +306,46 @@ curl -H "Content-Type: application/json" \
   $GATEWAY_URL/v1/responses
 ```
 
+### Responses Input Tokens
+
+**Endpoint:** `POST /v1/responses/input_tokens`
+
+**Status:** ✅ Supported
+
+**Description:** Count the number of input tokens for a Responses API request without generating a response. Accepts the same request body as `/v1/responses` and returns the input token count. This is useful for validating context window fit and estimating cost before making an inference call.
+
+**Features:**
+
+- ✅ Same request body format as `/v1/responses`
+- ✅ Model selection via request body or `x-ai-eg-model` header
+- ✅ Token usage tracking
+- ✅ Provider fallback and load balancing
+
+**Supported Providers:**
+
+- OpenAI
+- Azure OpenAI (with automatic `api-version` injection)
+
+**Example:**
+
+```bash
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4.1",
+    "input": "Hello, how are you?",
+    "instructions": "You are a helpful assistant."
+  }' \
+  $GATEWAY_URL/v1/responses/input_tokens
+```
+
+**Response Format:**
+
+```json
+{
+  "input_tokens": 15
+}
+```
+
 ### Rerank
 
 **Endpoint:** `POST /cohere/v2/rerank`

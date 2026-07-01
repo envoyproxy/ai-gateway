@@ -8678,3 +8678,8 @@ const (
 type TranslationResponse struct {
 	Text string `json:"text"`
 }
+
+// ResponsesInputTokensResponse represents the response from /v1/responses/input_tokens.
+type ResponsesInputTokensResponse struct {
+	InputTokens int64 `json:"input_tokens"`
+}

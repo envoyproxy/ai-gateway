@@ -1367,4 +1367,47 @@ func TestParseMultipartBody_RejectsJSONOnlyEndpoints(t *testing.T) {
 
 	_, _, _, _, err = SpeechEndpointSpec{}.ParseMultipartBody(nil, "", false)
 	require.ErrorContains(t, err, "multipart body not supported")
+
+	_, _, _, _, err = ResponsesInputTokensEndpointSpec{}.ParseMultipartBody(nil, "", false)
+	require.ErrorContains(t, err, "multipart body not supported")
+}
+
+func TestResponsesInputTokensEndpointSpec_ParseBody(t *testing.T) {
+	spec := ResponsesInputTokensEndpointSpec{}
+
+	t.Run("invalid json", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
+		require.ErrorContains(t, err, "malformed request")
+	})
+
+	t.Run("empty model allowed", func(t *testing.T) {
+		model, parsed, stream, _, err := spec.ParseBody([]byte(`{"input":"hello"}`), false)
+		require.NoError(t, err)
+		require.Empty(t, model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
+	})
+
+	t.Run("success", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-4.1","input":"Count these tokens please"}`)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4.1", model)
+		require.False(t, stream)
+		require.NotNil(t, parsed)
+		require.Nil(t, mutated)
+	})
+}
+
+func TestResponsesInputTokensEndpointSpec_GetTranslator(t *testing.T) {
+	spec := ResponsesInputTokensEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}, "override")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}, "override")
+	require.ErrorContains(t, err, "unsupported API schema")
 }

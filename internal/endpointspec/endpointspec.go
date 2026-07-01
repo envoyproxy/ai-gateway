@@ -113,6 +113,8 @@ type (
 	TranscriptionEndpointSpec struct{}
 	// TranslationEndpointSpec implements EndpointSpec for /v1/audio/translations.
 	TranslationEndpointSpec struct{}
+	// ResponsesInputTokensEndpointSpec implements EndpointSpec for /v1/responses/input_tokens.
+	ResponsesInputTokensEndpointSpec struct{}
 )
 
 var errMultipartNotSupported = fmt.Errorf("%w: multipart body not supported for this endpoint", internalapi.ErrMalformedRequest)
@@ -868,6 +870,43 @@ func (TranslationEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Transl
 	redacted := *req
 	redacted.Prompt = redaction.RedactString(req.Prompt)
 	return &redacted, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (ResponsesInputTokensEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+) (internalapi.OriginalModel, *openai.ResponseRequest, bool, []byte, error) {
+	var req openai.ResponseRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/responses/input_tokens: %w", internalapi.ErrMalformedRequest, err)
+	}
+
+	return req.Model, &req, false, nil, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (ResponsesInputTokensEndpointSpec) GetTranslator(
+	schema filterapi.VersionedAPISchema, modelNameOverride string,
+) (translator.OpenAIResponsesInputTokensTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewResponsesInputTokensOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	case filterapi.APISchemaAzureOpenAI:
+		return translator.NewResponsesInputTokensOpenAIToAzureOpenAITranslator(schema.Version, modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema for /v1/responses/input_tokens: backend=%s", schema)
+	}
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (ResponsesInputTokensEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *openai.ResponseRequest, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (ResponsesInputTokensEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ResponseRequest) (*openai.ResponseRequest, error) {
+	return req, nil
 }
 
 // readFormField reads the entire value of a multipart form field as a string.

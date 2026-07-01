@@ -28,17 +28,18 @@ import (
 var _ tracingapi.Tracing = (*tracingImpl)(nil)
 
 type tracingImpl struct {
-	chatCompletionTracer  tracingapi.ChatCompletionTracer
-	completionTracer      tracingapi.CompletionTracer
-	imageGenerationTracer tracingapi.ImageGenerationTracer
-	embeddingsTracer      tracingapi.EmbeddingsTracer
-	responsesTracer       tracingapi.ResponsesTracer
-	speechTracer          tracingapi.SpeechTracer
-	transcriptionTracer   tracingapi.TranscriptionTracer
-	translationTracer     tracingapi.TranslationTracer
-	rerankTracer          tracingapi.RerankTracer
-	messageTracer         tracingapi.MessageTracer
-	mcpTracer             tracingapi.MCPTracer
+	chatCompletionTracer       tracingapi.ChatCompletionTracer
+	completionTracer           tracingapi.CompletionTracer
+	imageGenerationTracer      tracingapi.ImageGenerationTracer
+	embeddingsTracer           tracingapi.EmbeddingsTracer
+	responsesTracer            tracingapi.ResponsesTracer
+	speechTracer               tracingapi.SpeechTracer
+	transcriptionTracer        tracingapi.TranscriptionTracer
+	translationTracer          tracingapi.TranslationTracer
+	rerankTracer               tracingapi.RerankTracer
+	messageTracer              tracingapi.MessageTracer
+	responsesInputTokensTracer tracingapi.ResponsesInputTokensTracer
+	mcpTracer                  tracingapi.MCPTracer
 	// shutdown is nil when we didn't create tp.
 	shutdown func(context.Context) error
 }
@@ -96,6 +97,11 @@ func (t *tracingImpl) MCPTracer() tracingapi.MCPTracer {
 // MessageTracer implements the same method as documented on tracingapi.Tracing.
 func (t *tracingImpl) MessageTracer() tracingapi.MessageTracer {
 	return t.messageTracer
+}
+
+// ResponsesInputTokensTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) ResponsesInputTokensTracer() tracingapi.ResponsesInputTokensTracer {
+	return t.responsesInputTokensTracer
 }
 
 // Shutdown implements the same method as documented on tracingapi.Tracing.
@@ -221,6 +227,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 	translationRecorder := openai.NewTranslationRecorderFromEnv()
 	rerankRecorder := cohere.NewRerankRecorderFromEnv()
 	messageRecorder := anthropic.NewMessageRecorderFromEnv()
+	responsesInputTokensRecorder := openai.NewResponsesInputTokensRecorderFromEnv()
 
 	tracer := tp.Tracer("envoyproxy/ai-gateway")
 	return &tracingImpl{
@@ -281,6 +288,12 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			tracer,
 			propagator,
 			messageRecorder,
+			headerAttrs,
+		),
+		responsesInputTokensTracer: newResponsesInputTokensTracer(
+			tracer,
+			propagator,
+			responsesInputTokensRecorder,
 			headerAttrs,
 		),
 		mcpTracer: newMCPTracer(tracer, propagator, headerAttrs),

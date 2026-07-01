@@ -31,27 +31,29 @@ type requestTracerImpl[ReqT any, RespT any, RespChunkT any] struct {
 }
 
 var (
-	_ tracingapi.ChatCompletionTracer  = (*chatCompletionTracer)(nil)
-	_ tracingapi.EmbeddingsTracer      = (*embeddingsTracer)(nil)
-	_ tracingapi.CompletionTracer      = (*completionTracer)(nil)
-	_ tracingapi.ImageGenerationTracer = (*imageGenerationTracer)(nil)
-	_ tracingapi.ResponsesTracer       = (*responsesTracer)(nil)
-	_ tracingapi.SpeechTracer          = (*speechTracer)(nil)
-	_ tracingapi.TranscriptionTracer   = (*transcriptionTracer)(nil)
-	_ tracingapi.TranslationTracer     = (*translationTracer)(nil)
-	_ tracingapi.RerankTracer          = (*rerankTracer)(nil)
+	_ tracingapi.ChatCompletionTracer       = (*chatCompletionTracer)(nil)
+	_ tracingapi.EmbeddingsTracer           = (*embeddingsTracer)(nil)
+	_ tracingapi.CompletionTracer           = (*completionTracer)(nil)
+	_ tracingapi.ImageGenerationTracer      = (*imageGenerationTracer)(nil)
+	_ tracingapi.ResponsesTracer            = (*responsesTracer)(nil)
+	_ tracingapi.SpeechTracer               = (*speechTracer)(nil)
+	_ tracingapi.TranscriptionTracer        = (*transcriptionTracer)(nil)
+	_ tracingapi.TranslationTracer          = (*translationTracer)(nil)
+	_ tracingapi.RerankTracer               = (*rerankTracer)(nil)
+	_ tracingapi.ResponsesInputTokensTracer = (*responsesInputTokensTracer)(nil)
 )
 
 type (
-	chatCompletionTracer  = requestTracerImpl[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
-	embeddingsTracer      = requestTracerImpl[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
-	completionTracer      = requestTracerImpl[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
-	imageGenerationTracer = requestTracerImpl[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
-	responsesTracer       = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
-	speechTracer          = requestTracerImpl[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
-	transcriptionTracer   = requestTracerImpl[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
-	translationTracer     = requestTracerImpl[openai.TranslationRequest, openai.TranslationResponse, struct{}]
-	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
+	chatCompletionTracer       = requestTracerImpl[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
+	embeddingsTracer           = requestTracerImpl[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
+	completionTracer           = requestTracerImpl[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
+	imageGenerationTracer      = requestTracerImpl[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
+	responsesTracer            = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
+	speechTracer               = requestTracerImpl[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
+	transcriptionTracer        = requestTracerImpl[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
+	translationTracer          = requestTracerImpl[openai.TranslationRequest, openai.TranslationResponse, struct{}]
+	rerankTracer               = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
+	responsesInputTokensTracer = requestTracerImpl[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
 )
 
 func newRequestTracer[ReqT any, RespT any, RespChunkT any](
@@ -224,6 +226,18 @@ func newMessageTracer(tracer trace.Tracer, propagator propagation.TextMapPropaga
 		headerAttributes,
 		func(span trace.Span, recorder tracingapi.MessageRecorder) tracingapi.MessageSpan {
 			return &messageSpan{span: span, recorder: recorder}
+		},
+	)
+}
+
+func newResponsesInputTokensTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.ResponsesInputTokensRecorder, headerAttributes map[string]string) tracingapi.ResponsesInputTokensTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		headerAttributes,
+		func(span trace.Span, recorder tracingapi.ResponsesInputTokensRecorder) tracingapi.ResponsesInputTokensSpan {
+			return &responsesInputTokensSpan{span: span, recorder: recorder}
 		},
 	)
 }
