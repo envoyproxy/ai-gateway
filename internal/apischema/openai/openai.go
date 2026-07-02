@@ -2991,10 +2991,6 @@ type FunctionToolParam struct {
 	Description string `json:"description,omitzero"`
 	// The type of the function tool. Always `function`.
 	Type string `json:"type"`
-
-	// TODO add defer loading
-	// Whether this function should be deferred and discovered via tool search.
-	//DeferLoading param.Opt[bool] `json:"defer_loading,omitzero"`
 }
 
 // A tool that searches for relevant content from uploaded files. Learn more about
@@ -3572,10 +3568,6 @@ type CustomToolParam struct {
 	Format CustomToolInputFormatUnionParam `json:"format,omitzero"`
 	// The type of the custom tool. Always `custom`.
 	Type string `json:"type"`
-
-	// TODO add defer loading
-	// Whether this function should be deferred and discovered via tool search.
-	//DeferLoading param.Opt[bool] `json:"defer_loading,omitzero"`
 }
 
 // A union type for different custom tool input format parameters.
