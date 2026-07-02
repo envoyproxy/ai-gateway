@@ -3691,48 +3691,9 @@ type NamespaceToolParam struct {
 	// The namespace name used in tool calls (for example, `crm`).
 	Name string `json:"name"`
 	// The function/custom tools available inside this namespace.
-	Tools []NamespaceToolToolUnion `json:"tools"`
+	Tools []NamespaceToolToolUnionParam `json:"tools"`
 	// The type of the tool. Always `namespace`.
-	Type        string                     `json:"type"`
-	ExtraFields map[string]json.RawMessage `json:"-"`
-}
-
-func (n NamespaceToolParam) MarshalJSON() ([]byte, error) {
-	type plain NamespaceToolParam
-	b, err := json.Marshal(plain(n))
-	if err != nil {
-		return nil, err
-	}
-	if len(n.ExtraFields) == 0 {
-		return b, nil
-	}
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return nil, err
-	}
-	for k, v := range n.ExtraFields {
-		m[k] = v
-	}
-	return json.Marshal(m)
-}
-
-func (n *NamespaceToolParam) UnmarshalJSON(data []byte) error {
-	type plain NamespaceToolParam
-	if err := json.Unmarshal(data, (*plain)(n)); err != nil {
-		return err
-	}
-	var all map[string]json.RawMessage
-	if err := json.Unmarshal(data, &all); err != nil {
-		return err
-	}
-	// TODO need a make a comment
-	for _, known := range []string{"description", "name", "tools", "type"} {
-		delete(all, known)
-	}
-	if len(all) > 0 {
-		n.ExtraFields = all
-	}
-	return nil
+	Type string `json:"type"`
 }
 
 // ToolSearchToolParam is a built-in tool that searches deferred tool metadata via BM25
@@ -3751,25 +3712,25 @@ type ToolSearchToolParam struct {
 	Parameters any `json:"parameters"`
 }
 
-// NamespaceToolToolUnion is the request-side union for tools within a namespace.
+// NamespaceToolToolUnionParam is the request-side union for tools within a namespace.
 // Only one field can be non-nil.
-type NamespaceToolToolUnion struct {
+type NamespaceToolToolUnionParam struct {
 	OfFunction *NamespaceToolToolFunctionParam
 	OfCustom   *CustomToolParam
 }
 
-func (t NamespaceToolToolUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
+func (t NamespaceToolToolUnionParam) MarshalJSON() ([]byte, error) { // nolint:gocritic
 	switch {
 	case t.OfFunction != nil:
 		return json.Marshal(t.OfFunction)
 	case t.OfCustom != nil:
 		return json.Marshal(t.OfCustom)
 	default:
-		return nil, errors.New("no tool to marshal in NamespaceToolToolUnion")
+		return nil, errors.New("no tool to marshal in NamespaceToolToolUnionParam")
 	}
 }
 
-func (t *NamespaceToolToolUnion) UnmarshalJSON(data []byte) error {
+func (t *NamespaceToolToolUnionParam) UnmarshalJSON(data []byte) error {
 	typ := gjson.GetBytes(data, "type")
 	switch typ.String() {
 	case "function":
@@ -3788,7 +3749,7 @@ func (t *NamespaceToolToolUnion) UnmarshalJSON(data []byte) error {
 		// Inner namespace tools may omit the "type" field; treat them as function tools.
 		var f NamespaceToolToolFunctionParam
 		if err := json.Unmarshal(data, &f); err != nil {
-			return fmt.Errorf("unknown tool type %q in NamespaceToolToolUnion", typ.String())
+			return fmt.Errorf("unknown tool type %q in NamespaceToolToolUnionParam", typ.String())
 		}
 		t.OfFunction = &f
 	}
