@@ -1437,6 +1437,7 @@ func TestExtractPerBackendForwardHeaders(t *testing.T) {
 		requestHeaders map[string]string
 		mappings       []filterapi.MCPHeaderForward
 		wantHeaders    map[string]string
+		wantErr        bool
 	}{
 		{
 			name: "basic forwarding without rename",
@@ -1514,6 +1515,37 @@ func TestExtractPerBackendForwardHeaders(t *testing.T) {
 			mappings:       nil,
 			wantHeaders:    nil,
 		},
+		{
+			name: "required header present is forwarded",
+			requestHeaders: map[string]string{
+				"X-User-Token": "user-tok",
+			},
+			mappings: []filterapi.MCPHeaderForward{
+				{Name: "X-User-Token", BackendHeader: "Authorization", Required: true},
+			},
+			wantHeaders: map[string]string{
+				"Authorization": "user-tok",
+			},
+		},
+		{
+			name:           "required header missing returns error",
+			requestHeaders: map[string]string{},
+			mappings: []filterapi.MCPHeaderForward{
+				{Name: "X-User-Token", Required: true},
+			},
+			wantErr: true,
+		},
+		{
+			name: "required header missing among present optional headers returns error",
+			requestHeaders: map[string]string{
+				"X-Present": "val",
+			},
+			mappings: []filterapi.MCPHeaderForward{
+				{Name: "X-Present"},
+				{Name: "X-User-Token", Required: true},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1523,7 +1555,13 @@ func TestExtractPerBackendForwardHeaders(t *testing.T) {
 				headers.Set(header, value)
 			}
 
-			result := extractPerBackendForwardHeaders(headers, tt.mappings)
+			result, err := extractPerBackendForwardHeaders(headers, tt.mappings)
+			if tt.wantErr {
+				require.ErrorIs(t, err, errRequiredHeaderMissing)
+				require.Nil(t, result)
+				return
+			}
+			require.NoError(t, err)
 			require.Equal(t, tt.wantHeaders, result)
 		})
 	}

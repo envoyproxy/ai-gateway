@@ -57,6 +57,10 @@ type MCPHeaderForward struct {
 	// BackendHeader is the header name to use when forwarding to the backend.
 	// If empty, the original header name is used.
 	BackendHeader string `json:"backendHeader,omitempty"`
+
+	// Required indicates whether the header must be present on the incoming client request.
+	// When true and the header is missing, the request is rejected rather than forwarded to the backend.
+	Required bool `json:"required,omitempty"`
 }
 
 // ForwardName returns the header name to use when forwarding to the backend.

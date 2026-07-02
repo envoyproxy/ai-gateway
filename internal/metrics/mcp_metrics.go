@@ -72,6 +72,8 @@ const (
 	MCPErrorInvalidParam MCPErrorType = "invalid_param"
 	// MCPErrorInvalidSessionID indicates that the session ID is invalid.
 	MCPErrorInvalidSessionID MCPErrorType = "invalid_session_id"
+	// MCPErrorMissingRequiredHeader indicates that a required forward header was missing from the request.
+	MCPErrorMissingRequiredHeader MCPErrorType = "missing_required_header"
 	// MCPErrorInternal indicates that an internal error occurred.
 	MCPErrorInternal MCPErrorType = "internal_error"
 )

@@ -279,6 +279,23 @@ func TestNewSession_NoBackend(t *testing.T) {
 	require.Nil(t, s)
 }
 
+func TestNewSession_RequiredForwardHeaderMissing(t *testing.T) {
+	proxy := newTestMCPProxy()
+	proxy.routes["test-route"].backends["backend1"] = filterapi.MCPBackend{
+		Name: "backend1",
+		ForwardHeaders: []filterapi.MCPHeaderForward{
+			{Name: "X-User-Token", BackendHeader: "Authorization", Required: true},
+		},
+	}
+	// The incoming request does not carry the required header, so session creation must fail
+	// instead of falling back to whatever the backend's securityPolicy injects.
+	proxy.requestHeaders = http.Header{}
+
+	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil, time.Now())
+	require.ErrorIs(t, err, errRequiredHeaderMissing)
+	require.Nil(t, s)
+}
+
 func TestNewSession_SSE(t *testing.T) {
 	// Mock backend server that responds to initialization.
 	var callCount perBackendCallCount

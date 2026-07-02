@@ -149,6 +149,18 @@ type MCPHeaderForward struct {
 	// +kubebuilder:validation:MinLength=1
 	// +optional
 	BackendHeader *string `json:"backendHeader,omitempty"`
+
+	// Required indicates whether the header must be present on the incoming client request.
+	// When true and the header is missing from the incoming request, the request is rejected
+	// instead of being forwarded to the backend. This prevents an end user from unintentionally
+	// falling back to a shared credential injected by the backend's securityPolicy when they do
+	// not supply their own header.
+	// Defaults to false, which preserves the behavior of silently skipping the missing header.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=false
+	// +optional
+	Required *bool `json:"required,omitempty"`
 }
 
 // MCPToolFilter filters tools using include and exclude patterns with exact matches or regular expressions.

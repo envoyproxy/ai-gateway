@@ -586,6 +586,9 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 				if fh.BackendHeader != nil {
 					hf.BackendHeader = *fh.BackendHeader
 				}
+				if fh.Required != nil {
+					hf.Required = *fh.Required
+				}
 				mcpBackend.ForwardHeaders = append(mcpBackend.ForwardHeaders, hf)
 			}
 			mcpRoute.Backends = append(

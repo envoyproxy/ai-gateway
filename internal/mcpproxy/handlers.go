@@ -36,10 +36,11 @@ import (
 )
 
 var (
-	errSessionNotFound      = errors.New("session not found")
-	errBackendNotFound      = errors.New("backend not found")
-	errInvalidToolName      = errors.New("invalid tool name")
-	errBackendResponseError = errors.New("one or more backends returned an error response")
+	errSessionNotFound       = errors.New("session not found")
+	errBackendNotFound       = errors.New("backend not found")
+	errInvalidToolName       = errors.New("invalid tool name")
+	errBackendResponseError  = errors.New("one or more backends returned an error response")
+	errRequiredHeaderMissing = errors.New("required forward header missing")
 )
 
 // errToolCall represents a tool execution error with structured information
@@ -269,6 +270,12 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 	if sessionID := r.Header.Get(sessionIDHeader); sessionID != "" {
 		s, err = m.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(r.Header.Get(lastEventIDHeader)))
 		if err != nil {
+			if errors.Is(err, errRequiredHeaderMissing) {
+				errType = metrics.MCPErrorMissingRequiredHeader
+				m.l.Error("required forward header missing in POST request", slog.String("session_id", sessionID), slog.String("error", err.Error()))
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 			errType = metrics.MCPErrorInvalidSessionID
 			m.l.Error("invalid session ID in POST request", slog.String("session_id", sessionID), slog.String("error", err.Error()))
 			http.Error(w, fmt.Sprintf("invalid session ID: %v", err), http.StatusBadRequest)
@@ -557,6 +564,10 @@ func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.
 	s, err := m.newSession(ctx, p, route, subject, span, startAt)
 	if err != nil {
 		m.l.Error("failed to create new session", slog.String("error", err.Error()))
+		if errors.Is(err, errRequiredHeaderMissing) {
+			onErrorResponse(w, http.StatusBadRequest, err.Error())
+			return err
+		}
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to create new session: %v", err))
 		return err
 	}
@@ -1274,22 +1285,29 @@ func extractForwardHeaders(reqHeaders http.Header, headers []string) map[string]
 
 // extractPerBackendForwardHeaders reads per-backend header forwarding config from the incoming request.
 // It supports header renaming: each entry maps a source header to an optional destination header name.
-func extractPerBackendForwardHeaders(reqHeaders http.Header, mappings []filterapi.MCPHeaderForward) map[string]string {
+// If a header is marked as required but is absent from the incoming request, it returns an error wrapping
+// errRequiredHeaderMissing so the caller can reject the request instead of forwarding it to the backend.
+func extractPerBackendForwardHeaders(reqHeaders http.Header, mappings []filterapi.MCPHeaderForward) (map[string]string, error) {
 	if len(mappings) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	result := make(map[string]string)
 	for _, m := range mappings {
-		if value := reqHeaders.Get(m.Name); value != "" {
-			result[m.ForwardName()] = value
+		value := reqHeaders.Get(m.Name)
+		if value == "" {
+			if m.Required {
+				return nil, fmt.Errorf("%w: %q", errRequiredHeaderMissing, m.Name)
+			}
+			continue
 		}
+		result[m.ForwardName()] = value
 	}
 
 	if len(result) == 0 {
-		return nil
+		return nil, nil
 	}
-	return result
+	return result, nil
 }
 
 // handlePromptGetRequest handles the "prompts/get" JSON-RPC method.

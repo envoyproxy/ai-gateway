@@ -150,7 +150,11 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 	perBackendHeaders := make(map[filterapi.MCPBackendName]map[string]string)
 	for _, backend := range backends.backends {
 		if len(backend.ForwardHeaders) > 0 {
-			if h := extractPerBackendForwardHeaders(m.requestHeaders, backend.ForwardHeaders); h != nil {
+			h, err := extractPerBackendForwardHeaders(m.requestHeaders, backend.ForwardHeaders)
+			if err != nil {
+				return nil, fmt.Errorf("backend %q: %w", backend.Name, err)
+			}
+			if h != nil {
 				perBackendHeaders[backend.Name] = h
 			}
 		}
@@ -268,7 +272,11 @@ func (m *mcpRequestContext) sessionFromID(id secureClientToGatewaySessionID, las
 		perBackendHeaders = make(map[filterapi.MCPBackendName]map[string]string)
 		for _, backend := range routeConfig.backends {
 			if len(backend.ForwardHeaders) > 0 {
-				if h := extractPerBackendForwardHeaders(m.requestHeaders, backend.ForwardHeaders); h != nil {
+				h, err := extractPerBackendForwardHeaders(m.requestHeaders, backend.ForwardHeaders)
+				if err != nil {
+					return nil, fmt.Errorf("backend %q: %w", backend.Name, err)
+				}
+				if h != nil {
 					perBackendHeaders[backend.Name] = h
 				}
 			}
