@@ -130,7 +130,7 @@ static_resources:
                             headers:
                               - name: x-ai-eg-model
                                 string_match:
-                                  exact: gemini-2.0-flash-lite
+                                  exact: gemini-3.1-flash-lite
                           route:
                             auto_host_rewrite: true
                             cluster: gemini

@@ -60,6 +60,25 @@ func (f *fakeTracer) StartSpanAndInjectMeta(context.Context, *jsonrpc.Request, m
 
 var noopTracer = tracingapi.NoopMCPTracer{}
 
+func TestGetMaxRequestBodySize(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		envValue string
+		want     int64
+	}{
+		{name: "default when env var not set", envValue: "", want: defaultMaxRequestBodySize},
+		{name: "custom value from env var", envValue: "1048576", want: 1048576},
+		{name: "default when env var is not a number", envValue: "not-a-number", want: defaultMaxRequestBodySize},
+		{name: "default when env var is zero", envValue: "0", want: defaultMaxRequestBodySize},
+		{name: "default when env var is negative", envValue: "-1", want: defaultMaxRequestBodySize},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("MCP_PROXY_MAX_REQUEST_BODY_SIZE", tc.envValue)
+			require.Equal(t, tc.want, getMaxRequestBodySize())
+		})
+	}
+}
+
 func TestNewMCPProxy(t *testing.T) {
 	l := slog.Default()
 	proxy, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100), nil)

@@ -154,7 +154,7 @@ services:
           --metadata x-tenant-id=$$AIGW_TENANT_ID \
           --metadata agent-session-id=$$AIGW_SESSION_ID \
           --method tools/call \
-          --tool-name kiwi__search-flight \
+          --tool-name kiwi__search-flights-structured \
           --tool-arg flyFrom=NYC \
           --tool-arg flyTo=LAX \
           --tool-arg departureDate=15/12/2026

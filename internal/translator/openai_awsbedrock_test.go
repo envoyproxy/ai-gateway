@@ -225,10 +225,6 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 							},
 						},
 					},
-					{
-						Role:    openai.ChatMessageRoleAssistant,
-						Content: []*awsbedrock.ContentBlock{},
-					},
 				},
 			},
 		},
@@ -1149,6 +1145,71 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 			output: awsbedrock.ConverseInput{
 				AdditionalModelRequestFields: map[string]interface{}{
 					"thinking": map[string]interface{}{"type": "enabled", "budget_tokens": float64(1024)},
+				},
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{{Text: ptr.To("Hello")}},
+					},
+				},
+			},
+		},
+		{
+			name: "test thinking enabled config with display",
+			input: openai.ChatCompletionRequest{
+				Model: "bedrock.unit-test-model",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+						},
+					},
+				},
+				Thinking: &openai.ThinkingUnion{
+					OfEnabled: &openai.ThinkingEnabled{
+						Type:         "enabled",
+						BudgetTokens: 1024,
+						Display:      "omitted",
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				AdditionalModelRequestFields: map[string]interface{}{
+					"thinking": map[string]interface{}{"type": "enabled", "budget_tokens": float64(1024), "display": "omitted"},
+				},
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{{Text: ptr.To("Hello")}},
+					},
+				},
+			},
+		},
+		{
+			name: "test thinking adaptive config with display",
+			input: openai.ChatCompletionRequest{
+				Model: "bedrock.unit-test-model",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+						},
+					},
+				},
+				Thinking: &openai.ThinkingUnion{
+					OfAdaptive: &openai.ThinkingAdaptive{
+						Type:    "adaptive",
+						Display: "summarized",
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				AdditionalModelRequestFields: map[string]interface{}{
+					"thinking": map[string]interface{}{"type": "adaptive", "display": "summarized"},
 				},
 				InferenceConfig: &awsbedrock.InferenceConfiguration{},
 				Messages: []*awsbedrock.Message{
@@ -2516,4 +2577,160 @@ func TestCacheControlHelpers(t *testing.T) {
 		})
 		require.Nil(t, cachePoint3)
 	})
+}
+
+func TestOpenAIToAWSBedrockTranslator_EmptyContentMessages(t *testing.T) {
+	t.Run("empty assistant message without tool calls is dropped", func(t *testing.T) {
+		for _, name := range []string{"empty string", "nil content"} {
+			t.Run(name, func(t *testing.T) {
+				assistantMsg := &openai.ChatCompletionAssistantMessageParam{
+					Role: openai.ChatMessageRoleAssistant,
+				}
+				if name == "empty string" {
+					assistantMsg.Content = openai.StringOrAssistantRoleContentUnion{Value: ""}
+				}
+
+				o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
+				req := openai.ChatCompletionRequest{
+					Model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+					Messages: []openai.ChatCompletionMessageParamUnion{
+						{OfUser: &openai.ChatCompletionUserMessageParam{Role: openai.ChatMessageRoleUser, Content: openai.StringOrUserRoleContentUnion{Value: "Hello"}}},
+						{OfAssistant: assistantMsg},
+						{OfUser: &openai.ChatCompletionUserMessageParam{Role: openai.ChatMessageRoleUser, Content: openai.StringOrUserRoleContentUnion{Value: "Can you help?"}}},
+					},
+				}
+
+				_, newBody, err := o.RequestBody(nil, &req, false)
+				require.NoError(t, err)
+
+				var awsReq awsbedrock.ConverseInput
+				require.NoError(t, json.Unmarshal(newBody, &awsReq))
+				requireNoEmptyAssistantContent(t, awsReq.Messages)
+			})
+		}
+	})
+
+	t.Run("assistant message with only tool calls and no content should work", func(t *testing.T) {
+		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
+		req := openai.ChatCompletionRequest{
+			Model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfUser: &openai.ChatCompletionUserMessageParam{Role: openai.ChatMessageRoleUser, Content: openai.StringOrUserRoleContentUnion{Value: "What is the weather?"}}},
+				{OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+					Role: openai.ChatMessageRoleAssistant,
+					ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+						{ID: ptr.To("call_abc123"), Type: openai.ChatCompletionMessageToolCallTypeFunction, Function: openai.ChatCompletionMessageToolCallFunctionParam{Name: "get_weather", Arguments: `{"location":"NYC"}`}},
+					},
+				}},
+				{OfTool: &openai.ChatCompletionToolMessageParam{Role: openai.ChatMessageRoleTool, ToolCallID: "call_abc123", Content: openai.ContentUnion{Value: `{"temp":72}`}}},
+			},
+		}
+
+		_, newBody, err := o.RequestBody(nil, &req, false)
+		require.NoError(t, err)
+
+		var awsReq awsbedrock.ConverseInput
+		require.NoError(t, json.Unmarshal(newBody, &awsReq))
+
+		var foundAssistant bool
+		for _, msg := range awsReq.Messages {
+			if msg.Role == openai.ChatMessageRoleAssistant {
+				foundAssistant = true
+				require.NotEmpty(t, msg.Content, "assistant message with tool calls should have non-empty content")
+				require.NotNil(t, msg.Content[0].ToolUse, "expected a ToolUse block")
+				require.Equal(t, "get_weather", msg.Content[0].ToolUse.Name)
+			}
+		}
+		require.True(t, foundAssistant, "should have found an assistant message")
+	})
+
+	t.Run("mixed messages with some empty assistant messages should handle correctly", func(t *testing.T) {
+		o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
+		req := openai.ChatCompletionRequest{
+			Model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfUser: &openai.ChatCompletionUserMessageParam{Role: openai.ChatMessageRoleUser, Content: openai.StringOrUserRoleContentUnion{Value: "Hello"}}},
+				{OfAssistant: &openai.ChatCompletionAssistantMessageParam{Role: openai.ChatMessageRoleAssistant, Content: openai.StringOrAssistantRoleContentUnion{Value: ""}}},
+				{OfUser: &openai.ChatCompletionUserMessageParam{Role: openai.ChatMessageRoleUser, Content: openai.StringOrUserRoleContentUnion{Value: "Tell me more"}}},
+				{OfAssistant: &openai.ChatCompletionAssistantMessageParam{Role: openai.ChatMessageRoleAssistant, Content: openai.StringOrAssistantRoleContentUnion{Value: "Here is the info"}}},
+			},
+		}
+
+		_, newBody, err := o.RequestBody(nil, &req, false)
+		require.NoError(t, err)
+
+		var awsReq awsbedrock.ConverseInput
+		require.NoError(t, json.Unmarshal(newBody, &awsReq))
+		requireNoEmptyAssistantContent(t, awsReq.Messages)
+
+		var assistantWithContent bool
+		for _, msg := range awsReq.Messages {
+			if msg.Role == openai.ChatMessageRoleAssistant {
+				for _, block := range msg.Content {
+					if block.Text != nil && *block.Text == "Here is the info" {
+						assistantWithContent = true
+					}
+				}
+			}
+		}
+		require.True(t, assistantWithContent, "should preserve assistant message with actual content")
+	})
+}
+
+func requireNoEmptyAssistantContent(t *testing.T, messages []*awsbedrock.Message) {
+	t.Helper()
+	for i, msg := range messages {
+		if msg.Role == openai.ChatMessageRoleAssistant && len(msg.Content) == 0 {
+			t.Errorf("message at index %d is an assistant message with empty content array, which Bedrock will reject", i)
+		}
+	}
+}
+
+func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody_MarshalError(t *testing.T) {
+	// Build a valid Bedrock streaming event that will be successfully decoded,
+	// but inject a json.Marshal failure to exercise the error return path
+	// that was previously a panic.
+	inputEvents := []awsbedrock.ConverseStreamEvent{
+		{Role: ptr.To(awsbedrock.ConversationRoleAssistant)},
+		{
+			ContentBlockIndex: 0,
+			EventType:         awsbedrock.ConverseStreamEventTypeContentBlockDelta.String(),
+			Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+				Text: ptr.To("hello"),
+			},
+		},
+		{StopReason: ptr.To(awsbedrock.StopReasonEndTurn)},
+	}
+
+	buf := bytes.NewBuffer(nil)
+	encoder := eventstream.NewEncoder()
+	for _, event := range inputEvents {
+		payload, err := json.Marshal(event)
+		require.NoError(t, err)
+		err = encoder.Encode(buf, eventstream.Message{
+			Headers: eventstream.Headers{
+				{Name: ":event-type", Value: eventstream.StringValue("chunk")},
+			},
+			Payload: payload,
+		})
+		require.NoError(t, err)
+	}
+
+	// Override json.Marshal to force a failure during serializeOpenAIChatCompletionChunk.
+	orig := json.Marshal
+	t.Cleanup(func() { json.Marshal = orig })
+	json.Marshal = func(v interface{}) ([]byte, error) {
+		// Allow the eventstream decoding (internal json.Unmarshal) to succeed
+		// by only failing on ChatCompletionResponseChunk marshaling.
+		if _, ok := v.(*openai.ChatCompletionResponseChunk); ok {
+			return nil, fmt.Errorf("injected marshal error")
+		}
+		return orig(v)
+	}
+
+	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true, requestModel: "test-model"}
+	_, _, _, _, err := o.ResponseBody(nil, buf, true, nil)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to marshal streaming event")
+	require.ErrorContains(t, err, "injected marshal error")
 }

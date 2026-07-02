@@ -34,9 +34,11 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/extensionserver"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/pprof"
+	"github.com/envoyproxy/ai-gateway/internal/ratelimit/runner"
 )
 
 type flags struct {
+	envoyGatewayNamespace          string
 	extProcLogLevel                string
 	extProcEnableRedaction         bool
 	extProcImage                   string
@@ -68,6 +70,9 @@ type flags struct {
 	mcpFallbackSessionEncryptionIterations int
 	watchNamespaces                        []string
 	cacheSyncTimeout                       time.Duration
+	quotaRateLimitServiceAddr              string
+	quotaRateLimitTimeout                  int64
+	quotaRateLimitFailureModeDeny          bool
 }
 
 func setOptionalString(dst **string) func(string) error {
@@ -104,6 +109,11 @@ func parseWatchNamespaces(s string) []string {
 func parseAndValidateFlags(args []string) (*flags, error) {
 	fs := flag.NewFlagSet("AI Gateway Controller", flag.ContinueOnError)
 
+	envoyGatewayNamespace := fs.String(
+		"envoyGatewayNamespace",
+		"envoy-gateway-system",
+		"The namespace where Envoy Gateway is deployed.",
+	)
 	extProcLogLevelPtr := fs.String(
 		"extProcLogLevel",
 		"info",
@@ -232,6 +242,12 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		"Optional fallback seed used for MCP session key rotation")
 	mcpFallbackSessionEncryptionIterations := fs.Int("mcpFallbackSessionEncryptionIterations", 100_000,
 		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
+	quotaRateLimitServiceAddr := fs.String("quotaRateLimitServiceAddr", "envoy-ai-gateway-ratelimit.envoy-gateway-system",
+		"Host (or host:port) for the AI Gateway quota rate limit service. If no port is specified, 8081 is used.")
+	quotaRateLimitTimeout := fs.Int64("quotaRateLimitTimeout", 5,
+		"Timeout in seconds for the quota rate limit service.")
+	quotaRateLimitFailureModeDeny := fs.Bool("quotaRateLimitFailureModeDeny", false,
+		"If true, the rate limit filter will deny requests when the rate limit service is unavailable.")
 
 	if err := fs.Parse(args); err != nil {
 		err = fmt.Errorf("failed to parse flags: %w", err)
@@ -318,6 +334,7 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 	}
 
 	return &flags{
+		envoyGatewayNamespace:                  *envoyGatewayNamespace,
 		extProcLogLevel:                        *extProcLogLevelPtr,
 		extProcEnableRedaction:                 *extProcEnableRedactionPtr,
 		extProcImage:                           *extProcImagePtr,
@@ -346,6 +363,9 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 		mcpFallbackSessionEncryptionSeed:       *mcpFallbackSessionEncryptionSeed,
 		mcpSessionEncryptionIterations:         *mcpSessionEncryptionIterations,
 		mcpFallbackSessionEncryptionIterations: *mcpFallbackSessionEncryptionIterations,
+		quotaRateLimitServiceAddr:              *quotaRateLimitServiceAddr,
+		quotaRateLimitTimeout:                  *quotaRateLimitTimeout,
+		quotaRateLimitFailureModeDeny:          *quotaRateLimitFailureModeDeny,
 	}, nil
 }
 
@@ -403,7 +423,7 @@ func main() {
 	// Start the extension server running alongside the controller.
 	const extProcUDSPath = "/etc/ai-gateway-extproc-uds/run.sock"
 	s := grpc.NewServer(grpc.MaxRecvMsgSize(parsedFlags.maxRecvMsgSize))
-	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes)
+	extSrv, err := extensionserver.New(mgr.GetClient(), ctrl.Log, extProcUDSPath, false, parsedFlags.requestHeaderAttributes, parsedFlags.logRequestHeaderAttributes, parsedFlags.quotaRateLimitServiceAddr, parsedFlags.quotaRateLimitTimeout, parsedFlags.quotaRateLimitFailureModeDeny)
 	if err != nil {
 		setupLog.Error(err, "failed to create extension server")
 		os.Exit(1)
@@ -420,8 +440,18 @@ func main() {
 		}
 	}()
 
+	// Start the rate limit xDS config server.
+	rlRunner := runner.New(ctrl.Log, runner.DefaultPort)
+	go func() {
+		if err := rlRunner.Start(ctx); err != nil {
+			setupLog.Error(err, "failed to start rate limit xDS server")
+			os.Exit(1)
+		}
+	}()
+
 	// Start the controller.
 	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), &controller.Options{
+		EnvoyGatewayNamespace:                  parsedFlags.envoyGatewayNamespace,
 		ExtProcImage:                           parsedFlags.extProcImage,
 		ExtProcImagePullPolicy:                 parsedFlags.extProcImagePullPolicy,
 		ExtProcLogLevel:                        parsedFlags.extProcLogLevel,
@@ -441,6 +471,7 @@ func main() {
 		MCPSessionEncryptionIterations:         parsedFlags.mcpSessionEncryptionIterations,
 		MCPFallbackSessionEncryptionSeed:       parsedFlags.mcpFallbackSessionEncryptionSeed,
 		MCPFallbackSessionEncryptionIterations: parsedFlags.mcpFallbackSessionEncryptionIterations,
+		RateLimitRunner:                        rlRunner,
 	}); err != nil {
 		setupLog.Error(err, "failed to start controller")
 	}

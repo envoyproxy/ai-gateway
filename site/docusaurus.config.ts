@@ -92,11 +92,21 @@ const config: Config = {
           remarkPlugins: [
             [require('@docusaurus/theme-mermaid'), {}],
           ],
-          lastVersion: 'current',
+          lastVersion: '1.0',
           versions: {
             current: {
-              label: 'latest',
+              label: 'Next',
+              path: 'next',
+              banner: 'unreleased'
+            },
+            '1.0': {
+              label: '1.0',
               path: '/',
+              banner: 'none'
+            },
+            '0.7': {
+              label: '0.7',
+              path: '0.7',
               banner: 'none'
             },
             '0.6': {

@@ -168,6 +168,20 @@ func TestServePOST_InvalidJSONRPC(t *testing.T) {
 	require.Contains(t, rr.Body.String(), "invalid JSON-RPC message")
 }
 
+func TestServePOST_OversizedBody(t *testing.T) {
+	proxy := newTestMCPProxy()
+	proxy.maxRequestBodySize = 16 // tiny limit to exercise the guard without allocating a large buffer.
+
+	body := strings.NewReader(`{"jsonrpc":"2.0","method":"initialize","id":1,"params":{}}`) // > 16 bytes
+	req := httptest.NewRequest(http.MethodPost, "/mcp", body)
+	rr := httptest.NewRecorder()
+
+	proxy.servePOST(rr, req)
+
+	require.Equal(t, http.StatusRequestEntityTooLarge, rr.Code)
+	require.Contains(t, rr.Body.String(), "request body too large")
+}
+
 func TestServePOST_InvalidSessionID(t *testing.T) {
 	proxy := newTestMCPProxy()
 	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"test-tool"},"id":"1"}`))

@@ -50,6 +50,7 @@ spec:
             - --extProcImage={{ .Values.extProc.image.repository }}:{{ .Values.extProc.image.tag | default .Chart.AppVersion }}
             - --extProcImagePullPolicy={{ .Values.extProc.imagePullPolicy }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
+            - --envoyGatewayNamespace={{ .Values.envoyGateway.namespace }}
             {{- if .Values.extProc.enableRedaction }}
             - --extProcEnableRedaction=true
             {{- end }}
@@ -100,6 +101,9 @@ spec:
             {{- end }}
             - --cacheSyncTimeout={{ .Values.controller.watch.cacheSyncTimeout }}
             - --watchNamespaces={{ join "," .Values.controller.watch.namespaces }}
+            - --quotaRateLimitServiceAddr={{ .Values.controller.quotaRateLimitServiceAddr }}
+            - --quotaRateLimitTimeout={{ .Values.controller.quotaRateLimitTimeout }}
+            - --quotaRateLimitFailureModeDeny={{ .Values.controller.quotaRateLimitFailureModeDeny }}
             - --mcpSessionEncryptionSeed={{ .Values.controller.mcp.sessionEncryption.seed }}
             - --mcpSessionEncryptionIterations={{ .Values.controller.mcp.sessionEncryption.iterations }}
             {{- if .Values.controller.mcp.sessionEncryption.fallback.seed }}

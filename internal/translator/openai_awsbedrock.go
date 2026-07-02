@@ -61,15 +61,27 @@ func getAwsBedrockThinkingMap(tu *openai.ThinkingUnion) map[string]any {
 
 	resultMap := make(map[string]any)
 
-	if tu.OfEnabled != nil {
+	switch {
+	case tu.OfEnabled != nil:
 		reasoningConfigMap := map[string]any{
 			"type":          "enabled",
 			"budget_tokens": tu.OfEnabled.BudgetTokens,
 		}
+		if tu.OfEnabled.Display != "" {
+			reasoningConfigMap["display"] = tu.OfEnabled.Display
+		}
 		resultMap["thinking"] = reasoningConfigMap
-	} else if tu.OfDisabled != nil {
+	case tu.OfDisabled != nil:
 		reasoningConfigMap := map[string]any{
 			"type": "disabled",
+		}
+		resultMap["thinking"] = reasoningConfigMap
+	case tu.OfAdaptive != nil:
+		reasoningConfigMap := map[string]any{
+			"type": "adaptive",
+		}
+		if tu.OfAdaptive.Display != "" {
+			reasoningConfigMap["display"] = tu.OfAdaptive.Display
 		}
 		resultMap["thinking"] = reasoningConfigMap
 	}
@@ -402,6 +414,9 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 
 	for i := range openAiMessage.ToolCalls {
 		toolCall := &openAiMessage.ToolCalls[i]
+		if toolCall.ID == nil {
+			return nil, fmt.Errorf("%w: tool_call at index %d is missing required field 'id'", internalapi.ErrInvalidRequestBody, i)
+		}
 		input, err := unmarshalToolCallArguments(toolCall.Function.Arguments)
 		if err != nil {
 			return nil, err
@@ -509,7 +524,11 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) openAIMessageToBedrockMes
 			if err != nil {
 				return err
 			}
-			bedrockReq.Messages = append(bedrockReq.Messages, bedrockMessage)
+			// Some clients, like OpenCode, can send assistant messages with nil or empty string content and no tool calls,
+			// which would translate to an empty content array that Bedrock Converse rejects.
+			if len(bedrockMessage.Content) > 0 {
+				bedrockReq.Messages = append(bedrockReq.Messages, bedrockMessage)
+			}
 		case msg.OfSystem != nil:
 			if bedrockReq.System == nil {
 				bedrockReq.System = make([]*awsbedrock.SystemContentBlock, 0)
@@ -718,7 +737,7 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			}
 			err = serializeOpenAIChatCompletionChunk(oaiEvent, &newBody)
 			if err != nil {
-				panic(fmt.Errorf("failed to marshal event: %w", err))
+				return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("failed to marshal streaming event: %w", err)
 			}
 			if span != nil {
 				span.RecordResponseChunk(oaiEvent)
@@ -1058,12 +1077,12 @@ func redactAWSBedrockResponseMessage(msg *openai.ChatCompletionResponseChoiceMes
 		redactedMsg.Content = &redactedContent
 	}
 
-	// Redact tool calls (may contain sensitive function arguments)
+	// Redact tool call arguments (may contain data derived from user messages).
+	// Function name is kept — it is the tool API name, not user data.
 	if len(msg.ToolCalls) > 0 {
 		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.ToolCalls))
 		for i, tc := range msg.ToolCalls {
 			redactedToolCall := tc
-			redactedToolCall.Function.Name = redaction.RedactString(tc.Function.Name)
 			redactedToolCall.Function.Arguments = redaction.RedactString(tc.Function.Arguments)
 			redactedMsg.ToolCalls[i] = redactedToolCall
 		}
