@@ -349,6 +349,22 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 
 	headerMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
 
+	// Force uncompressed upstream responses on endpoints where this is known to matter. Some
+	// Messages-endpoint translators pass the response body through unchanged (e.g.
+	// GCPAnthropic), while others decompress+rewrite it (e.g. OpenAI/Gemini). Letting the
+	// backend compress makes content-encoding handling ambiguous: for streaming, the response
+	// headers commit downstream before the body, so a stale content-encoding causes
+	// client-side decode failures (ZlibError on rewritten paths; garbage on passthrough paths
+	// if stripped). Requesting identity from the backend removes the whole class of problems.
+	// Scoped to endpoints that have actually exhibited this (RequiresIdentityEncodingUpstream)
+	// rather than applied to every endpoint type this processor serves.
+	if u.parent.eh.RequiresIdentityEncodingUpstream() {
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+			AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+			Header:       &corev3.HeaderValue{Key: "accept-encoding", RawValue: []byte("identity")},
+		})
+	}
+
 	// Apply header mutations from the route and also restore original headers on retry.
 	if h := u.headerMutator; h != nil {
 		sets, removes := u.headerMutator.Mutate(u.requestHeaders, u.onRetry())

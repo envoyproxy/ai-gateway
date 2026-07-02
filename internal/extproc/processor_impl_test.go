@@ -666,6 +666,9 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.NotNil(t, resp)
 				commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
 				require.Equal(t, string(bodyMut), string(commonRes.BodyMutation.GetBody()))
+				// ChatCompletions does not require identity encoding upstream (only /v1/messages
+				// does, see endpointspec.MessagesEndpointSpec.RequiresIdentityEncodingUpstream),
+				// so no accept-encoding header is injected here.
 				require.Len(t, commonRes.HeaderMutation.SetHeaders, 2)
 				require.Equal(t, "a", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
 				require.Equal(t, []byte("b"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
@@ -745,6 +748,68 @@ func Test_messagesProcessorUpstreamFilter_ProcessRequestHeaders_AWSAnthropicBeta
 	require.Equal(t, []any{"interleaved-thinking-2025-05-14", "context-1m-2025-08-07"}, betaValues)
 }
 
+// Test_messagesProcessorUpstreamFilter_ProcessRequestHeaders_IdentityEncoding pins the
+// scoped half of the identity-encoding fix (f716cf78, scoped further to only /v1/messages):
+// the Messages endpoint's translators can produce an ambiguous upstream content-encoding
+// (some pass the response through unchanged, others decompress+rewrite it), so the extproc
+// must still force "Accept-Encoding: identity" upstream for this endpoint. The sibling
+// ChatCompletions tests in this file pin the opposite half: that endpoint must NOT get this
+// header, since it has never exhibited the problem this fix addresses.
+func Test_messagesProcessorUpstreamFilter_ProcessRequestHeaders_IdentityEncoding(t *testing.T) {
+	body := anthropicschema.MessagesRequest{
+		Model:     "claude-3-sonnet-20240229",
+		MaxTokens: 128,
+		Messages: []anthropicschema.MessageParam{
+			{
+				Role:    anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{Text: "hello"},
+			},
+		},
+	}
+	raw, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	headers := map[string]string{
+		":path":                               "/v1/messages",
+		internalapi.ModelNameHeaderKeyDefault: body.Model,
+	}
+	mm := &mockMetrics{}
+	p := &messagesProcessorUpstreamFilter{
+		requestHeaders: headers,
+		metrics:        mm,
+	}
+	r := &messagesProcessorRouterFilter{
+		eh:                     endpointspec.MessagesEndpointSpec{},
+		config:                 &filterapi.RuntimeConfig{},
+		logger:                 slog.Default(),
+		originalRequestBodyRaw: raw,
+		originalRequestBody:    &body,
+		originalModel:          body.Model,
+	}
+
+	err = p.SetBackend(t.Context(), &filterapi.RuntimeBackend{
+		Backend: &filterapi.Backend{
+			Name:   "anthropic",
+			Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic},
+		},
+	}, "test-route", r)
+	require.NoError(t, err)
+
+	resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+	require.NoError(t, err)
+	commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
+
+	require.NotNil(t, commonRes.HeaderMutation)
+	var found bool
+	for _, h := range commonRes.HeaderMutation.SetHeaders {
+		if h.Header.Key == "accept-encoding" {
+			found = true
+			require.Equal(t, "identity", string(h.Header.RawValue))
+		}
+	}
+	require.True(t, found, "expected accept-encoding: identity to be forced upstream for /v1/messages")
+}
+
 // Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_BodyReplaceContract
 // locks the contract for when the upstream filter must NOT replace the request
 // body: when the translator returns no body, no backend HTTPBodyMutation is
@@ -807,6 +872,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_BodyReplac
 		require.Nil(t, commonRes.BodyMutation, "no body mutation should ride on a CONTINUE response")
 
 		require.NotNil(t, commonRes.HeaderMutation)
+		// ChatCompletions does not require identity encoding upstream (only /v1/messages
+		// does), so only the translator's path rewrite and the auth handler header apply here.
 		require.Len(t, commonRes.HeaderMutation.SetHeaders, 2,
 			"header mutations from the translator (path rewrite) and the auth handler must still apply on the CONTINUE branch")
 		require.Equal(t, ":path", commonRes.HeaderMutation.SetHeaders[0].Header.Key)

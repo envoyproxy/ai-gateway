@@ -92,6 +92,15 @@ type (
 		//
 		// Returns the same tuple as ParseBody.
 		ParseMultipartBody(body []byte, contentType string, costConfigured bool) (originalModel internalapi.OriginalModel, req *ReqT, stream bool, mutatedBody []byte, err error)
+		// RequiresIdentityEncodingUpstream reports whether this endpoint's translators can
+		// produce an ambiguous upstream content-encoding — some backends pass the response
+		// body through unchanged while others decompress and rewrite it, so a compressed
+		// upstream response can leave a stale content-encoding header for the client. When
+		// true, the extproc forces "Accept-Encoding: identity" on the upstream request to
+		// avoid the ambiguity entirely. Only /v1/messages has exhibited this in practice
+		// (streaming ZlibError on one translator path, JSON-parse failure on another); other
+		// endpoints default to false and are unaffected by this.
+		RequiresIdentityEncodingUpstream() bool
 	}
 	// ChatCompletionsEndpointSpec implements EndpointSpec for /v1/chat/completions.
 	ChatCompletionsEndpointSpec struct{}
@@ -172,6 +181,9 @@ func (ChatCompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISc
 	}
 }
 
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (ChatCompletionsEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
+
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (ChatCompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ChatCompletionRequest) (redactedReq *openai.ChatCompletionRequest, err error) {
 	// Create a shallow copy of the request
@@ -224,6 +236,9 @@ func (CompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema
 	}
 }
 
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (CompletionsEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
+
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (CompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.CompletionRequest) (redactedReq *openai.CompletionRequest, err error) {
 	// Placeholder if redaction is required in future
@@ -263,6 +278,9 @@ func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema,
 	}
 }
 
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (EmbeddingsEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
+
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (EmbeddingsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.EmbeddingRequest) (redactedReq *openai.EmbeddingRequest, err error) {
 	// Placeholder if redaction is required in future
@@ -294,6 +312,9 @@ func (ImageGenerationEndpointSpec) GetTranslator(schema filterapi.VersionedAPISc
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (ImageGenerationEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (ImageGenerationEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ImageGenerationRequest) (redactedReq *openai.ImageGenerationRequest, err error) {
@@ -329,6 +350,9 @@ func (ResponsesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, 
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (ResponsesEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (ResponsesEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ResponseRequest) (redactedReq *openai.ResponseRequest, err error) {
@@ -379,6 +403,14 @@ func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 	}
 }
 
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+//
+// /v1/messages is the only endpoint that has exhibited an upstream content-encoding
+// ambiguity in practice: a streaming ZlibError via a translator that decompresses and
+// rewrites the response, and a JSON-parse failure via a translator that passes the
+// response body through unchanged. See f716cf78.
+func (MessagesEndpointSpec) RequiresIdentityEncodingUpstream() bool { return true }
+
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (MessagesEndpointSpec) RedactSensitiveInfoFromRequest(req *anthropic.MessagesRequest) (redactedReq *anthropic.MessagesRequest, err error) {
 	// Placeholder if redaction is required in future
@@ -411,6 +443,9 @@ func (RerankEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, mod
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (RerankEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (RerankEndpointSpec) RedactSensitiveInfoFromRequest(req *cohereschema.RerankV2Request) (redactedReq *cohereschema.RerankV2Request, err error) {
@@ -627,6 +662,9 @@ func (SpeechEndpointSpec) GetTranslator(
 	}
 }
 
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (SpeechEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
+
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (SpeechEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.SpeechRequest) (redactedReq *openai.SpeechRequest, err error) {
 	// Create a shallow copy of the request
@@ -758,6 +796,9 @@ func (TranscriptionEndpointSpec) GetTranslator(
 	}
 }
 
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (TranscriptionEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
+
 // RedactSensitiveInfoFromRequest implements [Spec.RedactSensitiveInfoFromRequest].
 func (TranscriptionEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.TranscriptionRequest) (*openai.TranscriptionRequest, error) {
 	redacted := *req
@@ -862,6 +903,9 @@ func (TranslationEndpointSpec) GetTranslator(
 		return nil, fmt.Errorf("unsupported API schema for audio translation: backend=%s", schema)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (TranslationEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [Spec.RedactSensitiveInfoFromRequest].
 func (TranslationEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.TranslationRequest) (*openai.TranslationRequest, error) {

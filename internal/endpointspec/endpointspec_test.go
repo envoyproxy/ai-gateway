@@ -279,6 +279,24 @@ func TestMessagesEndpointSpec_GetTranslator(t *testing.T) {
 	require.ErrorContains(t, err, "only supports")
 }
 
+// TestRequiresIdentityEncodingUpstream pins the scoping decision behind the identity-encoding
+// fix (f716cf78): only /v1/messages has exhibited the upstream content-encoding ambiguity this
+// fix addresses, so only MessagesEndpointSpec must report true. Every other endpoint type
+// defaults to false and must stay that way unless it, too, is shown to need this.
+func TestRequiresIdentityEncodingUpstream(t *testing.T) {
+	require.True(t, MessagesEndpointSpec{}.RequiresIdentityEncodingUpstream())
+
+	require.False(t, ChatCompletionsEndpointSpec{}.RequiresIdentityEncodingUpstream())
+	require.False(t, CompletionsEndpointSpec{}.RequiresIdentityEncodingUpstream())
+	require.False(t, EmbeddingsEndpointSpec{}.RequiresIdentityEncodingUpstream())
+	require.False(t, ImageGenerationEndpointSpec{}.RequiresIdentityEncodingUpstream())
+	require.False(t, ResponsesEndpointSpec{}.RequiresIdentityEncodingUpstream())
+	require.False(t, RerankEndpointSpec{}.RequiresIdentityEncodingUpstream())
+	require.False(t, SpeechEndpointSpec{}.RequiresIdentityEncodingUpstream())
+	require.False(t, TranscriptionEndpointSpec{}.RequiresIdentityEncodingUpstream())
+	require.False(t, TranslationEndpointSpec{}.RequiresIdentityEncodingUpstream())
+}
+
 func TestRerankEndpointSpec_ParseBody(t *testing.T) {
 	spec := RerankEndpointSpec{}
 	t.Run("invalid json", func(t *testing.T) {
