@@ -161,15 +161,17 @@ func (p *filesProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.Head
 // handleListRequestHeaders sets up routing for GET /v1/files. The list presents a single,
 // cross-backend view by walking the route's backends one page at a time (see files_list_walk.go):
 //
-//   - First page (no "after"): the request is left unpinned so the load balancer selects the
-//     starting backend, which is captured via SetBackend.
+//   - First page (no "after"): the client must supply the routing model via the required "?model="
+//     query parameter; it selects the route/backends the list is served from, and the load balancer
+//     picks the starting backend (captured via SetBackend). A missing "model" is rejected with 400.
 //   - Subsequent pages ("after=<cursor>"): the encrypted cursor (or a gateway file id, for stock
 //     SDK pagination) is decoded to recover the backend to serve from; the request is pinned to
 //     it via selected_backend sticky metadata, and the upstream "after" is rewritten to the
 //     backend-native cursor.
 //
-// An "after" value that is present but not a gateway cursor/id is rejected with 400. The original
-// path is preserved so the upstream filter resolves this processor.
+// An "after" value that is present but not a gateway cursor/id is rejected with 400. The routing-only
+// "model" parameter is stripped from the upstream path on every page. The original path is preserved
+// so the upstream filter resolves this processor.
 func (p *filesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingResponse, error) {
 	path := p.requestHeaders[":path"]
 	headerMutation := &extprocv3.HeaderMutation{}
@@ -185,21 +187,17 @@ func (p *filesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingRespon
 	after := queryParam(path, "after")
 	if after == "" {
 		// First page: there is no cursor to pin a backend with, so the request must match the
-		// route on its own. AIGatewayRoutes match on the x-ai-eg-model header, which a list
-		// request does not carry; set it so the route matches and the load balancer selects the
-		// starting backend (captured via SetBackend). A client MAY override the routed model via
-		// "?model="; otherwise the first declared model is used. Subsequent pages pin the backend
-		// directly via the cursor and need no model header.
-		model := modelOverride
-		if model == "" {
-			model = p.firstDeclaredModel()
+		// route on its own. AIGatewayRoutes match on the x-ai-eg-model header, which a list request
+		// does not carry, so the client must supply the routing model via "?model=". It is required:
+		// without it the request cannot be routed to a backend.
+		if modelOverride == "" {
+			p.logger.Info("rejecting files list without required model query parameter")
+			return createUserFacingErrorResponse(http.StatusBadRequest, "invalid_request_error", "the 'model' query parameter is required"), nil
 		}
-		setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, model)
-		p.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = model
+		setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, modelOverride)
+		p.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = modelOverride
 		// Drop the routing-only "model" param before forwarding upstream.
-		if upstreamPath != path {
-			setHeader(headerMutation, ":path", upstreamPath)
-		}
+		setHeader(headerMutation, ":path", upstreamPath)
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_RequestHeaders{
 				RequestHeaders: &extprocv3.HeadersResponse{
@@ -303,18 +301,6 @@ func (p *filesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingRespon
 	}, nil
 }
 
-// firstDeclaredModel returns a model name used to route a first-page list request. The list
-// endpoint carries no model, but AIGatewayRoutes match on the x-ai-eg-model header, so a value
-// is needed for the request to match a route and reach a backend. A declared model is preferred
-// (it also matches exact-match model routes); a non-empty sentinel is used when none are declared
-// (which still matches the common ".*" regex model route).
-func (p *filesProcessor) firstDeclaredModel() string {
-	if p.config != nil && len(p.config.DeclaredModels) > 0 {
-		return p.config.DeclaredModels[0].Name
-	}
-	return "-"
-}
-
 // handleIDBearingRequestHeaders decodes the backend from a gateway-issued id in the path, pins
 // the request to that backend via sticky dynamic metadata, and rewrites the path to the
 // backend-native id. An undecodable/forged id yields a 404.
@@ -413,21 +399,25 @@ func (p *filesProcessor) ProcessRequestBody(_ context.Context, rawBody *extprocv
 		}
 	}
 
+	// The model field is required: it selects the serving backend (AIGatewayRoutes match on the
+	// x-ai-eg-model header). Without it the upload cannot be routed, so reject it up front rather
+	// than forward an unroutable request.
+	if model == "" {
+		p.logger.Info("rejecting files upload without required model field")
+		return createUserFacingErrorResponse(http.StatusBadRequest, "invalid_request_error", "the 'model' field is required"), nil
+	}
+
+	// Route by model (like the chat/embeddings endpoints) and strip the routing-only field from the
+	// body before it is forwarded upstream.
 	common := &extprocv3.CommonResponse{HeaderMutation: headerMutation}
-	if model != "" {
-		// Route by model (like the chat/embeddings endpoints) and strip the routing-only field
-		// from the body before it is forwarded upstream.
-		setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, model)
-		p.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = model
-		common.ClearRouteCache = true
-		if stripped, err := stripMultipartField(rawBody.Body, boundary, uploadModelFormField); err != nil {
-			p.logger.Warn("failed to strip model field from upload body, forwarding as-is", slog.String("error", err.Error()))
-		} else {
-			setHeader(headerMutation, "content-length", strconv.Itoa(len(stripped)))
-			common.BodyMutation = &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: stripped}}
-		}
+	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, model)
+	p.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = model
+	common.ClearRouteCache = true
+	if stripped, err := stripMultipartField(rawBody.Body, boundary, uploadModelFormField); err != nil {
+		p.logger.Warn("failed to strip model field from upload body, forwarding as-is", slog.String("error", err.Error()))
 	} else {
-		p.logger.Warn("files upload has no model field; relying on load balancing for backend selection")
+		setHeader(headerMutation, "content-length", strconv.Itoa(len(stripped)))
+		common.BodyMutation = &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: stripped}}
 	}
 
 	return &extprocv3.ProcessingResponse{

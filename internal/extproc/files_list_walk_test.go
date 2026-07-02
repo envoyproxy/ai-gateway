@@ -183,24 +183,15 @@ func stickyValue(resp *extprocv3.ProcessingResponse) (string, bool) {
 	return v.GetStringValue(), true
 }
 
-func TestHandleListRequestHeaders_FirstPageNoPin(t *testing.T) {
+// TestHandleListRequestHeaders_FirstPageMissingModelRejected verifies that a first-page list without
+// the required "?model=" query parameter is rejected with 400 (it cannot be routed to a backend).
+func TestHandleListRequestHeaders_FirstPageMissingModelRejected(t *testing.T) {
 	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"})
 	p := newListProcessor("/v1/files?limit=2", config)
 
 	resp, err := p.handleListRequestHeaders()
 	require.NoError(t, err)
-
-	// No sticky pin on the first page (the LB picks the starting backend), but the route must be
-	// matched, so a model header is set and the route cache is cleared.
-	_, pinned := stickyValue(resp)
-	require.False(t, pinned)
-	require.True(t, resp.GetRequestHeaders().Response.ClearRouteCache)
-	model, ok := setHeaderValue(resp, internalapi.ModelNameHeaderKeyDefault)
-	require.True(t, ok)
-	require.NotEmpty(t, model)
-	orig, ok := setHeaderValue(resp, originalPathHeader)
-	require.True(t, ok)
-	require.Equal(t, "/v1/files?limit=2", orig)
+	require.Equal(t, int32(http.StatusBadRequest), int32(resp.GetImmediateResponse().Status.Code))
 }
 
 func TestHandleListRequestHeaders_CursorPins(t *testing.T) {
@@ -263,22 +254,24 @@ func TestHandleListRequestHeaders_InvalidAfter(t *testing.T) {
 }
 
 // TestHandleListRequestHeaders_FirstPageModelOverride verifies that a "?model=" query param on the
-// first page routes by that model (not the first declared model) and is stripped from the upstream
-// path so it never reaches the provider.
+// TestHandleListRequestHeaders_FirstPageModelOverride verifies that the required "?model=" query
+// param routes the first page by that model, is stripped from the upstream path (so it never reaches
+// the provider), and leaves the request unpinned so the LB picks the starting backend.
 func TestHandleListRequestHeaders_FirstPageModelOverride(t *testing.T) {
 	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"})
-	config.DeclaredModels = []filterapi.Model{{Name: "m1"}}
 	p := newListProcessor("/v1/files?model=m2&limit=2", config)
 
 	resp, err := p.handleListRequestHeaders()
 	require.NoError(t, err)
 
-	// Routed by the override, not DeclaredModels[0].
+	// Routed by the model param; first page is unpinned (the LB selects the starting backend).
 	model, ok := setHeaderValue(resp, internalapi.ModelNameHeaderKeyDefault)
 	require.True(t, ok)
 	require.Equal(t, "m2", model)
 	require.Equal(t, "m2", p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
 	require.True(t, resp.GetRequestHeaders().Response.ClearRouteCache)
+	_, pinned := stickyValue(resp)
+	require.False(t, pinned)
 
 	// The routing-only model param is stripped from the upstream path; other params survive.
 	newPath, ok := setHeaderValue(resp, ":path")
@@ -290,25 +283,6 @@ func TestHandleListRequestHeaders_FirstPageModelOverride(t *testing.T) {
 	orig, ok := setHeaderValue(resp, originalPathHeader)
 	require.True(t, ok)
 	require.Equal(t, "/v1/files?model=m2&limit=2", orig)
-}
-
-// TestHandleListRequestHeaders_FirstPageNoModelUsesDeclared is the regression guard: with no
-// "?model=", the first declared model is used and the path is not rewritten.
-func TestHandleListRequestHeaders_FirstPageNoModelUsesDeclared(t *testing.T) {
-	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"})
-	config.DeclaredModels = []filterapi.Model{{Name: "m1"}}
-	p := newListProcessor("/v1/files?limit=2", config)
-
-	resp, err := p.handleListRequestHeaders()
-	require.NoError(t, err)
-
-	model, ok := setHeaderValue(resp, internalapi.ModelNameHeaderKeyDefault)
-	require.True(t, ok)
-	require.Equal(t, "m1", model)
-
-	// No model param present, so the path must NOT be rewritten (byte-for-byte legacy behavior).
-	_, pathRewritten := setHeaderValue(resp, ":path")
-	require.False(t, pathRewritten)
 }
 
 // TestHandleListRequestHeaders_CursorStripsStrayModel verifies that a stray "?model=" carried onto a
@@ -340,6 +314,57 @@ func TestHandleListRequestHeaders_CursorStripsStrayModel(t *testing.T) {
 	require.Equal(t, "file-native-7", queryParam(newPath, "after"))
 	require.Equal(t, "2", queryParam(newPath, "limit"))
 	require.Empty(t, queryParam(newPath, "model"))
+}
+
+// newUploadProcessor builds a router-level files upload processor for a multipart body.
+func newUploadProcessor(contentType string, config *filterapi.RuntimeConfig) *filesProcessor {
+	return &filesProcessor{
+		codec:          testCodec(),
+		config:         config,
+		requestHeaders: map[string]string{":method": http.MethodPost, ":path": "/v1/files", "content-type": contentType},
+		logger:         slog.Default(),
+		op:             filesOpUpload,
+	}
+}
+
+// TestProcessRequestBody_UploadMissingModelRejected verifies an upload whose multipart body carries
+// no model field is rejected with 400 (it cannot be routed to a backend).
+func TestProcessRequestBody_UploadMissingModelRejected(t *testing.T) {
+	body, ct := buildTestMultipartBody(t, map[string]string{"purpose": "batch"}, "in.jsonl", []byte("{}"))
+	p := newUploadProcessor(ct, runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"}))
+
+	resp, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{Body: body})
+	require.NoError(t, err)
+	require.Equal(t, int32(http.StatusBadRequest), int32(resp.GetImmediateResponse().Status.Code))
+}
+
+// TestProcessRequestBody_UploadWithModelRoutesAndStrips verifies an upload with a model field routes
+// by that model, clears the route cache, and strips the routing-only model field from the body.
+func TestProcessRequestBody_UploadWithModelRoutesAndStrips(t *testing.T) {
+	body, ct := buildTestMultipartBody(t, map[string]string{"purpose": "batch", "model": "m2"}, "in.jsonl", []byte("{}"))
+	p := newUploadProcessor(ct, runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"}))
+
+	resp, err := p.ProcessRequestBody(context.Background(), &extprocv3.HttpBody{Body: body})
+	require.NoError(t, err)
+
+	rb := resp.GetRequestBody()
+	require.NotNil(t, rb)
+	require.True(t, rb.Response.ClearRouteCache)
+
+	// Routed by the model field.
+	var modelHeader string
+	for _, h := range rb.Response.HeaderMutation.SetHeaders {
+		if h.Header.Key == internalapi.ModelNameHeaderKeyDefault {
+			modelHeader = string(h.Header.RawValue)
+		}
+	}
+	require.Equal(t, "m2", modelHeader)
+	require.Equal(t, "m2", p.requestHeaders[internalapi.ModelNameHeaderKeyDefault])
+
+	// The routing-only model field is stripped from the forwarded body.
+	mutated := rb.Response.BodyMutation.GetBody()
+	require.NotEmpty(t, mutated)
+	require.NotContains(t, string(mutated), "m2")
 }
 
 func TestBuildListWalkResponse_AdvanceAndComplete(t *testing.T) {
