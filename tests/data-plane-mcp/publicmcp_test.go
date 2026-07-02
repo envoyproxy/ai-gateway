@@ -88,7 +88,7 @@ func TestPublicMCPServers(t *testing.T) {
 		exps := []string{
 			// "context7__resolve-library-id",
 			// "context7__query-docs",
-			"kiwi__search-flights-structured",
+			"kiwi__search-flight",
 			"kiwi__feedback-to-devs",
 		}
 
@@ -130,23 +130,20 @@ func TestPublicMCPServers(t *testing.T) {
 			// 	},
 			// },
 			{
-				toolName: "kiwi__search-flights-structured",
+				toolName: "kiwi__search-flight",
 				params: map[string]any{
-					"flyFrom":                "LAX",
-					"flyTo":                  "HND",
-					"departureDate":          "01/12/2026",
-					"departureDateFlexRange": 1,
-					"returnDate":             "02/12/2026",
-					"returnDateFlexRange":    1,
-					"passengers": map[string]any{
-						"adults":   1,
-						"children": 0,
-						"infants":  0,
-					},
-					"cabinClass": "M",
-					"sort":       "date",
-					"curr":       "USD",
-					"locale":     "en",
+					"flyFrom":               "LAX",
+					"flyTo":                 "HND",
+					"departureDate":         "01/12/2026",
+					"departureDateFlexDays": 1,
+					"returnDate":            "02/12/2026",
+					"returnDateFlexDays":    1,
+					"adults":                1,
+					"children":              0,
+					"infants":               0,
+					"cabinClass":            "M",
+					"currency":              "USD",
+					"locale":                "en",
 				},
 			},
 		}
