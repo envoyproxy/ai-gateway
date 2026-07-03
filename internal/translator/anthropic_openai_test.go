@@ -137,6 +137,23 @@ func TestAnthropicToOpenAITranslator_RequestBody_CustomPrefix(t *testing.T) {
 	}
 }
 
+func TestAnthropicToOpenAITranslator_RequestBody_UnsupportedFieldsSuppressesThinking(t *testing.T) {
+	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "", "thinking")
+
+	body := &anthropic.MessagesRequest{
+		Model:     "claude-3",
+		MaxTokens: 100,
+		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "hi"}}},
+		Thinking:  &anthropic.Thinking{Adaptive: &anthropic.ThinkingAdaptive{Type: "adaptive"}},
+	}
+	raw, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	_, newBody, err := translator.RequestBody(raw, body, false)
+	require.NoError(t, err)
+	assert.NotContains(t, string(newBody), `"thinking"`)
+}
+
 func TestAnthropicToOpenAITranslator_ResponseHeaders(t *testing.T) {
 	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
 	headers, err := translator.ResponseHeaders(map[string]string{
