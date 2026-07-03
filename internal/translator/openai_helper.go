@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
+	"slices"
 	"strings"
 
 	"k8s.io/utils/ptr"
@@ -24,7 +25,7 @@ import (
 
 // buildOpenAIChatCompletionRequest converts an Anthropic MessagesRequest into an OpenAI ChatCompletionRequest.
 // It handles model override, system prompts, message conversion, tools, and tool choice.
-func buildOpenAIChatCompletionRequest(body *anthropic.MessagesRequest, modelNameOverride internalapi.ModelNameOverride) *openai.ChatCompletionRequest {
+func buildOpenAIChatCompletionRequest(body *anthropic.MessagesRequest, modelNameOverride internalapi.ModelNameOverride, unsupportedFields ...string) *openai.ChatCompletionRequest {
 	model := cmp.Or(modelNameOverride, body.Model)
 	messages := anthropicMessagesToOpenAI(body)
 	tools := anthropicToolsToOpenAI(body.Tools)
@@ -53,8 +54,10 @@ func buildOpenAIChatCompletionRequest(body *anthropic.MessagesRequest, modelName
 		req.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
 	}
 
-	// Map Anthropic thinking config to OpenAI thinking config.
-	if body.Thinking != nil {
+	// Map Anthropic thinking config to OpenAI thinking config, unless this backend has
+	// declared it doesn't support the field (e.g. the real OpenAI API rejects it outright;
+	// vLLM, which this mapping was originally built for, accepts it — see BUG-002 in BUG.md).
+	if body.Thinking != nil && !slices.Contains(unsupportedFields, "thinking") {
 		req.Thinking = anthropicThinkingToOpenAI(body.Thinking)
 	}
 

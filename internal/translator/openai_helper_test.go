@@ -981,6 +981,23 @@ func TestBuildOpenAIChatCompletionRequest_ThinkingConfig(t *testing.T) {
 	})
 }
 
+func TestBuildOpenAIChatCompletionRequest_ThinkingSuppressedByUnsupportedFields(t *testing.T) {
+	body := &anthropic.MessagesRequest{
+		Model:     "claude-3",
+		MaxTokens: 100,
+		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "hi"}}},
+		Thinking:  &anthropic.Thinking{Adaptive: &anthropic.ThinkingAdaptive{Type: "adaptive"}},
+	}
+
+	// Without "thinking" in unsupportedFields, it's forwarded (existing behavior, unchanged).
+	req := buildOpenAIChatCompletionRequest(body, "")
+	require.NotNil(t, req.Thinking)
+
+	// With "thinking" in unsupportedFields, it must be omitted.
+	req = buildOpenAIChatCompletionRequest(body, "", "thinking")
+	assert.Nil(t, req.Thinking)
+}
+
 func TestAppendAnthropicUserMessage_Base64Image(t *testing.T) {
 	// base64 image → image_url with data URI
 	msg := anthropic.MessageParam{
