@@ -422,3 +422,39 @@ func TestThinkingUnion_MarshalJSON(t *testing.T) {
 		})
 	}
 }
+
+func TestStreamReasoningContent_MarshalJSON(t *testing.T) {
+	// reasoning_content on streaming chunks must serialize as a plain string;
+	// Signature and RedactedContent are carried via delta.thinking_blocks instead.
+	got, err := json.Marshal(&StreamReasoningContent{
+		Text: "thinking...", Signature: "c2ln", RedactedContent: []byte("x"),
+	})
+	require.NoError(t, err)
+	require.Equal(t, `"thinking..."`, string(got))
+}
+
+func TestStreamReasoningContent_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		data   string
+		expect StreamReasoningContent
+	}{
+		{
+			name:   "plain string (OpenAI-compatible backends)",
+			data:   `"thinking..."`,
+			expect: StreamReasoningContent{Text: "thinking..."},
+		},
+		{
+			name:   "legacy object form",
+			data:   `{"text":"thinking...","signature":"c2ln"}`,
+			expect: StreamReasoningContent{Text: "thinking...", Signature: "c2ln"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var got StreamReasoningContent
+			require.NoError(t, json.Unmarshal([]byte(tc.data), &got))
+			require.Equal(t, tc.expect, got)
+		})
+	}
+}

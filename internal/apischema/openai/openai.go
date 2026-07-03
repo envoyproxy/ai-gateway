@@ -1631,11 +1631,16 @@ type ChatCompletionChunkChoiceDeltaToolCall struct {
 // ChatCompletionResponseChunkChoiceDelta is described in the OpenAI API documentation:
 // https://platform.openai.com/docs/api-reference/chat/streaming#chat/streaming-choices
 type ChatCompletionResponseChunkChoiceDelta struct {
-	Content          *string                                  `json:"content,omitempty"`
-	Role             string                                   `json:"role,omitempty"`
-	ToolCalls        []ChatCompletionChunkChoiceDeltaToolCall `json:"tool_calls,omitempty"`
-	Annotations      *[]Annotation                            `json:"annotations,omitempty"`
-	ReasoningContent *StreamReasoningContent                  `json:"reasoning_content,omitempty"`
+	Content     *string                                  `json:"content,omitempty"`
+	Role        string                                   `json:"role,omitempty"`
+	ToolCalls   []ChatCompletionChunkChoiceDeltaToolCall `json:"tool_calls,omitempty"`
+	Annotations *[]Annotation                            `json:"annotations,omitempty"`
+	// ReasoningContent serializes as a plain string; see StreamReasoningContent.
+	ReasoningContent *StreamReasoningContent `json:"reasoning_content,omitempty"`
+	// ThinkingBlocks carries provider-specific reasoning metadata (signatures, redacted
+	// content) that cannot be represented in the plain-string reasoning_content,
+	// following the LiteLLM convention also used on the non-streaming Message.
+	ThinkingBlocks []ThinkingBlock `json:"thinking_blocks,omitempty"`
 }
 
 // Error is described in the OpenAI API documentation
@@ -2056,10 +2061,46 @@ type ReasoningContent struct {
 	ReasoningContent *awsbedrock.ReasoningContentBlock `json:"reasoningContent,omitzero"`
 }
 
+// StreamReasoningContent carries reasoning deltas on streaming chunks. On the wire,
+// `delta.reasoning_content` is a plain string (the convention established by DeepSeek and
+// followed by vLLM, LiteLLM, etc.) holding only Text; provider-specific metadata
+// (Signature, RedactedContent) is carried separately in `delta.thinking_blocks`,
+// mirroring the non-streaming Message shape.
 type StreamReasoningContent struct {
-	Text            string `json:"text,omitzero"`
-	Signature       string `json:"signature,omitzero"`
-	RedactedContent []byte `json:"redactedContent,omitzero"`
+	Text            string
+	Signature       string
+	RedactedContent []byte
+}
+
+// MarshalJSON emits the reasoning delta as a plain JSON string. Signature and
+// RedactedContent are intentionally not serialized here — translators surface them via
+// ChatCompletionResponseChunkChoiceDelta.ThinkingBlocks so that clients validating the
+// de-facto `reasoning_content: string` convention do not reject the chunk.
+func (s StreamReasoningContent) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.Text)
+}
+
+// UnmarshalJSON accepts both the plain-string form emitted by OpenAI-compatible backends
+// (vLLM, DeepSeek, ...) and the legacy object form ({"text":...,"signature":...})
+// emitted by ai-gateway <= v1.0.0.
+func (s *StreamReasoningContent) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		s.Text = text
+		return nil
+	}
+	var legacy struct {
+		Text            string `json:"text,omitzero"`
+		Signature       string `json:"signature,omitzero"`
+		RedactedContent []byte `json:"redactedContent,omitzero"`
+	}
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return fmt.Errorf("cannot unmarshal reasoning_content as string or object: %w", err)
+	}
+	s.Text = legacy.Text
+	s.Signature = legacy.Signature
+	s.RedactedContent = legacy.RedactedContent
+	return nil
 }
 
 // CompletionRequest represents a request to the legacy /completions endpoint.
