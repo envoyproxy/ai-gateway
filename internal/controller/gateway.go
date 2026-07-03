@@ -164,7 +164,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 // schemaToFilterAPI converts an aigv1b1.VersionedAPISchema to filterapi.VersionedAPISchema.
-func schemaToFilterAPI(schema aigv1b1.VersionedAPISchema) filterapi.VersionedAPISchema {
+func schemaToFilterAPI(schema *aigv1b1.VersionedAPISchema) filterapi.VersionedAPISchema {
 	ret := filterapi.VersionedAPISchema{}
 	ret.Name = filterapi.APISchemaName(schema.Name)
 	if schema.Name == aigv1b1.APISchemaOpenAI || schema.Name == aigv1b1.APISchemaAnthropic {
@@ -173,6 +173,7 @@ func schemaToFilterAPI(schema aigv1b1.VersionedAPISchema) filterapi.VersionedAPI
 		ret.Version = ptr.Deref(schema.Version, "")
 	}
 	ret.UnsupportedFields = schema.UnsupportedFields
+	ret.RequiredFields = schema.RequiredFields
 	return ret
 }
 
@@ -471,7 +472,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					mergedBodyMutation := mergeBodyMutations(routeBodyMutation, backendBodyMutation)
 					b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
 
-					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
+					b.Schema = schemaToFilterAPI(&backendObj.Spec.APISchema)
 				}
 
 				if bsp != nil {

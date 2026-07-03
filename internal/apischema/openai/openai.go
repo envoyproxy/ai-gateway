@@ -665,7 +665,12 @@ type ChatCompletionMessageToolCallParam struct {
 	// The function that the model called.
 	Function ChatCompletionMessageToolCallFunctionParam `json:"function"`
 	// The type of the tool. Currently, only `function` is supported.
-	Type                    ChatCompletionMessageToolCallType `json:"type,omitempty"`
+	Type ChatCompletionMessageToolCallType `json:"type,omitempty"`
+	// ExtraContent carries provider-specific tool-call metadata that has no equivalent
+	// field in the OpenAI schema, e.g. Gemini's `thought_signature`
+	// (`{"google": {"thought_signature": "..."}}`). Stored as RawMessage so it forwards
+	// verbatim without a dedicated type per vendor extension.
+	ExtraContent            json.RawMessage `json:"extra_content,omitempty"`
 	*AnthropicContentFields `json:",inline,omitempty"`
 }
 

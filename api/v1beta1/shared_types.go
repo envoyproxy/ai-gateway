@@ -70,6 +70,27 @@ type VersionedAPISchema struct {
 	//
 	// +optional
 	UnsupportedFields []string `json:"unsupportedFields,omitempty"`
+
+	// RequiredFields lists synthetic, gateway-injected request field names that this
+	// backend's upstream REQUIRES but that upstream ai-gateway itself never sends — the
+	// gateway only injects them for backends that explicitly opt in via this field.
+	// Unset/empty means the gateway injects nothing extra, matching upstream's behavior
+	// exactly.
+	//
+	// Currently recognized values:
+	//   - "thought_signature" (OpenAI schema): Gemini's OpenAI-compat endpoint requires a
+	//     "thought_signature" on every function-call part for multi-turn tool use, or the
+	//     follow-up turn 400s with "Function call is missing a thought_signature in
+	//     functionCall parts". Anthropic's tool_use schema has no field to carry a real one
+	//     through, so the gateway injects Google's documented sentinel value
+	//     ("skip_thought_signature_validator") instead — only for backends that opt in here,
+	//     since other OpenAI-schema backends (real OpenAI, Azure OpenAI, vLLM) don't expect
+	//     an unrecognized extra_content field.
+	//
+	// This field is ignored for schemas other than OpenAI.
+	//
+	// +optional
+	RequiredFields []string `json:"requiredFields,omitempty"`
 }
 
 // APISchema defines the API schema.

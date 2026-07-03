@@ -56,11 +56,11 @@ llmRequestCosts:
 }
 
 func TestVersionedAPISchemaAnthropicPrefix(t *testing.T) {
-	require.Equal(t, "v1", filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}.AnthropicPrefix())
-	require.Equal(t, "gateway/v1", filterapi.VersionedAPISchema{
+	require.Equal(t, "v1", (&filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}).AnthropicPrefix())
+	require.Equal(t, "gateway/v1", (&filterapi.VersionedAPISchema{
 		Name:   filterapi.APISchemaAnthropic,
 		Prefix: "gateway/v1",
-	}.AnthropicPrefix())
+	}).AnthropicPrefix())
 }
 
 // logAttrs extracts the key→value map from a slog.KindGroup Value.

@@ -67,7 +67,7 @@ type (
 		// Returns:
 		// * translator: The selected translator of type Translator[ReqT, RespT, RespChunkT].
 		// * err: An error if translator selection fails.
-		GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]], error)
+		GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]], error)
 		// RedactSensitiveInfoFromRequest creates a redacted copy of the request for safe debug logging.
 		// Sensitive content (messages, images, audio, tool parameters, etc.) is replaced with placeholders
 		// containing length and hash information to aid in debugging cache hits/misses and correlation.
@@ -162,7 +162,7 @@ func (ChatCompletionsEndpointSpec) ParseMultipartBody([]byte, string, bool) (int
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (ChatCompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIChatCompletionTranslator, error) {
+func (ChatCompletionsEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIChatCompletionTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewChatCompletionOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
@@ -177,7 +177,7 @@ func (ChatCompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISc
 	case filterapi.APISchemaGCPAnthropic:
 		return translator.NewChatCompletionOpenAIToGCPAnthropicTranslator(schema.Version, modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", *schema)
 	}
 }
 
@@ -227,12 +227,12 @@ func (CompletionsEndpointSpec) ParseMultipartBody([]byte, string, bool) (interna
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (CompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAICompletionTranslator, error) {
+func (CompletionsEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAICompletionTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewCompletionOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", *schema)
 	}
 }
 
@@ -263,7 +263,7 @@ func (EmbeddingsEndpointSpec) ParseMultipartBody([]byte, string, bool) (internal
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIEmbeddingTranslator, error) {
+func (EmbeddingsEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIEmbeddingTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewEmbeddingOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
@@ -274,7 +274,7 @@ func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema,
 	case filterapi.APISchemaAWSBedrock:
 		return translator.NewEmbeddingOpenAIToAWSBedrockTranslator(modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", *schema)
 	}
 }
 
@@ -304,12 +304,12 @@ func (ImageGenerationEndpointSpec) ParseMultipartBody([]byte, string, bool) (int
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (ImageGenerationEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIImageGenerationTranslator, error) {
+func (ImageGenerationEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIImageGenerationTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewImageGenerationOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", *schema)
 	}
 }
 
@@ -340,14 +340,14 @@ func (ResponsesEndpointSpec) ParseMultipartBody([]byte, string, bool) (internala
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (ResponsesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIResponsesTranslator, error) {
+func (ResponsesEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIResponsesTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewResponsesOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	case filterapi.APISchemaAzureOpenAI:
 		return translator.NewResponsesOpenAIToAzureOpenAITranslator(schema.Version, modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", *schema)
 	}
 }
 
@@ -385,7 +385,7 @@ func (MessagesEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalap
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.AnthropicMessagesTranslator, error) {
+func (MessagesEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.AnthropicMessagesTranslator, error) {
 	// Messages processor only supports Anthropic-native translators.
 	switch schema.Name {
 	case filterapi.APISchemaGCPAnthropic:
@@ -395,7 +395,7 @@ func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 	case filterapi.APISchemaAnthropic:
 		return translator.NewAnthropicToAnthropicTranslator(schema.AnthropicPrefix(), modelNameOverride), nil
 	case filterapi.APISchemaOpenAI:
-		return translator.NewAnthropicToChatCompletionOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride, schema.OpenAIUnsupportedFields()...), nil
+		return translator.NewAnthropicToChatCompletionOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride, schema.OpenAIRequiredFields(), schema.OpenAIUnsupportedFields()...), nil
 	case filterapi.APISchemaAWSBedrock:
 		return translator.NewAnthropicToAWSBedrockTranslator(modelNameOverride), nil
 	default:
@@ -435,12 +435,12 @@ func (RerankEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (RerankEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.CohereRerankTranslator, error) {
+func (RerankEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.CohereRerankTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaCohere:
 		return translator.NewRerankCohereToCohereTranslator(schema.Version, modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", *schema)
 	}
 }
 
@@ -648,7 +648,7 @@ func (SpeechEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
 func (SpeechEndpointSpec) GetTranslator(
-	schema filterapi.VersionedAPISchema,
+	schema *filterapi.VersionedAPISchema,
 	modelNameOverride string,
 ) (translator.OpenAISpeechTranslator, error) {
 	switch schema.Name {
@@ -658,7 +658,7 @@ func (SpeechEndpointSpec) GetTranslator(
 			modelNameOverride,
 		), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema for speech: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema for speech: backend=%s", *schema)
 	}
 }
 
@@ -786,13 +786,13 @@ func (TranscriptionEndpointSpec) ParseMultipartBody(
 
 // GetTranslator implements [Spec.GetTranslator].
 func (TranscriptionEndpointSpec) GetTranslator(
-	schema filterapi.VersionedAPISchema, modelNameOverride string,
+	schema *filterapi.VersionedAPISchema, modelNameOverride string,
 ) (translator.OpenAIAudioTranscriptionTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewTranscriptionOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema for audio transcription: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema for audio transcription: backend=%s", *schema)
 	}
 }
 
@@ -894,13 +894,13 @@ func (TranslationEndpointSpec) ParseMultipartBody(
 
 // GetTranslator implements [Spec.GetTranslator].
 func (TranslationEndpointSpec) GetTranslator(
-	schema filterapi.VersionedAPISchema, modelNameOverride string,
+	schema *filterapi.VersionedAPISchema, modelNameOverride string,
 ) (translator.OpenAIAudioTranslationTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewTranslationOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema for audio translation: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema for audio translation: backend=%s", *schema)
 	}
 }
 

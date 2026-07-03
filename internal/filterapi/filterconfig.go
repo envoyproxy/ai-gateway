@@ -141,15 +141,18 @@ type VersionedAPISchema struct {
 	// translating to the OpenAI or GCPAnthropic schema. Optional. Used for OpenAI and
 	// GCPAnthropic schemas only.
 	UnsupportedFields []string `json:"unsupportedFields,omitempty"`
+	// RequiredFields lists synthetic, gateway-injected request field names to add when
+	// translating to the OpenAI schema. Optional. Used for OpenAI schema only.
+	RequiredFields []string `json:"requiredFields,omitempty"`
 }
 
 // OpenAIPrefix returns the OpenAI API prefix for the VersionedAPISchema.
-func (v VersionedAPISchema) OpenAIPrefix() string {
+func (v *VersionedAPISchema) OpenAIPrefix() string {
 	return v.Prefix
 }
 
 // AnthropicPrefix returns the Anthropic API prefix for the VersionedAPISchema.
-func (v VersionedAPISchema) AnthropicPrefix() string {
+func (v *VersionedAPISchema) AnthropicPrefix() string {
 	if v.Prefix == "" {
 		return "v1"
 	}
@@ -158,15 +161,21 @@ func (v VersionedAPISchema) AnthropicPrefix() string {
 
 // OpenAIUnsupportedFields returns the Anthropic-only field names to omit for this
 // VersionedAPISchema, or nil if none are configured.
-func (v VersionedAPISchema) OpenAIUnsupportedFields() []string {
+func (v *VersionedAPISchema) OpenAIUnsupportedFields() []string {
 	return v.UnsupportedFields
 }
 
 // GCPAnthropicUnsupportedFields returns the Anthropic-only field names to strip for this
 // VersionedAPISchema when translating to GCP Vertex AI's native Anthropic endpoint, or nil
 // if none are configured.
-func (v VersionedAPISchema) GCPAnthropicUnsupportedFields() []string {
+func (v *VersionedAPISchema) GCPAnthropicUnsupportedFields() []string {
 	return v.UnsupportedFields
+}
+
+// OpenAIRequiredFields returns the synthetic field names to inject for this
+// VersionedAPISchema, or nil if none are configured.
+func (v *VersionedAPISchema) OpenAIRequiredFields() []string {
+	return v.RequiredFields
 }
 
 // APISchemaName corresponds to APISchemaName in api/v1alpha1/api.go.

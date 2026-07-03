@@ -15,6 +15,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // sseEvent holds parsed Anthropic SSE event data.
@@ -55,7 +56,7 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 				{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hello"}},
 			},
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
+		req := buildOpenAIChatCompletionRequest(body, "", nil)
 		assert.Equal(t, "claude-3-haiku", req.Model)
 		require.NotNil(t, req.MaxCompletionTokens)
 		assert.Equal(t, int64(100), *req.MaxCompletionTokens)
@@ -70,7 +71,7 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 			Model:    "claude-3-haiku",
 			Messages: []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
 		}
-		req := buildOpenAIChatCompletionRequest(body, "gpt-4o")
+		req := buildOpenAIChatCompletionRequest(body, "gpt-4o", nil)
 		assert.Equal(t, "gpt-4o", req.Model)
 	})
 
@@ -82,7 +83,7 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 				{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}},
 			},
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
+		req := buildOpenAIChatCompletionRequest(body, "", nil)
 		require.Len(t, req.Messages, 2)
 		require.NotNil(t, req.Messages[0].OfSystem)
 		assert.Equal(t, openai.ChatMessageRoleSystem, req.Messages[0].OfSystem.Role)
@@ -98,7 +99,7 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 				{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}},
 			},
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
+		req := buildOpenAIChatCompletionRequest(body, "", nil)
 		require.Len(t, req.Messages, 1)
 		assert.Nil(t, req.Messages[0].OfSystem)
 	})
@@ -112,7 +113,7 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 				{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Bye"}},
 			},
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
+		req := buildOpenAIChatCompletionRequest(body, "", nil)
 		require.Len(t, req.Messages, 3)
 		assert.NotNil(t, req.Messages[0].OfUser)
 		assert.NotNil(t, req.Messages[1].OfAssistant)
@@ -127,7 +128,7 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 			Stream:   true,
 			Messages: []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
+		req := buildOpenAIChatCompletionRequest(body, "", nil)
 		assert.True(t, req.Stream)
 		require.NotNil(t, req.StreamOptions)
 		assert.True(t, req.StreamOptions.IncludeUsage)
@@ -138,7 +139,7 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 			Model:    "claude-3",
 			Messages: []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
+		req := buildOpenAIChatCompletionRequest(body, "", nil)
 		assert.False(t, req.Stream)
 		assert.Nil(t, req.StreamOptions)
 	})
@@ -152,7 +153,7 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 			TopP:        &topP,
 			Messages:    []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
+		req := buildOpenAIChatCompletionRequest(body, "", nil)
 		require.NotNil(t, req.Temperature)
 		assert.Equal(t, &temp, req.Temperature)
 		require.NotNil(t, req.TopP)
@@ -176,7 +177,7 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 				}},
 			},
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
+		req := buildOpenAIChatCompletionRequest(body, "", nil)
 		require.Len(t, req.Tools, 1)
 		assert.Equal(t, openai.ToolTypeFunction, req.Tools[0].Type)
 		require.NotNil(t, req.Tools[0].Function)
@@ -191,7 +192,7 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 			Messages:   []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
 			ToolChoice: &tc,
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
+		req := buildOpenAIChatCompletionRequest(body, "", nil)
 		assert.Nil(t, req.Tools)
 		assert.Nil(t, req.ToolChoice)
 	})
@@ -203,7 +204,7 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 			Tools:      []anthropic.ToolUnion{{Tool: &anthropic.Tool{Name: "search", InputSchema: anthropic.ToolInputSchema{Type: "object"}}}},
 			ToolChoice: ptr.To(anthropic.ToolChoice{Auto: &anthropic.ToolChoiceAuto{Type: "auto"}}),
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
+		req := buildOpenAIChatCompletionRequest(body, "", nil)
 		require.NotNil(t, req.Tools)
 		require.NotNil(t, req.ToolChoice)
 		assert.Equal(t, string(openai.ToolChoiceTypeAuto), req.ToolChoice.Value)
@@ -785,7 +786,7 @@ func TestAppendAnthropicAssistantMessage_ThinkingPlusText(t *testing.T) {
 			},
 		},
 	}
-	msgs := appendAnthropicAssistantMessage(nil, msg)
+	msgs := appendAnthropicAssistantMessage(nil, msg, nil)
 	require.Len(t, msgs, 1)
 	require.NotNil(t, msgs[0].OfAssistant)
 
@@ -818,7 +819,7 @@ func TestAppendAnthropicAssistantMessage_ThinkingOnly(t *testing.T) {
 			},
 		},
 	}
-	msgs := appendAnthropicAssistantMessage(nil, msg)
+	msgs := appendAnthropicAssistantMessage(nil, msg, nil)
 	require.Len(t, msgs, 1)
 	require.NotNil(t, msgs[0].OfAssistant)
 
@@ -841,7 +842,7 @@ func TestAppendAnthropicAssistantMessage_ThinkingPlusToolUse(t *testing.T) {
 			},
 		},
 	}
-	msgs := appendAnthropicAssistantMessage(nil, msg)
+	msgs := appendAnthropicAssistantMessage(nil, msg, nil)
 	require.Len(t, msgs, 1)
 	require.NotNil(t, msgs[0].OfAssistant)
 
@@ -857,6 +858,59 @@ func TestAppendAnthropicAssistantMessage_ThinkingPlusToolUse(t *testing.T) {
 	assert.Equal(t, "calculator", assistantMsg.ToolCalls[0].Function.Name)
 }
 
+func TestAppendAnthropicAssistantMessage_ToolUse_EmitsGeminiThoughtSignatureSentinelWhenRequired(t *testing.T) {
+	// Gemini requires a "thought_signature" on every function-call part for multi-turn tool
+	// use, or the follow-up turn 400s with "Function call is missing a thought_signature in
+	// functionCall parts". Anthropic's tool_use schema has no such field for the client to
+	// provide, and Google documents a sentinel value for exactly this case:
+	// "skip_thought_signature_validator" (verified live against Vertex — a tool_calls entry
+	// carrying this sentinel round-trips successfully). The translator only emits it when the
+	// backend explicitly opts in via requiredFields: ["thought_signature"].
+	msg := anthropic.MessageParam{
+		Role: anthropic.MessageRoleAssistant,
+		Content: anthropic.MessageContent{
+			Array: []anthropic.ContentBlockParam{
+				{ToolUse: &anthropic.ToolUseBlockParam{Type: "tool_use", ID: "call_001", Name: "bash", Input: map[string]any{"command": "ls -la"}}},
+			},
+		},
+	}
+	msgs := appendAnthropicAssistantMessage(nil, msg, []string{"thought_signature"})
+	require.Len(t, msgs, 1)
+	require.NotNil(t, msgs[0].OfAssistant)
+
+	assistantMsg := msgs[0].OfAssistant
+	require.Len(t, assistantMsg.ToolCalls, 1)
+	toolCall := assistantMsg.ToolCalls[0]
+
+	require.NotNil(t, toolCall.ExtraContent, "expected extra_content carrying the Gemini thought_signature sentinel")
+	var extra struct {
+		Google struct {
+			ThoughtSignature string `json:"thought_signature"`
+		} `json:"google"`
+	}
+	require.NoError(t, json.Unmarshal(toolCall.ExtraContent, &extra))
+	assert.Equal(t, "skip_thought_signature_validator", extra.Google.ThoughtSignature)
+}
+
+func TestAppendAnthropicAssistantMessage_ToolUse_OmitsSentinelByDefault(t *testing.T) {
+	// Default (no requiredFields opt-in) must inject nothing, matching upstream's behavior
+	// exactly — upstream ai-gateway never emitted this sentinel.
+	msg := anthropic.MessageParam{
+		Role: anthropic.MessageRoleAssistant,
+		Content: anthropic.MessageContent{
+			Array: []anthropic.ContentBlockParam{
+				{ToolUse: &anthropic.ToolUseBlockParam{Type: "tool_use", ID: "call_001", Name: "bash", Input: map[string]any{"command": "ls -la"}}},
+			},
+		},
+	}
+	msgs := appendAnthropicAssistantMessage(nil, msg, nil)
+	require.Len(t, msgs, 1)
+	require.NotNil(t, msgs[0].OfAssistant)
+
+	toolCall := msgs[0].OfAssistant.ToolCalls[0]
+	assert.Nil(t, toolCall.ExtraContent, "sentinel must be omitted unless the backend opts in via requiredFields")
+}
+
 func TestAppendAnthropicAssistantMessage_MultipleThinkingBlocks(t *testing.T) {
 	// multiple thinking blocks → all preserved in order
 	msg := anthropic.MessageParam{
@@ -869,7 +923,7 @@ func TestAppendAnthropicAssistantMessage_MultipleThinkingBlocks(t *testing.T) {
 			},
 		},
 	}
-	msgs := appendAnthropicAssistantMessage(nil, msg)
+	msgs := appendAnthropicAssistantMessage(nil, msg, nil)
 	require.Len(t, msgs, 1)
 	require.NotNil(t, msgs[0].OfAssistant)
 
@@ -896,7 +950,7 @@ func TestAppendAnthropicAssistantMessage_RedactedThinking(t *testing.T) {
 			},
 		},
 	}
-	msgs := appendAnthropicAssistantMessage(nil, msg)
+	msgs := appendAnthropicAssistantMessage(nil, msg, nil)
 	require.Len(t, msgs, 1)
 	require.NotNil(t, msgs[0].OfAssistant)
 
@@ -919,7 +973,7 @@ func TestAppendAnthropicAssistantMessage_NoThinkingUnchanged(t *testing.T) {
 			},
 		},
 	}
-	msgs := appendAnthropicAssistantMessage(nil, msg)
+	msgs := appendAnthropicAssistantMessage(nil, msg, nil)
 	require.Len(t, msgs, 1)
 	require.NotNil(t, msgs[0].OfAssistant)
 
@@ -937,7 +991,7 @@ func TestBuildOpenAIChatCompletionRequest_ThinkingConfig(t *testing.T) {
 			Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Think hard"}}},
 			Thinking:  &anthropic.Thinking{Enabled: &anthropic.ThinkingEnabled{Type: "enabled", BudgetTokens: 4096}},
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
+		req := buildOpenAIChatCompletionRequest(body, "", nil)
 		require.NotNil(t, req.Thinking)
 		require.NotNil(t, req.Thinking.OfEnabled)
 		assert.Equal(t, "enabled", req.Thinking.OfEnabled.Type)
@@ -951,7 +1005,7 @@ func TestBuildOpenAIChatCompletionRequest_ThinkingConfig(t *testing.T) {
 			Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
 			Thinking:  &anthropic.Thinking{Disabled: &anthropic.ThinkingDisabled{Type: "disabled"}},
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
+		req := buildOpenAIChatCompletionRequest(body, "", nil)
 		require.NotNil(t, req.Thinking)
 		require.NotNil(t, req.Thinking.OfDisabled)
 		assert.Equal(t, "disabled", req.Thinking.OfDisabled.Type)
@@ -964,7 +1018,7 @@ func TestBuildOpenAIChatCompletionRequest_ThinkingConfig(t *testing.T) {
 			Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
 			Thinking:  &anthropic.Thinking{Adaptive: &anthropic.ThinkingAdaptive{Type: "adaptive"}},
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
+		req := buildOpenAIChatCompletionRequest(body, "", nil)
 		require.NotNil(t, req.Thinking)
 		require.NotNil(t, req.Thinking.OfAdaptive)
 		assert.Equal(t, "adaptive", req.Thinking.OfAdaptive.Type)
@@ -976,7 +1030,7 @@ func TestBuildOpenAIChatCompletionRequest_ThinkingConfig(t *testing.T) {
 			MaxTokens: 100,
 			Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
 		}
-		req := buildOpenAIChatCompletionRequest(body, "")
+		req := buildOpenAIChatCompletionRequest(body, "", nil)
 		assert.Nil(t, req.Thinking)
 	})
 }
@@ -990,12 +1044,37 @@ func TestBuildOpenAIChatCompletionRequest_ThinkingSuppressedByUnsupportedFields(
 	}
 
 	// Without "thinking" in unsupportedFields, it's forwarded (existing behavior, unchanged).
-	req := buildOpenAIChatCompletionRequest(body, "")
+	req := buildOpenAIChatCompletionRequest(body, "", nil)
 	require.NotNil(t, req.Thinking)
 
 	// With "thinking" in unsupportedFields, it must be omitted.
-	req = buildOpenAIChatCompletionRequest(body, "", "thinking")
+	req = buildOpenAIChatCompletionRequest(body, "", nil, "thinking")
 	assert.Nil(t, req.Thinking)
+}
+
+func TestBuildOpenAIChatCompletionRequest_ThoughtSignatureGatedByRequiredFields(t *testing.T) {
+	body := &anthropic.MessagesRequest{
+		Model:     "claude-3",
+		MaxTokens: 100,
+		Messages: []anthropic.MessageParam{{
+			Role: anthropic.MessageRoleAssistant,
+			Content: anthropic.MessageContent{
+				Array: []anthropic.ContentBlockParam{
+					{ToolUse: &anthropic.ToolUseBlockParam{Type: "tool_use", ID: "call_001", Name: "bash", Input: map[string]any{"command": "ls"}}},
+				},
+			},
+		}},
+	}
+
+	// Default (no requiredFields) must omit the sentinel, matching upstream's behavior exactly.
+	req := buildOpenAIChatCompletionRequest(body, "", nil)
+	require.Len(t, req.Messages, 1)
+	require.NotNil(t, req.Messages[0].OfAssistant)
+	assert.Nil(t, req.Messages[0].OfAssistant.ToolCalls[0].ExtraContent)
+
+	// With "thought_signature" in requiredFields, it must be injected.
+	req = buildOpenAIChatCompletionRequest(body, "", []string{"thought_signature"})
+	require.NotNil(t, req.Messages[0].OfAssistant.ToolCalls[0].ExtraContent)
 }
 
 func TestAppendAnthropicUserMessage_Base64Image(t *testing.T) {
