@@ -49,6 +49,21 @@ type VersionedAPISchema struct {
 	// See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details.
 	// +optional
 	Prefix *string `json:"prefix,omitempty"`
+
+	// UnsupportedFields lists Anthropic-only request field names that this backend's upstream
+	// does not accept and that the gateway should omit when translating to the OpenAI schema.
+	//
+	// The Anthropic Messages API has fields with no equivalent in the OpenAI chat completions
+	// API. Some OpenAI-compatible backends (e.g. vLLM) accept them anyway via passthrough
+	// extensions; others (e.g. the real OpenAI API) reject unrecognized fields outright. This
+	// field is ignored for schemas other than OpenAI.
+	//
+	// Currently recognized values: "thinking" (Anthropic's extended-thinking/adaptive-reasoning
+	// config, mapped to a "thinking" field in the translated request — not part of the OpenAI
+	// chat completions spec, and rejected by strict implementations).
+	//
+	// +optional
+	UnsupportedFields []string `json:"unsupportedFields,omitempty"`
 }
 
 // APISchema defines the API schema.
