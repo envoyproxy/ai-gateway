@@ -1703,6 +1703,29 @@ func (e *ErrorType) UnmarshalJSON(data []byte) error {
 	return fmt.Errorf("error.code must be string or number")
 }
 
+// UnmarshalJSON allows OpenAI-compatible backends to wrap the error body in a top-level
+// JSON array instead of a bare object (e.g. GCP Vertex AI's OpenAI-compat endpoint returns
+// `[{"error": {...}}]` rather than the standard `{"error": {...}}`). Tries the standard
+// object shape first; falls back to unwrapping a one-element array on failure.
+func (e *Error) UnmarshalJSON(data []byte) error {
+	type errorAlias Error
+	var obj errorAlias
+	if err := json.Unmarshal(data, &obj); err == nil {
+		*e = Error(obj)
+		return nil
+	}
+
+	var arr []errorAlias
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return fmt.Errorf("error body is neither an object nor an array of objects: %w", err)
+	}
+	if len(arr) == 0 {
+		return fmt.Errorf("error body is an empty array")
+	}
+	*e = Error(arr[0])
+	return nil
+}
+
 // ModelList is described in the OpenAI API documentation
 // https://platform.openai.com/docs/api-reference/models/list
 type ModelList struct {

@@ -455,6 +455,18 @@ func TestAnthropicToOpenAITranslator_ResponseError(t *testing.T) {
 			wantErrMsg:  "Bad request",
 		},
 		{
+			// GCP Vertex AI's OpenAI-compat endpoint wraps its error body in a top-level JSON
+			// array instead of the standard object shape, e.g. when a model id is unavailable
+			// or a request field is rejected. Before this fix, this failed to unmarshal into
+			// openai.Error entirely, and the translator returned an opaque 500 with no body
+			// instead of relaying the real error.
+			name:        "array-wrapped JSON error from Vertex OpenAI-compat backend",
+			headers:     map[string]string{contentTypeHeaderName: "application/json"},
+			body:        `[{"error":{"code":404,"message":"Publisher model was not found or your project does not have access to it.","status":"NOT_FOUND"}}]`,
+			wantErrType: "",
+			wantErrMsg:  "Publisher model was not found or your project does not have access to it.",
+		},
+		{
 			name:        "non-JSON 400 error",
 			headers:     map[string]string{statusHeaderName: "400", contentTypeHeaderName: "text/plain"},
 			body:        "Bad request body",
