@@ -137,6 +137,9 @@ type VersionedAPISchema struct {
 	Version string `json:"version,omitempty"`
 	// Prefix is the prefix of the API schema. Optional. Used for OpenAI and Anthropic schemas.
 	Prefix string `json:"prefix,omitempty"`
+	// UnsupportedFields lists Anthropic-only request field names to omit when translating to
+	// the OpenAI schema. Optional. Used for OpenAI schema only.
+	UnsupportedFields []string `json:"unsupportedFields,omitempty"`
 }
 
 // OpenAIPrefix returns the OpenAI API prefix for the VersionedAPISchema.
@@ -150,6 +153,12 @@ func (v VersionedAPISchema) AnthropicPrefix() string {
 		return "v1"
 	}
 	return v.Prefix
+}
+
+// OpenAIUnsupportedFields returns the Anthropic-only field names to omit for this
+// VersionedAPISchema, or nil if none are configured.
+func (v VersionedAPISchema) OpenAIUnsupportedFields() []string {
+	return v.UnsupportedFields
 }
 
 // APISchemaName corresponds to APISchemaName in api/v1alpha1/api.go.

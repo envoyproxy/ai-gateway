@@ -2023,6 +2023,12 @@ func Test_schemaToFilterAPI(t *testing.T) {
 			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1/foo"},
 		},
 		{
+			in: aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaOpenAI, UnsupportedFields: []string{"thinking"}},
+			expected: filterapi.VersionedAPISchema{
+				Name: filterapi.APISchemaOpenAI, Prefix: "v1", UnsupportedFields: []string{"thinking"},
+			},
+		},
+		{
 			in:       aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaAWSBedrock},
 			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
 		},

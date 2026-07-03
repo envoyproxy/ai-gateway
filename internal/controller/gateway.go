@@ -172,6 +172,7 @@ func schemaToFilterAPI(schema aigv1b1.VersionedAPISchema) filterapi.VersionedAPI
 	} else {
 		ret.Version = ptr.Deref(schema.Version, "")
 	}
+	ret.UnsupportedFields = schema.UnsupportedFields
 	return ret
 }
 
