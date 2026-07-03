@@ -3009,6 +3009,30 @@ func TestResponseToolUnionMarshalJSON(t *testing.T) {
 			expRes: `{"type": "apply_patch"}`,
 		},
 		{
+			name: "marshal namespace",
+			input: ResponseToolUnion{
+				OfNamespace: &ToolNamespaceParam{
+					Type:        "namespace",
+					Name:        "my_namespace",
+					Description: "A group of tools",
+					Tools:       json.RawMessage(`[{"type":"function","name":"tool1","parameters":{"type":"object","properties":{}}}]`),
+				},
+			},
+			expRes: `{"type": "namespace", "name": "my_namespace", "description": "A group of tools", "tools": [{"type":"function","name":"tool1","parameters":{"type":"object","properties":{}}}]}`,
+		},
+		{
+			name: "marshal tool_search",
+			input: ResponseToolUnion{
+				OfToolSearch: &ToolSearchParam{
+					Type:        "tool_search",
+					Execution:   "remote",
+					Description: "discover tools",
+					Parameters:  json.RawMessage(`{"type":"object"}`),
+				},
+			},
+			expRes: `{"type": "tool_search", "execution": "remote", "description": "discover tools", "parameters": {"type":"object"}}`,
+		},
+		{
 			name:   "marshal no field set",
 			input:  ResponseToolUnion{},
 			expErr: "no tool to marshal",
@@ -3237,6 +3261,30 @@ func TestResponseToolUnionUnmarshalJSON(t *testing.T) {
 			expRes: ResponseToolUnion{
 				OfApplyPatch: &ApplyPatchToolParam{
 					Type: "apply_patch",
+				},
+			},
+		},
+		{
+			name:  "unmarshal namespace",
+			input: []byte(`{"type":"namespace","name":"my_namespace","description":"A group of tools","tools":[{"type":"function","name":"tool1","parameters":{"type":"object","properties":{}}}]}`),
+			expRes: ResponseToolUnion{
+				OfNamespace: &ToolNamespaceParam{
+					Type:        "namespace",
+					Name:        "my_namespace",
+					Description: "A group of tools",
+					Tools:       json.RawMessage(`[{"type":"function","name":"tool1","parameters":{"type":"object","properties":{}}}]`),
+				},
+			},
+		},
+		{
+			name:  "unmarshal tool_search",
+			input: []byte(`{"type":"tool_search","execution":"remote","description":"discover tools","parameters":{"type":"object"}}`),
+			expRes: ResponseToolUnion{
+				OfToolSearch: &ToolSearchParam{
+					Type:        "tool_search",
+					Execution:   "remote",
+					Description: "discover tools",
+					Parameters:  json.RawMessage(`{"type":"object"}`),
 				},
 			},
 		},
