@@ -12,6 +12,7 @@
 package filterapi
 
 import (
+	"log/slog"
 	"os"
 	"time"
 
@@ -41,6 +42,14 @@ type Config struct {
 	Backends []Backend `json:"backends,omitempty"`
 	// Models is the list of models that this route is aware of. Used to populate the "/models" endpoint in OpenAI-compatible APIs.
 	Models []Model `json:"models,omitempty"`
+	// ModelsByHost is the list of models keyed by hostname. When present, the extproc "/v1/models" processor will prefer
+	// the hostname-specific list over the global Models slice. Each per-host list also includes UnscopedModels so that
+	// routes without hostname scoping remain visible alongside the host-specific routes.
+	ModelsByHost map[string][]Model `json:"modelsByHost,omitempty"`
+	// UnscopedModels is the list of models contributed by routes that did NOT declare hostnames. When ModelsByHost is
+	// configured, requests to a host that doesn't match any entry fall back to this list (rather than to Models, which
+	// would leak host-scoped models to unknown hosts).
+	UnscopedModels []Model `json:"unscopedModels,omitempty"`
 	// MCPConfig is the configuration for the MCPRoute implementations.
 	MCPConfig *MCPConfig `json:"mcpConfig,omitempty"`
 }
@@ -87,6 +96,17 @@ type LLMRequestCost struct {
 	// CEL is the CEL expression to calculate the cost of the request.
 	// This is not empty when the Type is LLMRequestCostTypeCEL.
 	CEL string `json:"cel,omitempty"`
+	// Backend is an optional filter set exclusively by the QuotaPolicy controller.
+	// It is NOT exposed in any user-facing CRD. When non-empty, this cost entry is
+	// only evaluated when the serving backend's short name (namespace/name) matches.
+	// This allows different QuotaPolicies targeting different backends to use different
+	// cost expressions while sharing the same metadata key.
+	Backend string `json:"backend,omitempty"`
+	// Model is an optional filter set exclusively by the QuotaPolicy controller.
+	// It is NOT exposed in any user-facing CRD. When non-empty, this cost entry is
+	// only evaluated when the request's model name matches. This allows a single
+	// metadata key to be shared across models without conflicting overwrites.
+	Model string `json:"model,omitempty"`
 }
 
 // LLMRequestCostType specifies the kind of the request cost calculation.
@@ -115,12 +135,20 @@ type VersionedAPISchema struct {
 	Name APISchemaName `json:"name"`
 	// Version is the version of the API schema. Optional.
 	Version string `json:"version,omitempty"`
-	// Prefix is the prefix of the API schema. Optional. Currently, only used for OpenAI.
+	// Prefix is the prefix of the API schema. Optional. Used for OpenAI and Anthropic schemas.
 	Prefix string `json:"prefix,omitempty"`
 }
 
 // OpenAIPrefix returns the OpenAI API prefix for the VersionedAPISchema.
 func (v VersionedAPISchema) OpenAIPrefix() string {
+	return v.Prefix
+}
+
+// AnthropicPrefix returns the Anthropic API prefix for the VersionedAPISchema.
+func (v VersionedAPISchema) AnthropicPrefix() string {
+	if v.Prefix == "" {
+		return "v1"
+	}
 	return v.Prefix
 }
 
@@ -195,10 +223,23 @@ type AWSAuth struct {
 	Region                string `json:"region"`
 }
 
+// LogValue implements slog.LogValuer for AWSAuth to redact sensitive information.
+func (a AWSAuth) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("credentialFileLiteral", "[REDACTED]"),
+		slog.String("region", a.Region),
+	)
+}
+
 // APIKeyAuth defines the file that will be mounted to the external proc.
 type APIKeyAuth struct {
 	// Key is the API key as a literal string.
 	Key string `json:"key"`
+}
+
+// LogValue implements slog.LogValuer for APIKeyAuth to redact sensitive information.
+func (a APIKeyAuth) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("key", "[REDACTED]"))
 }
 
 // AzureAPIKeyAuth defines the Azure OpenAI API key.
@@ -207,16 +248,31 @@ type AzureAPIKeyAuth struct {
 	Key string `json:"key"`
 }
 
+// LogValue implements slog.LogValuer for AzureAPIKeyAuth to redact sensitive information.
+func (a AzureAPIKeyAuth) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("key", "[REDACTED]"))
+}
+
 // AnthropicAPIKeyAuth defines the Anthropic API key.
 type AnthropicAPIKeyAuth struct {
 	// Key is the Anthropic API key as a literal string.
 	Key string `json:"key"`
 }
 
+// LogValue implements slog.LogValuer for AnthropicAPIKeyAuth to redact sensitive information.
+func (a AnthropicAPIKeyAuth) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("key", "[REDACTED]"))
+}
+
 // AzureAuth defines the file containing azure access token that will be mounted to the external proc.
 type AzureAuth struct {
 	// AccessToken is the access token as a literal string.
 	AccessToken string `json:"accessToken"`
+}
+
+// LogValue implements slog.LogValuer for AzureAuth to redact sensitive information.
+func (a AzureAuth) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("accessToken", "[REDACTED]"))
 }
 
 // GCPAuth defines the GCP authentication configuration used to access Google Cloud AI services.
@@ -233,6 +289,15 @@ type GCPAuth struct {
 	// This is used in URL path templates when making requests to GCP Vertex AI endpoints.
 	// This should be the project where Vertex AI APIs are enabled.
 	ProjectName string `json:"projectName"`
+}
+
+// LogValue implements slog.LogValuer for GCPAuth to redact sensitive information.
+func (g GCPAuth) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("accessToken", "[REDACTED]"),
+		slog.String("region", g.Region),
+		slog.String("projectName", g.ProjectName),
+	)
 }
 
 // HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
@@ -253,6 +318,14 @@ type HTTPHeader struct {
 	Name string `json:"name"`
 	// Value is the value of HTTP Header to be matched.
 	Value string `json:"value"`
+}
+
+// LogValue implements slog.LogValuer for HTTPHeader to redact sensitive information.
+func (h HTTPHeader) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("name", h.Name),
+		slog.String("value", "[REDACTED]"),
+	)
 }
 
 // HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request

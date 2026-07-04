@@ -76,6 +76,12 @@ type ChatCompletionContentPartTextType string
 // ChatCompletionContentPartImageType The type of the content part.
 type ChatCompletionContentPartImageType string
 
+// ChatCompletionContentPartAudioType The type of the content part.
+type ChatCompletionContentPartAudioType string
+
+// ChatCompletionContentPartVideoType The type of the content part.
+type ChatCompletionContentPartVideoType string
+
 // ChatCompletionContentPartFileType The type of the content part.
 type ChatCompletionContentPartFileType string
 
@@ -84,6 +90,8 @@ const (
 	ChatCompletionContentPartRefusalTypeRefusal       ChatCompletionContentPartRefusalType    = "refusal"
 	ChatCompletionContentPartInputAudioTypeInputAudio ChatCompletionContentPartInputAudioType = "input_audio"
 	ChatCompletionContentPartImageTypeImageURL        ChatCompletionContentPartImageType      = "image_url"
+	ChatCompletionContentPartAudioTypeAudioURL        ChatCompletionContentPartAudioType      = "audio_url"
+	ChatCompletionContentPartVideoTypeVideoURL        ChatCompletionContentPartVideoType      = "video_url"
 	ChatCompletionContentPartFileTypeFile             ChatCompletionContentPartFileType       = "file"
 )
 
@@ -153,6 +161,34 @@ type ChatCompletionContentPartImageParam struct {
 	*AnthropicContentFields `json:",inline,omitempty"`
 }
 
+type ChatCompletionContentPartAudioAudioURLParam struct {
+	// Either a URL of the audio or the base64 encoded audio data.
+	URL string `json:"url"`
+}
+
+// ChatCompletionContentPartAudioParam Learn more in the
+// [Multimodal Inputs - vLLM](https://docs.vllm.ai/en/latest/features/multimodal_inputs/#audio-inputs_1).
+type ChatCompletionContentPartAudioParam struct {
+	AudioURL ChatCompletionContentPartAudioAudioURLParam `json:"audio_url"`
+	// The type of the content part.
+	Type                    ChatCompletionContentPartAudioType `json:"type"`
+	*AnthropicContentFields `json:",inline,omitempty"`
+}
+
+type ChatCompletionContentPartVideoVideoURLParam struct {
+	// Either a URL of the video or the base64 encoded video data.
+	URL string `json:"url"`
+}
+
+// ChatCompletionContentPartVideoParam Learn more in the
+// [Multimodal Inputs - vLLM](https://docs.vllm.ai/en/latest/features/multimodal_inputs/#video-inputs_1).
+type ChatCompletionContentPartVideoParam struct {
+	VideoURL ChatCompletionContentPartVideoVideoURLParam `json:"video_url"`
+	// The type of the content part.
+	Type                    ChatCompletionContentPartVideoType `json:"type"`
+	*AnthropicContentFields `json:",inline,omitempty"`
+}
+
 type ChatCompletionContentPartFileFileParam struct {
 	// The base64 encoded file data, used when passing the file to the model as a
 	// string.
@@ -179,6 +215,8 @@ type ChatCompletionContentPartUserUnionParam struct {
 	OfText       *ChatCompletionContentPartTextParam       `json:",omitzero,inline"`
 	OfInputAudio *ChatCompletionContentPartInputAudioParam `json:",omitzero,inline"`
 	OfImageURL   *ChatCompletionContentPartImageParam      `json:",omitzero,inline"`
+	OfAudioURL   *ChatCompletionContentPartAudioParam      `json:",omitzero,inline"`
+	OfVideoURL   *ChatCompletionContentPartVideoParam      `json:",omitzero,inline"`
 	OfFile       *ChatCompletionContentPartFileParam       `json:",omitzero,inline"`
 }
 
@@ -210,6 +248,18 @@ func (c *ChatCompletionContentPartUserUnionParam) UnmarshalJSON(data []byte) err
 			return err
 		}
 		c.OfImageURL = &imageContent
+	case string(ChatCompletionContentPartAudioTypeAudioURL):
+		var audioContent ChatCompletionContentPartAudioParam
+		if err := json.Unmarshal(data, &audioContent); err != nil {
+			return err
+		}
+		c.OfAudioURL = &audioContent
+	case string(ChatCompletionContentPartVideoTypeVideoURL):
+		var videoContent ChatCompletionContentPartVideoParam
+		if err := json.Unmarshal(data, &videoContent); err != nil {
+			return err
+		}
+		c.OfVideoURL = &videoContent
 	case string(ChatCompletionContentPartFileTypeFile):
 		var fileContent ChatCompletionContentPartFileParam
 		if err := json.Unmarshal(data, &fileContent); err != nil {
@@ -232,6 +282,12 @@ func (c ChatCompletionContentPartUserUnionParam) MarshalJSON() ([]byte, error) {
 	}
 	if c.OfImageURL != nil {
 		return json.Marshal(c.OfImageURL)
+	}
+	if c.OfAudioURL != nil {
+		return json.Marshal(c.OfAudioURL)
+	}
+	if c.OfVideoURL != nil {
+		return json.Marshal(c.OfVideoURL)
 	}
 	return nil, errors.New("no content to marshal")
 }
@@ -882,6 +938,9 @@ type ThinkingEnabled struct {
 
 	// Optional. Indicates the thinking budget in tokens.
 	IncludeThoughts bool `json:"includeThoughts,omitempty"`
+
+	// Optional. Controls how thinking content appears in the response ("summarized" or "omitted").
+	Display string `json:"display,omitempty"`
 }
 
 type ThinkingDisabled struct {
@@ -890,6 +949,9 @@ type ThinkingDisabled struct {
 
 type ThinkingAdaptive struct {
 	Type string `json:"type,"`
+
+	// Optional. Controls how thinking content appears in the response ("summarized" or "omitted").
+	Display string `json:"display,omitempty"`
 }
 
 // MarshalJSON implements the json.Marshaler interface for ThinkingUnion.
@@ -943,6 +1005,19 @@ func (t *ThinkingUnion) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
+
+// ReasoningEffort is an alias for the OpenAI SDK's ReasoningEffort type.
+type ReasoningEffort = openai.ReasoningEffort
+
+// ReasoningEffort constants for the reasoning_effort field.
+const (
+	ReasoningEffortNone   ReasoningEffort = "none"
+	ReasoningEffortLow    ReasoningEffort = "low"
+	ReasoningEffortMedium ReasoningEffort = "medium"
+	ReasoningEffortHigh   ReasoningEffort = "high"
+	ReasoningEffortXhigh  ReasoningEffort = "xhigh"
+	ReasoningEffortMax    ReasoningEffort = "max"
+)
 
 type ChatCompletionRequest struct {
 	// Messages: A list of messages comprising the conversation so far.
@@ -1021,12 +1096,13 @@ type ChatCompletionRequest struct {
 
 	// Constrains effort on reasoning for
 	// [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently
-	// supported values are `minimal`, `low`, `medium`, and `high`. Reducing reasoning
+	// supported values are `none`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning
 	// effort can result in faster responses and fewer tokens used on reasoning in a
 	// response.
+	// Note: `max` is an Anthropic-specific extension not defined in the OpenAI SDK.
 	//
-	// Any of "minimal", "low", "medium", "high".
-	ReasoningEffort openai.ReasoningEffort `json:"reasoning_effort,omitzero"`
+	// Any of "none", "low", "medium", "high", "xhigh", "max".
+	ReasoningEffort ReasoningEffort `json:"reasoning_effort,omitzero"`
 
 	// ServiceTier:string or null
 	// Specifies the processing type used for serving the request.
@@ -1586,6 +1662,47 @@ type ErrorType struct {
 	EventID *string `json:"event_id,omitempty"`
 }
 
+// UnmarshalJSON allows OpenAI-compatible backends to provide `error.code` as either a JSON string or number.
+func (e *ErrorType) UnmarshalJSON(data []byte) error {
+	type errorTypeAlias ErrorType
+	aux := struct {
+		errorTypeAlias
+		Code json.RawMessage `json:"code,omitempty"`
+	}{}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	*e = ErrorType(aux.errorTypeAlias)
+	if len(aux.Code) == 0 || string(aux.Code) == "null" {
+		e.Code = nil
+		return nil
+	}
+
+	var code string
+	if err := json.Unmarshal(aux.Code, &code); err == nil {
+		e.Code = &code
+		return nil
+	}
+
+	var codeInt int64
+	if err := json.Unmarshal(aux.Code, &codeInt); err == nil {
+		code = strconv.FormatInt(codeInt, 10)
+		e.Code = &code
+		return nil
+	}
+
+	var codeFloat float64
+	if err := json.Unmarshal(aux.Code, &codeFloat); err == nil {
+		code = strconv.FormatFloat(codeFloat, 'f', -1, 64)
+		e.Code = &code
+		return nil
+	}
+
+	return fmt.Errorf("error.code must be string or number")
+}
+
 // ModelList is described in the OpenAI API documentation
 // https://platform.openai.com/docs/api-reference/models/list
 type ModelList struct {
@@ -1608,15 +1725,8 @@ type Model struct {
 	OwnedBy string `json:"owned_by"`
 }
 
-// EmbeddingRequest represents a request structure for embeddings API.
-type EmbeddingRequest struct {
-	// Input: Input text to embed, encoded as a string or array of tokens.
-	// To embed multiple inputs in a single request, pass an array of strings or array of token arrays.
-	// The input must not exceed the max input tokens for the model (8192 tokens for text-embedding-ada-002),
-	// cannot be an empty string, and any array must be 2048 dimensions or less.
-	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-input
-	Input EmbeddingRequestInput `json:"input"`
-
+// EmbeddingBaseRequest holds fields shared by both embedding request variants.
+type EmbeddingBaseRequest struct {
 	// Model: ID of the model to use.
 	// Docs: https://platform.openai.com/docs/api-reference/embeddings/create#embeddings-create-model
 	Model string `json:"model"`
@@ -1638,6 +1748,76 @@ type EmbeddingRequest struct {
 	*GCPVertexAIEmbeddingVendorFields `json:",inline,omitempty"`
 }
 
+// EmbeddingCompletionRequest is the text-only embedding request (classic OpenAI style).
+// https://developers.openai.com/api/reference/resources/embeddings/methods/create
+type EmbeddingCompletionRequest struct {
+	EmbeddingBaseRequest
+	// Input: Input text to embed, encoded as a string or array of tokens.
+	// To embed multiple inputs in a single request, pass an array of strings or array of token arrays.
+	// The input must not exceed the max input tokens for the model (8192 tokens for text-embedding-ada-002),
+	// cannot be an empty string, and any array must be 2048 dimensions or less.
+	Input EmbeddingRequestInput `json:"input"`
+}
+
+// EmbeddingChatRequest is the chat-style embedding request (supports multimodal).
+// Following vLLM convention: https://github.com/vllm-project/vllm/blob/2a16ece2d342c0c154a4949ad317b521f8c04ec4/vllm/entrypoints/pooling/embed/protocol.py#L83
+type EmbeddingChatRequest struct {
+	EmbeddingBaseRequest
+	// Messages: Chat messages for multimodal embedding.
+	// Uses the same chat message format as /v1/chat/completions.
+	// Only user messages are processed; system/assistant/tool messages are ignored.
+	Messages []ChatCompletionMessageParamUnion `json:"messages"`
+}
+
+// EmbeddingRequest is a discriminated union: exactly one of OfCompletion or OfChat is set.
+// Discrimination is by presence of "input" (→ completion) vs "messages" (→ chat) in JSON.
+type EmbeddingRequest struct {
+	EmbeddingBaseRequest                             // promoted shared fields
+	OfCompletion         *EmbeddingCompletionRequest // set when JSON has "input"
+	OfChat               *EmbeddingChatRequest       // set when JSON has "messages"
+}
+
+// UnmarshalJSON discriminates between completion and chat embedding requests.
+func (r *EmbeddingRequest) UnmarshalJSON(data []byte) error {
+	hasInput := gjson.GetBytes(data, "input").Exists()
+	hasMessages := gjson.GetBytes(data, "messages").Exists()
+
+	if hasInput && hasMessages {
+		return fmt.Errorf("embedding request must have either 'input' or 'messages', not both")
+	}
+
+	if hasMessages {
+		var chat EmbeddingChatRequest
+		if err := json.Unmarshal(data, &chat); err != nil {
+			return err
+		}
+		r.EmbeddingBaseRequest = chat.EmbeddingBaseRequest
+		r.OfChat = &chat
+		return nil
+	}
+
+	// Default to completion (input-based) — this handles both explicit "input" and legacy cases.
+	var comp EmbeddingCompletionRequest
+	if err := json.Unmarshal(data, &comp); err != nil {
+		return err
+	}
+	r.EmbeddingBaseRequest = comp.EmbeddingBaseRequest
+	r.OfCompletion = &comp
+	return nil
+}
+
+// MarshalJSON delegates to the active variant.
+func (r EmbeddingRequest) MarshalJSON() ([]byte, error) {
+	if r.OfChat != nil {
+		return json.Marshal(r.OfChat)
+	}
+	if r.OfCompletion != nil {
+		return json.Marshal(r.OfCompletion)
+	}
+	// Fallback: marshal just the base fields.
+	return json.Marshal(r.EmbeddingBaseRequest)
+}
+
 type EmbeddingTaskType string
 
 const (
@@ -1651,16 +1831,20 @@ const (
 	EmbeddingTaskTypeCodeRetrievalQuery EmbeddingTaskType = "CODE_RETRIEVAL_QUERY"
 )
 
-// GCPVertexAIEmbeddingVendorFields contains GCP Vertex AI (Gemini) vendor-specific fields for embeddings.
+// GCPVertexAIEmbeddingVendorFields contains GCP Vertex AI vendor-specific fields for embeddings.
+// The translator maps these to the appropriate wire format per endpoint:
+//   - predict: parameters.auto_truncate, instances[].task_type, instances[].title
+//   - embedContent: embedContentConfig.autoTruncate, embedContentConfig.taskType, embedContentConfig.title
 type GCPVertexAIEmbeddingVendorFields struct {
-	// When set to true, input text will be truncated. When set to false, an error is returned if the input text is longer than the maximum length supported by the model. Defaults to true.
-	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings-api#parameter-list
+	// Auto-truncate input text if it exceeds the model's max length. Defaults to true.
+	AutoTruncate *bool `json:"auto_truncate,omitempty"`
 
-	AutoTruncate bool `json:"auto_truncate,omitempty"`
-
-	// This is global task_type set, which is convenient for users. If left blank, the default used is RETRIEVAL_QUERY.
-	// For more information about task types, see https://docs.cloud.google.com/vertex-ai/generative-ai/docs/embeddings/task-types
+	// Global task type for the request. Defaults to RETRIEVAL_QUERY if unset.
+	// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/embeddings/task-types
 	TaskType EmbeddingTaskType `json:"task_type,omitempty"`
+
+	// Title for the embedding content. Helps the model produce better embeddings.
+	Title string `json:"title,omitempty"`
 }
 
 // EmbeddingResponse represents a response from /v1/embeddings.
@@ -3691,7 +3875,16 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 	// Handle messages without explicit type field (for compatibility with simple message arrays)
 	// This allows arrays like [{"role": "user", "content": "Hello"}] to work without requiring type field
 	if typ.String() == "" {
-		if gjson.GetBytes(data, "role").Exists() && gjson.GetBytes(data, "content").Exists() {
+		role := gjson.GetBytes(data, "role")
+		if role.Exists() && gjson.GetBytes(data, "content").Exists() {
+			if role.String() == "assistant" {
+				// Assistant history may be sent as output_message content without type: "message".
+				var om ResponseOutputMessage
+				if err := json.Unmarshal(data, &om); err == nil {
+					r.OfOutputMessage = &om
+					return nil
+				}
+			}
 			// Treat as EasyInputMessageParam
 			var msg EasyInputMessageParam
 			if err := json.Unmarshal(data, &msg); err != nil {
@@ -8403,3 +8596,85 @@ const (
 	SpeechModelGPT4oMiniTTS         = "gpt-4o-mini-tts"
 	SpeechModelGPT4oMiniTTS20251215 = "gpt-4o-mini-tts-2025-12-15"
 )
+
+// TranscriptionRequest represents parsed form fields from a /v1/audio/transcriptions multipart request.
+// The actual audio file bytes are not stored here; they remain in the raw body for passthrough.
+type TranscriptionRequest struct {
+	Model                  string   `json:"model"`
+	Language               string   `json:"language,omitempty"`
+	Prompt                 string   `json:"prompt,omitempty"`
+	ResponseFormat         string   `json:"response_format,omitempty"`
+	Temperature            *float64 `json:"temperature,omitempty"`
+	TimestampGranularities []string `json:"timestamp_granularities,omitempty"`
+	Stream                 bool     `json:"stream,omitempty"`
+	FileName               string   `json:"file_name,omitempty"`
+	FileSize               int64    `json:"file_size,omitempty"`
+}
+
+// TranslationRequest represents parsed form fields from a /v1/audio/translations multipart request.
+type TranslationRequest struct {
+	Model          string   `json:"model"`
+	Prompt         string   `json:"prompt,omitempty"`
+	ResponseFormat string   `json:"response_format,omitempty"`
+	Temperature    *float64 `json:"temperature,omitempty"`
+	FileName       string   `json:"file_name,omitempty"`
+	FileSize       int64    `json:"file_size,omitempty"`
+}
+
+// TranscriptionResponse represents the JSON response from /v1/audio/transcriptions.
+type TranscriptionResponse struct {
+	Text     string                 `json:"text"`
+	Task     string                 `json:"task,omitempty"`
+	Language string                 `json:"language,omitempty"`
+	Duration float64                `json:"duration,omitempty"`
+	Segments []TranscriptionSegment `json:"segments,omitempty"`
+	Words    []TranscriptionWord    `json:"words,omitempty"`
+}
+
+// TranscriptionSegment represents a segment in verbose transcription output.
+// Field names/types match openai.TranscriptionSegment from the SDK.
+type TranscriptionSegment struct {
+	ID               int64   `json:"id"`
+	Seek             int64   `json:"seek"`
+	Start            float64 `json:"start"`
+	End              float64 `json:"end"`
+	Text             string  `json:"text"`
+	Tokens           []int64 `json:"tokens"`
+	Temperature      float64 `json:"temperature"`
+	AvgLogprob       float64 `json:"avg_logprob"`
+	CompressionRatio float64 `json:"compression_ratio"`
+	NoSpeechProb     float64 `json:"no_speech_prob"`
+}
+
+// TranscriptionWord represents a word with timestamp in transcription output.
+// Field names/types match openai.TranscriptionWord from the SDK.
+type TranscriptionWord struct {
+	Word  string  `json:"word"`
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+}
+
+// TranscriptionStreamEvent is one SSE event from /v1/audio/transcriptions when stream=true
+// (gpt-4o-transcribe and gpt-4o-mini-transcribe only; whisper-1 silently ignores the flag).
+//
+// The `Type` field discriminates:
+//   - "transcript.text.delta" — intermediate event carrying a `Delta` text chunk.
+//   - "transcript.text.done"  — terminal event carrying the full `Text`.
+type TranscriptionStreamEvent struct {
+	Type  string `json:"type"`
+	Delta string `json:"delta,omitempty"`
+	Text  string `json:"text,omitempty"`
+}
+
+// Transcription stream event type constants.
+const (
+	// TranscriptionStreamEventTypeDelta is emitted for each intermediate text chunk during streaming.
+	TranscriptionStreamEventTypeDelta = "transcript.text.delta"
+	// TranscriptionStreamEventTypeDone is the terminal event in a transcription stream.
+	TranscriptionStreamEventTypeDone = "transcript.text.done"
+)
+
+// TranslationResponse represents the JSON response from /v1/audio/translations.
+type TranslationResponse struct {
+	Text string `json:"text"`
+}

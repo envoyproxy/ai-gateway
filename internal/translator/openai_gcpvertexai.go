@@ -249,21 +249,11 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) handleStreamingResponse(
 				span.RecordResponseChunk(usageChunk)
 			}
 
-			if chunk.UsageMetadata.PromptTokenCount >= 0 {
-				tokenUsage.SetInputTokens(uint32(chunk.UsageMetadata.PromptTokenCount)) //nolint:gosec
-			}
-			if chunk.UsageMetadata.CandidatesTokenCount >= 0 {
-				tokenUsage.SetOutputTokens(uint32(chunk.UsageMetadata.CandidatesTokenCount)) //nolint:gosec
-			}
-			if chunk.UsageMetadata.TotalTokenCount >= 0 {
-				tokenUsage.SetTotalTokens(uint32(chunk.UsageMetadata.TotalTokenCount)) //nolint:gosec
-			}
-			if chunk.UsageMetadata.CachedContentTokenCount >= 0 {
-				tokenUsage.SetCachedInputTokens(uint32(chunk.UsageMetadata.CachedContentTokenCount)) //nolint:gosec
-			}
-			if chunk.UsageMetadata.ThoughtsTokenCount >= 0 {
-				tokenUsage.SetReasoningTokens(uint32(chunk.UsageMetadata.ThoughtsTokenCount)) //nolint:gosec
-			}
+			tokenUsage.SetInputTokens(uint32(usage.PromptTokens))                                //nolint:gosec
+			tokenUsage.SetOutputTokens(uint32(usage.CompletionTokens))                           //nolint:gosec
+			tokenUsage.SetTotalTokens(uint32(usage.TotalTokens))                                 //nolint:gosec
+			tokenUsage.SetCachedInputTokens(uint32(usage.PromptTokensDetails.CachedTokens))      //nolint:gosec
+			tokenUsage.SetReasoningTokens(uint32(usage.CompletionTokensDetails.ReasoningTokens)) //nolint:gosec
 		}
 	}
 
@@ -699,12 +689,12 @@ func redactGCPResponseMessage(msg *openai.ChatCompletionResponseChoiceMessage) o
 		redactedMsg.Content = &redactedContent
 	}
 
-	// Redact tool calls (may contain sensitive function arguments)
+	// Redact tool call arguments (may contain data derived from user messages).
+	// Function name is kept — it is the tool API name, not user data.
 	if len(msg.ToolCalls) > 0 {
 		redactedMsg.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, len(msg.ToolCalls))
 		for i, tc := range msg.ToolCalls {
 			redactedToolCall := tc
-			redactedToolCall.Function.Name = redaction.RedactString(tc.Function.Name)
 			redactedToolCall.Function.Arguments = redaction.RedactString(tc.Function.Arguments)
 			redactedMsg.ToolCalls[i] = redactedToolCall
 		}

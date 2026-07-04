@@ -28,6 +28,7 @@ import (
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"sigs.k8s.io/yaml"
 
+	aigv1a1 "github.com/envoyproxy/ai-gateway/api/v1alpha1"
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -48,7 +49,7 @@ const (
 // extProcImage is the image of the external processor sidecar container which will be used
 // to check if the pods of the gateway deployment need to be rolled out.
 func NewGatewayController(
-	client client.Client, kube kubernetes.Interface, logger logr.Logger,
+	client client.Client, kube kubernetes.Interface, logger logr.Logger, envoyGatewayNamespace string,
 	extProcImage string, extProcLogLevel string, standAlone bool, uuidFn func() string, extProcAsSideCar bool,
 ) *GatewayController {
 	uf := uuidFn
@@ -56,24 +57,26 @@ func NewGatewayController(
 		uf = uuid.NewString
 	}
 	return &GatewayController{
-		client:           client,
-		kube:             kube,
-		logger:           logger,
-		extProcImage:     extProcImage,
-		extProcLogLevel:  extProcLogLevel,
-		standAlone:       standAlone,
-		uuidFn:           uf,
-		extProcAsSideCar: extProcAsSideCar,
+		client:                client,
+		kube:                  kube,
+		logger:                logger,
+		envoyGatewayNamespace: envoyGatewayNamespace,
+		extProcImage:          extProcImage,
+		extProcLogLevel:       extProcLogLevel,
+		standAlone:            standAlone,
+		uuidFn:                uf,
+		extProcAsSideCar:      extProcAsSideCar,
 	}
 }
 
 // GatewayController implements reconcile.TypedReconciler for gwapiv1.Gateway.
 type GatewayController struct {
-	client          client.Client
-	kube            kubernetes.Interface
-	logger          logr.Logger
-	extProcImage    string // The image of the external processor sidecar container.
-	extProcLogLevel string // The log level for the extproc container.
+	client                client.Client
+	kube                  kubernetes.Interface
+	logger                logr.Logger
+	envoyGatewayNamespace string // The namespace where Envoy Gateway is deployed.
+	extProcImage          string // The image of the external processor sidecar container.
+	extProcLogLevel       string // The log level for the extproc container.
 	// standAlone indicates whether the controller is running in standalone mode.
 	standAlone bool
 	uuidFn     func() string // Function to generate a new UUID for the filter config.
@@ -164,7 +167,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 func schemaToFilterAPI(schema aigv1b1.VersionedAPISchema) filterapi.VersionedAPISchema {
 	ret := filterapi.VersionedAPISchema{}
 	ret.Name = filterapi.APISchemaName(schema.Name)
-	if schema.Name == aigv1b1.APISchemaOpenAI {
+	if schema.Name == aigv1b1.APISchemaOpenAI || schema.Name == aigv1b1.APISchemaAnthropic {
 		ret.Prefix = cmp.Or(ptr.Deref(schema.Prefix, ""), "v1")
 	} else {
 		ret.Version = ptr.Deref(schema.Version, "")
@@ -367,6 +370,11 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 		ec.GlobalLLMRequestCosts = append(ec.GlobalLLMRequestCosts, fc)
 	}
 
+	// Models contributed by routes with no Spec.Hostnames. We only promote these to
+	// ec.UnscopedModels (and merge them into ec.ModelsByHost) when at least one route
+	// IS hostname-scoped; otherwise the existing ec.Models list already covers them.
+	var unscopedModels []filterapi.Model
+
 	for i := range aiGatewayRoutes {
 		aiGatewayRoute := &aiGatewayRoutes[i]
 		if !aiGatewayRoute.GetDeletionTimestamp().IsZero() {
@@ -375,9 +383,11 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 		}
 		hasEffectiveRoute = true
 		routeName := fmt.Sprintf("%s/%s", aiGatewayRoute.Namespace, aiGatewayRoute.Name)
+		hostnames := aiGatewayRoute.Spec.Hostnames
 		spec := aiGatewayRoute.Spec
 		routeBackendNamesSet := map[string]struct{}{}
 		routeBackendNames := []string{}
+		injectedQuotaCosts := make(map[string]struct{})
 		for ruleIndex := range spec.Rules {
 			rule := &spec.Rules[ruleIndex]
 			for _, m := range rule.Matches {
@@ -389,11 +399,25 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					if (h.Type != nil && *h.Type != gwapiv1.HeaderMatchExact) || string(h.Name) != internalapi.ModelNameHeaderKeyDefault {
 						continue
 					}
-					ec.Models = append(ec.Models, filterapi.Model{
+					model := filterapi.Model{
 						Name:      h.Value,
 						CreatedAt: ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).UTC(),
 						OwnedBy:   ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy),
-					})
+					}
+					ec.Models = append(ec.Models, model)
+					if len(hostnames) > 0 {
+						if ec.ModelsByHost == nil {
+							ec.ModelsByHost = make(map[string][]filterapi.Model)
+						}
+						for _, hn := range hostnames {
+							ec.ModelsByHost[string(hn)] = append(ec.ModelsByHost[string(hn)], model)
+						}
+					} else {
+						// Routes without hostnames are "unscoped": they apply to every host.
+						// Tracked in unscopedModels for now; only promoted to ec.UnscopedModels
+						// after the loop if at least one scoped route is also present.
+						unscopedModels = append(unscopedModels, model)
+					}
 				}
 			}
 			for backendRefIndex := range rule.BackendRefs {
@@ -477,9 +501,25 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				key := fc.MetadataKey
 				dedup[key] = fc
 			}
+			// Inject QuotaPolicy cost expressions as LLMRequestCost entries so ext_proc
+			// computes and stores them in metadata for the HitsAddend to read.
+			c.injectQuotaPolicyCostExpressions(ctx, aiGatewayRoute, ec, injectedQuotaCosts, routeName)
+
 			for _, fc := range dedup {
 				ec.LLMRequestCosts = append(ec.LLMRequestCosts, fc)
 			}
+		}
+	}
+
+	// If at least one route is hostname-scoped, promote the unscoped models to ec.UnscopedModels
+	// so the runtime can fall back to them on unmatched hosts, and merge them into every per-host
+	// list so a host-matched request still sees the models from routes that didn't declare hostnames.
+	// When no route uses hostname scoping, ec.Models is the sole source of truth and we skip both
+	// steps to avoid serializing a redundant UnscopedModels duplicate of Models.
+	if len(ec.ModelsByHost) > 0 && len(unscopedModels) > 0 {
+		ec.UnscopedModels = unscopedModels
+		for hn := range ec.ModelsByHost {
+			ec.ModelsByHost[hn] = append(ec.ModelsByHost[hn], unscopedModels...)
 		}
 	}
 
@@ -742,6 +782,95 @@ func (c *GatewayController) getSecretData(ctx context.Context, namespace, name, 
 	}
 	return "", fmt.Errorf("secret %s does not contain key %s", name, dataKey)
 }
+
+// injectQuotaPolicyCostExpressions looks up QuotaPolicies targeting the backends
+// on this route and injects their CostExpression as LLMRequestCost entries into
+// the ext_proc config. This allows ext_proc to compute and store quota costs in
+// dynamic metadata for the rate limit filter's HitsAddend to read.
+func (c *GatewayController) injectQuotaPolicyCostExpressions(
+	ctx context.Context,
+	route *aigv1b1.AIGatewayRoute,
+	ec *filterapi.Config,
+	injectedQuotaCosts map[string]struct{},
+	routeName string,
+) {
+	var quotaPolicies aigv1a1.QuotaPolicyList
+	if err := c.client.List(ctx, &quotaPolicies, client.InNamespace(route.Namespace)); err != nil {
+		c.logger.Error(err, "failed to list QuotaPolicies for cost expression injection")
+		return
+	}
+
+	// Collect backend names and model name overrides on this route.
+	routeBackends := make(map[string]bool)
+	routeModels := make(map[string]bool)
+	for _, rule := range route.Spec.Rules {
+		for _, br := range rule.BackendRefs {
+			routeBackends[br.Name] = true
+			if br.ModelNameOverride != "" {
+				routeModels[br.ModelNameOverride] = true
+			}
+		}
+	}
+
+	for i := range quotaPolicies.Items {
+		qp := &quotaPolicies.Items[i]
+		// Check if this policy targets any backend on this route.
+		targetsRoute := false
+		for _, ref := range qp.Spec.TargetRefs {
+			if routeBackends[string(ref.Name)] {
+				targetsRoute = true
+				break
+			}
+		}
+		if !targetsRoute {
+			continue
+		}
+
+		for _, pmq := range qp.Spec.PerModelQuotas {
+			if pmq.ModelName == nil {
+				continue
+			}
+			// Skip this PerModelQuota if the model is not served by this route.
+			if len(routeModels) > 0 && !routeModels[*pmq.ModelName] {
+				continue
+			}
+			expr := "total_tokens"
+			if pmq.Quota.CostExpression != nil {
+				expr = *pmq.Quota.CostExpression
+			}
+			if _, err := llmcostcel.NewProgram(expr); err != nil {
+				c.logger.Error(err, "invalid QuotaPolicy cost expression, skipping",
+					"policy", qp.Name, "model", *pmq.ModelName, "expression", expr)
+				continue
+			}
+			// One LLMRequestCost per target backend with the Backend and Model filters.
+			// ext_proc only evaluates the entry matching the serving backend and model,
+			// storing the result under the shared metadata key.
+			for _, ref := range qp.Spec.TargetRefs {
+				backendKey := route.Namespace + "/" + string(ref.Name)
+				dedupeKey := QuotaCostMetadataKey + "\x00" + *pmq.ModelName + "\x00" + backendKey
+				if _, exists := injectedQuotaCosts[dedupeKey]; exists {
+					continue
+				}
+				ec.LLMRequestCosts = append(ec.LLMRequestCosts, filterapi.LLMRequestCost{
+					Type:        filterapi.LLMRequestCostTypeCEL,
+					MetadataKey: QuotaCostMetadataKey,
+					CEL:         expr,
+					Backend:     backendKey,
+					RouteName:   routeName,
+					Model:       *pmq.ModelName,
+				})
+				injectedQuotaCosts[dedupeKey] = struct{}{}
+			}
+		}
+	}
+}
+
+// QuotaCostMetadataKey is the dynamic metadata key used to store a
+// QuotaPolicy's computed cost. A single key suffices because only one model
+// is active per request, and ext_proc filters cost entries by Model before
+// writing to this key.
+const QuotaCostMetadataKey = "quota_cost"
 
 // backendWithMaybeBSP retrieves the AIServiceBackend and its associated BackendSecurityPolicy if it exists.
 func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, name string) (backend *aigv1b1.AIServiceBackend, bsp *aigv1b1.BackendSecurityPolicy, err error) {
@@ -1018,32 +1147,51 @@ func (c *GatewayController) getObjectsForGateway(ctx context.Context, gw *gwapiv
 	listOption := metav1.ListOptions{LabelSelector: fmt.Sprintf(
 		"%s=%s,%s=%s", egOwningGatewayNameLabel, gw.Name, egOwningGatewayNamespaceLabel, gw.Namespace,
 	)}
-	var ps *corev1.PodList
-	ps, err = c.kube.CoreV1().Pods("").List(ctx, listOption)
-	if err != nil {
-		err = fmt.Errorf("failed to list pods: %w", err)
+
+	candidateNamespaces := make([]string, 1, 2)
+	candidateNamespaces[0] = gw.Namespace
+	if c.envoyGatewayNamespace != gw.Namespace {
+		candidateNamespaces = append(candidateNamespaces, c.envoyGatewayNamespace)
+	}
+
+	var distinctNamespaces []string
+	for _, ns := range candidateNamespaces {
+		var ps *corev1.PodList
+		ps, err = c.kube.CoreV1().Pods(ns).List(ctx, listOption)
+		if err != nil {
+			err = fmt.Errorf("failed to list pods in namespace %s: %w", ns, err)
+			return
+		}
+		pods = append(pods, ps.Items...)
+
+		var ds *appsv1.DeploymentList
+		ds, err = c.kube.AppsV1().Deployments(ns).List(ctx, listOption)
+		if err != nil {
+			err = fmt.Errorf("failed to list deployments in namespace %s: %w", ns, err)
+			return
+		}
+		deployments = append(deployments, ds.Items...)
+
+		var dss *appsv1.DaemonSetList
+		dss, err = c.kube.AppsV1().DaemonSets(ns).List(ctx, listOption)
+		if err != nil {
+			err = fmt.Errorf("failed to list daemonsets in namespace %s: %w", ns, err)
+			return
+		}
+		daemonSets = append(daemonSets, dss.Items...)
+
+		if len(ps.Items) > 0 || len(ds.Items) > 0 || len(dss.Items) > 0 {
+			distinctNamespaces = append(distinctNamespaces, ns)
+		}
+	}
+
+	// All pods, deployments, and daemonsets should be in the same namespace.
+	// Otherwise, it would be a bug in the EG or the disruptive configuration change of EG.
+	if len(distinctNamespaces) > 1 {
+		err = fmt.Errorf("found gateway-labeled objects in multiple namespaces: %v", distinctNamespaces)
 		return
 	}
-	pods = ps.Items
 
-	var ds *appsv1.DeploymentList
-	ds, err = c.kube.AppsV1().Deployments("").List(ctx, listOption)
-	if err != nil {
-		err = fmt.Errorf("failed to list deployments: %w", err)
-		return
-	}
-	deployments = ds.Items
-
-	var dss *appsv1.DaemonSetList
-	dss, err = c.kube.AppsV1().DaemonSets("").List(ctx, listOption)
-	if err != nil {
-		err = fmt.Errorf("failed to list daemonsets: %w", err)
-		return
-	}
-	daemonSets = dss.Items
-
-	// We assume that all pods, deployments, and daemonsets are in the same namespace. Otherwise, it would be a bug in the EG
-	// or the disruptive configuration change of EG.
 	if len(pods) > 0 {
 		namespace = pods[0].Namespace
 	}

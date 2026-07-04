@@ -1,0 +1,158 @@
+---
+title: Envoy AI Gateway v1.0 — General Availability
+description: The first stable, generally available release of Envoy AI Gateway. The v1beta1 control-plane API is now covered by our stability guarantee.
+toc_min_heading_level: 2
+toc_max_heading_level: 4
+---
+
+import Link from '@docusaurus/Link';
+import {
+  ReleaseSeriesLayout,
+  ReleaseHeader,
+  FeatureSectionCard,
+  FeatureGrid,
+  InfoBox,
+  PatchRelease,
+  ItemList,
+  Dependencies
+} from '../../components/ReleaseNotes';
+import releaseData from '../../data/releases/v1.0.json';
+import React from 'react';
+
+export const { series, releases, navigation } = releaseData;
+export const mainRelease = releases[0];
+export const patchReleases = releases.slice(1).reverse();
+
+export const journey = [
+  { title: '16 LLM providers', description: 'From 2 at launch to 16 today — all behind one OpenAI-compatible API.' },
+  { title: 'Full endpoint coverage', description: 'Chat, completions, embeddings, images, audio, and the Responses API.' },
+  { title: 'MCP gateway', description: 'Multiplex, route, and authorize Model Context Protocol servers.' },
+  { title: 'Enterprise observability', description: 'OpenTelemetry + OpenInference tracing and GenAI token metrics.' },
+  { title: 'Multi-tenant routing', description: 'Hostname scoping, model virtualization, and quota-aware limits.' },
+  { title: 'A stable v1beta1 API', description: 'A SemVer-backed contract you can build production on.' }
+];
+
+<ReleaseSeriesLayout
+  title={series.title}
+  subtitle={series.subtitle}
+  seriesVersion={series.version}
+  badgeText={series.badge}
+  badgeType={series.badgeType}
+  previousSeries={navigation.previous}
+>
+
+<ReleaseHeader
+  version={mainRelease.version}
+  date={mainRelease.date}
+  type={mainRelease.type}
+  tags={mainRelease.tags}
+>
+
+{mainRelease.overview}
+
+</ReleaseHeader>
+
+## 🎉 What 1.0 Means
+
+1.0 is not just another feature release — it is a commitment. From the very first release we said the major version would arrive once we had a *first stable control-plane API*. With v1.0, that moment is here: the core CRDs you author every day are now a stable contract you can build on with confidence.
+
+Practically, General Availability means three things:
+
+- **A stable API.** Your `AIGatewayRoute`, `AIServiceBackend`, `BackendSecurityPolicy`, `GatewayConfig`, and `MCPRoute` resources — all served at `v1beta1` — will not break under you within the 1.x series.
+- **Predictable upgrades.** Upgrading the controller will not break a valid, migrated configuration, and any change that ever requires action will ship with a documented path.
+- **A complete platform.** Everything assembled since v0.1 — 16 providers, a full MCP gateway, multimodal and audio endpoints, enterprise observability, and multi-tenant routing — is now production-ready on the proven Envoy Gateway foundation.
+
+<InfoBox type="success" title="Our API stability commitment">
+
+For **stable** releases, we will **never break the APIs unless there is a critical security issue**, and we will always provide a migration path in the release notes if we ever must. Following [Semantic Versioning](https://semver.org/), the `v1beta1` control-plane API will remain backward compatible for the entire 1.x series — breaking changes would only ever land in a future 2.0. See the full [support policy](https://github.com/envoyproxy/ai-gateway/blob/main/RELEASES.md#support-policy).
+
+</InfoBox>
+
+## 🧭 The Road to 1.0
+
+When v0.1 shipped in February 2025, Envoy AI Gateway put a unified API in front of two providers. 1.0 is the culmination of everything built since:
+
+<FeatureGrid columns={3} features={journey} />
+
+## ✨ The 1.0 Feature Surface
+
+These are the capabilities the stable 1.0 control plane brings together.
+
+{mainRelease.features.map((featureSection, index) => (
+  <FeatureSectionCard key={index} section={featureSection} />
+))}
+
+## 🔗 API & Stability
+
+{mainRelease.apiChanges.length > 0 && (
+  <ItemList items={mainRelease.apiChanges} />
+)}
+
+{mainRelease.deprecations?.length > 0 && (
+  <>
+    ### Deprecations
+    <ItemList items={mainRelease.deprecations} />
+  </>
+)}
+
+## ⚠️ Breaking Changes
+
+**None.** v1.0 introduces no breaking changes. The `v1beta1` API is unchanged — 1.0 declares it stable rather than altering it — so there is no apiVersion bump and no resource migration. If you are running v0.7, your existing resources work as-is.
+
+## 🛡️ Support &amp; Compatibility Policy
+
+With 1.0, the project's [support policy](https://github.com/envoyproxy/ai-gateway/blob/main/RELEASES.md#support-policy) applies in full:
+
+- **API compatibility.** The `v1beta1` CRDs are stable for the 1.x series. New fields are added in a backward-compatible way; breaking changes are reserved for a future major version and would ship with a migration path.
+- **Controller upgrades.** Upgrading the controller will not break a valid configuration. As with every release, upgrade at most two minor versions at a time, following any documented migration steps.
+- **Envoy Gateway compatibility.** Each release is built on the latest stable Envoy Gateway (and therefore Envoy Proxy); keep Envoy Gateway up to date before upgrading Envoy AI Gateway.
+- **End of life.** A release is supported until two releases after it, consistent with prior versions.
+
+## 📖 Upgrade Guidance
+
+Upgrading from **v0.7** is a drop-in change — there are no API or resource changes:
+
+1. Update the Helm chart / controller image to the v1.0.0 release.
+2. Roll out as usual. Your existing `v1beta1` resources require no edits.
+
+If you are on an older release, upgrade one or two minor versions at a time and follow the migration steps in each series' release notes (notably the v0.6 promotion of the core CRDs to `v1beta1`) before moving to 1.0.
+
+## 📦 Dependencies Versions
+
+<Dependencies dependencies={mainRelease.dependencies} />
+
+## ⏩ Patch Releases
+
+{patchReleases.map((release, index) => (
+  <PatchRelease
+    key={index}
+    version={release.version}
+    date={release.date}
+    type={release.type}
+    tags={release.tags}
+    overview={release.overview}
+    features={release.features}
+    bugFixes={release.bugFixes}
+  />
+))}
+
+## 🙏 Acknowledgements
+
+1.0 belongs to everyone who got us here. Our deepest thanks to:
+
+- The **maintainers** across Tetrate, Bloomberg, Tencent, and Nutanix, and the many independent contributors who shaped the project through code, reviews, and weekly community meetings.
+- The **early adopters** — including LY Corporation, Alan by Comma Soft, and NRP — who used, tested, and fed back what mattered.
+- The broader **Gateway API, Envoy, and CNCF** communities whose standards this project is built on.
+
+## 🔮 What's Next (Beyond 1.0)
+
+A stable API is a starting line, not a finish line. On the roadmap:
+
+- **A dedicated `MCPBackend` CRD**, decoupling MCP backend configuration from `MCPRoute`.
+- **Deeper MCP authorization** across tools, resources, and prompts.
+- **Fuller quota-aware routing** that automatically steers around rate-limited upstreams.
+- **More provider translation paths** and **expanded multimodal** support.
+
+The roadmap is community-driven — [join us](https://github.com/envoyproxy/ai-gateway) and help shape it.
+
+</ReleaseSeriesLayout>

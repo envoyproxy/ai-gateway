@@ -6,11 +6,13 @@
 package extproc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -22,7 +24,9 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/headermutator"
@@ -70,6 +74,10 @@ func TestNewFactory(t *testing.T) {
 type (
 	chatCompletionProcessorRouterFilter   = routerProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
 	chatCompletionProcessorUpstreamFilter = upstreamProcessor[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk, endpointspec.ChatCompletionsEndpointSpec]
+	transcriptionProcessorRouterFilter    = routerProcessor[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent, endpointspec.TranscriptionEndpointSpec]
+	transcriptionProcessorUpstreamFilter  = upstreamProcessor[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent, endpointspec.TranscriptionEndpointSpec]
+	messagesProcessorRouterFilter         = routerProcessor[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
+	messagesProcessorUpstreamFilter       = upstreamProcessor[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk, endpointspec.MessagesEndpointSpec]
 )
 
 type mockTracer struct {
@@ -678,6 +686,184 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 			})
 		})
 	}
+}
+
+func Test_messagesProcessorUpstreamFilter_ProcessRequestHeaders_AWSAnthropicBetaHeader(t *testing.T) {
+	body := anthropicschema.MessagesRequest{
+		Model:     "anthropic.claude-3-sonnet-20240229-v1:0",
+		MaxTokens: 128,
+		Messages: []anthropicschema.MessageParam{
+			{
+				Role:    anthropicschema.MessageRoleUser,
+				Content: anthropicschema.MessageContent{Text: "hello"},
+			},
+		},
+	}
+	raw, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	headers := map[string]string{
+		":path":                               "/v1/messages",
+		internalapi.ModelNameHeaderKeyDefault: body.Model,
+		"anthropic-beta":                      "interleaved-thinking-2025-05-14,context-1m-2025-08-07",
+	}
+	mm := &mockMetrics{}
+	p := &messagesProcessorUpstreamFilter{
+		requestHeaders: headers,
+		metrics:        mm,
+	}
+	r := &messagesProcessorRouterFilter{
+		eh:                     endpointspec.MessagesEndpointSpec{},
+		config:                 &filterapi.RuntimeConfig{},
+		logger:                 slog.Default(),
+		originalRequestBodyRaw: raw,
+		originalRequestBody:    &body,
+		originalModel:          body.Model,
+	}
+
+	err = p.SetBackend(t.Context(), &filterapi.RuntimeBackend{
+		Backend: &filterapi.Backend{
+			Name:   "aws-anthropic",
+			Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSAnthropic, Version: "bedrock-2023-05-31"},
+		},
+	}, "test-route", r)
+	require.NoError(t, err)
+
+	resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+	require.NoError(t, err)
+	commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
+
+	var translatedBody map[string]any
+	err = json.Unmarshal(commonRes.BodyMutation.GetBody(), &translatedBody)
+	require.NoError(t, err)
+	require.Equal(t, "bedrock-2023-05-31", translatedBody["anthropic_version"])
+	require.NotContains(t, translatedBody, "model")
+	require.NotContains(t, translatedBody, "stream")
+
+	betaValues, ok := translatedBody["anthropic_beta"].([]any)
+	require.True(t, ok)
+	require.Equal(t, []any{"interleaved-thinking-2025-05-14", "context-1m-2025-08-07"}, betaValues)
+}
+
+// Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_BodyReplaceContract
+// locks the contract for when the upstream filter must NOT replace the request
+// body: when the translator returns no body, no backend HTTPBodyMutation is
+// configured, and forceBodyMutation is false, the upstream filter must emit
+// CONTINUE rather than CONTINUE_AND_REPLACE. Issuing CONTINUE_AND_REPLACE with
+// the captured original body would clobber any body mutation applied by an
+// earlier ext_proc filter in the chain. Header mutations and auth headers
+// must still apply on the CONTINUE branch.
+//
+// The sibling subtest pins the opposite half of the contract: when the
+// translator DID emit a body, the upstream filter must continue to issue
+// CONTINUE_AND_REPLACE, so a future refactor cannot quietly flip the contract
+// back.
+func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_BodyReplaceContract(t *testing.T) {
+	t.Run("no translator body, no mutator, no force -> CONTINUE", func(t *testing.T) {
+		someBody := bodyFromModel(t, "some-model", false, nil)
+		headers := map[string]string{
+			":path":                               "/foo",
+			internalapi.ModelNameHeaderKeyDefault: "some-model",
+		}
+		var expBody openai.ChatCompletionRequest
+		require.NoError(t, json.Unmarshal(someBody, &expBody))
+
+		pathRewrite := []internalapi.Header{{":path", "/v1/chat/completions"}}
+		mt := &mockTranslator{
+			t:                           t,
+			expRequestBody:              &expBody,
+			retHeaderMutation:           pathRewrite,
+			retBodyMutation:             nil,
+			expForceRequestBodyMutation: false,
+		}
+		mm := &mockMetrics{}
+		p := &chatCompletionProcessorUpstreamFilter{
+			parent: &chatCompletionProcessorRouterFilter{
+				config:                 &filterapi.RuntimeConfig{},
+				logger:                 slog.Default(),
+				originalRequestBodyRaw: someBody,
+				originalRequestBody:    &expBody,
+				originalModel:          "some-model",
+				stream:                 false,
+				forceBodyMutation:      false,
+			},
+			requestHeaders: headers,
+			metrics:        mm,
+			translator:     mt,
+			handler:        &mockBackendAuthHandler{},
+			// No-config body mutator: HasMutations() returns false. This mirrors
+			// SetBackend's call to bodymutator.NewBodyMutator(nil, ...) when the
+			// route has no HTTPBodyMutation.
+			bodyMutator: bodymutator.NewBodyMutator(nil, someBody),
+		}
+
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
+		require.Equal(t, extprocv3.CommonResponse_CONTINUE, commonRes.Status,
+			"must NOT issue CONTINUE_AND_REPLACE when nothing actually needs to mutate the body — that path silently replays the original body and clobbers earlier filters' mutations")
+		require.Nil(t, commonRes.BodyMutation, "no body mutation should ride on a CONTINUE response")
+
+		require.NotNil(t, commonRes.HeaderMutation)
+		require.Len(t, commonRes.HeaderMutation.SetHeaders, 2,
+			"header mutations from the translator (path rewrite) and the auth handler must still apply on the CONTINUE branch")
+		require.Equal(t, ":path", commonRes.HeaderMutation.SetHeaders[0].Header.Key)
+		require.Equal(t, []byte("/v1/chat/completions"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
+		require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[1].Header.Key)
+		require.Equal(t, "mock-auth-handler", string(commonRes.HeaderMutation.SetHeaders[1].Header.RawValue))
+
+		// No body change -> no content-length restamp.
+		// buildRequestHeaderDynamicMetadata returns nil when LogRequestHeaderAttributes is empty.
+		require.Nil(t, resp.DynamicMetadata,
+			"buildContentLengthDynamicMetadataOnRequest must not be called when the body is not replaced")
+	})
+
+	t.Run("translator body present -> CONTINUE_AND_REPLACE", func(t *testing.T) {
+		someBody := bodyFromModel(t, "some-model", false, nil)
+		headers := map[string]string{
+			":path":                               "/foo",
+			internalapi.ModelNameHeaderKeyDefault: "some-model",
+		}
+		var expBody openai.ChatCompletionRequest
+		require.NoError(t, json.Unmarshal(someBody, &expBody))
+
+		bodyMut := []byte("translator-emitted body")
+		mt := &mockTranslator{
+			t:                           t,
+			expRequestBody:              &expBody,
+			retHeaderMutation:           []internalapi.Header{{":path", "/v1/chat/completions"}},
+			retBodyMutation:             bodyMut,
+			expForceRequestBodyMutation: false,
+		}
+		mm := &mockMetrics{}
+		p := &chatCompletionProcessorUpstreamFilter{
+			parent: &chatCompletionProcessorRouterFilter{
+				config:                 &filterapi.RuntimeConfig{},
+				logger:                 slog.Default(),
+				originalRequestBodyRaw: someBody,
+				originalRequestBody:    &expBody,
+				originalModel:          "some-model",
+				stream:                 false,
+				forceBodyMutation:      false,
+			},
+			requestHeaders: headers,
+			metrics:        mm,
+			translator:     mt,
+			handler:        &mockBackendAuthHandler{},
+			bodyMutator:    bodymutator.NewBodyMutator(nil, someBody),
+		}
+
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		commonRes := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response
+		require.Equal(t, extprocv3.CommonResponse_CONTINUE_AND_REPLACE, commonRes.Status,
+			"existing CONTINUE_AND_REPLACE behavior must be preserved when the translator produced a body")
+		require.Equal(t, bodyMut, commonRes.BodyMutation.GetBody())
+	})
 }
 
 func Test_chatCompletionProcessorUpstreamFilter_MergeWithTokenLatencyMetadata(t *testing.T) {
@@ -1434,6 +1620,239 @@ func TestChatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_WithBodyMut
 	})
 }
 
+func Test_buildDynamicMetadata(t *testing.T) {
+	t.Run("sets model_name_override from request headers", func(t *testing.T) {
+		costs := &metrics.TokenUsage{}
+		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
+
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "", "", "")
+		require.NoError(t, err)
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "gpt-4", inner.Fields["model_name_override"].GetStringValue())
+	})
+
+	t.Run("model_name_override reflects actual model after backend override", func(t *testing.T) {
+		costs := &metrics.TokenUsage{}
+		// After backend override, the header contains the backend-specific model name.
+		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "us.anthropic.claude-sonnet-4.5-v2"}
+
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "default/my-backend", "", "")
+		require.NoError(t, err)
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "us.anthropic.claude-sonnet-4.5-v2", inner.Fields["model_name_override"].GetStringValue())
+	})
+
+	t.Run("sets backend_name when provided", func(t *testing.T) {
+		costs := &metrics.TokenUsage{}
+		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
+
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "ns/backend-a", "", "")
+		require.NoError(t, err)
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "ns/backend-a", inner.Fields["backend_name"].GetStringValue())
+	})
+
+	t.Run("omits backend_name when empty", func(t *testing.T) {
+		costs := &metrics.TokenUsage{}
+		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
+
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "", "", "")
+		require.NoError(t, err)
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Nil(t, inner.Fields["backend_name"])
+	})
+
+	t.Run("includes token usage costs alongside model_name_override", func(t *testing.T) {
+		config := &filterapi.RuntimeConfig{
+			RequestCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeOutputToken, MetadataKey: "output_tokens"}},
+				{LLMRequestCost: &filterapi.LLMRequestCost{Type: filterapi.LLMRequestCostTypeInputToken, MetadataKey: "input_tokens"}},
+			},
+		}
+		costs := &metrics.TokenUsage{}
+		costs.SetOutputTokens(100)
+		costs.SetInputTokens(50)
+		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "claude-sonnet"}
+
+		md, err := buildDynamicMetadata(nil, config.RequestCosts, costs, headers, "default/backend", "", "")
+		require.NoError(t, err)
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "claude-sonnet", inner.Fields["model_name_override"].GetStringValue())
+		require.Equal(t, "default/backend", inner.Fields["backend_name"].GetStringValue())
+		require.Equal(t, float64(100), inner.Fields["output_tokens"].GetNumberValue())
+		require.Equal(t, float64(50), inner.Fields["input_tokens"].GetNumberValue())
+	})
+
+	t.Run("model_name_override is empty string when header not set", func(t *testing.T) {
+		costs := &metrics.TokenUsage{}
+		headers := map[string]string{}
+
+		md, err := buildDynamicMetadata(nil, []filterapi.RuntimeRequestCost{}, costs, headers, "", "", "")
+		require.NoError(t, err)
+		require.NotNil(t, md)
+
+		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		// model_name_override should still be present, just with empty value.
+		require.Empty(t, inner.Fields["model_name_override"].GetStringValue())
+	})
+}
+
+func Test_mergeDynamicMetadata(t *testing.T) {
+	t.Run("nil base returns extra", func(t *testing.T) {
+		extra := &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				internalapi.AIGatewayFilterMetadataNamespace: structpb.NewStructValue(&structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"key1": structpb.NewStringValue("val1"),
+					},
+				}),
+			},
+		}
+		result := mergeDynamicMetadata(nil, extra)
+		require.Equal(t, extra, result)
+	})
+
+	t.Run("nil extra returns base", func(t *testing.T) {
+		base := &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				internalapi.AIGatewayFilterMetadataNamespace: structpb.NewStructValue(&structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"key1": structpb.NewStringValue("val1"),
+					},
+				}),
+			},
+		}
+		result := mergeDynamicMetadata(base, nil)
+		require.Equal(t, base, result)
+	})
+
+	t.Run("merges extra fields into base", func(t *testing.T) {
+		base := &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				internalapi.AIGatewayFilterMetadataNamespace: structpb.NewStructValue(&structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"backend_name": structpb.NewStringValue("ns/backend"),
+					},
+				}),
+			},
+		}
+		extra := &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				internalapi.AIGatewayFilterMetadataNamespace: structpb.NewStructValue(&structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"model_name_override": structpb.NewStringValue("gpt-4"),
+					},
+				}),
+			},
+		}
+		result := mergeDynamicMetadata(base, extra)
+		inner := result.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "ns/backend", inner.Fields["backend_name"].GetStringValue())
+		require.Equal(t, "gpt-4", inner.Fields["model_name_override"].GetStringValue())
+	})
+
+	t.Run("extra overwrites existing keys in base", func(t *testing.T) {
+		base := &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				internalapi.AIGatewayFilterMetadataNamespace: structpb.NewStructValue(&structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"key": structpb.NewStringValue("old-value"),
+					},
+				}),
+			},
+		}
+		extra := &structpb.Struct{
+			Fields: map[string]*structpb.Value{
+				internalapi.AIGatewayFilterMetadataNamespace: structpb.NewStructValue(&structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"key": structpb.NewStringValue("new-value"),
+					},
+				}),
+			},
+		}
+		result := mergeDynamicMetadata(base, extra)
+		inner := result.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
+		require.Equal(t, "new-value", inner.Fields["key"].GetStringValue())
+	})
+}
+
+func buildTestMultipartBody(t *testing.T, fields map[string]string, filename string, fileData []byte) ([]byte, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		require.NoError(t, writer.WriteField(k, v))
+	}
+	if filename != "" && fileData != nil {
+		part, err := writer.CreateFormFile("file", filename)
+		require.NoError(t, err)
+		_, err = part.Write(fileData)
+		require.NoError(t, err)
+	}
+	require.NoError(t, writer.Close())
+	return buf.Bytes(), writer.FormDataContentType()
+}
+
+func Test_transcriptionProcessorRouterFilter_ProcessRequestBody_MultipartDispatch(t *testing.T) {
+	body, ct := buildTestMultipartBody(t, map[string]string{
+		"model": "whisper-1",
+	}, "test.mp3", []byte("fake-audio-data"))
+
+	headers := map[string]string{":path": "/v1/audio/transcriptions", "content-type": ct}
+	p := &transcriptionProcessorRouterFilter{
+		config:         &filterapi.RuntimeConfig{},
+		requestHeaders: headers,
+		logger:         slog.Default(),
+		tracer:         tracingapi.NoopTracer[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]{},
+	}
+
+	resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: body})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	re, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+	require.True(t, ok)
+	require.NotNil(t, re.RequestBody)
+
+	setHeaders := re.RequestBody.GetResponse().GetHeaderMutation().SetHeaders
+	require.GreaterOrEqual(t, len(setHeaders), 1)
+	require.Equal(t, internalapi.ModelNameHeaderKeyDefault, setHeaders[0].Header.Key)
+	require.Equal(t, "whisper-1", string(setHeaders[0].Header.RawValue))
+}
+
+func Test_transcriptionProcessorUpstreamFilter_SetBackend_ContentTypeSetter(t *testing.T) {
+	contentType := "multipart/form-data; boundary=testboundary"
+	headers := map[string]string{":path": "/v1/audio/transcriptions", "content-type": contentType}
+	mm := &mockMetrics{}
+	p := &transcriptionProcessorUpstreamFilter{
+		requestHeaders: headers,
+		metrics:        mm,
+	}
+	r := &transcriptionProcessorRouterFilter{
+		requestHeaders: headers,
+	}
+
+	err := p.SetBackend(t.Context(), &filterapi.RuntimeBackend{
+		Backend: &filterapi.Backend{
+			Name:   "transcription-backend",
+			Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+		},
+	}, "", r)
+	require.NoError(t, err)
+	require.NotNil(t, p.translator)
+	require.NotNil(t, r.upstreamFilter)
+}
+
 func TestBuildDynamicMetadata_routeScoped(t *testing.T) {
 	hdr := map[string]string{internalapi.ModelNameHeaderKeyDefault: "m"}
 
@@ -1471,6 +1890,30 @@ func TestBuildDynamicMetadata_routeScoped(t *testing.T) {
 			backendName:    "be",
 			routeName:      "ns/paid",
 			wantCostValues: map[string]float64{"billing": 3},
+		},
+		{
+			name: "model filter skips non-matching model",
+			requestCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "quota_cost", RouteName: "ns/r", Type: filterapi.LLMRequestCostTypeInputToken, Model: "claude"}},
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "quota_cost", RouteName: "ns/r", Type: filterapi.LLMRequestCostTypeTotalToken, Model: "gpt-4"}},
+			},
+			inputTokens:    10,
+			totalTokens:    25,
+			requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"},
+			backendName:    "be",
+			routeName:      "ns/r",
+			wantCostValues: map[string]float64{"quota_cost": 25},
+		},
+		{
+			name: "empty model field matches any model",
+			requestCosts: []filterapi.RuntimeRequestCost{
+				{LLMRequestCost: &filterapi.LLMRequestCost{MetadataKey: "cost", RouteName: "ns/r", Type: filterapi.LLMRequestCostTypeInputToken, Model: ""}},
+			},
+			inputTokens:    7,
+			requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "any-model"},
+			backendName:    "be",
+			routeName:      "ns/r",
+			wantCostValues: map[string]float64{"cost": 7},
 		},
 	}
 
