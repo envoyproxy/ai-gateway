@@ -117,10 +117,9 @@ type filesProcessor struct {
 	listStartKnown bool
 
 	// translator is the resolved per-operation translator for the backend schema. It is set at
-	// the router filter level by resolveTranslator, called either in handleIDBearingRequestHeaders
+	// the router filter level by resolveTranslator, called in handleIDBearingRequestHeaders
 	// (retrieve/content/delete), handleListRequestHeaders (list-cursor), or SetBackend (upload/
-	// list-first). A nil translator preserves today's byte-for-byte OpenAI behavior when the
-	// selection path was not hit.
+	// list-first)
 	translator translator.FilesTranslator
 	// responseHeaders captures the upstream response headers for ResponseBody calls. Populated
 	// by ProcessResponseHeaders at the router filter level.
@@ -141,7 +140,7 @@ func (p *filesProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.Head
 	path := p.requestHeaders[":path"]
 	op, id, err := classifyFilesRequest(method, path)
 	if err != nil {
-		p.logger.Warn("unsupported files request", slog.String("method", method), slog.String("path", path))
+		p.logger.Error("unsupported files request", slog.String("method", method), slog.String("path", path))
 		return createUserFacingErrorResponse(http.StatusNotFound, "NotFoundError", "unsupported Files API request"), nil
 	}
 	p.op = op
@@ -191,7 +190,7 @@ func (p *filesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingRespon
 		// does not carry, so the client must supply the routing model via "?model=". It is required:
 		// without it the request cannot be routed to a backend.
 		if modelOverride == "" {
-			p.logger.Info("rejecting files list without required model query parameter")
+			p.logger.Error("list files request is missing the required model query parameter", slog.String("path", path))
 			return createUserFacingErrorResponse(http.StatusBadRequest, "invalid_request_error", "the 'model' query parameter is required"), nil
 		}
 		setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, modelOverride)
@@ -212,7 +211,7 @@ func (p *filesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingRespon
 
 	decoded, err := p.codec.Decode(after)
 	if err != nil {
-		p.logger.Info("rejecting files list with undecodable after cursor", slog.String("after", after))
+		p.logger.Error("rejecting files list request with undecodable after cursor", slog.String("after", after))
 		return createUserFacingErrorResponse(http.StatusBadRequest, "invalid_request_error", "invalid after cursor"), nil
 	}
 
@@ -243,49 +242,46 @@ func (p *filesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingRespon
 	// by the OpenAI SDK is not forwarded upstream.
 	setHeader(headerMutation, ":path", rewriteAfterParam(upstreamPath, nativeAfter))
 
-	// TASK-005: Router-resolvable translator selection (clean 501 for non-OpenAI schemas) on cursor pages.
+	// Router-resolvable translator selection on cursor pages.
 	schema, ok := p.schemaForBackend(p.config, current.namespace, current.name)
 	if !ok {
-		p.logger.Warn("backend not found in config for list cursor", slog.String("namespace", current.namespace), slog.String("name", current.name))
+		p.logger.Error("backend not found in config for list cursor", slog.String("namespace", current.namespace), slog.String("name", current.name))
 		return createUserFacingErrorResponse(http.StatusGone, "NotFoundError", "backend for cursor not found"), nil
 	}
-	if err := p.resolveTranslator(schema); err != nil {
-		p.logger.Info("unsupported schema for files list operation", slog.String("schema", string(schema.Name)))
+	if err = p.resolveTranslator(schema); err != nil {
+		p.logger.Error("unsupported schema for files list operation", slog.String("schema", string(schema.Name)))
 		return createUserFacingErrorResponse(http.StatusNotImplemented, "not_implemented", "Files API not supported for this backend schema"), nil
 	}
 
-	// TASK-007: Invoke RequestBody translator at the list seam (cursor page).
-	if p.translator != nil {
-		_, queryPart := splitQuery(upstreamPath)
-		req := &translator.FilesRequest{
-			Path:   rewriteAfterParam(upstreamPath, nativeAfter),
-			Method: p.requestHeaders[":method"],
-			Query:  queryPart,
-		}
-		newHeaders, newBody, err := p.translator.RequestBody(nil, req, false)
-		if err != nil {
-			p.logger.Error("translator RequestBody failed for list cursor", "error", err)
-			return createUserFacingErrorResponse(http.StatusInternalServerError, "internal_error", "failed to translate request"), nil
-		}
-		additionalHeaderMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
-		if additionalHeaderMutation != nil {
-			headerMutation.SetHeaders = append(headerMutation.SetHeaders, additionalHeaderMutation.SetHeaders...)
-			headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, additionalHeaderMutation.RemoveHeaders...)
-		}
-		if bodyMutation != nil {
-			return &extprocv3.ProcessingResponse{
-				Response: &extprocv3.ProcessingResponse_RequestHeaders{
-					RequestHeaders: &extprocv3.HeadersResponse{
-						Response: &extprocv3.CommonResponse{
-							HeaderMutation:  headerMutation,
-							BodyMutation:    bodyMutation,
-							ClearRouteCache: true,
-						},
+	_, queryPart := splitQuery(upstreamPath)
+	req := &translator.FilesRequest{
+		Path:   rewriteAfterParam(upstreamPath, nativeAfter),
+		Method: p.requestHeaders[":method"],
+		Query:  queryPart,
+	}
+	newHeaders, newBody, err := p.translator.RequestBody(nil, req, false)
+	if err != nil {
+		p.logger.Error("translator RequestBody failed for list cursor", slog.String("error", err.Error()))
+		return createUserFacingErrorResponse(http.StatusInternalServerError, "internal_error", "failed to translate request"), nil
+	}
+	additionalHeaderMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
+	if additionalHeaderMutation != nil {
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, additionalHeaderMutation.SetHeaders...)
+		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, additionalHeaderMutation.RemoveHeaders...)
+	}
+	if bodyMutation != nil {
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_RequestHeaders{
+				RequestHeaders: &extprocv3.HeadersResponse{
+					Response: &extprocv3.CommonResponse{
+						HeaderMutation:  headerMutation,
+						BodyMutation:    bodyMutation,
+						ClearRouteCache: true,
 					},
 				},
-				DynamicMetadata: stickyBackendDynamicMetadata(current.namespace, current.name),
-			}, nil
-		}
+			},
+			DynamicMetadata: stickyBackendDynamicMetadata(current.namespace, current.name),
+		}, nil
 	}
 
 	return &extprocv3.ProcessingResponse{
@@ -307,7 +303,7 @@ func (p *filesProcessor) handleListRequestHeaders() (*extprocv3.ProcessingRespon
 func (p *filesProcessor) handleIDBearingRequestHeaders(op filesOperation, gatewayID string) (*extprocv3.ProcessingResponse, error) {
 	decoded, err := p.codec.Decode(gatewayID)
 	if err != nil || decoded.Kind != idcodec.KindFile {
-		p.logger.Info("rejecting files request with undecodable id", slog.String("id", gatewayID))
+		p.logger.Error("rejecting files request with undecodable id", slog.String("id", gatewayID))
 		return createUserFacingErrorResponse(http.StatusNotFound, "NotFoundError", fmt.Sprintf("No such File object: %s", gatewayID)), nil
 	}
 	p.backendNamespace = decoded.Namespace
@@ -315,14 +311,13 @@ func (p *filesProcessor) handleIDBearingRequestHeaders(op filesOperation, gatewa
 	p.backendKnown = true
 	p.backendFromDecode = true
 
-	// TASK-005: Router-resolvable translator selection (clean 501 for non-OpenAI schemas).
 	schema, ok := p.schemaForBackend(p.config, decoded.Namespace, decoded.Name)
 	if !ok {
-		p.logger.Warn("backend not found in config for decoded id", slog.String("namespace", decoded.Namespace), slog.String("name", decoded.Name))
+		p.logger.Error("backend not found in config for decoded id", slog.String("namespace", decoded.Namespace), slog.String("name", decoded.Name))
 		return createUserFacingErrorResponse(http.StatusGone, "NotFoundError", fmt.Sprintf("No such File object: %s", gatewayID)), nil
 	}
-	if err := p.resolveTranslator(schema); err != nil {
-		p.logger.Info("unsupported schema for files operation", slog.String("schema", string(schema.Name)), slog.String("op", fmt.Sprintf("%d", op)))
+	if err = p.resolveTranslator(schema); err != nil {
+		p.logger.Error("unsupported schema for files operation", slog.String("schema", string(schema.Name)), slog.String("op", fmt.Sprintf("%d", op)))
 		return createUserFacingErrorResponse(http.StatusNotImplemented, "not_implemented", "Files API not supported for this backend schema"), nil
 	}
 
@@ -331,37 +326,34 @@ func (p *filesProcessor) handleIDBearingRequestHeaders(op filesOperation, gatewa
 	// Preserve the original (gateway-id) path so the upstream filter resolves this processor.
 	setHeader(headerMutation, originalPathHeader, p.requestHeaders[":path"])
 
-	// TASK-007: Invoke RequestBody translator at the id-bearing seam.
-	if p.translator != nil {
-		req := &translator.FilesRequest{
-			NativeID: decoded.NativeID,
-			Path:     p.rewrittenPath(op, decoded.NativeID),
-			Method:   p.requestHeaders[":method"],
-		}
-		newHeaders, newBody, err := p.translator.RequestBody(nil, req, false)
-		if err != nil {
-			p.logger.Error("translator RequestBody failed for id-bearing op", slog.String("op", fmt.Sprintf("%d", op)), "error", err)
-			return createUserFacingErrorResponse(http.StatusInternalServerError, "internal_error", "failed to translate request"), nil
-		}
-		additionalHeaderMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
-		if additionalHeaderMutation != nil {
-			headerMutation.SetHeaders = append(headerMutation.SetHeaders, additionalHeaderMutation.SetHeaders...)
-			headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, additionalHeaderMutation.RemoveHeaders...)
-		}
-		if bodyMutation != nil {
-			return &extprocv3.ProcessingResponse{
-				Response: &extprocv3.ProcessingResponse_RequestHeaders{
-					RequestHeaders: &extprocv3.HeadersResponse{
-						Response: &extprocv3.CommonResponse{
-							HeaderMutation:  headerMutation,
-							BodyMutation:    bodyMutation,
-							ClearRouteCache: true,
-						},
+	req := &translator.FilesRequest{
+		NativeID: decoded.NativeID,
+		Path:     p.rewrittenPath(op, decoded.NativeID),
+		Method:   p.requestHeaders[":method"],
+	}
+	newHeaders, newBody, err := p.translator.RequestBody(nil, req, false)
+	if err != nil {
+		p.logger.Error("failed to translate request body", slog.String("op", fmt.Sprintf("%d", op)), slog.String("error", err.Error()))
+		return createUserFacingErrorResponse(http.StatusInternalServerError, "internal_error", "failed to translate request"), nil
+	}
+	additionalHeaderMutation, bodyMutation := mutationsFromTranslationResult(newHeaders, newBody)
+	if additionalHeaderMutation != nil {
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, additionalHeaderMutation.SetHeaders...)
+		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, additionalHeaderMutation.RemoveHeaders...)
+	}
+	if bodyMutation != nil {
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_RequestHeaders{
+				RequestHeaders: &extprocv3.HeadersResponse{
+					Response: &extprocv3.CommonResponse{
+						HeaderMutation:  headerMutation,
+						BodyMutation:    bodyMutation,
+						ClearRouteCache: true,
 					},
 				},
-				DynamicMetadata: stickyBackendDynamicMetadata(decoded.Namespace, decoded.Name),
-			}, nil
-		}
+			},
+			DynamicMetadata: stickyBackendDynamicMetadata(decoded.Namespace, decoded.Name),
+		}, nil
 	}
 
 	return &extprocv3.ProcessingResponse{
@@ -407,7 +399,7 @@ func (p *filesProcessor) ProcessRequestBody(_ context.Context, rawBody *extprocv
 		return createUserFacingErrorResponse(http.StatusBadRequest, "invalid_request_error", "the 'model' field is required"), nil
 	}
 
-	// Route by model (like the chat/embeddings endpoints) and strip the routing-only field from the
+	// Route by model and strip the routing-only field from the
 	// body before it is forwarded upstream.
 	common := &extprocv3.CommonResponse{HeaderMutation: headerMutation}
 	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, model)
@@ -454,24 +446,24 @@ func (p *filesProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.
 	case filesOpList:
 		return p.buildListWalkResponse(body.Body), nil
 	default: // upload, retrieve, delete
-		return p.reencodeResponse(body.Body), nil
+		return p.reEncodeResponse(body.Body), nil
 	}
 }
 
-// reencodeResponse rewrites the top-level backend-native "id" in a JSON response into a
+// reEncodeResponse rewrites the top-level backend-native "id" in a JSON response into a
 // gateway-encoded id (upload/retrieve/delete). On any failure it passes the body through
 // unchanged.
-func (p *filesProcessor) reencodeResponse(raw []byte) *extprocv3.ProcessingResponse {
+func (p *filesProcessor) reEncodeResponse(raw []byte) *extprocv3.ProcessingResponse {
 	if !p.backendKnown || len(raw) == 0 {
 		return passThroughResponseBody()
 	}
 
 	// Invoke ResponseBody translator before re-encoding.
 	workingBody := raw
-	if p.translator != nil && p.responseHeaders != nil {
+	if p.responseHeaders != nil {
 		_, mutatedBody, _, _, err := p.translator.ResponseBody(p.responseHeaders, bytes.NewReader(raw), true, nil)
 		if err != nil {
-			p.logger.Error("translator ResponseBody failed for reencodeResponse", "error", err)
+			p.logger.Error("failed to translate response body", slog.String("error", err.Error()))
 			return passThroughResponseBody()
 		}
 		if mutatedBody != nil {
@@ -523,10 +515,10 @@ func (p *filesProcessor) buildListWalkResponse(raw []byte) *extprocv3.Processing
 
 	// Invoke ResponseBody translator before re-encoding.
 	workingBody := raw
-	if p.translator != nil && p.responseHeaders != nil {
+	if p.responseHeaders != nil {
 		_, mutatedBody, _, _, err := p.translator.ResponseBody(p.responseHeaders, bytes.NewReader(raw), true, nil)
 		if err != nil {
-			p.logger.Error("translator ResponseBody failed for buildListWalkResponse", "error", err)
+			p.logger.Error("failed to translate response body for files list endpoint", slog.String("error", err.Error()))
 			return passThroughResponseBody()
 		}
 		if mutatedBody != nil {
@@ -606,7 +598,7 @@ func (p *filesProcessor) buildListWalkResponse(raw []byte) *extprocv3.Processing
 func (p *filesProcessor) SetBackend(_ context.Context, backend *filterapi.RuntimeBackend, routeName string, routeProcessor Processor) error {
 	rp, ok := routeProcessor.(*filesProcessor)
 	if !ok {
-		return fmt.Errorf("BUG: expected routeProcessor to be *filesProcessor, got %T", routeProcessor)
+		panic(fmt.Sprintf("BUG: expected routeProcessor to be *filesProcessor, got %T", routeProcessor))
 	}
 	// Capture the route name from the served backend's composite name so the list walk can
 	// enumerate the route's backend set. This is derived from the same PerRouteRuleRefBackendName
@@ -630,11 +622,9 @@ func (p *filesProcessor) SetBackend(_ context.Context, backend *filterapi.Runtim
 	rp.backendName = name
 	rp.backendKnown = true
 
-	// LB-selected translator selection (fail-closed for non-OpenAI schemas).
+	// LB-selected translator selection.
 	// This runs for upload and list-first-page, where the schema is known only after the LB picks
-	// a backend. An error here causes a fail-closed 5xx stream abort (no upstream forward, no
-	// native id leak) — the best available behavior without depending on unproven upstream-filter
-	// immediate-response handling.
+	// a backend.
 	if err := rp.resolveTranslator(backend.Backend.Schema); err != nil {
 		rp.logger.Info("unsupported schema for files operation at SetBackend", slog.String("schema", string(backend.Backend.Schema.Name)), slog.String("op", fmt.Sprintf("%d", rp.op)))
 		return fmt.Errorf("files API not supported for schema %s: %w", backend.Backend.Schema.Name, err)
@@ -754,9 +744,8 @@ func rewriteAfterParam(path, nativeAfter string) string {
 
 // stripQueryParam returns path with the named query parameter removed, preserving all others.
 // It returns path unchanged when there is no query, when the parameter is absent, or when the
-// query is malformed. This mirrors rewriteAfterParam and is used to drop the routing-only "model"
-// query parameter before a Files list request is forwarded upstream (the OpenAI Files list API
-// accepts only after/limit/order/purpose, so a leaked "model" param would be rejected).
+// query is malformed. This is used to drop the routing-only "model"
+// query parameter before a Files list request is forwarded upstream.
 func stripQueryParam(path, name string) string {
 	pathOnly, rawQuery := splitQuery(path)
 	if rawQuery == "" {
@@ -858,9 +847,7 @@ func queryParam(path, name string) string {
 }
 
 // schemaForBackend resolves the VersionedAPISchema for a backend identified by its namespace and
-// name. It reverse-scans the config.Backends map (whose keys are composite:
-// "ns/name/route/{route}/rule/{rule}/ref/{ref}") using NamespaceAndNameFromBackendName to extract
-// the ns/name prefix, mirroring the logic in orderedRouteBackends (files_list_walk.go).
+// name.
 // Returns (schema, true) on match, (zero, false) on miss.
 func (p *filesProcessor) schemaForBackend(config *filterapi.RuntimeConfig, ns, name string) (filterapi.VersionedAPISchema, bool) {
 	for composite := range config.Backends {
@@ -874,11 +861,7 @@ func (p *filesProcessor) schemaForBackend(config *filterapi.RuntimeConfig, ns, n
 }
 
 // resolveTranslator selects and stores the appropriate FilesTranslator for the given backend
-// schema and the receiver's op. The translator is stored on the receiver's translator field.
-// Returns the constructor's error unchanged so the caller can map it (clean 501 at the router
-// level, fail-closed error at SetBackend).
-// A nil translator (when this method is never called, or when called with an already-resolved
-// translator) preserves today's byte-for-byte OpenAI behavior.
+// schema and the receiver's op.
 func (p *filesProcessor) resolveTranslator(schema filterapi.VersionedAPISchema) error {
 	var t translator.FilesTranslator
 	var err error
@@ -887,17 +870,20 @@ func (p *filesProcessor) resolveTranslator(schema filterapi.VersionedAPISchema) 
 		t, err = translator.NewFileUploadTranslator(schema)
 	case filesOpList:
 		t, err = translator.NewFileListTranslator(schema)
-	case filesOpRetrieve, filesOpContent:
-		// filesOpContent uses the retrieve translator for the schema gate only (the response
-		// passes through raw bytes, not JSON).
+	case filesOpRetrieve:
 		t, err = translator.NewFileRetrieveTranslator(schema)
+	case filesOpContent:
+		t, err = translator.NewFileContentTranslator(schema)
 	case filesOpDelete:
 		t, err = translator.NewFileDeleteTranslator(schema)
 	default:
-		return fmt.Errorf("resolveTranslator: unsupported op %d", p.op)
+		return fmt.Errorf("resolveTranslator: unsupported operation %d", p.op)
 	}
 	if err != nil {
 		return err
+	}
+	if t == nil {
+		return fmt.Errorf("resolveTranslator: nil translator for operation %d schema %s", p.op, schema.Name)
 	}
 	p.translator = t
 	return nil

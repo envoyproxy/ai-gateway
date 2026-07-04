@@ -12,21 +12,21 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
-// There is one concrete identity (pass-through) translator per Files operation, each used for
-// OpenAI-compatible backends. Every method is a no-op: the files processor (internal/extproc) keeps its own
+// Every method here is a no-op: the files processor (internal/extproc) keeps its own
 // canonical native-id-substituted path/body on the way upstream and re-encodes ids on the raw
 // response on the way back, so the translators can only focus on the OpenAI to/from provider API mapping.
 type (
 	openAIFileUploadTranslator   struct{}
 	openAIFileRetrieveTranslator struct{}
+	openAIFileContentTranslator  struct{}
 	openAIFileDeleteTranslator   struct{}
 	openAIFileListTranslator     struct{}
 )
 
-// Compile-time assertions that each per-op identity satisfies the reused generic interface for files.
 var (
 	_ FilesTranslator = (*openAIFileUploadTranslator)(nil)
 	_ FilesTranslator = (*openAIFileRetrieveTranslator)(nil)
+	_ FilesTranslator = (*openAIFileContentTranslator)(nil)
 	_ FilesTranslator = (*openAIFileDeleteTranslator)(nil)
 	_ FilesTranslator = (*openAIFileListTranslator)(nil)
 )
@@ -104,6 +104,45 @@ func (*openAIFileRetrieveTranslator) ResponseBody(_ map[string]string, _ io.Read
 
 // ResponseError implements [Translator.ResponseError]. OpenAI error envelopes pass through unchanged.
 func (*openAIFileRetrieveTranslator) ResponseError(_ map[string]string, _ io.Reader) (
+	newHeaders []internalapi.Header, mutatedBody []byte, err error,
+) {
+	return nil, nil, nil
+}
+
+// --- content: GET /v1/files/{id}/content ---
+
+// RequestBody implements [Translator.RequestBody]. Returning a nil body keeps the processor's
+// canonical (native-id-substituted) request unchanged; returning nil headers leaves :path/:method
+// as the processor set them.
+func (*openAIFileContentTranslator) RequestBody(_ []byte, _ *FilesRequest, _ bool) (
+	newHeaders []internalapi.Header, mutatedBody []byte, err error,
+) {
+	return nil, nil, nil
+}
+
+// ResponseHeaders implements [Translator.ResponseHeaders]. The OpenAI response headers need no
+// translation.
+func (*openAIFileContentTranslator) ResponseHeaders(map[string]string) (
+	newHeaders []internalapi.Header, err error,
+) {
+	return nil, nil
+}
+
+// ResponseBody implements [Translator.ResponseBody]. The content endpoint returns the raw file
+// bytes with no id envelope and no token usage, so this passes the body through unchanged with zero
+// usage.
+func (*openAIFileContentTranslator) ResponseBody(_ map[string]string, _ io.Reader, _ bool, _ any) (
+	newHeaders []internalapi.Header,
+	mutatedBody []byte,
+	tokenUsage metrics.TokenUsage,
+	responseModel internalapi.ResponseModel,
+	err error,
+) {
+	return nil, nil, metrics.TokenUsage{}, "", nil
+}
+
+// ResponseError implements [Translator.ResponseError]. OpenAI error envelopes pass through unchanged.
+func (*openAIFileContentTranslator) ResponseError(_ map[string]string, _ io.Reader) (
 	newHeaders []internalapi.Header, mutatedBody []byte, err error,
 ) {
 	return nil, nil, nil

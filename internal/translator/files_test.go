@@ -20,6 +20,7 @@ func TestOpenAIFilesTranslators_Identity(t *testing.T) {
 	translators := map[string]FilesTranslator{
 		"upload":   &openAIFileUploadTranslator{},
 		"retrieve": &openAIFileRetrieveTranslator{},
+		"content":  &openAIFileContentTranslator{},
 		"delete":   &openAIFileDeleteTranslator{},
 		"list":     &openAIFileListTranslator{},
 	}
@@ -68,6 +69,7 @@ func TestNewFileTranslators(t *testing.T) {
 	ops := map[string]opCase{
 		"upload":   {NewFileUploadTranslator, &openAIFileUploadTranslator{}},
 		"retrieve": {NewFileRetrieveTranslator, &openAIFileRetrieveTranslator{}},
+		"content":  {NewFileContentTranslator, &openAIFileContentTranslator{}},
 		"delete":   {NewFileDeleteTranslator, &openAIFileDeleteTranslator{}},
 		"list":     {NewFileListTranslator, &openAIFileListTranslator{}},
 	}

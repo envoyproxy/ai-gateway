@@ -74,9 +74,6 @@ func tagLbEndpointWithStickyBackend(endpoint *endpointv3.LbEndpoint, backendValu
 // wrapClusterLbPolicyWithStickySubset wraps a cluster's load-balancing policy in a subset policy
 // keyed on selected_backend, delegating endpoint-picking within a subset to the cluster's existing
 // typed policy (or round robin if none). It is idempotent: a cluster already wrapped is left as is.
-//
-// Note: Envoy rejects combining the modern typed load_balancing_policy with the legacy
-// lb_subset_config, so the subset must be expressed via the typed policy extension used here.
 func wrapClusterLbPolicyWithStickySubset(cluster *clusterv3.Cluster) error {
 	if existing := cluster.LoadBalancingPolicy; existing != nil && len(existing.Policies) > 0 {
 		if tec := existing.Policies[0].GetTypedExtensionConfig(); tec != nil && tec.GetName() == subsetLbPolicyName {
