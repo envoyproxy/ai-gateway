@@ -2157,10 +2157,22 @@ func TestParseAIGatewayClusterName(t *testing.T) {
 			errSubstr: "failed to parse HTTPRoute rule index",
 		},
 		{
+			name:      "negative rule index",
+			cluster:   "httproute/ns/myroute/rule/-1",
+			ok:        true,
+			errSubstr: "HTTPRoute rule index must be non-negative",
+		},
+		{
 			name:      "invalid backend index",
 			cluster:   "httproute/ns/myroute/rule/2/backend/not-a-number",
 			ok:        true,
 			errSubstr: "failed to parse HTTPRoute backend index",
+		},
+		{
+			name:      "negative backend index",
+			cluster:   "httproute/ns/myroute/rule/2/backend/-1",
+			ok:        true,
+			errSubstr: "HTTPRoute backend index must be non-negative",
 		},
 		{
 			name:    "unexpected backend segment",

@@ -162,6 +162,9 @@ func parseAIGatewayClusterName(clusterName string) (aiGatewayClusterName, bool, 
 	if err != nil {
 		return aiGatewayClusterName{}, true, fmt.Errorf("failed to parse HTTPRoute rule index %q: %w", parts[4], err)
 	}
+	if ruleIndex < 0 {
+		return aiGatewayClusterName{}, true, fmt.Errorf("HTTPRoute rule index must be non-negative: %d", ruleIndex)
+	}
 
 	backendRefIndex := -1
 	if len(parts) == 7 {
@@ -171,6 +174,9 @@ func parseAIGatewayClusterName(clusterName string) (aiGatewayClusterName, bool, 
 		parsedBackendRefIndex, parseErr := strconv.Atoi(parts[6])
 		if parseErr != nil {
 			return aiGatewayClusterName{}, true, fmt.Errorf("failed to parse HTTPRoute backend index %q: %w", parts[6], parseErr)
+		}
+		if parsedBackendRefIndex < 0 {
+			return aiGatewayClusterName{}, true, fmt.Errorf("HTTPRoute backend index must be non-negative: %d", parsedBackendRefIndex)
 		}
 		backendRefIndex = parsedBackendRefIndex
 	}
