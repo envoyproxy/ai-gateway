@@ -2101,6 +2101,85 @@ func TestRouteNameFromRouteConfigName(t *testing.T) {
 	})
 }
 
+func TestParseAIGatewayClusterName(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		cluster   string
+		expected  aiGatewayClusterName
+		ok        bool
+		errSubstr string
+	}{
+		{
+			name:    "rule cluster",
+			cluster: "httproute/ns/myroute/rule/2",
+			expected: aiGatewayClusterName{
+				httpRouteNamespace: "ns",
+				httpRouteName:      "myroute",
+				ruleIndex:          2,
+				backendRefIndex:    -1,
+			},
+			ok: true,
+		},
+		{
+			name:    "per backend cluster",
+			cluster: "httproute/ns/myroute/rule/2/backend/3",
+			expected: aiGatewayClusterName{
+				httpRouteNamespace: "ns",
+				httpRouteName:      "myroute",
+				ruleIndex:          2,
+				backendRefIndex:    3,
+			},
+			ok: true,
+		},
+		{
+			name:    "non ai gateway cluster",
+			cluster: "cluster/ns/myroute/rule/2",
+		},
+		{
+			name: "empty cluster",
+		},
+		{
+			name:    "missing rule index",
+			cluster: "httproute/ns/myroute/rule",
+		},
+		{
+			name:    "missing backend index",
+			cluster: "httproute/ns/myroute/rule/2/backend",
+		},
+		{
+			name:    "extra segment",
+			cluster: "httproute/ns/myroute/rule/2/backend/3/extra",
+		},
+		{
+			name:      "invalid rule index",
+			cluster:   "httproute/ns/myroute/rule/not-a-number",
+			ok:        true,
+			errSubstr: "failed to parse HTTPRoute rule index",
+		},
+		{
+			name:      "invalid backend index",
+			cluster:   "httproute/ns/myroute/rule/2/backend/not-a-number",
+			ok:        true,
+			errSubstr: "failed to parse HTTPRoute backend index",
+		},
+		{
+			name:    "unexpected backend segment",
+			cluster: "httproute/ns/myroute/rule/2/invalid/3",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actual, ok, err := parseAIGatewayClusterName(tc.cluster)
+			require.Equal(t, tc.ok, ok)
+			if tc.errSubstr != "" {
+				require.ErrorContains(t, err, tc.errSubstr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
 func TestRouteNameFromEnvoyGatewayMetadata(t *testing.T) {
 	t.Run("prefer namespaced resource identity", func(t *testing.T) {
 		route := &routev3.Route{

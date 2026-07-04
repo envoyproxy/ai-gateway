@@ -145,6 +145,44 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	return response, nil
 }
 
+type aiGatewayClusterName struct {
+	httpRouteNamespace string
+	httpRouteName      string
+	ruleIndex          int
+	backendRefIndex    int
+}
+
+func parseAIGatewayClusterName(clusterName string) (aiGatewayClusterName, bool, error) {
+	parts := strings.Split(clusterName, "/")
+	if (len(parts) != 5 && len(parts) != 7) || parts[0] != "httproute" {
+		return aiGatewayClusterName{}, false, nil
+	}
+
+	ruleIndex, err := strconv.Atoi(parts[4])
+	if err != nil {
+		return aiGatewayClusterName{}, true, fmt.Errorf("failed to parse HTTPRoute rule index %q: %w", parts[4], err)
+	}
+
+	backendRefIndex := -1
+	if len(parts) == 7 {
+		if parts[5] != "backend" {
+			return aiGatewayClusterName{}, false, nil
+		}
+		parsedBackendRefIndex, parseErr := strconv.Atoi(parts[6])
+		if parseErr != nil {
+			return aiGatewayClusterName{}, true, fmt.Errorf("failed to parse HTTPRoute backend index %q: %w", parts[6], parseErr)
+		}
+		backendRefIndex = parsedBackendRefIndex
+	}
+
+	return aiGatewayClusterName{
+		httpRouteNamespace: parts[1],
+		httpRouteName:      parts[2],
+		ruleIndex:          ruleIndex,
+		backendRefIndex:    backendRefIndex,
+	}, true, nil
+}
+
 // maybeModifyCluster modifies clusters generated from AIGatewayRoute resources to add
 // necessary configurations for AI Gateway functionality. This function performs several key tasks:
 //
@@ -162,64 +200,43 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 // The resulting configuration is similar to the envoy.yaml files in tests/data-plane/.
 // Only clusters with names matching the AIGatewayRoute pattern are modified.
 func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Cluster) error {
-	// Parse cluster name to extract AIGatewayRoute information.
-	// Expected format: "httproute/<namespace>/<name>/rule/<index_of_rule>".
-	parts := strings.Split(cluster.Name, "/")
-	if (len(parts) != 5 && len(parts) != 7) || parts[0] != "httproute" {
+	clusterName, ok, err := parseAIGatewayClusterName(cluster.Name)
+	if !ok {
 		// This is not an AIGatewayRoute-generated cluster, skip modification.
 		s.log.Info("non-ai-gateway cluster name", "cluster_name", cluster.Name)
 		return nil
 	}
-	httpRouteNamespace := parts[1]
-	httpRouteName := parts[2]
-	httpRouteRuleIndexStr := parts[4]
-	httpRouteRuleIndex, err := strconv.Atoi(httpRouteRuleIndexStr)
 	if err != nil {
-		s.log.Error(err, "failed to parse HTTPRoute rule index",
-			"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndexStr)
+		s.log.Error(err, "failed to parse AIGatewayRoute cluster name", "cluster_name", cluster.Name)
 		return nil
-	}
-	backendRefIndexes := []int{-1}
-	if len(parts) == 7 {
-		if parts[5] != "backend" {
-			s.log.Info("non-ai-gateway cluster name", "cluster_name", cluster.Name)
-			return nil
-		}
-		backendRefIndex, err := strconv.Atoi(parts[6])
-		if err != nil {
-			s.log.Error(err, "failed to parse HTTPRoute backend index",
-				"cluster_name", cluster.Name, "backend_index", parts[6])
-			return nil
-		}
-		backendRefIndexes[0] = backendRefIndex
 	}
 
 	// Check if this rule has InferencePool backends.
 	pool := getInferencePoolByMetadata(cluster.Metadata)
 	// Get the HTTPRoute object from the cluster name.
 	var aigwRoute aigv1b1.AIGatewayRoute
-	err = s.k8sClient.Get(ctx, client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &aigwRoute)
+	err = s.k8sClient.Get(ctx, client.ObjectKey{Namespace: clusterName.httpRouteNamespace, Name: clusterName.httpRouteName}, &aigwRoute)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			s.log.Info("Skipping non-AIGatewayRoute HTTPRoute cluster modification",
-				"namespace", httpRouteNamespace, "name", httpRouteName)
+				"namespace", clusterName.httpRouteNamespace, "name", clusterName.httpRouteName)
 			return nil
 		}
 		s.log.Error(err, "failed to get AIGatewayRoute object",
-			"namespace", httpRouteNamespace, "name", httpRouteName)
+			"namespace", clusterName.httpRouteNamespace, "name", clusterName.httpRouteName)
 		return err
 	}
 
 	// Get the backend from the HTTPRoute object.
-	if httpRouteRuleIndex >= len(aigwRoute.Spec.Rules) {
+	if clusterName.ruleIndex >= len(aigwRoute.Spec.Rules) {
 		s.log.Info("HTTPRoute rule index out of range",
-			"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndexStr)
+			"cluster_name", cluster.Name, "rule_index", clusterName.ruleIndex)
 		return nil
 	}
-	httpRouteRule := &aigwRoute.Spec.Rules[httpRouteRuleIndex]
-	if backendRefIndexes[0] >= len(httpRouteRule.BackendRefs) {
+	httpRouteRule := &aigwRoute.Spec.Rules[clusterName.ruleIndex]
+	if clusterName.backendRefIndex >= len(httpRouteRule.BackendRefs) {
 		s.log.Info("HTTPRoute backend index out of range",
-			"cluster_name", cluster.Name, "backend_index", parts[6])
+			"cluster_name", cluster.Name, "backend_index", clusterName.backendRefIndex)
 		return nil
 	}
 
@@ -232,17 +249,17 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 			s.log.Info("LoadAssignment is nil, setting cluster-level metadata", "cluster_name", cluster.Name)
 			if len(httpRouteRule.BackendRefs) > 0 {
 				backendRefIndex := 0
-				if backendRefIndexes[0] >= 0 {
-					backendRefIndex = backendRefIndexes[0]
+				if clusterName.backendRefIndex >= 0 {
+					backendRefIndex = clusterName.backendRefIndex
 				}
 				backendRef := httpRouteRule.BackendRefs[backendRefIndex]
-				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, backendRefIndex)
+				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, clusterName.ruleIndex, backendRefIndex)
 			}
 		} else {
 			// Populate the metadata for each endpoint in the LoadAssignment.
 			var lbEndpointIndex int
 			for i, backendRef := range httpRouteRule.BackendRefs {
-				if backendRefIndexes[0] >= 0 && i != backendRefIndexes[0] {
+				if clusterName.backendRefIndex >= 0 && i != clusterName.backendRefIndex {
 					continue
 				}
 				// The weight of 0 means this backend is disabled and is not included in the LoadAssignment by EG,
@@ -275,7 +292,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 						m.Fields = make(map[string]*structpb.Value)
 					}
 					m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
-						internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i),
+						internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, clusterName.ruleIndex, i),
 					)
 				}
 			}
@@ -283,7 +300,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 	} else {
 		// we can only specify one backend in a rule for InferencePool.
 		backendRef := httpRouteRule.BackendRefs[0]
-		setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, 0)
+		setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, clusterName.ruleIndex, 0)
 	}
 
 	if cluster.TypedExtensionProtocolOptions == nil {
