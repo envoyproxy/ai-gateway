@@ -417,6 +417,75 @@ func Test_maybeModifyCluster(t *testing.T) {
 	}
 }
 
+func TestMaybeModifyClusterPerBackendClusterName(t *testing.T) {
+	c := newFakeClient()
+	require.NoError(t, c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "myroute",
+			Namespace: "ns",
+		},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+						{Name: "aaa"},
+						{Name: "to-be-ignored", Weight: ptr.To[int32](0)},
+						{Name: "bbb"},
+					},
+				},
+			},
+		},
+	}))
+
+	s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+	require.NoError(t, err)
+	expectedBackendName := internalapi.PerRouteRuleRefBackendName("ns", "bbb", "myroute", 0, 2)
+
+	t.Run("LoadAssignment uses backend index from cluster name", func(t *testing.T) {
+		cluster := &clusterv3.Cluster{
+			Name: "httproute/ns/myroute/rule/0/backend/2",
+			LoadAssignment: &endpointv3.ClusterLoadAssignment{
+				Endpoints: []*endpointv3.LocalityLbEndpoints{
+					{
+						LbEndpoints: []*endpointv3.LbEndpoint{{}},
+					},
+					{
+						LbEndpoints: []*endpointv3.LbEndpoint{{}},
+					},
+				},
+			},
+		}
+
+		require.NoError(t, s.maybeModifyCluster(t.Context(), cluster))
+
+		require.Equal(t, expectedBackendName, backendNameFromMetadata(t, cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata))
+		require.Nil(t, cluster.LoadAssignment.Endpoints[1].LbEndpoints[0].Metadata)
+		require.Nil(t, cluster.Metadata)
+	})
+
+	t.Run("nil LoadAssignment uses backend index from cluster name", func(t *testing.T) {
+		cluster := &clusterv3.Cluster{
+			Name: "httproute/ns/myroute/rule/0/backend/2",
+		}
+
+		require.NoError(t, s.maybeModifyCluster(t.Context(), cluster))
+
+		require.Equal(t, expectedBackendName, backendNameFromMetadata(t, cluster.Metadata))
+	})
+}
+
+func backendNameFromMetadata(t *testing.T, metadata *corev3.Metadata) string {
+	t.Helper()
+	require.NotNil(t, metadata)
+	require.NotNil(t, metadata.FilterMetadata)
+	filterMetadata := metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+	require.NotNil(t, filterMetadata)
+	require.NotNil(t, filterMetadata.Fields)
+	backendName := filterMetadata.Fields[internalapi.InternalMetadataBackendNameKey]
+	require.NotNil(t, backendName)
+	return backendName.GetStringValue()
+}
+
 // Helper function to create an InferencePool ExtensionResource.
 func createInferencePoolExtensionResource(name, namespace string) *egextension.ExtensionResource {
 	unstructuredObj := &unstructured.Unstructured{
@@ -2196,6 +2265,10 @@ func TestParseAIGatewayClusterName(t *testing.T) {
 		{
 			name:    "missing rule index",
 			cluster: "httproute/ns/myroute/rule",
+		},
+		{
+			name:    "unexpected rule segment",
+			cluster: "httproute/ns/myroute/not-rule/2",
 		},
 		{
 			name:    "missing backend index",

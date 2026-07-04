@@ -161,7 +161,7 @@ type aiGatewayClusterName struct {
 
 func parseAIGatewayClusterName(clusterName string) (aiGatewayClusterName, bool, error) {
 	parts := strings.Split(clusterName, "/")
-	if (len(parts) != 5 && len(parts) != 7) || parts[0] != "httproute" {
+	if (len(parts) != 5 && len(parts) != 7) || parts[0] != "httproute" || parts[3] != "rule" {
 		return aiGatewayClusterName{}, false, nil
 	}
 
