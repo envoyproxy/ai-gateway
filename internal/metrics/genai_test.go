@@ -98,4 +98,5 @@ func TestGenAiConstants(t *testing.T) {
 	assert.Equal(t, "gcp.anthropic", genaiProviderGCPAnthropic)
 	assert.Equal(t, "anthropic", genaiProviderAnthropic)
 	assert.Equal(t, "cohere", genaiProviderCohere)
+	assert.Equal(t, "huggingface.tei", genaiProviderHuggingFaceTEI)
 }

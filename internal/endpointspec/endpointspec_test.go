@@ -303,10 +303,16 @@ func TestRerankEndpointSpec_ParseBody(t *testing.T) {
 func TestRerankEndpointSpec_GetTranslator(t *testing.T) {
 	spec := RerankEndpointSpec{}
 
-	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere}, "override")
-	require.NoError(t, err)
+	for _, schema := range []filterapi.VersionedAPISchema{
+		{Name: filterapi.APISchemaCohere},
+		{Name: filterapi.APISchemaHuggingFaceTEI},
+	} {
+		translator, err := spec.GetTranslator(schema, "override")
+		require.NoError(t, err)
+		require.NotNil(t, translator)
+	}
 
-	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
 	require.ErrorContains(t, err, "unsupported API schema")
 }
 

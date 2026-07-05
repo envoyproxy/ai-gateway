@@ -407,6 +407,8 @@ func (RerankEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, mod
 	switch schema.Name {
 	case filterapi.APISchemaCohere:
 		return translator.NewRerankCohereToCohereTranslator(schema.Version, modelNameOverride), nil
+	case filterapi.APISchemaHuggingFaceTEI:
+		return translator.NewRerankCohereToHuggingFaceTEITranslator(modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
 	}

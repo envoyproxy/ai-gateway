@@ -331,6 +331,7 @@ spec:
                     - GCPAnthropic
                     - Anthropic
                     - AWSAnthropic
+                    - HuggingFaceTEI
                     type: string
                   prefix:
                     description: |-
@@ -746,6 +747,7 @@ spec:
                     - GCPAnthropic
                     - Anthropic
                     - AWSAnthropic
+                    - HuggingFaceTEI
                     type: string
                   prefix:
                     description: |-
