@@ -241,6 +241,26 @@ controller:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  # Topology spread constraints for the controller pods.
+  # See: https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+  # Example:
+  # topologySpreadConstraints:
+  #   - maxSkew: 1
+  #     topologyKey: topology.kubernetes.io/zone
+  #     whenUnsatisfiable: ScheduleAnyway
+  #     labelSelector:
+  #       matchLabels:
+  #         app.kubernetes.io/name: ai-gateway-helm
+  topologySpreadConstraints: []
+
+  # PodDisruptionBudget for the controller pods, protecting them from voluntary
+  # disruptions such as node drains. Only meaningful when replicaCount > 1.
+  # If maxUnavailable is set, it takes precedence over minAvailable.
+  # See: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+    # maxUnavailable: 1
 
   # maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive
   # from xDS (envoy-gateway).
