@@ -2969,7 +2969,7 @@ func (t *ResponseToolUnion) UnmarshalJSON(data []byte) error {
 		}
 		t.OfToolSearch = &ts
 	default:
-		return errors.New(fmt.Sprintf("unknown tool type %s", typ.String()))
+		return fmt.Errorf("unknown tool type %s", typ.String())
 	}
 	return nil
 }
