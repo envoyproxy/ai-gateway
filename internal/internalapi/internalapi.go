@@ -29,6 +29,10 @@ const (
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
 	// InternalMetadataRouteNameKey is the key used to store the route name.
 	InternalMetadataRouteNameKey = "aigw_route_name"
+	// InternalMetadataMirrorKey marks a cluster as a shadow/mirror leg of a
+	// primary request. Set on mirror clusters so the extproc cost emitter can
+	// skip LLMRequestCost emission for shadow traffic and avoid double-billing.
+	InternalMetadataMirrorKey = "mirror"
 	// MCPBackendHeader is the special header key used to specify the target backend name.
 	MCPBackendHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend"
 	// MCPRouteHeader is the special header key used to identify the mcp route.
@@ -90,6 +94,15 @@ const (
 // route rule in a specific AIGatewayRoute.
 func PerRouteRuleRefBackendName(namespace, name, routeName string, routeRuleIndex, refIndex int) string {
 	return fmt.Sprintf("%s/%s/route/%s/rule/%d/ref/%d", namespace, name, routeName, routeRuleIndex, refIndex)
+}
+
+// PerRouteRuleMirrorBackendName generates a unique backend name for a mirror reference
+// within a per-route rule. Envoy Gateway names mirror clusters
+// "httproute/<ns>/<name>/rule/<ruleIdx>-mirror-<mirrorIdx>", so the corresponding
+// filterapi.Backend must be keyed off the same indices to let extproc resolve the
+// shadow backend's overrides at runtime.
+func PerRouteRuleMirrorBackendName(namespace, name, routeName string, routeRuleIndex, mirrorIndex int) string {
+	return fmt.Sprintf("%s/%s/route/%s/rule/%d/mirror/%d", namespace, name, routeName, routeRuleIndex, mirrorIndex)
 }
 
 const (
