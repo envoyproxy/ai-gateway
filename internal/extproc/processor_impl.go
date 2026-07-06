@@ -846,9 +846,9 @@ func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.Tok
 // limit (not a cost), so it must be present on the request — unlike token costs, which are emitted on the
 // response path by buildDynamicMetadata.
 //
-// The mappings are gateway-wide: every configured MetadataKey is emitted on every request. Per-route
-// application is the consumer's job — each route's BackendTrafficPolicy reads only the MetadataKey(s) it
-// references, so MetadataKeys are unique across the gateway and no route-matching is needed here.
+// The mappings are gateway-wide: every configured MetadataKey is emitted on every request. The route is
+// not yet known at this phase (the router filter clears the route cache and Envoy re-routes after it
+// returns), so this does no route-matching.
 func buildRateLimitOverrideMetadata(
 	globalRateLimits []filterapi.GlobalRateLimitOverride,
 	filterMetadata map[string]*structpb.Struct,

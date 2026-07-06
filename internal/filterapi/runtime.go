@@ -36,8 +36,7 @@ type RuntimeConfig struct {
 	// Each entry has a RouteName identifying the route it applies to.
 	RequestCosts []RuntimeRequestCost
 	// GlobalRateLimits is the list of gateway-wide metadata→metadata mappings.
-	// They apply to every request; per-route application is selected by which MetadataKey each route's
-	// BackendTrafficPolicy reads.
+	// They apply to every request handled by the gateway.
 	GlobalRateLimits []GlobalRateLimitOverride
 	// DeclaredModels is the list of declared models.
 	DeclaredModels []Model

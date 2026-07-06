@@ -3,22 +3,9 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-# This manifest exercises the dynamic per-request rate-limit override feature:
-# GatewayConfig.Spec.GlobalRateLimits maps a source {namespace,key} carrying a
-# "<count>/<unit>" string into io.envoy.ai_gateway[<metadataKey>] as a
-# {requests_per_unit, unit} struct on the REQUEST path, so Envoy's global rate
-# limit can use a dynamic (per-tenant) limit instead of a static one.
-#
-# Because the vendored Envoy Gateway (v1.8.1) does not yet have the native
-# BackendTrafficPolicy ...limit.fromMetadata field (envoyproxy/gateway#9216 is
-# only on EG main), the consumer side is wired with an EnvoyPatchPolicy that
-# injects the native Envoy rate-limit action override
-# (limit.dynamic_metadata) reading requests_per_unit/unit from
-# io.envoy.ai_gateway[<metadataKey>]. A second EnvoyPatchPolicy adds a
-# set_metadata HTTP filter that writes the "<count>/<unit>" source string into
-# the configured source namespace/key, simulating what an ext_authz auth server
-# would normally emit. That filter runs before the AI Gateway ext_proc in the
-# HCM chain so the value is present when ext_proc reads it.
+# Drives a dynamic per-tenant rate limit from metadata: a SecurityPolicy ext_authz (the test auth
+# server) returns the per-tenant limit as a "<count>/<unit>" string in dynamic metadata; AI Gateway
+# normalizes it into io.envoy.ai_gateway, and the BackendTrafficPolicy reads it via limit.fromMetadata.
 
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
@@ -33,7 +20,6 @@ metadata:
   name: envoy-ai-gateway-dynamic-ratelimit
   namespace: default
   annotations:
-    # Bind the GatewayConfig (carrying GlobalRateLimits) to this Gateway.
     aigateway.envoyproxy.io/gateway-config: envoy-ai-gateway-dynamic-ratelimit
 spec:
   gatewayClassName: envoy-ai-gateway-dynamic-ratelimit
@@ -58,8 +44,7 @@ spec:
     kubernetes:
       envoyDeployment:
         container:
-          # Note: this is to clear the large default memory/cpu requirements for local tests.
-          # In production, you should set these to values that make sense for your environment.
+          # Clear the default memory/cpu requirements for local tests.
           resources: {}
 ---
 apiVersion: aigateway.envoyproxy.io/v1beta1
@@ -68,19 +53,12 @@ metadata:
   name: envoy-ai-gateway-dynamic-ratelimit
   namespace: default
 spec:
-  # Map the per-request limit value (a "<count>/<unit>" string the set_metadata
-  # filter writes into the source namespace/key below) into the
-  # io.envoy.ai_gateway dynamic metadata under "tenant_request_limit" as the
-  # {requests_per_unit, unit} struct Envoy's rate-limit override reads.
   globalRateLimits:
     - metadataKey: tenant_request_limit
       source:
         fromMetadata:
-          # The namespace/key the preceding filter (here simulated via
-          # set_metadata; normally ext_authz) wrote the limit string into.
-          # The extension server adds this namespace to the router ext_proc
-          # filter's MetadataOptions.ForwardingNamespaces so Envoy forwards it.
-          namespace: test.ratelimit.source
+          # ext_authz exposes the auth server's dynamic metadata under this namespace.
+          namespace: envoy.filters.http.ext_authz
           key: rate_limit
 ---
 apiVersion: aigateway.envoyproxy.io/v1beta1
@@ -126,12 +104,24 @@ spec:
         hostname: envoy-ai-gateway-dynamic-ratelimit-testupstream.default.svc.cluster.local
         port: 80
 ---
-# Global rate limit policy. This creates the rate-limit HTTP filter, the
-# rate-limit service plumbing and the per-route rate-limit action / descriptor.
-# The static limit here (1000/Hour) is intentionally large: it is the default
-# that applies only when the dynamic metadata key is absent. The
-# EnvoyPatchPolicy below overlays a limit.dynamic_metadata override on the
-# generated rate-limit action so the effective limit is driven by metadata.
+# ext_authz that returns the per-tenant limit ("2/MINUTE") as dynamic metadata.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: envoy-ai-gateway-dynamic-ratelimit-extauth
+  namespace: default
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-ai-gateway-dynamic-ratelimit
+  extAuth:
+    grpc:
+      backendRefs:
+        - name: ext-auth-server
+          port: 1073
+---
+# Global rate limit. The static 1000/Hour is the default; limit.fromMetadata overrides it per request.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
@@ -146,81 +136,59 @@ spec:
     type: Global
     global:
       rules:
-        # One budget per unique x-tenant-id value. Charge one unit (the default
-        # request cost of 1) per request so the limit gates on request count.
+        # One budget per x-tenant-id; one unit per request, so the limit gates on request count.
         - clientSelectors:
             - headers:
                 - name: x-tenant-id
                   type: Distinct
           limit:
-            requests: 1000 # large static default; the dynamic override replaces it.
+            requests: 1000
             unit: Hour
+            fromMetadata:
+              namespace: io.envoy.ai_gateway
+              key: tenant_request_limit
 ---
-# EnvoyPatchPolicy (1/2): inject a set_metadata HTTP filter that writes the
-# per-request limit string into the source namespace/key the GatewayConfig
-# points at. This simulates what an ext_authz auth server would normally emit.
-# The filter is inserted at the head of the HCM http_filters list so it runs
-# before the AI Gateway ext_proc filter (which reads the value).
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: EnvoyPatchPolicy
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: envoy-ai-gateway-dynamic-ratelimit-set-metadata
+  name: ext-auth-server
   namespace: default
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
-    kind: Gateway
-    name: envoy-ai-gateway-dynamic-ratelimit
-  type: JSONPatch
-  jsonPatches:
-    # Old (v1.x) xDS name scheme: <namespace>/<gateway>/<listener>.
-    - type: "type.googleapis.com/envoy.config.listener.v3.Listener"
-      name: default/envoy-ai-gateway-dynamic-ratelimit/http
-      operation:
-        op: add
-        # Prepend so set_metadata runs before the AI Gateway ext_proc filter.
-        jsonPath: "..http_filters"
-        path: "0"
-        value:
-          name: envoy.filters.http.set_metadata/test-ratelimit-source
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.http.set_metadata.v3.Config
-            metadata:
-              - metadata_namespace: test.ratelimit.source
-                allow_overwrite: true
-                value:
-                  rate_limit: "2/MINUTE"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ext-auth-server-dynamic-ratelimit
+  template:
+    metadata:
+      labels:
+        app: ext-auth-server-dynamic-ratelimit
+    spec:
+      containers:
+        - name: ext-auth-server
+          image: docker.io/envoyproxy/ai-gateway-testextauthserver:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 1073
+          env:
+            # No EXT_AUTH_ALLOWED_VALUE: allow all requests, and stamp the per-tenant limit.
+            - name: EXT_AUTH_DYNAMIC_METADATA_KEY
+              value: rate_limit
+            - name: EXT_AUTH_DYNAMIC_METADATA_VALUE
+              value: "2/MINUTE"
 ---
-# EnvoyPatchPolicy (2/2): overlay a limit.dynamic_metadata override onto every
-# rate-limit action generated by the BackendTrafficPolicy above, so the
-# effective limit is read from io.envoy.ai_gateway[tenant_request_limit] (the
-# {requests_per_unit, unit} struct AI Gateway emits on the request path).
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: EnvoyPatchPolicy
+apiVersion: v1
+kind: Service
 metadata:
-  name: envoy-ai-gateway-dynamic-ratelimit-limit-override
+  name: ext-auth-server
   namespace: default
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
-    kind: Gateway
-    name: envoy-ai-gateway-dynamic-ratelimit
-  type: JSONPatch
-  jsonPatches:
-    - type: "type.googleapis.com/envoy.config.route.v3.RouteConfiguration"
-      name: default/envoy-ai-gateway-dynamic-ratelimit/http
-      operation:
-        op: add
-        # Select every generated rate-limit action on any route in this config
-        # and attach the dynamic-metadata limit override to it.
-        jsonPath: "..rate_limits[*]"
-        path: "limit"
-        value:
-          dynamic_metadata:
-            metadata_key:
-              key: io.envoy.ai_gateway
-              path:
-                - key: tenant_request_limit
+  selector:
+    app: ext-auth-server-dynamic-ratelimit
+  ports:
+    - protocol: TCP
+      port: 1073
+      targetPort: 1073
+  type: ClusterIP
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -40,8 +40,7 @@ type Config struct {
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
 	// GlobalRateLimits configures gateway-wide mappings that emit per-request rate-limit override
 	// structs into io.envoy.ai_gateway dynamic metadata from filter metadata set by a preceding
-	// filter (typically ext_authz). They apply to every request; per-route application is selected by
-	// which MetadataKey each route's BackendTrafficPolicy reads.
+	// filter (typically ext_authz). They apply to every request handled by the gateway.
 	GlobalRateLimits []GlobalRateLimitOverride `json:"globalRateLimits,omitempty"`
 	// Backends is the list of backends that this listener can route to.
 	Backends []Backend `json:"backends,omitempty"`
@@ -115,8 +114,7 @@ type LLMRequestCost struct {
 }
 
 // GlobalRateLimitOverride is the gateway-wide configuration for emitting a rate-limit override
-// struct from filter dynamic metadata into io.envoy.ai_gateway. It applies to every request; per-route
-// application is selected by which MetadataKey each route's BackendTrafficPolicy reads.
+// struct from filter dynamic metadata into io.envoy.ai_gateway. It applies to every request.
 // The source value must be a string formatted as "<count>/<unit>" (e.g. "100000/HOUR").
 type GlobalRateLimitOverride struct {
 	MetadataKey string `json:"metadataKey"`

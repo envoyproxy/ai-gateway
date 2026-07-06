@@ -19,6 +19,7 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/tests/internal/testextauth"
 )
@@ -54,6 +55,8 @@ func doMain() *grpc.Server {
 	server := grpc.NewServer()
 	authv3.RegisterAuthorizationServer(server, &ExtAuthServer{
 		AllowedHeaderValue: os.Getenv(testextauth.ExtAuthAllowedValueEnvVar),
+		MetadataKey:        os.Getenv(testextauth.ExtAuthDynamicMetadataKeyEnvVar),
+		MetadataValue:      os.Getenv(testextauth.ExtAuthDynamicMetadataValueEnvVar),
 	})
 
 	go func() {
@@ -68,22 +71,29 @@ func doMain() *grpc.Server {
 
 type ExtAuthServer struct {
 	AllowedHeaderValue string
+	// MetadataKey and MetadataValue, when both set, are returned as CheckResponse.dynamic_metadata
+	// on an allowed response (exposed under the envoy.filters.http.ext_authz namespace).
+	MetadataKey   string
+	MetadataValue string
 }
 
 func (e *ExtAuthServer) Check(_ context.Context, req *authv3.CheckRequest) (response *authv3.CheckResponse, err error) {
 	headers := req.GetAttributes().GetRequest().GetHttp().GetHeaders()
 	logger.Printf("checking request with headers: %v", headers)
 
-	if e.AllowedHeaderValue == "" {
-		logger.Println("no allow value configured. allowing request")
-		return &authv3.CheckResponse{Status: &status.Status{Code: int32(codes.OK)}}, nil
+	allowed := e.AllowedHeaderValue == "" ||
+		(headers != nil && headers[testextauth.ExtAuthAccessControlHeader] == e.AllowedHeaderValue)
+	if !allowed {
+		logger.Printf("access control does not match %q. denied.", e.AllowedHeaderValue)
+		return &authv3.CheckResponse{Status: &status.Status{Code: int32(codes.PermissionDenied), Message: "access denied"}}, nil
 	}
 
-	if headers != nil && headers[testextauth.ExtAuthAccessControlHeader] == e.AllowedHeaderValue {
-		logger.Printf("access control matches %q. allowed.", e.AllowedHeaderValue)
-		return &authv3.CheckResponse{Status: &status.Status{Code: int32(codes.OK)}}, nil
+	logger.Println("request allowed")
+	resp := &authv3.CheckResponse{Status: &status.Status{Code: int32(codes.OK)}}
+	if e.MetadataKey != "" && e.MetadataValue != "" {
+		resp.DynamicMetadata = &structpb.Struct{Fields: map[string]*structpb.Value{
+			e.MetadataKey: structpb.NewStringValue(e.MetadataValue),
+		}}
 	}
-
-	logger.Printf("access control does not match %q. denied.", e.AllowedHeaderValue)
-	return &authv3.CheckResponse{Status: &status.Status{Code: int32(codes.PermissionDenied), Message: "access denied"}}, nil
+	return resp, nil
 }

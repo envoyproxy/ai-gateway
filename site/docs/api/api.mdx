@@ -4044,7 +4044,7 @@ GatewayConfigSpec defines the configuration for the AI Gateway.
   name="globalRateLimits"
   type="[RateLimitOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitoverride) array"
   required="false"
-  description="GlobalRateLimits defines gateway-wide mappings for emitting per-request rate-limit override<br />structs into io.envoy.ai_gateway dynamic metadata. Each entry maps a metadata key to a source<br />that supplies the per-request limit value, and applies to every request handled by the gateway.<br />Per-route rate limiting is expressed on the consuming side: each MetadataKey is referenced by a<br />route's BackendTrafficPolicy.rateLimit.global.rules[].limit.fromMetadata.key, so a given route<br />only applies the limits whose keys its policy reads. MetadataKeys must therefore be unique."
+  description="GlobalRateLimits defines gateway-wide mappings for emitting per-request rate-limit override<br />structs into io.envoy.ai_gateway dynamic metadata. Each entry maps a metadata key to a source<br />that supplies the per-request limit value, and applies to every request handled by the gateway."
 />
 
 
