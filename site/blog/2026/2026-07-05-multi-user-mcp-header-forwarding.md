@@ -46,6 +46,8 @@ There is also the full OAuth authorization code flow with browser consent, which
 | Token exchange (RFC 8693) | ✅        | ✅               | STS + trust config  | Cross-IdP boundary                         |
 | **Header forwarding**     | ✅        | ✅               | **None**            | User's credential already works downstream |
 
+![Decision path for choosing a downstream identity pattern](/img/blog/multi-user-mcp-decision.png)
+
 ## How Header Forwarding Works
 
 The key design property is what _doesn't_ happen: Envoy AI Gateway's MCP proxy builds a fresh HTTP request for every upstream call. Client headers do not propagate to backend MCP servers by default — at all. Forwarding is an explicit, per-backend opt-in via `forwardHeaders` on each backend reference.
