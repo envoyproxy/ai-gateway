@@ -11,13 +11,13 @@ image: /img/blog/multi-user-mcp-feature.png
 
 When teams first deploy MCP servers in production, the path of least resistance is a shared service account: one API token for Jira, one for Slack, one for GitHub — stored as Kubernetes Secrets and used for every request, regardless of who triggered the agent. This works until it doesn't. Comments post under the wrong name, users see data their own accounts can't access, and the RBAC rules carefully configured in your enterprise tools are silently bypassed.
 
-Envoy AI Gateway ships per-backend header forwarding in the `MCPRoute` API — available since v0.6 and part of the now-GA v1.0 — which solves this for a common enterprise case with a single YAML addition. This post covers how it works, how we run it in production at Nutanix, and — just as important — when you should reach for OAuth or token exchange instead.
+Envoy AI Gateway ships per-backend header forwarding in the `MCPRoute` API — available since v0.6 and part of the now-GA v1.0 — which solves this for a common enterprise case with a single YAML addition. This post covers how it works, how it plays out in a real production deployment, and — just as important — when you should reach for OAuth or token exchange instead.
 
 <!-- truncate -->
 
 ## The Problem with Shared Service Accounts
 
-At Nutanix, we run Panacea.AI, an internal agent platform that routes 50+ concurrent agents through Envoy AI Gateway, each serving a different engineer or SRE. With a shared Jira service account, every agent had the same access regardless of the triggering user's actual permissions. Slack tools could reach channels the triggering engineer wasn't a member of. Jira comments appeared under the service account's name, not the engineer's. Nothing was technically broken — and that was the problem. The permission model of every downstream tool was being quietly flattened into "whatever the bot can do."
+Consider an internal agent platform routing dozens of concurrent agents through Envoy AI Gateway, each serving a different engineer or SRE. With a shared Jira service account, every agent has the same access regardless of the triggering user's actual permissions. Slack tools can reach channels the triggering engineer isn't a member of. Jira comments appear under the service account's name, not the engineer's. Nothing is technically broken — and that is the problem. The permission model of every downstream tool is being quietly flattened into "whatever the bot can do."
 
 The instinct is to reach for OAuth. The reality is more nuanced, and it helps to first untangle what "authentication" actually means in an MCP deployment.
 
@@ -60,7 +60,7 @@ Each entry can also rename the header on the way through: `name` selects the inb
 
 ## Level 1: PAT Passthrough — Zero Infrastructure
 
-This is the configuration we run in production. Many enterprise MCP servers — Atlassian, Glean, Sourcegraph — accept per-user authentication via custom HTTP headers carrying a personal access token (PAT). Every engineer already has one. The gateway just needs to deliver it to the right backend and no other:
+This is the simplest production-ready configuration. Many enterprise MCP servers — Atlassian, Glean, Sourcegraph — accept per-user authentication via custom HTTP headers carrying a personal access token (PAT). Every engineer already has one. The gateway just needs to deliver it to the right backend and no other:
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1beta1
@@ -142,9 +142,9 @@ It isn't; it is a different point in the design space. Sending a credential per 
 
 Passthrough keeps the gateway stateless. There is nothing to steal at rest, nothing to rotate, and nothing to migrate; the credential rests with the client platform, which for an enterprise agent platform is typically already holding the user's session. Short-lived, IdP-issued JWTs favor passthrough strongly. Long-lived tokens for external SaaS — where storage, refresh, and revocation genuinely need management — favor a broker or token exchange. The two models are complementary, and the same route can serve both.
 
-## Production Lessons from Nutanix
+## What This Looks Like in Practice
 
-Running Panacea.AI across 10+ MCP backends — Jira, Confluence, Slack, GitHub Enterprise, and internal observability tools, collectively exposing 120+ tools — enabling per-user identity was a YAML addition to an existing `MCPRoute`. No OAuth app registrations, no token storage, no consent flows, no changes to the backends.
+Picture a platform aggregating a dozen MCP backends behind one route — Jira, Confluence, Slack, GitHub Enterprise, and internal observability tools, collectively exposing well over a hundred tools. Enabling per-user identity for the backends that need it is a YAML addition to the existing `MCPRoute`. No OAuth app registrations, no token storage, no consent flows, no changes to the backends themselves.
 
 The results are exactly what the RBAC model promises: Jira comments attribute to the triggering engineer, not a bot. Confluence and Jira queries return only what each engineer's own account can see. Agents triggered by different engineers surface different data, matching each user's actual permissions. And because forwarding is per-backend, the user tokens never touch the public-API backends sharing the same route.
 
