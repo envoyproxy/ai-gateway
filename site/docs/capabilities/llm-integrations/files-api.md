@@ -35,13 +35,13 @@ the gateway returns; do not attempt to construct or reuse a provider-native id d
 
 ## Supported Endpoints
 
-| Operation | Method &amp; Path                    | Routed by                          |
-| --------- | ----------------------------------- | ---------------------------------- |
-| Upload    | `POST /v1/files`                    | `model` form field (**required**)  |
-| List      | `GET /v1/files`                     | `model` query param (**required**) |
-| Retrieve  | `GET /v1/files/{file_id}`           | file id                            |
-| Content   | `GET /v1/files/{file_id}/content`   | file id                            |
-| Delete    | `DELETE /v1/files/{file_id}`        | file id                            |
+| Operation | Method &amp; Path                 | Routed by                          |
+| --------- | --------------------------------- | ---------------------------------- |
+| Upload    | `POST /v1/files`                  | `model` form field (**required**)  |
+| List      | `GET /v1/files`                   | `model` query param (**required**) |
+| Retrieve  | `GET /v1/files/{file_id}`         | file id                            |
+| Content   | `GET /v1/files/{file_id}/content` | file id                            |
+| Delete    | `DELETE /v1/files/{file_id}`      | file id                            |
 
 :::warning Provider support
 
@@ -131,12 +131,12 @@ The gateway encrypts backend identity into every file id using AES-GCM with a PB
 the same mechanism used for MCP session encryption. The key is derived from a seed configured on the
 external processor:
 
-| Flag                                 | Default                 | Description                                                                 |
-| ------------------------------------ | ----------------------- | --------------------------------------------------------------------------- |
-| `--fileIDEncryptionSeed`               | `default-insecure-seed` | Seed used to derive the file id encryption key. **Change this in production.** |
-| `--fileIDEncryptionIterations`         | `100000`                | PBKDF2 iterations for key derivation.                                       |
+| Flag                                   | Default                 | Description                                                                            |
+| -------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------- |
+| `--fileIDEncryptionSeed`               | `default-insecure-seed` | Seed used to derive the file id encryption key. **Change this in production.**         |
+| `--fileIDEncryptionIterations`         | `100000`                | PBKDF2 iterations for key derivation.                                                  |
 | `--fileIDFallbackEncryptionSeed`       | _(empty)_               | Optional fallback seed, tried on decode when the primary fails. Enables seed rotation. |
-| `--fileIDFallbackEncryptionIterations` | `100000`                | PBKDF2 iterations for the fallback seed.                                    |
+| `--fileIDFallbackEncryptionIterations` | `100000`                | PBKDF2 iterations for the fallback seed.                                               |
 
 :::caution Change the encryption seed in production
 
@@ -237,7 +237,12 @@ Response:
 {
   "object": "list",
   "data": [
-    { "id": "file-abc123...", "object": "file", "filename": "batchinput.jsonl", "purpose": "batch" }
+    {
+      "id": "file-abc123...",
+      "object": "file",
+      "filename": "batchinput.jsonl",
+      "purpose": "batch"
+    }
   ],
   "has_more": false,
   "first_id": "file-abc123...",
@@ -352,12 +357,12 @@ awareness of the individual backends is required.
 
 ## Error responses
 
-| Status                | When                                                                            |
-| --------------------- | ------------------------------------------------------------------------------- |
+| Status                | When                                                                                                       |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `400 Bad Request`     | Upload without a `model` field, or list without a `?model=` query parameter, or an invalid `after` cursor. |
-| `404 Not Found`       | A file id that cannot be decoded (unknown, tampered, or forged), or an unsupported method/path. |
-| `410 Gone`            | The backend encoded in the id or cursor no longer exists in the configuration.  |
-| `501 Not Implemented` | The target backend's schema is not OpenAI (see [Provider support](#supported-endpoints)). |
+| `404 Not Found`       | A file id that cannot be decoded (unknown, tampered, or forged), or an unsupported method/path.            |
+| `410 Gone`            | The backend encoded in the id or cursor no longer exists in the configuration.                             |
+| `501 Not Implemented` | The target backend's schema is not OpenAI (see [Provider support](#supported-endpoints)).                  |
 
 ## Caveats and limitations
 
