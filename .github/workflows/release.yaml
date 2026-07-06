@@ -7,6 +7,10 @@ on:
 jobs:
   docker_push:
     name: Push Docker Images
+    # Publishing requires registry credentials to be configured on the repository.
+    # Skip (instead of fail) when they are absent, e.g. on forks, so that tag pushes
+    # don't produce failing runs on repositories that don't publish images.
+    if: vars.DOCKERHUB_USERNAME != ''
     uses: ./.github/workflows/docker_build_job.yaml
     secrets: inherit
 
@@ -16,6 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # gh release create requires contents:write
+    env:
+      # Allows overriding the registry the artifacts are published to, e.g. for
+      # downstream distributions. Defaults to the upstream DockerHub organization.
+      OCI_REGISTRY: ${{ vars.OCI_REGISTRY || 'docker.io/envoyproxy' }}
     steps:
       - name: Set HELM_CHART_VERSION and TAG envs
         run: |
@@ -26,9 +34,13 @@ jobs:
 
       # To include the helm chart in the release artifact, we build and push it here instead of the separate job.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-      - name: Login into DockerHub
+      - name: Determine OCI registry host
+        id: oci
+        run: echo "host=${OCI_REGISTRY%%/*}" >> "$GITHUB_OUTPUT"
+      - name: Login into Docker registry
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
+          registry: ${{ steps.oci.outputs.host }}
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
