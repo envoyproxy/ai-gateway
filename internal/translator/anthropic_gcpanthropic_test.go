@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/sjson"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
@@ -315,6 +316,61 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_StreamingPaths(t *testing
 			assert.Equal(t, expectedPath, pathHeader.Value())
 		})
 	}
+}
+
+func TestAnthropicToGCPAnthropicTranslator_RequestBody_StripsContextManagement(t *testing.T) {
+	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "", "context_management")
+
+	parsedReq := &anthropic.MessagesRequest{
+		Model:     "claude-sonnet-4-5",
+		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "ping"}}},
+		MaxTokens: 100,
+	}
+	raw, err := json.Marshal(parsedReq)
+	require.NoError(t, err)
+
+	// Claude Code injects context_management on every request; Vertex 400s on it.
+	// It is not part of the typed struct, so inject it into the raw body directly.
+	raw, err = sjson.SetRawBytes(raw, "context_management", []byte(`{"edits":[{"type":"clear_tool_uses_20250919"}]}`))
+	require.NoError(t, err)
+
+	_, bodyMutation, err := translator.RequestBody(raw, parsedReq, false)
+	require.NoError(t, err)
+	require.NotNil(t, bodyMutation)
+
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(bodyMutation, &out))
+
+	// The field Vertex rejects must be gone.
+	require.NotContains(t, out, "context_management", "context_management must be stripped before reaching Vertex")
+	// Existing behavior must be preserved.
+	require.NotContains(t, out, "model", "model is still removed (moved to path)")
+	require.Equal(t, "2023-06-01", out["anthropic_version"], "anthropic_version is still added")
+}
+
+func TestAnthropicToGCPAnthropicTranslator_RequestBody_UnsupportedFieldsDefaultNoOp(t *testing.T) {
+	translator := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
+
+	parsedReq := &anthropic.MessagesRequest{
+		Model:     "claude-sonnet-4-5",
+		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "ping"}}},
+		MaxTokens: 100,
+	}
+	raw, err := json.Marshal(parsedReq)
+	require.NoError(t, err)
+
+	raw, err = sjson.SetRawBytes(raw, "context_management", []byte(`{"edits":[{"type":"clear_tool_uses_20250919"}]}`))
+	require.NoError(t, err)
+
+	_, bodyMutation, err := translator.RequestBody(raw, parsedReq, false)
+	require.NoError(t, err)
+	require.NotNil(t, bodyMutation)
+
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(bodyMutation, &out))
+
+	// No unsupportedFields configured -> the field must pass through untouched.
+	require.Contains(t, out, "context_management", "unsupportedFields is opt-in; unset must be a no-op")
 }
 
 func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testing.T) {

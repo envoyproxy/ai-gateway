@@ -8,8 +8,10 @@ package translator
 import (
 	"cmp"
 	"fmt"
+	"log/slog"
 	"strconv"
 
+	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
@@ -18,10 +20,11 @@ import (
 
 // NewAnthropicToGCPAnthropicTranslator creates a translator for Anthropic to GCP Anthropic format.
 // This is essentially a passthrough translator with GCP-specific modifications.
-func NewAnthropicToGCPAnthropicTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) AnthropicMessagesTranslator {
+func NewAnthropicToGCPAnthropicTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride, unsupportedFields ...string) AnthropicMessagesTranslator {
 	return &anthropicToGCPAnthropicTranslator{
 		apiVersion:        apiVersion,
 		modelNameOverride: modelNameOverride,
+		unsupportedFields: unsupportedFields,
 	}
 }
 
@@ -30,6 +33,7 @@ type anthropicToGCPAnthropicTranslator struct {
 	apiVersion        string
 	modelNameOverride internalapi.ModelNameOverride
 	requestModel      internalapi.RequestModel
+	unsupportedFields []string
 }
 
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody] for Anthropic to GCP Anthropic translation.
@@ -54,6 +58,18 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(raw []byte, req *anthrop
 	newBody, _ = sjson.DeleteBytesOptions(mutatedBody, "model",
 		// It is safe to use sjsonOptionsInPlace here since we have already created a new mutatedBody above.
 		sjsonOptionsInPlace)
+
+	// Strip Vertex-unsupported Anthropic-only fields the operator has declared via the
+	// backend's unsupportedFields config (e.g. "context_management" — Claude Code sends it
+	// on every request, but Vertex rejects it with "Extra inputs are not permitted").
+	for _, field := range a.unsupportedFields {
+		if gjson.GetBytes(newBody, field).Exists() {
+			newBody, _ = sjson.DeleteBytesOptions(newBody, field, sjsonOptionsInPlace)
+			if a.debugLogEnabled && a.logger != nil {
+				a.logger.Debug("stripped unsupported Anthropic field", slog.String("field", field))
+			}
+		}
+	}
 
 	// Determine the GCP path based on whether streaming is requested.
 	specifier := "rawPredict"

@@ -137,8 +137,9 @@ type VersionedAPISchema struct {
 	Version string `json:"version,omitempty"`
 	// Prefix is the prefix of the API schema. Optional. Used for OpenAI and Anthropic schemas.
 	Prefix string `json:"prefix,omitempty"`
-	// UnsupportedFields lists Anthropic-only request field names to omit when translating to
-	// the OpenAI schema. Optional. Used for OpenAI schema only.
+	// UnsupportedFields lists Anthropic-only request field names to omit or gate when
+	// translating to the OpenAI or GCPAnthropic schema. Optional. Used for OpenAI and
+	// GCPAnthropic schemas only.
 	UnsupportedFields []string `json:"unsupportedFields,omitempty"`
 }
 
@@ -158,6 +159,13 @@ func (v VersionedAPISchema) AnthropicPrefix() string {
 // OpenAIUnsupportedFields returns the Anthropic-only field names to omit for this
 // VersionedAPISchema, or nil if none are configured.
 func (v VersionedAPISchema) OpenAIUnsupportedFields() []string {
+	return v.UnsupportedFields
+}
+
+// GCPAnthropicUnsupportedFields returns the Anthropic-only field names to strip for this
+// VersionedAPISchema when translating to GCP Vertex AI's native Anthropic endpoint, or nil
+// if none are configured.
+func (v VersionedAPISchema) GCPAnthropicUnsupportedFields() []string {
 	return v.UnsupportedFields
 }
 

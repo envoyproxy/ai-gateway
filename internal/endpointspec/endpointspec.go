@@ -365,7 +365,7 @@ func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 	// Messages processor only supports Anthropic-native translators.
 	switch schema.Name {
 	case filterapi.APISchemaGCPAnthropic:
-		return translator.NewAnthropicToGCPAnthropicTranslator(schema.Version, modelNameOverride), nil
+		return translator.NewAnthropicToGCPAnthropicTranslator(schema.Version, modelNameOverride, schema.GCPAnthropicUnsupportedFields()...), nil
 	case filterapi.APISchemaAWSAnthropic:
 		return translator.NewAnthropicToAWSAnthropicTranslator(schema.Version, modelNameOverride), nil
 	case filterapi.APISchemaAnthropic:

@@ -51,16 +51,22 @@ type VersionedAPISchema struct {
 	Prefix *string `json:"prefix,omitempty"`
 
 	// UnsupportedFields lists Anthropic-only request field names that this backend's upstream
-	// does not accept and that the gateway should omit when translating to the OpenAI schema.
+	// does not accept, so the gateway can omit or gate them during translation instead of
+	// forwarding a field the backend will reject outright.
 	//
-	// The Anthropic Messages API has fields with no equivalent in the OpenAI chat completions
-	// API. Some OpenAI-compatible backends (e.g. vLLM) accept them anyway via passthrough
-	// extensions; others (e.g. the real OpenAI API) reject unrecognized fields outright. This
-	// field is ignored for schemas other than OpenAI.
+	// The Anthropic Messages API has fields with no equivalent in other schemas. Some
+	// OpenAI-compatible backends (e.g. vLLM) accept Anthropic-only fields anyway via
+	// passthrough extensions; others (e.g. the real OpenAI API, or GCP Vertex AI's native
+	// Anthropic endpoint) reject unrecognized fields outright.
 	//
-	// Currently recognized values: "thinking" (Anthropic's extended-thinking/adaptive-reasoning
-	// config, mapped to a "thinking" field in the translated request — not part of the OpenAI
-	// chat completions spec, and rejected by strict implementations).
+	// Currently recognized values:
+	//   - "thinking" (OpenAI schema): Anthropic's extended-thinking/adaptive-reasoning config,
+	//     mapped to a "thinking" field in the translated request — not part of the OpenAI chat
+	//     completions spec, rejected by strict implementations.
+	//   - "context_management" (GCPAnthropic schema): Anthropic's context-editing config,
+	//     rejected by Vertex AI's native Anthropic endpoint with "Extra inputs are not permitted".
+	//
+	// This field is ignored for schemas other than OpenAI and GCPAnthropic.
 	//
 	// +optional
 	UnsupportedFields []string `json:"unsupportedFields,omitempty"`

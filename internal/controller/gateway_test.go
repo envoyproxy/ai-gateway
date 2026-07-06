@@ -2029,6 +2029,12 @@ func Test_schemaToFilterAPI(t *testing.T) {
 			},
 		},
 		{
+			in: aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaGCPAnthropic, Version: ptr.To("vertex-2023-10-16"), UnsupportedFields: []string{"context_management"}},
+			expected: filterapi.VersionedAPISchema{
+				Name: filterapi.APISchemaGCPAnthropic, Version: "vertex-2023-10-16", UnsupportedFields: []string{"context_management"},
+			},
+		},
+		{
 			in:       aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaAWSBedrock},
 			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
 		},
