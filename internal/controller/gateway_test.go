@@ -2837,3 +2837,31 @@ func TestGatewayController_getObjectsForGatewayNamespaceInconsistency(t *testing
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "found gateway-labeled objects in multiple namespaces")
 }
+
+func TestGatewayController_getObjectsForGatewaySameNamespace(t *testing.T) {
+	const gwName, ns = "gw", "shared"
+	labels := map[string]string{
+		egOwningGatewayNameLabel:      gwName,
+		egOwningGatewayNamespaceLabel: ns,
+	}
+	gw := &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: ns}}
+
+	kube := fake2.NewClientset()
+	c := NewGatewayController(requireNewFakeClientWithIndexes(t), kube, ctrl.Log, ns,
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	_, err := kube.CoreV1().Pods(ns).Create(t.Context(), &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "pod-1", Namespace: ns, Labels: labels},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+	_, err = kube.AppsV1().Deployments(ns).Create(t.Context(), &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "dep-1", Namespace: ns, Labels: labels},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	namespace, pods, deployments, _, err := c.getObjectsForGateway(t.Context(), gw)
+	require.NoError(t, err)
+	require.Equal(t, ns, namespace)
+	require.Len(t, pods, 1)
+	require.Len(t, deployments, 1)
+}
