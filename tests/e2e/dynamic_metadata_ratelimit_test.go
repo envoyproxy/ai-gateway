@@ -27,6 +27,14 @@ import (
 // globalRateLimits) gates traffic instead of the static BackendTrafficPolicy limit.
 // The source metadata ("2/MINUTE") is set to 2 requests/minute per x-tenant-id.
 func Test_DynamicMetadataRateLimit(t *testing.T) {
+	// The BackendTrafficPolicy limit.fromMetadata consumer used by this test only exists on the
+	// Envoy Gateway development build (envoyproxy/gateway#9216). On tagged releases the field is
+	// pruned, the static default applies, and the assertions below would never see a 429.
+	if !e2elib.EnvoyGatewaySupportsLimitFromMetadata() {
+		t.Skipf("limit.fromMetadata requires Envoy Gateway %s; installed version is %s",
+			e2elib.EnvoyGatewayLatestVersion, e2elib.EnvoyGatewayVersion())
+	}
+
 	// Apply Redis manifest (shared with the other rate limit tests). The Envoy
 	// Gateway global rate limit service (envoy-ratelimit) is backed by Redis.
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), "../../examples/token_ratelimit/redis.yaml"))
