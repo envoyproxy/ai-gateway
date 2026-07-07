@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -23,6 +24,8 @@ import (
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
+
+const inferencePoolStatusRequeueAfter = time.Second
 
 // InferencePoolController implements [reconcile.TypedReconciler] for [gwaiev1.InferencePool].
 //
@@ -67,7 +70,9 @@ func (c *InferencePoolController) Reconcile(ctx context.Context, req reconcile.R
 		c.updateInferencePoolStatus(ctx, &inferencePool, "NotAccepted", err.Error())
 		return ctrl.Result{}, err
 	}
-	c.updateInferencePoolStatus(ctx, &inferencePool, "Accepted", "InferencePool reconciled successfully")
+	if c.updateInferencePoolStatus(ctx, &inferencePool, "Accepted", "InferencePool reconciled successfully") {
+		return ctrl.Result{RequeueAfter: inferencePoolStatusRequeueAfter}, nil
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -227,8 +232,10 @@ func (c *InferencePoolController) httpRouteReferencesInferencePool(route *gwapiv
 	return false
 }
 
-// updateInferencePoolStatus updates the status of the InferencePool.
-func (c *InferencePoolController) updateInferencePoolStatus(ctx context.Context, inferencePool *gwaiev1.InferencePool, conditionType string, message string) {
+// updateInferencePoolStatus updates the status of the InferencePool and reports
+// whether the status changed. Requeueing after a change lets cache-backed route
+// and gateway lists converge before conformance checks observe parent status.
+func (c *InferencePoolController) updateInferencePoolStatus(ctx context.Context, inferencePool *gwaiev1.InferencePool, conditionType string, message string) bool {
 	// Check if this is an ExtensionReference validation error.
 	isExtensionRefError := conditionType == "NotAccepted" &&
 		(strings.Contains(message, "ExtensionReference service") && strings.Contains(message, "not found"))
@@ -236,7 +243,7 @@ func (c *InferencePoolController) updateInferencePoolStatus(ctx context.Context,
 	referencedGateways, err := c.getReferencedGateways(ctx, inferencePool)
 	if err != nil {
 		c.logger.Error(err, "failed to get referenced Gateways for status update")
-		return
+		return false
 	}
 
 	// Build Parents status.
@@ -278,10 +285,69 @@ func (c *InferencePoolController) updateInferencePoolStatus(ctx context.Context,
 	// If no Gateways reference this InferencePool, clear all parents.
 	// This correctly reflects that the InferencePool is not currently referenced by any Gateway.
 
+	if inferencePoolParentStatusesEqual(inferencePool.Status.Parents, parents) {
+		return false
+	}
+
 	inferencePool.Status.Parents = parents
 	if err := c.client.Status().Update(ctx, inferencePool); err != nil {
 		c.logger.Error(err, "failed to update InferencePool status")
+		return false
 	}
+	return true
+}
+
+func inferencePoolParentStatusesEqual(a, b []gwaiev1.ParentStatus) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	remaining := make(map[string]gwaiev1.ParentStatus, len(b))
+	for i := range b {
+		parent := &b[i]
+		remaining[inferencePoolParentStatusKey(parent)] = *parent
+	}
+	for i := range a {
+		parent := &a[i]
+		other, ok := remaining[inferencePoolParentStatusKey(parent)]
+		if !ok || !inferencePoolConditionsEqual(parent.Conditions, other.Conditions) {
+			return false
+		}
+		delete(remaining, inferencePoolParentStatusKey(parent))
+	}
+	return len(remaining) == 0
+}
+
+func inferencePoolParentStatusKey(parent *gwaiev1.ParentStatus) string {
+	ref := parent.ParentRef
+	group := ""
+	if ref.Group != nil {
+		group = string(*ref.Group)
+	}
+	return fmt.Sprintf("%s/%s/%s/%s", group, ref.Kind, ref.Namespace, ref.Name)
+}
+
+func inferencePoolConditionsEqual(a, b []metav1.Condition) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	remaining := make(map[string]metav1.Condition, len(b))
+	for _, condition := range b {
+		remaining[condition.Type] = condition
+	}
+	for _, condition := range a {
+		other, ok := remaining[condition.Type]
+		if !ok ||
+			condition.Status != other.Status ||
+			condition.Reason != other.Reason ||
+			condition.Message != other.Message ||
+			condition.ObservedGeneration != other.ObservedGeneration {
+			return false
+		}
+		delete(remaining, condition.Type)
+	}
+	return len(remaining) == 0
 }
 
 // buildAcceptedCondition builds a condition for the InferencePool status.
