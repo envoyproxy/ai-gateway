@@ -192,7 +192,7 @@ Keep the distinction with token cost clear:
 
 4. The consumer is a `BackendTrafficPolicy` whose rule reads that key via `limit.fromMetadata`.
 
-The producer (`GlobalRateLimits`) is gateway-wide: every configured `metadataKey` is emitted on every request. Per-route differences are expressed on the **consumer** side — each route's `BackendTrafficPolicy` chooses which `metadataKey` to read — not on the `AIGatewayRoute`. This is why each `metadataKey` must be unique across the gateway. It mirrors how token cost is consumed per-route via `cost.response.fromMetadata`.
+The producer (`GlobalRateLimits`) is gateway-wide: every configured `metadataKey` is emitted on every request. Per-route differences are expressed on the **consumer** side — each route's `BackendTrafficPolicy` chooses which `metadataKey` to read — not on the `AIGatewayRoute`. This is why each `metadataKey` must be unique across the gateway. It mirrors how token cost is consumed per-route via `cost.response.metadata`.
 
 ### 1. Emit the limit from a preceding filter
 
