@@ -2182,6 +2182,13 @@ func TestBuildRateLimitOverrideMetadata(t *testing.T) {
 			filterMetadata: makeFilterMeta(),
 		},
 		{
+			name: "nil namespace struct: nothing emitted",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+			},
+			filterMetadata: map[string]*structpb.Struct{extAuthzNS: nil},
+		},
+		{
 			name: "namespace absent: nothing emitted",
 			globalRateLimits: []filterapi.GlobalRateLimitOverride{
 				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},

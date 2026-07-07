@@ -59,11 +59,12 @@ func Test_DynamicMetadataRateLimit(t *testing.T) {
 	// The ext_authz auth server supplies the per-tenant limit; it must be up or requests fail closed.
 	e2elib.RequireWaitForPodReady(t, "default", "app=ext-auth-server-dynamic-ratelimit")
 
+	// One port forwarder for the whole test; recreating it per request is slow and flake-prone.
+	fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+	defer fwd.Kill()
+
 	const modelName = "dynamic-ratelimit-model"
 	makeRequest := func(t *testing.T, tenantID string, expStatus int) {
-		fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
-		defer fwd.Kill()
-
 		requestBody := fmt.Sprintf(`{"messages":[{"role":"user","content":"Say this is a test"}],"model":"%s"}`, modelName)
 		const fakeResponseBody = `{"choices":[{"message":{"content":"This is a test.","role":"assistant"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
 

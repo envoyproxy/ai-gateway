@@ -877,7 +877,7 @@ func buildRateLimitOverrideMetadata(
 // absent or malformed, in which case the key is omitted and the BackendTrafficPolicy default applies.
 func parseRateLimitOverrideValue(filterMetadata map[string]*structpb.Struct, namespace, key string) (*structpb.Value, bool) {
 	ns, ok := filterMetadata[namespace]
-	if !ok {
+	if !ok || ns == nil {
 		return nil, false
 	}
 	field, ok := ns.Fields[key]
