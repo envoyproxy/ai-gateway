@@ -25,14 +25,12 @@ import (
 // Test_DynamicMetadataRateLimit verifies that a per-request limit carried in
 // io.envoy.ai_gateway dynamic metadata (emitted by ext_proc from GatewayConfig
 // globalRateLimits) gates traffic instead of the static BackendTrafficPolicy limit.
-// The source metadata ("2/MINUTE") is set to 2 requests/minute per x-tenant-id.
+// The source metadata ("2/HOUR") is set to 2 requests/hour per x-tenant-id.
 func Test_DynamicMetadataRateLimit(t *testing.T) {
-	// The BackendTrafficPolicy limit.fromMetadata consumer used by this test only exists on the
-	// Envoy Gateway development build (envoyproxy/gateway#9216). On tagged releases the field is
-	// pruned, the static default applies, and the assertions below would never see a 429.
+	// limit.fromMetadata (envoyproxy/gateway#9216) only exists on Envoy Gateway main. Older
+	// releases prune the field, so the limit never applies and no request is ever rate limited.
 	if !e2elib.EnvoyGatewaySupportsLimitFromMetadata() {
-		t.Skipf("limit.fromMetadata requires Envoy Gateway %s; installed version is %s",
-			e2elib.EnvoyGatewayLatestVersion, e2elib.EnvoyGatewayVersion())
+		t.Skipf("needs Envoy Gateway %s, have %s", e2elib.EnvoyGatewayLatestVersion, e2elib.EnvoyGatewayVersion())
 	}
 
 	// Apply Redis manifest (shared with the other rate limit tests). The Envoy
@@ -88,7 +86,7 @@ func Test_DynamicMetadataRateLimit(t *testing.T) {
 	// Fresh x-tenant-id per block: rate-limit budgets persist in Redis across the run.
 	baseID := int(time.Now().UnixNano())
 
-	t.Run("dynamic limit gates traffic at 2/MINUTE", func(t *testing.T) {
+	t.Run("dynamic limit gates traffic at 2/HOUR", func(t *testing.T) {
 		tenantID := strconv.Itoa(baseID)
 		makeRequest(t, tenantID, http.StatusOK)
 		makeRequest(t, tenantID, http.StatusOK)

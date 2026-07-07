@@ -174,7 +174,9 @@ spec:
             - name: EXT_AUTH_DYNAMIC_METADATA_KEY
               value: rate_limit
             - name: EXT_AUTH_DYNAMIC_METADATA_VALUE
-              value: "2/MINUTE"
+              # Per-hour (not per-minute) so the fixed rate-limit window can't reset between the
+              # sequential requests the test makes.
+              value: "2/HOUR"
 ---
 apiVersion: v1
 kind: Service

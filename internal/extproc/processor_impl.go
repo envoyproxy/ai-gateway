@@ -901,9 +901,12 @@ func parseRateLimitOverrideValue(filterMetadata map[string]*structpb.Struct, nam
 			slog.String("namespace", namespace), slog.String("key", key), slog.String("value", val))
 		return nil, false
 	}
-	n, err := strconv.ParseUint(parts[0], 10, 64)
+	// requests_per_unit is a uint32 in Envoy's RateLimit override, so reject anything that doesn't
+	// fit; an out-of-range value fails closed (key omitted, static default applies) rather than
+	// silently truncating.
+	n, err := strconv.ParseUint(parts[0], 10, 32)
 	if err != nil {
-		slog.Default().Debug("non-numeric count in rate-limit metadata",
+		slog.Default().Debug("invalid count in rate-limit metadata, expected a uint32",
 			slog.String("namespace", namespace), slog.String("key", key), slog.String("value", val))
 		return nil, false
 	}

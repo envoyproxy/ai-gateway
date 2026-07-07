@@ -2210,6 +2210,21 @@ func TestBuildRateLimitOverrideMetadata(t *testing.T) {
 			filterMetadata: makeFilterMeta("input_limit", "100000/WEEK"),
 		},
 		{
+			name: "count above uint32 max: nothing emitted",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+			},
+			filterMetadata: makeFilterMeta("input_limit", "4294967296/HOUR"),
+		},
+		{
+			name: "count at uint32 max emits struct",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+			},
+			filterMetadata: makeFilterMeta("input_limit", "4294967295/HOUR"),
+			wantStructs:    map[string]wantStruct{"llm_input_token_limit": {4294967295, "HOUR"}},
+		},
+		{
 			name: "lowercase unit normalized to uppercase",
 			globalRateLimits: []filterapi.GlobalRateLimitOverride{
 				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},

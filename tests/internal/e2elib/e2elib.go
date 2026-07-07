@@ -36,10 +36,8 @@ const (
 	EnvoyGatewayNamespace = "envoy-gateway-system"
 	// EnvoyGatewayDefaultServicePort is the default service port for the Envoy Gateway.
 	EnvoyGatewayDefaultServicePort = 80
-	// EnvoyGatewayLatestVersion is the development ("main") build of Envoy Gateway published
-	// as a floating tag. It is the default version installed by the e2e suite and the only one
-	// that carries features not yet in a tagged release (e.g. BackendTrafficPolicy
-	// limit.fromMetadata from envoyproxy/gateway#9216).
+	// EnvoyGatewayLatestVersion is the Envoy Gateway main build. The e2e suite installs it by
+	// default; it carries features not yet in a tagged release.
 	EnvoyGatewayLatestVersion = "v0.0.0-latest"
 
 	kindLogDir     = "./logs"
@@ -400,16 +398,14 @@ func installInferencePoolEnvironment(ctx context.Context) (err error) {
 	return nil
 }
 
-// EnvoyGatewayVersion returns the Envoy Gateway version the e2e suite installs, honoring the
-// EG_VERSION environment variable and defaulting to EnvoyGatewayLatestVersion.
+// EnvoyGatewayVersion is the Envoy Gateway version the e2e suite installs, taken from EG_VERSION
+// or EnvoyGatewayLatestVersion by default.
 func EnvoyGatewayVersion() string {
 	return cmp.Or(os.Getenv("EG_VERSION"), EnvoyGatewayLatestVersion)
 }
 
-// EnvoyGatewaySupportsLimitFromMetadata reports whether the installed Envoy Gateway understands
-// BackendTrafficPolicy rateLimit limit.fromMetadata (envoyproxy/gateway#9216). That field only
-// exists on the development build, so tagged releases (e.g. v1.8.1) return false. Tests that rely
-// on it should skip when this is false.
+// EnvoyGatewaySupportsLimitFromMetadata reports whether the installed Envoy Gateway has
+// BackendTrafficPolicy limit.fromMetadata (envoyproxy/gateway#9216), which only landed on main.
 func EnvoyGatewaySupportsLimitFromMetadata() bool {
 	return EnvoyGatewayVersion() == EnvoyGatewayLatestVersion
 }

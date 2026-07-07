@@ -719,6 +719,11 @@ func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.R
 // router-level ext_proc filter must forward them so the AI Gateway filter can read them from
 // ProcessingRequest.metadata_context. Returns nil when no override is configured, leaving the filter's
 // ForwardingNamespaces unset (unchanged behavior).
+//
+// This runs during EG translation, so the forwarded set is only recomputed when EG re-translates the
+// gateway. EG does not watch GatewayConfig, so adding or removing a source namespace on an already
+// translated gateway takes effect on the next translation (e.g. any route or policy change), not
+// immediately. Editing only the key or value within an existing namespace needs no re-translation.
 func (s *Server) collectRateLimitSourceNamespaces(ctx context.Context) []string {
 	set := map[string]struct{}{}
 
