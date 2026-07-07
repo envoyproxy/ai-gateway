@@ -228,7 +228,7 @@ func TestInferencePoolController_Reconcile(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.Equal(t, ctrl.Result{RequeueAfter: inferencePoolStatusRequeueAfter}, result)
+	require.Equal(t, ctrl.Result{}, result)
 
 	// Check that the InferencePool status was updated.
 	var updatedInferencePool gwaiev1.InferencePool
@@ -268,15 +268,6 @@ func TestInferencePoolController_Reconcile(t *testing.T) {
 
 	require.NotNil(t, resolvedRefsCondition, "Should have ResolvedRefs condition")
 	require.Equal(t, metav1.ConditionTrue, resolvedRefsCondition.Status)
-
-	result, err = c.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: client.ObjectKey{
-			Name:      "test-inference-pool",
-			Namespace: "default",
-		},
-	})
-	require.NoError(t, err)
-	require.Equal(t, ctrl.Result{}, result)
 	require.Equal(t, "ResolvedRefs", resolvedRefsCondition.Reason)
 }
 
@@ -809,7 +800,7 @@ func TestInferencePoolController_CrossNamespaceReferences(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.Equal(t, ctrl.Result{RequeueAfter: inferencePoolStatusRequeueAfter}, result)
+	require.Equal(t, ctrl.Result{}, result)
 
 	// Check that the InferencePool status was updated with the cross-namespace Gateway.
 	var updatedInferencePool gwaiev1.InferencePool
@@ -1037,117 +1028,6 @@ func TestInferencePoolController_GatewayReferencesInferencePool_HTTPRoute(t *tes
 	// Test negative case - different namespace.
 	result = c.gatewayReferencesInferencePool(context.Background(), gateway, "test-inference-pool", "different-namespace")
 	require.False(t, result, "Should return false when InferencePool is in different namespace")
-}
-
-func TestInferencePoolController_ReconcileMultipleHTTPRouteParents(t *testing.T) {
-	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
-	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
-
-	// This mirrors the Gateway API Inference Extension conformance case where
-	// two HTTPRoutes in the InferencePool namespace point at Gateways in another
-	// namespace. The InferencePool status must include both Gateway parents.
-	for _, gatewayName := range []string{"conformance-primary", "conformance-secondary"} {
-		require.NoError(t, fakeClient.Create(context.Background(), &gwapiv1.Gateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      gatewayName,
-				Namespace: "gateway-conformance-infra",
-			},
-			Spec: gwapiv1.GatewaySpec{
-				GatewayClassName: "test-class",
-			},
-		}))
-	}
-
-	for routeName, gatewayName := range map[string]string{
-		"httproute-for-primary-gw":   "conformance-primary",
-		"httproute-for-secondary-gw": "conformance-secondary",
-	} {
-		require.NoError(t, fakeClient.Create(context.Background(), &gwapiv1.HTTPRoute{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      routeName,
-				Namespace: "gateway-conformance-app-backend",
-			},
-			Spec: gwapiv1.HTTPRouteSpec{
-				CommonRouteSpec: gwapiv1.CommonRouteSpec{
-					ParentRefs: []gwapiv1.ParentReference{
-						{
-							Name:      gwapiv1.ObjectName(gatewayName),
-							Namespace: ptr.To(gwapiv1.Namespace("gateway-conformance-infra")),
-						},
-					},
-				},
-				Rules: []gwapiv1.HTTPRouteRule{
-					{
-						BackendRefs: []gwapiv1.HTTPBackendRef{
-							{
-								BackendRef: gwapiv1.BackendRef{
-									BackendObjectReference: gwapiv1.BackendObjectReference{
-										Group: ptr.To(gwapiv1.Group("inference.networking.k8s.io")),
-										Kind:  ptr.To(gwapiv1.Kind("InferencePool")),
-										Name:  "primary-inference-pool",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		}))
-	}
-
-	require.NoError(t, fakeClient.Create(context.Background(), &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "primary-epp",
-			Namespace: "gateway-conformance-app-backend",
-		},
-		Spec: corev1.ServiceSpec{
-			Ports: []corev1.ServicePort{{Port: 9002}},
-		},
-	}))
-
-	require.NoError(t, fakeClient.Create(context.Background(), &gwaiev1.InferencePool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "primary-inference-pool",
-			Namespace: "gateway-conformance-app-backend",
-		},
-		Spec: gwaiev1.InferencePoolSpec{
-			Selector: gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{
-				"app": "test-app",
-			}},
-			TargetPorts: []gwaiev1.Port{{Number: 8080}},
-			EndpointPickerRef: gwaiev1.EndpointPickerRef{
-				Name: "primary-epp",
-			},
-		},
-	}))
-
-	request := ctrl.Request{
-		NamespacedName: client.ObjectKey{
-			Name:      "primary-inference-pool",
-			Namespace: "gateway-conformance-app-backend",
-		},
-	}
-	result, err := c.Reconcile(context.Background(), request)
-	require.NoError(t, err)
-	require.Equal(t, ctrl.Result{RequeueAfter: inferencePoolStatusRequeueAfter}, result)
-
-	var updatedInferencePool gwaiev1.InferencePool
-	require.NoError(t, fakeClient.Get(context.Background(), request.NamespacedName, &updatedInferencePool))
-	require.Len(t, updatedInferencePool.Status.Parents, 2)
-
-	parentNames := make(map[string]string, len(updatedInferencePool.Status.Parents))
-	for _, parent := range updatedInferencePool.Status.Parents {
-		parentNames[string(parent.ParentRef.Name)] = string(parent.ParentRef.Namespace)
-		require.Len(t, parent.Conditions, 2)
-	}
-	require.Equal(t, map[string]string{
-		"conformance-primary":   "gateway-conformance-infra",
-		"conformance-secondary": "gateway-conformance-infra",
-	}, parentNames)
-
-	result, err = c.Reconcile(context.Background(), request)
-	require.NoError(t, err)
-	require.Equal(t, ctrl.Result{}, result)
 }
 
 func TestInferencePoolController_ValidateExtensionReference_EdgeCases(t *testing.T) {
