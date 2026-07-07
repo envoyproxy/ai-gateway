@@ -43,6 +43,7 @@ const (
 	httpRouteAnnotationForAIGatewayGeneratedIndication = egAnnotationPrefix + internalapi.AIGatewayGeneratedHTTPRouteAnnotation
 	egOwningGatewayNameLabel                           = egAnnotationPrefix + "owning-gateway-name"
 	egOwningGatewayNamespaceLabel                      = egAnnotationPrefix + "owning-gateway-namespace"
+	routeNotFoundHTTPRouteRuleName                     = "route-not-found"
 	// apiKeyInSecret is the key to store OpenAI API key.
 	apiKeyInSecret = "apiKey"
 	// GatewayConfigAnnotationKey is the annotation key used on Gateway objects to reference a GatewayConfig.
@@ -319,8 +320,15 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 				Path:    &gwapiv1.HTTPPathMatch{Value: &c.rootPrefix},
 			})
 		}
+		// Prefer the user-provided rule name; fall back to a deterministic, route-derived
+		// name so every generated rule has a stable sectionName (e.g. for SecurityPolicy /
+		// BackendTrafficPolicy targetRefs) even when the user does not set one.
+		ruleName := rule.Name
+		if ruleName == nil {
+			ruleName = ptr.To(aiGatewayRouteHTTPRouteRuleName(aiGatewayRoute.Name, i, len(aiGatewayRoute.Spec.Rules)))
+		}
 		rules = append(rules, gwapiv1.HTTPRouteRule{
-			Name:        rule.Name,
+			Name:        ruleName,
 			BackendRefs: backendRefs,
 			Matches:     matches,
 			Filters:     rewriteFilters,
@@ -329,7 +337,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	}
 
 	rules = append(rules, gwapiv1.HTTPRouteRule{
-		Name:    ptr.To[gwapiv1.SectionName]("route-not-found"),
+		Name:    ptr.To[gwapiv1.SectionName](routeNotFoundHTTPRouteRuleName),
 		Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: &c.rootPrefix}}},
 		Filters: []gwapiv1.HTTPRouteFilter{{
 			Type: gwapiv1.HTTPRouteFilterExtensionRef,
@@ -369,6 +377,21 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 
 	dst.Spec.Hostnames = aiGatewayRoute.Spec.Hostnames
 	return nil
+}
+
+func aiGatewayRouteHTTPRouteRuleName(routeName string, ruleIndex, ruleCount int) gwapiv1.SectionName {
+	if ruleCount == 1 && routeName != routeNotFoundHTTPRouteRuleName {
+		return gwapiv1.SectionName(routeName)
+	}
+
+	suffix := fmt.Sprintf("-rule-%d", ruleIndex)
+	maxBaseLen := 253 - len(suffix)
+	base := routeName
+	if len(base) > maxBaseLen {
+		base = base[:maxBaseLen]
+		base = strings.TrimRight(base, "-.")
+	}
+	return gwapiv1.SectionName(base + suffix)
 }
 
 // syncGateways synchronizes the gateways referenced by the AIGatewayRoute by sending events to the gateway controller.
