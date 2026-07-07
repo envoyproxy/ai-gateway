@@ -533,8 +533,12 @@ const mcpProxySharedBackendName = internalapi.MCPGeneratedResourceCommonPrefix +
 // It is referenced by every main HTTPRoute in the namespace and lives in the same namespace as
 // those HTTPRoutes, so the reference is valid for any number of parent Gateways (including
 // cross-namespace ones). It is intentionally not owned by an MCPRoute or Gateway — a single
-// MCPRoute/Gateway is not a correct owner when the Backend is shared; its lifecycle is handled by
-// cleanupSharedMCPProxyBackend. Returns the Backend's name.
+// MCPRoute/Gateway is not a correct owner when the Backend is shared; instead it is tagged with the
+// managed-by label so cleanupSharedMCPProxyBackend can tell it apart from a user-provided Backend.
+//
+// Because the Backend has no owner reference it is not watched (the controller builder no longer
+// Owns Backends); this call runs on every MCPRoute reconcile, so an out-of-band deletion self-heals
+// on the next reconcile of any MCPRoute in the namespace. Returns the Backend's name.
 func (c *MCPRouteController) ensureMCPProxyBackend(ctx context.Context, namespace string) (string, error) {
 	name := mcpProxySharedBackendName
 	var backend egv1a1.Backend
@@ -549,6 +553,7 @@ func (c *MCPRouteController) ensureMCPProxyBackend(ctx context.Context, namespac
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: namespace,
+				Labels:    map[string]string{managedByLabel: managedByValue},
 			},
 			Spec: egv1a1.BackendSpec{
 				Endpoints: []egv1a1.BackendEndpoint{
@@ -575,11 +580,12 @@ func (c *MCPRouteController) ensureMCPProxyBackend(ctx context.Context, namespac
 // deletion to the referenced Gateways and, if this was the last live MCPRoute in the namespace,
 // removes the shared MCP proxy Backend.
 func (c *MCPRouteController) onMCPRouteDeleted(ctx context.Context, mcpRoute *aigv1b1.MCPRoute) error {
-	if err := c.syncGateways(ctx, mcpRoute); err != nil {
-		return err
-	}
+	// Run the shared-Backend cleanup even if propagating to Gateways fails. handleFinalizer removes
+	// the finalizer regardless of the returned error, so this is the only chance to avoid leaking
+	// the Backend; skipping it on a transient syncGateways error would orphan it for good.
+	syncErr := c.syncGateways(ctx, mcpRoute)
 	c.cleanupSharedMCPProxyBackend(ctx, mcpRoute)
-	return nil
+	return syncErr
 }
 
 // cleanupSharedMCPProxyBackend deletes the shared MCP proxy Backend once the MCPRoute being
@@ -600,7 +606,21 @@ func (c *MCPRouteController) cleanupSharedMCPProxyBackend(ctx context.Context, m
 			return
 		}
 	}
-	backend := egv1a1.Backend{ObjectMeta: metav1.ObjectMeta{Name: mcpProxySharedBackendName, Namespace: mcpRoute.Namespace}}
+	// Fetch first and only delete a Backend we created: a user may own a Backend that happens to
+	// share the fixed name, and it lacks our managed-by label. Deleting it would not be ours to do.
+	var backend egv1a1.Backend
+	if err := c.client.Get(ctx, client.ObjectKey{Name: mcpProxySharedBackendName, Namespace: mcpRoute.Namespace}, &backend); err != nil {
+		if !apierrors.IsNotFound(err) {
+			c.logger.Error(err, "failed to get shared MCP proxy Backend for cleanup", "name", mcpProxySharedBackendName)
+		}
+		return
+	}
+	if backend.Labels[managedByLabel] != managedByValue {
+		return // Not created by us — leave it alone.
+	}
+	// The owned main HTTPRoute that references this Backend is garbage-collected asynchronously after
+	// the MCPRoute is gone, so there is a brief window where it dangles; harmless, as the whole route
+	// is being torn down.
 	c.logger.Info("Deleting shared MCP proxy Backend (last MCPRoute in namespace removed)",
 		"namespace", mcpRoute.Namespace, "name", mcpProxySharedBackendName)
 	if err := c.client.Delete(ctx, &backend); err != nil && !apierrors.IsNotFound(err) {
