@@ -135,6 +135,7 @@ controller:
   replicaCount: 1
   imagePullSecrets: []
   podAnnotations: {}
+  podLabels: {}
   podSecurityContext: {}
   securityContext: {}
   # DEPRECATED: podEnv will be removed after v0.3. Use controller.extraEnvVars instead.
