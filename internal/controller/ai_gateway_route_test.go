@@ -8,6 +8,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -297,6 +298,7 @@ func Test_newHTTPRoute(t *testing.T) {
 			expPath := &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}
 			expRules := []gwapiv1.HTTPRouteRule{
 				{
+					Name: ptr.To[gwapiv1.SectionName]("myroute-rule-0"),
 					Matches: []gwapiv1.HTTPRouteMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "rule-0"}}, Path: expPath},
 					},
@@ -305,6 +307,7 @@ func Test_newHTTPRoute(t *testing.T) {
 					Filters:     rewriteFilters,
 				},
 				{
+					Name: ptr.To[gwapiv1.SectionName]("myroute-rule-1"),
 					Matches: []gwapiv1.HTTPRouteMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "rule-1"}}, Path: expPath},
 					},
@@ -317,6 +320,7 @@ func Test_newHTTPRoute(t *testing.T) {
 					Filters:  rewriteFilters,
 				},
 				{
+					Name: ptr.To[gwapiv1.SectionName]("myroute-rule-2"),
 					Matches: []gwapiv1.HTTPRouteMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "rule-2"}}, Path: expPath},
 					},
@@ -656,6 +660,60 @@ func Test_newHTTPRoute_InferencePool_CrossNamespace(t *testing.T) {
 		require.NotNil(t, backendRef.Namespace)
 		require.Equal(t, "gw", string(*backendRef.Namespace))
 	})
+}
+
+func TestAIGatewayRouteHTTPRouteRuleName(t *testing.T) {
+	longRouteName := strings.Repeat("a", 253)
+
+	tests := []struct {
+		name      string
+		routeName string
+		index     int
+		count     int
+		want      gwapiv1.SectionName
+	}{
+		{
+			name:      "single rule uses route name for sectionName targeting",
+			routeName: "mistral",
+			count:     1,
+			want:      "mistral",
+		},
+		{
+			name:      "multiple rules append index",
+			routeName: "mistral",
+			index:     1,
+			count:     2,
+			want:      "mistral-rule-1",
+		},
+		{
+			name:      "route not found name is reserved for default rule",
+			routeName: routeNotFoundHTTPRouteRuleName,
+			count:     1,
+			want:      "route-not-found-rule-0",
+		},
+		{
+			name:      "long route name is truncated before suffix",
+			routeName: longRouteName,
+			index:     9,
+			count:     10,
+			want:      gwapiv1.SectionName(strings.Repeat("a", 246) + "-rule-9"),
+		},
+		{
+			name:      "truncated route name trims invalid trailing label separator",
+			routeName: strings.Repeat("a", 245) + "." + strings.Repeat("b", 7),
+			index:     0,
+			count:     2,
+			want:      gwapiv1.SectionName(strings.Repeat("a", 245) + "-rule-0"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := aiGatewayRouteHTTPRouteRuleName(tt.routeName, tt.index, tt.count)
+			require.Equal(t, tt.want, got)
+			require.LessOrEqual(t, len(got), 253)
+		})
+	}
 }
 
 func Test_newHTTPRoute_LabelAndAnnotationPropagation(t *testing.T) {
