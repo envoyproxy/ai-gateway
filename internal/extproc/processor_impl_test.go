@@ -2233,6 +2233,14 @@ func TestBuildRateLimitOverrideMetadata(t *testing.T) {
 			wantStructs:    map[string]wantStruct{"llm_input_token_limit": {100000, "HOUR"}},
 		},
 		{
+			name: "surrounding spaces trimmed",
+			globalRateLimits: []filterapi.GlobalRateLimitOverride{
+				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},
+			},
+			filterMetadata: makeFilterMeta("input_limit", " 2 / hour "),
+			wantStructs:    map[string]wantStruct{"llm_input_token_limit": {2, "HOUR"}},
+		},
+		{
 			name: "zero count emits struct with requests_per_unit 0",
 			globalRateLimits: []filterapi.GlobalRateLimitOverride{
 				{MetadataKey: "llm_input_token_limit", Namespace: extAuthzNS, Key: "input_limit"},

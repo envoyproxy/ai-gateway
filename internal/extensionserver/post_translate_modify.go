@@ -72,9 +72,8 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	}
 	req.Clusters = append(req.Clusters, cs...)
 
-	// Collect the filter metadata namespaces that supply per-request rate-limit values (set by a
-	// preceding filter such as ext_authz). The router-level ext_proc filter must forward these so the
-	// AI Gateway filter can read them from ProcessingRequest.metadata_context.
+	// Namespaces the router-level ext_proc filter must forward so the AI Gateway filter can read the
+	// per-request rate-limit values (see collectRateLimitSourceNamespaces).
 	rlForwardNamespaces := s.collectRateLimitSourceNamespaces(ctx)
 
 	// Modify listeners and routes to support InferencePool backends.
@@ -720,10 +719,9 @@ func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.R
 // ProcessingRequest.metadata_context. Returns nil when no override is configured, leaving the filter's
 // ForwardingNamespaces unset (unchanged behavior).
 //
-// This runs during EG translation, so the forwarded set is only recomputed when EG re-translates the
-// gateway. EG does not watch GatewayConfig, so adding or removing a source namespace on an already
-// translated gateway takes effect on the next translation (e.g. any route or policy change), not
-// immediately. Editing only the key or value within an existing namespace needs no re-translation.
+// EG recomputes this only when it re-translates the gateway, and it doesn't watch GatewayConfig, so
+// adding or removing a source namespace on a live gateway only lands on the next translation (e.g. a
+// route change). Changing the key or value within a namespace needs none.
 func (s *Server) collectRateLimitSourceNamespaces(ctx context.Context) []string {
 	set := map[string]struct{}{}
 
@@ -753,9 +751,9 @@ func (s *Server) collectRateLimitSourceNamespaces(ctx context.Context) []string 
 	return out
 }
 
-// insertRouterLevelAIGatewayExtProcExtProc inserts the AI Gateway external processor filter into the listener's filter chains.
-// rlForwardNamespaces is the set of filter metadata namespaces (e.g. envoy.filters.http.ext_authz) that supply per-request
-// rate-limit values; they are forwarded to the filter via MetadataOptions.ForwardingNamespaces so it can read them.
+// insertRouterLevelAIGatewayExtProc inserts the AI Gateway external processor filter into the listener's filter chains.
+// rlForwardNamespaces are forwarded via MetadataOptions.ForwardingNamespaces so the filter can read the per-request
+// rate-limit values a preceding filter (e.g. ext_authz) wrote there.
 func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener, rlForwardNamespaces []string) error {
 	// First, get the filter chains from the listener.
 	filterChains := listener.GetFilterChains()
@@ -778,9 +776,7 @@ func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener
 				Untyped: []string{aigv1b1.AIGatewayFilterMetadataNamespace},
 			},
 		}
-		// Forward the filter metadata namespaces that carry per-request rate-limit values (set by a
-		// preceding filter such as ext_authz). Without this, Envoy omits them from
-		// ProcessingRequest.metadata_context and the AI Gateway filter never sees the source value.
+		// Without this, Envoy omits these namespaces from ProcessingRequest.metadata_context.
 		if len(rlForwardNamespaces) > 0 {
 			metadataOptions.ForwardingNamespaces = &extprocv3.MetadataOptions_MetadataNamespaces{
 				Untyped: rlForwardNamespaces,

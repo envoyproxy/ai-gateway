@@ -36,8 +36,8 @@ const (
 	EnvoyGatewayNamespace = "envoy-gateway-system"
 	// EnvoyGatewayDefaultServicePort is the default service port for the Envoy Gateway.
 	EnvoyGatewayDefaultServicePort = 80
-	// EnvoyGatewayLatestVersion is the Envoy Gateway main build. The e2e suite installs it by
-	// default; it carries features not yet in a tagged release.
+	// EnvoyGatewayLatestVersion is the Envoy Gateway main build, installed by default; it has
+	// features not yet in a tagged release.
 	EnvoyGatewayLatestVersion = "v0.0.0-latest"
 
 	kindLogDir     = "./logs"
@@ -398,8 +398,7 @@ func installInferencePoolEnvironment(ctx context.Context) (err error) {
 	return nil
 }
 
-// EnvoyGatewayVersion is the Envoy Gateway version the e2e suite installs, taken from EG_VERSION
-// or EnvoyGatewayLatestVersion by default.
+// EnvoyGatewayVersion is the Envoy Gateway version the e2e suite installs (EG_VERSION, else latest).
 func EnvoyGatewayVersion() string {
 	return cmp.Or(os.Getenv("EG_VERSION"), EnvoyGatewayLatestVersion)
 }

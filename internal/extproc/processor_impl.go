@@ -216,11 +216,8 @@ func createUserFacingErrorResponse(statusCode int, errorType string, message str
 	}
 }
 
-// ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
-//
-// It emits per-request rate-limit overrides into io.envoy.ai_gateway dynamic metadata on the request
-// path. The rate limit filter runs after this filter on the request path, so emitting here makes the
-// override available before it generates descriptors. See buildRateLimitOverrideMetadata.
+// ProcessRequestHeaders implements [Processor.ProcessRequestHeaders]. It emits per-request rate-limit
+// overrides into io.envoy.ai_gateway on the request path; see buildRateLimitOverrideMetadata.
 func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
 	resp := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
 	if md := buildRateLimitOverrideMetadata(r.config.GlobalRateLimits, r.filterMetadata); md != nil {
@@ -836,19 +833,15 @@ func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.Tok
 	return evalCost(rc.Type, rc.CELProg, costs, requestHeaders, backendName, routeName)
 }
 
-// buildRateLimitOverrideMetadata translates per-request rate-limit values carried in upstream filter
-// dynamic metadata (set by a preceding filter such as ext_authz) into the { requests_per_unit, unit }
-// structs that Envoy's RateLimit.Override.DynamicMetadata reads, keyed by MetadataKey under the
-// io.envoy.ai_gateway namespace. Returns nil when nothing is configured or no source value is present.
+// buildRateLimitOverrideMetadata translates the per-request limits carried in upstream filter metadata
+// (set by a preceding filter such as ext_authz) into the { requests_per_unit, unit } structs Envoy's
+// RateLimit.Override.DynamicMetadata reads, keyed by MetadataKey under io.envoy.ai_gateway. Returns nil
+// when nothing is configured or no source value is present.
 //
-// This is emitted on the REQUEST path (routerProcessor.ProcessRequestHeaders) so the override is in
-// dynamic metadata before the rate limit filter generates its descriptors. The rate limit filter reads a
-// limit (not a cost), so it must be present on the request — unlike token costs, which are emitted on the
-// response path by buildDynamicMetadata.
-//
-// The mappings are gateway-wide: every configured MetadataKey is emitted on every request. The route is
-// not yet known at this phase (the router filter clears the route cache and Envoy re-routes after it
-// returns), so this does no route-matching.
+// Emitted on the request path (ProcessRequestHeaders), before the rate limit filter builds its
+// descriptors: the filter reads a limit, not a cost, so it must be present on the request. (Token costs,
+// by contrast, are emitted on the response path by buildDynamicMetadata.) Every configured MetadataKey
+// is emitted on every request; the route isn't known at this phase.
 func buildRateLimitOverrideMetadata(
 	globalRateLimits []filterapi.GlobalRateLimitOverride,
 	filterMetadata map[string]*structpb.Struct,
@@ -878,10 +871,10 @@ func buildRateLimitOverrideMetadata(
 }
 
 // parseRateLimitOverrideValue reads filterMetadata[namespace][key], which must be a "<count>/<unit>"
-// string (e.g. "100000/HOUR", unit one of SECOND/MINUTE/HOUR/DAY, case-insensitive), and returns the
-// { requests_per_unit, unit } struct value Envoy's RateLimit.Override.DynamicMetadata expects. Returns
-// false (and logs at debug) when the value is absent or malformed, so the key is simply not emitted and
-// the BackendTrafficPolicy static default applies.
+// string (e.g. "100000/HOUR"). The unit is one of SECOND/MINUTE/HOUR/DAY and is case-insensitive; count
+// and unit are trimmed of surrounding spaces. It returns the { requests_per_unit, unit } struct value
+// Envoy's RateLimit.Override.DynamicMetadata expects, or false (logged at debug) when the value is
+// absent or malformed, in which case the key is omitted and the BackendTrafficPolicy default applies.
 func parseRateLimitOverrideValue(filterMetadata map[string]*structpb.Struct, namespace, key string) (*structpb.Value, bool) {
 	ns, ok := filterMetadata[namespace]
 	if !ok {
@@ -901,16 +894,15 @@ func parseRateLimitOverrideValue(filterMetadata map[string]*structpb.Struct, nam
 			slog.String("namespace", namespace), slog.String("key", key), slog.String("value", val))
 		return nil, false
 	}
-	// requests_per_unit is a uint32 in Envoy's RateLimit override, so reject anything that doesn't
-	// fit; an out-of-range value fails closed (key omitted, static default applies) rather than
-	// silently truncating.
-	n, err := strconv.ParseUint(parts[0], 10, 32)
+	// requests_per_unit is a uint32 in Envoy; drop values that don't fit instead of truncating.
+	n, err := strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 32)
 	if err != nil {
-		slog.Default().Debug("invalid count in rate-limit metadata, expected a uint32",
+		slog.Default().Debug("invalid count in rate-limit metadata, want a uint32",
 			slog.String("namespace", namespace), slog.String("key", key), slog.String("value", val))
 		return nil, false
 	}
-	unit := strings.ToUpper(parts[1])
+	// Unit is case-insensitive: "hour", "Hour" and "HOUR" all map to Envoy's HOUR enum.
+	unit := strings.ToUpper(strings.TrimSpace(parts[1]))
 	switch unit {
 	case "SECOND", "MINUTE", "HOUR", "DAY":
 	default:

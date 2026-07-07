@@ -27,8 +27,8 @@ import (
 // globalRateLimits) gates traffic instead of the static BackendTrafficPolicy limit.
 // The source metadata ("2/HOUR") is set to 2 requests/hour per x-tenant-id.
 func Test_DynamicMetadataRateLimit(t *testing.T) {
-	// limit.fromMetadata (envoyproxy/gateway#9216) only exists on Envoy Gateway main. Older
-	// releases prune the field, so the limit never applies and no request is ever rate limited.
+	// limit.fromMetadata (envoyproxy/gateway#9216) only exists on Envoy Gateway main; older releases
+	// prune it, so nothing gets rate limited.
 	if !e2elib.EnvoyGatewaySupportsLimitFromMetadata() {
 		t.Skipf("needs Envoy Gateway %s, have %s", e2elib.EnvoyGatewayLatestVersion, e2elib.EnvoyGatewayVersion())
 	}
