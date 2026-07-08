@@ -20,6 +20,7 @@
   - [How the ext_proc is added at `PostTranslateModify`](#how-the-ext_proc-is-added-at-posttranslatemodify)
   - [Building the `clientMatches → extProc` mapping (code)](#building-the-clientmatches--extproc-mapping-code)
   - [Scoping to the catch-all route](#scoping-to-the-catch-all-route)
+  - [Composite placement vs. per-route configuration](#composite-placement-vs-per-route-configuration)
   - [Filter lifecycle: add, update, and remove](#filter-lifecycle-add-update-and-remove)
 - [Code Changes](#code-changes)
   - [1. API types (`api/v1beta1`)](#1-api-types-apiv1beta1)
@@ -44,13 +45,16 @@ router-phase `ext_proc` (modeled on the `extProc` field of Envoy Gateway's
 become **`clientMatches`** — the client-visible headers that gate the filter.
 
 The AI Gateway extension server, during its existing `PostTranslateModify` phase,
-fetches the `(clientMatches → filter)` mapping and injects the described
-`ext_proc` into the listener HCM filter chain **ahead of the AI Gateway
-`ext_proc`**, wrapped in a header-gated composite
-(`ExtensionWithMatcher` + `Composite`) keyed on the `clientMatches`. The filter is
-**enabled only on the catch-all (`route-not-found`) routes** of every
-AIGatewayRoute-generated `HTTPRoute`, which is exactly where a request lives on
-its first pass — before `x-ai-eg-model` exists and before routing is finalized.
+places a bare `envoy.filters.http.composite` filter in the listener HCM filter
+chain **ahead of the AI Gateway `ext_proc`**, and then attaches a
+**`CompositePerRoute`** — whose match tree is keyed on the `clientMatches` and whose
+`ExecuteFilterAction` delegates to the described `ext_proc` — **only on the
+catch-all (`route-not-found`) routes** of every AIGatewayRoute-generated
+`HTTPRoute`, which is exactly where a request lives on its first pass, before
+`x-ai-eg-model` exists and before routing is finalized. (See
+[Composite placement vs. per-route configuration](#composite-placement-vs-per-route-configuration)
+for why `CompositePerRoute` — not `ExtensionWithMatcher` — is the mechanism that
+makes per-route enablement possible.)
 
 This is a **declarative, name-based, validated** replacement for the
 `EnvoyPatchPolicy` composite-wrap workaround: it keeps the "run a second ext_proc
@@ -253,15 +257,22 @@ structured like `maybeInjectQuotaRateLimiting`:
    *our* CRD, Envoy Gateway does not synthesize a cluster for it. We build one the
    same way `buildQuotaRateLimitCluster` / the EPP clusters are built, and append
    to `req.Clusters` (dedup like the `extProcUDSExist` guard).
-3. **Build a header-gated composite `ext_proc`.** Construct an
-   `extprocv3.ExternalProcessor` from `spec.extProc`, wrap it in
-   `filters.http.composite.v3.Composite` via `ExecuteFilterAction`, and gate it with
-   `common.matching.v3.ExtensionWithMatcher` whose `Matcher` uses
-   `HttpRequestHeaderMatchInput` for each header in `clientMatches`.
-4. **Insert before the AI Gateway `ext_proc`** in the HCM filter chain, reusing the
-   ordering logic from `insertRouterLevelAIGatewayExtProc` /
-   `insertAIGatewayExtProcFilter`. The composite is `Disabled: true` at HCM level.
-5. **Enable per-route on the catch-all only** (next section).
+3. **Insert a bare `Composite` filter before the AI Gateway `ext_proc`.** Add a
+   single `envoy.filters.http.composite` (`Composite{}`, no matcher) into the HCM
+   filter chain, reusing the ordering logic from `insertRouterLevelAIGatewayExtProc`
+   / `insertAIGatewayExtProcFilter`. With no per-route config it is a pass-through
+   no-op, so it is safe to have present on every AIG listener. **Do not** wrap it in
+   `ExtensionWithMatcher` — that makes the match tree gateway-global and cannot be
+   scoped per route.
+4. **Build the per-route `CompositePerRoute`.** For each entry, construct an
+   `extprocv3.ExternalProcessor` from `spec.extProc`, wrap it in a
+   `filters.http.composite.v3.ExecuteFilterAction`, and place it as the `on_match`
+   action of a `CompositePerRoute.matcher` whose `HttpRequestHeaderMatchInput`
+   predicates come from `clientMatches`.
+5. **Attach the `CompositePerRoute` on the catch-all only** (next section) via
+   `TypedPerFilterConfig[<composite-name>]`. On the header-keyed routes the composite
+   has no per-route config and is a no-op, so the delegated ext_proc runs at most
+   once — on the first (catch-all) pass.
 
 ### Building the `clientMatches → extProc` mapping (code)
 
@@ -275,10 +286,14 @@ same convention `maybeModifyCluster` already parses). So the mapping is keyed by
 enable while walking route configs.
 
 ```go
-// routeFilterEntry is one resolved (rule -> filter) attachment.
+// routeFilterEntry is one resolved (rule -> filter) attachment. Multiple entries on
+// the same AIGatewayRoute share ONE bare composite filter and are combined into a
+// single CompositePerRoute whose matcher has one arm per entry (keyed by that
+// entry's clientMatches). See the note after this snippet.
 type routeFilterEntry struct {
-    // name is a stable, unique identifier reused across the HCM filter name,
-    // the composite ExecuteFilterAction name, and the per-route enablement key.
+    // name is the per-attachment delegate name used for the ExecuteFilterAction's
+    // inner filter (unique per entry). The composite filter name and the per-route
+    // TypedPerFilterConfig key are the SHARED bare composite name, not this.
     name string
     // clientMatches are the rule's client-visible header matches (x-ai-eg-model
     // removed) used to gate the composite on the first (catch-all) pass.
@@ -375,13 +390,22 @@ for _, routeCfg := range req.Routes {
             if !isCatchAllRoute(r) { // route name / metadata carries "route-not-found"
                 continue
             }
-            for _, e := range entries {
-                enableComposite(r, e) // TypedPerFilterConfig[e.name] = FilterConfig{}
-            }
+            // All entries for this route collapse into ONE CompositePerRoute whose
+            // matcher has one arm per entry (gate = entry.clientMatches, action =
+            // ExecuteFilterAction(entry.extProc)). Keyed by the shared bare composite
+            // filter name, since typed_per_filter_config must key on a listener filter.
+            cpr := buildCompositePerRoute(entries) // matcher_list with len(entries) arms
+            setTypedPerFilterConfig(r, bareCompositeFilterName, cpr)
         }
     }
 }
 ```
+
+Because `typed_per_filter_config` is keyed by filter name and there is a single
+bare composite filter per listener, several attachments on the same catch-all route
+must be merged into one `CompositePerRoute` with multiple matcher arms (not multiple
+map entries). This is a natural fit: the `matcher_list` evaluates arms in order and
+runs the first matching `ExecuteFilterAction`.
 
 Because the map is rebuilt from the live CRDs on every `PostTranslateModify`, the
 injected set is always **derived state** — there is nothing to reconcile or delete
@@ -389,14 +413,53 @@ by hand (see the lifecycle section below).
 
 ### Scoping to the catch-all route
 
-The composite gates on **client** headers, which are present on *both* the
-first-pass (catch-all) and the second-pass (header-keyed) route. To avoid running
-the SR ext_proc twice, the filter is enabled via `TypedPerFilterConfig` **only on
-the `route-not-found` catch-all routes** of AIGatewayRoute-generated HTTPRoutes,
-using the same route-identification approach as
+The `clientMatches` gate matches on **client** headers, which are present on *both*
+the first-pass (catch-all) and the second-pass (header-keyed) route. To avoid
+running the SR ext_proc twice, the `CompositePerRoute` is attached via
+`TypedPerFilterConfig` **only on the `route-not-found` catch-all routes** of
+AIGatewayRoute-generated HTTPRoutes, using the same route-identification approach as
 `enableRouterLevelAIGatewayExtProcOnRoute` / `isRouteGeneratedByAIGateway`. The
 catch-all rule carries `Name: "route-not-found"`, which surfaces in the xDS route
-name and is matched on.
+name and is matched on. On every other route the bare composite has no per-route
+config and is a pass-through, so the delegated ext_proc runs at most once.
+
+### Composite placement vs. per-route configuration
+
+A natural objection (and a genuine Envoy constraint) is that a composite wrapped in
+**`ExtensionWithMatcher`** is a **gateway/listener-level** construct: its
+`xds_matcher` match tree applies to the whole HCM filter chain and cannot be scoped
+per route by toggling it on/off. That is true, and it is *not* the mechanism this
+proposal relies on.
+
+Envoy exposes **two mutually-exclusive** ways to drive the composite filter (the
+proto docs warn: never mix them — "Never set [the `matcher`] field when using the
+Composite filter with the ExtensionWithMatcher which will result in undefined
+behavior"):
+
+| Mechanism | Where the match tree lives | Per-route? |
+|---|---|---|
+| `ExtensionWithMatcher{ xds_matcher }` wrapping the composite | listener/HCM (gateway-level) | only via `ExtensionWithMatcherPerRoute` *override*; wrapper anchored at listener |
+| **bare `Composite{}` in `http_filters` + `CompositePerRoute{ matcher }`** | **the route's `typed_per_filter_config`** | **yes — this is the per-route API** |
+
+This proposal uses the **second** mechanism. The bare `envoy.filters.http.composite`
+filter is present in the HCM chain (its *presence* is gateway-level — which is true
+of every per-route filter: the filter must exist on the listener for a route's
+`typed_per_filter_config` to bind, e.g. the AI Gateway ext_proc itself is inserted
+at the listener and enabled per route). The **match tree and the `ExecuteFilterAction`
+that runs the SR ext_proc live in a `CompositePerRoute` attached to the catch-all
+route only.** `CompositePerRoute.matcher` is documented as the "override of the match
+tree for this route," and `envoy.filters.http.ext_proc` is a valid
+`ExecuteFilterAction` delegate.
+
+Because we write this xDS directly in `PostTranslateModify` (rather than through
+Envoy Gateway's `EnvoyExtensionPolicy`), we are bound only by raw-Envoy capability,
+which supports `CompositePerRoute`. So per-route enablement holds — via
+`CompositePerRoute`, not `ExtensionWithMatcher`.
+
+References: [Composite filter proto](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/http/composite/v3/composite.proto)
+(`Composite`, `CompositePerRoute`, `ExecuteFilterAction`),
+[Composite filter docs](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/composite_filter),
+[per-route matcher support (envoy#27088)](https://github.com/envoyproxy/envoy/pull/27088).
 
 ### Filter lifecycle: add, update, and remove
 
@@ -482,9 +545,8 @@ type AIGatewayRouteFilterSpec struct {
 
 - **`route_filter.go`** (new): `maybeInjectAIGatewayRouteFilters(ctx, clusters,
   listeners, routes)`, called from `PostTranslateModify` next to
-  `maybeInjectQuotaRateLimiting`. Contains the fetch/mapping, cluster build,
-  composite construction, listener insertion, and catch-all enablement described
-  above.
+  `maybeInjectQuotaRateLimiting`. Contains the fetch/mapping, cluster build, bare
+  composite insertion, and per-route `CompositePerRoute` attachment described above.
 - **`post_translate_modify.go`**: one added call in `PostTranslateModify`:
 
 ```go
@@ -495,18 +557,29 @@ if err != nil {
 ```
 
 - New helpers (all local to `route_filter.go`): `buildRouteFilterCluster`,
-  `buildHeaderGatedComposite` (the `ExtensionWithMatcher` + `Composite`
-  construction), `insertRouteFilterBeforeAIGatewayExtProc`, and
-  `enableRouteFilterOnCatchAllRoutes`.
+  `insertBareCompositeBeforeAIGatewayExtProc` (adds `envoy.filters.http.composite`
+  once per listener), `buildCompositePerRoute` (the `CompositePerRoute{ matcher →
+  ExecuteFilterAction(ext_proc) }` construction), and
+  `attachCompositePerRouteOnCatchAll`.
 
 ```go
-// buildHeaderGatedComposite wraps an ExternalProcessor so it runs only when the
-// clientMatches headers match, on the first (catch-all) pass.
-func buildHeaderGatedComposite(name string, extProc *extprocv3.ExternalProcessor,
-    clientMatches []gwapiv1.HTTPHeaderMatch) (*httpconnectionmanagerv3.HttpFilter, error) {
-    // Composite{} + ExecuteFilterAction{ TypedConfig: extProc }
-    // wrapped in ExtensionWithMatcher{ XdsMatcher: HttpRequestHeaderMatchInput(clientMatches) }
-    // returned as an HTTP filter with Disabled: true (enabled per catch-all route).
+// buildCompositePerRoute builds the per-route composite config that runs the SR
+// ext_proc only when the clientMatches headers match. It is attached on the
+// catch-all route's TypedPerFilterConfig, keyed by the bare composite filter name.
+func buildCompositePerRoute(extProc *extprocv3.ExternalProcessor,
+    clientMatches []gwapiv1.HTTPHeaderMatch) (*anypb.Any, error) {
+    // ExecuteFilterAction{ TypedConfig: TypedExtensionConfig{ ext_proc } }
+    // → xds matcher_list keyed by HttpRequestHeaderMatchInput(clientMatches)
+    // → wrapped in compositev3.CompositePerRoute{ Matcher: <that match tree> }
+    // NOTE: use CompositePerRoute (NOT ExtensionWithMatcher) so this is per-route.
+}
+
+// insertBareCompositeBeforeAIGatewayExtProc adds a single bare composite filter to
+// the HCM chain (once), just before envoy.filters.http.ext_proc/aigateway. With no
+// per-route config it is a pass-through no-op.
+func (s *Server) insertBareCompositeBeforeAIGatewayExtProc(ln *listenerv3.Listener) error {
+    // Composite{} as an HttpFilter named e.g. "aigw-routefilter/composite",
+    // inserted before the AI Gateway ext_proc (mirror insertAIGatewayExtProcFilter).
 }
 ```
 
@@ -638,20 +711,35 @@ load_assignment:
         - endpoint: { address: { socket_address: { address: semantic-router-svc.default, port_value: 8080 } } }
 ```
 
-**(b) A header-gated composite `ext_proc`, inserted into the HCM before the AI
-Gateway `ext_proc`, disabled at HCM level:**
+**(b) A single bare `Composite` filter, inserted into the HCM before the AI Gateway
+`ext_proc`.** No matcher, no per-route config here — it is a pass-through until a
+route supplies a `CompositePerRoute`:
 
 ```yaml
 http_filters:
   # ... (buffer, api-key auth, etc.) ...
-  - name: aigw-routefilter/default/semantic-router/chat/0   # NEW, disabled by default
-    disabled: true
+  - name: aigw-routefilter/composite                          # NEW, bare composite (no matcher)
     typed_config:
-      "@type": type.googleapis.com/envoy.extensions.common.matching.v3.ExtensionWithMatcher
-      extension_config:
-        name: envoy.filters.http.composite
-        typed_config: { "@type": type.googleapis.com/envoy.extensions.filters.http.composite.v3.Composite }
-      xds_matcher:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.composite.v3.Composite
+  - name: envoy.filters.http.ext_proc/aigateway               # existing AI Gateway ext_proc
+    disabled: true
+  - name: envoy.filters.http.router
+```
+
+**(c) The catch-all route supplies the `CompositePerRoute` (gate + delegate) and
+enables the AI Gateway ext_proc:**
+
+```yaml
+# route config: httproute/default/chat/rule/2  (the route-not-found catch-all)
+- name: httproute/default/chat/rule/2/match/0-...   # name resolves to route-not-found
+  match: { prefix: /v1 }
+  typed_per_filter_config:
+    envoy.filters.http.ext_proc/aigateway:
+      "@type": type.googleapis.com/envoy.config.route.v3.FilterConfig
+      config: {}
+    aigw-routefilter/composite:                       # keyed by the bare composite filter name
+      "@type": type.googleapis.com/envoy.extensions.filters.http.composite.v3.CompositePerRoute
+      matcher:
         matcher_list:
           matchers:
             - predicate:
@@ -670,30 +758,15 @@ http_filters:
                       typed_config:
                         "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                         grpc_service: { envoy_grpc: { cluster_name: aigw-routefilter/default/semantic-router } }
-                        processing_mode: { request_body_mode: BUFFERED, response_header_mode: SKIP, ... }
+                        processing_mode: { request_body_mode: BUFFERED, response_header_mode: SKIP }
                         message_timeout: 0.250s
-  - name: envoy.filters.http.ext_proc/aigateway               # existing AI Gateway ext_proc
-    disabled: true
-  - name: envoy.filters.http.router
 ```
 
-**(c) The catch-all route enables the composite (and the AI Gateway ext_proc):**
-
-```yaml
-# route config: httproute/default/chat/rule/2  (the route-not-found catch-all)
-- name: httproute/default/chat/rule/2/match/0-...   # name resolves to route-not-found
-  match: { prefix: /v1 }
-  typed_per_filter_config:
-    envoy.filters.http.ext_proc/aigateway:
-      "@type": type.googleapis.com/envoy.config.route.v3.FilterConfig
-      config: {}
-    aigw-routefilter/default/semantic-router/chat/0:   # NEW: enable composite here only
-      "@type": type.googleapis.com/envoy.config.route.v3.FilterConfig
-      config: {}
-```
-
-The header-keyed routes (`rule/0`, `rule/1`) are **not** given the composite's
-per-route config, so the semantic router runs at most once — on the catch-all pass.
+The header-keyed routes (`rule/0`, `rule/1`) get **no** `CompositePerRoute`, so the
+bare composite is a no-op there and the semantic router runs at most once — on the
+catch-all pass. Note the per-route key is the **bare composite filter name**
+(`aigw-routefilter/composite`), not a per-attachment name, because
+`typed_per_filter_config` must key on a filter present in the HCM chain.
 
 ### Step 3 — request-time behavior
 
@@ -771,9 +844,11 @@ They are complementary; 012 and 013 can coexist (012 for the simple in-filter ca
    (would match all traffic and reintroduce the blast radius)?
 2. **Backend reference kinds.** Should `spec.extProc.backendRefs` allow EG `Backend`
    objects (needs address resolution) or only `Service` (simple STRICT_DNS)?
-3. **Multiple filters per rule / per gateway.** One composite-wrapped filter per
-   mapping, inserted deterministically — confirm ordering semantics when several
-   filters target overlapping `clientMatches`.
+3. **Multiple filters per rule / per gateway.** A single bare composite filter per
+   listener; multiple attachments on one catch-all route merge into one
+   `CompositePerRoute` with one matcher arm each. Since `matcher_list` runs the first
+   matching arm, define arm ordering (rule order? most-specific first?) when several
+   entries' `clientMatches` overlap.
 4. **Double execution.** Catch-all-only enablement prevents the second-pass re-run;
    is there a case where the SR must also run post-model? If so, an "already
    mutated" sentinel header could gate it instead.
