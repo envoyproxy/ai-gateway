@@ -147,6 +147,14 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
+	// A JSON `null` body decodes into a nil *resp without an error (the decode
+	// target is a **ChatCompletionResponse), which some upstreams return with a
+	// 200 status. Treat it as an empty response so we report zero usage and fall
+	// back to the request model, mirroring the streaming path, instead of
+	// dereferencing nil below.
+	if resp == nil {
+		resp = &openai.ChatCompletionResponse{}
+	}
 
 	// Redact and log response when enabled
 	if o.debugLogEnabled && o.enableRedaction && o.logger != nil {

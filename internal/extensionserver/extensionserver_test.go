@@ -1358,6 +1358,7 @@ func TestPostClusterModify(t *testing.T) {
 		require.NotNil(t, cluster.LbConfig)
 		require.Nil(t, cluster.LoadBalancingPolicy)
 		require.Nil(t, cluster.EdsClusterConfig)
+		require.NotNil(t, getInferencePoolByMetadata(cluster.Metadata))
 	})
 }
 
@@ -1422,6 +1423,7 @@ func TestPostRouteModify(t *testing.T) {
 		// Verify route was modified.
 		require.Equal(t, wrapperspb.Bool(false), route.GetRoute().GetAutoHostRewrite())
 		require.NotNil(t, route.TypedPerFilterConfig)
+		require.NotNil(t, getInferencePoolByMetadata(route.Metadata))
 	})
 
 	t.Run("with InferencePool extension and DirectResponse route action", func(t *testing.T) {

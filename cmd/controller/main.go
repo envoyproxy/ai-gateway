@@ -38,6 +38,7 @@ import (
 )
 
 type flags struct {
+	envoyGatewayNamespace          string
 	extProcLogLevel                string
 	extProcEnableRedaction         bool
 	extProcImage                   string
@@ -108,6 +109,11 @@ func parseWatchNamespaces(s string) []string {
 func parseAndValidateFlags(args []string) (*flags, error) {
 	fs := flag.NewFlagSet("AI Gateway Controller", flag.ContinueOnError)
 
+	envoyGatewayNamespace := fs.String(
+		"envoyGatewayNamespace",
+		"envoy-gateway-system",
+		"The namespace where Envoy Gateway is deployed.",
+	)
 	extProcLogLevelPtr := fs.String(
 		"extProcLogLevel",
 		"info",
@@ -328,6 +334,7 @@ func parseAndValidateFlags(args []string) (*flags, error) {
 	}
 
 	return &flags{
+		envoyGatewayNamespace:                  *envoyGatewayNamespace,
 		extProcLogLevel:                        *extProcLogLevelPtr,
 		extProcEnableRedaction:                 *extProcEnableRedactionPtr,
 		extProcImage:                           *extProcImagePtr,
@@ -444,6 +451,7 @@ func main() {
 
 	// Start the controller.
 	if err := controller.StartControllers(ctx, mgr, k8sConfig, ctrl.Log.WithName("controller"), &controller.Options{
+		EnvoyGatewayNamespace:                  parsedFlags.envoyGatewayNamespace,
 		ExtProcImage:                           parsedFlags.extProcImage,
 		ExtProcImagePullPolicy:                 parsedFlags.extProcImagePullPolicy,
 		ExtProcLogLevel:                        parsedFlags.extProcLogLevel,

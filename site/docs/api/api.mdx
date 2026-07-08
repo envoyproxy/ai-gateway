@@ -2301,13 +2301,13 @@ QuotaDefinition specified expression for computing request cost and rules for ma
   name="costExpression"
   type="string"
   required="false"
-  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> * `input_tokens + cached_input_tokens * 0.1 + output_tokens * 6`"
+  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> `input_tokens + cached_input_tokens + output_tokens`"
 /><ApiField
   name="mode"
   type="[QuotaBucketMode](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotabucketmode)"
   required="false"
   defaultValue="Shared"
-  description="The `Mode` determines how quota is charged to the `DefaultBucket` and matching `BucketRules`.<br />In the `shared` mode the quota is charged to all matching `BucketRules` AND the `DefaultBucket`<br />and request is allowed only if the quota is available in all matching buckets.<br />Defaults to `Shared`."
+  description="The `Mode` determines how quota is charged to the `DefaultBucket` and matching `BucketRules`.<br />In the `shared` mode the quota is charged to all matching `BucketRules` AND the `DefaultBucket`<br />and request is allowed only if the quota is available in at least one matching buckets.<br />Defaults to `Shared`."
 /><ApiField
   name="defaultBucket"
   type="[QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)"

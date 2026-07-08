@@ -350,6 +350,16 @@ data: [DONE]
 			_, _, _, _, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("invalid")), false, nil)
 			require.Error(t, err)
 		})
+		t.Run("null body", func(t *testing.T) {
+			// A literal JSON `null` decodes to a nil response without an error;
+			// it must not panic and should report zero usage.
+			s := &testotel.MockSpan{}
+			o := &openAIToOpenAITranslatorV1ChatCompletion{requestModel: "gpt-4o-mini"}
+			_, _, usedToken, responseModel, err := o.ResponseBody(nil, bytes.NewBuffer([]byte("null")), false, s)
+			require.NoError(t, err)
+			require.Equal(t, tokenUsageFrom(0, -1, -1, 0, 0, -1), usedToken)
+			require.Equal(t, "gpt-4o-mini", responseModel)
+		})
 		t.Run("valid body", func(t *testing.T) {
 			s := &testotel.MockSpan{}
 			var resp openai.ChatCompletionResponse
