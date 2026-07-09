@@ -55,9 +55,15 @@ const (
 func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
 	var extProcUDSExist bool
 
+	// Pre-pass: collect cluster names referenced by AIGateway-generated routes. Used to gate
+	// upstream-extproc filter installation on merged (MergeBackends) clusters, which can be
+	// reused across HTTPRoutes — including non-AIGW egress routes. Installing the filter on an
+	// egress-only merged cluster would point the upstream codec at a missing extproc UDS.
+	aigwReferencedClusters := s.collectAIGatewayReferencedClusters(req.Routes)
+
 	// Process existing clusters - may add metadata or modify configurations.
 	for _, cluster := range req.Clusters {
-		if err := s.maybeModifyCluster(ctx, cluster); err != nil {
+		if err := s.maybeModifyCluster(ctx, cluster, aigwReferencedClusters); err != nil {
 			return nil, fmt.Errorf("failed to modify cluster %s: %w", cluster.Name, err)
 		}
 		extProcUDSExist = extProcUDSExist || cluster.Name == extProcUDSClusterName
@@ -72,7 +78,7 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	req.Clusters = append(req.Clusters, cs...)
 
 	// Modify listeners and routes to support InferencePool backends.
-	if err = s.maybeModifyListenerAndRoutes(req.Listeners, req.Routes); err != nil {
+	if err = s.maybeModifyListenerAndRoutes(ctx, req.Listeners, req.Routes); err != nil {
 		return nil, fmt.Errorf("failed to modify listeners and routes for InferencePool support: %w", err)
 	}
 
@@ -168,15 +174,49 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 //
 // The resulting configuration is similar to the envoy.yaml files in tests/data-plane/.
 // Only clusters with names matching the AIGatewayRoute pattern are modified.
-func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Cluster) error {
-	// Parse cluster name to extract AIGatewayRoute information.
-	// Expected format: "httproute/<namespace>/<name>/rule/<index_of_rule>".
+func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Cluster, aigwReferencedClusters map[string]bool) error {
+	// Parse the cluster name. Two AIGateway-relevant shapes are accepted:
+	//   1. "httproute/<namespace>/<name>/rule/<index_of_rule>" — Envoy Gateway's default
+	//      per-(HTTPRoute, rule) cluster. Backend identity is populated into cluster/endpoint
+	//      metadata below.
+	//   2. "backend/<Kind>/<namespace>/<name>[/<port>]" — Envoy Gateway MergeBackends collapses
+	//      sister routes targeting the same backend onto one cluster, so cluster-level identity
+	//      is ambiguous. It is resolved per-request from route metadata
+	//      (XDSRouteMetadataBackendNamePath) instead; only the upstream filter is installed here.
 	parts := strings.Split(cluster.Name, "/")
-	if len(parts) != 5 || parts[0] != "httproute" {
+	isLegacy := len(parts) == 5 && parts[0] == "httproute"
+	isMerged := len(parts) >= 4 && parts[0] == "backend"
+	if !isLegacy && !isMerged {
 		// This is not an AIGatewayRoute-generated cluster, skip modification.
 		s.log.Info("non-ai-gateway cluster name", "cluster_name", cluster.Name)
 		return nil
 	}
+
+	if isMerged {
+		// Merged clusters are not exclusive to AIGateway — a non-AIGW egress HTTPRoute can target
+		// the same backend and produce the same "backend/<...>" name. Only proceed when an
+		// AIGateway-generated route actually targets this cluster; otherwise installing the upstream
+		// extproc filter would point the upstream codec at the extproc UDS on a pod with no extproc.
+		if !aigwReferencedClusters[cluster.Name] {
+			s.log.Info("skipping merged cluster not referenced by any AIGateway route", "cluster_name", cluster.Name)
+			return nil
+		}
+		// KNOWN LIMITATION (mixed sharing): the upstream extproc filter lives on the cluster's
+		// HttpProtocolOptions and runs for ALL traffic through the cluster — it has no per-route
+		// disable. If a merged cluster were targeted by BOTH an AIGateway route and a plain (non-AIGW)
+		// HTTPRoute, the non-AIGW traffic would also traverse the AIGW upstream extproc, carry no
+		// backend metadata, and fail with the "missing backend name" error in resolveBackendName. This
+		// is latent until Envoy Gateway MergeBackends is enabled (no "backend/..." clusters exist
+		// before then) and does not occur when the shared cluster is targeted only by AIGateway routes
+		// (each carries its own route metadata). Revisit if non-AIGateway routes ever share a cluster.
+		//
+		// Backend identity for merged clusters is resolved per-request from route metadata, so we
+		// do not derive it from the (ambiguous) cluster name — just install the upstream filters.
+		return s.ensureAIGatewayUpstreamFilters(cluster)
+	}
+
+	// Legacy per-(HTTPRoute, rule) cluster: derive backend identity from the cluster name and
+	// populate cluster/endpoint metadata before installing the upstream filters.
 	httpRouteNamespace := parts[1]
 	httpRouteName := parts[2]
 	httpRouteRuleIndexStr := parts[4]
@@ -267,6 +307,15 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, 0)
 	}
 
+	return s.ensureAIGatewayUpstreamFilters(cluster)
+}
+
+// ensureAIGatewayUpstreamFilters appends the AI Gateway upstream extproc and header-mutation
+// filters to the cluster's HttpProtocolOptions if not already present. The filter config is
+// backend-identity-agnostic — extproc resolves the backend per request from xDS attributes
+// (route metadata first, then cluster/upstream-host metadata) — so it applies to both legacy
+// per-rule clusters and merged (MergeBackends) clusters.
+func (s *Server) ensureAIGatewayUpstreamFilters(cluster *clusterv3.Cluster) error {
 	if cluster.TypedExtensionProtocolOptions == nil {
 		cluster.TypedExtensionProtocolOptions = make(map[string]*anypb.Any)
 	}
@@ -274,7 +323,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 	var po *httpv3.HttpProtocolOptions
 	if raw, ok := cluster.TypedExtensionProtocolOptions[httpProtocolOptions]; ok {
 		po = &httpv3.HttpProtocolOptions{}
-		if err = raw.UnmarshalTo(po); err != nil {
+		if err := raw.UnmarshalTo(po); err != nil {
 			s.log.Error(err, "failed to unmarshal HttpProtocolOptions", "cluster_name", cluster.Name)
 			return fmt.Errorf("failed to unmarshal HttpProtocolOptions: %w", err)
 		}
@@ -300,6 +349,9 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 	}
 	extProcConfig.AllowModeOverride = true
 	extProcConfig.RequestAttributes = []string{
+		// Checked first by extproc: merged (MergeBackends) clusters have ambiguous
+		// cluster/upstream-host identity, so the per-route backend name is authoritative.
+		internalapi.XDSRouteMetadataBackendNamePath,
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
 		internalapi.XDSClusterMetadataBackendNamePath,
 		internalapi.XDSRouteMetadataRouteNamePath,
@@ -394,7 +446,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 // 2. Adds endpoint picker (EPP) external processor filters to relevant listeners
 // 3. Configures per-route filters to disable EPP processing for non-InferencePool routes
 // This ensures that only routes targeting InferencePool backends go through the endpoint picker.
-func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, routes []*routev3.RouteConfiguration) error {
+func (s *Server) maybeModifyListenerAndRoutes(ctx context.Context, listeners []*listenerv3.Listener, routes []*routev3.RouteConfiguration) error {
 	listenerNameToRouteNames := make(map[string][]string)
 	listenerNameToListener := make(map[string]*listenerv3.Listener)
 	for _, listener := range listeners {
@@ -475,7 +527,7 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 				s.log.Info("skipping patching of non-existent route config", "route_config", name)
 				continue
 			}
-			_enabled, err := s.enableRouterLevelAIGatewayExtProcOnRoute(routeCfg)
+			_enabled, err := s.enableRouterLevelAIGatewayExtProcOnRoute(ctx, routeCfg)
 			if err != nil {
 				return fmt.Errorf("failed to enable router level AI Gateway extproc on route config %s: %w", name, err)
 			}
@@ -585,7 +637,7 @@ func (s *Server) patchVirtualHostWithInferencePool(vh *routev3.VirtualHost, infe
 // enableRouterLevelAIGatewayExtProcOnRoute checks if the extproc filter should be enabled for routes
 // that are generated by AIGateway. It modifies the route configuration to enable the extproc filter
 // for those routes. It returns true if any route was modified.
-func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.RouteConfiguration) (bool, error) {
+func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(ctx context.Context, routeConfig *routev3.RouteConfiguration) (bool, error) {
 	enabled := false
 	fcAny, err := toAny(&routev3.FilterConfig{
 		Config: &anypb.Any{},
@@ -613,10 +665,100 @@ func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.R
 					routeName = route.Name
 				}
 				ensureRouteInternalMetadata(route).Fields[internalapi.InternalMetadataRouteNameKey] = structpb.NewStringValue(routeName)
+
+				// Populate per-route backend identity so the upstream extproc can resolve the
+				// backend even when Envoy Gateway MergeBackends collapses sister routes onto a
+				// shared cluster (cluster/upstream-host metadata becomes ambiguous then). Safe
+				// and authoritative for legacy per-rule clusters too — extproc consults it first.
+				if err := s.populateRouteMetadataBackendName(ctx, route); err != nil {
+					return enabled, err
+				}
 			}
 		}
 	}
 	return enabled, nil
+}
+
+// populateRouteMetadataBackendName writes the per-(route, rule, backendRef) identity into the
+// route's internal filter metadata at InternalMetadataBackendNameKey, so the upstream extproc
+// can resolve the backend regardless of whether Envoy Gateway MergeBackends collapsed the
+// cluster. Only routes whose rule has a single backendRef are populated; multi-backendRef rules
+// render weighted_clusters, are excluded from MergeBackends, and keep authoritative per-endpoint
+// cluster metadata.
+//
+// The xDS route name has EG's IR shape "httproute/<ns>/<name>/rule/<ruleIdx>/match/<matchIdx>"
+// with optional trailing segments (per-host fan-out appends "/<host>", CORS preflight appends
+// "/cors-preflight"); anything not matching the prefix shape is skipped.
+func (s *Server) populateRouteMetadataBackendName(ctx context.Context, route *routev3.Route) error {
+	parts := strings.Split(route.Name, "/")
+	if len(parts) < 7 || parts[0] != "httproute" || parts[3] != "rule" || parts[5] != "match" {
+		return nil
+	}
+	httpRouteNamespace := parts[1]
+	httpRouteName := parts[2]
+	ruleIndex, err := strconv.Atoi(parts[4])
+	if err != nil {
+		return nil
+	}
+
+	var aigwRoute aigv1b1.AIGatewayRoute
+	if err := s.k8sClient.Get(ctx, client.ObjectKey{Namespace: httpRouteNamespace, Name: httpRouteName}, &aigwRoute); err != nil {
+		if apierrors.IsNotFound(err) {
+			// Not an AIGatewayRoute-backed HTTPRoute; nothing to populate.
+			return nil
+		}
+		return fmt.Errorf("failed to get AIGatewayRoute %s/%s for route metadata population: %w", httpRouteNamespace, httpRouteName, err)
+	}
+	if ruleIndex >= len(aigwRoute.Spec.Rules) {
+		return nil
+	}
+	rule := &aigwRoute.Spec.Rules[ruleIndex]
+	// Route metadata is per-route and carries exactly one backend identity. Multi-backendRef
+	// rules become weighted_clusters (excluded from MergeBackends); their per-endpoint cluster
+	// metadata already disambiguates the backends.
+	if len(rule.BackendRefs) != 1 {
+		return nil
+	}
+	backendRef := rule.BackendRefs[0]
+	ensureRouteInternalMetadata(route).Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
+		internalapi.PerRouteRuleRefBackendName(aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, ruleIndex, 0),
+	)
+	return nil
+}
+
+// collectAIGatewayReferencedClusters returns the set of upstream cluster names referenced by at
+// least one AIGateway-generated route across the supplied route configs. Used to gate AIGW
+// upstream-filter installation on merged (MergeBackends) clusters, which may also be targeted by
+// non-AIGW egress routes.
+func (s *Server) collectAIGatewayReferencedClusters(routes []*routev3.RouteConfiguration) map[string]bool {
+	refs := make(map[string]bool)
+	for _, routeCfg := range routes {
+		if routeCfg == nil {
+			continue
+		}
+		for _, vh := range routeCfg.VirtualHosts {
+			for _, r := range vh.Routes {
+				if !s.isRouteGeneratedByAIGateway(r) {
+					continue
+				}
+				action := r.GetRoute()
+				if action == nil {
+					continue
+				}
+				if name := action.GetCluster(); name != "" {
+					refs[name] = true
+				}
+				if wc := action.GetWeightedClusters(); wc != nil {
+					for _, c := range wc.Clusters {
+						if c.Name != "" {
+							refs[c.Name] = true
+						}
+					}
+				}
+			}
+		}
+	}
+	return refs
 }
 
 // insertRouterLevelAIGatewayExtProcExtProc inserts the AI Gateway external processor filter into the listener's filter chains.

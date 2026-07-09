@@ -398,7 +398,23 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	return nil
 }
 
+// resolveBackendName returns the backend identity for the request from the ext_proc xDS attributes,
+// or an error if none is present.
+//
+// Route metadata carries the per-route backend name and is checked first. An Envoy Gateway
+// MergeBackends cluster is shared across routes and named "backend/<Kind>/<ns>/<name>", so its
+// cluster/upstream-host metadata cannot identify a single backend, while each route still carries its
+// own identity. Route metadata is absent for multi-backendRef (weighted) rules, so fall back to
+// upstream-host metadata and then, for the router flow, to cluster metadata. The endpoint-picker
+// (InferencePool) flow has no per-endpoint metadata and reads cluster metadata directly.
 func resolveBackendName(isEndpointPicker bool, attributes *structpb.Struct) (string, error) {
+	// Skip an empty route-metadata value so it does not shadow a valid upstream-host/cluster identity.
+	if b, ok := attributes.Fields[internalapi.XDSRouteMetadataBackendNamePath]; ok {
+		if name := b.GetStringValue(); name != "" {
+			return name, nil
+		}
+	}
+
 	var backendNamePath string
 	if isEndpointPicker {
 		backendNamePath = internalapi.XDSClusterMetadataBackendNamePath
@@ -406,19 +422,21 @@ func resolveBackendName(isEndpointPicker bool, attributes *structpb.Struct) (str
 		backendNamePath = internalapi.XDSUpstreamHostMetadataBackendNamePath
 	}
 
-	// Try the direct metadata path first. (e.g. xds.upstream_host_metadata...['per_route_rule_backend_name'])
+	// Direct metadata path (e.g. xds.upstream_host_metadata...['per_route_rule_backend_name']).
 	if b, ok := attributes.Fields[backendNamePath]; ok {
 		return b.GetStringValue(), nil
 	}
 
-	// Fallback to cluster metadata when upstream host metadata is unavailable.
+	// The router flow falls back to cluster metadata; the endpoint-picker flow already read it above.
 	if !isEndpointPicker {
 		if b, ok := attributes.Fields[internalapi.XDSClusterMetadataBackendNamePath]; ok {
 			return b.GetStringValue(), nil
 		}
 	}
 
-	return "", status.Errorf(codes.Internal, "missing backend name in attributes at path: %s", backendNamePath)
+	// No backend metadata on any path: a route-metadata population gap, or non-AIGateway traffic on a
+	// shared merged cluster that carries the AIGateway upstream ext_proc filter.
+	return "", status.Errorf(codes.Internal, "missing backend name in attributes at path: %s (non-AIGateway traffic on a shared merged cluster or a route-metadata population gap)", backendNamePath)
 }
 
 func resolveRouteName(attributes *structpb.Struct) string {

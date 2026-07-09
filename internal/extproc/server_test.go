@@ -344,6 +344,8 @@ func TestServer_setBackend(t *testing.T) {
 
 func TestResolveBackendName(t *testing.T) {
 	const backendName = "default/openai/route/aigw-run/rule/0/ref/0"
+	// A distinct value so precedence between metadata sources is observable.
+	const routeBackendName = "default/anthropic/route/aigw-run/rule/1/ref/0"
 
 	for _, tc := range []struct {
 		name             string
@@ -375,6 +377,59 @@ func TestResolveBackendName(t *testing.T) {
 			expected: backendName,
 		},
 		{
+			// MergeBackends: the per-route backend name is authoritative and must win over the
+			// (ambiguous) upstream-host metadata of a shared cluster.
+			name: "route metadata takes precedence over upstream host (non-endpoint-picker)",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSRouteMetadataBackendNamePath:        structpb.NewStringValue(routeBackendName),
+				internalapi.XDSUpstreamHostMetadataBackendNamePath: structpb.NewStringValue(backendName),
+			},
+			expected: routeBackendName,
+		},
+		{
+			// Route metadata is merge-safe and authoritative for the endpoint-picker flow too. In
+			// practice both writers emit the identical value; a differing value here just asserts
+			// route metadata wins.
+			name: "route metadata takes precedence for endpoint picker",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSRouteMetadataBackendNamePath:   structpb.NewStringValue(routeBackendName),
+				internalapi.XDSClusterMetadataBackendNamePath: structpb.NewStringValue(backendName),
+			},
+			isEndpointPicker: true,
+			expected:         routeBackendName,
+		},
+		{
+			// Regression: a MergeBackends-collapsed InferencePool cluster has no cluster metadata, but
+			// the route still carries its (single-backendRef) identity. The endpoint-picker flow must
+			// resolve it from route metadata rather than hard-failing.
+			name: "route metadata only for endpoint picker (merged InferencePool cluster)",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSRouteMetadataBackendNamePath: structpb.NewStringValue(routeBackendName),
+			},
+			isEndpointPicker: true,
+			expected:         routeBackendName,
+		},
+		{
+			// An empty route-metadata value must not shadow a valid identity: fall through to the
+			// endpoint-picker's cluster metadata rather than returning "".
+			name: "empty route metadata falls through to cluster metadata (endpoint picker)",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSRouteMetadataBackendNamePath:   structpb.NewStringValue(""),
+				internalapi.XDSClusterMetadataBackendNamePath: structpb.NewStringValue(backendName),
+			},
+			isEndpointPicker: true,
+			expected:         backendName,
+		},
+		{
+			// Same for the router flow: empty route metadata falls through to upstream-host metadata.
+			name: "empty route metadata falls through to upstream host (router)",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSRouteMetadataBackendNamePath:        structpb.NewStringValue(""),
+				internalapi.XDSUpstreamHostMetadataBackendNamePath: structpb.NewStringValue(backendName),
+			},
+			expected: backendName,
+		},
+		{
 			name:        "missing backend name for router",
 			attributes:  map[string]*structpb.Value{},
 			expectedErr: "rpc error: code = Internal desc = missing backend name in attributes at path: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']",
@@ -392,7 +447,7 @@ func TestResolveBackendName(t *testing.T) {
 				&structpb.Struct{Fields: tc.attributes},
 			)
 			if tc.expectedErr != "" {
-				require.EqualError(t, err, tc.expectedErr)
+				require.ErrorContains(t, err, tc.expectedErr)
 				return
 			}
 			require.NoError(t, err)

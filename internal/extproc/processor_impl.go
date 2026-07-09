@@ -465,6 +465,28 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		mode = &extprocv3http.ProcessingMode{ResponseBodyMode: extprocv3http.ProcessingMode_STREAMED}
 	}
 	headerMutation, _ := mutationsFromTranslationResult(newHeaders, nil)
+
+	// Emit the resolved backend identity as a response header so downstream consumers (billing, usage
+	// rollup, provider/metric labels) can distinguish backends. It cannot come from
+	// %UPSTREAM_METADATA(aigateway.envoy.io:per_route_rule_backend_name)% on the route: that reads
+	// upstream-host (endpoint) metadata, which is empty on a MergeBackends-shared cluster and on
+	// EDS/InferencePool clusters. u.backendName is the identity resolved by resolveBackendName (route,
+	// then upstream-host, then cluster metadata), so it is correct for every cluster shape.
+	if u.backendName != "" {
+		if headerMutation == nil {
+			headerMutation = &extprocv3.HeaderMutation{}
+		}
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+			// APPEND_IF_EXISTS_OR_ADD joins values across fallback/retries so an earlier attempt's
+			// backend name is preserved rather than clobbered.
+			AppendAction: corev3.HeaderValueOption_APPEND_IF_EXISTS_OR_ADD,
+			Header: &corev3.HeaderValue{
+				Key:      internalapi.UpstreamBackendNameHeader,
+				RawValue: []byte(u.backendName),
+			},
+		})
+	}
+
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 		ResponseHeaders: &extprocv3.HeadersResponse{
 			Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation},
