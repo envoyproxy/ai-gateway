@@ -2358,6 +2358,11 @@ func TestServer_collectRateLimitSourceNamespaces(t *testing.T) {
 		}
 	}
 
+	t.Run("nil k8s client returns nil", func(t *testing.T) {
+		s := &Server{log: logr.Discard()}
+		require.Nil(t, s.collectRateLimitSourceNamespaces(t.Context()))
+	})
+
 	t.Run("no rate limits configured returns nil", func(t *testing.T) {
 		c := fake.NewClientBuilder().WithScheme(controller.Scheme).Build()
 		s := &Server{log: logr.Discard(), k8sClient: c}

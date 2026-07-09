@@ -2277,7 +2277,7 @@ func TestBuildRateLimitOverrideMetadata(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			md := buildRateLimitOverrideMetadata(tt.globalRateLimits, tt.filterMetadata)
+			md := buildRateLimitOverrideMetadata(tt.globalRateLimits, tt.filterMetadata, slog.Default())
 			if len(tt.wantStructs) == 0 {
 				require.Nil(t, md)
 				return

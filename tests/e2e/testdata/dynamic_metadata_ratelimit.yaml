@@ -104,7 +104,7 @@ spec:
         hostname: envoy-ai-gateway-dynamic-ratelimit-testupstream.default.svc.cluster.local
         port: 80
 ---
-# ext_authz that returns the per-tenant limit ("2/MINUTE") as dynamic metadata.
+# ext_authz that returns the per-tenant limit ("2/HOUR") as dynamic metadata.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:

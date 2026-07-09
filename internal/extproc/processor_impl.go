@@ -220,7 +220,7 @@ func createUserFacingErrorResponse(statusCode int, errorType string, message str
 // overrides into io.envoy.ai_gateway on the request path; see buildRateLimitOverrideMetadata.
 func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequestHeaders(_ context.Context, _ *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
 	resp := &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}
-	if md := buildRateLimitOverrideMetadata(r.config.GlobalRateLimits, r.filterMetadata); md != nil {
+	if md := buildRateLimitOverrideMetadata(r.config.GlobalRateLimits, r.filterMetadata, r.logger); md != nil {
 		resp.DynamicMetadata = md
 	}
 	return resp, nil
@@ -845,6 +845,7 @@ func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.Tok
 func buildRateLimitOverrideMetadata(
 	globalRateLimits []filterapi.GlobalRateLimitOverride,
 	filterMetadata map[string]*structpb.Struct,
+	logger *slog.Logger,
 ) *structpb.Struct {
 	if len(globalRateLimits) == 0 {
 		return nil
@@ -852,7 +853,7 @@ func buildRateLimitOverrideMetadata(
 	metadata := make(map[string]*structpb.Value, len(globalRateLimits))
 	for i := range globalRateLimits {
 		h := &globalRateLimits[i]
-		if v, ok := parseRateLimitOverrideValue(filterMetadata, h.Namespace, h.Key); ok {
+		if v, ok := parseRateLimitOverrideValue(filterMetadata, h.Namespace, h.Key, logger); ok {
 			metadata[h.MetadataKey] = v
 		}
 	}
@@ -875,7 +876,7 @@ func buildRateLimitOverrideMetadata(
 // and unit are trimmed of surrounding spaces. It returns the { requests_per_unit, unit } struct value
 // Envoy's RateLimit.Override.DynamicMetadata expects, or false (logged at debug) when the value is
 // absent or malformed, in which case the key is omitted and the BackendTrafficPolicy default applies.
-func parseRateLimitOverrideValue(filterMetadata map[string]*structpb.Struct, namespace, key string) (*structpb.Value, bool) {
+func parseRateLimitOverrideValue(filterMetadata map[string]*structpb.Struct, namespace, key string, logger *slog.Logger) (*structpb.Value, bool) {
 	ns, ok := filterMetadata[namespace]
 	if !ok || ns == nil {
 		return nil, false
@@ -890,14 +891,14 @@ func parseRateLimitOverrideValue(filterMetadata map[string]*structpb.Struct, nam
 	}
 	parts := strings.SplitN(val, "/", 2)
 	if len(parts) != 2 {
-		slog.Default().Debug("malformed rate-limit metadata value, expected <count>/<unit>",
+		logger.Debug("malformed rate-limit metadata value, expected <count>/<unit>",
 			slog.String("namespace", namespace), slog.String("key", key), slog.String("value", val))
 		return nil, false
 	}
 	// requests_per_unit is a uint32 in Envoy; drop values that don't fit instead of truncating.
 	n, err := strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 32)
 	if err != nil {
-		slog.Default().Debug("invalid count in rate-limit metadata, want a uint32",
+		logger.Debug("invalid count in rate-limit metadata, want a uint32",
 			slog.String("namespace", namespace), slog.String("key", key), slog.String("value", val))
 		return nil, false
 	}
@@ -906,7 +907,7 @@ func parseRateLimitOverrideValue(filterMetadata map[string]*structpb.Struct, nam
 	switch unit {
 	case "SECOND", "MINUTE", "HOUR", "DAY":
 	default:
-		slog.Default().Debug("invalid unit in rate-limit metadata, expected SECOND/MINUTE/HOUR/DAY",
+		logger.Debug("invalid unit in rate-limit metadata, expected SECOND/MINUTE/HOUR/DAY",
 			slog.String("namespace", namespace), slog.String("key", key), slog.String("unit", unit))
 		return nil, false
 	}

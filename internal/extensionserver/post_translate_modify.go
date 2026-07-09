@@ -722,14 +722,18 @@ func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.R
 // EG recomputes this only when it re-translates the gateway, and it doesn't watch GatewayConfig, so
 // adding or removing a source namespace on a live gateway only lands on the next translation (e.g. a
 // route change). Changing the key or value within a namespace needs none.
+//
+// A list failure returns nil, which leaves ForwardingNamespaces unset and disables dynamic limits until
+// the next translation, so the error is logged to make that fallback diagnosable.
 func (s *Server) collectRateLimitSourceNamespaces(ctx context.Context) []string {
+	if s.k8sClient == nil {
+		return nil
+	}
 	set := map[string]struct{}{}
 
 	var gcList aigv1b1.GatewayConfigList
 	if err := s.k8sClient.List(ctx, &gcList); err != nil {
-		if !apierrors.IsNotFound(err) {
-			s.log.Error(err, "failed to list GatewayConfigs for rate-limit forwarding namespaces")
-		}
+		s.log.Error(err, "failed to list GatewayConfigs for rate-limit forwarding namespaces")
 	} else {
 		for i := range gcList.Items {
 			for _, rl := range gcList.Items[i].Spec.GlobalRateLimits {
