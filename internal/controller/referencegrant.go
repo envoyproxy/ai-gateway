@@ -28,7 +28,7 @@ func newReferenceGrantValidator(c client.Client) *referenceGrantValidator {
 	return &referenceGrantValidator{client: c}
 }
 
-// ValidateAIServiceBackendReference validates that an AIGatewayRoute can reference an AIServiceBackend
+// validateAIServiceBackendReference validates that an AIGatewayRoute can reference an AIServiceBackend
 // in a different namespace by checking for a valid ReferenceGrant.
 //
 // Parameters:
@@ -45,39 +45,78 @@ func (v *referenceGrantValidator) validateAIServiceBackendReference(
 	backendNamespace string,
 	backendName string,
 ) error {
-	// Same namespace references don't need ReferenceGrant
-	if routeNamespace == backendNamespace {
+	return v.validateReference(ctx, routeNamespace, backendNamespace, backendName, aiServiceBackendGroup, aiServiceBackendKind)
+}
+
+// validateInferencePoolReference validates that an AIGatewayRoute can reference an InferencePool
+// in a different namespace by checking for a valid ReferenceGrant.
+//
+// Parameters:
+//   - ctx: context for the operation
+//   - routeNamespace: namespace of the AIGatewayRoute
+//   - poolNamespace: namespace of the InferencePool
+//   - poolName: name of the InferencePool (optional, for logging)
+//
+// Returns:
+//   - error: nil if the reference is valid (same namespace or valid ReferenceGrant exists), error otherwise
+func (v *referenceGrantValidator) validateInferencePoolReference(
+	ctx context.Context,
+	routeNamespace string,
+	poolNamespace string,
+	poolName string,
+) error {
+	return v.validateReference(ctx, routeNamespace, poolNamespace, poolName, inferencePoolGroup, inferencePoolKind)
+}
+
+// validateReference validates that an AIGatewayRoute can reference a target resource (identified by
+// targetGroup/targetKind) in a different namespace by checking for a valid ReferenceGrant.
+func (v *referenceGrantValidator) validateReference(
+	ctx context.Context,
+	routeNamespace string,
+	targetNamespace string,
+	targetName string,
+	targetGroup gwapiv1b1.Group,
+	targetKind gwapiv1b1.Kind,
+) error {
+	// Same namespace references don't need ReferenceGrant.
+	if routeNamespace == targetNamespace {
 		return nil
 	}
 
-	indexKey := getReferenceGrantIndexKey(backendNamespace, aiServiceBackendKind)
+	indexKey := getReferenceGrantIndexKey(targetNamespace, string(targetKind))
 	var referenceGrants gwapiv1b1.ReferenceGrantList
 	if err := v.client.List(ctx, &referenceGrants,
 		client.MatchingFields{k8sClientIndexReferenceGrantToTargetKind: indexKey},
 	); err != nil {
 		return fmt.Errorf("failed to list ReferenceGrants in namespace %s for kind %s: %w",
-			backendNamespace, aiServiceBackendKind, err)
+			targetNamespace, targetKind, err)
 	}
 
-	// Check if any ReferenceGrant allows this cross-namespace reference
+	// Check if any ReferenceGrant allows this cross-namespace reference.
 	for i := range referenceGrants.Items {
 		grant := &referenceGrants.Items[i]
-		if v.isReferenceGrantValid(grant, routeNamespace) {
+		if v.isReferenceGrantValid(grant, routeNamespace, targetGroup, targetKind) {
 			return nil
 		}
 	}
 
 	return fmt.Errorf(
-		"cross-namespace reference from AIGatewayRoute in namespace %s to AIServiceBackend %s in namespace %s is not permitted: "+
+		"cross-namespace reference from AIGatewayRoute in namespace %s to %s %s in namespace %s is not permitted: "+
 			"no valid ReferenceGrant found in namespace %s. "+
-			"A ReferenceGrant must allow AIGatewayRoute from namespace %s to reference AIServiceBackend in namespace %s",
-		routeNamespace, backendName, backendNamespace, backendNamespace, routeNamespace, backendNamespace,
+			"A ReferenceGrant must allow AIGatewayRoute from namespace %s to reference %s in namespace %s",
+		routeNamespace, targetKind, targetName, targetNamespace, targetNamespace, routeNamespace, targetKind, targetNamespace,
 	)
 }
 
-// isReferenceGrantValid checks if a ReferenceGrant allows an AIGatewayRoute to reference an AIServiceBackend.
-func (v *referenceGrantValidator) isReferenceGrantValid(grant *gwapiv1b1.ReferenceGrant, fromNamespace string) bool {
-	// Check if the grant allows references from the route's namespace
+// isReferenceGrantValid checks if a ReferenceGrant allows an AIGatewayRoute to reference the
+// target resource identified by targetGroup/targetKind.
+func (v *referenceGrantValidator) isReferenceGrantValid(
+	grant *gwapiv1b1.ReferenceGrant,
+	fromNamespace string,
+	targetGroup gwapiv1b1.Group,
+	targetKind gwapiv1b1.Kind,
+) bool {
+	// Check if the grant allows references from the route's namespace.
 	fromAllowed := false
 	for _, from := range grant.Spec.From {
 		if v.matchesFrom(&from, fromNamespace) {
@@ -90,9 +129,9 @@ func (v *referenceGrantValidator) isReferenceGrantValid(grant *gwapiv1b1.Referen
 		return false
 	}
 
-	// Check if the grant allows references to AIServiceBackend
+	// Check if the grant allows references to the target resource.
 	for _, to := range grant.Spec.To {
-		if v.matchesTo(&to) {
+		if v.matchesTo(&to, targetGroup, targetKind) {
 			return true
 		}
 	}
@@ -102,7 +141,7 @@ func (v *referenceGrantValidator) isReferenceGrantValid(grant *gwapiv1b1.Referen
 
 // matchesFrom checks if a ReferenceGrantFrom matches the AIGatewayRoute reference.
 func (v *referenceGrantValidator) matchesFrom(from *gwapiv1b1.ReferenceGrantFrom, fromNamespace string) bool {
-	// Check group
+	// Check group. AIGatewayRoute belongs to the aigateway.envoyproxy.io group.
 	if from.Group != aiServiceBackendGroup {
 		return false
 	}
@@ -120,15 +159,15 @@ func (v *referenceGrantValidator) matchesFrom(from *gwapiv1b1.ReferenceGrantFrom
 	return true
 }
 
-// matchesTo checks if a ReferenceGrantTo matches the AIServiceBackend.
-func (v *referenceGrantValidator) matchesTo(to *gwapiv1b1.ReferenceGrantTo) bool {
+// matchesTo checks if a ReferenceGrantTo matches the target resource identified by targetGroup/targetKind.
+func (v *referenceGrantValidator) matchesTo(to *gwapiv1b1.ReferenceGrantTo, targetGroup gwapiv1b1.Group, targetKind gwapiv1b1.Kind) bool {
 	// Check group
-	if to.Group != aiServiceBackendGroup {
+	if to.Group != targetGroup {
 		return false
 	}
 
 	// Check kind
-	if to.Kind != aiServiceBackendKind {
+	if to.Kind != targetKind {
 		return false
 	}
 
