@@ -258,6 +258,9 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 					m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
 						internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i),
 					)
+					if host := endpointAWSSigningHost(endpoint); host != "" {
+						m.Fields[internalapi.InternalMetadataAWSSigningHostKey] = structpb.NewStringValue(host)
+					}
 				}
 			}
 		}
@@ -302,6 +305,8 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 	extProcConfig.RequestAttributes = []string{
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
 		internalapi.XDSClusterMetadataBackendNamePath,
+		internalapi.XDSUpstreamHostMetadataAWSSigningHostPath,
+		internalapi.XDSClusterMetadataAWSSigningHostPath,
 		internalapi.XDSRouteMetadataRouteNamePath,
 	}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
@@ -798,6 +803,20 @@ func routeNameFromEnvoyGatewayMetadata(route *routev3.Route) string {
 		if ok && name.GetStringValue() != "" {
 			return name.GetStringValue()
 		}
+	}
+	return ""
+}
+
+func endpointAWSSigningHost(lbEndpoint *endpointv3.LbEndpoint) string {
+	endpoint := lbEndpoint.GetEndpoint()
+	if endpoint == nil {
+		return ""
+	}
+	if hostname := endpoint.GetHostname(); hostname != "" {
+		return hostname
+	}
+	if socketAddress := endpoint.GetAddress().GetSocketAddress(); socketAddress != nil {
+		return socketAddress.GetAddress()
 	}
 	return ""
 }
