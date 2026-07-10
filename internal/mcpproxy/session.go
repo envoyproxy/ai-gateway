@@ -73,6 +73,7 @@ func (s *session) Close() error {
 			// Stateless backend, nothing to do.
 			continue
 		}
+		backend, _ := s.reqCtx.getBackendForRoute(s.route, backendName)
 		req, err := http.NewRequest(http.MethodDelete, s.reqCtx.backendListenerAddr, nil)
 		if err != nil {
 			s.reqCtx.l.Error("failed to create DELETE request to MCP server to close session",
@@ -82,6 +83,7 @@ func (s *session) Close() error {
 			)
 			continue
 		}
+		s.reqCtx.applyBackendOverrides(req, backend)
 		addMCPHeaders(req, nil, nil, s.route, backendName)
 		s.reqCtx.applyOriginalPathHeaders(req)
 		req.Header.Set(sessionIDHeader, sessionID.String())
@@ -360,6 +362,7 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 	if err != nil {
 		return fmt.Errorf("failed to create GET request: %w", err)
 	}
+	s.reqCtx.applyBackendOverrides(req, backend)
 	sessionID := cse.sessionID.String()
 	addMCPHeaders(req, request, params, routeName, backend.Name)
 	s.reqCtx.applyLogHeaderMappings(req, request)

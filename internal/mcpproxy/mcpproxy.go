@@ -39,6 +39,50 @@ type mcpRequestContext struct {
 	requestHeaders            http.Header
 	originalPath              string
 	perBackendMetricsRecorded bool
+	// dynamicRouteConfig is lazily parsed from the dynamic route config header.
+	// It is cached per-request to avoid re-parsing on every route config lookup.
+	dynamicRouteConfig       *mcpProxyConfigRoute
+	dynamicRouteConfigParsed bool
+}
+
+// routeConfig returns the route configuration for the given route name.
+// It first checks for a dynamic route config passed via the [internalapi.MCPDynamicRouteConfigHeader] header.
+// If present, the dynamic config takes precedence over the statically loaded config.
+// The parsed dynamic config is cached per-request to avoid repeated parsing.
+func (m *mcpRequestContext) routeConfig(routeName filterapi.MCPRouteName) *mcpProxyConfigRoute {
+	// Lazily parse the dynamic route config header on first access.
+	if !m.dynamicRouteConfigParsed {
+		m.dynamicRouteConfigParsed = true
+		if headerVal := m.requestHeaders.Get(internalapi.MCPDynamicRouteConfigHeader); headerVal != "" {
+			parsed, _, err := parseDynamicRouteConfig(headerVal)
+			if err != nil {
+				m.l.Error("failed to parse dynamic route config header, falling back to static config",
+					slog.String("error", err.Error()))
+			} else {
+				m.dynamicRouteConfig = parsed
+			}
+		}
+	}
+	if m.dynamicRouteConfig != nil {
+		return m.dynamicRouteConfig
+	}
+	return m.routes[routeName]
+}
+
+// applyBackendOverrides sets host, path, and auth on the outgoing request from the
+// [filterapi.MCPBackend] configuration. This allows backends to specify their hostname
+// (for Envoy's Dynamic Forward Proxy), a custom URL path, and an authorization header
+// without requiring static Envoy cluster definitions.
+func (m *mcpRequestContext) applyBackendOverrides(req *http.Request, backend filterapi.MCPBackend) {
+	if backend.Host != "" {
+		req.Host = backend.Host
+	}
+	if backend.BackendPath != "" {
+		req.URL.Path = backend.BackendPath
+	}
+	if backend.Auth != "" {
+		req.Header.Set("Authorization", backend.Auth)
+	}
 }
 
 // defaultMaxRequestBodySize is the default maximum allowed POST body size in bytes (4 MiB).
@@ -156,7 +200,7 @@ func extractMetaFromJSONRPCMessage(msg jsonrpc.Message) map[string]any {
 func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializeParams, routeName filterapi.MCPRouteName, subject string, span tracingapi.MCPSpan, startAt time.Time) (*session, error) {
 	m.l.Debug("creating new MCP session")
 
-	backends := m.routes[routeName]
+	backends := m.routeConfig(routeName)
 	if backends == nil {
 		return nil, fmt.Errorf("no backends found for route %s", routeName)
 	}
@@ -279,11 +323,11 @@ func (m *mcpRequestContext) sessionFromID(id secureClientToGatewaySessionID, las
 	// Extract forward headers from the current request based on the route's forwardHeaders config.
 	var extraHeaders map[string]string
 	var perBackendHeaders map[filterapi.MCPBackendName]map[string]string
-	if routeConfig := m.routes[route]; routeConfig != nil {
-		extraHeaders = extractForwardHeaders(m.requestHeaders, routeConfig.forwardHeaders)
+	if routeCfg := m.routeConfig(route); routeCfg != nil {
+		extraHeaders = extractForwardHeaders(m.requestHeaders, routeCfg.forwardHeaders)
 		// Extract per-backend forward headers.
 		perBackendHeaders = make(map[filterapi.MCPBackendName]map[string]string)
-		for _, backend := range routeConfig.backends {
+		for _, backend := range routeCfg.backends {
 			if len(backend.ForwardHeaders) > 0 {
 				if h := extractPerBackendForwardHeaders(m.requestHeaders, backend.ForwardHeaders); h != nil {
 					perBackendHeaders[backend.Name] = h
@@ -448,6 +492,7 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create MCP notifications/initialized request: %w", err)
 	}
+	m.applyBackendOverrides(req, backend)
 	addMCPHeaders(req, msg, params, routeName, backend.Name)
 	m.applyLogHeaderMappings(req, msg)
 	m.applyOriginalPathHeaders(req)
@@ -463,7 +508,7 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 	req.Header.Set("Accept", "application/json, text/event-stream")
 
 	// Forward configured headers to backend.
-	if routeConfig := m.routes[routeName]; routeConfig != nil {
+	if routeConfig := m.routeConfig(routeName); routeConfig != nil {
 		// Route-level headers (e.g., OAuth claimToHeaders).
 		for _, header := range routeConfig.forwardHeaders {
 			if value := m.requestHeaders.Get(header); value != "" {
@@ -488,7 +533,7 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 }
 
 func (m *mcpRequestContext) getBackendForRoute(route, backend filterapi.MCPBackendName) (filterapi.MCPBackend, error) {
-	r := m.routes[route]
+	r := m.routeConfig(route)
 	if r == nil {
 		return filterapi.MCPBackend{}, fmt.Errorf("no route found for %q", route)
 	}

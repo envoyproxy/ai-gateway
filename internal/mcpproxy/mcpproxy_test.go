@@ -22,6 +22,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
@@ -535,4 +536,191 @@ data: {"jsonrpc":"2.0","id":"ff3964c5-4c79-4567-96e2-29e905754e58","result":{"ca
 	require.NoError(t, err)
 	require.NotNil(t, s)
 	require.NotEmpty(t, s.clientGatewaySessionID())
+}
+
+func TestRouteConfig_StaticFallback(t *testing.T) {
+	proxy := newTestMCPProxy()
+	// No dynamic header set, should return the static route config.
+	result := proxy.routeConfig("test-route")
+	require.NotNil(t, result)
+	require.Contains(t, result.backends, filterapi.MCPBackendName("backend1"))
+	require.Contains(t, result.backends, filterapi.MCPBackendName("backend2"))
+}
+
+func TestRouteConfig_StaticNotFound(t *testing.T) {
+	proxy := newTestMCPProxy()
+	result := proxy.routeConfig("nonexistent-route")
+	require.Nil(t, result)
+}
+
+func TestRouteConfig_DynamicOverride(t *testing.T) {
+	proxy := newTestMCPProxy()
+
+	// Build a dynamic route config and set it as a header.
+	route := filterapi.MCPRoute{
+		Name: "dynamic-route",
+		Backends: []filterapi.MCPBackend{
+			{Name: "dynamic-backend-1"},
+			{Name: "dynamic-backend-2"},
+		},
+		ForwardHeaders: []string{"X-Dynamic-Header"},
+	}
+	jsonBytes, err := json.Marshal(route)
+	require.NoError(t, err)
+	encoded := base64.StdEncoding.EncodeToString(jsonBytes)
+
+	proxy.requestHeaders = http.Header{}
+	proxy.requestHeaders.Set(internalapi.MCPDynamicRouteConfigHeader, encoded)
+
+	// Should return the dynamic config regardless of the route name.
+	result := proxy.routeConfig("test-route")
+	require.NotNil(t, result)
+	require.Len(t, result.backends, 2)
+	require.Contains(t, result.backends, filterapi.MCPBackendName("dynamic-backend-1"))
+	require.Contains(t, result.backends, filterapi.MCPBackendName("dynamic-backend-2"))
+	require.Equal(t, []string{"X-Dynamic-Header"}, result.forwardHeaders)
+}
+
+func TestRouteConfig_DynamicOverrideWithToolSelector(t *testing.T) {
+	proxy := newTestMCPProxy()
+
+	route := filterapi.MCPRoute{
+		Name: "dynamic-route",
+		Backends: []filterapi.MCPBackend{
+			{
+				Name: "backend-with-selector",
+				ToolSelector: &filterapi.MCPToolSelector{
+					Include: []string{"allowed-tool"},
+					Exclude: []string{"blocked-tool"},
+				},
+			},
+		},
+	}
+	jsonBytes, err := json.Marshal(route)
+	require.NoError(t, err)
+
+	proxy.requestHeaders = http.Header{}
+	proxy.requestHeaders.Set(internalapi.MCPDynamicRouteConfigHeader, base64.StdEncoding.EncodeToString(jsonBytes))
+
+	result := proxy.routeConfig("any-route")
+	require.NotNil(t, result)
+
+	selector := result.toolSelectors["backend-with-selector"]
+	require.NotNil(t, selector)
+	require.True(t, selector.allows("allowed-tool"))
+	require.False(t, selector.allows("blocked-tool"))
+}
+
+func TestRouteConfig_InvalidDynamicHeaderFallsBackToStatic(t *testing.T) {
+	proxy := newTestMCPProxy()
+	proxy.requestHeaders = http.Header{}
+	proxy.requestHeaders.Set(internalapi.MCPDynamicRouteConfigHeader, "not-valid-base64!!!")
+
+	// Should fall back to static config.
+	result := proxy.routeConfig("test-route")
+	require.NotNil(t, result)
+	require.Contains(t, result.backends, filterapi.MCPBackendName("backend1"))
+}
+
+func TestRouteConfig_CachesResult(t *testing.T) {
+	proxy := newTestMCPProxy()
+
+	route := filterapi.MCPRoute{
+		Name:     "cached-route",
+		Backends: []filterapi.MCPBackend{{Name: "cached-backend"}},
+	}
+	jsonBytes, err := json.Marshal(route)
+	require.NoError(t, err)
+
+	proxy.requestHeaders = http.Header{}
+	proxy.requestHeaders.Set(internalapi.MCPDynamicRouteConfigHeader, base64.StdEncoding.EncodeToString(jsonBytes))
+
+	// First call parses and caches.
+	result1 := proxy.routeConfig("any")
+	require.NotNil(t, result1)
+	require.True(t, proxy.dynamicRouteConfigParsed)
+
+	// Remove header — cached result should still be used.
+	proxy.requestHeaders.Del(internalapi.MCPDynamicRouteConfigHeader)
+	result2 := proxy.routeConfig("any")
+	require.Equal(t, result1, result2)
+}
+
+func TestApplyBackendOverrides_SetsHost(t *testing.T) {
+	proxy := newTestMCPProxy()
+	backend := filterapi.MCPBackend{Name: "b1", Host: "api.githubcopilot.com"}
+	req := httptest.NewRequest(http.MethodPost, "http://test-backend", nil)
+	proxy.applyBackendOverrides(req, backend)
+	require.Equal(t, "api.githubcopilot.com", req.Host)
+}
+
+func TestApplyBackendOverrides_SetsPath(t *testing.T) {
+	proxy := newTestMCPProxy()
+	backend := filterapi.MCPBackend{Name: "b1", BackendPath: "/mcp/readonly"}
+	req := httptest.NewRequest(http.MethodPost, "http://test-backend/original", nil)
+	proxy.applyBackendOverrides(req, backend)
+	require.Equal(t, "/mcp/readonly", req.URL.Path)
+}
+
+func TestApplyBackendOverrides_SetsAuth(t *testing.T) {
+	proxy := newTestMCPProxy()
+	backend := filterapi.MCPBackend{Name: "b1", Auth: "Bearer ghp_xxx"}
+	req := httptest.NewRequest(http.MethodPost, "http://test-backend", nil)
+	proxy.applyBackendOverrides(req, backend)
+	require.Equal(t, "Bearer ghp_xxx", req.Header.Get("Authorization"))
+}
+
+func TestApplyBackendOverrides_AllFields(t *testing.T) {
+	proxy := newTestMCPProxy()
+	backend := filterapi.MCPBackend{
+		Name:        "b1",
+		Host:        "api.githubcopilot.com",
+		BackendPath: "/mcp/readonly",
+		Auth:        "Bearer ghp_xxx",
+	}
+	req := httptest.NewRequest(http.MethodPost, "http://test-backend/original", nil)
+	proxy.applyBackendOverrides(req, backend)
+	require.Equal(t, "api.githubcopilot.com", req.Host)
+	require.Equal(t, "/mcp/readonly", req.URL.Path)
+	require.Equal(t, "Bearer ghp_xxx", req.Header.Get("Authorization"))
+}
+
+func TestApplyBackendOverrides_NoFieldsNoOp(t *testing.T) {
+	proxy := newTestMCPProxy()
+	backend := filterapi.MCPBackend{Name: "b1"}
+	req := httptest.NewRequest(http.MethodPost, "http://test-backend/original", nil)
+	originalHost := req.Host
+	originalPath := req.URL.Path
+	proxy.applyBackendOverrides(req, backend)
+	require.Equal(t, originalHost, req.Host)
+	require.Equal(t, originalPath, req.URL.Path)
+	require.Empty(t, req.Header.Get("Authorization"))
+}
+
+func TestRouteConfig_DynamicWithBackendOverrides(t *testing.T) {
+	proxy := newTestMCPProxy()
+
+	route := filterapi.MCPRoute{
+		Name: "dfp-route",
+		Backends: []filterapi.MCPBackend{
+			{Name: "static-backend"},
+			{Name: "dynamic-backend", Host: "api.githubcopilot.com", BackendPath: "/mcp/readonly", Auth: "Bearer ghp_xxx"},
+		},
+	}
+	jsonBytes, err := json.Marshal(route)
+	require.NoError(t, err)
+
+	proxy.requestHeaders = http.Header{}
+	proxy.requestHeaders.Set(internalapi.MCPDynamicRouteConfigHeader, base64.StdEncoding.EncodeToString(jsonBytes))
+
+	result := proxy.routeConfig("any")
+	require.NotNil(t, result)
+
+	staticBackend := result.backends["static-backend"]
+	require.Empty(t, staticBackend.Host)
+
+	dynamicBackend := result.backends["dynamic-backend"]
+	require.Equal(t, "api.githubcopilot.com", dynamicBackend.Host)
+	require.Equal(t, "/mcp/readonly", dynamicBackend.BackendPath)
+	require.Equal(t, "Bearer ghp_xxx", dynamicBackend.Auth)
 }

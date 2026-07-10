@@ -13,6 +13,7 @@ type MCPConfig struct {
 	// The listener should only listen on the local interface, and equipped with
 	// the HCM filter with the plain header-based routing for each backend based
 	// on the [internalapi.MCPBackendHeader] header.
+	// When using Envoy's Dynamic Forward Proxy, this should point to the DFP-enabled listener.
 	BackendListenerAddr string `json:"backendListenerAddr"`
 
 	// Routes is the list of routes that this listener can route to.
@@ -40,6 +41,20 @@ type MCPBackend struct {
 	// Name is the fully qualified identifier of a MCP backend.
 	// This name is set in [internalapi.MCPBackendHeader] header to route the request to the specific backend.
 	Name MCPBackendName `json:"name"`
+
+	// Host is the backend server hostname (e.g., "api.githubcopilot.com").
+	// When set, mcpproxy sets the :authority/Host header on the backend request.
+	// This is used with Envoy's Dynamic Forward Proxy to route to the correct upstream
+	// and handle DNS resolution and TLS origination.
+	Host string `json:"host,omitempty"`
+
+	// BackendPath is the URL path on the backend server (e.g., "/mcp/readonly").
+	// When set, mcpproxy rewrites the request path.
+	BackendPath string `json:"backendPath,omitempty"`
+
+	// Auth is the Authorization header value (e.g., "Bearer ghp_xxx").
+	// When set, mcpproxy injects it into the backend request.
+	Auth string `json:"auth,omitempty"`
 
 	// ToolSelector filters the tools exposed by this backend. If not set, all tools are exposed.
 	ToolSelector *MCPToolSelector `json:"toolSelector,omitempty"`
