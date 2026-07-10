@@ -191,6 +191,12 @@ type Backend struct {
 	ModelNameOverride internalapi.ModelNameOverride `json:"modelNameOverride"`
 	// Schema specifies the API schema of the output format of requests from.
 	Schema VersionedAPISchema `json:"schema"`
+	// Host is the upstream hostname for DFP-based routing (e.g., "api.openai.com").
+	// Used when a routing plan header overrides the default backend selection.
+	Host string `json:"host,omitempty"`
+	// BackendPath is the base API path for this backend (e.g., "/v1/chat/completions").
+	// Used when a routing plan header overrides the default backend selection.
+	BackendPath string `json:"backendPath,omitempty"`
 	// Auth is the authn/z configuration for the backend. Optional.
 	Auth *BackendAuth `json:"auth,omitempty"`
 	// Sensitive Headers to be removed from the request before sending to the backend. Optional.

@@ -13,6 +13,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
 // ProcessorFactory is the factory function used to create new instances of a processor.
@@ -37,6 +38,15 @@ type Processor interface {
 	// routerProcessor is the processor that is the "parent" which was used to determine the route at the
 	// router level. It holds the additional state that can be used to determine the backend to use.
 	SetBackend(ctx context.Context, backend *filterapi.RuntimeBackend, routeName string, routerProcessor Processor) error
+}
+
+// routingPlanProvider is an optional interface that a router-level Processor can implement
+// to provide a per-request routing plan for dynamic backend selection.
+type routingPlanProvider interface {
+	// GetRoutingPlan returns the per-request routing plan, or nil if none is set.
+	GetRoutingPlan() *internalapi.RoutingPlan
+	// GetUpstreamFilterCount returns the number of upstream filter attempts processed so far.
+	GetUpstreamFilterCount() int
 }
 
 // passThroughProcessor implements the Processor interface.

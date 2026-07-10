@@ -8,6 +8,7 @@ package extproc
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -2113,4 +2114,264 @@ func mustCompileCEL(t *testing.T, expr string) cel.Program {
 	prog, err := llmcostcel.NewProgram(expr)
 	require.NoError(t, err)
 	return prog
+}
+
+func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody_RoutingPlan(t *testing.T) {
+	t.Run("valid routing plan header", func(t *testing.T) {
+		planJSON := `{"backends":["openai","anthropic"],"fallbackEnabled":true}`
+		planHeader := base64.StdEncoding.EncodeToString([]byte(planJSON))
+		headers := map[string]string{
+			":path":                          "/v1/chat/completions",
+			internalapi.LLMRoutingPlanHeader: planHeader,
+		}
+		p := &chatCompletionProcessorRouterFilter{
+			config:         &filterapi.RuntimeConfig{},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		}
+		someBody := bodyFromModel(t, "gpt-4", false, nil)
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.NotNil(t, p.routingPlan)
+		require.Equal(t, []string{"openai", "anthropic"}, p.routingPlan.Backends)
+		require.NotNil(t, p.routingPlan.FallbackEnabled)
+		require.True(t, *p.routingPlan.FallbackEnabled)
+	})
+
+	t.Run("routing plan without fallback field", func(t *testing.T) {
+		planJSON := `{"backends":["openai"]}`
+		planHeader := base64.StdEncoding.EncodeToString([]byte(planJSON))
+		headers := map[string]string{
+			":path":                          "/v1/chat/completions",
+			internalapi.LLMRoutingPlanHeader: planHeader,
+		}
+		p := &chatCompletionProcessorRouterFilter{
+			config:         &filterapi.RuntimeConfig{},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		}
+		someBody := bodyFromModel(t, "gpt-4", false, nil)
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.NotNil(t, p.routingPlan)
+		require.Equal(t, []string{"openai"}, p.routingPlan.Backends)
+		require.Nil(t, p.routingPlan.FallbackEnabled)
+	})
+
+	t.Run("no routing plan header", func(t *testing.T) {
+		headers := map[string]string{":path": "/v1/chat/completions"}
+		p := &chatCompletionProcessorRouterFilter{
+			config:         &filterapi.RuntimeConfig{},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		}
+		someBody := bodyFromModel(t, "gpt-4", false, nil)
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Nil(t, p.routingPlan)
+	})
+
+	t.Run("invalid base64 header", func(t *testing.T) {
+		headers := map[string]string{
+			":path":                          "/v1/chat/completions",
+			internalapi.LLMRoutingPlanHeader: "not-valid-base64!!!",
+		}
+		p := &chatCompletionProcessorRouterFilter{
+			config:         &filterapi.RuntimeConfig{},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		}
+		someBody := bodyFromModel(t, "gpt-4", false, nil)
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Nil(t, p.routingPlan, "invalid base64 should not set routing plan")
+	})
+
+	t.Run("invalid JSON in header", func(t *testing.T) {
+		planHeader := base64.StdEncoding.EncodeToString([]byte("not-json"))
+		headers := map[string]string{
+			":path":                          "/v1/chat/completions",
+			internalapi.LLMRoutingPlanHeader: planHeader,
+		}
+		p := &chatCompletionProcessorRouterFilter{
+			config:         &filterapi.RuntimeConfig{},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		}
+		someBody := bodyFromModel(t, "gpt-4", false, nil)
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Nil(t, p.routingPlan, "invalid JSON should not set routing plan")
+	})
+
+	t.Run("empty backends list", func(t *testing.T) {
+		planJSON := `{"backends":[]}`
+		planHeader := base64.StdEncoding.EncodeToString([]byte(planJSON))
+		headers := map[string]string{
+			":path":                          "/v1/chat/completions",
+			internalapi.LLMRoutingPlanHeader: planHeader,
+		}
+		p := &chatCompletionProcessorRouterFilter{
+			config:         &filterapi.RuntimeConfig{},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		}
+		someBody := bodyFromModel(t, "gpt-4", false, nil)
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: someBody})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Nil(t, p.routingPlan, "empty backends should not set routing plan")
+	})
+}
+
+func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_DFPRouting(t *testing.T) {
+	t.Run("routing plan sets authority and path", func(t *testing.T) {
+		someBody := bodyFromModel(t, "gpt-4", false, nil)
+		var body openai.ChatCompletionRequest
+		require.NoError(t, json.Unmarshal(someBody, &body))
+		headers := map[string]string{":path": "/v1/chat/completions", internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
+		tr := &mockTranslator{t: t, expRequestBody: &body}
+		mm := &mockMetrics{}
+		p := &chatCompletionProcessorUpstreamFilter{
+			parent: &chatCompletionProcessorRouterFilter{
+				config:                 &filterapi.RuntimeConfig{},
+				logger:                 slog.Default(),
+				originalRequestBodyRaw: someBody,
+				originalRequestBody:    &body,
+				originalModel:          "gpt-4",
+				routingPlan: &internalapi.RoutingPlan{
+					Backends: []string{"openai", "anthropic"},
+				},
+			},
+			requestHeaders: headers,
+			metrics:        mm,
+			translator:     tr,
+			backend: &filterapi.Backend{
+				Host:        "api.openai.com",
+				BackendPath: "/v1/chat/completions",
+			},
+		}
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		headerResp := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
+		setHeaders := headerResp.RequestHeaders.Response.HeaderMutation.SetHeaders
+		var authoritySet, pathSet bool
+		for _, h := range setHeaders {
+			if h.Header.Key == ":authority" {
+				require.Equal(t, "api.openai.com", string(h.Header.RawValue))
+				authoritySet = true
+			}
+			if h.Header.Key == ":path" {
+				require.Equal(t, "/v1/chat/completions", string(h.Header.RawValue))
+				pathSet = true
+			}
+		}
+		require.True(t, authoritySet, "expected :authority header to be set")
+		require.True(t, pathSet, "expected :path header to be set")
+	})
+
+	t.Run("no routing plan does not set authority", func(t *testing.T) {
+		someBody := bodyFromModel(t, "gpt-4", false, nil)
+		var body openai.ChatCompletionRequest
+		require.NoError(t, json.Unmarshal(someBody, &body))
+		headers := map[string]string{":path": "/v1/chat/completions", internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
+		tr := &mockTranslator{t: t, expRequestBody: &body}
+		mm := &mockMetrics{}
+		p := &chatCompletionProcessorUpstreamFilter{
+			parent: &chatCompletionProcessorRouterFilter{
+				config:                 &filterapi.RuntimeConfig{},
+				logger:                 slog.Default(),
+				originalRequestBodyRaw: someBody,
+				originalRequestBody:    &body,
+				originalModel:          "gpt-4",
+				// routingPlan is nil
+			},
+			requestHeaders: headers,
+			metrics:        mm,
+			translator:     tr,
+			backend: &filterapi.Backend{
+				Host:        "api.openai.com",
+				BackendPath: "/v1/chat/completions",
+			},
+		}
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		headerResp := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
+		setHeaders := headerResp.RequestHeaders.Response.HeaderMutation.SetHeaders
+		for _, h := range setHeaders {
+			require.NotEqual(t, ":authority", h.Header.Key, "should not set :authority without routing plan")
+		}
+	})
+
+	t.Run("routing plan with empty host does not set authority", func(t *testing.T) {
+		someBody := bodyFromModel(t, "gpt-4", false, nil)
+		var body openai.ChatCompletionRequest
+		require.NoError(t, json.Unmarshal(someBody, &body))
+		headers := map[string]string{":path": "/v1/chat/completions", internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
+		tr := &mockTranslator{t: t, expRequestBody: &body}
+		mm := &mockMetrics{}
+		p := &chatCompletionProcessorUpstreamFilter{
+			parent: &chatCompletionProcessorRouterFilter{
+				config:                 &filterapi.RuntimeConfig{},
+				logger:                 slog.Default(),
+				originalRequestBodyRaw: someBody,
+				originalRequestBody:    &body,
+				originalModel:          "gpt-4",
+				routingPlan: &internalapi.RoutingPlan{
+					Backends: []string{"openai"},
+				},
+			},
+			requestHeaders: headers,
+			metrics:        mm,
+			translator:     tr,
+			backend:        &filterapi.Backend{}, // no Host or BackendPath
+		}
+		resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		headerResp := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
+		setHeaders := headerResp.RequestHeaders.Response.HeaderMutation.SetHeaders
+		for _, h := range setHeaders {
+			require.NotEqual(t, ":authority", h.Header.Key, "should not set :authority with empty host")
+			require.NotEqual(t, ":path", h.Header.Key, "should not set :path with empty backendPath")
+		}
+	})
+}
+
+func Test_routerProcessor_RoutingPlanProvider(t *testing.T) {
+	t.Run("implements routingPlanProvider", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{
+			upstreamFilterCount: 2,
+			routingPlan: &internalapi.RoutingPlan{
+				Backends: []string{"a", "b"},
+			},
+		}
+		var provider routingPlanProvider = p
+		require.Equal(t, 2, provider.GetUpstreamFilterCount())
+		require.NotNil(t, provider.GetRoutingPlan())
+		require.Equal(t, []string{"a", "b"}, provider.GetRoutingPlan().Backends)
+	})
+
+	t.Run("nil routing plan", func(t *testing.T) {
+		p := &chatCompletionProcessorRouterFilter{}
+		var provider routingPlanProvider = p
+		require.Nil(t, provider.GetRoutingPlan())
+		require.Equal(t, 0, provider.GetUpstreamFilterCount())
+	})
 }
