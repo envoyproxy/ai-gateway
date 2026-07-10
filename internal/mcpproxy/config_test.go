@@ -6,6 +6,7 @@
 package mcpproxy
 
 import (
+	"encoding/base64"
 	"log/slog"
 	"regexp"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func Test_toolSelector_Allows(t *testing.T) {
@@ -594,4 +596,145 @@ func TestLoadConfig_AuthorizationChangeTriggersNotification(t *testing.T) {
 	err := proxy.LoadConfig(t.Context(), config)
 	require.NoError(t, err)
 	wg.Wait()
+}
+
+func TestBuildConfigRoute(t *testing.T) {
+	route := &filterapi.MCPRoute{
+		Name: "my-route",
+		Backends: []filterapi.MCPBackend{
+			{Name: "backend1"},
+			{
+				Name: "backend2",
+				ToolSelector: &filterapi.MCPToolSelector{
+					Include: []string{"tool-a"},
+					Exclude: []string{"tool-b"},
+				},
+			},
+		},
+		ForwardHeaders: []string{"Authorization", "X-Custom"},
+	}
+
+	result, err := buildConfigRoute(route)
+	require.NoError(t, err)
+	require.Len(t, result.backends, 2)
+	require.Contains(t, result.backends, filterapi.MCPBackendName("backend1"))
+	require.Contains(t, result.backends, filterapi.MCPBackendName("backend2"))
+	require.Equal(t, []string{"Authorization", "X-Custom"}, result.forwardHeaders)
+
+	selector := result.toolSelectors["backend2"]
+	require.NotNil(t, selector)
+	require.Contains(t, selector.include, "tool-a")
+	require.Contains(t, selector.exclude, "tool-b")
+	require.True(t, selector.allows("tool-a"))
+	require.False(t, selector.allows("tool-b"))
+}
+
+func TestBuildConfigRoute_WithAuthorization(t *testing.T) {
+	route := &filterapi.MCPRoute{
+		Name: "auth-route",
+		Backends: []filterapi.MCPBackend{
+			{Name: "backend1"},
+		},
+		Authorization: &filterapi.MCPRouteAuthorization{
+			DefaultAction: filterapi.AuthorizationActionDeny,
+			Rules: []filterapi.MCPRouteAuthorizationRule{
+				{Action: filterapi.AuthorizationActionAllow},
+			},
+		},
+	}
+
+	result, err := buildConfigRoute(route)
+	require.NoError(t, err)
+	require.NotNil(t, result.authorization)
+	require.Equal(t, filterapi.AuthorizationActionDeny, result.authorization.DefaultAction)
+}
+
+func TestParseDynamicRouteConfig_Success(t *testing.T) {
+	route := filterapi.MCPRoute{
+		Name: "dynamic-route",
+		Backends: []filterapi.MCPBackend{
+			{Name: "backend1"},
+			{
+				Name: "backend2",
+				ToolSelector: &filterapi.MCPToolSelector{
+					Include:      []string{"tool-x", "tool-y"},
+					IncludeRegex: []string{"^prefix.*"},
+					Exclude:      []string{"tool-z"},
+				},
+				ForwardHeaders: []filterapi.MCPHeaderForward{
+					{Name: "X-Api-Key", BackendHeader: "Authorization"},
+				},
+			},
+		},
+		Authorization: &filterapi.MCPRouteAuthorization{
+			DefaultAction: filterapi.AuthorizationActionAllow,
+		},
+		ForwardHeaders: []string{"X-Tenant-Id"},
+	}
+
+	jsonBytes, err := json.Marshal(route)
+	require.NoError(t, err)
+	encoded := base64.StdEncoding.EncodeToString(jsonBytes)
+
+	configRoute, parsedRoute, err := parseDynamicRouteConfig(encoded)
+	require.NoError(t, err)
+	require.NotNil(t, configRoute)
+	require.NotNil(t, parsedRoute)
+
+	// Verify the parsed MCPRoute.
+	require.Equal(t, "dynamic-route", parsedRoute.Name)
+	require.Len(t, parsedRoute.Backends, 2)
+
+	// Verify the internal config route.
+	require.Len(t, configRoute.backends, 2)
+	require.Contains(t, configRoute.backends, filterapi.MCPBackendName("backend1"))
+	require.Contains(t, configRoute.backends, filterapi.MCPBackendName("backend2"))
+	require.Equal(t, []string{"X-Tenant-Id"}, configRoute.forwardHeaders)
+
+	// Verify tool selector.
+	selector := configRoute.toolSelectors["backend2"]
+	require.NotNil(t, selector)
+	require.Contains(t, selector.include, "tool-x")
+	require.Contains(t, selector.include, "tool-y")
+	require.Contains(t, selector.exclude, "tool-z")
+	require.Len(t, selector.includeRegexps, 1)
+	require.True(t, selector.includeRegexps[0].MatchString("prefix123"))
+
+	// Verify authorization.
+	require.NotNil(t, configRoute.authorization)
+	require.Equal(t, filterapi.AuthorizationActionAllow, configRoute.authorization.DefaultAction)
+}
+
+func TestParseDynamicRouteConfig_InvalidBase64(t *testing.T) {
+	_, _, err := parseDynamicRouteConfig("not-valid-base64!!!")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to base64-decode")
+}
+
+func TestParseDynamicRouteConfig_InvalidJSON(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString([]byte("not json"))
+	_, _, err := parseDynamicRouteConfig(encoded)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to unmarshal")
+}
+
+func TestParseDynamicRouteConfig_InvalidRegex(t *testing.T) {
+	route := filterapi.MCPRoute{
+		Name: "bad-regex",
+		Backends: []filterapi.MCPBackend{
+			{
+				Name: "backend1",
+				ToolSelector: &filterapi.MCPToolSelector{
+					IncludeRegex: []string{"[invalid"},
+				},
+			},
+		},
+	}
+	jsonBytes, err := json.Marshal(route)
+	require.NoError(t, err)
+	encoded := base64.StdEncoding.EncodeToString(jsonBytes)
+
+	_, _, err = parseDynamicRouteConfig(encoded)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to build dynamic route config")
 }
