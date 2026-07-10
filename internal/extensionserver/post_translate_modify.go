@@ -41,7 +41,49 @@ import (
 const (
 	extProcUDSClusterName = "ai-gateway-extproc-uds"
 	aiGatewayExtProcName  = "envoy.filters.http.ext_proc/aigateway"
+	noBackendRefIndex     = -1
 )
+
+type aiGatewayClusterName struct {
+	namespace       string
+	routeName       string
+	ruleIndex       int
+	backendRefIndex int
+}
+
+// parseAIGatewayClusterName parses the cluster names generated for AIGatewayRoute rules.
+// Envoy Gateway uses a route-level cluster name unless it creates a cluster for each backend.
+func parseAIGatewayClusterName(name string) (aiGatewayClusterName, error) {
+	parts := strings.Split(name, "/")
+	if (len(parts) != 5 && len(parts) != 7) || parts[0] != "httproute" || parts[3] != "rule" {
+		return aiGatewayClusterName{}, fmt.Errorf("invalid AIGatewayRoute cluster name %q", name)
+	}
+
+	ruleIndex, err := strconv.Atoi(parts[4])
+	if err != nil || ruleIndex < 0 {
+		return aiGatewayClusterName{}, fmt.Errorf("invalid HTTPRoute rule index %q", parts[4])
+	}
+
+	clusterName := aiGatewayClusterName{
+		namespace:       parts[1],
+		routeName:       parts[2],
+		ruleIndex:       ruleIndex,
+		backendRefIndex: noBackendRefIndex,
+	}
+	if len(parts) == 5 {
+		return clusterName, nil
+	}
+	if parts[5] != "backend" {
+		return aiGatewayClusterName{}, fmt.Errorf("invalid AIGatewayRoute backend cluster name %q", name)
+	}
+
+	backendRefIndex, err := strconv.Atoi(parts[6])
+	if err != nil || backendRefIndex < 0 {
+		return aiGatewayClusterName{}, fmt.Errorf("invalid HTTPRoute backend index %q", parts[6])
+	}
+	clusterName.backendRefIndex = backendRefIndex
+	return clusterName, nil
+}
 
 // PostTranslateModify allows an extension to modify the clusters and secrets in the xDS config
 // after the initial translation is complete. This method is responsible for:
@@ -169,23 +211,14 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 // The resulting configuration is similar to the envoy.yaml files in tests/data-plane/.
 // Only clusters with names matching the AIGatewayRoute pattern are modified.
 func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Cluster) error {
-	// Parse cluster name to extract AIGatewayRoute information.
-	// Expected format: "httproute/<namespace>/<name>/rule/<index_of_rule>".
-	parts := strings.Split(cluster.Name, "/")
-	if len(parts) != 5 || parts[0] != "httproute" {
-		// This is not an AIGatewayRoute-generated cluster, skip modification.
-		s.log.Info("non-ai-gateway cluster name", "cluster_name", cluster.Name)
-		return nil
-	}
-	httpRouteNamespace := parts[1]
-	httpRouteName := parts[2]
-	httpRouteRuleIndexStr := parts[4]
-	httpRouteRuleIndex, err := strconv.Atoi(httpRouteRuleIndexStr)
+	clusterName, err := parseAIGatewayClusterName(cluster.Name)
 	if err != nil {
-		s.log.Error(err, "failed to parse HTTPRoute rule index",
-			"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndexStr)
+		s.log.Info("non-ai-gateway cluster name", "cluster_name", cluster.Name, "error", err)
 		return nil
 	}
+	httpRouteNamespace := clusterName.namespace
+	httpRouteName := clusterName.routeName
+	httpRouteRuleIndex := clusterName.ruleIndex
 
 	// Check if this rule has InferencePool backends.
 	pool := getInferencePoolByMetadata(cluster.Metadata)
@@ -206,10 +239,15 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 	// Get the backend from the HTTPRoute object.
 	if httpRouteRuleIndex >= len(aigwRoute.Spec.Rules) {
 		s.log.Info("HTTPRoute rule index out of range",
-			"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndexStr)
+			"cluster_name", cluster.Name, "rule_index", httpRouteRuleIndex)
 		return nil
 	}
 	httpRouteRule := &aigwRoute.Spec.Rules[httpRouteRuleIndex]
+	if clusterName.backendRefIndex != noBackendRefIndex && clusterName.backendRefIndex >= len(httpRouteRule.BackendRefs) {
+		s.log.Info("HTTPRoute backend index out of range",
+			"cluster_name", cluster.Name, "backend_index", clusterName.backendRefIndex)
+		return nil
+	}
 
 	// Only process LoadAssignment for non-InferencePool backends.
 	if pool == nil {
@@ -219,8 +257,22 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 			// can resolve the backend via XDSClusterMetadataBackendNamePath fallback.
 			s.log.Info("LoadAssignment is nil, setting cluster-level metadata", "cluster_name", cluster.Name)
 			if len(httpRouteRule.BackendRefs) > 0 {
-				backendRef := httpRouteRule.BackendRefs[0]
-				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, 0)
+				backendRefIndex := 0
+				if clusterName.backendRefIndex != noBackendRefIndex {
+					backendRefIndex = clusterName.backendRefIndex
+				}
+				backendRef := httpRouteRule.BackendRefs[backendRefIndex]
+				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, backendRefIndex)
+			}
+		} else if clusterName.backendRefIndex != noBackendRefIndex {
+			backendRef := httpRouteRule.BackendRefs[clusterName.backendRefIndex]
+			for _, endpoints := range cluster.LoadAssignment.Endpoints {
+				if backendRef.Priority != nil {
+					endpoints.Priority = *backendRef.Priority
+				}
+				for _, endpoint := range endpoints.LbEndpoints {
+					setEndpointMetadataBackendName(endpoint, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, clusterName.backendRefIndex)
+				}
 			}
 		} else {
 			// Populate the metadata for each endpoint in the LoadAssignment.
@@ -238,33 +290,19 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				if backendRef.Priority != nil {
 					endpoints.Priority = *backendRef.Priority
 				}
-				// We populate the same metadata for all endpoints in the LoadAssignment.
-				// This is because currently, an extproc cannot retrieve the endpoint set level metadata.
 				for _, endpoint := range endpoints.LbEndpoints {
-					if endpoint.Metadata == nil {
-						endpoint.Metadata = &corev3.Metadata{}
-					}
-					if endpoint.Metadata.FilterMetadata == nil {
-						endpoint.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
-					}
-					m, ok := endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
-					if !ok {
-						m = &structpb.Struct{}
-						endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
-					}
-					if m.Fields == nil {
-						m.Fields = make(map[string]*structpb.Value)
-					}
-					m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
-						internalapi.PerRouteRuleRefBackendName(namespace, name, aigwRoute.Name, httpRouteRuleIndex, i),
-					)
+					setEndpointMetadataBackendName(endpoint, namespace, name, aigwRoute.Name, httpRouteRuleIndex, i)
 				}
 			}
 		}
 	} else {
 		// we can only specify one backend in a rule for InferencePool.
-		backendRef := httpRouteRule.BackendRefs[0]
-		setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, 0)
+		backendRefIndex := 0
+		if clusterName.backendRefIndex != noBackendRefIndex {
+			backendRefIndex = clusterName.backendRefIndex
+		}
+		backendRef := httpRouteRule.BackendRefs[backendRefIndex]
+		setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, backendRefIndex)
 	}
 
 	if cluster.TypedExtensionProtocolOptions == nil {
@@ -834,6 +872,26 @@ func setClusterMetadataBackendName(cluster *clusterv3.Cluster, namespace, name, 
 	if !ok {
 		m = &structpb.Struct{}
 		cluster.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
+	}
+	if m.Fields == nil {
+		m.Fields = make(map[string]*structpb.Value)
+	}
+	m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
+		internalapi.PerRouteRuleRefBackendName(namespace, name, routeName, routeRuleIndex, refIndex),
+	)
+}
+
+func setEndpointMetadataBackendName(endpoint *endpointv3.LbEndpoint, namespace, name, routeName string, routeRuleIndex, refIndex int) {
+	if endpoint.Metadata == nil {
+		endpoint.Metadata = &corev3.Metadata{}
+	}
+	if endpoint.Metadata.FilterMetadata == nil {
+		endpoint.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
+	}
+	m, ok := endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+	if !ok {
+		m = &structpb.Struct{}
+		endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
 	}
 	if m.Fields == nil {
 		m.Fields = make(map[string]*structpb.Value)
