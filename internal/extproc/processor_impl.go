@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -101,9 +102,12 @@ type (
 		// upstreamFilterCount is the number of upstream filters that have been processed.
 		// This is used to determine if the request is a retry request.
 		upstreamFilterCount int
-		stream              bool
-		debugLogEnabled     bool
-		enableRedaction     bool
+		// routingPlan is the per-request routing plan parsed from the LLMRoutingPlanHeader.
+		// When non-nil, it overrides the default Envoy-based backend selection.
+		routingPlan     *internalapi.RoutingPlan
+		stream          bool
+		debugLogEnabled bool
+		enableRedaction bool
 	}
 	// upstreamProcessor implements [Processor] for the upstream filter for the standard LLM endpoints.
 	//
@@ -121,6 +125,7 @@ type (
 		modelNameOverride  internalapi.ModelNameOverride
 		headerMutator      *headermutator.HeaderMutator
 		bodyMutator        *bodymutator.BodyMutator
+		backend            *filterapi.Backend
 		backendName        string
 		routeName          string
 		handler            filterapi.BackendAuthHandler
@@ -159,6 +164,16 @@ func newUpstreamProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspe
 		metrics:        metrics,
 		logger:         logger,
 	}
+}
+
+// GetRoutingPlan implements [routingPlanProvider.GetRoutingPlan].
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) GetRoutingPlan() *internalapi.RoutingPlan {
+	return r.routingPlan
+}
+
+// GetUpstreamFilterCount implements [routingPlanProvider.GetUpstreamFilterCount].
+func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) GetUpstreamFilterCount() int {
+	return r.upstreamFilterCount
 }
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
@@ -282,6 +297,23 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 	r.originalRequestBody = body
 	r.stream = stream
 
+	// Parse the routing plan header if present. This allows a custom ext_proc
+	// to specify which backends to try and in what order.
+	if planHeader := r.requestHeaders[internalapi.LLMRoutingPlanHeader]; planHeader != "" {
+		decoded, err := base64.StdEncoding.DecodeString(planHeader)
+		if err == nil {
+			var plan internalapi.RoutingPlan
+			if jsonErr := json.Unmarshal(decoded, &plan); jsonErr == nil && len(plan.Backends) > 0 {
+				r.routingPlan = &plan
+				logger.Info("routing plan activated", slog.Any("backends", plan.Backends))
+			} else if jsonErr != nil {
+				logger.Warn("failed to parse routing plan JSON", slog.String("error", jsonErr.Error()))
+			}
+		} else {
+			logger.Warn("failed to decode routing plan header", slog.String("error", err.Error()))
+		}
+	}
+
 	// Tracing may need to inject headers, so create a header mutation here.
 	headerMutation := &extprocv3.HeaderMutation{
 		SetHeaders: additionalHeaders,
@@ -402,6 +434,22 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 			headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
 				Header:       &corev3.HeaderValue{Key: h.Key(), RawValue: []byte(h.Value())},
+			})
+		}
+	}
+
+	// When a routing plan is active, override :authority and :path for DFP-based routing.
+	if u.parent.routingPlan != nil && u.backend != nil {
+		if u.backend.Host != "" {
+			headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+				Header:       &corev3.HeaderValue{Key: ":authority", RawValue: []byte(u.backend.Host)},
+			})
+		}
+		if u.backend.BackendPath != "" {
+			headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+				Header:       &corev3.HeaderValue{Key: ":path", RawValue: []byte(u.backend.BackendPath)},
 			})
 		}
 	}
@@ -627,6 +675,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	}
 	rp.upstreamFilterCount++
 	u.metrics.SetBackend(backend.Backend)
+	u.backend = backend.Backend
 	u.modelNameOverride = backend.Backend.ModelNameOverride
 	u.backendName = backend.Backend.Name
 	u.routeName = routeName
