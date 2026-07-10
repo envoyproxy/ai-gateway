@@ -9,8 +9,11 @@ import TabItem from '@theme/TabItem';
 
 This guide focuses on AI Gateway's specific capabilities for token-based rate limiting in LLM requests. For general rate limiting concepts and configurations, refer to [Envoy Gateway's Rate Limiting documentation](https://gateway.envoyproxy.io/docs/tasks/traffic/global-rate-limit/).
 
-:::info Quota Policy vs. Rate Limiting
-AI Gateway also provides [Quota Policy](./quota-policy.md) for managing **total consumption budgets** (for example, 100,000 tokens per hour). Use QuotaPolicy when you need to cap cumulative token spend, and usage-based rate limiting (this page) when you need to control **request velocity**.
+:::info Quota Policy vs. token-based rate limiting
+Both this feature and [Quota Policy](./quota-policy.md#choosing-a-policy) can cap cumulative token
+usage over a time window. Use `QuotaPolicy` for backend- and model-scoped quota buckets in a single
+AI Gateway policy. Use usage-based rate limiting when you need lower-level Envoy Gateway rules,
+route-specific token cost metadata, separate limits by token type, or monthly and yearly windows.
 :::
 
 ## Overview
