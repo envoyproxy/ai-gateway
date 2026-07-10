@@ -9,11 +9,10 @@ sidebar_position: 6
 `QuotaPolicy` enables token-based quota management for AI inference services in Envoy AI Gateway.
 When all related backend's quota are exceeded, requests are rejected with a `429 Too Many Requests` status code.
 
-:::note QuotaPolicy vs. Rate Limiting
-QuotaPolicy manages **total consumption budgets** (for example, 100,000 tokens per hour). This is
-distinct from [usage-based rate limiting](./usage-based-ratelimiting.md), which controls **request
-velocity** (for example, requests per second). Use QuotaPolicy when you need to cap cumulative token
-spend across a time window.
+:::note QuotaPolicy vs. token-based rate limiting
+Both `QuotaPolicy` and [usage-based rate limiting](./usage-based-ratelimiting.md) can cap cumulative
+token usage over a time window. The difference is the API and scope used to configure that budget,
+not whether tokens or requests are counted. See [Choosing a policy](#choosing-a-policy) for details.
 :::
 
 ## Overview
@@ -25,6 +24,30 @@ Key features of QuotaPolicy:
   computing how much a request burns down a quota.
 - **Client-selector bucket rules** — carve out per-tenant or per-header quotas using request attributes.
 - **Shadow mode** — evaluate quota rules without enforcing them, for safe rollout.
+
+## Choosing a Policy
+
+`QuotaPolicy` and usage-based rate limiting use the same rate limit infrastructure, and both reject
+requests with `429 Too Many Requests` when the applicable token budget is exhausted. Choose between
+them based on where and how you want to express the policy:
+
+| | `QuotaPolicy` | Usage-based rate limiting |
+| --- | --- | --- |
+| Configuration | One AI Gateway policy containing the token cost and quota buckets | `llmRequestCosts` on an `AIGatewayRoute`, plus an Envoy Gateway `BackendTrafficPolicy` |
+| Scope | Models served by one or more `AIServiceBackend` resources | Envoy Gateway rate limit rules and their client selectors |
+| Token accounting | One default or custom CEL cost per model | Multiple metadata keys can track and limit input, output, total, or custom token costs separately |
+| Client budgets | Default and header-selected buckets, with optional shadow mode | Envoy Gateway client selectors and rate limit rules |
+| Time windows | Exactly one second, minute, hour, or day | One second, minute, hour, day, month, or year |
+
+Use `QuotaPolicy` when the budget belongs naturally to a backend and model. For example, a platform
+team can give every tenant a separate daily budget for an expensive model, keep a shared backend
+budget as a fallback, and evaluate a new tenant rule in shadow mode. The policy stays with the
+`AIServiceBackend` even when multiple routes send traffic to it.
+
+Use usage-based rate limiting when you need lower-level Envoy Gateway controls, route-specific token
+cost metadata, separate limits for input and output tokens, or a monthly or yearly window. It is also
+the natural choice when token budgets need to be managed alongside existing Envoy Gateway rate limit
+rules.
 
 ## How It Works
 
@@ -259,6 +282,11 @@ The `duration` field selects the sliding-window size. It must be exactly one of 
 
 The window is fixed-size — arbitrary multiples such as `"30s"` or `"15m"` are **not** valid and will
 be rejected by the CRD schema. Choose the `limit` to express your budget within one of these windows.
+
+The one-day maximum is a current `QuotaPolicy` API restriction, not an inherent limitation of token
+accounting. Token-based rate limiting configured through an Envoy Gateway `BackendTrafficPolicy`
+also supports `Month` and `Year` units. Use [usage-based rate limiting](./usage-based-ratelimiting.md)
+when a token budget needs either of those longer windows.
 
 ## Service-Wide Quota
 
