@@ -1230,7 +1230,7 @@ data: [DONE]
 			},
 			body: `data: {"candidates":[{"content":{"parts":[{"text":"let me think step by step and reply you.", "thought": true}]}}]}
 
-data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":3,"totalTokenCount":8}}`,
+data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":3,"totalTokenCount":18,"thoughtsTokenCount":10}}`,
 			stream:        true,
 			endOfStream:   true,
 			wantError:     false,
@@ -1239,11 +1239,11 @@ data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}],"usageMetadata":{
 
 data: {"choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+data: {"choices":[],"object":"chat.completion.chunk","usage":{"prompt_tokens":5,"completion_tokens":13,"total_tokens":18,"completion_tokens_details":{"reasoning_tokens":10},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(5, 0, -1, 3, 8, 0), // Does not support Cache Creation.
+			wantTokenUsage: tokenUsageFrom(5, 0, -1, 13, 18, 10), // Does not support Cache Creation.
 		},
 		{
 			name: "stream chunks with thought signature on text part",
@@ -1252,7 +1252,7 @@ data: [DONE]
 			},
 			body: `data: {"candidates":[{"content":{"parts":[{"text":"let me think about this.", "thought": true}]}}]}
 
-data: {"candidates":[{"content":{"parts":[{"text":"The answer is 42.", "thoughtSignature": "dGVzdHNpZ25hdHVyZQ=="}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":8,"totalTokenCount":18}}`,
+data: {"candidates":[{"content":{"parts":[{"text":"The answer is 42.", "thoughtSignature": "dGVzdHNpZ25hdHVyZQ=="}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":8,"totalTokenCount":33,"thoughtsTokenCount":15}}`,
 			stream:        true,
 			endOfStream:   true,
 			wantError:     false,
@@ -1261,11 +1261,11 @@ data: {"candidates":[{"content":{"parts":[{"text":"The answer is 42.", "thoughtS
 
 data: {"choices":[{"index":0,"delta":{"content":"The answer is 42.","role":"assistant","reasoning_content":{"signature":"dGVzdHNpZ25hdHVyZQ=="}}}],"object":"chat.completion.chunk"}
 
-data: {"choices":[],"object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":8,"total_tokens":18,"completion_tokens_details":{},"prompt_tokens_details":{}}}
+data: {"choices":[],"object":"chat.completion.chunk","usage":{"prompt_tokens":10,"completion_tokens":23,"total_tokens":33,"completion_tokens_details":{"reasoning_tokens":15},"prompt_tokens_details":{}}}
 
 data: [DONE]
 `),
-			wantTokenUsage: tokenUsageFrom(10, 0, -1, 8, 18, 0),
+			wantTokenUsage: tokenUsageFrom(10, 0, -1, 23, 33, 15),
 		},
 	}
 
