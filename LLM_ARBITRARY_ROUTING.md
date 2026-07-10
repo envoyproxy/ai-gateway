@@ -1,233 +1,62 @@
-# Arbitrary Per-Request LLM Backend Routing
+# Per-Request LLM Backend Routing via Routing Plan Header
 
-This document analyzes how to achieve **truly arbitrary per-request routing decisions**
-for LLM requests — i.e., deciding at request time exactly which backends to try, in what
-order, with full control over fallback chains.
+Enables arbitrary per-request backend selection and fallback for LLM requests.
+A custom ext_proc sets a routing plan header; the AI Gateway ext_proc uses it
+to control which backend each attempt targets, with DFP handling the network.
 
-## Why Approaches A & B From `LLM_DYNAMIC_BACKEND_SELECTION.md` Are Insufficient
-
-Both approaches select from a **pre-defined menu of route rules**. The route table is
-static (set at xDS push time). At request time, you can only pick which rule matches via
-headers — you cannot:
-
-- Compose an arbitrary fallback chain (e.g., "try A, then C, skip B")
-- Change weights or priorities per-request
-- Add/remove backends from a rule at runtime
-
-For N backends, covering all possible orderings would require O(2^N × N!) rules.
+**Status: Implemented.** No controller or CRDs required — runs with static config files.
 
 ---
 
-## The Core Problem
-
-The LLM ext_proc is a **gRPC stream processor**. It does not make HTTP calls — it tells
-Envoy "mutate these headers/body" and Envoy does the routing. The routing decision
-(which cluster, which endpoint) is entirely Envoy's based on the xDS config.
-
-```
-┌────────────────────────────────────────────────────────────┐
-│ Today's flow:                                              │
-│                                                            │
-│  Client → Envoy route table → Backend cluster → Upstream   │
-│              ↑                     ↑                       │
-│         (static xDS)         (static xDS)                  │
-│                                                            │
-│  Ext_proc only mutates headers/body, cannot choose backend │
-└────────────────────────────────────────────────────────────┘
-```
-
----
-
-## How the MCP Proxy Solves This
-
-The MCP proxy achieves arbitrary routing because it **makes HTTP calls directly**:
-
-```go
-// MCP proxy controls routing in Go code:
-req, _ := http.NewRequest("POST", m.backendListenerAddr, body)
-req.Host = backend.Host          // ← decides WHERE to send
-req.URL.Path = backend.BackendPath
-req.Header.Set("Authorization", backend.Auth)
-client.Do(req)                   // ← sends via DFP listener
-```
-
-It sends all requests to a DFP-enabled Envoy listener, sets the `Host` header to the
-desired backend, and Envoy's Dynamic Forward Proxy resolves DNS + TLS dynamically.
-
----
-
-## Approach C: Ext_proc-Controlled Routing via DFP + Routing Plan Header
-
-### Idea
-
-Bring the MCP proxy's DFP approach into the LLM ext_proc. The ext_proc uses
-`SetBackend` + header mutations to control which backend each attempt goes to,
-using a **routing plan** provided by your custom ext_proc.
-
-### How It Would Work
+## Architecture
 
 ```
 Client Request
     │
     ▼
-┌──────────────────────────────────────────────────────────┐
-│  Your Custom ext_proc                                     │
-│  Sets header: x-ai-eg-routing-plan                       │
-│  Value: base64 JSON:                                      │
-│  {                                                        │
-│    "backends": ["openai-backend", "anthropic-backend"],   │
-│    "fallbackEnabled": true                                │
-│  }                                                        │
-└──────────────┬───────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  Your ext_proc (runs first in filter chain)          │
+│  Sets: x-ai-eg-routing-plan: <base64 JSON>          │
+│  {"backends":["azure-primary","gcp-ptu"],            │
+│   "fallbackEnabled":true}                            │
+└──────────────┬──────────────────────────────────────┘
                │
                ▼
-┌──────────────────────────────────────────────────────────┐
-│  AI Gateway ext_proc (router filter)                      │
-│  1. Parses body, extracts model                          │
-│  2. Reads x-ai-eg-routing-plan header                    │
-│  3. Stores routing plan in routerProcessor state         │
-│  4. ClearRouteCache: true                                │
-└──────────────┬───────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  AI Gateway ext_proc (router filter)                 │
+│  • Parses body, extracts model                       │
+│  • Reads + stores routing plan                       │
+└──────────────┬──────────────────────────────────────┘
                │
                ▼
-┌──────────────────────────────────────────────────────────┐
-│  Envoy routes to DFP cluster (single cluster for all     │
-│  LLM backends)                                            │
-└──────────────┬───────────────────────────────────────────┘
+           Envoy routes to single DFP cluster
                │
                ▼
-┌──────────────────────────────────────────────────────────┐
-│  AI Gateway ext_proc (upstream filter) — Attempt 1       │
-│  1. upstreamFilterCount = 1 (first attempt)              │
-│  2. Picks backends[0] = "openai-backend" from plan       │
-│  3. Looks up RuntimeBackend config for "openai-backend"  │
-│  4. Translates body: OpenAI schema                       │
-│  5. Applies auth: OpenAI API key                         │
-│  6. Sets :authority = api.openai.com (for DFP)           │
-│  7. Sets :path = /v1/chat/completions                    │
-│  8. Returns header + body mutations                      │
-└──────────────┬───────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  AI Gateway ext_proc (upstream filter) — Attempt 1   │
+│  • Picks backends[0] from plan                       │
+│  • Translates body + applies auth for that backend   │
+│  • Sets :authority + :path for DFP                   │
+└──────────────┬──────────────────────────────────────┘
                │
                ▼
-        DFP resolves api.openai.com → sends request
+        DFP resolves hostname → sends request
                │
-               ▼ (if OpenAI returns 5xx / 429)
-┌──────────────────────────────────────────────────────────┐
-│  Envoy retry policy triggers                              │
-└──────────────┬───────────────────────────────────────────┘
-               │
-               ▼
-┌──────────────────────────────────────────────────────────┐
-│  AI Gateway ext_proc (upstream filter) — Attempt 2       │
-│  1. upstreamFilterCount = 2 (retry)                      │
-│  2. Picks backends[1] = "anthropic-backend" from plan    │
-│  3. Looks up RuntimeBackend config for "anthropic-backend"│
-│  4. Re-translates body: Anthropic schema (from original) │
-│  5. Applies auth: Anthropic API key                      │
-│  6. Sets :authority = api.anthropic.com (for DFP)        │
-│  7. Sets :path = /v1/messages                            │
-│  8. Returns header + body mutations                      │
-└──────────────┬───────────────────────────────────────────┘
+               ▼ (on failure, Envoy retry triggers)
+┌─────────────────────────────────────────────────────┐
+│  AI Gateway ext_proc (upstream filter) — Attempt 2   │
+│  • Picks backends[1] from plan                       │
+│  • Re-translates original body for new backend       │
+│  • Sets new :authority + :path                       │
+└──────────────┬──────────────────────────────────────┘
                │
                ▼
-        DFP resolves api.anthropic.com → sends request
-               │
-               ▼
-          Response back to client
+        DFP resolves new hostname → sends request → response to client
 ```
 
-### Key Mechanism: How the Ext_proc Controls the Backend on Retry
+---
 
-Today, `setBackend` resolves the backend name from **Envoy xDS metadata** (attributes):
-
-```go
-// server.go — current implementation
-func (s *Server) setBackend(ctx, p, internalReqID, isEndpointPicker, req) error {
-    attributes := req.GetAttributes()["envoy.filters.http.ext_proc"]
-    backendName, _ := resolveBackendName(isEndpointPicker, attributes)  // ← Envoy decides
-    backend := s.config.Backends[backendName]
-    p.SetBackend(ctx, backend, routeName, routerProcessor)
-}
-```
-
-With Approach C, `setBackend` would **also check the routing plan**:
-
-```go
-// server.go — proposed change (pseudocode)
-func (s *Server) setBackend(ctx, p, internalReqID, isEndpointPicker, req) error {
-    routerProcessor := s.routerProcessorsPerReqID[internalReqID]
-
-    // Check if this request has a routing plan
-    if plan := routerProcessor.GetRoutingPlan(); plan != nil {
-        attemptIndex := routerProcessor.upstreamFilterCount  // 0-indexed
-        if attemptIndex < len(plan.Backends) {
-            backendName = plan.Backends[attemptIndex]
-        } else {
-            // Exhausted all backends in the plan
-            return status.Error(codes.Unavailable, "all backends exhausted")
-        }
-    } else {
-        // No routing plan — fall back to current behavior (Envoy decides)
-        backendName, _ = resolveBackendName(isEndpointPicker, attributes)
-    }
-
-    backend := s.config.Backends[backendName]
-    p.SetBackend(ctx, backend, routeName, routerProcessor)
-}
-```
-
-### What Already Works (No Changes Needed)
-
-| Component | Status | Why |
-|---|---|---|
-| Body re-translation on retry | ✅ Works | `upstreamProcessor.ProcessRequestHeaders` re-translates from `originalRequestBody` when `onRetry()` is true |
-| Auth re-application on retry | ✅ Works | `u.handler.Do()` runs on every upstream attempt |
-| Header mutation on retry | ✅ Works | `headerMutator.Mutate()` restores original + applies new headers |
-| Body mutation on retry | ✅ Works | `bodyMutator` operates on `originalRequestBodyRaw` |
-| Schema translator selection | ✅ Works | `SetBackend` calls `eh.GetTranslator(backend.Schema, ...)` per attempt |
-| Upstream filter re-invocation | ✅ Works | Envoy calls the upstream ext_proc for each retry attempt |
-
-### What Needs to Change
-
-#### 1. Envoy Config: DFP Cluster for LLM Backends
-
-All LLM backends route through a single DFP cluster instead of individual clusters:
-
-```yaml
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: Backend
-metadata:
-  name: llm-dfp-cluster
-spec:
-  endpoints:
-    # DFP resolves dynamically based on :authority header
-    - fqdn:
-        hostname: "dynamic"   # placeholder, DFP overrides this
-        port: 443
-```
-
-Or configure the DFP cluster directly:
-
-```yaml
-# Envoy Bootstrap or EnvoyPatchPolicy
-name: llm-dfp-cluster
-type: STRICT_DNS
-lb_policy: CLUSTER_PROVIDED
-cluster_type:
-  name: envoy.clusters.dynamic_forward_proxy
-  typed_config:
-    "@type": type.googleapis.com/envoy.extensions.clusters.dynamic_forward_proxy.v3.ClusterConfig
-    dns_cache_config:
-      name: llm_dns_cache
-      dns_lookup_family: V4_ONLY
-transport_socket:
-  name: envoy.transport_sockets.tls
-  typed_config:
-    "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-    sni: "%REQ(:authority)%"
-```
-
-#### 2. Routing Plan Header Format
+## Routing Plan Header
 
 ```
 x-ai-eg-routing-plan: <base64-encoded JSON>
@@ -235,265 +64,261 @@ x-ai-eg-routing-plan: <base64-encoded JSON>
 
 ```json
 {
-  "backends": ["openai-backend", "anthropic-backend", "cohere-backend"],
+  "backends": ["azure-primary", "gcp-ptu", "aws-bedrock"],
   "fallbackEnabled": true
 }
 ```
 
-- `backends`: Ordered list of backend names (matching `filterapi.Backend.Name`)
-- `backends[0]` is tried first, `backends[1]` on first retry, etc.
-- `fallbackEnabled`: If false, only `backends[0]` is tried (no retries)
+- **`backends`** — Ordered list of backend names matching `filterapi.Backend.Name`
+- **`fallbackEnabled`** — When `false`, only `backends[0]` is used (default: `true`)
+- Requests without this header use standard Envoy routing (fully backward compatible)
 
-#### 3. AI Gateway Code Changes
+---
 
-##### a. Routing plan struct (`internal/filterapi/` or `internal/internalapi/`)
+## Deployment: Static Config, No Controller
 
-```go
-// RoutingPlan represents a per-request routing plan provided by a custom ext_proc.
-type RoutingPlan struct {
-    // Backends is the ordered list of backend names to try.
-    // backends[0] is the primary, backends[1] is the first fallback, etc.
-    Backends []string `json:"backends"`
-    // FallbackEnabled controls whether retries to subsequent backends are allowed.
-    FallbackEnabled *bool `json:"fallbackEnabled,omitempty"`
-}
-```
+The ext_proc reads a YAML config file via `-configPath`. No K8s controller,
+no CRDs, no Envoy Gateway extension server. Just two files:
 
-##### b. Header constant (`internal/internalapi/internalapi.go`)
-
-```go
-LLMRoutingPlanHeader = EnvoyAIGatewayHeaderPrefix + "routing-plan"
-```
-
-##### c. Store routing plan in routerProcessor (`internal/extproc/processor_impl.go`)
-
-In `routerProcessor`:
-```go
-type routerProcessor[...] struct {
-    // ... existing fields ...
-    routingPlan *RoutingPlan  // parsed from x-ai-eg-routing-plan header
-}
-```
-
-Parse in `ProcessRequestBody` (where headers are available):
-```go
-if planHeader := r.requestHeaders[internalapi.LLMRoutingPlanHeader]; planHeader != "" {
-    decoded, _ := base64.StdEncoding.DecodeString(planHeader)
-    var plan RoutingPlan
-    json.Unmarshal(decoded, &plan)
-    r.routingPlan = &plan
-}
-```
-
-##### d. Override backend selection in `setBackend` (`internal/extproc/server.go`)
-
-When a routing plan is present, use it instead of xDS attributes to select the backend:
-
-```go
-func (s *Server) setBackend(ctx, p, internalReqID, isEndpointPicker, req) error {
-    routerProcessor := s.routerProcessorsPerReqID[internalReqID]
-
-    var backendName string
-    if plan := getRoutingPlan(routerProcessor); plan != nil {
-        attemptIndex := getUpstreamFilterCount(routerProcessor) - 1
-        if attemptIndex >= len(plan.Backends) {
-            return status.Error(codes.Unavailable, "routing plan exhausted")
-        }
-        backendName = plan.Backends[attemptIndex]
-    } else {
-        // Original behavior
-        attributes := req.GetAttributes()["envoy.filters.http.ext_proc"]
-        backendName, _ = resolveBackendName(isEndpointPicker, attributes)
-    }
-
-    backend := s.config.Backends[backendName]
-    if backend == nil {
-        return status.Errorf(codes.Internal, "unknown backend in routing plan: %s", backendName)
-    }
-    p.SetBackend(ctx, backend, routeName, routerProcessor)
-}
-```
-
-##### e. Set `:authority` for DFP (`internal/extproc/processor_impl.go`)
-
-In `upstreamProcessor.ProcessRequestHeaders`, when a routing plan is active, emit an
-`:authority` mutation so DFP routes to the correct host:
-
-```go
-// In ProcessRequestHeaders, after translator and auth:
-if u.parent.routingPlan != nil {
-    // Backend.Host must be populated in filterapi.Backend for DFP routing
-    host := backend.Host  // e.g., "api.openai.com"
-    headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
-        Header: &corev3.HeaderValue{Key: ":authority", RawValue: []byte(host)},
-    })
-}
-```
-
-This requires adding a `Host` field to `filterapi.Backend` (similar to `MCPBackend.Host`).
-
-##### f. Add `Host` and `BackendPath` to `filterapi.Backend`
-
-```go
-type Backend struct {
-    Name              string                        `json:"name"`
-    // Host is the upstream hostname used for DFP routing (e.g., "api.openai.com").
-    // Only needed when using routing plans with DFP.
-    Host              string                        `json:"host,omitempty"`
-    // BackendPath is the base path for this backend's API (e.g., "/v1/chat/completions").
-    // Only needed when using routing plans with DFP.
-    BackendPath       string                        `json:"backendPath,omitempty"`
-    // ... existing fields ...
-}
-```
-
-#### 4. Retry Policy
-
-Attach a `BackendTrafficPolicy` with enough retries to cover the longest fallback chain:
+### 1. ExtProc Config (`filter-config.yaml`)
 
 ```yaml
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: BackendTrafficPolicy
-metadata:
-  name: llm-retry
+backends:
+  - name: "azure-primary"
+    schema: {name: "AzureOpenAI", prefix: "v1"}
+    host: "snc-oai-llmproxy-dev-eastus2.openai.azure.com"
+    backendPath: "/openai/deployments/gpt-4o/chat/completions?api-version=2024-10-21"
+    auth:
+      azureAPIKey:
+        key: "your-azure-key"
+
+  - name: "gcp-ptu"
+    schema: {name: "GCPVertexAI", prefix: "v1beta1"}
+    host: "us-central1-aiplatform.googleapis.com"
+    backendPath: "/v1beta1/projects/my-project/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent"
+    auth:
+      gcp:
+        credentialFilePath: "/etc/ai-gateway/secrets/gcp-sa.json"
+
+  - name: "aws-bedrock"
+    schema: {name: "AWSBedrock"}
+    host: "bedrock-runtime.us-west-2.amazonaws.com"
+    backendPath: "/model/anthropic.claude-3-sonnet/converse"
+    auth:
+      aws:
+        region: "us-west-2"
+        credentialFileLiteral: |
+          [default]
+          aws_access_key_id = AKIA...
+          aws_secret_access_key = ...
+```
+
+### 2. Envoy Config (`envoy.yaml`)
+
+Single DFP cluster with router + upstream ext_proc filters:
+
+```yaml
+static_resources:
+  listeners:
+    - name: listener_0
+      address:
+        socket_address: {address: 0.0.0.0, port_value: 8080}
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress
+                codec_type: AUTO
+                scheme_header_transformation:
+                  match_upstream: true
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: ai_gateway
+                      domains: ["*"]
+                      routes:
+                        - match: {prefix: "/"}
+                          route:
+                            cluster: dfp_cluster
+                            timeout: 120s
+                            retry_policy:
+                              retry_on: "5xx,reset,connect-failure"
+                              num_retries: 3
+                          metadata:
+                            filter_metadata:
+                              aigateway.envoy.io:
+                                aigw_route_name: "default/my-route"
+                http_filters:
+                  # AI Gateway ext_proc — router level
+                  - name: envoy.filters.http.ext_proc/aigateway
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                      grpc_service:
+                        envoy_grpc: {cluster_name: ai_gateway_extproc}
+                        timeout: 30s
+                      metadata_options:
+                        receiving_namespaces:
+                          untyped: ["aigateway.envoy.io"]
+                      processing_mode:
+                        request_header_mode: SEND
+                        request_body_mode: BUFFERED
+                        response_header_mode: SEND
+                        response_body_mode: BUFFERED
+                      message_timeout: 10s
+                      allow_mode_override: true
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+  clusters:
+    # Single DFP cluster — routes to any backend dynamically via :authority
+    - name: dfp_cluster
+      connect_timeout: 10s
+      lb_policy: CLUSTER_PROVIDED
+      cluster_type:
+        name: envoy.clusters.dynamic_forward_proxy
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.clusters.dynamic_forward_proxy.v3.ClusterConfig
+          dns_cache_config:
+            name: dynamic_forward_proxy_cache
+            dns_lookup_family: V4_ONLY
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          common_tls_context:
+            validation_context:
+              trusted_ca: {filename: /etc/ssl/certs/ca-certificates.crt}
+      metadata:
+        filter_metadata:
+          aigateway.envoy.io:
+            per_route_rule_backend_name: "azure-primary"  # fallback when no routing plan
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          http_filters:
+            # Upstream ext_proc — runs per attempt
+            - name: envoy.filters.http.ext_proc/aigateway
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                grpc_service:
+                  envoy_grpc: {cluster_name: ai_gateway_extproc}
+                  timeout: 30s
+                metadata_options:
+                  receiving_namespaces:
+                    untyped: ["aigateway.envoy.io"]
+                request_attributes:
+                  - "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
+                  - "xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
+                  - "xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']"
+                processing_mode:
+                  request_header_mode: SEND
+                  request_body_mode: NONE
+                  response_header_mode: SKIP
+                  response_body_mode: NONE
+                message_timeout: 10s
+                allow_mode_override: true
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(aigateway.envoy.io:content_length)%"
+                        append_action: ADD_IF_ABSENT
+            - name: envoy.filters.http.upstream_codec
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
+
+    # AI Gateway ext_proc gRPC server
+    - name: ai_gateway_extproc
+      connect_timeout: 5s
+      type: STATIC
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
+      load_assignment:
+        cluster_name: ai_gateway_extproc
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: {address: 127.0.0.1, port_value: 1063}
+```
+
+### 3. Tunneling via hostAliases (for private endpoints)
+
+If backends are reachable through private endpoints (VPC Endpoint, Private Link, etc.),
+use Pod `hostAliases` to map provider hostnames to tunnel IPs. DFP resolves from
+`/etc/hosts` and uses the original hostname as TLS SNI.
+
+```yaml
 spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: llm-route
-  retry:
-    numRetries: 4       # Max backends in any routing plan minus 1
-    retryOn:
-      httpStatusCodes: [429, 500, 502, 503]
+  hostAliases:
+    - ip: "10.142.13.17"
+      hostnames: ["snc-oai-llmproxy-dev-eastus2.openai.azure.com"]
+    - ip: "10.103.13.58"
+      hostnames: ["bedrock-runtime.us-west-2.amazonaws.com"]
+    - ip: "10.31.31.1"
+      hostnames:
+        - "us-central1-aiplatform.googleapis.com"
+        - "us-west1-aiplatform.googleapis.com"
 ```
 
-When `fallbackEnabled: false` in the routing plan, the ext_proc could return an
-`ImmediateResponse` with the error instead of letting Envoy retry. Or, it could
-set all remaining plan entries to the same backend (effectively no fallback).
+This gives per-provider tunneling with a single DFP cluster — no per-provider
+clusters needed, cross-provider fallback works natively.
 
 ---
 
-### Complete Request Flow
+## Code Changes (Implemented)
+
+All changes are in `internal/extproc/` and `internal/filterapi/`:
+
+| File | Change |
+|---|---|
+| `internalapi/internalapi.go` | `LLMRoutingPlanHeader` constant, `RoutingPlan` struct |
+| `filterapi/filterconfig.go` | `Host`, `BackendPath` fields on `Backend` |
+| `extproc/processor.go` | `routingPlanProvider` interface |
+| `extproc/processor_impl.go` | Parse routing plan in `ProcessRequestBody`; set `:authority`/`:path` in `ProcessRequestHeaders` |
+| `extproc/server.go` | `resolveBackendFromPlan` helper; routing plan check in `setBackend` |
+
+### Key behaviors
+
+- **Backward compatible** — requests without the header are completely unaffected
+- **Deterministic fallback** — `backends[0]` on attempt 1, `backends[1]` on retry, etc.
+- **Full re-translation** — each attempt gets correct schema translation, auth, and headers for its backend
+- **Negligible overhead** — base64 decode + JSON unmarshal only when header is present
+
+---
+
+## Retry and Fallback
+
+Cross-provider fallback works because the single DFP cluster handles all backends.
+Each retry attempt re-enters the upstream ext_proc, which picks the next backend
+from the routing plan and sets a new `:authority`.
 
 ```
-1. Client sends:  POST /v1/chat/completions
-                  x-ai-eg-routing-plan: eyJiYWNrZW5kcyI6WyJvcGVuYWktYmFja2VuZCIsImFudGhyb3BpYy1iYWNrZW5kIl19
-
-2. Your ext_proc: (already set the header above — passes through)
-
-3. AI Gateway router ext_proc:
-   - Parses body → extracts model "gpt-4"
-   - Decodes routing plan → ["openai-backend", "anthropic-backend"]
-   - Stores plan + original body in routerProcessor
-   - Sets x-ai-eg-model header
-   - ClearRouteCache: true → Envoy routes to DFP cluster
-
-4. AI Gateway upstream ext_proc (attempt 1):
-   - setBackend reads plan → backends[0] = "openai-backend"
-   - Loads RuntimeBackend for "openai-backend" (schema=OpenAI, auth=APIKey)
-   - Translates body to OpenAI format
-   - Auth: sets Authorization: Bearer sk-...
-   - Sets :authority = api.openai.com
-   - DFP connects to api.openai.com:443
-
-5. OpenAI returns 503 → Envoy retry triggers
-
-6. AI Gateway upstream ext_proc (attempt 2):
-   - setBackend reads plan → backends[1] = "anthropic-backend"
-   - Loads RuntimeBackend for "anthropic-backend" (schema=Anthropic, auth=AnthropicKey)
-   - Re-translates original body to Anthropic format
-   - Auth: sets x-api-key: sk-ant-...
-   - Sets :authority = api.anthropic.com
-   - DFP connects to api.anthropic.com:443
-
-7. Anthropic returns 200 → response flows back to client
+Attempt 1: :authority=azure.openai.com     → DFP → Azure (503)
+Attempt 2: :authority=aiplatform.google.com → DFP → GCP   (200) ✓
 ```
 
----
-
-### Comparison with MCP Proxy Approach
-
-| Aspect | MCP Proxy | LLM Ext_proc (Approach C) |
-|---|---|---|
-| **Who makes HTTP calls** | Go code (`http.Client`) | Envoy (via DFP) |
-| **Who decides backend** | Go code (iterates backends) | Ext_proc (via routing plan) + Envoy retry |
-| **Fallback mechanism** | Go loop over backends | Envoy retry policy triggers next attempt |
-| **Body translation** | N/A (JSON-RPC passthrough) | Full schema translation (OpenAI↔Anthropic etc.) |
-| **Auth injection** | `req.Header.Set("Authorization", ...)` | `BackendAuthHandler.Do()` |
-| **DFP routing** | `req.Host = backend.Host` | `:authority` header mutation |
-| **Config source** | `MCPBackend.Host/BackendPath/Auth` | `Backend.Host/BackendPath` + existing `Backend.Auth` |
+**Requirements:**
+- Envoy `retry_policy.num_retries` must be ≥ `len(backends) - 1`
+- `retry_on` must include the status codes that should trigger fallback
 
 ---
 
-### Risks and Considerations
+## Considerations
 
-1. **DFP cluster setup complexity** — Requires Envoy configuration for DFP, TLS SNI, and
-   DNS caching. This is the same pattern used by the MCP proxy but applied to LLM traffic.
-
-2. **Retry count must cover max plan length** — If the retry policy allows only 2 retries
-   but the plan has 5 backends, only the first 3 will be tried. The ext_proc cannot
-   force Envoy to retry.
-
-3. **Mixed mode** — Requests without a routing plan should fall back to normal Envoy
-   routing (current behavior). The routing plan is opt-in.
-
-4. **Backend validation** — The ext_proc must validate that all backend names in the
-   routing plan exist in `s.config.Backends`. Invalid names should return an error.
-
-5. **Security** — The routing plan header should be validated/sanitized. Malicious plans
-   could reference backends the caller shouldn't access. Consider authorization checks.
-
-6. **Observability** — Log which backend was selected on each attempt, and whether it
-   was from a routing plan or from Envoy's default routing.
-
----
-
-### Implementation Effort Estimate
-
-| Change | Scope | Risk |
-|---|---|---|
-| Add `Host`, `BackendPath` to `filterapi.Backend` | Small (2 fields) | Low |
-| Add `LLMRoutingPlanHeader` constant | Trivial | None |
-| Add `RoutingPlan` struct | Small | Low |
-| Parse routing plan in `routerProcessor.ProcessRequestBody` | Small (~15 lines) | Low |
-| Override backend in `server.setBackend` | Medium (~20 lines) | Medium — must handle edge cases |
-| Set `:authority` in `upstreamProcessor.ProcessRequestHeaders` | Small (~10 lines) | Low |
-| DFP cluster Envoy config | Medium (ops/infra) | Medium — TLS, DNS, timeouts |
-| Controller changes to populate `Host`/`BackendPath` | Medium | Medium — needs AIServiceBackend mapping |
-| Tests | Medium (~100-200 lines) | Low |
-
-**Total: ~250-300 lines of Go code + Envoy config changes.**
-
----
-
-### Alternative: Approach D — Ext_proc as HTTP Client (MCP-Style)
-
-If the DFP complexity is too high, another option is to make the ext_proc behave more
-like the MCP proxy — have it make HTTP calls directly instead of letting Envoy route.
-
-This would mean:
-- The router ext_proc, upon receiving a routing plan, makes HTTP calls to each backend
-  in sequence (with translation + auth)
-- Returns an `ImmediateResponse` with the successful backend's response
-- Completely bypasses Envoy's upstream routing
-
-**Pros:** Full control, simpler than DFP setup.
-**Cons:** Loses Envoy's connection pooling, circuit breaking, observability, TLS management.
-         Essentially re-implements what Envoy does, but worse. Not recommended unless DFP
-         is not viable.
-
----
-
-### Recommendation
-
-**Approach C (DFP + Routing Plan)** is the right path for arbitrary per-request routing.
-It reuses the proven MCP proxy pattern, leverages Envoy's retry mechanism for fallback,
-and keeps the ext_proc's role focused on translation + auth + backend selection — while
-Envoy handles the actual HTTP transport.
-
-Start with:
-1. Prototype the DFP cluster config for one LLM backend
-2. Add routing plan parsing to the ext_proc
-3. Override `setBackend` to use the plan
-4. Set `:authority` for DFP routing
-5. Test with a 2-backend fallback chain (OpenAI → Anthropic)
+- **Retry count** — The ext_proc cannot force retries. Envoy's retry policy must allow enough attempts.
+- **Security** — The routing plan header should only be set by trusted ext_proc filters, not by external clients.
+- **Backend validation** — Unknown backend names in the plan result in an `Internal` gRPC error.
+- **Observability** — Backend selection is logged (`routing plan activated`, backend name per attempt).
