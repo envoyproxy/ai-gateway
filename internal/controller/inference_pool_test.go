@@ -123,15 +123,18 @@ func TestInferencePoolController_ExtensionReferenceValidationSuccess(t *testing.
 	}
 	require.NoError(t, fakeClient.Create(context.Background(), inferencePool))
 
-	// Reconcile the InferencePool.
-	result, err := c.Reconcile(context.Background(), ctrl.Request{
+	// Reconcile the InferencePool. The first successful sync schedules a short
+	// follow-up reconcile so a lagging cache can converge before the unchanged
+	// (empty) parent status is trusted.
+	request := ctrl.Request{
 		NamespacedName: client.ObjectKey{
 			Name:      "test-inference-pool",
 			Namespace: "default",
 		},
-	})
+	}
+	result, err := c.Reconcile(context.Background(), request)
 	require.NoError(t, err, "Expected no error when ExtensionReference service exists")
-	require.Equal(t, ctrl.Result{}, result)
+	require.Equal(t, ctrl.Result{RequeueAfter: inferencePoolStatusRequeueAfter}, result)
 
 	// Check that the InferencePool status was updated successfully.
 	var updatedInferencePool gwaiev1.InferencePool
@@ -142,6 +145,11 @@ func TestInferencePoolController_ExtensionReferenceValidationSuccess(t *testing.
 
 	// Since there are no Gateways referencing this InferencePool, the status should be empty.
 	require.Empty(t, updatedInferencePool.Status.Parents, "InferencePool should have no parent status when not referenced by any Gateway")
+
+	// The follow-up reconcile observes the same empty parents and stops requeueing.
+	result, err = c.Reconcile(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, result)
 }
 
 func TestInferencePoolController_Reconcile(t *testing.T) {
@@ -320,15 +328,18 @@ func TestInferencePoolController_NoReferencingGateways(t *testing.T) {
 	}
 	require.NoError(t, fakeClient.Create(context.Background(), inferencePool))
 
-	// Reconcile the InferencePool.
-	result, err := c.Reconcile(context.Background(), ctrl.Request{
+	// Reconcile the InferencePool. The first successful sync schedules a short
+	// follow-up reconcile so a lagging cache can converge before the unchanged
+	// (empty) parent status is trusted.
+	request := ctrl.Request{
 		NamespacedName: client.ObjectKey{
 			Name:      "test-inference-pool",
 			Namespace: "default",
 		},
-	})
+	}
+	result, err := c.Reconcile(context.Background(), request)
 	require.NoError(t, err)
-	require.Equal(t, ctrl.Result{}, result)
+	require.Equal(t, ctrl.Result{RequeueAfter: inferencePoolStatusRequeueAfter}, result)
 
 	// Check that the InferencePool status was updated.
 	var updatedInferencePool gwaiev1.InferencePool
@@ -339,6 +350,11 @@ func TestInferencePoolController_NoReferencingGateways(t *testing.T) {
 
 	// Verify that the status has no parents since no Gateway references this InferencePool.
 	require.Empty(t, updatedInferencePool.Status.Parents, "InferencePool should have no parent status when not referenced by any Gateway")
+
+	// The follow-up reconcile observes the same empty parents and stops requeueing.
+	result, err = c.Reconcile(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, result)
 }
 
 func TestBuildAcceptedCondition(t *testing.T) {
@@ -1309,6 +1325,160 @@ func TestInferencePoolController_ReconcileMultipleHTTPRouteParents(t *testing.T)
 	require.Equal(t, ctrl.Result{}, result)
 }
 
+// TestInferencePoolController_ReconcileConvergesAfterCacheLag reproduces the
+// flake the status requeue fix targets: the first reconcile observes zero
+// referenced Gateways because the controller-runtime cache-backed Gateway list
+// lags the related objects. With the InferencePool status already empty,
+// inferencePoolParentStatusesEqual(empty, empty) is true, so relying on status
+// mutation alone would skip the requeue and the status could stay stale
+// indefinitely. The controller must requeue once after the first successful
+// sync and then converge to the full parent set once the cache catches up.
+func TestInferencePoolController_ReconcileConvergesAfterCacheLag(t *testing.T) {
+	// Build a base fake client with the conformance-style two-Gateway /
+	// two-HTTPRoute topology, then wrap it in an interceptor that hides the
+	// Gateways from the first Gateway list call (simulating cache lag) and
+	// delegates to the real store afterwards.
+	builder := fake.NewClientBuilder().WithScheme(Scheme).
+		WithStatusSubresource(&aigv1b1.AIGatewayRoute{}).
+		WithStatusSubresource(&aigv1b1.AIServiceBackend{}).
+		WithStatusSubresource(&aigv1b1.BackendSecurityPolicy{}).
+		WithStatusSubresource(&gwaiev1.InferencePool{})
+	require.NoError(t, ApplyIndexing(t.Context(), func(_ context.Context, obj client.Object, field string, extractValue client.IndexerFunc) error {
+		builder = builder.WithIndex(obj, field, extractValue)
+		return nil
+	}))
+
+	for _, gatewayName := range []string{"conformance-primary", "conformance-secondary"} {
+		builder = builder.WithObjects(&gwapiv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      gatewayName,
+				Namespace: "gateway-conformance-infra",
+			},
+			Spec: gwapiv1.GatewaySpec{GatewayClassName: "test-class"},
+		})
+	}
+
+	for routeName, gatewayName := range map[string]string{
+		"httproute-for-primary-gw":   "conformance-primary",
+		"httproute-for-secondary-gw": "conformance-secondary",
+	} {
+		builder = builder.WithObjects(&gwapiv1.HTTPRoute{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      routeName,
+				Namespace: "gateway-conformance-app-backend",
+			},
+			Spec: gwapiv1.HTTPRouteSpec{
+				CommonRouteSpec: gwapiv1.CommonRouteSpec{
+					ParentRefs: []gwapiv1.ParentReference{
+						{
+							Name:      gwapiv1.ObjectName(gatewayName),
+							Namespace: ptr.To(gwapiv1.Namespace("gateway-conformance-infra")),
+						},
+					},
+				},
+				Rules: []gwapiv1.HTTPRouteRule{
+					{
+						BackendRefs: []gwapiv1.HTTPBackendRef{
+							{
+								BackendRef: gwapiv1.BackendRef{
+									BackendObjectReference: gwapiv1.BackendObjectReference{
+										Group: ptr.To(gwapiv1.Group("inference.networking.k8s.io")),
+										Kind:  ptr.To(gwapiv1.Kind("InferencePool")),
+										Name:  "primary-inference-pool",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+	}
+
+	builder = builder.WithObjects(
+		&corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "primary-epp",
+				Namespace: "gateway-conformance-app-backend",
+			},
+			Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 9002}}},
+		},
+		&gwaiev1.InferencePool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "primary-inference-pool",
+				Namespace: "gateway-conformance-app-backend",
+			},
+			Spec: gwaiev1.InferencePoolSpec{
+				Selector:          gwaiev1.LabelSelector{MatchLabels: map[gwaiev1.LabelKey]gwaiev1.LabelValue{"app": "test-app"}},
+				TargetPorts:       []gwaiev1.Port{{Number: 8080}},
+				EndpointPickerRef: gwaiev1.EndpointPickerRef{Name: "primary-epp"},
+			},
+		},
+	)
+
+	// cacheLagging gates whether the interceptor hides the Gateways from list
+	// calls, simulating a controller-runtime cache that has not yet observed the
+	// related Gateway objects. The test flips it to false between reconciles so
+	// the first reconcile sees an empty parent set and the follow-up sees the
+	// full set.
+	cacheLagging := true
+	var gatewayListCalls int
+	fakeClient := builder.
+		WithInterceptorFuncs(interceptor.Funcs{
+			List: func(ctx context.Context, inner client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+				if gwList, ok := list.(*gwapiv1.GatewayList); ok {
+					gatewayListCalls++
+					if cacheLagging {
+						// Simulate cache lag: report no Gateways observed yet.
+						gwList.Items = nil
+						return nil
+					}
+				}
+				return inner.List(ctx, list, opts...)
+			},
+		}).
+		Build()
+	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
+
+	request := ctrl.Request{
+		NamespacedName: client.ObjectKey{
+			Name:      "primary-inference-pool",
+			Namespace: "gateway-conformance-app-backend",
+		},
+	}
+
+	// First reconcile: the cache lags and reports zero referenced Gateways. The
+	// status is empty and stays empty, yet the controller must still requeue so
+	// the cache can converge.
+	result, err := c.Reconcile(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{RequeueAfter: inferencePoolStatusRequeueAfter}, result)
+
+	var updatedInferencePool gwaiev1.InferencePool
+	require.NoError(t, fakeClient.Get(context.Background(), request.NamespacedName, &updatedInferencePool))
+	require.Empty(t, updatedInferencePool.Status.Parents, "status should be empty while the Gateway cache lags")
+
+	// The cache now catches up: subsequent Gateway lists return the real objects.
+	cacheLagging = false
+
+	// Second reconcile: the cache has converged and both Gateways are observed.
+	// The status changes to include both parents, which arms another follow-up.
+	result, err = c.Reconcile(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{RequeueAfter: inferencePoolStatusRequeueAfter}, result)
+
+	require.NoError(t, fakeClient.Get(context.Background(), request.NamespacedName, &updatedInferencePool))
+	require.Len(t, updatedInferencePool.Status.Parents, 2, "status should converge to both parents after the cache catches up")
+
+	// Third reconcile: the status is unchanged and confirmed stable, so the
+	// controller stops requeueing.
+	result, err = c.Reconcile(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, result)
+
+	require.GreaterOrEqual(t, gatewayListCalls, 1, "the Gateway list cache lag should affect the first reconcile")
+}
+
 func TestInferencePoolController_ValidateExtensionReference_EdgeCases(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
 	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))
@@ -1452,14 +1622,18 @@ func TestInferencePoolController_SyncInferencePool_EdgeCases(t *testing.T) {
 	require.NoError(t, fakeClient.Update(context.Background(), inferencePoolNoGateways))
 
 	// Reconcile should succeed even when no gateways reference the InferencePool.
-	result, err := c.Reconcile(context.Background(), ctrl.Request{
+	// The first successful sync schedules a short follow-up reconcile so a
+	// lagging cache can converge before the unchanged (empty) parent status is
+	// trusted.
+	request := ctrl.Request{
 		NamespacedName: client.ObjectKey{
 			Name:      "test-inference-pool-no-gateways",
 			Namespace: "default",
 		},
-	})
+	}
+	result, err := c.Reconcile(context.Background(), request)
 	require.NoError(t, err)
-	require.Equal(t, ctrl.Result{}, result)
+	require.Equal(t, ctrl.Result{RequeueAfter: inferencePoolStatusRequeueAfter}, result)
 
 	// Check that the InferencePool status is empty (no parents).
 	var updatedInferencePool gwaiev1.InferencePool
@@ -1469,6 +1643,11 @@ func TestInferencePoolController_SyncInferencePool_EdgeCases(t *testing.T) {
 	}, &updatedInferencePool))
 
 	require.Empty(t, updatedInferencePool.Status.Parents, "Should have no parent statuses when no gateways reference the InferencePool")
+
+	// The follow-up reconcile observes the same empty parents and stops requeueing.
+	result, err = c.Reconcile(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, result)
 }
 
 func TestInferencePoolController_GetReferencedGateways_ComplexScenarios(t *testing.T) {
