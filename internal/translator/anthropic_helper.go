@@ -1126,10 +1126,18 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		// Use Set (not Add) because the value is cumulative.
 		// message_start typically reports output_tokens=0, and message_delta
 		// provides the final output token count.
-		if u.OutputTokens >= 0 {
+		//
+		// Guard with the SDK's JSON presence fields (Valid()): MessageDeltaUsage
+		// uses non-pointer int64 fields that default to 0 when absent, so a bare
+		// value check cannot distinguish "not provided" from "actually zero". A
+		// stream may emit multiple message_delta events (usage is cumulative), so a
+		// later message_delta that omits usage must NOT clobber output/reasoning
+		// tokens set by an earlier one — see
+		// https://docs.anthropic.com/en/api/messages-streaming
+		if u.JSON.OutputTokens.Valid() {
 			p.tokenUsage.SetOutputTokens(uint32(u.OutputTokens)) //nolint:gosec
 		}
-		if u.OutputTokensDetails.ThinkingTokens >= 0 {
+		if u.JSON.OutputTokensDetails.Valid() && u.OutputTokensDetails.JSON.ThinkingTokens.Valid() {
 			p.tokenUsage.SetReasoningTokens(uint32(u.OutputTokensDetails.ThinkingTokens)) //nolint:gosec
 		}
 		if event.Delta.StopReason != "" {

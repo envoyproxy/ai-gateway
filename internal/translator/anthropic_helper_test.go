@@ -971,9 +971,12 @@ data: {"type":"message_stop"}
 	}
 }
 
-func TestAnthropicStreamParserTokenUsage_MessageDeltaNoUsage(t *testing.T) {
-	// Test that message_delta without usage field is handled correctly
-	// When usage is absent, the struct defaults to zero values which are still applied
+func TestAnthropicStreamParserTokenUsage_MessageDeltaNoUsagePreservesPrior(t *testing.T) {
+	// A later message_delta that omits usage must NOT clobber output/reasoning
+	// tokens set by an earlier message_delta. The SDK's MessageDeltaUsage uses
+	// non-pointer int64 fields that default to 0 when absent, so the parser must
+	// use presence (Valid()) rather than a bare value check — otherwise the
+	// zero default would overwrite a previously set non-zero count.
 	parser := newAnthropicStreamParser("test-model")
 
 	sseStream := `event: message_start
@@ -989,6 +992,9 @@ event: content_block_stop
 data: {"type":"content_block_stop","index":0}
 
 event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":16,"output_tokens_details":{"thinking_tokens":4}}}
+
+event: message_delta
 data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null}}
 
 event: message_stop
@@ -1000,12 +1006,16 @@ data: {"type":"message_stop"}
 
 	inputTokens, inputSet := tokenUsage.InputTokens()
 	outputTokens, outputSet := tokenUsage.OutputTokens()
+	reasoningTokens, reasoningSet := tokenUsage.ReasoningTokens()
 
 	assert.True(t, inputSet, "input tokens should be set")
 	assert.Equal(t, uint32(10), inputTokens, "input tokens should be from message_start")
-	// When message_delta has no usage field, the default zero values are still set
-	assert.True(t, outputSet, "output tokens should be set (default zero from message_delta)")
-	assert.Equal(t, uint32(0), outputTokens, "output tokens should be zero")
+	// The first message_delta sets output_tokens=16; the second message_delta has
+	// no usage field and must not zero it out.
+	assert.True(t, outputSet, "output tokens should be set from the first message_delta")
+	assert.Equal(t, uint32(16), outputTokens, "later no-usage message_delta must not zero out output tokens")
+	assert.True(t, reasoningSet, "reasoning tokens should be set from the first message_delta")
+	assert.Equal(t, uint32(4), reasoningTokens, "later no-usage message_delta must not zero out reasoning tokens")
 }
 
 func TestAnthropicStreamParserTokenUsage_MessageDeltaCacheWhenInputAlreadyHasCache(t *testing.T) {
