@@ -14,6 +14,8 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +41,20 @@ type mcpRequestContext struct {
 	perBackendMetricsRecorded bool
 }
 
+// defaultMaxRequestBodySize is the default maximum allowed POST body size in bytes (4 MiB).
+const defaultMaxRequestBodySize = 4 * 1024 * 1024
+
+// getMaxRequestBodySize returns the configured POST body limit from the environment variable,
+// falling back to 4 MiB if the variable is unset or invalid.
+func getMaxRequestBodySize() int64 {
+	if v, ok := os.LookupEnv("MCP_PROXY_MAX_REQUEST_BODY_SIZE"); ok {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			return n
+		}
+	}
+	return defaultMaxRequestBodySize
+}
+
 // NewMCPProxy creates a new MCPProxy instance.
 func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingapi.MCPTracer, sessionCrypto SessionCrypto, logRequestHeaderAttributes map[string]string) (*ProxyConfig, *http.ServeMux, error) {
 	toolChangeSignaler := newMultiWatcherSignaler() // used to signal changes to all active sessions.
@@ -49,6 +65,7 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingap
 		l:                          l,
 		client:                     http.Client{}, // No timeout as it's enforced at Envoy level.
 		logRequestHeaderAttributes: maps.Clone(logRequestHeaderAttributes),
+		maxRequestBodySize:         getMaxRequestBodySize(),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc(
@@ -335,25 +352,41 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 		}
 		if rawMsg == nil {
 			parser := newSSEEventParser(sseReader, backend.Name)
-			for {
+			var readErr error
+			for rawMsg == nil {
 				event, parseErr := parser.next()
 				// TODO: handle reconnect. We need to re-arrange the event ID so that it will also contain the backend name and the original session ID.
 				// 	Since event ID can be arbitrary string, we can shove each backend's last even ID into the event ID just like the session ID.
 				if event != nil {
-					// TODO: there's no session here what should we do?
-					if len(event.messages) < 1 {
-						return nil, errors.New("failed to get message from MCP sse event")
+					// Some backends emit non-response events (keep-alives with an
+					// empty data line, notifications) before the initialize result.
+					// Skip those and keep reading until we find the JSON-RPC response.
+					for _, msg := range event.messages {
+						if _, ok := msg.(*jsonrpc.Response); ok {
+							rawMsg = msg
+						}
 					}
-					// Last event is the actual response.
-					rawMsg = event.messages[len(event.messages)-1]
 				}
-				if parseErr != nil {
-					if errors.Is(parseErr, io.EOF) || strings.Contains(parseErr.Error(), "context deadline exceeded") {
-						break
-					}
-					m.l.Error("failed to read MCP GET response body", slog.String("error", parseErr.Error()))
+				if rawMsg != nil {
+					// Found the response; a trailing EOF on this same event is not a failure.
 					break
 				}
+				if parseErr != nil {
+					readErr = parseErr
+					if !errors.Is(parseErr, io.EOF) && !strings.Contains(parseErr.Error(), "context deadline exceeded") {
+						m.l.Error("failed to read MCP GET response body", slog.String("error", parseErr.Error()))
+					}
+					break
+				}
+			}
+			if rawMsg == nil {
+				// The SSE stream ended (EOF/deadline) or errored before any JSON-RPC
+				// response arrived. Surface a clear error instead of falling through to
+				// the misleading "MCP message is not a response: <nil>".
+				if readErr != nil && !errors.Is(readErr, io.EOF) && !strings.Contains(readErr.Error(), "context deadline exceeded") {
+					return nil, fmt.Errorf("failed to read MCP initialize response from backend %q: %w", backend.Name, readErr)
+				}
+				return nil, fmt.Errorf("MCP initialize stream from backend %q ended before a JSON-RPC response was received", backend.Name)
 			}
 		}
 

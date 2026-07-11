@@ -277,6 +277,9 @@ func assistantMsgToGeminiParts(msg *openai.ChatCompletionAssistantMessageParam) 
 	// Handle tool calls in the assistant message.
 	knownToolCalls := make(map[string]string)
 	for i, toolCall := range msg.ToolCalls {
+		if toolCall.ID == nil {
+			return nil, nil, fmt.Errorf("%w: tool_call at index %d is missing required field 'id'", internalapi.ErrInvalidRequestBody, i)
+		}
 		knownToolCalls[*toolCall.ID] = toolCall.Function.Name
 		var parsedArgs map[string]any
 		if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &parsedArgs); err != nil {

@@ -7,15 +7,18 @@ package translator
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
 // mockErrorReader is a helper for testing io.Reader failures.
@@ -1156,4 +1159,149 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 		require.NotNil(t, params)
 		require.Equal(t, anthropic.OutputConfigEffort(""), params.OutputConfig.Effort)
 	})
+}
+
+func TestAnthropicStreamParser_StreamingTokenUsage(t *testing.T) {
+	tests := []struct {
+		name                        string
+		events                      string
+		expectedInputTokens         uint32
+		expectedOutputTokens        uint32
+		expectedTotalTokens         uint32
+		expectedCachedTokens        uint32
+		expectedCacheCreationTokens uint32
+	}{
+		{
+			name: "with cache tokens",
+			events: `event: message_start
+data: {"type": "message_start", "message": {"id": "msg_abc123", "type": "message", "role": "assistant", "content": [], "model": "claude-sonnet-4-6", "usage": {"input_tokens": 678, "cache_read_input_tokens": 13363, "cache_creation_input_tokens": 0, "output_tokens": 1}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hi"}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"input_tokens": 678, "cache_read_input_tokens": 13363, "cache_creation_input_tokens": 0, "output_tokens": 5}}
+
+event: message_stop
+data: {"type": "message_stop"}
+
+`,
+			expectedInputTokens:         14041, // 678 + 13363 + 0
+			expectedOutputTokens:        5,
+			expectedTotalTokens:         14046, // 14041 + 5
+			expectedCachedTokens:        13363,
+			expectedCacheCreationTokens: 0,
+		},
+		{
+			name: "without cache tokens",
+			events: `event: message_start
+data: {"type": "message_start", "message": {"id": "msg_abc456", "type": "message", "role": "assistant", "content": [], "model": "claude-sonnet-4-6", "usage": {"input_tokens": 100, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "output_tokens": 1}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"input_tokens": 100, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "output_tokens": 10}}
+
+event: message_stop
+data: {"type": "message_stop"}
+
+`,
+			expectedInputTokens:         100,
+			expectedOutputTokens:        10,
+			expectedTotalTokens:         110,
+			expectedCachedTokens:        0,
+			expectedCacheCreationTokens: 0,
+		},
+		{
+			name: "with cache creation tokens",
+			events: `event: message_start
+data: {"type": "message_start", "message": {"id": "msg_abc789", "type": "message", "role": "assistant", "content": [], "model": "claude-sonnet-4-6", "usage": {"input_tokens": 200, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 5000, "output_tokens": 1}}}
+
+event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
+
+event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Response"}}
+
+event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}
+
+event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"input_tokens": 200, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 5000, "output_tokens": 8}}
+
+event: message_stop
+data: {"type": "message_stop"}
+
+`,
+			expectedInputTokens:         5200, // 200 + 5000 + 0
+			expectedOutputTokens:        8,
+			expectedTotalTokens:         5208, // 5200 + 8
+			expectedCachedTokens:        0,
+			expectedCacheCreationTokens: 5000,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parser := newAnthropicStreamParser("claude-sonnet-4-6")
+
+			// Feed each event block separately (simulating chunked SSE delivery),
+			// with the last chunk marked as endOfStream.
+			chunks := splitSSEEvents(tt.events)
+			var tokenUsage metrics.TokenUsage
+			for i, chunk := range chunks {
+				endOfStream := i == len(chunks)-1
+				_, _, usage, _, err := parser.Process(strings.NewReader(chunk), endOfStream, nil)
+				require.NoError(t, err)
+				if endOfStream {
+					tokenUsage = usage
+				}
+			}
+
+			inputTokens, inputSet := tokenUsage.InputTokens()
+			assert.True(t, inputSet, "InputTokens should be set")
+			assert.Equal(t, tt.expectedInputTokens, inputTokens, "InputTokens mismatch")
+
+			outputTokens, outputSet := tokenUsage.OutputTokens()
+			assert.True(t, outputSet, "OutputTokens should be set")
+			assert.Equal(t, tt.expectedOutputTokens, outputTokens, "OutputTokens mismatch")
+
+			totalTokens, totalSet := tokenUsage.TotalTokens()
+			assert.True(t, totalSet, "TotalTokens should be set")
+			assert.Equal(t, tt.expectedTotalTokens, totalTokens, "TotalTokens mismatch")
+
+			cachedTokens, cachedSet := tokenUsage.CachedInputTokens()
+			assert.True(t, cachedSet, "CachedInputTokens should be set")
+			assert.Equal(t, tt.expectedCachedTokens, cachedTokens, "CachedInputTokens mismatch")
+
+			cacheCreation, cacheCreationSet := tokenUsage.CacheCreationInputTokens()
+			assert.True(t, cacheCreationSet, "CacheCreationInputTokens should be set")
+			assert.Equal(t, tt.expectedCacheCreationTokens, cacheCreation, "CacheCreationInputTokens mismatch")
+		})
+	}
+}
+
+func splitSSEEvents(data string) []string {
+	parts := strings.Split(data, "\n\n")
+	var events []string
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			events = append(events, p+"\n\n")
+		}
+	}
+	return events
 }
