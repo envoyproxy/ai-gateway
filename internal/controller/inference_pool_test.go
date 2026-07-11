@@ -1479,6 +1479,92 @@ func TestInferencePoolController_ReconcileConvergesAfterCacheLag(t *testing.T) {
 	require.GreaterOrEqual(t, gatewayListCalls, 1, "the Gateway list cache lag should affect the first reconcile")
 }
 
+// TestInferencePoolController_FollowUpDoesNotAccumulateStaleMarkers guards
+// against the regression where pendingRequeues was keyed by
+// "namespace/name@generation": a spec change that advanced the generation
+// before the previous generation's follow-up was consumed left a stale
+// per-generation entry that only the delete path (forgetInferencePoolRequeue)
+// could clean up. A long-lived, frequently-updated InferencePool would then
+// accumulate one stale entry per generation for the controller's lifetime.
+//
+// With the key being just "namespace/name" and the generation tracked as the
+// value, each spec change overwrites the single per-object entry, so the map
+// holds at most one entry per InferencePool regardless of how many generations
+// pass while a follow-up is armed.
+func TestInferencePoolController_FollowUpDoesNotAccumulateStaleMarkers(t *testing.T) {
+	c := NewInferencePoolController(
+		requireNewFakeClientWithIndexesAndInferencePool(t),
+		kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent),
+	)
+
+	pool := func(gen int64) *gwaiev1.InferencePool {
+		return &gwaiev1.InferencePool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "long-lived-pool",
+				Namespace:  "default",
+				Generation: gen,
+			},
+		}
+	}
+
+	// Generation 1: first observed sync arms a follow-up.
+	require.True(t, c.needInferencePoolFollowUp(pool(1), false))
+	require.Len(t, c.pendingRequeues, 1, "one marker after the first sync at generation 1")
+
+	// The follow-up never lands: the spec changes to generation 2, then 3,
+	// before the generation-1 follow-up is consumed. Each new generation re-arms
+	// the follow-up.
+	require.True(t, c.needInferencePoolFollowUp(pool(2), false))
+	require.True(t, c.needInferencePoolFollowUp(pool(3), false))
+
+	// Despite three generations passing while a follow-up was armed, only a
+	// single (current-generation) marker exists. The old per-generation keys
+	// (ns/name@1, ns/name@2) must not linger.
+	require.Len(t, c.pendingRequeues, 1, "spec changes must overwrite the marker, not add per-generation entries")
+	require.Equal(t, int64(3), c.pendingRequeues["default/long-lived-pool"])
+
+	// The generation-3 follow-up converges: an unchanged status consumes the
+	// marker and the map is empty again.
+	require.False(t, c.needInferencePoolFollowUp(pool(3), false))
+	require.Empty(t, c.pendingRequeues, "the marker is cleared once the status is confirmed stable")
+
+	// A later generation re-arms cleanly from an empty map, proving no stale
+	// entries survived to be cleaned up only by the delete path.
+	require.True(t, c.needInferencePoolFollowUp(pool(4), false))
+	require.Len(t, c.pendingRequeues, 1)
+	require.Equal(t, int64(4), c.pendingRequeues["default/long-lived-pool"])
+}
+
+// TestInferencePoolController_ForgetInferencePoolRequeue verifies the delete
+// path clears the single per-object marker so the map does not retain an entry
+// for a deleted InferencePool.
+func TestInferencePoolController_ForgetInferencePoolRequeue(t *testing.T) {
+	c := NewInferencePoolController(
+		requireNewFakeClientWithIndexesAndInferencePool(t),
+		kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent),
+	)
+
+	require.True(t, c.needInferencePoolFollowUp(&gwaiev1.InferencePool{
+		ObjectMeta: metav1.ObjectMeta{Name: "pool-a", Namespace: "ns-a", Generation: 1},
+	}, false))
+	require.True(t, c.needInferencePoolFollowUp(&gwaiev1.InferencePool{
+		ObjectMeta: metav1.ObjectMeta{Name: "pool-b", Namespace: "ns-b", Generation: 7},
+	}, false))
+	require.Len(t, c.pendingRequeues, 2)
+
+	// Forgetting pool-a removes only its marker; pool-b is untouched.
+	c.forgetInferencePoolRequeue("ns-a", "pool-a")
+	require.Len(t, c.pendingRequeues, 1)
+	require.Contains(t, c.pendingRequeues, "ns-b/pool-b")
+
+	// Forgetting a non-existent pool is a no-op.
+	c.forgetInferencePoolRequeue("ns-a", "pool-a")
+	require.Len(t, c.pendingRequeues, 1)
+
+	c.forgetInferencePoolRequeue("ns-b", "pool-b")
+	require.Empty(t, c.pendingRequeues)
+}
+
 func TestInferencePoolController_ValidateExtensionReference_EdgeCases(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexesAndInferencePool(t)
 	c := NewInferencePoolController(fakeClient, kubefake.NewSimpleClientset(), ctrl.Log, make(chan event.GenericEvent))

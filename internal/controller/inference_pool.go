@@ -49,8 +49,10 @@ type InferencePoolController struct {
 	// requeueing once even when the status did not change, guarantees that a
 	// follow-up reconcile re-reads the (now converged) cache.
 	//
-	// The key is "namespace/name@generation" so a spec change re-arms the
-	// follow-up even after a previous generation reached steady state.
+	// The key is "namespace/name" and the value is the generation at which the
+	// follow-up was armed. A spec change (new generation) overwrites the value,
+	// re-arming the follow-up even after a previous generation reached steady
+	// state, without leaving stale per-generation entries behind.
 	pendingRequeues   map[string]int64
 	pendingRequeuesMu sync.Mutex
 }
@@ -113,30 +115,33 @@ func (c *InferencePoolController) Reconcile(ctx context.Context, req reconcile.R
 	return ctrl.Result{}, nil
 }
 
-// inferencePoolRequeueKey uniquely identifies an InferencePool at a particular
-// generation, so a spec change re-arms the convergence follow-up even after a
-// previous generation reached steady state.
+// inferencePoolRequeueKey uniquely identifies an InferencePool by namespace
+// and name. The generation is tracked as the map value rather than part of the
+// key, so a spec change overwrites the existing entry and re-arms the
+// convergence follow-up without leaving stale per-generation entries behind.
 func inferencePoolRequeueKey(inferencePool *gwaiev1.InferencePool) string {
-	return fmt.Sprintf("%s/%s@%d", inferencePool.Namespace, inferencePool.Name, inferencePool.Generation)
+	return fmt.Sprintf("%s/%s", inferencePool.Namespace, inferencePool.Name)
 }
 
 // needInferencePoolFollowUp records the outcome of a successful sync at the
 // InferencePool's current generation and reports whether a short follow-up
 // reconcile is needed for cache convergence.
 //
-// The per-generation marker is armed when either the status changed or this is
-// the first observed sync at the generation; it is consumed when a subsequent
-// sync observes an unchanged status, at which point the controller stops
-// requeueing until the status changes or the generation advances.
+// The per-object marker (value = generation) is armed when either the status
+// changed or this is the first observed sync at the generation; it is consumed
+// when a subsequent sync observes an unchanged status, at which point the
+// controller stops requeueing until the status changes or the generation
+// advances.
 func (c *InferencePoolController) needInferencePoolFollowUp(inferencePool *gwaiev1.InferencePool, changed bool) bool {
 	c.pendingRequeuesMu.Lock()
 	defer c.pendingRequeuesMu.Unlock()
 	key := inferencePoolRequeueKey(inferencePool)
-	gen, ok := c.pendingRequeues[key]
+	armedGen, ok := c.pendingRequeues[key]
 
 	// A spec change (or a marker that never existed) means this generation has
-	// not yet been confirmed stable: arm a follow-up.
-	if !ok || gen != inferencePool.Generation {
+	// not yet been confirmed stable: arm a follow-up. Storing the current
+	// generation overwrites any stale marker from a previous generation.
+	if !ok || armedGen != inferencePool.Generation {
 		c.pendingRequeues[key] = inferencePool.Generation
 		return true
 	}
@@ -152,19 +157,13 @@ func (c *InferencePoolController) needInferencePoolFollowUp(inferencePool *gwaie
 	return false
 }
 
-// forgetInferencePoolRequeue drops any pending convergence markers for the
+// forgetInferencePoolRequeue drops any pending convergence marker for the
 // InferencePool, called when it has been deleted so the map does not grow
-// unbounded over the controller's lifetime. Markers are keyed by generation, so
-// every matching entry (any generation) is removed.
+// unbounded over the controller's lifetime.
 func (c *InferencePoolController) forgetInferencePoolRequeue(namespace, name string) {
 	c.pendingRequeuesMu.Lock()
 	defer c.pendingRequeuesMu.Unlock()
-	prefix := fmt.Sprintf("%s/%s@", namespace, name)
-	for key := range c.pendingRequeues {
-		if strings.HasPrefix(key, prefix) {
-			delete(c.pendingRequeues, key)
-		}
-	}
+	delete(c.pendingRequeues, fmt.Sprintf("%s/%s", namespace, name))
 }
 
 // syncInferencePool is the main logic for reconciling the InferencePool resource.
