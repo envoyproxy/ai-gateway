@@ -75,6 +75,17 @@ func TestDecodeContentIfNeeded(t *testing.T) {
 			wantEncoding: "",
 			wantErr:      true,
 		},
+		{
+			// An empty body with Content-Encoding: gzip must not error. gzip.NewReader
+			// over zero bytes returns io.EOF; treating that as a decode failure aborts
+			// an otherwise-successful upstream response.
+			name:         "empty gzip body",
+			body:         []byte{},
+			encoding:     "gzip",
+			wantEncoded:  false,
+			wantEncoding: "",
+			wantErr:      false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

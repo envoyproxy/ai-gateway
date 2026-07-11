@@ -95,13 +95,13 @@ type QuotaDefinition struct {
 	// If no expression is specified the "total_tokens" value is used.
 	// For example:
 	//
-	//  * "input_tokens + cached_input_tokens * 0.1 + output_tokens * 6"
+	//  "input_tokens + cached_input_tokens + output_tokens"
 	//
 	// +optional
 	CostExpression *string `json:"costExpression,omitempty"`
 	// The "Mode" determines how quota is charged to the "DefaultBucket" and matching "BucketRules".
 	// In the "shared" mode the quota is charged to all matching "BucketRules" AND the "DefaultBucket"
-	// and request is allowed only if the quota is available in all matching buckets.
+	// and request is allowed only if the quota is available in at least one matching buckets.
 	// Defaults to "Shared".
 	//
 	// +optional
