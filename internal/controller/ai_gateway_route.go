@@ -29,7 +29,9 @@ import (
 )
 
 const (
-	managedByLabel                      = "app.kubernetes.io/managed-by"
+	managedByLabel = "app.kubernetes.io/managed-by"
+	// managedByValue is the value stamped on the managedByLabel of resources created by this operator.
+	managedByValue                      = "envoy-ai-gateway"
 	hostRewriteHTTPFilterName           = "ai-eg-host-rewrite"
 	routeNotFoundResponseHTTPFilterName = "ai-eg-route-not-found-response"
 	aigatewayUUIDAnnotationKey          = "aigateway.envoyproxy.io/uuid"
