@@ -136,6 +136,13 @@ controller:
   imagePullSecrets: []
   podAnnotations: {}
   podLabels: {}
+  podDisruptionBudget:
+    enabled: false
+    annotations: {}
+    # Only one of minAvailable or maxUnavailable can be set.
+    # If maxUnavailable is set, it takes precedence over minAvailable.
+    minAvailable: 1
+    # maxUnavailable: 1
   podSecurityContext: {}
   securityContext: {}
   # DEPRECATED: podEnv will be removed after v0.3. Use controller.extraEnvVars instead.
