@@ -23,6 +23,9 @@ spec:
       {{- end }}
       labels:
         {{- include "ai-gateway-helm.controller.selectorLabels" . | nindent 8 }}
+        {{- with .Values.controller.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       {{- with (include "ai-gateway-helm.controller.imagePullSecrets" .) }}
       imagePullSecrets:
