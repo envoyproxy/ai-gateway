@@ -1,4 +1,4 @@
-# Per-Rule Router-Phase ext_proc via an `AIGatewayRouteFilter` CRD
+# Router-Phase ext_proc via an `AIGatewayExtensionPolicy` CRD
 
 ## Table of Contents
 
@@ -13,15 +13,15 @@
 - [Goals / Non-Goals](#goals--non-goals)
 - [Proposal](#proposal)
   - [Overview](#overview)
-  - [The `AIGatewayRouteFilter` CRD](#the-aigatewayroutefilter-crd)
-  - [Attaching a filter to a rule](#attaching-a-filter-to-a-rule)
-  - [`clientMatches`: gating on the first pass](#clientmatches-gating-on-the-first-pass)
+  - [The `AIGatewayExtensionPolicy` CRD](#the-aigatewayextensionpolicy-crd)
+  - [Attaching a policy via `targetRefs`](#attaching-a-policy-via-targetrefs)
+  - [`headers`: gating the composite](#headers-gating-the-composite)
   - [Request flow](#request-flow)
   - [How the ext_proc is added at `PostTranslateModify`](#how-the-ext_proc-is-added-at-posttranslatemodify)
-  - [Building the `clientMatches → extProc` mapping (code)](#building-the-clientmatches--extproc-mapping-code)
-  - [Scoping to the catch-all route](#scoping-to-the-catch-all-route)
+  - [Building the policy → route mapping (code)](#building-the-policy--route-mapping-code)
+  - [Enablement: targeted routes and catch-all](#enablement-targeted-routes-and-catch-all)
   - [Composite placement vs. per-route configuration](#composite-placement-vs-per-route-configuration)
-  - [Filter lifecycle: add, update, and remove](#filter-lifecycle-add-update-and-remove)
+  - [Policy lifecycle: add, update, and remove](#policy-lifecycle-add-update-and-remove)
 - [Code Changes](#code-changes)
   - [1. API types (`api/v1beta1`)](#1-api-types-apiv1beta1)
   - [2. Controller (`internal/controller`)](#2-controller-internalcontroller)
@@ -38,20 +38,23 @@
 
 ## Summary
 
-This proposal introduces a new CRD, **`AIGatewayRouteFilter`**, that describes a
+This proposal introduces a new CRD, **`AIGatewayExtensionPolicy`**, that describes a
 router-phase `ext_proc` (modeled on the `extProc` field of Envoy Gateway's
-`EnvoyExtensionPolicy`) and can be **attached to an individual rule of an
-`AIGatewayRoute`**. When a filter is attached to a rule, the rule's `matches`
-become **`clientMatches`** — the client-visible headers that gate the filter.
+`EnvoyExtensionPolicy`) and **attaches to one or more `AIGatewayRoute`s via
+`targetRefs`** (the Gateway API policy-attachment pattern, like `QuotaPolicy` /
+`EnvoyExtensionPolicy`). The policy carries its own **`headers`** list (header
+name + value); those header values gate the wrapped ext_proc.
 
 The AI Gateway extension server, during its existing `PostTranslateModify` phase,
-places a bare `envoy.filters.http.composite` filter in the listener HCM filter
-chain **ahead of the AI Gateway `ext_proc`**, and then attaches a
-**`CompositePerRoute`** — whose match tree is keyed on the `clientMatches` and whose
-`ExecuteFilterAction` delegates to the described `ext_proc` — **only on the
-catch-all (`route-not-found`) routes** of every AIGatewayRoute-generated
-`HTTPRoute`, which is exactly where a request lives on its first pass, before
-`x-ai-eg-model` exists and before routing is finalized. (See
+inserts a `envoy.filters.http.composite` filter (added **disabled**) into the
+listener HCM filter chain **ahead of the AI Gateway `ext_proc`**, and then attaches
+a **`CompositePerRoute`** — whose match tree is keyed on the policy's `headers` and
+whose `ExecuteFilterAction` delegates to the described `ext_proc`. Attaching the
+per-route config both **enables** the disabled composite for that route and supplies
+its match tree. The composite is enabled on **all rule routes of the targeted
+`AIGatewayRoute`(s)** and on **all catch-all (`route-not-found`) routes** (so a
+request is covered on its first pass, before `x-ai-eg-model` exists and before
+routing is finalized). (See
 [Composite placement vs. per-route configuration](#composite-placement-vs-per-route-configuration)
 for why `CompositePerRoute` — not `ExtensionWithMatcher` — is the mechanism that
 makes per-route enablement possible.)
@@ -59,8 +62,8 @@ makes per-route enablement possible.)
 This is a **declarative, name-based, validated** replacement for the
 `EnvoyPatchPolicy` composite-wrap workaround: it keeps the "run a second ext_proc
 before the AI Gateway decides the route" capability, but removes the index-pinned
-raw-JSON fragility, and — because the composite gates on the rule's client headers
-— shrinks the blast radius from "all catch-all traffic" to "only traffic carrying
+raw-JSON fragility, and — because the composite gates on the policy's `headers` —
+shrinks the blast radius from "all catch-all traffic" to "only traffic carrying
 those headers."
 
 ## Background
@@ -105,8 +108,8 @@ unvalidated, version-fragile, and requires manual filter ordering via
 
 ## Problem Statement
 
-We want a **first-class, per-rule** way to run a router-phase `ext_proc` before the
-AI Gateway makes its routing decision, that:
+We want a **first-class, policy-attached** way to run a router-phase `ext_proc`
+before the AI Gateway makes its routing decision, that:
 
 1. does not require hand-written `EnvoyPatchPolicy` JSON or manual filter ordering,
 2. is validated and name-based (survives model/route churn and EG upgrades), and
@@ -117,8 +120,10 @@ AI Gateway makes its routing decision, that:
 
 **Goals**
 
-- A CRD describing a router-phase `ext_proc`, attachable to a specific rule.
-- Header-gated execution on the first pass, using the rule's own client matches.
+- A CRD describing a router-phase `ext_proc`, attached to `AIGatewayRoute`(s) via
+  `targetRefs`.
+- Header-gated execution using the policy's own `headers` list, evaluated on the
+  first (catch-all) pass and on the targeted rule routes.
 - Reuse the existing catch-all / `ClearRouteCache` routing mechanics unchanged.
 
 **Non-Goals**
@@ -133,40 +138,52 @@ AI Gateway makes its routing decision, that:
 
 ### Overview
 
-Add an `AIGatewayRouteFilter` CRD (an `ext_proc` description). Reference it from an
-`AIGatewayRoute` rule via `filterRefs`. The rule's `matches` become the
-`clientMatches` for that filter. At `PostTranslateModify`, the extension server
-resolves the mapping and injects a **header-gated composite `ext_proc`** into the
-listener, enabled on the catch-all routes only, ordered before the AI Gateway
-`ext_proc`.
+Add an `AIGatewayExtensionPolicy` CRD (an `ext_proc` description + `headers` gate +
+`targetRefs`). It attaches to `AIGatewayRoute`(s) via `targetRefs`. At
+`PostTranslateModify`, the extension server resolves the mapping and injects a
+**header-gated composite `ext_proc`** into the listener (added disabled, ordered
+before the AI Gateway `ext_proc`), then enables it on the targeted routes' rule
+routes and on all catch-all routes.
 
 ```
-  AIGatewayRoute rule[i]                         AIGatewayRouteFilter "sr"
-  ┌───────────────────────────┐                  ┌───────────────────────────┐
-  │ matches:                   │  filterRefs: sr  │ spec.extProc:              │
-  │   headers:                 │ ───────────────► │   backendRefs: [sr-svc]    │
-  │   - x-tenant-id: premium   │                  │   processingMode: {...}    │
-  │   - x-ai-eg-model: gpt-4o  │                  │   messageTimeout: 250ms    │
-  └───────────────────────────┘                  └───────────────────────────┘
-             │
-             │ clientMatches = rule.matches MINUS x-ai-eg-model
-             ▼
-       (x-tenant-id: premium)  ── gates the composite ext_proc on the catch-all
+  AIGatewayExtensionPolicy "sr"                         AIGatewayRoute "chat"
+  ┌────────────────────────────────┐                    ┌──────────────────────┐
+  │ spec.targetRefs:                │  targets           │ rules:               │
+  │   - kind: AIGatewayRoute        │ ─────────────────► │   - matches: [...]    │
+  │     name: chat                  │                    │     backendRefs:[...] │
+  │ spec.headers:                   │                    │   - ...               │
+  │   - name: x-tenant-id           │                    └──────────────────────┘
+  │     value: premium              │
+  │ spec.extProc:                   │   headers gate the composite ext_proc that
+  │   backendRefs: [sr-svc]         │   is enabled on chat's rule routes + all
+  │   processingMode: {...}         │   catch-all routes.
+  └────────────────────────────────┘
 ```
 
-### The `AIGatewayRouteFilter` CRD
+### The `AIGatewayExtensionPolicy` CRD
 
-A new namespaced CRD in `api/v1beta1`, whose spec reuses Envoy Gateway's `ExtProc`
-type so that the ext_proc semantics (backend refs, processing mode, timeouts,
-metadata options) match `EnvoyExtensionPolicy` 1:1:
+A new namespaced CRD in `api/v1beta1`. Its spec reuses Envoy Gateway's `ExtProc`
+type (so ext_proc semantics — backend refs, processing mode, timeouts, metadata
+options — match `EnvoyExtensionPolicy` 1:1), adds a `targetRefs` list (policy
+attachment) and a `headers` gate:
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1beta1
-kind: AIGatewayRouteFilter
+kind: AIGatewayExtensionPolicy
 metadata:
   name: semantic-router
   namespace: default
 spec:
+  # Policy attachment: which AIGatewayRoute(s) this applies to.
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIGatewayRoute
+      name: chat
+  # Gate: the wrapped ext_proc runs only when ALL these request headers match.
+  headers:
+    - name: x-tenant-id
+      value: premium
+  # The ext_proc to run (same shape as EnvoyExtensionPolicy.spec.extProc).
   extProc:
     backendRefs:
       - name: semantic-router-svc
@@ -177,43 +194,27 @@ spec:
     messageTimeout: 250ms
 ```
 
-### Attaching a filter to a rule
+### Attaching a policy via `targetRefs`
 
-`AIGatewayRouteRule` gains a `filterRefs` field (a local, optionally-namespaced
-reference), mirroring the shape of `backendRefs`:
+Attachment is expressed on the **policy** (not the route): `spec.targetRefs` selects
+one or more `AIGatewayRoute`s, following the Gateway API policy-attachment pattern
+used by `QuotaPolicy` and `EnvoyExtensionPolicy`. `AIGatewayRoute` and its rules are
+**unchanged** — no `filterRefs` field is added. A policy applies to *all* rules of
+each targeted route; there is no per-rule attachment.
 
-```yaml
-apiVersion: aigateway.envoyproxy.io/v1beta1
-kind: AIGatewayRoute
-spec:
-  rules:
-    - matches:
-        - headers:
-            - name: x-tenant-id
-              value: premium
-      filterRefs:
-        - name: semantic-router          # AIGatewayRouteFilter in the same namespace
-      backendRefs:
-        - name: gpt-4o-backend
-```
+### `headers`: gating the composite
 
-Route/catch-all **generation is unchanged**; `filterRefs` only informs the
-extension server what to inject and how to gate it.
+The gate is the policy's explicit `headers` list (each a `name` + `value`). The
+composite runs the wrapped ext_proc only when **all** listed request headers match.
+Because these are ordinary client-supplied request headers, they are evaluable on
+the **first pass**, while the request is still on the catch-all and `x-ai-eg-model`
+does not yet exist — which is exactly the window a router-phase mutation needs.
 
-### `clientMatches`: gating on the first pass
-
-The gate must be evaluable on the **first pass**, while the request is on the
-catch-all and `x-ai-eg-model` does not yet exist. Therefore `clientMatches` is
-defined as:
-
-```
-clientMatches(rule) = rule.matches.headers  MINUS  { x-ai-eg-model }
-```
-
-i.e., only the **client-visible** headers. A rule whose only match is
-`x-ai-eg-model` has no first-pass gate; attaching a filter to such a rule is
-rejected by validation (see Open Questions) rather than silently degrading to
-"all traffic."
+An **empty `headers`** list means "no gate" — the ext_proc runs for *all* traffic on
+the enabled routes. This is allowed (useful for policies meant to apply to every
+request on a route, e.g. auth or PII redaction), but on the shared catch-all it
+re-widens the blast radius, so validation should warn/require an explicit opt-in
+(see Open Questions).
 
 ### Request flow
 
@@ -250,31 +251,34 @@ The AI Gateway extension server already patches xDS in `PostTranslateModify`
 Gateway router `ext_proc`, and quota rate limiting. We add one more step there,
 structured like `maybeInjectQuotaRateLimiting`:
 
-1. **Fetch the mapping.** List `AIGatewayRoute`s and `AIGatewayRouteFilter`s via
-   `s.k8sClient`. For each rule with `filterRefs`, build an entry:
-   `{ filterName, clientMatches, extProc, clusterName, ownerRoute }`.
-2. **Ensure the SR service cluster exists.** Because the backend is referenced from
-   *our* CRD, Envoy Gateway does not synthesize a cluster for it. We build one the
-   same way `buildQuotaRateLimitCluster` / the EPP clusters are built, and append
+1. **Fetch the mapping.** List `AIGatewayExtensionPolicy`s (and, to resolve
+   targets, `AIGatewayRoute`s) via `s.k8sClient`. For each policy `targetRef` that
+   selects an `AIGatewayRoute`, build an entry:
+   `{ policyName, headers, extProc, clusterName }` keyed by the target route.
+2. **Ensure the ext_proc service cluster exists.** Because the backend is referenced
+   from *our* CRD, Envoy Gateway does not synthesize a cluster for it. We build one
+   the same way `buildQuotaRateLimitCluster` / the EPP clusters are built, and append
    to `req.Clusters` (dedup like the `extProcUDSExist` guard).
-3. **Insert a bare `Composite` filter before the AI Gateway `ext_proc`.** Add a
-   single `envoy.filters.http.composite` (`Composite{}`, no matcher) into the HCM
-   filter chain, reusing the ordering logic from `insertRouterLevelAIGatewayExtProc`
-   / `insertAIGatewayExtProcFilter`. With no per-route config it is a pass-through
-   no-op, so it is safe to have present on every AIG listener. **Do not** wrap it in
+3. **Insert a `Composite` filter (disabled) before the AI Gateway `ext_proc`.** Add
+   a single `envoy.filters.http.composite` (`Composite{}`, no matcher) into the HCM
+   filter chain with `disabled: true`, reusing the ordering logic from
+   `insertRouterLevelAIGatewayExtProc` / `insertAIGatewayExtProcFilter`. A disabled
+   filter does nothing until a route supplies per-route config, which both enables
+   and configures it — exactly how the AI Gateway ext_proc itself is inserted
+   disabled-at-HCM then enabled per route. **Do not** wrap it in
    `ExtensionWithMatcher` — that makes the match tree gateway-global and cannot be
    scoped per route.
 4. **Build the per-route `CompositePerRoute`.** For each entry, construct an
    `extprocv3.ExternalProcessor` from `spec.extProc`, wrap it in a
    `filters.http.composite.v3.ExecuteFilterAction`, and place it as the `on_match`
    action of a `CompositePerRoute.matcher` whose `HttpRequestHeaderMatchInput`
-   predicates come from `clientMatches`.
-5. **Attach the `CompositePerRoute` on the catch-all only** (next section) via
-   `TypedPerFilterConfig[<composite-name>]`. On the header-keyed routes the composite
-   has no per-route config and is a no-op, so the delegated ext_proc runs at most
-   once — on the first (catch-all) pass.
+   predicates come from the policy's `headers`.
+5. **Enable the `CompositePerRoute` on the targeted rule routes and all catch-all
+   routes** (next section) via `TypedPerFilterConfig[<composite-name>]`. Supplying
+   this per-route config re-enables the disabled composite for that route. On routes
+   with no per-route config the composite stays disabled (pure no-op).
 
-### Building the `clientMatches → extProc` mapping (code)
+### Building the policy → route mapping (code)
 
 Step 1 above is the correlation step, and it is worth spelling out because it is the
 part reviewers most need to agree on. The extension server has no direct pointer
@@ -282,146 +286,133 @@ from an xDS route back to an `AIGatewayRoute`; instead it relies on the naming
 convention that the generated `HTTPRoute` (and therefore the xDS route config) is
 named after the `AIGatewayRoute` (`httproute/<namespace>/<name>/rule/<index>`, the
 same convention `maybeModifyCluster` already parses). So the mapping is keyed by
-`"<namespace>/<aiGatewayRouteName>"`, which lets us find the catch-all routes to
-enable while walking route configs.
+`"<namespace>/<aiGatewayRouteName>"`, which lets us find the routes to enable while
+walking route configs.
 
 ```go
-// routeFilterEntry is one resolved (rule -> filter) attachment. Multiple entries on
-// the same AIGatewayRoute share ONE bare composite filter and are combined into a
-// single CompositePerRoute whose matcher has one arm per entry (keyed by that
-// entry's clientMatches). See the note after this snippet.
-type routeFilterEntry struct {
-    // name is the per-attachment delegate name used for the ExecuteFilterAction's
-    // inner filter (unique per entry). The composite filter name and the per-route
-    // TypedPerFilterConfig key are the SHARED bare composite name, not this.
+// extensionPolicyEntry is one resolved (policy -> targeted AIGatewayRoute)
+// attachment. Multiple entries on the same route share ONE composite filter and are
+// combined into a single CompositePerRoute whose matcher has one arm per entry
+// (keyed by that entry's headers). See the note after this snippet.
+type extensionPolicyEntry struct {
+    // name is the per-policy delegate name used for the ExecuteFilterAction's inner
+    // filter (unique per policy). The composite filter name and the per-route
+    // TypedPerFilterConfig key are the SHARED composite name, not this.
     name string
-    // clientMatches are the rule's client-visible header matches (x-ai-eg-model
-    // removed) used to gate the composite on the first (catch-all) pass.
-    clientMatches []gwapiv1.HTTPHeaderMatch
-    // extProc is copied verbatim from the AIGatewayRouteFilter spec.
+    // headers are the policy's gate headers used to gate the composite. Present on
+    // both the first (catch-all) pass and the rule routes.
+    headers []aigv1b1.AIGatewayExtensionPolicyHeaderMatch
+    // extProc is copied verbatim from the AIGatewayExtensionPolicy spec.
     extProc egv1a1.ExtProc
     // clusterName is the Envoy cluster synthesized for the ext_proc backend.
     clusterName string
 }
 
-// buildRouteFilterEntries lists AIGatewayRoutes + AIGatewayRouteFilters and returns
-// a map keyed by "namespace/aiGatewayRouteName" -> entries. Mirrors the shape of
-// buildQuotaBackendPolicies (quota_ratelimit.go) and reads via s.k8sClient like
-// listQuotaPolicies / maybeModifyCluster.
-func (s *Server) buildRouteFilterEntries(ctx context.Context) (map[string][]routeFilterEntry, error) {
-    var routes aigv1b1.AIGatewayRouteList
-    if err := s.k8sClient.List(ctx, &routes); err != nil {
+// buildExtensionPolicyEntries lists AIGatewayExtensionPolicies and returns a map
+// keyed by "namespace/aiGatewayRouteName" -> entries (one per targetRef). Mirrors
+// the shape of buildQuotaBackendPolicies (quota_ratelimit.go) and reads via
+// s.k8sClient like listQuotaPolicies / maybeModifyCluster.
+func (s *Server) buildExtensionPolicyEntries(ctx context.Context) (map[string][]extensionPolicyEntry, error) {
+    var policies aigv1b1.AIGatewayExtensionPolicyList
+    if err := s.k8sClient.List(ctx, &policies); err != nil {
         return nil, err
     }
-    out := make(map[string][]routeFilterEntry)
-    for i := range routes.Items {
-        route := &routes.Items[i]
-        for ri := range route.Spec.Rules {
-            rule := &route.Spec.Rules[ri]
-            if len(rule.FilterRefs) == 0 {
+    out := make(map[string][]extensionPolicyEntry)
+    for i := range policies.Items {
+        p := &policies.Items[i]
+        for _, ref := range p.Spec.TargetRefs {
+            if !isAIGatewayRouteTargetRef(ref) { // group+kind == AIGatewayRoute
                 continue
             }
-            // clientMatches must be evaluable on the first pass (no x-ai-eg-model yet).
-            clientMatches := clientMatchHeaders(rule)
-            if len(clientMatches) == 0 {
-                // No first-pass gate; validation should have rejected this. Skip so a
-                // misconfig can never widen to "all catch-all traffic".
-                s.log.Info("skipping filter attachment with empty clientMatches",
-                    "route", route.Name, "ruleIndex", ri)
-                continue
-            }
-            for _, ref := range rule.FilterRefs {
-                ns := route.Namespace
-                if ref.Namespace != nil && *ref.Namespace != "" {
-                    ns = string(*ref.Namespace)
-                }
-                var f aigv1b1.AIGatewayRouteFilter
-                if err := s.k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: ref.Name}, &f); err != nil {
-                    if apierrors.IsNotFound(err) {
-                        // Filter (or its ref) was removed: simply do not inject it.
-                        s.log.Info("AIGatewayRouteFilter not found, skipping",
-                            "namespace", ns, "name", ref.Name)
-                        continue
-                    }
-                    return nil, err
-                }
-                key := route.Namespace + "/" + route.Name
-                out[key] = append(out[key], routeFilterEntry{
-                    name:          routeFilterName(ns, ref.Name, route.Name, ri),
-                    clientMatches: clientMatches,
-                    extProc:       f.Spec.ExtProc,
-                    clusterName:   routeFilterClusterName(ns, ref.Name),
-                })
-            }
+            // targetRefs are LocalPolicyTargetReference: the route lives in the
+            // policy's own namespace.
+            key := p.Namespace + "/" + string(ref.Name)
+            out[key] = append(out[key], extensionPolicyEntry{
+                name:        extensionPolicyName(p.Namespace, p.Name),
+                headers:     p.Spec.Headers,
+                extProc:     p.Spec.ExtProc,
+                clusterName: extensionPolicyClusterName(p.Namespace, p.Name),
+            })
         }
     }
     return out, nil
 }
-
-// clientMatchHeaders returns the rule's header matches with x-ai-eg-model removed,
-// since that header does not exist on the first (catch-all) pass.
-func clientMatchHeaders(rule *aigv1b1.AIGatewayRouteRule) []gwapiv1.HTTPHeaderMatch {
-    var out []gwapiv1.HTTPHeaderMatch
-    for mi := range rule.Matches {
-        for _, h := range rule.Matches[mi].Headers {
-            if string(h.Name) == internalapi.ModelNameHeaderKeyDefault { // "x-ai-eg-model"
-                continue
-            }
-            out = append(out, h)
-        }
-    }
-    return out
-}
 ```
 
-The consumer then walks `req.Routes`, and for each route config whose name resolves
-to a key present in the map, enables + gates the corresponding entries on that
-config's catch-all (`route-not-found`) route:
+The consumer then walks `req.Routes`. For each route config it enables the composite
+on (a) the **rule routes** of the targeted `AIGatewayRoute` with that route's own
+policies, and (b) **every catch-all (`route-not-found`) route** with **all** policies
+attached to *any* `AIGatewayRoute` — because on the first pass a request funnels
+through whatever single catch-all survives Gateway-API conflict resolution,
+regardless of which route eventually owns it:
 
 ```go
+// allEntries is the union of every policy attachment across all routes, deduped by
+// policy name. Used to enable ALL policies on every catch-all route.
+allEntries := unionEntries(entriesByRoute)
+
 for _, routeCfg := range req.Routes {
     key := aiGatewayRouteKeyFromRouteConfigName(routeCfg.Name) // "ns/name" or ""
-    entries := entriesByRoute[key]
-    if len(entries) == 0 {
-        continue
-    }
+    routeEntries := entriesByRoute[key]
     for _, vh := range routeCfg.VirtualHosts {
         for _, r := range vh.Routes {
-            if !isCatchAllRoute(r) { // route name / metadata carries "route-not-found"
+            var entries []extensionPolicyEntry
+            switch {
+            case isCatchAllRoute(r): // route name / metadata carries "route-not-found"
+                entries = allEntries // all policies on every catch-all (first pass)
+            case len(routeEntries) > 0:
+                entries = routeEntries // policies targeting this route, on its rules
+            }
+            if len(entries) == 0 {
                 continue
             }
-            // All entries for this route collapse into ONE CompositePerRoute whose
-            // matcher has one arm per entry (gate = entry.clientMatches, action =
-            // ExecuteFilterAction(entry.extProc)). Keyed by the shared bare composite
-            // filter name, since typed_per_filter_config must key on a listener filter.
+            // Entries collapse into ONE CompositePerRoute whose matcher has one arm
+            // per entry (gate = entry.headers, action = ExecuteFilterAction(entry.extProc)).
+            // Keyed by the shared composite filter name, since typed_per_filter_config
+            // must key on a listener filter. Supplying it re-enables the disabled composite.
             cpr := buildCompositePerRoute(entries) // matcher_list with len(entries) arms
-            setTypedPerFilterConfig(r, bareCompositeFilterName, cpr)
+            setTypedPerFilterConfig(r, extensionPolicyCompositeName, cpr)
         }
     }
 }
 ```
 
 Because `typed_per_filter_config` is keyed by filter name and there is a single
-bare composite filter per listener, several attachments on the same catch-all route
-must be merged into one `CompositePerRoute` with multiple matcher arms (not multiple
-map entries). This is a natural fit: the `matcher_list` evaluates arms in order and
-runs the first matching `ExecuteFilterAction`.
+composite filter per listener, several policies enabled on the same route must be
+merged into one `CompositePerRoute` with multiple matcher arms (not multiple map
+entries). This is a natural fit: the `matcher_list` evaluates arms in order and runs
+the first matching `ExecuteFilterAction`.
 
 Because the map is rebuilt from the live CRDs on every `PostTranslateModify`, the
 injected set is always **derived state** — there is nothing to reconcile or delete
 by hand (see the lifecycle section below).
 
-### Scoping to the catch-all route
+### Enablement: targeted routes and catch-all
 
-The `clientMatches` gate matches on **client** headers, which are present on *both*
-the first-pass (catch-all) and the second-pass (header-keyed) route. To avoid
-running the SR ext_proc twice, the `CompositePerRoute` is attached via
-`TypedPerFilterConfig` **only on the `route-not-found` catch-all routes** of
-AIGatewayRoute-generated HTTPRoutes, using the same route-identification approach as
-`enableRouterLevelAIGatewayExtProcOnRoute` / `isRouteGeneratedByAIGateway`. The
-catch-all rule carries `Name: "route-not-found"`, which surfaces in the xDS route
-name and is matched on. On every other route the bare composite has no per-route
-config and is a pass-through, so the delegated ext_proc runs at most once.
+The composite is added **disabled** at the HCM, then explicitly enabled per route by
+attaching a `CompositePerRoute` via `TypedPerFilterConfig`. Enablement is applied to:
+
+- **All rule routes of every targeted `AIGatewayRoute`** — so the policy applies to
+  the route regardless of which pass a request is on, using the same
+  route-identification approach as `enableRouterLevelAIGatewayExtProcOnRoute` /
+  `isRouteGeneratedByAIGateway`.
+- **All `route-not-found` catch-all routes** — with *every* attached policy (not
+  only the target route's), because on the first pass all traffic funnels through
+  the single surviving catch-all (same prefix, no headers) after Gateway-API
+  conflict resolution. Missing a policy there would make it unreachable on the first
+  pass. The catch-all rule carries `Name: "route-not-found"`, which surfaces in the
+  xDS route name and is matched on.
+
+On any route without a `CompositePerRoute` the composite stays disabled and is a pure
+no-op.
+
+> **Double execution.** Because the composite is enabled on both the catch-all
+> (first pass) and the header-keyed rule routes (second pass, after
+> `ClearRouteCache`), and the `headers` gate matches on client headers present on
+> both passes, the wrapped ext_proc can run **twice** for a single request. Policies
+> attached this way should therefore be **idempotent**, or gate themselves with an
+> "already-processed" sentinel header. This is an intentional trade-off of the broad
+> enablement requested here (apply to all routes + catch-all); see Open Questions.
 
 ### Composite placement vs. per-route configuration
 
@@ -441,15 +432,17 @@ behavior"):
 | `ExtensionWithMatcher{ xds_matcher }` wrapping the composite | listener/HCM (gateway-level) | only via `ExtensionWithMatcherPerRoute` *override*; wrapper anchored at listener |
 | **bare `Composite{}` in `http_filters` + `CompositePerRoute{ matcher }`** | **the route's `typed_per_filter_config`** | **yes — this is the per-route API** |
 
-This proposal uses the **second** mechanism. The bare `envoy.filters.http.composite`
-filter is present in the HCM chain (its *presence* is gateway-level — which is true
-of every per-route filter: the filter must exist on the listener for a route's
-`typed_per_filter_config` to bind, e.g. the AI Gateway ext_proc itself is inserted
-at the listener and enabled per route). The **match tree and the `ExecuteFilterAction`
-that runs the SR ext_proc live in a `CompositePerRoute` attached to the catch-all
-route only.** `CompositePerRoute.matcher` is documented as the "override of the match
-tree for this route," and `envoy.filters.http.ext_proc` is a valid
-`ExecuteFilterAction` delegate.
+This proposal uses the **second** mechanism. The `envoy.filters.http.composite`
+filter is present (disabled) in the HCM chain (its *presence* is gateway-level —
+which is true of every per-route filter: the filter must exist on the listener for a
+route's `typed_per_filter_config` to bind, e.g. the AI Gateway ext_proc itself is
+inserted disabled at the listener and enabled per route). The **match tree and the
+`ExecuteFilterAction` that runs the policy's ext_proc live in a `CompositePerRoute`
+attached to each enabled route** (the targeted rule routes and the catch-all
+routes). Supplying that per-route config both re-enables the disabled composite for
+the route and provides its matcher. `CompositePerRoute.matcher` is documented as the
+"override of the match tree for this route," and `envoy.filters.http.ext_proc` is a
+valid `ExecuteFilterAction` delegate.
 
 Because we write this xDS directly in `PostTranslateModify` (rather than through
 Envoy Gateway's `EnvoyExtensionPolicy`), we are bound only by raw-Envoy capability,
@@ -461,22 +454,21 @@ References: [Composite filter proto](https://www.envoyproxy.io/docs/envoy/latest
 [Composite filter docs](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/composite_filter),
 [per-route matcher support (envoy#27088)](https://github.com/envoyproxy/envoy/pull/27088).
 
-### Filter lifecycle: add, update, and remove
+### Policy lifecycle: add, update, and remove
 
-**Q: When a `filterRef` is removed from a rule (or the `AIGatewayRouteFilter` CRD is
-deleted), will the extension server remove the composite-wrapped `ext_proc`?**
+**Q: When an `AIGatewayExtensionPolicy` is deleted (or its `targetRefs` change),
+will the extension server remove the composite-wrapped `ext_proc`?**
 
 **Yes — automatically, with no explicit teardown code.** `PostTranslateModify` is a
 **stateless, full-recompute** hook: on every invocation it rebuilds the injected
 xDS from scratch out of (a) the xDS Envoy Gateway hands it and (b) the current set
-of `AIGatewayRoute` / `AIGatewayRouteFilter` CRDs it lists via `s.k8sClient`. The
-composite filter is *derived state*, not stored state. So:
+of `AIGatewayExtensionPolicy` / `AIGatewayRoute` CRDs it lists via `s.k8sClient`.
+The composite is *derived state*, not stored state. So:
 
-- **Remove a `filterRef`** → `buildRouteFilterEntries` no longer emits that entry →
-  the next translation's xDS simply does not contain the composite filter, its
-  cluster, or its catch-all `TypedPerFilterConfig`.
-- **Delete the `AIGatewayRouteFilter`** → the `s.k8sClient.Get` returns `NotFound`,
-  the entry is skipped (see code above), same result.
+- **Delete the policy (or drop a `targetRef`)** → `buildExtensionPolicyEntries` no
+  longer emits that entry → the next translation's xDS simply does not contain the
+  composite's cluster or that policy's `CompositePerRoute` arm; if no policy remains,
+  the composite is enabled on no route and stays a disabled no-op.
 
 There is nothing stale to clean up because the injection is never persisted between
 translations — this is exactly how the existing InferencePool / quota injections
@@ -484,24 +476,25 @@ behave.
 
 **The one real requirement is *triggering* a re-translation.** Envoy Gateway
 re-runs `PostTranslateModify` when *its* watched inputs change (Gateways,
-HTTPRoutes, …). It does **not** watch our CRDs, and — importantly — removing a
-`filterRef` does **not** change the generated `HTTPRoute` (routing structure is
-untouched by `filterRefs`), so EG would not otherwise notice. Two mechanisms cover
-this, both already used in the codebase:
+HTTPRoutes, …). It does **not** watch our CRDs, and — importantly — an
+`AIGatewayExtensionPolicy` change does **not** by itself change the generated
+`HTTPRoute` (routing structure is untouched by the policy), so EG would not
+otherwise notice. Two mechanisms cover this, both already used in the codebase:
 
 1. **Controller watch → gateway resync.** The controller watches
-   `AIGatewayRouteFilter` (and `AIGatewayRoute`); on any change it calls
-   `syncGateways`, which sends a `GenericEvent` to the gateway controller and forces
-   the Gateway (hence its xDS) to be re-translated.
-2. **Encode filter identity into an HTTPRoute annotation.** `newHTTPRoute` already
-   sets a `HACK` annotation so EG reconciles when backend refs change
-   (`httpRouteBackendRefPriorityAnnotationKey = buildPriorityAnnotation(...)`). We
-   add an analogous annotation encoding the rules' `filterRefs` (e.g. a hash of the
-   resolved filter names). When a `filterRef` is added/removed/changed, the
-   annotation changes → the `HTTPRoute` diffs → EG re-translates → the recompute
-   drops (or adds) the composite.
+   `AIGatewayExtensionPolicy` (and `AIGatewayRoute`); on any change it resolves the
+   targeted routes and calls `syncGateways`, which sends a `GenericEvent` to the
+   gateway controller and forces the Gateway (hence its xDS) to be re-translated.
+2. **Encode attached-policy identity into an HTTPRoute annotation.** `newHTTPRoute`
+   already sets a `HACK` annotation so EG reconciles when backend refs change
+   (`httpRouteBackendRefPriorityAnnotationKey = buildPriorityAnnotation(...)`). The
+   controller stamps an analogous annotation on each targeted route's generated
+   `HTTPRoute` encoding the set of attached policies (e.g. a hash of policy
+   names/generations). When a policy is added/removed/changed, the annotation
+   changes → the `HTTPRoute` diffs → EG re-translates → the recompute drops (or adds)
+   the composite.
 
-Together these guarantee that add/update/remove of a filter deterministically
+Together these guarantee that add/update/remove of a policy deterministically
 converges the injected xDS, with the composite removed as soon as the attachment is
 gone.
 
@@ -512,91 +505,294 @@ injection, quota rate-limit injection) rather than introduce new machinery.
 
 ### 1. API types (`api/v1beta1`)
 
-- **`api/v1beta1/ai_gateway_route_filter.go`** (new): `AIGatewayRouteFilter`,
-  `AIGatewayRouteFilterList`, `AIGatewayRouteFilterSpec` (embedding
-  `egv1a1.ExtProc`), and `AIGatewayRouteFilterStatus`. Kubebuilder markers copied
-  from `AIGatewayRoute`.
-- **`api/v1beta1/ai_gateway_route.go`**: add `FilterRefs []AIGatewayRouteFilterRef`
-  to `AIGatewayRouteRule`, plus the `AIGatewayRouteFilterRef` type (name +
-  optional namespace, like `AIGatewayRouteRuleBackendRef`).
-- **`api/v1beta1/ai_gateway_route_helper.go`**: add
-  `(*AIGatewayRouteRule).ClientMatchHeaders()` returning `rule.Matches` headers
-  minus `x-ai-eg-model`.
+- **`api/v1beta1/ai_gateway_extension_policy.go`** (new): `AIGatewayExtensionPolicy`,
+  `AIGatewayExtensionPolicyList`, `AIGatewayExtensionPolicySpec` (embedding
+  `egv1a1.ExtProc`, plus `TargetRefs` and `Headers`), the
+  `AIGatewayExtensionPolicyHeaderMatch` type, and `AIGatewayExtensionPolicyStatus`.
+  Kubebuilder markers copied from `AIGatewayRoute` / `QuotaPolicy`.
+- **`api/v1beta1/ai_gateway_route.go`**: **unchanged** (no `filterRefs`; attachment
+  lives on the policy).
 - **`api/v1beta1/registry.go`**: register the new kinds in the scheme.
 
 ```go
-// api/v1beta1/ai_gateway_route_filter.go
-type AIGatewayRouteFilterSpec struct {
+// api/v1beta1/ai_gateway_extension_policy.go
+type AIGatewayExtensionPolicySpec struct {
+    // TargetRefs select the AIGatewayRoute(s) this policy attaches to
+    // (Gateway API policy attachment, like QuotaPolicy / EnvoyExtensionPolicy).
+    //
+    // +kubebuilder:validation:MinItems=1
+    // +kubebuilder:validation:MaxItems=16
+    TargetRefs []gwapiv1a2.LocalPolicyTargetReference `json:"targetRefs"`
+
+    // Headers gate the composite: the wrapped ext_proc runs only when ALL listed
+    // request headers match. Evaluable on the first (catch-all) pass. Empty means
+    // "no gate" (runs for all traffic on enabled routes).
+    //
+    // +optional
+    // +kubebuilder:validation:MaxItems=16
+    Headers []AIGatewayExtensionPolicyHeaderMatch `json:"headers,omitempty"`
+
     // ExtProc mirrors EnvoyExtensionPolicy's extProc so semantics match EG.
     ExtProc egv1a1.ExtProc `json:"extProc"`
+}
+
+type AIGatewayExtensionPolicyHeaderMatch struct {
+    // Name is the request header name to match.
+    Name string `json:"name"`
+    // Value is the exact value the header must have.
+    Value string `json:"value"`
 }
 ```
 
 ### 2. Controller (`internal/controller`)
 
-- Watch `AIGatewayRouteFilter`; on change, resync owning gateways (reuse
-  `syncGateways`) so `PostTranslateModify` re-runs.
-- Resolve `filterRefs` when reconciling `AIGatewayRoute`; set Accepted /
-  ResolvedRefs status conditions on both resources.
-- `newHTTPRoute` is **unchanged** (routing structure is untouched).
-- Optionally add a field index `filter → gateways` for cheap lookups.
+- Watch `AIGatewayExtensionPolicy`; on change, resolve `targetRefs` and resync the
+  owning gateways of the targeted `AIGatewayRoute`s (reuse `syncGateways`) so
+  `PostTranslateModify` re-runs.
+- Stamp the attached-policy annotation on each targeted route's generated
+  `HTTPRoute` (see lifecycle); set Accepted / ResolvedRefs status conditions on the
+  policy.
+- `newHTTPRoute` route/rule structure is **unchanged** (only the annotation is
+  added).
+- Optionally add a field index `policy → gateways` for cheap lookups.
 
 ### 3. Extension server (`internal/extensionserver`)
 
-- **`route_filter.go`** (new): `maybeInjectAIGatewayRouteFilters(ctx, clusters,
-  listeners, routes)`, called from `PostTranslateModify` next to
-  `maybeInjectQuotaRateLimiting`. Contains the fetch/mapping, cluster build, bare
+- **`extension_policy.go`** (new): `maybeInjectAIGatewayExtensionPolicies(ctx,
+  clusters, listeners, routes)`, called from `PostTranslateModify` next to
+  `maybeInjectQuotaRateLimiting`. Contains the fetch/mapping, cluster build,
   composite insertion, and per-route `CompositePerRoute` attachment described above.
 - **`post_translate_modify.go`**: one added call in `PostTranslateModify`:
 
 ```go
-req.Clusters, err = s.maybeInjectAIGatewayRouteFilters(ctx, req.Clusters, req.Listeners, req.Routes)
+req.Clusters, err = s.maybeInjectAIGatewayExtensionPolicies(ctx, req.Clusters, req.Listeners, req.Routes)
 if err != nil {
-    return nil, fmt.Errorf("failed to inject AIGatewayRoute filters: %w", err)
+    return nil, fmt.Errorf("failed to inject AIGatewayExtensionPolicies: %w", err)
 }
 ```
 
-- New helpers (all local to `route_filter.go`): `buildRouteFilterCluster`,
-  `insertBareCompositeBeforeAIGatewayExtProc` (adds `envoy.filters.http.composite`
-  once per listener), `buildCompositePerRoute` (the `CompositePerRoute{ matcher →
-  ExecuteFilterAction(ext_proc) }` construction), and
-  `attachCompositePerRouteOnCatchAll`.
+- New helpers (all local to `extension_policy.go`): `buildExtensionPolicyCluster`,
+  `insertCompositeBeforeAIGatewayExtProc` (adds `envoy.filters.http.composite`
+  disabled, once per listener), `buildCompositePerRoute` (the `CompositePerRoute{
+  matcher → ExecuteFilterAction(ext_proc) }` construction), and
+  `enableCompositeOnTargetedAndCatchAllRoutes`.
+
+The heart of the injection is `buildCompositePerRoute`. It turns the resolved
+`extensionPolicyEntry` list for one route into a single
+`xds.type.matcher.v3.Matcher` (a `matcher_list`) with **one arm per policy**: each
+arm's predicate ANDs that policy's `headers`, and its `on_match` action is an
+`ExecuteFilterAction` that delegates to the entry's `ExternalProcessor`. The whole
+matcher is wrapped in a `CompositePerRoute` and marshalled to an `Any` that the
+caller drops into the route's `TypedPerFilterConfig` under
+`extensionPolicyCompositeName`.
+
+Note the two distinct `TypedExtensionConfig` families involved: the matcher tree
+(inputs and actions) uses the **xDS** core/matcher types
+(`github.com/cncf/xds/go/xds/...`), while the delegated filter inside
+`ExecuteFilterAction` uses Envoy's **config.core.v3** `TypedExtensionConfig`. Mixing
+them up is the most common compile/most-annoying-runtime error here.
 
 ```go
-// buildCompositePerRoute builds the per-route composite config that runs the SR
-// ext_proc only when the clientMatches headers match. It is attached on the
-// catch-all route's TypedPerFilterConfig, keyed by the bare composite filter name.
-func buildCompositePerRoute(extProc *extprocv3.ExternalProcessor,
-    clientMatches []gwapiv1.HTTPHeaderMatch) (*anypb.Any, error) {
-    // ExecuteFilterAction{ TypedConfig: TypedExtensionConfig{ ext_proc } }
-    // → xds matcher_list keyed by HttpRequestHeaderMatchInput(clientMatches)
-    // → wrapped in compositev3.CompositePerRoute{ Matcher: <that match tree> }
-    // NOTE: use CompositePerRoute (NOT ExtensionWithMatcher) so this is per-route.
+import (
+    xdscorev3 "github.com/cncf/xds/go/xds/core/v3"
+    xdsmatcherv3 "github.com/cncf/xds/go/xds/type/matcher/v3"
+    corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+    matcherv3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
+    compositev3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/composite/v3"
+    extprocv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
+)
+
+// buildCompositePerRoute builds the per-route composite config for one route from
+// all policy attachments (entries) enabled on it. Attached on the route's
+// TypedPerFilterConfig, keyed by extensionPolicyCompositeName; supplying it also
+// re-enables the disabled composite. Uses CompositePerRoute (NOT ExtensionWithMatcher)
+// so the match tree is per-route.
+func buildCompositePerRoute(entries []extensionPolicyEntry) (*anypb.Any, error) {
+    matchers := make([]*xdsmatcherv3.Matcher_MatcherList_FieldMatcher, 0, len(entries))
+    for i := range entries {
+        e := &entries[i]
+
+        // (1) Build the delegated ext_proc as an ExecuteFilterAction. The inner
+        // TypedExtensionConfig is Envoy's config.core.v3 flavor.
+        extProcAny, err := toAny(e.extProc) // *extprocv3.ExternalProcessor
+        if err != nil {
+            return nil, err
+        }
+        execAny, err := toAny(&compositev3.ExecuteFilterAction{
+            TypedConfig: &corev3.TypedExtensionConfig{
+                Name:        e.name, // per-policy delegate name
+                TypedConfig: extProcAny,
+            },
+        })
+        if err != nil {
+            return nil, err
+        }
+
+        // (2) Build the predicate that ANDs this policy's gate headers.
+        predicate, err := buildHeaderPredicate(e.headers)
+        if err != nil {
+            return nil, err
+        }
+
+        // (3) One arm: predicate -> run the ExecuteFilterAction. The on_match
+        // action is an xDS-core TypedExtensionConfig ("composite-action").
+        matchers = append(matchers, &xdsmatcherv3.Matcher_MatcherList_FieldMatcher{
+            Predicate: predicate,
+            OnMatch: &xdsmatcherv3.Matcher_OnMatch{
+                OnMatch: &xdsmatcherv3.Matcher_OnMatch_Action{
+                    Action: &xdscorev3.TypedExtensionConfig{
+                        Name:        "composite-action",
+                        TypedConfig: execAny,
+                    },
+                },
+            },
+        })
+    }
+
+    // (4) Wrap all arms in a matcher_list and hand it to CompositePerRoute.
+    return toAny(&compositev3.CompositePerRoute{
+        Matcher: &xdsmatcherv3.Matcher{
+            MatcherType: &xdsmatcherv3.Matcher_MatcherList_{
+                MatcherList: &xdsmatcherv3.Matcher_MatcherList{Matchers: matchers},
+            },
+        },
+    })
 }
 
-// insertBareCompositeBeforeAIGatewayExtProc adds a single bare composite filter to
-// the HCM chain (once), just before envoy.filters.http.ext_proc/aigateway. With no
-// per-route config it is a pass-through no-op.
-func (s *Server) insertBareCompositeBeforeAIGatewayExtProc(ln *listenerv3.Listener) error {
-    // Composite{} as an HttpFilter named e.g. "aigw-routefilter/composite",
-    // inserted before the AI Gateway ext_proc (mirror insertAIGatewayExtProcFilter).
+// buildHeaderPredicate turns a policy's gate headers into a predicate that requires
+// ALL of them (logical AND). A single header collapses to one SinglePredicate;
+// multiple headers become an and_matcher over SinglePredicates. (An empty list is
+// handled by the caller as "no gate" — the arm always matches.)
+func buildHeaderPredicate(hs []aigv1b1.AIGatewayExtensionPolicyHeaderMatch) (*xdsmatcherv3.Matcher_MatcherList_Predicate, error) {
+    single := func(h aigv1b1.AIGatewayExtensionPolicyHeaderMatch) (*xdsmatcherv3.Matcher_MatcherList_Predicate, error) {
+        // Input: envoy.type.matcher.v3.HttpRequestHeaderMatchInput, packed into an
+        // xDS-core TypedExtensionConfig.
+        inputAny, err := toAny(&matcherv3.HttpRequestHeaderMatchInput{HeaderName: h.Name})
+        if err != nil {
+            return nil, err
+        }
+        // Exact value match.
+        sm := &xdsmatcherv3.StringMatcher{
+            MatchPattern: &xdsmatcherv3.StringMatcher_Exact{Exact: h.Value},
+        }
+        return &xdsmatcherv3.Matcher_MatcherList_Predicate{
+            MatchType: &xdsmatcherv3.Matcher_MatcherList_Predicate_SinglePredicate_{
+                SinglePredicate: &xdsmatcherv3.Matcher_MatcherList_Predicate_SinglePredicate{
+                    Input: &xdscorev3.TypedExtensionConfig{Name: "request-headers", TypedConfig: inputAny},
+                    Matcher: &xdsmatcherv3.Matcher_MatcherList_Predicate_SinglePredicate_ValueMatch{
+                        ValueMatch: sm,
+                    },
+                },
+            },
+        }, nil
+    }
+
+    if len(hs) == 1 {
+        return single(hs[0])
+    }
+    preds := make([]*xdsmatcherv3.Matcher_MatcherList_Predicate, 0, len(hs))
+    for _, h := range hs {
+        p, err := single(h)
+        if err != nil {
+            return nil, err
+        }
+        preds = append(preds, p)
+    }
+    return &xdsmatcherv3.Matcher_MatcherList_Predicate{
+        MatchType: &xdsmatcherv3.Matcher_MatcherList_Predicate_AndMatcher{
+            AndMatcher: &xdsmatcherv3.Matcher_MatcherList_Predicate_PredicateList{Predicate: preds},
+        },
+    }, nil
+}
+
+// extensionPolicyCompositeName is the single composite filter shared by all
+// AIGatewayExtensionPolicy attachments on a listener. Per-route CompositePerRoute
+// entries key on this name.
+const extensionPolicyCompositeName = "aigw-extpolicy/composite"
+
+// insertCompositeBeforeAIGatewayExtProc inserts one composite filter (Composite{},
+// no matcher, disabled) into each HCM filter chain of the listener, immediately
+// before the AI Gateway ext_proc filter (aiGatewayExtProcName). Because it is added
+// disabled, it does nothing until a route supplies a CompositePerRoute (which both
+// enables and configures it), so it is safe to keep on every AIG listener. It is
+// idempotent and mirrors the write-back style of insertRouterLevelAIGatewayExtProc /
+// injectQuotaRateLimitFilterIntoListener.
+//
+// MUST run after the AI Gateway ext_proc has been inserted (i.e. after
+// maybeModifyListenerAndRoutes), so the ordering anchor exists on the chain.
+func (s *Server) insertCompositeBeforeAIGatewayExtProc(ln *listenerv3.Listener) error {
+    filterChains := ln.GetFilterChains()
+    if ln.DefaultFilterChain != nil {
+        filterChains = append(filterChains, ln.DefaultFilterChain)
+    }
+    for _, currChain := range filterChains {
+        httpConManager, hcmIndex, err := findHCM(currChain)
+        if err != nil {
+            return fmt.Errorf("failed to find HCM in filter chain: %w", err)
+        }
+
+        // Single pass over httpConManager.HttpFilters to compute:
+        //   - alreadyPresent: is extensionPolicyCompositeName already in the chain?
+        //   - aiGatewayIndex:  index of aiGatewayExtProcName (our ordering anchor).
+        // (Trivial loop omitted for brevity.)
+        alreadyPresent, aiGatewayIndex := scanCompositeAndAnchor(httpConManager.HttpFilters)
+
+        if alreadyPresent {
+            continue // Idempotent across re-translations.
+        }
+        if aiGatewayIndex == -1 {
+            continue // No AI Gateway ext_proc on this chain => nothing to gate.
+        }
+
+        compositeAny, err := toAny(&compositev3.Composite{})
+        if err != nil {
+            return fmt.Errorf("failed to marshal Composite to Any: %w", err)
+        }
+        compositeFilter := &httpconnectionmanagerv3.HttpFilter{
+            Name:       extensionPolicyCompositeName,
+            Disabled:   true, // enabled per route via CompositePerRoute
+            ConfigType: &httpconnectionmanagerv3.HttpFilter_TypedConfig{TypedConfig: compositeAny},
+        }
+
+        // Insert immediately before the AI Gateway ext_proc filter (append + shift).
+        httpConManager.HttpFilters = append(httpConManager.HttpFilters, nil)
+        copy(httpConManager.HttpFilters[aiGatewayIndex+1:], httpConManager.HttpFilters[aiGatewayIndex:])
+        httpConManager.HttpFilters[aiGatewayIndex] = compositeFilter
+
+        // Write the updated HCM back into the filter chain.
+        hcAny, err := toAny(httpConManager)
+        if err != nil {
+            return fmt.Errorf("failed to marshal updated HCM to Any: %w", err)
+        }
+        currChain.Filters[hcmIndex].ConfigType = &listenerv3.Filter_TypedConfig{TypedConfig: hcAny}
+    }
+    return nil
 }
 ```
+
+`compositev3` is
+`github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/composite/v3`.
+Insertion is anchored on `aiGatewayExtProcName` rather than the router filter so the
+composite is guaranteed to sit directly ahead of the AI Gateway ext_proc regardless
+of what other ext_proc/EPP filters EG placed on the chain — the ordering guarantee
+the `EnvoyPatchPolicy` workaround had to assert by hand.
 
 ### 4. Manifests, RBAC, generated code
 
-- `manifests/charts/ai-gateway-crds-helm/templates/aigateway.envoyproxy.io_aigatewayroutefilters.yaml` (new CRD manifest); regenerate the `AIGatewayRoute` CRD for the new `filterRefs` field.
-- Add `aigatewayroutefilters` (+`/status`) to controller RBAC.
+- `manifests/charts/ai-gateway-crds-helm/templates/aigateway.envoyproxy.io_aigatewayextensionpolicies.yaml` (new CRD manifest). `AIGatewayRoute` CRD is unchanged.
+- Add `aigatewayextensionpolicies` (+`/status`) to controller RBAC.
 - Regenerate `zz_generated.deepcopy.go`, clientset/informers/listers, and
   `site/docs/api/api.mdx`.
 
 ### 5. Tests
 
-- `internal/extensionserver/route_filter_test.go`: given AIGatewayRoute + filter
+- `internal/extensionserver/extension_policy_test.go`: given AIGatewayRoute + policy
   fixtures and a synthetic `PostTranslateModifyRequest`, assert the composite is
-  inserted before `ai-gateway-extproc`, gated by the right header matchers, the SR
-  cluster exists, and it's enabled only on `route-not-found`.
-- Controller tests for ref resolution/status.
+  inserted (disabled) before `ai-gateway-extproc`, gated by the right header
+  matchers, the ext_proc cluster exists, and it's enabled on the targeted rule routes
+  and on `route-not-found`.
+- Controller tests for `targetRefs` resolution/status and the attached-policy
+  annotation.
 - `api/v1beta1` deepcopy/registry tests.
 - `cmd/aigw` translate golden files if an example is added.
 
@@ -608,13 +804,20 @@ CRDs to the xDS that Envoy runs, so the whole path can be reviewed at once.
 ### Step 0 — user-authored CRDs
 
 ```yaml
-# The ext_proc description (semantic router), reusing EG's extProc shape.
+# The extension policy (semantic router): targetRefs + headers gate + extProc.
 apiVersion: aigateway.envoyproxy.io/v1beta1
-kind: AIGatewayRouteFilter
+kind: AIGatewayExtensionPolicy
 metadata:
   name: semantic-router
   namespace: default
 spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIGatewayRoute
+      name: chat
+  headers:
+    - name: x-tenant-id
+      value: premium
   extProc:
     backendRefs:
       - name: semantic-router-svc     # a Service (or EG Backend) in the namespace
@@ -634,16 +837,14 @@ spec:
     - name: my-gateway
       kind: Gateway
   rules:
-    # rule[0]: premium tenants get semantic routing before the model is known.
+    # rule[0]: premium tenants (unchanged — no filter field on the route).
     - matches:
         - headers:
             - name: x-tenant-id
               value: premium
-      filterRefs:
-        - name: semantic-router
       backendRefs:
         - name: gpt-4o-backend
-    # rule[1]: normal model-keyed routing, no filter.
+    # rule[1]: normal model-keyed routing.
     - matches:
         - headers:
             - name: x-ai-eg-model
@@ -664,8 +865,8 @@ metadata:
     aigateway.envoyproxy.io/generated: "true"
     # existing HACK annotation that forces EG re-translation on ref changes:
     aigateway.envoyproxy.io/backend-ref-priority: "<hash>"
-    # NEW: encodes attached filter identity so add/remove re-translates:
-    aigateway.envoyproxy.io/filter-refs: "default/semantic-router@rule0"
+    # NEW: encodes attached-policy identity so add/remove re-translates:
+    aigateway.envoyproxy.io/extension-policies: "default/semantic-router@<gen>"
 spec:
   rules:
     - matches: [{ path: {value: /v1}, headers: [{name: x-tenant-id, value: premium}] }]
@@ -677,22 +878,22 @@ spec:
       filters: [{ extensionRef: ai-eg-route-not-found-response }]
 ```
 
-Note the `filterRefs` on `rule[0]` did **not** add an HTTPRoute filter or change any
-route match — it only produced the `filter-refs` annotation.
+Note the policy did **not** add an HTTPRoute filter or change any route match — it
+only produced the `extension-policies` annotation on the targeted route.
 
 ### Step 2 — Envoy Gateway translates to xDS and calls `PostTranslateModify`
 
 EG produces the baseline xDS (listener with HCM, route config
 `httproute/default/chat/rule/*`, clusters for the backends). The AI Gateway
-extension server then patches it. After `buildRouteFilterEntries` resolves:
+extension server then patches it. After `buildExtensionPolicyEntries` resolves:
 
 ```
 entriesByRoute["default/chat"] = [
   {
-    name:          "aigw-routefilter/default/semantic-router/chat/0",
-    clientMatches: [ {name: x-tenant-id, value: premium} ],   // x-ai-eg-model would be stripped
-    extProc:       <from AIGatewayRouteFilter>,
-    clusterName:   "aigw-routefilter/default/semantic-router",
+    name:        "aigw-extpolicy/default/semantic-router",
+    headers:     [ {name: x-tenant-id, value: premium} ],   // policy.spec.headers
+    extProc:     <from AIGatewayExtensionPolicy>,
+    clusterName: "aigw-extpolicy/default/semantic-router",
   },
 ]
 ```
@@ -703,7 +904,7 @@ the following xDS is added/modified.
 create one for our CRD):
 
 ```yaml
-name: aigw-routefilter/default/semantic-router
+name: aigw-extpolicy/default/semantic-router
 type: STRICT_DNS
 load_assignment:
   endpoints:
@@ -711,14 +912,15 @@ load_assignment:
         - endpoint: { address: { socket_address: { address: semantic-router-svc.default, port_value: 8080 } } }
 ```
 
-**(b) A single bare `Composite` filter, inserted into the HCM before the AI Gateway
-`ext_proc`.** No matcher, no per-route config here — it is a pass-through until a
-route supplies a `CompositePerRoute`:
+**(b) A single `Composite` filter (disabled), inserted into the HCM before the AI
+Gateway `ext_proc`.** No matcher here — it does nothing until a route supplies a
+`CompositePerRoute` (which also re-enables it):
 
 ```yaml
 http_filters:
   # ... (buffer, api-key auth, etc.) ...
-  - name: aigw-routefilter/composite                          # NEW, bare composite (no matcher)
+  - name: aigw-extpolicy/composite                            # NEW, composite (disabled)
+    disabled: true
     typed_config:
       "@type": type.googleapis.com/envoy.extensions.filters.http.composite.v3.Composite
   - name: envoy.filters.http.ext_proc/aigateway               # existing AI Gateway ext_proc
@@ -726,8 +928,9 @@ http_filters:
   - name: envoy.filters.http.router
 ```
 
-**(c) The catch-all route supplies the `CompositePerRoute` (gate + delegate) and
-enables the AI Gateway ext_proc:**
+**(c) The catch-all route enables + configures the composite (gate + delegate) and
+enables the AI Gateway ext_proc.** The same `CompositePerRoute` is attached to the
+targeted rule routes (`rule/0`, `rule/1`) as well:
 
 ```yaml
 # route config: httproute/default/chat/rule/2  (the route-not-found catch-all)
@@ -737,7 +940,7 @@ enables the AI Gateway ext_proc:**
     envoy.filters.http.ext_proc/aigateway:
       "@type": type.googleapis.com/envoy.config.route.v3.FilterConfig
       config: {}
-    aigw-routefilter/composite:                       # keyed by the bare composite filter name
+    aigw-extpolicy/composite:                         # keyed by the composite filter name
       "@type": type.googleapis.com/envoy.extensions.filters.http.composite.v3.CompositePerRoute
       matcher:
         matcher_list:
@@ -747,26 +950,28 @@ enables the AI Gateway ext_proc:**
                   input:
                     "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
                     header_name: x-tenant-id
-                  value_match: { exact: premium }        # from clientMatches
+                  value_match: { exact: premium }        # from policy.spec.headers
               on_match:
                 action:
                   name: composite-action
                   typed_config:
                     "@type": type.googleapis.com/envoy.extensions.filters.http.composite.v3.ExecuteFilterAction
                     typed_config:
-                      name: semantic-router-extproc
+                      name: aigw-extpolicy/default/semantic-router
                       typed_config:
                         "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                        grpc_service: { envoy_grpc: { cluster_name: aigw-routefilter/default/semantic-router } }
+                        grpc_service: { envoy_grpc: { cluster_name: aigw-extpolicy/default/semantic-router } }
                         processing_mode: { request_body_mode: BUFFERED, response_header_mode: SKIP }
                         message_timeout: 0.250s
 ```
 
-The header-keyed routes (`rule/0`, `rule/1`) get **no** `CompositePerRoute`, so the
-bare composite is a no-op there and the semantic router runs at most once — on the
-catch-all pass. Note the per-route key is the **bare composite filter name**
-(`aigw-routefilter/composite`), not a per-attachment name, because
-`typed_per_filter_config` must key on a filter present in the HCM chain.
+The composite is enabled on the catch-all **and** the targeted rule routes, so the
+policy applies on whichever pass a request is on. The per-route key is the
+**composite filter name** (`aigw-extpolicy/composite`), not a per-policy name,
+because `typed_per_filter_config` must key on a filter present in the HCM chain.
+Because the gate (`x-tenant-id`) is a client header present on both passes, the
+delegated ext_proc can run on the catch-all pass **and** again on the rule route
+after `ClearRouteCache` — so it must be idempotent (see Enablement note).
 
 ### Step 3 — request-time behavior
 
@@ -790,20 +995,22 @@ is the shrunk blast radius in action.
 
 ### Removal
 
-Delete the `filterRef` (or the `AIGatewayRouteFilter`): the controller rewrites the
-`filter-refs` annotation (and/or resyncs the gateway) → EG re-translates → the
-recompute yields no entry for `default/chat` → xDS blocks (a), (b), (c) are all
-absent. No teardown code runs; the composite is simply not re-emitted.
+Delete the `AIGatewayExtensionPolicy` (or drop its `targetRef`): the controller
+rewrites the `extension-policies` annotation on the targeted route (and/or resyncs
+the gateway) → EG re-translates → the recompute yields no entry for `default/chat`
+→ the ext_proc cluster (a) is absent and no route gets a `CompositePerRoute`, so the
+composite (b) stays a disabled no-op (c). No teardown code runs; nothing is
+re-emitted.
 
 ## Why this avoids the catch-all blast radius
 
-| Concern | EnvoyPatchPolicy / EnvoyExtensionPolicy | `AIGatewayRouteFilter` (this proposal) |
+| Concern | EnvoyPatchPolicy / EnvoyExtensionPolicy | `AIGatewayExtensionPolicy` (this proposal) |
 |---|---|---|
 | Raw listener JSON patch | yes (EPP) | **no** (typed xDS at `PostTranslateModify`) |
 | Index-pinned / re-key on churn | yes (EPP) | **no** (name-based) |
 | Filter ordering | manual (`--extProcBeforeFilterNames`) | **enforced** by insertion helper |
-| Where it attaches | shared catch-all (all first-pass traffic) | catch-all, but **gated** by `clientMatches` |
-| Blast radius on misconfig | all catch-all traffic | **only traffic carrying the client headers** |
+| Where it attaches | shared catch-all (all first-pass traffic) | targeted routes + catch-all, but **gated** by `headers` |
+| Blast radius on misconfig | all catch-all traffic | **only traffic carrying the policy `headers`** |
 | Validated CRD | no (free-form JSON) | **yes** |
 
 The routing mechanics are **reused**: the composite runs during the catch-all pass
@@ -815,16 +1022,17 @@ and mutates the request; the AI Gateway `ext_proc` then derives `x-ai-eg-model` 
 Proposal 012 makes the mutation call a capability of the **existing** AI Gateway
 router `ext_proc` (no second filter, an outbound HTTP call from within
 `ProcessRequestBody`). This proposal instead keeps the mutation in a **separate,
-attachable `ext_proc`** but makes attaching/gating it declarative and per-rule.
+attachable `ext_proc`** but makes attaching/gating it declarative via a
+policy-attached CRD.
 
 - **012** — fewest moving parts, no cluster to manage, no second filter; the
   gateway itself calls the service.
 - **013 (this)** — reuses the standard `ext_proc` extension point (the service is a
   normal ext_proc, not a bespoke "mutation service" contract), and expresses
-  enablement per rule via a CRD gated by client headers.
+  attachment via `targetRefs` on a CRD gated by the policy's `headers`.
 
 They are complementary; 012 and 013 can coexist (012 for the simple in-filter call,
-013 for teams that want a standalone, per-rule, standard ext_proc).
+013 for teams that want a standalone, policy-attached, standard ext_proc).
 
 ## Alternatives Considered
 
@@ -839,20 +1047,26 @@ They are complementary; 012 and 013 can coexist (012 for the simple in-filter ca
 
 ## Open Questions
 
-1. **`clientMatches` validity.** Reject attaching a filter to a rule whose only
-   match is `x-ai-eg-model` (no first-pass gate)? Reject empty `clientMatches`
-   (would match all traffic and reintroduce the blast radius)?
+1. **Empty `headers`.** An empty `headers` list means "no gate" (runs for all
+   traffic on the enabled routes), which on the shared catch-all reintroduces the
+   blast radius. Should validation require at least one header, or accept empty only
+   with an explicit opt-in field?
 2. **Backend reference kinds.** Should `spec.extProc.backendRefs` allow EG `Backend`
    objects (needs address resolution) or only `Service` (simple STRICT_DNS)?
-3. **Multiple filters per rule / per gateway.** A single bare composite filter per
-   listener; multiple attachments on one catch-all route merge into one
-   `CompositePerRoute` with one matcher arm each. Since `matcher_list` runs the first
-   matching arm, define arm ordering (rule order? most-specific first?) when several
-   entries' `clientMatches` overlap.
-4. **Double execution.** Catch-all-only enablement prevents the second-pass re-run;
-   is there a case where the SR must also run post-model? If so, an "already
-   mutated" sentinel header could gate it instead.
-5. **Standalone mode / `cmd/aigw`.** Ensure the injection path honors
+3. **Multiple policies per route / per gateway.** A single composite filter per
+   listener; multiple policies enabled on one route merge into one `CompositePerRoute`
+   with one matcher arm each. Since `matcher_list` runs the first matching arm, define
+   arm ordering (policy name? creation time? most-specific first?) when several
+   policies' `headers` overlap.
+4. **Double execution.** Enabling on the targeted rule routes **and** the catch-all
+   means the ext_proc can run twice (first pass + post-`ClearRouteCache`); policies
+   must be idempotent or self-gate with a sentinel header. Should we offer an opt-in
+   "catch-all only" (first-pass-only) mode for non-idempotent mutators?
+5. **Cross-route catch-all fan-out.** Enabling *all* policies on *every* catch-all
+   means a policy targeting route A also evaluates on route B's surviving catch-all.
+   The `headers` gate limits actual execution, but confirm this is acceptable for
+   multi-tenant gateways (and how it interacts with namespaces).
+6. **Standalone mode / `cmd/aigw`.** Ensure the injection path honors
    `isStandAloneMode` and the offline translate flow.
-6. **Status/observability.** Conditions on `AIGatewayRouteFilter` (ResolvedRefs,
+7. **Status/observability.** Conditions on `AIGatewayExtensionPolicy` (ResolvedRefs,
    Accepted) and metrics for gate hit-rate and ext_proc latency.
