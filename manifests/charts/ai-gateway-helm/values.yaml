@@ -263,6 +263,7 @@ controller:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  topologySpreadConstraints: []
 
   # maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive
   # from xDS (envoy-gateway).
