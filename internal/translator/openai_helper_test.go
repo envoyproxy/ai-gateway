@@ -51,17 +51,8 @@ func parseSSEEventsFromBytes(output []byte) []sseEvent {
 	return events
 }
 
-// accumulateAnthropicMessage feeds emitted Anthropic SSE bytes through the official
-// anthropic-sdk-go client's own Message.Accumulate logic -- the exact code path a real
-// Anthropic client (or any SDK built against the documented streaming protocol) uses to
-// build the final Message, including its cumulative Usage, from a stream of events.
-//
-// Using the real SDK here (rather than only asserting against our own emitted JSON) is
-// deliberate: a test that merely snapshots our translator's own output can enshrine a bug
-// as "expected" instead of catching it. Running the same accumulation logic real clients
-// run lets tests assert against actual client-observed behavior. It also gets us free
-// protocol-conformance checking (e.g. content block ordering) for every test that uses it,
-// since Accumulate returns an error on malformed streams.
+// accumulateAnthropicMessage runs emitted Anthropic SSE bytes through anthropic-sdk-go's
+// Message.Accumulate, the same logic a real Anthropic client uses to build usage from a stream.
 func accumulateAnthropicMessage(t *testing.T, sse []byte) anthropicsdk.Message {
 	t.Helper()
 	resp := &http.Response{
@@ -649,23 +640,9 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_TextStreaming(t *testing.T) 
 	require.JSONEq(t, `{"type":"message_stop"}`, events[6].data)
 }
 
-// TestOpenAIStreamToAnthropicState_ProcessBuffer_CachedTokens is a regression test for a bug
-// where OpenAI's prompt_tokens_details cache breakdown (cached_tokens/cache_creation_input_tokens,
-// which are components *within* prompt_tokens) was forwarded verbatim into Anthropic's additive
-// cache usage fields (where cache tokens are reported separately from, and in addition to,
-// input_tokens). A real Anthropic client summing input_tokens + cache_read_input_tokens +
-// cache_creation_input_tokens -- standard practice, and exactly what anthropic-sdk-go's own
-// Message.Accumulate does -- ended up double-counting the cached portion of every prompt. With
-// realistic cache hit ratios (a large majority of a long-running session's context is typically
-// cache-served) this inflated the reported input token count far enough that clients rejected
-// requests as exceeding the model's context window.
-//
-// This test uses large, realistic magnitudes specifically so that any reintroduction of the bug
-// produces an obviously-wrong total rather than a small, easy-to-miss discrepancy, and it asserts
-// the invariant that must always hold -- total reported input tokens equal the real prompt
-// size -- rather than a hardcoded expected JSON body, so it keeps guarding against regressions
-// even if the implementation approach changes later (e.g. if cache token support is added back
-// correctly by subtracting the cached portion from input_tokens instead of omitting it).
+// TestOpenAIStreamToAnthropicState_ProcessBuffer_CachedTokens is a regression test guarding
+// against double-counting OpenAI's cached_tokens/cache_creation_input_tokens (a breakdown
+// within prompt_tokens) as if they were additive, Anthropic-native cache usage fields.
 func TestOpenAIStreamToAnthropicState_ProcessBuffer_CachedTokens(t *testing.T) {
 	state := &openAIStreamToAnthropicState{
 		activeTools:  make(map[int64]*streamToolCall),
@@ -673,9 +650,6 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_CachedTokens(t *testing.T) {
 	}
 
 	const (
-		// A long-running coding-agent session's context: mostly cache-served (~97% hit rate),
-		// which is the realistic regime where this bug's inflation becomes severe rather than
-		// a minor discrepancy that's easy to overlook in a test or during review.
 		promptTokens        = 190_000
 		cachedTokens        = 185_000
 		cacheCreationTokens = 3_000
@@ -696,19 +670,13 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_CachedTokens(t *testing.T) {
 	err := state.processBuffer(&out, true)
 	require.NoError(t, err)
 
-	// Drive the emitted stream through the real Anthropic client SDK's own accumulation logic,
-	// then assert against the invariant a real client depends on, instead of our own JSON output.
 	msg := accumulateAnthropicMessage(t, out)
 
 	totalReportedInputTokens := msg.Usage.InputTokens + msg.Usage.CacheReadInputTokens + msg.Usage.CacheCreationInputTokens
 	assert.Equal(t, int64(promptTokens), totalReportedInputTokens,
-		"a real Anthropic client's total input tokens (input_tokens + cache_read_input_tokens + "+
-			"cache_creation_input_tokens) must equal the backend's real prompt_tokens, never inflated "+
-			"by double-counting the cached portion")
+		"total input tokens must equal the real prompt_tokens, not be inflated by double-counting the cached portion")
 	assert.Equal(t, int64(completionTokens), msg.Usage.OutputTokens)
 
-	// The gateway's internal cost-tracking TokenUsage must likewise never report more input
-	// tokens than the real prompt size.
 	total, ok := state.tokenUsage.InputTokens()
 	require.True(t, ok)
 	assert.LessOrEqual(t, total, uint32(promptTokens),
