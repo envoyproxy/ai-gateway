@@ -366,3 +366,26 @@ func TestSSEEventParser_EndOfStream(t *testing.T) {
 		})
 	}
 }
+
+// Issue #2219: a leading keep-alive event with an empty data line (emitted by
+// some FastMCP backends, e.g. firecrawl with protocolVersion 2025-11-25, before
+// the real response) must be skipped, not treated as a JSON decode error.
+func TestSSEEventParser_EmptyDataLineSkipped(t *testing.T) {
+	raw := []byte("id: keepalive_0000\ndata:\n\n" +
+		"event: message\nid: msg_0001\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{}}\n\n")
+	p := newSSEEventParser(bytes.NewReader(raw), "mybackend")
+
+	// First event carries only an empty data line: no messages, no error.
+	ev1, err := p.next()
+	require.NoError(t, err)
+	require.NotNil(t, ev1)
+	require.Empty(t, ev1.messages)
+	require.Equal(t, "keepalive_0000", ev1.id)
+
+	// Second event is the real JSON-RPC response.
+	ev2, err := p.next()
+	require.NoError(t, err)
+	require.Len(t, ev2.messages, 1)
+	_, ok := ev2.messages[0].(*jsonrpc.Response)
+	require.True(t, ok)
+}
