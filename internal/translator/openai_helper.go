@@ -739,12 +739,9 @@ func (s *openAIStreamToAnthropicState) handleChunk(chunk *openai.ChatCompletionR
 	if len(chunk.Choices) == 0 && chunk.Usage != nil {
 		s.inputTokens = chunk.Usage.PromptTokens
 		s.outputTokens = chunk.Usage.CompletionTokens
-		// We don't forward OpenAI's prompt_tokens_details.cached_tokens/cache_creation_input_tokens
-		// here: they're a breakdown *within* prompt_tokens (like text_tokens/audio_tokens), not
-		// additive extras as in Anthropic's native usage schema, where input_tokens excludes
-		// cache tokens and they're reported as separate additive fields. Forwarding OpenAI's
-		// values as-is would cause Anthropic clients to double-count the cached portion on top
-		// of input_tokens.
+		// OpenAI's cached_tokens/cache_creation_input_tokens are a breakdown within
+		// prompt_tokens, not additive like Anthropic's native cache fields, so we don't
+		// forward them here to avoid double-counting.
 		s.tokenUsage = metrics.ExtractTokenUsageFromExplicitCaching(
 			int64(s.inputTokens),
 			int64(s.outputTokens),
@@ -1057,8 +1054,7 @@ func (s *openAIStreamToAnthropicState) emitClosingEvents(out *[]byte) error {
 		stopReason = string(anthropic.StopReasonEndTurn)
 	}
 
-	// message_delta.usage is cumulative per the Anthropic API spec, so we backfill input_tokens
-	// here rather than in message_start, since OpenAI doesn't report prompt token usage until now.
+	// Backfill input_tokens here (not message_start): OpenAI doesn't report it until now.
 	msgDeltaPayload := sseMessageDelta{
 		Type:  "message_delta",
 		Delta: sseMessageDeltaBody{StopReason: stopReason, StopSequence: nil},
