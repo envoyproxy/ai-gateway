@@ -328,6 +328,25 @@ func TestServer_maybeUpdateMCPRoutes(t *testing.T) {
 										filterNameAPIKeyAuth: emptyConfig,
 										filterNameExtAuth:    emptyConfig,
 									},
+									// rule/0 (frontend MCP proxy route) gets the dynamic-metadata -> header
+									// injection so the HTTP MCP proxy can read the backend subset and tool
+									// subset; authn is preserved.
+									RequestHeadersToAdd: []*corev3.HeaderValueOption{
+										{
+											AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+											Header: &corev3.HeaderValue{
+												Key:   internalapi.MCPBackendSubsetHeader,
+												Value: `%DYNAMIC_METADATA(["aigateway.envoy.io", "mcp_backend_subset"])%`,
+											},
+										},
+										{
+											AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+											Header: &corev3.HeaderValue{
+												Key:   internalapi.MCPToolSubsetHeader,
+												Value: `%DYNAMIC_METADATA(["aigateway.envoy.io", "mcp_tool_subset"])%`,
+											},
+										},
+									},
 								},
 								{
 									Name: internalapi.MCPMainHTTPRoutePrefix + "foo/rule/1",

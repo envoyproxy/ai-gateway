@@ -168,8 +168,11 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 		for _, vh := range routeConfig.VirtualHosts {
 			for _, route := range vh.Routes {
 				if strings.Contains(route.Name, internalapi.MCPMainHTTPRoutePrefix) {
-					// Skip the frontend mcp proxy route(rule/0).
+					// The frontend mcp proxy route(rule/0) forwards to the in-process HTTP MCP proxy.
 					if strings.Contains(route.Name, "rule/0") {
+						// The MCP proxy can only read HTTP headers, so render the trusted shim's
+						// dynamic metadata into headers here. See mcpProxyDynamicMetadataHeaders.
+						route.RequestHeadersToAdd = append(route.RequestHeadersToAdd, mcpProxyDynamicMetadataHeaders()...)
 						continue
 					}
 					// Remove the authn filters from the well-known and backend routes.
@@ -183,6 +186,32 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 				}
 			}
 		}
+	}
+}
+
+// mcpProxyDynamicMetadataHeaders returns the request header mutations applied on the
+// route into the in-process MCP proxy. The MCP proxy is a plain HTTP server and can
+// only read headers, so values the trusted shim sets as (unforgeable) dynamic metadata
+// are rendered into headers here. When a metadata value is empty/absent, Envoy omits the
+// header, which the proxy treats as "no subsetting" (its backward-compatible fallback).
+func mcpProxyDynamicMetadataHeaders() []*corev3.HeaderValueOption {
+	return []*corev3.HeaderValueOption{
+		dynamicMetadataHeader(internalapi.MCPBackendSubsetHeader, internalapi.MCPBackendSubsetMetadataKey),
+		dynamicMetadataHeader(internalapi.MCPToolSubsetHeader, internalapi.MCPToolSubsetMetadataKey),
+	}
+}
+
+// dynamicMetadataHeader builds a request header whose value is sourced from the dynamic
+// metadata key under internalapi.InternalEndpointMetadataNamespace using Envoy's
+// %DYNAMIC_METADATA% command operator. OVERWRITE ensures any client-supplied copy is
+// replaced by the trusted value.
+func dynamicMetadataHeader(header, metadataKey string) *corev3.HeaderValueOption {
+	return &corev3.HeaderValueOption{
+		AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+		Header: &corev3.HeaderValue{
+			Key:   header,
+			Value: fmt.Sprintf(`%%DYNAMIC_METADATA(["%s", "%s"])%%`, internalapi.InternalEndpointMetadataNamespace, metadataKey),
+		},
 	}
 }
 
