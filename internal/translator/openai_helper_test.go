@@ -612,15 +612,16 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_TextStreaming(t *testing.T) 
 	require.JSONEq(t, `{"type":"content_block_stop","index":0}`, events[4].data)
 
 	assert.Equal(t, "message_delta", events[5].eventType)
-	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}`, events[5].data)
+	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":10,"output_tokens":5}}`, events[5].data)
 
 	assert.Equal(t, "message_stop", events[6].eventType)
 	require.JSONEq(t, `{"type":"message_stop"}`, events[6].data)
 }
 
+// TestOpenAIStreamToAnthropicState_ProcessBuffer_CachedTokens verifies that OpenAI's
+// prompt_tokens_details breakdown is not forwarded into Anthropic's additive cache usage
+// fields (see the comment in handleChunk for why).
 func TestOpenAIStreamToAnthropicState_ProcessBuffer_CachedTokens(t *testing.T) {
-	// Verify that OpenAI's prompt_tokens_details (cached_tokens / cache_creation_input_tokens)
-	// is forwarded into the Anthropic message_delta.usage cache fields, not hardcoded to zero.
 	state := &openAIStreamToAnthropicState{
 		activeTools:  make(map[int64]*streamToolCall),
 		requestModel: "claude-3",
@@ -647,15 +648,19 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_CachedTokens(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, msgDeltaData)
-	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":100,"output_tokens":5,"cache_creation_input_tokens":20,"cache_read_input_tokens":80}}`, msgDeltaData)
+	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":100,"output_tokens":5}}`, msgDeltaData)
 
-	// Also verify the gateway's internal cost-tracking TokenUsage picks up the real cache counts.
+	// The gateway's internal cost-tracking TokenUsage must likewise report the plain
+	// prompt_tokens total without adding the cached breakdown on top of it.
+	total, ok := state.tokenUsage.InputTokens()
+	require.True(t, ok)
+	assert.Equal(t, uint32(100), total)
 	cached, ok := state.tokenUsage.CachedInputTokens()
 	require.True(t, ok)
-	assert.Equal(t, uint32(80), cached)
+	assert.Equal(t, uint32(0), cached)
 	cacheCreation, ok := state.tokenUsage.CacheCreationInputTokens()
 	require.True(t, ok)
-	assert.Equal(t, uint32(20), cacheCreation)
+	assert.Equal(t, uint32(0), cacheCreation)
 }
 
 func TestOpenAIStreamToAnthropicState_ProcessBuffer_ToolCallStreaming(t *testing.T) {
@@ -696,7 +701,7 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_ToolCallStreaming(t *testing
 	require.JSONEq(t, `{"type":"content_block_stop","index":0}`, events[3].data)
 
 	assert.Equal(t, "message_delta", events[4].eventType)
-	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":15,"output_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}`, events[4].data)
+	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":15,"output_tokens":10}}`, events[4].data)
 
 	assert.Equal(t, "message_stop", events[5].eventType)
 	require.JSONEq(t, `{"type":"message_stop"}`, events[5].data)
@@ -733,7 +738,7 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_EndOfStreamClosing(t *testin
 		}
 	}
 	require.NotEmpty(t, msgDeltaData)
-	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}`, msgDeltaData)
+	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":0,"output_tokens":0}}`, msgDeltaData)
 }
 
 func TestOpenAIStreamToAnthropicState_ProcessBuffer_EmptyInput(t *testing.T) {

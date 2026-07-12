@@ -1342,7 +1342,7 @@ event: content_block_stop
 data: {"type":"content_block_stop","index":0}
 
 event: message_delta
-data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":10,"output_tokens":3,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":10,"output_tokens":3}}
 
 event: message_stop
 data: {"type":"message_stop"}`,
@@ -1379,7 +1379,7 @@ event: content_block_stop
 data: {"type":"content_block_stop","index":0}
 
 event: message_delta
-data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":50,"output_tokens":15,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":50,"output_tokens":15}}
 
 event: message_stop
 data: {"type":"message_stop"}`,
