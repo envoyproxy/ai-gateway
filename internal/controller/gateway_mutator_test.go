@@ -7,7 +7,6 @@ package controller
 
 import (
 	"fmt"
-	"strconv"
 	"testing"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -104,7 +103,7 @@ func TestGatewayMutator_mutatePod(t *testing.T) {
 					switch arg {
 					case "-mcpAddr":
 						foundMCPAddr = true
-						require.Equal(t, ":"+strconv.Itoa(internalapi.MCPProxyPort), container.Args[i+1])
+						require.Equal(t, "unix://"+internalapi.MCPProxySocketPath, container.Args[i+1])
 					case "-mcpSessionEncryptionSeed":
 						foundMCPSeed = true
 						require.Equal(t, "seed", container.Args[i+1])

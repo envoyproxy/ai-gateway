@@ -103,6 +103,7 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	require.Equal(t, route.Spec.Headers, mainHTTPRoute.Spec.Rules[0].Matches[0].Headers)
 	require.Len(t, mainHTTPRoute.Spec.Rules[0].BackendRefs, 1)
 	require.Equal(t, gwapiv1.ObjectName(mcpProxySharedBackendName), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
+	require.Nil(t, mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Port)
 
 	// Verify the shared Backend exists in the MCPRoute namespace, has no controller owner (it is
 	// shared across all MCPRoutes/Gateways in the namespace), and is tagged as managed by us.
@@ -111,7 +112,7 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, metav1.GetControllerOf(&sharedBackend))
 	require.Equal(t, managedByValue, sharedBackend.Labels[managedByLabel])
-
+	require.Equal(t, []egv1a1.BackendEndpoint{{Unix: &egv1a1.UnixSocket{Path: internalapi.MCPProxySocketPath}}}, sharedBackend.Spec.Endpoints)
 	// Since HTTPRouteRule name is experimental in Gateway API, and some vendors (e.g. GKE Gateway) do not
 	// support it yet, we currently do not set the sectionName to avoid compatibility issues.
 	// The jwt filter will be removed from backend routes in the extension server.
@@ -335,7 +336,7 @@ func TestMCPRouteController_DeletesLegacyPerRouteBackend(t *testing.T) {
 				Name: "myroute", UID: created.UID, Controller: ptr.To(true),
 			}},
 		},
-		Spec: egv1a1.BackendSpec{Endpoints: []egv1a1.BackendEndpoint{{IP: &egv1a1.IPEndpoint{Address: mcpProxyBackendDummyIP, Port: int32(internalapi.MCPProxyPort)}}}},
+		Spec: egv1a1.BackendSpec{Endpoints: []egv1a1.BackendEndpoint{{IP: &egv1a1.IPEndpoint{Address: "192.0.2.42", Port: int32(internalapi.MCPProxyPort)}}}},
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), legacy))
 
@@ -378,6 +379,7 @@ func Test_newHTTPRoute_MCP_PathAndBackendsAndMetadata(t *testing.T) {
 	require.Equal(t, "/custom/", *httpRoute.Spec.Rules[0].Matches[0].Path.Value)
 	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
 	require.Equal(t, gwapiv1.ObjectName(mcpProxySharedBackendName), httpRoute.Spec.Rules[0].BackendRefs[0].Name)
+	require.Nil(t, httpRoute.Spec.Rules[0].BackendRefs[0].Port)
 
 	// Metadata propagated.
 	require.Equal(t, "v1", httpRoute.Labels["k1"])

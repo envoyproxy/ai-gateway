@@ -30,8 +30,7 @@ import (
 )
 
 const (
-	defaultMCPPath         = "/mcp"
-	mcpProxyBackendDummyIP = "192.0.2.42" // RFC 5737 TEST-NET-2, used as a dummy IP.
+	defaultMCPPath = "/mcp"
 )
 
 // MCPRouteController implements [reconcile.TypedReconciler].
@@ -295,7 +294,6 @@ func (c *MCPRouteController) newMainHTTPRoute(dst *gwapiv1.HTTPRoute, mcpRoute *
 						Kind:      ptr.To(gwapiv1.Kind("Backend")),
 						Name:      gwapiv1.ObjectName(backendName),
 						Namespace: ptr.To(gwapiv1.Namespace(mcpRoute.Namespace)),
-						Port:      ptr.To(gwapiv1.PortNumber(internalapi.MCPProxyPort)),
 					},
 				},
 			},
@@ -558,10 +556,7 @@ func (c *MCPRouteController) ensureMCPProxyBackend(ctx context.Context, namespac
 			Spec: egv1a1.BackendSpec{
 				Endpoints: []egv1a1.BackendEndpoint{
 					{
-						IP: &egv1a1.IPEndpoint{
-							Address: mcpProxyBackendDummyIP,
-							Port:    int32(internalapi.MCPProxyPort),
-						},
+						Unix: &egv1a1.UnixSocket{Path: internalapi.MCPProxySocketPath},
 					},
 				},
 			},
