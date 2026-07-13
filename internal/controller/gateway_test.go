@@ -1163,7 +1163,7 @@ func TestResolveCredentialOverride(t *testing.T) {
 func TestGatewayController_bspToFilterAPIBackendAuth_WithOverride(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
-	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const namespace = "ns"
