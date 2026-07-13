@@ -487,6 +487,47 @@ func TestResolveBackendFromPlan(t *testing.T) {
 	}
 }
 
+func TestSetAWSSigningHost(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		attributes *structpb.Struct
+		want       string
+	}{
+		{
+			name: "upstream host metadata",
+			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{
+				internalapi.XDSUpstreamHostMetadataAWSSigningHostPath: structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
+				internalapi.XDSClusterMetadataAWSSigningHostPath:      structpb.NewStringValue("cluster.example.com"),
+			}},
+			want: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
+		},
+		{
+			name: "cluster metadata fallback",
+			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{
+				internalapi.XDSClusterMetadataAWSSigningHostPath: structpb.NewStringValue("cluster.example.com"),
+			}},
+			want: "cluster.example.com",
+		},
+		{
+			name:       "missing metadata",
+			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{}},
+		},
+		{
+			name: "nil metadata",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			headers := map[string]string{}
+			setAWSSigningHost(headers, tc.attributes)
+			if tc.want == "" {
+				require.NotContains(t, headers, internalapi.AWSSigningHostHeader)
+				return
+			}
+			require.Equal(t, tc.want, headers[internalapi.AWSSigningHostHeader])
+		})
+	}
+}
+
 func TestServer_ProcessorSelection(t *testing.T) {
 	s, err := NewServer(slog.Default(), false)
 	require.NoError(t, err)
