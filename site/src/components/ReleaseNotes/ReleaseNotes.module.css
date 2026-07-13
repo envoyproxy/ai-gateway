@@ -597,6 +597,14 @@
   background: var(--ifm-color-emphasis-400);
 }
 
+/* GA / major-version milestone — highlighted */
+.timelineMarker.major {
+  background: linear-gradient(135deg, var(--ifm-color-primary) 0%, #b81d8f 100%);
+  box-shadow:
+    0 0 0 4px rgba(108, 24, 153, 0.18),
+    0 4px 16px rgba(108, 24, 153, 0.4);
+}
+
 .timelineContent {
   flex: 1;
   background: white;
@@ -615,6 +623,17 @@
 
 .timelineContent.patch {
   border-left: 3px solid var(--ifm-color-emphasis-400);
+}
+
+.timelineContent.major {
+  border: 1px solid var(--ifm-color-primary);
+  border-left: 5px solid var(--ifm-color-primary);
+  background: linear-gradient(
+    180deg,
+    rgba(108, 24, 153, 0.06) 0%,
+    rgba(108, 24, 153, 0) 55%
+  );
+  box-shadow: 0 6px 20px rgba(108, 24, 153, 0.12);
 }
 
 .timelineHeader {

@@ -1296,6 +1296,90 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_RequestBody(t *testing.T) 
 				},
 			},
 		},
+		{
+			name: "test reasoning_effort forwarded as reasoning_config",
+			input: openai.ChatCompletionRequest{
+				Model: "some-reasoning-model",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+						},
+					},
+				},
+				ReasoningEffort: "high",
+			},
+			output: awsbedrock.ConverseInput{
+				AdditionalModelRequestFields: map[string]interface{}{
+					"reasoning_config": "high",
+				},
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{{Text: ptr.To("Hello")}},
+					},
+				},
+			},
+		},
+		{
+			name: "test reasoning_effort coexists with thinking",
+			input: openai.ChatCompletionRequest{
+				Model: "some-reasoning-model",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+						},
+					},
+				},
+				Thinking: &openai.ThinkingUnion{
+					OfEnabled: &openai.ThinkingEnabled{
+						Type:         "enabled",
+						BudgetTokens: 2048,
+					},
+				},
+				ReasoningEffort: "medium",
+			},
+			output: awsbedrock.ConverseInput{
+				AdditionalModelRequestFields: map[string]interface{}{
+					"thinking":         map[string]interface{}{"type": "enabled", "budget_tokens": float64(2048)},
+					"reasoning_config": "medium",
+				},
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{{Text: ptr.To("Hello")}},
+					},
+				},
+			},
+		},
+		{
+			name: "test empty reasoning_effort is not forwarded",
+			input: openai.ChatCompletionRequest{
+				Model: "some-model",
+				Messages: []openai.ChatCompletionMessageParamUnion{
+					{
+						OfUser: &openai.ChatCompletionUserMessageParam{
+							Role:    openai.ChatMessageRoleUser,
+							Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+						},
+					},
+				},
+			},
+			output: awsbedrock.ConverseInput{
+				InferenceConfig: &awsbedrock.InferenceConfiguration{},
+				Messages: []*awsbedrock.Message{
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: []*awsbedrock.ContentBlock{{Text: ptr.To("Hello")}},
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2688,4 +2772,53 @@ func requireNoEmptyAssistantContent(t *testing.T, messages []*awsbedrock.Message
 			t.Errorf("message at index %d is an assistant message with empty content array, which Bedrock will reject", i)
 		}
 	}
+}
+
+func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_ResponseBody_MarshalError(t *testing.T) {
+	// Build a valid Bedrock streaming event that will be successfully decoded,
+	// but inject a json.Marshal failure to exercise the error return path
+	// that was previously a panic.
+	inputEvents := []awsbedrock.ConverseStreamEvent{
+		{Role: ptr.To(awsbedrock.ConversationRoleAssistant)},
+		{
+			ContentBlockIndex: 0,
+			EventType:         awsbedrock.ConverseStreamEventTypeContentBlockDelta.String(),
+			Delta: &awsbedrock.ConverseStreamEventContentBlockDelta{
+				Text: ptr.To("hello"),
+			},
+		},
+		{StopReason: ptr.To(awsbedrock.StopReasonEndTurn)},
+	}
+
+	buf := bytes.NewBuffer(nil)
+	encoder := eventstream.NewEncoder()
+	for _, event := range inputEvents {
+		payload, err := json.Marshal(event)
+		require.NoError(t, err)
+		err = encoder.Encode(buf, eventstream.Message{
+			Headers: eventstream.Headers{
+				{Name: ":event-type", Value: eventstream.StringValue("chunk")},
+			},
+			Payload: payload,
+		})
+		require.NoError(t, err)
+	}
+
+	// Override json.Marshal to force a failure during serializeOpenAIChatCompletionChunk.
+	orig := json.Marshal
+	t.Cleanup(func() { json.Marshal = orig })
+	json.Marshal = func(v interface{}) ([]byte, error) {
+		// Allow the eventstream decoding (internal json.Unmarshal) to succeed
+		// by only failing on ChatCompletionResponseChunk marshaling.
+		if _, ok := v.(*openai.ChatCompletionResponseChunk); ok {
+			return nil, fmt.Errorf("injected marshal error")
+		}
+		return orig(v)
+	}
+
+	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{stream: true, requestModel: "test-model"}
+	_, _, _, _, err := o.ResponseBody(nil, buf, true, nil)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to marshal streaming event")
+	require.ErrorContains(t, err, "injected marshal error")
 }

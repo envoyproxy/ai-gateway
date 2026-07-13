@@ -22,6 +22,7 @@ import (
 func Test_parseAndValidateFlags(t *testing.T) {
 	t.Run("no flags", func(t *testing.T) {
 		f, err := parseAndValidateFlags([]string{})
+		require.Equal(t, "envoy-gateway-system", f.envoyGatewayNamespace)
 		require.Equal(t, "info", f.extProcLogLevel)
 		require.False(t, f.extProcEnableRedaction)
 		require.Equal(t, "docker.io/envoyproxy/ai-gateway-extproc:latest", f.extProcImage)
@@ -48,6 +49,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				args := []string{
+					tc.dash + "envoyGatewayNamespace=eg-system",
 					tc.dash + "extProcLogLevel=debug",
 					tc.dash + "extProcEnableRedaction=true",
 					tc.dash + "extProcImage=example.com/extproc:latest",
@@ -70,6 +72,7 @@ func Test_parseAndValidateFlags(t *testing.T) {
 					tc.dash + "mcpFallbackSessionEncryptionIterations=200",
 				}
 				f, err := parseAndValidateFlags(args)
+				require.Equal(t, "eg-system", f.envoyGatewayNamespace)
 				require.Equal(t, "debug", f.extProcLogLevel)
 				require.True(t, f.extProcEnableRedaction)
 				require.Equal(t, "example.com/extproc:latest", f.extProcImage)
