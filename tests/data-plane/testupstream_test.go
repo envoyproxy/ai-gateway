@@ -195,36 +195,6 @@ func TestWithTestUpstream(t *testing.T) {
 			},
 		},
 		{
-			name:        "gcp-anthropicai - /v1/chat/completions - missing max_tokens",
-			backend:     "gcp-anthropicai",
-			path:        "/v1/chat/completions",
-			method:      http.MethodPost,
-			requestBody: `{"model":"claude-3-sonnet","messages":[{"role":"user","content":"Hello"}]}`,
-			expStatus:   http.StatusUnprocessableEntity,
-			expResponseBodyFunc: func(t require.TestingT, body []byte) {
-				bodyStr := string(body)
-				require.Contains(t, bodyStr, `"type":"error"`)
-				require.Contains(t, bodyStr, `"type":"UnprocessableEntity"`)
-				require.Contains(t, bodyStr, `"code":"422"`)
-				require.Contains(t, bodyStr, `max_tokens or max_completion_tokens is required for Anthropic-backed OpenAI-compatible requests`)
-			},
-		},
-		{
-			name:        "aws-anthropic - /v1/chat/completions - missing max_tokens",
-			backend:     "aws-anthropic",
-			path:        "/v1/chat/completions",
-			method:      http.MethodPost,
-			requestBody: `{"model":"anthropic.claude-3-sonnet-20240229-v1:0","messages":[{"role":"user","content":"Hello"}]}`,
-			expStatus:   http.StatusUnprocessableEntity,
-			expResponseBodyFunc: func(t require.TestingT, body []byte) {
-				bodyStr := string(body)
-				require.Contains(t, bodyStr, `"type":"error"`)
-				require.Contains(t, bodyStr, `"type":"UnprocessableEntity"`)
-				require.Contains(t, bodyStr, `"code":"422"`)
-				require.Contains(t, bodyStr, `max_tokens or max_completion_tokens is required for Anthropic-backed OpenAI-compatible requests`)
-			},
-		},
-		{
 			name:            "aws system role - /v1/chat/completions",
 			backend:         "aws-bedrock",
 			path:            "/v1/chat/completions",

@@ -913,7 +913,7 @@ func TestAnthropicStreamParserTokenUsage_NoDoubleCounting(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parser := newAnthropicStreamParser("test-model", false)
+			parser := newAnthropicStreamParser("test-model")
 
 			messageDeltaUsageFields := []string{fmt.Sprintf(`"output_tokens":%d`, tt.messageDeltaOutputTokens)}
 			if tt.messageDeltaInputTokens != nil {
@@ -977,7 +977,7 @@ func TestAnthropicStreamParserTokenUsage_MessageDeltaNoUsagePreservesPrior(t *te
 	// non-pointer int64 fields that default to 0 when absent, so the parser must
 	// use presence (Valid()) rather than a bare value check — otherwise the
 	// zero default would overwrite a previously set non-zero count.
-	parser := newAnthropicStreamParser("test-model", false)
+	parser := newAnthropicStreamParser("test-model")
 
 	sseStream := `event: message_start
 data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":0}}}
@@ -1023,7 +1023,7 @@ func TestAnthropicStreamParserTokenUsage_MessageDeltaCacheWhenInputAlreadyHasCac
 	// and message_delta provides cache tokens but NOT input_tokens.
 	// The code must subtract the existing cache tokens from the base input_tokens
 	// before adding the new cache tokens from message_delta.
-	parser := newAnthropicStreamParser("test-model", false)
+	parser := newAnthropicStreamParser("test-model")
 
 	sseStream := `event: message_start
 data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":20,"cache_read_input_tokens":5,"cache_creation_input_tokens":3,"output_tokens":0}}}
@@ -1065,7 +1065,7 @@ data: {"type":"message_stop"}
 
 func TestAnthropicStreamParserTokenUsage_MessageDeltaInvalidJSON(t *testing.T) {
 	// Test that message_delta with invalid JSON in usage fields returns an error
-	parser := newAnthropicStreamParser("test-model", false)
+	parser := newAnthropicStreamParser("test-model")
 
 	sseStream := `event: message_start
 data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}
@@ -1593,7 +1593,7 @@ data: {"type": "message_stop"}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parser := newAnthropicStreamParser("claude-sonnet-4-6", true)
+			parser := newAnthropicStreamParser("claude-sonnet-4-6")
 
 			// Feed each event block separately (simulating chunked SSE delivery),
 			// with the last chunk marked as endOfStream.

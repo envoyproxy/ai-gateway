@@ -53,13 +53,36 @@ func buildOpenAIChatCompletionRequest(body *anthropic.MessagesRequest, modelName
 		req.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
 	}
 
-	// Note: Anthropic's thinking config is intentionally not forwarded to the OpenAI
-	// backend. OpenAI's chat completions API does not support a "thinking" parameter,
-	// and backends will reject the request with "thinking is not allowed". Thinking/
-	// reasoning for OpenAI o-series models is configured via reasoning_effort, which
-	// is a separate, backend-specific concern outside this translation layer.
+	// Map Anthropic thinking config to OpenAI thinking config.
+	if body.Thinking != nil {
+		req.Thinking = anthropicThinkingToOpenAI(body.Thinking)
+	}
 
 	return req
+}
+
+// anthropicThinkingToOpenAI converts an Anthropic Thinking config to OpenAI ThinkingUnion.
+func anthropicThinkingToOpenAI(t *anthropic.Thinking) *openai.ThinkingUnion {
+	if t == nil {
+		return nil
+	}
+	switch {
+	case t.Enabled != nil:
+		return &openai.ThinkingUnion{OfEnabled: &openai.ThinkingEnabled{
+			Type:         "enabled",
+			BudgetTokens: int64(t.Enabled.BudgetTokens),
+		}}
+	case t.Disabled != nil:
+		return &openai.ThinkingUnion{OfDisabled: &openai.ThinkingDisabled{
+			Type: "disabled",
+		}}
+	case t.Adaptive != nil:
+		return &openai.ThinkingUnion{OfAdaptive: &openai.ThinkingAdaptive{
+			Type: "adaptive",
+		}}
+	default:
+		return nil
+	}
 }
 
 // anthropicMessagesToOpenAI converts Anthropic messages (including the system prompt) to OpenAI message format.
