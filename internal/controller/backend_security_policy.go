@@ -106,12 +106,21 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 		bsp.Spec.Type != aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey
 
 	// Skip rotation for AWS when neither credentials file nor OIDC exchange is configured
-	// This allows IRSA/Pod Identity to work via the default credential chain
+	// This allows IRSA/Pod Identity to work via the default credential chain.
+	// Also skip rotation when credentials file is specified but no RoleARN is set,
+	// since those credentials are used directly without rotation.
 	if bsp.Spec.Type == aigv1b1.BackendSecurityPolicyTypeAWSCredentials {
 		if bsp.Spec.AWSCredentials != nil &&
 			bsp.Spec.AWSCredentials.CredentialsFile == nil &&
 			bsp.Spec.AWSCredentials.OIDCExchangeToken == nil {
 			c.logger.Info("Using default AWS credential chain (IRSA/Pod Identity), skipping rotation",
+				"namespace", bsp.Namespace, "name", bsp.Name)
+			requiresRotation = false
+		} else if bsp.Spec.AWSCredentials != nil &&
+			bsp.Spec.AWSCredentials.CredentialsFile != nil &&
+			bsp.Spec.AWSCredentials.CredentialsFile.RoleARN == "" &&
+			bsp.Spec.AWSCredentials.OIDCExchangeToken == nil {
+			c.logger.Info("Using AWS credentials file directly without role assumption, skipping rotation",
 				"namespace", bsp.Namespace, "name", bsp.Name)
 			requiresRotation = false
 		}
@@ -138,6 +147,18 @@ func (c *BackendSecurityPolicyController) rotateCredential(ctx context.Context, 
 			region := bsp.Spec.AWSCredentials.Region
 			roleArn := bsp.Spec.AWSCredentials.OIDCExchangeToken.AwsRoleArn
 			rotator, err = rotators.NewAWSOIDCRotator(ctx, c.client, nil, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, oidc, roleArn, region)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		} else if bsp.Spec.AWSCredentials.CredentialsFile != nil && bsp.Spec.AWSCredentials.CredentialsFile.RoleARN != "" {
+			region := bsp.Spec.AWSCredentials.Region
+			roleArn := bsp.Spec.AWSCredentials.CredentialsFile.RoleARN
+			secretNamespace := bsp.Namespace
+			if bsp.Spec.AWSCredentials.CredentialsFile.SecretRef.Namespace != nil {
+				secretNamespace = string(*bsp.Spec.AWSCredentials.CredentialsFile.SecretRef.Namespace)
+			}
+			secretName := string(bsp.Spec.AWSCredentials.CredentialsFile.SecretRef.Name)
+			rotator, err = rotators.NewAWSAssumeRoleRotator(ctx, c.client, nil, c.kube, c.logger, bsp.Namespace, bsp.Name, preRotationWindow, roleArn, region, secretName, secretNamespace)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
@@ -419,7 +440,8 @@ func validateGCPCredentialsParams(gcpCreds *aigv1b1.BackendSecurityPolicyGCPCred
 func getBSPGeneratedSecretName(bsp *aigv1b1.BackendSecurityPolicy) string {
 	switch bsp.Spec.Type {
 	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
-		if bsp.Spec.AWSCredentials.OIDCExchangeToken == nil {
+		if bsp.Spec.AWSCredentials.OIDCExchangeToken == nil &&
+			(bsp.Spec.AWSCredentials.CredentialsFile == nil || bsp.Spec.AWSCredentials.CredentialsFile.RoleARN == "") {
 			return ""
 		}
 	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:

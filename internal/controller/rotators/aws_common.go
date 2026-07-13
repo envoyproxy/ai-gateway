@@ -55,6 +55,8 @@ func defaultAWSConfig(ctx context.Context) (aws.Config, error) {
 type STSClient interface {
 	// AssumeRoleWithWebIdentity exchanges a web identity token for temporary AWS credentials.
 	AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error)
+	// AssumeRole assumes an IAM role using existing AWS credentials and returns temporary credentials.
+	AssumeRole(ctx context.Context, params *sts.AssumeRoleInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleOutput, error)
 }
 
 // stsClient implements the STSOperations interface using the AWS SDK v2.
@@ -78,6 +80,13 @@ func NewSTSClient(cfg aws.Config) STSClient { //nolint:gocritic
 // This implements [STSClient.AssumeRoleWithWebIdentity].
 func (c *stsClient) AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 	return c.client.AssumeRoleWithWebIdentity(ctx, params, optFns...)
+}
+
+// AssumeRole assumes an IAM role using existing AWS credentials.
+//
+// This implements [STSClient.AssumeRole].
+func (c *stsClient) AssumeRole(ctx context.Context, params *sts.AssumeRoleInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleOutput, error) {
+	return c.client.AssumeRole(ctx, params, optFns...)
 }
 
 // awsCredentials represents an AWS credential including optional

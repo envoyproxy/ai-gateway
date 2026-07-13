@@ -707,9 +707,11 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			}, nil
 		}
 
-		// Otherwise, fetch credentials from secret
+		// Otherwise, fetch credentials from secret.
+		// When CredentialsFile has RoleARN set, the controller performs AssumeRole and stores
+		// temporary credentials in a generated secret (same as OIDC path).
 		var secretName string
-		if awsCred.CredentialsFile != nil {
+		if awsCred.CredentialsFile != nil && awsCred.CredentialsFile.RoleARN == "" {
 			secretName = string(awsCred.CredentialsFile.SecretRef.Name)
 		} else {
 			secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
