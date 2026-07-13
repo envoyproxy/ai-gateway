@@ -103,6 +103,7 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	require.Equal(t, route.Spec.Headers, mainHTTPRoute.Spec.Rules[0].Matches[0].Headers)
 	require.Len(t, mainHTTPRoute.Spec.Rules[0].BackendRefs, 1)
 	require.Equal(t, gwapiv1.ObjectName(mcpProxySharedBackendName), mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Name)
+	require.Nil(t, mainHTTPRoute.Spec.Rules[0].BackendRefs[0].Port)
 
 	// Verify the shared Backend exists in the MCPRoute namespace, has no controller owner (it is
 	// shared across all MCPRoutes/Gateways in the namespace), and is tagged as managed by us.
@@ -111,7 +112,7 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, metav1.GetControllerOf(&sharedBackend))
 	require.Equal(t, managedByValue, sharedBackend.Labels[managedByLabel])
-
+	require.Equal(t, []egv1a1.BackendEndpoint{{Unix: &egv1a1.UnixSocket{Path: internalapi.MCPProxySocketPath}}}, sharedBackend.Spec.Endpoints)
 	// Since HTTPRouteRule name is experimental in Gateway API, and some vendors (e.g. GKE Gateway) do not
 	// support it yet, we currently do not set the sectionName to avoid compatibility issues.
 	// The jwt filter will be removed from backend routes in the extension server.
@@ -304,6 +305,34 @@ func TestMCPRouteController_SharedBackend_PreservesUnmanagedBackend(t *testing.T
 		"user-owned Backend of the same name must be preserved")
 }
 
+func TestMCPRouteController_SharedBackend_UpdatesManagedBackend(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexesForMCP(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewMCPRouteController(fakeClient, fakekube.NewClientset(), ctrl.Log, eventCh.Ch)
+
+	// Simulate the shared Backend created by a version that used a placeholder TCP endpoint.
+	backend := &egv1a1.Backend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mcpProxySharedBackendName,
+			Namespace: "default",
+			Labels:    map[string]string{managedByLabel: managedByValue},
+		},
+		Spec: egv1a1.BackendSpec{Endpoints: []egv1a1.BackendEndpoint{{
+			IP: &egv1a1.IPEndpoint{Address: "192.0.2.42", Port: int32(internalapi.MCPProxyPort)},
+		}}},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), backend))
+
+	_, err := c.ensureMCPProxyBackend(t.Context(), "default")
+	require.NoError(t, err)
+
+	var got egv1a1.Backend
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: mcpProxySharedBackendName, Namespace: "default"}, &got))
+	require.Equal(t, []egv1a1.BackendEndpoint{{
+		Unix: &egv1a1.UnixSocket{Path: internalapi.MCPProxySocketPath},
+	}}, got.Spec.Endpoints)
+}
+
 // TestMCPRouteController_DeletesLegacyPerRouteBackend verifies the one-time migration: a legacy
 // per-MCPRoute Backend ({ns}-{name}-mcp-proxy) owned by the route is removed on reconcile, and the
 // shared per-namespace Backend is created in its place.
@@ -335,7 +364,7 @@ func TestMCPRouteController_DeletesLegacyPerRouteBackend(t *testing.T) {
 				Name: "myroute", UID: created.UID, Controller: ptr.To(true),
 			}},
 		},
-		Spec: egv1a1.BackendSpec{Endpoints: []egv1a1.BackendEndpoint{{IP: &egv1a1.IPEndpoint{Address: mcpProxyBackendDummyIP, Port: int32(internalapi.MCPProxyPort)}}}},
+		Spec: egv1a1.BackendSpec{Endpoints: []egv1a1.BackendEndpoint{{IP: &egv1a1.IPEndpoint{Address: "192.0.2.42", Port: int32(internalapi.MCPProxyPort)}}}},
 	}
 	require.NoError(t, fakeClient.Create(t.Context(), legacy))
 
@@ -378,6 +407,7 @@ func Test_newHTTPRoute_MCP_PathAndBackendsAndMetadata(t *testing.T) {
 	require.Equal(t, "/custom/", *httpRoute.Spec.Rules[0].Matches[0].Path.Value)
 	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
 	require.Equal(t, gwapiv1.ObjectName(mcpProxySharedBackendName), httpRoute.Spec.Rules[0].BackendRefs[0].Name)
+	require.Nil(t, httpRoute.Spec.Rules[0].BackendRefs[0].Port)
 
 	// Metadata propagated.
 	require.Equal(t, "v1", httpRoute.Labels["k1"])

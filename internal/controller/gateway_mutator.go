@@ -152,7 +152,7 @@ func (g *gatewayMutator) buildExtProcArgs(filterConfigFullPath string, extProcAd
 	}
 	if needMCP {
 		args = append(args,
-			"-mcpAddr", ":"+strconv.Itoa(internalapi.MCPProxyPort),
+			"-mcpAddr", "unix://"+internalapi.MCPProxySocketPath,
 			"-mcpSessionEncryptionSeed", g.mcpSessionEncryptionSeed,
 			"-mcpSessionEncryptionIterations", strconv.Itoa(g.mcpSessionEncryptionIterations),
 		)
