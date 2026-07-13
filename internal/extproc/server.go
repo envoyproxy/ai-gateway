@@ -385,7 +385,7 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 
 	var backendName string
 	// Check if the router processor has a routing plan for per-request backend selection.
-	if provider, ok := rp.(routingPlanProvider); ok {
+	if provider, isProvider := rp.(routingPlanProvider); isProvider {
 		if plan := provider.GetRoutingPlan(); plan != nil {
 			backendName = s.resolveBackendFromPlan(plan, provider.GetUpstreamFilterCount())
 		}
