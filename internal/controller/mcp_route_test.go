@@ -305,6 +305,34 @@ func TestMCPRouteController_SharedBackend_PreservesUnmanagedBackend(t *testing.T
 		"user-owned Backend of the same name must be preserved")
 }
 
+func TestMCPRouteController_SharedBackend_UpdatesManagedBackend(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexesForMCP(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewMCPRouteController(fakeClient, fakekube.NewClientset(), ctrl.Log, eventCh.Ch)
+
+	// Simulate the shared Backend created by a version that used a placeholder TCP endpoint.
+	backend := &egv1a1.Backend{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mcpProxySharedBackendName,
+			Namespace: "default",
+			Labels:    map[string]string{managedByLabel: managedByValue},
+		},
+		Spec: egv1a1.BackendSpec{Endpoints: []egv1a1.BackendEndpoint{{
+			IP: &egv1a1.IPEndpoint{Address: "192.0.2.42", Port: int32(internalapi.MCPProxyPort)},
+		}}},
+	}
+	require.NoError(t, fakeClient.Create(t.Context(), backend))
+
+	_, err := c.ensureMCPProxyBackend(t.Context(), "default")
+	require.NoError(t, err)
+
+	var got egv1a1.Backend
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: mcpProxySharedBackendName, Namespace: "default"}, &got))
+	require.Equal(t, []egv1a1.BackendEndpoint{{
+		Unix: &egv1a1.UnixSocket{Path: internalapi.MCPProxySocketPath},
+	}}, got.Spec.Endpoints)
+}
+
 // TestMCPRouteController_DeletesLegacyPerRouteBackend verifies the one-time migration: a legacy
 // per-MCPRoute Backend ({ns}-{name}-mcp-proxy) owned by the route is removed on reconcile, and the
 // shared per-namespace Backend is created in its place.
