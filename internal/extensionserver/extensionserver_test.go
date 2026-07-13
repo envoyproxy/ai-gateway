@@ -8,6 +8,7 @@ package extensionserver
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"testing"
@@ -40,7 +41,9 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
@@ -1545,6 +1548,146 @@ func TestPostRouteModify(t *testing.T) {
 		require.Nil(t, route.TypedPerFilterConfig)
 		require.Nil(t, route.Metadata)
 	})
+}
+
+// TestMaybeSetStreamIdleTimeout tests that the route's per_try_idle_timeout is set
+// from the AIGatewayRoute rule's StreamIdleTimeout.
+func TestMaybeSetStreamIdleTimeout(t *testing.T) {
+	c := newFakeClient()
+	err := c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "ttft-route", Namespace: "default"},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{StreamIdleTimeout: ptr.To(gwapiv1.Duration("10s"))},
+				{}, // No StreamIdleTimeout.
+			},
+		},
+	})
+	require.NoError(t, err)
+	s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+	require.NoError(t, err)
+
+	forwardingRoute := func(name string) *routev3.Route {
+		return &routev3.Route{Name: name, Action: &routev3.Route_Route{Route: &routev3.RouteAction{}}}
+	}
+	call := func(t *testing.T, route *routev3.Route) {
+		cache := make(map[client.ObjectKey]*aigv1b1.AIGatewayRoute)
+		require.NoError(t, s.maybeSetStreamIdleTimeout(context.Background(), route, cache))
+	}
+
+	t.Run("sets per_try_idle_timeout when configured", func(t *testing.T) {
+		route := forwardingRoute("httproute/default/ttft-route/rule/0/match/0")
+		call(t, route)
+		require.Equal(t, durationpb.New(10*time.Second), route.GetRoute().RetryPolicy.GetPerTryIdleTimeout())
+	})
+
+	t.Run("preserves existing retry policy", func(t *testing.T) {
+		route := forwardingRoute("httproute/default/ttft-route/rule/0/match/0")
+		route.GetRoute().RetryPolicy = &routev3.RetryPolicy{RetryOn: "reset", NumRetries: wrapperspb.UInt32(2)}
+		call(t, route)
+		require.Equal(t, "reset", route.GetRoute().RetryPolicy.RetryOn)
+		require.Equal(t, uint32(2), route.GetRoute().RetryPolicy.NumRetries.GetValue())
+		require.Equal(t, durationpb.New(10*time.Second), route.GetRoute().RetryPolicy.GetPerTryIdleTimeout())
+	})
+
+	t.Run("no timeout when rule has none", func(t *testing.T) {
+		route := forwardingRoute("httproute/default/ttft-route/rule/1/match/0")
+		call(t, route)
+		require.Nil(t, route.GetRoute().RetryPolicy)
+	})
+
+	t.Run("ignores non-forwarding route", func(t *testing.T) {
+		route := &routev3.Route{
+			Name:   "httproute/default/ttft-route/rule/0/match/0",
+			Action: &routev3.Route_DirectResponse{DirectResponse: &routev3.DirectResponseAction{Status: 403}},
+		}
+		call(t, route)
+		require.Nil(t, route.GetRoute())
+	})
+
+	t.Run("ignores unrelated route name", func(t *testing.T) {
+		route := forwardingRoute("some-other-route")
+		call(t, route)
+		require.Nil(t, route.GetRoute().RetryPolicy)
+	})
+
+	t.Run("ignores out-of-range rule index", func(t *testing.T) {
+		route := forwardingRoute("httproute/default/ttft-route/rule/9/match/0")
+		call(t, route)
+		require.Nil(t, route.GetRoute().RetryPolicy)
+	})
+
+	t.Run("ignores non-numeric rule index", func(t *testing.T) {
+		route := forwardingRoute("httproute/default/ttft-route/rule/x/match/0")
+		call(t, route)
+		require.Nil(t, route.GetRoute().RetryPolicy)
+	})
+
+	t.Run("ignores missing AIGatewayRoute", func(t *testing.T) {
+		route := forwardingRoute("httproute/default/missing/rule/0/match/0")
+		call(t, route)
+		require.Nil(t, route.GetRoute().RetryPolicy)
+	})
+
+	t.Run("reuses cached lookups across routes", func(t *testing.T) {
+		cache := make(map[client.ObjectKey]*aigv1b1.AIGatewayRoute)
+		// Two routes for the same AIGatewayRoute, plus a repeated missing one, all sharing
+		// the cache so the second lookup of each key is served from memory.
+		for _, name := range []string{
+			"httproute/default/ttft-route/rule/0/match/0",
+			"httproute/default/ttft-route/rule/0/match/1",
+			"httproute/default/missing/rule/0/match/0",
+			"httproute/default/missing/rule/0/match/1",
+		} {
+			route := forwardingRoute(name)
+			require.NoError(t, s.maybeSetStreamIdleTimeout(context.Background(), route, cache))
+		}
+		require.Contains(t, cache, client.ObjectKey{Namespace: "default", Name: "ttft-route"})
+		require.Nil(t, cache[client.ObjectKey{Namespace: "default", Name: "missing"}])
+	})
+}
+
+// TestApplyStreamIdleTimeouts tests that the per-try idle timeout is applied while walking
+// the route configurations, and that unrelated routes are left untouched.
+func TestApplyStreamIdleTimeouts(t *testing.T) {
+	c := newFakeClient()
+	require.NoError(t, c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "ttft-route", Namespace: "default"},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{{StreamIdleTimeout: ptr.To(gwapiv1.Duration("7s"))}},
+		},
+	}))
+	s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+	require.NoError(t, err)
+
+	forwarding := func(name string) *routev3.Route {
+		return &routev3.Route{Name: name, Action: &routev3.Route_Route{Route: &routev3.RouteAction{}}}
+	}
+	configured := forwarding("httproute/default/ttft-route/rule/0/match/0")
+	other := forwarding("some-other-route")
+	routeConfigs := []*routev3.RouteConfiguration{{
+		VirtualHosts: []*routev3.VirtualHost{{Routes: []*routev3.Route{configured, other}}},
+	}}
+
+	require.NoError(t, s.applyStreamIdleTimeouts(context.Background(), routeConfigs))
+	require.Equal(t, durationpb.New(7*time.Second), configured.GetRoute().RetryPolicy.GetPerTryIdleTimeout())
+	require.Nil(t, other.GetRoute().RetryPolicy)
+
+	// A failed AIGatewayRoute lookup propagates out of the walk.
+	failing, err := New(
+		fake.NewClientBuilder().WithScheme(controller.Scheme).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(context.Context, client.WithWatch, client.ObjectKey, client.Object, ...client.GetOption) error {
+					return errors.New("boom")
+				},
+			}).Build(),
+		logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+	require.NoError(t, err)
+	err = failing.applyStreamIdleTimeouts(context.Background(),
+		[]*routev3.RouteConfiguration{{VirtualHosts: []*routev3.VirtualHost{{Routes: []*routev3.Route{
+			forwarding("httproute/default/ttft-route/rule/0/match/0"),
+		}}}}})
+	require.ErrorContains(t, err, "boom")
 }
 
 // TestConstructInferencePoolsFrom tests the constructInferencePoolsFrom method.
