@@ -46,13 +46,14 @@ type BackendSecurityPolicy struct {
 // Only one mechanism to access a backend(s) can be specified.
 //
 // Only one type of BackendSecurityPolicy can be defined.
-// +kubebuilder:validation:MaxProperties=3
+// +kubebuilder:validation:MaxProperties=4
 // +kubebuilder:validation:XValidation:rule="self.type == 'APIKey' ? (has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.azureCredentials) && !has(self.gcpCredentials) && !has(self.anthropicAPIKey)) : true",message="When type is APIKey, only apiKey field should be set"
 // +kubebuilder:validation:XValidation:rule="self.type == 'AWSCredentials' ? (has(self.awsCredentials) && !has(self.apiKey) && !has(self.azureAPIKey) && !has(self.azureCredentials) && !has(self.gcpCredentials) && !has(self.anthropicAPIKey)) : true",message="When type is AWSCredentials, only awsCredentials field should be set"
 // +kubebuilder:validation:XValidation:rule="self.type == 'AzureAPIKey' ? (has(self.azureAPIKey) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureCredentials) && !has(self.gcpCredentials) && !has(self.anthropicAPIKey)) : true",message="When type is AzureAPIKey, only azureAPIKey field should be set"
 // +kubebuilder:validation:XValidation:rule="self.type == 'AzureCredentials' ? (has(self.azureCredentials) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.gcpCredentials) && !has(self.anthropicAPIKey)) : true",message="When type is AzureCredentials, only azureCredentials field should be set"
 // +kubebuilder:validation:XValidation:rule="self.type == 'GCPCredentials' ? (has(self.gcpCredentials) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.azureCredentials) && !has(self.anthropicAPIKey)) : true",message="When type is GCPCredentials, only gcpCredentials field should be set"
 // +kubebuilder:validation:XValidation:rule="self.type == 'AnthropicAPIKey' ? (has(self.anthropicAPIKey) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true",message="When type is AnthropicAPIKey, only anthropicAPIKey field should be set"
+// +kubebuilder:validation:XValidation:rule="!has(self.credentialOverride) || self.type != 'AWSCredentials'",message="credentialOverride is not supported for AWSCredentials"
 type BackendSecurityPolicySpec struct {
 	// TargetRefs are the names of the AIServiceBackend or InferencePool resources this BackendSecurityPolicy is being attached to.
 	// Attaching multiple BackendSecurityPolicies to the same resource is invalid and will result in an error
@@ -98,6 +99,12 @@ type BackendSecurityPolicySpec struct {
 	//
 	// +optional
 	AnthropicAPIKey *BackendSecurityPolicyAnthropicAPIKey `json:"anthropicAPIKey,omitempty"`
+
+	// CredentialOverride, when set, sources the upstream credential per-request instead of using
+	// the static credential configured above. Supported for all types except AWSCredentials.
+	//
+	// +optional
+	CredentialOverride *BackendSecurityPolicyCredentialOverride `json:"credentialOverride,omitempty"`
 }
 
 // BackendSecurityPolicyList contains a list of BackendSecurityPolicy
@@ -369,4 +376,73 @@ type BackendSecurityPolicyAnthropicAPIKey struct {
 	// ai-gateway must be given the permission to read this secret.
 	// The key of the secret should be "apiKey".
 	SecretRef *gwapiv1.SecretObjectReference `json:"secretRef"`
+}
+
+// BackendSecurityPolicyCredentialOverride configures per-request credential sourcing.
+// A trusted upstream filter (ext_authz or a preceding ext_proc) resolves the caller's
+// credential and delivers it via one of the two sources below.
+// Exactly one source must be configured.
+//
+// +kubebuilder:validation:MinProperties=1
+// +kubebuilder:validation:MaxProperties=1
+type BackendSecurityPolicyCredentialOverride struct {
+	// FromRequestHeaders sources the credential from a request header injected by a trusted
+	// ingress filter. The gateway strips the header before forwarding to the upstream backend.
+	// Because any client can set request headers, this source is only safe when a trusted filter
+	// removes any client-supplied copy and writes the canonical value.
+	//
+	// +optional
+	FromRequestHeaders *CredentialOverrideFromRequestHeaders `json:"fromRequestHeaders,omitempty"`
+
+	// FromDynamicMetadata sources the credential from Envoy dynamic metadata set by a trusted
+	// filter (e.g. ext_authz). Metadata cannot be forged by the client and is the preferred source.
+	//
+	// +optional
+	FromDynamicMetadata *CredentialOverrideFromDynamicMetadata `json:"fromDynamicMetadata,omitempty"`
+}
+
+// CredentialOverrideFromRequestHeaders sources the per-request credential from a request header.
+type CredentialOverrideFromRequestHeaders struct {
+	// Header is the name of the request header that carries the credential.
+	// Defaults to the x-aigw-* header for the configured auth type:
+	//   APIKey          → x-aigw-api-key
+	//   AnthropicAPIKey → x-aigw-anthropic-api-key
+	//   AzureAPIKey     → x-aigw-azure-api-key
+	//   AzureCredentials → x-aigw-azure-access-token
+	//   GCPCredentials  → x-aigw-gcp-access-token
+	//
+	// +optional
+	Header string `json:"header,omitempty"`
+
+	// FallbackToConfigured controls behaviour when the header is absent.
+	// true (default) falls back to the static credential configured in the policy.
+	// false returns a 401 to the client without forwarding the request.
+	//
+	// +kubebuilder:default=true
+	// +optional
+	FallbackToConfigured *bool `json:"fallbackToConfigured,omitempty"`
+}
+
+// CredentialOverrideFromDynamicMetadata sources the per-request credential from Envoy
+// dynamic metadata produced by a trusted filter running earlier in the filter chain.
+type CredentialOverrideFromDynamicMetadata struct {
+	// Namespace is the Envoy metadata namespace written by the trusted filter.
+	// Example: "envoy.filters.http.ext_authz"
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Namespace string `json:"namespace"`
+
+	// Key is the metadata key within the namespace. Defaults to the x-aigw-* name for the auth type.
+	//
+	// +optional
+	Key string `json:"key,omitempty"`
+
+	// FallbackToConfigured controls behaviour when the metadata key is absent.
+	// true (default) falls back to the static credential configured in the policy.
+	// false returns a 401 to the client without forwarding the request.
+	//
+	// +kubebuilder:default=true
+	// +optional
+	FallbackToConfigured *bool `json:"fallbackToConfigured,omitempty"`
 }

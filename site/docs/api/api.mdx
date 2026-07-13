@@ -2997,11 +2997,14 @@ MCPRouteList contains a list of MCPRoute.
 - [BackendSecurityPolicyAnthropicAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyanthropicapikey)
 - [BackendSecurityPolicyAzureAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazureapikey)
 - [BackendSecurityPolicyAzureCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazurecredentials)
+- [BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)
 - [BackendSecurityPolicyGCPCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygcpcredentials)
 - [BackendSecurityPolicyOIDC](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyoidc)
 - [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
 - [BackendSecurityPolicyStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicystatus)
 - [BackendSecurityPolicyType](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicytype)
+- [CredentialOverrideFromDynamicMetadata](#github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromdynamicmetadata)
+- [CredentialOverrideFromRequestHeaders](#github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromrequestheaders)
 - [GCPCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpcredentialsfile)
 - [GCPOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpoidcexchangetoken)
 - [GCPServiceAccountImpersonationConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpserviceaccountimpersonationconfig)
@@ -3573,6 +3576,35 @@ neither are set.
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride">BackendSecurityPolicyCredentialOverride</a>
+
+
+
+**Appears in:**
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
+
+BackendSecurityPolicyCredentialOverride configures per-request credential sourcing.
+A trusted upstream filter (ext_authz or a preceding ext_proc) resolves the caller's
+credential and delivers it via one of the two sources below.
+Exactly one source must be configured.
+
+##### Fields
+
+
+
+<ApiField
+  name="fromRequestHeaders"
+  type="[CredentialOverrideFromRequestHeaders](#github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromrequestheaders)"
+  required="false"
+  description="FromRequestHeaders sources the credential from a request header injected by a trusted<br />ingress filter. The gateway strips the header before forwarding to the upstream backend.<br />Because any client can set request headers, this source is only safe when a trusted filter<br />removes any client-supplied copy and writes the canonical value."
+/><ApiField
+  name="fromDynamicMetadata"
+  type="[CredentialOverrideFromDynamicMetadata](#github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromdynamicmetadata)"
+  required="false"
+  description="FromDynamicMetadata sources the credential from Envoy dynamic metadata set by a trusted<br />filter (e.g. ext_authz). Metadata cannot be forged by the client and is the preferred source."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygcpcredentials">BackendSecurityPolicyGCPCredentials</a>
 
 
@@ -3703,6 +3735,11 @@ Only one type of BackendSecurityPolicy can be defined.
   type="[BackendSecurityPolicyAnthropicAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyanthropicapikey)"
   required="false"
   description="AnthropicAPIKey is a mechanism to access Anthropic backend(s). The API key will be injected into the `x-api-key` header.<br />https://docs.claude.com/en/api/overview#authentication"
+/><ApiField
+  name="credentialOverride"
+  type="[BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)"
+  required="false"
+  description="CredentialOverride, when set, sources the upstream credential per-request instead of using<br />the static credential configured above. Supported for all types except AWSCredentials."
 />
 
 
@@ -3771,6 +3808,66 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   required="false"
   description=""
 />
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromdynamicmetadata">CredentialOverrideFromDynamicMetadata</a>
+
+
+
+**Appears in:**
+- [BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)
+
+CredentialOverrideFromDynamicMetadata sources the per-request credential from Envoy
+dynamic metadata produced by a trusted filter running earlier in the filter chain.
+
+##### Fields
+
+
+
+<ApiField
+  name="namespace"
+  type="string"
+  required="true"
+  description="Namespace is the Envoy metadata namespace written by the trusted filter.<br />Example: `envoy.filters.http.ext_authz`"
+/><ApiField
+  name="key"
+  type="string"
+  required="false"
+  description="Key is the metadata key within the namespace. Defaults to the x-aigw-* name for the auth type."
+/><ApiField
+  name="fallbackToConfigured"
+  type="boolean"
+  required="false"
+  defaultValue="true"
+  description="FallbackToConfigured controls behaviour when the metadata key is absent.<br />true (default) falls back to the static credential configured in the policy.<br />false returns a 401 to the client without forwarding the request."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromrequestheaders">CredentialOverrideFromRequestHeaders</a>
+
+
+
+**Appears in:**
+- [BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)
+
+CredentialOverrideFromRequestHeaders sources the per-request credential from a request header.
+
+##### Fields
+
+
+
+<ApiField
+  name="header"
+  type="string"
+  required="false"
+  description="Header is the name of the request header that carries the credential.<br />Defaults to the x-aigw-* header for the configured auth type:<br />  APIKey          → x-aigw-api-key<br />  AnthropicAPIKey → x-aigw-anthropic-api-key<br />  AzureAPIKey     → x-aigw-azure-api-key<br />  AzureCredentials → x-aigw-azure-access-token<br />  GCPCredentials  → x-aigw-gcp-access-token"
+/><ApiField
+  name="fallbackToConfigured"
+  type="boolean"
+  required="false"
+  defaultValue="true"
+  description="FallbackToConfigured controls behaviour when the header is absent.<br />true (default) falls back to the static credential configured in the policy.<br />false returns a 401 to the client without forwarding the request."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gcpcredentialsfile">GCPCredentialsFile</a>
 
 
