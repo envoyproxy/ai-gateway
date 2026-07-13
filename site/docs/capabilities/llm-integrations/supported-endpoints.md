@@ -39,6 +39,7 @@ The Envoy AI Gateway acts as a proxy that accepts OpenAI-compatible and Anthropi
 - Azure OpenAI (with automatic translation)
 - GCP VertexAI (with automatic translation)
 - GCP Anthropic (with automatic translation)
+- Anthropic (with automatic translation)
 - Any OpenAI-compatible provider (Groq, Together AI, Mistral, Tetrate Agent Router Service, etc.)
 
 **Example:**

@@ -664,8 +664,8 @@ func mapReasoningEffortToOutputConfigEffort(reasonEffort openai.ReasoningEffort)
 	}
 }
 
-// buildAnthropicParams is a helper function that translates an OpenAI request
-// into the parameter struct required by the Anthropic SDK.
+// buildAnthropicParams translates an OpenAI request into Anthropic SDK parameters.
+// It leaves Model unset because cloud providers identify the model in the request path.
 // The apiSchema parameter indicates the backend API schema (e.g., "AWSAnthropic", "GCPAnthropic").
 func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string, modelNameOverride internalapi.ModelNameOverride) (params *anthropic.MessageNewParams, err error) {
 	// 1. Handle simple parameters.

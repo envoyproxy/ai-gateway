@@ -55,7 +55,7 @@ func TestOpenAIToAnthropicTranslator_UsesResponseModel(t *testing.T) {
 		}},
 	}
 
-	tr := NewChatCompletionOpenAIToAnthropicTranslator("", "")
+	tr := NewChatCompletionOpenAIToAnthropicTranslator("v1", "")
 	_, _, err := tr.RequestBody(nil, req, false)
 	require.NoError(t, err)
 
@@ -72,7 +72,7 @@ func TestOpenAIToAnthropicTranslator_StreamUsesResponseModel(t *testing.T) {
 		Stream:    true,
 		MaxTokens: ptr.To(int64(100)),
 	}
-	tr := NewChatCompletionOpenAIToAnthropicTranslator("", "")
+	tr := NewChatCompletionOpenAIToAnthropicTranslator("v1", "")
 	_, _, err := tr.RequestBody(nil, req, false)
 	require.NoError(t, err)
 
@@ -83,7 +83,7 @@ func TestOpenAIToAnthropicTranslator_StreamUsesResponseModel(t *testing.T) {
 }
 
 func TestOpenAIToAnthropicTranslator_RawError(t *testing.T) {
-	tr := NewChatCompletionOpenAIToAnthropicTranslator("", "")
+	tr := NewChatCompletionOpenAIToAnthropicTranslator("v1", "")
 	_, body, err := tr.ResponseError(map[string]string{statusHeaderName: "503"}, bytes.NewBufferString("unavailable"))
 	require.NoError(t, err)
 	require.Equal(t, anthropicBackendError, gjson.GetBytes(body, "error.type").String())

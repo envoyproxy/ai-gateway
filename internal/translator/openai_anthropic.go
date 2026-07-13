@@ -26,9 +26,6 @@ const (
 
 // NewChatCompletionOpenAIToAnthropicTranslator implements [Factory] for direct Anthropic translation.
 func NewChatCompletionOpenAIToAnthropicTranslator(prefix string, modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
-	if prefix == "" {
-		prefix = "v1"
-	}
 	return &openAIToAnthropicTranslatorV1ChatCompletion{
 		openAIToGCPAnthropicTranslatorV1ChatCompletion: openAIToGCPAnthropicTranslatorV1ChatCompletion{
 			modelNameOverride: modelNameOverride,
