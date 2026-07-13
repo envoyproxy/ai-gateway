@@ -64,7 +64,26 @@ const (
 	MCPMetadataHeaderMethod = MCPMetadataHeaderPrefix + "method"
 	// MCPMetadataHeaderToolName is the special header key used to pass the MCP tool name in the filter metadata.
 	MCPMetadataHeaderToolName = MCPMetadataHeaderPrefix + "tool-name"
+
+	// LLMRoutingPlanHeader is the header key used to pass a per-request routing plan
+	// as a base64-encoded JSON payload. This allows a custom ext_proc to control
+	// which backends are tried and in what order for LLM requests.
+	LLMRoutingPlanHeader = EnvoyAIGatewayHeaderPrefix + "routing-plan"
 )
+
+// RoutingPlan represents a per-request routing plan provided via the LLMRoutingPlanHeader.
+// It specifies an ordered list of backend names to try, enabling arbitrary per-request
+// backend selection and fallback chains.
+type RoutingPlan struct {
+	// Backends is the ordered list of backend names to try.
+	// backends[0] is the primary, backends[1] is the first fallback, etc.
+	// Each name must match a filterapi.Backend.Name in the config.
+	Backends []string `json:"backends"`
+	// FallbackEnabled controls whether retries to subsequent backends are allowed.
+	// When false, only backends[0] is used and retries will reuse the same backend.
+	// Defaults to true when not specified.
+	FallbackEnabled *bool `json:"fallbackEnabled,omitempty"`
+}
 
 // MCPInternalHeadersToMetadata maps special MCP headers to metadata keys.
 var MCPInternalHeadersToMetadata = map[string]string{
