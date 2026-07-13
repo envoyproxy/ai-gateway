@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -407,6 +408,10 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 		var hdrs []internalapi.Header
 		hdrs, err = h.Do(ctx, u.requestHeaders, bodyMutation.GetBody())
 		if err != nil {
+			if errors.Is(err, backendauth.ErrCredentialMissing) {
+				u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
+				return createUserFacingErrorResponse(401, "Unauthorized", "missing upstream credential"), nil
+			}
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
 		}
 		for _, h := range hdrs {

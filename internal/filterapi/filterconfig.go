@@ -239,6 +239,31 @@ type BackendAuth struct {
 	AzureAuth *AzureAuth `json:"azure,omitempty"`
 	// GCPAuth specifies the location of GCP credential file.
 	GCPAuth *GCPAuth `json:"gcp,omitempty"`
+	// CredentialOverride, when non-nil, sources the credential per-request instead of the
+	// static credential above. nil disables per-request sourcing (the default).
+	CredentialOverride *CredentialOverride `json:"credentialOverride,omitempty"`
+}
+
+// CredentialOverride configures per-request credential sourcing for a backend.
+// Exactly one of HeaderName or DynamicMetadataNamespace is set (resolved by the controller).
+type CredentialOverride struct {
+	// HeaderName is the request header that carries the per-request credential.
+	// Set for fromRequestHeaders source; empty for fromDynamicMetadata source.
+	HeaderName string `json:"headerName,omitempty"`
+	// DynamicMetadataNamespace is the Envoy metadata namespace to read from.
+	// Set for fromDynamicMetadata source; empty for fromRequestHeaders source.
+	DynamicMetadataNamespace string `json:"dynamicMetadataNamespace,omitempty"`
+	// DynamicMetadataKey is the key within DynamicMetadataNamespace.
+	DynamicMetadataKey string `json:"dynamicMetadataKey,omitempty"`
+	// FallbackToConfigured controls behaviour when the source value is absent.
+	// true falls back to the static credential; false returns 401 to the caller.
+	FallbackToConfigured bool `json:"fallbackToConfigured"`
+	// InputHeaderToRemove is the header that should be stripped before the request
+	// reaches the upstream backend. Only set for HeaderName source.
+	// The controller adds this to the backend HeaderMutation.Remove list so the
+	// HeaderMutator tells Envoy to remove it upstream while keeping it visible
+	// in the local requestHeaders map for the handler to read.
+	InputHeaderToRemove string `json:"inputHeaderToRemove,omitempty"`
 }
 
 // AWSAuth defines the credentials needed to access AWS.
