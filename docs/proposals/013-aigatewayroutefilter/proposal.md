@@ -21,6 +21,7 @@
   - [Building the policy → route mapping (code)](#building-the-policy--route-mapping-code)
   - [Enablement: targeted routes and catch-all](#enablement-targeted-routes-and-catch-all)
   - [Composite placement vs. per-route configuration](#composite-placement-vs-per-route-configuration)
+  - [Envoy version requirement (CompositePerRoute over RDS)](#envoy-version-requirement-compositeperroute-over-rds)
   - [Policy lifecycle: add, update, and remove](#policy-lifecycle-add-update-and-remove)
 - [Code Changes](#code-changes)
   - [1. API types (`api/v1beta1`)](#1-api-types-apiv1beta1)
@@ -29,8 +30,8 @@
   - [4. Manifests, RBAC, generated code](#4-manifests-rbac-generated-code)
   - [5. Tests](#5-tests)
 - [End-to-end example: from CRDs to xDS](#end-to-end-example-from-crds-to-xds)
+- [Validation on a live cluster](#validation-on-a-live-cluster)
 - [Why this avoids the catch-all blast radius](#why-this-avoids-the-catch-all-blast-radius)
-- [Comparison with Proposal 012](#comparison-with-proposal-012)
 - [Alternatives Considered](#alternatives-considered)
 - [Open Questions](#open-questions)
 
@@ -46,18 +47,31 @@ router-phase `ext_proc` (modeled on the `extProc` field of Envoy Gateway's
 name + value); those header values gate the wrapped ext_proc.
 
 The AI Gateway extension server, during its existing `PostTranslateModify` phase,
-inserts a `envoy.filters.http.composite` filter (added **disabled**) into the
-listener HCM filter chain **ahead of the AI Gateway `ext_proc`**, and then attaches
-a **`CompositePerRoute`** — whose match tree is keyed on the policy's `headers` and
-whose `ExecuteFilterAction` delegates to the described `ext_proc`. Attaching the
-per-route config both **enables** the disabled composite for that route and supplies
-its match tree. The composite is enabled on **all rule routes of the targeted
-`AIGatewayRoute`(s)** and on **all catch-all (`route-not-found`) routes** (so a
-request is covered on its first pass, before `x-ai-eg-model` exists and before
-routing is finalized). (See
+inserts a composite filter — named with its canonical registered name
+`envoy.filters.http.composite` (this matters; see
+[Envoy version requirement](#envoy-version-requirement-compositeperroute-over-rds)) —
+(added **disabled**) into the listener HCM filter chain **ahead of the AI Gateway
+`ext_proc`**, and then attaches a **`CompositePerRoute`** — whose match tree is keyed
+on the policy's `headers` and whose `ExecuteFilterAction` delegates to the described
+`ext_proc`. The `CompositePerRoute` is wrapped in an
+`envoy.config.route.v3.FilterConfig` before being placed in the route's
+`typed_per_filter_config` (mirroring how the AI Gateway router `ext_proc` is enabled
+per route). Attaching the per-route config both **enables** the disabled composite
+for that route and supplies its match tree. The composite is enabled on **all rule
+routes of the targeted `AIGatewayRoute`(s)** and on **all catch-all
+(`route-not-found`) routes** (so a request is covered on its first pass, before
+`x-ai-eg-model` exists and before routing is finalized). (See
 [Composite placement vs. per-route configuration](#composite-placement-vs-per-route-configuration)
 for why `CompositePerRoute` — not `ExtensionWithMatcher` — is the mechanism that
 makes per-route enablement possible.)
+
+> **Envoy version prerequisite.** Resolving a route-level `CompositePerRoute` via
+> Envoy Gateway's RDS requires **Envoy ≥ 1.39 / a `main` (dev) build that contains
+> Envoy PR [#43996](https://github.com/envoyproxy/envoy/pull/43996) (commit
+> `e842507299`, 2026-04-29)**. Envoy ≤ 1.38.x rejects the entire `RouteConfiguration`
+> (see [Envoy version requirement](#envoy-version-requirement-compositeperroute-over-rds)).
+> This was validated end-to-end on a cluster running `envoyproxy/envoy:distroless-dev`
+> (`1.39.0-dev`); see [Validation on a live cluster](#validation-on-a-live-cluster).
 
 This is a **declarative, name-based, validated** replacement for the
 `EnvoyPatchPolicy` composite-wrap workaround: it keeps the "run a second ext_proc
@@ -260,8 +274,9 @@ structured like `maybeInjectQuotaRateLimiting`:
    the same way `buildQuotaRateLimitCluster` / the EPP clusters are built, and append
    to `req.Clusters` (dedup like the `extProcUDSExist` guard).
 3. **Insert a `Composite` filter (disabled) before the AI Gateway `ext_proc`.** Add
-   a single `envoy.filters.http.composite` (`Composite{}`, no matcher) into the HCM
-   filter chain with `disabled: true`, reusing the ordering logic from
+   a single composite filter (`Composite{}`, no matcher), **named with its canonical
+   registered name `envoy.filters.http.composite`**, into the HCM filter chain with
+   `disabled: true`, reusing the ordering logic from
    `insertRouterLevelAIGatewayExtProc` / `insertAIGatewayExtProcFilter`. A disabled
    filter does nothing until a route supplies per-route config, which both enables
    and configures it — exactly how the AI Gateway ext_proc itself is inserted
@@ -274,9 +289,13 @@ structured like `maybeInjectQuotaRateLimiting`:
    action of a `CompositePerRoute.matcher` whose `HttpRequestHeaderMatchInput`
    predicates come from the policy's `headers`.
 5. **Enable the `CompositePerRoute` on the targeted rule routes and all catch-all
-   routes** (next section) via `TypedPerFilterConfig[<composite-name>]`. Supplying
-   this per-route config re-enables the disabled composite for that route. On routes
-   with no per-route config the composite stays disabled (pure no-op).
+   routes** (next section) via `TypedPerFilterConfig["envoy.filters.http.composite"]`.
+   The `CompositePerRoute` is **wrapped in an `envoy.config.route.v3.FilterConfig`**
+   (`FilterConfig{ config: <CompositePerRoute Any> }`) before being stored on the
+   route — the same wrapper the AI Gateway router `ext_proc` uses for per-route
+   enablement. Supplying this per-route config re-enables the disabled composite for
+   that route. On routes with no per-route config the composite stays disabled (pure
+   no-op).
 
 ### Building the policy → route mapping (code)
 
@@ -454,6 +473,84 @@ References: [Composite filter proto](https://www.envoyproxy.io/docs/envoy/latest
 [Composite filter docs](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/composite_filter),
 [per-route matcher support (envoy#27088)](https://github.com/envoyproxy/envoy/pull/27088).
 
+### Envoy version requirement (CompositePerRoute over RDS)
+
+Making `CompositePerRoute` work through Envoy Gateway's RDS delivery has **two hard
+requirements** that were only discovered while validating on a cluster. Both are
+reflected in the implementation.
+
+**1. The composite filter MUST use its canonical name, and the per-route config MUST
+be wrapped in `FilterConfig`.** Since Envoy 1.22, per-route `typed_per_filter_config`
+is resolved **strictly by the config's type URL** (the map-key name is ignored;
+`no_extension_lookup_by_name` is on). Envoy Gateway also validates RDS route configs
+**eagerly and independently of the listener filter chain**. Two consequences:
+
+- The HCM composite filter is named `envoy.filters.http.composite` (the canonical
+  registered name), and the per-route key matches it.
+- The `CompositePerRoute` is wrapped in `envoy.config.route.v3.FilterConfig`
+  (`FilterConfig{ config: <Any> }`) — a core route type that always passes eager RDS
+  validation — exactly as the AI Gateway router `ext_proc` per-route enablement does.
+
+**2. The data-plane Envoy MUST be new enough to register `CompositePerRoute` for
+by-type resolution.** This is the important one and is the subject of **failure #2**
+below.
+
+> **Failure #2 — Envoy ≤ 1.38.x NACKs the entire RouteConfiguration.**
+> On Envoy `1.37.0` and `1.38.3`, attaching a `CompositePerRoute` (raw *or*
+> `FilterConfig`-wrapped) causes Envoy to reject the whole route config:
+>
+> ```
+> gRPC config for type.googleapis.com/envoy.config.route.v3.RouteConfiguration
+> rejected: Didn't find a registered implementation for
+> 'envoy.filters.http.composite' with type URL:
+> 'envoy.extensions.filters.http.composite.v3.CompositePerRoute'
+> ```
+>
+> Because the RDS update is rejected, **every route disappears and all requests get
+> `HTTP 404`** (not just the policy-targeted traffic).
+>
+> **Root cause (upstream Envoy):** in Envoy ≤ 1.38.x the composite factory is
+> declared as `DualFactoryBase<Composite>` — passing only the `ConfigProto`
+> template argument. Since `DualFactoryBase<ConfigProto, RouteConfigProto = ConfigProto>`,
+> the route-config type silently **defaults to `Composite`**, so
+> `createEmptyRouteConfigProto()` returns `Composite` and the factory's
+> `configTypes()` never registers `CompositePerRoute` in the by-type registry. As a
+> result `getFactoryByType("…CompositePerRoute")` returns `nullptr` and Envoy throws.
+> (The bare `Composite{}` filter on the listener is accepted fine; only the
+> *route-level* `CompositePerRoute` is unresolvable.)
+>
+> **Fix / required version:** Envoy PR
+> [#43996](https://github.com/envoyproxy/envoy/pull/43996) ("composite: add inline
+> matcher support", commit `e842507299`, merged **2026-04-29**) changes the factory to
+> `CommonFactoryBase<Composite, CompositePerRoute>` and adds
+> `createRouteSpecificFilterConfigTyped(const CompositePerRoute&, …)`, which registers
+> `CompositePerRoute` by type. This landed **after** the 1.38.x branch was cut, so it
+> is present only on Envoy `main` / the eventual **1.39** release. **This feature
+> therefore requires Envoy ≥ 1.39 (or a `main`/dev build ≥ `e842507299`).**
+>
+> **Concrete image used to validate:** `docker.io/envoyproxy/envoy:distroless-dev`
+> (the rolling `main` distroless build, reporting `1.39.0-dev`). Set it on the
+> `EnvoyProxy` CR the Gateway uses:
+>
+> ```yaml
+> apiVersion: gateway.envoyproxy.io/v1alpha1
+> kind: EnvoyProxy
+> spec:
+>   provider:
+>     kubernetes:
+>       envoyDeployment:
+>         container:
+>           image: docker.io/envoyproxy/envoy:distroless-dev
+> ```
+>
+> Note: the stale `envoyproxy/envoy-dev` Docker Hub repo (last updated Aug 2025) does
+> **not** contain the fix — use `envoyproxy/envoy:distroless-dev`.
+>
+> If a fixed Envoy is not available, the only 1.37/1.38-compatible alternative is to
+> gate the composite at the **listener level** via `ExtensionWithMatcher` (gateway-wide,
+> header-gated), giving up strict per-route scoping — see
+> [Alternatives Considered](#alternatives-considered).
+
 ### Policy lifecycle: add, update, and remove
 
 **Q: When an `AIGatewayExtensionPolicy` is deleted (or its `targetRefs` change),
@@ -582,9 +679,14 @@ The heart of the injection is `buildCompositePerRoute`. It turns the resolved
 `xds.type.matcher.v3.Matcher` (a `matcher_list`) with **one arm per policy**: each
 arm's predicate ANDs that policy's `headers`, and its `on_match` action is an
 `ExecuteFilterAction` that delegates to the entry's `ExternalProcessor`. The whole
-matcher is wrapped in a `CompositePerRoute` and marshalled to an `Any` that the
-caller drops into the route's `TypedPerFilterConfig` under
-`extensionPolicyCompositeName`.
+matcher is wrapped in a `CompositePerRoute` and marshalled to an `Any`. The caller
+then wraps that `Any` in an `envoy.config.route.v3.FilterConfig`
+(`FilterConfig{ config: <CompositePerRoute Any> }`) before dropping it into the
+route's `TypedPerFilterConfig` under `extensionPolicyCompositeName` — the
+`FilterConfig` indirection is what lets the config survive Envoy Gateway's eager RDS
+validation (it is a registered core route type), deferring the inner
+`CompositePerRoute` to filter-chain association at runtime, exactly as the AI Gateway
+router `ext_proc` per-route enablement does.
 
 Note the two distinct `TypedExtensionConfig` families involved: the matcher tree
 (inputs and actions) uses the **xDS** core/matcher types
@@ -708,7 +810,13 @@ func buildHeaderPredicate(hs []aigv1b1.AIGatewayExtensionPolicyHeaderMatch) (*xd
 // extensionPolicyCompositeName is the single composite filter shared by all
 // AIGatewayExtensionPolicy attachments on a listener. Per-route CompositePerRoute
 // entries key on this name.
-const extensionPolicyCompositeName = "aigw-extpolicy/composite"
+//
+// It MUST be the canonical registered composite name. Envoy validates RDS route
+// configs independently of the listener filter chain and resolves a route's
+// typed_per_filter_config strictly by type URL (name lookup is disabled since 1.22).
+// A non-canonical name would fail resolution and Envoy would NACK the whole
+// RouteConfiguration ("Didn't find a registered implementation … CompositePerRoute").
+const extensionPolicyCompositeName = "envoy.filters.http.composite"
 
 // insertCompositeBeforeAIGatewayExtProc inserts one composite filter (Composite{},
 // no matcher, disabled) into each HCM filter chain of the listener, immediately
@@ -919,8 +1027,8 @@ Gateway `ext_proc`.** No matcher here — it does nothing until a route supplies
 ```yaml
 http_filters:
   # ... (buffer, api-key auth, etc.) ...
-  - name: aigw-extpolicy/composite                            # NEW, composite (disabled)
-    disabled: true
+  - name: envoy.filters.http.composite                        # NEW, composite (disabled)
+    disabled: true                                            # canonical registered name
     typed_config:
       "@type": type.googleapis.com/envoy.extensions.filters.http.composite.v3.Composite
   - name: envoy.filters.http.ext_proc/aigateway               # existing AI Gateway ext_proc
@@ -940,35 +1048,42 @@ targeted rule routes (`rule/0`, `rule/1`) as well:
     envoy.filters.http.ext_proc/aigateway:
       "@type": type.googleapis.com/envoy.config.route.v3.FilterConfig
       config: {}
-    aigw-extpolicy/composite:                         # keyed by the composite filter name
-      "@type": type.googleapis.com/envoy.extensions.filters.http.composite.v3.CompositePerRoute
-      matcher:
-        matcher_list:
-          matchers:
-            - predicate:
-                single_predicate:
-                  input:
-                    "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
-                    header_name: x-tenant-id
-                  value_match: { exact: premium }        # from policy.spec.headers
-              on_match:
-                action:
-                  name: composite-action
-                  typed_config:
-                    "@type": type.googleapis.com/envoy.extensions.filters.http.composite.v3.ExecuteFilterAction
+    envoy.filters.http.composite:                     # canonical composite filter name
+      # CompositePerRoute is wrapped in FilterConfig so it survives EG's eager RDS
+      # validation (FilterConfig is a registered core route type); the inner
+      # CompositePerRoute is resolved at filter-chain association time.
+      "@type": type.googleapis.com/envoy.config.route.v3.FilterConfig
+      config:
+        "@type": type.googleapis.com/envoy.extensions.filters.http.composite.v3.CompositePerRoute
+        matcher:
+          matcher_list:
+            matchers:
+              - predicate:
+                  single_predicate:
+                    input:
+                      "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
+                      header_name: x-tenant-id
+                    value_match: { exact: premium }        # from policy.spec.headers
+                on_match:
+                  action:
+                    name: composite-action
                     typed_config:
-                      name: aigw-extpolicy/default/semantic-router
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.composite.v3.ExecuteFilterAction
                       typed_config:
-                        "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
-                        grpc_service: { envoy_grpc: { cluster_name: aigw-extpolicy/default/semantic-router } }
-                        processing_mode: { request_body_mode: BUFFERED, response_header_mode: SKIP }
-                        message_timeout: 0.250s
+                        name: aigw-extpolicy/default/semantic-router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                          grpc_service: { envoy_grpc: { cluster_name: aigw-extpolicy/default/semantic-router } }
+                          processing_mode: { request_body_mode: BUFFERED, response_header_mode: SKIP }
+                          message_timeout: 0.250s
 ```
 
 The composite is enabled on the catch-all **and** the targeted rule routes, so the
 policy applies on whichever pass a request is on. The per-route key is the
-**composite filter name** (`aigw-extpolicy/composite`), not a per-policy name,
-because `typed_per_filter_config` must key on a filter present in the HCM chain.
+**canonical composite filter name** (`envoy.filters.http.composite`), not a
+per-policy name, because `typed_per_filter_config` must key on a filter present in
+the HCM chain and is resolved by type URL. The value is a `FilterConfig` wrapping the
+`CompositePerRoute` so it passes Envoy Gateway's eager RDS validation.
 Because the gate (`x-tenant-id`) is a client header present on both passes, the
 delegated ext_proc can run on the catch-all pass **and** again on the rule route
 after `ClearRouteCache` — so it must be idempotent (see Enablement note).
@@ -1002,6 +1117,32 @@ the gateway) → EG re-translates → the recompute yields no entry for `default
 composite (b) stays a disabled no-op (c). No teardown code runs; nothing is
 re-emitted.
 
+## Validation on a live cluster
+
+The end-to-end path was exercised on a real cluster to confirm the design works and
+to surface the failures documented above. Setup:
+
+- A trivial gRPC ext_proc (`testextproc/`) that logs every phase and stamps an
+  `x-extproc-<phase>: seen` header on each of `REQUEST_HEADERS`, `REQUEST_BODY`,
+  `RESPONSE_HEADERS`, `RESPONSE_BODY`, deployed as a `Deployment` + `Service`.
+- An `AIGatewayExtensionPolicy` targeting an existing `AIGatewayRoute`, gated on
+  `x-enable-extproc: "true"`, with `extProc.backendRefs` pointing at the test service.
+- The AI Gateway controller image carrying this implementation, and — critically —
+  the data-plane Envoy set to `docker.io/envoyproxy/envoy:distroless-dev`
+  (`1.39.0-dev`, contains PR #43996).
+
+Results:
+
+- **Without** the `x-enable-extproc: true` header → `HTTP 200`, **no** `x-extproc-*`
+  response headers; the ext_proc is never contacted (gate not matched).
+- **With** the header → `HTTP 200` with `x-extproc-response-headers: seen` and
+  `x-extproc-response-body: seen`; the test ext_proc logs show all four phases,
+  confirming the composite-wrapped router-phase ext_proc ran.
+- The final `EnvoyProxy`/Envoy config dump shows the `envoy.filters.http.composite`
+  filter inserted **disabled** in the HCM chain ahead of the AI Gateway ext_proc, and
+  the route-level `typed_per_filter_config` carrying the `FilterConfig`-wrapped
+  `CompositePerRoute` with the header gate and the `ExecuteFilterAction` delegate.
+
 ## Why this avoids the catch-all blast radius
 
 | Concern | EnvoyPatchPolicy / EnvoyExtensionPolicy | `AIGatewayExtensionPolicy` (this proposal) |
@@ -1017,33 +1158,21 @@ The routing mechanics are **reused**: the composite runs during the catch-all pa
 and mutates the request; the AI Gateway `ext_proc` then derives `x-ai-eg-model` and
 `ClearRouteCache` re-matches to the concrete backend.
 
-## Comparison with Proposal 012
-
-Proposal 012 makes the mutation call a capability of the **existing** AI Gateway
-router `ext_proc` (no second filter, an outbound HTTP call from within
-`ProcessRequestBody`). This proposal instead keeps the mutation in a **separate,
-attachable `ext_proc`** but makes attaching/gating it declarative via a
-policy-attached CRD.
-
-- **012** — fewest moving parts, no cluster to manage, no second filter; the
-  gateway itself calls the service.
-- **013 (this)** — reuses the standard `ext_proc` extension point (the service is a
-  normal ext_proc, not a bespoke "mutation service" contract), and expresses
-  attachment via `targetRefs` on a CRD gated by the policy's `headers`.
-
-They are complementary; 012 and 013 can coexist (012 for the simple in-filter call,
-013 for teams that want a standalone, policy-attached, standard ext_proc).
-
 ## Alternatives Considered
 
 - **`EnvoyPatchPolicy` composite-wrap / `EnvoyExtensionPolicy` on the route.** The
   status-quo workarounds; rejected for the shared-catch-all blast radius and (for
   EPP) index-pinned fragility.
-- **In-filter call from the AI Gateway `ext_proc` (Proposal 012).** A different and
-  complementary approach; see above.
 - **A new HTTPRoute filter type instead of xDS injection.** Rejected because the
   request is on the catch-all on the first pass, so a route-attached filter cannot
   be scoped to the destination rule without the same catch-all problem.
+- **Listener-level `ExtensionWithMatcher` gate (instead of per-route
+  `CompositePerRoute`).** This is the only option that works on Envoy ≤ 1.38.x, which
+  cannot resolve `CompositePerRoute` over RDS (failure #2). It header-gates the
+  composite for the whole HCM filter chain rather than per route, giving up strict
+  per-route scoping (the gate is gateway-wide). Preferred approach remains
+  `CompositePerRoute` on Envoy ≥ 1.39; this is the compatibility fallback for older
+  data planes.
 
 ## Open Questions
 
