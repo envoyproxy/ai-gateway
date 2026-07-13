@@ -382,14 +382,22 @@ func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *b
 	req.Header.Set("Accept", "text/event-stream, application/json")
 	req.Header.Set("Accept-Encoding", "gzip, br")
 
-	// Forward route-level headers (e.g., OAuth claimToHeaders) to the backend.
+	// Forward route-level headers (e.g., OAuth claimToHeaders) to the backend. backend.Auth,
+	// if set, takes precedence over any forwarded client header of the same name so a
+	// backend's outbound credential cannot be silently overwritten (see applyBackendOverrides).
 	for header, value := range s.extraHeaders {
+		if backend.Auth != "" && strings.EqualFold(header, authorizationHeader) {
+			continue
+		}
 		req.Header.Del(header)
 		req.Header.Set(header, value)
 	}
 	// Forward per-backend headers (from MCPRouteBackendRef.forwardHeaders) with optional renaming.
 	if perBackend, ok := s.perBackendExtraHeaders[backend.Name]; ok {
 		for header, value := range perBackend {
+			if backend.Auth != "" && strings.EqualFold(header, authorizationHeader) {
+				continue
+			}
 			req.Header.Del(header)
 			req.Header.Set(header, value)
 		}

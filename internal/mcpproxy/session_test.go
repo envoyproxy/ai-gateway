@@ -541,6 +541,65 @@ func TestSendRequestPerBackend_PerBackendHeaders(t *testing.T) {
 	})
 }
 
+// A backend's configured Auth override must win over route-level and per-backend
+// forwardHeaders even when the client's incoming request carries its own
+// Authorization header and the session is configured to forward it.
+func TestSendRequestPerBackend_BackendAuthTakesPrecedenceOverForwardedAuthorization(t *testing.T) {
+	headersCh := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headersCh <- r.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = server.URL
+
+	t.Run("route-level forwardHeaders does not clobber backend.Auth", func(t *testing.T) {
+		s := &session{
+			reqCtx:       proxy,
+			extraHeaders: map[string]string{"Authorization": "Bearer client-token"},
+		}
+		ch := make(chan *backendEvent, 1)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		defer cancel()
+		err := s.sendRequestPerBackend(ctx, ch, "test-route", &filterapi.MCPBackend{Name: "backend1", Auth: "Bearer outbound-token"}, &compositeSessionEntry{
+			sessionID: "sess1",
+		}, http.MethodGet, nil, nil)
+		require.NoError(t, err)
+
+		select {
+		case hdr := <-headersCh:
+			require.Equal(t, "Bearer outbound-token", hdr.Get("Authorization"))
+		case <-ctx.Done():
+			require.Fail(t, "timed out waiting for backend request")
+		}
+	})
+
+	t.Run("per-backend forwardHeaders does not clobber backend.Auth", func(t *testing.T) {
+		s := &session{
+			reqCtx: proxy,
+			perBackendExtraHeaders: map[filterapi.MCPBackendName]map[string]string{
+				"backend1": {"Authorization": "Bearer client-token"},
+			},
+		}
+		ch := make(chan *backendEvent, 1)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+		defer cancel()
+		err := s.sendRequestPerBackend(ctx, ch, "test-route", &filterapi.MCPBackend{Name: "backend1", Auth: "Bearer outbound-token"}, &compositeSessionEntry{
+			sessionID: "sess1",
+		}, http.MethodGet, nil, nil)
+		require.NoError(t, err)
+
+		select {
+		case hdr := <-headersCh:
+			require.Equal(t, "Bearer outbound-token", hdr.Get("Authorization"))
+		case <-ctx.Done():
+			require.Fail(t, "timed out waiting for backend request")
+		}
+	})
+}
+
 func TestSendRequestPerBackend_AcceptEncoding(t *testing.T) {
 	headersCh := make(chan http.Header, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

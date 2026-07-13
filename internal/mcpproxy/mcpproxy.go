@@ -69,6 +69,11 @@ func (m *mcpRequestContext) routeConfig(routeName filterapi.MCPRouteName) *mcpPr
 	return m.routes[routeName]
 }
 
+// authorizationHeader is the canonical header name used for backend auth. It is
+// exempted from header-forwarding logic so that a configured [filterapi.MCPBackend.Auth]
+// override is never clobbered by a forwarded client header of the same name.
+const authorizationHeader = "Authorization"
+
 // applyBackendOverrides sets host, path, and auth on the outgoing request from the
 // [filterapi.MCPBackend] configuration. This allows backends to specify their hostname
 // (for Envoy's Dynamic Forward Proxy), a custom URL path, and an authorization header
@@ -81,7 +86,7 @@ func (m *mcpRequestContext) applyBackendOverrides(req *http.Request, backend *fi
 		req.URL.Path = backend.BackendPath
 	}
 	if backend.Auth != "" {
-		req.Header.Set("Authorization", backend.Auth)
+		req.Header.Set(authorizationHeader, backend.Auth)
 	}
 }
 
@@ -507,10 +512,15 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 
-	// Forward configured headers to backend.
+	// Forward configured headers to backend. backend.Auth, if set, takes precedence over
+	// any forwarded client header of the same name so a backend's outbound credential
+	// cannot be silently overwritten by header-forwarding config (see applyBackendOverrides).
 	if routeConfig := m.routeConfig(routeName); routeConfig != nil {
 		// Route-level headers (e.g., OAuth claimToHeaders).
 		for _, header := range routeConfig.forwardHeaders {
+			if backend.Auth != "" && strings.EqualFold(header, authorizationHeader) {
+				continue
+			}
 			if value := m.requestHeaders.Get(header); value != "" {
 				req.Header.Set(header, value)
 			}
@@ -518,6 +528,9 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 		// Per-backend headers (from MCPRouteBackendRef.forwardHeaders) with optional renaming.
 		if b, ok := routeConfig.backends[backend.Name]; ok {
 			for _, fh := range b.ForwardHeaders {
+				if backend.Auth != "" && strings.EqualFold(fh.ForwardName(), authorizationHeader) {
+					continue
+				}
 				if value := m.requestHeaders.Get(fh.Name); value != "" {
 					req.Header.Set(fh.ForwardName(), value)
 				}

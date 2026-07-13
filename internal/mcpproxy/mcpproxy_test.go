@@ -500,6 +500,34 @@ func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
+// A backend's configured Auth override must win over the route's forwardHeaders
+// config even when the client's incoming request carries its own Authorization
+// header and the route is configured to forward it.
+func TestInvokeJSONRPCRequest_BackendAuthTakesPrecedenceOverForwardedAuthorization(t *testing.T) {
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer outbound-token", r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"result": "success"}`))
+	}))
+	defer backendServer.Close()
+
+	m := newTestMCPProxy()
+	m.backendListenerAddr = backendServer.URL
+	m.mcpProxyConfig.routes["test-route"].forwardHeaders = []string{"Authorization"}
+	m.requestHeaders = http.Header{}
+	m.requestHeaders.Set("Authorization", "Bearer client-token")
+
+	backend := &filterapi.MCPBackend{Name: "backend1", Auth: "Bearer outbound-token"}
+	resp, err := m.invokeJSONRPCRequest(t.Context(), "test-route", backend, &compositeSessionEntry{
+		sessionID: "test-session",
+	}, &jsonrpc.Request{}, nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
 // Issue #2219: when a backend's initialize SSE response starts with a non-response
 // event (an empty/keep-alive data line) before the real JSON-RPC response, session
 // creation must still succeed rather than failing with "MCP message is not a response".
