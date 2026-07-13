@@ -714,7 +714,7 @@ func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *sessio
 	}
 
 	// Validate that the tool is whitelisted for this route
-	route := m.routes[s.route]
+	route := m.routeConfig(s.route)
 	if route == nil {
 		// This should never happen as the route must have been validated when the session is created.
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("route not found: %s", s.route))
@@ -1668,7 +1668,7 @@ func (m *mcpRequestContext) handleSetLoggingLevel(ctx context.Context, s *sessio
 func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResponse[mcp.ListToolsResult]) mcp.ListToolsResult {
 	// Use a non-nil empty slice so JSON encodes as [] not null; some clients reject tools:null.
 	resp := mcp.ListToolsResult{Tools: make([]*mcp.Tool, 0)}
-	route := m.routes[s.route]
+	route := m.routeConfig(s.route)
 	if route == nil {
 		// This should never happen as the route must have been validated when the session is created.
 		return resp

@@ -48,6 +48,11 @@ const (
 	// MCPPerBackendCredentialSecretPrefix is the prefix for the credential secrets created for per-backend credential injection.
 	MCPPerBackendCredentialSecretPrefix = MCPGeneratedResourceCommonPrefix + "cred-"
 
+	// MCPDynamicRouteConfigHeader is the header key used to pass dynamic MCP route configuration as a
+	// base64-encoded JSON value conforming to [filterapi.MCPRoute]. When present, the MCP proxy will
+	// use this configuration instead of the statically loaded route from filter-config.yaml.
+	MCPDynamicRouteConfigHeader = EnvoyAIGatewayHeaderPrefix + "mcp-dynamic-route-config"
+
 	// MCPMetadataHeaderPrefix is the prefix for special headers used to pass metadata in the filter metadata.
 	// These headers are added internally to the requests to the upstream servers so they can be populated in the filter
 	// metadata. These headers are considered just internal, and they'll be removed once they are stored in the filter

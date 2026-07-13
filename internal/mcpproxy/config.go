@@ -7,6 +7,7 @@ package mcpproxy
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -17,6 +18,7 @@ import (
 	"sync"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
@@ -176,6 +178,71 @@ func (t *toolSelector) allows(tool string) bool {
 	return true
 }
 
+// parseDynamicRouteConfig parses a base64-encoded JSON [filterapi.MCPRoute] from the given
+// header value and returns the corresponding internal route configuration.
+// This allows passing MCP route configuration dynamically via HTTP headers instead of
+// relying solely on the static filter-config.yaml file.
+func parseDynamicRouteConfig(headerValue string) (*mcpProxyConfigRoute, *filterapi.MCPRoute, error) {
+	decoded, err := base64.StdEncoding.DecodeString(headerValue)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to base64-decode dynamic route config: %w", err)
+	}
+
+	var route filterapi.MCPRoute
+	if err := json.Unmarshal(decoded, &route); err != nil {
+		return nil, nil, fmt.Errorf("failed to unmarshal dynamic route config: %w", err)
+	}
+
+	configRoute, err := buildConfigRoute(&route)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to build dynamic route config: %w", err)
+	}
+	return configRoute, &route, nil
+}
+
+// buildConfigRoute converts an [filterapi.MCPRoute] into the internal [mcpProxyConfigRoute] representation.
+// This is used by both [ProxyConfig.LoadConfig] for static config and [parseDynamicRouteConfig] for dynamic config.
+func buildConfigRoute(route *filterapi.MCPRoute) (*mcpProxyConfigRoute, error) {
+	compiledAuth, err := compileAuthorization(route.Authorization)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compile authorization rules for route %s: %w", route.Name, err)
+	}
+
+	r := &mcpProxyConfigRoute{
+		backends:       make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(route.Backends)),
+		toolSelectors:  make(map[filterapi.MCPBackendName]*toolSelector, len(route.Backends)),
+		authorization:  compiledAuth,
+		forwardHeaders: route.ForwardHeaders,
+	}
+	for _, backend := range route.Backends {
+		r.backends[backend.Name] = backend
+		if s := backend.ToolSelector; s != nil {
+			ts := &toolSelector{
+				include: make(map[string]struct{}),
+				exclude: make(map[string]struct{}),
+			}
+			for _, tool := range s.Include {
+				ts.include[tool] = struct{}{}
+			}
+			includeRegexps, err := compileRegexps(s.IncludeRegex, "include", backend.Name, route.Name)
+			if err != nil {
+				return nil, err
+			}
+			ts.includeRegexps = includeRegexps
+			for _, tool := range s.Exclude {
+				ts.exclude[tool] = struct{}{}
+			}
+			excludeRegexps, err := compileRegexps(s.ExcludeRegex, "exclude", backend.Name, route.Name)
+			if err != nil {
+				return nil, err
+			}
+			ts.excludeRegexps = excludeRegexps
+			r.toolSelectors[backend.Name] = ts
+		}
+	}
+	return r, nil
+}
+
 // LoadConfig implements [extproc.ConfigReceiver.LoadConfig] which will be called
 // when the configuration is updated on the file system.
 func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) error {
@@ -193,43 +260,11 @@ func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) er
 	// the MCP proxy initializes sessions only with the backends tied to that route.
 	newConfig.routes = make(map[filterapi.MCPRouteName]*mcpProxyConfigRoute, len(mcpConfig.Routes))
 
-	for _, route := range mcpConfig.Routes {
-		compiledAuth, err := compileAuthorization(route.Authorization)
+	for i := range mcpConfig.Routes {
+		route := &mcpConfig.Routes[i]
+		r, err := buildConfigRoute(route)
 		if err != nil {
-			return fmt.Errorf("failed to compile authorization rules for route %s: %w", route.Name, err)
-		}
-
-		r := &mcpProxyConfigRoute{
-			backends:       make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(route.Backends)),
-			toolSelectors:  make(map[filterapi.MCPBackendName]*toolSelector, len(route.Backends)),
-			authorization:  compiledAuth,
-			forwardHeaders: route.ForwardHeaders,
-		}
-		for _, backend := range route.Backends {
-			r.backends[backend.Name] = backend
-			if s := backend.ToolSelector; s != nil {
-				ts := &toolSelector{
-					include: make(map[string]struct{}),
-					exclude: make(map[string]struct{}),
-				}
-				for _, tool := range s.Include {
-					ts.include[tool] = struct{}{}
-				}
-				includeRegexps, err := compileRegexps(s.IncludeRegex, "include", backend.Name, route.Name)
-				if err != nil {
-					return err
-				}
-				ts.includeRegexps = includeRegexps
-				for _, tool := range s.Exclude {
-					ts.exclude[tool] = struct{}{}
-				}
-				excludeRegexps, err := compileRegexps(s.ExcludeRegex, "exclude", backend.Name, route.Name)
-				if err != nil {
-					return err
-				}
-				ts.excludeRegexps = excludeRegexps
-				r.toolSelectors[backend.Name] = ts
-			}
+			return err
 		}
 		newConfig.routes[route.Name] = r
 	}
