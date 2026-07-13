@@ -1,0 +1,14 @@
+# Example filter-config.yaml for Dynamic MCP Config
+#
+# This shows MCP backend configuration. Backends can be overridden
+# per-request using x-ai-eg-mcp-dynamic-route-config header.
+
+mcp:
+  backendListenerAddr: "127.0.0.1:10088"
+  routes:
+    - name: "static-route"
+      backends:
+        - name: "default-backend"
+          host: "localhost:8001"
+          auth:
+            apiKey: "static-key"
