@@ -317,6 +317,14 @@ type AWSCredentialsFile struct {
 	//
 	// +kubebuilder:default=default
 	Profile string `json:"profile,omitempty"`
+
+	// RoleARN is the AWS IAM Role ARN to assume using the credentials from the secret.
+	// When specified, the controller will use the access key and secret key from the credentials file
+	// to perform STS AssumeRole and use the resulting temporary credentials instead.
+	// This enables role-based access where the base credentials are used only to assume a role.
+	//
+	// +optional
+	RoleARN string `json:"roleARN,omitempty"`
 }
 
 // AWSOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.

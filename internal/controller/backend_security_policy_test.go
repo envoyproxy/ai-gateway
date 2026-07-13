@@ -148,6 +148,20 @@ func (m *mockSTSClient) AssumeRoleWithWebIdentity(_ context.Context, _ *sts.Assu
 	}, nil
 }
 
+// AssumeRole will return placeholder of type aws credentials.
+//
+// This implements [rotators.STSClient.AssumeRole].
+func (m *mockSTSClient) AssumeRole(_ context.Context, _ *sts.AssumeRoleInput, _ ...func(*sts.Options)) (*sts.AssumeRoleOutput, error) {
+	return &sts.AssumeRoleOutput{
+		Credentials: &stsTypes.Credentials{
+			AccessKeyId:     aws.String("NEWKEY"),
+			SecretAccessKey: aws.String("NEWSECRET"),
+			SessionToken:    aws.String("NEWTOKEN"),
+			Expiration:      &m.expTime,
+		},
+	}, nil
+}
+
 func TestBackendSecurityPolicyController_Reconcile_SyncError(t *testing.T) {
 	eventCh := internaltesting.NewControllerEventChan[*aigv1b1.AIServiceBackend]()
 	fakeClient := requireNewFakeClientWithIndexes(t)
