@@ -299,6 +299,18 @@ All changes are in `internal/extproc/` and `internal/filterapi/`:
 
 ---
 
+## Usage Examples
+
+See [examples/llm-arbitrary-routing](examples/llm-arbitrary-routing/) for complete, runnable examples:
+
+- **[Python](examples/llm-arbitrary-routing/clients/example_python.py)** — OpenAI SDK with routing plan header
+- **[JavaScript](examples/llm-arbitrary-routing/clients/example_javascript.js)** — Fetch API with base64 encoding
+- **[Go](examples/llm-arbitrary-routing/clients/example_go.go)** — net/http client example
+
+Also included: [filter-config.yaml](examples/llm-arbitrary-routing/filter-config.yaml) with three backends (Azure, GCP, AWS) and [examples/llm-arbitrary-routing/README.md](examples/llm-arbitrary-routing/README.md) for setup instructions.
+
+---
+
 ## Retry and Fallback
 
 Cross-provider fallback works because the single DFP cluster handles all backends.
