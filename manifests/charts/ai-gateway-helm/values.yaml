@@ -135,6 +135,7 @@ controller:
   replicaCount: 1
   imagePullSecrets: []
   podAnnotations: {}
+  podLabels: {}
   podDisruptionBudget:
     enabled: false
     annotations: {}
