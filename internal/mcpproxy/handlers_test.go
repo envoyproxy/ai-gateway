@@ -988,7 +988,7 @@ func TestProxyResponseBody_JSONResponse(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, &filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
+	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
 
 	require.Contains(t, rr.Body.String(), "test")
 	require.Contains(t, rr.Body.String(), "data")
@@ -1013,7 +1013,7 @@ func TestProxyResponseBody_JSONResponseWithBOM(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 
-	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, &filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
+	proxy.proxyResponseBody(t.Context(), nil, rr, httpResp, &jsonrpc.Request{ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
 
 	require.Contains(t, rr.Body.String(), "bom")
 	require.Contains(t, rr.Body.String(), id.Raw())
@@ -1053,7 +1053,7 @@ data: %s
 	s, err := proxy.sessionFromID(secureClientToGatewaySessionID(sessionID), secureClientToGatewayEventID(eventID))
 	require.NoError(t, err)
 
-	proxy.proxyResponseBody(t.Context(), s, rr, httpResp, &jsonrpc.Request{Method: "test", ID: id}, &filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
+	proxy.proxyResponseBody(t.Context(), s, rr, httpResp, &jsonrpc.Request{Method: "test", ID: id}, filterapi.MCPBackend{Name: "mybackend"}) //nolint:errcheck
 
 	require.Contains(t, rr.Body.String(), "event: test")
 	require.Contains(t, rr.Body.String(), "data:")

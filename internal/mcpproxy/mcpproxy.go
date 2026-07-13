@@ -73,7 +73,7 @@ func (m *mcpRequestContext) routeConfig(routeName filterapi.MCPRouteName) *mcpPr
 // [filterapi.MCPBackend] configuration. This allows backends to specify their hostname
 // (for Envoy's Dynamic Forward Proxy), a custom URL path, and an authorization header
 // without requiring static Envoy cluster definitions.
-func (m *mcpRequestContext) applyBackendOverrides(req *http.Request, backend *filterapi.MCPBackend) {
+func (m *mcpRequestContext) applyBackendOverrides(req *http.Request, backend filterapi.MCPBackend) {
 	if backend.Host != "" {
 		req.Host = backend.Host
 	}
@@ -236,7 +236,7 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 				m.l.Debug("creating MCP session", slog.String("backend", backend.Name))
 			}
 			backendStartAt := time.Now()
-			initResult, err := m.initializeSession(ctx, routeName, &backend, p, startAt)
+			initResult, err := m.initializeSession(ctx, routeName, backend, p, startAt)
 			if err != nil {
 				m.l.Error("failed to create MCP session", slog.String("backend", backend.Name), slog.String("error", err.Error()))
 				// If one backend fails, don't fail the overall connection. Create a session to the rest of the backends, as they
@@ -344,7 +344,7 @@ type initializeResult struct {
 	result    *mcp.InitializeResult
 }
 
-func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName filterapi.MCPRouteName, backend *filterapi.MCPBackend, p *mcp.InitializeParams, startAt time.Time) (*initializeResult, error) {
+func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, p *mcp.InitializeParams, startAt time.Time) (*initializeResult, error) {
 	// Send the initialize request to the MCP backend listener.
 	reqID := mustJSONRPCRequestID()
 	var (
@@ -483,7 +483,7 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 	}, nil
 }
 
-func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName filterapi.MCPRouteName, backend *filterapi.MCPBackend, cse *compositeSessionEntry, msg jsonrpc.Message, params mcp.Params) (*http.Response, error) {
+func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry, msg jsonrpc.Message, params mcp.Params) (*http.Response, error) {
 	encoded, err := jsonrpc.EncodeMessage(msg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode MCP message: %w", err)
@@ -532,16 +532,16 @@ func (m *mcpRequestContext) invokeJSONRPCRequest(ctx context.Context, routeName 
 	return resp, nil
 }
 
-func (m *mcpRequestContext) getBackendForRoute(route, backend filterapi.MCPBackendName) (*filterapi.MCPBackend, error) {
+func (m *mcpRequestContext) getBackendForRoute(route, backend filterapi.MCPBackendName) (filterapi.MCPBackend, error) {
 	r := m.routeConfig(route)
 	if r == nil {
-		return nil, fmt.Errorf("no route found for %q", route)
+		return filterapi.MCPBackend{}, fmt.Errorf("no route found for %q", route)
 	}
 	b, ok := r.backends[backend]
 	if !ok {
-		return nil, fmt.Errorf("no backend found for %q in route %q", backend, route)
+		return filterapi.MCPBackend{}, fmt.Errorf("no backend found for %q in route %q", backend, route)
 	}
-	return &b, nil
+	return b, nil
 }
 
 func mustJSONRPCRequestID() jsonrpc.ID {

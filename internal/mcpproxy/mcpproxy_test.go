@@ -375,7 +375,7 @@ func TestInitializeSession_Success(t *testing.T) {
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = backendServer.URL
 
-	res, err := proxy.initializeSession(t.Context(), "route1", &filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{}, time.Now())
+	res, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{}, time.Now())
 
 	require.NoError(t, err)
 	require.Equal(t, gatewayToMCPServerSessionID("test-session-123"), res.sessionID)
@@ -393,7 +393,7 @@ func TestInitializeSession_InitializeFailure(t *testing.T) {
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = backendServer.URL
 
-	sessionID, err := proxy.initializeSession(t.Context(), "route1", &filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{}, time.Now())
+	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{}, time.Now())
 
 	require.Error(t, err)
 	require.Empty(t, sessionID)
@@ -419,7 +419,7 @@ data:
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = backendServer.URL
 
-	sessionID, err := proxy.initializeSession(t.Context(), "route1", &filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{}, time.Now())
+	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{}, time.Now())
 
 	require.Error(t, err)
 	require.Empty(t, sessionID)
@@ -448,7 +448,7 @@ func TestInitializeSession_NotificationsInitializedFailure(t *testing.T) {
 	proxy := newTestMCPProxy()
 	proxy.backendListenerAddr = backendServer.URL
 
-	sessionID, err := proxy.initializeSession(t.Context(), "route1", &filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{}, time.Now())
+	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{}, time.Now())
 
 	require.Error(t, err)
 	require.Empty(t, sessionID)
@@ -468,7 +468,7 @@ func TestInvokeJSONRPCRequest_Success(t *testing.T) {
 
 	m := newTestMCPProxy()
 	m.backendListenerAddr = backendServer.URL
-	resp, err := m.invokeJSONRPCRequest(t.Context(), "route1", &filterapi.MCPBackend{Name: "test-backend"}, &compositeSessionEntry{
+	resp, err := m.invokeJSONRPCRequest(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &compositeSessionEntry{
 		sessionID: "test-session",
 	}, &jsonrpc.Request{}, nil)
 
@@ -490,7 +490,7 @@ func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 
 	m := newTestMCPProxy()
 	m.backendListenerAddr = backendServer.URL
-	resp, err := m.invokeJSONRPCRequest(t.Context(), "route1", &filterapi.MCPBackend{Name: "test-backend"}, &compositeSessionEntry{
+	resp, err := m.invokeJSONRPCRequest(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &compositeSessionEntry{
 		sessionID: "",
 	}, &jsonrpc.Request{}, nil)
 
@@ -648,7 +648,7 @@ func TestRouteConfig_CachesResult(t *testing.T) {
 
 func TestApplyBackendOverrides_SetsHost(t *testing.T) {
 	proxy := newTestMCPProxy()
-	backend := &filterapi.MCPBackend{Name: "b1", Host: "api.githubcopilot.com"}
+	backend := filterapi.MCPBackend{Name: "b1", Host: "api.githubcopilot.com"}
 	req := httptest.NewRequest(http.MethodPost, "http://test-backend", nil)
 	proxy.applyBackendOverrides(req, backend)
 	require.Equal(t, "api.githubcopilot.com", req.Host)
@@ -656,7 +656,7 @@ func TestApplyBackendOverrides_SetsHost(t *testing.T) {
 
 func TestApplyBackendOverrides_SetsPath(t *testing.T) {
 	proxy := newTestMCPProxy()
-	backend := &filterapi.MCPBackend{Name: "b1", BackendPath: "/mcp/readonly"}
+	backend := filterapi.MCPBackend{Name: "b1", BackendPath: "/mcp/readonly"}
 	req := httptest.NewRequest(http.MethodPost, "http://test-backend/original", nil)
 	proxy.applyBackendOverrides(req, backend)
 	require.Equal(t, "/mcp/readonly", req.URL.Path)
@@ -664,7 +664,7 @@ func TestApplyBackendOverrides_SetsPath(t *testing.T) {
 
 func TestApplyBackendOverrides_SetsAuth(t *testing.T) {
 	proxy := newTestMCPProxy()
-	backend := &filterapi.MCPBackend{Name: "b1", Auth: "Bearer ghp_xxx"}
+	backend := filterapi.MCPBackend{Name: "b1", Auth: "Bearer ghp_xxx"}
 	req := httptest.NewRequest(http.MethodPost, "http://test-backend", nil)
 	proxy.applyBackendOverrides(req, backend)
 	require.Equal(t, "Bearer ghp_xxx", req.Header.Get("Authorization"))
@@ -672,7 +672,7 @@ func TestApplyBackendOverrides_SetsAuth(t *testing.T) {
 
 func TestApplyBackendOverrides_AllFields(t *testing.T) {
 	proxy := newTestMCPProxy()
-	backend := &filterapi.MCPBackend{
+	backend := filterapi.MCPBackend{
 		Name:        "b1",
 		Host:        "api.githubcopilot.com",
 		BackendPath: "/mcp/readonly",
@@ -687,7 +687,7 @@ func TestApplyBackendOverrides_AllFields(t *testing.T) {
 
 func TestApplyBackendOverrides_NoFieldsNoOp(t *testing.T) {
 	proxy := newTestMCPProxy()
-	backend := &filterapi.MCPBackend{Name: "b1"}
+	backend := filterapi.MCPBackend{Name: "b1"}
 	req := httptest.NewRequest(http.MethodPost, "http://test-backend/original", nil)
 	originalHost := req.Host
 	originalPath := req.URL.Path
