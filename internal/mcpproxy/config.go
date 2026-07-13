@@ -189,7 +189,7 @@ func parseDynamicRouteConfig(headerValue string) (*mcpProxyConfigRoute, *filtera
 	}
 
 	var route filterapi.MCPRoute
-	if err := json.Unmarshal(decoded, &route); err != nil {
+	if err = json.Unmarshal(decoded, &route); err != nil {
 		return nil, nil, fmt.Errorf("failed to unmarshal dynamic route config: %w", err)
 	}
 

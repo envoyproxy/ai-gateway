@@ -73,7 +73,14 @@ func (s *session) Close() error {
 			// Stateless backend, nothing to do.
 			continue
 		}
-		backend, _ := s.reqCtx.getBackendForRoute(s.route, backendName)
+		backend, err := s.reqCtx.getBackendForRoute(s.route, backendName)
+		if err != nil {
+			s.reqCtx.l.Error("failed to get backend for route during session close",
+				slog.String("backend", backendName),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
 		req, err := http.NewRequest(http.MethodDelete, s.reqCtx.backendListenerAddr, nil)
 		if err != nil {
 			s.reqCtx.l.Error("failed to create DELETE request to MCP server to close session",
@@ -346,7 +353,7 @@ func (s *session) sendToBackendsFiltered(ctx context.Context, httpMethod string,
 }
 
 // sendRequestPerBackend sends an HTTP request to the given backend and streams the response events to eventChan.
-func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *backendEvent, routeName filterapi.MCPRouteName, backend filterapi.MCPBackend, cse *compositeSessionEntry,
+func (s *session) sendRequestPerBackend(ctx context.Context, eventChan chan<- *backendEvent, routeName filterapi.MCPRouteName, backend *filterapi.MCPBackend, cse *compositeSessionEntry,
 	httpMethod string, request *jsonrpc.Request, params mcpsdk.Params,
 ) error {
 	var body io.Reader
