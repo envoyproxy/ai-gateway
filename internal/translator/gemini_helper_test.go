@@ -94,6 +94,7 @@ func TestOpenAIMessagesToGeminiContents(t *testing.T) {
 									"param1": "value1",
 								},
 							},
+							ThoughtSignature: []byte(dummyThoughtSignature),
 						},
 						{Text: "This is a assistant message"},
 					},
@@ -249,6 +250,7 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 						Args: map[string]any{"location": "New York", "unit": "celsius"},
 						Name: "get_weather",
 					},
+					ThoughtSignature: []byte(dummyThoughtSignature),
 				},
 			},
 			expectedToolCalls: map[string]string{
@@ -282,10 +284,14 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 				},
 			},
 			expectedParts: []*genai.Part{
-				genai.NewPartFromFunctionCall("get_weather", map[string]any{
-					"location": "New York",
-					"unit":     "celsius",
-				}),
+				func() *genai.Part {
+					p := genai.NewPartFromFunctionCall("get_weather", map[string]any{
+						"location": "New York",
+						"unit":     "celsius",
+					})
+					p.ThoughtSignature = []byte(dummyThoughtSignature)
+					return p
+				}(),
 				genai.NewPartFromFunctionCall("get_time", map[string]any{
 					"timezone": "EST",
 				}),
@@ -428,9 +434,13 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 				},
 			},
 			expectedParts: []*genai.Part{
-				genai.NewPartFromFunctionCall("get_weather", map[string]any{
-					"location": "San Francisco",
-				}),
+				func() *genai.Part {
+					p := genai.NewPartFromFunctionCall("get_weather", map[string]any{
+						"location": "San Francisco",
+					})
+					p.ThoughtSignature = []byte(dummyThoughtSignature)
+					return p
+				}(),
 				{
 					Text:    "I need to call a function to get the weather",
 					Thought: true,
@@ -519,6 +529,159 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 				"call_weather": "get_weather",
 				"call_time":    "get_time",
 			},
+		},
+		{
+			name: "thinking_blocks signature with tool calls - signature on first tool call",
+			msg: openai.ChatCompletionAssistantMessageParam{
+				Role: openai.ChatMessageRoleAssistant,
+				ThinkingBlocks: []openai.ThinkingBlock{
+					{Type: "thinking", Signature: "dGVzdHNpZ25hdHVyZQ=="}, // "testsignature" in base64
+				},
+				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+					{
+						ID: ptr.To("call_weather"),
+						Function: openai.ChatCompletionMessageToolCallFunctionParam{
+							Name:      "get_weather",
+							Arguments: `{"location":"San Francisco"}`,
+						},
+						Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					},
+					{
+						ID: ptr.To("call_time"),
+						Function: openai.ChatCompletionMessageToolCallFunctionParam{
+							Name:      "get_time",
+							Arguments: `{"timezone":"PST"}`,
+						},
+						Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					},
+				},
+			},
+			expectedParts: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "get_weather",
+						Args: map[string]any{"location": "San Francisco"},
+					},
+					ThoughtSignature: []byte("testsignature"),
+				},
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "get_time",
+						Args: map[string]any{"timezone": "PST"},
+					},
+				},
+			},
+			expectedToolCalls: map[string]string{
+				"call_weather": "get_weather",
+				"call_time":    "get_time",
+			},
+		},
+		{
+			name: "tool calls with no signature anywhere fall back to dummy signature on first call only",
+			msg: openai.ChatCompletionAssistantMessageParam{
+				Role: openai.ChatMessageRoleAssistant,
+				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+					{
+						ID: ptr.To("call_weather"),
+						Function: openai.ChatCompletionMessageToolCallFunctionParam{
+							Name:      "get_weather",
+							Arguments: `{"location":"San Francisco"}`,
+						},
+						Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					},
+					{
+						ID: ptr.To("call_time"),
+						Function: openai.ChatCompletionMessageToolCallFunctionParam{
+							Name:      "get_time",
+							Arguments: `{"timezone":"PST"}`,
+						},
+						Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					},
+				},
+			},
+			expectedParts: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "get_weather",
+						Args: map[string]any{"location": "San Francisco"},
+					},
+					ThoughtSignature: []byte(dummyThoughtSignature),
+				},
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "get_time",
+						Args: map[string]any{"timezone": "PST"},
+					},
+				},
+			},
+			expectedToolCalls: map[string]string{
+				"call_weather": "get_weather",
+				"call_time":    "get_time",
+			},
+		},
+		{
+			name: "content thinking-part signature wins over differing thinking_blocks signature",
+			msg: openai.ChatCompletionAssistantMessageParam{
+				Content: openai.StringOrAssistantRoleContentUnion{
+					Value: []openai.ChatCompletionAssistantMessageParamContent{
+						{
+							Type:      openai.ChatCompletionAssistantMessageParamContentTypeThinking,
+							Text:      ptr.To("I need to call a function to get the weather"),
+							Signature: ptr.To("dGVzdHNpZ25hdHVyZQ=="), // "testsignature" in base64
+						},
+					},
+				},
+				Role: openai.ChatMessageRoleAssistant,
+				ThinkingBlocks: []openai.ThinkingBlock{
+					{Type: "thinking", Signature: "b3RoZXJzaWduYXR1cmU="}, // "othersignature" in base64
+				},
+				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+					{
+						ID: ptr.To("call_weather"),
+						Function: openai.ChatCompletionMessageToolCallFunctionParam{
+							Name:      "get_weather",
+							Arguments: `{"location":"San Francisco"}`,
+						},
+						Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					},
+				},
+			},
+			expectedParts: []*genai.Part{
+				{
+					FunctionCall: &genai.FunctionCall{
+						Name: "get_weather",
+						Args: map[string]any{"location": "San Francisco"},
+					},
+					ThoughtSignature: []byte("testsignature"),
+				},
+				{
+					Text:    "I need to call a function to get the weather",
+					Thought: true,
+				},
+			},
+			expectedToolCalls: map[string]string{
+				"call_weather": "get_weather",
+			},
+		},
+		{
+			name: "invalid base64 in thinking_blocks signature",
+			msg: openai.ChatCompletionAssistantMessageParam{
+				Role: openai.ChatMessageRoleAssistant,
+				ThinkingBlocks: []openai.ThinkingBlock{
+					{Type: "thinking", Signature: "not-valid-base64!!!"},
+				},
+				ToolCalls: []openai.ChatCompletionMessageToolCallParam{
+					{
+						ID: ptr.To("call_weather"),
+						Function: openai.ChatCompletionMessageToolCallFunctionParam{
+							Name:      "get_weather",
+							Arguments: `{"location":"San Francisco"}`,
+						},
+						Type: openai.ChatCompletionMessageToolCallTypeFunction,
+					},
+				},
+			},
+			expectedErrorMsg: "failed to decode thought signature",
 		},
 		{
 			name: "thinking content with invalid base64 signature",
