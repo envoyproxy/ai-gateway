@@ -125,7 +125,8 @@ func parseForwardProxyAddress(addr string) (*corev3.Address, error) {
 	if host == "" {
 		return nil, fmt.Errorf("host must not be empty")
 	}
-	port, err := strconv.ParseUint(portStr, 10, 32)
+	// Parse as uint16 so out-of-range ports (> 65535) are rejected here rather than by Envoy.
+	port, err := strconv.ParseUint(portStr, 10, 16)
 	if err != nil {
 		return nil, fmt.Errorf("invalid port %q: %w", portStr, err)
 	}

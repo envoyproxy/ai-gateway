@@ -161,6 +161,7 @@ func TestParseForwardProxyAddress(t *testing.T) {
 		{name: "empty host", addr: ":3128", wantErr: true},
 		{name: "zero port", addr: "proxy.corp:0", wantErr: true},
 		{name: "non-numeric port", addr: "proxy.corp:http", wantErr: true},
+		{name: "out-of-range port", addr: "proxy.corp:70000", wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := parseForwardProxyAddress(tc.addr)
