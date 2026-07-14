@@ -16,22 +16,63 @@ Client Request
     │
     ▼
 ┌─────────────────────────────────────┐
-│  Custom ext_proc                    │
-│  Sets: x-ai-eg-mcp-dynamic-route-config: <base64 JSON>
-│  {"name": "route1", "backends": [{...}]}
+│  Custom ext_proc (or other filter)  │
+│  (Optional)                         │
+│  Sets: x-ai-eg-mcp-dynamic-route... │
 └─────────────┬───────────────────────┘
               │
               ▼
 ┌─────────────────────────────────────┐
 │  MCP Proxy                          │
-│  • Parses dynamic route header      │
-│  • Overrides static config          │
-│  • Routes to dynamic backends       │
+│                                     │
+│  ┌───────────────────────────────┐  │
+│  │ Does dynamic header exist?    │  │
+│  └───────┬───────────────┬───────┘  │
+│         YES              NO         │
+│          │               │          │
+│          ▼               ▼          │
+│  ┌───────────────┐ ┌─────────────┐  │
+│  │ Parse base64  │ │ Load static │  │
+│  │ JSON header   │ │ config from │  │
+│  │               │ │ filter-config  │  │
+│  └───────┬───────┘ └──────┬──────┘  │
+│          │                │         │
+│          └───────┬────────┘         │
+│                  ▼                  │
+│   Applies Host, Path, Auth headers  │
+└──────────────────┬──────────────────┘
+                   │ 
+      (HTTP Request to backendListenerAddr)
+                   │
+                   ▼
+┌─────────────────────────────────────┐
+│  Envoy Proxy (backendListenerAddr)  │
+│  • Matches Host/Path                │
+│  • Routes to Static Cluster OR      │
+│  • Routes to DFP Cluster            │
 └─────────────┬───────────────────────┘
               │
               ▼
          MCP Backend(s)
 ```
+
+### Hybrid Routing: Static + Dynamic Forward Proxy (DFP)
+
+The MCP Proxy seamlessly supports a hybrid model of both statically defined backends and dynamic external backends on the **exact same Envoy listener** (`backendListenerAddr`).
+
+1. **Config Resolution:**
+   - **Dynamic:** If the `x-ai-eg-mcp-dynamic-route-config` header is present, the proxy decodes the JSON and uses it for the request.
+   - **Static (Fallback):** If the header is missing, the proxy gracefully falls back to the in-memory route map loaded from `filter-config.yaml` at startup.
+
+2. **HTTP Request Construction:**
+   Regardless of whether the backend config came from the dynamic header or static config, the proxy applies overrides (`Host`, `BackendPath`, `Authorization`) to the outbound HTTP request and sends it to Envoy (`backendListenerAddr`).
+
+3. **Envoy Routing (Smart Traffic Cop):**
+   Envoy evaluates the request top-to-bottom:
+   - **Static Routes:** If the `Host` matches a statically defined route (e.g., a local Kubernetes service), it routes to that static `Cluster`.
+   - **DFP Route (Catch-all):** If the `Host` is an external SaaS API (e.g., `api.githubcopilot.com`) and matches no static route, it falls through to the Envoy **Dynamic Forward Proxy (DFP)** cluster. DFP resolves the DNS on the fly and proxies the request.
+
+This decoupling means the MCP Proxy doesn't care if a backend is static or dynamic—it just formats the HTTP request, and Envoy handles the rest!
 
 ## Dynamic Route Config Header
 
