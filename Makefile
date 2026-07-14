@@ -55,7 +55,7 @@ lint: ## This runs the linter on the codebase.
 .PHONY: spellcheck
 spellcheck:  ## Spell check the codebase.
 	@echo "misspell => ./..."
-	@$(GO_TOOL) misspell -error $$(git ls-files --cached --others --exclude-standard | (cd tools && go run ./ignorepaths ../.misspellignore))
+	@git ls-files --cached --others --exclude-standard | (cd tools && go run ./ignorepaths ../.misspellignore) | xargs -n 100 $(GO_TOOL) misspell -error
 
 # Some IDEs like Goland place `.go` files in the `.idea` directory when using code templates. Using a
 # git command to find the files ensures that only relevant files are formatted and that git-ignored
