@@ -65,7 +65,7 @@ During the `initialize` phase, the client has not requested a specific tool yet.
 
 ## 3. Proposed Solution
 
-We propose optimizing the `initialize` phase entirely within the `mcpproxy` component (without requiring changes to the AIGW Controller or the CRD API).
+We propose optimizing the `initialize` phase entirely within the `mcpproxy` component.
 
 We can achieve this by having `compileAuthorization` in `mcpproxy/authorization.go` generate **two** CEL expressions for every rule:
 1. **The Full Expression (Existing):** Evaluates the backend, tool, and client context. Used for `tools/list` and `tools/call`.
@@ -135,4 +135,4 @@ func (m *mcpRequestContext) newSession(...) (*session, error) {
 1. **Efficiency:** Reduces upstream connection overhead and memory usage in the proxy.
 2. **Latency:** Faster initialization for clients, especially in multi-tenant environments where routes map to dozens of backends.
 3. **Security Posture:** Enforces backend isolation earlier in the connection lifecycle (Defense in Depth).
-4. **Self-Contained:** Requires zero changes to the user-facing CRD, the AIGW Controller, or the `x-ai-eg-mcp-dynamic-route-config` header. It is a pure internal optimization in `ext_proc`.
+4. **Self-Contained:** It is a pure internal optimization in `ext_proc`.
