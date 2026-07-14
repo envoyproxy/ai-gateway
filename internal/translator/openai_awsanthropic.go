@@ -21,6 +21,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
@@ -32,10 +33,11 @@ const BedrockDefaultVersion = "bedrock-2023-05-31"
 
 // NewChatCompletionOpenAIToAWSAnthropicTranslator implements [Factory] for OpenAI to AWS Anthropic translation.
 // This translator converts OpenAI ChatCompletion API requests to AWS Anthropic API format.
-func NewChatCompletionOpenAIToAWSAnthropicTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
+func NewChatCompletionOpenAIToAWSAnthropicTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride, hints *filterapi.ModelTranslationHints) OpenAIChatCompletionTranslator {
 	return &openAIToAWSAnthropicTranslatorV1ChatCompletion{
 		apiVersion:        apiVersion,
 		modelNameOverride: modelNameOverride,
+		hints:             hints,
 	}
 }
 
@@ -45,6 +47,7 @@ func NewChatCompletionOpenAIToAWSAnthropicTranslator(apiVersion string, modelNam
 type openAIToAWSAnthropicTranslatorV1ChatCompletion struct {
 	apiVersion        string
 	modelNameOverride internalapi.ModelNameOverride
+	hints             *filterapi.ModelTranslationHints
 	streamParser      *anthropicStreamParser
 	requestModel      internalapi.RequestModel
 	bufferedBody      []byte
@@ -70,7 +73,7 @@ func (o *openAIToAWSAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		o.streamParser = newAnthropicStreamParser(o.requestModel)
 	}
 
-	params, err := buildAnthropicParams(openAIReq, "AWSAnthropic", o.modelNameOverride)
+	params, err := buildAnthropicParams(openAIReq, "AWSAnthropic", o.modelNameOverride, o.hints)
 	if err != nil {
 		return
 	}

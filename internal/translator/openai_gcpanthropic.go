@@ -17,6 +17,7 @@ import (
 	"github.com/tidwall/sjson"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
@@ -31,10 +32,11 @@ const (
 
 // NewChatCompletionOpenAIToGCPAnthropicTranslator implements [Factory] for OpenAI to GCP Anthropic translation.
 // This translator converts OpenAI ChatCompletion API requests to GCP Anthropic API format.
-func NewChatCompletionOpenAIToGCPAnthropicTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride) OpenAIChatCompletionTranslator {
+func NewChatCompletionOpenAIToGCPAnthropicTranslator(apiVersion string, modelNameOverride internalapi.ModelNameOverride, hints *filterapi.ModelTranslationHints) OpenAIChatCompletionTranslator {
 	return &openAIToGCPAnthropicTranslatorV1ChatCompletion{
 		apiVersion:        apiVersion,
 		modelNameOverride: modelNameOverride,
+		hints:             hints,
 	}
 }
 
@@ -44,6 +46,7 @@ func NewChatCompletionOpenAIToGCPAnthropicTranslator(apiVersion string, modelNam
 type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
 	apiVersion        string
 	modelNameOverride internalapi.ModelNameOverride
+	hints             *filterapi.ModelTranslationHints
 	streamParser      *anthropicStreamParser
 	requestModel      internalapi.RequestModel
 	// Redaction configuration for debug logging
@@ -56,7 +59,7 @@ type openAIToGCPAnthropicTranslatorV1ChatCompletion struct {
 func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, openAIReq *openai.ChatCompletionRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
-	params, err := buildAnthropicParams(openAIReq, "GCPAnthropic", o.modelNameOverride)
+	params, err := buildAnthropicParams(openAIReq, "GCPAnthropic", o.modelNameOverride, o.hints)
 	if err != nil {
 		return
 	}
