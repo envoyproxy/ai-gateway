@@ -448,17 +448,11 @@ func TestGatewayController_reconcileFilterConfigSecret_HostnameScopedModels(t *t
 	}
 
 	const someNamespace = "some-namespace"
-	configName := FilterConfigSecretPerGatewayName("gw-hostname", gwNamespace)
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw-hostname", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
 	require.NoError(t, err)
 	require.True(t, effective, "expected filter config to be effective")
 
-	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
-	require.NoError(t, err)
-	configStr, ok := secret.StringData[FilterConfigKeyInSecret]
-	require.True(t, ok)
-	var fc filterapi.Config
-	require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+	fc := requireFilterConfigFromBundle(t, kube, someNamespace, "gw-hostname", gwNamespace)
 
 	// Global Models list still contains every model (used as fallback when no ModelsByHost is configured).
 	require.ElementsMatch(t,
@@ -518,15 +512,11 @@ func TestGatewayController_reconcileFilterConfigSecret_AllUnscopedRoutesLeaveUns
 	}))
 
 	const someNamespace = "some-namespace"
-	configName := FilterConfigSecretPerGatewayName("gw-unscoped-only", gwNamespace)
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw-unscoped-only", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
 	require.NoError(t, err)
 	require.True(t, effective)
 
-	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
-	require.NoError(t, err)
-	var fc filterapi.Config
-	require.NoError(t, yaml.Unmarshal([]byte(secret.StringData[FilterConfigKeyInSecret]), &fc))
+	fc := requireFilterConfigFromBundle(t, kube, someNamespace, "gw-unscoped-only", gwNamespace)
 
 	require.Len(t, fc.Models, 1)
 	require.Equal(t, "lone-model", fc.Models[0].Name)
@@ -2416,7 +2406,7 @@ func TestGatewayController_writeFilterConfigBundleShards(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	namespace := "ns"
@@ -2463,7 +2453,7 @@ func TestGatewayController_writeFilterConfigBundleShards_Overflow(t *testing.T) 
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	c := NewGatewayController(fakeClient, kube, ctrl.Log,
+	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	payload := []byte(strings.Repeat("x", filterConfigBundlePartSizeBytes*(maxFilterConfigBundleSlots+1)))
