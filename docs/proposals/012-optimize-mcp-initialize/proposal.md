@@ -54,7 +54,7 @@ This behavior causes several issues depending on the authentication configuratio
 
 ## 2. Why it behaves this way currently
 
-Currently, AIGW Controller compiles authorization rules into a single CEL expression per rule. These expressions evaluate properties from the client request against both the backend and the specific tool name.
+Currently, the MCP Proxy (`internal/mcpproxy/authorization.go`) compiles authorization rules into a single CEL expression per rule. These expressions evaluate properties from the client request against both the backend and the specific tool name.
 
 For example, a rule allowing a user to access a specific tool on GitHub is compiled to something like:
 ```cel
