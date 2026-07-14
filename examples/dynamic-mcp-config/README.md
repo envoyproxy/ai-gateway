@@ -87,20 +87,32 @@ x-ai-eg-mcp-dynamic-route-config: <base64-encoded JSON>
   "name": "route1",
   "backends": [
     {
-      "name": "backend1",
-      "host": "mcp-server-1.example.com",
+      "name": "github",
+      "host": "api.githubcopilot.com",
       "backendPath": "/mcp",
-      "auth": {
-        "apiKey": "secret-key"
+      "auth": "Bearer ghp_secret",
+      "toolSelector": {
+        "include": ["list_issues", "search_code"]
       }
     }
   ],
+  "authorization": {
+    "defaultAction": "Deny",
+    "rules": [
+      {
+        "action": "Allow",
+        "source": { "jwt": { "scopes": ["mcp:admin"] } },
+        "target": { "tools": [{ "backend": "github", "tool": "*" }] }
+      }
+    ]
+  },
   "forwardHeaders": ["x-user-id", "x-tenant-id"]
 }
 ```
 
 - **`name`** — Route identifier
-- **`backends`** — List of backend configurations with Host and BackendPath
+- **`backends`** — List of backend configurations (can include `toolSelector` to whitelist/blacklist tools)
+- **`authorization`** — Role-based access control rules for the route (e.g., verifying JWT scopes before allowing tool execution)
 - **`forwardHeaders`** — Headers to forward to backends
 - Requests without this header use static filter-config.yaml (fully backward compatible)
 
