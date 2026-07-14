@@ -553,7 +553,12 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 					IsError:   anthropic.Bool(isError),
 				}
 
-				if cacheControl != nil {
+				// Prefer message-level cache_control so string tool results can
+				// carry a breakpoint; fall back to content-part markers.
+				switch {
+				case isCacheEnabled(toolMsg.AnthropicContentFields):
+					toolResultBlock.CacheControl = toolMsg.CacheControl
+				case cacheControl != nil:
 					toolResultBlock.CacheControl = *cacheControl
 				}
 
