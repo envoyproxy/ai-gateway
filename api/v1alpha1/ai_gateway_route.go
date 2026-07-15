@@ -258,10 +258,27 @@ type AIGatewayRouteRule struct {
 	// set 60s for the request timeout as opposed to 15s of the Envoy Gateway's default value.
 	//
 	// For streaming responses (like chat completions with stream=true), consider setting
-	// longer timeouts as the response may take time until the completion.
+	// longer timeouts as the response may take time until the completion. Timeouts.Request
+	// acts as the maximum total time the gateway will wait for the entire response,
+	// including all streamed chunks.
 	//
 	// +optional
 	Timeouts *gwapiv1.HTTPRouteTimeouts `json:"timeouts,omitempty"`
+
+	// StreamIdleTimeout is the maximum time Envoy will wait without receiving any bytes from the upstream.
+	// If the timer fires before the first response byte arrives, Envoy resets the upstream stream and a
+	// retry policy can fall over to the next backend. If it fires mid-stream after
+	// bytes have already arrived, the stream is cut and the client receives a 504.
+	//
+	// The AI Gateway extension server sets route.retry_policy.per_try_idle_timeout to this value on
+	// every xDS route generated from this rule before it is sent to the data plane.
+	//
+	// Pair this field with Timeouts.Request, which acts as the overall deadline.
+	//
+	// If this field is not set, no per-try idle timeout is applied.
+	//
+	// +optional
+	StreamIdleTimeout *gwapiv1.Duration `json:"streamIdleTimeout,omitempty"`
 
 	// ModelsOwnedBy represents the owner of the running models serving by the backends,
 	// which will be exported as the field of "OwnedBy" in openai-compatible API "/models".

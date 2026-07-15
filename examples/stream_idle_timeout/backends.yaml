@@ -1,0 +1,251 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Silent backend
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: stream-idle-timeout-silent
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: stream-idle-timeout-silent
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: stream-idle-timeout-silent
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: stream-idle-timeout-silent.default.svc.cluster.local
+        port: 8080
+---
+# Silent upstream: accepts the TCP connection and holds it open without ever
+# writing a byte back.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stream-idle-timeout-silent-script
+  namespace: default
+data:
+  silent.py: |
+    import socket, sys
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(("0.0.0.0", 8080))
+    s.listen(128)
+    sys.stderr.write("silent upstream listening on :8080\n")
+    sys.stderr.flush()
+    while True:
+        conn, addr = s.accept()
+        sys.stderr.write(f"accepted from {addr}; keeping it silent\n")
+        sys.stderr.flush()
+        # Intentionally don't recv / don't send. Hold the connection open
+        # until Envoy gives up.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stream-idle-timeout-silent
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stream-idle-timeout-silent
+  template:
+    metadata:
+      labels:
+        app: stream-idle-timeout-silent
+    spec:
+      containers:
+        - name: silent
+          image: python:3.12-alpine
+          command: ["python", "/scripts/silent.py"]
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+      volumes:
+        - name: scripts
+          configMap:
+            name: stream-idle-timeout-silent-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stream-idle-timeout-silent
+  namespace: default
+spec:
+  selector:
+    app: stream-idle-timeout-silent
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+---
+# Semi-silent backend
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: stream-idle-timeout-semi-silent
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: stream-idle-timeout-semi-silent
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: stream-idle-timeout-semi-silent
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: stream-idle-timeout-semi-silent.default.svc.cluster.local
+        port: 8080
+---
+# Semi-Silent upstream: accepts the TCP connection, sends one byte, and then holds it open without ever sending another byte.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stream-idle-timeout-semi-silent-script
+  namespace: default
+data:
+  semi-silent.py: |
+    import socket, sys
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(("0.0.0.0", 8080))
+    s.listen(128)
+    sys.stderr.write("semi-silent upstream listening on :8080\n")
+    sys.stderr.flush()
+    while True:
+        conn, addr = s.accept()
+        sys.stderr.write(f"accepted from {addr}\n")
+        sys.stderr.flush()
+        # http sse response
+        conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: hello\n\n")
+        sys.stderr.write(f"sent first byte to {addr}; keeping it silent\n")
+        # Intentionally don't recv / don't send. Hold the connection open
+        # until Envoy gives up.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stream-idle-timeout-semi-silent-script
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stream-idle-timeout-semi-silent
+  template:
+    metadata:
+      labels:
+        app: stream-idle-timeout-semi-silent
+    spec:
+      containers:
+        - name: silent
+          image: python:3.12-alpine
+          command: ["python", "/scripts/semi-silent.py"]
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+      volumes:
+        - name: scripts
+          configMap:
+            name: stream-idle-timeout-semi-silent-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stream-idle-timeout-semi-silent
+  namespace: default
+spec:
+  selector:
+    app: stream-idle-timeout-semi-silent
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+---
+# Healthy backend
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: stream-idle-timeout-healthy
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: stream-idle-timeout-healthy
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: stream-idle-timeout-healthy
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: stream-idle-timeout-healthy.default.svc.cluster.local
+        port: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stream-idle-timeout-healthy
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stream-idle-timeout-healthy
+  template:
+    metadata:
+      labels:
+        app: stream-idle-timeout-healthy
+    spec:
+      containers:
+        - name: testupstream
+          image: docker.io/envoyproxy/ai-gateway-testupstream:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stream-idle-timeout-healthy
+  namespace: default
+spec:
+  selector:
+    app: stream-idle-timeout-healthy
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+---
+
