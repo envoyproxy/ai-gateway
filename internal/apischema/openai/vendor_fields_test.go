@@ -212,3 +212,22 @@ func TestChatCompletionRequest_VendorFieldsExtraction(t *testing.T) {
 		})
 	}
 }
+
+func TestChatCompletionToolMessageParam_CacheControl(t *testing.T) {
+	// Message-level cache_control on OpenAI tool results must survive decoding so
+	// the Anthropic translator can place it on the outer tool_result block.
+	raw := []byte(`{
+		"role": "tool",
+		"tool_call_id": "toolu_1",
+		"content": "search results",
+		"cache_control": {"type": "ephemeral"}
+	}`)
+
+	var msg ChatCompletionMessageParamUnion
+	require.NoError(t, json.Unmarshal(raw, &msg))
+	require.NotNil(t, msg.OfTool)
+	require.NotNil(t, msg.OfTool.AnthropicContentFields)
+	require.Equal(t, anthropic.CacheControlEphemeralParam{Type: "ephemeral"}, msg.OfTool.CacheControl)
+	require.Equal(t, "toolu_1", msg.OfTool.ToolCallID)
+	require.Equal(t, "search results", msg.OfTool.Content.Value)
+}
