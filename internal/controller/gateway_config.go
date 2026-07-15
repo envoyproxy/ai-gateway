@@ -7,8 +7,8 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -92,32 +92,29 @@ func (c *GatewayConfigController) syncGatewayConfig(ctx context.Context, gateway
 	// deterministic hash of that set onto the referencing Gateways to force EG to re-translate and
 	// pick up the change. Changes that don't alter the set (e.g. a metadata key/value) leave the
 	// hash untouched and are handled by the filter config Secret rebuild below.
-	c.syncReferencingGatewayHashes(ctx, rateLimitSourceNamespacesHash(gatewayConfig), referencingGateways)
+	//
+	// This is best-effort and does not gate the notify below: even if a Gateway's hash patch fails,
+	// the healthy Gateways must still be notified so their filter config Secret is rebuilt. A genuine
+	// stamp failure is returned afterwards so the reconcile requeues and retries.
+	hashErr := c.syncReferencingGatewayHashes(ctx, rateLimitSourceNamespacesHash(gatewayConfig), referencingGateways)
 
 	// Notify all referencing Gateways to reconcile (rebuilds the ext_proc filter config Secret).
 	c.notifyReferencingGateways(gatewayConfig, referencingGateways)
 
+	if hashErr != nil {
+		return fmt.Errorf("failed to stamp rate-limit source-namespaces hash on Gateways: %w", hashErr)
+	}
 	return nil
 }
 
-// rateLimitSourceNamespacesHash returns a deterministic hash over the sorted, de-duplicated set of
-// source.fromMetadata.namespace values referenced by the GatewayConfig's GlobalRateLimits. It
-// returns "" when no source namespace is configured. See syncReferencingGatewayHashes for usage.
+// rateLimitSourceNamespacesHash returns a deterministic hash over the GatewayConfig's rate-limit
+// source namespaces (see [aigv1b1.GatewayConfig.RateLimitSourceNamespaces]). It returns "" when no
+// source namespace is configured. See syncReferencingGatewayHashes for usage.
 func rateLimitSourceNamespacesHash(gatewayConfig *aigv1b1.GatewayConfig) string {
-	set := map[string]struct{}{}
-	for _, rl := range gatewayConfig.Spec.GlobalRateLimits {
-		if ns := rl.Source.FromMetadata.Namespace; ns != "" {
-			set[ns] = struct{}{}
-		}
-	}
-	if len(set) == 0 {
+	namespaces := gatewayConfig.RateLimitSourceNamespaces()
+	if len(namespaces) == 0 {
 		return ""
 	}
-	namespaces := make([]string, 0, len(set))
-	for ns := range set {
-		namespaces = append(namespaces, ns)
-	}
-	sort.Strings(namespaces)
 	return shortStableHash(strings.Join(namespaces, "\n"))
 }
 
@@ -125,7 +122,12 @@ func rateLimitSourceNamespacesHash(gatewayConfig *aigv1b1.GatewayConfig) string 
 // GatewayConfigRateLimitHashAnnotationKey annotation, patching only when the value actually
 // changes. A stable hash makes repeated reconciles idempotent, so the resulting Gateway update
 // cannot feed back into an endless reconcile loop. An empty hash removes the annotation.
-func (c *GatewayConfigController) syncReferencingGatewayHashes(ctx context.Context, hash string, gateways []*gwapiv1.Gateway) {
+//
+// Patching is best-effort across all Gateways: a Gateway that was deleted concurrently (NotFound)
+// is skipped, since there is nothing left to stamp; any other failure is collected and returned
+// joined so the caller can requeue and retry rather than silently leaving forwarding stale.
+func (c *GatewayConfigController) syncReferencingGatewayHashes(ctx context.Context, hash string, gateways []*gwapiv1.Gateway) error {
+	var errs []error
 	for _, gw := range gateways {
 		current, exists := gw.Annotations[GatewayConfigRateLimitHashAnnotationKey]
 		if hash == current || (hash == "" && !exists) {
@@ -141,10 +143,13 @@ func (c *GatewayConfigController) syncReferencingGatewayHashes(ctx context.Conte
 			gw.Annotations[GatewayConfigRateLimitHashAnnotationKey] = hash
 		}
 		if err := c.client.Patch(ctx, gw, client.MergeFrom(original)); err != nil {
-			c.logger.Error(err, "failed to stamp rate-limit source-namespaces hash on Gateway",
-				"gateway_namespace", gw.Namespace, "gateway_name", gw.Name)
+			if apierrors.IsNotFound(err) {
+				continue // Gateway deleted concurrently; nothing to stamp.
+			}
+			errs = append(errs, fmt.Errorf("gateway %s/%s: %w", gw.Namespace, gw.Name, err))
 		}
 	}
+	return errors.Join(errs...)
 }
 
 // findReferencingGateways finds all Gateways in the same namespace that reference this GatewayConfig.

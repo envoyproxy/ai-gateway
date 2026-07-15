@@ -14,6 +14,7 @@ import (
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -93,6 +94,20 @@ func (c *errorListClient) List(ctx context.Context, list client.ObjectList, opts
 		return c.listErr
 	}
 	return c.Client.List(ctx, list, opts...)
+}
+
+type errorPatchClient struct {
+	client.Client
+	patchErr error
+	// failNames restricts which object names fail with patchErr. When nil, every Patch fails.
+	failNames map[string]bool
+}
+
+func (c *errorPatchClient) Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+	if c.patchErr != nil && (c.failNames == nil || c.failNames[obj.GetName()]) {
+		return c.patchErr
+	}
+	return c.Client.Patch(ctx, obj, patch, opts...)
 }
 
 func TestGatewayConfigController_Reconcile(t *testing.T) {
@@ -497,6 +512,94 @@ func TestGatewayConfigController_StampsRateLimitHashOnGateways(t *testing.T) {
 	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKeyFromObject(gateway), &stamped))
 	require.Equal(t, rateLimitSourceNamespacesHash(gatewayConfig), stamped.Annotations[GatewayConfigRateLimitHashAnnotationKey])
 	require.NotEqual(t, want, stamped.Annotations[GatewayConfigRateLimitHashAnnotationKey])
+}
+
+func TestGatewayConfigController_HashPatchErrorSetsNotAcceptedStatus(t *testing.T) {
+	fakeClient := requireNewFakeClientForGatewayConfig(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	patchErrClient := &errorPatchClient{Client: fakeClient, patchErr: errors.New("patch failure")}
+	c := NewGatewayConfigController(patchErrClient, ctrl.Log, eventCh.Ch)
+
+	gatewayConfig := gatewayConfigWithRateLimitNamespace("rl-config", "envoy.filters.http.ext_authz")
+	require.NoError(t, fakeClient.Create(t.Context(), gatewayConfig))
+	createGatewayReferencingConfig(t, fakeClient, "rl-gateway", "rl-config")
+
+	// A failure stamping the hash annotation must surface as a reconcile error (so it requeues) and
+	// set the GatewayConfig NotAccepted, rather than being swallowed as success.
+	_, err := c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: client.ObjectKey{Name: "rl-config", Namespace: "default"},
+	})
+	require.Error(t, err)
+
+	var updated aigv1b1.GatewayConfig
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: "rl-config", Namespace: "default"}, &updated))
+	require.Len(t, updated.Status.Conditions, 1)
+	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, updated.Status.Conditions[0].Type)
+	require.Equal(t, metav1.ConditionFalse, updated.Status.Conditions[0].Status)
+	require.Contains(t, updated.Status.Conditions[0].Message, "failed to stamp rate-limit source-namespaces hash")
+}
+
+func TestGatewayConfigController_HashPatchPartialFailureStillNotifies(t *testing.T) {
+	fakeClient := requireNewFakeClientForGatewayConfig(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	// Only gw2's annotation patch fails; gw1's succeeds.
+	patchErrClient := &errorPatchClient{
+		Client:    fakeClient,
+		patchErr:  errors.New("patch failure"),
+		failNames: map[string]bool{"gw2": true},
+	}
+	c := NewGatewayConfigController(patchErrClient, ctrl.Log, eventCh.Ch)
+
+	gatewayConfig := gatewayConfigWithRateLimitNamespace("rl-config", "envoy.filters.http.ext_authz")
+	require.NoError(t, fakeClient.Create(t.Context(), gatewayConfig))
+	createGatewayReferencingConfig(t, fakeClient, "gw1", "rl-config")
+	createGatewayReferencingConfig(t, fakeClient, "gw2", "rl-config")
+
+	// One Gateway failing to stamp fails the reconcile so it requeues...
+	_, err := c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: client.ObjectKey{Name: "rl-config", Namespace: "default"},
+	})
+	require.Error(t, err)
+
+	// ...but the healthy Gateways must still be notified (both get an event) so their filter config
+	// Secret is rebuilt, and gw1's annotation must have been stamped even though gw2's failed.
+	events := eventCh.RequireItemsEventually(t, 2)
+	require.Len(t, events, 2)
+
+	var gw1 gwapiv1.Gateway
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: "gw1", Namespace: "default"}, &gw1))
+	require.Contains(t, gw1.Annotations, GatewayConfigRateLimitHashAnnotationKey)
+
+	var gw2 gwapiv1.Gateway
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: "gw2", Namespace: "default"}, &gw2))
+	require.NotContains(t, gw2.Annotations, GatewayConfigRateLimitHashAnnotationKey)
+}
+
+func TestGatewayConfigController_HashPatchNotFoundIsIgnored(t *testing.T) {
+	fakeClient := requireNewFakeClientForGatewayConfig(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	// A Gateway deleted between the List and the Patch surfaces as NotFound.
+	patchErrClient := &errorPatchClient{
+		Client:   fakeClient,
+		patchErr: apierrors.NewNotFound(gwapiv1.Resource("gateways"), "rl-gateway"),
+	}
+	c := NewGatewayConfigController(patchErrClient, ctrl.Log, eventCh.Ch)
+
+	gatewayConfig := gatewayConfigWithRateLimitNamespace("rl-config", "envoy.filters.http.ext_authz")
+	require.NoError(t, fakeClient.Create(t.Context(), gatewayConfig))
+	createGatewayReferencingConfig(t, fakeClient, "rl-gateway", "rl-config")
+
+	// A concurrently-deleted Gateway (NotFound on Patch) is benign: the reconcile succeeds and the
+	// GatewayConfig stays Accepted rather than churning on requeue.
+	_, err := c.Reconcile(t.Context(), reconcile.Request{
+		NamespacedName: client.ObjectKey{Name: "rl-config", Namespace: "default"},
+	})
+	require.NoError(t, err)
+
+	var updated aigv1b1.GatewayConfig
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKey{Name: "rl-config", Namespace: "default"}, &updated))
+	require.Len(t, updated.Status.Conditions, 1)
+	require.Equal(t, aigv1b1.ConditionTypeAccepted, updated.Status.Conditions[0].Type)
 }
 
 func TestGatewayConfigController_RemovesRateLimitHashWhenSourceCleared(t *testing.T) {

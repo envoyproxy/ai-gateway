@@ -738,10 +738,8 @@ func (s *Server) collectRateLimitSourceNamespaces(ctx context.Context) []string 
 		s.log.Error(err, "failed to list GatewayConfigs for rate-limit forwarding namespaces")
 	} else {
 		for i := range gcList.Items {
-			for _, rl := range gcList.Items[i].Spec.GlobalRateLimits {
-				if ns := rl.Source.FromMetadata.Namespace; ns != "" {
-					set[ns] = struct{}{}
-				}
+			for _, ns := range gcList.Items[i].RateLimitSourceNamespaces() {
+				set[ns] = struct{}{}
 			}
 		}
 	}
