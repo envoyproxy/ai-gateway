@@ -252,6 +252,34 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseHeaders(t *testin
 		mm.RequireRequestNotCompleted(t)
 		require.Nil(t, res.ModeOverride)
 	})
+	t.Run("emits resolved backend name header", func(t *testing.T) {
+		// With Envoy Gateway MergeBackends, sister routes collapse
+		// onto one shared "backend/<...>" cluster whose upstream-host metadata carries no single backend
+		// identity, so a route-level %UPSTREAM_METADATA(...)% header would resolve to empty. The upstream
+		// extproc must stamp the per-request resolved identity so downstream can still tell backends apart.
+		const backendName = "default/anthropic-backend/route/aigw-run/rule/0/ref/0"
+		inHeaders := &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: "foo", Value: "bar"}}}
+		mm := &mockMetrics{}
+		mt := &mockTranslator{t: t, expHeaders: map[string]string{"foo": "bar"}}
+		p := &chatCompletionProcessorUpstreamFilter{
+			translator:  mt,
+			metrics:     mm,
+			parent:      &chatCompletionProcessorRouterFilter{},
+			backendName: backendName,
+		}
+		res, err := p.ProcessResponseHeaders(t.Context(), inHeaders)
+		require.NoError(t, err)
+		commonRes := res.Response.(*extprocv3.ProcessingResponse_ResponseHeaders).ResponseHeaders.Response
+		var got *corev3.HeaderValueOption
+		for _, h := range commonRes.HeaderMutation.SetHeaders {
+			if h.Header.Key == internalapi.UpstreamBackendNameHeader {
+				got = h
+			}
+		}
+		require.NotNil(t, got, "upstream extproc must emit the resolved backend name header")
+		require.Equal(t, backendName, string(got.Header.RawValue))
+		require.Equal(t, corev3.HeaderValueOption_APPEND_IF_EXISTS_OR_ADD, got.AppendAction)
+	})
 	t.Run("ok/streaming", func(t *testing.T) {
 		inHeaders := &corev3.HeaderMap{
 			Headers: []*corev3.HeaderValue{{Key: ":status", Value: "200"}, {Key: "dog", RawValue: []byte("cat")}},

@@ -61,8 +61,8 @@ func (s *Server) maybeGenerateResourcesForMCPGateway(req *egextension.PostTransl
 		req.Routes = append(req.Routes, mcpBackendRoutes)
 	}
 
-	// Modify routes with mcp-gateway-generated annotation to use mcpproxy-cluster.
-	s.modifyMCPGatewayGeneratedCluster(req.Clusters)
+	// Rewrite the MCP proxy front-end cluster (resolved from the rule/0 route) to localhost.
+	s.modifyMCPGatewayGeneratedCluster(req.Clusters, req.Routes)
 	return nil
 }
 
@@ -239,11 +239,24 @@ func (s *Server) createRoutesForBackendListener(routes []*routev3.RouteConfigura
 	return mcpRouteConfig
 }
 
-// modifyMCPGatewayGeneratedRoutes finds the mcp proxy dummy IP in the clusters and
-// swaps it to the localhost.
-func (s *Server) modifyMCPGatewayGeneratedCluster(clusters []*clusterv3.Cluster) {
+// modifyMCPGatewayGeneratedCluster rewrites the cluster that fronts the in-pod MCP proxy into a STATIC
+// cluster pointing at localhost:MCPProxyPort. The controller seeds that Backend with a placeholder IP
+// endpoint; Envoy Gateway renders a static-IP Backend as an EDS cluster whose endpoints are delivered
+// out-of-band, so the placeholder is not visible here and the cluster cannot be matched by endpoint.
+//
+// The target cluster is identified by the MCP proxy front-end route (rule/0 of the generated MCP main
+// HTTPRoute) and the cluster it references. That reference binds to the cluster regardless of its name:
+// EG names it "httproute/<ns>/ai-eg-mcp-main-<route>/rule/0", or "backend/<Kind>/<ns>/<ns>-<route>-mcp-proxy"
+// under MergeBackends. Route names are stable under MergeBackends, so this matches both shapes and never
+// rewrites an unrelated cluster. Without the rewrite Envoy dials the placeholder and every MCP proxy
+// request fails to connect.
+func (s *Server) modifyMCPGatewayGeneratedCluster(clusters []*clusterv3.Cluster, routes []*routev3.RouteConfiguration) {
+	proxyClusters := mcpProxyClusterNames(routes)
+	if len(proxyClusters) == 0 {
+		return
+	}
 	for _, c := range clusters {
-		if strings.Contains(c.Name, internalapi.MCPMainHTTPRoutePrefix) && strings.HasSuffix(c.Name, "/rule/0") {
+		if proxyClusters[c.Name] {
 			name := c.Name
 			*c = clusterv3.Cluster{
 				Name:                 name,
@@ -277,6 +290,32 @@ func (s *Server) modifyMCPGatewayGeneratedCluster(clusters []*clusterv3.Cluster)
 			}
 		}
 	}
+}
+
+// mcpProxyClusterNames returns the set of cluster names referenced by the MCP proxy front-end route —
+// rule/0 of the generated MCP main HTTPRoute. Those are exactly the clusters that resolve to the
+// placeholder MCP proxy Backend and must be rewritten to localhost. The route name carries both the
+// MCP main route prefix and the rule/0 marker and is stable under MergeBackends, so this identifies
+// the cluster regardless of any CDS renaming.
+func mcpProxyClusterNames(routes []*routev3.RouteConfiguration) map[string]bool {
+	names := make(map[string]bool)
+	for _, routeConfig := range routes {
+		for _, vh := range routeConfig.GetVirtualHosts() {
+			for _, route := range vh.GetRoutes() {
+				// Match rule/0 anchored ("/rule/0/"): route names always carry a trailing "/match/<idx>",
+				// so this is exact for the index and won't collide with "rule/0..." (e.g. rule/10).
+				if !strings.Contains(route.Name, internalapi.MCPMainHTTPRoutePrefix) || !strings.Contains(route.Name, "/rule/0/") {
+					continue
+				}
+				// The MCP proxy front-end route has exactly one backendRef, so it always resolves to a
+				// single cluster (never weighted).
+				if cluster := route.GetRoute().GetCluster(); cluster != "" {
+					names[cluster] = true
+				}
+			}
+		}
+	}
+	return names
 }
 
 // extractMCPBackendFiltersFromMCPProxyListener scans through MCP proxy listeners to find HTTP filters

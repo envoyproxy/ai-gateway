@@ -23,6 +23,13 @@ const (
 	EnvoyOriginalPathHeader = "x-envoy-original-path"
 	// OriginalPathHeader is the AI Gateway header used to preserve the original request path.
 	OriginalPathHeader = EnvoyAIGatewayHeaderPrefix + "original-path"
+	// UpstreamBackendNameHeader is the response header carrying the resolved backend identity (the full
+	// PerRouteRuleRefBackendName). The upstream extproc sets it from the per-request resolved backend
+	// name so downstream consumers (billing, usage rollup, provider/metric labels) can identify the
+	// backend. It comes from the ext_proc identity rather than
+	// %UPSTREAM_METADATA(aigateway.envoy.io:per_route_rule_backend_name)% because that upstream-host
+	// metadata is empty on a MergeBackends-shared cluster.
+	UpstreamBackendNameHeader = EnvoyAIGatewayHeaderPrefix + "upstream-backend-name"
 	// InternalEndpointMetadataNamespace is the namespace used for the dynamic metadata for internal use.
 	InternalEndpointMetadataNamespace = "aigateway.envoy.io"
 	// InternalMetadataBackendNameKey is the key used to store the backend name
@@ -83,6 +90,10 @@ const (
 	XDSUpstreamHostMetadataBackendNamePath = "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
 	// XDSRouteMetadataRouteNamePath is the full attribute path to access the route name in route metadata in xDS attributes.
 	XDSRouteMetadataRouteNamePath = "xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']"
+	// XDSRouteMetadataBackendNamePath is the full attribute path to access the backend name in route metadata in xDS attributes.
+	// Used when clusters are shared across routes (e.g. Envoy Gateway MergeBackends): cluster/upstream-host
+	// metadata can carry only one identity, so per-route backend identity lives in route metadata instead.
+	XDSRouteMetadataBackendNamePath = "xds.route_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
 )
 
 // PerRouteRuleRefBackendName generates a unique backend name for a per-route rule,
