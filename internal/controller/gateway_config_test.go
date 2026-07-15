@@ -35,6 +35,54 @@ func requireNewFakeClientForGatewayConfig(t *testing.T) client.Client {
 	return builder.Build()
 }
 
+// createGatewayReferencingConfig creates a minimal Gateway in the default namespace annotated to
+// reference configName.
+func createGatewayReferencingConfig(t *testing.T, c client.Client, name, configName string) *gwapiv1.Gateway {
+	t.Helper()
+	gateway := &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "default",
+			Annotations: map[string]string{
+				GatewayConfigAnnotationKey: configName,
+			},
+		},
+		Spec: gwapiv1.GatewaySpec{
+			GatewayClassName: "test-class",
+			Listeners: []gwapiv1.Listener{
+				{
+					Name:     "http",
+					Port:     8080,
+					Protocol: gwapiv1.HTTPProtocolType,
+				},
+			},
+		},
+	}
+	require.NoError(t, c.Create(t.Context(), gateway))
+	return gateway
+}
+
+// gatewayConfigWithRateLimitNamespace returns a GatewayConfig whose GlobalRateLimits read from the
+// given source metadata namespace.
+func gatewayConfigWithRateLimitNamespace(name, namespace string) *aigv1b1.GatewayConfig {
+	return &aigv1b1.GatewayConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Spec: aigv1b1.GatewayConfigSpec{
+			GlobalRateLimits: []aigv1b1.RateLimitOverride{
+				{
+					MetadataKey: "llm_input_token_limit",
+					Source: aigv1b1.RateLimitOverrideSource{
+						FromMetadata: aigv1b1.RateLimitMetadataSource{
+							Namespace: namespace,
+							Key:       "input-limit",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 type errorListClient struct {
 	client.Client
 	listErr error
@@ -373,4 +421,108 @@ func TestGatewayConfigConditionsNotAccepted(t *testing.T) {
 	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, conds[0].Type)
 	require.Equal(t, metav1.ConditionFalse, conds[0].Status)
 	require.Equal(t, "nope", conds[0].Message)
+}
+
+func TestRateLimitSourceNamespacesHash(t *testing.T) {
+	newConfig := func(namespaces ...string) *aigv1b1.GatewayConfig {
+		gc := &aigv1b1.GatewayConfig{}
+		for _, ns := range namespaces {
+			gc.Spec.GlobalRateLimits = append(gc.Spec.GlobalRateLimits, aigv1b1.RateLimitOverride{
+				MetadataKey: "key",
+				Source: aigv1b1.RateLimitOverrideSource{
+					FromMetadata: aigv1b1.RateLimitMetadataSource{Namespace: ns, Key: "k"},
+				},
+			})
+		}
+		return gc
+	}
+
+	// No source namespaces yields an empty hash, leaving the Gateway annotation unset.
+	require.Empty(t, rateLimitSourceNamespacesHash(newConfig()))
+	require.Empty(t, rateLimitSourceNamespacesHash(newConfig("")))
+
+	// Order and duplicates do not affect the hash.
+	require.Equal(t,
+		rateLimitSourceNamespacesHash(newConfig("a", "b")),
+		rateLimitSourceNamespacesHash(newConfig("b", "a", "a")),
+	)
+
+	// Different namespace sets produce different hashes.
+	require.NotEqual(t,
+		rateLimitSourceNamespacesHash(newConfig("a")),
+		rateLimitSourceNamespacesHash(newConfig("a", "b")),
+	)
+
+	// Changing only the metadata key/value within a namespace leaves the hash unchanged.
+	changed := newConfig("a")
+	changed.Spec.GlobalRateLimits[0].MetadataKey = "different"
+	changed.Spec.GlobalRateLimits[0].Source.FromMetadata.Key = "different"
+	require.Equal(t, rateLimitSourceNamespacesHash(newConfig("a")), rateLimitSourceNamespacesHash(changed))
+}
+
+func TestGatewayConfigController_StampsRateLimitHashOnGateways(t *testing.T) {
+	fakeClient := requireNewFakeClientForGatewayConfig(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
+
+	gatewayConfig := gatewayConfigWithRateLimitNamespace("rl-config", "envoy.filters.http.ext_authz")
+	require.NoError(t, fakeClient.Create(t.Context(), gatewayConfig))
+	gateway := createGatewayReferencingConfig(t, fakeClient, "rl-gateway", "rl-config")
+	req := reconcile.Request{NamespacedName: client.ObjectKey{Name: "rl-config", Namespace: "default"}}
+
+	// The first reconcile stamps the source-namespaces hash onto the referencing Gateway.
+	_, err := c.Reconcile(t.Context(), req)
+	require.NoError(t, err)
+
+	var stamped gwapiv1.Gateway
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKeyFromObject(gateway), &stamped))
+	want := rateLimitSourceNamespacesHash(gatewayConfig)
+	require.NotEmpty(t, want)
+	require.Equal(t, want, stamped.Annotations[GatewayConfigRateLimitHashAnnotationKey])
+	stampedResourceVersion := stamped.ResourceVersion
+
+	// Reconciling with an unchanged config must not re-patch the Gateway, so it cannot feed back
+	// into an endless reconcile loop.
+	_, err = c.Reconcile(t.Context(), req)
+	require.NoError(t, err)
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKeyFromObject(gateway), &stamped))
+	require.Equal(t, stampedResourceVersion, stamped.ResourceVersion)
+
+	// Changing the source namespace changes the hash and re-stamps the Gateway.
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKeyFromObject(gatewayConfig), gatewayConfig))
+	gatewayConfig.Spec.GlobalRateLimits[0].Source.FromMetadata.Namespace = "envoy.filters.http.jwt_authn"
+	require.NoError(t, fakeClient.Update(t.Context(), gatewayConfig))
+	_, err = c.Reconcile(t.Context(), req)
+	require.NoError(t, err)
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKeyFromObject(gateway), &stamped))
+	require.Equal(t, rateLimitSourceNamespacesHash(gatewayConfig), stamped.Annotations[GatewayConfigRateLimitHashAnnotationKey])
+	require.NotEqual(t, want, stamped.Annotations[GatewayConfigRateLimitHashAnnotationKey])
+}
+
+func TestGatewayConfigController_RemovesRateLimitHashWhenSourceCleared(t *testing.T) {
+	fakeClient := requireNewFakeClientForGatewayConfig(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewGatewayConfigController(fakeClient, ctrl.Log, eventCh.Ch)
+
+	gatewayConfig := gatewayConfigWithRateLimitNamespace("rl-config", "envoy.filters.http.ext_authz")
+	require.NoError(t, fakeClient.Create(t.Context(), gatewayConfig))
+	gateway := createGatewayReferencingConfig(t, fakeClient, "rl-gateway", "rl-config")
+	req := reconcile.Request{NamespacedName: client.ObjectKey{Name: "rl-config", Namespace: "default"}}
+
+	_, err := c.Reconcile(t.Context(), req)
+	require.NoError(t, err)
+	var stamped gwapiv1.Gateway
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKeyFromObject(gateway), &stamped))
+	require.Contains(t, stamped.Annotations, GatewayConfigRateLimitHashAnnotationKey)
+
+	// Clearing the rate limits removes the annotation, forcing EG to re-translate and drop the
+	// stale forwarding namespace.
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKeyFromObject(gatewayConfig), gatewayConfig))
+	gatewayConfig.Spec.GlobalRateLimits = nil
+	require.NoError(t, fakeClient.Update(t.Context(), gatewayConfig))
+	_, err = c.Reconcile(t.Context(), req)
+	require.NoError(t, err)
+
+	require.NoError(t, fakeClient.Get(t.Context(), client.ObjectKeyFromObject(gateway), &stamped))
+	require.NotContains(t, stamped.Annotations, GatewayConfigRateLimitHashAnnotationKey)
 }

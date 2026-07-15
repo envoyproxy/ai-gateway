@@ -8,6 +8,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -21,6 +23,13 @@ import (
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
+
+// GatewayConfigRateLimitHashAnnotationKey is stamped onto Gateways that reference a GatewayConfig.
+// Its value is a deterministic hash of the GatewayConfig's rate-limit source namespaces (see
+// rateLimitSourceNamespacesHash). Envoy Gateway does not watch GatewayConfig, but it does reconcile
+// Gateways on annotation changes, so bumping this hash forces EG to re-translate the Gateway and
+// refresh the router-level ext_proc ForwardingNamespaces.
+const GatewayConfigRateLimitHashAnnotationKey = "aigateway.envoyproxy.io/ratelimit-source-namespaces-hash"
 
 // GatewayConfigController implements [reconcile.TypedReconciler] for [aigv1b1.GatewayConfig].
 //
@@ -77,10 +86,65 @@ func (c *GatewayConfigController) syncGatewayConfig(ctx context.Context, gateway
 		return fmt.Errorf("failed to find referencing Gateways: %w", err)
 	}
 
-	// Notify all referencing Gateways to reconcile.
+	// Envoy Gateway does not watch GatewayConfig, so a change to the set of rate-limit source
+	// namespaces would not, on its own, re-run xDS translation. The router-level ext_proc filter's
+	// ForwardingNamespaces are computed during translation (PostTranslateModify), so stamp a
+	// deterministic hash of that set onto the referencing Gateways to force EG to re-translate and
+	// pick up the change. Changes that don't alter the set (e.g. a metadata key/value) leave the
+	// hash untouched and are handled by the filter config Secret rebuild below.
+	c.syncReferencingGatewayHashes(ctx, rateLimitSourceNamespacesHash(gatewayConfig), referencingGateways)
+
+	// Notify all referencing Gateways to reconcile (rebuilds the ext_proc filter config Secret).
 	c.notifyReferencingGateways(gatewayConfig, referencingGateways)
 
 	return nil
+}
+
+// rateLimitSourceNamespacesHash returns a deterministic hash over the sorted, de-duplicated set of
+// source.fromMetadata.namespace values referenced by the GatewayConfig's GlobalRateLimits. It
+// returns "" when no source namespace is configured. See syncReferencingGatewayHashes for usage.
+func rateLimitSourceNamespacesHash(gatewayConfig *aigv1b1.GatewayConfig) string {
+	set := map[string]struct{}{}
+	for _, rl := range gatewayConfig.Spec.GlobalRateLimits {
+		if ns := rl.Source.FromMetadata.Namespace; ns != "" {
+			set[ns] = struct{}{}
+		}
+	}
+	if len(set) == 0 {
+		return ""
+	}
+	namespaces := make([]string, 0, len(set))
+	for ns := range set {
+		namespaces = append(namespaces, ns)
+	}
+	sort.Strings(namespaces)
+	return shortStableHash(strings.Join(namespaces, "\n"))
+}
+
+// syncReferencingGatewayHashes stamps hash onto each referencing Gateway's
+// GatewayConfigRateLimitHashAnnotationKey annotation, patching only when the value actually
+// changes. A stable hash makes repeated reconciles idempotent, so the resulting Gateway update
+// cannot feed back into an endless reconcile loop. An empty hash removes the annotation.
+func (c *GatewayConfigController) syncReferencingGatewayHashes(ctx context.Context, hash string, gateways []*gwapiv1.Gateway) {
+	for _, gw := range gateways {
+		current, exists := gw.Annotations[GatewayConfigRateLimitHashAnnotationKey]
+		if hash == current || (hash == "" && !exists) {
+			continue // Already up to date.
+		}
+		original := gw.DeepCopy()
+		if hash == "" {
+			delete(gw.Annotations, GatewayConfigRateLimitHashAnnotationKey)
+		} else {
+			if gw.Annotations == nil {
+				gw.Annotations = map[string]string{}
+			}
+			gw.Annotations[GatewayConfigRateLimitHashAnnotationKey] = hash
+		}
+		if err := c.client.Patch(ctx, gw, client.MergeFrom(original)); err != nil {
+			c.logger.Error(err, "failed to stamp rate-limit source-namespaces hash on Gateway",
+				"gateway_namespace", gw.Namespace, "gateway_name", gw.Name)
+		}
+	}
 }
 
 // findReferencingGateways finds all Gateways in the same namespace that reference this GatewayConfig.

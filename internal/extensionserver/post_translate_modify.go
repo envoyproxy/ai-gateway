@@ -719,9 +719,11 @@ func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.R
 // ProcessingRequest.metadata_context. Returns nil when no override is configured, leaving the filter's
 // ForwardingNamespaces unset (unchanged behavior).
 //
-// EG recomputes this only when it re-translates the gateway, and it doesn't watch GatewayConfig, so
-// adding or removing a source namespace on a live gateway only lands on the next translation (e.g. a
-// route change). Changing the key or value within a namespace needs none.
+// EG recomputes this only when it re-translates the gateway, and it doesn't watch GatewayConfig.
+// The GatewayConfig controller bridges that gap: when the source-namespace set changes it stamps a
+// hash annotation on the referencing Gateways (see GatewayConfigRateLimitHashAnnotationKey), which
+// EG reconciles on, forcing the re-translation that lands the new set here. Changing only the key or
+// value within a namespace leaves the set (and that hash) unchanged and needs no re-translation.
 //
 // A list failure returns nil, which leaves ForwardingNamespaces unset and disables dynamic limits until
 // the next translation, so the error is logged to make that fallback diagnosable.
