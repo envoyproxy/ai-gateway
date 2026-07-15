@@ -324,6 +324,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			})
 		}
 		rules = append(rules, gwapiv1.HTTPRouteRule{
+			Name:        rule.Name,
 			BackendRefs: backendRefs,
 			Matches:     matches,
 			Filters:     rewriteFilters,
