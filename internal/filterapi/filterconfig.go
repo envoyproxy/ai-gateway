@@ -178,6 +178,9 @@ const (
 	// Used for Claude models hosted on AWS Bedrock. Supports both OpenAI and Anthropic input formats
 	// depending on the endpoint path, similar to APISchemaGCPAnthropic.
 	APISchemaAWSAnthropic APISchemaName = "AWSAnthropic"
+	// APISchemaHuggingFaceTEI represents the HuggingFace Text Embeddings Inference (TEI) API schema.
+	// Currently only supported for the rerank endpoint.
+	APISchemaHuggingFaceTEI APISchemaName = "HuggingFaceTEI"
 )
 
 // RouteRuleName is the name of the route rule.

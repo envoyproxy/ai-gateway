@@ -86,6 +86,7 @@ func TestAIServiceBackends(t *testing.T) {
 	}{
 		{name: "basic.yaml"},
 		{name: "anthropic-schema.yaml"},
+		{name: "huggingfacetei-schema.yaml"},
 		{name: "basic-eg-backend-aws.yaml"},
 		{name: "basic-eg-backend-azure.yaml"},
 		{

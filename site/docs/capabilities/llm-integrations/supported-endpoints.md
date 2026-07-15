@@ -325,6 +325,7 @@ curl -H "Content-Type: application/json" \
 
 - Cohere
 - Any Cohere-compatible provider that supports rerank, including vLLM.
+- HuggingFace Text Embeddings Inference (TEI) rerankers via `schema: {"name":"HuggingFaceTEI"}` — requests are translated to TEI's native `/rerank` API.
 
 **Example:**
 
@@ -400,6 +401,7 @@ The following table summarizes which providers support which endpoints:
 | [Anthropic on AWS Bedrock](https://aws.amazon.com/bedrock/anthropic/)                                 |        🚧        |     ❌      |     ❌     |        ❌        |         ✅         |   ❌   | Native Anthropic API                                                                                                 |
 | [SambaNova](https://docs.sambanova.ai/sambastudio/latest/open-ai-api.html)                            |        ✅        |     ⚠️      |     ✅     |        ❌        |         ❌         |   ❌   | Via OpenAI-compatible API                                                                                            |
 | [Anthropic](https://docs.claude.com/en/home)                                                          |        ✅        |     ❌      |     ❌     |        ❌        |         ✅         |   ❌   | Via OpenAI-compatible API and Native Anthropic API                                                                   |
+| [HuggingFace TEI](https://huggingface.co/docs/text-embeddings-inference)                              |        ❌        |     ❌      |     ❌     |        ❌        |         ❌         |   ✅   | Via API translation to TEI's native /rerank API                                                                      |
 
 - ✅ - Supported and Tested on Envoy AI Gateway CI
 - ⚠️️ - Expected to work based on provider documentation, but not tested on the CI.

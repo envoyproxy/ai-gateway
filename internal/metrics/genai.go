@@ -45,6 +45,8 @@ const (
 	genaiProviderGCPAnthropic = "gcp.anthropic"
 	genaiProviderAnthropic    = "anthropic"
 	genaiProviderCohere       = "cohere"
+	// Not in the semconv well-known list; follows the same naming style.
+	genaiProviderHuggingFaceTEI = "huggingface.tei"
 
 	genaiTokenTypeInput  = "input"
 	genaiTokenTypeOutput = "output"
