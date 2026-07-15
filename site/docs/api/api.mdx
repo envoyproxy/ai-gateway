@@ -634,6 +634,11 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
 
 
 <ApiField
+  name="name"
+  type="[SectionName](#sigs-k8s-io-gateway-api-apis-v1-sectionname)"
+  required="false"
+  description="Name is the name of the route rule. This name must be unique within the route.<br />When specified, it is copied to the generated HTTPRoute rule name."
+/><ApiField
   name="backendRefs"
   type="[AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulebackendref) array"
   required="false"
@@ -3052,6 +3057,11 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
 
 
 <ApiField
+  name="name"
+  type="[SectionName](#sigs-k8s-io-gateway-api-apis-v1-sectionname)"
+  required="false"
+  description="Name is the name of the route rule. This name must be unique within the route.<br />When specified, it is copied to the generated HTTPRoute rule name."
+/><ApiField
   name="backendRefs"
   type="[AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulebackendref) array"
   required="false"

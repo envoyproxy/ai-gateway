@@ -768,6 +768,14 @@ spec:
 
                         Default to "Envoy AI Gateway" if not set.
                       type: string
+                    name:
+                      description: |-
+                        Name is the name of the route rule. This name must be unique within the route.
+                        When specified, it is copied to the generated HTTPRoute rule name.
+                      maxLength: 253
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                      type: string
                     timeouts:
                       description: |-
                         Timeouts defines the timeouts that can be configured for an HTTP request.
@@ -836,6 +844,8 @@ spec:
                           > duration(self.request))'
                   type: object
                   x-kubernetes-validations:
+                  - message: rule name route-not-found is reserved
+                    rule: '!has(self.name) || self.name != ''route-not-found'''
                   - message: cannot mix InferencePool and AIServiceBackend references
                       in the same rule
                     rule: '!has(self.backendRefs) || size(self.backendRefs) == 0 ||
@@ -847,6 +857,10 @@ spec:
                       || size(self.backendRefs) == 1'
                 maxItems: 15
                 type: array
+                x-kubernetes-validations:
+                - message: rule name must be unique within the route
+                  rule: self.all(r1, !has(r1.name) || self.exists_one(r2, has(r2.name)
+                    && r1.name == r2.name))
             required:
             - rules
             type: object
@@ -1666,6 +1680,14 @@ spec:
 
                         Default to "Envoy AI Gateway" if not set.
                       type: string
+                    name:
+                      description: |-
+                        Name is the name of the route rule. This name must be unique within the route.
+                        When specified, it is copied to the generated HTTPRoute rule name.
+                      maxLength: 253
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                      type: string
                     timeouts:
                       description: |-
                         Timeouts defines the timeouts that can be configured for an HTTP request.
@@ -1734,6 +1756,8 @@ spec:
                           > duration(self.request))'
                   type: object
                   x-kubernetes-validations:
+                  - message: rule name route-not-found is reserved
+                    rule: '!has(self.name) || self.name != ''route-not-found'''
                   - message: cannot mix InferencePool and AIServiceBackend references
                       in the same rule
                     rule: '!has(self.backendRefs) || size(self.backendRefs) == 0 ||
@@ -1745,6 +1769,10 @@ spec:
                       || size(self.backendRefs) == 1'
                 maxItems: 15
                 type: array
+                x-kubernetes-validations:
+                - message: rule name must be unique within the route
+                  rule: self.all(r1, !has(r1.name) || self.exists_one(r2, has(r2.name)
+                    && r1.name == r2.name))
             required:
             - rules
             type: object
