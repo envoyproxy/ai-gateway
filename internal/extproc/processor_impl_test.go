@@ -26,6 +26,7 @@ import (
 
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -667,6 +668,42 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 
 				mm.RequireRequestFailure(t)
 				require.Zero(t, mm.inputTokenCount)
+				require.Equal(t, "some-model", mm.originalModel)
+				require.Equal(t, "some-model", mm.requestModel)
+			})
+			t.Run("credential missing returns 401", func(t *testing.T) {
+				headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
+				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
+				var body openai.ChatCompletionRequest
+				require.NoError(t, json.Unmarshal(someBody, &body))
+				tr := &mockTranslator{t: t, expRequestBody: &body}
+				mm := &mockMetrics{}
+				// Handler returns ErrCredentialMissing — simulates fallbackToConfigured=false with absent source.
+				authHandler := &mockBackendAuthHandlerError{err: backendauth.ErrCredentialMissing}
+				p := &chatCompletionProcessorUpstreamFilter{
+					parent: &chatCompletionProcessorRouterFilter{
+						config:                 &filterapi.RuntimeConfig{},
+						logger:                 slog.Default(),
+						originalRequestBodyRaw: someBody,
+						originalRequestBody:    &body,
+						originalModel:          "some-model",
+						stream:                 tc.stream,
+					},
+					requestHeaders: headers,
+					metrics:        mm,
+					translator:     tr,
+					handler:        authHandler,
+				}
+				resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+				require.NoError(t, err, "ErrCredentialMissing must not propagate as a Go error")
+				require.NotNil(t, resp)
+
+				immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+				require.True(t, ok, "response should be an ImmediateResponse")
+				require.Equal(t, typev3.StatusCode(401), immediateResp.ImmediateResponse.Status.Code)
+				require.Contains(t, string(immediateResp.ImmediateResponse.Body), "missing upstream credential")
+
+				mm.RequireRequestFailure(t)
 				require.Equal(t, "some-model", mm.originalModel)
 				require.Equal(t, "some-model", mm.requestModel)
 			})
