@@ -43,6 +43,24 @@ const (
 	aiGatewayExtProcName  = "envoy.filters.http.ext_proc/aigateway"
 )
 
+// EnvoyDefaultCircuitBreakerMaxRequests is Envoy's built-in default for
+// CircuitBreakers.Thresholds.max_requests.
+const EnvoyDefaultCircuitBreakerMaxRequests uint32 = 1024
+
+// extProcMaxRequestsCircuitBreakers returns nil when v is Envoy's default (or
+// the legacy 0 sentinel), otherwise a CircuitBreakers override for the UDS
+// cluster. Returning nil avoids a CDS warming on upgrade.
+func extProcMaxRequestsCircuitBreakers(v uint32) *clusterv3.CircuitBreakers {
+	if v == 0 || v == EnvoyDefaultCircuitBreakerMaxRequests {
+		return nil
+	}
+	return &clusterv3.CircuitBreakers{
+		Thresholds: []*clusterv3.CircuitBreakers_Thresholds{
+			{MaxRequests: wrapperspb.UInt32(v)},
+		},
+	}
+}
+
 // PostTranslateModify allows an extension to modify the clusters and secrets in the xDS config
 // after the initial translation is complete. This method is responsible for:
 //
@@ -99,7 +117,7 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal HttpProtocolOptions to Any: %w", err)
 		}
-		req.Clusters = append(req.Clusters, &clusterv3.Cluster{
+		cluster := &clusterv3.Cluster{
 			Name:                 extProcUDSClusterName,
 			ClusterDiscoveryType: &clusterv3.Cluster_Type{Type: clusterv3.Cluster_STATIC},
 			// https://github.com/envoyproxy/gateway/blob/932b8b155fa562ae917da19b497a4370733478f1/api/v1alpha1/timeout_types.go#L25
@@ -134,7 +152,13 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 					},
 				},
 			},
-		})
+		}
+		if cb := extProcMaxRequestsCircuitBreakers(s.extProcMaxRequests); cb != nil {
+			cluster.CircuitBreakers = cb
+			s.log.Info("Applied custom circuit breaker on extproc-uds cluster",
+				"max_requests", s.extProcMaxRequests)
+		}
+		req.Clusters = append(req.Clusters, cluster)
 		s.log.Info("Added extproc-uds cluster to the list of clusters")
 	}
 

@@ -272,6 +272,12 @@ controller:
   # resources (configuration) is big. Defaults to 4MB.
   # maxRecvMsgSize: "4194304"
 
+  # extProcMaxRequests overrides the circuit breaker max_requests for the ext_proc UDS
+  # cluster. Leave unset to use Envoy's built-in default (1024); set only when an
+  # override is actually needed, otherwise upgrades will warm the cluster and drop
+  # in-flight ext_proc gRPC streams.
+  # extProcMaxRequests: 2048
+
   # MCP Proxy settings
   mcp:
     # Configuration for MCP session encryption.
