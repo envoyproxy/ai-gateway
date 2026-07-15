@@ -6,6 +6,8 @@
 package v1beta1
 
 import (
+	"time"
+
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
@@ -19,6 +21,18 @@ const (
 	// inferencePoolKind is the kind for InferencePool resources.
 	inferencePoolKind = "InferencePool"
 )
+
+// GetStreamIdleTimeout returns the configured stream idle timeout for this rule, or zero when not configured.
+func (r *AIGatewayRouteRule) GetStreamIdleTimeout() time.Duration {
+	if r == nil || r.StreamIdleTimeout == nil {
+		return 0
+	}
+	d, err := time.ParseDuration(string(*r.StreamIdleTimeout))
+	if err != nil || d <= 0 {
+		return 0
+	}
+	return d
+}
 
 // GetTimeoutsOrDefault returns the timeouts with default values applied when not specified.
 // This ensures that AI Gateway routes have appropriate timeout defaults for AI workloads.

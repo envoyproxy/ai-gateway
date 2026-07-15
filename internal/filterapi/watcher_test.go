@@ -56,6 +56,46 @@ func TestStartConfigWatcher(t *testing.T) {
 	synctest.Test(t, testStartConfigWatcher)
 }
 
+func TestStartConfigBundleWatcher(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		tmpdir := t.TempDir()
+		bundleDir := filepath.Join(tmpdir, "bundle")
+		require.NoError(t, os.MkdirAll(filepath.Join(bundleDir, "parts"), 0o700))
+		rcv := &mockReceiver{}
+		const tickInterval = time.Millisecond
+
+		writeBundle := func(cfg string) {
+			raw := []byte(cfg)
+			requireAtomicWriteFile(t, tickInterval, filepath.Join(bundleDir, "parts/000"), raw, 0o600)
+			idx := &ConfigBundleIndex{
+				Checksum: ConfigBundleChecksum(raw),
+				Parts: []ConfigBundlePart{
+					{Name: "part-000", Path: "parts/000"},
+				},
+			}
+			idxRaw, err := MarshalConfigBundleIndex(idx)
+			require.NoError(t, err)
+			requireAtomicWriteFile(t, tickInterval, filepath.Join(bundleDir, ConfigBundleIndexFileName), idxRaw, 0o600)
+		}
+
+		writeBundle("version: dev\nbackends:\n- name: first\n")
+		logger, _ := newTestLoggerWithBuffer()
+		err := StartConfigBundleWatcher(t.Context(), bundleDir, rcv, logger, tickInterval)
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			cfg := rcv.getConfig()
+			return cfg != nil && len(cfg.Backends) == 1 && cfg.Backends[0].Name == "first"
+		}, time.Second, tickInterval)
+
+		writeBundle("version: dev\nbackends:\n- name: second\n")
+		require.Eventually(t, func() bool {
+			cfg := rcv.getConfig()
+			return cfg != nil && len(cfg.Backends) == 1 && cfg.Backends[0].Name == "second"
+		}, time.Second, tickInterval)
+	})
+}
+
 func testStartConfigWatcher(t *testing.T) {
 	t.Helper()
 
@@ -85,7 +125,7 @@ backends:
 	requireAtomicWriteFile(t, tickInterval, path, []byte(cfg), 0o600)
 
 	logger, buf := newTestLoggerWithBuffer()
-	err := StartConfigWatcher(t.Context(), path, rcv, logger, tickInterval)
+	err := StartLegacyConfigWatcher(t.Context(), path, rcv, logger, tickInterval)
 	require.NoError(t, err)
 
 	// Initial loading should have happened.
