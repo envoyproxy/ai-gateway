@@ -144,8 +144,8 @@ func TestUpgrade(t *testing.T) {
 			e2elib.RequireWaitForGatewayPodReady(t, egSelector)
 			ipAddress := e2elib.RequireGatewayListenerAddressViaMetalLB(t, "default", "upgrade-test")
 
-			// Ensure that first request works.
-			require.NoError(t, makeRequest(t, ipAddress, phase.String()))
+			// Ensure the full dataplane path is ready before the no-failure loop starts.
+			requireRequestEventuallySucceeds(t, ipAddress, phase.String)
 
 			requestLoopCtx, cancelRequests := context.WithCancel(t.Context())
 			defer cancelRequests()
@@ -483,7 +483,7 @@ func TestCRDVersionUpgrade(t *testing.T) {
 
 	// Step 3: Verify inference calls work with v1alpha1
 	t.Log("Step 3: Verifying inference calls work with v1alpha1 resources")
-	require.NoError(t, makeRequest(t, ipAddress, "before upgrade"))
+	requireRequestEventuallySucceeds(t, ipAddress, func() string { return "before upgrade" })
 	t.Log("Inference calls successful with v1alpha1")
 
 	// Step 4: Upgrade to latest version (with v1beta1 CRDs)
@@ -500,7 +500,7 @@ func TestCRDVersionUpgrade(t *testing.T) {
 
 	// Step 6: Verify inference calls still work after upgrade
 	t.Log("Step 6: Verifying inference calls work after upgrade to v1beta1")
-	require.NoError(t, makeRequest(t, ipAddress, "after upgrade"))
+	requireRequestEventuallySucceeds(t, ipAddress, func() string { return "after upgrade" })
 	t.Log("Inference calls successful after upgrade")
 
 	// Step 7: Verify resources are accessible via v1beta1 API
@@ -524,4 +524,13 @@ func TestCRDVersionUpgrade(t *testing.T) {
 	}
 
 	t.Log("CRD version upgrade test completed successfully!")
+}
+
+func requireRequestEventuallySucceeds(t *testing.T, ipAddress string, phase func() string) {
+	t.Helper()
+	var lastErr error
+	require.Eventually(t, func() bool {
+		lastErr = makeRequest(t, ipAddress, phase())
+		return lastErr == nil
+	}, time.Minute, time.Second, "dataplane request did not become ready: %v", lastErr)
 }

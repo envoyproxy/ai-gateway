@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 	"k8s.io/utils/ptr"
 
+	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/json"
@@ -233,9 +234,16 @@ var translationTracerCtor = func(tr oteltrace.Tracer, prop propagation.TextMapPr
 	return newTranslationTracer(tr, prop, testTranslationRecorder{}, headerAttrs)
 }
 
+var countTokensTracerCtor = func(tr oteltrace.Tracer, prop propagation.TextMapPropagator, headerAttrs map[string]string) tracingapi.CountTokensTracer {
+	return newCountTokensTracer(tr, prop, testCountTokensRecorder{}, headerAttrs)
+}
+
 func TestRequestTracers_Noop(t *testing.T) {
 	testNoopTracer(t, "chat completion", chatCompletionTracerCtor, func() *openai.ChatCompletionRequest {
 		return &openai.ChatCompletionRequest{Model: "test"}
+	})
+	testNoopTracer(t, "count tokens", countTokensTracerCtor, func() *anthropicschema.MessagesRequest {
+		return &anthropicschema.MessagesRequest{Model: "claude-opus-4-1"}
 	})
 	testNoopTracer(t, "transcription", transcriptionTracerCtor, func() *openai.TranscriptionRequest {
 		return &openai.TranscriptionRequest{Model: "whisper-1"}
@@ -248,6 +256,9 @@ func TestRequestTracers_Noop(t *testing.T) {
 func TestRequestTracers_Unsampled(t *testing.T) {
 	testUnsampledTracer(t, "chat completion", chatCompletionTracerCtor, func() *openai.ChatCompletionRequest {
 		return &openai.ChatCompletionRequest{Model: "test"}
+	})
+	testUnsampledTracer(t, "count tokens", countTokensTracerCtor, func() *anthropicschema.MessagesRequest {
+		return &anthropicschema.MessagesRequest{Model: "claude-opus-4-1"}
 	})
 	testUnsampledTracer(t, "transcription", transcriptionTracerCtor, func() *openai.TranscriptionRequest {
 		return &openai.TranscriptionRequest{Model: "whisper-1"}
@@ -386,6 +397,50 @@ func TestResponsesTracer_BuildsGenericRequestTracer(t *testing.T) {
 	require.NotNil(t, impl.newSpan)
 	s := tracer.StartSpanAndInjectHeaders(context.Background(), nil, propagation.MapCarrier{}, &openai.ResponseRequest{}, []byte("{}"))
 	require.IsType(t, (*responsesSpan)(nil), s)
+}
+
+func TestNewCountTokensTracer_BuildsGenericRequestTracer(t *testing.T) {
+	tp := trace.NewTracerProvider()
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+
+	headerAttrs := map[string]string{"agent-session-id": "session.id"}
+
+	tracer := newCountTokensTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), testCountTokensRecorder{}, headerAttrs)
+	impl, ok := tracer.(*requestTracerImpl[
+		anthropicschema.MessagesRequest,
+		anthropicschema.CountTokensResponse,
+		struct{},
+	])
+	require.True(t, ok)
+	require.Equal(t, headerAttrs, impl.headerAttributes)
+	require.NotNil(t, impl.newSpan)
+
+	req := &anthropicschema.MessagesRequest{Model: "claude-opus-4-1"}
+	reqBody := []byte(`{"model":"claude-opus-4-1","messages":[{"role":"user","content":"hello"}]}`)
+	runRequestTracerLifecycleTest(t, requestTracerLifecycleTest[anthropicschema.MessagesRequest, anthropicschema.CountTokensResponse, struct{}]{
+		constructor:      countTokensTracerCtor,
+		req:              req,
+		headers:          map[string]string{"agent-session-id": "session-123"},
+		headerAttrs:      headerAttrs,
+		reqBody:          reqBody,
+		expectedSpanName: fmt.Sprintf("count tokens len: %d", len(reqBody)),
+		expectedSpanType: (*countTokensSpan)(nil),
+		recordAndEnd: func(span tracingapi.CountTokensSpan) {
+			span.RecordResponse(&anthropicschema.CountTokensResponse{InputTokens: 42})
+			span.EndSpan()
+		},
+		assertAttrs: func(t *testing.T, attrs []attribute.KeyValue) {
+			attrMap := make(map[attribute.Key]attribute.Value, len(attrs))
+			for _, attr := range attrs {
+				attrMap[attr.Key] = attr.Value
+			}
+			require.Equal(t, "claude-opus-4-1", attrMap["model"].AsString())
+			require.Equal(t, len(reqBody), int(attrMap["reqBodyLen"].AsInt64()))
+			require.Equal(t, "session-123", attrMap["session.id"].AsString())
+			require.Equal(t, 200, int(attrMap["statusCode"].AsInt64()))
+			require.Equal(t, 42, int(attrMap["inputTokens"].AsInt64()))
+		},
+	})
 }
 
 func TestNewTranscriptionTracer_BuildsGenericRequestTracer(t *testing.T) {
@@ -669,4 +724,33 @@ func (testTranslationRecorder) RecordResponse(span oteltrace.Span, resp *openai.
 func (testTranslationRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
 	span.SetAttributes(attribute.Int("statusCode", statusCode))
 	span.SetAttributes(attribute.String("errorBody", string(body)))
+}
+
+type testCountTokensRecorder struct {
+	tracingapi.NoopChunkRecorder[struct{}]
+}
+
+func (testCountTokensRecorder) StartParams(_ *anthropicschema.MessagesRequest, body []byte) (string, []oteltrace.SpanStartOption) {
+	return fmt.Sprintf("count tokens len: %d", len(body)), startOpts
+}
+
+func (testCountTokensRecorder) RecordRequest(span oteltrace.Span, req *anthropicschema.MessagesRequest, body []byte) {
+	span.SetAttributes(
+		attribute.String("model", req.Model),
+		attribute.Int("reqBodyLen", len(body)),
+	)
+}
+
+func (testCountTokensRecorder) RecordResponse(span oteltrace.Span, resp *anthropicschema.CountTokensResponse) {
+	span.SetAttributes(
+		attribute.Int("statusCode", 200),
+		attribute.Int64("inputTokens", resp.InputTokens),
+	)
+}
+
+func (testCountTokensRecorder) RecordResponseOnError(span oteltrace.Span, statusCode int, body []byte) {
+	span.SetAttributes(
+		attribute.Int("statusCode", statusCode),
+		attribute.String("errorBody", string(body)),
+	)
 }

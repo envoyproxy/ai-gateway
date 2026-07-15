@@ -8,6 +8,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/go-logr/logr"
@@ -26,7 +28,33 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	cleanupAWSConfig := isolateAWSConfig()
+	goleak.VerifyTestMain(m, goleak.Cleanup(func(exitCode int) {
+		cleanupAWSConfig()
+		os.Exit(exitCode)
+	}))
+}
+
+func isolateAWSConfig() func() {
+	tmpDir, err := os.MkdirTemp("", "ai-gateway-controller-test-*")
+	if err != nil {
+		panic(err)
+	}
+	configPath := filepath.Join(tmpDir, "aws-config")
+	credentialsPath := filepath.Join(tmpDir, "aws-credentials")
+	if err := os.WriteFile(configPath, nil, 0o600); err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(credentialsPath, nil, 0o600); err != nil {
+		panic(err)
+	}
+
+	_ = os.Setenv("AWS_CONFIG_FILE", configPath)
+	_ = os.Setenv("AWS_SHARED_CREDENTIALS_FILE", credentialsPath)
+	_ = os.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+	_ = os.Unsetenv("AWS_PROFILE")
+
+	return func() { _ = os.RemoveAll(tmpDir) }
 }
 
 func Test_aiGatewayRouteIndexFunc(t *testing.T) {

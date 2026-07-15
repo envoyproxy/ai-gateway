@@ -1747,6 +1747,12 @@ func (m *MessagesStreamChunk) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// CountTokensResponse represents a response from the Anthropic Count Tokens API.
+// https://docs.claude.com/en/api/messages-count-tokens
+type CountTokensResponse struct {
+	InputTokens int64 `json:"input_tokens"`
+}
+
 // ErrorResponse represents an error response from the Anthropic API.
 // https://platform.claude.com/docs/en/api/errors
 type ErrorResponse struct {
