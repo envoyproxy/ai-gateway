@@ -405,6 +405,9 @@ func EnvoyGatewayVersion() string {
 
 // EnvoyGatewaySupportsLimitFromMetadata reports whether the installed Envoy Gateway has
 // BackendTrafficPolicy limit.fromMetadata (envoyproxy/gateway#9216), which only landed on main.
+//
+// TODO: this only recognizes the "latest" main build; relax the gate to a version comparison once a
+// tagged EG release includes envoyproxy/gateway#9216, otherwise it will keep skipping on that release.
 func EnvoyGatewaySupportsLimitFromMetadata() bool {
 	return EnvoyGatewayVersion() == EnvoyGatewayLatestVersion
 }

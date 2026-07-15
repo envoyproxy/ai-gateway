@@ -4044,7 +4044,7 @@ GatewayConfigSpec defines the configuration for the AI Gateway.
   name="globalRateLimits"
   type="[RateLimitOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitoverride) array"
   required="false"
-  description="GlobalRateLimits defines gateway-wide mappings for emitting per-request rate-limit override<br />structs into io.envoy.ai_gateway dynamic metadata. Each entry maps a metadata key to a source<br />that supplies the per-request limit value, and applies to every request handled by the gateway."
+  description="GlobalRateLimits defines gateway-wide mappings for emitting per-request rate-limit override<br />structs into io.envoy.ai_gateway dynamic metadata. Each entry maps a metadata key to a source<br />that supplies the per-request limit value, and applies to every request handled by the gateway.<br />The list is capped at 36 entries as a conservative safety bound that keeps the emitted dynamic<br />metadata and the CRD object small; a gateway realistically needs only a handful of distinct<br />limit keys (for example input, output, and total token limits)."
 />
 
 
@@ -4830,8 +4830,9 @@ the key is omitted and the BackendTrafficPolicy static default applies.
 **Appears in:**
 - [RateLimitOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-ratelimitoverride)
 
-RateLimitOverrideSource defines the origin of the rate-limit value.
-Exactly one field must be set.
+RateLimitOverrideSource defines the origin of the rate-limit value. It currently has a single,
+required source (FromMetadata). If additional, mutually-exclusive sources are added later, an
+XValidation rule enforcing "exactly one" should be introduced at that point.
 
 ##### Fields
 

@@ -1352,6 +1352,10 @@ spec:
                   GlobalRateLimits defines gateway-wide mappings for emitting per-request rate-limit override
                   structs into io.envoy.ai_gateway dynamic metadata. Each entry maps a metadata key to a source
                   that supplies the per-request limit value, and applies to every request handled by the gateway.
+
+                  The list is capped at 36 entries as a conservative safety bound that keeps the emitted dynamic
+                  metadata and the CRD object small; a gateway realistically needs only a handful of distinct
+                  limit keys (for example input, output, and total token limits).
                 items:
                   description: |-
                     RateLimitOverride emits a per-request rate-limit override struct into io.envoy.ai_gateway
@@ -1396,9 +1400,6 @@ spec:
                       required:
                       - fromMetadata
                       type: object
-                      x-kubernetes-validations:
-                      - message: exactly one of fromMetadata must be set
-                        rule: has(self.fromMetadata)
                   required:
                   - metadataKey
                   - source

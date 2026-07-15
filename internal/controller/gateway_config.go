@@ -126,6 +126,10 @@ func rateLimitSourceNamespacesHash(gatewayConfig *aigv1b1.GatewayConfig) string 
 // Patching is best-effort across all Gateways: a Gateway that was deleted concurrently (NotFound)
 // is skipped, since there is nothing left to stamp; any other failure is collected and returned
 // joined so the caller can requeue and retry rather than silently leaving forwarding stale.
+//
+// Note this updates the passed-in Gateway objects in place (the annotation is set on each element).
+// That is safe because the caller only reuses them as notify event triggers, and the event handler
+// resolves each to a fresh Get rather than trusting the object it carries.
 func (c *GatewayConfigController) syncReferencingGatewayHashes(ctx context.Context, hash string, gateways []*gwapiv1.Gateway) error {
 	var errs []error
 	for _, gw := range gateways {

@@ -148,6 +148,20 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Equal(t, "input_limit", rc.GlobalRateLimits[0].Key)
 	})
 
+	t.Run("error - duplicate global RateLimitOverride MetadataKey", func(t *testing.T) {
+		config := &Config{
+			GlobalRateLimits: []GlobalRateLimitOverride{
+				{MetadataKey: "llm_limit", Namespace: "my.ext_authz", Key: "a"},
+				{MetadataKey: "llm_limit", Namespace: "my.ext_authz", Key: "b"},
+			},
+		}
+		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
+			return nil, nil
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "duplicate GlobalRateLimitOverride metadataKey=\"llm_limit\"")
+	})
+
 	t.Run("error - global RateLimitOverride with empty Key", func(t *testing.T) {
 		config := &Config{
 			GlobalRateLimits: []GlobalRateLimitOverride{

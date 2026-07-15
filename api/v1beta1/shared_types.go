@@ -183,10 +183,9 @@ type RateLimitOverride struct {
 	Source RateLimitOverrideSource `json:"source"`
 }
 
-// RateLimitOverrideSource defines the origin of the rate-limit value.
-// Exactly one field must be set.
-//
-// +kubebuilder:validation:XValidation:rule="has(self.fromMetadata)",message="exactly one of fromMetadata must be set"
+// RateLimitOverrideSource defines the origin of the rate-limit value. It currently has a single,
+// required source (FromMetadata). If additional, mutually-exclusive sources are added later, an
+// XValidation rule enforcing "exactly one" should be introduced at that point.
 type RateLimitOverrideSource struct {
 	// FromMetadata reads the rate-limit value from filter dynamic metadata set by a preceding
 	// Envoy filter (typically ext_authz). The value at the referenced namespace/key must be a

@@ -194,6 +194,10 @@ Keep the distinction with token cost clear:
 
 The producer (`GlobalRateLimits`) is gateway-wide: every configured `metadataKey` is emitted on every request. Per-route differences are expressed on the **consumer** side — each route's `BackendTrafficPolicy` chooses which `metadataKey` to read — not on the `AIGatewayRoute`. This is why each `metadataKey` must be unique across the gateway. It mirrors how token cost is consumed per-route via `cost.response.metadata`.
 
+:::warning Dynamic limits fail open to the static default
+Whenever the dynamic value is unavailable — the source metadata is absent or malformed for a request, or AI Gateway briefly cannot resolve the forwarding configuration (for example, right after adding `GlobalRateLimits`, until the gateway is re-translated) — the request falls back to the static `requests`/`unit` in the `BackendTrafficPolicy`. Because the fallback direction is permissive, keep that static default **conservative**: treat it as the ceiling that applies when the dynamic limit cannot be read, not as a placeholder.
+:::
+
 ### 1. Emit the limit from a preceding filter
 
 Your `ext_authz` auth server decides the limit for the request (for example, by looking up the tenant) and returns it in its dynamic metadata. For `ext_authz` the metadata namespace is typically `envoy.filters.http.ext_authz`. The value for our example tenant would be the string:

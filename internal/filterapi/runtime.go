@@ -126,6 +126,9 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 		costs = append(costs, RuntimeRequestCost{LLMRequestCost: c, CELProg: prog})
 	}
 
+	// The CRD enforces metadataKey uniqueness via +listType=map, but configs can also be built directly
+	// (e.g. from an aigw file) which bypasses that, so guard against duplicates defensively here.
+	seenRateLimitKeys := make(map[string]struct{}, len(config.GlobalRateLimits))
 	for i := range config.GlobalRateLimits {
 		h := &config.GlobalRateLimits[i]
 		if h.MetadataKey == "" {
@@ -137,6 +140,10 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 		if h.Key == "" {
 			return nil, fmt.Errorf("GlobalRateLimitOverride with metadataKey=%q must have non-empty Key", h.MetadataKey)
 		}
+		if _, dup := seenRateLimitKeys[h.MetadataKey]; dup {
+			return nil, fmt.Errorf("duplicate GlobalRateLimitOverride metadataKey=%q", h.MetadataKey)
+		}
+		seenRateLimitKeys[h.MetadataKey] = struct{}{}
 	}
 	return &RuntimeConfig{
 		UUID:               config.UUID,

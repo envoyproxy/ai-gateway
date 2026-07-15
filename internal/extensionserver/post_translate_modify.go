@@ -719,14 +719,25 @@ func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.R
 // ProcessingRequest.metadata_context. Returns nil when no override is configured, leaving the filter's
 // ForwardingNamespaces unset (unchanged behavior).
 //
+// The returned set is a deliberate cluster-wide union across all GatewayConfigs, applied to every
+// gateway's ext_proc. PostTranslateModify does not tell the extension server which gateway it is
+// translating (the request carries only listeners/routes/clusters, no Gateway identity), so scoping
+// the set to just the GatewayConfig(s) bound to this gateway is not reachable here. Forwarding a
+// superset is safe: a gateway only ever emits override keys for its own GatewayConfig, since the
+// producer's RuntimeConfig.GlobalRateLimits is built per-gateway (reconcileFilterConfigSecret), so a
+// namespace forwarded but never read simply yields no metadata and no override.
+//
 // EG recomputes this only when it re-translates the gateway, and it doesn't watch GatewayConfig.
 // The GatewayConfig controller bridges that gap: when the source-namespace set changes it stamps a
 // hash annotation on the referencing Gateways (see GatewayConfigRateLimitHashAnnotationKey), which
 // EG reconciles on, forcing the re-translation that lands the new set here. Changing only the key or
 // value within a namespace leaves the set (and that hash) unchanged and needs no re-translation.
 //
-// A list failure returns nil, which leaves ForwardingNamespaces unset and disables dynamic limits until
-// the next translation, so the error is logged to make that fallback diagnosable.
+// A list failure returns nil, which leaves ForwardingNamespaces unset for this whole translation: the
+// filter then sees no source metadata and every dynamic limit fails open to the static default in the
+// BackendTrafficPolicy until the next translation. That direction can briefly over-permit a tenant
+// whose dynamic limit is lower than the static default, so operators should keep that static default
+// conservative. The error is logged to make the fallback diagnosable.
 func (s *Server) collectRateLimitSourceNamespaces(ctx context.Context) []string {
 	if s.k8sClient == nil {
 		return nil
