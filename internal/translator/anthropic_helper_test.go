@@ -755,6 +755,343 @@ func TestOutputConfigAvailable(t *testing.T) {
 	}
 }
 
+func TestAnthropicStreamParserTokenUsage_NoDoubleCounting(t *testing.T) {
+	// This test verifies that cache tokens are not double-counted when
+	// both message_start and message_delta report cache token usage.
+	// The Anthropic API reports cumulative totals in message_delta, not
+	// incremental deltas, so we must use Set (override) not Add (accumulate)
+	// for cache tokens from message_delta.
+	tests := []struct {
+		name                       string
+		messageStartInputTokens    int64
+		messageStartCacheRead      int64
+		messageStartCacheCreation  int64
+		messageDeltaInputTokens    *int64
+		messageDeltaCacheRead      *int64
+		messageDeltaCacheCreation  *int64
+		messageDeltaOutputTokens   int64
+		expectedInputTokens        uint32
+		expectedCachedTokens       uint32
+		expectedCacheCreationToken uint32
+		expectedOutputTokens       uint32
+	}{
+		{
+			name:                       "cache tokens in both message_start and message_delta should not double count",
+			messageStartInputTokens:    9,
+			messageStartCacheRead:      1,
+			messageStartCacheCreation:  0,
+			messageDeltaInputTokens:    ptr.To[int64](9),
+			messageDeltaCacheRead:      ptr.To[int64](1),
+			messageDeltaCacheCreation:  ptr.To[int64](0),
+			messageDeltaOutputTokens:   16,
+			expectedInputTokens:        10, // 9 base + 1 cache_read, NOT 11 (9+1+1 double counted)
+			expectedCachedTokens:       1,  // NOT 2 (1+1 double counted)
+			expectedCacheCreationToken: 0,
+			expectedOutputTokens:       16,
+		},
+		{
+			name:                       "cache creation tokens in both message_start and message_delta should not double count",
+			messageStartInputTokens:    5,
+			messageStartCacheRead:      0,
+			messageStartCacheCreation:  3,
+			messageDeltaInputTokens:    ptr.To[int64](5),
+			messageDeltaCacheRead:      ptr.To[int64](0),
+			messageDeltaCacheCreation:  ptr.To[int64](3),
+			messageDeltaOutputTokens:   10,
+			expectedInputTokens:        8, // 5 base + 3 cache_creation, NOT 11
+			expectedCachedTokens:       0,
+			expectedCacheCreationToken: 3, // NOT 6
+			expectedOutputTokens:       10,
+		},
+		{
+			name:                       "both cache_read and cache_creation in both events should not double count",
+			messageStartInputTokens:    9,
+			messageStartCacheRead:      2,
+			messageStartCacheCreation:  3,
+			messageDeltaInputTokens:    ptr.To[int64](9),
+			messageDeltaCacheRead:      ptr.To[int64](2),
+			messageDeltaCacheCreation:  ptr.To[int64](3),
+			messageDeltaOutputTokens:   20,
+			expectedInputTokens:        14, // 9 + 2 + 3, NOT 19 (9+2+3+2+3)
+			expectedCachedTokens:       2,  // NOT 4
+			expectedCacheCreationToken: 3,  // NOT 6
+			expectedOutputTokens:       20,
+		},
+		{
+			name:                       "no cache tokens - baseline correctness",
+			messageStartInputTokens:    9,
+			messageStartCacheRead:      0,
+			messageStartCacheCreation:  0,
+			messageDeltaOutputTokens:   16,
+			expectedInputTokens:        9,
+			expectedCachedTokens:       0,
+			expectedCacheCreationToken: 0,
+			expectedOutputTokens:       16,
+		},
+		{
+			name:                       "cache only in message_start, not in message_delta",
+			messageStartInputTokens:    9,
+			messageStartCacheRead:      5,
+			messageStartCacheCreation:  2,
+			messageDeltaOutputTokens:   16,
+			expectedInputTokens:        16, // 9 + 5 + 2
+			expectedCachedTokens:       5,
+			expectedCacheCreationToken: 2,
+			expectedOutputTokens:       16,
+		},
+		{
+			name:                       "cache tokens only in message_delta are applied",
+			messageStartInputTokens:    9,
+			messageStartCacheRead:      0,
+			messageStartCacheCreation:  0,
+			messageDeltaInputTokens:    ptr.To[int64](9),
+			messageDeltaCacheRead:      ptr.To[int64](5),
+			messageDeltaCacheCreation:  ptr.To[int64](2),
+			messageDeltaOutputTokens:   16,
+			expectedInputTokens:        16, // 9 + 5 + 2 from message_delta
+			expectedCachedTokens:       5,
+			expectedCacheCreationToken: 2,
+			expectedOutputTokens:       16,
+		},
+		{
+			name:                       "corrected cache tokens in message_delta override message_start",
+			messageStartInputTokens:    9,
+			messageStartCacheRead:      5,
+			messageStartCacheCreation:  2,
+			messageDeltaInputTokens:    ptr.To[int64](9),
+			messageDeltaCacheRead:      ptr.To[int64](1),
+			messageDeltaCacheCreation:  ptr.To[int64](0),
+			messageDeltaOutputTokens:   16,
+			expectedInputTokens:        10, // corrected 9 + 1 + 0, NOT stale 9 + 5 + 2
+			expectedCachedTokens:       1,
+			expectedCacheCreationToken: 0,
+			expectedOutputTokens:       16,
+		},
+		{
+			name:                       "message_delta with only cache_read, no input_tokens field",
+			messageStartInputTokens:    10,
+			messageStartCacheRead:      0,
+			messageStartCacheCreation:  0,
+			messageDeltaInputTokens:    nil,              // not present in message_delta
+			messageDeltaCacheRead:      ptr.To[int64](3), // only cache_read in delta
+			messageDeltaCacheCreation:  nil,
+			messageDeltaOutputTokens:   20,
+			expectedInputTokens:        13, // 10 base + 3 cache_read
+			expectedCachedTokens:       3,
+			expectedCacheCreationToken: 0,
+			expectedOutputTokens:       20,
+		},
+		{
+			name:                       "message_delta with only cache_creation, no input_tokens field",
+			messageStartInputTokens:    8,
+			messageStartCacheRead:      0,
+			messageStartCacheCreation:  0,
+			messageDeltaInputTokens:    nil, // not present in message_delta
+			messageDeltaCacheRead:      nil,
+			messageDeltaCacheCreation:  ptr.To[int64](4), // only cache_creation in delta
+			messageDeltaOutputTokens:   15,
+			expectedInputTokens:        12, // 8 base + 4 cache_creation
+			expectedCachedTokens:       0,
+			expectedCacheCreationToken: 4,
+			expectedOutputTokens:       15,
+		},
+		{
+			name:                       "message_delta with both cache fields but no input_tokens field",
+			messageStartInputTokens:    7,
+			messageStartCacheRead:      0,
+			messageStartCacheCreation:  0,
+			messageDeltaInputTokens:    nil, // not present in message_delta
+			messageDeltaCacheRead:      ptr.To[int64](2),
+			messageDeltaCacheCreation:  ptr.To[int64](3),
+			messageDeltaOutputTokens:   12,
+			expectedInputTokens:        12, // 7 base + 2 cache_read + 3 cache_creation
+			expectedCachedTokens:       2,
+			expectedCacheCreationToken: 3,
+			expectedOutputTokens:       12,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parser := newAnthropicStreamParser("test-model")
+
+			messageDeltaUsageFields := []string{fmt.Sprintf(`"output_tokens":%d`, tt.messageDeltaOutputTokens)}
+			if tt.messageDeltaInputTokens != nil {
+				messageDeltaUsageFields = append(messageDeltaUsageFields, fmt.Sprintf(`"input_tokens":%d`, *tt.messageDeltaInputTokens))
+			}
+			if tt.messageDeltaCacheRead != nil {
+				messageDeltaUsageFields = append(messageDeltaUsageFields, fmt.Sprintf(`"cache_read_input_tokens":%d`, *tt.messageDeltaCacheRead))
+			}
+			if tt.messageDeltaCacheCreation != nil {
+				messageDeltaUsageFields = append(messageDeltaUsageFields, fmt.Sprintf(`"cache_creation_input_tokens":%d`, *tt.messageDeltaCacheCreation))
+			}
+
+			// Build the SSE stream with message_start and message_delta events.
+			sseStream := fmt.Sprintf(`event: message_start
+data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":%d,"cache_read_input_tokens":%d,"cache_creation_input_tokens":%d,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{%s}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`,
+				tt.messageStartInputTokens,
+				tt.messageStartCacheRead,
+				tt.messageStartCacheCreation,
+				strings.Join(messageDeltaUsageFields, ","),
+			)
+
+			_, _, tokenUsage, _, err := parser.Process(strings.NewReader(sseStream), true, nil)
+			require.NoError(t, err)
+
+			inputTokens, inputSet := tokenUsage.InputTokens()
+			cachedTokens, cachedSet := tokenUsage.CachedInputTokens()
+			cacheCreationTokens, cacheCreationSet := tokenUsage.CacheCreationInputTokens()
+			outputTokens, outputSet := tokenUsage.OutputTokens()
+
+			assert.True(t, inputSet, "input tokens should be set")
+			assert.Equal(t, tt.expectedInputTokens, inputTokens, "input tokens mismatch")
+			assert.True(t, cachedSet, "cached tokens should be set")
+			assert.Equal(t, tt.expectedCachedTokens, cachedTokens, "cached tokens mismatch")
+			assert.True(t, cacheCreationSet, "cache creation tokens should be set")
+			assert.Equal(t, tt.expectedCacheCreationToken, cacheCreationTokens, "cache creation tokens mismatch")
+			assert.True(t, outputSet, "output tokens should be set")
+			assert.Equal(t, tt.expectedOutputTokens, outputTokens, "output tokens mismatch")
+		})
+	}
+}
+
+func TestAnthropicStreamParserTokenUsage_MessageDeltaNoUsagePreservesPrior(t *testing.T) {
+	// A later message_delta that omits usage must NOT clobber output/reasoning
+	// tokens set by an earlier message_delta. The SDK's MessageDeltaUsage uses
+	// non-pointer int64 fields that default to 0 when absent, so the parser must
+	// use presence (Valid()) rather than a bare value check — otherwise the
+	// zero default would overwrite a previously set non-zero count.
+	parser := newAnthropicStreamParser("test-model")
+
+	sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":16,"output_tokens_details":{"thinking_tokens":4}}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+
+	_, _, tokenUsage, _, err := parser.Process(strings.NewReader(sseStream), true, nil)
+	require.NoError(t, err)
+
+	inputTokens, inputSet := tokenUsage.InputTokens()
+	outputTokens, outputSet := tokenUsage.OutputTokens()
+	reasoningTokens, reasoningSet := tokenUsage.ReasoningTokens()
+
+	assert.True(t, inputSet, "input tokens should be set")
+	assert.Equal(t, uint32(10), inputTokens, "input tokens should be from message_start")
+	// The first message_delta sets output_tokens=16; the second message_delta has
+	// no usage field and must not zero it out.
+	assert.True(t, outputSet, "output tokens should be set from the first message_delta")
+	assert.Equal(t, uint32(16), outputTokens, "later no-usage message_delta must not zero out output tokens")
+	assert.True(t, reasoningSet, "reasoning tokens should be set from the first message_delta")
+	assert.Equal(t, uint32(4), reasoningTokens, "later no-usage message_delta must not zero out reasoning tokens")
+}
+
+func TestAnthropicStreamParserTokenUsage_MessageDeltaCacheWhenInputAlreadyHasCache(t *testing.T) {
+	// Test the case where message_start has cache tokens and input_tokens,
+	// and message_delta provides cache tokens but NOT input_tokens.
+	// The code must subtract the existing cache tokens from the base input_tokens
+	// before adding the new cache tokens from message_delta.
+	parser := newAnthropicStreamParser("test-model")
+
+	sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":20,"cache_read_input_tokens":5,"cache_creation_input_tokens":3,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"cache_read_input_tokens":7,"cache_creation_input_tokens":2}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+
+	_, _, tokenUsage, _, err := parser.Process(strings.NewReader(sseStream), true, nil)
+	require.NoError(t, err)
+
+	inputTokens, inputSet := tokenUsage.InputTokens()
+	cachedTokens, cachedSet := tokenUsage.CachedInputTokens()
+	cacheCreationTokens, cacheCreationSet := tokenUsage.CacheCreationInputTokens()
+
+	assert.True(t, inputSet, "input tokens should be set")
+	// message_start: inputTokens is set to 20+5+3=28 (total)
+	// message_delta without input_tokens field:
+	//   - baseInputTokens = 28 (total) - 5 (old cache_read) - 3 (old cache_creation) = 20 (base)
+	//   - Then add new cache: 20 + 7 (new cache_read) + 2 (new cache_creation) = 29
+	assert.Equal(t, uint32(29), inputTokens, "input tokens should be 29 (20 base + 7 cache_read + 2 cache_creation)")
+	assert.True(t, cachedSet, "cached tokens should be set")
+	assert.Equal(t, uint32(7), cachedTokens, "cached tokens should be from message_delta (7)")
+	assert.True(t, cacheCreationSet, "cache creation tokens should be set")
+	assert.Equal(t, uint32(2), cacheCreationTokens, "cache creation tokens should be from message_delta (2)")
+}
+
+func TestAnthropicStreamParserTokenUsage_MessageDeltaInvalidJSON(t *testing.T) {
+	// Test that message_delta with invalid JSON in usage fields returns an error
+	parser := newAnthropicStreamParser("test-model")
+
+	sseStream := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":"invalid"}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+
+	_, _, _, _, err := parser.Process(strings.NewReader(sseStream), true, nil)
+	// Should return error due to invalid JSON in usage field
+	require.Error(t, err, "should return error for invalid JSON in message_delta usage")
+	assert.Contains(t, err.Error(), "unmarshal message_delta usage fields", "error message should mention message_delta usage unmarshal")
+}
+
 func TestEffortAvailable(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -1304,4 +1641,104 @@ func splitSSEEvents(data string) []string {
 		}
 	}
 	return events
+}
+
+func TestOpenAIToAnthropicMessages_ToolResultCacheControl(t *testing.T) {
+	ephemeral := anthropic.CacheControlEphemeralParam{Type: constant.ValueOf[constant.Ephemeral]()}
+
+	t.Run("string content with message-level cache_control", func(t *testing.T) {
+		msgs, system, err := openAIToAnthropicMessages([]openai.ChatCompletionMessageParamUnion{
+			{OfTool: &openai.ChatCompletionToolMessageParam{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: "toolu_1",
+				Content:    openai.ContentUnion{Value: "search results"},
+				AnthropicContentFields: &openai.AnthropicContentFields{
+					CacheControl: ephemeral,
+				},
+			}},
+		})
+		require.NoError(t, err)
+		require.Empty(t, system)
+		require.Len(t, msgs, 1)
+		require.Len(t, msgs[0].Content, 1)
+		require.NotNil(t, msgs[0].Content[0].OfToolResult)
+		require.Equal(t, "toolu_1", msgs[0].Content[0].OfToolResult.ToolUseID)
+		require.Equal(t, ephemeral, msgs[0].Content[0].OfToolResult.CacheControl)
+	})
+
+	t.Run("multipart content with message-level cache_control", func(t *testing.T) {
+		msgs, _, err := openAIToAnthropicMessages([]openai.ChatCompletionMessageParamUnion{
+			{OfTool: &openai.ChatCompletionToolMessageParam{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: "toolu_2",
+				Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
+					{Type: "text", Text: "part one"},
+					{Type: "text", Text: "part two"},
+				}},
+				AnthropicContentFields: &openai.AnthropicContentFields{
+					CacheControl: ephemeral,
+				},
+			}},
+		})
+		require.NoError(t, err)
+		require.Len(t, msgs, 1)
+		require.NotNil(t, msgs[0].Content[0].OfToolResult)
+		require.Equal(t, ephemeral, msgs[0].Content[0].OfToolResult.CacheControl)
+		require.Len(t, msgs[0].Content[0].OfToolResult.Content, 2)
+	})
+
+	t.Run("consecutive tool results preserve per-message cache markers", func(t *testing.T) {
+		msgs, _, err := openAIToAnthropicMessages([]openai.ChatCompletionMessageParamUnion{
+			{OfTool: &openai.ChatCompletionToolMessageParam{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: "toolu_a",
+				Content:    openai.ContentUnion{Value: "first"},
+			}},
+			{OfTool: &openai.ChatCompletionToolMessageParam{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: "toolu_b",
+				Content:    openai.ContentUnion{Value: "second"},
+				AnthropicContentFields: &openai.AnthropicContentFields{
+					CacheControl: ephemeral,
+				},
+			}},
+		})
+		require.NoError(t, err)
+		require.Len(t, msgs, 1)
+		require.Len(t, msgs[0].Content, 2)
+		require.Equal(t, anthropic.CacheControlEphemeralParam{}, msgs[0].Content[0].OfToolResult.CacheControl)
+		require.Equal(t, ephemeral, msgs[0].Content[1].OfToolResult.CacheControl)
+	})
+
+	t.Run("unmarked tool result has no cache_control", func(t *testing.T) {
+		msgs, _, err := openAIToAnthropicMessages([]openai.ChatCompletionMessageParamUnion{
+			{OfTool: &openai.ChatCompletionToolMessageParam{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: "toolu_plain",
+				Content:    openai.ContentUnion{Value: "plain result"},
+			}},
+		})
+		require.NoError(t, err)
+		require.Equal(t, anthropic.CacheControlEphemeralParam{}, msgs[0].Content[0].OfToolResult.CacheControl)
+	})
+
+	t.Run("content-part cache_control still applies when message-level is absent", func(t *testing.T) {
+		msgs, _, err := openAIToAnthropicMessages([]openai.ChatCompletionMessageParamUnion{
+			{OfTool: &openai.ChatCompletionToolMessageParam{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: "toolu_part",
+				Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
+					{
+						Type: "text",
+						Text: "cached via content part",
+						AnthropicContentFields: &openai.AnthropicContentFields{
+							CacheControl: ephemeral,
+						},
+					},
+				}},
+			}},
+		})
+		require.NoError(t, err)
+		require.Equal(t, ephemeral, msgs[0].Content[0].OfToolResult.CacheControl)
+	})
 }

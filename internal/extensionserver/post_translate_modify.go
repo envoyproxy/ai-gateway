@@ -87,6 +87,11 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 		}
 	}
 
+	// Apply the per-rule stream idle timeout to the generated routes.
+	if err = s.applyStreamIdleTimeouts(ctx, req.Routes); err != nil {
+		return nil, fmt.Errorf("failed to apply stream idle timeouts: %w", err)
+	}
+
 	// Ensure the AI Gateway external processor UDS cluster exists.
 	// This cluster is used for communication with the AI Gateway's main external processor.
 	if !extProcUDSExist {
@@ -161,6 +166,89 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 
 	response := &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets, Listeners: req.Listeners, Routes: req.Routes}
 	return response, nil
+}
+
+// applyStreamIdleTimeouts walks the generated route configurations and sets the per-try idle
+// timeout on every AIGatewayRoute route whose rule configures StreamIdleTimeout.
+// Lookups are cached to avoid hitting the API server more than once per route.
+func (s *Server) applyStreamIdleTimeouts(ctx context.Context, routeConfigs []*routev3.RouteConfiguration) error {
+	cache := make(map[client.ObjectKey]*aigv1b1.AIGatewayRoute)
+	for _, rc := range routeConfigs {
+		for _, vh := range rc.VirtualHosts {
+			for _, route := range vh.Routes {
+				if err := s.maybeSetStreamIdleTimeout(ctx, route, cache); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// maybeSetStreamIdleTimeout sets route.retry_policy.per_try_idle_timeout from the rule's
+// StreamIdleTimeout. Envoy resets the upstream stream when no bytes arrive within that
+// duration, so a retry policy covering `reset` falls over to the next backend before any
+// response reaches the downstream client.
+func (s *Server) maybeSetStreamIdleTimeout(ctx context.Context, route *routev3.Route, cache map[client.ObjectKey]*aigv1b1.AIGatewayRoute) error {
+	action := route.GetRoute()
+	if action == nil {
+		// Not a forwarding route (e.g. DirectResponse, Redirect).
+		return nil
+	}
+
+	// Route name format: "httproute/<namespace>/<name>/rule/<index>/match/<...>".
+	parts := strings.Split(route.Name, "/")
+	if len(parts) < 5 || parts[0] != "httproute" || parts[3] != "rule" || parts[1] == "" || parts[2] == "" {
+		return nil
+	}
+	ruleIndex, err := strconv.Atoi(parts[4])
+	if err != nil {
+		return nil
+	}
+
+	aigwRoute, err := s.retrieveAndCacheAIGatewayRoute(ctx, cache, client.ObjectKey{Namespace: parts[1], Name: parts[2]})
+	if err != nil {
+		return err
+	}
+	if aigwRoute == nil {
+		// Not an AIGatewayRoute-owned route, or it was deleted during translation.
+		return nil
+	}
+
+	// The list of rules in the AIGatewayRoute may have changed since this route was generated,
+	// so we check the rule index is still valid before applying the timeout.
+	if ruleIndex >= len(aigwRoute.Spec.Rules) {
+		return nil
+	}
+
+	timeout := aigwRoute.Spec.Rules[ruleIndex].GetStreamIdleTimeout()
+	if timeout <= 0 {
+		return nil
+	}
+
+	if action.RetryPolicy == nil {
+		action.RetryPolicy = &routev3.RetryPolicy{}
+	}
+	action.RetryPolicy.PerTryIdleTimeout = durationpb.New(timeout)
+	return nil
+}
+
+// retrieveAndCacheAIGatewayRoute returns the AIGatewayRoute for the key and saves the result.
+// If the route is not found it will be  cached as nil, so one translation pass hits the API server at most once per route.
+func (s *Server) retrieveAndCacheAIGatewayRoute(ctx context.Context, cache map[client.ObjectKey]*aigv1b1.AIGatewayRoute, key client.ObjectKey) (*aigv1b1.AIGatewayRoute, error) {
+	if cached, ok := cache[key]; ok {
+		return cached, nil
+	}
+	var aigwRoute aigv1b1.AIGatewayRoute
+	if err := s.k8sClient.Get(ctx, key, &aigwRoute); err != nil {
+		if apierrors.IsNotFound(err) {
+			cache[key] = nil
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get AIGatewayRoute %s/%s: %w", key.Namespace, key.Name, err)
+	}
+	cache[key] = &aigwRoute
+	return &aigwRoute, nil
 }
 
 // maybeModifyCluster modifies clusters generated from AIGatewayRoute resources to add
