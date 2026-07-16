@@ -147,7 +147,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
 	// to access it.
 	var hasEffectiveRoutes bool // indicates whether the filter config is effective (i.e., there is at least one active route).
-	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, FilterConfigSecretPerGatewayName(gw.Name, gw.Namespace), namespace, aiRoutes.Items, mcpRoutes.Items, uid, defaultLLMCosts)
+	hasEffectiveRoutes, err = c.reconcileFilterConfigSecret(ctx, gw.Name, gw.Namespace, namespace, aiRoutes.Items, mcpRoutes.Items, uid, defaultLLMCosts)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -347,7 +347,8 @@ func mergeHeaderMutations(routeLevel, backendLevel *aigv1b1.HTTPHeaderMutation) 
 // reconcileFilterConfigSecret updates the filter config secret for the external processor.
 func (c *GatewayController) reconcileFilterConfigSecret(
 	ctx context.Context,
-	configSecretName,
+	gatewayName,
+	gatewayNamespace,
 	configSecretNamespace string,
 	aiGatewayRoutes []aigv1b1.AIGatewayRoute,
 	mcpRoutes []aigv1b1.MCPRoute,
@@ -481,6 +482,16 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 							"aigatewayroute", aiGatewayRoute.Name, "namespace", aiGatewayRoute.Namespace)
 						continue
 					}
+					// For header-source credential override, strip the x-aigw-* input header before
+					// the request reaches the upstream backend. The header is added to the Envoy remove
+					// list by HeaderMutator.Mutate() while being kept in the local requestHeaders map
+					// so the handler can still read it in Do().
+					if b.Auth != nil && b.Auth.CredentialOverride != nil && b.Auth.CredentialOverride.InputHeaderToRemove != "" {
+						if b.HeaderMutation == nil {
+							b.HeaderMutation = &filterapi.HTTPHeaderMutation{}
+						}
+						b.HeaderMutation.Remove = append(b.HeaderMutation.Remove, b.Auth.CredentialOverride.InputHeaderToRemove)
+					}
 				}
 
 				ec.Backends = append(ec.Backends, b)
@@ -532,29 +543,51 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 	if err != nil {
 		return false, fmt.Errorf("failed to marshal extproc config: %w", err)
 	}
-	// We need to create the filter config in Envoy Gateway system namespace because the sidecar extproc need
-	// to access it.
+	if err = c.writeFilterConfigBundle(ctx, gatewayName, gatewayNamespace, configSecretNamespace, marshaled, uuid); err != nil {
+		return false, err
+	}
+	// TODO(huabing): this can be removed in the next release.
+	if err = c.writeLegacyFilterConfigSecret(ctx, gatewayName, gatewayNamespace, configSecretNamespace, marshaled); err != nil {
+		return false, err
+	}
+	return hasEffectiveRoute, nil
+}
+
+func (c *GatewayController) writeLegacyFilterConfigSecret(
+	ctx context.Context,
+	gatewayName,
+	gatewayNamespace,
+	configSecretNamespace string,
+	marshaled []byte,
+) error {
+	legacySecretName := legacyFilterConfigSecretName(gatewayName, gatewayNamespace)
+
+	// Create legacy secret only if the secret name and content still fit Kubernetes limits.
+	if len(legacySecretName) > k8sObjectNameMaxLen || len(marshaled) > corev1.MaxSecretSize {
+		return nil
+	}
+
 	data := map[string]string{FilterConfigKeyInSecret: string(marshaled)}
-	secret, err := c.kube.CoreV1().Secrets(configSecretNamespace).Get(ctx, configSecretName, metav1.GetOptions{})
+	secret, err := c.kube.CoreV1().Secrets(configSecretNamespace).Get(ctx, legacySecretName, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			secret = &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{Name: configSecretName, Namespace: configSecretNamespace},
+				ObjectMeta: metav1.ObjectMeta{Name: legacySecretName, Namespace: configSecretNamespace},
 				StringData: data,
 			}
 			if _, err = c.kube.CoreV1().Secrets(configSecretNamespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
-				return false, fmt.Errorf("failed to create secret %s: %w", configSecretName, err)
+				return fmt.Errorf("failed to create secret %s: %w", legacySecretName, err)
 			}
-			return hasEffectiveRoute, nil
+			return nil
 		}
-		return false, fmt.Errorf("failed to get secret %s: %w", configSecretName, err)
+		return fmt.Errorf("failed to get secret %s: %w", legacySecretName, err)
 	}
 
 	secret.StringData = data
 	if _, err := c.kube.CoreV1().Secrets(configSecretNamespace).Update(ctx, secret, metav1.UpdateOptions{}); err != nil {
-		return false, fmt.Errorf("failed to update secret %s: %w", secret.Name, err)
+		return fmt.Errorf("failed to update secret %s: %w", secret.Name, err)
 	}
-	return hasEffectiveRoute, nil
+	return nil
 }
 
 // reconcileFilterConfigSecretForMCPGateway updates the filter config secret for the external processor.
@@ -670,32 +703,100 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 	return mc, hasEffectiveRoute
 }
 
+// defaultOverrideHeaderName returns the default x-aigw-* header name for the given auth type.
+// These headers carry the per-request credential injected by a trusted ingress filter.
+func defaultOverrideHeaderName(t aigv1b1.BackendSecurityPolicyType) string {
+	switch t {
+	case aigv1b1.BackendSecurityPolicyTypeAPIKey:
+		return "x-aigw-api-key"
+	case aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey:
+		return "x-aigw-anthropic-api-key"
+	case aigv1b1.BackendSecurityPolicyTypeAzureAPIKey:
+		return "x-aigw-azure-api-key"
+	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
+		return "x-aigw-azure-access-token"
+	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
+		return "x-aigw-gcp-access-token"
+	default:
+		return ""
+	}
+}
+
+// resolveCredentialOverride converts the API-level CredentialOverride to the filterapi type,
+// resolving default header/key names and validating the fallback configuration.
+func resolveCredentialOverride(bspType aigv1b1.BackendSecurityPolicyType, override *aigv1b1.BackendSecurityPolicyCredentialOverride, hasStaticCredential bool) (*filterapi.CredentialOverride, error) {
+	if override == nil {
+		return nil, nil
+	}
+
+	result := &filterapi.CredentialOverride{}
+
+	switch {
+	case override.FromRequestHeaders != nil:
+		src := override.FromRequestHeaders
+		headerName := src.Header
+		if headerName == "" {
+			headerName = defaultOverrideHeaderName(bspType)
+		}
+		headerName = strings.ToLower(headerName)
+		result.HeaderName = headerName
+		result.InputHeaderToRemove = headerName
+		result.FallbackToConfigured = src.FallbackToConfigured == nil || *src.FallbackToConfigured
+
+	case override.FromDynamicMetadata != nil:
+		src := override.FromDynamicMetadata
+		key := src.Key
+		if key == "" {
+			key = defaultOverrideHeaderName(bspType)
+		}
+		result.DynamicMetadataNamespace = src.Namespace
+		result.DynamicMetadataKey = key
+		result.FallbackToConfigured = src.FallbackToConfigured == nil || *src.FallbackToConfigured
+	}
+
+	if result.FallbackToConfigured && !hasStaticCredential {
+		return nil, fmt.Errorf("credentialOverride with fallbackToConfigured=true requires a static credential to be configured")
+	}
+
+	return result, nil
+}
+
 func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backendSecurityPolicy *aigv1b1.BackendSecurityPolicy) (*filterapi.BackendAuth, error) {
 	namespace := backendSecurityPolicy.Namespace
-	switch backendSecurityPolicy.Spec.Type {
+	spec := &backendSecurityPolicy.Spec
+	var (
+		auth          *filterapi.BackendAuth
+		hasStaticCred bool
+		err           error
+	)
+
+	switch spec.Type {
 	case aigv1b1.BackendSecurityPolicyTypeAPIKey:
-		secretName := string(backendSecurityPolicy.Spec.APIKey.SecretRef.Name)
-		apiKey, err := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
+		secretName := string(spec.APIKey.SecretRef.Name)
+		apiKey, getErr := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
+		if getErr != nil {
+			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
 		}
-		return &filterapi.BackendAuth{APIKey: &filterapi.APIKeyAuth{Key: apiKey}}, nil
+		auth = &filterapi.BackendAuth{APIKey: &filterapi.APIKeyAuth{Key: apiKey}}
+		hasStaticCred = true
 	case aigv1b1.BackendSecurityPolicyTypeAzureAPIKey:
-		secretName := string(backendSecurityPolicy.Spec.AzureAPIKey.SecretRef.Name)
-		apiKey, err := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
+		secretName := string(spec.AzureAPIKey.SecretRef.Name)
+		apiKey, getErr := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
+		if getErr != nil {
+			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
 		}
-		return &filterapi.BackendAuth{AzureAPIKey: &filterapi.AzureAPIKeyAuth{Key: apiKey}}, nil
+		auth = &filterapi.BackendAuth{AzureAPIKey: &filterapi.AzureAPIKeyAuth{Key: apiKey}}
+		hasStaticCred = true
 	case aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey:
-		secretName := string(backendSecurityPolicy.Spec.AnthropicAPIKey.SecretRef.Name)
-		apiKey, err := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
+		secretName := string(spec.AnthropicAPIKey.SecretRef.Name)
+		apiKey, getErr := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
+		if getErr != nil {
+			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
 		}
-		return &filterapi.BackendAuth{AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: apiKey}}, nil
+		auth = &filterapi.BackendAuth{AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: apiKey}}
+		hasStaticCred = true
 	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
-		awsCred := backendSecurityPolicy.Spec.AWSCredentials
+		awsCred := spec.AWSCredentials
 
 		// If no credentials file or OIDC token is configured, use default credential chain
 		// This allows IRSA/Pod Identity to work automatically
@@ -714,10 +815,11 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		} else {
 			secretName = rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		}
-		credentialsLiteral, err := c.getSecretData(ctx, namespace, secretName, rotators.AwsCredentialsKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
+		credentialsLiteral, getErr := c.getSecretData(ctx, namespace, secretName, rotators.AwsCredentialsKey)
+		if getErr != nil {
+			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
 		}
+		// AWS returns early; CredentialOverride is blocked at the API validation layer.
 		return &filterapi.BackendAuth{
 			AWSAuth: &filterapi.AWSAuth{
 				CredentialFileLiteral: credentialsLiteral,
@@ -726,43 +828,54 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		}, nil
 	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
-		azureAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.AzureAccessTokenKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
+		azureAccessToken, getErr := c.getSecretData(ctx, namespace, secretName, rotators.AzureAccessTokenKey)
+		if getErr != nil {
+			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
 		}
-		return &filterapi.BackendAuth{
-			AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken},
-		}, nil
+		auth = &filterapi.BackendAuth{AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken}}
+		hasStaticCred = true
 	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
-		gcpCreds := backendSecurityPolicy.Spec.GCPCredentials
+		gcpCreds := spec.GCPCredentials
 
 		// If no credentials file or WIF is configured, use ADC (handled by extproc)
 		if gcpCreds.CredentialsFile == nil && gcpCreds.WorkloadIdentityFederationConfig == nil {
-			return &filterapi.BackendAuth{
+			auth = &filterapi.BackendAuth{
 				GCPAuth: &filterapi.GCPAuth{
 					Region:      gcpCreds.Region,
 					ProjectName: gcpCreds.ProjectName,
 				},
-			}, nil
+			}
+			// No static access token, but ADC is used — the per-request override replaces the token only.
+			hasStaticCred = false
+		} else {
+			// Otherwise, fetch token from rotated secret
+			secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
+			gcpAccessToken, getErr := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
+			if getErr != nil {
+				return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+			}
+			auth = &filterapi.BackendAuth{
+				GCPAuth: &filterapi.GCPAuth{
+					AccessToken: gcpAccessToken,
+					Region:      gcpCreds.Region,
+					ProjectName: gcpCreds.ProjectName,
+				},
+			}
+			hasStaticCred = true
 		}
-
-		// Otherwise, fetch token from rotated secret
-		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
-		gcpAccessToken, err := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
-		}
-		return &filterapi.BackendAuth{
-			GCPAuth: &filterapi.GCPAuth{
-				AccessToken: gcpAccessToken,
-				Region:      gcpCreds.Region,
-				ProjectName: gcpCreds.ProjectName,
-			},
-		}, nil
 	default:
-		return nil, fmt.Errorf("invalid backend security type %s for policy %s", backendSecurityPolicy.Spec.Type,
-			backendSecurityPolicy.Name)
+		return nil, fmt.Errorf("invalid backend security type %s for policy %s", spec.Type, backendSecurityPolicy.Name)
 	}
+
+	// Project CredentialOverride when configured.
+	if spec.CredentialOverride != nil {
+		auth.CredentialOverride, err = resolveCredentialOverride(spec.Type, spec.CredentialOverride, hasStaticCred)
+		if err != nil {
+			return nil, fmt.Errorf("invalid credentialOverride for policy %s: %w", backendSecurityPolicy.Name, err)
+		}
+	}
+
+	return auth, nil
 }
 
 func (c *GatewayController) getSecretData(ctx context.Context, namespace, name, dataKey string) (string, error) {
