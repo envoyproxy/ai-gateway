@@ -245,22 +245,25 @@ type BackendSecurityPolicyGCPCredentials struct {
 }
 
 // BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
-// Only one of ClientSecretRef or OIDCExchangeToken must be specified. Credentials will not be generated if
-// neither are set.
+// Exactly one of ClientSecretRef, OIDCExchangeToken, or ManagedIdentity must be specified. Credentials will
+// not be generated if none are set.
 //
-// +kubebuilder:validation:XValidation:rule="(has(self.clientSecretRef) && !has(self.oidcExchangeToken)) || (!has(self.clientSecretRef) && has(self.oidcExchangeToken))",message="Exactly one of clientSecretRef or oidcExchangeToken must be specified"
+// +kubebuilder:validation:XValidation:rule="(has(self.clientSecretRef) ? 1 : 0) + (has(self.oidcExchangeToken) ? 1 : 0) + (has(self.managedIdentity) ? 1 : 0) == 1",message="Exactly one of clientSecretRef, oidcExchangeToken, or managedIdentity must be specified"
+// +kubebuilder:validation:XValidation:rule="has(self.managedIdentity) ? (!has(self.clientID) && !has(self.tenantID)) : (has(self.clientID) && has(self.tenantID))",message="clientID and tenantID must be specified unless managedIdentity is used, in which case they must not be specified"
 type BackendSecurityPolicyAzureCredentials struct {
 	// ClientID is a unique identifier for an application in Azure.
+	// This field is required unless ManagedIdentity is used, in which case it must not be set.
 	//
-	// +kubebuilder:validation:Required
+	// +optional
 	// +kubebuilder:validation:MinLength=1
-	ClientID string `json:"clientID"`
+	ClientID string `json:"clientID,omitempty"`
 
 	// TenantId is a unique identifier for an Azure Active Directory instance.
+	// This field is required unless ManagedIdentity is used, in which case it must not be set.
 	//
-	// +kubebuilder:validation:Required
+	// +optional
 	// +kubebuilder:validation:MinLength=1
-	TenantID string `json:"tenantID"`
+	TenantID string `json:"tenantID,omitempty"`
 
 	// ClientSecretRef is the reference to the secret containing the Azure client secret.
 	// ai-gateway must be given the permission to read this secret.
@@ -274,6 +277,35 @@ type BackendSecurityPolicyAzureCredentials struct {
 	//
 	// +optional
 	OIDCExchangeToken *AzureOIDCExchangeToken `json:"oidcExchangeToken,omitempty"`
+
+	// ManagedIdentity specifies that an Azure managed identity available to the Envoy AI Gateway
+	// controller is used to authenticate to Azure, e.g. a managed identity attached to an AKS
+	// cluster or federated to a Kubernetes service account via Azure Workload Identity.
+	// No client secret is required.
+	//
+	// +optional
+	ManagedIdentity *AzureManagedIdentity `json:"managedIdentity,omitempty"`
+}
+
+// AzureManagedIdentity specifies that Azure Managed Identity authentication is used to access Azure,
+// instead of a client secret or an OIDC token exchange. The controller obtains access tokens with the
+// identity available in its own environment and stores them in a secret.
+//
+// When ClientID is empty, the default Azure credential chain is used, which supports the
+// system-assigned managed identity, Azure Workload Identity (federated service account tokens
+// injected on AKS), and environment variable based credentials.
+//
+// When ClientID is set, the user-assigned managed identity with that client ID is used, either
+// through Azure Workload Identity when the federated service account token is available, or
+// through IMDS otherwise.
+type AzureManagedIdentity struct {
+	// ClientID is the client ID of the user-assigned managed identity to use.
+	// Omit this field to use the system-assigned managed identity or the default
+	// Azure credential chain of the controller's environment.
+	//
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	ClientID string `json:"clientID,omitempty"`
 }
 
 // AzureOIDCExchangeToken specifies credentials to obtain oidc token from a sso server.
