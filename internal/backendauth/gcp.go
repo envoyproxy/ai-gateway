@@ -118,7 +118,7 @@ func (g *gcpHandler) Do(_ context.Context, requestHeaders map[string]string, _ [
 		accessToken = g.gcpAccessToken
 	}
 
-	resultHeaders = append(resultHeaders, internalapi.Header{"Authorization", accessToken})
+	resultHeaders = append(resultHeaders, internalapi.Header{"Authorization", fmt.Sprintf("Bearer %s", accessToken)})
 	// Add the Authorization header with the GCP access token.
 	// requestHeaders[":path"] = newPath
 	// requestHeaders["Authorization"] = fmt.Sprintf("Bearer %s", accessToken)
