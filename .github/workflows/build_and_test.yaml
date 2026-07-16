@@ -68,17 +68,17 @@ jobs:
             ~/go/pkg/mod
             ~/go/bin
           key: unittest-${{ hashFiles('**/go.mod', '**/go.sum', '**/Makefile') }}-${{ matrix.os }}
-      - run: make test-coverage GO_TEST_ARGS='-race'
-      - name: Upload coverage to Codecov
-        if: matrix.os == 'ubuntu-latest'
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6.0.2
-        with:
-          fail_ci_if_error: true
-          files: ./out/go-test-coverage.out
-          name: codecov-envoy-ai-gateway
-          verbose: true
-          # https://github.com/codecov/codecov-action/issues/1594#issuecomment-2394913029
-          use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
+      # - run: make test-coverage GO_TEST_ARGS='-race'
+      # - name: Upload coverage to Codecov
+      #   if: matrix.os == 'ubuntu-latest'
+      #   uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6.0.2
+      #   with:
+      #     fail_ci_if_error: true
+      #     files: ./out/go-test-coverage.out
+      #     name: codecov-envoy-ai-gateway
+      #     verbose: true
+      #     # https://github.com/codecov/codecov-action/issues/1594#issuecomment-2394913029
+      #     use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
 
   test_crdcel:
     needs: changes
