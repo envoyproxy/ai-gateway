@@ -1256,7 +1256,7 @@ func TestBuildAnthropicParamsWithStructuredOutput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			params, err := buildAnthropicParams(tt.request, "AWSAnthropic", "")
+			params, err := buildAnthropicParams(tt.request, "")
 
 			if tt.expectErr {
 				require.Error(t, err)
@@ -1297,7 +1297,7 @@ func TestBuildAnthropicParamsWithStructuredOutput(t *testing.T) {
 			},
 		}
 		// The modelNameOverride contains a recognized model identifier.
-		params, err := buildAnthropicParams(request, "AWSAnthropic", "us.anthropic.claude-sonnet-4-5-20250514-v1:0")
+		params, err := buildAnthropicParams(request, "us.anthropic.claude-sonnet-4-5-20250514-v1:0")
 		require.NoError(t, err)
 		require.NotNil(t, params)
 		require.NotNil(t, params.OutputConfig.Format.Schema)
@@ -1434,7 +1434,7 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			params, err := buildAnthropicParams(tt.request, "AWSAnthropic", "")
+			params, err := buildAnthropicParams(tt.request, "")
 			require.NoError(t, err)
 			require.NotNil(t, params)
 			require.Equal(t, tt.expectedEffort, params.OutputConfig.Effort)
@@ -1453,7 +1453,7 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 				}},
 			},
 		}
-		_, err := buildAnthropicParams(request, "AWSAnthropic", "")
+		_, err := buildAnthropicParams(request, "")
 		require.Error(t, err)
 		require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody)
 		require.Contains(t, err.Error(), "unsupported reasoning effort level")
@@ -1472,7 +1472,7 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 			},
 		}
 		// The modelNameOverride contains a recognized model identifier.
-		params, err := buildAnthropicParams(request, "AWSAnthropic", "us.anthropic.claude-opus-4-5-20250514-v1:0")
+		params, err := buildAnthropicParams(request, "us.anthropic.claude-opus-4-5-20250514-v1:0")
 		require.NoError(t, err)
 		require.NotNil(t, params)
 		require.Equal(t, anthropic.OutputConfigEffortHigh, params.OutputConfig.Effort)
@@ -1491,7 +1491,7 @@ func TestBuildAnthropicParamsWithReasoningEffort(t *testing.T) {
 			},
 		}
 		// The modelNameOverride points to an unsupported model.
-		params, err := buildAnthropicParams(request, "AWSAnthropic", "us.anthropic.claude-3-sonnet-20240229-v1:0")
+		params, err := buildAnthropicParams(request, "us.anthropic.claude-3-sonnet-20240229-v1:0")
 		require.NoError(t, err)
 		require.NotNil(t, params)
 		require.Equal(t, anthropic.OutputConfigEffort(""), params.OutputConfig.Effort)

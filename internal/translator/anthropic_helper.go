@@ -677,8 +677,7 @@ func mapReasoningEffortToOutputConfigEffort(reasonEffort openai.ReasoningEffort)
 
 // buildAnthropicParams is a helper function that translates an OpenAI request
 // into the parameter struct required by the Anthropic SDK.
-// The apiSchema parameter indicates the backend API schema (e.g., "AWSAnthropic", "GCPAnthropic").
-func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string, modelNameOverride internalapi.ModelNameOverride) (params *anthropic.MessageNewParams, err error) {
+func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, modelNameOverride internalapi.ModelNameOverride) (params *anthropic.MessageNewParams, err error) {
 	// 1. Handle simple parameters.
 	// max_tokens is required by the Anthropic API but optional in the OpenAI API.
 	// If not set, pass 0 and let the Anthropic API reject the request.
@@ -711,15 +710,14 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 
 	// 5. Handle structured outputs (ResponseFormat -> OutputConfig).
 	// See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
-	// Currently, GCP Vertex AI does not support structured output.
+	// Structured output is generally available on both AWS Bedrock and GCP Vertex AI.
 	// Use modelNameOverride for feature checks when available, as it is more
 	// reliable than the user-provided model name which may be arbitrarily set.
 	featureCheckModel := openAIReq.Model
 	if modelNameOverride != "" {
 		featureCheckModel = modelNameOverride
 	}
-	isGCPBackend := strings.HasPrefix(apiSchema, "GCP")
-	if !isGCPBackend && openAIReq.ResponseFormat != nil && openAIReq.ResponseFormat.OfJSONSchema != nil && outputConfigAvailable(featureCheckModel) {
+	if openAIReq.ResponseFormat != nil && openAIReq.ResponseFormat.OfJSONSchema != nil && outputConfigAvailable(featureCheckModel) {
 		// Convert OpenAI JSON schema to Anthropic OutputConfig format
 		var schemaMap map[string]any
 		if err = json.Unmarshal(openAIReq.ResponseFormat.OfJSONSchema.JSONSchema.Schema, &schemaMap); err != nil {
