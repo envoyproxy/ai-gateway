@@ -6,8 +6,11 @@
 package backendauth
 
 import (
+	"context"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -39,4 +42,31 @@ func TestNewAzureHandler_Do(t *testing.T) {
 	require.Len(t, headers, 1)
 	require.Equal(t, "Authorization", headers[0][0])
 	require.Equal(t, "Bearer some-access-token", headers[0][1])
+}
+
+// fakeTokenCredential is a stub azcore.TokenCredential used to exercise the ambient
+// Azure Workload Identity path without contacting Entra.
+type fakeTokenCredential struct {
+	token string
+	err   error
+}
+
+func (f *fakeTokenCredential) GetToken(_ context.Context, _ policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	if f.err != nil {
+		return azcore.AccessToken{}, f.err
+	}
+	return azcore.AccessToken{Token: f.token}, nil
+}
+
+func TestAzureHandler_Do_WorkloadIdentity(t *testing.T) {
+	handler := newAzureHandlerWithCredential(&fakeTokenCredential{token: "ambient-wi-token"})
+
+	requestHeaders := map[string]string{":method": "POST", ":path": "/model/some-random-model/chat/completion"}
+	headers, err := handler.Do(t.Context(), requestHeaders, nil)
+	require.NoError(t, err)
+
+	require.Equal(t, "Bearer ambient-wi-token", requestHeaders["Authorization"])
+	require.Len(t, headers, 1)
+	require.Equal(t, "Authorization", headers[0][0])
+	require.Equal(t, "Bearer ambient-wi-token", headers[0][1])
 }

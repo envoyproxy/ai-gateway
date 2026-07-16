@@ -168,6 +168,27 @@ spec:
 The secret must contain the Azure client secret with the key name `"client-secret"`.
 :::
 
+###### Azure Workload Identity (keyless)
+
+When neither `clientSecretRef` nor `oidcExchangeToken` is set, Envoy AI Gateway uses ambient Azure Workload Identity: the data-plane ext_proc mints an Entra token from the projected service-account token, so there is no client secret to store and no controller-side rotation.
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: azure-auth-workload-identity
+  namespace: default
+spec:
+  type: AzureCredentials
+  azureCredentials:
+    clientID: "your-managed-identity-client-id"
+    tenantID: "your-azure-tenant-id"
+```
+
+:::note
+The pod's ServiceAccount must be federated to the managed identity (annotated with `azure.workload.identity/use`).
+:::
+
 ##### GCP Credentials
 
 Used for connecting to GCP Vertex AI and Anthropic on GCP. Supports three authentication methods:

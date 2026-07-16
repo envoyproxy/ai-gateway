@@ -9818,10 +9818,10 @@ spec:
                 - tenantID
                 type: object
                 x-kubernetes-validations:
-                - message: Exactly one of clientSecretRef or oidcExchangeToken must
-                    be specified
-                  rule: (has(self.clientSecretRef) && !has(self.oidcExchangeToken))
-                    || (!has(self.clientSecretRef) && has(self.oidcExchangeToken))
+                - message: At most one of clientSecretRef or oidcExchangeToken may
+                    be specified; if neither is set, ambient Azure Workload Identity
+                    (the projected service-account token) is used
+                  rule: '!(has(self.clientSecretRef) && has(self.oidcExchangeToken))'
               credentialOverride:
                 description: |-
                   CredentialOverride, when set, sources the upstream credential per-request instead of using

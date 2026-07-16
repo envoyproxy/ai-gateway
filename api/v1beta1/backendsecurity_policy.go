@@ -245,10 +245,14 @@ type BackendSecurityPolicyGCPCredentials struct {
 }
 
 // BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
-// Only one of ClientSecretRef or OIDCExchangeToken must be specified. Credentials will not be generated if
-// neither are set.
 //
-// +kubebuilder:validation:XValidation:rule="(has(self.clientSecretRef) && !has(self.oidcExchangeToken)) || (!has(self.clientSecretRef) && has(self.oidcExchangeToken))",message="Exactly one of clientSecretRef or oidcExchangeToken must be specified"
+// When neither ClientSecretRef nor OIDCExchangeToken is specified, ambient Azure Workload Identity is
+// used: the data-plane ext_proc mints an Entra token via WorkloadIdentityCredential using the projected
+// service-account token, with no secret and no controller-side rotation. This requires the ServiceAccount
+// to be federated to the managed identity (annotated with azure.workload.identity/use). At most one of
+// ClientSecretRef or OIDCExchangeToken may be set.
+//
+// +kubebuilder:validation:XValidation:rule="!(has(self.clientSecretRef) && has(self.oidcExchangeToken))",message="At most one of clientSecretRef or oidcExchangeToken may be specified; if neither is set, ambient Azure Workload Identity (the projected service-account token) is used"
 type BackendSecurityPolicyAzureCredentials struct {
 	// ClientID is a unique identifier for an application in Azure.
 	//

@@ -142,12 +142,8 @@ func TestBackendSecurityPolicies(t *testing.T) {
 			expErr: "spec.azureCredentials.tenantID in body should be at least 1 chars long",
 		},
 		{
-			name:   "azure_missing_auth.yaml",
-			expErr: "Exactly one of clientSecretRef or oidcExchangeToken must be specified",
-		},
-		{
 			name:   "azure_multiple_auth.yaml",
-			expErr: "Exactly one of clientSecretRef or oidcExchangeToken must be specified",
+			expErr: "At most one of clientSecretRef or oidcExchangeToken may be specified",
 		},
 		// CEL validation test cases - these should fail due to type mismatch.
 		{
@@ -180,6 +176,7 @@ func TestBackendSecurityPolicies(t *testing.T) {
 		},
 		{name: "azure_oidc.yaml"},
 		{name: "azure_valid_credentials.yaml"},
+		{name: "azure_workload_identity.yaml"},
 		{name: "aws_credential_file.yaml"},
 		{name: "aws_oidc.yaml"},
 		{name: "gcp_oidc.yaml"},

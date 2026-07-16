@@ -292,7 +292,15 @@ func (a AnthropicAPIKeyAuth) LogValue() slog.Value {
 // AzureAuth defines the file containing azure access token that will be mounted to the external proc.
 type AzureAuth struct {
 	// AccessToken is the access token as a literal string.
-	AccessToken string `json:"accessToken"`
+	// When empty, the handler authenticates using ambient Azure Workload Identity
+	// (the projected service-account token), pinning the identity with ClientID/TenantID when set.
+	AccessToken string `json:"accessToken,omitempty"`
+	// ClientID optionally pins the managed identity client ID for ambient Workload Identity.
+	// When empty, the SDK reads AZURE_CLIENT_ID from the environment.
+	ClientID string `json:"clientID,omitempty"`
+	// TenantID optionally pins the Entra tenant ID for ambient Workload Identity.
+	// When empty, the SDK reads AZURE_TENANT_ID from the environment.
+	TenantID string `json:"tenantID,omitempty"`
 }
 
 // LogValue implements slog.LogValuer for AzureAuth to redact sensitive information.

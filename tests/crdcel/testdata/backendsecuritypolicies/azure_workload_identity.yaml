@@ -3,10 +3,12 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
+# Ambient Azure Workload Identity: neither clientSecretRef nor oidcExchangeToken is set,
+# so the data-plane ext_proc mints an Entra token from the projected service-account token.
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
-  name: azure-missing-provider-policy
+  name: azure-workload-identity-policy
   namespace: default
 spec:
   type: AzureCredentials

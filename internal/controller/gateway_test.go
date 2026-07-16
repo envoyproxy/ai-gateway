@@ -895,8 +895,21 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 		{
 			ObjectMeta: metav1.ObjectMeta{Name: "azure-oidc", Namespace: namespace},
 			Spec: aigv1b1.BackendSecurityPolicySpec{
-				Type:             aigv1b1.BackendSecurityPolicyTypeAzureCredentials,
-				AzureCredentials: &aigv1b1.BackendSecurityPolicyAzureCredentials{},
+				Type: aigv1b1.BackendSecurityPolicyTypeAzureCredentials,
+				AzureCredentials: &aigv1b1.BackendSecurityPolicyAzureCredentials{
+					OIDCExchangeToken: &aigv1b1.AzureOIDCExchangeToken{},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "azure-workload-identity", Namespace: namespace},
+			Spec: aigv1b1.BackendSecurityPolicySpec{
+				Type: aigv1b1.BackendSecurityPolicyTypeAzureCredentials,
+				AzureCredentials: &aigv1b1.BackendSecurityPolicyAzureCredentials{
+					ClientID: "azure-client-id",
+					TenantID: "azure-tenant-id",
+					// No ClientSecretRef or OIDCExchangeToken - uses ambient Workload Identity.
+				},
 			},
 		},
 		{
@@ -1008,6 +1021,12 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 			bspName: "azure-oidc",
 			exp: &filterapi.BackendAuth{
 				AzureAuth: &filterapi.AzureAuth{AccessToken: "thisisazurecredentials"},
+			},
+		},
+		{
+			bspName: "azure-workload-identity",
+			exp: &filterapi.BackendAuth{
+				AzureAuth: &filterapi.AzureAuth{ClientID: "azure-client-id", TenantID: "azure-tenant-id"},
 			},
 		},
 		{

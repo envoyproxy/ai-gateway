@@ -827,13 +827,23 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			},
 		}, nil
 	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
-		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
-		azureAccessToken, getErr := c.getSecretData(ctx, namespace, secretName, rotators.AzureAccessTokenKey)
-		if getErr != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+		azureCred := spec.AzureCredentials
+		// Ambient Azure Workload Identity: no rotated secret; the data plane mints the token.
+		if azureCred != nil && azureCred.ClientSecretRef == nil && azureCred.OIDCExchangeToken == nil {
+			auth = &filterapi.BackendAuth{AzureAuth: &filterapi.AzureAuth{
+				ClientID: azureCred.ClientID,
+				TenantID: azureCred.TenantID,
+			}}
+			hasStaticCred = false
+		} else {
+			secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
+			azureAccessToken, getErr := c.getSecretData(ctx, namespace, secretName, rotators.AzureAccessTokenKey)
+			if getErr != nil {
+				return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+			}
+			auth = &filterapi.BackendAuth{AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken}}
+			hasStaticCred = true
 		}
-		auth = &filterapi.BackendAuth{AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken}}
-		hasStaticCred = true
 	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
 		gcpCreds := spec.GCPCredentials
 

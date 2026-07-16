@@ -117,6 +117,18 @@ func (c *BackendSecurityPolicyController) reconcile(ctx context.Context, bsp *ai
 		}
 	}
 
+	// Skip rotation for Azure when neither client secret nor OIDC exchange is configured:
+	// ambient Azure Workload Identity (projected SA token) is resolved in the data plane.
+	if bsp.Spec.Type == aigv1b1.BackendSecurityPolicyTypeAzureCredentials {
+		if bsp.Spec.AzureCredentials != nil &&
+			bsp.Spec.AzureCredentials.ClientSecretRef == nil &&
+			bsp.Spec.AzureCredentials.OIDCExchangeToken == nil {
+			c.logger.Info("Using ambient Azure Workload Identity, skipping rotation",
+				"namespace", bsp.Namespace, "name", bsp.Name)
+			requiresRotation = false
+		}
+	}
+
 	if requiresRotation {
 		res, err = c.rotateCredential(ctx, bsp)
 		if err != nil {

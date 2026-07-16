@@ -3556,8 +3556,12 @@ BackendSecurityPolicyAzureAPIKey specifies the Azure OpenAI API key.
 - [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
 
 BackendSecurityPolicyAzureCredentials contains the supported authentication mechanisms to access Azure.
-Only one of ClientSecretRef or OIDCExchangeToken must be specified. Credentials will not be generated if
-neither are set.
+
+When neither ClientSecretRef nor OIDCExchangeToken is specified, ambient Azure Workload Identity is
+used: the data-plane ext_proc mints an Entra token via WorkloadIdentityCredential using the projected
+service-account token, with no secret and no controller-side rotation. This requires the ServiceAccount
+to be federated to the managed identity (annotated with azure.workload.identity/use). At most one of
+ClientSecretRef or OIDCExchangeToken may be set.
 
 ##### Fields
 
