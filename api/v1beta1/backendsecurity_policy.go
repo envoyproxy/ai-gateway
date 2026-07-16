@@ -278,9 +278,7 @@ type BackendSecurityPolicyAzureCredentials struct {
 	// +optional
 	OIDCExchangeToken *AzureOIDCExchangeToken `json:"oidcExchangeToken,omitempty"`
 
-	// ManagedIdentity specifies that an Azure managed identity available to the Envoy AI Gateway
-	// controller is used to authenticate to Azure, e.g. a managed identity attached to an AKS
-	// cluster or federated to a Kubernetes service account via Azure Workload Identity.
+	// ManagedIdentity authenticates using an Azure managed identity available to the controller.
 	// No client secret is required.
 	//
 	// +optional
