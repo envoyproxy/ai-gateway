@@ -587,6 +587,8 @@ type ChatCompletionToolMessageParam struct {
 	Role string `json:"role"`
 	// Tool call that this message is responding to.
 	ToolCallID string `json:"tool_call_id"`
+	// Anthropic-compatible cache breakpoint for the translated tool_result block.
+	*AnthropicContentFields `json:",inline,omitempty"`
 }
 
 // ChatCompletionAssistantMessageParamAudio Data about a previous audio response from the model.

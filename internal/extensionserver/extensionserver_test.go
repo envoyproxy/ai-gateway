@@ -8,6 +8,7 @@ package extensionserver
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"testing"
@@ -40,7 +41,9 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	gwaiev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller"
@@ -143,7 +146,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 		{c: &clusterv3.Cluster{}, errLog: "non-ai-gateway cluster name"},
 		{c: &clusterv3.Cluster{
 			Name: "httproute/ns/name/rule/invalid",
-		}, errLog: "failed to parse HTTPRoute rule index"},
+		}, errLog: "invalid HTTPRoute rule index"},
 		{c: &clusterv3.Cluster{
 			Name: "httproute/ns/myroute/rule/99999",
 		}, errLog: `HTTPRoute rule index out of range`},
@@ -415,6 +418,99 @@ func Test_maybeModifyCluster(t *testing.T) {
 			require.Equal(t, tc.expected, tc.cluster)
 		})
 	}
+}
+
+func TestParseAIGatewayClusterName(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		cluster  string
+		expected aiGatewayClusterName
+		wantErr  bool
+	}{
+		{
+			name:    "route-level cluster",
+			cluster: "httproute/ns/route/rule/3",
+			expected: aiGatewayClusterName{
+				namespace:       "ns",
+				routeName:       "route",
+				ruleIndex:       3,
+				backendRefIndex: noBackendRefIndex,
+			},
+		},
+		{
+			name:    "per-backend cluster",
+			cluster: "httproute/ns/route/rule/3/backend/2",
+			expected: aiGatewayClusterName{
+				namespace:       "ns",
+				routeName:       "route",
+				ruleIndex:       3,
+				backendRefIndex: 2,
+			},
+		},
+		{name: "missing backend marker", cluster: "httproute/ns/route/rule/3/not-backend/2", wantErr: true},
+		{name: "negative backend index", cluster: "httproute/ns/route/rule/3/backend/-1", wantErr: true},
+		{name: "invalid rule index", cluster: "httproute/ns/route/rule/nope", wantErr: true},
+		{name: "non route cluster", cluster: "service/ns/route", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actual, err := parseAIGatewayClusterName(tc.cluster)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func TestMaybeModifyClusterPerBackendClusterName(t *testing.T) {
+	newServer := func(t *testing.T) *Server {
+		t.Helper()
+		c := newFakeClient()
+		require.NoError(t, c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
+			Spec: aigv1b1.AIGatewayRouteSpec{Rules: []aigv1b1.AIGatewayRouteRule{{
+				BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+					{Name: "primary", Priority: ptr.To[uint32](0)},
+					{Name: "fallback", Priority: ptr.To[uint32](1)},
+				},
+			}}},
+		}))
+		s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+		require.NoError(t, err)
+		return s
+	}
+
+	assertBackendName := func(t *testing.T, metadata *corev3.Metadata, expected string) {
+		t.Helper()
+		require.NotNil(t, metadata)
+		filterMetadata := metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+		require.NotNil(t, filterMetadata)
+		require.Equal(t, expected, filterMetadata.Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue())
+	}
+
+	t.Run("sets endpoint metadata for the selected backend", func(t *testing.T) {
+		cluster := &clusterv3.Cluster{
+			Name: "httproute/ns/myroute/rule/0/backend/1",
+			LoadAssignment: &endpointv3.ClusterLoadAssignment{Endpoints: []*endpointv3.LocalityLbEndpoints{{
+				LbEndpoints: []*endpointv3.LbEndpoint{{}},
+			}}},
+		}
+		require.NoError(t, newServer(t).maybeModifyCluster(t.Context(), cluster))
+		require.Equal(t, uint32(1), cluster.LoadAssignment.Endpoints[0].Priority)
+		assertBackendName(t, cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata,
+			internalapi.PerRouteRuleRefBackendName("ns", "fallback", "myroute", 0, 1))
+		require.Contains(t, cluster.TypedExtensionProtocolOptions, "envoy.extensions.upstreams.http.v3.HttpProtocolOptions")
+	})
+
+	t.Run("sets cluster metadata for EDS-managed endpoints", func(t *testing.T) {
+		cluster := &clusterv3.Cluster{Name: "httproute/ns/myroute/rule/0/backend/0"}
+		require.NoError(t, newServer(t).maybeModifyCluster(t.Context(), cluster))
+		assertBackendName(t, cluster.Metadata,
+			internalapi.PerRouteRuleRefBackendName("ns", "primary", "myroute", 0, 0))
+		require.Contains(t, cluster.TypedExtensionProtocolOptions, "envoy.extensions.upstreams.http.v3.HttpProtocolOptions")
+	})
 }
 
 // Helper function to create an InferencePool ExtensionResource.
@@ -1452,6 +1548,146 @@ func TestPostRouteModify(t *testing.T) {
 		require.Nil(t, route.TypedPerFilterConfig)
 		require.Nil(t, route.Metadata)
 	})
+}
+
+// TestMaybeSetStreamIdleTimeout tests that the route's per_try_idle_timeout is set
+// from the AIGatewayRoute rule's StreamIdleTimeout.
+func TestMaybeSetStreamIdleTimeout(t *testing.T) {
+	c := newFakeClient()
+	err := c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "ttft-route", Namespace: "default"},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{StreamIdleTimeout: ptr.To(gwapiv1.Duration("10s"))},
+				{}, // No StreamIdleTimeout.
+			},
+		},
+	})
+	require.NoError(t, err)
+	s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+	require.NoError(t, err)
+
+	forwardingRoute := func(name string) *routev3.Route {
+		return &routev3.Route{Name: name, Action: &routev3.Route_Route{Route: &routev3.RouteAction{}}}
+	}
+	call := func(t *testing.T, route *routev3.Route) {
+		cache := make(map[client.ObjectKey]*aigv1b1.AIGatewayRoute)
+		require.NoError(t, s.maybeSetStreamIdleTimeout(context.Background(), route, cache))
+	}
+
+	t.Run("sets per_try_idle_timeout when configured", func(t *testing.T) {
+		route := forwardingRoute("httproute/default/ttft-route/rule/0/match/0")
+		call(t, route)
+		require.Equal(t, durationpb.New(10*time.Second), route.GetRoute().RetryPolicy.GetPerTryIdleTimeout())
+	})
+
+	t.Run("preserves existing retry policy", func(t *testing.T) {
+		route := forwardingRoute("httproute/default/ttft-route/rule/0/match/0")
+		route.GetRoute().RetryPolicy = &routev3.RetryPolicy{RetryOn: "reset", NumRetries: wrapperspb.UInt32(2)}
+		call(t, route)
+		require.Equal(t, "reset", route.GetRoute().RetryPolicy.RetryOn)
+		require.Equal(t, uint32(2), route.GetRoute().RetryPolicy.NumRetries.GetValue())
+		require.Equal(t, durationpb.New(10*time.Second), route.GetRoute().RetryPolicy.GetPerTryIdleTimeout())
+	})
+
+	t.Run("no timeout when rule has none", func(t *testing.T) {
+		route := forwardingRoute("httproute/default/ttft-route/rule/1/match/0")
+		call(t, route)
+		require.Nil(t, route.GetRoute().RetryPolicy)
+	})
+
+	t.Run("ignores non-forwarding route", func(t *testing.T) {
+		route := &routev3.Route{
+			Name:   "httproute/default/ttft-route/rule/0/match/0",
+			Action: &routev3.Route_DirectResponse{DirectResponse: &routev3.DirectResponseAction{Status: 403}},
+		}
+		call(t, route)
+		require.Nil(t, route.GetRoute())
+	})
+
+	t.Run("ignores unrelated route name", func(t *testing.T) {
+		route := forwardingRoute("some-other-route")
+		call(t, route)
+		require.Nil(t, route.GetRoute().RetryPolicy)
+	})
+
+	t.Run("ignores out-of-range rule index", func(t *testing.T) {
+		route := forwardingRoute("httproute/default/ttft-route/rule/9/match/0")
+		call(t, route)
+		require.Nil(t, route.GetRoute().RetryPolicy)
+	})
+
+	t.Run("ignores non-numeric rule index", func(t *testing.T) {
+		route := forwardingRoute("httproute/default/ttft-route/rule/x/match/0")
+		call(t, route)
+		require.Nil(t, route.GetRoute().RetryPolicy)
+	})
+
+	t.Run("ignores missing AIGatewayRoute", func(t *testing.T) {
+		route := forwardingRoute("httproute/default/missing/rule/0/match/0")
+		call(t, route)
+		require.Nil(t, route.GetRoute().RetryPolicy)
+	})
+
+	t.Run("reuses cached lookups across routes", func(t *testing.T) {
+		cache := make(map[client.ObjectKey]*aigv1b1.AIGatewayRoute)
+		// Two routes for the same AIGatewayRoute, plus a repeated missing one, all sharing
+		// the cache so the second lookup of each key is served from memory.
+		for _, name := range []string{
+			"httproute/default/ttft-route/rule/0/match/0",
+			"httproute/default/ttft-route/rule/0/match/1",
+			"httproute/default/missing/rule/0/match/0",
+			"httproute/default/missing/rule/0/match/1",
+		} {
+			route := forwardingRoute(name)
+			require.NoError(t, s.maybeSetStreamIdleTimeout(context.Background(), route, cache))
+		}
+		require.Contains(t, cache, client.ObjectKey{Namespace: "default", Name: "ttft-route"})
+		require.Nil(t, cache[client.ObjectKey{Namespace: "default", Name: "missing"}])
+	})
+}
+
+// TestApplyStreamIdleTimeouts tests that the per-try idle timeout is applied while walking
+// the route configurations, and that unrelated routes are left untouched.
+func TestApplyStreamIdleTimeouts(t *testing.T) {
+	c := newFakeClient()
+	require.NoError(t, c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "ttft-route", Namespace: "default"},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{{StreamIdleTimeout: ptr.To(gwapiv1.Duration("7s"))}},
+		},
+	}))
+	s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+	require.NoError(t, err)
+
+	forwarding := func(name string) *routev3.Route {
+		return &routev3.Route{Name: name, Action: &routev3.Route_Route{Route: &routev3.RouteAction{}}}
+	}
+	configured := forwarding("httproute/default/ttft-route/rule/0/match/0")
+	other := forwarding("some-other-route")
+	routeConfigs := []*routev3.RouteConfiguration{{
+		VirtualHosts: []*routev3.VirtualHost{{Routes: []*routev3.Route{configured, other}}},
+	}}
+
+	require.NoError(t, s.applyStreamIdleTimeouts(context.Background(), routeConfigs))
+	require.Equal(t, durationpb.New(7*time.Second), configured.GetRoute().RetryPolicy.GetPerTryIdleTimeout())
+	require.Nil(t, other.GetRoute().RetryPolicy)
+
+	// A failed AIGatewayRoute lookup propagates out of the walk.
+	failing, err := New(
+		fake.NewClientBuilder().WithScheme(controller.Scheme).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(context.Context, client.WithWatch, client.ObjectKey, client.Object, ...client.GetOption) error {
+					return errors.New("boom")
+				},
+			}).Build(),
+		logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+	require.NoError(t, err)
+	err = failing.applyStreamIdleTimeouts(context.Background(),
+		[]*routev3.RouteConfiguration{{VirtualHosts: []*routev3.VirtualHost{{Routes: []*routev3.Route{
+			forwarding("httproute/default/ttft-route/rule/0/match/0"),
+		}}}}})
+	require.ErrorContains(t, err, "boom")
 }
 
 // TestConstructInferencePoolsFrom tests the constructInferencePoolsFrom method.
