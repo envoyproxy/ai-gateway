@@ -2114,15 +2114,11 @@ spec:
                     - name
                     type: object
                   managedIdentity:
-                    description: |-
-                      ManagedIdentity authenticates using an Azure managed identity available to the controller.
-                      No client secret is required.
+                    description: ManagedIdentity configures Azure managed identity
+                      authentication.
                     properties:
                       clientID:
-                        description: |-
-                          ClientID is the client ID of the user-assigned managed identity to use.
-                          Omit this field to use the system-assigned managed identity or the default
-                          Azure credential chain of the controller's environment.
+                        description: ClientID selects a user-assigned managed identity.
                         minLength: 1
                         type: string
                     type: object
@@ -8059,15 +8055,11 @@ spec:
                     - name
                     type: object
                   managedIdentity:
-                    description: |-
-                      ManagedIdentity authenticates using an Azure managed identity available to the controller.
-                      No client secret is required.
+                    description: ManagedIdentity configures Azure managed identity
+                      authentication.
                     properties:
                       clientID:
-                        description: |-
-                          ClientID is the client ID of the user-assigned managed identity to use.
-                          Omit this field to use the system-assigned managed identity or the default
-                          Azure credential chain of the controller's environment.
+                        description: ClientID selects a user-assigned managed identity.
                         minLength: 1
                         type: string
                     type: object

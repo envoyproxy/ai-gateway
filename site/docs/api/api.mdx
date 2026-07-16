@@ -994,17 +994,8 @@ and store them in a temporary credentials file.
 **Appears in:**
 - [BackendSecurityPolicyAzureCredentials](#github-com-envoyproxy-ai-gateway-api-v1alpha1-backendsecuritypolicyazurecredentials)
 
-AzureManagedIdentity specifies that Azure Managed Identity authentication is used to access Azure,
-instead of a client secret or an OIDC token exchange. The controller obtains access tokens with the
-identity available in its own environment and stores them in a secret.
-
-When ClientID is empty, the default Azure credential chain is used, which supports the
-system-assigned managed identity, Azure Workload Identity (federated service account tokens
-injected on AKS), and environment variable based credentials.
-
-When ClientID is set, the user-assigned managed identity with that client ID is used, either
-through Azure Workload Identity when the federated service account token is available, or
-through IMDS otherwise.
+AzureManagedIdentity configures managed identity authentication.
+An empty ClientID uses the default Azure credential chain.
 
 ##### Fields
 
@@ -1014,7 +1005,7 @@ through IMDS otherwise.
   name="clientID"
   type="string"
   required="false"
-  description="ClientID is the client ID of the user-assigned managed identity to use.<br />Omit this field to use the system-assigned managed identity or the default<br />Azure credential chain of the controller's environment."
+  description="ClientID selects a user-assigned managed identity."
 />
 
 
@@ -1196,7 +1187,7 @@ not be generated if none are set.
   name="managedIdentity"
   type="[AzureManagedIdentity](#github-com-envoyproxy-ai-gateway-api-v1alpha1-azuremanagedidentity)"
   required="false"
-  description="ManagedIdentity authenticates using an Azure managed identity available to the controller.<br />No client secret is required."
+  description="ManagedIdentity configures Azure managed identity authentication."
 />
 
 
@@ -3454,17 +3445,8 @@ and store them in a temporary credentials file.
 **Appears in:**
 - [BackendSecurityPolicyAzureCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazurecredentials)
 
-AzureManagedIdentity specifies that Azure Managed Identity authentication is used to access Azure,
-instead of a client secret or an OIDC token exchange. The controller obtains access tokens with the
-identity available in its own environment and stores them in a secret.
-
-When ClientID is empty, the default Azure credential chain is used, which supports the
-system-assigned managed identity, Azure Workload Identity (federated service account tokens
-injected on AKS), and environment variable based credentials.
-
-When ClientID is set, the user-assigned managed identity with that client ID is used, either
-through Azure Workload Identity when the federated service account token is available, or
-through IMDS otherwise.
+AzureManagedIdentity configures managed identity authentication.
+An empty ClientID uses the default Azure credential chain.
 
 ##### Fields
 
@@ -3474,7 +3456,7 @@ through IMDS otherwise.
   name="clientID"
   type="string"
   required="false"
-  description="ClientID is the client ID of the user-assigned managed identity to use.<br />Omit this field to use the system-assigned managed identity or the default<br />Azure credential chain of the controller's environment."
+  description="ClientID selects a user-assigned managed identity."
 />
 
 
@@ -3656,7 +3638,7 @@ not be generated if none are set.
   name="managedIdentity"
   type="[AzureManagedIdentity](#github-com-envoyproxy-ai-gateway-api-v1beta1-azuremanagedidentity)"
   required="false"
-  description="ManagedIdentity authenticates using an Azure managed identity available to the controller.<br />No client secret is required."
+  description="ManagedIdentity configures Azure managed identity authentication."
 />
 
 

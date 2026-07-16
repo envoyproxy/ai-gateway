@@ -278,28 +278,16 @@ type BackendSecurityPolicyAzureCredentials struct {
 	// +optional
 	OIDCExchangeToken *AzureOIDCExchangeToken `json:"oidcExchangeToken,omitempty"`
 
-	// ManagedIdentity authenticates using an Azure managed identity available to the controller.
-	// No client secret is required.
+	// ManagedIdentity configures Azure managed identity authentication.
 	//
 	// +optional
 	ManagedIdentity *AzureManagedIdentity `json:"managedIdentity,omitempty"`
 }
 
-// AzureManagedIdentity specifies that Azure Managed Identity authentication is used to access Azure,
-// instead of a client secret or an OIDC token exchange. The controller obtains access tokens with the
-// identity available in its own environment and stores them in a secret.
-//
-// When ClientID is empty, the default Azure credential chain is used, which supports the
-// system-assigned managed identity, Azure Workload Identity (federated service account tokens
-// injected on AKS), and environment variable based credentials.
-//
-// When ClientID is set, the user-assigned managed identity with that client ID is used, either
-// through Azure Workload Identity when the federated service account token is available, or
-// through IMDS otherwise.
+// AzureManagedIdentity configures managed identity authentication.
+// An empty ClientID uses the default Azure credential chain.
 type AzureManagedIdentity struct {
-	// ClientID is the client ID of the user-assigned managed identity to use.
-	// Omit this field to use the system-assigned managed identity or the default
-	// Azure credential chain of the controller's environment.
+	// ClientID selects a user-assigned managed identity.
 	//
 	// +optional
 	// +kubebuilder:validation:MinLength=1
