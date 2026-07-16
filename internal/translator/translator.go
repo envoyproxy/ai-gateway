@@ -22,6 +22,7 @@ import (
 const (
 	pathHeaderName          = ":path"
 	statusHeaderName        = ":status"
+	gcpPathHeaderName       = "gcp-path"
 	contentTypeHeaderName   = "content-type"
 	contentLengthHeaderName = "content-length"
 	awsErrorTypeHeaderName  = "x-amzn-errortype"

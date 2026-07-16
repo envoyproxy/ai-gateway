@@ -288,7 +288,8 @@ type GCPAuth struct {
 	// ProjectName is the GCP project name to use for the request.
 	// This is used in URL path templates when making requests to GCP Vertex AI endpoints.
 	// This should be the project where Vertex AI APIs are enabled.
-	ProjectName string `json:"projectName"`
+	ProjectName   string `json:"projectName"`
+	IsPassThrough bool   `json:"isPassthrough"`
 }
 
 // LogValue implements slog.LogValuer for GCPAuth to redact sensitive information.
