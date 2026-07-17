@@ -130,6 +130,17 @@ func TestGCPHandler_Do(t *testing.T) {
 	}
 }
 
+func TestGCPHandler_Do_MissingPathHeader(t *testing.T) {
+	handler := &gcpHandler{
+		gcpAccessToken: "test-token",
+		region:         "us-central1",
+		projectName:    "test-project",
+	}
+
+	_, err := handler.Do(context.Background(), map[string]string{}, nil)
+	require.ErrorContains(t, err, "missing ':path' header in the request")
+}
+
 type mockTokenSource struct {
 	token string
 	err   error

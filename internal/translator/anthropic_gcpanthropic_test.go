@@ -7,6 +7,7 @@ package translator
 
 import (
 	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -743,4 +744,63 @@ data: {"type": "message_stop"}
 
 	assert.True(t, cacheCreationSet, "cache creation tokens should be set")
 	assert.Equal(t, uint32(1), cacheCreationTokens, "No cache creation tokens in this scenario")
+}
+
+// Debug logging in the unsupportedFields strip loop should only fire when debugLogEnabled
+// AND logger != nil (unlike the redaction debug logs elsewhere, this path has no
+// enableRedaction gate).
+func TestAnthropicToGCPAnthropicTranslator_RequestBody_UnsupportedFieldsDebugLogging(t *testing.T) {
+	newTranslatorWithField := func() *anthropicToGCPAnthropicTranslator {
+		return NewAnthropicToGCPAnthropicTranslator("2023-06-01", "", "context_management").(*anthropicToGCPAnthropicTranslator)
+	}
+
+	rawRequest := func(t *testing.T) []byte {
+		t.Helper()
+		parsedReq := &anthropic.MessagesRequest{
+			Model:     "claude-sonnet-4-5",
+			Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "ping"}}},
+			MaxTokens: 100,
+		}
+		raw, err := json.Marshal(parsedReq)
+		require.NoError(t, err)
+		raw, err = sjson.SetRawBytes(raw, "context_management", []byte(`{"edits":[{"type":"clear_tool_uses_20250919"}]}`))
+		require.NoError(t, err)
+		return raw
+	}
+
+	parsedReq := &anthropic.MessagesRequest{
+		Model:     "claude-sonnet-4-5",
+		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "ping"}}},
+		MaxTokens: 100,
+	}
+
+	t.Run("logs when debugLogEnabled and logger are set", func(t *testing.T) {
+		var buf bytes.Buffer
+		translator := newTranslatorWithField()
+		translator.SetRedactionConfig(true, false, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
+		_, bodyMutation, err := translator.RequestBody(rawRequest(t), parsedReq, false)
+		require.NoError(t, err)
+		require.NotNil(t, bodyMutation)
+		assert.Contains(t, buf.String(), "stripped unsupported Anthropic field")
+	})
+
+	t.Run("no log when debugLogEnabled is false", func(t *testing.T) {
+		var buf bytes.Buffer
+		translator := newTranslatorWithField()
+		translator.SetRedactionConfig(false, false, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
+		_, _, err := translator.RequestBody(rawRequest(t), parsedReq, false)
+		require.NoError(t, err)
+		assert.Empty(t, buf.String())
+	})
+
+	t.Run("no log when logger is nil", func(t *testing.T) {
+		translator := newTranslatorWithField()
+		translator.SetRedactionConfig(true, false, nil)
+
+		_, bodyMutation, err := translator.RequestBody(rawRequest(t), parsedReq, false)
+		require.NoError(t, err)
+		require.NotNil(t, bodyMutation)
+	})
 }

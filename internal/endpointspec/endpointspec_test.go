@@ -402,6 +402,9 @@ func TestResponsesEndpointSpec_GetTranslator(t *testing.T) {
 
 	_, err = spec.GetTranslator(&filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
 	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(&filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere}, "override")
+	require.ErrorContains(t, err, "unsupported API schema")
 }
 
 func TestTokenizeEndpointSpec_ParseBody(t *testing.T) {
@@ -502,14 +505,14 @@ func TestTokenizeEndpointSpec_GetTranslator(t *testing.T) {
 		s := schema
 		t.Run("supported_"+string(s.Name), func(t *testing.T) {
 			t.Parallel()
-			translator, err := spec.GetTranslator(s, "override")
+			translator, err := spec.GetTranslator(&s, "override")
 			require.NoError(t, err)
 			require.NotNil(t, translator)
 		})
 	}
 
 	t.Run("unsupported", func(t *testing.T) {
-		_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: "Unknown"}, "override")
+		_, err := spec.GetTranslator(&filterapi.VersionedAPISchema{Name: "Unknown"}, "override")
 		require.ErrorContains(t, err, "unsupported API schema for tokenize endpoint")
 	})
 }

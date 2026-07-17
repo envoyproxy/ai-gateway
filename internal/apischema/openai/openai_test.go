@@ -13774,3 +13774,46 @@ func TestResponseContentPartDoneEventPartUnionUnmarshalJSON(t *testing.T) {
 		})
 	}
 }
+
+func TestError_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  []byte
+		expect Error
+		expErr string
+	}{
+		{
+			name:   "object shape",
+			input:  []byte(`{"type": "error", "error": {"type": "invalid_request_error", "message": "bad request"}}`),
+			expect: Error{Type: "error", Error: ErrorType{Type: "invalid_request_error", Message: "bad request"}},
+		},
+		{
+			name:   "array-wrapped shape",
+			input:  []byte(`[{"type": "error", "error": {"type": "not_found_error", "message": "model not found"}}]`),
+			expect: Error{Type: "error", Error: ErrorType{Type: "not_found_error", Message: "model not found"}},
+		},
+		{
+			name:   "empty array",
+			input:  []byte(`[]`),
+			expErr: "error body is an empty array",
+		},
+		{
+			name:   "neither object nor array",
+			input:  []byte(`123`),
+			expErr: "error body is neither an object nor an array of objects",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var result Error
+			err := json.Unmarshal(tc.input, &result)
+			if tc.expErr != "" {
+				require.ErrorContains(t, err, tc.expErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expect, result)
+		})
+	}
+}

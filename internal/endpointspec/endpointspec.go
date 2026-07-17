@@ -484,7 +484,7 @@ func (TokenizeEndpointSpec) ParseBody(
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (TokenizeEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.TokenizeTranslator, error) {
+func (TokenizeEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.TokenizeTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewTokenizeTranslator(modelNameOverride), nil
@@ -492,6 +492,9 @@ func (TokenizeEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 		return nil, fmt.Errorf("unsupported API schema for tokenize endpoint: backend=%s", schema.Name)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (TokenizeEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (TokenizeEndpointSpec) RedactSensitiveInfoFromRequest(req *tokenize.RequestUnion) (redactedReq *tokenize.RequestUnion, err error) {
