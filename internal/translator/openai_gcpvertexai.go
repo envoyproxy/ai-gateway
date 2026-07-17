@@ -28,13 +28,11 @@ import (
 )
 
 const (
-	gcpVertexAIBackendError = "GCPVertexAIBackendError"
-)
-
-const (
 	LineFeedSSEDelimiter               = "\n\n"
 	CarriageReturnSSEDelimiter         = "\r\r"
 	CarriageReturnLineFeedSSEDelimiter = "\r\n\r\n"
+
+	gcpVertexAIBackendError = "GCPVertexAIBackendError"
 )
 
 // detectSSEDelimiter detects which SSE delimiter is being used in the data.
@@ -591,6 +589,7 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) geminiResponseToOpenAIMe
 
 // convertGCPVertexAIErrorToOpenAI converts GCP Vertex AI error responses to OpenAI error format.
 // This is a shared function used by both chat completion and embedding translators.
+// GCP error responses typically contain JSON with error details or plain text error messages.
 func convertGCPVertexAIErrorToOpenAI(respHeaders map[string]string, body io.Reader) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {

@@ -22,6 +22,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
@@ -113,6 +114,8 @@ type (
 	TranscriptionEndpointSpec struct{}
 	// TranslationEndpointSpec implements EndpointSpec for /v1/audio/translations.
 	TranslationEndpointSpec struct{}
+	// TokenizeEndpointSpec implements EndpointSpec for /tokenize.
+	TokenizeEndpointSpec struct{}
 )
 
 var errMultipartNotSupported = fmt.Errorf("%w: multipart body not supported for this endpoint", internalapi.ErrMalformedRequest)
@@ -416,6 +419,77 @@ func (RerankEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, mod
 func (RerankEndpointSpec) RedactSensitiveInfoFromRequest(req *cohereschema.RerankV2Request) (redactedReq *cohereschema.RerankV2Request, err error) {
 	// Placeholder if redaction is required in future
 	return req, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (TokenizeEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+) (internalapi.OriginalModel, *tokenize.RequestUnion, bool, []byte, error) {
+	// Try to detect if it's a chat or completion request by checking for "messages" field
+	var rawRequest map[string]interface{}
+	if err := json.Unmarshal(body, &rawRequest); err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /tokenize: %w", internalapi.ErrMalformedRequest, err)
+	}
+
+	var req tokenize.RequestUnion
+	var model string
+
+	// Check if this is a chat tokenize request (has "messages" field)
+	if _, hasMessages := rawRequest["messages"]; hasMessages {
+		var chatReq tokenize.ChatRequest
+		if err := json.Unmarshal(body, &chatReq); err != nil {
+			return "", nil, false, nil, fmt.Errorf("%w: failed to parse chat tokenize request: %w", internalapi.ErrMalformedRequest, err)
+		}
+		if err := chatReq.Validate(); err != nil {
+			return "", nil, false, nil, fmt.Errorf("%w: invalid chat tokenize request: %w", internalapi.ErrMalformedRequest, err)
+		}
+		req.ChatRequest = &chatReq
+		model = chatReq.Model
+	} else {
+		var completionReq tokenize.CompletionRequest
+		if err := json.Unmarshal(body, &completionReq); err != nil {
+			return "", nil, false, nil, fmt.Errorf("%w: failed to parse completion tokenize request: %w", internalapi.ErrMalformedRequest, err)
+		}
+		req.CompletionRequest = &completionReq
+		model = completionReq.Model
+	}
+
+	if err := req.Validate(); err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: invalid tokenize request: %w", internalapi.ErrMalformedRequest, err)
+	}
+
+	// Tokenize requests are never streaming
+	return model, &req, false, nil, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (TokenizeEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.TokenizeTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewTokenizeTranslator(modelNameOverride), nil
+	case filterapi.APISchemaGCPVertexAI:
+		return translator.NewTokenizeToGCPVertexAITranslator(modelNameOverride), nil
+	case filterapi.APISchemaGCPAnthropic:
+		return translator.NewTokenizeToGCPAnthropicTranslator(schema.Version, modelNameOverride), nil
+	case filterapi.APISchemaAWSBedrock:
+		return translator.NewTokenizeToAWSBedrockTranslator(modelNameOverride), nil
+	case filterapi.APISchemaAWSAnthropic:
+		return translator.NewTokenizeToAWSAnthropicTranslator(schema.Version, modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema for tokenize endpoint: backend=%s", schema.Name)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (TokenizeEndpointSpec) RedactSensitiveInfoFromRequest(req *tokenize.RequestUnion) (redactedReq *tokenize.RequestUnion, err error) {
+	// Placeholder if redaction is required in future
+	return req, nil
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (TokenizeEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *tokenize.RequestUnion, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
 }
 
 // redactMessage redacts sensitive content from a chat message while preserving its type and structure.
