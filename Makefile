@@ -19,7 +19,7 @@ GO_LDFLAGS += -X $(VERSION_PACKAGE).version=$(VERSION_STRING)
 OUTPUT_DIR ?= out
 
 # Arguments for docker builds.
-OCI_REGISTRY ?= docker.io/envoyproxy
+OCI_REGISTRY ?= docker.io/cheda94
 OCI_REPOSITORY_PREFIX ?= ${OCI_REGISTRY}/ai-gateway
 TAG ?= latest
 ENABLE_MULTI_PLATFORMS ?= false
