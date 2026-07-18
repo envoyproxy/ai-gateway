@@ -470,6 +470,14 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		mode = &extprocv3http.ProcessingMode{ResponseBodyMode: extprocv3http.ProcessingMode_STREAMED}
 	}
 	headerMutation, _ := mutationsFromTranslationResult(newHeaders, nil)
+	// When switching to streamed mode, remove content-length so Envoy does
+	// not truncate the response to the first body chunk. The upstream may
+	// include content-length (e.g. computed by a prior hop's HTTP/2 codec
+	// when transfer-encoding: chunked was copied by an EPP ext_proc), which
+	// is invalid for a streaming SSE response.
+	if mode != nil {
+		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, "content-length")
+	}
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 		ResponseHeaders: &extprocv3.HeadersResponse{
 			Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation},
