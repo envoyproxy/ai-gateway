@@ -148,10 +148,10 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 		return nil, fmt.Errorf("failed to inject quota rate limiting: %w", err)
 	}
 
-	// Move Lua filters from EnvoyExtensionPolicies annotated with before-extproc to run before
-	// the AI Gateway ext_proc.
-	if err = s.maybeReorderBeforeExtProcLuaFilters(ctx, req.Listeners, req.Routes); err != nil {
-		return nil, fmt.Errorf("failed to reorder before-extproc lua filters: %w", err)
+	// Reorder extension filters from EnvoyExtensionPolicies annotated with FilterOrderAnnotation
+	// relative to the AI Gateway ext_proc.
+	if err = s.maybeReorderFilters(ctx, req.Listeners, req.Routes); err != nil {
+		return nil, fmt.Errorf("failed to reorder extension filters: %w", err)
 	}
 
 	response := &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets, Listeners: req.Listeners, Routes: req.Routes}
@@ -950,123 +950,23 @@ func findListenerRouteConfigs(listener *listenerv3.Listener) []string {
 	return append(names, rds.RouteConfigName) // Add default filter chain's route config name.
 }
 
-// maybeReorderBeforeExtProcLuaFilters moves Lua filters from EnvoyExtensionPolicies annotated with
-// internalapi.LuaFilterOrderBeforeExtProc to a position before the AI Gateway ext_proc
-// filter in each listener's HCM filter chain.
-func (s *Server) maybeReorderBeforeExtProcLuaFilters(ctx context.Context, listeners []*listenerv3.Listener, routes []*routev3.RouteConfiguration) error {
-	policies, err := s.listEnvoyExtensionPolicies(ctx)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
+// maybeReorderFilters repositions extension filters from EnvoyExtensionPolicies annotated with
+// FilterOrderAnnotation relative to the AI Gateway ext_proc filter in each listener's HCM chain.
+func (s *Server) maybeReorderFilters(ctx context.Context, listeners []*listenerv3.Listener, routes []*routev3.RouteConfiguration) error {
+	policies, err := listEnvoyExtensionPolicies(ctx, s.k8sClient)
+	if err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("failed to list EnvoyExtensionPolicies: %w", err)
 	}
 
-	beforeExtProcLuaFilterNames := buildBeforeExtProcLuaFilterNames(policies, routes)
-	if len(beforeExtProcLuaFilterNames) == 0 {
+	beforeNames, afterNames := buildFilterOrderSets(policies, routes)
+	if len(beforeNames) == 0 && len(afterNames) == 0 {
 		return nil
 	}
 
 	for _, listener := range listeners {
-		filterChains := listener.GetFilterChains()
-		if listener.DefaultFilterChain != nil {
-			filterChains = append(filterChains, listener.DefaultFilterChain)
-		}
-		for _, chain := range filterChains {
-			httpConManager, hcmIndex, findErr := findHCM(chain)
-			if findErr != nil {
-				continue
-			}
-			if moveFiltersBeforeAIGatewayExtProc(httpConManager, beforeExtProcLuaFilterNames) {
-				hcmAny, marshalErr := toAny(httpConManager)
-				if marshalErr != nil {
-					return fmt.Errorf("failed to marshal updated HCM to Any: %w", marshalErr)
-				}
-				chain.Filters[hcmIndex].ConfigType = &listenerv3.Filter_TypedConfig{TypedConfig: hcmAny}
-			}
+		if err := reorderFiltersInListener(listener, beforeNames, afterNames); err != nil {
+			return err
 		}
 	}
 	return nil
-}
-
-// listEnvoyExtensionPolicies lists all EnvoyExtensionPolicy resources across all namespaces.
-func (s *Server) listEnvoyExtensionPolicies(ctx context.Context) ([]egv1a1.EnvoyExtensionPolicy, error) {
-	var list egv1a1.EnvoyExtensionPolicyList
-	if err := s.k8sClient.List(ctx, &list); err != nil {
-		return nil, err
-	}
-	return list.Items, nil
-}
-
-// buildBeforeExtProcLuaFilterNames returns the set of HCM filter names that belong to
-// EnvoyExtensionPolicies annotated with aigateway.envoyproxy.io/lua-filter-order: before-extproc.
-func buildBeforeExtProcLuaFilterNames(policies []egv1a1.EnvoyExtensionPolicy, routes []*routev3.RouteConfiguration) map[string]bool {
-	annotatedTargets := make(map[string]bool)
-	for i := range policies {
-		policy := &policies[i]
-		val, ok := policy.Annotations[internalapi.LuaFilterOrderAnnotation]
-		if !ok || val != internalapi.LuaFilterOrderBeforeExtProc {
-			continue
-		}
-		for _, ref := range policy.Spec.TargetRefs {
-			annotatedTargets[fmt.Sprintf("%s/%s", policy.Namespace, ref.Name)] = true
-		}
-	}
-	if len(annotatedTargets) == 0 {
-		return nil
-	}
-
-	result := make(map[string]bool)
-	for _, routeCfg := range routes {
-		for _, vh := range routeCfg.VirtualHosts {
-			for _, route := range vh.Routes {
-				routeName := routeNameFromEnvoyGatewayMetadata(route)
-				if !annotatedTargets[routeName] {
-					continue
-				}
-				for filterName := range route.TypedPerFilterConfig {
-					if strings.HasPrefix(filterName, egv1a1.EnvoyFilterLua.String()+"/") {
-						result[filterName] = true
-					}
-				}
-			}
-		}
-	}
-	return result
-}
-
-// moveFiltersBeforeAIGatewayExtProc relocates the named filters to immediately before the AI Gateway
-// ext_proc filter in the HCM filter chain. It returns true if any filters were moved.
-func moveFiltersBeforeAIGatewayExtProc(mgr *httpconnectionmanagerv3.HttpConnectionManager, names map[string]bool) bool {
-	var toMove, rest []*httpconnectionmanagerv3.HttpFilter
-	for _, f := range mgr.HttpFilters {
-		if names[f.Name] {
-			toMove = append(toMove, f)
-		} else {
-			rest = append(rest, f)
-		}
-	}
-	if len(toMove) == 0 {
-		return false
-	}
-
-	insertIdx := -1
-	for i, f := range rest {
-		if f.Name == aiGatewayExtProcName {
-			// insert before ext_proc filter
-			insertIdx = i 
-			break
-		}
-	}
-	if insertIdx == -1 {
-		// ai GW ext_proc not present. leave unchanged.
-		return false
-	}
-
-	result := make([]*httpconnectionmanagerv3.HttpFilter, 0, len(rest)+len(toMove))
-	result = append(result, rest[:insertIdx]...)
-	result = append(result, toMove...)
-	result = append(result, rest[insertIdx:]...)
-	mgr.HttpFilters = result
-	return true
 }
