@@ -106,6 +106,10 @@ func (g *gcpHandler) Do(_ context.Context, requestHeaders map[string]string, _ [
 	newPath := fmt.Sprintf("%s/%s", prefixPath, path)
 	resultHeaders := []internalapi.Header{{":path", newPath}}
 
+	if g.isPassThrough {
+		return resultHeaders, nil
+	}
+
 	// Get the access token
 	var accessToken string
 	if g.tokenSource != nil {
