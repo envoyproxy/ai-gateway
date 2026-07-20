@@ -553,7 +553,12 @@ func openAIToAnthropicMessages(openAIMsgs []openai.ChatCompletionMessageParamUni
 					IsError:   anthropic.Bool(isError),
 				}
 
-				if cacheControl != nil {
+				// Prefer message-level cache_control so string tool results can
+				// carry a breakpoint; fall back to content-part markers.
+				switch {
+				case isCacheEnabled(toolMsg.AnthropicContentFields):
+					toolResultBlock.CacheControl = toolMsg.CacheControl
+				case cacheControl != nil:
 					toolResultBlock.CacheControl = *cacheControl
 				}
 
@@ -616,14 +621,21 @@ func modelContainsAny(model internalapi.RequestModel, identifiers []string) bool
 }
 
 // outputConfigModels lists model identifiers that support structured outputs (OutputConfig).
-// Structured outputs are available on Claude Opus 4.6, Claude Sonnet 4.6, Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
+// Structured outputs are available on Claude Fable 5, Claude Mythos 5, Claude Opus 4.8, Claude Mythos Preview,
+// Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 5, Claude Sonnet 4.6, Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
 // See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
 var outputConfigModels = []string{
-	"opus-4-5",   // Claude Opus 4.5
-	"sonnet-4-5", // Claude Sonnet 4.5
-	"haiku-4-5",  // Claude Haiku 4.5
-	"opus-4-6",   // Claude Opus 4.6
-	"sonnet-4-6", // Claude Sonnet 4.6
+	"opus-4-5",       // Claude Opus 4.5
+	"sonnet-4-5",     // Claude Sonnet 4.5
+	"haiku-4-5",      // Claude Haiku 4.5
+	"opus-4-6",       // Claude Opus 4.6
+	"sonnet-4-6",     // Claude Sonnet 4.6
+	"opus-4-7",       // Claude Opus 4.7
+	"opus-4-8",       // Claude Opus 4.8
+	"sonnet-5",       // Claude Sonnet 5
+	"fable-5",        // Claude Fable 5
+	"mythos-5",       // Claude Mythos 5
+	"mythos-preview", // Claude Mythos Preview
 }
 
 func outputConfigAvailable(model internalapi.RequestModel) bool {
@@ -631,13 +643,18 @@ func outputConfigAvailable(model internalapi.RequestModel) bool {
 }
 
 // effortModels lists model identifiers that support the output_config.effort parameter.
-// The effort parameter is supported by Claude Mythos Preview, Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 4.6, and Claude Opus 4.5.
+// The effort parameter is supported by Claude Fable 5, Claude Mythos 5, Claude Opus 4.8, Claude Mythos Preview,
+// Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 5, Claude Sonnet 4.6, and Claude Opus 4.5.
 // See: https://platform.claude.com/docs/en/build-with-claude/effort
 var effortModels = []string{
 	"opus-4-5",       // Claude Opus 4.5
 	"opus-4-6",       // Claude Opus 4.6
 	"opus-4-7",       // Claude Opus 4.7
+	"opus-4-8",       // Claude Opus 4.8
 	"sonnet-4-6",     // Claude Sonnet 4.6
+	"sonnet-5",       // Claude Sonnet 5
+	"fable-5",        // Claude Fable 5
+	"mythos-5",       // Claude Mythos 5
 	"mythos-preview", // Claude Mythos Preview
 }
 
