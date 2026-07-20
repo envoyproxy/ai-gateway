@@ -29,6 +29,15 @@ func TestAIGatewayRoutes(t *testing.T) {
 		expErr string
 	}{
 		{name: "basic.yaml"},
+		{name: "rule_name.yaml"},
+		{
+			name:   "duplicate_rule_names.yaml",
+			expErr: "spec.rules: Invalid value: \"array\": rule name must be unique within the route",
+		},
+		{
+			name:   "reserved_rule_name.yaml",
+			expErr: "spec.rules[0]: Invalid value: \"object\": rule name route-not-found is reserved",
+		},
 		{name: "llmcosts.yaml"},
 		{name: "parent_refs.yaml"},
 		{name: "parent_refs_default_kind.yaml"},
