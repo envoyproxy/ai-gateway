@@ -287,8 +287,17 @@ focused on retrieval and semantic analysis.
   - `OTEL_BSP_SCHEDULE_DELAY`: Batch span processor delay (default: 5000ms)
   - `OTEL_METRIC_EXPORT_INTERVAL`: Metrics export interval (default: 60000ms)
 
+- **Semantic Convention**: Select which span attributes are recorded. See
+  [Tracing][tracing] for the attribute differences.
+  - `AI_GATEWAY_TRACING_SEMCONV`: `openinference` (default) or `gen_ai` for the
+    OpenTelemetry GenAI conventions. An unrecognized value fails startup.
+  - `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`: Capture message content
+    when `gen_ai` is selected (default: `false`). The GenAI conventions treat
+    content as opt-in, unlike OpenInference.
+
 - **[OpenInference][openinference-config]**: Control sensitive data redaction,
-  such as below. There is [similar config][openinference-embeddings] for embeddings:
+  such as below. These apply only when `AI_GATEWAY_TRACING_SEMCONV` is
+  `openinference`. There is [similar config][openinference-embeddings] for embeddings:
   - `OPENINFERENCE_HIDE_INPUTS`: Hide input messages/prompts (default: `false`)
   - `OPENINFERENCE_HIDE_OUTPUTS`: Hide output messages/completions (default: `false`)
   - `OPENINFERENCE_HIDE_EMBEDDINGS_TEXT`: Hide embeddings input (default: `false`)
@@ -368,3 +377,4 @@ Custom run IDs:
 [openinference-embeddings]: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
 [docker-compose-otel.yaml]: https://github.com/envoyproxy/ai-gateway/blob/main/cmd/aigw/docker-compose-otel.yaml
 [session-tracking]: ../capabilities/observability/tracing.md#session-tracking
+[tracing]: ../capabilities/observability/tracing.md#semantic-conventions
