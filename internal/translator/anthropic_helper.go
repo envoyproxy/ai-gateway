@@ -22,6 +22,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
@@ -620,11 +621,27 @@ func modelContainsAny(model internalapi.RequestModel, identifiers []string) bool
 	return false
 }
 
-// outputConfigModels lists model identifiers that support structured outputs (OutputConfig).
-// Structured outputs are available on Claude Fable 5, Claude Mythos 5, Claude Opus 4.8, Claude Mythos Preview,
-// Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 5, Claude Sonnet 4.6, Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
+// Structured output (OutputConfig) support differs by backend. The supported
+// model list on AWS Bedrock (InvokeModel) is a strict subset of the list on
+// GCP Vertex AI, so the lists are maintained separately and selected by schema.
 // See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
-var outputConfigModels = []string{
+
+// awsOutputConfigModels lists model identifiers that support structured outputs
+// on AWS Bedrock via the InvokeModel API: Claude Opus 4.6, Claude Sonnet 4.6,
+// Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
+var awsOutputConfigModels = []string{
+	"opus-4-5",   // Claude Opus 4.5
+	"sonnet-4-5", // Claude Sonnet 4.5
+	"haiku-4-5",  // Claude Haiku 4.5
+	"opus-4-6",   // Claude Opus 4.6
+	"sonnet-4-6", // Claude Sonnet 4.6
+}
+
+// gcpOutputConfigModels lists model identifiers that support structured outputs
+// on GCP Vertex AI: Claude Fable 5, Claude Mythos 5, Claude Opus 4.8, Claude
+// Mythos Preview, Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 5, Claude
+// Sonnet 4.6, Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
+var gcpOutputConfigModels = []string{
 	"opus-4-5",       // Claude Opus 4.5
 	"sonnet-4-5",     // Claude Sonnet 4.5
 	"haiku-4-5",      // Claude Haiku 4.5
@@ -638,8 +655,13 @@ var outputConfigModels = []string{
 	"mythos-preview", // Claude Mythos Preview
 }
 
-func outputConfigAvailable(model internalapi.RequestModel) bool {
-	return modelContainsAny(model, outputConfigModels)
+func outputConfigAvailable(apiSchema filterapi.APISchemaName, model internalapi.RequestModel) bool {
+	switch apiSchema {
+	case filterapi.APISchemaGCPAnthropic:
+		return modelContainsAny(model, gcpOutputConfigModels)
+	default:
+		return modelContainsAny(model, awsOutputConfigModels)
+	}
 }
 
 // effortModels lists model identifiers that support the output_config.effort parameter.
@@ -683,8 +705,9 @@ func mapReasoningEffortToOutputConfigEffort(reasonEffort openai.ReasoningEffort)
 
 // buildAnthropicParams is a helper function that translates an OpenAI request
 // into the parameter struct required by the Anthropic SDK.
-// The apiSchema parameter indicates the backend API schema (e.g., "AWSAnthropic", "GCPAnthropic").
-func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string, modelNameOverride internalapi.ModelNameOverride) (params *anthropic.MessageNewParams, err error) {
+// The apiSchema parameter indicates the backend API schema (e.g., APISchemaAWSAnthropic,
+// APISchemaGCPAnthropic) and is used to gate backend-specific feature support.
+func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema filterapi.APISchemaName, modelNameOverride internalapi.ModelNameOverride) (params *anthropic.MessageNewParams, err error) {
 	// 1. Handle simple parameters.
 	// max_tokens is required by the Anthropic API but optional in the OpenAI API.
 	// If not set, pass 0 and let the Anthropic API reject the request.
@@ -717,15 +740,14 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 
 	// 5. Handle structured outputs (ResponseFormat -> OutputConfig).
 	// See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
-	// Currently, GCP Vertex AI does not support structured output.
+	// Structured output is generally available on both AWS Bedrock and GCP Vertex AI.
 	// Use modelNameOverride for feature checks when available, as it is more
 	// reliable than the user-provided model name which may be arbitrarily set.
 	featureCheckModel := openAIReq.Model
 	if modelNameOverride != "" {
 		featureCheckModel = modelNameOverride
 	}
-	isGCPBackend := strings.HasPrefix(apiSchema, "GCP")
-	if !isGCPBackend && openAIReq.ResponseFormat != nil && openAIReq.ResponseFormat.OfJSONSchema != nil && outputConfigAvailable(featureCheckModel) {
+	if openAIReq.ResponseFormat != nil && openAIReq.ResponseFormat.OfJSONSchema != nil && outputConfigAvailable(apiSchema, featureCheckModel) {
 		// Convert OpenAI JSON schema to Anthropic OutputConfig format
 		var schemaMap map[string]any
 		if err = json.Unmarshal(openAIReq.ResponseFormat.OfJSONSchema.JSONSchema.Schema, &schemaMap); err != nil {
