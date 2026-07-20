@@ -104,7 +104,80 @@ kubectl port-forward -n envoy-ai-gateway-system svc/phoenix-svc 6006:6006
 
 Then open http://localhost:6006 in your browser to explore the traces.
 
+## Semantic Conventions
+
+Spans are recorded using [OpenInference semantic conventions][openinference] by
+default. You can instead emit the
+[OpenTelemetry GenAI semantic conventions][otel-genai], which use `gen_ai.*`
+attributes and are consumed by OpenTelemetry-native backends:
+
+```yaml
+extProc:
+  extraEnvVars:
+    - name: AI_GATEWAY_TRACING_SEMCONV
+      value: "gen_ai"
+```
+
+| Value                    | Behavior                           |
+| ------------------------ | ---------------------------------- |
+| unset or `openinference` | OpenInference attributes (default) |
+| `gen_ai`                 | OpenTelemetry GenAI attributes     |
+
+Any other value fails startup rather than silently falling back, so a typo is
+reported immediately instead of producing traces nobody is watching.
+
+Only one convention is emitted at a time. Choosing `gen_ai` changes the shape of
+your spans, so update dashboards and alerts before switching:
+
+|           | OpenInference            | OpenTelemetry GenAI                             |
+| --------- | ------------------------ | ----------------------------------------------- |
+| Span name | `ChatCompletion`         | `chat {model}`                                  |
+| Span kind | `INTERNAL`               | `CLIENT`                                        |
+| Model     | `llm.model_name`         | `gen_ai.request.model`, `gen_ai.response.model` |
+| Provider  | `llm.system`             | `gen_ai.provider.name`                          |
+| Tokens    | `llm.token_count.prompt` | `gen_ai.usage.input_tokens`                     |
+| Messages  | `llm.input_messages.N.*` | `gen_ai.input.messages` (single JSON value)     |
+| Errors    | `exception` event        | `error.type` attribute                          |
+
+Note that the GenAI conventions are still marked Development upstream, so
+attribute names may change in future releases.
+
+Since span names include the model, they are higher cardinality than
+OpenInference's fixed names. This matters for backends that index on span name.
+
+### Capturing message content with GenAI
+
+Unlike OpenInference, which records request and response content by default, the
+GenAI conventions treat message content as opt-in because it routinely contains
+sensitive data. Enable it explicitly:
+
+```yaml
+extProc:
+  extraEnvVars:
+    - name: AI_GATEWAY_TRACING_SEMCONV
+      value: "gen_ai"
+    - name: OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT
+      value: "true"
+```
+
+Token counts and sampling parameters are recorded either way, since the
+conventions treat those as metadata rather than content.
+
+Message content is currently mapped for chat completions and Anthropic
+messages. Other endpoints record operation, model, usage and sampling
+parameters. Several — image generation, speech, transcription, translation and
+rerank — have no content attributes defined by the conventions at all.
+
+The `OPENINFERENCE_HIDE_*` variables described below apply only to the
+OpenInference convention. They have no effect when `gen_ai` is selected.
+
 ## Privacy Configuration
+
+:::note
+This section applies to the default OpenInference convention. See
+[Capturing message content with GenAI](#capturing-message-content-with-genai)
+for the `gen_ai` equivalent.
+:::
 
 Control sensitive data in traces by adding
 [OpenInference configuration][openinference-config] to Helm values when you
@@ -252,6 +325,7 @@ on `GatewayConfig` usage, including environment variable precedence and shared c
 ---
 
 [openinference]: https://github.com/Arize-ai/openinference/tree/main/spec
+[otel-genai]: https://github.com/open-telemetry/semantic-conventions-genai
 [openinference-config]: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
 [openinference-embeddings]: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
 [otel-config]: https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/

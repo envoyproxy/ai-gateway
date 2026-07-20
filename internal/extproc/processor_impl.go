@@ -627,6 +627,14 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	}
 	rp.upstreamFilterCount++
 	u.metrics.SetBackend(backend.Backend)
+	// Some semantic conventions record the provider, which is only known now
+	// that routing has resolved a backend.
+	if bs, ok := rp.span.(tracingapi.BackendSpan); ok {
+		bs.RecordBackend(tracingapi.Backend{
+			Schema: string(backend.Backend.Schema.Name),
+			Name:   backend.Backend.Name,
+		})
+	}
 	u.modelNameOverride = backend.Backend.ModelNameOverride
 	u.backendName = backend.Backend.Name
 	u.routeName = routeName
