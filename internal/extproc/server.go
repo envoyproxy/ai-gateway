@@ -33,7 +33,7 @@ import (
 
 var (
 	sensitiveHeaderRedactedValue = []byte("[REDACTED]")
-	sensitiveHeaderKeys          = []string{"authorization", "x-api-key"}
+	sensitiveHeaderKeys          = []string{"authorization", "x-api-key", "x-goog-api-key"}
 )
 
 // contextKey is a type for context keys to avoid collisions.
@@ -289,18 +289,18 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 			}
 		}
 		if s.debugLogEnabled && resp != nil && resp.Response != nil {
-			var logContent any
-			if s.enableRedaction {
-				switch val := resp.Response.(type) {
-				case *extprocv3.ProcessingResponse_RequestHeaders:
-					logContent = redactProcessingResponseRequestHeaders(val, s.logger, sensitiveHeaderKeys)
-				case *extprocv3.ProcessingResponse_ImmediateResponse:
-					logContent = val
-				}
-			} else {
-				logContent = resp
+			// The request headers response carries backend auth header mutations
+			// (e.g. x-goog-api-key, authorization, x-api-key) injected by the
+			// BackendAuthHandler. Header values must never leak into logs, and the
+			// mutation carries auth key values, so log only the number of headers
+			// that were set — never their names or values.
+			switch val := resp.Response.(type) {
+			case *extprocv3.ProcessingResponse_RequestHeaders:
+				setHeaderCount := len(val.RequestHeaders.GetResponse().GetHeaderMutation().GetSetHeaders())
+				l.Debug("request headers processed", slog.Int("set_header_count", setHeaderCount))
+			case *extprocv3.ProcessingResponse_ImmediateResponse:
+				l.Debug("request headers processed: immediate response")
 			}
-			l.Debug("request headers processed", slog.Any("response", logContent))
 		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_RequestBody:
@@ -480,23 +480,6 @@ func filterSensitiveHeadersForLogging(headers *corev3.HeaderMap, sensitiveKeys [
 		}
 	}
 	return filteredHeaders
-}
-
-// redactProcessingResponseRequestHeaders creates a safe-to-log copy of the request headers processing response.
-// Used exclusively for debug logging without modifying the actual response sent to Envoy.
-// Redacts sensitive header values (API keys, authorization tokens) while preserving header names for debugging.
-func redactProcessingResponseRequestHeaders(resp *extprocv3.ProcessingResponse_RequestHeaders, logger *slog.Logger, sensitiveKeys []string) *extprocv3.ProcessingResponse_RequestHeaders {
-	originalHeaderMutation := resp.RequestHeaders.GetResponse().GetHeaderMutation()
-
-	return &extprocv3.ProcessingResponse_RequestHeaders{
-		RequestHeaders: &extprocv3.HeadersResponse{
-			Response: &extprocv3.CommonResponse{
-				HeaderMutation:  redactHeaderMutation(originalHeaderMutation, logger, sensitiveKeys),
-				BodyMutation:    redactBodyMutation(resp.RequestHeaders.Response.GetBodyMutation()),
-				ClearRouteCache: resp.RequestHeaders.Response.GetClearRouteCache(),
-			},
-		},
-	}
 }
 
 // redactHeaderMutation creates a copy of header mutations with sensitive header values redacted.

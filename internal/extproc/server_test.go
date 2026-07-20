@@ -521,6 +521,17 @@ func Test_filterSensitiveHeadersForLogging(t *testing.T) {
 	require.Contains(t, hm.Headers, &corev3.HeaderValue{Key: "authorization", Value: "sensitive"})
 }
 
+func Test_isSensitiveHeader(t *testing.T) {
+	// The default keys plus any x-aigw-* header must be treated as sensitive so that
+	// upstream auth headers and per-request credential overrides are redacted in debug logs.
+	for _, key := range []string{"authorization", "Authorization", "x-api-key", "x-goog-api-key", "X-Goog-Api-Key", "x-aigw-goog-api-key"} {
+		require.True(t, isSensitiveHeader(key, sensitiveHeaderKeys), "expected %q to be sensitive", key)
+	}
+	for _, key := range []string{"content-type", "x-ai-eg-model", ":path"} {
+		require.False(t, isSensitiveHeader(key, sensitiveHeaderKeys), "expected %q to not be sensitive", key)
+	}
+}
+
 func Test_filterRequestBodyResponseHeaders(t *testing.T) {
 	buf := internaltesting.CaptureOutput("test")[0]
 	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{

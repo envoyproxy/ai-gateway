@@ -181,6 +181,7 @@ curl -H "Content-Type: application/json" \
 
 - OpenAI
 - Any OpenAI-compatible provider that supports image generations
+- Google AI Studio (native Gemini `generateContent`), via the `GoogleAIStudio` backend schema. The Gemini image bytes returned as `inlineData` are base64-encoded into the OpenAI `b64_json` field.
 
 **Example:**
 
@@ -456,6 +457,7 @@ The following table summarizes which providers support which endpoints:
 | [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |        ✅        |     🚧      |     ✅     |        ❌        |         ❌         |   ❌   |    ❌    | Via API translation (embeddings: Titan models only)                                                                  |
 | [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)                  |        ✅        |     🚧      |     ✅     |        ❌        |         ⚠️         |   ❌   |    ❌    | Via API translation or via [OpenAI-compatible API](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/latest) |
 | [Google Gemini](https://ai.google.dev/gemini-api/docs/openai)                                         |        ✅        |     ⚠️      |     ✅     |        ⚠️        |         ❌         |   ❌   |    ❌    | Via OpenAI-compatible API                                                                                            |
+| [Google AI Studio (native)](https://ai.google.dev/api/rest)                                           |        ❌        |     ❌      |     ❌     |        ⚠️        |         ❌         |   ❌   |    ❌    | Native `generateContent` via `GoogleAIStudio` schema; image generation only                                          |
 | [Groq](https://console.groq.com/docs/openai)                                                          |        ✅        |     ❌      |     ❌     |        ❌        |         ❌         |   ❌   |    ❌    | Via OpenAI-compatible API                                                                                            |
 | [Grok](https://docs.x.ai/docs/api-reference)                                                          |        ✅        |     ⚠️      |     ❌     |        ⚠️        |         ❌         |   ❌   |    ❌    | Via OpenAI-compatible API                                                                                            |
 | [Together AI](https://docs.together.ai/docs/openai-api-compatibility)                                 |        ⚠️        |     ⚠️      |     ⚠️     |        ⚠️        |         ❌         |   ❌   |    ❌    | Via OpenAI-compatible API                                                                                            |
