@@ -642,6 +642,38 @@ spec:
                             format: int32
                             minimum: 0
                             type: integer
+                          translationHints:
+                            description: |-
+                              TranslationHints provides optional model-specific hints to guide request and response
+                              translation for this model-backend pairing. When unset, translators fall back to their
+                              built-in model-name heuristics, so setting this field never changes existing behavior
+                              unless a hint is explicitly declared.
+                              This field is ignored when referencing InferencePool resources.
+                            properties:
+                              maxOutputTokens:
+                                description: |-
+                                  MaxOutputTokens is the maximum number of tokens the model can produce in a single response.
+                                  When set, translators use this as the default max_tokens value for APIs that require it
+                                  (e.g., the Anthropic Messages API) when the client request omits max_tokens.
+                                format: int64
+                                minimum: 1
+                                type: integer
+                              supportsOutputConfig:
+                                description: |-
+                                  SupportsOutputConfig indicates whether the model accepts an Anthropic-style output_config
+                                  field for structured output (e.g., Claude Opus/Sonnet 4.5 and later).
+                                type: boolean
+                              supportsReasoningEffort:
+                                description: |-
+                                  SupportsReasoningEffort indicates whether the model accepts a reasoning effort parameter
+                                  (Gemini thinking level / Anthropic output_config.effort).
+                                type: boolean
+                              supportsResponseJsonSchema:
+                                description: |-
+                                  SupportsResponseJSONSchema indicates whether the model accepts a JSON Schema object in
+                                  response_format (as opposed to only {"type": "json_object"}).
+                                type: boolean
+                            type: object
                           weight:
                             default: 1
                             description: |-
@@ -1571,6 +1603,38 @@ spec:
                             format: int32
                             minimum: 0
                             type: integer
+                          translationHints:
+                            description: |-
+                              TranslationHints provides optional model-specific hints to guide request and response
+                              translation for this model-backend pairing. When unset, translators fall back to their
+                              built-in model-name heuristics, so setting this field never changes existing behavior
+                              unless a hint is explicitly declared.
+                              This field is ignored when referencing InferencePool resources.
+                            properties:
+                              maxOutputTokens:
+                                description: |-
+                                  MaxOutputTokens is the maximum number of tokens the model can produce in a single response.
+                                  When set, translators use this as the default max_tokens value for APIs that require it
+                                  (e.g., the Anthropic Messages API) when the client request omits max_tokens.
+                                format: int64
+                                minimum: 1
+                                type: integer
+                              supportsOutputConfig:
+                                description: |-
+                                  SupportsOutputConfig indicates whether the model accepts an Anthropic-style output_config
+                                  field for structured output (e.g., Claude Opus/Sonnet 4.5 and later).
+                                type: boolean
+                              supportsReasoningEffort:
+                                description: |-
+                                  SupportsReasoningEffort indicates whether the model accepts a reasoning effort parameter
+                                  (Gemini thinking level / Anthropic output_config.effort).
+                                type: boolean
+                              supportsResponseJsonSchema:
+                                description: |-
+                                  SupportsResponseJSONSchema indicates whether the model accepts a JSON Schema object in
+                                  response_format (as opposed to only {"type": "json_object"}).
+                                type: boolean
+                            type: object
                           weight:
                             default: 1
                             description: |-

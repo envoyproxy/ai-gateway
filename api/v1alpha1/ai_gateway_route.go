@@ -374,6 +374,15 @@ type AIGatewayRouteRuleBackendRef struct {
 	// +optional
 	BodyMutation *HTTPBodyMutation `json:"bodyMutation,omitempty"`
 
+	// TranslationHints provides optional model-specific hints to guide request and response
+	// translation for this model-backend pairing. When unset, translators fall back to their
+	// built-in model-name heuristics, so setting this field never changes existing behavior
+	// unless a hint is explicitly declared.
+	// This field is ignored when referencing InferencePool resources.
+	//
+	// +optional
+	TranslationHints *ModelTranslationHints `json:"translationHints,omitempty"`
+
 	// Weight is the weight of the backend. This is exactly the same as the weight in
 	// the BackendRef in the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.BackendRef
@@ -395,6 +404,41 @@ type AIGatewayRouteRuleBackendRef struct {
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:default=0
 	Priority *uint32 `json:"priority,omitempty"`
+}
+
+// ModelTranslationHints provides model-specific hints to guide request and response translation
+// for a model-backend pairing. When set, translators use these values instead of model-name
+// heuristics. All fields are optional; a nil field falls back to the built-in heuristic for
+// backward compatibility.
+//
+// These hints are typically populated by a control plane from a model registry or catalog that
+// tracks per-model metadata such as maximum output token limits and supported features.
+type ModelTranslationHints struct {
+	// MaxOutputTokens is the maximum number of tokens the model can produce in a single response.
+	// When set, translators use this as the default max_tokens value for APIs that require it
+	// (e.g., the Anthropic Messages API) when the client request omits max_tokens.
+	//
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	MaxOutputTokens *int64 `json:"maxOutputTokens,omitempty"`
+
+	// SupportsResponseJSONSchema indicates whether the model accepts a JSON Schema object in
+	// response_format (as opposed to only {"type": "json_object"}).
+	//
+	// +optional
+	SupportsResponseJSONSchema *bool `json:"supportsResponseJsonSchema,omitempty"`
+
+	// SupportsReasoningEffort indicates whether the model accepts a reasoning effort parameter
+	// (Gemini thinking level / Anthropic output_config.effort).
+	//
+	// +optional
+	SupportsReasoningEffort *bool `json:"supportsReasoningEffort,omitempty"`
+
+	// SupportsOutputConfig indicates whether the model accepts an Anthropic-style output_config
+	// field for structured output (e.g., Claude Opus/Sonnet 4.5 and later).
+	//
+	// +optional
+	SupportsOutputConfig *bool `json:"supportsOutputConfig,omitempty"`
 }
 
 type AIGatewayRouteRuleMatch struct {

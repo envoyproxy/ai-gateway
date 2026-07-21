@@ -95,14 +95,14 @@ func TestChatCompletionsEndpointSpec_GetTranslator(t *testing.T) {
 		s := schema
 		t.Run("supported_"+string(s.Name), func(t *testing.T) {
 			t.Parallel()
-			translator, err := spec.GetTranslator(s, "override")
+			translator, err := spec.GetTranslator(&filterapi.Backend{Schema: s, ModelNameOverride: "override"})
 			require.NoError(t, err)
 			require.NotNil(t, translator)
 		})
 	}
 
 	t.Run("unsupported", func(t *testing.T) {
-		_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: "Unknown"}, "override")
+		_, err := spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: "Unknown"}, ModelNameOverride: "override"})
 		require.ErrorContains(t, err, "unsupported API schema")
 	})
 }
@@ -132,10 +132,10 @@ func TestCompletionsEndpointSpec_ParseBody(t *testing.T) {
 func TestCompletionsEndpointSpec_GetTranslator(t *testing.T) {
 	spec := CompletionsEndpointSpec{}
 
-	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	_, err := spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, ModelNameOverride: "override"})
 	require.NoError(t, err)
 
-	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, "override")
+	_, err = spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock}, ModelNameOverride: "override"})
 	require.ErrorContains(t, err, "unsupported API schema")
 }
 
@@ -191,14 +191,14 @@ func TestEmbeddingsEndpointSpec_GetTranslator(t *testing.T) {
 		s := schema
 		t.Run("supported_"+string(s.Name), func(t *testing.T) {
 			t.Parallel()
-			tr, err := spec.GetTranslator(s, "override")
+			tr, err := spec.GetTranslator(&filterapi.Backend{Schema: s, ModelNameOverride: "override"})
 			require.NoError(t, err)
 			require.NotNil(t, tr)
 		})
 	}
 
 	t.Run("unsupported", func(t *testing.T) {
-		_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere}, "override")
+		_, err := spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere}, ModelNameOverride: "override"})
 		require.ErrorContains(t, err, "unsupported API schema")
 	})
 }
@@ -227,10 +227,10 @@ func TestImageGenerationEndpointSpec_ParseBody(t *testing.T) {
 func TestImageGenerationEndpointSpec_GetTranslator(t *testing.T) {
 	spec := ImageGenerationEndpointSpec{}
 
-	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	_, err := spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, ModelNameOverride: "override"})
 	require.NoError(t, err)
 
-	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
+	_, err = spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, ModelNameOverride: "override"})
 	require.ErrorContains(t, err, "unsupported API schema")
 }
 
@@ -272,12 +272,12 @@ func TestMessagesEndpointSpec_GetTranslator(t *testing.T) {
 		{Name: filterapi.APISchemaOpenAI},     // This is for OpenAI-schema backends like vLLM that support the /v1/messages endpoint
 		{Name: filterapi.APISchemaAWSBedrock}, // This is for AWS Bedrock translation from the /v1/messages endpoint
 	} {
-		translator, err := spec.GetTranslator(schema, "override")
+		translator, err := spec.GetTranslator(&filterapi.Backend{Schema: schema, ModelNameOverride: "override"})
 		require.NoError(t, err)
 		require.NotNil(t, translator)
 	}
 
-	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere}, "override")
+	_, err := spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere}, ModelNameOverride: "override"})
 	require.ErrorContains(t, err, "only supports")
 }
 
@@ -305,10 +305,10 @@ func TestRerankEndpointSpec_ParseBody(t *testing.T) {
 func TestRerankEndpointSpec_GetTranslator(t *testing.T) {
 	spec := RerankEndpointSpec{}
 
-	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere}, "override")
+	_, err := spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere}, ModelNameOverride: "override"})
 	require.NoError(t, err)
 
-	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	_, err = spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, ModelNameOverride: "override"})
 	require.ErrorContains(t, err, "unsupported API schema")
 }
 
@@ -379,10 +379,10 @@ func TestResponsesEndpointSpec_ParseBody(t *testing.T) {
 func TestResponsesEndpointSpec_GetTranslator(t *testing.T) {
 	spec := ResponsesEndpointSpec{}
 
-	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	_, err := spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, ModelNameOverride: "override"})
 	require.NoError(t, err)
 
-	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
+	_, err = spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, ModelNameOverride: "override"})
 	require.NoError(t, err)
 }
 
@@ -1066,10 +1066,10 @@ func TestSpeechEndpointSpec_ParseBody(t *testing.T) {
 func TestSpeechEndpointSpec_GetTranslator(t *testing.T) {
 	spec := SpeechEndpointSpec{}
 
-	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	_, err := spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, ModelNameOverride: "override"})
 	require.NoError(t, err)
 
-	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
+	_, err = spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, ModelNameOverride: "override"})
 	require.ErrorContains(t, err, "unsupported API schema for speech")
 }
 
@@ -1326,10 +1326,10 @@ func TestTranscriptionEndpointSpec_ParseMultipartBody(t *testing.T) {
 func TestTranscriptionEndpointSpec_GetTranslator(t *testing.T) {
 	spec := TranscriptionEndpointSpec{}
 
-	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	_, err := spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, ModelNameOverride: "override"})
 	require.NoError(t, err)
 
-	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
+	_, err = spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, ModelNameOverride: "override"})
 	require.ErrorContains(t, err, "unsupported API schema for audio transcription")
 }
 
@@ -1434,10 +1434,10 @@ func TestTranslationEndpointSpec_ParseMultipartBody(t *testing.T) {
 func TestTranslationEndpointSpec_GetTranslator(t *testing.T) {
 	spec := TranslationEndpointSpec{}
 
-	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	_, err := spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, ModelNameOverride: "override"})
 	require.NoError(t, err)
 
-	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
+	_, err = spec.GetTranslator(&filterapi.Backend{Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, ModelNameOverride: "override"})
 	require.ErrorContains(t, err, "unsupported API schema for audio translation")
 }
 

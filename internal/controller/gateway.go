@@ -205,6 +205,19 @@ func bodyMutationToFilterAPI(m *aigv1b1.HTTPBodyMutation) *filterapi.HTTPBodyMut
 	return ret
 }
 
+// translationHintsToFilterAPI converts an aigv1b1.ModelTranslationHints to filterapi.ModelTranslationHints.
+func translationHintsToFilterAPI(h *aigv1b1.ModelTranslationHints) *filterapi.ModelTranslationHints {
+	if h == nil {
+		return nil
+	}
+	return &filterapi.ModelTranslationHints{
+		MaxOutputTokens:            h.MaxOutputTokens,
+		SupportsResponseJSONSchema: h.SupportsResponseJSONSchema,
+		SupportsReasoningEffort:    h.SupportsReasoningEffort,
+		SupportsOutputConfig:       h.SupportsOutputConfig,
+	}
+}
+
 // validateCELExpression validates and returns a CEL expression for cost calculation.
 func validateCELExpression(cost aigv1b1.LLMRequestCost) (string, error) {
 	if cost.CEL == nil {
@@ -470,6 +483,8 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					// Merge with route-level taking precedence over backend-level
 					mergedBodyMutation := mergeBodyMutations(routeBodyMutation, backendBodyMutation)
 					b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
+
+					b.TranslationHints = translationHintsToFilterAPI(backendRef.TranslationHints)
 
 					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
 				}

@@ -2796,6 +2796,54 @@ func Test_bodyMutationToFilterAPI(t *testing.T) {
 	}
 }
 
+func Test_translationHintsToFilterAPI(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *aigv1b1.ModelTranslationHints
+		expected *filterapi.ModelTranslationHints
+	}{
+		{
+			name:     "nil input",
+			input:    nil,
+			expected: nil,
+		},
+		{
+			name:     "empty hints",
+			input:    &aigv1b1.ModelTranslationHints{},
+			expected: &filterapi.ModelTranslationHints{},
+		},
+		{
+			name: "all fields set",
+			input: &aigv1b1.ModelTranslationHints{
+				MaxOutputTokens:            ptr.To(int64(32000)),
+				SupportsResponseJSONSchema: ptr.To(true),
+				SupportsReasoningEffort:    ptr.To(true),
+				SupportsOutputConfig:       ptr.To(false),
+			},
+			expected: &filterapi.ModelTranslationHints{
+				MaxOutputTokens:            ptr.To(int64(32000)),
+				SupportsResponseJSONSchema: ptr.To(true),
+				SupportsReasoningEffort:    ptr.To(true),
+				SupportsOutputConfig:       ptr.To(false),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := translationHintsToFilterAPI(tt.input)
+			if tt.expected == nil {
+				require.Nil(t, result)
+				return
+			}
+			require.NotNil(t, result)
+			if d := cmp.Diff(tt.expected, result); d != "" {
+				t.Errorf("translationHintsToFilterAPI() mismatch (-expected +got):\n%s", d)
+			}
+		})
+	}
+}
+
 // TestGatewayController_reconcileFilterConfigSecret_GlobalDefaults tests that
 // global LLM request costs from GatewayConfig are properly included in the filter config
 // when no routes override them.

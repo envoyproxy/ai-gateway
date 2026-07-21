@@ -607,6 +607,7 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutespec)
 - [MCPRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutestatus)
 - [MCPToolFilter](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcptoolfilter)
+- [ModelTranslationHints](#github-com-envoyproxy-ai-gateway-api-v1alpha1-modeltranslationhints)
 - [PerModelQuota](#github-com-envoyproxy-ai-gateway-api-v1alpha1-permodelquota)
 - [ProtectedResourceMetadata](#github-com-envoyproxy-ai-gateway-api-v1alpha1-protectedresourcemetadata)
 - [QuotaBucketMode](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotabucketmode)
@@ -721,6 +722,11 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   type="[HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpbodymutation)"
   required="false"
   description="BodyMutation defines the request body mutation to be applied to this backend.<br />This allows modification of JSON fields in the request body before sending to the backend.<br />When both route-level and backend-level BodyMutation are defined,<br />route-level takes precedence over backend-level for conflicting operations.<br />This field is ignored when referencing InferencePool resources."
+/><ApiField
+  name="translationHints"
+  type="[ModelTranslationHints](#github-com-envoyproxy-ai-gateway-api-v1alpha1-modeltranslationhints)"
+  required="false"
+  description="TranslationHints provides optional model-specific hints to guide request and response<br />translation for this model-backend pairing. When unset, translators fall back to their<br />built-in model-name heuristics, so setting this field never changes existing behavior<br />unless a hint is explicitly declared.<br />This field is ignored when referencing InferencePool resources."
 /><ApiField
   name="weight"
   type="integer"
@@ -2193,6 +2199,48 @@ a tool must match an include rule AND not match any exclude rule to be allowed.
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-modeltranslationhints">ModelTranslationHints</a>
+
+
+
+**Appears in:**
+- [AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulebackendref)
+
+ModelTranslationHints provides model-specific hints to guide request and response translation
+for a model-backend pairing. When set, translators use these values instead of model-name
+heuristics. All fields are optional; a nil field falls back to the built-in heuristic for
+backward compatibility.
+
+These hints are typically populated by a control plane from a model registry or catalog that
+tracks per-model metadata such as maximum output token limits and supported features.
+
+##### Fields
+
+
+
+<ApiField
+  name="maxOutputTokens"
+  type="integer"
+  required="false"
+  description="MaxOutputTokens is the maximum number of tokens the model can produce in a single response.<br />When set, translators use this as the default max_tokens value for APIs that require it<br />(e.g., the Anthropic Messages API) when the client request omits max_tokens."
+/><ApiField
+  name="supportsResponseJsonSchema"
+  type="boolean"
+  required="false"
+  description="SupportsResponseJSONSchema indicates whether the model accepts a JSON Schema object in<br />response_format (as opposed to only \{`type`: `json_object`\})."
+/><ApiField
+  name="supportsReasoningEffort"
+  type="boolean"
+  required="false"
+  description="SupportsReasoningEffort indicates whether the model accepts a reasoning effort parameter<br />(Gemini thinking level / Anthropic output_config.effort)."
+/><ApiField
+  name="supportsOutputConfig"
+  type="boolean"
+  required="false"
+  description="SupportsOutputConfig indicates whether the model accepts an Anthropic-style output_config<br />field for structured output (e.g., Claude Opus/Sonnet 4.5 and later)."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-permodelquota">PerModelQuota</a>
 
 
@@ -3043,6 +3091,7 @@ MCPRouteList contains a list of MCPRoute.
 - [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutespec)
 - [MCPRouteStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutestatus)
 - [MCPToolFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcptoolfilter)
+- [ModelTranslationHints](#github-com-envoyproxy-ai-gateway-api-v1beta1-modeltranslationhints)
 - [ProtectedResourceMetadata](#github-com-envoyproxy-ai-gateway-api-v1beta1-protectedresourcemetadata)
 - [ToolCall](#github-com-envoyproxy-ai-gateway-api-v1beta1-toolcall)
 - [VersionedAPISchema](#github-com-envoyproxy-ai-gateway-api-v1beta1-versionedapischema)
@@ -3149,6 +3198,11 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   type="[HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodymutation)"
   required="false"
   description="BodyMutation defines the request body mutation to be applied to this backend.<br />This allows modification of JSON fields in the request body before sending to the backend.<br />When both route-level and backend-level BodyMutation are defined,<br />route-level takes precedence over backend-level for conflicting operations.<br />This field is ignored when referencing InferencePool resources."
+/><ApiField
+  name="translationHints"
+  type="[ModelTranslationHints](#github-com-envoyproxy-ai-gateway-api-v1beta1-modeltranslationhints)"
+  required="false"
+  description="TranslationHints provides optional model-specific hints to guide request and response<br />translation for this model-backend pairing. When unset, translators fall back to their<br />built-in model-name heuristics, so setting this field never changes existing behavior<br />unless a hint is explicitly declared.<br />This field is ignored when referencing InferencePool resources."
 /><ApiField
   name="weight"
   type="integer"
@@ -4716,6 +4770,48 @@ a tool must match an include rule AND not match any exclude rule to be allowed.
   type="string array"
   required="false"
   description="ExcludeRegex is a list of RE2-compatible regular expressions that, when matched, exclude the tool.<br />Tools matching these patterns will not be available. Exclude rules take precedence over include rules."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-modeltranslationhints">ModelTranslationHints</a>
+
+
+
+**Appears in:**
+- [AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulebackendref)
+
+ModelTranslationHints provides model-specific hints to guide request and response translation
+for a model-backend pairing. When set, translators use these values instead of model-name
+heuristics. All fields are optional; a nil field falls back to the built-in heuristic for
+backward compatibility.
+
+These hints are typically populated by a control plane from a model registry or catalog that
+tracks per-model metadata such as maximum output token limits and supported features.
+
+##### Fields
+
+
+
+<ApiField
+  name="maxOutputTokens"
+  type="integer"
+  required="false"
+  description="MaxOutputTokens is the maximum number of tokens the model can produce in a single response.<br />When set, translators use this as the default max_tokens value for APIs that require it<br />(e.g., the Anthropic Messages API) when the client request omits max_tokens."
+/><ApiField
+  name="supportsResponseJsonSchema"
+  type="boolean"
+  required="false"
+  description="SupportsResponseJSONSchema indicates whether the model accepts a JSON Schema object in<br />response_format (as opposed to only \{`type`: `json_object`\})."
+/><ApiField
+  name="supportsReasoningEffort"
+  type="boolean"
+  required="false"
+  description="SupportsReasoningEffort indicates whether the model accepts a reasoning effort parameter<br />(Gemini thinking level / Anthropic output_config.effort)."
+/><ApiField
+  name="supportsOutputConfig"
+  type="boolean"
+  required="false"
+  description="SupportsOutputConfig indicates whether the model accepts an Anthropic-style output_config<br />field for structured output (e.g., Claude Opus/Sonnet 4.5 and later)."
 />
 
 

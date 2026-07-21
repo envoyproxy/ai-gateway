@@ -22,6 +22,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
@@ -638,7 +639,13 @@ var outputConfigModels = []string{
 	"mythos-preview", // Claude Mythos Preview
 }
 
-func outputConfigAvailable(model internalapi.RequestModel) bool {
+// outputConfigAvailable reports whether the model supports Anthropic structured output (OutputConfig).
+// When hints declare SupportsOutputConfig, that value is authoritative; otherwise it falls back to
+// the model-name heuristic for backward compatibility.
+func outputConfigAvailable(model internalapi.RequestModel, hints *filterapi.ModelTranslationHints) bool {
+	if hints != nil && hints.SupportsOutputConfig != nil {
+		return *hints.SupportsOutputConfig
+	}
 	return modelContainsAny(model, outputConfigModels)
 }
 
@@ -658,7 +665,13 @@ var effortModels = []string{
 	"mythos-preview", // Claude Mythos Preview
 }
 
-func effortAvailable(model internalapi.RequestModel) bool {
+// effortAvailable reports whether the model supports the output_config.effort parameter.
+// When hints declare SupportsReasoningEffort, that value is authoritative; otherwise it falls back
+// to the model-name heuristic for backward compatibility.
+func effortAvailable(model internalapi.RequestModel, hints *filterapi.ModelTranslationHints) bool {
+	if hints != nil && hints.SupportsReasoningEffort != nil {
+		return *hints.SupportsReasoningEffort
+	}
 	return modelContainsAny(model, effortModels)
 }
 
@@ -684,13 +697,16 @@ func mapReasoningEffortToOutputConfigEffort(reasonEffort openai.ReasoningEffort)
 // buildAnthropicParams is a helper function that translates an OpenAI request
 // into the parameter struct required by the Anthropic SDK.
 // The apiSchema parameter indicates the backend API schema (e.g., "AWSAnthropic", "GCPAnthropic").
-func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string, modelNameOverride internalapi.ModelNameOverride) (params *anthropic.MessageNewParams, err error) {
+func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string, modelNameOverride internalapi.ModelNameOverride, hints *filterapi.ModelTranslationHints) (params *anthropic.MessageNewParams, err error) {
 	// 1. Handle simple parameters.
 	// max_tokens is required by the Anthropic API but optional in the OpenAI API.
-	// If not set, pass 0 and let the Anthropic API reject the request.
+	// If the client omits it, default to the model's declared max output tokens when hints provide
+	// it; otherwise pass 0 and let the Anthropic API reject the request (existing behavior).
 	var maxTokensVal int64
 	if maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens); maxTokens != nil {
 		maxTokensVal = *maxTokens
+	} else if hints != nil && hints.MaxOutputTokens != nil {
+		maxTokensVal = *hints.MaxOutputTokens
 	}
 
 	// Translate openAI contents to anthropic params.
@@ -725,7 +741,7 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 		featureCheckModel = modelNameOverride
 	}
 	isGCPBackend := strings.HasPrefix(apiSchema, "GCP")
-	if !isGCPBackend && openAIReq.ResponseFormat != nil && openAIReq.ResponseFormat.OfJSONSchema != nil && outputConfigAvailable(featureCheckModel) {
+	if !isGCPBackend && openAIReq.ResponseFormat != nil && openAIReq.ResponseFormat.OfJSONSchema != nil && outputConfigAvailable(featureCheckModel, hints) {
 		// Convert OpenAI JSON schema to Anthropic OutputConfig format
 		var schemaMap map[string]any
 		if err = json.Unmarshal(openAIReq.ResponseFormat.OfJSONSchema.JSONSchema.Schema, &schemaMap); err != nil {
@@ -740,7 +756,7 @@ func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema str
 	}
 
 	// Map OpenAI reasoning_effort to Anthropic output_config.effort.
-	if openAIReq.ReasoningEffort != "" && effortAvailable(featureCheckModel) {
+	if openAIReq.ReasoningEffort != "" && effortAvailable(featureCheckModel, hints) {
 		effort, effortErr := mapReasoningEffortToOutputConfigEffort(openAIReq.ReasoningEffort)
 		if effortErr != nil {
 			return nil, effortErr
