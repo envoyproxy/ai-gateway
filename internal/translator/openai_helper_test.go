@@ -7,8 +7,13 @@ package translator
 
 import (
 	"bytes"
+	"fmt"
+	"io"
+	"net/http"
 	"testing"
 
+	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/packages/ssestream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
@@ -44,6 +49,23 @@ func parseSSEEventsFromBytes(output []byte) []sseEvent {
 		}
 	}
 	return events
+}
+
+// accumulateAnthropicMessage runs emitted Anthropic SSE bytes through anthropic-sdk-go's
+// Message.Accumulate, the same logic a real Anthropic client uses to build usage from a stream.
+func accumulateAnthropicMessage(t *testing.T, sse []byte) anthropicsdk.Message {
+	t.Helper()
+	resp := &http.Response{
+		Header: http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:   io.NopCloser(bytes.NewReader(sse)),
+	}
+	stream := ssestream.NewStream[anthropicsdk.MessageStreamEventUnion](ssestream.NewDecoder(resp), nil)
+	var msg anthropicsdk.Message
+	for stream.Next() {
+		require.NoError(t, msg.Accumulate(stream.Current()))
+	}
+	require.NoError(t, stream.Err())
+	return msg
 }
 
 func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
@@ -612,10 +634,53 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_TextStreaming(t *testing.T) 
 	require.JSONEq(t, `{"type":"content_block_stop","index":0}`, events[4].data)
 
 	assert.Equal(t, "message_delta", events[5].eventType)
-	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":5}}`, events[5].data)
+	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":10,"output_tokens":5}}`, events[5].data)
 
 	assert.Equal(t, "message_stop", events[6].eventType)
 	require.JSONEq(t, `{"type":"message_stop"}`, events[6].data)
+}
+
+// TestOpenAIStreamToAnthropicState_ProcessBuffer_CachedTokens is a regression test guarding
+// against double-counting OpenAI's cached_tokens/cache_creation_input_tokens (a breakdown
+// within prompt_tokens) as if they were additive, Anthropic-native cache usage fields.
+func TestOpenAIStreamToAnthropicState_ProcessBuffer_CachedTokens(t *testing.T) {
+	state := &openAIStreamToAnthropicState{
+		activeTools:  make(map[int64]*streamToolCall),
+		requestModel: "claude-3",
+	}
+
+	const (
+		promptTokens        = 190_000
+		cachedTokens        = 185_000
+		cacheCreationTokens = 3_000
+		completionTokens    = 800
+	)
+
+	input := fmt.Sprintf(
+		"data: {\"id\":\"chatcmpl-cache\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hi\"}}],\"model\":\"gpt-4o\"}\n\n"+
+			"data: {\"id\":\"chatcmpl-cache\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"+
+			"data: {\"id\":\"chatcmpl-cache\",\"choices\":[],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"prompt_tokens_details\":{\"cached_tokens\":%d,\"cache_creation_input_tokens\":%d}}}\n\n"+
+			"data: [DONE]\n\n",
+		promptTokens, completionTokens, cachedTokens, cacheCreationTokens,
+	)
+
+	state.buffer.WriteString(input)
+
+	var out []byte
+	err := state.processBuffer(&out, true)
+	require.NoError(t, err)
+
+	msg := accumulateAnthropicMessage(t, out)
+
+	totalReportedInputTokens := msg.Usage.InputTokens + msg.Usage.CacheReadInputTokens + msg.Usage.CacheCreationInputTokens
+	assert.Equal(t, int64(promptTokens), totalReportedInputTokens,
+		"total input tokens must equal the real prompt_tokens, not be inflated by double-counting the cached portion")
+	assert.Equal(t, int64(completionTokens), msg.Usage.OutputTokens)
+
+	total, ok := state.tokenUsage.InputTokens()
+	require.True(t, ok)
+	assert.LessOrEqual(t, total, uint32(promptTokens),
+		"internal TokenUsage must not inflate the input token count beyond the real prompt size")
 }
 
 func TestOpenAIStreamToAnthropicState_ProcessBuffer_ToolCallStreaming(t *testing.T) {
@@ -656,7 +721,7 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_ToolCallStreaming(t *testing
 	require.JSONEq(t, `{"type":"content_block_stop","index":0}`, events[3].data)
 
 	assert.Equal(t, "message_delta", events[4].eventType)
-	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":10}}`, events[4].data)
+	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":15,"output_tokens":10}}`, events[4].data)
 
 	assert.Equal(t, "message_stop", events[5].eventType)
 	require.JSONEq(t, `{"type":"message_stop"}`, events[5].data)
@@ -693,7 +758,7 @@ func TestOpenAIStreamToAnthropicState_ProcessBuffer_EndOfStreamClosing(t *testin
 		}
 	}
 	require.NotEmpty(t, msgDeltaData)
-	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":0}}`, msgDeltaData)
+	require.JSONEq(t, `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":0,"output_tokens":0}}`, msgDeltaData)
 }
 
 func TestOpenAIStreamToAnthropicState_ProcessBuffer_EmptyInput(t *testing.T) {
