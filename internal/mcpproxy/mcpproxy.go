@@ -340,7 +340,7 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 
 		var rawMsg jsonrpc.Message
 		var sseReader io.Reader = resp.Body
-		if resp.Header.Get("Content-Type") != "text/event-stream" {
+		if !hasMediaType(resp.Header, "text/event-stream") {
 			body, _ := io.ReadAll(resp.Body)
 			msg, ok := tryDecodeJSONRPCMessage(body)
 			if ok {
