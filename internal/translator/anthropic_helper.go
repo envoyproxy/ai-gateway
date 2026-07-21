@@ -20,6 +20,7 @@ import (
 	openAIconstant "github.com/openai/openai-go/shared/constant"
 	"k8s.io/utils/ptr"
 
+	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -47,17 +48,21 @@ func anthropicToOpenAIFinishReason(stopReason anthropic.StopReason) (openai.Chat
 	// or Claude encountered one of your custom stop sequences.
 	// TODO: A better way to return pause_turn
 	// TODO: "pause_turn" Used with server tools like web search when Claude needs to pause a long-running operation.
-	case anthropic.StopReasonEndTurn, anthropic.StopReasonStopSequence, anthropic.StopReasonPauseTurn:
+	case anthropic.StopReasonEndTurn, anthropic.StopReasonStopSequence:
 		return openai.ChatCompletionChoicesFinishReasonStop, nil
+	case anthropic.StopReasonPauseTurn:
+		return openai.ChatCompletionChoicesFinishReasonPauseTurn, nil
 	case anthropic.StopReasonMaxTokens: // Claude stopped because it reached the max_tokens limit specified in your request.
 		// TODO: do we want to return an error? see: https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/implement-tool-use#handling-the-max-tokens-stop-reason
 		return openai.ChatCompletionChoicesFinishReasonLength, nil
 	case anthropic.StopReasonToolUse:
 		return openai.ChatCompletionChoicesFinishReasonToolCalls, nil
 	case anthropic.StopReasonRefusal:
-		return openai.ChatCompletionChoicesFinishReasonContentFilter, nil
+		return openai.ChatCompletionChoicesFinishReasonStop, nil
+	case anthropic.StopReason(anthropicschema.StopReasonModelContextWindowExceeded):
+		return openai.ChatCompletionChoicesFinishReasonContextWindowExceeded, nil
 	default:
-		return "", fmt.Errorf("received invalid stop reason %v", stopReason)
+		return openai.ChatCompletionChoicesFinishReasonError, fmt.Errorf("received invalid stop reason %v", stopReason)
 	}
 }
 
@@ -811,15 +816,16 @@ type streamingToolCall struct {
 // anthropicStreamParser manages the stateful translation of an Anthropic SSE stream
 // to an OpenAI-compatible SSE stream.
 type anthropicStreamParser struct {
-	buffer          bytes.Buffer
-	activeMessageID string
-	activeToolCalls map[int64]*streamingToolCall
-	toolIndex       int64
-	tokenUsage      metrics.TokenUsage
-	stopReason      anthropic.StopReason
-	requestModel    internalapi.RequestModel
-	sentFirstChunk  bool
-	created         openai.JSONUNIXTime
+	buffer             bytes.Buffer
+	activeMessageID    string
+	activeToolCalls    map[int64]*streamingToolCall
+	toolIndex          int64
+	tokenUsage         metrics.TokenUsage
+	stopReason         anthropic.StopReason
+	refusalExplanation string
+	requestModel       internalapi.RequestModel
+	sentFirstChunk     bool
+	created            openai.JSONUNIXTime
 }
 
 // newAnthropicStreamParser creates a new parser for a streaming request.
@@ -1159,6 +1165,9 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		}
 		if event.Delta.StopReason != "" {
 			p.stopReason = event.Delta.StopReason
+			if event.Delta.StopReason == anthropic.StopReasonRefusal {
+				p.refusalExplanation = event.Delta.StopDetails.Explanation
+			}
 		}
 		return nil, nil
 
@@ -1214,7 +1223,11 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if err != nil {
 			return nil, err
 		}
-		return p.constructOpenAIChatCompletionChunk(openai.ChatCompletionResponseChunkChoiceDelta{}, finishReason), nil
+		delta := openai.ChatCompletionResponseChunkChoiceDelta{}
+		if p.stopReason == anthropic.StopReasonRefusal {
+			delta.Refusal = &p.refusalExplanation
+		}
+		return p.constructOpenAIChatCompletionChunk(delta, finishReason), nil
 
 	case string(constant.ValueOf[constant.Error]()):
 		var errEvent anthropic.ErrorResponse
@@ -1305,6 +1318,10 @@ func messageToChatCompletion(anthropicResp *anthropic.Message, responseModel int
 		Index:        0,
 		Message:      openai.ChatCompletionResponseChoiceMessage{Role: role},
 		FinishReason: finishReason,
+	}
+	if anthropicResp.StopReason == anthropic.StopReasonRefusal {
+		explanation := anthropicResp.StopDetails.Explanation
+		choice.Message.Refusal = &explanation
 	}
 
 	for i := range anthropicResp.Content { // NOTE: Content structure is massive, do not range over values.
