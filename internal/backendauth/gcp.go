@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"path"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -71,13 +72,15 @@ func (g *gcpHandler) Do(_ context.Context, requestHeaders map[string]string, _ [
 	// Build the GCP URL prefix using the configured region and project name.
 	prefixPath := fmt.Sprintf("/v1/projects/%s/locations/%s", g.projectName, g.region)
 	// Find and update the ":path" header by prepending the prefix.
-	path := requestHeaders[":path"]
+	requestPath := requestHeaders[":path"]
 
-	if path == "" {
+	if requestPath == "" {
 		return nil, fmt.Errorf("missing ':path' header in the request")
 	}
 
-	newPath := fmt.Sprintf("%s/%s", prefixPath, path)
+	// path.Join collapses any double slash: translators may emit :path with or
+	// without a leading slash (GCPAnthropic without, OpenAI-schema with).
+	newPath := path.Join(prefixPath, requestPath)
 
 	// Get the access token
 	var accessToken string

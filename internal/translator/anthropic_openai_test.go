@@ -74,7 +74,7 @@ func TestAnthropicToOpenAITranslator_RequestBody(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			translator := NewAnthropicToChatCompletionOpenAITranslator("v1", tt.modelOverride)
+			translator := NewAnthropicToChatCompletionOpenAITranslator("v1", tt.modelOverride, nil)
 			headers, body, err := translator.RequestBody(nil, tt.body, false)
 			require.NoError(t, err)
 			require.NotNil(t, headers)
@@ -122,7 +122,7 @@ func TestAnthropicToOpenAITranslator_RequestBody_CustomPrefix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			translator := NewAnthropicToChatCompletionOpenAITranslator(tt.prefix, "")
+			translator := NewAnthropicToChatCompletionOpenAITranslator(tt.prefix, "", nil)
 			headers, body, err := translator.RequestBody(nil, &anthropic.MessagesRequest{
 				Model:     "claude-3",
 				MaxTokens: 100,
@@ -137,8 +137,25 @@ func TestAnthropicToOpenAITranslator_RequestBody_CustomPrefix(t *testing.T) {
 	}
 }
 
+func TestAnthropicToOpenAITranslator_RequestBody_UnsupportedFieldsSuppressesThinking(t *testing.T) {
+	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "", nil, "thinking")
+
+	body := &anthropic.MessagesRequest{
+		Model:     "claude-3",
+		MaxTokens: 100,
+		Messages:  []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "hi"}}},
+		Thinking:  &anthropic.Thinking{Adaptive: &anthropic.ThinkingAdaptive{Type: "adaptive"}},
+	}
+	raw, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	_, newBody, err := translator.RequestBody(raw, body, false)
+	require.NoError(t, err)
+	assert.NotContains(t, string(newBody), `"thinking"`)
+}
+
 func TestAnthropicToOpenAITranslator_ResponseHeaders(t *testing.T) {
-	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
+	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "", nil)
 	headers, err := translator.ResponseHeaders(map[string]string{
 		"content-type": "application/json",
 		"x-custom":     "value",
@@ -149,7 +166,7 @@ func TestAnthropicToOpenAITranslator_ResponseHeaders(t *testing.T) {
 
 func TestAnthropicToOpenAITranslator_ResponseBody_NonStreaming(t *testing.T) {
 	t.Run("text content is converted to Anthropic format", func(t *testing.T) {
-		translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
+		translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "", nil)
 		reqBody := &anthropic.MessagesRequest{
 			Model:     "claude-3-haiku",
 			MaxTokens: 100,
@@ -213,7 +230,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_NonStreaming(t *testing.T) {
 	})
 
 	t.Run("model falls back to request model when absent in response", func(t *testing.T) {
-		translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
+		translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "", nil)
 		reqBody := &anthropic.MessagesRequest{
 			Model:     "claude-3-haiku",
 			MaxTokens: 100,
@@ -246,7 +263,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_NonStreaming(t *testing.T) {
 	})
 
 	t.Run("model override is used as fallback", func(t *testing.T) {
-		translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "gpt-4o-override")
+		translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "gpt-4o-override", nil)
 		reqBody := &anthropic.MessagesRequest{
 			Model:     "claude-3",
 			MaxTokens: 100,
@@ -276,7 +293,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_NonStreaming(t *testing.T) {
 	})
 
 	t.Run("tool call response converted to tool_use blocks", func(t *testing.T) {
-		translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
+		translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "", nil)
 		reqBody := &anthropic.MessagesRequest{
 			Model:     "claude-3",
 			MaxTokens: 100,
@@ -331,7 +348,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_NonStreaming(t *testing.T) {
 }
 
 func TestAnthropicToOpenAITranslator_ResponseBody_Streaming(t *testing.T) {
-	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "claude-3-haiku")
+	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "claude-3-haiku", nil)
 
 	// Initialize streaming mode via RequestBody.
 	reqBody := &anthropic.MessagesRequest{
@@ -391,7 +408,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_Streaming(t *testing.T) {
 
 func TestAnthropicToOpenAITranslator_ResponseBody_StreamingRequestModelFallback(t *testing.T) {
 	// When the OpenAI chunk has no model, responseModel should fall back to requestModel.
-	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "my-override")
+	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "my-override", nil)
 	reqBody := &anthropic.MessagesRequest{
 		Model:     "claude-3",
 		MaxTokens: 100,
@@ -436,6 +453,18 @@ func TestAnthropicToOpenAITranslator_ResponseError(t *testing.T) {
 			body:        `{"type":"error","error":{"type":"invalid_request_error","message":"Bad request","param":null,"code":400}}`,
 			wantErrType: "invalid_request_error",
 			wantErrMsg:  "Bad request",
+		},
+		{
+			// GCP Vertex AI's OpenAI-compat endpoint wraps its error body in a top-level JSON
+			// array instead of the standard object shape, e.g. when a model id is unavailable
+			// or a request field is rejected. Before this fix, this failed to unmarshal into
+			// openai.Error entirely, and the translator returned an opaque 500 with no body
+			// instead of relaying the real error.
+			name:        "array-wrapped JSON error from Vertex OpenAI-compat backend",
+			headers:     map[string]string{contentTypeHeaderName: "application/json"},
+			body:        `[{"error":{"code":404,"message":"Publisher model was not found or your project does not have access to it.","status":"NOT_FOUND"}}]`,
+			wantErrType: "",
+			wantErrMsg:  "Publisher model was not found or your project does not have access to it.",
 		},
 		{
 			name:        "non-JSON 400 error",
@@ -511,7 +540,7 @@ func TestAnthropicToOpenAITranslator_ResponseError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
+			translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "", nil)
 			headers, mutatedBody, err := translator.ResponseError(tt.headers, strings.NewReader(tt.body))
 			require.NoError(t, err)
 			require.NotNil(t, mutatedBody)
@@ -533,7 +562,7 @@ func TestAnthropicToOpenAITranslator_ResponseError(t *testing.T) {
 }
 
 func TestAnthropicToOpenAITranslator_RedactAnthropicBody(t *testing.T) {
-	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
+	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "", nil)
 	tr := translator.(*anthropicToOpenAIV1ChatCompletionTranslator)
 
 	t.Run("nil response returns nil", func(t *testing.T) {
@@ -610,7 +639,7 @@ func buildOpenAITextResponse(id, model, text string) *bytes.Reader {
 // that requestModel and stream fields are correctly populated before calling ResponseBody.
 func initNonStreamingTranslator(t *testing.T, modelOverride string) *anthropicToOpenAIV1ChatCompletionTranslator {
 	t.Helper()
-	tr := NewAnthropicToChatCompletionOpenAITranslator("v1", modelOverride).(*anthropicToOpenAIV1ChatCompletionTranslator)
+	tr := NewAnthropicToChatCompletionOpenAITranslator("v1", modelOverride, nil).(*anthropicToOpenAIV1ChatCompletionTranslator)
 	req := &anthropic.MessagesRequest{
 		Model:     "claude-3-haiku",
 		MaxTokens: 100,
@@ -623,7 +652,7 @@ func initNonStreamingTranslator(t *testing.T, modelOverride string) *anthropicTo
 
 // SetRedactionConfig should store all three parameters on the struct.
 func TestAnthropicToOpenAITranslator_SetRedactionConfig(t *testing.T) {
-	tr := NewAnthropicToChatCompletionOpenAITranslator("v1", "").(*anthropicToOpenAIV1ChatCompletionTranslator)
+	tr := NewAnthropicToChatCompletionOpenAITranslator("v1", "", nil).(*anthropicToOpenAIV1ChatCompletionTranslator)
 
 	assert.False(t, tr.debugLogEnabled)
 	assert.False(t, tr.enableRedaction)
@@ -764,7 +793,7 @@ func TestAnthropicMessagesToOpenAI_ToolConversation(t *testing.T) {
 				},
 			},
 		}
-		msgs := anthropicMessagesToOpenAI(body)
+		msgs := anthropicMessagesToOpenAI(body, nil)
 		// system (none), user, assistant with tool_calls, tool result
 		require.Len(t, msgs, 3)
 
@@ -817,7 +846,7 @@ func TestAnthropicMessagesToOpenAI_ToolConversation(t *testing.T) {
 				},
 			},
 		}
-		msgs := anthropicMessagesToOpenAI(body)
+		msgs := anthropicMessagesToOpenAI(body, nil)
 		// user, assistant, tool result, user text
 		require.Len(t, msgs, 4)
 
@@ -849,7 +878,7 @@ func TestAnthropicMessagesToOpenAI_ToolConversation(t *testing.T) {
 				},
 			},
 		}
-		msgs := anthropicMessagesToOpenAI(body)
+		msgs := anthropicMessagesToOpenAI(body, nil)
 		require.Len(t, msgs, 2)
 
 		assistantMsg := msgs[1].OfAssistant
@@ -870,7 +899,7 @@ func TestAnthropicMessagesToOpenAI_ToolConversation(t *testing.T) {
 				{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "bye"}},
 			},
 		}
-		msgs := anthropicMessagesToOpenAI(body)
+		msgs := anthropicMessagesToOpenAI(body, nil)
 		// system + 3 messages
 		require.Len(t, msgs, 4)
 		require.NotNil(t, msgs[0].OfSystem)
@@ -882,7 +911,7 @@ func TestAnthropicMessagesToOpenAI_ToolConversation(t *testing.T) {
 }
 
 func TestAnthropicToOpenAITranslator_RequestBody_ThinkingConfig(t *testing.T) {
-	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
+	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "", nil)
 	body := &anthropic.MessagesRequest{
 		Model:     "claude-3",
 		MaxTokens: 8192,
@@ -905,7 +934,7 @@ func TestAnthropicToOpenAITranslator_RequestBody_ThinkingConfig(t *testing.T) {
 func TestAnthropicToOpenAITranslator_RequestBody_MultiTurnWithThinking(t *testing.T) {
 	// Multi-turn conversation with thinking blocks in history should not error.
 	// This is the primary regression scenario from vLLM's test suite.
-	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
+	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "", nil)
 	body := &anthropic.MessagesRequest{
 		Model:     "claude-3",
 		MaxTokens: 100,
@@ -947,7 +976,7 @@ func TestAnthropicToOpenAITranslator_RequestBody_MultiTurnWithThinking(t *testin
 }
 
 func TestAnthropicToOpenAITranslator_ResponseBody_NonStreaming_Thinking(t *testing.T) {
-	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "")
+	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "", nil)
 	reqBody := &anthropic.MessagesRequest{
 		Model:     "claude-3",
 		MaxTokens: 100,
@@ -998,7 +1027,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_NonStreaming_Thinking(t *testi
 }
 
 func TestAnthropicToOpenAITranslator_ResponseBody_Streaming_Thinking(t *testing.T) {
-	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "claude-3")
+	translator := NewAnthropicToChatCompletionOpenAITranslator("v1", "claude-3", nil)
 	reqBody := &anthropic.MessagesRequest{
 		Model:     "claude-3",
 		MaxTokens: 100,
@@ -1042,7 +1071,7 @@ func TestAnthropicToOpenAITranslator_ResponseBody_Streaming_Thinking(t *testing.
 
 // responseBodyStreaming should return an error when streamState is nil.
 func TestAnthropicToOpenAITranslator_ResponseBody_StreamStateNilGuard(t *testing.T) {
-	tr := NewAnthropicToChatCompletionOpenAITranslator("v1", "").(*anthropicToOpenAIV1ChatCompletionTranslator)
+	tr := NewAnthropicToChatCompletionOpenAITranslator("v1", "", nil).(*anthropicToOpenAIV1ChatCompletionTranslator)
 	// Manually enable streaming without initialising streamState to trigger the nil guard.
 	tr.stream = true
 	tr.streamState = nil

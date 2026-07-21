@@ -2239,6 +2239,24 @@ func Test_schemaToFilterAPI(t *testing.T) {
 			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1/foo"},
 		},
 		{
+			in: aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaOpenAI, UnsupportedFields: []string{"thinking"}},
+			expected: filterapi.VersionedAPISchema{
+				Name: filterapi.APISchemaOpenAI, Prefix: "v1", UnsupportedFields: []string{"thinking"},
+			},
+		},
+		{
+			in: aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaGCPAnthropic, Version: ptr.To("vertex-2023-10-16"), UnsupportedFields: []string{"context_management"}},
+			expected: filterapi.VersionedAPISchema{
+				Name: filterapi.APISchemaGCPAnthropic, Version: "vertex-2023-10-16", UnsupportedFields: []string{"context_management"},
+			},
+		},
+		{
+			in: aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaOpenAI, RequiredFields: []string{"thought_signature"}},
+			expected: filterapi.VersionedAPISchema{
+				Name: filterapi.APISchemaOpenAI, Prefix: "v1", RequiredFields: []string{"thought_signature"},
+			},
+		},
+		{
 			in:       aigv1b1.VersionedAPISchema{Name: aigv1b1.APISchemaAWSBedrock},
 			expected: filterapi.VersionedAPISchema{Name: filterapi.APISchemaAWSBedrock},
 		},
@@ -2252,7 +2270,7 @@ func Test_schemaToFilterAPI(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			require.Equal(t, tc.expected, schemaToFilterAPI(tc.in))
+			require.Equal(t, tc.expected, schemaToFilterAPI(&tc.in))
 		})
 	}
 }

@@ -49,6 +49,48 @@ type VersionedAPISchema struct {
 	// See https://aigateway.envoyproxy.io/docs/capabilities/llm-integrations/supported-providers for details.
 	// +optional
 	Prefix *string `json:"prefix,omitempty"`
+
+	// UnsupportedFields lists Anthropic-only request field names that this backend's upstream
+	// does not accept, so the gateway can omit or gate them during translation instead of
+	// forwarding a field the backend will reject outright.
+	//
+	// The Anthropic Messages API has fields with no equivalent in other schemas. Some
+	// OpenAI-compatible backends (e.g. vLLM) accept Anthropic-only fields anyway via
+	// passthrough extensions; others (e.g. the real OpenAI API, or GCP Vertex AI's native
+	// Anthropic endpoint) reject unrecognized fields outright.
+	//
+	// Currently recognized values:
+	//   - "thinking" (OpenAI schema): Anthropic's extended-thinking/adaptive-reasoning config,
+	//     mapped to a "thinking" field in the translated request — not part of the OpenAI chat
+	//     completions spec, rejected by strict implementations.
+	//   - "context_management" (GCPAnthropic schema): Anthropic's context-editing config,
+	//     rejected by Vertex AI's native Anthropic endpoint with "Extra inputs are not permitted".
+	//
+	// This field is ignored for schemas other than OpenAI and GCPAnthropic.
+	//
+	// +optional
+	UnsupportedFields []string `json:"unsupportedFields,omitempty"`
+
+	// RequiredFields lists synthetic, gateway-injected request field names that this
+	// backend's upstream REQUIRES but that upstream ai-gateway itself never sends — the
+	// gateway only injects them for backends that explicitly opt in via this field.
+	// Unset/empty means the gateway injects nothing extra, matching upstream's behavior
+	// exactly.
+	//
+	// Currently recognized values:
+	//   - "thought_signature" (OpenAI schema): Gemini's OpenAI-compat endpoint requires a
+	//     "thought_signature" on every function-call part for multi-turn tool use, or the
+	//     follow-up turn 400s with "Function call is missing a thought_signature in
+	//     functionCall parts". Anthropic's tool_use schema has no field to carry a real one
+	//     through, so the gateway injects Google's documented sentinel value
+	//     ("skip_thought_signature_validator") instead — only for backends that opt in here,
+	//     since other OpenAI-schema backends (real OpenAI, Azure OpenAI, vLLM) don't expect
+	//     an unrecognized extra_content field.
+	//
+	// This field is ignored for schemas other than OpenAI.
+	//
+	// +optional
+	RequiredFields []string `json:"requiredFields,omitempty"`
 }
 
 // APISchema defines the API schema.

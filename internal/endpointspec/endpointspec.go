@@ -68,7 +68,7 @@ type (
 		// Returns:
 		// * translator: The selected translator of type Translator[ReqT, RespT, RespChunkT].
 		// * err: An error if translator selection fails.
-		GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]], error)
+		GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.Translator[ReqT, tracingapi.Span[RespT, RespChunkT]], error)
 		// RedactSensitiveInfoFromRequest creates a redacted copy of the request for safe debug logging.
 		// Sensitive content (messages, images, audio, tool parameters, etc.) is replaced with placeholders
 		// containing length and hash information to aid in debugging cache hits/misses and correlation.
@@ -93,6 +93,15 @@ type (
 		//
 		// Returns the same tuple as ParseBody.
 		ParseMultipartBody(body []byte, contentType string, costConfigured bool) (originalModel internalapi.OriginalModel, req *ReqT, stream bool, mutatedBody []byte, err error)
+		// RequiresIdentityEncodingUpstream reports whether this endpoint's translators can
+		// produce an ambiguous upstream content-encoding — some backends pass the response
+		// body through unchanged while others decompress and rewrite it, so a compressed
+		// upstream response can leave a stale content-encoding header for the client. When
+		// true, the extproc forces "Accept-Encoding: identity" on the upstream request to
+		// avoid the ambiguity entirely. Only /v1/messages has exhibited this in practice
+		// (streaming ZlibError on one translator path, JSON-parse failure on another); other
+		// endpoints default to false and are unaffected by this.
+		RequiresIdentityEncodingUpstream() bool
 	}
 	// ChatCompletionsEndpointSpec implements EndpointSpec for /v1/chat/completions.
 	ChatCompletionsEndpointSpec struct{}
@@ -156,7 +165,7 @@ func (ChatCompletionsEndpointSpec) ParseMultipartBody([]byte, string, bool) (int
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (ChatCompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIChatCompletionTranslator, error) {
+func (ChatCompletionsEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIChatCompletionTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewChatCompletionOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
@@ -171,9 +180,12 @@ func (ChatCompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISc
 	case filterapi.APISchemaGCPAnthropic:
 		return translator.NewChatCompletionOpenAIToGCPAnthropicTranslator(schema.Version, modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", *schema)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (ChatCompletionsEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (ChatCompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ChatCompletionRequest) (redactedReq *openai.ChatCompletionRequest, err error) {
@@ -218,14 +230,17 @@ func (CompletionsEndpointSpec) ParseMultipartBody([]byte, string, bool) (interna
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (CompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAICompletionTranslator, error) {
+func (CompletionsEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAICompletionTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewCompletionOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", *schema)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (CompletionsEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (CompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.CompletionRequest) (redactedReq *openai.CompletionRequest, err error) {
@@ -251,7 +266,7 @@ func (EmbeddingsEndpointSpec) ParseMultipartBody([]byte, string, bool) (internal
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIEmbeddingTranslator, error) {
+func (EmbeddingsEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIEmbeddingTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewEmbeddingOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
@@ -262,9 +277,12 @@ func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema,
 	case filterapi.APISchemaAWSBedrock:
 		return translator.NewEmbeddingOpenAIToAWSBedrockTranslator(modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", *schema)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (EmbeddingsEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (EmbeddingsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.EmbeddingRequest) (redactedReq *openai.EmbeddingRequest, err error) {
@@ -289,14 +307,17 @@ func (ImageGenerationEndpointSpec) ParseMultipartBody([]byte, string, bool) (int
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (ImageGenerationEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIImageGenerationTranslator, error) {
+func (ImageGenerationEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIImageGenerationTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewImageGenerationOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", *schema)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (ImageGenerationEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (ImageGenerationEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ImageGenerationRequest) (redactedReq *openai.ImageGenerationRequest, err error) {
@@ -322,16 +343,19 @@ func (ResponsesEndpointSpec) ParseMultipartBody([]byte, string, bool) (internala
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (ResponsesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIResponsesTranslator, error) {
+func (ResponsesEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.OpenAIResponsesTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewResponsesOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	case filterapi.APISchemaAzureOpenAI:
 		return translator.NewResponsesOpenAIToAzureOpenAITranslator(schema.Version, modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", *schema)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (ResponsesEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (ResponsesEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ResponseRequest) (redactedReq *openai.ResponseRequest, err error) {
@@ -364,23 +388,31 @@ func (MessagesEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalap
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.AnthropicMessagesTranslator, error) {
+func (MessagesEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.AnthropicMessagesTranslator, error) {
 	// Messages processor only supports Anthropic-native translators.
 	switch schema.Name {
 	case filterapi.APISchemaGCPAnthropic:
-		return translator.NewAnthropicToGCPAnthropicTranslator(schema.Version, modelNameOverride), nil
+		return translator.NewAnthropicToGCPAnthropicTranslator(schema.Version, modelNameOverride, schema.GCPAnthropicUnsupportedFields()...), nil
 	case filterapi.APISchemaAWSAnthropic:
 		return translator.NewAnthropicToAWSAnthropicTranslator(schema.Version, modelNameOverride), nil
 	case filterapi.APISchemaAnthropic:
 		return translator.NewAnthropicToAnthropicTranslator(schema.AnthropicPrefix(), modelNameOverride), nil
 	case filterapi.APISchemaOpenAI:
-		return translator.NewAnthropicToChatCompletionOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+		return translator.NewAnthropicToChatCompletionOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride, schema.OpenAIRequiredFields(), schema.OpenAIUnsupportedFields()...), nil
 	case filterapi.APISchemaAWSBedrock:
 		return translator.NewAnthropicToAWSBedrockTranslator(modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("/v1/messages endpoint only supports backends that return native Anthropic format (Anthropic, GCPAnthropic, AWSAnthropic). OpenAI and AWSBedrock translation is also supported. Backend %s uses different model format", schema.Name)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+//
+// /v1/messages is the only endpoint that has exhibited an upstream content-encoding
+// ambiguity in practice: a streaming ZlibError via a translator that decompresses and
+// rewrites the response, and a JSON-parse failure via a translator that passes the
+// response body through unchanged. See f716cf78.
+func (MessagesEndpointSpec) RequiresIdentityEncodingUpstream() bool { return true }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (MessagesEndpointSpec) RedactSensitiveInfoFromRequest(req *anthropic.MessagesRequest) (redactedReq *anthropic.MessagesRequest, err error) {
@@ -406,14 +438,17 @@ func (RerankEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (RerankEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.CohereRerankTranslator, error) {
+func (RerankEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.CohereRerankTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaCohere:
 		return translator.NewRerankCohereToCohereTranslator(schema.Version, modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema: backend=%s", *schema)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (RerankEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (RerankEndpointSpec) RedactSensitiveInfoFromRequest(req *cohereschema.RerankV2Request) (redactedReq *cohereschema.RerankV2Request, err error) {
@@ -449,7 +484,7 @@ func (TokenizeEndpointSpec) ParseBody(
 }
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
-func (TokenizeEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.TokenizeTranslator, error) {
+func (TokenizeEndpointSpec) GetTranslator(schema *filterapi.VersionedAPISchema, modelNameOverride string) (translator.TokenizeTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewTokenizeTranslator(modelNameOverride), nil
@@ -457,6 +492,9 @@ func (TokenizeEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 		return nil, fmt.Errorf("unsupported API schema for tokenize endpoint: backend=%s", schema.Name)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (TokenizeEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (TokenizeEndpointSpec) RedactSensitiveInfoFromRequest(req *tokenize.RequestUnion) (redactedReq *tokenize.RequestUnion, err error) {
@@ -664,7 +702,7 @@ func (SpeechEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.
 
 // GetTranslator implements [EndpointSpec.GetTranslator].
 func (SpeechEndpointSpec) GetTranslator(
-	schema filterapi.VersionedAPISchema,
+	schema *filterapi.VersionedAPISchema,
 	modelNameOverride string,
 ) (translator.OpenAISpeechTranslator, error) {
 	switch schema.Name {
@@ -674,9 +712,12 @@ func (SpeechEndpointSpec) GetTranslator(
 			modelNameOverride,
 		), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema for speech: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema for speech: backend=%s", *schema)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (SpeechEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (SpeechEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.SpeechRequest) (redactedReq *openai.SpeechRequest, err error) {
@@ -799,15 +840,18 @@ func (TranscriptionEndpointSpec) ParseMultipartBody(
 
 // GetTranslator implements [Spec.GetTranslator].
 func (TranscriptionEndpointSpec) GetTranslator(
-	schema filterapi.VersionedAPISchema, modelNameOverride string,
+	schema *filterapi.VersionedAPISchema, modelNameOverride string,
 ) (translator.OpenAIAudioTranscriptionTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewTranscriptionOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema for audio transcription: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema for audio transcription: backend=%s", *schema)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (TranscriptionEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [Spec.RedactSensitiveInfoFromRequest].
 func (TranscriptionEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.TranscriptionRequest) (*openai.TranscriptionRequest, error) {
@@ -904,15 +948,18 @@ func (TranslationEndpointSpec) ParseMultipartBody(
 
 // GetTranslator implements [Spec.GetTranslator].
 func (TranslationEndpointSpec) GetTranslator(
-	schema filterapi.VersionedAPISchema, modelNameOverride string,
+	schema *filterapi.VersionedAPISchema, modelNameOverride string,
 ) (translator.OpenAIAudioTranslationTranslator, error) {
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewTranslationOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	default:
-		return nil, fmt.Errorf("unsupported API schema for audio translation: backend=%s", schema)
+		return nil, fmt.Errorf("unsupported API schema for audio translation: backend=%s", *schema)
 	}
 }
+
+// RequiresIdentityEncodingUpstream implements [Spec.RequiresIdentityEncodingUpstream].
+func (TranslationEndpointSpec) RequiresIdentityEncodingUpstream() bool { return false }
 
 // RedactSensitiveInfoFromRequest implements [Spec.RedactSensitiveInfoFromRequest].
 func (TranslationEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.TranslationRequest) (*openai.TranslationRequest, error) {

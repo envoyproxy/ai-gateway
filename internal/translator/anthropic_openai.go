@@ -28,12 +28,19 @@ import (
 // This translator converts Anthropic API format to OpenAI ChatCompletion API requests.
 // The prefix parameter is the prefix field set in the OpenAI VersionAPISchema used to construct the translated path
 // (e.g., "v1" produces "/v1/chat/completions", "gateway/v1" produces "/gateway/v1/chat/completions").
-func NewAnthropicToChatCompletionOpenAITranslator(prefix string, modelNameOverride internalapi.ModelNameOverride) AnthropicMessagesTranslator {
+// unsupportedFields lists Anthropic-only request field names this backend's upstream doesn't
+// accept (see VersionedAPISchema.UnsupportedFields); currently only "thinking" is recognized.
+// requiredFields lists synthetic, gateway-injected field names this backend's upstream
+// requires (see VersionedAPISchema.RequiredFields); currently only "thought_signature" is
+// recognized.
+func NewAnthropicToChatCompletionOpenAITranslator(prefix string, modelNameOverride internalapi.ModelNameOverride, requiredFields []string, unsupportedFields ...string) AnthropicMessagesTranslator {
 	passthroughTranslator := NewAnthropicToAnthropicTranslator(prefix, modelNameOverride)
 	return &anthropicToOpenAIV1ChatCompletionTranslator{
 		passthroughTranslator: &passthroughTranslator,
 		modelNameOverride:     modelNameOverride,
 		path:                  path.Join("/", prefix, "chat/completions"),
+		requiredFields:        requiredFields,
+		unsupportedFields:     unsupportedFields,
 	}
 }
 
@@ -45,6 +52,12 @@ type anthropicToOpenAIV1ChatCompletionTranslator struct {
 	streamState           *openAIStreamToAnthropicState
 	// The path of the chat completions endpoint, prefixed with the OpenAI path prefix.
 	path string
+	// unsupportedFields lists Anthropic-only request field names to omit (see
+	// VersionedAPISchema.UnsupportedFields).
+	unsupportedFields []string
+	// requiredFields lists synthetic, gateway-injected field names to add (see
+	// VersionedAPISchema.RequiredFields).
+	requiredFields []string
 	// Redaction configuration for debug logging
 	debugLogEnabled bool
 	enableRedaction bool
@@ -61,7 +74,7 @@ func (a *anthropicToOpenAIV1ChatCompletionTranslator) RequestBody(_ []byte, body
 	a.requestModel = cmp.Or(a.modelNameOverride, body.Model)
 
 	// Convert Anthropic message request body to OpenAI format.
-	openAIReq := buildOpenAIChatCompletionRequest(body, a.modelNameOverride)
+	openAIReq := buildOpenAIChatCompletionRequest(body, a.modelNameOverride, a.requiredFields, a.unsupportedFields...)
 
 	newBody, err = json.Marshal(openAIReq)
 	if err != nil {
