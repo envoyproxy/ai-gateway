@@ -47,6 +47,23 @@ func TestCountTokensToAWSAnthropic_RequestBody(t *testing.T) {
 			model:    "claude-opus-4-6",
 			expPath:  "/model/anthropic.claude-sonnet-4-6/count-tokens",
 		},
+		{
+			name:     "strips CRIS apac. prefix from override",
+			override: "apac.anthropic.claude-sonnet-4-6",
+			model:    "claude-opus-4-6",
+			expPath:  "/model/anthropic.claude-sonnet-4-6/count-tokens",
+		},
+		{
+			name:     "strips CRIS us-gov. prefix from override",
+			override: "us-gov.anthropic.claude-sonnet-4-6",
+			model:    "claude-opus-4-6",
+			expPath:  "/model/anthropic.claude-sonnet-4-6/count-tokens",
+		},
+		{
+			name:    "strips CRIS apac. prefix from request model",
+			model:   "apac.anthropic.claude-sonnet-4-6",
+			expPath: "/model/anthropic.claude-sonnet-4-6/count-tokens",
+		},
 	}
 
 	for _, tt := range tests {
