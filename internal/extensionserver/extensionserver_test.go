@@ -148,7 +148,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 		{c: &clusterv3.Cluster{}, errLog: "non-ai-gateway cluster name"},
 		{c: &clusterv3.Cluster{
 			Name: "httproute/ns/name/rule/invalid",
-		}, errLog: "failed to parse HTTPRoute rule index"},
+		}, errLog: "invalid HTTPRoute rule index"},
 		{c: &clusterv3.Cluster{
 			Name: "httproute/ns/myroute/rule/99999",
 		}, errLog: `HTTPRoute rule index out of range`},
@@ -457,6 +457,99 @@ func Test_maybeModifyCluster(t *testing.T) {
 			require.Equal(t, tc.expected, tc.cluster)
 		})
 	}
+}
+
+func TestParseAIGatewayClusterName(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		cluster  string
+		expected aiGatewayClusterName
+		wantErr  bool
+	}{
+		{
+			name:    "route-level cluster",
+			cluster: "httproute/ns/route/rule/3",
+			expected: aiGatewayClusterName{
+				namespace:       "ns",
+				routeName:       "route",
+				ruleIndex:       3,
+				backendRefIndex: noBackendRefIndex,
+			},
+		},
+		{
+			name:    "per-backend cluster",
+			cluster: "httproute/ns/route/rule/3/backend/2",
+			expected: aiGatewayClusterName{
+				namespace:       "ns",
+				routeName:       "route",
+				ruleIndex:       3,
+				backendRefIndex: 2,
+			},
+		},
+		{name: "missing backend marker", cluster: "httproute/ns/route/rule/3/not-backend/2", wantErr: true},
+		{name: "negative backend index", cluster: "httproute/ns/route/rule/3/backend/-1", wantErr: true},
+		{name: "invalid rule index", cluster: "httproute/ns/route/rule/nope", wantErr: true},
+		{name: "non route cluster", cluster: "service/ns/route", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actual, err := parseAIGatewayClusterName(tc.cluster)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func TestMaybeModifyClusterPerBackendClusterName(t *testing.T) {
+	newServer := func(t *testing.T) *Server {
+		t.Helper()
+		c := newFakeClient()
+		require.NoError(t, c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+			ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
+			Spec: aigv1b1.AIGatewayRouteSpec{Rules: []aigv1b1.AIGatewayRouteRule{{
+				BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+					{Name: "primary", Priority: ptr.To[uint32](0)},
+					{Name: "fallback", Priority: ptr.To[uint32](1)},
+				},
+			}}},
+		}))
+		s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+		require.NoError(t, err)
+		return s
+	}
+
+	assertBackendName := func(t *testing.T, metadata *corev3.Metadata, expected string) {
+		t.Helper()
+		require.NotNil(t, metadata)
+		filterMetadata := metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+		require.NotNil(t, filterMetadata)
+		require.Equal(t, expected, filterMetadata.Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue())
+	}
+
+	t.Run("sets endpoint metadata for the selected backend", func(t *testing.T) {
+		cluster := &clusterv3.Cluster{
+			Name: "httproute/ns/myroute/rule/0/backend/1",
+			LoadAssignment: &endpointv3.ClusterLoadAssignment{Endpoints: []*endpointv3.LocalityLbEndpoints{{
+				LbEndpoints: []*endpointv3.LbEndpoint{{}},
+			}}},
+		}
+		require.NoError(t, newServer(t).maybeModifyCluster(t.Context(), cluster))
+		require.Equal(t, uint32(1), cluster.LoadAssignment.Endpoints[0].Priority)
+		assertBackendName(t, cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata,
+			internalapi.PerRouteRuleRefBackendName("ns", "fallback", "myroute", 0, 1))
+		require.Contains(t, cluster.TypedExtensionProtocolOptions, "envoy.extensions.upstreams.http.v3.HttpProtocolOptions")
+	})
+
+	t.Run("sets cluster metadata for EDS-managed endpoints", func(t *testing.T) {
+		cluster := &clusterv3.Cluster{Name: "httproute/ns/myroute/rule/0/backend/0"}
+		require.NoError(t, newServer(t).maybeModifyCluster(t.Context(), cluster))
+		assertBackendName(t, cluster.Metadata,
+			internalapi.PerRouteRuleRefBackendName("ns", "primary", "myroute", 0, 0))
+		require.Contains(t, cluster.TypedExtensionProtocolOptions, "envoy.extensions.upstreams.http.v3.HttpProtocolOptions")
+	})
 }
 
 // Helper function to create an InferencePool ExtensionResource.
