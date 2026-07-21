@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"strconv"
@@ -34,7 +35,7 @@ type countTokensToGCPAnthropicTranslator struct {
 }
 
 // RequestBody implements [AnthropicCountTokensTranslator.RequestBody].
-func (t *countTokensToGCPAnthropicTranslator) RequestBody(raw []byte, _ *anthropicschema.MessagesRequest, _ bool) (
+func (t *countTokensToGCPAnthropicTranslator) RequestBody(raw []byte, body *anthropicschema.MessagesRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	if t.apiVersion == "" {
@@ -47,22 +48,19 @@ func (t *countTokensToGCPAnthropicTranslator) RequestBody(raw []byte, _ *anthrop
 		return nil, nil, fmt.Errorf("failed to set anthropic_version: %w", err)
 	}
 
-	// Override model name in the body if configured.
 	// GCP Vertex AI's count-tokens endpoint does not accept the "@default" or "@latest"
-	// version aliases (e.g., "claude-sonnet-4-6@default" returns "not supported for token
-	// counting"). Explicit version tags like "@20251001" are accepted. The "@default" alias
-	// is required for inference endpoints (messages, chat) which share the same
-	// modelNameOverride, so we strip it here for count-tokens only.
+	// version aliases (e.g. "claude-sonnet-4-6@default" returns "not supported for token
+	// counting"). Explicit version tags like "@20251001" are accepted. These aliases are
+	// required for inference endpoints (messages, chat) which share the same modelNameOverride,
+	// so we strip them here for count-tokens only. Strip from the resolved model (request body
+	// or override) so the alias is removed regardless of where it came from.
 	// See: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/count-tokens
-	if t.modelNameOverride != "" {
-		model := t.modelNameOverride
-		if strings.HasSuffix(model, "@default") || strings.HasSuffix(model, "@latest") {
-			model = model[:strings.LastIndexByte(model, '@')]
-		}
-		newBody, err = sjson.SetBytesOptions(newBody, "model", model, sjsonOptions)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to set model: %w", err)
-		}
+	model := cmp.Or(t.modelNameOverride, body.Model)
+	model = strings.TrimSuffix(model, "@default")
+	model = strings.TrimSuffix(model, "@latest")
+	newBody, err = sjson.SetBytesOptions(newBody, "model", model, sjsonOptions)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to set model: %w", err)
 	}
 
 	// GCP Vertex AI uses the special "count-tokens" model path with rawPredict.

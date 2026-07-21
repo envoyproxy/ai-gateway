@@ -55,6 +55,16 @@ func TestCountTokensToGCPAnthropic_RequestBody(t *testing.T) {
 			model:    "claude-opus-4-6",
 			expModel: "claude-sonnet-4-6",
 		},
+		{
+			name:     "strips @default version tag from request model",
+			model:    "claude-sonnet-4-6@default",
+			expModel: "claude-sonnet-4-6",
+		},
+		{
+			name:     "strips @latest version tag from request model",
+			model:    "claude-sonnet-4-6@latest",
+			expModel: "claude-sonnet-4-6",
+		},
 	}
 
 	for _, tt := range tests {
