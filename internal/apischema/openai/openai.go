@@ -9036,6 +9036,20 @@ const (
 	FileObjectStatusError     FileObjectStatus = "error"
 )
 
+// FileListResponse is the paginated list response returned by GET /v1/files.
+type FileListResponse struct {
+	// Data is the list of file objects on this page.
+	Data []FileObject `json:"data"`
+	// Object is always "list".
+	Object string `json:"object"`
+	// HasMore indicates whether there are additional pages.
+	HasMore bool `json:"has_more"`
+	// FirstID is the id of the first file in this page, used for cursor-based pagination.
+	FirstID string `json:"first_id,omitempty"`
+	// LastID is the id of the last file in this page, used as the cursor for the next page.
+	LastID string `json:"last_id,omitempty"`
+}
+
 // The `FileDeleted` object represents the response from the API when a file is deleted.
 type FileDeleted struct {
 	ID      string `json:"id"`
