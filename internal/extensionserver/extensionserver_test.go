@@ -762,6 +762,51 @@ func TestMaybeModifyClusterExtended(t *testing.T) {
 	})
 }
 
+// TestMaybeModifyCluster_LoadAssignmentEndpointsShorterThanBackendRefs guards against the
+// out-of-range panic that occurred when envoy-gateway emitted a LoadAssignment with fewer
+// Endpoints entries than the AIGatewayRoute rule had active (non-zero-weight) BackendRefs.
+//
+// Before the fix, the loop in maybeModifyCluster indexed
+// `cluster.LoadAssignment.Endpoints[lbEndpointIndex]` without bounds-checking and crashed the
+// controller process with `panic: runtime error: index out of range [1] with length 1`.
+func TestMaybeModifyCluster_LoadAssignmentEndpointsShorterThanBackendRefs(t *testing.T) {
+	c := newFakeClient()
+
+	require.NoError(t, c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "two-backends-route",
+			Namespace: "test-ns",
+		},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{
+					BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+						{Name: "backend-a"},
+						{Name: "backend-b"},
+					},
+				},
+			},
+		},
+	}))
+
+	s, err := New(c, logr.Discard(), udsPath, false, nil, nil)
+	require.NoError(t, err)
+
+	cluster := &clusterv3.Cluster{
+		Name: "httproute/test-ns/two-backends-route/rule/0",
+		LoadAssignment: &endpointv3.ClusterLoadAssignment{
+			Endpoints: []*endpointv3.LocalityLbEndpoints{
+				{LbEndpoints: []*endpointv3.LbEndpoint{{}}},
+			},
+		},
+	}
+
+	require.NotPanics(t, func() {
+		err = s.maybeModifyCluster(t.Context(), cluster)
+	})
+	require.NoError(t, err)
+}
+
 // TestMaybeModifyListenerAndRoutes tests the maybeModifyListenerAndRoutes function.
 func TestMaybeModifyListenerAndRoutes(t *testing.T) {
 	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
