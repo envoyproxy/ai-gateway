@@ -106,17 +106,3 @@ func TestNewFileTranslators(t *testing.T) {
 		}
 	}
 }
-
-// batchRequestStandIn is a test-local stand-in for the future BatchRequest ReqT. The real Batch
-// types are out of scope (no batch code ships now), but instantiating the SAME generic Translator
-// at a different resource's ReqT here is a compile-time proof that the seam serves Batch verbatim —
-// a future internal/translator/batches.go only needs its own ReqT and per-op selectors, no new
-// interface.
-type batchRequestStandIn struct{}
-
-// batchTranslatorStandIn mirrors FilesTranslator = Translator[FilesRequest, any] for the batch ReqT.
-// Its mere existence is the compile-time proof that Translator[ReqT, any] generalizes beyond files.
-type batchTranslatorStandIn = Translator[batchRequestStandIn, any]
-
-// _ asserts batchTranslatorStandIn is a usable interface type (compile-time reuse proof for Batch).
-var _ batchTranslatorStandIn

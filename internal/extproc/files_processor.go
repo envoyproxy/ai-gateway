@@ -29,6 +29,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/idcodec"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	internaljson "github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
 )
 
@@ -506,15 +507,16 @@ func (p *filesProcessor) buildListWalkResponse(raw []byte) *extprocv3.Processing
 	if !p.backendKnown || len(raw) == 0 {
 		return passThroughResponseBody()
 	}
-	// Only stitch the walk for an actual list envelope. An upstream error (or any non-list body)
-	// has no "data" array; pass it through unchanged so the failure propagates to the client
-	// rather than being turned into a paginated continuation.
-	if !gjson.GetBytes(raw, "data").IsArray() {
+
+	// Unmarshal into the typed list response. An upstream error (or any non-list body) will either
+	// fail to unmarshal or produce an empty Data slice; pass it through unchanged so the failure
+	// propagates to the client rather than being turned into a paginated continuation.
+	var page openai.FileListResponse
+	if err := internaljson.Unmarshal(raw, &page); err != nil || page.Data == nil {
 		return passThroughResponseBody()
 	}
 
 	// Invoke ResponseBody translator before re-encoding.
-	workingBody := raw
 	if p.responseHeaders != nil {
 		_, mutatedBody, _, _, err := p.translator.ResponseBody(p.responseHeaders, bytes.NewReader(raw), true, nil)
 		if err != nil {
@@ -522,7 +524,12 @@ func (p *filesProcessor) buildListWalkResponse(raw []byte) *extprocv3.Processing
 			return passThroughResponseBody()
 		}
 		if mutatedBody != nil {
-			workingBody = mutatedBody
+			// Re-unmarshal into the typed struct after translation so subsequent mutations operate
+			// on the translated content.
+			if err := internaljson.Unmarshal(mutatedBody, &page); err != nil {
+				p.logger.Error("failed to unmarshal translated response body for files list endpoint", slog.String("error", err.Error()))
+				return passThroughResponseBody()
+			}
 		}
 	}
 
@@ -532,58 +539,58 @@ func (p *filesProcessor) buildListWalkResponse(raw []byte) *extprocv3.Processing
 		start = p.listStart
 	}
 
-	newBody := workingBody
-	var err error
-	lastNativeID := ""
-	for i, item := range gjson.GetBytes(workingBody, "data").Array() {
-		nativeID := item.Get("id").String()
+	// Re-encode every item id.
+	var lastNativeID string
+	for i := range page.Data {
+		nativeID := page.Data[i].ID
 		if nativeID == "" {
 			continue
 		}
 		lastNativeID = nativeID
-		var gw string
-		if gw, err = p.encodeFileID(nativeID); err != nil {
-			break
+		gw, err := p.encodeFileID(nativeID)
+		if err != nil {
+			p.logger.Warn("failed to re-encode files list ids, passing through", slog.String("error", err.Error()))
+			return passThroughResponseBody()
 		}
-		if newBody, err = sjson.SetBytes(newBody, fmt.Sprintf("data.%d.id", i), gw); err != nil {
-			break
-		}
+		page.Data[i].ID = gw
 	}
-	if err != nil {
-		p.logger.Warn("failed to re-encode files list ids, passing through", slog.String("error", err.Error()))
-		return passThroughResponseBody()
-	}
+
 	// Never leak the backend-native first_id; re-encode it when present.
-	if fid := gjson.GetBytes(workingBody, "first_id").String(); fid != "" {
-		if gw, e := p.encodeFileID(fid); e == nil {
-			newBody, _ = sjson.SetBytes(newBody, "first_id", gw)
+	if page.FirstID != "" {
+		if gw, err := p.encodeFileID(page.FirstID); err == nil {
+			page.FirstID = gw
 		}
 	}
 
 	ordered := orderedRouteBackends(p.config, p.listRouteName)
-	upstreamHasMore := gjson.GetBytes(workingBody, "has_more").Bool()
-	hasMore, next := nextWalkStep(ordered, start, current, lastNativeID, upstreamHasMore)
+	hasMore, next := nextWalkStep(ordered, start, current, lastNativeID, page.HasMore)
+	page.HasMore = hasMore
 
 	if hasMore {
 		token, e := encodeListWalkCursor(p.codec, &next)
 		if e != nil {
 			// If we cannot mint a cursor, end pagination rather than emit a native cursor.
 			p.logger.Warn("failed to encode list cursor, ending pagination", slog.String("error", e.Error()))
+			page.HasMore = false
 			hasMore = false
 		} else {
-			newBody, _ = sjson.SetBytes(newBody, "last_id", token)
+			page.LastID = token
 		}
 	}
 	if !hasMore {
 		// Terminal page: never leak the backend-native last_id; re-encode it when present.
-		if lid := gjson.GetBytes(raw, "last_id").String(); lid != "" {
-			if gw, e := p.encodeFileID(lid); e == nil {
-				newBody, _ = sjson.SetBytes(newBody, "last_id", gw)
+		if page.LastID != "" {
+			if gw, err := p.encodeFileID(page.LastID); err == nil {
+				page.LastID = gw
+			} else {
+				page.LastID = ""
 			}
 		}
 	}
-	if newBody, err = sjson.SetBytes(newBody, "has_more", hasMore); err != nil {
-		p.logger.Warn("failed to set has_more on files list, passing through", slog.String("error", err.Error()))
+
+	newBody, err := internaljson.Marshal(page)
+	if err != nil {
+		p.logger.Warn("failed to marshal files list response, passing through", slog.String("error", err.Error()))
 		return passThroughResponseBody()
 	}
 	return bodyMutationResponse(newBody)
