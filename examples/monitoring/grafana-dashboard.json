@@ -310,6 +310,20 @@
         }
       ],
       "title": "Requests by Original Model vs Response Model",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "Value": "Requests"
+            }
+          }
+        }
+      ],
       "type": "table"
     },
     {
@@ -454,6 +468,20 @@
         }
       ],
       "title": "Success Rate by Model",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "Value": "Success Rate"
+            }
+          }
+        }
+      ],
       "type": "table"
     }
   ],
