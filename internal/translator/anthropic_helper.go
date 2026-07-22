@@ -22,6 +22,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
@@ -39,6 +40,42 @@ var anthropicInputSchemaKeysToSkip = map[string]struct{}{
 	"required":   {},
 	"type":       {},
 	"properties": {},
+}
+
+// openAIToolParamsToAnthropicInputSchema converts OpenAI function parameters to an Anthropic ToolInputSchemaParam.
+func openAIToolParamsToAnthropicInputSchema(parameters any) (anthropic.ToolInputSchemaParam, error) {
+	var schema anthropic.ToolInputSchemaParam
+	if parameters == nil {
+		return schema, nil
+	}
+	paramsMap, ok := parameters.(map[string]any)
+	if !ok {
+		return schema, fmt.Errorf("failed to cast tool parameters to map[string]any")
+	}
+	if typeVal, ok := paramsMap["type"].(string); ok {
+		schema.Type = constant.Object(typeVal)
+	}
+	if propsVal, ok := paramsMap["properties"].(map[string]any); ok {
+		schema.Properties = propsVal
+	}
+	if requiredVal, ok := paramsMap["required"].([]any); ok {
+		requiredSlice := make([]string, len(requiredVal))
+		for i, v := range requiredVal {
+			if s, ok := v.(string); ok {
+				requiredSlice[i] = s
+			}
+		}
+		schema.Required = requiredSlice
+	}
+	extraFields := make(map[string]any)
+	for key, value := range paramsMap {
+		if _, found := anthropicInputSchemaKeysToSkip[key]; found {
+			continue
+		}
+		extraFields[key] = value
+	}
+	schema.ExtraFields = extraFields
+	return schema, nil
 }
 
 func anthropicToOpenAIFinishReason(stopReason anthropic.StopReason) (openai.ChatCompletionChoicesFinishReason, error) {
@@ -148,54 +185,11 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 				toolParam.CacheControl = anthropic.NewCacheControlEphemeralParam()
 			}
 
-			// The parameters for the function are expected to be a JSON Schema object.
-			// We can pass them through as-is.
 			if openAITool.Function.Parameters != nil {
-				paramsMap, ok := openAITool.Function.Parameters.(map[string]any)
-				if !ok {
-					err = fmt.Errorf("failed to cast tool parameters to map[string]interface{}")
+				toolParam.InputSchema, err = openAIToolParamsToAnthropicInputSchema(openAITool.Function.Parameters)
+				if err != nil {
 					return
 				}
-
-				inputSchema := anthropic.ToolInputSchemaParam{}
-
-				var typeVal string
-				if typeVal, ok = paramsMap["type"].(string); ok {
-					inputSchema.Type = constant.Object(typeVal)
-				}
-
-				var propsVal map[string]any
-				if propsVal, ok = paramsMap["properties"].(map[string]any); ok {
-					inputSchema.Properties = propsVal
-				}
-
-				var requiredVal []any
-				if requiredVal, ok = paramsMap["required"].([]any); ok {
-					requiredSlice := make([]string, len(requiredVal))
-					for i, v := range requiredVal {
-						if s, ok := v.(string); ok {
-							requiredSlice[i] = s
-						}
-					}
-					inputSchema.Required = requiredSlice
-				}
-
-				// ExtraFieldsMap to construct
-				ExtraFieldsMap := make(map[string]any)
-
-				// Iterate over the original map from openai
-				for key, value := range paramsMap {
-					// Check if the current key should be skipped
-					if _, found := anthropicInputSchemaKeysToSkip[key]; found {
-						continue
-					}
-
-					// If not skipped, add the key-value pair to extra field map
-					ExtraFieldsMap[key] = value
-				}
-				inputSchema.ExtraFields = ExtraFieldsMap
-
-				toolParam.InputSchema = inputSchema
 			}
 
 			anthropicTools = append(anthropicTools, anthropic.ToolUnionParam{OfTool: &toolParam})
@@ -621,14 +615,21 @@ func modelContainsAny(model internalapi.RequestModel, identifiers []string) bool
 }
 
 // outputConfigModels lists model identifiers that support structured outputs (OutputConfig).
-// Structured outputs are available on Claude Opus 4.6, Claude Sonnet 4.6, Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
+// Structured outputs are available on Claude Fable 5, Claude Mythos 5, Claude Opus 4.8, Claude Mythos Preview,
+// Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 5, Claude Sonnet 4.6, Claude Sonnet 4.5, Claude Opus 4.5, and Claude Haiku 4.5.
 // See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
 var outputConfigModels = []string{
-	"opus-4-5",   // Claude Opus 4.5
-	"sonnet-4-5", // Claude Sonnet 4.5
-	"haiku-4-5",  // Claude Haiku 4.5
-	"opus-4-6",   // Claude Opus 4.6
-	"sonnet-4-6", // Claude Sonnet 4.6
+	"opus-4-5",       // Claude Opus 4.5
+	"sonnet-4-5",     // Claude Sonnet 4.5
+	"haiku-4-5",      // Claude Haiku 4.5
+	"opus-4-6",       // Claude Opus 4.6
+	"sonnet-4-6",     // Claude Sonnet 4.6
+	"opus-4-7",       // Claude Opus 4.7
+	"opus-4-8",       // Claude Opus 4.8
+	"sonnet-5",       // Claude Sonnet 5
+	"fable-5",        // Claude Fable 5
+	"mythos-5",       // Claude Mythos 5
+	"mythos-preview", // Claude Mythos Preview
 }
 
 func outputConfigAvailable(model internalapi.RequestModel) bool {
@@ -636,13 +637,18 @@ func outputConfigAvailable(model internalapi.RequestModel) bool {
 }
 
 // effortModels lists model identifiers that support the output_config.effort parameter.
-// The effort parameter is supported by Claude Mythos Preview, Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 4.6, and Claude Opus 4.5.
+// The effort parameter is supported by Claude Fable 5, Claude Mythos 5, Claude Opus 4.8, Claude Mythos Preview,
+// Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 5, Claude Sonnet 4.6, and Claude Opus 4.5.
 // See: https://platform.claude.com/docs/en/build-with-claude/effort
 var effortModels = []string{
 	"opus-4-5",       // Claude Opus 4.5
 	"opus-4-6",       // Claude Opus 4.6
 	"opus-4-7",       // Claude Opus 4.7
+	"opus-4-8",       // Claude Opus 4.8
 	"sonnet-4-6",     // Claude Sonnet 4.6
+	"sonnet-5",       // Claude Sonnet 5
+	"fable-5",        // Claude Fable 5
+	"mythos-5",       // Claude Mythos 5
 	"mythos-preview", // Claude Mythos Preview
 }
 
@@ -1339,4 +1345,64 @@ func messageToChatCompletion(anthropicResp *anthropic.Message, responseModel int
 	}
 	openAIResp.Choices = append(openAIResp.Choices, choice)
 	return openAIResp, tokenUsage, nil
+}
+
+// openAIToAnthropicCountTokensParams builds the Anthropic MessageCountTokensParams
+// from an OpenAI-compatible tokenize chat request. Shared by GCP and AWS Anthropic tokenize translators.
+//
+// Only the fields that affect the counted input tokens are mapped: Messages, Model,
+// System, and Tools. Per the Anthropic count_tokens endpoint, the counted input covers
+// system prompts, tools, images, PDFs, and current-turn thinking blocks (all of which
+// arrive via Messages/System/Tools here). The remaining MessageCountTokensParams fields
+// are intentionally omitted because they do not change the returned count:
+//   - CacheControl: a no-op for token counting; caching only happens during message creation.
+//   - Thinking: the thinking config adds no input tokens; only thinking blocks already
+//     present in Messages count.
+//   - OutputConfig: structured outputs constrain decoding (output), not the input prompt.
+//   - ToolChoice: a generation-time control, not counted content.
+func openAIToAnthropicCountTokensParams(chatReq *tokenize.ChatRequest, model internalapi.RequestModel) (*anthropic.MessageCountTokensParams, error) {
+	messages, systemBlocks, err := openAIToAnthropicMessages(chatReq.Messages)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert messages: %w", err)
+	}
+
+	params := &anthropic.MessageCountTokensParams{
+		Messages: messages,
+		Model:    model,
+	}
+
+	if len(systemBlocks) > 0 {
+		if len(systemBlocks) == 1 {
+			params.System = anthropic.MessageCountTokensParamsSystemUnion{
+				OfString: anthropic.String(systemBlocks[0].Text),
+			}
+		} else {
+			textBlocks := make([]anthropic.TextBlockParam, len(systemBlocks))
+			for i, block := range systemBlocks {
+				textBlocks[i] = anthropic.TextBlockParam{Text: block.Text}
+			}
+			params.System = anthropic.MessageCountTokensParamsSystemUnion{
+				OfTextBlockArray: textBlocks,
+			}
+		}
+	}
+
+	if len(chatReq.Tools) > 0 {
+		params.Tools = make([]anthropic.MessageCountTokensToolUnionParam, 0, len(chatReq.Tools))
+		for _, tool := range chatReq.Tools {
+			if tool.Function == nil {
+				continue
+			}
+			inputSchema, err := openAIToolParamsToAnthropicInputSchema(tool.Function.Parameters)
+			if err != nil {
+				return nil, err
+			}
+			params.Tools = append(params.Tools, anthropic.MessageCountTokensToolParamOfTool(
+				inputSchema,
+				tool.Function.Name,
+			))
+		}
+	}
+
+	return params, nil
 }

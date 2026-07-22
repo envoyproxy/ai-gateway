@@ -1944,6 +1944,59 @@ data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"get_weather",
 	require.Equal(t, uint32(10), outputTokens)
 }
 
+func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingToolCallSplitFinishReason(t *testing.T) {
+	// Newer Gemini models (e.g. gemini-3.5-flash, gemini-3.1-flash-lite) stream
+	// the functionCall and the terminal STOP in separate chunks: the functionCall
+	// chunk carries no finishReason, and a trailing chunk carries finishReason=STOP
+	// with an empty text part (no functionCall). The completion's finish_reason
+	// must still be "tool_calls", not "stop". (Older Gemini models carried both in
+	// a single chunk; that case is covered by
+	// TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingToolCallWithSignature.)
+	translator := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-3.5-flash").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
+
+	gcpStreamingChunk := `data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"get_weather","args":{"location":"Paris"}},"thoughtSignature":"dG9vbGNhbGxzaWduYXR1cmU="}]}}],"usageMetadata":{"trafficType":"ON_DEMAND"}}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":""}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":15,"candidatesTokenCount":10,"totalTokenCount":25,"thoughtsTokenCount":8}}`
+
+	headerMut, body, tokenUsage, _, err := translator.handleStreamingResponse(
+		bytes.NewReader([]byte(gcpStreamingChunk)),
+		false,
+		nil,
+	)
+
+	require.Nil(t, headerMut)
+	require.NoError(t, err)
+	require.NotNil(t, body)
+
+	chatCompletionChunks := getChatCompletionResponseChunk(body)
+	// We expect 3 chunks: tool call (no finish_reason), terminal STOP, and usage.
+	require.Len(t, chatCompletionChunks, 3)
+
+	// First chunk carries the tool call and no finish_reason yet.
+	firstChunk := chatCompletionChunks[0]
+	require.Len(t, firstChunk.Choices, 1)
+	assert.Equal(t, openai.ChatCompletionChoicesFinishReason(""), firstChunk.Choices[0].FinishReason)
+	require.Len(t, firstChunk.Choices[0].Delta.ToolCalls, 1)
+	assert.Equal(t, "get_weather", firstChunk.Choices[0].Delta.ToolCalls[0].Function.Name)
+	assert.JSONEq(t, `{"location":"Paris"}`, firstChunk.Choices[0].Delta.ToolCalls[0].Function.Arguments)
+
+	// Second chunk carries the terminal STOP but no tool call. The finish_reason
+	// must be rewritten to "tool_calls" because a tool call was already streamed.
+	secondChunk := chatCompletionChunks[1]
+	require.Len(t, secondChunk.Choices, 1)
+	assert.Equal(t, openai.ChatCompletionChoicesFinishReason("tool_calls"), secondChunk.Choices[0].FinishReason)
+	assert.Empty(t, secondChunk.Choices[0].Delta.ToolCalls)
+
+	// Third chunk is usage.
+	thirdChunk := chatCompletionChunks[2]
+	assert.NotNil(t, thirdChunk.Usage)
+
+	// Completion tokens = candidatesTokenCount(10) + thoughtsTokenCount(8).
+	outputTokens, ok := tokenUsage.OutputTokens()
+	require.True(t, ok)
+	require.Equal(t, uint32(18), outputTokens)
+}
+
 func TestOpenAIToGCPVertexAITranslatorV1ChatCompletion_StreamingEndOfStream(t *testing.T) {
 	translator := NewChatCompletionOpenAIToGCPVertexAITranslator("gemini-2.0-flash-001").(*openAIToGCPVertexAITranslatorV1ChatCompletion)
 
