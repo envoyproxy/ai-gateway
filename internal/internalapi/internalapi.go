@@ -111,7 +111,7 @@ const (
 
 	// DefaultFilterOrderAnnotation is the default annotation key for controlling filter order,
 	// targeting Lua filters specifically.
-	DefaultFilterOrderAnnotation = "aigateway.envoyproxy.io/lua-filter-order"
+	DefaultFilterOrderAnnotation = "aigateway.envoyproxy.io/default-filter-order"
 )
 
 // ParseRequestHeaderAttributeMapping parses comma-separated key-value pairs for header-to-attribute mapping.
