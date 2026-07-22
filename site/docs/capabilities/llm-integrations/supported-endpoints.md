@@ -361,9 +361,12 @@ curl -H "Content-Type: application/json" \
 
 **Supported Providers:**
 
-| Provider                       | API Schema | Translation Target | Notes                                                                                 |
-| ------------------------------ | ---------- | ------------------ | ------------------------------------------------------------------------------------- |
-| OpenAI-compatible (e.g., vLLM) | `OpenAI`   | Passthrough        | vLLM natively supports `/tokenize`. OpenAI itself does not offer a tokenize REST API. |
+| Provider                            | API Schema     | Translation Target                                                                                                           | Notes                                                                                 |
+| ----------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| OpenAI-compatible (e.g., vLLM)      | `OpenAI`       | Passthrough                                                                                                                  | vLLM natively supports `/tokenize`. OpenAI itself does not offer a tokenize REST API. |
+| GCP Vertex AI (Gemini)              | `GCPVertexAI`  | [Gemini CountTokens API](https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/count-tokens)                 | Supports `media_resolution` parameter.                                                |
+| GCP Anthropic (Claude on Vertex AI) | `GCPAnthropic` | [Anthropic MessageCountTokens API](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude/count-tokens) | Uses `rawPredict` method with `count-tokens` virtual model.                           |
+| AWS Bedrock (Anthropic)             | `AWSAnthropic` | [AWS Bedrock CountTokens API](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html)          | Uses the InvokeModel-style CountTokens API with the Anthropic Messages body.          |
 
 **Chat Message Example:**
 
@@ -398,6 +401,14 @@ curl -H "Content-Type: application/json" \
 
 **Response Format:**
 
+For translated backends (GCP Vertex AI, GCP Anthropic, AWS Bedrock Anthropic), the response contains only the token count:
+
+```json
+{
+  "count": 15
+}
+```
+
 For OpenAI-compatible backends that natively support tokenization (e.g., vLLM), the response contains the token count and additional fields may be present depending on request parameters:
 
 ```json
@@ -412,6 +423,9 @@ For OpenAI-compatible backends that natively support tokenization (e.g., vLLM), 
 **Configuration Notes:**
 
 - For **vLLM backends**: Configure with `OpenAI` schema. vLLM natively provides `/tokenize` and the gateway passes the request through.
+- For **GCP Vertex AI**: Configure with `GCPVertexAI` schema. Requests are automatically translated to the Gemini CountTokens API. Completion prompts are automatically converted to chat messages.
+- For **GCP Anthropic**: Configure with `GCPAnthropic` schema. Requests are translated to the Anthropic MessageCountTokens API via `rawPredict`. Completion prompts are automatically converted to chat messages. Model version suffixes (`@default`, `@latest`) are automatically stripped.
+- For **AWS Bedrock (Anthropic)**: Configure with `AWSAnthropic` schema. Requests are translated to the AWS Bedrock CountTokens API using the InvokeModel-style Anthropic Messages body. Completion prompts are automatically converted to chat messages. Cross-region inference (CRIS) model ID prefixes are automatically stripped.
 
 ### Models
 
@@ -468,9 +482,9 @@ The following table summarizes which providers support which endpoints:
 | [Hunyuan](https://cloud.tencent.com/document/product/1729/111007)                                     |        ⚠️        |     ⚠️      |     ⚠️     |        ❌        |         ❌         |   ❌   |    ❌    | Via OpenAI-compatible API                                                                                            |
 | [Tencent LLM Knowledge Engine](https://www.tencentcloud.com/document/product/1255/70381)              |        ⚠️        |     ❌      |     ❌     |        ❌        |         ❌         |   ❌   |    ❌    | Via OpenAI-compatible API                                                                                            |
 | [Tetrate Agent Router Service (TARS)](https://router.tetrate.ai/)                                     |        ⚠️        |     ⚠️      |     ⚠️     |        ❌        |         ❌         |   ❌   |    ❌    | Via OpenAI-compatible API                                                                                            |
-| [Google Vertex AI](https://cloud.google.com/vertex-ai/docs/reference/rest)                            |        ✅        |     🚧      |     ✅     |        ❌        |         ❌         |   ❌   |    ❌    | Via API translation                                                                                                  |
-| [Anthropic on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |        ✅        |     ❌      |     🚧     |        ❌        |         ✅         |   ❌   |    ❌    | Via API translation                                                                                                  |
-| [Anthropic on AWS Bedrock](https://aws.amazon.com/bedrock/anthropic/)                                 |        🚧        |     ❌      |     ❌     |        ❌        |         ✅         |   ❌   |    ❌    | Native Anthropic API                                                                                                 |
+| [Google Vertex AI](https://cloud.google.com/vertex-ai/docs/reference/rest)                            |        ✅        |     🚧      |     ✅     |        ❌        |         ❌         |   ❌   |    ✅    | Via API translation                                                                                                  |
+| [Anthropic on Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |        ✅        |     ❌      |     🚧     |        ❌        |         ✅         |   ❌   |    ✅    | Via API translation                                                                                                  |
+| [Anthropic on AWS Bedrock](https://aws.amazon.com/bedrock/anthropic/)                                 |        🚧        |     ❌      |     ❌     |        ❌        |         ✅         |   ❌   |    ✅    | Native Anthropic API                                                                                                 |
 | [SambaNova](https://docs.sambanova.ai/sambastudio/latest/open-ai-api.html)                            |        ✅        |     ⚠️      |     ✅     |        ❌        |         ❌         |   ❌   |    ❌    | Via OpenAI-compatible API                                                                                            |
 | [Anthropic](https://docs.claude.com/en/home)                                                          |        ✅        |     ❌      |     ❌     |        ❌        |         ✅         |   ❌   |    ❌    | Via OpenAI-compatible API and Native Anthropic API                                                                   |
 | [vLLM](https://docs.vllm.ai/en/latest/)                                                               |        ✅        |     ✅      |     ✅     |        ❌        |         ❌         |   ❌   |    ✅    | Via OpenAI-compatible API; native `/tokenize` support                                                                |
