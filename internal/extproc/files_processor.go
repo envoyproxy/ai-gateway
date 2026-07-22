@@ -452,11 +452,15 @@ func (p *filesProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.
 }
 
 // reEncodeResponse rewrites the top-level backend-native "id" in a JSON response into a
-// gateway-encoded id (upload/retrieve/delete). On any failure it passes the body through
-// unchanged.
+// gateway-encoded id (upload/retrieve/delete). Returns a 502 ImmediateResponse on any failure.
 func (p *filesProcessor) reEncodeResponse(raw []byte) *extprocv3.ProcessingResponse {
-	if !p.backendKnown || len(raw) == 0 {
-		return passThroughResponseBody()
+	if !p.backendKnown {
+		p.logger.Error("backend unknown; cannot re-encode files response id")
+		return filesReEncodeError("backend unknown for upstream files response")
+	}
+	if len(raw) == 0 {
+		p.logger.Error("empty body; cannot re-encode files response id")
+		return filesReEncodeError("empty body in upstream files response")
 	}
 
 	// Invoke ResponseBody translator before re-encoding.
@@ -465,7 +469,7 @@ func (p *filesProcessor) reEncodeResponse(raw []byte) *extprocv3.ProcessingRespo
 		_, mutatedBody, _, _, err := p.translator.ResponseBody(p.responseHeaders, bytes.NewReader(raw), true, nil)
 		if err != nil {
 			p.logger.Error("failed to translate response body", slog.String("error", err.Error()))
-			return passThroughResponseBody()
+			return filesReEncodeError("failed to process upstream files response")
 		}
 		if mutatedBody != nil {
 			workingBody = mutatedBody
@@ -474,17 +478,18 @@ func (p *filesProcessor) reEncodeResponse(raw []byte) *extprocv3.ProcessingRespo
 
 	nativeID := gjson.GetBytes(workingBody, "id").String()
 	if nativeID == "" {
-		return passThroughResponseBody()
+		p.logger.Error("missing id field; cannot re-encode files response")
+		return filesReEncodeError("missing id in upstream files response")
 	}
 	gw, err := p.encodeFileID(nativeID)
 	if err != nil {
-		p.logger.Warn("failed to re-encode files response id, passing through", slog.String("error", err.Error()))
-		return passThroughResponseBody()
+		p.logger.Error("failed to re-encode files response id", slog.String("error", err.Error()))
+		return filesReEncodeError("failed to encode file id in upstream files response")
 	}
 	newBody, err := sjson.SetBytes(workingBody, "id", gw)
 	if err != nil {
-		p.logger.Warn("failed to re-encode files response id, passing through", slog.String("error", err.Error()))
-		return passThroughResponseBody()
+		p.logger.Error("failed to re-encode files response id", slog.String("error", err.Error()))
+		return filesReEncodeError("failed to encode file id in upstream files response")
 	}
 	return bodyMutationResponse(newBody)
 }
@@ -502,18 +507,24 @@ func (p *filesProcessor) encodeFileID(nativeID string) (string, error) {
 // buildListWalkResponse re-encodes every data[].id (and first_id/last_id) for the serving backend
 // and stitches this single-backend page into the cross-backend walk: it computes the next walk
 // position and rewrites has_more + last_id so the client paginates seamlessly across all of the
-// route's backends. On any failure it passes the body through unchanged.
+// route's backends. Returns a 502 ImmediateResponse on any failure.
 func (p *filesProcessor) buildListWalkResponse(raw []byte) *extprocv3.ProcessingResponse {
-	if !p.backendKnown || len(raw) == 0 {
-		return passThroughResponseBody()
+	if !p.backendKnown {
+		p.logger.Error("backend unknown; cannot re-encode files list response ids")
+		return filesReEncodeError("backend unknown for upstream files list response")
+	}
+	if len(raw) == 0 {
+		p.logger.Error("empty body; cannot re-encode files list response ids")
+		return filesReEncodeError("empty body in upstream files list response")
 	}
 
 	// Unmarshal into the typed list response. An upstream error (or any non-list body) will either
-	// fail to unmarshal or produce an empty Data slice; pass it through unchanged so the failure
-	// propagates to the client rather than being turned into a paginated continuation.
+	// fail to unmarshal or produce an empty Data slice; return an error so the client is not misled
+	// by a response the gateway cannot safely re-encode.
 	var page openai.FileListResponse
 	if err := internaljson.Unmarshal(raw, &page); err != nil || page.Data == nil {
-		return passThroughResponseBody()
+		p.logger.Error("failed to unmarshal files list response body; cannot re-encode ids")
+		return filesReEncodeError("invalid or non-list body in upstream files list response")
 	}
 
 	// Invoke ResponseBody translator before re-encoding.
@@ -521,14 +532,14 @@ func (p *filesProcessor) buildListWalkResponse(raw []byte) *extprocv3.Processing
 		_, mutatedBody, _, _, err := p.translator.ResponseBody(p.responseHeaders, bytes.NewReader(raw), true, nil)
 		if err != nil {
 			p.logger.Error("failed to translate response body for files list endpoint", slog.String("error", err.Error()))
-			return passThroughResponseBody()
+			return filesReEncodeError("failed to process upstream files list response")
 		}
 		if mutatedBody != nil {
 			// Re-unmarshal into the typed struct after translation so subsequent mutations operate
 			// on the translated content.
 			if err := internaljson.Unmarshal(mutatedBody, &page); err != nil {
 				p.logger.Error("failed to unmarshal translated response body for files list endpoint", slog.String("error", err.Error()))
-				return passThroughResponseBody()
+				return filesReEncodeError("failed to process upstream files list response")
 			}
 		}
 	}
@@ -549,8 +560,8 @@ func (p *filesProcessor) buildListWalkResponse(raw []byte) *extprocv3.Processing
 		lastNativeID = nativeID
 		gw, err := p.encodeFileID(nativeID)
 		if err != nil {
-			p.logger.Warn("failed to re-encode files list ids, passing through", slog.String("error", err.Error()))
-			return passThroughResponseBody()
+			p.logger.Error("failed to re-encode files list ids", slog.String("error", err.Error()))
+			return filesReEncodeError("failed to encode file id in upstream files list response")
 		}
 		page.Data[i].ID = gw
 	}
@@ -590,8 +601,8 @@ func (p *filesProcessor) buildListWalkResponse(raw []byte) *extprocv3.Processing
 
 	newBody, err := internaljson.Marshal(page)
 	if err != nil {
-		p.logger.Warn("failed to marshal files list response, passing through", slog.String("error", err.Error()))
-		return passThroughResponseBody()
+		p.logger.Error("failed to marshal files list response", slog.String("error", err.Error()))
+		return filesReEncodeError("failed to encode upstream files list response")
 	}
 	return bodyMutationResponse(newBody)
 }
@@ -710,6 +721,14 @@ func stickyBackendDynamicMetadata(namespace, name string) *structpb.Struct {
 // unmodified.
 func passThroughResponseBody() *extprocv3.ProcessingResponse {
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}
+}
+
+// filesReEncodeError returns an ImmediateResponse (HTTP 502) for cases where a file id could not
+// be safely re-encoded. Forwarding the upstream body unchanged in these cases would leak
+// backend-native ids to the client, so a controlled error is returned instead. It is returned with
+// a nil Go error so the ext_proc stream stays intact.
+func filesReEncodeError(msg string) *extprocv3.ProcessingResponse {
+	return createUserFacingErrorResponse(http.StatusBadGateway, "upstream_error", msg)
 }
 
 // bodyMutationResponse returns a response-body processing result that replaces the body with
