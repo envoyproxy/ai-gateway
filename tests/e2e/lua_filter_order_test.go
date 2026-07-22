@@ -22,8 +22,8 @@ import (
 )
 
 // TestLuaFilterOrder verifies that an EnvoyExtensionPolicy Lua filter annotated with
-// aigateway.envoyproxy.io/lua-filter-order: before-extproc runs AFTER the AI Gateway
-// ext_proc on the response path.
+// aigateway.envoyproxy.io/filter-order: before-extproc runs AFTER the ext_proc
+// on the response path.
 func TestLuaFilterOrder(t *testing.T) {
 	const manifest = "testdata/lua_filter_order.yaml"
 	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
