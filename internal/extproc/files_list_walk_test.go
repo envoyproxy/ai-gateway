@@ -454,10 +454,22 @@ func TestBuildListWalkResponse_NonListPassThrough(t *testing.T) {
 		},
 	}, "", p))
 
-	// An error envelope (no data array) passes through unmodified.
+	// An error envelope (no data array) cannot be safely re-encoded; returns 502.
 	body := []byte(`{"error":{"message":"boom","type":"server_error"}}`)
 	resp := p.buildListWalkResponse(body)
-	require.Nil(t, resp.GetResponseBody().GetResponse())
+	require.Equal(t, int32(http.StatusBadGateway), int32(resp.GetImmediateResponse().Status.Code))
+}
+
+func TestBuildListWalkResponse_BackendUnknown_Returns502(t *testing.T) {
+	p := &filesProcessor{logger: slog.Default(), backendKnown: false}
+	resp := p.buildListWalkResponse([]byte(`{"object":"list","data":[]}`))
+	require.Equal(t, int32(http.StatusBadGateway), int32(resp.GetImmediateResponse().Status.Code))
+}
+
+func TestBuildListWalkResponse_EmptyBody_Returns502(t *testing.T) {
+	p := &filesProcessor{logger: slog.Default(), backendKnown: true}
+	resp := p.buildListWalkResponse([]byte{})
+	require.Equal(t, int32(http.StatusBadGateway), int32(resp.GetImmediateResponse().Status.Code))
 }
 
 func TestStripQueryParam(t *testing.T) {

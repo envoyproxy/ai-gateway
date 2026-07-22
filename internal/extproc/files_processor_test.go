@@ -7,6 +7,7 @@ package extproc
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"testing"
@@ -472,14 +473,13 @@ func TestProcessResponseBody_List_CallsBuildWalkResponse(t *testing.T) {
 func TestReEncodeResponse_BackendUnknown(t *testing.T) {
 	p := &filesProcessor{logger: slog.Default(), backendKnown: false}
 	resp := p.reEncodeResponse([]byte(`{"id":"native-1"}`))
-	// passthrough when backend not known
-	require.Nil(t, resp.GetResponseBody().GetResponse())
+	require.Equal(t, int32(http.StatusBadGateway), int32(resp.GetImmediateResponse().Status.Code))
 }
 
 func TestReEncodeResponse_EmptyBody(t *testing.T) {
 	p := &filesProcessor{logger: slog.Default(), backendKnown: true}
 	resp := p.reEncodeResponse([]byte{})
-	require.Nil(t, resp.GetResponseBody().GetResponse())
+	require.Equal(t, int32(http.StatusBadGateway), int32(resp.GetImmediateResponse().Status.Code))
 }
 
 func TestReEncodeResponse_NoIDField(t *testing.T) {
@@ -492,8 +492,8 @@ func TestReEncodeResponse_NoIDField(t *testing.T) {
 		codec:            codec,
 	}
 	resp := p.reEncodeResponse([]byte(`{"object":"file","bytes":100}`))
-	// No "id" field → passthrough
-	require.Nil(t, resp.GetResponseBody().GetResponse())
+	// No "id" field → 502, not a silent passthrough.
+	require.Equal(t, int32(http.StatusBadGateway), int32(resp.GetImmediateResponse().Status.Code))
 }
 
 func TestReEncodeResponse_Success(t *testing.T) {
@@ -690,6 +690,47 @@ func TestReEncodeResponse_WithResponseHeaders(t *testing.T) {
 	mutated := resp.GetResponseBody().GetResponse().GetBodyMutation().GetBody()
 	require.NotEmpty(t, mutated)
 	require.Contains(t, string(mutated), `"file-`) // gateway-encoded id
+}
+
+// errEncodeCodec is a codec whose Encode always fails, used to exercise the re-encode error paths.
+type errEncodeCodec struct{}
+
+func (errEncodeCodec) Encode(idcodec.BackendID) (string, error) {
+	return "", errors.New("boom")
+}
+
+func (errEncodeCodec) Decode(string) (idcodec.BackendID, error) {
+	return idcodec.BackendID{}, errors.New("boom")
+}
+
+func TestReEncodeResponse_EncodeFailure_Returns502(t *testing.T) {
+	p := &filesProcessor{
+		logger:           slog.Default(),
+		backendKnown:     true,
+		backendNamespace: "ns",
+		backendName:      "apple",
+		codec:            errEncodeCodec{},
+	}
+	resp := p.reEncodeResponse([]byte(`{"id":"file-native-secret","object":"file"}`))
+	// A controlled 502 error is returned rather than leaking the native id.
+	require.Equal(t, int32(http.StatusBadGateway), int32(resp.GetImmediateResponse().Status.Code))
+	require.NotContains(t, string(resp.GetImmediateResponse().Body), "file-native-secret")
+}
+
+func TestBuildListWalkResponse_EncodeFailure_Returns502(t *testing.T) {
+	config := runtimeConfigWithBackends(t, [3]string{"ns", "apple", "myroute"})
+	p := &filesProcessor{
+		codec:            errEncodeCodec{},
+		config:           config,
+		logger:           slog.Default(),
+		backendKnown:     true,
+		backendNamespace: "ns",
+		backendName:      "apple",
+		listRouteName:    "myroute",
+	}
+	resp := p.buildListWalkResponse([]byte(`{"object":"list","data":[{"id":"file-native-secret","object":"file"}]}`))
+	require.Equal(t, int32(http.StatusBadGateway), int32(resp.GetImmediateResponse().Status.Code))
+	require.NotContains(t, string(resp.GetImmediateResponse().Body), "file-native-secret")
 }
 
 // ---------------------------------------------------------------------------
