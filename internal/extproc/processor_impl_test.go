@@ -136,10 +136,36 @@ func Test_chatCompletionProcessorRouterFilter_ProcessRequestBody(t *testing.T) {
 		require.Len(t, setHeaders, 3)
 		require.Equal(t, internalapi.ModelNameHeaderKeyDefault, setHeaders[0].Header.Key)
 		require.Equal(t, "some-model", string(setHeaders[0].Header.RawValue))
+		require.Equal(t, corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD, setHeaders[0].AppendAction)
 		require.Equal(t, internalapi.OriginalPathHeader, setHeaders[1].Header.Key)
 		require.Equal(t, "/foo", string(setHeaders[1].Header.RawValue))
 		require.Equal(t, internalapi.EnvoyOriginalPathHeader, setHeaders[2].Header.Key)
 		require.Equal(t, "/foo", string(setHeaders[2].Header.RawValue))
+	})
+
+	t.Run("model header overwrites pre-existing value", func(t *testing.T) {
+		// x-ai-eg-model is owned by the gateway, so a client-supplied value must be
+		// overwritten rather than appended (which would produce a multi-value header).
+		headers := map[string]string{
+			":path":                               "/foo",
+			internalapi.ModelNameHeaderKeyDefault: "client-supplied",
+		}
+		p := &chatCompletionProcessorRouterFilter{
+			config:         &filterapi.RuntimeConfig{},
+			requestHeaders: headers,
+			logger:         slog.Default(),
+			tracer:         tracingapi.NoopTracer[openai.ChatCompletionRequest, openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]{},
+		}
+		resp, err := p.ProcessRequestBody(t.Context(), &extprocv3.HttpBody{Body: bodyFromModel(t, "some-model", false, nil)})
+		require.NoError(t, err)
+		re, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestBody)
+		require.True(t, ok)
+		setHeaders := re.RequestBody.GetResponse().GetHeaderMutation().SetHeaders
+		require.Equal(t, internalapi.ModelNameHeaderKeyDefault, setHeaders[0].Header.Key)
+		require.Equal(t, "some-model", string(setHeaders[0].Header.RawValue))
+		require.Equal(t, corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD, setHeaders[0].AppendAction)
+		// The in-place request header map is updated too, not just the mutation.
+		require.Equal(t, "some-model", headers[internalapi.ModelNameHeaderKeyDefault])
 	})
 
 	t.Run("span creation", func(t *testing.T) {

@@ -265,7 +265,9 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the original model to the request header with the key `x-ai-eg-model`.
-		Header: &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
+		// This header is owned by the gateway, so overwrite any client-supplied value instead of appending.
+		AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+		Header:       &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
 	})
 	originalPath := r.requestHeaders[":path"]
 	r.requestHeaders[originalPathHeader] = originalPath
