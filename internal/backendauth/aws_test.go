@@ -103,6 +103,58 @@ func TestNewAWSHandler(t *testing.T) {
 	})
 }
 
+func TestAWSHandler_SigningHost(t *testing.T) {
+	handler := &awsHandler{region: "us-east-1"}
+	for _, tc := range []struct {
+		name    string
+		headers map[string]string
+		want    string
+	}{
+		{
+			name: "upstream metadata wins over authority",
+			headers: map[string]string{
+				internalapi.AWSSigningHostHeader: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com:443",
+				":authority":                     "gateway.example.com",
+			},
+			want: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
+		},
+		{
+			name:    "authority fallback",
+			headers: map[string]string{":authority": "custom-bedrock.example.com"},
+			want:    "custom-bedrock.example.com",
+		},
+		{
+			name:    "host fallback",
+			headers: map[string]string{"host": "bedrock-runtime.us-west-2.amazonaws.com"},
+			want:    "bedrock-runtime.us-west-2.amazonaws.com",
+		},
+		{
+			name:    "default host fallback",
+			headers: map[string]string{},
+			want:    "bedrock-runtime.us-east-1.amazonaws.com",
+		},
+		{
+			name:    "non default port preserved",
+			headers: map[string]string{internalapi.AWSSigningHostHeader: "custom-bedrock.example.com:8443"},
+			want:    "custom-bedrock.example.com:8443",
+		},
+		{
+			name:    "ipv6 default port is rebracketed",
+			headers: map[string]string{internalapi.AWSSigningHostHeader: "[2001:db8::1]:443"},
+			want:    "[2001:db8::1]",
+		},
+		{
+			name:    "ipv6 non default port preserved",
+			headers: map[string]string{internalapi.AWSSigningHostHeader: "[2001:db8::1]:8443"},
+			want:    "[2001:db8::1]:8443",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, handler.signingHost(tc.headers))
+		})
+	}
+}
+
 func TestAWSHandler_Do(t *testing.T) {
 	t.Run("concurrent signing with credentials file", func(t *testing.T) {
 		awsFileBody := "[default]\naws_access_key_id=test\naws_secret_access_key=secret\n"

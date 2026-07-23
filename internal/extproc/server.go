@@ -185,6 +185,7 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 				if internalReqID == "" {
 					return status.Errorf(codes.Internal, "missing internal request ID header from router filter")
 				}
+				setAWSSigningHost(headersMap, req.GetAttributes()["envoy.filters.http.ext_proc"])
 			} else {
 				// For router filter, create a unique internal request ID to avoid race conditions
 				// with duplicate x-request-id values by appending a UUID suffix to the original request ID
@@ -432,6 +433,24 @@ func resolveRouteName(attributes *structpb.Struct) string {
 	// Keep request processing working and let CEL expressions decide behavior
 	// when route_name is empty.
 	return ""
+}
+
+func setAWSSigningHost(headers map[string]string, attributes *structpb.Struct) {
+	if attributes == nil {
+		return
+	}
+	host := ""
+	if v, ok := attributes.Fields[internalapi.XDSUpstreamHostMetadataAWSSigningHostPath]; ok {
+		host = v.GetStringValue()
+	}
+	if host == "" {
+		if v, ok := attributes.Fields[internalapi.XDSClusterMetadataAWSSigningHostPath]; ok {
+			host = v.GetStringValue()
+		}
+	}
+	if host != "" {
+		headers[internalapi.AWSSigningHostHeader] = host
+	}
 }
 
 // Check implements [grpc_health_v1.HealthServer].

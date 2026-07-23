@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -85,6 +86,7 @@ func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (filterapi.B
 func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, mutatedBody []byte) ([]internalapi.Header, error) {
 	method := requestHeaders[":method"]
 	path := requestHeaders[":path"]
+	host := a.signingHost(requestHeaders)
 
 	var body []byte
 	if len(mutatedBody) > 0 {
@@ -93,11 +95,12 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 
 	payloadHash := sha256.Sum256(body)
 	req, err := http.NewRequest(method,
-		fmt.Sprintf("https://bedrock-runtime.%s.amazonaws.com%s", a.region, path),
+		fmt.Sprintf("https://%s%s", host, path),
 		bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("cannot create request: %w", err)
 	}
+	req.Host = host
 	// By setting the content length to -1, we can avoid the inclusion of the `Content-Length` header in the signature.
 	// https://github.com/aws/aws-sdk-go-v2/blob/755839b2eebb246c7eec79b65404aee105196d5b/aws/signer/v4/v4.go#L427-L431
 	//
@@ -126,4 +129,29 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 		}
 	}
 	return headers, nil
+}
+
+func (a *awsHandler) signingHost(requestHeaders map[string]string) string {
+	host := requestHeaders[internalapi.AWSSigningHostHeader]
+	if host == "" {
+		host = requestHeaders[":authority"]
+	}
+	if host == "" {
+		host = requestHeaders["host"]
+	}
+	if host == "" {
+		host = fmt.Sprintf("bedrock-runtime.%s.amazonaws.com", a.region)
+	}
+	return normalizeAWSSigningHost(host)
+}
+
+func normalizeAWSSigningHost(host string) string {
+	hostname, port, err := net.SplitHostPort(host)
+	if err != nil || port != "443" {
+		return host
+	}
+	if strings.Contains(hostname, ":") && !strings.HasPrefix(hostname, "[") {
+		return "[" + hostname + "]"
+	}
+	return hostname
 }

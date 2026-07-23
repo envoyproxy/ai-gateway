@@ -26,9 +26,11 @@ const (
 	// InternalEndpointMetadataNamespace is the namespace used for the dynamic metadata for internal use.
 	InternalEndpointMetadataNamespace = "aigateway.envoy.io"
 	// InternalMetadataBackendNameKey is the key used to store the backend name
-	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
+	InternalMetadataBackendNameKey    = "per_route_rule_backend_name"
+	InternalMetadataAWSSigningHostKey = "aws_signing_host"
 	// InternalMetadataRouteNameKey is the key used to store the route name.
 	InternalMetadataRouteNameKey = "aigw_route_name"
+	AWSSigningHostHeader         = EnvoyAIGatewayHeaderPrefix + "aws-signing-host"
 	// MCPBackendHeader is the special header key used to specify the target backend name.
 	MCPBackendHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend"
 	// MCPRouteHeader is the special header key used to identify the mcp route.
@@ -78,9 +80,11 @@ const (
 
 const (
 	// XDSClusterMetadataBackendNamePath is the full attribute path to access the backend name in cluster metadata in xDS attributes.
-	XDSClusterMetadataBackendNamePath = "xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
+	XDSClusterMetadataBackendNamePath    = "xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
+	XDSClusterMetadataAWSSigningHostPath = "xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['aws_signing_host']"
 	// XDSUpstreamHostMetadataBackendNamePath is the full attribute path to access the backend name in upstream host metadata in xDS attributes.
-	XDSUpstreamHostMetadataBackendNamePath = "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
+	XDSUpstreamHostMetadataBackendNamePath    = "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
+	XDSUpstreamHostMetadataAWSSigningHostPath = "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['aws_signing_host']"
 	// XDSRouteMetadataRouteNamePath is the full attribute path to access the route name in route metadata in xDS attributes.
 	XDSRouteMetadataRouteNamePath = "xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']"
 )

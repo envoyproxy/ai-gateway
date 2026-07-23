@@ -381,6 +381,9 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				}
 				for _, endpoint := range endpoints.LbEndpoints {
 					setEndpointMetadataBackendName(endpoint, namespace, name, aigwRoute.Name, httpRouteRuleIndex, i)
+					if host := endpointAWSSigningHost(endpoint); host != "" {
+						setEndpointMetadataAWSSigningHost(endpoint, host)
+					}
 				}
 			}
 		}
@@ -429,6 +432,8 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 	extProcConfig.RequestAttributes = []string{
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
 		internalapi.XDSClusterMetadataBackendNamePath,
+		internalapi.XDSUpstreamHostMetadataAWSSigningHostPath,
+		internalapi.XDSClusterMetadataAWSSigningHostPath,
 		internalapi.XDSRouteMetadataRouteNamePath,
 	}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
@@ -929,6 +934,20 @@ func routeNameFromEnvoyGatewayMetadata(route *routev3.Route) string {
 	return ""
 }
 
+func endpointAWSSigningHost(lbEndpoint *endpointv3.LbEndpoint) string {
+	endpoint := lbEndpoint.GetEndpoint()
+	if endpoint == nil {
+		return ""
+	}
+	if hostname := endpoint.GetHostname(); hostname != "" {
+		return hostname
+	}
+	if socketAddress := endpoint.GetAddress().GetSocketAddress(); socketAddress != nil {
+		return socketAddress.GetAddress()
+	}
+	return ""
+}
+
 func ensureRouteInternalMetadata(route *routev3.Route) *structpb.Struct {
 	if route.Metadata == nil {
 		route.Metadata = &corev3.Metadata{}
@@ -988,6 +1007,26 @@ func setEndpointMetadataBackendName(endpoint *endpointv3.LbEndpoint, namespace, 
 	m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
 		internalapi.PerRouteRuleRefBackendName(namespace, name, routeName, routeRuleIndex, refIndex),
 	)
+}
+
+// setEndpointMetadataAWSSigningHost stores the AWS signing host on endpoint-level metadata
+// so the upstream ext_proc filter can forward it to the AWS backend auth handler for SigV4 signing.
+func setEndpointMetadataAWSSigningHost(endpoint *endpointv3.LbEndpoint, host string) {
+	if endpoint.Metadata == nil {
+		endpoint.Metadata = &corev3.Metadata{}
+	}
+	if endpoint.Metadata.FilterMetadata == nil {
+		endpoint.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
+	}
+	m, ok := endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
+	if !ok {
+		m = &structpb.Struct{}
+		endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
+	}
+	if m.Fields == nil {
+		m.Fields = make(map[string]*structpb.Value)
+	}
+	m.Fields[internalapi.InternalMetadataAWSSigningHostKey] = structpb.NewStringValue(host)
 }
 
 func shouldAIGatewayExtProcBeInserted(filters []*httpconnectionmanagerv3.HttpFilter) bool {
