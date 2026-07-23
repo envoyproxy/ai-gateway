@@ -8,6 +8,7 @@ package translator
 import (
 	"bytes"
 	"cmp"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log/slog"
@@ -974,23 +975,30 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) convertEvent(event *awsbe
 				},
 			})
 		case event.Delta.ReasoningContent != nil:
-			reasoningDelta := &openai.StreamReasoningContent{}
+			delta := &openai.ChatCompletionResponseChunkChoiceDelta{Role: o.role}
 
-			// Map all relevant fields from the Bedrock delta to our flattened OpenAI delta struct.
-			if event.Delta.ReasoningContent != nil {
-				reasoningDelta.Text = event.Delta.ReasoningContent.Text
-				reasoningDelta.Signature = event.Delta.ReasoningContent.Signature
+			// Reasoning text goes to the plain-string reasoning_content; signatures and
+			// redacted content go to thinking_blocks (they cannot be represented in a
+			// plain string).
+			if event.Delta.ReasoningContent.Text != "" {
+				delta.ReasoningContent = &openai.StreamReasoningContent{
+					Text: event.Delta.ReasoningContent.Text,
+				}
 			}
-			if event.Delta.ReasoningContent.RedactedContent != nil {
-				reasoningDelta.RedactedContent = event.Delta.ReasoningContent.RedactedContent
+			if sig := event.Delta.ReasoningContent.Signature; sig != "" {
+				delta.ThinkingBlocks = append(delta.ThinkingBlocks, openai.ThinkingBlock{
+					Type: "thinking", Signature: sig,
+				})
+			}
+			if rc := event.Delta.ReasoningContent.RedactedContent; rc != nil {
+				delta.ThinkingBlocks = append(delta.ThinkingBlocks, openai.ThinkingBlock{
+					Type: "redacted_thinking", Data: base64.StdEncoding.EncodeToString(rc),
+				})
 			}
 
 			chunk.Choices = append(chunk.Choices, openai.ChatCompletionResponseChunkChoice{
 				Index: 0,
-				Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
-					Role:             o.role,
-					ReasoningContent: reasoningDelta,
-				},
+				Delta: delta,
 			})
 		}
 	// contentBlockStart event.
