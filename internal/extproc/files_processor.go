@@ -148,9 +148,18 @@ func (p *filesProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.Head
 
 	switch op {
 	case filesOpUpload:
-		// Routing depends on the multipart body; defer to ProcessRequestBody. Continue so Envoy
-		// sends the buffered body next.
-		return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}, nil
+		// Routing depends on the multipart body; defer to ProcessRequestBody. However, set the
+		// originalPathHeader now so the upstream filter can resolve this processor when it receives
+		// the request headers (which arrive before the body-phase header mutation is applied).
+		headerMutation := &extprocv3.HeaderMutation{}
+		setHeader(headerMutation, originalPathHeader, path)
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_RequestHeaders{
+				RequestHeaders: &extprocv3.HeadersResponse{
+					Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation},
+				},
+			},
+		}, nil
 	case filesOpList:
 		return p.handleListRequestHeaders()
 	default: // retrieve, content, delete
