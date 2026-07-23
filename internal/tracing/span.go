@@ -58,4 +58,5 @@ type (
 	rerankSpan          = span[cohereschema.RerankV2Response, struct{}]
 	messageSpan         = span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	tokenizeSpan        = span[tokenize.Response, struct{}]
+	countTokensSpan     = span[anthropicschema.CountTokensResponse, struct{}]
 )
