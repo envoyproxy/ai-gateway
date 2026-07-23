@@ -30,8 +30,11 @@ type MCPTracer interface {
 
 // MCPSpan represents an MCP span.
 type MCPSpan interface {
-	// RecordRouteToBackend records the backend that was routed to.
-	RecordRouteToBackend(backend string, session string, isNew bool)
+	// RecordRouteToBackend records the backend that was routed to, along with
+	// the resolved server peer (serverAddr/serverPort) for the OTel
+	// server.address/server.port attributes. Pass an empty serverAddr and zero
+	// serverPort when the peer is unknown.
+	RecordRouteToBackend(backend string, session string, isNew bool, serverAddr string, serverPort int)
 	// EndSpan finalizes and ends the span.
 	EndSpan()
 	// EndSpanOnError finalizes and ends the span with an error status.
