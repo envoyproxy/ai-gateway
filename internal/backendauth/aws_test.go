@@ -138,6 +138,16 @@ func TestAWSHandler_SigningHost(t *testing.T) {
 			headers: map[string]string{internalapi.AWSSigningHostHeader: "custom-bedrock.example.com:8443"},
 			want:    "custom-bedrock.example.com:8443",
 		},
+		{
+			name:    "ipv6 default port is rebracketed",
+			headers: map[string]string{internalapi.AWSSigningHostHeader: "[2001:db8::1]:443"},
+			want:    "[2001:db8::1]",
+		},
+		{
+			name:    "ipv6 non default port preserved",
+			headers: map[string]string{internalapi.AWSSigningHostHeader: "[2001:db8::1]:8443"},
+			want:    "[2001:db8::1]:8443",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, handler.signingHost(tc.headers))
