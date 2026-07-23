@@ -29,6 +29,8 @@ const (
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
 	// InternalMetadataRouteNameKey is the key used to store the route name.
 	InternalMetadataRouteNameKey = "aigw_route_name"
+	// AWSSigningHostHeader is the special header key used to specify the target AWS signing host.
+	AWSSigningHostHeader = EnvoyAIGatewayHeaderPrefix + "aws-signing-host"
 	// MCPBackendHeader is the special header key used to specify the target backend name.
 	MCPBackendHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend"
 	// MCPRouteHeader is the special header key used to identify the mcp route.

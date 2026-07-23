@@ -230,4 +230,121 @@ func TestAWSHandler_Do(t *testing.T) {
 			require.NoError(t, err, "Failed for region: %s", region)
 		}
 	})
+
+	t.Run("custom authority from :authority header", func(t *testing.T) {
+		awsFileBody := "[default]\naws_access_key_id=test\naws_secret_access_key=secret\n"
+		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
+			CredentialFileLiteral: awsFileBody,
+			Region:                "us-east-1",
+		})
+		require.NoError(t, err)
+
+		// When :authority is present, Do must use it as the host rather than the
+		// default bedrock-runtime endpoint.
+		hdrs, err := handler.Do(t.Context(), map[string]string{
+			":method":    "POST",
+			":path":      "/model/test-model/invoke",
+			":authority": "vpce-0123456789abcdef0-xyz.bedrock-runtime.us-east-1.vpce.amazonaws.com",
+		}, []byte(`{"test": "data"}`))
+		require.NoError(t, err)
+
+		headers := stringPairsToMap(hdrs)
+		require.Contains(t, headers, "Authorization")
+		require.Contains(t, headers, "X-Amz-Date")
+	})
+
+	t.Run("custom authority from host header", func(t *testing.T) {
+		awsFileBody := "[default]\naws_access_key_id=test\naws_secret_access_key=secret\n"
+		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
+			CredentialFileLiteral: awsFileBody,
+			Region:                "us-east-1",
+		})
+		require.NoError(t, err)
+
+		// When :authority is absent, Do must fall back to the host header.
+		hdrs, err := handler.Do(t.Context(), map[string]string{
+			":method": "POST",
+			":path":   "/model/test-model/invoke",
+			"host":    "vpce-0123456789abcdef0-xyz.bedrock-runtime.us-east-1.vpce.amazonaws.com",
+		}, []byte(`{"test": "data"}`))
+		require.NoError(t, err)
+
+		headers := stringPairsToMap(hdrs)
+		require.Contains(t, headers, "Authorization")
+		require.Contains(t, headers, "X-Amz-Date")
+	})
+
+	t.Run("invalid method fails request creation", func(t *testing.T) {
+		awsFileBody := "[default]\naws_access_key_id=test\naws_secret_access_key=secret\n"
+		handler, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{
+			CredentialFileLiteral: awsFileBody,
+			Region:                "us-east-1",
+		})
+		require.NoError(t, err)
+
+		// An invalid HTTP method token causes http.NewRequest to fail.
+		_, err = handler.Do(t.Context(), map[string]string{
+			":method": "INVALID METHOD",
+			":path":   "/model/test-model/invoke",
+		}, []byte(`{"test": "data"}`))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot create request")
+	})
+}
+
+func TestAWSHandler_ResolveHost(t *testing.T) {
+	handler := &awsHandler{region: "us-east-1"}
+	for _, tc := range []struct {
+		name    string
+		headers map[string]string
+		want    string
+	}{
+		{
+			name: "upstream metadata wins over authority",
+			headers: map[string]string{
+				internalapi.AWSSigningHostHeader: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com:443",
+				":authority":                     "gateway.example.com",
+			},
+			want: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com:443",
+		},
+		{
+			name:    "authority fallback when it is an amazonaws domain",
+			headers: map[string]string{":authority": "custom-bedrock.amazonaws.com"},
+			want:    "custom-bedrock.amazonaws.com",
+		},
+		{
+			name:    "fallback to regional default when authority is not an amazonaws domain",
+			headers: map[string]string{":authority": "custom-bedrock.example.com"},
+			want:    "bedrock-runtime.us-east-1.amazonaws.com",
+		},
+		{
+			name:    "host fallback when it is an amazonaws domain",
+			headers: map[string]string{"host": "bedrock-runtime.us-west-2.amazonaws.com"},
+			want:    "bedrock-runtime.us-west-2.amazonaws.com",
+		},
+		{
+			name:    "fallback to regional default when host is not an amazonaws domain",
+			headers: map[string]string{"host": "bedrock-runtime.example.com"},
+			want:    "bedrock-runtime.us-east-1.amazonaws.com",
+		},
+		{
+			name:    "default host fallback",
+			headers: map[string]string{},
+			want:    "bedrock-runtime.us-east-1.amazonaws.com",
+		},
+		{
+			name:    "non default port preserved when it is an amazonaws domain",
+			headers: map[string]string{internalapi.AWSSigningHostHeader: "custom-bedrock.amazonaws.com:8443"},
+			want:    "custom-bedrock.amazonaws.com:8443",
+		},
+		{
+			name:    "fallback to regional default when non default port host is not an amazonaws domain",
+			headers: map[string]string{internalapi.AWSSigningHostHeader: "custom-bedrock.example.com:8443"},
+			want:    "bedrock-runtime.us-east-1.amazonaws.com",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, handler.resolveHost(tc.headers))
+		})
+	}
 }

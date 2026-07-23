@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -78,6 +79,37 @@ func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (filterapi.B
 	return &awsHandler{credentialsProvider: cfg.Credentials, signer: signer, region: awsAuth.Region}, nil
 }
 
+// resolveHost resolves the host for the signed AWS request in the following order:
+//  1. the special AWSSigningHostHeader header, when present;
+//  2. the :authority pseudo-header, when AWSSigningHostHeader is absent;
+//  3. the host header, when both are absent;
+//  4. the standard AWS Bedrock endpoint for the configured region
+//     (bedrock-runtime.<region>.amazonaws.com), when all headers are absent or
+//     the resolved host does not represent an amazonaws.com domain (this suffix check is
+//     a safeguard to ensure we only sign requests targeting official AWS/VPCE endpoints).
+func (a *awsHandler) resolveHost(requestHeaders map[string]string) string {
+	host := requestHeaders[internalapi.AWSSigningHostHeader]
+	if host == "" {
+		host = requestHeaders[":authority"]
+	}
+	if host == "" {
+		host = requestHeaders["host"]
+	}
+	if host != "" {
+		hostname := host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			hostname = h
+		}
+		if !strings.HasSuffix(hostname, ".amazonaws.com") {
+			host = ""
+		}
+	}
+	if host == "" {
+		host = fmt.Sprintf("bedrock-runtime.%s.amazonaws.com", a.region)
+	}
+	return host
+}
+
 // Do implements [Handler.Do].
 //
 // This assumes that during the transformation, the path is set in the header mutation as well as
@@ -85,6 +117,7 @@ func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (filterapi.B
 func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, mutatedBody []byte) ([]internalapi.Header, error) {
 	method := requestHeaders[":method"]
 	path := requestHeaders[":path"]
+	host := a.resolveHost(requestHeaders)
 
 	var body []byte
 	if len(mutatedBody) > 0 {
@@ -93,11 +126,12 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 
 	payloadHash := sha256.Sum256(body)
 	req, err := http.NewRequest(method,
-		fmt.Sprintf("https://bedrock-runtime.%s.amazonaws.com%s", a.region, path),
+		fmt.Sprintf("https://%s%s", host, path),
 		bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("cannot create request: %w", err)
 	}
+	req.Host = host
 	// By setting the content length to -1, we can avoid the inclusion of the `Content-Length` header in the signature.
 	// https://github.com/aws/aws-sdk-go-v2/blob/755839b2eebb246c7eec79b65404aee105196d5b/aws/signer/v4/v4.go#L427-L431
 	//
