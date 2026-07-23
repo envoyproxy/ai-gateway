@@ -93,6 +93,9 @@ type filesProcessor struct {
 	// Router-side state, established during request processing and consumed during response
 	// processing (which is handled at the router filter level).
 	op filesOperation
+	// uploadModel is the model extracted from the upload multipart body, used in error messages
+	// when the backend is unknown (e.g. no route matched the model name).
+	uploadModel string
 	// backendNamespace/backendName identify the owning backend used to (re-)encode response ids.
 	// They are set either by decoding the request id (retrieve/content/delete) or, for
 	// upload/list which have no id to decode, by SetBackend from the LB-selected backend.
@@ -148,9 +151,8 @@ func (p *filesProcessor) ProcessRequestHeaders(_ context.Context, _ *corev3.Head
 
 	switch op {
 	case filesOpUpload:
-		// Routing depends on the multipart body; defer to ProcessRequestBody. However, set the
-		// originalPathHeader now so the upstream filter can resolve this processor when it receives
-		// the request headers (which arrive before the body-phase header mutation is applied).
+		// Routing depends on the multipart body; defer to ProcessRequestBody.
+		// Preserve the original path so the upstream filter resolves this processor.
 		headerMutation := &extprocv3.HeaderMutation{}
 		setHeader(headerMutation, originalPathHeader, path)
 		return &extprocv3.ProcessingResponse{
@@ -411,6 +413,7 @@ func (p *filesProcessor) ProcessRequestBody(_ context.Context, rawBody *extprocv
 
 	// Route by model and strip the routing-only field from the
 	// body before it is forwarded upstream.
+	p.uploadModel = model
 	common := &extprocv3.CommonResponse{HeaderMutation: headerMutation}
 	setHeader(headerMutation, internalapi.ModelNameHeaderKeyDefault, model)
 	p.requestHeaders[internalapi.ModelNameHeaderKeyDefault] = model
@@ -464,6 +467,12 @@ func (p *filesProcessor) ProcessResponseBody(_ context.Context, body *extprocv3.
 // gateway-encoded id (upload/retrieve/delete). Returns a 502 ImmediateResponse on any failure.
 func (p *filesProcessor) reEncodeResponse(raw []byte) *extprocv3.ProcessingResponse {
 	if !p.backendKnown {
+		if p.op == filesOpUpload && p.uploadModel != "" {
+			p.logger.Error("no route matched the upload model; backend unknown",
+				slog.String("model", p.uploadModel))
+			return filesReEncodeError(fmt.Sprintf(
+				"no backend route found for model %q", p.uploadModel))
+		}
 		p.logger.Error("backend unknown; cannot re-encode files response id")
 		return filesReEncodeError("backend unknown for upstream files response")
 	}
