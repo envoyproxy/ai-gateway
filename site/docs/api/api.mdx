@@ -585,6 +585,7 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [GCPWorkloadIdentityFederationConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpworkloadidentityfederationconfig)
 - [GCPWorkloadIdentityProvider](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpworkloadidentityprovider)
 - [GatewayConfigExtProc](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigextproc)
+- [GatewayConfigForwardProxy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigforwardproxy)
 - [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigspec)
 - [GatewayConfigStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigstatus)
 - [HTTPBodyField](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpbodyfield)
@@ -1498,6 +1499,27 @@ GatewayConfigExtProc holds runtime-specific configuration for the external proce
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigforwardproxy">GatewayConfigForwardProxy</a>
+
+
+
+**Appears in:**
+- [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigspec)
+
+GatewayConfigForwardProxy configures an HTTP CONNECT forward proxy for upstream egress.
+
+##### Fields
+
+
+
+<ApiField
+  name="address"
+  type="string"
+  required="true"
+  description="Address is the `host:port` of the HTTP CONNECT proxy. The host may be a hostname or an<br />IP address; the port is required. Upstream connections are tunnelled through this proxy<br />via Envoy's http_11_proxy transport socket, preserving the upstream TLS session."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigspec">GatewayConfigSpec</a>
 
 
@@ -1521,6 +1543,11 @@ GatewayConfigSpec defines the configuration for the AI Gateway.
   type="[LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1alpha1-llmrequestcost) array"
   required="false"
   description="GlobalLLMRequestCosts defines default LLM request costs that apply to all<br />routes referencing this GatewayConfig. These costs can be overridden on a<br />per-route basis via AIGatewayRoute.Spec.LLMRequestCosts.<br />When a request matches a route, the cost calculation proceeds as follows:<br /> 1. If the route defines LLMRequestCosts with a matching metadataKey, use that.<br /> 2. Otherwise, fall back to the global cost with that metadataKey (if defined here).<br /> 3. If neither exists, the cost is not calculated for that metadataKey.<br />This allows you to define common cost formulas once at the gateway level<br />(e.g., billing_charges = input_tokens + output_tokens) and only override<br />them in specific routes when needed (e.g., premium routes with different pricing)."
+/><ApiField
+  name="forwardProxy"
+  type="[GatewayConfigForwardProxy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigforwardproxy)"
+  required="false"
+  description="ForwardProxy routes all upstream AI/LLM traffic from Gateways referencing this<br />GatewayConfig through an HTTP CONNECT forward proxy. This is intended for data planes<br />in locked-down networks where direct egress to providers is not permitted and all<br />outbound traffic must traverse a proxy."
 />
 
 
@@ -3021,6 +3048,7 @@ MCPRouteList contains a list of MCPRoute.
 - [GCPWorkloadIdentityFederationConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpworkloadidentityfederationconfig)
 - [GCPWorkloadIdentityProvider](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpworkloadidentityprovider)
 - [GatewayConfigExtProc](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigextproc)
+- [GatewayConfigForwardProxy](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigforwardproxy)
 - [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigspec)
 - [GatewayConfigStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigstatus)
 - [HTTPBodyField](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodyfield)
@@ -4024,6 +4052,27 @@ GatewayConfigExtProc holds runtime-specific configuration for the external proce
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigforwardproxy">GatewayConfigForwardProxy</a>
+
+
+
+**Appears in:**
+- [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigspec)
+
+GatewayConfigForwardProxy configures an HTTP CONNECT forward proxy for upstream egress.
+
+##### Fields
+
+
+
+<ApiField
+  name="address"
+  type="string"
+  required="true"
+  description="Address is the `host:port` of the HTTP CONNECT proxy. The host may be a hostname or an<br />IP address; the port is required. Upstream connections are tunnelled through this proxy<br />via Envoy's http_11_proxy transport socket, preserving the upstream TLS session."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigspec">GatewayConfigSpec</a>
 
 
@@ -4047,6 +4096,11 @@ GatewayConfigSpec defines the configuration for the AI Gateway.
   type="[LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcost) array"
   required="false"
   description="GlobalLLMRequestCosts defines default LLM request costs that apply to all<br />routes referencing this GatewayConfig. These costs can be overridden on a<br />per-route basis via AIGatewayRoute.Spec.LLMRequestCosts.<br />When a request matches a route, the cost calculation proceeds as follows:<br /> 1. If the route defines LLMRequestCosts with a matching metadataKey, use that.<br /> 2. Otherwise, fall back to the global cost with that metadataKey (if defined here).<br /> 3. If neither exists, the cost is not calculated for that metadataKey.<br />This allows you to define common cost formulas once at the gateway level<br />(e.g., billing_charges = input_tokens + output_tokens) and only override<br />them in specific routes when needed (e.g., premium routes with different pricing)."
+/><ApiField
+  name="forwardProxy"
+  type="[GatewayConfigForwardProxy](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigforwardproxy)"
+  required="false"
+  description="ForwardProxy routes all upstream AI/LLM traffic from Gateways referencing this<br />GatewayConfig through an HTTP CONNECT forward proxy. This is intended for data planes<br />in locked-down networks where direct egress to providers is not permitted and all<br />outbound traffic must traverse a proxy."
 />
 
 
