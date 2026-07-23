@@ -195,6 +195,12 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 		return nil, fmt.Errorf("failed to inject quota rate limiting: %w", err)
 	}
 
+	// Reorder extension filters from EnvoyExtensionPolicies annotated with FilterOrderAnnotation
+	// relative to the AI Gateway ext_proc.
+	if err = s.maybeReorderFilters(ctx, req.Listeners, req.Routes); err != nil {
+		return nil, fmt.Errorf("failed to reorder extension filters: %w", err)
+	}
+
 	response := &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets, Listeners: req.Listeners, Routes: req.Routes}
 	return response, nil
 }
@@ -1089,4 +1095,25 @@ func findListenerRouteConfigs(listener *listenerv3.Listener) []string {
 		return names // Return names collected so far, even if no RDS in default filter chain.
 	}
 	return append(names, rds.RouteConfigName) // Add default filter chain's route config name.
+}
+
+// maybeReorderFilters repositions extension filters from EnvoyExtensionPolicies annotated with
+// FilterOrderAnnotation relative to the AI Gateway ext_proc filter in each listener's HCM chain.
+func (s *Server) maybeReorderFilters(ctx context.Context, listeners []*listenerv3.Listener, routes []*routev3.RouteConfiguration) error {
+	policies, err := listEnvoyExtensionPolicies(ctx, s.k8sClient)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("failed to list EnvoyExtensionPolicies: %w", err)
+	}
+
+	beforeNames, afterNames := buildFilterOrderSets(policies, routes)
+	if len(beforeNames) == 0 && len(afterNames) == 0 {
+		return nil
+	}
+
+	for _, listener := range listeners {
+		if err := reorderFiltersInListener(listener, beforeNames, afterNames); err != nil {
+			return err
+		}
+	}
+	return nil
 }
