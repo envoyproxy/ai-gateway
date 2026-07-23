@@ -959,21 +959,35 @@ func (m *mcpRequestContext) maybeUpdateProgressTokenMetadata(ctx context.Context
 	return true
 }
 
-// maybeResponseModify modifies the client->server response to include the backend name where needed.
+// maybeResponseModify modifies the server->client response to include the backend name where needed.
 func (m *mcpRequestContext) maybeResponseModify(_ context.Context, req *jsonrpc.Request, msg *jsonrpc.Response, backend filterapi.MCPBackendName) error {
-	if req.Method != "resources/read" || msg.Result == nil {
+	if msg.Result == nil {
 		return nil
 	}
-
-	result := &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{}}
-	if err := json.Unmarshal(msg.Result, result); err != nil {
-		return fmt.Errorf("failed to unmarshal resources/read result: %w", err)
+	switch req.Method {
+	case "resources/read":
+		// No idempotency guard needed here: handleResourceReadRequest strips the backend
+		// prefix from the request URI before forwarding, so the backend always returns a
+		// bare URI and a single downstreamResourceURI call is always correct.
+		result := &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{}}
+		if err := json.Unmarshal(msg.Result, result); err != nil {
+			return fmt.Errorf("failed to unmarshal resources/read result: %w", err)
+		}
+		for _, res := range result.Contents {
+			res.URI = downstreamResourceURI(res.URI, backend)
+		}
+		msg.Result, _ = json.Marshal(result) // Already decoded result, so ignore error.
+	case "tools/call":
+		result := &mcp.CallToolResult{}
+		if err := json.Unmarshal(msg.Result, result); err != nil {
+			// Non-standard result shape — pass through unchanged; the backend owns this payload.
+			m.l.Debug("tools/call result is not a standard CallToolResult, skipping URI rewrite", slog.String("error", err.Error()))
+			return nil
+		}
+		if rewriteToolResultURIs(result, backend) {
+			msg.Result, _ = json.Marshal(result) // Already decoded result, so ignore error.
+		}
 	}
-	for _, res := range result.Contents {
-		res.URI = downstreamResourceURI(res.URI, backend)
-	}
-	msg.Result, _ = json.Marshal(result) // Already decoded result, so ignore error.
-
 	return nil
 }
 
@@ -1244,6 +1258,61 @@ func upstreamResourceURI(fullURI string) (backendName, uri string, err error) {
 		return "", "", fmt.Errorf("invalid resource URI: %s", fullURI)
 	}
 	return parts[0], parts[1], nil
+}
+
+// metaResourceURIPaths lists the _meta key paths whose leaf value is a routable resource
+// URI that must be backend-namespaced in multiplexing mode. Add an entry here to support
+// a new convention; upstreamResourceURI decodes all of them uniformly.
+var metaResourceURIPaths = [][]string{
+	{"ui", "resourceUri"}, // MCP Apps standard (_meta.ui.resourceUri)
+}
+
+// rewriteMetaResourceURIs namespaces every known routable resource URI in meta with the
+// backend name so the agent's later resources/read routes back to the originating backend.
+// Returns true if anything was changed. No-ops (and never panics) on absent or unexpected shapes.
+func rewriteMetaResourceURIs(meta mcp.Meta, backendName filterapi.MCPBackendName) bool {
+	changed := false
+	for _, path := range metaResourceURIPaths {
+		node := map[string]any(meta)
+		for i, key := range path {
+			if node == nil {
+				break
+			}
+			if i == len(path)-1 {
+				uri, ok := node[key].(string)
+				if ok && uri != "" && !strings.HasPrefix(uri, backendName+"+") {
+					node[key] = downstreamResourceURI(uri, backendName)
+					changed = true
+				}
+			} else {
+				node, _ = node[key].(map[string]any)
+			}
+		}
+	}
+	return changed
+}
+
+// rewriteToolResultURIs namespaces all routable resource URIs in a tools/call result:
+// _meta fields (via rewriteMetaResourceURIs) and any ResourceLink / EmbeddedResource
+// entries in Content[]. Returns true if anything was changed.
+func rewriteToolResultURIs(result *mcp.CallToolResult, backendName filterapi.MCPBackendName) bool {
+	changed := rewriteMetaResourceURIs(result.Meta, backendName)
+	prefix := backendName + "+"
+	for _, c := range result.Content {
+		switch v := c.(type) {
+		case *mcp.ResourceLink:
+			if v.URI != "" && !strings.HasPrefix(v.URI, prefix) {
+				v.URI = downstreamResourceURI(v.URI, backendName)
+				changed = true
+			}
+		case *mcp.EmbeddedResource:
+			if v.Resource != nil && v.Resource.URI != "" && !strings.HasPrefix(v.Resource.URI, prefix) {
+				v.Resource.URI = downstreamResourceURI(v.Resource.URI, backendName)
+				changed = true
+			}
+		}
+	}
+	return changed
 }
 
 // extractSubject extracts the "sub" claim from the JWT in the Authorization header.
@@ -1700,6 +1769,7 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 				}
 			}
 			tool.Name = downstreamResourceName(tool.Name, r.backendName)
+			rewriteMetaResourceURIs(tool.Meta, r.backendName)
 			resp.Tools = append(resp.Tools, tool)
 		}
 	}
