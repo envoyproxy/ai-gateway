@@ -1747,6 +1747,31 @@ func (m *MessagesStreamChunk) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ModelList represents the response from the Anthropic "/v1/models" endpoint.
+// https://platform.claude.com/docs/en/api/models-list
+type ModelList struct {
+	Data []Model `json:"data"`
+	// FirstID is the ID of the first model in the list, used for pagination.
+	FirstID string `json:"first_id,omitempty"`
+	// HasMore indicates whether there are more models available beyond this list.
+	HasMore bool `json:"has_more"`
+	// LastID is the ID of the last model in the list, used for pagination.
+	LastID string `json:"last_id,omitempty"`
+}
+
+// Model represents a single model in the Anthropic "/v1/models" endpoint response.
+// https://platform.claude.com/docs/en/api/models-list
+type Model struct {
+	// ID is the model identifier, which can be referenced in the API endpoints.
+	ID string `json:"id"`
+	// Type is always "model".
+	Type string `json:"type"`
+	// DisplayName is a human-readable name for the model.
+	DisplayName string `json:"display_name"`
+	// CreatedAt is the RFC 3339 datetime string representing when the model was released.
+	CreatedAt string `json:"created_at"`
+}
+
 // ErrorResponse represents an error response from the Anthropic API.
 // https://platform.claude.com/docs/en/api/errors
 type ErrorResponse struct {
