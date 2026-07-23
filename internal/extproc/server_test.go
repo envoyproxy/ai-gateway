@@ -273,7 +273,7 @@ func TestServer_Process(t *testing.T) {
 		}
 		ms := &mockExternalProcessingStream{t: t, ctx: t.Context(), retRecv: req}
 		err := s.Process(ms)
-		require.ErrorContains(t, err, `missing backend name in attributes at path: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']`)
+		require.ErrorContains(t, err, `no router processor found, request_id=test-req-id-123`)
 	})
 	t.Run("ok", func(t *testing.T) {
 		s, p := requireNewServerWithMockProcessor(t)
@@ -335,9 +335,8 @@ func TestServer_setBackend(t *testing.T) {
 				},
 				Request: &extprocv3.ProcessingRequest_RequestHeaders{RequestHeaders: &extprocv3.HttpHeaders{}},
 			})
-			// Should be an error as there is no router processor registered for openai backend.
-			// The purpose of this test is to verify that the backend name is correctly extracted.
-			require.ErrorContains(t, err, `no router processor found, request_id=aaaaaaaaaaaa, backend=openai`)
+			// Should be an error as there is no router processor registered for this request ID.
+			require.ErrorContains(t, err, `no router processor found, request_id=aaaaaaaaaaaa`)
 		})
 	}
 }
@@ -413,6 +412,79 @@ func TestResolveRouteName(t *testing.T) {
 
 	actual = resolveRouteName(&structpb.Struct{Fields: map[string]*structpb.Value{}})
 	require.Empty(t, actual)
+}
+
+func TestResolveBackendFromPlan(t *testing.T) {
+	s, err := NewServer(slog.Default(), false)
+	require.NoError(t, err)
+
+	boolPtr := func(b bool) *bool { return &b }
+
+	for _, tc := range []struct {
+		name                string
+		plan                *internalapi.RoutingPlan
+		upstreamFilterCount int
+		expected            string
+	}{
+		{
+			name:     "empty backends",
+			plan:     &internalapi.RoutingPlan{Backends: []string{}},
+			expected: "",
+		},
+		{
+			name:                "single backend, first attempt",
+			plan:                &internalapi.RoutingPlan{Backends: []string{"openai"}},
+			upstreamFilterCount: 0,
+			expected:            "openai",
+		},
+		{
+			name:                "two backends, first attempt",
+			plan:                &internalapi.RoutingPlan{Backends: []string{"openai", "anthropic"}},
+			upstreamFilterCount: 0,
+			expected:            "openai",
+		},
+		{
+			name:                "two backends, second attempt (retry)",
+			plan:                &internalapi.RoutingPlan{Backends: []string{"openai", "anthropic"}},
+			upstreamFilterCount: 1,
+			expected:            "anthropic",
+		},
+		{
+			name:                "two backends, third attempt (beyond plan length)",
+			plan:                &internalapi.RoutingPlan{Backends: []string{"openai", "anthropic"}},
+			upstreamFilterCount: 2,
+			expected:            "anthropic",
+		},
+		{
+			name:                "fallback disabled, always first",
+			plan:                &internalapi.RoutingPlan{Backends: []string{"openai", "anthropic"}, FallbackEnabled: boolPtr(false)},
+			upstreamFilterCount: 1,
+			expected:            "openai",
+		},
+		{
+			name:                "fallback enabled explicitly, second attempt",
+			plan:                &internalapi.RoutingPlan{Backends: []string{"openai", "anthropic"}, FallbackEnabled: boolPtr(true)},
+			upstreamFilterCount: 1,
+			expected:            "anthropic",
+		},
+		{
+			name:                "fallback nil (defaults to enabled), second attempt",
+			plan:                &internalapi.RoutingPlan{Backends: []string{"openai", "anthropic"}},
+			upstreamFilterCount: 1,
+			expected:            "anthropic",
+		},
+		{
+			name:                "three backends, third attempt",
+			plan:                &internalapi.RoutingPlan{Backends: []string{"openai", "anthropic", "cohere"}},
+			upstreamFilterCount: 2,
+			expected:            "cohere",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := s.resolveBackendFromPlan(tc.plan, tc.upstreamFilterCount)
+			require.Equal(t, tc.expected, result)
+		})
+	}
 }
 
 func TestServer_ProcessorSelection(t *testing.T) {

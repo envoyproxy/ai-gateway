@@ -376,9 +376,29 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 		return status.Error(codes.Internal, "missing attributes in request")
 	}
 
-	backendName, err := resolveBackendName(isEndpointPicker, attributes)
-	if err != nil {
-		return err
+	s.routerProcessorsPerReqIDMutex.RLock()
+	defer s.routerProcessorsPerReqIDMutex.RUnlock()
+	rp, ok := s.routerProcessorsPerReqID[internalReqID]
+	if !ok {
+		return status.Errorf(codes.Internal, "no router processor found, request_id=%s", internalReqID)
+	}
+
+	var backendName string
+	// Check if the router processor has a routing plan for per-request backend selection.
+	if provider, isProvider := rp.(routingPlanProvider); isProvider {
+		if plan := provider.GetRoutingPlan(); plan != nil {
+			backendName = s.resolveBackendFromPlan(plan, provider.GetUpstreamFilterCount())
+		}
+	}
+
+	// Fall back to the default Envoy-based backend resolution if no routing plan or if the plan
+	// did not yield a backend name.
+	if backendName == "" {
+		var err error
+		backendName, err = resolveBackendName(isEndpointPicker, attributes)
+		if err != nil {
+			return err
+		}
 	}
 	routeName := resolveRouteName(attributes)
 
@@ -387,18 +407,33 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 		return status.Errorf(codes.Internal, "unknown backend: %s", backendName)
 	}
 
-	s.routerProcessorsPerReqIDMutex.RLock()
-	defer s.routerProcessorsPerReqIDMutex.RUnlock()
-	routerProcessor, ok := s.routerProcessorsPerReqID[internalReqID]
-	if !ok {
-		return status.Errorf(codes.Internal, "no router processor found, request_id=%s, backend=%s",
-			internalReqID, backendName)
-	}
-
-	if err := p.SetBackend(ctx, backend, routeName, routerProcessor); err != nil {
+	if err := p.SetBackend(ctx, backend, routeName, rp); err != nil {
 		return status.Errorf(codes.Internal, "cannot set backend: %v", err)
 	}
 	return nil
+}
+
+// resolveBackendFromPlan selects the backend name from a routing plan based on the current attempt index.
+// The upstreamFilterCount is the count before the current attempt's increment in SetBackend.
+func (s *Server) resolveBackendFromPlan(plan *internalapi.RoutingPlan, upstreamFilterCount int) string {
+	if len(plan.Backends) == 0 {
+		return ""
+	}
+
+	// When fallback is disabled, always use the first backend.
+	if plan.FallbackEnabled != nil && !*plan.FallbackEnabled {
+		return plan.Backends[0]
+	}
+
+	// upstreamFilterCount is the number of attempts already completed (incremented in SetBackend).
+	// For the current attempt, use it as the index into the backends list.
+	attemptIndex := upstreamFilterCount
+	if attemptIndex >= len(plan.Backends) {
+		// Exhausted all backends — wrap to the last one so Envoy's retry doesn't fail
+		// with an internal error; the request will likely fail at the backend level.
+		attemptIndex = len(plan.Backends) - 1
+	}
+	return plan.Backends[attemptIndex]
 }
 
 func resolveBackendName(isEndpointPicker bool, attributes *structpb.Struct) (string, error) {

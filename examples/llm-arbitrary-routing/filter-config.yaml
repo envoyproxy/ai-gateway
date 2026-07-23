@@ -1,0 +1,34 @@
+# Example filter-config.yaml for LLM Arbitrary Routing
+#
+# This shows three backends across different cloud providers.
+# A custom ext_proc can set x-ai-eg-routing-plan header to control
+# which backends are tried and in what order.
+
+backends:
+  - name: "azure-primary"
+    schema: {name: "AzureOpenAI", prefix: "v1"}
+    host: "snc-oai-llmproxy-dev-eastus2.openai.azure.com"
+    backendPath: "/openai/deployments/gpt-4o/chat/completions?api-version=2024-10-21"
+    auth:
+      azureAPIKey:
+        key: "your-azure-key"
+
+  - name: "gcp-ptu"
+    schema: {name: "GCPVertexAI", prefix: "v1beta1"}
+    host: "us-central1-aiplatform.googleapis.com"
+    backendPath: "/v1beta1/projects/my-project/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent"
+    auth:
+      gcp:
+        credentialFilePath: "/etc/ai-gateway/secrets/gcp-sa.json"
+
+  - name: "aws-bedrock"
+    schema: {name: "AWSBedrock"}
+    host: "bedrock-runtime.us-west-2.amazonaws.com"
+    backendPath: "/model/anthropic.claude-3-sonnet/converse"
+    auth:
+      aws:
+        region: "us-west-2"
+        credentialFileLiteral: |
+          [default]
+          aws_access_key_id = AKIA...
+          aws_secret_access_key = ...
