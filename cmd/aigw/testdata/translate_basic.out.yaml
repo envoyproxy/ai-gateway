@@ -189,6 +189,27 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
+  name: envoy-ai-gateway-basic-default-21a9f8f801bd
+stringData:
+  index.yaml: |
+    checksum: 715d03a335eb2a5e469e0fd1a022b4bf0b064e2ee2bf5f5c431dbdc3f30498c5
+    parts:
+    - name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-000
+      path: parts/000
+      sizeBytes: 1022
+    uuid: aigw-translate
+    version: dev
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: envoy-ai-gateway-basic-default-21a9f8f801bd-part-000
+data:
+  chunk: YmFja2VuZHM6Ci0gYXV0aDoKICAgIGFwaUtleToKICAgICAga2V5OiBhcGlLZXkKICBtb2RlbE5hbWVPdmVycmlkZTogIiIKICBuYW1lOiBkZWZhdWx0L2Vudm95LWFpLWdhdGV3YXktYmFzaWMtb3BlbmFpL3JvdXRlL2Vudm95LWFpLWdhdGV3YXktYmFzaWMvcnVsZS8wL3JlZi8wCiAgc2NoZW1hOgogICAgbmFtZTogT3BlbkFJCiAgICBwcmVmaXg6IHYxCi0gYXV0aDoKICAgIGF3czoKICAgICAgY3JlZGVudGlhbEZpbGVMaXRlcmFsOiB8CiAgICAgICAgW2RlZmF1bHRdCiAgICAgICAgYXdzX2FjY2Vzc19rZXlfaWQgPSBBV1NfQUNDRVNTX0tFWV9JRAogICAgICAgIGF3c19zZWNyZXRfYWNjZXNzX2tleSA9IEFXU19TRUNSRVRfQUNDRVNTX0tFWQogICAgICByZWdpb246IHVzLWVhc3QtMQogIG1vZGVsTmFtZU92ZXJyaWRlOiB1cy5tZXRhLmxsYW1hMy0yLTFiLWluc3RydWN0LXYxOjAKICBuYW1lOiBkZWZhdWx0L2Vudm95LWFpLWdhdGV3YXktYmFzaWMtYXdzL3JvdXRlL2Vudm95LWFpLWdhdGV3YXktYmFzaWMvcnVsZS8xL3JlZi8wCiAgc2NoZW1hOgogICAgbmFtZTogQVdTQmVkcm9jawotIG1vZGVsTmFtZU92ZXJyaWRlOiAiIgogIG5hbWU6IGRlZmF1bHQvZW52b3ktYWktZ2F0ZXdheS1iYXNpYy10ZXN0dXBzdHJlYW0vcm91dGUvZW52b3ktYWktZ2F0ZXdheS1iYXNpYy9ydWxlLzIvcmVmLzAKICBzY2hlbWE6CiAgICBuYW1lOiBPcGVuQUkKICAgIHByZWZpeDogdjEKbW9kZWxzOgotIENyZWF0ZWRBdDogIjIwMjUtMDUtMjNUMDA6MDA6MDBaIgogIE5hbWU6IGdwdC00by1taW5pCiAgT3duZWRCeTogb3BlbmFpCi0gQ3JlYXRlZEF0OiAiMjAyNS0wNS0yM1QwMDowMDowMFoiCiAgTmFtZTogbGxhbWEzLTItMWItaW5zdHJ1Y3QtdjEKICBPd25lZEJ5OiBhd3MKLSBDcmVhdGVkQXQ6ICIyMDI1LTA1LTIzVDAwOjAwOjAwWiIKICBOYW1lOiBzb21lLWNvb2wtc2VsZi1ob3N0ZWQtbW9kZWwKICBPd25lZEJ5OiBFbnZveSBBSSBHYXRld2F5CnV1aWQ6IGFpZ3ctdHJhbnNsYXRlCnZlcnNpb246IGRldgo=
+---
+apiVersion: v1
+kind: Secret
+metadata:
   name: envoy-ai-gateway-basic-default
 stringData:
   filter-config.yaml: |
@@ -262,4 +283,3 @@ spec:
     - name: http
       port: 8888
       protocol: HTTP
-
