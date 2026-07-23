@@ -191,6 +191,14 @@ func headerMutationToFilterAPI(m *aigv1b1.HTTPHeaderMutation) *filterapi.HTTPHea
 	return ret
 }
 
+// anthropicBetaFilterToFilterAPI converts an aigv1b1.AnthropicBetaFilter to filterapi.AnthropicBetaFilter.
+func anthropicBetaFilterToFilterAPI(f *aigv1b1.AnthropicBetaFilter) *filterapi.AnthropicBetaFilter {
+	if f == nil {
+		return nil
+	}
+	return &filterapi.AnthropicBetaFilter{Mode: f.Mode, Values: f.Values}
+}
+
 // bodyMutationToFilterAPI converts an aigv1b1.HTTPBodyMutation to filterapi.HTTPBodyMutation.
 func bodyMutationToFilterAPI(m *aigv1b1.HTTPBodyMutation) *filterapi.HTTPBodyMutation {
 	if m == nil {
@@ -472,6 +480,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					b.BodyMutation = bodyMutationToFilterAPI(mergedBodyMutation)
 
 					b.Schema = schemaToFilterAPI(backendObj.Spec.APISchema)
+					b.AnthropicBetaFilter = anthropicBetaFilterToFilterAPI(backendObj.Spec.AnthropicBetaFilter)
 				}
 
 				if bsp != nil {

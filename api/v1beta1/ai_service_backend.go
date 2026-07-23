@@ -76,6 +76,11 @@ type AIServiceBackendSpec struct {
 	// +optional
 	BodyMutation *HTTPBodyMutation `json:"bodyMutation,omitempty"`
 
+	// AnthropicBetaFilter filters values from the `anthropic-beta` request header before sending the
+	// request to this backend. Only applies to Anthropic backends (GCP Vertex and AWS Bedrock).
+	// +optional
+	AnthropicBetaFilter *AnthropicBetaFilter `json:"anthropicBetaFilter,omitempty"`
+
 	// TODO: maybe add backend-level LLMRequestCost configuration that overrides the AIGatewayRoute-level LLMRequestCost.
 	// 	That may be useful for the backend that has a different cost calculation logic.
 }

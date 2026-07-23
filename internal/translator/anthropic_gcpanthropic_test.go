@@ -15,6 +15,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
@@ -406,6 +407,86 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 
 	// Verify anthropic_version is added from the backend configuration.
 	require.Equal(t, "2023-06-01", modifiedReq["anthropic_version"])
+}
+
+func TestAnthropicToGCPAnthropicTranslator_AnthropicBetaFilter(t *testing.T) {
+	parsedReq := &anthropic.MessagesRequest{
+		Model: "claude-3-sonnet-20240229",
+		Messages: []anthropic.MessageParam{
+			{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hello"}},
+		},
+	}
+
+	tests := []struct {
+		name           string
+		requestHeaders map[string]string
+		filterMode     string
+		filterValues   []string
+		wantBetaHeader string
+		wantOverwrite  bool
+	}{
+		{
+			name:           "no anthropic-beta header sent",
+			requestHeaders: map[string]string{},
+			filterMode:     "denylist",
+			filterValues:   []string{"thinking-token-count-2026-05-13"},
+			wantOverwrite:  false,
+		},
+		{
+			name:           "no filter configured leaves header untouched",
+			requestHeaders: map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,thinking-token-count-2026-05-13"},
+			wantOverwrite:  false,
+		},
+		{
+			name:           "denylist drops the unsupported value",
+			requestHeaders: map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,thinking-token-count-2026-05-13"},
+			filterMode:     "denylist",
+			filterValues:   []string{"thinking-token-count-2026-05-13"},
+			wantBetaHeader: "advanced-tool-use-2025-11-20",
+			wantOverwrite:  true,
+		},
+		{
+			name:           "denylist with no matching value leaves header untouched",
+			requestHeaders: map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20"},
+			filterMode:     "denylist",
+			filterValues:   []string{"thinking-token-count-2026-05-13"},
+			wantOverwrite:  false,
+		},
+		{
+			name:           "allowlist keeps only the sanctioned value",
+			requestHeaders: map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,thinking-token-count-2026-05-13"},
+			filterMode:     "allowlist",
+			filterValues:   []string{"advanced-tool-use-2025-11-20"},
+			wantBetaHeader: "advanced-tool-use-2025-11-20",
+			wantOverwrite:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tr := NewAnthropicToGCPAnthropicTranslator("2023-06-01", "")
+			tr.(RequestHeadersSetter).SetRequestHeaders(tt.requestHeaders)
+			if tt.filterMode != "" || tt.filterValues != nil {
+				tr.(AnthropicBetaFilterSetter).SetAnthropicBetaFilter(tt.filterMode, tt.filterValues)
+			}
+
+			headerMutation, _, err := tr.RequestBody(nil, parsedReq, false)
+			require.NoError(t, err)
+
+			var betaHeader *internalapi.Header
+			for i := range headerMutation {
+				if headerMutation[i].Key() == anthropicBetaHeaderName {
+					betaHeader = &headerMutation[i]
+				}
+			}
+			if tt.wantOverwrite {
+				require.NotNil(t, betaHeader, "expected anthropic-beta header to be overwritten")
+				assert.Equal(t, tt.wantBetaHeader, betaHeader.Value())
+			} else {
+				require.Nil(t, betaHeader, "anthropic-beta header should not be overwritten")
+			}
+		})
+	}
 }
 
 func TestAnthropicToGCPAnthropicTranslator_ResponseHeaders(t *testing.T) {

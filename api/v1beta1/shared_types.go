@@ -165,6 +165,26 @@ const (
 	AIGatewayFilterMetadataNamespace = "io.envoy.ai_gateway"
 )
 
+// AnthropicBetaFilter filters values from the `anthropic-beta` request header before the request is
+// forwarded to this backend. Anthropic clients (e.g. Claude Code) send all enabled betas in a single
+// comma-separated header, but upstream providers accept different subsets and reject unknown values
+// with an HTTP 400. This lets an operator drop (or restrict to) specific values per backend.
+type AnthropicBetaFilter struct {
+	// Mode selects the filtering semantics:
+	//   - "denylist": drop the values listed in Values, keep everything else.
+	//   - "allowlist": keep only the values listed in Values, drop everything else.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=denylist;allowlist
+	Mode string `json:"mode"`
+	// Values is the list of `anthropic-beta` values to drop (denylist) or keep (allowlist).
+	//
+	// +optional
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=64
+	Values []string `json:"values,omitempty"`
+}
+
 // HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
 type HTTPHeaderMutation struct {
 	// Set overwrites/adds the request with the given header (name, value)

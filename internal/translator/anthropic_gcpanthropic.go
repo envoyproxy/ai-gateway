@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/tidwall/sjson"
 
@@ -30,6 +31,20 @@ type anthropicToGCPAnthropicTranslator struct {
 	apiVersion        string
 	modelNameOverride internalapi.ModelNameOverride
 	requestModel      internalapi.RequestModel
+	anthropicBetas    []string
+	betaFilterMode    string
+	betaFilterValues  []string
+}
+
+// SetRequestHeaders implements [RequestHeadersSetter].
+func (a *anthropicToGCPAnthropicTranslator) SetRequestHeaders(headers map[string]string) {
+	a.anthropicBetas = parseAnthropicBetaHeader(headers)
+}
+
+// SetAnthropicBetaFilter implements [AnthropicBetaFilterSetter].
+func (a *anthropicToGCPAnthropicTranslator) SetAnthropicBetaFilter(mode string, values []string) {
+	a.betaFilterMode = mode
+	a.betaFilterValues = values
 }
 
 // RequestBody implements [AnthropicMessagesTranslator.RequestBody] for Anthropic to GCP Anthropic translation.
@@ -63,5 +78,10 @@ func (a *anthropicToGCPAnthropicTranslator) RequestBody(raw []byte, req *anthrop
 
 	path := buildGCPModelPathSuffix(gcpModelPublisherAnthropic, a.requestModel, specifier)
 	newHeaders = []internalapi.Header{{pathHeaderName, path}, {contentLengthHeaderName, strconv.Itoa(len(newBody))}}
+	// Vertex forwards the anthropic-beta header verbatim and 400s on unsupported values. When the beta
+	// filter drops a value, overwrite the forwarded header with the filtered set.
+	if betas, changed := filterAnthropicBetas(a.anthropicBetas, a.betaFilterMode, a.betaFilterValues); changed {
+		newHeaders = append(newHeaders, internalapi.Header{anthropicBetaHeaderName, strings.Join(betas, ",")})
+	}
 	return
 }

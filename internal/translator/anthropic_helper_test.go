@@ -43,6 +43,120 @@ func TestHelperFunctions(t *testing.T) {
 	})
 }
 
+func TestParseAnthropicBetaHeader(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers map[string]string
+		want    []string
+	}{
+		{name: "missing header", headers: map[string]string{}, want: nil},
+		{name: "empty header", headers: map[string]string{"anthropic-beta": ""}, want: nil},
+		{
+			name:    "single value",
+			headers: map[string]string{"anthropic-beta": "context-1m-2025-08-07"},
+			want:    []string{"context-1m-2025-08-07"},
+		},
+		{
+			name:    "multiple values",
+			headers: map[string]string{"anthropic-beta": "interleaved-thinking-2025-05-14,context-1m-2025-08-07"},
+			want:    []string{"interleaved-thinking-2025-05-14", "context-1m-2025-08-07"},
+		},
+		{
+			name:    "whitespace and empty entries are trimmed and dropped",
+			headers: map[string]string{"anthropic-beta": " interleaved-thinking-2025-05-14 , , context-1m-2025-08-07 "},
+			want:    []string{"interleaved-thinking-2025-05-14", "context-1m-2025-08-07"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, parseAnthropicBetaHeader(tt.headers))
+		})
+	}
+}
+
+func TestFilterAnthropicBetas(t *testing.T) {
+	tests := []struct {
+		name        string
+		betas       []string
+		mode        string
+		values      []string
+		wantBetas   []string
+		wantChanged bool
+	}{
+		{
+			name:        "no filter configured",
+			betas:       []string{"advanced-tool-use-2025-11-20", "thinking-token-count-2026-05-13"},
+			mode:        "",
+			values:      nil,
+			wantBetas:   []string{"advanced-tool-use-2025-11-20", "thinking-token-count-2026-05-13"},
+			wantChanged: false,
+		},
+		{
+			name:        "no betas sent",
+			betas:       nil,
+			mode:        "denylist",
+			values:      []string{"thinking-token-count-2026-05-13"},
+			wantBetas:   nil,
+			wantChanged: false,
+		},
+		{
+			name:        "unknown mode leaves input unchanged",
+			betas:       []string{"advanced-tool-use-2025-11-20"},
+			mode:        "bogus",
+			values:      []string{"advanced-tool-use-2025-11-20"},
+			wantBetas:   []string{"advanced-tool-use-2025-11-20"},
+			wantChanged: false,
+		},
+		{
+			name:        "denylist drops the listed value, keeps the rest",
+			betas:       []string{"advanced-tool-use-2025-11-20", "thinking-token-count-2026-05-13"},
+			mode:        "denylist",
+			values:      []string{"thinking-token-count-2026-05-13"},
+			wantBetas:   []string{"advanced-tool-use-2025-11-20"},
+			wantChanged: true,
+		},
+		{
+			name:        "denylist with no match leaves betas unchanged but still reports unchanged",
+			betas:       []string{"advanced-tool-use-2025-11-20"},
+			mode:        "denylist",
+			values:      []string{"thinking-token-count-2026-05-13"},
+			wantBetas:   []string{"advanced-tool-use-2025-11-20"},
+			wantChanged: false,
+		},
+		{
+			name:        "denylist can drop every value",
+			betas:       []string{"thinking-token-count-2026-05-13"},
+			mode:        "denylist",
+			values:      []string{"thinking-token-count-2026-05-13"},
+			wantBetas:   []string{},
+			wantChanged: true,
+		},
+		{
+			name:        "allowlist keeps only the listed value",
+			betas:       []string{"advanced-tool-use-2025-11-20", "thinking-token-count-2026-05-13"},
+			mode:        "allowlist",
+			values:      []string{"advanced-tool-use-2025-11-20"},
+			wantBetas:   []string{"advanced-tool-use-2025-11-20"},
+			wantChanged: true,
+		},
+		{
+			name:        "allowlist with nothing matching drops everything",
+			betas:       []string{"advanced-tool-use-2025-11-20"},
+			mode:        "allowlist",
+			values:      []string{"thinking-token-count-2026-05-13"},
+			wantBetas:   []string{},
+			wantChanged: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotBetas, gotChanged := filterAnthropicBetas(tt.betas, tt.mode, tt.values)
+			require.Equal(t, tt.wantBetas, gotBetas)
+			require.Equal(t, tt.wantChanged, gotChanged)
+		})
+	}
+}
+
 func TestTranslateOpenAItoAnthropicTools(t *testing.T) {
 	anthropicTestTool := []anthropic.ToolUnionParam{
 		{OfTool: &anthropic.ToolParam{Name: "get_weather", Description: anthropic.String("")}},

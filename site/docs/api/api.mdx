@@ -3001,6 +3001,7 @@ MCPRouteList contains a list of MCPRoute.
 - [APISchema](#github-com-envoyproxy-ai-gateway-api-v1beta1-apischema)
 - [AWSCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1beta1-awscredentialsfile)
 - [AWSOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-awsoidcexchangetoken)
+- [AnthropicBetaFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-anthropicbetafilter)
 - [AzureOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-azureoidcexchangetoken)
 - [BackendSecurityPolicyAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyapikey)
 - [BackendSecurityPolicyAWSCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyawscredentials)
@@ -3275,6 +3276,11 @@ AIServiceBackendSpec details the AIServiceBackend configuration.
   type="[HTTPBodyMutation](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodymutation)"
   required="false"
   description="BodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request<br />before sending it to the backend."
+/><ApiField
+  name="anthropicBetaFilter"
+  type="[AnthropicBetaFilter](#github-com-envoyproxy-ai-gateway-api-v1beta1-anthropicbetafilter)"
+  required="false"
+  description="AnthropicBetaFilter filters values from the `anthropic-beta` request header before sending the<br />request to this backend. Only applies to Anthropic backends (GCP Vertex and AWS Bedrock)."
 />
 
 
@@ -3416,6 +3422,35 @@ and store them in a temporary credentials file.
   type="string"
   required="true"
   description="AwsRoleArn is the AWS IAM Role with the permission to use specific resources in AWS account<br />which maps to the temporary AWS security credentials exchanged using the authentication token issued by OIDC provider."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-anthropicbetafilter">AnthropicBetaFilter</a>
+
+
+
+**Appears in:**
+- [AIServiceBackendSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-aiservicebackendspec)
+
+AnthropicBetaFilter filters values from the `anthropic-beta` request header before the request is
+forwarded to this backend. Anthropic clients (e.g. Claude Code) send all enabled betas in a single
+comma-separated header, but upstream providers accept different subsets and reject unknown values
+with an HTTP 400. This lets an operator drop (or restrict to) specific values per backend.
+
+##### Fields
+
+
+
+<ApiField
+  name="mode"
+  type="string"
+  required="true"
+  description="Mode selects the filtering semantics:<br />  - `denylist`: drop the values listed in Values, keep everything else.<br />  - `allowlist`: keep only the values listed in Values, drop everything else."
+/><ApiField
+  name="values"
+  type="string array"
+  required="false"
+  description="Values is the list of `anthropic-beta` values to drop (denylist) or keep (allowlist)."
 />
 
 

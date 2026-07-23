@@ -2257,6 +2257,30 @@ func Test_schemaToFilterAPI(t *testing.T) {
 	}
 }
 
+func Test_anthropicBetaFilterToFilterAPI(t *testing.T) {
+	for i, tc := range []struct {
+		in       *aigv1b1.AnthropicBetaFilter
+		expected *filterapi.AnthropicBetaFilter
+	}{
+		{
+			in:       nil,
+			expected: nil,
+		},
+		{
+			in:       &aigv1b1.AnthropicBetaFilter{Mode: "denylist", Values: []string{"thinking-token-count-2026-05-13"}},
+			expected: &filterapi.AnthropicBetaFilter{Mode: "denylist", Values: []string{"thinking-token-count-2026-05-13"}},
+		},
+		{
+			in:       &aigv1b1.AnthropicBetaFilter{Mode: "allowlist", Values: []string{"advanced-tool-use-2025-11-20"}},
+			expected: &filterapi.AnthropicBetaFilter{Mode: "allowlist", Values: []string{"advanced-tool-use-2025-11-20"}},
+		},
+	} {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			require.Equal(t, tc.expected, anthropicBetaFilterToFilterAPI(tc.in))
+		})
+	}
+}
+
 func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
