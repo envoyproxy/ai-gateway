@@ -270,7 +270,7 @@ func (m *mcpEnv) newSession(t *testing.T) *mcpSession {
 	require.NoError(t, err)
 	span := m.collector.TakeSpan()
 	t.Log("created new MCP session with ID ", ret.session.ID(), ", first span: ", span.String())
-	requireMCPSpan(t, span, "Initialize", map[string]string{
+	requireMCPSpan(t, span, "initialize", map[string]string{
 		"mcp.method.name":    "initialize",
 		"mcp.client.name":    "demo-http-client",
 		"mcp.client.title":   "",
@@ -321,12 +321,19 @@ func requireMCPSpan(t *testing.T, span *tracev1.Span, expectedName string, addit
 
 	// Combine base attributes with additional attributes
 	combined := make(map[string]string)
-	// Base attributes that are always present
+	// Base attributes that are always present, per the OTel MCP conventions.
 	combined["mcp.protocol.version"] = "2025-06-18"
-	combined["mcp.transport"] = "http"
-	// mcp.request.id is dynamic, so we copy it from span
-	if reqID, ok := attrsFromSpan["mcp.request.id"]; ok {
-		combined["mcp.request.id"] = reqID
+	combined["network.transport"] = "tcp"
+	combined["network.protocol.name"] = "http"
+	combined["network.protocol.version"] = "1.1"
+	// The following are dynamic (request id), environment-specific (server peer)
+	// or only present on routed/error spans, so copy them from the span when
+	// present. Their exact values are asserted precisely in the tracing unit
+	// tests and, for errors, in the exception-event checks below.
+	for _, key := range []string{"jsonrpc.request.id", "mcp.session.id", "server.address", "error.type"} {
+		if v, ok := attrsFromSpan[key]; ok {
+			combined[key] = v
+		}
 	}
 	// Add additional attributes provided by caller
 	maps.Copy(combined, additionalAttrs)

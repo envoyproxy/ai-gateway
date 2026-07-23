@@ -11,8 +11,10 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -36,6 +38,10 @@ type (
 
 	mcpProxyConfig struct {
 		backendListenerAddr string
+		// backendListenerHost and backendListenerPort are backendListenerAddr
+		// parsed once, used for the server.address/server.port span attributes.
+		backendListenerHost string
+		backendListenerPort int
 		routes              map[filterapi.MCPRouteName]*mcpProxyConfigRoute // route name -> backends of that route.
 	}
 
@@ -187,6 +193,14 @@ func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) er
 
 	// Talk to the backend MCP listener on the local Envoy instance.
 	newConfig.backendListenerAddr = mcpConfig.BackendListenerAddr
+	// Parse the listener address once for the server.address/server.port span
+	// attributes. A malformed address just leaves the peer unrecorded.
+	if u, err := url.Parse(mcpConfig.BackendListenerAddr); err == nil {
+		newConfig.backendListenerHost = u.Hostname()
+		if port, err := strconv.Atoi(u.Port()); err == nil {
+			newConfig.backendListenerPort = port
+		}
+	}
 
 	// Build a map of routes to backends.
 	// Each route has its own set of backends. For a given downstream request,
