@@ -358,7 +358,7 @@ jobs:
           timeout 30 sh -c 'until nc -z localhost 11434; do sleep 1; done'
           grep _MODEL .env.ollama | cut -d= -f2 | xargs -I{} ollama pull {}
         env:
-          OLLAMA_CONTEXT_LENGTH: 131072 # Larger context for goose
+          OLLAMA_CONTEXT_LENGTH: 32768 # cap KV cache to avoid runner OOM, goose recipe is not run in CI
           OLLAMA_HOST: 0.0.0.0
       # Download Envoy via func-e using implicit default version `aigw` would
       # otherwise need to download during test runs.
