@@ -47,15 +47,16 @@ func (s *span[RespT, ChunkT]) EndSpanOnError(statusCode int, body []byte) {
 
 // Type aliases tying generic implementations to concrete recorder contracts.
 type (
-	chatCompletionSpan  = span[openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
-	completionSpan      = span[openai.CompletionResponse, openai.CompletionResponse]
-	embeddingsSpan      = span[openai.EmbeddingResponse, struct{}]
-	imageGenerationSpan = span[openai.ImageGenerationResponse, struct{}]
-	responsesSpan       = span[openai.Response, openai.ResponseStreamEventUnion]
-	speechSpan          = span[[]byte, openai.SpeechStreamChunk]
-	transcriptionSpan   = span[openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
-	translationSpan     = span[openai.TranslationResponse, struct{}]
-	rerankSpan          = span[cohereschema.RerankV2Response, struct{}]
-	messageSpan         = span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
-	tokenizeSpan        = span[tokenize.Response, struct{}]
+	chatCompletionSpan       = span[openai.ChatCompletionResponse, openai.ChatCompletionResponseChunk]
+	completionSpan           = span[openai.CompletionResponse, openai.CompletionResponse]
+	embeddingsSpan           = span[openai.EmbeddingResponse, struct{}]
+	imageGenerationSpan      = span[openai.ImageGenerationResponse, struct{}]
+	responsesSpan            = span[openai.Response, openai.ResponseStreamEventUnion]
+	speechSpan               = span[[]byte, openai.SpeechStreamChunk]
+	transcriptionSpan        = span[openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
+	translationSpan          = span[openai.TranslationResponse, struct{}]
+	rerankSpan               = span[cohereschema.RerankV2Response, struct{}]
+	messageSpan              = span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	tokenizeSpan             = span[tokenize.Response, struct{}]
+	responsesInputTokensSpan = span[openai.ResponsesInputTokensResponse, struct{}]
 )
