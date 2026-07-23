@@ -94,7 +94,7 @@ func TestOpenAIMessagesToGeminiContents(t *testing.T) {
 									"param1": "value1",
 								},
 							},
-							ThoughtSignature: []byte(dummyThoughtSignature),
+							ThoughtSignature: dummyThoughtSignature,
 						},
 						{Text: "This is a assistant message"},
 					},
@@ -250,7 +250,7 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 						Args: map[string]any{"location": "New York", "unit": "celsius"},
 						Name: "get_weather",
 					},
-					ThoughtSignature: []byte(dummyThoughtSignature),
+					ThoughtSignature: dummyThoughtSignature,
 				},
 			},
 			expectedToolCalls: map[string]string{
@@ -289,7 +289,7 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 						"location": "New York",
 						"unit":     "celsius",
 					})
-					p.ThoughtSignature = []byte(dummyThoughtSignature)
+					p.ThoughtSignature = dummyThoughtSignature
 					return p
 				}(),
 				genai.NewPartFromFunctionCall("get_time", map[string]any{
@@ -438,7 +438,7 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 					p := genai.NewPartFromFunctionCall("get_weather", map[string]any{
 						"location": "San Francisco",
 					})
-					p.ThoughtSignature = []byte(dummyThoughtSignature)
+					p.ThoughtSignature = dummyThoughtSignature
 					return p
 				}(),
 				{
@@ -605,7 +605,7 @@ func TestAssistantMsgToGeminiParts(t *testing.T) {
 						Name: "get_weather",
 						Args: map[string]any{"location": "San Francisco"},
 					},
-					ThoughtSignature: []byte(dummyThoughtSignature),
+					ThoughtSignature: dummyThoughtSignature,
 				},
 				{
 					FunctionCall: &genai.FunctionCall{

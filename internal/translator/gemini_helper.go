@@ -36,7 +36,7 @@ const (
 // dummyThoughtSignature is Google's documented compatibility escape for clients that cannot echo
 // back a thought_signature on function-call parts in multi-turn requests, see
 // https://ai.google.dev/gemini-api/docs/thought-signatures.
-const dummyThoughtSignature = "skip_thought_signature_validator"
+var dummyThoughtSignature = []byte("skip_thought_signature_validator")
 
 // geminiResponseMode represents the type of response mode for Gemini requests
 type geminiResponseMode string
@@ -318,7 +318,7 @@ func assistantMsgToGeminiParts(msg *openai.ChatCompletionAssistantMessageParam) 
 				// that doesn't round-trip thinking_blocks). Gemini 3.x rejects function calls in
 				// multi-turn requests that are missing a thought_signature, so fall back to
 				// Google's documented compatibility escape.
-				funcCallPart.ThoughtSignature = []byte(dummyThoughtSignature)
+				funcCallPart.ThoughtSignature = dummyThoughtSignature
 			}
 		}
 
