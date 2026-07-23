@@ -231,6 +231,7 @@ func translateCustomResourceObjects(
 			err = fmt.Errorf("error creating secret: %w", err)
 			return
 		}
+		mustCreate(ctx, fakeClient, s, logger)
 		userDefinedSecretKeys[fmt.Sprintf("%s/%s", s.Namespace, s.Name)] = struct{}{}
 	}
 

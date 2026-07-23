@@ -99,11 +99,19 @@ func createOidcClientSecret(t *testing.T, client client.Client, name string) {
 // MockSTSOperations implements the STSClient interface for testing.
 type mockStsOperations struct {
 	assumeRoleWithWebIdentityFunc func(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error)
+	assumeRoleFunc                func(ctx context.Context, params *sts.AssumeRoleInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleOutput, error)
 }
 
 func (m *mockStsOperations) AssumeRoleWithWebIdentity(ctx context.Context, params *sts.AssumeRoleWithWebIdentityInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleWithWebIdentityOutput, error) {
 	if m.assumeRoleWithWebIdentityFunc != nil {
 		return m.assumeRoleWithWebIdentityFunc(ctx, params, optFns...)
+	}
+	return nil, fmt.Errorf("mock not implemented")
+}
+
+func (m *mockStsOperations) AssumeRole(ctx context.Context, params *sts.AssumeRoleInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleOutput, error) {
+	if m.assumeRoleFunc != nil {
+		return m.assumeRoleFunc(ctx, params, optFns...)
 	}
 	return nil, fmt.Errorf("mock not implemented")
 }
