@@ -36,7 +36,7 @@ type fakeSpan struct {
 	err      error
 }
 
-func (f *fakeSpan) RecordRouteToBackend(backend string, _ string, _ bool) {
+func (f *fakeSpan) RecordRouteToBackend(backend string, _ string, _ bool, _ string, _ int) {
 	f.backends = append(f.backends, backend)
 }
 

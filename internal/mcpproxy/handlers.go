@@ -783,7 +783,7 @@ func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *sessio
 		logger.Debug("Routing to backend")
 	}
 	if span != nil {
-		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false)
+		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false, m.backendListenerHost, m.backendListenerPort)
 	}
 	req.Params = param
 	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req, p)
@@ -1212,7 +1212,7 @@ func (m *mcpRequestContext) handleResourcesSubscriptionRequest(ctx context.Conte
 		logger.Debug("Routing to backend")
 	}
 	if span != nil {
-		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false)
+		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false, m.backendListenerHost, m.backendListenerPort)
 	}
 	req.Params = param
 	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req, p)
@@ -1474,7 +1474,7 @@ func (m *mcpRequestContext) handleCompletionComplete(ctx context.Context, s *ses
 
 	// Send the request to the MCP backend listener.
 	if span != nil {
-		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false)
+		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false, m.backendListenerHost, m.backendListenerPort)
 	}
 	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req, param)
 }
@@ -1556,7 +1556,7 @@ func (m *mcpRequestContext) handleClientToServerNotificationsProgress(ctx contex
 		logger.Debug("Routing to backend")
 	}
 	if span != nil {
-		span.RecordRouteToBackend(backendName, string(cse.sessionID), false)
+		span.RecordRouteToBackend(backendName, string(cse.sessionID), false, m.backendListenerHost, m.backendListenerPort)
 	}
 	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req, p)
 }
