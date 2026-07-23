@@ -63,6 +63,7 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 		Spec: aigv1b1.MCPRouteSpec{
 			ParentRefs: []gwapiv1.ParentReference{{Name: gwapiv1.ObjectName("mytarget")}},
 			Headers:    []gwapiv1.HTTPHeaderMatch{{Name: "x-test-header", Value: "abc"}},
+			Hostnames:  []gwapiv1.Hostname{"api.example.com", "*.example.net"},
 			BackendRefs: []aigv1b1.MCPRouteBackendRef{
 				{
 					BackendObjectReference: gwapiv1.BackendObjectReference{
@@ -124,6 +125,8 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	require.Equal(t, "v1", mainHTTPRoute.Annotations["a1"])
 	// ParentRefs copied to HTTPRoute.
 	require.Equal(t, route.Spec.ParentRefs, mainHTTPRoute.Spec.ParentRefs)
+	// Hostnames copied to HTTPRoute so the route lands in the per-host vhost.
+	require.Equal(t, route.Spec.Hostnames, mainHTTPRoute.Spec.Hostnames)
 
 	// Verify the two per-backend HTTPRoute created.
 	for _, refName := range []gwapiv1.ObjectName{"svc-a", "svc-b"} {
@@ -146,6 +149,8 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 		require.Equal(t, "v1", httpRoute.Annotations["a1"])
 		// ParentRefs copied to HTTPRoute.
 		require.Equal(t, route.Spec.ParentRefs, httpRoute.Spec.ParentRefs)
+		// Hostnames copied to HTTPRoute so the route lands in the per-host vhost.
+		require.Equal(t, route.Spec.Hostnames, httpRoute.Spec.Hostnames)
 	}
 
 	// Let's update the route to remove one backend and change path.
@@ -414,6 +419,43 @@ func Test_newHTTPRoute_MCPOauth(t *testing.T) {
 	require.Equal(t, "/.well-known/oauth-protected-resource/mcp", ptr.Deref(oauthRules[0].Matches[0].Path.Value, ""))
 	require.Equal(t, "/.well-known/oauth-authorization-server/mcp", ptr.Deref(oauthRules[1].Matches[0].Path.Value, ""))
 	require.Equal(t, "/.well-known/openid-configuration/mcp", ptr.Deref(oauthRules[2].Matches[0].Path.Value, ""))
+}
+
+func Test_newHTTPRoute_MCP_Hostnames(t *testing.T) {
+	c := requireNewFakeClientWithIndexesForMCP(t)
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	ctrlr := NewMCPRouteController(c, nil, logr.Discard(), eventCh.Ch)
+
+	t.Run("set", func(t *testing.T) {
+		httpRoute := &gwapiv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: "mcp-route", Namespace: "ns"}}
+		mcpRoute := &aigv1b1.MCPRoute{
+			ObjectMeta: metav1.ObjectMeta{Name: "mcp-route", Namespace: "ns"},
+			Spec: aigv1b1.MCPRouteSpec{
+				Path:       ptr.To("/mcp"),
+				ParentRefs: []gwapiv1.ParentReference{{Name: gwapiv1.ObjectName("gw")}},
+				Hostnames:  []gwapiv1.Hostname{"api.example.com", "*.example.net", "sub.example.com"},
+			},
+		}
+
+		err := ctrlr.newMainHTTPRoute(httpRoute, mcpRoute, mcpProxySharedBackendName)
+		require.NoError(t, err)
+		require.Equal(t, mcpRoute.Spec.Hostnames, httpRoute.Spec.Hostnames)
+	})
+
+	t.Run("not set", func(t *testing.T) {
+		httpRoute := &gwapiv1.HTTPRoute{ObjectMeta: metav1.ObjectMeta{Name: "mcp-route", Namespace: "ns"}}
+		mcpRoute := &aigv1b1.MCPRoute{
+			ObjectMeta: metav1.ObjectMeta{Name: "mcp-route", Namespace: "ns"},
+			Spec: aigv1b1.MCPRouteSpec{
+				Path:       ptr.To("/mcp"),
+				ParentRefs: []gwapiv1.ParentReference{{Name: gwapiv1.ObjectName("gw")}},
+			},
+		}
+
+		err := ctrlr.newMainHTTPRoute(httpRoute, mcpRoute, mcpProxySharedBackendName)
+		require.NoError(t, err)
+		require.Empty(t, httpRoute.Spec.Hostnames)
+	})
 }
 
 func TestMCPRouteController_updateMCPRouteStatus(t *testing.T) {
