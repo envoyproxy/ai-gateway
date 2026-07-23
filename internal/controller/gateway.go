@@ -711,6 +711,8 @@ func defaultOverrideHeaderName(t aigv1b1.BackendSecurityPolicyType) string {
 		return "x-aigw-api-key"
 	case aigv1b1.BackendSecurityPolicyTypeAnthropicAPIKey:
 		return "x-aigw-anthropic-api-key"
+	case aigv1b1.BackendSecurityPolicyTypeGoogleAIKey:
+		return "x-aigw-goog-api-key"
 	case aigv1b1.BackendSecurityPolicyTypeAzureAPIKey:
 		return "x-aigw-azure-api-key"
 	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
@@ -794,6 +796,14 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
 		}
 		auth = &filterapi.BackendAuth{AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: apiKey}}
+		hasStaticCred = true
+	case aigv1b1.BackendSecurityPolicyTypeGoogleAIKey:
+		secretName := string(spec.GoogleAIKey.SecretRef.Name)
+		apiKey, getErr := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
+		if getErr != nil {
+			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+		}
+		auth = &filterapi.BackendAuth{GoogleAIKey: &filterapi.GoogleAIKeyAuth{Key: apiKey}}
 		hasStaticCred = true
 	case aigv1b1.BackendSecurityPolicyTypeAWSCredentials:
 		awsCred := spec.AWSCredentials

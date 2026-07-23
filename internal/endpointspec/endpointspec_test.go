@@ -230,6 +230,9 @@ func TestImageGenerationEndpointSpec_GetTranslator(t *testing.T) {
 	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
 	require.NoError(t, err)
 
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaGoogleAIStudio, Version: "v1beta"}, "override")
+	require.NoError(t, err)
+
 	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
 	require.ErrorContains(t, err, "unsupported API schema")
 }

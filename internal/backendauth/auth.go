@@ -42,6 +42,9 @@ func NewHandler(ctx context.Context, config *filterapi.BackendAuth) (filterapi.B
 	case config.AnthropicAPIKey != nil:
 		inner, err = newAnthropicAPIKeyHandler(config.AnthropicAPIKey)
 		applyFn = applyAnthropicCredential
+	case config.GoogleAIKey != nil:
+		inner, err = newGoogleAIKeyHandler(config.GoogleAIKey)
+		applyFn = applyGoogleAICredential
 	default:
 		return nil, errors.New("no backend auth handler found")
 	}
