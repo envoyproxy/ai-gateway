@@ -162,6 +162,9 @@ func testMCPServerAllToolNames(toolPrefix string) []string {
 		toolPrefix + testmcp.ToolElicitEmail.Tool.Name,
 		toolPrefix + testmcp.ToolCreateMessage.Tool.Name,
 		toolPrefix + testmcp.ToolNotificationCountsName,
+		toolPrefix + testmcp.ToolUIResource.Tool.Name,
+		toolPrefix + testmcp.ToolResourceLink.Tool.Name,
+		toolPrefix + testmcp.ToolEmbeddedResource.Tool.Name,
 	}
 }
 
