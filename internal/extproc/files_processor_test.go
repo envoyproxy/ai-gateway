@@ -160,7 +160,9 @@ func TestProcessRequestHeaders_UnsupportedPath(t *testing.T) {
 }
 
 func TestProcessRequestHeaders_Upload(t *testing.T) {
-	// Upload defers to ProcessRequestBody — router just continues (response is a bare RequestHeaders).
+	// Upload defers routing to ProcessRequestBody, but must set originalPathHeader now so the
+	// upstream filter can resolve this processor from its request headers (before the body-phase
+	// header mutation is applied).
 	p := newProcessorForPath(http.MethodPost, "/v1/files", nil)
 	resp, err := p.ProcessRequestHeaders(context.Background(), nil)
 	require.NoError(t, err)
@@ -168,6 +170,10 @@ func TestProcessRequestHeaders_Upload(t *testing.T) {
 	_, ok := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders)
 	require.True(t, ok)
 	require.Equal(t, filesOpUpload, p.op)
+	// originalPathHeader must be set so the upstream filter can resolve the filesProcessor.
+	orig, ok := responseHeaderValue(resp, originalPathHeader)
+	require.True(t, ok, "originalPathHeader must be set in the RequestHeaders response")
+	require.Equal(t, "/v1/files", orig)
 }
 
 func TestProcessRequestHeaders_List_MissingModel(t *testing.T) {
