@@ -326,6 +326,10 @@ func (ResponsesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, 
 	switch schema.Name {
 	case filterapi.APISchemaOpenAI:
 		return translator.NewResponsesOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	case filterapi.APISchemaAWSBedrock:
+		return translator.NewResponsesViaChatCompletionTranslator(
+			translator.NewChatCompletionOpenAIToAWSBedrockTranslator(modelNameOverride),
+		), nil
 	case filterapi.APISchemaAzureOpenAI:
 		return translator.NewResponsesOpenAIToAzureOpenAITranslator(schema.Version, modelNameOverride), nil
 	default:
