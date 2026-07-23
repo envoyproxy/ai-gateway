@@ -459,6 +459,8 @@ func (TokenizeEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 		return translator.NewTokenizeToGCPAnthropicTranslator(schema.Version, modelNameOverride), nil
 	case filterapi.APISchemaAWSAnthropic:
 		return translator.NewTokenizeToAWSAnthropicTranslator(schema.Version, modelNameOverride), nil
+	case filterapi.APISchemaAWSBedrock:
+		return translator.NewTokenizeToAWSBedrockTranslator(modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("unsupported API schema for tokenize endpoint: backend=%s", schema.Name)
 	}

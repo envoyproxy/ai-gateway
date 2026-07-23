@@ -638,6 +638,22 @@ type TitanEmbeddingResponse struct {
 	InputTextTokenCount int `json:"inputTextTokenCount"`
 }
 
+// CountTokensConverseInput mirrors the Converse input for the Bedrock CountTokens API.
+// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html
+type CountTokensConverseInput struct {
+	Messages   []*Message            `json:"messages"`
+	System     []*SystemContentBlock `json:"system,omitempty"`
+	ToolConfig *ToolConfiguration    `json:"toolConfig,omitempty"`
+}
+
+// CountTokensConverseRequest is the request structure for the Bedrock CountTokens API using Converse-style input.
+// https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html
+type CountTokensConverseRequest struct {
+	Input struct {
+		Converse *CountTokensConverseInput `json:"converse"`
+	} `json:"input"`
+}
+
 // CountTokensInvokeModelRequest is the request structure for the Bedrock CountTokens API using InvokeModel-style input.
 // The body is a base64-encoded model-specific request body (e.g., Anthropic Messages format).
 // https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html
