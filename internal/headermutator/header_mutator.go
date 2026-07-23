@@ -112,11 +112,19 @@ func (h *HeaderMutator) Mutate(headers map[string]string, onRetry bool) (sets []
 // This should be safe since these headers are managed by Envoy AI Gateway itself, not expected to be
 // modified by users via header mutation API.
 //
+// AWSSigningHostHeader is exempted from that prefix skip: it exists specifically to let a backend
+// (e.g. one behind an AWS VPC endpoint) declare the host the AWS backend auth handler should sign
+// for and route to via HeaderMutation, since ext_proc runs before Envoy's own host-rewrite to the
+// Backend's FQDN and so cannot observe that host any other way.
+//
 // Also, skip Envoy pseudo-headers beginning with ':', such as ":method", ":path", etc.
 // This is important because these headers are not only sensitive to our implementation detail as well as
 // it can cause unexpected behavior if they are modified unexpectedly. User shouldn't need to
 // modify these headers via header mutation API.
 func shouldIgnoreHeader(key string) bool {
+	if strings.EqualFold(key, internalapi.AWSSigningHostHeader) {
+		return false
+	}
 	return strings.HasPrefix(key, ":") ||
 		strings.HasPrefix(key, internalapi.EnvoyAIGatewayHeaderPrefix) ||
 		strings.EqualFold(key, internalapi.EnvoyOriginalPathHeader)

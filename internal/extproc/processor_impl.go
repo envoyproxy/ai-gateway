@@ -404,6 +404,14 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 				Header:       &corev3.HeaderValue{Key: h.Key(), RawValue: []byte(h.Value())},
 			})
 		}
+
+		// AWSSigningHostHeader, if present, only exists so the AWS backend auth handler above could
+		// resolve the real signing host; it's never part of the signed request built in Do() and must
+		// never reach the actual upstream. Strip it from what Envoy forwards while leaving it in the
+		// local map, same as the CredentialOverride.InputHeaderToRemove handling below.
+		if _, ok := u.requestHeaders[internalapi.AWSSigningHostHeader]; ok {
+			headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, internalapi.AWSSigningHostHeader)
+		}
 	}
 
 	if !wantBodyReplace {
