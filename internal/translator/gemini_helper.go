@@ -33,6 +33,11 @@ const (
 	gcpMethodRawPredict            = "rawPredict"
 )
 
+// dummyThoughtSignature is Google's documented compatibility escape for clients that cannot echo
+// back a thought_signature on function-call parts in multi-turn requests, see
+// https://ai.google.dev/gemini-api/docs/thought-signatures.
+var dummyThoughtSignature = []byte("skip_thought_signature_validator")
+
 // geminiResponseMode represents the type of response mode for Gemini requests
 type geminiResponseMode string
 
@@ -275,6 +280,21 @@ func assistantMsgToGeminiParts(msg *openai.ChatCompletionAssistantMessageParam) 
 		}
 	}
 
+	// Fall back to the first non-empty signature echoed back via thinking_blocks (see
+	// https://docs.litellm.ai/docs/reasoning_content) when no content-part signature was found.
+	if thoughtSignature == nil {
+		for _, block := range msg.ThinkingBlocks {
+			if block.Signature != "" {
+				sigBytes, err := base64.StdEncoding.DecodeString(block.Signature)
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to decode thought signature: %w", err)
+				}
+				thoughtSignature = sigBytes
+				break // Only use first signature.
+			}
+		}
+	}
+
 	// Handle tool calls in the assistant message.
 	knownToolCalls := make(map[string]string)
 	for i, toolCall := range msg.ToolCalls {
@@ -290,8 +310,16 @@ func assistantMsgToGeminiParts(msg *openai.ChatCompletionAssistantMessageParam) 
 		funcCallPart := genai.NewPartFromFunctionCall(toolCall.Function.Name, parsedArgs)
 
 		// According to https://ai.google.dev/gemini-api/docs/thought-signatures, if the model generates parallel function calls in a response, the thought_signature is attached only to the first functionCall part. Subsequent  functionCall parts in the same response will not contain a signature.
-		if i == 0 && thoughtSignature != nil {
-			funcCallPart.ThoughtSignature = thoughtSignature
+		if i == 0 {
+			if thoughtSignature != nil {
+				funcCallPart.ThoughtSignature = thoughtSignature
+			} else {
+				// No signature was echoed back by the client at all (e.g. an OpenAI-schema client
+				// that doesn't round-trip thinking_blocks). Gemini 3.x rejects function calls in
+				// multi-turn requests that are missing a thought_signature, so fall back to
+				// Google's documented compatibility escape.
+				funcCallPart.ThoughtSignature = dummyThoughtSignature
+			}
 		}
 
 		parts = append(parts, funcCallPart)
