@@ -150,6 +150,43 @@ func extractMetaFromJSONRPCMessage(msg jsonrpc.Message) map[string]any {
 	return params.Meta
 }
 
+// backendSubset parses the subset header (x-ai-eg-mcp-backend-subset): a
+// comma-separated list of backend names the trusted shim selects for this request.
+// It returns nil when the header is absent or empty, which the caller treats as
+// "no subsetting" (fan out to all backends — the original behavior).
+func backendSubset(h http.Header) map[filterapi.MCPBackendName]struct{} {
+	raw := strings.TrimSpace(h.Get(internalapi.MCPBackendSubsetHeader))
+	if raw == "" {
+		return nil
+	}
+	set := make(map[filterapi.MCPBackendName]struct{})
+	for _, name := range strings.Split(raw, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			set[filterapi.MCPBackendName(name)] = struct{}{}
+		}
+	}
+	return set
+}
+
+// toolSubset parses the per-request tool filter header (x-ai-eg-mcp-tool-subset): a
+// comma-separated list of fully-qualified downstream tool names ("<backend>__<tool>")
+// the trusted shim permits for this request. It returns nil when the header is absent
+// or empty, which callers treat as "no dynamic filter" (fall back to the static
+// per-backend toolSelector).
+func toolSubset(h http.Header) map[string]struct{} {
+	raw := strings.TrimSpace(h.Get(internalapi.MCPToolSubsetHeader))
+	if raw == "" {
+		return nil
+	}
+	set := make(map[string]struct{})
+	for _, name := range strings.Split(raw, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			set[name] = struct{}{}
+		}
+	}
+	return set
+}
+
 // newSession creates a new session for a downstream client.
 // It multiplexes the initialize request to all backends defined in the MCPRoute associated with the downstream request.
 // startAt is the time when the overall HTTP request started, used for recording request duration metrics.
@@ -163,9 +200,22 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 
 	forwardHeaders := extractForwardHeaders(m.requestHeaders, backends.forwardHeaders)
 
+	// Optional per-request fan-out subset. x-ai-eg-mcp-backend-subset header, initialize sessions ONLY to that subset of the route's backends.
+	// If the header is absent, fall back to ALL backends on the route (original behavior — this change is backward compatible).
+	selectedBackends := backends.backends
+	if subset := backendSubset(m.requestHeaders); subset != nil {
+		filtered := make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(subset))
+		for name, b := range backends.backends {
+			if _, ok := subset[name]; ok {
+				filtered[name] = b
+			}
+		}
+		selectedBackends = filtered
+	}
+
 	// Extract per-backend forward headers.
 	perBackendHeaders := make(map[filterapi.MCPBackendName]map[string]string)
-	for _, backend := range backends.backends {
+	for _, backend := range selectedBackends {
 		if len(backend.ForwardHeaders) > 0 {
 			if h := extractPerBackendForwardHeaders(m.requestHeaders, backend.ForwardHeaders); h != nil {
 				perBackendHeaders[backend.Name] = h
@@ -178,12 +228,12 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 		entries []compositeSessionEntry
 		counter int
 	)
-	entries = make([]compositeSessionEntry, len(backends.backends))
+	entries = make([]compositeSessionEntry, len(selectedBackends))
 
 	if m.l.Enabled(ctx, slog.LevelDebug) {
 		m.l.Debug("initializing MCP sessions to backends", slog.String("route", routeName), slog.Any("backends", backends))
 	}
-	for _, backend := range backends.backends {
+	for _, backend := range selectedBackends {
 		entryIndex := counter
 		counter++
 		// Initialize sessions to all backends in parallel to reduce the overall latency of session creation.

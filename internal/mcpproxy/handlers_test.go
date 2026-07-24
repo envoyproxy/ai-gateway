@@ -972,6 +972,74 @@ func TestHandleToolCallRequest_ToolResultWithIsError(t *testing.T) {
 	require.Contains(t, rr.Body.String(), "missing required parameter: owner")
 }
 
+// TestHandleToolCallRequest_StaticSelectorOnly verifies that tools/call is gated ONLY by
+// the static per-backend toolSelector. The dynamic x-ai-eg-mcp-tool-subset header (used
+// solely for tools/list visibility) must neither block a statically-allowed tool nor grant
+// a statically-disallowed one; per-tenant call rejection is enforced by the trusted shim.
+func TestHandleToolCallRequest_StaticSelectorOnly(t *testing.T) {
+	var backendCalled bool
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backendCalled = true
+		body, _ := io.ReadAll(r.Body)
+		req, _ := jsonrpc.DecodeMessage(body)
+		reqMsg := req.(*jsonrpc.Request)
+		resultJSON, _ := json.Marshal(mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "ok"}}})
+		respBody, _ := jsonrpc.EncodeMessage(&jsonrpc.Response{ID: reqMsg.ID, Result: resultJSON})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(respBody)
+	}))
+	t.Cleanup(backendServer.Close)
+
+	// newProxy returns a proxy whose static selector allows only backend1__test-tool, with
+	// the given dynamic tool-subset header set.
+	newProxy := func(toolSubsetHeader string) *mcpRequestContext {
+		proxy := newTestMCPProxy()
+		proxy.backendListenerAddr = backendServer.URL
+		proxy.requestHeaders = http.Header{}
+		proxy.requestHeaders.Set(internalapi.MCPToolSubsetHeader, toolSubsetHeader)
+		return proxy
+	}
+	newSession := func(proxy *mcpRequestContext) *session {
+		return &session{
+			reqCtx: proxy,
+			perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"backend1": {sessionID: "test-session"},
+			},
+			route: "test-route",
+		}
+	}
+
+	t.Run("dynamic subset does not block a statically-allowed tool", func(t *testing.T) {
+		backendCalled = false
+		// Dynamic subset EXCLUDES backend1__test-tool, but the static selector allows it.
+		proxy := newProxy("backend1__other-tool")
+		params := &mcp.CallToolParams{Name: "backend1__test-tool"}
+		rr := httptest.NewRecorder()
+		req := &jsonrpc.Request{ID: mustJSONRPCRequestID(), Method: "tools/call"}
+
+		_, err := proxy.handleToolCallRequest(t.Context(), newSession(proxy), rr, req, params, nil, httptest.NewRequest(http.MethodPost, "/mcp", nil))
+		require.NoError(t, err)
+		require.True(t, backendCalled, "statically-allowed tool must be forwarded despite the dynamic subset excluding it")
+		require.Equal(t, http.StatusOK, rr.Code)
+	})
+
+	t.Run("static selector still rejects a disallowed tool even if the dynamic subset lists it", func(t *testing.T) {
+		backendCalled = false
+		// Dynamic subset LISTS the forbidden tool, but the static selector does not allow it.
+		proxy := newProxy("backend1__forbidden-tool")
+		params := &mcp.CallToolParams{Name: "backend1__forbidden-tool"}
+		rr := httptest.NewRecorder()
+		req := &jsonrpc.Request{ID: mustJSONRPCRequestID(), Method: "tools/call"}
+
+		_, err := proxy.handleToolCallRequest(t.Context(), newSession(proxy), rr, req, params, nil, httptest.NewRequest(http.MethodPost, "/mcp", nil))
+		require.ErrorIs(t, err, errInvalidToolName)
+		require.False(t, backendCalled, "statically-disallowed tool must not reach the backend")
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Contains(t, rr.Body.String(), "invalid tool name")
+	})
+}
+
 func TestProxyResponseBody_JSONResponse(t *testing.T) {
 	proxy := newTestMCPProxy()
 
