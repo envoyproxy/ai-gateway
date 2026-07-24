@@ -184,6 +184,14 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 		m.l.Debug("initializing MCP sessions to backends", slog.String("route", routeName), slog.Any("backends", backends))
 	}
 	for _, backend := range backends.backends {
+		// Pre-check backend authorization during initialize phase to avoid unnecessary connections.
+		if backends.authorization != nil {
+			if !m.authorizeBackendOnly(backends.authorization, backend.Name, m.requestHeaders) {
+				m.l.Debug("skipping backend connection due to authorization rules", slog.String("backend", backend.Name), slog.String("route", routeName))
+				continue
+			}
+		}
+
 		entryIndex := counter
 		counter++
 		// Initialize sessions to all backends in parallel to reduce the overall latency of session creation.

@@ -995,6 +995,221 @@ func TestAuthorizeRequest(t *testing.T) {
 	}
 }
 
+// TestAuthorizeBackendOnly covers the initialize-phase, backend-level pre-check
+// (authorizeBackendOnly), used by newSession to decide whether to even attempt
+// connecting to a backend before any specific tool is known.
+//
+// The key invariant under test: a Deny rule with a tool-specific target and no
+// CEL is ambiguous at this phase (backendMatches ignores the Tool field, since
+// no tool is known yet), so it must never cause this pre-check to reject a
+// backend outright — doing so would incorrectly block every OTHER tool on that
+// backend too, not just the one the rule actually names. It's fine for the
+// pre-check to be overly permissive (attempt a session that authorizeRequest
+// later denies per-tool); it must never be overly restrictive.
+func TestAuthorizeBackendOnly(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{l: logger}}
+
+	tests := []struct {
+		name          string
+		auth          *filterapi.MCPRouteAuthorization
+		backend       string
+		headers       http.Header
+		expectAllowed bool
+	}{
+		{
+			name:          "nil authorization always allows",
+			auth:          nil,
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			name:          "no rules returns DefaultAction",
+			auth:          &filterapi.MCPRouteAuthorization{DefaultAction: "Deny"},
+			backend:       "backend1",
+			expectAllowed: false,
+		},
+		{
+			// The bug: this rule only ever meant to deny "denyme", but
+			// backendMatches can't see the tool, so before the fix this
+			// returned Deny outright for the whole backend.
+			name: "tool-scoped deny with no CEL does not block backend when DefaultAction is Allow",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Allow",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Deny",
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "denyme"}},
+						},
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			// Skipping the ambiguous rule still correctly falls back to
+			// DefaultAction when nothing else grants access — the fix must
+			// not force an attempt when nothing actually allows one.
+			name: "tool-scoped deny with no CEL falls back to DefaultAction Deny when nothing else allows",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Deny",
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "denyme"}},
+						},
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: false,
+		},
+		{
+			// A later Allow rule for a DIFFERENT tool on the same backend
+			// must still be reachable once the ambiguous Deny is skipped —
+			// this is the collateral-damage case: before the fix, the Deny
+			// rule matching first would have blocked "othertool" too, even
+			// though nothing was ever meant to touch it.
+			name: "tool-scoped deny with no CEL lets a later allow rule for a different tool through",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Deny",
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "denyme"}},
+						},
+					},
+					{
+						Action: "Allow",
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "othertool"}},
+						},
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			// Regression guard: a target-less Deny rule is unambiguous (it
+			// really does apply to the whole backend/all tools) and must
+			// keep blocking the backend at this phase exactly as before.
+			name: "deny rule with no target still blocks the whole backend",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Allow",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{Action: "Deny"},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: false,
+		},
+		{
+			// Regression guard: a Deny rule with CEL that doesn't reference
+			// the tool is fully decidable at this phase (same result
+			// regardless of which tool ends up being called) and must keep
+			// being enforced here — this is the useful part of the
+			// optimization (reject early, no wasted connection) and the fix
+			// must not weaken it.
+			name: "deny rule with tool-independent CEL still blocks backend when CEL matches",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Allow",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Deny",
+						CEL:    ptr.To(`request.headers["x-scope"] != "admin"`),
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "denyme"}},
+						},
+					},
+				},
+			},
+			backend:       "backend1",
+			headers:       http.Header{"X-Scope": []string{"viewer"}},
+			expectAllowed: false,
+		},
+		{
+			// Regression guard: a Deny rule whose CEL explicitly references
+			// request.mcp.tool is designed to evaluate false when Tool is
+			// blanked out during this phase — it must keep NOT matching
+			// here (existing mechanism, unaffected by the fix).
+			name: "deny rule with tool-referencing CEL does not match during backend-only pre-check",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Allow",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Deny",
+						CEL:    ptr.To(`request.mcp.tool == "denyme"`),
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "denyme"}},
+						},
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			// Regression guard: an Allow rule with a tool-specific target
+			// and no CEL is unaffected by the fix (it already returned
+			// action=Allow immediately; over-attempting on Allow was always
+			// considered acceptable, unlike over-rejecting on Deny).
+			name: "tool-scoped allow with no CEL still returns true",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "sometool"}},
+						},
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			// A rule targeting a DIFFERENT backend must not affect this one.
+			name: "rule targeting a different backend does not apply",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Allow",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Deny",
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "other-backend", Tool: "denyme"}},
+						},
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			headers := tt.headers
+			if headers == nil {
+				headers = http.Header{}
+			}
+			compiled, err := compileAuthorization(tt.auth)
+			if err != nil {
+				t.Fatalf("unexpected compile error: %v", err)
+			}
+			allowed := proxy.authorizeBackendOnly(compiled, tt.backend, headers)
+			if allowed != tt.expectAllowed {
+				t.Fatalf("expected %v, got %v", tt.expectAllowed, allowed)
+			}
+		})
+	}
+}
+
 func TestBuildInsufficientScopeHeader(t *testing.T) {
 	const resourceMetadata = "https://api.example.com/.well-known/oauth-protected-resource/mcp"
 
