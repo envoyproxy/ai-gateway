@@ -355,6 +355,36 @@ unified list** by walking the route's backends one page at a time.
 Follow `last_id` → `after` exactly as you would with the stock OpenAI Files API. No client-side
 awareness of the individual backends is required.
 
+### How the pagination works
+
+The gateway implements the cross-backend walk as a **stateless deterministic cycle** — no database
+or server-side session is required:
+
+1. **Backend ordering.** The route's backends are sorted alphabetically by `namespace/name`. This
+   order is stable across all gateway replicas and across restarts, so a cursor always resumes at
+   the same position regardless of which replica issues or reads it.
+
+2. **First page.** The load balancer selects the starting backend. After serving the page,
+   `last_id` contains an encrypted **list-walk cursor** (`flcur-...`) that records the walk start
+   backend, the current backend, and the native `after` position within it.
+
+3. **Subsequent pages.** The cursor is decoded from the `after` query parameter. The gateway pins
+   the request to the recorded backend via sticky routing, rewrites `?after=` to the backend-native
+   cursor, and forwards the request. When the backend's last page is consumed, the cursor advances
+   to the next backend in the cycle.
+
+4. **Walk completion.** The walk terminates when it cycles back to the starting backend. The final
+   page sets `has_more: false` and `last_id` to the last re-encoded file ID (not a cursor).
+
+:::info `has_more: true` does not always mean more files on the same backend
+
+The gateway may return `has_more: true` even when the current backend has no more files. This
+happens when there are remaining backends in the cycle that have not yet been visited. The cursor
+stitches the transition transparently — just continue passing `last_id` as `after`.
+
+:::
+
+
 ## Error responses
 
 | Status                | When                                                                                                       |
