@@ -1997,6 +1997,16 @@ func TestMCPProxy_handleClientToServerResponse(t *testing.T) {
 		require.ErrorContains(t, err, `invalid response ID type identifier: foo`)
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 		require.Contains(t, rr.Body.String(), `invalid response ID type identifier`)
+
+		invalidFloatID, err := jsonrpc.MakeID("00__f__backend1")
+		require.NoError(t, err)
+		rr = httptest.NewRecorder()
+		require.NotPanics(t, func() {
+			_, err = proxy.handleClientToServerResponse(t.Context(), nil, rr, &jsonrpc.Response{ID: invalidFloatID})
+		})
+		require.ErrorContains(t, err, "float64 ID requires 8 bytes, got 1")
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Contains(t, rr.Body.String(), "invalid response ID format")
 	})
 
 	unknownBackendID, err := jsonrpc.MakeID("aWQ=__s__unknownbackend") // aWQK is the base64 encoded "id".
