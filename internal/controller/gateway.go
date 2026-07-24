@@ -698,6 +698,16 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 				mcpRoute.ForwardHeaders = append(mcpRoute.ForwardHeaders, ctoh.Header)
 			}
 		}
+		// Forward the api-key-auth client-identity header to all backends in this
+		// route, mirroring the OAuth claim-to-header bridge above. Without this the
+		// caller id injected by apiKeyAuth.forwardClientIDHeader has no path to the
+		// MCP proxy request, so it never reaches the backends nor the MCP
+		// request-attribute plumbing (metrics/spans/logs). See #2422.
+		if route.Spec.SecurityPolicy != nil && route.Spec.SecurityPolicy.APIKeyAuth != nil {
+			if h := route.Spec.SecurityPolicy.APIKeyAuth.ForwardClientIDHeader; h != nil && *h != "" {
+				mcpRoute.ForwardHeaders = append(mcpRoute.ForwardHeaders, *h)
+			}
+		}
 		mc.Routes = append(mc.Routes, mcpRoute)
 	}
 	return mc, hasEffectiveRoute
