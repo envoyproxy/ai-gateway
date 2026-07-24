@@ -384,7 +384,6 @@ stitches the transition transparently — just continue passing `last_id` as `af
 
 :::
 
-
 ## Error responses
 
 | Status                | When                                                                                                       |
