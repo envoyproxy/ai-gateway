@@ -675,13 +675,13 @@ func mapReasoningEffortToOutputConfigEffort(reasonEffort openai.ReasoningEffort)
 	}
 }
 
-// buildAnthropicParams is a helper function that translates an OpenAI request
-// into the parameter struct required by the Anthropic SDK.
+// buildAnthropicParams translates an OpenAI request into Anthropic SDK parameters.
+// It leaves Model unset because cloud providers identify the model in the request path.
 // The apiSchema parameter indicates the backend API schema (e.g., "AWSAnthropic", "GCPAnthropic").
 func buildAnthropicParams(openAIReq *openai.ChatCompletionRequest, apiSchema string, modelNameOverride internalapi.ModelNameOverride) (params *anthropic.MessageNewParams, err error) {
 	// 1. Handle simple parameters.
 	// max_tokens is required by the Anthropic API but optional in the OpenAI API.
-	// If not set, pass 0 and let the Anthropic API reject the request.
+	// If not set, preserve the zero value for the provider to interpret.
 	var maxTokensVal int64
 	if maxTokens := cmp.Or(openAIReq.MaxCompletionTokens, openAIReq.MaxTokens); maxTokens != nil {
 		maxTokensVal = *maxTokens
@@ -805,15 +805,17 @@ type streamingToolCall struct {
 // anthropicStreamParser manages the stateful translation of an Anthropic SSE stream
 // to an OpenAI-compatible SSE stream.
 type anthropicStreamParser struct {
-	buffer          bytes.Buffer
-	activeMessageID string
-	activeToolCalls map[int64]*streamingToolCall
-	toolIndex       int64
-	tokenUsage      metrics.TokenUsage
-	stopReason      anthropic.StopReason
-	requestModel    internalapi.RequestModel
-	sentFirstChunk  bool
-	created         openai.JSONUNIXTime
+	buffer           bytes.Buffer
+	activeMessageID  string
+	activeToolCalls  map[int64]*streamingToolCall
+	toolIndex        int64
+	tokenUsage       metrics.TokenUsage
+	stopReason       anthropic.StopReason
+	requestModel     internalapi.RequestModel
+	responseModel    internalapi.ResponseModel
+	useResponseModel bool
+	sentFirstChunk   bool
+	created          openai.JSONUNIXTime
 }
 
 // newAnthropicStreamParser creates a new parser for a streaming request.
@@ -824,6 +826,13 @@ func newAnthropicStreamParser(requestModel string) *anthropicStreamParser {
 		activeToolCalls: make(map[int64]*streamingToolCall),
 		toolIndex:       toolIdx,
 	}
+}
+
+func (p *anthropicStreamParser) model() string {
+	if p.useResponseModel && p.responseModel != "" {
+		return p.responseModel
+	}
+	return p.requestModel
 }
 
 func (p *anthropicStreamParser) writeChunk(eventBlock []byte, buf *[]byte) error {
@@ -908,7 +917,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 ) {
 	newBody = make([]byte, 0)
 	_ = span // TODO: add support for streaming chunks in tracing.
-	responseModel = p.requestModel
+	responseModel = p.model()
 	if _, err = p.buffer.ReadFrom(body); err != nil {
 		err = fmt.Errorf("failed to read from stream body: %w", err)
 		return
@@ -962,7 +971,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 					ReasoningTokens: int(reasoningTokens),
 				},
 			},
-			Model: p.requestModel,
+			Model: p.model(),
 		}
 
 		// Add active tool calls to the final chunk.
@@ -1000,6 +1009,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 		newBody = append(newBody, '\n', '\n')
 	}
 	tokenUsage = p.tokenUsage
+	responseModel = p.model()
 	return
 }
 
@@ -1034,6 +1044,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 			return nil, fmt.Errorf("unmarshal message_start: %w", err)
 		}
 		p.activeMessageID = event.Message.ID
+		p.responseModel = event.Message.Model
 		p.created = openai.JSONUNIXTime(time.Now())
 		u := event.Message.Usage
 		usage := metrics.ExtractTokenUsageFromExplicitCaching(
@@ -1245,7 +1256,7 @@ func (p *anthropicStreamParser) constructOpenAIChatCompletionChunk(delta openai.
 				FinishReason: finishReason,
 			},
 		},
-		Model: p.requestModel,
+		Model: p.model(),
 	}
 }
 
