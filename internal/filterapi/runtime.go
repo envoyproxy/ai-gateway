@@ -35,6 +35,9 @@ type RuntimeConfig struct {
 	// RequestCosts is the list of route-scoped request costs.
 	// Each entry has a RouteName identifying the route it applies to.
 	RequestCosts []RuntimeRequestCost
+	// GlobalRateLimits is the list of gateway-wide metadata→metadata mappings.
+	// They apply to every request handled by the gateway.
+	GlobalRateLimits []GlobalRateLimitOverride
 	// DeclaredModels is the list of declared models.
 	DeclaredModels []Model
 	// ModelsByHost maps hostnames to their specific model lists for per-host filtering. Each entry already includes
@@ -123,11 +126,31 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 		costs = append(costs, RuntimeRequestCost{LLMRequestCost: c, CELProg: prog})
 	}
 
+	// The CRD enforces metadataKey uniqueness via +listType=map, but configs can also be built directly
+	// (e.g. from an aigw file) which bypasses that, so guard against duplicates defensively here.
+	seenRateLimitKeys := make(map[string]struct{}, len(config.GlobalRateLimits))
+	for i := range config.GlobalRateLimits {
+		h := &config.GlobalRateLimits[i]
+		if h.MetadataKey == "" {
+			return nil, fmt.Errorf("GlobalRateLimitOverride must have non-empty MetadataKey")
+		}
+		if h.Namespace == "" {
+			return nil, fmt.Errorf("GlobalRateLimitOverride with metadataKey=%q must have non-empty Namespace", h.MetadataKey)
+		}
+		if h.Key == "" {
+			return nil, fmt.Errorf("GlobalRateLimitOverride with metadataKey=%q must have non-empty Key", h.MetadataKey)
+		}
+		if _, dup := seenRateLimitKeys[h.MetadataKey]; dup {
+			return nil, fmt.Errorf("duplicate GlobalRateLimitOverride metadataKey=%q", h.MetadataKey)
+		}
+		seenRateLimitKeys[h.MetadataKey] = struct{}{}
+	}
 	return &RuntimeConfig{
 		UUID:               config.UUID,
 		Backends:           backends,
 		GlobalRequestCosts: globalCosts,
 		RequestCosts:       costs,
+		GlobalRateLimits:   config.GlobalRateLimits,
 		DeclaredModels:     config.Models,
 		ModelsByHost:       config.ModelsByHost,
 		UnscopedModels:     config.UnscopedModels,

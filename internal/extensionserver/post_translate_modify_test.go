@@ -397,7 +397,7 @@ func TestServer_insertRouterLevelAIGatewayExtProc_setsSchemeHeaderTransformation
 		},
 	}
 	s := &Server{log: zap.New()}
-	require.NoError(t, s.insertRouterLevelAIGatewayExtProc(listener))
+	require.NoError(t, s.insertRouterLevelAIGatewayExtProc(listener, nil))
 
 	updatedHCM, _, err := findHCM(listener.DefaultFilterChain)
 	require.NoError(t, err)

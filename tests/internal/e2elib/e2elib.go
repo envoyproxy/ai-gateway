@@ -36,6 +36,9 @@ const (
 	EnvoyGatewayNamespace = "envoy-gateway-system"
 	// EnvoyGatewayDefaultServicePort is the default service port for the Envoy Gateway.
 	EnvoyGatewayDefaultServicePort = 80
+	// EnvoyGatewayLatestVersion is the Envoy Gateway main build, installed by default; it has
+	// features not yet in a tagged release.
+	EnvoyGatewayLatestVersion = "v0.0.0-latest"
 
 	kindLogDir     = "./logs"
 	metallbVersion = "v0.13.10"
@@ -395,10 +398,24 @@ func installInferencePoolEnvironment(ctx context.Context) (err error) {
 	return nil
 }
 
+// EnvoyGatewayVersion is the Envoy Gateway version the e2e suite installs (EG_VERSION, else latest).
+func EnvoyGatewayVersion() string {
+	return cmp.Or(os.Getenv("EG_VERSION"), EnvoyGatewayLatestVersion)
+}
+
+// EnvoyGatewaySupportsLimitFromMetadata reports whether the installed Envoy Gateway has
+// BackendTrafficPolicy limit.fromMetadata (envoyproxy/gateway#9216), which only landed on main.
+//
+// TODO: this only recognizes the "latest" main build; relax the gate to a version comparison once a
+// tagged EG release includes envoyproxy/gateway#9216, otherwise it will keep skipping on that release.
+func EnvoyGatewaySupportsLimitFromMetadata() bool {
+	return EnvoyGatewayVersion() == EnvoyGatewayLatestVersion
+}
+
 // initEnvoyGateway initializes the Envoy Gateway in the kind cluster following the quickstart guide:
 // https://gateway.envoyproxy.io/latest/tasks/quickstart/
 func initEnvoyGateway(ctx context.Context, namespace string, inferenceExtension bool) (err error) {
-	egVersion := cmp.Or(os.Getenv("EG_VERSION"), "v0.0.0-latest")
+	egVersion := EnvoyGatewayVersion()
 	initLog("Installing Envoy Gateway")
 	start := time.Now()
 	defer func() {

@@ -7,7 +7,9 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -21,6 +23,13 @@ import (
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 )
+
+// GatewayConfigRateLimitHashAnnotationKey is stamped onto Gateways that reference a GatewayConfig.
+// Its value is a deterministic hash of the GatewayConfig's rate-limit source namespaces (see
+// rateLimitSourceNamespacesHash). Envoy Gateway does not watch GatewayConfig, but it does reconcile
+// Gateways on annotation changes, so bumping this hash forces EG to re-translate the Gateway and
+// refresh the router-level ext_proc ForwardingNamespaces.
+const GatewayConfigRateLimitHashAnnotationKey = "aigateway.envoyproxy.io/ratelimit-source-namespaces-hash"
 
 // GatewayConfigController implements [reconcile.TypedReconciler] for [aigv1b1.GatewayConfig].
 //
@@ -77,10 +86,74 @@ func (c *GatewayConfigController) syncGatewayConfig(ctx context.Context, gateway
 		return fmt.Errorf("failed to find referencing Gateways: %w", err)
 	}
 
-	// Notify all referencing Gateways to reconcile.
+	// Envoy Gateway does not watch GatewayConfig, so a change to the set of rate-limit source
+	// namespaces would not, on its own, re-run xDS translation. The router-level ext_proc filter's
+	// ForwardingNamespaces are computed during translation (PostTranslateModify), so stamp a
+	// deterministic hash of that set onto the referencing Gateways to force EG to re-translate and
+	// pick up the change. Changes that don't alter the set (e.g. a metadata key/value) leave the
+	// hash untouched and are handled by the filter config Secret rebuild below.
+	//
+	// This is best-effort and does not gate the notify below: even if a Gateway's hash patch fails,
+	// the healthy Gateways must still be notified so their filter config Secret is rebuilt. A genuine
+	// stamp failure is returned afterwards so the reconcile requeues and retries.
+	hashErr := c.syncReferencingGatewayHashes(ctx, rateLimitSourceNamespacesHash(gatewayConfig), referencingGateways)
+
+	// Notify all referencing Gateways to reconcile (rebuilds the ext_proc filter config Secret).
 	c.notifyReferencingGateways(gatewayConfig, referencingGateways)
 
+	if hashErr != nil {
+		return fmt.Errorf("failed to stamp rate-limit source-namespaces hash on Gateways: %w", hashErr)
+	}
 	return nil
+}
+
+// rateLimitSourceNamespacesHash returns a deterministic hash over the GatewayConfig's rate-limit
+// source namespaces (see [aigv1b1.GatewayConfig.RateLimitSourceNamespaces]). It returns "" when no
+// source namespace is configured. See syncReferencingGatewayHashes for usage.
+func rateLimitSourceNamespacesHash(gatewayConfig *aigv1b1.GatewayConfig) string {
+	namespaces := gatewayConfig.RateLimitSourceNamespaces()
+	if len(namespaces) == 0 {
+		return ""
+	}
+	return shortStableHash(strings.Join(namespaces, "\n"))
+}
+
+// syncReferencingGatewayHashes stamps hash onto each referencing Gateway's
+// GatewayConfigRateLimitHashAnnotationKey annotation, patching only when the value actually
+// changes. A stable hash makes repeated reconciles idempotent, so the resulting Gateway update
+// cannot feed back into an endless reconcile loop. An empty hash removes the annotation.
+//
+// Patching is best-effort across all Gateways: a Gateway that was deleted concurrently (NotFound)
+// is skipped, since there is nothing left to stamp; any other failure is collected and returned
+// joined so the caller can requeue and retry rather than silently leaving forwarding stale.
+//
+// Note this updates the passed-in Gateway objects in place (the annotation is set on each element).
+// That is safe because the caller only reuses them as notify event triggers, and the event handler
+// resolves each to a fresh Get rather than trusting the object it carries.
+func (c *GatewayConfigController) syncReferencingGatewayHashes(ctx context.Context, hash string, gateways []*gwapiv1.Gateway) error {
+	var errs []error
+	for _, gw := range gateways {
+		current, exists := gw.Annotations[GatewayConfigRateLimitHashAnnotationKey]
+		if hash == current || (hash == "" && !exists) {
+			continue // Already up to date.
+		}
+		original := gw.DeepCopy()
+		if hash == "" {
+			delete(gw.Annotations, GatewayConfigRateLimitHashAnnotationKey)
+		} else {
+			if gw.Annotations == nil {
+				gw.Annotations = map[string]string{}
+			}
+			gw.Annotations[GatewayConfigRateLimitHashAnnotationKey] = hash
+		}
+		if err := c.client.Patch(ctx, gw, client.MergeFrom(original)); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue // Gateway deleted concurrently; nothing to stamp.
+			}
+			errs = append(errs, fmt.Errorf("gateway %s/%s: %w", gw.Namespace, gw.Name, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // findReferencingGateways finds all Gateways in the same namespace that reference this GatewayConfig.

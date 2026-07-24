@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -113,8 +114,12 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	}
 	req.Clusters = append(req.Clusters, cs...)
 
+	// Namespaces the router-level ext_proc filter must forward so the AI Gateway filter can read the
+	// per-request rate-limit values (see collectRateLimitSourceNamespaces).
+	rlForwardNamespaces := s.collectRateLimitSourceNamespaces(ctx)
+
 	// Modify listeners and routes to support InferencePool backends.
-	if err = s.maybeModifyListenerAndRoutes(req.Listeners, req.Routes); err != nil {
+	if err = s.maybeModifyListenerAndRoutes(req.Listeners, req.Routes, rlForwardNamespaces); err != nil {
 		return nil, fmt.Errorf("failed to modify listeners and routes for InferencePool support: %w", err)
 	}
 
@@ -521,7 +526,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 // 2. Adds endpoint picker (EPP) external processor filters to relevant listeners
 // 3. Configures per-route filters to disable EPP processing for non-InferencePool routes
 // This ensures that only routes targeting InferencePool backends go through the endpoint picker.
-func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, routes []*routev3.RouteConfiguration) error {
+func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, routes []*routev3.RouteConfiguration, rlForwardNamespaces []string) error {
 	listenerNameToRouteNames := make(map[string][]string)
 	listenerNameToListener := make(map[string]*listenerv3.Listener)
 	for _, listener := range listeners {
@@ -610,7 +615,7 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 		}
 		if enabled {
 			s.log.Info("inserting AI Gateway extproc filter into listener", "listener", ln.Name)
-			if err := s.insertRouterLevelAIGatewayExtProc(ln); err != nil {
+			if err := s.insertRouterLevelAIGatewayExtProc(ln, rlForwardNamespaces); err != nil {
 				return fmt.Errorf("failed to insert AI Gateway extproc filter into listener %s: %w", ln.Name, err)
 			}
 		}
@@ -746,8 +751,64 @@ func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.R
 	return enabled, nil
 }
 
-// insertRouterLevelAIGatewayExtProcExtProc inserts the AI Gateway external processor filter into the listener's filter chains.
-func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener) error {
+// collectRateLimitSourceNamespaces returns the sorted, de-duplicated set of filter metadata namespaces
+// referenced by GatewayConfig.GlobalRateLimits sources. These are the namespaces (e.g.
+// envoy.filters.http.ext_authz) a preceding filter writes the per-request rate-limit value into; the
+// router-level ext_proc filter must forward them so the AI Gateway filter can read them from
+// ProcessingRequest.metadata_context. Returns nil when no override is configured, leaving the filter's
+// ForwardingNamespaces unset (unchanged behavior).
+//
+// The returned set is a deliberate cluster-wide union across all GatewayConfigs, applied to every
+// gateway's ext_proc. PostTranslateModify does not tell the extension server which gateway it is
+// translating (the request carries only listeners/routes/clusters, no Gateway identity), so scoping
+// the set to just the GatewayConfig(s) bound to this gateway is not reachable here. Forwarding a
+// superset is safe: a gateway only ever emits override keys for its own GatewayConfig, since the
+// producer's RuntimeConfig.GlobalRateLimits is built per-gateway (reconcileFilterConfigSecret), so a
+// namespace forwarded but never read simply yields no metadata and no override.
+//
+// EG recomputes this only when it re-translates the gateway, and it doesn't watch GatewayConfig.
+// The GatewayConfig controller bridges that gap: when the source-namespace set changes it stamps a
+// hash annotation on the referencing Gateways (see GatewayConfigRateLimitHashAnnotationKey), which
+// EG reconciles on, forcing the re-translation that lands the new set here. Changing only the key or
+// value within a namespace leaves the set (and that hash) unchanged and needs no re-translation.
+//
+// A list failure returns nil, which leaves ForwardingNamespaces unset for this whole translation: the
+// filter then sees no source metadata and every dynamic limit fails open to the static default in the
+// BackendTrafficPolicy until the next translation. That direction can briefly over-permit a tenant
+// whose dynamic limit is lower than the static default, so operators should keep that static default
+// conservative. The error is logged to make the fallback diagnosable.
+func (s *Server) collectRateLimitSourceNamespaces(ctx context.Context) []string {
+	if s.k8sClient == nil {
+		return nil
+	}
+	set := map[string]struct{}{}
+
+	var gcList aigv1b1.GatewayConfigList
+	if err := s.k8sClient.List(ctx, &gcList); err != nil {
+		s.log.Error(err, "failed to list GatewayConfigs for rate-limit forwarding namespaces")
+	} else {
+		for i := range gcList.Items {
+			for _, ns := range gcList.Items[i].RateLimitSourceNamespaces() {
+				set[ns] = struct{}{}
+			}
+		}
+	}
+
+	if len(set) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(set))
+	for ns := range set {
+		out = append(out, ns)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// insertRouterLevelAIGatewayExtProc inserts the AI Gateway external processor filter into the listener's filter chains.
+// rlForwardNamespaces are forwarded via MetadataOptions.ForwardingNamespaces so the filter can read the per-request
+// rate-limit values a preceding filter (e.g. ext_authz) wrote there.
+func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener, rlForwardNamespaces []string) error {
 	// First, get the filter chains from the listener.
 	filterChains := listener.GetFilterChains()
 	defaultFC := listener.DefaultFilterChain
@@ -764,6 +825,17 @@ func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener
 		if !shouldAIGatewayExtProcBeInserted(httpConManager.HttpFilters) {
 			return nil // The filter is already present, nothing to do.
 		}
+		metadataOptions := &extprocv3.MetadataOptions{
+			ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
+				Untyped: []string{aigv1b1.AIGatewayFilterMetadataNamespace},
+			},
+		}
+		// Without this, Envoy omits these namespaces from ProcessingRequest.metadata_context.
+		if len(rlForwardNamespaces) > 0 {
+			metadataOptions.ForwardingNamespaces = &extprocv3.MetadataOptions_MetadataNamespaces{
+				Untyped: rlForwardNamespaces,
+			}
+		}
 		epAny, err := toAny(&extprocv3.ExternalProcessor{
 			GrpcService: &corev3.GrpcService{
 				TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
@@ -772,11 +844,7 @@ func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener
 					},
 				},
 			},
-			MetadataOptions: &extprocv3.MetadataOptions{
-				ReceivingNamespaces: &extprocv3.MetadataOptions_MetadataNamespaces{
-					Untyped: []string{aigv1b1.AIGatewayFilterMetadataNamespace},
-				},
-			},
+			MetadataOptions: metadataOptions,
 			ProcessingMode: &extprocv3.ProcessingMode{
 				RequestHeaderMode:   extprocv3.ProcessingMode_SEND,
 				RequestBodyMode:     extprocv3.ProcessingMode_BUFFERED,

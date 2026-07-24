@@ -97,7 +97,7 @@ var errNoProcessor = errors.New("no processor registered for the given path")
 
 // processorForPath returns the processor for the given path.
 // Only exact path matching is supported currently.
-func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFilter bool, logger *slog.Logger) (Processor, error) {
+func (s *Server) processorForPath(requestHeaders map[string]string, filterMetadata map[string]*structpb.Struct, isUpstreamFilter bool, logger *slog.Logger) (Processor, error) {
 	pathHeader := ":path"
 	if isUpstreamFilter {
 		pathHeader = originalPathHeader
@@ -113,7 +113,7 @@ func (s *Server) processorForPath(requestHeaders map[string]string, isUpstreamFi
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", errNoProcessor, path)
 	}
-	return newProcessor(s.config, requestHeaders, logger, isUpstreamFilter, s.enableRedaction)
+	return newProcessor(s.config, requestHeaders, filterMetadata, logger, isUpstreamFilter, s.enableRedaction)
 }
 
 // originalPathHeader is the header used to pass the original path to the processor.
@@ -199,7 +199,8 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 			// Add logger to context so processMsg can access it
 			ctx = context.WithValue(ctx, loggerContextKey, logger)
 
-			p, err = s.processorForPath(headersMap, isUpstreamFilter, logger)
+			filterMeta := req.GetMetadataContext().GetFilterMetadata()
+			p, err = s.processorForPath(headersMap, filterMeta, isUpstreamFilter, logger)
 			if err != nil {
 				if errors.Is(err, errNoProcessor) {
 					path := headersMap[":path"]

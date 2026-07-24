@@ -1,0 +1,243 @@
+# Copyright Envoy AI Gateway Authors
+# SPDX-License-Identifier: Apache-2.0
+# The full text of the Apache license is available in the LICENSE file at
+# the root of the repo.
+
+# Drives a dynamic per-tenant rate limit from metadata: a SecurityPolicy ext_authz (the test auth
+# server) returns the per-tenant limit as a "<count>/<unit>" string in dynamic metadata; AI Gateway
+# normalizes it into io.envoy.ai_gateway, and the BackendTrafficPolicy reads it via limit.fromMetadata.
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy-ai-gateway-dynamic-ratelimit
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: envoy-ai-gateway-dynamic-ratelimit
+  namespace: default
+  annotations:
+    aigateway.envoyproxy.io/gateway-config: envoy-ai-gateway-dynamic-ratelimit
+spec:
+  gatewayClassName: envoy-ai-gateway-dynamic-ratelimit
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-ai-gateway-dynamic-ratelimit
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-ai-gateway-dynamic-ratelimit
+  namespace: default
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        container:
+          # Clear the default memory/cpu requirements for local tests.
+          resources: {}
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: GatewayConfig
+metadata:
+  name: envoy-ai-gateway-dynamic-ratelimit
+  namespace: default
+spec:
+  globalRateLimits:
+    - metadataKey: tenant_request_limit
+      source:
+        fromMetadata:
+          # ext_authz exposes the auth server's dynamic metadata under this namespace.
+          namespace: envoy.filters.http.ext_authz
+          key: rate_limit
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: envoy-ai-gateway-dynamic-ratelimit
+  namespace: default
+spec:
+  parentRefs:
+    - name: envoy-ai-gateway-dynamic-ratelimit
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: dynamic-ratelimit-model
+      backendRefs:
+        - name: envoy-ai-gateway-dynamic-ratelimit-testupstream
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: envoy-ai-gateway-dynamic-ratelimit-testupstream
+  namespace: default
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: envoy-ai-gateway-dynamic-ratelimit-testupstream
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: envoy-ai-gateway-dynamic-ratelimit-testupstream
+  namespace: default
+spec:
+  endpoints:
+    - fqdn:
+        hostname: envoy-ai-gateway-dynamic-ratelimit-testupstream.default.svc.cluster.local
+        port: 80
+---
+# ext_authz that returns the per-tenant limit ("2/HOUR") as dynamic metadata.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: envoy-ai-gateway-dynamic-ratelimit-extauth
+  namespace: default
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-ai-gateway-dynamic-ratelimit
+  extAuth:
+    grpc:
+      backendRefs:
+        - name: ext-auth-server
+          port: 1073
+---
+# Global rate limit. The static 1000/Hour is the default; limit.fromMetadata overrides it per request.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: envoy-ai-gateway-dynamic-ratelimit-policy
+  namespace: default
+spec:
+  targetRefs:
+    - name: envoy-ai-gateway-dynamic-ratelimit
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rateLimit:
+    type: Global
+    global:
+      rules:
+        # One budget per x-tenant-id; one unit per request, so the limit gates on request count.
+        - clientSelectors:
+            - headers:
+                - name: x-tenant-id
+                  type: Distinct
+          limit:
+            requests: 1000
+            unit: Hour
+            fromMetadata:
+              namespace: io.envoy.ai_gateway
+              key: tenant_request_limit
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ext-auth-server
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ext-auth-server-dynamic-ratelimit
+  template:
+    metadata:
+      labels:
+        app: ext-auth-server-dynamic-ratelimit
+    spec:
+      containers:
+        - name: ext-auth-server
+          image: docker.io/envoyproxy/ai-gateway-testextauthserver:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 1073
+          env:
+            # No EXT_AUTH_ALLOWED_VALUE: allow all requests, and stamp the per-tenant limit.
+            - name: EXT_AUTH_DYNAMIC_METADATA_KEY
+              value: rate_limit
+            - name: EXT_AUTH_DYNAMIC_METADATA_VALUE
+              # Per hour, not per minute, so the rate-limit window can't reset mid-test.
+              value: "2/HOUR"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ext-auth-server
+  namespace: default
+spec:
+  selector:
+    app: ext-auth-server-dynamic-ratelimit
+  ports:
+    - protocol: TCP
+      port: 1073
+      targetPort: 1073
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: envoy-ai-gateway-dynamic-ratelimit-testupstream
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: envoy-ai-gateway-dynamic-ratelimit-testupstream
+  template:
+    metadata:
+      labels:
+        app: envoy-ai-gateway-dynamic-ratelimit-testupstream
+    spec:
+      containers:
+        - name: testupstream
+          image: docker.io/envoyproxy/ai-gateway-testupstream:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TESTUPSTREAM_ID
+              value: test
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: envoy-ai-gateway-dynamic-ratelimit-testupstream
+  namespace: default
+spec:
+  selector:
+    app: envoy-ai-gateway-dynamic-ratelimit-testupstream
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP

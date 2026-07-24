@@ -11,12 +11,15 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
 // ProcessorFactory is the factory function used to create new instances of a processor.
-type ProcessorFactory func(_ *filterapi.RuntimeConfig, _ map[string]string, _ *slog.Logger, isUpstreamFilter bool, enableRedaction bool) (Processor, error)
+// filterMetadata carries the Envoy filter dynamic metadata from ProcessingRequest.MetadataContext,
+// keyed by filter namespace. This is populated once per request on the RequestHeaders phase.
+type ProcessorFactory func(_ *filterapi.RuntimeConfig, _ map[string]string, filterMetadata map[string]*structpb.Struct, _ *slog.Logger, isUpstreamFilter bool, enableRedaction bool) (Processor, error)
 
 // Processor is the interface for the processor which corresponds to a single gRPC stream per the external processor filter.
 // This decouples the processor implementation detail from the server implementation.
