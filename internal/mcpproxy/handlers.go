@@ -6,6 +6,7 @@
 package mcpproxy
 
 import (
+	"bufio"
 	"bytes"
 	"cmp"
 	"context"
@@ -796,13 +797,76 @@ func copyProxyHeaders(resp *http.Response, w http.ResponseWriter) {
 	}
 }
 
+// writeSingleJSONRPCMessage applies request/response modifications to a single decoded
+// JSON-RPC message and writes it to w as a plain JSON body.
+func (m *mcpRequestContext) writeSingleJSONRPCMessage(ctx context.Context, w http.ResponseWriter, statusCode int,
+	_msg jsonrpc.Message, body []byte, req *jsonrpc.Request, backend filterapi.MCPBackend,
+) error {
+	var responseError error
+	switch msg := _msg.(type) {
+	case *jsonrpc.Request:
+		if err := m.maybeServerToClientRequestModify(ctx, msg, backend.Name); err != nil {
+			m.l.Error("failed to modify server->client request", slog.String("error", err.Error()))
+			return err
+		}
+		body, _ = jsonrpc.EncodeMessage(msg)
+	case *jsonrpc.Response:
+		if req != nil {
+			if err := m.maybeResponseModify(ctx, req, msg, backend.Name); err != nil {
+				m.l.Error("failed to modify response", slog.String("error", err.Error()))
+				return err
+			}
+			msg.ID = req.ID
+
+			// Check if this is a JSON-RPC error response
+			if msg.Error != nil {
+				responseError = msg.Error
+			} else if toolErr := checkToolCallError(req, msg, backend.Name); toolErr != nil {
+				// Check if this is a tools/call response with isError=true
+				responseError = toolErr
+			}
+
+			body, _ = jsonrpc.EncodeMessage(msg)
+		}
+		m.recordResponse(ctx, msg)
+	}
+
+	// We need to update the content length since we might have modified the ID.
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
+	w.WriteHeader(statusCode)
+	_, _ = w.Write(body)
+
+	return responseError
+}
+
+// startsWithJSONObject reports whether the stream begins with '{', consuming only
+// leading whitespace, which is insignificant to both SSE and JSON parsing.
+func startsWithJSONObject(br *bufio.Reader) bool {
+	if buf, _ := br.Peek(len(utf8BOM)); bytes.Equal(buf, utf8BOM) {
+		_, _ = br.Discard(len(utf8BOM))
+	}
+	for {
+		b, err := br.ReadByte()
+		if err != nil {
+			return false
+		}
+		switch b {
+		case ' ', '\t', '\r', '\n':
+			continue
+		default:
+			_ = br.UnreadByte()
+			return b == '{'
+		}
+	}
+}
+
 func (m *mcpRequestContext) proxyResponseBody(ctx context.Context, s *session, w http.ResponseWriter, resp *http.Response,
 	req *jsonrpc.Request, backend filterapi.MCPBackend,
 ) error {
 	// Some backends (e.g. Slack MCP) send SSE data despite Content-Type: application/json.
 	// Try to decode as a single JSON-RPC message first; if that fails, fall through to the
 	// SSE parser using the already-read bytes.
-	var sseReader io.Reader = resp.Body
+	var sseReader io.Reader
 	if resp.Header.Get("Content-Type") == "application/json" {
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -811,41 +875,7 @@ func (m *mcpRequestContext) proxyResponseBody(ctx context.Context, s *session, w
 		}
 		_msg, ok := tryDecodeJSONRPCMessage(body)
 		if ok {
-			var responseError error
-			switch msg := _msg.(type) {
-			case *jsonrpc.Request:
-				if err = m.maybeServerToClientRequestModify(ctx, msg, backend.Name); err != nil {
-					m.l.Error("failed to modify server->client request", slog.String("error", err.Error()))
-					return err
-				}
-				body, _ = jsonrpc.EncodeMessage(msg)
-			case *jsonrpc.Response:
-				if req != nil {
-					if err = m.maybeResponseModify(ctx, req, msg, backend.Name); err != nil {
-						m.l.Error("failed to modify response", slog.String("error", err.Error()))
-						return err
-					}
-					msg.ID = req.ID
-
-					// Check if this is a JSON-RPC error response
-					if msg.Error != nil {
-						responseError = msg.Error
-					} else if toolErr := checkToolCallError(req, msg, backend.Name); toolErr != nil {
-						// Check if this is a tools/call response with isError=true
-						responseError = toolErr
-					}
-
-					body, _ = jsonrpc.EncodeMessage(msg)
-				}
-				m.recordResponse(ctx, msg)
-			}
-
-			// We need to update the content length since we might have modified the ID.
-			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
-			w.WriteHeader(resp.StatusCode)
-			_, _ = w.Write(body)
-
-			return responseError
+			return m.writeSingleJSONRPCMessage(ctx, w, resp.StatusCode, _msg, body, req, backend)
 		}
 		// Body claimed application/json but isn't valid JSON-RPC (e.g. some backends
 		// send SSE data despite the content type). Fall through to the SSE parser
@@ -853,6 +883,27 @@ func (m *mcpRequestContext) proxyResponseBody(ctx context.Context, s *session, w
 		m.l.Info("response Content-Type is application/json but body is not valid JSON-RPC, falling back to SSE parsing",
 			slog.String("backend", backend.Name))
 		sseReader = bytes.NewReader(body)
+	} else {
+		// The mirror case: some backends send a plain JSON body despite Content-Type:
+		// text/event-stream. A valid SSE stream never starts with '{', so peek before
+		// handing the body to the SSE parser, which would silently drop the payload.
+		br := bufio.NewReader(resp.Body)
+		sseReader = br
+		if startsWithJSONObject(br) {
+			body, err := io.ReadAll(br)
+			if err != nil {
+				m.l.Error("failed to read response body", slog.String("error", err.Error()))
+				return err
+			}
+			if _msg, ok := tryDecodeJSONRPCMessage(body); ok {
+				m.l.Info("response Content-Type is text/event-stream but body is an unframed JSON-RPC message, handling as JSON",
+					slog.String("backend", backend.Name))
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Del("Transfer-Encoding")
+				return m.writeSingleJSONRPCMessage(ctx, w, resp.StatusCode, _msg, body, req, backend)
+			}
+			sseReader = bytes.NewReader(body)
+		}
 	}
 
 	// io.Copy won't flush until the end, which doesn't happen for streaming responses.
