@@ -125,6 +125,24 @@ func TestMCPRouteController_Reconcile(t *testing.T) {
 	// ParentRefs copied to HTTPRoute.
 	require.Equal(t, route.Spec.ParentRefs, mainHTTPRoute.Spec.ParentRefs)
 
+	// CORS is available for the MCP route: even with no SecurityPolicy spec on the MCPRoute, a
+	// SecurityPolicy carrying CORS is generated (this exercises the nil-SecurityPolicy path end-to-end),
+	// it targets this HTTPRoute, and the proxy rule matches OPTIONS so Envoy's cors filter answers the
+	// preflight before auth. Together these are the conditions for cross-origin MCP clients to work.
+	var securityPolicy egv1a1.SecurityPolicy
+	err = fakeClient.Get(t.Context(), client.ObjectKey{Name: internalapi.MCPGeneratedResourceCommonPrefix + "myroute", Namespace: "default"}, &securityPolicy)
+	require.NoError(t, err, "a CORS SecurityPolicy should be created even without authentication")
+	require.Nil(t, securityPolicy.Spec.JWT, "no auth configured, so no JWT")
+	require.NotNil(t, securityPolicy.Spec.CORS, "SecurityPolicy should carry CORS")
+	require.Equal(t, []egv1a1.Origin{"*"}, securityPolicy.Spec.CORS.AllowOrigins)
+	require.Equal(t, []string{"GET", "POST", "DELETE"}, securityPolicy.Spec.CORS.AllowMethods)
+	require.Equal(t, []string{"Content-Type", "Authorization", "Mcp-Session-Id", "Mcp-Protocol-Version"}, securityPolicy.Spec.CORS.AllowHeaders)
+	require.Equal(t, []string{"Mcp-Session-Id", "WWW-Authenticate"}, securityPolicy.Spec.CORS.ExposeHeaders)
+	// The CORS policy targets this MCP route's HTTPRoute...
+	require.Equal(t, gwapiv1.ObjectName(mainHTTPRoute.Name), securityPolicy.Spec.TargetRefs[0].Name)
+	// ...and the proxy rule matches all methods (incl. OPTIONS), so the cors filter can answer the preflight.
+	require.Nil(t, mainHTTPRoute.Spec.Rules[0].Matches[0].Method)
+
 	// Verify the two per-backend HTTPRoute created.
 	for _, refName := range []gwapiv1.ObjectName{"svc-a", "svc-b"} {
 		var httpRoute gwapiv1.HTTPRoute
