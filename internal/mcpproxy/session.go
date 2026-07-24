@@ -331,7 +331,7 @@ func (s *session) sendToBackendsFiltered(ctx context.Context, httpMethod string,
 				)
 			}
 			if span != nil {
-				span.RecordRouteToBackend(backendName, string(sessionID), false)
+				span.RecordRouteToBackend(backendName, string(sessionID), false, s.reqCtx.backendListenerHost, s.reqCtx.backendListenerPort)
 			}
 		}()
 	}

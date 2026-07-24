@@ -7,6 +7,7 @@ package tracing
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -15,9 +16,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	oteltrace "go.opentelemetry.io/otel/trace"
+
+	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
 func TestTracer_StartSpanAndInjectMeta(t *testing.T) {
@@ -118,7 +122,8 @@ func Test_getMCPAttributes(t *testing.T) {
 				Name: "fake-tool",
 			},
 			expected: []attribute.KeyValue{
-				attribute.String("mcp.tool.name", "fake-tool"),
+				attribute.String("gen_ai.operation.name", "execute_tool"),
+				attribute.String("gen_ai.tool.name", "fake-tool"),
 			},
 		},
 		{
@@ -129,7 +134,7 @@ func Test_getMCPAttributes(t *testing.T) {
 				Name: "fake-prompt",
 			},
 			expected: []attribute.KeyValue{
-				attribute.String("mcp.prompt.name", "fake-prompt"),
+				attribute.String("gen_ai.prompt.name", "fake-prompt"),
 			},
 		},
 		{
@@ -203,29 +208,29 @@ func Test_getMCPAttributes(t *testing.T) {
 	}
 }
 
-func Test_getSpanName(t *testing.T) {
+func Test_mcpSpanName(t *testing.T) {
 	tests := []struct {
+		name     string
 		method   string
+		params   mcp.Params
 		expected string
 	}{
-		{method: "initialize", expected: "Initialize"},
-		{method: "tools/list", expected: "ListTools"},
-		{method: "tools/call", expected: "CallTool"},
-		{method: "prompts/list", expected: "ListPrompts"},
-		{method: "prompts/get", expected: "GetPrompt"},
-		{method: "resources/list", expected: "ListResources"},
-		{method: "resources/read", expected: "ReadResource"},
-		{method: "resources/subscribe", expected: "Subscribe"},
-		{method: "resources/unsubscribe", expected: "Unsubscribe"},
-		{method: "resources/templates/list", expected: "ListResourceTemplates"},
-		{method: "logging/setLevel", expected: "SetLoggingLevel"},
-		{method: "completion/complete", expected: "Complete"},
-		{method: "ping", expected: "Ping"},
+		{name: "initialize", method: "initialize", params: &mcp.InitializeParams{}, expected: "initialize"},
+		{name: "tools/list", method: "tools/list", params: &mcp.ListToolsParams{}, expected: "tools/list"},
+		{name: "tools/call with name", method: "tools/call", params: &mcp.CallToolParams{Name: "fake-tool"}, expected: "tools/call fake-tool"},
+		{name: "tools/call without name", method: "tools/call", params: &mcp.CallToolParams{}, expected: "tools/call"},
+		{name: "prompts/list", method: "prompts/list", params: &mcp.ListPromptsParams{}, expected: "prompts/list"},
+		{name: "prompts/get with name", method: "prompts/get", params: &mcp.GetPromptParams{Name: "fake-prompt"}, expected: "prompts/get fake-prompt"},
+		{name: "prompts/get without name", method: "prompts/get", params: &mcp.GetPromptParams{}, expected: "prompts/get"},
+		{name: "resources/read omits uri", method: "resources/read", params: &mcp.ReadResourceParams{URI: "fake-uri"}, expected: "resources/read"},
+		{name: "logging/setLevel", method: "logging/setLevel", params: &mcp.SetLoggingLevelParams{}, expected: "logging/setLevel"},
+		{name: "completion/complete", method: "completion/complete", params: &mcp.CompleteParams{}, expected: "completion/complete"},
+		{name: "ping nil params", method: "ping", params: nil, expected: "ping"},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.method, func(t *testing.T) {
-			actual := getSpanName(tt.method)
+		t.Run(tt.name, func(t *testing.T) {
+			actual := mcpSpanName(tt.method, tt.params)
 			require.Equal(t, tt.expected, actual)
 		})
 	}
@@ -242,43 +247,43 @@ func TestMCPTracer_SpanName(t *testing.T) {
 			name:             "tools/list",
 			method:           "tools/list",
 			params:           &mcp.ListToolsParams{},
-			expectedSpanName: "ListTools",
+			expectedSpanName: "tools/list",
 		},
 		{
 			name:             "tools/call",
 			method:           "tools/call",
 			params:           &mcp.CallToolParams{Name: "test-tool"},
-			expectedSpanName: "CallTool",
+			expectedSpanName: "tools/call test-tool",
 		},
 		{
 			name:             "prompts/list",
 			method:           "prompts/list",
 			params:           &mcp.ListPromptsParams{},
-			expectedSpanName: "ListPrompts",
+			expectedSpanName: "prompts/list",
 		},
 		{
 			name:             "prompts/get",
 			method:           "prompts/get",
 			params:           &mcp.GetPromptParams{Name: "test-prompt"},
-			expectedSpanName: "GetPrompt",
+			expectedSpanName: "prompts/get test-prompt",
 		},
 		{
 			name:             "resources/list",
 			method:           "resources/list",
 			params:           &mcp.ListResourcesParams{},
-			expectedSpanName: "ListResources",
+			expectedSpanName: "resources/list",
 		},
 		{
 			name:             "resources/read",
 			method:           "resources/read",
 			params:           &mcp.ReadResourceParams{URI: "test://uri"},
-			expectedSpanName: "ReadResource",
+			expectedSpanName: "resources/read",
 		},
 		{
 			name:             "initialize",
 			method:           "initialize",
 			params:           &mcp.InitializeParams{},
-			expectedSpanName: "Initialize",
+			expectedSpanName: "initialize",
 		},
 	}
 
@@ -303,5 +308,94 @@ func TestMCPTracer_SpanName(t *testing.T) {
 			require.Equal(t, tt.expectedSpanName, actualSpan.Name)
 			require.Equal(t, oteltrace.SpanKindClient, actualSpan.SpanKind)
 		})
+	}
+}
+
+func newTestMCPSpan(t *testing.T, method string, params mcp.Params) (tracingapi.MCPSpan, func() tracetest.SpanStub) {
+	t.Helper()
+	exporter := tracetest.NewInMemoryExporter()
+	tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
+	tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil)
+
+	reqID, _ := jsonrpc.MakeID("test-id")
+	req := &jsonrpc.Request{ID: reqID, Method: method}
+	span := tracer.StartSpanAndInjectMeta(context.Background(), req, params, nil)
+	require.NotNil(t, span)
+
+	return span, func() tracetest.SpanStub {
+		spans := exporter.GetSpans()
+		require.Len(t, spans, 1)
+		return spans[0]
+	}
+}
+
+func TestMCPTracer_StaticAttributes(t *testing.T) {
+	span, exported := newTestMCPSpan(t, "tools/list", &mcp.ListToolsParams{})
+	span.EndSpan()
+
+	attrs := exported().Attributes
+	require.Contains(t, attrs, attribute.String("mcp.method.name", "tools/list"))
+	require.Contains(t, attrs, attribute.String("mcp.protocol.version", "2025-06-18"))
+	require.Contains(t, attrs, attribute.String("jsonrpc.request.id", "{test-id}"))
+	require.Contains(t, attrs, attribute.String("network.transport", "tcp"))
+	require.Contains(t, attrs, attribute.String("network.protocol.name", "http"))
+	require.Contains(t, attrs, attribute.String("network.protocol.version", "1.1"))
+	// The legacy custom keys must be gone.
+	for _, a := range attrs {
+		require.NotEqual(t, "mcp.transport", string(a.Key))
+		require.NotEqual(t, "mcp.request.id", string(a.Key))
+	}
+}
+
+func TestMCPSpan_EndSpanOnError(t *testing.T) {
+	t.Run("jsonrpc error records status code", func(t *testing.T) {
+		span, exported := newTestMCPSpan(t, "tools/call", &mcp.CallToolParams{Name: "fake-tool"})
+		span.EndSpanOnError("invalid_param", &jsonrpc.Error{Code: -32602, Message: "invalid params"})
+
+		stub := exported()
+		require.Equal(t, codes.Error, stub.Status.Code)
+		require.Contains(t, stub.Attributes, attribute.String("error.type", "invalid_param"))
+		require.Contains(t, stub.Attributes, attribute.Int64("rpc.response.status_code", -32602))
+		require.Contains(t, stub.Events[0].Attributes, attribute.String("exception.type", "invalid_param"))
+	})
+
+	t.Run("non-jsonrpc error omits status code", func(t *testing.T) {
+		span, exported := newTestMCPSpan(t, "tools/call", &mcp.CallToolParams{Name: "fake-tool"})
+		span.EndSpanOnError("internal_error", errors.New("boom"))
+
+		stub := exported()
+		require.Contains(t, stub.Attributes, attribute.String("error.type", "internal_error"))
+		for _, a := range stub.Attributes {
+			require.NotEqual(t, "rpc.response.status_code", string(a.Key))
+		}
+	})
+}
+
+func TestMCPSpan_RecordRouteToBackend(t *testing.T) {
+	span, exported := newTestMCPSpan(t, "tools/call", &mcp.CallToolParams{Name: "fake-tool"})
+	span.RecordRouteToBackend("backend-a", "sess-1234", true, "127.0.0.1", 9999)
+	span.EndSpan()
+
+	stub := exported()
+	require.Contains(t, stub.Attributes, attribute.String("mcp.session.id", "sess-1234"))
+	require.Contains(t, stub.Attributes, attribute.String("server.address", "127.0.0.1"))
+	require.Contains(t, stub.Attributes, attribute.Int("server.port", 9999))
+
+	// The gateway-specific event is still emitted.
+	require.Len(t, stub.Events, 1)
+	require.Equal(t, "route to backend", stub.Events[0].Name)
+	require.Contains(t, stub.Events[0].Attributes, attribute.String("mcp.backend.name", "backend-a"))
+	require.Contains(t, stub.Events[0].Attributes, attribute.Bool("mcp.session.new", true))
+}
+
+func TestMCPSpan_RecordRouteToBackend_UnknownPeer(t *testing.T) {
+	span, exported := newTestMCPSpan(t, "tools/call", &mcp.CallToolParams{Name: "fake-tool"})
+	span.RecordRouteToBackend("backend-a", "sess-1234", false, "", 0)
+	span.EndSpan()
+
+	// An unknown peer leaves server.address/server.port unrecorded.
+	for _, a := range exported().Attributes {
+		require.NotEqual(t, "server.address", string(a.Key))
+		require.NotEqual(t, "server.port", string(a.Key))
 	}
 }

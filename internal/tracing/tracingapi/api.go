@@ -181,6 +181,34 @@ type (
 	TokenizeRecorder = SpanRecorder[tokenize.RequestUnion, tokenize.Response, struct{}]
 )
 
+// Backend describes the upstream a request was routed to. It is deliberately a
+// small value type rather than filterapi.Backend so this package stays free of
+// heavier dependencies.
+type Backend struct {
+	// Schema is the backend's API schema name, e.g. "OpenAI" or "AWSBedrock".
+	Schema string
+	// Name is the configured backend name, used when Schema has no well-known
+	// mapping.
+	Name string
+}
+
+// BackendSpan is implemented by spans that can record the resolved backend.
+//
+// It is an optional interface rather than part of Span because the backend is
+// only known after routing, long after the span starts, and because only some
+// semantic conventions record it. Callers must type-assert.
+type BackendSpan interface {
+	// RecordBackend records the resolved upstream backend on the span.
+	RecordBackend(backend Backend)
+}
+
+// BackendRecorder is implemented by span recorders whose semantic convention
+// records the resolved backend. Recorders that do not simply omit it.
+type BackendRecorder interface {
+	// RecordBackend records backend attributes to the span.
+	RecordBackend(span trace.Span, backend Backend)
+}
+
 // NoopChunkRecorder provides a no-op RecordResponseChunks implementation for recorders that don't emit streaming chunks.
 type NoopChunkRecorder[ChunkT any] struct{}
 
