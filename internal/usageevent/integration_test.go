@@ -7,7 +7,6 @@ package usageevent
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/sdk/metric"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // TestUsageEventPublisher_SuccessAndAcknowledge is a zero-external-dependency integration test:
@@ -76,7 +77,7 @@ func TestUsageEventPublisher_SuccessAndAcknowledge(t *testing.T) {
 		InputTokens:    15,
 		OutputTokens:   25,
 	}
-	publisher.Publish(context.Background(), sent)
+	publisher.Publish(context.Background(), &sent)
 
 	select {
 	case event := <-receivedEvents:

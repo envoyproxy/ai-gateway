@@ -8,12 +8,13 @@ package usageevent
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // HTTPSink publishes UsageEvents to a configured HTTP endpoint. It is the initial
@@ -41,7 +42,7 @@ func NewHTTPSink(url string, timeout time.Duration) *HTTPSink {
 // timeout, connection failure, or non-2xx response, is returned as an error; callers are
 // expected to treat that as a dropped event and continue request processing, per the
 // proposal's stateless, no-retry design.
-func (s *HTTPSink) Publish(ctx context.Context, event UsageEvent) error {
+func (s *HTTPSink) Publish(ctx context.Context, event *UsageEvent) error {
 	body, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("usageevent: marshal event: %w", err)

@@ -22,8 +22,8 @@ type fakeSink struct {
 	published []UsageEvent
 }
 
-func (f *fakeSink) Publish(_ context.Context, event UsageEvent) error {
-	f.published = append(f.published, event)
+func (f *fakeSink) Publish(_ context.Context, event *UsageEvent) error {
+	f.published = append(f.published, *event)
 	return f.err
 }
 

@@ -66,5 +66,5 @@ const (
 // promptly: callers publish synchronously on the request path and treat any error, including
 // a context deadline, as a dropped event.
 type Sink interface {
-	Publish(ctx context.Context, event UsageEvent) error
+	Publish(ctx context.Context, event *UsageEvent) error
 }

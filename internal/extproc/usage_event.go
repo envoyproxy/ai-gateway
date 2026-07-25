@@ -56,7 +56,7 @@ type usageEventParams struct {
 
 // buildUsageEvent constructs the normalized UsageEvent for a completed request from
 // per-response metadata already tracked by the upstream processor.
-func buildUsageEvent(p usageEventParams) usageevent.UsageEvent {
+func buildUsageEvent(p *usageEventParams) usageevent.UsageEvent {
 	status := usageevent.StatusSucceeded
 	if !p.succeeded {
 		status = usageevent.StatusFailed

@@ -74,7 +74,7 @@ func TestBuildUsageEvent(t *testing.T) {
 	usage.SetReasoningTokens(320)
 
 	now := time.UnixMilli(1753961025123)
-	event := buildUsageEvent(usageEventParams{
+	event := buildUsageEvent(&usageEventParams{
 		requestID:     "req-abc123",
 		routeName:     "llmroute",
 		backendName:   "openai-primary",
@@ -107,7 +107,7 @@ func TestBuildUsageEvent(t *testing.T) {
 }
 
 func TestBuildUsageEvent_Failed(t *testing.T) {
-	event := buildUsageEvent(usageEventParams{
+	event := buildUsageEvent(&usageEventParams{
 		requestID:   "req-def456",
 		routeName:   "llmroute",
 		backendName: "openai-primary",

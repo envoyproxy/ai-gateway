@@ -7,16 +7,17 @@ package usageevent
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
-func testEvent() UsageEvent {
-	return UsageEvent{
+func testEvent() *UsageEvent {
+	return &UsageEvent{
 		SchemaVersion:  SchemaVersion,
 		EventID:        "req-abc123|llmroute|openai-primary",
 		EmittedAt:      1753961025123,

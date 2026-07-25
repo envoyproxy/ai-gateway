@@ -81,7 +81,7 @@ func NewPublisher(sink Sink, meter metric.Meter, logger *slog.Logger) (*Publishe
 // Publish constructs-and-forgets: it records the event as constructed, attempts a single
 // synchronous publish through the sink, and records the outcome. It never blocks request
 // processing beyond the sink's own timeout, and never returns an error to the caller.
-func (p *Publisher) Publish(ctx context.Context, event UsageEvent) {
+func (p *Publisher) Publish(ctx context.Context, event *UsageEvent) {
 	p.constructed.Add(ctx, 1)
 
 	start := time.Now()

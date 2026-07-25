@@ -600,7 +600,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) publishUsage
 	if u.usageEventPublisher == nil {
 		return
 	}
-	event := buildUsageEvent(usageEventParams{
+	event := buildUsageEvent(&usageEventParams{
 		requestID:     u.requestHeaders["x-request-id"],
 		routeName:     u.routeName,
 		backendName:   u.backendName,
@@ -613,7 +613,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) publishUsage
 		attributes:    extractUsageEventAttributes(u.requestHeaders, u.usageEventAttributeHeaders),
 		now:           time.Now(),
 	})
-	u.usageEventPublisher.Publish(ctx, event)
+	u.usageEventPublisher.Publish(ctx, &event)
 }
 
 // decodeStreamingContent handles decompression for streaming responses with content-encoding.
