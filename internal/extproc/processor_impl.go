@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3http "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -34,6 +35,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 	"github.com/envoyproxy/ai-gateway/internal/translator"
+	"github.com/envoyproxy/ai-gateway/internal/usageevent"
 )
 
 // LogRequestHeaderAttributes is the mapping of request headers to log as dynamic metadata attributes.
@@ -50,6 +52,8 @@ var LogRequestHeaderAttributes map[string]string
 // Parameters:
 // * f: Metrics factory for creating metrics instances.
 // * tracer: Request tracer for tracing requests and responses.
+// * usageEventPublisher: Publisher for per-request UsageEvent export; nil when the feature is disabled.
+// * usageEventAttributeHeaders: Allowlist of request headers to copy into UsageEvent.Attributes; nil when unset.
 // * parseBody: Function to parse the request body.
 // * selectTranslator: Function to select the appropriate translator based on the output schema.
 //
@@ -58,6 +62,8 @@ var LogRequestHeaderAttributes map[string]string
 func NewFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]](
 	f metrics.Factory,
 	tracer tracingapi.RequestTracer[ReqT, RespT, RespChunkT],
+	usageEventPublisher *usageevent.Publisher,
+	usageEventAttributeHeaders map[string]string,
 	_ EndpointSpecT, // This is a type marker to bind EndpointSpecT without specifying ReqT, RespT, RespChunkT explicitly.
 ) ProcessorFactory {
 	return func(config *filterapi.RuntimeConfig, requestHeaders map[string]string, logger *slog.Logger, isUpstreamFilter bool, enableRedaction bool) (Processor, error) {
@@ -65,7 +71,7 @@ func NewFactory[ReqT any, RespT any, RespChunkT any, EndpointSpecT endpointspec.
 		if !isUpstreamFilter {
 			return newRouterProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](config, requestHeaders, logger, tracer, enableRedaction), nil
 		}
-		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](requestHeaders, f.NewMetrics(), logger), nil
+		return newUpstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT](requestHeaders, f.NewMetrics(), logger, usageEventPublisher, usageEventAttributeHeaders), nil
 	}
 }
 
@@ -127,6 +133,19 @@ type (
 		costs metrics.TokenUsage
 		// metrics tracking.
 		metrics metrics.Metrics
+		// provider is the semantic-convention provider name derived from the backend's API schema
+		// (e.g. "openai", "anthropic"); set in SetBackend. Used for UsageEvent export.
+		provider string
+		// requestModel is the model requested by the client, captured once request headers are
+		// processed. Used for UsageEvent export.
+		requestModel internalapi.RequestModel
+		// usageEventPublisher publishes a UsageEvent for every terminal response when usage event
+		// export is enabled (--usage-events-http-url); nil when the feature is disabled, in which
+		// case no event is constructed.
+		usageEventPublisher *usageevent.Publisher
+		// usageEventAttributeHeaders is the operator-configured allowlist of request headers to
+		// copy into UsageEvent.Attributes (--usage-events-attributes); nil when unset.
+		usageEventAttributeHeaders map[string]string
 	}
 )
 
@@ -152,11 +171,15 @@ func newRouterProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.
 func newUpstreamProcessor[ReqT, RespT, RespChunkT any, EndpointSpecT endpointspec.Spec[ReqT, RespT, RespChunkT]](
 	reqHeader map[string]string, metrics metrics.Metrics,
 	logger *slog.Logger,
+	usageEventPublisher *usageevent.Publisher,
+	usageEventAttributeHeaders map[string]string,
 ) *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT] {
 	return &upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]{
-		requestHeaders: reqHeader,
-		metrics:        metrics,
-		logger:         logger,
+		requestHeaders:             reqHeader,
+		metrics:                    metrics,
+		logger:                     logger,
+		usageEventPublisher:        usageEventPublisher,
+		usageEventAttributeHeaders: usageEventAttributeHeaders,
 	}
 }
 
@@ -331,6 +354,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 	// Set the request model for metrics from the original model or override if applied.
 	reqModel := cmp.Or(u.requestHeaders[internalapi.ModelNameHeaderKeyDefault], u.parent.originalModel)
 	u.metrics.SetRequestModel(reqModel)
+	u.requestModel = reqModel
 
 	// We force the body mutation in the following cases:
 	// * The request is a retry request because the body mutation might have happened the previous iteration.
@@ -474,7 +498,8 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	}
 
 	// Assume all responses have a valid status code header.
-	if code, _ := strconv.Atoi(u.responseHeaders[":status"]); !isGoodStatusCode(code) {
+	statusCode, _ := strconv.Atoi(u.responseHeaders[":status"])
+	if !isGoodStatusCode(statusCode) {
 		var newHeaders []internalapi.Header
 		var newBody []byte
 		newHeaders, newBody, err = u.translator.ResponseError(u.responseHeaders, decodingResult.reader)
@@ -487,10 +512,13 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 			if b == nil {
 				b = body.Body
 			}
-			u.parent.span.EndSpanOnError(code, b)
+			u.parent.span.EndSpanOnError(statusCode, b)
 		}
 		// Mark so the deferred handler records failure.
 		recordRequestCompletionErr = true
+		if body.EndOfStream {
+			u.publishUsageEvent(ctx, statusCode, false, "")
+		}
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseBody{
 				ResponseBody: &extprocv3.BodyResponse{
@@ -543,6 +571,10 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		u.metrics.RecordTokenUsage(ctx, u.costs, u.requestHeaders)
 	}
 
+	if body.EndOfStream {
+		u.publishUsageEvent(ctx, statusCode, true, responseModel)
+	}
+
 	if body.EndOfStream && (len(u.parent.config.GlobalRequestCosts) > 0 || len(u.parent.config.RequestCosts) > 0) {
 		metadata, err := buildDynamicMetadata(u.parent.config.GlobalRequestCosts, u.parent.config.RequestCosts, &u.costs, u.requestHeaders, u.backendName, u.routeName, responseModel)
 		if err != nil {
@@ -559,6 +591,29 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		u.parent.span.EndSpan()
 	}
 	return resp, nil
+}
+
+// publishUsageEvent constructs and synchronously publishes a UsageEvent for the just-completed
+// request, if usage event export is enabled. It is a no-op when usageEventPublisher is nil.
+// Callers must only invoke this once the response has reached a terminal state (body.EndOfStream).
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) publishUsageEvent(ctx context.Context, statusCode int, succeeded bool, responseModel internalapi.ResponseModel) {
+	if u.usageEventPublisher == nil {
+		return
+	}
+	event := buildUsageEvent(usageEventParams{
+		requestID:     u.requestHeaders["x-request-id"],
+		routeName:     u.routeName,
+		backendName:   u.backendName,
+		provider:      u.provider,
+		reqModel:      u.requestModel,
+		responseModel: responseModel,
+		statusCode:    statusCode,
+		succeeded:     succeeded,
+		usage:         u.costs,
+		attributes:    extractUsageEventAttributes(u.requestHeaders, u.usageEventAttributeHeaders),
+		now:           time.Now(),
+	})
+	u.usageEventPublisher.Publish(ctx, event)
 }
 
 // decodeStreamingContent handles decompression for streaming responses with content-encoding.
@@ -597,6 +652,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) SetBackend(c
 	}
 	rp.upstreamFilterCount++
 	u.metrics.SetBackend(backend.Backend)
+	u.provider = metrics.ProviderName(backend.Backend)
 	u.modelNameOverride = backend.Backend.ModelNameOverride
 	u.backendName = backend.Backend.Name
 	u.routeName = routeName

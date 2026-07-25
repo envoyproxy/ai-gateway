@@ -201,6 +201,11 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				args:          []string{"-configPath", "/path/to/config.yaml", "-spanRequestHeaderAttributes", ":session.id"},
 				expectedError: "failed to parse tracing header mapping: empty header or attribute at position 1: \":session.id\"",
 			},
+			{
+				name:          "invalid usage events attributes - missing colon",
+				args:          []string{"-configPath", "/path/to/config.yaml", "-usageEventsAttributes", "x-tenant-id"},
+				expectedError: "failed to parse usage events attribute mapping: invalid header-attribute pair at position 1: \"x-tenant-id\" (expected format: header:attribute)",
+			},
 		}
 
 		for _, tt := range tests {
@@ -209,6 +214,30 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				require.EqualError(t, err, tt.expectedError)
 			})
 		}
+	})
+}
+
+func Test_parseAndValidateFlags_UsageEvents(t *testing.T) {
+	t.Run("disabled by default", func(t *testing.T) {
+		flags, err := parseAndValidateFlags([]string{"-configPath", "/path/to/config.yaml"})
+		require.NoError(t, err)
+		require.Empty(t, flags.usageEventsHTTPURL)
+		require.Equal(t, 2*time.Second, flags.usageEventsTimeout)
+		require.Nil(t, flags.usageEventsAttributes)
+	})
+
+	t.Run("configured", func(t *testing.T) {
+		flags, err := parseAndValidateFlags([]string{
+			"-configPath", "/path/to/config.yaml",
+			"-usageEventsHTTPURL", "http://127.0.0.1:8090/v1/usage-events",
+			"-usageEventsTimeout", "500ms",
+			"-usageEventsAttributes", "x-tenant-id:tenant.id,x-user-id:user.id",
+		})
+		require.NoError(t, err)
+		require.Equal(t, "http://127.0.0.1:8090/v1/usage-events", flags.usageEventsHTTPURL)
+		require.Equal(t, 500*time.Millisecond, flags.usageEventsTimeout)
+		require.NotNil(t, flags.usageEventsAttributes)
+		require.Equal(t, "x-tenant-id:tenant.id,x-user-id:user.id", *flags.usageEventsAttributes)
 	})
 }
 

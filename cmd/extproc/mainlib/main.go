@@ -34,6 +34,7 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/requestheaderattrs"
 	"github.com/envoyproxy/ai-gateway/internal/tracing"
+	"github.com/envoyproxy/ai-gateway/internal/usageevent"
 	"github.com/envoyproxy/ai-gateway/internal/version"
 )
 
@@ -54,6 +55,9 @@ type extProcFlags struct {
 	mcpFallbackSessionEncryptionSeed       string        // Fallback seed for deriving the key for encrypting MCP sessions.
 	mcpFallbackSessionEncryptionIterations int           // Number of iterations to use for PBKDF2 key derivation for fallback MCP session encryption.
 	mcpWriteTimeout                        time.Duration // the maximum duration before timing out writes of the MCP response.
+	usageEventsHTTPURL                     string        // HTTP endpoint to publish per-request UsageEvents to. Feature is disabled when empty.
+	usageEventsTimeout                     time.Duration // timeout for publishing a single UsageEvent.
+	usageEventsAttributes                  *string       // comma-separated key-value pairs for mapping HTTP request headers to UsageEvent attributes. Format: x-tenant-id:tenant.id.
 	// rootPrefix is the root prefix for all the processors.
 	rootPrefix string
 	// maxRecvMsgSize is the maximum message size in bytes that the gRPC server can receive.
@@ -138,6 +142,16 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"Number of iterations used in the fallback PBKDF2 key derivation for MCP session encryption.")
 	fs.DurationVar(&flags.mcpWriteTimeout, "mcpWriteTimeout", 120*time.Second,
 		"The maximum duration before timing out writes of the MCP response")
+	fs.StringVar(&flags.usageEventsHTTPURL, "usageEventsHTTPURL", "",
+		"HTTP endpoint to synchronously publish a normalized UsageEvent to for every completed request. "+
+			"Per-request usage event export is disabled when unset.")
+	fs.DurationVar(&flags.usageEventsTimeout, "usageEventsTimeout", 2*time.Second,
+		"Timeout for publishing a single UsageEvent. A failed or timed-out publish is counted as a dropped event; "+
+			"request processing is never blocked or retried beyond this budget.")
+	fs.Func("usageEventsAttributes",
+		"Comma-separated key-value pairs for mapping HTTP request headers to UsageEvent attributes. Format: x-tenant-id:tenant.id.",
+		setOptionalString(&flags.usageEventsAttributes),
+	)
 
 	if err := fs.Parse(args); err != nil {
 		return extProcFlags{}, fmt.Errorf("failed to parse extProcFlags: %w", err)
@@ -172,6 +186,11 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	if flags.endpointPrefixes != "" {
 		if _, err := internalapi.ParseEndpointPrefixes(flags.endpointPrefixes); err != nil {
 			errs = append(errs, fmt.Errorf("failed to parse endpoint prefixes: %w", err))
+		}
+	}
+	if flags.usageEventsAttributes != nil && *flags.usageEventsAttributes != "" {
+		if _, err := internalapi.ParseRequestHeaderAttributeMapping(*flags.usageEventsAttributes); err != nil {
+			errs = append(errs, fmt.Errorf("failed to parse usage events attribute mapping: %w", err))
 		}
 	}
 
@@ -288,6 +307,23 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	rerankMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationRerank)
 	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
+	var usageEventPublisher *usageevent.Publisher
+	if flags.usageEventsHTTPURL != "" {
+		sink := usageevent.NewHTTPSink(flags.usageEventsHTTPURL, flags.usageEventsTimeout)
+		usageEventPublisher, err = usageevent.NewPublisher(sink, meter, l)
+		if err != nil {
+			return fmt.Errorf("failed to create usage event publisher: %w", err)
+		}
+		l.Info("per-request usage event export is enabled", slog.String("url", flags.usageEventsHTTPURL))
+	}
+	var usageEventsAttributeHeaders map[string]string
+	if flags.usageEventsAttributes != nil {
+		usageEventsAttributeHeaders, err = internalapi.ParseRequestHeaderAttributeMapping(*flags.usageEventsAttributes)
+		if err != nil {
+			return fmt.Errorf("failed to parse usage events attribute mapping: %w", err)
+		}
+	}
+
 	extproc.LogRequestHeaderAttributes = logRequestHeaderAttributes
 
 	server, err := extproc.NewServer(l, flags.enableRedaction)
@@ -295,26 +331,26 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return fmt.Errorf("failed to create external processor server: %w", err)
 	}
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/chat/completions"), extproc.NewFactory(
-		chatCompletionMetricsFactory, tracing.ChatCompletionTracer(), endpointspec.ChatCompletionsEndpointSpec{}))
+		chatCompletionMetricsFactory, tracing.ChatCompletionTracer(), usageEventPublisher, usageEventsAttributeHeaders, endpointspec.ChatCompletionsEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/completions"), extproc.NewFactory(
-		completionMetricsFactory, tracing.CompletionTracer(), endpointspec.CompletionsEndpointSpec{}))
+		completionMetricsFactory, tracing.CompletionTracer(), usageEventPublisher, usageEventsAttributeHeaders, endpointspec.CompletionsEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/embeddings"), extproc.NewFactory(
-		embeddingsMetricsFactory, tracing.EmbeddingsTracer(), endpointspec.EmbeddingsEndpointSpec{}))
+		embeddingsMetricsFactory, tracing.EmbeddingsTracer(), usageEventPublisher, usageEventsAttributeHeaders, endpointspec.EmbeddingsEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/responses"), extproc.NewFactory(
-		responsesMetricsFactory, tracing.ResponsesTracer(), endpointspec.ResponsesEndpointSpec{}))
+		responsesMetricsFactory, tracing.ResponsesTracer(), usageEventPublisher, usageEventsAttributeHeaders, endpointspec.ResponsesEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/speech"), extproc.NewFactory(
-		speechMetricsFactory, tracing.SpeechTracer(), endpointspec.SpeechEndpointSpec{}))
+		speechMetricsFactory, tracing.SpeechTracer(), usageEventPublisher, usageEventsAttributeHeaders, endpointspec.SpeechEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/transcriptions"), extproc.NewFactory(
-		transcriptionMetricsFactory, tracing.TranscriptionTracer(), endpointspec.TranscriptionEndpointSpec{}))
+		transcriptionMetricsFactory, tracing.TranscriptionTracer(), usageEventPublisher, usageEventsAttributeHeaders, endpointspec.TranscriptionEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/translations"), extproc.NewFactory(
-		translationMetricsFactory, tracing.TranslationTracer(), endpointspec.TranslationEndpointSpec{}))
+		translationMetricsFactory, tracing.TranslationTracer(), usageEventPublisher, usageEventsAttributeHeaders, endpointspec.TranslationEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/images/generations"), extproc.NewFactory(
-		imageGenerationMetricsFactory, tracing.ImageGenerationTracer(), endpointspec.ImageGenerationEndpointSpec{}))
+		imageGenerationMetricsFactory, tracing.ImageGenerationTracer(), usageEventPublisher, usageEventsAttributeHeaders, endpointspec.ImageGenerationEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Cohere, "/v2/rerank"), extproc.NewFactory(
-		rerankMetricsFactory, tracing.RerankTracer(), endpointspec.RerankEndpointSpec{}))
+		rerankMetricsFactory, tracing.RerankTracer(), usageEventPublisher, usageEventsAttributeHeaders, endpointspec.RerankEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/models"), extproc.NewModelsProcessor)
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages"), extproc.NewFactory(
-		messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{}))
+		messagesMetricsFactory, tracing.MessageTracer(), usageEventPublisher, usageEventsAttributeHeaders, endpointspec.MessagesEndpointSpec{}))
 
 	// Create and register gRPC server with ExternalProcessorServer (the service Envoy calls).
 	if err = filterapi.StartConfigWatcher(ctx, flags.configPath, server, l, time.Second*5); err != nil {

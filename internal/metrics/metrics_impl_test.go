@@ -694,6 +694,7 @@ func TestSetBackendProviderName(t *testing.T) {
 			}
 			pm.SetBackend(backend)
 			assert.Equal(t, tc.expectedProvider, pm.backend)
+			assert.Equal(t, tc.expectedProvider, ProviderName(backend))
 		})
 	}
 }
