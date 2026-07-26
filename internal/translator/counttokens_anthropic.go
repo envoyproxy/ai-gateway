@@ -29,7 +29,7 @@ type countTokensToAnthropicTranslator struct {
 }
 
 // RequestBody implements [AnthropicCountTokensTranslator.RequestBody].
-func (t *countTokensToAnthropicTranslator) RequestBody(original []byte, _ *anthropicschema.MessagesRequest, forceBodyMutation bool) (
+func (t *countTokensToAnthropicTranslator) RequestBody(original []byte, _ *anthropicschema.CountTokensRequest, forceBodyMutation bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	if t.modelNameOverride != "" {
@@ -43,7 +43,7 @@ func (t *countTokensToAnthropicTranslator) RequestBody(original []byte, _ *anthr
 		newBody = original
 	}
 
-	newHeaders = []internalapi.Header{{pathHeaderName, "/v1/messages/count_tokens"}}
+	newHeaders = []internalapi.Header{{pathHeaderName, anthropicCountTokensPath}}
 	if len(newBody) > 0 {
 		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
 	}

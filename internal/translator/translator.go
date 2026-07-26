@@ -30,6 +30,11 @@ const (
 	eventStreamContentType  = "text/event-stream"
 	openAIBackendError      = "OpenAIBackendError"
 	awsBedrockBackendError  = "AWSBedrockBackendError"
+
+	// Count-tokens route paths per backend.
+	anthropicCountTokensPath        = "/v1/messages/count_tokens" // Native Anthropic Messages count_tokens.
+	awsBedrockCountTokensPathFormat = "/model/%s/count-tokens"    // AWS Bedrock CountTokens (modelId placeholder).
+	gcpCountTokensModel             = "count-tokens"              // GCP Vertex AI virtual model for count-tokens.
 )
 
 // Translator translates the request and response messages between the client
@@ -138,7 +143,7 @@ type (
 	// OpenAIResponsesInputTokensTranslator translates the OpenAI's /v1/responses/input_tokens endpoint.
 	OpenAIResponsesInputTokensTranslator = Translator[openai.ResponseRequest, tracingapi.ResponsesInputTokensSpan]
 	// AnthropicCountTokensTranslator translates the Anthropic's /v1/messages/count_tokens endpoint.
-	AnthropicCountTokensTranslator = Translator[anthropicschema.MessagesRequest, tracingapi.CountTokensSpan]
+	AnthropicCountTokensTranslator = Translator[anthropicschema.CountTokensRequest, tracingapi.CountTokensSpan]
 )
 
 var (

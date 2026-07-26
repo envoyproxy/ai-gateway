@@ -10,9 +10,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"net/url"
 	"strconv"
-	"strings"
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -46,23 +44,10 @@ type bedrockCountTokensResponse struct {
 }
 
 // RequestBody implements [AnthropicCountTokensTranslator.RequestBody].
-func (t *countTokensToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *anthropicschema.MessagesRequest, _ bool) (
+func (t *countTokensToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *anthropicschema.CountTokensRequest, _ bool) (
 	newHeaders []internalapi.Header, newBody []byte, err error,
 ) {
 	model := cmp.Or(t.modelNameOverride, body.Model)
-
-	// AWS Bedrock's CountTokens API (POST /model/{modelId}/count-tokens) does not support
-	// cross-region inference (CRIS) model IDs (e.g. "us.anthropic.claude-sonnet-4-6" returns
-	// "The provided model doesn't support counting tokens"). The CRIS prefix is required for
-	// inference endpoints (InvokeModel, Converse) which share the same modelNameOverride, so we
-	// strip it here for count-tokens only. A CRIS ID prepends a geography prefix (e.g. "us.",
-	// "eu.", "apac.", "us-gov.") to the base model ID; anchor on the "anthropic." provider
-	// segment and drop anything before it, so every geography prefix is handled regardless of
-	// length. A bare base ID ("anthropic.claude-...") has the segment at index 0 and is left as-is.
-	// See: https://docs.aws.amazon.com/bedrock/latest/userguide/count-tokens.html
-	if i := strings.Index(model, "anthropic."); i > 0 {
-		model = model[i:]
-	}
 
 	// Build the Anthropic body for the InvokeModel format:
 	// add anthropic_version, remove model and stream fields.
@@ -92,9 +77,9 @@ func (t *countTokensToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *
 		return nil, nil, fmt.Errorf("failed to wrap body: %w", err)
 	}
 
-	// URL encode the model ID for the path.
-	encodedModelID := url.PathEscape(model)
-	path := fmt.Sprintf("/model/%s/count-tokens", encodedModelID)
+	// awsAnthropicCountTokensPath strips any cross-region inference prefix and builds
+	// the /model/{modelId}/count-tokens path.
+	path := awsAnthropicCountTokensPath(model)
 
 	newHeaders = []internalapi.Header{{pathHeaderName, path}, {contentLengthHeaderName, strconv.Itoa(len(newBody))}}
 	return

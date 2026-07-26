@@ -396,8 +396,8 @@ func (MessagesEndpointSpec) RedactSensitiveInfoFromRequest(req *anthropic.Messag
 func (MessagesCountTokensEndpointSpec) ParseBody(
 	body []byte,
 	_ bool,
-) (internalapi.OriginalModel, *anthropic.MessagesRequest, bool, []byte, error) {
-	var req anthropic.MessagesRequest
+) (internalapi.OriginalModel, *anthropic.CountTokensRequest, bool, []byte, error) {
+	var req anthropic.CountTokensRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/messages/count_tokens: %w", internalapi.ErrMalformedRequest, err)
 	}
@@ -425,12 +425,12 @@ func (MessagesCountTokensEndpointSpec) GetTranslator(schema filterapi.VersionedA
 }
 
 // ParseMultipartBody implements [Spec.ParseMultipartBody].
-func (MessagesCountTokensEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *anthropic.MessagesRequest, bool, []byte, error) {
+func (MessagesCountTokensEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *anthropic.CountTokensRequest, bool, []byte, error) {
 	return "", nil, false, nil, errMultipartNotSupported
 }
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
-func (MessagesCountTokensEndpointSpec) RedactSensitiveInfoFromRequest(req *anthropic.MessagesRequest) (redactedReq *anthropic.MessagesRequest, err error) {
+func (MessagesCountTokensEndpointSpec) RedactSensitiveInfoFromRequest(req *anthropic.CountTokensRequest) (redactedReq *anthropic.CountTokensRequest, err error) {
 	return req, nil
 }
 

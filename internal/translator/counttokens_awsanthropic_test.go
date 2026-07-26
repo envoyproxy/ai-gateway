@@ -72,7 +72,7 @@ func TestCountTokensToAWSAnthropic_RequestBody(t *testing.T) {
 			require.NotNil(t, translator)
 
 			raw := []byte(`{"model":"` + tt.model + `","messages":[{"role":"user","content":"hello"}]}`)
-			req := &anthropicschema.MessagesRequest{Model: tt.model}
+			req := &anthropicschema.CountTokensRequest{Model: tt.model}
 
 			headerMutation, bodyMutation, err := translator.RequestBody(raw, req, false)
 			require.NoError(t, err)

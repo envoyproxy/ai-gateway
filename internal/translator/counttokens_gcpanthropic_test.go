@@ -73,7 +73,7 @@ func TestCountTokensToGCPAnthropic_RequestBody(t *testing.T) {
 			require.NotNil(t, translator)
 
 			raw := []byte(`{"model":"` + tt.model + `","messages":[{"role":"user","content":"hello"}]}`)
-			req := &anthropicschema.MessagesRequest{Model: tt.model}
+			req := &anthropicschema.CountTokensRequest{Model: tt.model}
 
 			headerMutation, bodyMutation, err := translator.RequestBody(raw, req, false)
 			require.NoError(t, err)
@@ -99,7 +99,7 @@ func TestCountTokensToGCPAnthropic_RequestBody_MissingVersion(t *testing.T) {
 	require.NotNil(t, translator)
 
 	raw := []byte(`{"model":"claude-opus-4-6","messages":[]}`)
-	req := &anthropicschema.MessagesRequest{Model: "claude-opus-4-6"}
+	req := &anthropicschema.CountTokensRequest{Model: "claude-opus-4-6"}
 
 	_, _, err := translator.RequestBody(raw, req, false)
 	require.ErrorContains(t, err, "anthropic_version is required")

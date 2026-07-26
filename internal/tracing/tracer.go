@@ -56,7 +56,7 @@ type (
 	translationTracer          = requestTracerImpl[openai.TranslationRequest, openai.TranslationResponse, struct{}]
 	rerankTracer               = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
 	responsesInputTokensTracer = requestTracerImpl[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
-	countTokensTracer          = requestTracerImpl[anthropicschema.MessagesRequest, anthropicschema.CountTokensResponse, struct{}]
+	countTokensTracer          = requestTracerImpl[anthropicschema.CountTokensRequest, anthropicschema.CountTokensResponse, struct{}]
 )
 
 func newRequestTracer[ReqT any, RespT any, RespChunkT any](

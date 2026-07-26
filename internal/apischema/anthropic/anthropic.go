@@ -1747,8 +1747,35 @@ func (m *MessagesStreamChunk) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// CountTokensRequest represents a request to the Anthropic Count Tokens API.
+// It is a subset of [MessagesRequest]: count_tokens accepts the same messages,
+// system, tools, tool_choice, and thinking inputs, but omits output-only
+// parameters such as max_tokens, temperature, stream, and stop_sequences (and,
+// unlike Messages, does not require max_tokens). The nested leaf types are
+// reused from [MessagesRequest] so they stay in sync.
+// https://platform.claude.com/docs/en/api/messages/count_tokens
+type CountTokensRequest struct {
+	// Model is the model to use for token counting.
+	Model string `json:"model"`
+
+	// Messages is the list of messages in the conversation.
+	Messages []MessageParam `json:"messages"`
+
+	// System is the system prompt to guide the model's behavior.
+	System *SystemPrompt `json:"system,omitempty"`
+
+	// Thinking is the configuration for the model's "thinking" behavior.
+	Thinking *Thinking `json:"thinking,omitempty"`
+
+	// ToolChoice indicates the tool choice for the model.
+	ToolChoice *ToolChoice `json:"tool_choice,omitempty"`
+
+	// Tools is the list of tools available to the model.
+	Tools []ToolUnion `json:"tools,omitempty"`
+}
+
 // CountTokensResponse represents a response from the Anthropic Count Tokens API.
-// https://docs.anthropic.com/en/api/counting-tokens
+// https://platform.claude.com/docs/en/api/messages/count_tokens
 type CountTokensResponse struct {
 	InputTokens int64 `json:"input_tokens"`
 }
