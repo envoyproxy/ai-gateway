@@ -139,6 +139,56 @@ func Test_mustStartExtProc_defaultHeaderAttributes(t *testing.T) {
 	require.NotContains(t, capturedArgs, "-logRequestHeaderAttributes")
 }
 
+func Test_mustStartExtProc_usageEvents(t *testing.T) {
+	t.Run("disabled by default", func(t *testing.T) {
+		internaltesting.ClearTestEnv(t)
+
+		var capturedArgs []string
+		runCtx := &runCmdContext{
+			stderrLogger: slog.New(slog.DiscardHandler),
+			stderr:       io.Discard,
+			tmpdir:       t.TempDir(),
+			adminPort:    1064,
+			extProcLauncher: func(_ context.Context, args []string, _ io.Writer) error {
+				capturedArgs = args
+				return errors.New("mock error")
+			},
+		}
+
+		<-runCtx.mustStartExtProc(t.Context(), &filterapi.Config{Version: version.Parse()})
+
+		require.NotContains(t, capturedArgs, "-usageEventsHTTPURL")
+		require.NotContains(t, capturedArgs, "-usageEventsTimeout")
+		require.NotContains(t, capturedArgs, "-usageEventsAttributes")
+	})
+
+	t.Run("forwarded from the environment", func(t *testing.T) {
+		internaltesting.ClearTestEnv(t)
+		t.Setenv("AIGW_USAGE_EVENTS_HTTP_URL", "http://localhost:8081")
+		t.Setenv("AIGW_USAGE_EVENTS_TIMEOUT", "3s")
+		t.Setenv("AIGW_USAGE_EVENTS_ATTRIBUTES", "x-tenant-id:tenant.id")
+
+		var capturedArgs []string
+		runCtx := &runCmdContext{
+			stderrLogger: slog.New(slog.DiscardHandler),
+			stderr:       io.Discard,
+			tmpdir:       t.TempDir(),
+			adminPort:    1064,
+			extProcLauncher: func(_ context.Context, args []string, _ io.Writer) error {
+				capturedArgs = args
+				return errors.New("mock error")
+			},
+		}
+
+		<-runCtx.mustStartExtProc(t.Context(), &filterapi.Config{Version: version.Parse()})
+
+		require.Contains(t, capturedArgs, "-usageEventsHTTPURL")
+		require.Equal(t, "http://localhost:8081", findFlagValue(capturedArgs, "-usageEventsHTTPURL"))
+		require.Equal(t, "3s", findFlagValue(capturedArgs, "-usageEventsTimeout"))
+		require.Equal(t, "x-tenant-id:tenant.id", findFlagValue(capturedArgs, "-usageEventsAttributes"))
+	})
+}
+
 func Test_mustStartExtProc_withHeaderAttributes(t *testing.T) {
 	internaltesting.ClearTestEnv(t)
 	t.Setenv("OTEL_AIGW_REQUEST_HEADER_ATTRIBUTES", "x-tenant-id:tenant.id")
