@@ -30,6 +30,19 @@ type contentDecodingResult struct {
 // Currently, supports gzip and brotli encoding, but can be extended to support other encodings in the future.
 // Returns a reader for the (potentially decompressed) body and metadata about the encoding.
 func decodeContentIfNeeded(body []byte, contentEncoding string) (contentDecodingResult, error) {
+	// An empty body has nothing to decompress. gzip.NewReader reads the gzip
+	// header eagerly, so building it over zero bytes fails immediately with
+	// io.EOF. That gets surfaced as a fatal "failed to decode gzip: EOF" and
+	// aborts an otherwise-successful upstream response. This can happen when the
+	// upstream sends Content-Encoding: gzip with an empty body, or when a
+	// streaming response is buffered to end-of-stream with no payload. Treat an
+	// empty body as nothing to decode and pass it through unchanged.
+	if len(body) == 0 {
+		return contentDecodingResult{
+			reader:    bytes.NewReader(body),
+			isEncoded: false,
+		}, nil
+	}
 	switch contentEncoding {
 	case "gzip":
 		reader, err := gzip.NewReader(bytes.NewReader(body))

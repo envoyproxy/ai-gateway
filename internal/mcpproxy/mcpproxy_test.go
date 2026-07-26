@@ -60,6 +60,25 @@ func (f *fakeTracer) StartSpanAndInjectMeta(context.Context, *jsonrpc.Request, m
 
 var noopTracer = tracingapi.NoopMCPTracer{}
 
+func TestGetMaxRequestBodySize(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		envValue string
+		want     int64
+	}{
+		{name: "default when env var not set", envValue: "", want: defaultMaxRequestBodySize},
+		{name: "custom value from env var", envValue: "1048576", want: 1048576},
+		{name: "default when env var is not a number", envValue: "not-a-number", want: defaultMaxRequestBodySize},
+		{name: "default when env var is zero", envValue: "0", want: defaultMaxRequestBodySize},
+		{name: "default when env var is negative", envValue: "-1", want: defaultMaxRequestBodySize},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("MCP_PROXY_MAX_REQUEST_BODY_SIZE", tc.envValue)
+			require.Equal(t, tc.want, getMaxRequestBodySize())
+		})
+	}
+}
+
 func TestNewMCPProxy(t *testing.T) {
 	l := slog.Default()
 	proxy, mux, err := NewMCPProxy(l, stubMetrics{}, noopTracer, NewPBKDF2AesGcmSessionCrypto("test", 100), nil)
@@ -380,6 +399,33 @@ func TestInitializeSession_InitializeFailure(t *testing.T) {
 	require.Contains(t, err.Error(), "failed with status code")
 }
 
+func TestInitializeSession_SSEEndsBeforeResponse(t *testing.T) {
+	// Backend returns a 200 text/event-stream whose initialize response contains
+	// only non-response events (a keep-alive) and then closes before ever sending
+	// the JSON-RPC response. This must produce a clear error rather than the
+	// misleading "MCP message is not a response: <nil>".
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(sessionIDHeader, "test-session-123")
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`id: keepalive_0000
+data:
+
+`))
+	}))
+	defer backendServer.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = backendServer.URL
+
+	sessionID, err := proxy.initializeSession(t.Context(), "route1", filterapi.MCPBackend{Name: "test-backend"}, &mcp.InitializeParams{}, time.Now())
+
+	require.Error(t, err)
+	require.Empty(t, sessionID)
+	require.Contains(t, err.Error(), "ended before a JSON-RPC response was received")
+	require.NotContains(t, err.Error(), "is not a response")
+}
+
 func TestInitializeSession_NotificationsInitializedFailure(t *testing.T) {
 	// Mock backend server.
 	var callCount perBackendCallCount
@@ -451,4 +497,42 @@ func TestInvokeJSONRPCRequest_NoSessionID(t *testing.T) {
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
+}
+
+// Issue #2219: when a backend's initialize SSE response starts with a non-response
+// event (an empty/keep-alive data line) before the real JSON-RPC response, session
+// creation must still succeed rather than failing with "MCP message is not a response".
+func TestNewSession_SSEWithLeadingKeepAlive(t *testing.T) {
+	var callCount perBackendCallCount
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backend := r.Header.Get(internalapi.MCPBackendHeader)
+		if callCount.inc(backend)%2 == 1 {
+			// Odd calls: initialize requests. Emit a leading empty keep-alive
+			// event, then the real response event.
+			w.Header().Set(sessionIDHeader, "test-session-123")
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`id: keepalive_0000
+data:
+
+event: message
+id: msg_0001
+data: {"jsonrpc":"2.0","id":"ff3964c5-4c79-4567-96e2-29e905754e58","result":{"capabilities":{"logging":{},"tools":{"listChanged":true}},"protocolVersion":"2025-06-18","serverInfo":{"name":"dumb-echo-server","version":"0.1.0"}}}
+
+`))
+		} else {
+			// Even calls: notifications/initialized requests.
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	defer backendServer.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = backendServer.URL
+
+	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil, time.Now())
+
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	require.NotEmpty(t, s.clientGatewaySessionID())
 }

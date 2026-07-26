@@ -353,7 +353,14 @@ spec:
                       - RegularExpression
                       type: string
                     value:
-                      description: Value is the value of HTTP Header to be matched.
+                      description: |-
+                        Value is the value of HTTP Header to be matched.
+                        <gateway:experimental:description>
+                        Must consist of printable US-ASCII characters, optionally separated
+                        by single tabs or spaces. See: https://tools.ietf.org/html/rfc7230#section-3.2
+                        </gateway:experimental:description>
+
+                        <gateway:experimental:validation:Pattern=`^[!-~]+([\t ]?[!-~]+)*$`>
                       maxLength: 4096
                       minLength: 1
                       type: string
@@ -1180,6 +1187,45 @@ spec:
                                         minimum: 0
                                         type: integer
                                     type: object
+                                  retryBudget:
+                                    description: |-
+                                      RetryBudget provides settings for retry budget, which limits the number of retries in a given percentage.
+                                      RetryBudget take precedence over maxParallelRetries.
+                                    properties:
+                                      minRetryConcurrency:
+                                        description: |-
+                                          MinRetryConcurrency specifies the minimum retry concurrency allowed for the retry budget.
+                                          For example, a budget of 20% with a minimum retry concurrency of 3
+                                          will allow 5 active retries while there are 25 active requests.
+                                          If there are 2 active requests, there are still 3 active retries
+                                          allowed because of the minimum retry concurrency.
+                                          Defaults to 3.
+                                        format: int32
+                                        type: integer
+                                      percent:
+                                        description: |-
+                                          Percent specifies the limit on concurrent retries as a percentage [0, 100] of
+                                          the sum of active requests and active pending requests.
+                                        properties:
+                                          denominator:
+                                            default: 100
+                                            format: int32
+                                            minimum: 1
+                                            type: integer
+                                          numerator:
+                                            format: int32
+                                            minimum: 0
+                                            type: integer
+                                        required:
+                                        - numerator
+                                        type: object
+                                        x-kubernetes-validations:
+                                        - message: numerator must be less than or
+                                            equal to denominator
+                                          rule: self.numerator <= self.denominator
+                                    required:
+                                    - percent
+                                    type: object
                                 type: object
                               connection:
                                 description: Connection includes backend connection
@@ -1358,8 +1404,9 @@ spec:
                                             type: array
                                           hostname:
                                             description: |-
-                                              Hostname defines the HTTP host that will be requested during health checking.
-                                              Default: HTTPRoute or GRPCRoute hostname.
+                                              Hostname defines the HTTP Host header used for active HTTP health checks.
+                                              Host selection uses this order: this field, the associated Backend endpoint
+                                              hostname if available, then the effective Route hostname.
                                             maxLength: 253
                                             minLength: 1
                                             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
@@ -1376,6 +1423,19 @@ spec:
                                             maxLength: 1024
                                             minLength: 1
                                             type: string
+                                          retriableStatuses:
+                                            description: |-
+                                              RetriableStatuses defines a list of HTTP response statuses considered retriable.
+                                              Responses matching these statuses count towards the unhealthy threshold but
+                                              do not result in the host being considered immediately unhealthy.
+                                              The expected statuses take precedence for any range overlaps with this field.
+                                            items:
+                                              description: HTTPStatus defines the
+                                                http status code.
+                                              maximum: 599
+                                              minimum: 100
+                                              type: integer
+                                            type: array
                                         required:
                                         - path
                                         type: object
@@ -1391,6 +1451,23 @@ spec:
                                           active health checks.
                                         pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                         type: string
+                                      overrides:
+                                        description: |-
+                                          Overrides defines the configuration of the overriding health check settings for all endpoints
+                                          in the backend cluster. This allows customization of port and other settings that may differ
+                                          from the main service configuration.
+                                        properties:
+                                          port:
+                                            description: |-
+                                              Port overrides the health check port.
+                                              If not set, the endpoint's serving port is used for health checks.
+                                              This is useful when health checks are served on a different port than
+                                              the main service port (e.g., port 443 for service, port 9090 for health checks).
+                                            format: int32
+                                            maximum: 65535
+                                            minimum: 1
+                                            type: integer
+                                        type: object
                                       tcp:
                                         description: |-
                                           TCP defines the configuration of tcp health checker.
@@ -1490,9 +1567,11 @@ spec:
                                         type: string
                                       unhealthyThreshold:
                                         default: 3
-                                        description: UnhealthyThreshold defines the
-                                          number of unhealthy health checks required
-                                          before a backend host is marked unhealthy.
+                                        description: |-
+                                          UnhealthyThreshold defines the number of unhealthy health checks required before a backend host is marked unhealthy.
+                                          Without RetriableStatuses configured, any health check failure results in the host being immediately
+                                          considered unhealthy. When RetriableStatuses is set, health checks returning those statuses are retried
+                                          up to this threshold before the host is marked unhealthy.
                                         format: int32
                                         minimum: 1
                                         type: integer
@@ -1525,6 +1604,12 @@ spec:
                                   passive:
                                     description: Passive passive check configuration
                                     properties:
+                                      alwaysEjectOneEndpoint:
+                                        default: false
+                                        description: |-
+                                          AlwaysEjectOneEndpoint defines whether at least one host should be ejected,
+                                          regardless of MaxEjectionPercent.
+                                        type: boolean
                                       baseEjectionTime:
                                         default: 30s
                                         description: BaseEjectionTime defines the
@@ -1573,6 +1658,8 @@ spec:
                                           percentage of hosts in a cluster that can
                                           be ejected.
                                         format: int32
+                                        maximum: 100
+                                        minimum: 0
                                         type: integer
                                       splitExternalLocalOriginErrors:
                                         default: false
@@ -1586,6 +1673,41 @@ spec:
                                 description: HTTP2 provides HTTP/2 configuration for
                                   backend connections.
                                 properties:
+                                  connectionKeepalive:
+                                    description: ConnectionKeepalive configures HTTP/2
+                                      connection keepalive using PING frames.
+                                    properties:
+                                      idleInterval:
+                                        description: IdleInterval specifies how long
+                                          a connection must be idle before a PING
+                                          is sent.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      interval:
+                                        description: Interval specifies how often
+                                          to send HTTP/2 PING frames to keep the connection
+                                          alive.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      intervalJitter:
+                                        description: |-
+                                          IntervalJitter specifies a random jitter percentage added to each interval.
+                                          Defaults to 15% if not specified.
+                                        format: int32
+                                        maximum: 100
+                                        minimum: 0
+                                        type: integer
+                                      timeout:
+                                        description: Timeout specifies how long to
+                                          wait for a PING response before considering
+                                          the connection dead.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                    type: object
+                                    x-kubernetes-validations:
+                                    - message: timeout must be less than interval
+                                      rule: '!has(self.timeout) || !has(self.interval)
+                                        || duration(self.timeout) < duration(self.interval)'
                                   initialConnectionWindowSize:
                                     allOf:
                                     - pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
@@ -1629,6 +1751,57 @@ spec:
                                   LoadBalancer policy to apply when routing traffic from the gateway to
                                   the backend endpoints. Defaults to `LeastRequest`.
                                 properties:
+                                  backendUtilization:
+                                    description: |-
+                                      BackendUtilization defines the configuration when the load balancer type is
+                                      set to BackendUtilization.
+                                    properties:
+                                      blackoutPeriod:
+                                        description: |-
+                                          A given endpoint must report load metrics continuously for at least this long before the endpoint weight will be used.
+                                          Default is 10s.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      errorUtilizationPenaltyPercent:
+                                        description: |-
+                                          ErrorUtilizationPenaltyPercent adjusts endpoint weights based on the error rate (eps/qps).
+                                          This is expressed as a percentage-based integer where 100 represents 1.0, 150 represents 1.5, etc.
+
+                                          For example:
+                                          - 100 => 1.0x
+                                          - 120 => 1.2x
+                                          - 200 => 2.0x
+
+                                          Must be non-negative.
+                                        format: int32
+                                        minimum: 0
+                                        type: integer
+                                      keepResponseHeaders:
+                                        default: false
+                                        description: |-
+                                          KeepResponseHeaders keeps the ORCA load report headers/trailers before sending the response to the client.
+                                          Defaults to false.
+                                        type: boolean
+                                      metricNamesForComputingUtilization:
+                                        description: |-
+                                          Metric names used to compute utilization if application_utilization is not set.
+                                          For map fields in ORCA proto, use the form "<map_field>.<key>", e.g., "named_metrics.foo".
+                                        items:
+                                          type: string
+                                        type: array
+                                      weightExpirationPeriod:
+                                        description: If a given endpoint has not reported
+                                          load metrics in this long, stop using the
+                                          reported weight. Defaults to 3m.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      weightUpdatePeriod:
+                                        description: How often endpoint weights are
+                                          recalculated. Values less than 100ms are
+                                          capped at 100ms. Default 1s.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                    type: object
                                   consistentHash:
                                     description: |-
                                       ConsistentHash defines the configuration when the load balancer type is
@@ -1751,6 +1924,40 @@ spec:
                                         the queryParams field must be set.
                                       rule: 'self.type == ''QueryParams'' ? has(self.queryParams)
                                         : !has(self.queryParams)'
+                                  dynamicModule:
+                                    description: |-
+                                      DynamicModule defines the configuration when the load balancer type is
+                                      set to DynamicModule. The referenced module must be registered in the
+                                      EnvoyProxy resource's dynamicModules allowlist.
+                                    properties:
+                                      config:
+                                        description: |-
+                                          Config is optional configuration for the module's load balancer
+                                          implementation. This is serialized and passed to the module's
+                                          initialization function.
+                                        x-kubernetes-preserve-unknown-fields: true
+                                      lbPolicyName:
+                                        description: |-
+                                          LBPolicyName identifies a specific load balancer implementation within
+                                          the dynamic module. A single shared library can contain multiple LB
+                                          policy implementations. This value is passed to the module's
+                                          initialization function to select the appropriate implementation.
+                                        maxLength: 253
+                                        minLength: 1
+                                        type: string
+                                      name:
+                                        description: |-
+                                          Name references a dynamic module registered in the EnvoyProxy resource's
+                                          dynamicModules list. The referenced module must exist in the registry;
+                                          otherwise, the policy will be rejected.
+                                        maxLength: 253
+                                        minLength: 1
+                                        pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                                        type: string
+                                    required:
+                                    - lbPolicyName
+                                    - name
+                                    type: object
                                   endpointOverride:
                                     description: |-
                                       EndpointOverride defines the configuration for endpoint override.
@@ -1785,7 +1992,7 @@ spec:
                                     description: |-
                                       SlowStart defines the configuration related to the slow start load balancer policy.
                                       If set, during slow start window, traffic sent to the newly added hosts will gradually increase.
-                                      Currently this is only supported for RoundRobin and LeastRequest load balancers
+                                      Supported for RoundRobin, LeastRequest, and BackendUtilization load balancers.
                                     properties:
                                       window:
                                         description: |-
@@ -1805,12 +2012,16 @@ spec:
                                       "ConsistentHash",
                                       "LeastRequest",
                                       "Random",
-                                      "RoundRobin".
+                                      "RoundRobin",
+                                      "BackendUtilization",
+                                      "DynamicModule".
                                     enum:
                                     - ConsistentHash
                                     - LeastRequest
                                     - Random
                                     - RoundRobin
+                                    - BackendUtilization
+                                    - DynamicModule
                                     type: string
                                   zoneAware:
                                     description: ZoneAware defines the configuration
@@ -1852,6 +2063,36 @@ spec:
                                             minimum: 0
                                             type: integer
                                         type: object
+                                      weightedZones:
+                                        description: |-
+                                          WeightedZones configures weight-based traffic distribution across locality zones.
+                                          Traffic is distributed proportionally based on the sum of all zone weights.
+                                        items:
+                                          description: WeightedZoneConfig defines
+                                            the weight for a specific locality zone.
+                                          properties:
+                                            weight:
+                                              description: |-
+                                                Weight defines the weight for this locality.
+                                                Higher values receive more traffic. The actual traffic distribution
+                                                is proportional to this value relative to other localities.
+                                              format: int32
+                                              type: integer
+                                            zone:
+                                              description: |-
+                                                Zone specifies the topology zone this weight applies to.
+                                                The value should match the topology.kubernetes.io/zone label
+                                                of the nodes where endpoints are running.
+                                                Zones not listed in the configuration receive a default weight of 1.
+                                              type: string
+                                          required:
+                                          - weight
+                                          - zone
+                                          type: object
+                                        type: array
+                                        x-kubernetes-list-map-keys:
+                                        - zone
+                                        x-kubernetes-list-type: map
                                     type: object
                                 required:
                                 - type
@@ -1861,21 +2102,48 @@ spec:
                                     consistentHash field needs to be set.
                                   rule: 'self.type == ''ConsistentHash'' ? has(self.consistentHash)
                                     : !has(self.consistentHash)'
+                                - message: If LoadBalancer type is BackendUtilization,
+                                    backendUtilization field needs to be set.
+                                  rule: 'self.type == ''BackendUtilization'' ? has(self.backendUtilization)
+                                    : !has(self.backendUtilization)'
+                                - message: If LoadBalancer type is DynamicModule,
+                                    dynamicModule field needs to be set.
+                                  rule: 'self.type == ''DynamicModule'' ? has(self.dynamicModule)
+                                    : !has(self.dynamicModule)'
                                 - message: Currently SlowStart is only supported for
-                                    RoundRobin and LeastRequest load balancers.
-                                  rule: 'self.type in [''Random'', ''ConsistentHash'']
-                                    ? !has(self.slowStart) : true '
-                                - message: Currently ZoneAware is only supported for
-                                    LeastRequest, Random, and RoundRobin load balancers.
-                                  rule: 'self.type == ''ConsistentHash'' ? !has(self.zoneAware)
-                                    : true '
+                                    RoundRobin, LeastRequest, and BackendUtilization
+                                    load balancers.
+                                  rule: 'self.type in [''Random'', ''ConsistentHash'',
+                                    ''DynamicModule''] ? !has(self.slowStart) : true'
+                                - message: PreferLocal zone-aware routing is not supported
+                                    for ConsistentHash load balancers. Use weightedZones
+                                    instead.
+                                  rule: 'self.type == ''ConsistentHash'' && has(self.zoneAware)
+                                    ? !has(self.zoneAware.preferLocal) : true'
+                                - message: PreferLocal zone-aware routing is not currently
+                                    supported for BackendUtilization load balancers.
+                                    Only WeightedZones can be used with BackendUtilization.
+                                  rule: 'self.type == ''BackendUtilization'' && has(self.zoneAware)
+                                    ? !has(self.zoneAware.preferLocal) : true'
+                                - message: ZoneAware routing is not supported for
+                                    DynamicModule load balancers.
+                                  rule: 'self.type == ''DynamicModule'' ? !has(self.zoneAware)
+                                    : true'
+                                - message: ZoneAware PreferLocal and WeightedZones
+                                    cannot be specified together.
+                                  rule: 'has(self.zoneAware) ? !(has(self.zoneAware.preferLocal)
+                                    && has(self.zoneAware.weightedZones)) : true'
+                                - message: EndpointOverride is not supported for DynamicModule
+                                    load balancers.
+                                  rule: 'self.type == ''DynamicModule'' ? !has(self.endpointOverride)
+                                    : true'
                               proxyProtocol:
                                 description: ProxyProtocol enables the Proxy Protocol
                                   when communicating with the backend.
                                 properties:
                                   version:
                                     description: |-
-                                      Version of ProxyProtol
+                                      Version of ProxyProtocol
                                       Valid ProxyProtocolVersion values are
                                       "V1"
                                       "V2"
@@ -2031,6 +2299,12 @@ spec:
                                         description: RequestTimeout is the time until
                                           which entire response is received from the
                                           upstream.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      streamIdleTimeout:
+                                        description: |2-
+                                           The stream idle timeout defines the amount of time a stream can exist without any upstream or downstream activity.
+                                           If not specified, StreamIdleTimeout is inherited from the listener-level setting, which can be configured via ClientTrafficPolicy.
                                         pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                         type: string
                                     type: object
@@ -2339,6 +2613,45 @@ spec:
                                         minimum: 0
                                         type: integer
                                     type: object
+                                  retryBudget:
+                                    description: |-
+                                      RetryBudget provides settings for retry budget, which limits the number of retries in a given percentage.
+                                      RetryBudget take precedence over maxParallelRetries.
+                                    properties:
+                                      minRetryConcurrency:
+                                        description: |-
+                                          MinRetryConcurrency specifies the minimum retry concurrency allowed for the retry budget.
+                                          For example, a budget of 20% with a minimum retry concurrency of 3
+                                          will allow 5 active retries while there are 25 active requests.
+                                          If there are 2 active requests, there are still 3 active retries
+                                          allowed because of the minimum retry concurrency.
+                                          Defaults to 3.
+                                        format: int32
+                                        type: integer
+                                      percent:
+                                        description: |-
+                                          Percent specifies the limit on concurrent retries as a percentage [0, 100] of
+                                          the sum of active requests and active pending requests.
+                                        properties:
+                                          denominator:
+                                            default: 100
+                                            format: int32
+                                            minimum: 1
+                                            type: integer
+                                          numerator:
+                                            format: int32
+                                            minimum: 0
+                                            type: integer
+                                        required:
+                                        - numerator
+                                        type: object
+                                        x-kubernetes-validations:
+                                        - message: numerator must be less than or
+                                            equal to denominator
+                                          rule: self.numerator <= self.denominator
+                                    required:
+                                    - percent
+                                    type: object
                                 type: object
                               connection:
                                 description: Connection includes backend connection
@@ -2517,8 +2830,9 @@ spec:
                                             type: array
                                           hostname:
                                             description: |-
-                                              Hostname defines the HTTP host that will be requested during health checking.
-                                              Default: HTTPRoute or GRPCRoute hostname.
+                                              Hostname defines the HTTP Host header used for active HTTP health checks.
+                                              Host selection uses this order: this field, the associated Backend endpoint
+                                              hostname if available, then the effective Route hostname.
                                             maxLength: 253
                                             minLength: 1
                                             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
@@ -2535,6 +2849,19 @@ spec:
                                             maxLength: 1024
                                             minLength: 1
                                             type: string
+                                          retriableStatuses:
+                                            description: |-
+                                              RetriableStatuses defines a list of HTTP response statuses considered retriable.
+                                              Responses matching these statuses count towards the unhealthy threshold but
+                                              do not result in the host being considered immediately unhealthy.
+                                              The expected statuses take precedence for any range overlaps with this field.
+                                            items:
+                                              description: HTTPStatus defines the
+                                                http status code.
+                                              maximum: 599
+                                              minimum: 100
+                                              type: integer
+                                            type: array
                                         required:
                                         - path
                                         type: object
@@ -2550,6 +2877,23 @@ spec:
                                           active health checks.
                                         pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                         type: string
+                                      overrides:
+                                        description: |-
+                                          Overrides defines the configuration of the overriding health check settings for all endpoints
+                                          in the backend cluster. This allows customization of port and other settings that may differ
+                                          from the main service configuration.
+                                        properties:
+                                          port:
+                                            description: |-
+                                              Port overrides the health check port.
+                                              If not set, the endpoint's serving port is used for health checks.
+                                              This is useful when health checks are served on a different port than
+                                              the main service port (e.g., port 443 for service, port 9090 for health checks).
+                                            format: int32
+                                            maximum: 65535
+                                            minimum: 1
+                                            type: integer
+                                        type: object
                                       tcp:
                                         description: |-
                                           TCP defines the configuration of tcp health checker.
@@ -2649,9 +2993,11 @@ spec:
                                         type: string
                                       unhealthyThreshold:
                                         default: 3
-                                        description: UnhealthyThreshold defines the
-                                          number of unhealthy health checks required
-                                          before a backend host is marked unhealthy.
+                                        description: |-
+                                          UnhealthyThreshold defines the number of unhealthy health checks required before a backend host is marked unhealthy.
+                                          Without RetriableStatuses configured, any health check failure results in the host being immediately
+                                          considered unhealthy. When RetriableStatuses is set, health checks returning those statuses are retried
+                                          up to this threshold before the host is marked unhealthy.
                                         format: int32
                                         minimum: 1
                                         type: integer
@@ -2684,6 +3030,12 @@ spec:
                                   passive:
                                     description: Passive passive check configuration
                                     properties:
+                                      alwaysEjectOneEndpoint:
+                                        default: false
+                                        description: |-
+                                          AlwaysEjectOneEndpoint defines whether at least one host should be ejected,
+                                          regardless of MaxEjectionPercent.
+                                        type: boolean
                                       baseEjectionTime:
                                         default: 30s
                                         description: BaseEjectionTime defines the
@@ -2732,6 +3084,8 @@ spec:
                                           percentage of hosts in a cluster that can
                                           be ejected.
                                         format: int32
+                                        maximum: 100
+                                        minimum: 0
                                         type: integer
                                       splitExternalLocalOriginErrors:
                                         default: false
@@ -2745,6 +3099,41 @@ spec:
                                 description: HTTP2 provides HTTP/2 configuration for
                                   backend connections.
                                 properties:
+                                  connectionKeepalive:
+                                    description: ConnectionKeepalive configures HTTP/2
+                                      connection keepalive using PING frames.
+                                    properties:
+                                      idleInterval:
+                                        description: IdleInterval specifies how long
+                                          a connection must be idle before a PING
+                                          is sent.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      interval:
+                                        description: Interval specifies how often
+                                          to send HTTP/2 PING frames to keep the connection
+                                          alive.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      intervalJitter:
+                                        description: |-
+                                          IntervalJitter specifies a random jitter percentage added to each interval.
+                                          Defaults to 15% if not specified.
+                                        format: int32
+                                        maximum: 100
+                                        minimum: 0
+                                        type: integer
+                                      timeout:
+                                        description: Timeout specifies how long to
+                                          wait for a PING response before considering
+                                          the connection dead.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                    type: object
+                                    x-kubernetes-validations:
+                                    - message: timeout must be less than interval
+                                      rule: '!has(self.timeout) || !has(self.interval)
+                                        || duration(self.timeout) < duration(self.interval)'
                                   initialConnectionWindowSize:
                                     allOf:
                                     - pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
@@ -2788,6 +3177,57 @@ spec:
                                   LoadBalancer policy to apply when routing traffic from the gateway to
                                   the backend endpoints. Defaults to `LeastRequest`.
                                 properties:
+                                  backendUtilization:
+                                    description: |-
+                                      BackendUtilization defines the configuration when the load balancer type is
+                                      set to BackendUtilization.
+                                    properties:
+                                      blackoutPeriod:
+                                        description: |-
+                                          A given endpoint must report load metrics continuously for at least this long before the endpoint weight will be used.
+                                          Default is 10s.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      errorUtilizationPenaltyPercent:
+                                        description: |-
+                                          ErrorUtilizationPenaltyPercent adjusts endpoint weights based on the error rate (eps/qps).
+                                          This is expressed as a percentage-based integer where 100 represents 1.0, 150 represents 1.5, etc.
+
+                                          For example:
+                                          - 100 => 1.0x
+                                          - 120 => 1.2x
+                                          - 200 => 2.0x
+
+                                          Must be non-negative.
+                                        format: int32
+                                        minimum: 0
+                                        type: integer
+                                      keepResponseHeaders:
+                                        default: false
+                                        description: |-
+                                          KeepResponseHeaders keeps the ORCA load report headers/trailers before sending the response to the client.
+                                          Defaults to false.
+                                        type: boolean
+                                      metricNamesForComputingUtilization:
+                                        description: |-
+                                          Metric names used to compute utilization if application_utilization is not set.
+                                          For map fields in ORCA proto, use the form "<map_field>.<key>", e.g., "named_metrics.foo".
+                                        items:
+                                          type: string
+                                        type: array
+                                      weightExpirationPeriod:
+                                        description: If a given endpoint has not reported
+                                          load metrics in this long, stop using the
+                                          reported weight. Defaults to 3m.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      weightUpdatePeriod:
+                                        description: How often endpoint weights are
+                                          recalculated. Values less than 100ms are
+                                          capped at 100ms. Default 1s.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                    type: object
                                   consistentHash:
                                     description: |-
                                       ConsistentHash defines the configuration when the load balancer type is
@@ -2910,6 +3350,40 @@ spec:
                                         the queryParams field must be set.
                                       rule: 'self.type == ''QueryParams'' ? has(self.queryParams)
                                         : !has(self.queryParams)'
+                                  dynamicModule:
+                                    description: |-
+                                      DynamicModule defines the configuration when the load balancer type is
+                                      set to DynamicModule. The referenced module must be registered in the
+                                      EnvoyProxy resource's dynamicModules allowlist.
+                                    properties:
+                                      config:
+                                        description: |-
+                                          Config is optional configuration for the module's load balancer
+                                          implementation. This is serialized and passed to the module's
+                                          initialization function.
+                                        x-kubernetes-preserve-unknown-fields: true
+                                      lbPolicyName:
+                                        description: |-
+                                          LBPolicyName identifies a specific load balancer implementation within
+                                          the dynamic module. A single shared library can contain multiple LB
+                                          policy implementations. This value is passed to the module's
+                                          initialization function to select the appropriate implementation.
+                                        maxLength: 253
+                                        minLength: 1
+                                        type: string
+                                      name:
+                                        description: |-
+                                          Name references a dynamic module registered in the EnvoyProxy resource's
+                                          dynamicModules list. The referenced module must exist in the registry;
+                                          otherwise, the policy will be rejected.
+                                        maxLength: 253
+                                        minLength: 1
+                                        pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                                        type: string
+                                    required:
+                                    - lbPolicyName
+                                    - name
+                                    type: object
                                   endpointOverride:
                                     description: |-
                                       EndpointOverride defines the configuration for endpoint override.
@@ -2944,7 +3418,7 @@ spec:
                                     description: |-
                                       SlowStart defines the configuration related to the slow start load balancer policy.
                                       If set, during slow start window, traffic sent to the newly added hosts will gradually increase.
-                                      Currently this is only supported for RoundRobin and LeastRequest load balancers
+                                      Supported for RoundRobin, LeastRequest, and BackendUtilization load balancers.
                                     properties:
                                       window:
                                         description: |-
@@ -2964,12 +3438,16 @@ spec:
                                       "ConsistentHash",
                                       "LeastRequest",
                                       "Random",
-                                      "RoundRobin".
+                                      "RoundRobin",
+                                      "BackendUtilization",
+                                      "DynamicModule".
                                     enum:
                                     - ConsistentHash
                                     - LeastRequest
                                     - Random
                                     - RoundRobin
+                                    - BackendUtilization
+                                    - DynamicModule
                                     type: string
                                   zoneAware:
                                     description: ZoneAware defines the configuration
@@ -3011,6 +3489,36 @@ spec:
                                             minimum: 0
                                             type: integer
                                         type: object
+                                      weightedZones:
+                                        description: |-
+                                          WeightedZones configures weight-based traffic distribution across locality zones.
+                                          Traffic is distributed proportionally based on the sum of all zone weights.
+                                        items:
+                                          description: WeightedZoneConfig defines
+                                            the weight for a specific locality zone.
+                                          properties:
+                                            weight:
+                                              description: |-
+                                                Weight defines the weight for this locality.
+                                                Higher values receive more traffic. The actual traffic distribution
+                                                is proportional to this value relative to other localities.
+                                              format: int32
+                                              type: integer
+                                            zone:
+                                              description: |-
+                                                Zone specifies the topology zone this weight applies to.
+                                                The value should match the topology.kubernetes.io/zone label
+                                                of the nodes where endpoints are running.
+                                                Zones not listed in the configuration receive a default weight of 1.
+                                              type: string
+                                          required:
+                                          - weight
+                                          - zone
+                                          type: object
+                                        type: array
+                                        x-kubernetes-list-map-keys:
+                                        - zone
+                                        x-kubernetes-list-type: map
                                     type: object
                                 required:
                                 - type
@@ -3020,21 +3528,48 @@ spec:
                                     consistentHash field needs to be set.
                                   rule: 'self.type == ''ConsistentHash'' ? has(self.consistentHash)
                                     : !has(self.consistentHash)'
+                                - message: If LoadBalancer type is BackendUtilization,
+                                    backendUtilization field needs to be set.
+                                  rule: 'self.type == ''BackendUtilization'' ? has(self.backendUtilization)
+                                    : !has(self.backendUtilization)'
+                                - message: If LoadBalancer type is DynamicModule,
+                                    dynamicModule field needs to be set.
+                                  rule: 'self.type == ''DynamicModule'' ? has(self.dynamicModule)
+                                    : !has(self.dynamicModule)'
                                 - message: Currently SlowStart is only supported for
-                                    RoundRobin and LeastRequest load balancers.
-                                  rule: 'self.type in [''Random'', ''ConsistentHash'']
-                                    ? !has(self.slowStart) : true '
-                                - message: Currently ZoneAware is only supported for
-                                    LeastRequest, Random, and RoundRobin load balancers.
-                                  rule: 'self.type == ''ConsistentHash'' ? !has(self.zoneAware)
-                                    : true '
+                                    RoundRobin, LeastRequest, and BackendUtilization
+                                    load balancers.
+                                  rule: 'self.type in [''Random'', ''ConsistentHash'',
+                                    ''DynamicModule''] ? !has(self.slowStart) : true'
+                                - message: PreferLocal zone-aware routing is not supported
+                                    for ConsistentHash load balancers. Use weightedZones
+                                    instead.
+                                  rule: 'self.type == ''ConsistentHash'' && has(self.zoneAware)
+                                    ? !has(self.zoneAware.preferLocal) : true'
+                                - message: PreferLocal zone-aware routing is not currently
+                                    supported for BackendUtilization load balancers.
+                                    Only WeightedZones can be used with BackendUtilization.
+                                  rule: 'self.type == ''BackendUtilization'' && has(self.zoneAware)
+                                    ? !has(self.zoneAware.preferLocal) : true'
+                                - message: ZoneAware routing is not supported for
+                                    DynamicModule load balancers.
+                                  rule: 'self.type == ''DynamicModule'' ? !has(self.zoneAware)
+                                    : true'
+                                - message: ZoneAware PreferLocal and WeightedZones
+                                    cannot be specified together.
+                                  rule: 'has(self.zoneAware) ? !(has(self.zoneAware.preferLocal)
+                                    && has(self.zoneAware.weightedZones)) : true'
+                                - message: EndpointOverride is not supported for DynamicModule
+                                    load balancers.
+                                  rule: 'self.type == ''DynamicModule'' ? !has(self.endpointOverride)
+                                    : true'
                               proxyProtocol:
                                 description: ProxyProtocol enables the Proxy Protocol
                                   when communicating with the backend.
                                 properties:
                                   version:
                                     description: |-
-                                      Version of ProxyProtol
+                                      Version of ProxyProtocol
                                       Valid ProxyProtocolVersion values are
                                       "V1"
                                       "V2"
@@ -3192,6 +3727,12 @@ spec:
                                           upstream.
                                         pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                         type: string
+                                      streamIdleTimeout:
+                                        description: |2-
+                                           The stream idle timeout defines the amount of time a stream can exist without any upstream or downstream activity.
+                                           If not specified, StreamIdleTimeout is inherited from the listener-level setting, which can be configured via ClientTrafficPolicy.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
                                     type: object
                                   tcp:
                                     description: Timeout settings for TCP.
@@ -3232,6 +3773,15 @@ spec:
                               For example, if the original request path is "/hello", and the path specified here is "/auth",
                               then the path of the authorization request will be "/auth/hello". If the path is not specified,
                               the path of the authorization request will be "/hello".
+                              Only one of Path or PathOverride can be set.
+                            type: string
+                          pathOverride:
+                            description: |-
+                              PathOverride replaces the original request path in the authorization request.
+                              If set, the path will be overridden to this value during authorization.
+                              For example, if the original request path is "/hello", and PathOverride is set to "/auth",
+                              then the path of the authorization request will be "/auth".
+                              Only one of Path or PathOverride can be set.
                             type: string
                         type: object
                         x-kubernetes-validations:
@@ -3248,6 +3798,30 @@ spec:
                           rule: 'has(self.backendRefs) ? (self.backendRefs.all(f,
                             f.group == "" || f.group == ''multicluster.x-k8s.io''
                             || f.group == ''gateway.envoyproxy.io'')) : true'
+                        - message: only one of path or pathOverride can be specified
+                          rule: '!(has(self.path) && has(self.pathOverride))'
+                      includeRouteMetadata:
+                        description: |-
+                          IncludeRouteMetadata sends Envoy Gateway's built-in route metadata to the
+                          external authorization service as context.
+
+                          This includes Envoy Gateway's built-in metadata for the selected route in
+                          the "envoy-gateway" metadata namespace.
+
+                          The metadata is exposed under the "resources" field as a list of route
+                          resource objects. For example:
+
+                          envoy-gateway:
+                            resources:
+                            - kind: HTTPRoute
+                              name: backend
+                              namespace: default
+                              annotations:
+                                foo: bar
+
+                          The resource object may include fields such as kind, namespace, name,
+                          sectionName, and supported route annotations.
+                        type: boolean
                       recomputeRoute:
                         description: |-
                           RecomputeRoute clears the route cache and recalculates the routing decision.
@@ -3255,6 +3829,51 @@ spec:
                           route matching decisions. If the recomputation selects a new route, features targeting
                           the new matched route will be applied.
                         type: boolean
+                      statusOnError:
+                        description: |-
+                          Sets the HTTP status that is returned when the authorization service returns an error
+                          or cannot be reached. Defaults to 403 Forbidden.
+                          Only 4xx and 5xx status codes are supported.
+                        enum:
+                        - 400
+                        - 401
+                        - 402
+                        - 403
+                        - 404
+                        - 405
+                        - 406
+                        - 407
+                        - 408
+                        - 409
+                        - 410
+                        - 411
+                        - 412
+                        - 413
+                        - 414
+                        - 415
+                        - 416
+                        - 417
+                        - 421
+                        - 422
+                        - 423
+                        - 424
+                        - 426
+                        - 428
+                        - 429
+                        - 431
+                        - 500
+                        - 501
+                        - 502
+                        - 503
+                        - 504
+                        - 505
+                        - 506
+                        - 507
+                        - 508
+                        - 510
+                        - 511
+                        format: int32
+                        type: integer
                       timeout:
                         description: |-
                           Timeout defines the timeout for requests to the external authorization service.
@@ -3634,6 +4253,45 @@ spec:
                                             minimum: 0
                                             type: integer
                                         type: object
+                                      retryBudget:
+                                        description: |-
+                                          RetryBudget provides settings for retry budget, which limits the number of retries in a given percentage.
+                                          RetryBudget take precedence over maxParallelRetries.
+                                        properties:
+                                          minRetryConcurrency:
+                                            description: |-
+                                              MinRetryConcurrency specifies the minimum retry concurrency allowed for the retry budget.
+                                              For example, a budget of 20% with a minimum retry concurrency of 3
+                                              will allow 5 active retries while there are 25 active requests.
+                                              If there are 2 active requests, there are still 3 active retries
+                                              allowed because of the minimum retry concurrency.
+                                              Defaults to 3.
+                                            format: int32
+                                            type: integer
+                                          percent:
+                                            description: |-
+                                              Percent specifies the limit on concurrent retries as a percentage [0, 100] of
+                                              the sum of active requests and active pending requests.
+                                            properties:
+                                              denominator:
+                                                default: 100
+                                                format: int32
+                                                minimum: 1
+                                                type: integer
+                                              numerator:
+                                                format: int32
+                                                minimum: 0
+                                                type: integer
+                                            required:
+                                            - numerator
+                                            type: object
+                                            x-kubernetes-validations:
+                                            - message: numerator must be less than
+                                                or equal to denominator
+                                              rule: self.numerator <= self.denominator
+                                        required:
+                                        - percent
+                                        type: object
                                     type: object
                                   connection:
                                     description: Connection includes backend connection
@@ -3813,8 +4471,9 @@ spec:
                                                 type: array
                                               hostname:
                                                 description: |-
-                                                  Hostname defines the HTTP host that will be requested during health checking.
-                                                  Default: HTTPRoute or GRPCRoute hostname.
+                                                  Hostname defines the HTTP Host header used for active HTTP health checks.
+                                                  Host selection uses this order: this field, the associated Backend endpoint
+                                                  hostname if available, then the effective Route hostname.
                                                 maxLength: 253
                                                 minLength: 1
                                                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
@@ -3831,6 +4490,19 @@ spec:
                                                 maxLength: 1024
                                                 minLength: 1
                                                 type: string
+                                              retriableStatuses:
+                                                description: |-
+                                                  RetriableStatuses defines a list of HTTP response statuses considered retriable.
+                                                  Responses matching these statuses count towards the unhealthy threshold but
+                                                  do not result in the host being considered immediately unhealthy.
+                                                  The expected statuses take precedence for any range overlaps with this field.
+                                                items:
+                                                  description: HTTPStatus defines
+                                                    the http status code.
+                                                  maximum: 599
+                                                  minimum: 100
+                                                  type: integer
+                                                type: array
                                             required:
                                             - path
                                             type: object
@@ -3846,6 +4518,23 @@ spec:
                                               between active health checks.
                                             pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                             type: string
+                                          overrides:
+                                            description: |-
+                                              Overrides defines the configuration of the overriding health check settings for all endpoints
+                                              in the backend cluster. This allows customization of port and other settings that may differ
+                                              from the main service configuration.
+                                            properties:
+                                              port:
+                                                description: |-
+                                                  Port overrides the health check port.
+                                                  If not set, the endpoint's serving port is used for health checks.
+                                                  This is useful when health checks are served on a different port than
+                                                  the main service port (e.g., port 443 for service, port 9090 for health checks).
+                                                format: int32
+                                                maximum: 65535
+                                                minimum: 1
+                                                type: integer
+                                            type: object
                                           tcp:
                                             description: |-
                                               TCP defines the configuration of tcp health checker.
@@ -3945,10 +4634,11 @@ spec:
                                             type: string
                                           unhealthyThreshold:
                                             default: 3
-                                            description: UnhealthyThreshold defines
-                                              the number of unhealthy health checks
-                                              required before a backend host is marked
-                                              unhealthy.
+                                            description: |-
+                                              UnhealthyThreshold defines the number of unhealthy health checks required before a backend host is marked unhealthy.
+                                              Without RetriableStatuses configured, any health check failure results in the host being immediately
+                                              considered unhealthy. When RetriableStatuses is set, health checks returning those statuses are retried
+                                              up to this threshold before the host is marked unhealthy.
                                             format: int32
                                             minimum: 1
                                             type: integer
@@ -3981,6 +4671,12 @@ spec:
                                       passive:
                                         description: Passive passive check configuration
                                         properties:
+                                          alwaysEjectOneEndpoint:
+                                            default: false
+                                            description: |-
+                                              AlwaysEjectOneEndpoint defines whether at least one host should be ejected,
+                                              regardless of MaxEjectionPercent.
+                                            type: boolean
                                           baseEjectionTime:
                                             default: 30s
                                             description: BaseEjectionTime defines
@@ -4029,6 +4725,8 @@ spec:
                                               maximum percentage of hosts in a cluster
                                               that can be ejected.
                                             format: int32
+                                            maximum: 100
+                                            minimum: 0
                                             type: integer
                                           splitExternalLocalOriginErrors:
                                             default: false
@@ -4042,6 +4740,41 @@ spec:
                                     description: HTTP2 provides HTTP/2 configuration
                                       for backend connections.
                                     properties:
+                                      connectionKeepalive:
+                                        description: ConnectionKeepalive configures
+                                          HTTP/2 connection keepalive using PING frames.
+                                        properties:
+                                          idleInterval:
+                                            description: IdleInterval specifies how
+                                              long a connection must be idle before
+                                              a PING is sent.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
+                                          interval:
+                                            description: Interval specifies how often
+                                              to send HTTP/2 PING frames to keep the
+                                              connection alive.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
+                                          intervalJitter:
+                                            description: |-
+                                              IntervalJitter specifies a random jitter percentage added to each interval.
+                                              Defaults to 15% if not specified.
+                                            format: int32
+                                            maximum: 100
+                                            minimum: 0
+                                            type: integer
+                                          timeout:
+                                            description: Timeout specifies how long
+                                              to wait for a PING response before considering
+                                              the connection dead.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
+                                        type: object
+                                        x-kubernetes-validations:
+                                        - message: timeout must be less than interval
+                                          rule: '!has(self.timeout) || !has(self.interval)
+                                            || duration(self.timeout) < duration(self.interval)'
                                       initialConnectionWindowSize:
                                         allOf:
                                         - pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
@@ -4085,6 +4818,58 @@ spec:
                                       LoadBalancer policy to apply when routing traffic from the gateway to
                                       the backend endpoints. Defaults to `LeastRequest`.
                                     properties:
+                                      backendUtilization:
+                                        description: |-
+                                          BackendUtilization defines the configuration when the load balancer type is
+                                          set to BackendUtilization.
+                                        properties:
+                                          blackoutPeriod:
+                                            description: |-
+                                              A given endpoint must report load metrics continuously for at least this long before the endpoint weight will be used.
+                                              Default is 10s.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
+                                          errorUtilizationPenaltyPercent:
+                                            description: |-
+                                              ErrorUtilizationPenaltyPercent adjusts endpoint weights based on the error rate (eps/qps).
+                                              This is expressed as a percentage-based integer where 100 represents 1.0, 150 represents 1.5, etc.
+
+                                              For example:
+                                              - 100 => 1.0x
+                                              - 120 => 1.2x
+                                              - 200 => 2.0x
+
+                                              Must be non-negative.
+                                            format: int32
+                                            minimum: 0
+                                            type: integer
+                                          keepResponseHeaders:
+                                            default: false
+                                            description: |-
+                                              KeepResponseHeaders keeps the ORCA load report headers/trailers before sending the response to the client.
+                                              Defaults to false.
+                                            type: boolean
+                                          metricNamesForComputingUtilization:
+                                            description: |-
+                                              Metric names used to compute utilization if application_utilization is not set.
+                                              For map fields in ORCA proto, use the form "<map_field>.<key>", e.g., "named_metrics.foo".
+                                            items:
+                                              type: string
+                                            type: array
+                                          weightExpirationPeriod:
+                                            description: If a given endpoint has not
+                                              reported load metrics in this long,
+                                              stop using the reported weight. Defaults
+                                              to 3m.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
+                                          weightUpdatePeriod:
+                                            description: How often endpoint weights
+                                              are recalculated. Values less than 100ms
+                                              are capped at 100ms. Default 1s.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
+                                        type: object
                                       consistentHash:
                                         description: |-
                                           ConsistentHash defines the configuration when the load balancer type is
@@ -4209,6 +4994,40 @@ spec:
                                             the queryParams field must be set.
                                           rule: 'self.type == ''QueryParams'' ? has(self.queryParams)
                                             : !has(self.queryParams)'
+                                      dynamicModule:
+                                        description: |-
+                                          DynamicModule defines the configuration when the load balancer type is
+                                          set to DynamicModule. The referenced module must be registered in the
+                                          EnvoyProxy resource's dynamicModules allowlist.
+                                        properties:
+                                          config:
+                                            description: |-
+                                              Config is optional configuration for the module's load balancer
+                                              implementation. This is serialized and passed to the module's
+                                              initialization function.
+                                            x-kubernetes-preserve-unknown-fields: true
+                                          lbPolicyName:
+                                            description: |-
+                                              LBPolicyName identifies a specific load balancer implementation within
+                                              the dynamic module. A single shared library can contain multiple LB
+                                              policy implementations. This value is passed to the module's
+                                              initialization function to select the appropriate implementation.
+                                            maxLength: 253
+                                            minLength: 1
+                                            type: string
+                                          name:
+                                            description: |-
+                                              Name references a dynamic module registered in the EnvoyProxy resource's
+                                              dynamicModules list. The referenced module must exist in the registry;
+                                              otherwise, the policy will be rejected.
+                                            maxLength: 253
+                                            minLength: 1
+                                            pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                                            type: string
+                                        required:
+                                        - lbPolicyName
+                                        - name
+                                        type: object
                                       endpointOverride:
                                         description: |-
                                           EndpointOverride defines the configuration for endpoint override.
@@ -4243,7 +5062,7 @@ spec:
                                         description: |-
                                           SlowStart defines the configuration related to the slow start load balancer policy.
                                           If set, during slow start window, traffic sent to the newly added hosts will gradually increase.
-                                          Currently this is only supported for RoundRobin and LeastRequest load balancers
+                                          Supported for RoundRobin, LeastRequest, and BackendUtilization load balancers.
                                         properties:
                                           window:
                                             description: |-
@@ -4263,12 +5082,16 @@ spec:
                                           "ConsistentHash",
                                           "LeastRequest",
                                           "Random",
-                                          "RoundRobin".
+                                          "RoundRobin",
+                                          "BackendUtilization",
+                                          "DynamicModule".
                                         enum:
                                         - ConsistentHash
                                         - LeastRequest
                                         - Random
                                         - RoundRobin
+                                        - BackendUtilization
+                                        - DynamicModule
                                         type: string
                                       zoneAware:
                                         description: ZoneAware defines the configuration
@@ -4310,6 +5133,37 @@ spec:
                                                 minimum: 0
                                                 type: integer
                                             type: object
+                                          weightedZones:
+                                            description: |-
+                                              WeightedZones configures weight-based traffic distribution across locality zones.
+                                              Traffic is distributed proportionally based on the sum of all zone weights.
+                                            items:
+                                              description: WeightedZoneConfig defines
+                                                the weight for a specific locality
+                                                zone.
+                                              properties:
+                                                weight:
+                                                  description: |-
+                                                    Weight defines the weight for this locality.
+                                                    Higher values receive more traffic. The actual traffic distribution
+                                                    is proportional to this value relative to other localities.
+                                                  format: int32
+                                                  type: integer
+                                                zone:
+                                                  description: |-
+                                                    Zone specifies the topology zone this weight applies to.
+                                                    The value should match the topology.kubernetes.io/zone label
+                                                    of the nodes where endpoints are running.
+                                                    Zones not listed in the configuration receive a default weight of 1.
+                                                  type: string
+                                              required:
+                                              - weight
+                                              - zone
+                                              type: object
+                                            type: array
+                                            x-kubernetes-list-map-keys:
+                                            - zone
+                                            x-kubernetes-list-type: map
                                         type: object
                                     required:
                                     - type
@@ -4319,22 +5173,51 @@ spec:
                                         consistentHash field needs to be set.
                                       rule: 'self.type == ''ConsistentHash'' ? has(self.consistentHash)
                                         : !has(self.consistentHash)'
+                                    - message: If LoadBalancer type is BackendUtilization,
+                                        backendUtilization field needs to be set.
+                                      rule: 'self.type == ''BackendUtilization'' ?
+                                        has(self.backendUtilization) : !has(self.backendUtilization)'
+                                    - message: If LoadBalancer type is DynamicModule,
+                                        dynamicModule field needs to be set.
+                                      rule: 'self.type == ''DynamicModule'' ? has(self.dynamicModule)
+                                        : !has(self.dynamicModule)'
                                     - message: Currently SlowStart is only supported
-                                        for RoundRobin and LeastRequest load balancers.
-                                      rule: 'self.type in [''Random'', ''ConsistentHash'']
-                                        ? !has(self.slowStart) : true '
-                                    - message: Currently ZoneAware is only supported
-                                        for LeastRequest, Random, and RoundRobin load
-                                        balancers.
-                                      rule: 'self.type == ''ConsistentHash'' ? !has(self.zoneAware)
-                                        : true '
+                                        for RoundRobin, LeastRequest, and BackendUtilization
+                                        load balancers.
+                                      rule: 'self.type in [''Random'', ''ConsistentHash'',
+                                        ''DynamicModule''] ? !has(self.slowStart)
+                                        : true'
+                                    - message: PreferLocal zone-aware routing is not
+                                        supported for ConsistentHash load balancers.
+                                        Use weightedZones instead.
+                                      rule: 'self.type == ''ConsistentHash'' && has(self.zoneAware)
+                                        ? !has(self.zoneAware.preferLocal) : true'
+                                    - message: PreferLocal zone-aware routing is not
+                                        currently supported for BackendUtilization
+                                        load balancers. Only WeightedZones can be
+                                        used with BackendUtilization.
+                                      rule: 'self.type == ''BackendUtilization'' &&
+                                        has(self.zoneAware) ? !has(self.zoneAware.preferLocal)
+                                        : true'
+                                    - message: ZoneAware routing is not supported
+                                        for DynamicModule load balancers.
+                                      rule: 'self.type == ''DynamicModule'' ? !has(self.zoneAware)
+                                        : true'
+                                    - message: ZoneAware PreferLocal and WeightedZones
+                                        cannot be specified together.
+                                      rule: 'has(self.zoneAware) ? !(has(self.zoneAware.preferLocal)
+                                        && has(self.zoneAware.weightedZones)) : true'
+                                    - message: EndpointOverride is not supported for
+                                        DynamicModule load balancers.
+                                      rule: 'self.type == ''DynamicModule'' ? !has(self.endpointOverride)
+                                        : true'
                                   proxyProtocol:
                                     description: ProxyProtocol enables the Proxy Protocol
                                       when communicating with the backend.
                                     properties:
                                       version:
                                         description: |-
-                                          Version of ProxyProtol
+                                          Version of ProxyProtocol
                                           Valid ProxyProtocolVersion values are
                                           "V1"
                                           "V2"
@@ -4491,6 +5374,12 @@ spec:
                                             description: RequestTimeout is the time
                                               until which entire response is received
                                               from the upstream.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
+                                          streamIdleTimeout:
+                                            description: |2-
+                                               The stream idle timeout defines the amount of time a stream can exist without any upstream or downstream activity.
+                                               If not specified, StreamIdleTimeout is inherited from the listener-level setting, which can be configured via ClientTrafficPolicy.
                                             pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                             type: string
                                         type: object
@@ -4853,6 +5742,9 @@ spec:
                                 "?api_key=mysecretkey".
 
                                 Either one of Header or QueryParam can be specified to inject the API key.
+
+                                Note: Embedding credentials in URLs (including query parameters) is generally not recommended because URLs can be exposed in logs
+                                and intermediary systems; prefer header-based injection when possible.
                               minLength: 1
                               type: string
                             secretRef:
@@ -5014,7 +5906,14 @@ spec:
                       - RegularExpression
                       type: string
                     value:
-                      description: Value is the value of HTTP Header to be matched.
+                      description: |-
+                        Value is the value of HTTP Header to be matched.
+                        <gateway:experimental:description>
+                        Must consist of printable US-ASCII characters, optionally separated
+                        by single tabs or spaces. See: https://tools.ietf.org/html/rfc7230#section-3.2
+                        </gateway:experimental:description>
+
+                        <gateway:experimental:validation:Pattern=`^[!-~]+([\t ]?[!-~]+)*$`>
                       maxLength: 4096
                       minLength: 1
                       type: string
@@ -5841,6 +6740,45 @@ spec:
                                         minimum: 0
                                         type: integer
                                     type: object
+                                  retryBudget:
+                                    description: |-
+                                      RetryBudget provides settings for retry budget, which limits the number of retries in a given percentage.
+                                      RetryBudget take precedence over maxParallelRetries.
+                                    properties:
+                                      minRetryConcurrency:
+                                        description: |-
+                                          MinRetryConcurrency specifies the minimum retry concurrency allowed for the retry budget.
+                                          For example, a budget of 20% with a minimum retry concurrency of 3
+                                          will allow 5 active retries while there are 25 active requests.
+                                          If there are 2 active requests, there are still 3 active retries
+                                          allowed because of the minimum retry concurrency.
+                                          Defaults to 3.
+                                        format: int32
+                                        type: integer
+                                      percent:
+                                        description: |-
+                                          Percent specifies the limit on concurrent retries as a percentage [0, 100] of
+                                          the sum of active requests and active pending requests.
+                                        properties:
+                                          denominator:
+                                            default: 100
+                                            format: int32
+                                            minimum: 1
+                                            type: integer
+                                          numerator:
+                                            format: int32
+                                            minimum: 0
+                                            type: integer
+                                        required:
+                                        - numerator
+                                        type: object
+                                        x-kubernetes-validations:
+                                        - message: numerator must be less than or
+                                            equal to denominator
+                                          rule: self.numerator <= self.denominator
+                                    required:
+                                    - percent
+                                    type: object
                                 type: object
                               connection:
                                 description: Connection includes backend connection
@@ -6019,8 +6957,9 @@ spec:
                                             type: array
                                           hostname:
                                             description: |-
-                                              Hostname defines the HTTP host that will be requested during health checking.
-                                              Default: HTTPRoute or GRPCRoute hostname.
+                                              Hostname defines the HTTP Host header used for active HTTP health checks.
+                                              Host selection uses this order: this field, the associated Backend endpoint
+                                              hostname if available, then the effective Route hostname.
                                             maxLength: 253
                                             minLength: 1
                                             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
@@ -6037,6 +6976,19 @@ spec:
                                             maxLength: 1024
                                             minLength: 1
                                             type: string
+                                          retriableStatuses:
+                                            description: |-
+                                              RetriableStatuses defines a list of HTTP response statuses considered retriable.
+                                              Responses matching these statuses count towards the unhealthy threshold but
+                                              do not result in the host being considered immediately unhealthy.
+                                              The expected statuses take precedence for any range overlaps with this field.
+                                            items:
+                                              description: HTTPStatus defines the
+                                                http status code.
+                                              maximum: 599
+                                              minimum: 100
+                                              type: integer
+                                            type: array
                                         required:
                                         - path
                                         type: object
@@ -6052,6 +7004,23 @@ spec:
                                           active health checks.
                                         pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                         type: string
+                                      overrides:
+                                        description: |-
+                                          Overrides defines the configuration of the overriding health check settings for all endpoints
+                                          in the backend cluster. This allows customization of port and other settings that may differ
+                                          from the main service configuration.
+                                        properties:
+                                          port:
+                                            description: |-
+                                              Port overrides the health check port.
+                                              If not set, the endpoint's serving port is used for health checks.
+                                              This is useful when health checks are served on a different port than
+                                              the main service port (e.g., port 443 for service, port 9090 for health checks).
+                                            format: int32
+                                            maximum: 65535
+                                            minimum: 1
+                                            type: integer
+                                        type: object
                                       tcp:
                                         description: |-
                                           TCP defines the configuration of tcp health checker.
@@ -6151,9 +7120,11 @@ spec:
                                         type: string
                                       unhealthyThreshold:
                                         default: 3
-                                        description: UnhealthyThreshold defines the
-                                          number of unhealthy health checks required
-                                          before a backend host is marked unhealthy.
+                                        description: |-
+                                          UnhealthyThreshold defines the number of unhealthy health checks required before a backend host is marked unhealthy.
+                                          Without RetriableStatuses configured, any health check failure results in the host being immediately
+                                          considered unhealthy. When RetriableStatuses is set, health checks returning those statuses are retried
+                                          up to this threshold before the host is marked unhealthy.
                                         format: int32
                                         minimum: 1
                                         type: integer
@@ -6186,6 +7157,12 @@ spec:
                                   passive:
                                     description: Passive passive check configuration
                                     properties:
+                                      alwaysEjectOneEndpoint:
+                                        default: false
+                                        description: |-
+                                          AlwaysEjectOneEndpoint defines whether at least one host should be ejected,
+                                          regardless of MaxEjectionPercent.
+                                        type: boolean
                                       baseEjectionTime:
                                         default: 30s
                                         description: BaseEjectionTime defines the
@@ -6234,6 +7211,8 @@ spec:
                                           percentage of hosts in a cluster that can
                                           be ejected.
                                         format: int32
+                                        maximum: 100
+                                        minimum: 0
                                         type: integer
                                       splitExternalLocalOriginErrors:
                                         default: false
@@ -6247,6 +7226,41 @@ spec:
                                 description: HTTP2 provides HTTP/2 configuration for
                                   backend connections.
                                 properties:
+                                  connectionKeepalive:
+                                    description: ConnectionKeepalive configures HTTP/2
+                                      connection keepalive using PING frames.
+                                    properties:
+                                      idleInterval:
+                                        description: IdleInterval specifies how long
+                                          a connection must be idle before a PING
+                                          is sent.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      interval:
+                                        description: Interval specifies how often
+                                          to send HTTP/2 PING frames to keep the connection
+                                          alive.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      intervalJitter:
+                                        description: |-
+                                          IntervalJitter specifies a random jitter percentage added to each interval.
+                                          Defaults to 15% if not specified.
+                                        format: int32
+                                        maximum: 100
+                                        minimum: 0
+                                        type: integer
+                                      timeout:
+                                        description: Timeout specifies how long to
+                                          wait for a PING response before considering
+                                          the connection dead.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                    type: object
+                                    x-kubernetes-validations:
+                                    - message: timeout must be less than interval
+                                      rule: '!has(self.timeout) || !has(self.interval)
+                                        || duration(self.timeout) < duration(self.interval)'
                                   initialConnectionWindowSize:
                                     allOf:
                                     - pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
@@ -6290,6 +7304,57 @@ spec:
                                   LoadBalancer policy to apply when routing traffic from the gateway to
                                   the backend endpoints. Defaults to `LeastRequest`.
                                 properties:
+                                  backendUtilization:
+                                    description: |-
+                                      BackendUtilization defines the configuration when the load balancer type is
+                                      set to BackendUtilization.
+                                    properties:
+                                      blackoutPeriod:
+                                        description: |-
+                                          A given endpoint must report load metrics continuously for at least this long before the endpoint weight will be used.
+                                          Default is 10s.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      errorUtilizationPenaltyPercent:
+                                        description: |-
+                                          ErrorUtilizationPenaltyPercent adjusts endpoint weights based on the error rate (eps/qps).
+                                          This is expressed as a percentage-based integer where 100 represents 1.0, 150 represents 1.5, etc.
+
+                                          For example:
+                                          - 100 => 1.0x
+                                          - 120 => 1.2x
+                                          - 200 => 2.0x
+
+                                          Must be non-negative.
+                                        format: int32
+                                        minimum: 0
+                                        type: integer
+                                      keepResponseHeaders:
+                                        default: false
+                                        description: |-
+                                          KeepResponseHeaders keeps the ORCA load report headers/trailers before sending the response to the client.
+                                          Defaults to false.
+                                        type: boolean
+                                      metricNamesForComputingUtilization:
+                                        description: |-
+                                          Metric names used to compute utilization if application_utilization is not set.
+                                          For map fields in ORCA proto, use the form "<map_field>.<key>", e.g., "named_metrics.foo".
+                                        items:
+                                          type: string
+                                        type: array
+                                      weightExpirationPeriod:
+                                        description: If a given endpoint has not reported
+                                          load metrics in this long, stop using the
+                                          reported weight. Defaults to 3m.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      weightUpdatePeriod:
+                                        description: How often endpoint weights are
+                                          recalculated. Values less than 100ms are
+                                          capped at 100ms. Default 1s.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                    type: object
                                   consistentHash:
                                     description: |-
                                       ConsistentHash defines the configuration when the load balancer type is
@@ -6412,6 +7477,40 @@ spec:
                                         the queryParams field must be set.
                                       rule: 'self.type == ''QueryParams'' ? has(self.queryParams)
                                         : !has(self.queryParams)'
+                                  dynamicModule:
+                                    description: |-
+                                      DynamicModule defines the configuration when the load balancer type is
+                                      set to DynamicModule. The referenced module must be registered in the
+                                      EnvoyProxy resource's dynamicModules allowlist.
+                                    properties:
+                                      config:
+                                        description: |-
+                                          Config is optional configuration for the module's load balancer
+                                          implementation. This is serialized and passed to the module's
+                                          initialization function.
+                                        x-kubernetes-preserve-unknown-fields: true
+                                      lbPolicyName:
+                                        description: |-
+                                          LBPolicyName identifies a specific load balancer implementation within
+                                          the dynamic module. A single shared library can contain multiple LB
+                                          policy implementations. This value is passed to the module's
+                                          initialization function to select the appropriate implementation.
+                                        maxLength: 253
+                                        minLength: 1
+                                        type: string
+                                      name:
+                                        description: |-
+                                          Name references a dynamic module registered in the EnvoyProxy resource's
+                                          dynamicModules list. The referenced module must exist in the registry;
+                                          otherwise, the policy will be rejected.
+                                        maxLength: 253
+                                        minLength: 1
+                                        pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                                        type: string
+                                    required:
+                                    - lbPolicyName
+                                    - name
+                                    type: object
                                   endpointOverride:
                                     description: |-
                                       EndpointOverride defines the configuration for endpoint override.
@@ -6446,7 +7545,7 @@ spec:
                                     description: |-
                                       SlowStart defines the configuration related to the slow start load balancer policy.
                                       If set, during slow start window, traffic sent to the newly added hosts will gradually increase.
-                                      Currently this is only supported for RoundRobin and LeastRequest load balancers
+                                      Supported for RoundRobin, LeastRequest, and BackendUtilization load balancers.
                                     properties:
                                       window:
                                         description: |-
@@ -6466,12 +7565,16 @@ spec:
                                       "ConsistentHash",
                                       "LeastRequest",
                                       "Random",
-                                      "RoundRobin".
+                                      "RoundRobin",
+                                      "BackendUtilization",
+                                      "DynamicModule".
                                     enum:
                                     - ConsistentHash
                                     - LeastRequest
                                     - Random
                                     - RoundRobin
+                                    - BackendUtilization
+                                    - DynamicModule
                                     type: string
                                   zoneAware:
                                     description: ZoneAware defines the configuration
@@ -6513,6 +7616,36 @@ spec:
                                             minimum: 0
                                             type: integer
                                         type: object
+                                      weightedZones:
+                                        description: |-
+                                          WeightedZones configures weight-based traffic distribution across locality zones.
+                                          Traffic is distributed proportionally based on the sum of all zone weights.
+                                        items:
+                                          description: WeightedZoneConfig defines
+                                            the weight for a specific locality zone.
+                                          properties:
+                                            weight:
+                                              description: |-
+                                                Weight defines the weight for this locality.
+                                                Higher values receive more traffic. The actual traffic distribution
+                                                is proportional to this value relative to other localities.
+                                              format: int32
+                                              type: integer
+                                            zone:
+                                              description: |-
+                                                Zone specifies the topology zone this weight applies to.
+                                                The value should match the topology.kubernetes.io/zone label
+                                                of the nodes where endpoints are running.
+                                                Zones not listed in the configuration receive a default weight of 1.
+                                              type: string
+                                          required:
+                                          - weight
+                                          - zone
+                                          type: object
+                                        type: array
+                                        x-kubernetes-list-map-keys:
+                                        - zone
+                                        x-kubernetes-list-type: map
                                     type: object
                                 required:
                                 - type
@@ -6522,21 +7655,48 @@ spec:
                                     consistentHash field needs to be set.
                                   rule: 'self.type == ''ConsistentHash'' ? has(self.consistentHash)
                                     : !has(self.consistentHash)'
+                                - message: If LoadBalancer type is BackendUtilization,
+                                    backendUtilization field needs to be set.
+                                  rule: 'self.type == ''BackendUtilization'' ? has(self.backendUtilization)
+                                    : !has(self.backendUtilization)'
+                                - message: If LoadBalancer type is DynamicModule,
+                                    dynamicModule field needs to be set.
+                                  rule: 'self.type == ''DynamicModule'' ? has(self.dynamicModule)
+                                    : !has(self.dynamicModule)'
                                 - message: Currently SlowStart is only supported for
-                                    RoundRobin and LeastRequest load balancers.
-                                  rule: 'self.type in [''Random'', ''ConsistentHash'']
-                                    ? !has(self.slowStart) : true '
-                                - message: Currently ZoneAware is only supported for
-                                    LeastRequest, Random, and RoundRobin load balancers.
-                                  rule: 'self.type == ''ConsistentHash'' ? !has(self.zoneAware)
-                                    : true '
+                                    RoundRobin, LeastRequest, and BackendUtilization
+                                    load balancers.
+                                  rule: 'self.type in [''Random'', ''ConsistentHash'',
+                                    ''DynamicModule''] ? !has(self.slowStart) : true'
+                                - message: PreferLocal zone-aware routing is not supported
+                                    for ConsistentHash load balancers. Use weightedZones
+                                    instead.
+                                  rule: 'self.type == ''ConsistentHash'' && has(self.zoneAware)
+                                    ? !has(self.zoneAware.preferLocal) : true'
+                                - message: PreferLocal zone-aware routing is not currently
+                                    supported for BackendUtilization load balancers.
+                                    Only WeightedZones can be used with BackendUtilization.
+                                  rule: 'self.type == ''BackendUtilization'' && has(self.zoneAware)
+                                    ? !has(self.zoneAware.preferLocal) : true'
+                                - message: ZoneAware routing is not supported for
+                                    DynamicModule load balancers.
+                                  rule: 'self.type == ''DynamicModule'' ? !has(self.zoneAware)
+                                    : true'
+                                - message: ZoneAware PreferLocal and WeightedZones
+                                    cannot be specified together.
+                                  rule: 'has(self.zoneAware) ? !(has(self.zoneAware.preferLocal)
+                                    && has(self.zoneAware.weightedZones)) : true'
+                                - message: EndpointOverride is not supported for DynamicModule
+                                    load balancers.
+                                  rule: 'self.type == ''DynamicModule'' ? !has(self.endpointOverride)
+                                    : true'
                               proxyProtocol:
                                 description: ProxyProtocol enables the Proxy Protocol
                                   when communicating with the backend.
                                 properties:
                                   version:
                                     description: |-
-                                      Version of ProxyProtol
+                                      Version of ProxyProtocol
                                       Valid ProxyProtocolVersion values are
                                       "V1"
                                       "V2"
@@ -6692,6 +7852,12 @@ spec:
                                         description: RequestTimeout is the time until
                                           which entire response is received from the
                                           upstream.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      streamIdleTimeout:
+                                        description: |2-
+                                           The stream idle timeout defines the amount of time a stream can exist without any upstream or downstream activity.
+                                           If not specified, StreamIdleTimeout is inherited from the listener-level setting, which can be configured via ClientTrafficPolicy.
                                         pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                         type: string
                                     type: object
@@ -7000,6 +8166,45 @@ spec:
                                         minimum: 0
                                         type: integer
                                     type: object
+                                  retryBudget:
+                                    description: |-
+                                      RetryBudget provides settings for retry budget, which limits the number of retries in a given percentage.
+                                      RetryBudget take precedence over maxParallelRetries.
+                                    properties:
+                                      minRetryConcurrency:
+                                        description: |-
+                                          MinRetryConcurrency specifies the minimum retry concurrency allowed for the retry budget.
+                                          For example, a budget of 20% with a minimum retry concurrency of 3
+                                          will allow 5 active retries while there are 25 active requests.
+                                          If there are 2 active requests, there are still 3 active retries
+                                          allowed because of the minimum retry concurrency.
+                                          Defaults to 3.
+                                        format: int32
+                                        type: integer
+                                      percent:
+                                        description: |-
+                                          Percent specifies the limit on concurrent retries as a percentage [0, 100] of
+                                          the sum of active requests and active pending requests.
+                                        properties:
+                                          denominator:
+                                            default: 100
+                                            format: int32
+                                            minimum: 1
+                                            type: integer
+                                          numerator:
+                                            format: int32
+                                            minimum: 0
+                                            type: integer
+                                        required:
+                                        - numerator
+                                        type: object
+                                        x-kubernetes-validations:
+                                        - message: numerator must be less than or
+                                            equal to denominator
+                                          rule: self.numerator <= self.denominator
+                                    required:
+                                    - percent
+                                    type: object
                                 type: object
                               connection:
                                 description: Connection includes backend connection
@@ -7178,8 +8383,9 @@ spec:
                                             type: array
                                           hostname:
                                             description: |-
-                                              Hostname defines the HTTP host that will be requested during health checking.
-                                              Default: HTTPRoute or GRPCRoute hostname.
+                                              Hostname defines the HTTP Host header used for active HTTP health checks.
+                                              Host selection uses this order: this field, the associated Backend endpoint
+                                              hostname if available, then the effective Route hostname.
                                             maxLength: 253
                                             minLength: 1
                                             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
@@ -7196,6 +8402,19 @@ spec:
                                             maxLength: 1024
                                             minLength: 1
                                             type: string
+                                          retriableStatuses:
+                                            description: |-
+                                              RetriableStatuses defines a list of HTTP response statuses considered retriable.
+                                              Responses matching these statuses count towards the unhealthy threshold but
+                                              do not result in the host being considered immediately unhealthy.
+                                              The expected statuses take precedence for any range overlaps with this field.
+                                            items:
+                                              description: HTTPStatus defines the
+                                                http status code.
+                                              maximum: 599
+                                              minimum: 100
+                                              type: integer
+                                            type: array
                                         required:
                                         - path
                                         type: object
@@ -7211,6 +8430,23 @@ spec:
                                           active health checks.
                                         pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                         type: string
+                                      overrides:
+                                        description: |-
+                                          Overrides defines the configuration of the overriding health check settings for all endpoints
+                                          in the backend cluster. This allows customization of port and other settings that may differ
+                                          from the main service configuration.
+                                        properties:
+                                          port:
+                                            description: |-
+                                              Port overrides the health check port.
+                                              If not set, the endpoint's serving port is used for health checks.
+                                              This is useful when health checks are served on a different port than
+                                              the main service port (e.g., port 443 for service, port 9090 for health checks).
+                                            format: int32
+                                            maximum: 65535
+                                            minimum: 1
+                                            type: integer
+                                        type: object
                                       tcp:
                                         description: |-
                                           TCP defines the configuration of tcp health checker.
@@ -7310,9 +8546,11 @@ spec:
                                         type: string
                                       unhealthyThreshold:
                                         default: 3
-                                        description: UnhealthyThreshold defines the
-                                          number of unhealthy health checks required
-                                          before a backend host is marked unhealthy.
+                                        description: |-
+                                          UnhealthyThreshold defines the number of unhealthy health checks required before a backend host is marked unhealthy.
+                                          Without RetriableStatuses configured, any health check failure results in the host being immediately
+                                          considered unhealthy. When RetriableStatuses is set, health checks returning those statuses are retried
+                                          up to this threshold before the host is marked unhealthy.
                                         format: int32
                                         minimum: 1
                                         type: integer
@@ -7345,6 +8583,12 @@ spec:
                                   passive:
                                     description: Passive passive check configuration
                                     properties:
+                                      alwaysEjectOneEndpoint:
+                                        default: false
+                                        description: |-
+                                          AlwaysEjectOneEndpoint defines whether at least one host should be ejected,
+                                          regardless of MaxEjectionPercent.
+                                        type: boolean
                                       baseEjectionTime:
                                         default: 30s
                                         description: BaseEjectionTime defines the
@@ -7393,6 +8637,8 @@ spec:
                                           percentage of hosts in a cluster that can
                                           be ejected.
                                         format: int32
+                                        maximum: 100
+                                        minimum: 0
                                         type: integer
                                       splitExternalLocalOriginErrors:
                                         default: false
@@ -7406,6 +8652,41 @@ spec:
                                 description: HTTP2 provides HTTP/2 configuration for
                                   backend connections.
                                 properties:
+                                  connectionKeepalive:
+                                    description: ConnectionKeepalive configures HTTP/2
+                                      connection keepalive using PING frames.
+                                    properties:
+                                      idleInterval:
+                                        description: IdleInterval specifies how long
+                                          a connection must be idle before a PING
+                                          is sent.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      interval:
+                                        description: Interval specifies how often
+                                          to send HTTP/2 PING frames to keep the connection
+                                          alive.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      intervalJitter:
+                                        description: |-
+                                          IntervalJitter specifies a random jitter percentage added to each interval.
+                                          Defaults to 15% if not specified.
+                                        format: int32
+                                        maximum: 100
+                                        minimum: 0
+                                        type: integer
+                                      timeout:
+                                        description: Timeout specifies how long to
+                                          wait for a PING response before considering
+                                          the connection dead.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                    type: object
+                                    x-kubernetes-validations:
+                                    - message: timeout must be less than interval
+                                      rule: '!has(self.timeout) || !has(self.interval)
+                                        || duration(self.timeout) < duration(self.interval)'
                                   initialConnectionWindowSize:
                                     allOf:
                                     - pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
@@ -7449,6 +8730,57 @@ spec:
                                   LoadBalancer policy to apply when routing traffic from the gateway to
                                   the backend endpoints. Defaults to `LeastRequest`.
                                 properties:
+                                  backendUtilization:
+                                    description: |-
+                                      BackendUtilization defines the configuration when the load balancer type is
+                                      set to BackendUtilization.
+                                    properties:
+                                      blackoutPeriod:
+                                        description: |-
+                                          A given endpoint must report load metrics continuously for at least this long before the endpoint weight will be used.
+                                          Default is 10s.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      errorUtilizationPenaltyPercent:
+                                        description: |-
+                                          ErrorUtilizationPenaltyPercent adjusts endpoint weights based on the error rate (eps/qps).
+                                          This is expressed as a percentage-based integer where 100 represents 1.0, 150 represents 1.5, etc.
+
+                                          For example:
+                                          - 100 => 1.0x
+                                          - 120 => 1.2x
+                                          - 200 => 2.0x
+
+                                          Must be non-negative.
+                                        format: int32
+                                        minimum: 0
+                                        type: integer
+                                      keepResponseHeaders:
+                                        default: false
+                                        description: |-
+                                          KeepResponseHeaders keeps the ORCA load report headers/trailers before sending the response to the client.
+                                          Defaults to false.
+                                        type: boolean
+                                      metricNamesForComputingUtilization:
+                                        description: |-
+                                          Metric names used to compute utilization if application_utilization is not set.
+                                          For map fields in ORCA proto, use the form "<map_field>.<key>", e.g., "named_metrics.foo".
+                                        items:
+                                          type: string
+                                        type: array
+                                      weightExpirationPeriod:
+                                        description: If a given endpoint has not reported
+                                          load metrics in this long, stop using the
+                                          reported weight. Defaults to 3m.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                      weightUpdatePeriod:
+                                        description: How often endpoint weights are
+                                          recalculated. Values less than 100ms are
+                                          capped at 100ms. Default 1s.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
+                                    type: object
                                   consistentHash:
                                     description: |-
                                       ConsistentHash defines the configuration when the load balancer type is
@@ -7571,6 +8903,40 @@ spec:
                                         the queryParams field must be set.
                                       rule: 'self.type == ''QueryParams'' ? has(self.queryParams)
                                         : !has(self.queryParams)'
+                                  dynamicModule:
+                                    description: |-
+                                      DynamicModule defines the configuration when the load balancer type is
+                                      set to DynamicModule. The referenced module must be registered in the
+                                      EnvoyProxy resource's dynamicModules allowlist.
+                                    properties:
+                                      config:
+                                        description: |-
+                                          Config is optional configuration for the module's load balancer
+                                          implementation. This is serialized and passed to the module's
+                                          initialization function.
+                                        x-kubernetes-preserve-unknown-fields: true
+                                      lbPolicyName:
+                                        description: |-
+                                          LBPolicyName identifies a specific load balancer implementation within
+                                          the dynamic module. A single shared library can contain multiple LB
+                                          policy implementations. This value is passed to the module's
+                                          initialization function to select the appropriate implementation.
+                                        maxLength: 253
+                                        minLength: 1
+                                        type: string
+                                      name:
+                                        description: |-
+                                          Name references a dynamic module registered in the EnvoyProxy resource's
+                                          dynamicModules list. The referenced module must exist in the registry;
+                                          otherwise, the policy will be rejected.
+                                        maxLength: 253
+                                        minLength: 1
+                                        pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                                        type: string
+                                    required:
+                                    - lbPolicyName
+                                    - name
+                                    type: object
                                   endpointOverride:
                                     description: |-
                                       EndpointOverride defines the configuration for endpoint override.
@@ -7605,7 +8971,7 @@ spec:
                                     description: |-
                                       SlowStart defines the configuration related to the slow start load balancer policy.
                                       If set, during slow start window, traffic sent to the newly added hosts will gradually increase.
-                                      Currently this is only supported for RoundRobin and LeastRequest load balancers
+                                      Supported for RoundRobin, LeastRequest, and BackendUtilization load balancers.
                                     properties:
                                       window:
                                         description: |-
@@ -7625,12 +8991,16 @@ spec:
                                       "ConsistentHash",
                                       "LeastRequest",
                                       "Random",
-                                      "RoundRobin".
+                                      "RoundRobin",
+                                      "BackendUtilization",
+                                      "DynamicModule".
                                     enum:
                                     - ConsistentHash
                                     - LeastRequest
                                     - Random
                                     - RoundRobin
+                                    - BackendUtilization
+                                    - DynamicModule
                                     type: string
                                   zoneAware:
                                     description: ZoneAware defines the configuration
@@ -7672,6 +9042,36 @@ spec:
                                             minimum: 0
                                             type: integer
                                         type: object
+                                      weightedZones:
+                                        description: |-
+                                          WeightedZones configures weight-based traffic distribution across locality zones.
+                                          Traffic is distributed proportionally based on the sum of all zone weights.
+                                        items:
+                                          description: WeightedZoneConfig defines
+                                            the weight for a specific locality zone.
+                                          properties:
+                                            weight:
+                                              description: |-
+                                                Weight defines the weight for this locality.
+                                                Higher values receive more traffic. The actual traffic distribution
+                                                is proportional to this value relative to other localities.
+                                              format: int32
+                                              type: integer
+                                            zone:
+                                              description: |-
+                                                Zone specifies the topology zone this weight applies to.
+                                                The value should match the topology.kubernetes.io/zone label
+                                                of the nodes where endpoints are running.
+                                                Zones not listed in the configuration receive a default weight of 1.
+                                              type: string
+                                          required:
+                                          - weight
+                                          - zone
+                                          type: object
+                                        type: array
+                                        x-kubernetes-list-map-keys:
+                                        - zone
+                                        x-kubernetes-list-type: map
                                     type: object
                                 required:
                                 - type
@@ -7681,21 +9081,48 @@ spec:
                                     consistentHash field needs to be set.
                                   rule: 'self.type == ''ConsistentHash'' ? has(self.consistentHash)
                                     : !has(self.consistentHash)'
+                                - message: If LoadBalancer type is BackendUtilization,
+                                    backendUtilization field needs to be set.
+                                  rule: 'self.type == ''BackendUtilization'' ? has(self.backendUtilization)
+                                    : !has(self.backendUtilization)'
+                                - message: If LoadBalancer type is DynamicModule,
+                                    dynamicModule field needs to be set.
+                                  rule: 'self.type == ''DynamicModule'' ? has(self.dynamicModule)
+                                    : !has(self.dynamicModule)'
                                 - message: Currently SlowStart is only supported for
-                                    RoundRobin and LeastRequest load balancers.
-                                  rule: 'self.type in [''Random'', ''ConsistentHash'']
-                                    ? !has(self.slowStart) : true '
-                                - message: Currently ZoneAware is only supported for
-                                    LeastRequest, Random, and RoundRobin load balancers.
-                                  rule: 'self.type == ''ConsistentHash'' ? !has(self.zoneAware)
-                                    : true '
+                                    RoundRobin, LeastRequest, and BackendUtilization
+                                    load balancers.
+                                  rule: 'self.type in [''Random'', ''ConsistentHash'',
+                                    ''DynamicModule''] ? !has(self.slowStart) : true'
+                                - message: PreferLocal zone-aware routing is not supported
+                                    for ConsistentHash load balancers. Use weightedZones
+                                    instead.
+                                  rule: 'self.type == ''ConsistentHash'' && has(self.zoneAware)
+                                    ? !has(self.zoneAware.preferLocal) : true'
+                                - message: PreferLocal zone-aware routing is not currently
+                                    supported for BackendUtilization load balancers.
+                                    Only WeightedZones can be used with BackendUtilization.
+                                  rule: 'self.type == ''BackendUtilization'' && has(self.zoneAware)
+                                    ? !has(self.zoneAware.preferLocal) : true'
+                                - message: ZoneAware routing is not supported for
+                                    DynamicModule load balancers.
+                                  rule: 'self.type == ''DynamicModule'' ? !has(self.zoneAware)
+                                    : true'
+                                - message: ZoneAware PreferLocal and WeightedZones
+                                    cannot be specified together.
+                                  rule: 'has(self.zoneAware) ? !(has(self.zoneAware.preferLocal)
+                                    && has(self.zoneAware.weightedZones)) : true'
+                                - message: EndpointOverride is not supported for DynamicModule
+                                    load balancers.
+                                  rule: 'self.type == ''DynamicModule'' ? !has(self.endpointOverride)
+                                    : true'
                               proxyProtocol:
                                 description: ProxyProtocol enables the Proxy Protocol
                                   when communicating with the backend.
                                 properties:
                                   version:
                                     description: |-
-                                      Version of ProxyProtol
+                                      Version of ProxyProtocol
                                       Valid ProxyProtocolVersion values are
                                       "V1"
                                       "V2"
@@ -7853,6 +9280,12 @@ spec:
                                           upstream.
                                         pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                         type: string
+                                      streamIdleTimeout:
+                                        description: |2-
+                                           The stream idle timeout defines the amount of time a stream can exist without any upstream or downstream activity.
+                                           If not specified, StreamIdleTimeout is inherited from the listener-level setting, which can be configured via ClientTrafficPolicy.
+                                        pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                        type: string
                                     type: object
                                   tcp:
                                     description: Timeout settings for TCP.
@@ -7893,6 +9326,15 @@ spec:
                               For example, if the original request path is "/hello", and the path specified here is "/auth",
                               then the path of the authorization request will be "/auth/hello". If the path is not specified,
                               the path of the authorization request will be "/hello".
+                              Only one of Path or PathOverride can be set.
+                            type: string
+                          pathOverride:
+                            description: |-
+                              PathOverride replaces the original request path in the authorization request.
+                              If set, the path will be overridden to this value during authorization.
+                              For example, if the original request path is "/hello", and PathOverride is set to "/auth",
+                              then the path of the authorization request will be "/auth".
+                              Only one of Path or PathOverride can be set.
                             type: string
                         type: object
                         x-kubernetes-validations:
@@ -7909,6 +9351,30 @@ spec:
                           rule: 'has(self.backendRefs) ? (self.backendRefs.all(f,
                             f.group == "" || f.group == ''multicluster.x-k8s.io''
                             || f.group == ''gateway.envoyproxy.io'')) : true'
+                        - message: only one of path or pathOverride can be specified
+                          rule: '!(has(self.path) && has(self.pathOverride))'
+                      includeRouteMetadata:
+                        description: |-
+                          IncludeRouteMetadata sends Envoy Gateway's built-in route metadata to the
+                          external authorization service as context.
+
+                          This includes Envoy Gateway's built-in metadata for the selected route in
+                          the "envoy-gateway" metadata namespace.
+
+                          The metadata is exposed under the "resources" field as a list of route
+                          resource objects. For example:
+
+                          envoy-gateway:
+                            resources:
+                            - kind: HTTPRoute
+                              name: backend
+                              namespace: default
+                              annotations:
+                                foo: bar
+
+                          The resource object may include fields such as kind, namespace, name,
+                          sectionName, and supported route annotations.
+                        type: boolean
                       recomputeRoute:
                         description: |-
                           RecomputeRoute clears the route cache and recalculates the routing decision.
@@ -7916,6 +9382,51 @@ spec:
                           route matching decisions. If the recomputation selects a new route, features targeting
                           the new matched route will be applied.
                         type: boolean
+                      statusOnError:
+                        description: |-
+                          Sets the HTTP status that is returned when the authorization service returns an error
+                          or cannot be reached. Defaults to 403 Forbidden.
+                          Only 4xx and 5xx status codes are supported.
+                        enum:
+                        - 400
+                        - 401
+                        - 402
+                        - 403
+                        - 404
+                        - 405
+                        - 406
+                        - 407
+                        - 408
+                        - 409
+                        - 410
+                        - 411
+                        - 412
+                        - 413
+                        - 414
+                        - 415
+                        - 416
+                        - 417
+                        - 421
+                        - 422
+                        - 423
+                        - 424
+                        - 426
+                        - 428
+                        - 429
+                        - 431
+                        - 500
+                        - 501
+                        - 502
+                        - 503
+                        - 504
+                        - 505
+                        - 506
+                        - 507
+                        - 508
+                        - 510
+                        - 511
+                        format: int32
+                        type: integer
                       timeout:
                         description: |-
                           Timeout defines the timeout for requests to the external authorization service.
@@ -8295,6 +9806,45 @@ spec:
                                             minimum: 0
                                             type: integer
                                         type: object
+                                      retryBudget:
+                                        description: |-
+                                          RetryBudget provides settings for retry budget, which limits the number of retries in a given percentage.
+                                          RetryBudget take precedence over maxParallelRetries.
+                                        properties:
+                                          minRetryConcurrency:
+                                            description: |-
+                                              MinRetryConcurrency specifies the minimum retry concurrency allowed for the retry budget.
+                                              For example, a budget of 20% with a minimum retry concurrency of 3
+                                              will allow 5 active retries while there are 25 active requests.
+                                              If there are 2 active requests, there are still 3 active retries
+                                              allowed because of the minimum retry concurrency.
+                                              Defaults to 3.
+                                            format: int32
+                                            type: integer
+                                          percent:
+                                            description: |-
+                                              Percent specifies the limit on concurrent retries as a percentage [0, 100] of
+                                              the sum of active requests and active pending requests.
+                                            properties:
+                                              denominator:
+                                                default: 100
+                                                format: int32
+                                                minimum: 1
+                                                type: integer
+                                              numerator:
+                                                format: int32
+                                                minimum: 0
+                                                type: integer
+                                            required:
+                                            - numerator
+                                            type: object
+                                            x-kubernetes-validations:
+                                            - message: numerator must be less than
+                                                or equal to denominator
+                                              rule: self.numerator <= self.denominator
+                                        required:
+                                        - percent
+                                        type: object
                                     type: object
                                   connection:
                                     description: Connection includes backend connection
@@ -8474,8 +10024,9 @@ spec:
                                                 type: array
                                               hostname:
                                                 description: |-
-                                                  Hostname defines the HTTP host that will be requested during health checking.
-                                                  Default: HTTPRoute or GRPCRoute hostname.
+                                                  Hostname defines the HTTP Host header used for active HTTP health checks.
+                                                  Host selection uses this order: this field, the associated Backend endpoint
+                                                  hostname if available, then the effective Route hostname.
                                                 maxLength: 253
                                                 minLength: 1
                                                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
@@ -8492,6 +10043,19 @@ spec:
                                                 maxLength: 1024
                                                 minLength: 1
                                                 type: string
+                                              retriableStatuses:
+                                                description: |-
+                                                  RetriableStatuses defines a list of HTTP response statuses considered retriable.
+                                                  Responses matching these statuses count towards the unhealthy threshold but
+                                                  do not result in the host being considered immediately unhealthy.
+                                                  The expected statuses take precedence for any range overlaps with this field.
+                                                items:
+                                                  description: HTTPStatus defines
+                                                    the http status code.
+                                                  maximum: 599
+                                                  minimum: 100
+                                                  type: integer
+                                                type: array
                                             required:
                                             - path
                                             type: object
@@ -8507,6 +10071,23 @@ spec:
                                               between active health checks.
                                             pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                             type: string
+                                          overrides:
+                                            description: |-
+                                              Overrides defines the configuration of the overriding health check settings for all endpoints
+                                              in the backend cluster. This allows customization of port and other settings that may differ
+                                              from the main service configuration.
+                                            properties:
+                                              port:
+                                                description: |-
+                                                  Port overrides the health check port.
+                                                  If not set, the endpoint's serving port is used for health checks.
+                                                  This is useful when health checks are served on a different port than
+                                                  the main service port (e.g., port 443 for service, port 9090 for health checks).
+                                                format: int32
+                                                maximum: 65535
+                                                minimum: 1
+                                                type: integer
+                                            type: object
                                           tcp:
                                             description: |-
                                               TCP defines the configuration of tcp health checker.
@@ -8606,10 +10187,11 @@ spec:
                                             type: string
                                           unhealthyThreshold:
                                             default: 3
-                                            description: UnhealthyThreshold defines
-                                              the number of unhealthy health checks
-                                              required before a backend host is marked
-                                              unhealthy.
+                                            description: |-
+                                              UnhealthyThreshold defines the number of unhealthy health checks required before a backend host is marked unhealthy.
+                                              Without RetriableStatuses configured, any health check failure results in the host being immediately
+                                              considered unhealthy. When RetriableStatuses is set, health checks returning those statuses are retried
+                                              up to this threshold before the host is marked unhealthy.
                                             format: int32
                                             minimum: 1
                                             type: integer
@@ -8642,6 +10224,12 @@ spec:
                                       passive:
                                         description: Passive passive check configuration
                                         properties:
+                                          alwaysEjectOneEndpoint:
+                                            default: false
+                                            description: |-
+                                              AlwaysEjectOneEndpoint defines whether at least one host should be ejected,
+                                              regardless of MaxEjectionPercent.
+                                            type: boolean
                                           baseEjectionTime:
                                             default: 30s
                                             description: BaseEjectionTime defines
@@ -8690,6 +10278,8 @@ spec:
                                               maximum percentage of hosts in a cluster
                                               that can be ejected.
                                             format: int32
+                                            maximum: 100
+                                            minimum: 0
                                             type: integer
                                           splitExternalLocalOriginErrors:
                                             default: false
@@ -8703,6 +10293,41 @@ spec:
                                     description: HTTP2 provides HTTP/2 configuration
                                       for backend connections.
                                     properties:
+                                      connectionKeepalive:
+                                        description: ConnectionKeepalive configures
+                                          HTTP/2 connection keepalive using PING frames.
+                                        properties:
+                                          idleInterval:
+                                            description: IdleInterval specifies how
+                                              long a connection must be idle before
+                                              a PING is sent.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
+                                          interval:
+                                            description: Interval specifies how often
+                                              to send HTTP/2 PING frames to keep the
+                                              connection alive.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
+                                          intervalJitter:
+                                            description: |-
+                                              IntervalJitter specifies a random jitter percentage added to each interval.
+                                              Defaults to 15% if not specified.
+                                            format: int32
+                                            maximum: 100
+                                            minimum: 0
+                                            type: integer
+                                          timeout:
+                                            description: Timeout specifies how long
+                                              to wait for a PING response before considering
+                                              the connection dead.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
+                                        type: object
+                                        x-kubernetes-validations:
+                                        - message: timeout must be less than interval
+                                          rule: '!has(self.timeout) || !has(self.interval)
+                                            || duration(self.timeout) < duration(self.interval)'
                                       initialConnectionWindowSize:
                                         allOf:
                                         - pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
@@ -8746,6 +10371,58 @@ spec:
                                       LoadBalancer policy to apply when routing traffic from the gateway to
                                       the backend endpoints. Defaults to `LeastRequest`.
                                     properties:
+                                      backendUtilization:
+                                        description: |-
+                                          BackendUtilization defines the configuration when the load balancer type is
+                                          set to BackendUtilization.
+                                        properties:
+                                          blackoutPeriod:
+                                            description: |-
+                                              A given endpoint must report load metrics continuously for at least this long before the endpoint weight will be used.
+                                              Default is 10s.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
+                                          errorUtilizationPenaltyPercent:
+                                            description: |-
+                                              ErrorUtilizationPenaltyPercent adjusts endpoint weights based on the error rate (eps/qps).
+                                              This is expressed as a percentage-based integer where 100 represents 1.0, 150 represents 1.5, etc.
+
+                                              For example:
+                                              - 100 => 1.0x
+                                              - 120 => 1.2x
+                                              - 200 => 2.0x
+
+                                              Must be non-negative.
+                                            format: int32
+                                            minimum: 0
+                                            type: integer
+                                          keepResponseHeaders:
+                                            default: false
+                                            description: |-
+                                              KeepResponseHeaders keeps the ORCA load report headers/trailers before sending the response to the client.
+                                              Defaults to false.
+                                            type: boolean
+                                          metricNamesForComputingUtilization:
+                                            description: |-
+                                              Metric names used to compute utilization if application_utilization is not set.
+                                              For map fields in ORCA proto, use the form "<map_field>.<key>", e.g., "named_metrics.foo".
+                                            items:
+                                              type: string
+                                            type: array
+                                          weightExpirationPeriod:
+                                            description: If a given endpoint has not
+                                              reported load metrics in this long,
+                                              stop using the reported weight. Defaults
+                                              to 3m.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
+                                          weightUpdatePeriod:
+                                            description: How often endpoint weights
+                                              are recalculated. Values less than 100ms
+                                              are capped at 100ms. Default 1s.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
+                                        type: object
                                       consistentHash:
                                         description: |-
                                           ConsistentHash defines the configuration when the load balancer type is
@@ -8870,6 +10547,40 @@ spec:
                                             the queryParams field must be set.
                                           rule: 'self.type == ''QueryParams'' ? has(self.queryParams)
                                             : !has(self.queryParams)'
+                                      dynamicModule:
+                                        description: |-
+                                          DynamicModule defines the configuration when the load balancer type is
+                                          set to DynamicModule. The referenced module must be registered in the
+                                          EnvoyProxy resource's dynamicModules allowlist.
+                                        properties:
+                                          config:
+                                            description: |-
+                                              Config is optional configuration for the module's load balancer
+                                              implementation. This is serialized and passed to the module's
+                                              initialization function.
+                                            x-kubernetes-preserve-unknown-fields: true
+                                          lbPolicyName:
+                                            description: |-
+                                              LBPolicyName identifies a specific load balancer implementation within
+                                              the dynamic module. A single shared library can contain multiple LB
+                                              policy implementations. This value is passed to the module's
+                                              initialization function to select the appropriate implementation.
+                                            maxLength: 253
+                                            minLength: 1
+                                            type: string
+                                          name:
+                                            description: |-
+                                              Name references a dynamic module registered in the EnvoyProxy resource's
+                                              dynamicModules list. The referenced module must exist in the registry;
+                                              otherwise, the policy will be rejected.
+                                            maxLength: 253
+                                            minLength: 1
+                                            pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                                            type: string
+                                        required:
+                                        - lbPolicyName
+                                        - name
+                                        type: object
                                       endpointOverride:
                                         description: |-
                                           EndpointOverride defines the configuration for endpoint override.
@@ -8904,7 +10615,7 @@ spec:
                                         description: |-
                                           SlowStart defines the configuration related to the slow start load balancer policy.
                                           If set, during slow start window, traffic sent to the newly added hosts will gradually increase.
-                                          Currently this is only supported for RoundRobin and LeastRequest load balancers
+                                          Supported for RoundRobin, LeastRequest, and BackendUtilization load balancers.
                                         properties:
                                           window:
                                             description: |-
@@ -8924,12 +10635,16 @@ spec:
                                           "ConsistentHash",
                                           "LeastRequest",
                                           "Random",
-                                          "RoundRobin".
+                                          "RoundRobin",
+                                          "BackendUtilization",
+                                          "DynamicModule".
                                         enum:
                                         - ConsistentHash
                                         - LeastRequest
                                         - Random
                                         - RoundRobin
+                                        - BackendUtilization
+                                        - DynamicModule
                                         type: string
                                       zoneAware:
                                         description: ZoneAware defines the configuration
@@ -8971,6 +10686,37 @@ spec:
                                                 minimum: 0
                                                 type: integer
                                             type: object
+                                          weightedZones:
+                                            description: |-
+                                              WeightedZones configures weight-based traffic distribution across locality zones.
+                                              Traffic is distributed proportionally based on the sum of all zone weights.
+                                            items:
+                                              description: WeightedZoneConfig defines
+                                                the weight for a specific locality
+                                                zone.
+                                              properties:
+                                                weight:
+                                                  description: |-
+                                                    Weight defines the weight for this locality.
+                                                    Higher values receive more traffic. The actual traffic distribution
+                                                    is proportional to this value relative to other localities.
+                                                  format: int32
+                                                  type: integer
+                                                zone:
+                                                  description: |-
+                                                    Zone specifies the topology zone this weight applies to.
+                                                    The value should match the topology.kubernetes.io/zone label
+                                                    of the nodes where endpoints are running.
+                                                    Zones not listed in the configuration receive a default weight of 1.
+                                                  type: string
+                                              required:
+                                              - weight
+                                              - zone
+                                              type: object
+                                            type: array
+                                            x-kubernetes-list-map-keys:
+                                            - zone
+                                            x-kubernetes-list-type: map
                                         type: object
                                     required:
                                     - type
@@ -8980,22 +10726,51 @@ spec:
                                         consistentHash field needs to be set.
                                       rule: 'self.type == ''ConsistentHash'' ? has(self.consistentHash)
                                         : !has(self.consistentHash)'
+                                    - message: If LoadBalancer type is BackendUtilization,
+                                        backendUtilization field needs to be set.
+                                      rule: 'self.type == ''BackendUtilization'' ?
+                                        has(self.backendUtilization) : !has(self.backendUtilization)'
+                                    - message: If LoadBalancer type is DynamicModule,
+                                        dynamicModule field needs to be set.
+                                      rule: 'self.type == ''DynamicModule'' ? has(self.dynamicModule)
+                                        : !has(self.dynamicModule)'
                                     - message: Currently SlowStart is only supported
-                                        for RoundRobin and LeastRequest load balancers.
-                                      rule: 'self.type in [''Random'', ''ConsistentHash'']
-                                        ? !has(self.slowStart) : true '
-                                    - message: Currently ZoneAware is only supported
-                                        for LeastRequest, Random, and RoundRobin load
-                                        balancers.
-                                      rule: 'self.type == ''ConsistentHash'' ? !has(self.zoneAware)
-                                        : true '
+                                        for RoundRobin, LeastRequest, and BackendUtilization
+                                        load balancers.
+                                      rule: 'self.type in [''Random'', ''ConsistentHash'',
+                                        ''DynamicModule''] ? !has(self.slowStart)
+                                        : true'
+                                    - message: PreferLocal zone-aware routing is not
+                                        supported for ConsistentHash load balancers.
+                                        Use weightedZones instead.
+                                      rule: 'self.type == ''ConsistentHash'' && has(self.zoneAware)
+                                        ? !has(self.zoneAware.preferLocal) : true'
+                                    - message: PreferLocal zone-aware routing is not
+                                        currently supported for BackendUtilization
+                                        load balancers. Only WeightedZones can be
+                                        used with BackendUtilization.
+                                      rule: 'self.type == ''BackendUtilization'' &&
+                                        has(self.zoneAware) ? !has(self.zoneAware.preferLocal)
+                                        : true'
+                                    - message: ZoneAware routing is not supported
+                                        for DynamicModule load balancers.
+                                      rule: 'self.type == ''DynamicModule'' ? !has(self.zoneAware)
+                                        : true'
+                                    - message: ZoneAware PreferLocal and WeightedZones
+                                        cannot be specified together.
+                                      rule: 'has(self.zoneAware) ? !(has(self.zoneAware.preferLocal)
+                                        && has(self.zoneAware.weightedZones)) : true'
+                                    - message: EndpointOverride is not supported for
+                                        DynamicModule load balancers.
+                                      rule: 'self.type == ''DynamicModule'' ? !has(self.endpointOverride)
+                                        : true'
                                   proxyProtocol:
                                     description: ProxyProtocol enables the Proxy Protocol
                                       when communicating with the backend.
                                     properties:
                                       version:
                                         description: |-
-                                          Version of ProxyProtol
+                                          Version of ProxyProtocol
                                           Valid ProxyProtocolVersion values are
                                           "V1"
                                           "V2"
@@ -9152,6 +10927,12 @@ spec:
                                             description: RequestTimeout is the time
                                               until which entire response is received
                                               from the upstream.
+                                            pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                                            type: string
+                                          streamIdleTimeout:
+                                            description: |2-
+                                               The stream idle timeout defines the amount of time a stream can exist without any upstream or downstream activity.
+                                               If not specified, StreamIdleTimeout is inherited from the listener-level setting, which can be configured via ClientTrafficPolicy.
                                             pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
                                             type: string
                                         type: object

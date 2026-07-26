@@ -31,6 +31,7 @@ type (
 		tracer                     tracingapi.MCPTracer
 		client                     http.Client
 		logRequestHeaderAttributes map[string]string
+		maxRequestBodySize         int64 // maximum allowed POST body size in bytes
 	}
 
 	mcpProxyConfig struct {

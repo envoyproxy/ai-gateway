@@ -28,7 +28,7 @@
         "title": "Evolution of Envoy AI Gateway",
         "url": "https://www.youtube.com/watch?v=oXlnhRKPXhA",
         "event": "EnvoyCon North America 2025",
-        "speaker": "Yan Avlasov (Google), Takeshi Yoneda (Google)",
+        "speaker": "Yan Avlasov (Google), Takeshi Yoneda (Tetrate)",
         "description": "In this talk we will explore use, configuration and inner workings of the new features in Envoy AI Gateway."
     },
     {

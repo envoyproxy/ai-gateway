@@ -46,6 +46,18 @@
     "url": "https://simplifai.ai",
     "description": "Agentic AI platform for insurance"
   },
+    {
+    "name": "Stacklok",
+    "logoUrl": "/img/adopters/stacklok.png",
+    "url": "https://stacklok.com",
+    "description": "Agentic AI platform"
+  },
+  {
+    "name": "Unwrap",
+    "logoUrl": "/img/adopters/unwrap-logo.svg",
+    "url": "https://unwrap.ai",
+    "description": "AI-powered customer intelligence platform"
+  },
   {
     "name": "Your Logo Here",
     "logoUrl": "/img/adopters/placeholder-company.svg",

@@ -13,6 +13,7 @@ import (
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	fake2 "k8s.io/client-go/kubernetes/fake"
@@ -229,6 +230,7 @@ func Test_newHTTPRoute(t *testing.T) {
 							},
 						},
 						{
+							Name: ptr.To[gwapiv1.SectionName]("weighted-backends"),
 							BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 								{Name: "orange", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](0)},
 								{Name: "apple", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](1)},
@@ -304,6 +306,7 @@ func Test_newHTTPRoute(t *testing.T) {
 					Filters:     rewriteFilters,
 				},
 				{
+					Name: ptr.To[gwapiv1.SectionName]("weighted-backends"),
 					Matches: []gwapiv1.HTTPRouteMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "rule-1"}}, Path: expPath},
 					},
@@ -420,7 +423,110 @@ func TestAIGatewayRouterController_syncGateway_notFound(t *testing.T) { // This 
 	kube := fake2.NewClientset()
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	s := NewAIGatewayRouteController(fakeClient, kube, logr.Discard(), eventCh.Ch, "/v1")
-	s.syncGateway(t.Context(), "ns", "non-exist")
+	err := s.syncGateway(context.Background(), "ns", "non-exist")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
+}
+
+func TestAIGatewayRouteController_Reconcile_GatewayNotFound(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, kube, ctrl.Log, eventCh.Ch, "/v1")
+
+	// Create AIGatewayRoute referencing a non-existent gateway.
+	route := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "broken-route",
+			Namespace: "default",
+		},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{{Name: gwapiv1.ObjectName("non-existent")}},
+		},
+	}
+	err := fakeClient.Create(t.Context(), route)
+	require.NoError(t, err)
+
+	// Reconcile should fail and mark status as NotAccepted.
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "broken-route"}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "non-existent")
+
+	// Verify the AIGatewayRoute status is NotAccepted.
+	var current aigv1b1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "broken-route"}, &current)
+	require.NoError(t, err)
+	require.Len(t, current.Status.Conditions, 1)
+	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, current.Status.Conditions[0].Type)
+	require.Contains(t, current.Status.Conditions[0].Message, "not found")
+
+	// create the gateway now so that the reconcile succeeds.
+	err = fakeClient.Create(t.Context(), &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: "non-existent", Namespace: "default"}})
+	require.NoError(t, err)
+
+	// Reconcile should succeed.
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "broken-route"}})
+	require.NoError(t, err)
+
+	// Verify the AIGatewayRoute status is Accepted.
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "broken-route"}, &current)
+	require.NoError(t, err)
+	require.Len(t, current.Status.Conditions, 1)
+	require.Equal(t, aigv1b1.ConditionTypeAccepted, current.Status.Conditions[0].Type)
+	require.Contains(t, current.Status.Conditions[0].Message, "reconciled successfully")
+}
+
+func TestAIGatewayRouteController_syncGateway_DeletionWithMissingGateway(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, kube, ctrl.Log, eventCh.Ch, "/v1")
+
+	// Create the gateway first so that the initial reconcile succeeds.
+	err := fakeClient.Create(t.Context(), &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: "temp-gw", Namespace: "default"}})
+	require.NoError(t, err)
+
+	route := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "route-to-delete",
+			Namespace: "default",
+		},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{{Name: gwapiv1.ObjectName("temp-gw")}},
+		},
+	}
+	err = fakeClient.Create(t.Context(), route)
+	require.NoError(t, err)
+
+	// Initial reconcile to add the finalizer.
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "route-to-delete"}})
+	require.NoError(t, err)
+
+	// Verify finalizer is present.
+	var current aigv1b1.AIGatewayRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "route-to-delete"}, &current)
+	require.NoError(t, err)
+	require.Contains(t, current.Finalizers, aiGatewayControllerFinalizer)
+
+	// Now delete the gateway (simulating it being removed before the AIGatewayRoute).
+	err = fakeClient.Delete(t.Context(), &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: "temp-gw", Namespace: "default"}})
+	require.NoError(t, err)
+
+	// Delete the AIGatewayRoute.
+	err = fakeClient.Delete(t.Context(), &current)
+	require.NoError(t, err)
+
+	// Reconcile the deletion — should succeed even though the gateway is gone.
+	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "route-to-delete"}})
+	require.NoError(t, err)
+
+	// Verify the AIGatewayRoute finalizer has been removed (object should be gone or have no finalizer).
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "route-to-delete"}, &current)
+	if err == nil {
+		require.NotContains(t, current.Finalizers, aiGatewayControllerFinalizer)
+	} else {
+		require.True(t, apierrors.IsNotFound(err))
+	}
 }
 
 func Test_newHTTPRoute_InferencePool(t *testing.T) {
@@ -470,6 +576,88 @@ func Test_newHTTPRoute_InferencePool(t *testing.T) {
 	// Check the second rule is the default "route-not-found" rule.
 	require.Equal(t, "route-not-found", string(*httpRoute.Spec.Rules[1].Name))
 	require.Empty(t, httpRoute.Spec.Rules[1].BackendRefs) // No backend refs for default rule.
+}
+
+func Test_newHTTPRoute_InferencePool_CrossNamespace(t *testing.T) {
+	newRoute := func(poolNamespace string) *aigv1b1.AIGatewayRoute {
+		return &aigv1b1.AIGatewayRoute{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "inference-route",
+				Namespace: "gw",
+			},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+							{
+								Name:      "my-pool",
+								Namespace: ptr.To(gwapiv1.Namespace(poolNamespace)),
+								Group:     ptr.To("inference.networking.k8s.io"),
+								Kind:      ptr.To("InferencePool"),
+								Weight:    ptr.To(int32(100)),
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	referenceGrant := &gwapiv1b1.ReferenceGrant{
+		ObjectMeta: metav1.ObjectMeta{Name: "allow-gw", Namespace: "default"},
+		Spec: gwapiv1b1.ReferenceGrantSpec{
+			From: []gwapiv1b1.ReferenceGrantFrom{{
+				Group:     aiServiceBackendGroup,
+				Kind:      aiGatewayRouteKind,
+				Namespace: "gw",
+			}},
+			To: []gwapiv1b1.ReferenceGrantTo{{
+				Group: inferencePoolGroup,
+				Kind:  inferencePoolKind,
+			}},
+		},
+	}
+
+	t.Run("cross-namespace with ReferenceGrant honors the pool namespace", func(t *testing.T) {
+		c := requireNewFakeClientWithIndexes(t)
+		require.NoError(t, c.Create(t.Context(), referenceGrant))
+
+		controller := &AIGatewayRouteController{client: c, referenceGrantValidator: newReferenceGrantValidator(c)}
+		httpRoute := &gwapiv1.HTTPRoute{}
+		require.NoError(t, controller.newHTTPRoute(t.Context(), httpRoute, newRoute("default")))
+
+		require.Len(t, httpRoute.Spec.Rules, 2)
+		require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
+		backendRef := httpRoute.Spec.Rules[0].BackendRefs[0]
+		require.Equal(t, "InferencePool", string(*backendRef.Kind))
+		require.Equal(t, "my-pool", string(backendRef.Name))
+		// The generated HTTPRoute backendRef must carry the pool's namespace, not the route's.
+		require.NotNil(t, backendRef.Namespace)
+		require.Equal(t, "default", string(*backendRef.Namespace))
+	})
+
+	t.Run("cross-namespace without ReferenceGrant is rejected", func(t *testing.T) {
+		c := requireNewFakeClientWithIndexes(t)
+
+		controller := &AIGatewayRouteController{client: c, referenceGrantValidator: newReferenceGrantValidator(c)}
+		httpRoute := &gwapiv1.HTTPRoute{}
+		err := controller.newHTTPRoute(t.Context(), httpRoute, newRoute("default"))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cross-namespace reference from AIGatewayRoute in namespace gw "+
+			"to InferencePool my-pool in namespace default is not permitted")
+	})
+
+	t.Run("same-namespace reference needs no ReferenceGrant", func(t *testing.T) {
+		c := requireNewFakeClientWithIndexes(t)
+
+		controller := &AIGatewayRouteController{client: c, referenceGrantValidator: newReferenceGrantValidator(c)}
+		httpRoute := &gwapiv1.HTTPRoute{}
+		require.NoError(t, controller.newHTTPRoute(t.Context(), httpRoute, newRoute("gw")))
+
+		backendRef := httpRoute.Spec.Rules[0].BackendRefs[0]
+		require.NotNil(t, backendRef.Namespace)
+		require.Equal(t, "gw", string(*backendRef.Namespace))
+	})
 }
 
 func Test_newHTTPRoute_LabelAndAnnotationPropagation(t *testing.T) {

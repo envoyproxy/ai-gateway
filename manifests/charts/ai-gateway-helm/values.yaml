@@ -70,6 +70,14 @@ controller:
   nameOverride: ""
   fullnameOverride: "ai-gateway-controller"
 
+  # Address (host or host:port) of the AI Gateway rate limit service used for QuotaPolicy enforcement.
+  # When no port is specified, defaults to 8081.
+  quotaRateLimitServiceAddr: "envoy-ai-gateway-ratelimit.envoy-gateway-system"
+  # Timeout in seconds for the quota rate limit service.
+  quotaRateLimitTimeout: 5
+  # If true, requests are denied when the quota rate limit service is unavailable.
+  quotaRateLimitFailureModeDeny: false
+
   # Comma-separated key-value pairs for mapping HTTP request headers to Otel attributes shared across metrics, spans, and access logs.
   # Format: "header1:attribute1,header2:attribute2"
   # Example: "x-tenant-id:tenant.id"
@@ -127,8 +135,31 @@ controller:
   replicaCount: 1
   imagePullSecrets: []
   podAnnotations: {}
-  podSecurityContext: {}
-  securityContext: {}
+  podLabels: {}
+  podDisruptionBudget:
+    enabled: false
+    annotations: {}
+    # Only one of minAvailable or maxUnavailable can be set.
+    # If maxUnavailable is set, it takes precedence over minAvailable.
+    minAvailable: 1
+    # maxUnavailable: 1
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsGroup: 65532
+    runAsUser: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    privileged: false
+    runAsNonRoot: true
+    runAsGroup: 65532
+    runAsUser: 65532
+    seccompProfile:
+      type: RuntimeDefault
   # DEPRECATED: podEnv will be removed after v0.3. Use controller.extraEnvVars instead.
   # Example of a podEnv
   # AWS STS request when rotating OIDC credentials will be configured to use AI_GATEWAY_STS_PROXY_URL proxy if set.
@@ -179,6 +210,11 @@ controller:
         appProtocol: http
         port: 8080
         targetPort: 8080
+      - name: ratelimit-xds
+        protocol: TCP
+        appProtocol: grpc
+        port: 18002
+        targetPort: 18002
 
   mutatingWebhook:
     # The port on which the mutating webhook server listens. Must match the service port defined in service.ports.
@@ -228,6 +264,7 @@ controller:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  topologySpreadConstraints: []
 
   # maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive
   # from xDS (envoy-gateway).

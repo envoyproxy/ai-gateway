@@ -195,6 +195,75 @@ data: {"type":"message_stop"       }`
 	require.Equal(t, "claude-sonnet-4-5-20250929", responseModel)
 }
 
+func TestAnthropicToAnthropic_ResponseBody_streaming_usageOnMessageDelta(t *testing.T) {
+	// Some Anthropic-compatible streaming backends report the final input/cache usage only on the
+	// message_delta event rather than message_start. The translator must merge those fields instead
+	// of dropping everything but output_tokens. See https://github.com/envoyproxy/ai-gateway/issues/2290.
+	t.Run("cache creation tokens", func(t *testing.T) {
+		translator := NewAnthropicToAnthropicTranslator("", "")
+		require.NotNil(t, translator)
+		translator.(*anthropicToAnthropicTranslator).stream = true
+
+		const responseBody = `event: message_start
+data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_x","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":4522,"output_tokens":5,"cache_creation_input_tokens":4511}}
+
+event: message_stop
+data: {"type":"message_stop"}`
+
+		_, _, tokenUsage, _, err := translator.ResponseBody(nil, strings.NewReader(responseBody), false, nil)
+		require.NoError(t, err)
+		// Total input = input_tokens(4522) + cache_creation_input_tokens(4511) = 9033; total = 9033 + 5 = 9038.
+		require.Equal(t, tokenUsageFrom(9033, 0, 4511, 5, 9038, -1), tokenUsage)
+	})
+
+	t.Run("cache read tokens", func(t *testing.T) {
+		translator := NewAnthropicToAnthropicTranslator("", "")
+		require.NotNil(t, translator)
+		translator.(*anthropicToAnthropicTranslator).stream = true
+
+		const responseBody = `event: message_start
+data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_x","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":4522,"output_tokens":5,"cache_read_input_tokens":4511}}
+
+event: message_stop
+data: {"type":"message_stop"}`
+
+		_, _, tokenUsage, _, err := translator.ResponseBody(nil, strings.NewReader(responseBody), false, nil)
+		require.NoError(t, err)
+		// Total input = input_tokens(4522) + cache_read_input_tokens(4511) = 9033; total = 9033 + 5 = 9038.
+		require.Equal(t, tokenUsageFrom(9033, 4511, 0, 5, 9038, -1), tokenUsage)
+	})
+
+	t.Run("partial fields on message_delta do not clobber message_start", func(t *testing.T) {
+		// A backend may set input_tokens on message_start and only report the final cache_read on
+		// message_delta. Merging must be per field: the delta omits input_tokens (reported as 0),
+		// which must not zero out the value already recorded from message_start.
+		translator := NewAnthropicToAnthropicTranslator("", "")
+		require.NotNil(t, translator)
+		translator.(*anthropicToAnthropicTranslator).stream = true
+
+		const responseBody = `event: message_start
+data: {"type":"message_start","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_x","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":10,"cache_read_input_tokens":500}}
+
+event: message_stop
+data: {"type":"message_stop"}`
+
+		_, _, tokenUsage, _, err := translator.ResponseBody(nil, strings.NewReader(responseBody), false, nil)
+		require.NoError(t, err)
+		// message_start raw input(1000) is preserved; delta adds cache_read(500).
+		// Total input = 1000 + 500 = 1500; total = 1500 + 10 = 1510.
+		require.Equal(t, tokenUsageFrom(1500, 500, 0, 10, 1510, -1), tokenUsage)
+	})
+}
+
 func TestAnthropicToAnthropic_ResponseError(t *testing.T) {
 	t.Run("json error", func(t *testing.T) {
 		translator := NewAnthropicToAnthropicTranslator("", "")

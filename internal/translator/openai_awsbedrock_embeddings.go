@@ -41,8 +41,12 @@ func (o *openAIToAWSBedrockTranslatorV1Embedding) RequestBody(_ []byte, req *ope
 	}
 	o.requestModel = model
 
+	if req.OfCompletion == nil {
+		return nil, nil, fmt.Errorf("%w: AWS Bedrock Titan requires an input-based embedding request (messages not supported)", internalapi.ErrInvalidRequestBody)
+	}
+
 	var inputText string
-	switch v := req.Input.Value.(type) {
+	switch v := req.OfCompletion.Input.Value.(type) {
 	case string:
 		inputText = v
 	case []string:
@@ -52,7 +56,7 @@ func (o *openAIToAWSBedrockTranslatorV1Embedding) RequestBody(_ []byte, req *ope
 		}
 		inputText = v[0]
 	default:
-		return nil, nil, fmt.Errorf("%w: unsupported input type %T", internalapi.ErrInvalidRequestBody, req.Input.Value)
+		return nil, nil, fmt.Errorf("%w: unsupported input type %T", internalapi.ErrInvalidRequestBody, req.OfCompletion.Input.Value)
 	}
 
 	bedrockReq := awsbedrock.TitanEmbeddingRequest{

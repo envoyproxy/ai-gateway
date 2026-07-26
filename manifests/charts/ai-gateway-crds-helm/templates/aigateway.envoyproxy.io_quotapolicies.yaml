@@ -28,10 +28,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: |-
+        description: |
           QuotaPolicy specifies token quota configuration for inference services.
-          Providing a list of backends in the AIGatewayRouteRule allows failover to a different service
-          if token quota for a service had been exceeded.
+          Generates rate limit configuration and tracks quota usage.
+          Reject requests with 429 once all related quota to that request has been exceeded.
         properties:
           apiVersion:
             description: |-
@@ -58,10 +58,17 @@ spec:
                 description: |-
                   PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this
                   policy is attached.
+
+                  When multiple QuotaPolicies define the same Model for the same AIServiceBackend,
+                  the policy whose namespace/name is alphabetically first takes precedence.
+                  Keys are sorted to ensure deterministic snapshot generation.
                 items:
                   properties:
                     modelName:
-                      description: Model name for which the quota is specified.
+                      description: |-
+                        Model name for which the quota is specified.
+                        This must match the ModelNameOverride set in the AIGatewayRoute's BackendRef
+                        for the quota policy to apply to that backend.
                       minLength: 1
                       type: string
                     quota:
@@ -73,6 +80,9 @@ spec:
                             BucketRules are a list of client selectors and quotas. If a request
                             matches multiple rules, each of their associated quotas get applied, so a
                             single request might burn down the quota for multiple rules.
+
+                            Client selectors that match under the same model / service backend will be
+                            combined with the first limit taking precedence.
                           items:
                             properties:
                               clientSelectors:
@@ -81,6 +91,7 @@ spec:
                                   specific clients using attributes from the traffic flow.
                                   All individual select conditions must hold True for this rule
                                   and its limit to be applied.
+                                  Currently, only header types are honored.
 
                                   If no client selectors are specified, the rule applies to all traffic of
                                   the targeted AIServiceBackend.
@@ -134,7 +145,7 @@ spec:
                                         required:
                                         - name
                                         type: object
-                                      maxItems: 16
+                                      maxItems: 64
                                       type: array
                                     methods:
                                       description: |-
@@ -240,6 +251,12 @@ spec:
                                       description: SourceCIDR is the client IP Address
                                         range to match on.
                                       properties:
+                                        invert:
+                                          default: false
+                                          description: |-
+                                            Invert specifies whether the source range match result will be inverted.
+                                            When true, the rule matches when the client IP is not in the specified range(s).
+                                          type: boolean
                                         type:
                                           default: Exact
                                           enum:
@@ -274,12 +291,14 @@ spec:
                                   the selected requests have exceeded the quota.
                                 properties:
                                   duration:
-                                    description: |-
-                                      Time window. The suffix is used to specify units. The following
-                                      suffixes are supported:
-                                      * s - seconds (the default unit)
-                                      * m - minutes
-                                      * h - hours
+                                    description: 'Time window. Must be exactly one
+                                      of: "1s" (1 second), "1m" (1 minute), "1h" (1
+                                      hour), or "1d" (1 day).'
+                                    enum:
+                                    - 1s
+                                    - 1m
+                                    - 1h
+                                    - 1d
                                     type: string
                                   limit:
                                     description: The limit alloted for a specified
@@ -306,7 +325,7 @@ spec:
                             If no expression is specified the "total_tokens" value is used.
                             For example:
 
-                             * "input_tokens + cached_input_tokens * 0.1 + output_tokens * 6"
+                             "input_tokens + cached_input_tokens + output_tokens"
                           type: string
                         defaultBucket:
                           description: |-
@@ -314,12 +333,14 @@ spec:
                             using the "BucketRules" configuration.
                           properties:
                             duration:
-                              description: |-
-                                Time window. The suffix is used to specify units. The following
-                                suffixes are supported:
-                                * s - seconds (the default unit)
-                                * m - minutes
-                                * h - hours
+                              description: 'Time window. Must be exactly one of: "1s"
+                                (1 second), "1m" (1 minute), "1h" (1 hour), or "1d"
+                                (1 day).'
+                              enum:
+                              - 1s
+                              - 1m
+                              - 1h
+                              - 1d
                               type: string
                             limit:
                               description: The limit alloted for a specified time
@@ -330,18 +351,15 @@ spec:
                           - limit
                           type: object
                         mode:
+                          default: Shared
                           description: |-
                             The "Mode" determines how quota is charged to the "DefaultBucket" and matching "BucketRules".
-                            In the "exclusive" mode the quota is charged to matching BucketRules or the DefaultBucket
-                            if no BucketRules match the request. The request is denied if all matching buckets are out of quota.
                             In the "shared" mode the quota is charged to all matching "BucketRules" AND the "DefaultBucket"
-                            and request is allowed only if the quota is available in all matching buckets.
+                            and request is allowed only if the quota is available in at least one matching buckets.
+                            Defaults to "Shared".
                           enum:
-                          - Exclusive
                           - Shared
                           type: string
-                      required:
-                      - mode
                       type: object
                   required:
                   - modelName
@@ -353,6 +371,8 @@ spec:
                 description: |-
                   Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the "PerModelQuotas"
                   configuration.
+
+                  Currently, the rate limit configuration is properly set up, but the descriptor set is not being set in the Envoy Configuration
                 properties:
                   costExpression:
                     description: |-
@@ -360,7 +380,7 @@ spec:
                       If no expression is specified the "total_tokens" value is used.
                       For example:
 
-                       * "input_tokens + cached_input_tokens * 0.1 + output_tokens * 6"
+                       "input_tokens + cached_input_tokens + output_tokens"
                     type: string
                   quota:
                     description: |-
@@ -369,12 +389,13 @@ spec:
                       the selected requests have exceeded the quota.
                     properties:
                       duration:
-                        description: |-
-                          Time window. The suffix is used to specify units. The following
-                          suffixes are supported:
-                          * s - seconds (the default unit)
-                          * m - minutes
-                          * h - hours
+                        description: 'Time window. Must be exactly one of: "1s" (1
+                          second), "1m" (1 minute), "1h" (1 hour), or "1d" (1 day).'
+                        enum:
+                        - 1s
+                        - 1m
+                        - 1h
+                        - 1d
                         type: string
                       limit:
                         description: The limit alloted for a specified time window.

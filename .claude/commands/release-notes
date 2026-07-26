@@ -1,0 +1,638 @@
+---
+description: Generate release notes for Envoy AI Gateway following the established style and structure.
+---
+
+Generate release notes for Envoy AI Gateway following the established style and structure.
+
+## Instructions
+
+You are generating release notes for the Envoy AI Gateway project. Follow this workflow:
+
+### Step 1: Gather Context
+
+1. **Identify the previous release tag:**
+
+   ```bash
+   git describe --tags --abbrev=0
+   git tag --sort=-v:refname | head -10
+   ```
+
+2. **Review commits since the last release:**
+
+   ```bash
+   git log <previous-tag>..HEAD --oneline --no-merges
+   git log <previous-tag>..HEAD --pretty=format:"%h %s" --no-merges
+   ```
+
+3. **Get detailed PR information for significant changes:**
+
+   ```bash
+   git log <previous-tag>..HEAD --grep="Merge pull request" --oneline
+   ```
+
+4. **Review the existing release notes for style reference:**
+   - Read `site/src/data/releases/v0.4.json` and `site/src/data/releases/v0.3.json`
+   - Read `site/src/pages/release-notes/v0.4.mdx` and `site/src/pages/release-notes/v0.3.mdx`
+
+### Step 2: Verify Features Against Code
+
+For each potential feature identified from commits, verify it exists and understand its implementation by examining the actual code. Do not rely solely on commit messages.
+
+#### API and CRD Changes
+
+Review changes to the API definitions:
+
+```bash
+git diff <previous-tag>..HEAD -- api/v1alpha1/
+```
+
+Key files to examine:
+
+- `api/v1alpha1/*.go` - CRD type definitions (look for new fields, structs, or types)
+- `api/v1alpha1/zz_generated.deepcopy.go` - Generated code indicates new types
+- Look for `// +kubebuilder:` markers indicating validation rules or defaults
+
+#### Provider and Translator Changes
+
+Check for new or modified LLM provider support:
+
+```bash
+git diff <previous-tag>..HEAD -- internal/translator/
+```
+
+Key patterns to look for:
+
+- New files in `internal/translator/` indicate new provider support
+- Changes to `internal/translator/translator.go` for routing logic
+- New schema types or translation functions
+
+#### External Processor Changes
+
+Review the core request processing logic:
+
+```bash
+git diff <previous-tag>..HEAD -- internal/extproc/
+```
+
+Look for:
+
+- New endpoint support (e.g., `/v1/images/generations`, `/v1/embeddings`)
+- Changes to streaming handling
+- Token usage tracking modifications
+
+#### Controller Changes
+
+Check for new controller logic or resource handling:
+
+```bash
+git diff <previous-tag>..HEAD -- internal/controller/
+```
+
+Look for:
+
+- New reconcilers for CRDs
+- Changes to resource watching or status updates
+- Cross-namespace reference handling
+
+#### Observability Changes
+
+Review metrics and tracing implementations:
+
+```bash
+git diff <previous-tag>..HEAD -- internal/metrics/ internal/tracing/
+```
+
+Look for:
+
+- New metric definitions
+- New span attributes or trace points
+- Changes to OpenTelemetry semantic conventions
+
+#### CLI Changes
+
+Check for new CLI commands or options:
+
+```bash
+git diff <previous-tag>..HEAD -- cmd/aigw/
+```
+
+Look for:
+
+- New subcommands
+- New flags or configuration options
+- Auto-configuration changes
+
+#### Authentication Changes
+
+Review backend authentication implementations:
+
+```bash
+git diff <previous-tag>..HEAD -- internal/backendauth/
+```
+
+Look for:
+
+- New authentication providers (AWS, Azure, GCP, Anthropic)
+- Credential chain support
+- Token refresh logic
+
+#### Dependency Updates
+
+Verify actual dependency versions from source files:
+
+```bash
+# Go version
+grep -E "^go " go.mod
+
+# Key dependencies
+grep -E "envoyproxy/gateway|sigs.k8s.io/gateway-api" go.mod
+
+# Envoy version
+cat .envoy-version
+```
+
+#### Test Coverage
+
+Review test files to understand feature scope and edge cases:
+
+```bash
+git diff <previous-tag>..HEAD -- '*_test.go'
+git diff <previous-tag>..HEAD -- tests/
+```
+
+Test files often reveal:
+
+- Supported configurations and options
+- Edge cases and limitations
+- Integration points
+
+### Step 3: Categorize Changes
+
+Categorize all changes into these sections:
+
+#### New Features
+
+Group features by theme (e.g., "Provider Support", "Observability", "Architecture"). Each feature group contains:
+
+- A descriptive `title` for the group
+- An `items` array with individual features, each having a `title` and `description`
+
+#### API Changes (`apiChanges`)
+
+Document changes to CRDs and APIs:
+
+- New fields or resources
+- Modified field types or behaviors
+- New validation rules
+
+#### Deprecations (`deprecations`)
+
+List deprecated features with:
+
+- What is being deprecated
+- What to use instead
+- Timeline for removal (typically N+2 versions)
+
+#### Bug Fixes (`bugFixes`)
+
+Document fixes for user-facing bugs
+
+#### Breaking Changes (`breakingChanges`)
+
+List changes that require user action:
+
+- Configuration changes
+- Removed features
+- Behavioral changes
+
+#### Dependencies (`dependencies`)
+
+Update version information for:
+
+- Go version
+- Envoy Gateway version
+- Envoy Proxy version
+- Gateway API version
+- Gateway API Inference Extension version
+
+### Step 4: Generate the JSON Data File
+
+Create `site/src/data/releases/vX.Y.json` following this exact schema:
+
+```json
+{
+  "series": {
+    "version": "vX.Y",
+    "title": "Envoy AI Gateway vX.Y.x",
+    "subtitle": "Release introducing [key features summary].",
+    "badge": "Latest",
+    "badgeType": "milestone"
+  },
+  "releases": [
+    {
+      "version": "vX.Y.0",
+      "date": "Month DD, YYYY",
+      "type": "minor",
+      "tags": [{ "text": "Feature Name", "type": "feature" }],
+      "overview": "1-2 paragraph summary of the release highlights.",
+      "features": [
+        {
+          "title": "Feature Group Name",
+          "items": [
+            {
+              "title": "Feature title (can use <code>tags</code>)",
+              "description": "Detailed description of the feature and its benefits."
+            }
+          ]
+        }
+      ],
+      "apiChanges": [
+        {
+          "title": "Change title",
+          "description": "Description of the API change."
+        }
+      ],
+      "deprecations": [
+        {
+          "title": "<code>DeprecatedField</code> Pattern",
+          "description": "Description and migration guidance."
+        }
+      ],
+      "bugFixes": [
+        {
+          "title": "Bug title",
+          "description": "Description of what was fixed."
+        }
+      ],
+      "breakingChanges": [
+        {
+          "title": "Breaking change title",
+          "description": "Description and migration steps."
+        }
+      ],
+      "dependencies": [
+        {
+          "title": "Go X.Y.Z",
+          "description": "Updated to Go X.Y.Z for improved performance and security."
+        },
+        {
+          "title": "Envoy Gateway vX.Y",
+          "description": "Built on Envoy Gateway vX.Y for proven data plane capabilities."
+        },
+        {
+          "title": "Envoy vX.Y",
+          "description": "Leveraging Envoy Proxy's battle-tested networking capabilities."
+        },
+        {
+          "title": "Gateway API vX.Y.Z",
+          "description": "Support for Gateway API vX.Y.Z specifications."
+        }
+      ]
+    }
+  ],
+  "navigation": {
+    "previous": { "version": "vX.Y.x Series", "path": "/release-notes/vX.Y" },
+    "next": { "version": "vX.Y.x Series", "path": "/release-notes/vX.Y" }
+  }
+}
+```
+
+### Step 5: Generate the MDX Page
+
+Create `site/src/pages/release-notes/vX.Y.mdx` using this template:
+
+```mdx
+---
+title: Envoy AI Gateway vX.Y.x Release Series
+description: [Brief description of major features]
+toc_min_heading_level: 2
+toc_max_heading_level: 4
+---
+
+import Link from "@docusaurus/Link";
+import {
+  ReleaseSeriesLayout,
+  ReleaseHeader,
+  FeatureSectionCard,
+  PatchRelease,
+  ItemList,
+  Dependencies,
+} from "../../components/ReleaseNotes";
+import releaseData from "../../data/releases/vX.Y.json";
+import React from "react";
+
+export const { series, releases, navigation } = releaseData;
+export const mainRelease = releases[0];
+export const patchReleases = releases.slice(1).reverse();
+
+<ReleaseSeriesLayout
+  title={series.title}
+  subtitle={series.subtitle}
+  seriesVersion={series.version}
+  badgeText={series.badge}
+  badgeType={series.badgeType}
+  previousSeries={navigation.previous}
+>
+
+<ReleaseHeader
+  version={mainRelease.version}
+  date={mainRelease.date}
+  type={mainRelease.type}
+  tags={mainRelease.tags}
+>
+
+{mainRelease.overview}
+
+</ReleaseHeader>
+
+## ✨ New Features
+
+{mainRelease.features.map((featureSection, index) => (
+
+{" "}
+
+<FeatureSectionCard key={index} section={featureSection} />
+))}
+
+## 🔗 API Updates
+
+{mainRelease.apiChanges.length > 0 && (
+
+{" "}
+
+<ItemList items={mainRelease.apiChanges} />
+)}
+
+{mainRelease.deprecations?.length > 0 && (
+
+{" "}
+
+<>
+  ### Deprecations
+  <ItemList items={mainRelease.deprecations} />
+</>
+)}
+
+{mainRelease.breakingChanges?.length > 0 && (
+
+{" "}
+
+<>
+  ## ⚠️ Breaking Changes
+  <ItemList items={mainRelease.breakingChanges} />
+</>
+)}
+
+## 📖 Upgrade Guidance
+
+[Include migration steps for users upgrading from the previous version]
+
+## 📦 Dependencies Versions
+
+<Dependencies dependencies={mainRelease.dependencies} />
+
+## ⏩ Patch Releases
+
+{patchReleases.map((release, index) => (
+
+<PatchRelease
+  key={index}
+  version={release.version}
+  date={release.date}
+  type={release.type}
+  tags={release.tags}
+  overview={release.overview}
+  features={release.features}
+  bugFixes={release.bugFixes}
+/>
+))}
+
+## 🙏 Acknowledgements
+
+[Acknowledge contributors and organizations]
+
+## 🔮 What's Next
+
+[List upcoming features for future releases]
+
+</ReleaseSeriesLayout>
+```
+
+### Step 5b: Generate the plain-markdown copy
+
+Create `release-notes/vX.Y.Z.md` (at the repo root, sibling to `RELEASES.md`). This is a self-contained markdown rendering of the same content the site shows, intended for copy-paste into the GitHub release body.
+
+Rules:
+
+- **No MDX.** No imports, no React components, no `<code>` HTML tags — use markdown backticks instead.
+- **Same sections, same order** as the MDX page, so the GitHub release body and the site stay aligned: short overview paragraph → Breaking Changes → New Features (with the same feature-group subheadings) → API Updates → Bug Fixes → Upgrade Guidance (full migration steps and code blocks) → Dependency Versions → Acknowledgements → What's Next.
+- **Self-contained.** A reader pasting this into GitHub should see the full release without needing to follow any link, but include a single link near the top to the rendered version on the site (`https://aigateway.envoyproxy.io/release-notes/vX.Y`).
+- **Filename includes the patch version** (`v0.6.0.md`, not `v0.6.md`) so future patch releases get their own files.
+
+### Step 6: Update Navigation
+
+Update the previous release's JSON to add the `next` navigation:
+
+```json
+"navigation": {
+  "previous": { ... },
+  "next": { "version": "vX.Y.x Series", "path": "/release-notes/vX.Y" }
+}
+```
+
+Update `site/src/data/releases/index.json` with the new `lastUpdated` date.
+
+### Step 6b: Update the Release Notes Index Page
+
+The release notes index page (`site/src/pages/release-notes/index.mdx`) has hardcoded imports and release cards that must be updated manually.
+
+#### 1. Add the import for the new release data
+
+Add after the existing imports:
+
+```tsx
+import vXYData from "../../data/releases/vX.Y.json";
+```
+
+#### 2. Add the new release to the `allReleases` array
+
+Update the array to include the new release data first:
+
+```tsx
+export const allReleases = [
+  ...vXYData.releases, // Add new release first
+  ...vPreviousData.releases,
+  // ... other releases
+].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+```
+
+#### 3. Add a `ReleaseCard` for the new release
+
+Add as the first card in the `releaseNotesGrid` div, with `featured={true}`:
+
+```tsx
+<ReleaseCard
+  version="vX.Y.x"
+  date="Month DD, YYYY - Current"
+  summary={vXYData.series.subtitle}
+  tags={vXYData.releases[0].tags.slice(0, 10)}
+  linkTo="/release-notes/vX.Y"
+  linkText="View Release Notes →"
+  badge={vXYData.series.badge}
+  featured={true}
+  versions={vXYData.releases.map((release) => release.version).join(", ")}
+/>
+```
+
+#### 4. Update the previous release card
+
+Change the previous "Latest" release card:
+
+- Set `featured={false}`
+- Update the `date` range to end at the new release date (e.g., "November 7, 2025 - January 16, 2026")
+
+### Step 7: Verify Each Item Against Code
+
+After generating the release notes, go through **each individual item** and verify its accuracy against the actual code:
+
+#### For Each Feature Item
+
+1. **Locate the implementation**: Find the specific file(s) that implement the feature
+2. **Verify the description is accurate**: Read the code to confirm the feature works as described
+3. **Check for limitations not mentioned**: Look for edge cases, unsupported scenarios, or constraints
+4. **Verify field names and types**: Ensure any API fields, config options, or CLI flags match exactly
+
+#### For Each API Change
+
+1. **Find the struct definition**: Locate the Go struct in `api/v1alpha1/`
+2. **Verify field names**: Ensure the documented field name matches the JSON tag
+3. **Check field types and validation**: Confirm types and any kubebuilder validation markers
+4. **Look for related changes**: Check if the field affects other parts of the API
+
+#### For Each Breaking Change
+
+1. **Identify what breaks**: Find the code that changed behavior
+2. **Verify migration path**: Ensure the suggested migration actually works
+3. **Check for undocumented impacts**: Look for side effects the user needs to know about
+
+#### Example Verification Process
+
+```
+Feature: "AWS SDK default credential chain support"
+
+1. Search: grep -r "credential" internal/backendauth/
+2. Read: internal/backendauth/aws.go - find the credential chain implementation
+3. Verify: Does it actually support IRSA, Pod Identity, Instance Profiles as claimed?
+4. Check tests: What scenarios are tested? Any limitations?
+5. Update description if needed to match actual behavior
+```
+
+### Step 8: Review for Quality and Clarity
+
+#### Check for Repetition and Redundancy
+
+1. **Scan for duplicate concepts**: Look for features described multiple times in different sections
+2. **Consolidate related items**: Combine items that describe the same feature from different angles
+3. **Remove redundant phrases**: Eliminate repeated words like "support for", "enables", "provides"
+4. **Check tags vs features**: Ensure release tags don't just repeat what's in the features list
+
+#### Common Redundancy Patterns to Fix
+
+- Same feature in both "features" and "apiChanges" - keep API details in apiChanges only
+- Multiple items describing sub-features that should be one item with sub-bullets
+- Overlapping descriptions between feature groups
+
+#### Apply "So What?" Framing
+
+For each feature, ensure the description answers: **"Why should a user care about this?"**
+
+**Bad (implementation-focused):**
+
+> Added `headerMutation` field to `AIServiceBackend` spec
+
+**Good (user benefit-focused):**
+
+> Header mutations at backend level: New `headerMutation` field in `AIServiceBackend` enables adding, removing, or modifying HTTP headers for all requests to a backend, useful for adding API keys, tracing headers, or custom metadata without modifying application code.
+
+#### "So What?" Checklist for Each Item
+
+Ask these questions:
+
+1. **What can the user do now that they couldn't before?**
+2. **What problem does this solve?**
+3. **What's the practical use case?**
+4. **How does this make their life easier?**
+
+#### Reframing Examples
+
+| Before (Technical)                  | After (User Benefit)                                                                                       |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| "Support for AWS credential chain"  | "Eliminates need for static AWS credentials - automatically uses IRSA, Pod Identity, or Instance Profiles" |
+| "Added cross-namespace references"  | "Reference backends in different namespaces, enabling multi-tenant setups and organizational separation"   |
+| "Implemented OpenInference tracing" | "Full request lifecycle visibility with Arize Phoenix compatibility for debugging and evaluation"          |
+| "New MCPRoute CRD"                  | "Route MCP requests to backend servers with a single custom resource, enabling unified AI API management"  |
+
+#### Final Quality Pass
+
+1. **Read aloud**: Does each description flow naturally?
+2. **Jargon check**: Would a new user understand the terminology?
+3. **Completeness**: Does each item have enough context to be useful?
+4. **Consistency**: Is the tone and style consistent throughout?
+
+### Style Guidelines
+
+1. **Feature descriptions**: Focus on user benefit, not implementation details
+2. **Use `<code>` tags**: For API fields, CRD names, CLI commands, and config values
+3. **Use `<a href="...">Link text →</a>`**: For links to documentation
+4. **Be specific**: Include version numbers, field names, and concrete examples
+5. **Group logically**: Combine related features under themed sections
+6. **Migration guidance**: Always provide clear upgrade steps for breaking changes
+7. **Dependencies**: Check `go.mod` and `.envoy-version` for current versions
+8. **"So what?" test**: Every feature should explain why users should care
+
+### Checklist
+
+#### Gathering and Verification
+
+- [ ] Identified all commits since last release
+- [ ] Verified API/CRD changes against `api/v1alpha1/` source files
+- [ ] Verified provider changes against `internal/translator/` implementations
+- [ ] Verified observability changes against `internal/metrics/` and `internal/tracing/`
+- [ ] Verified CLI changes against `cmd/aigw/` source files
+- [ ] Verified authentication changes against `internal/backendauth/`
+- [ ] Cross-referenced features with test files for accuracy
+- [ ] Verified dependency versions from `go.mod` and `.envoy-version`
+
+#### Content Generation
+
+- [ ] Categorized changes into appropriate sections
+- [ ] Created JSON data file with correct schema
+- [ ] Created MDX page file
+- [ ] Updated previous release navigation
+- [ ] Updated `site/src/data/releases/index.json` lastUpdated date
+- [ ] Updated `site/src/pages/release-notes/index.mdx` with new import, allReleases array, and ReleaseCard
+
+#### Item-by-Item Verification (Step 7)
+
+- [ ] Each feature item verified against its implementation code
+- [ ] Each API change verified against struct definitions in `api/v1alpha1/`
+- [ ] Field names match JSON tags exactly
+- [ ] Breaking changes have verified migration paths
+- [ ] No claims made that aren't supported by the code
+
+#### Quality and Clarity Review (Step 8)
+
+- [ ] No duplicate features across sections
+- [ ] No redundant items that should be consolidated
+- [ ] Each feature passes the "so what?" test (explains user benefit)
+- [ ] Descriptions focus on what users can do, not implementation details
+- [ ] Consistent tone and style throughout
+- [ ] All code references use `<code>` tags
+- [ ] Links to documentation are valid
+
+#### Final Checks
+
+- [ ] Read through entire release notes for flow and readability
+- [ ] Breaking changes include clear migration guidance
+- [ ] Deprecations specify removal timeline and alternatives
+- [ ] No jargon without explanation

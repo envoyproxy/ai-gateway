@@ -775,9 +775,12 @@ func TestNewTracingFromEnv_Embeddings_Redaction(t *testing.T) {
 
 			// Create a test request with sensitive data.
 			req := &openai.EmbeddingRequest{
-				Model: "text-embedding-3-small",
-				Input: openai.EmbeddingRequestInput{
-					Value: "Sensitive embedding text",
+				EmbeddingBaseRequest: openai.EmbeddingBaseRequest{Model: "text-embedding-3-small"},
+				OfCompletion: &openai.EmbeddingCompletionRequest{
+					EmbeddingBaseRequest: openai.EmbeddingBaseRequest{Model: "text-embedding-3-small"},
+					Input: openai.EmbeddingRequestInput{
+						Value: "Sensitive embedding text",
+					},
 				},
 			}
 			reqBody := []byte(`{"input":"Sensitive embedding text","model":"text-embedding-3-small"}`)

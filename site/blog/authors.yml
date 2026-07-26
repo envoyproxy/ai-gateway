@@ -45,7 +45,7 @@ yaoweng:
     linkedin: https://www.linkedin.com/in/yao-weng-ab091442/
 mathetake:
   name: Takeshi Yoneda
-  title: Envoy AI Gateway Maintainer - Tetrate
+  title: Envoy AI Gateway Maintainer - Netflix
   url: https://github.com/mathetake
   image_url: https://github.com/mathetake.png
   page: true
@@ -88,3 +88,21 @@ hrushikeshpatil:
   socials:
     github: PatilHrushikesh
     linkedin: https://www.linkedin.com/in/hrushikesh-patil-345a1219a/
+johnugeorge:
+  name: Johnu George
+  title: Envoy AI Gateway Maintainer - Nutanix
+  url: https://github.com/johnugeorge
+  image_url: https://github.com/johnugeorge.png
+  page: true
+  socials:
+    github: johnugeorge
+    linkedin: https://www.linkedin.com/in/johnu-george
+gavrissh:
+  name: Gavrish Prabhu
+  title: Envoy AI Gateway Maintainer - Nutanix
+  url: https://github.com/gavrissh
+  image_url: https://github.com/gavrissh.png
+  page: true
+  socials:
+    github: gavrissh
+    linkedin: https://www.linkedin.com/in/gavrish-prabhu

@@ -443,6 +443,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 						CachedTokens:        5,
 						CacheCreationTokens: 3,
 					},
+					CompletionTokensDetails: &openai.CompletionTokensDetails{},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -478,6 +479,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 						CachedTokens:        10,
 						CacheCreationTokens: 7,
 					},
+					CompletionTokensDetails: &openai.CompletionTokensDetails{},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -524,6 +526,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens: 2,
 					},
+					CompletionTokensDetails: &openai.CompletionTokensDetails{},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -557,6 +560,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens: 3,
 					},
+					CompletionTokensDetails: &openai.CompletionTokensDetails{},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -602,6 +606,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 					PromptTokensDetails: &openai.PromptTokensDetails{
 						CachedTokens: 1,
 					},
+					CompletionTokensDetails: &openai.CompletionTokensDetails{},
 				},
 				Choices: []openai.ChatCompletionResponseChoice{
 					{
@@ -651,7 +656,7 @@ func TestOpenAIToGCPAnthropicTranslatorV1ChatCompletion_ResponseBody(t *testing.
 				int32(tt.expectedOpenAIResponse.Usage.PromptTokensDetails.CacheCreationTokens), // nolint:gosec
 				int32(tt.expectedOpenAIResponse.Usage.CompletionTokens),                        // nolint:gosec
 				int32(tt.expectedOpenAIResponse.Usage.TotalTokens),                             // nolint:gosec
-				-1,
+				int32(tt.expectedOpenAIResponse.Usage.CompletionTokensDetails.ReasoningTokens), // nolint:gosec
 			)
 			require.Equal(t, expectedTokenUsage, usedToken)
 

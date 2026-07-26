@@ -66,43 +66,41 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 
 	var bedrockReq awsbedrock.ConverseInput
 
+	// Promote any role: "system" messages from the messages array to the top-level system field.
+	// This handles clients (e.g. Claude Code with mid-conversation-system beta) that send
+	// system prompts as messages rather than the top-level parameter.
+	messages := promoteAnthropicSystemMessagesToParam(body)
+
 	// Convert messages.
-	bedrockReq.Messages = make([]*awsbedrock.Message, 0, len(body.Messages))
-	msgLen := len(body.Messages)
+	bedrockReq.Messages = make([]*awsbedrock.Message, 0, len(messages))
+	msgLen := len(messages)
 	for i := 0; i < msgLen; {
-		msg := &body.Messages[i]
+		msg := &messages[i]
 		switch msg.Role {
 		case anthropicschema.MessageRoleUser:
-			bedrockMsg, convErr := a.convertUserMessage(msg)
-			if convErr != nil {
-				return nil, nil, convErr
-			}
-			bedrockReq.Messages = append(bedrockReq.Messages, bedrockMsg)
-			i++
-		case anthropicschema.MessageRoleAssistant:
-			bedrockMsg, convErr := a.convertAssistantMessage(msg)
-			if convErr != nil {
-				return nil, nil, convErr
-			}
-			bedrockReq.Messages = append(bedrockReq.Messages, bedrockMsg)
-			i++
-		default:
-			// Check for tool_result content blocks (these come as "user" role in Anthropic
-			// but we handle them specially).
-			if hasToolResult(msg) {
+			if isOnlyToolResult(msg) {
 				bedrockMsg := a.convertToolResultMessage(msg)
-				// Coalesce consecutive tool result messages.
-				for i+1 < msgLen && hasToolResult(&body.Messages[i+1]) {
-					nextMsg := &body.Messages[i+1]
+				// Coalesce consecutive tool-result-only messages.
+				for i+1 < msgLen && isOnlyToolResult(&messages[i+1]) {
+					nextMsg := &messages[i+1]
 					nextBedrockMsg := a.convertToolResultMessage(nextMsg)
 					bedrockMsg.Content = append(bedrockMsg.Content, nextBedrockMsg.Content...)
 					i++
 				}
 				bedrockReq.Messages = append(bedrockReq.Messages, bedrockMsg)
 			} else {
-				return nil, nil, fmt.Errorf("%w: unexpected role: %s", internalapi.ErrInvalidRequestBody, msg.Role)
+				bedrockMsg, convErr := a.convertUserMessage(msg)
+				if convErr != nil {
+					return nil, nil, convErr
+				}
+				bedrockReq.Messages = append(bedrockReq.Messages, bedrockMsg)
 			}
 			i++
+		case anthropicschema.MessageRoleAssistant:
+			bedrockReq.Messages = append(bedrockReq.Messages, a.convertAssistantMessage(msg))
+			i++
+		default:
+			return nil, nil, fmt.Errorf("%w: unexpected role: %s", internalapi.ErrInvalidRequestBody, msg.Role)
 		}
 	}
 
@@ -162,16 +160,56 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 	return
 }
 
-func hasToolResult(msg *anthropicschema.MessageParam) bool {
+// promoteAnthropicSystemMessagesToParam promotes role: "system" messages from the messages
+// array to the top-level system parameter. Returns the filtered messages (without system messages).
+// This handles clients (e.g. Claude Code with mid-conversation-system beta) that send
+// system prompts as messages rather than the top-level parameter.
+func promoteAnthropicSystemMessagesToParam(body *anthropicschema.MessagesRequest) []anthropicschema.MessageParam {
+	var systemTexts []string
+	var filtered []anthropicschema.MessageParam
+	for _, msg := range body.Messages {
+		if msg.Role == "system" {
+			if msg.Content.Text != "" {
+				systemTexts = append(systemTexts, msg.Content.Text)
+			}
+			for i := range msg.Content.Array {
+				if msg.Content.Array[i].Text != nil && msg.Content.Array[i].Text.Text != "" {
+					systemTexts = append(systemTexts, msg.Content.Array[i].Text.Text)
+				}
+			}
+		} else {
+			filtered = append(filtered, msg)
+		}
+	}
+	if len(systemTexts) > 0 {
+		systemText := strings.Join(systemTexts, "\n")
+		body.System = &anthropicschema.SystemPrompt{Text: systemText}
+	}
+	return filtered
+}
+
+// isOnlyToolResult returns true if the message is a user message whose content
+// array consists entirely of tool_result blocks. This is used to decide whether
+// the message should go through the tool-result coalescing path.
+// Mixed-content messages (e.g. text + tool_result) are handled by
+// convertUserMessage, which preserves all block types.
+func isOnlyToolResult(msg *anthropicschema.MessageParam) bool {
 	if msg.Role != anthropicschema.MessageRoleUser {
 		return false
 	}
+	// Simple text-only content is never a tool-result-only message.
+	if msg.Content.Text != "" {
+		return false
+	}
+	if len(msg.Content.Array) == 0 {
+		return false
+	}
 	for i := range msg.Content.Array {
-		if msg.Content.Array[i].ToolResult != nil {
-			return true
+		if msg.Content.Array[i].ToolResult == nil {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 func (a *anthropicToAWSBedrockTranslator) convertUserMessage(msg *anthropicschema.MessageParam) (*awsbedrock.Message, error) {
@@ -203,13 +241,13 @@ func (a *anthropicToAWSBedrockTranslator) convertUserMessage(msg *anthropicschem
 	return bedrockMsg, nil
 }
 
-func (a *anthropicToAWSBedrockTranslator) convertAssistantMessage(msg *anthropicschema.MessageParam) (*awsbedrock.Message, error) {
+func (a *anthropicToAWSBedrockTranslator) convertAssistantMessage(msg *anthropicschema.MessageParam) *awsbedrock.Message {
 	bedrockMsg := &awsbedrock.Message{Role: awsbedrock.ConversationRoleAssistant}
 	if msg.Content.Text != "" {
 		bedrockMsg.Content = []*awsbedrock.ContentBlock{
 			{Text: ptr.To(msg.Content.Text)},
 		}
-		return bedrockMsg, nil
+		return bedrockMsg
 	}
 	bedrockMsg.Content = make([]*awsbedrock.ContentBlock, 0, len(msg.Content.Array))
 	for i := range msg.Content.Array {
@@ -244,7 +282,7 @@ func (a *anthropicToAWSBedrockTranslator) convertAssistantMessage(msg *anthropic
 			})
 		}
 	}
-	return bedrockMsg, nil
+	return bedrockMsg
 }
 
 func (a *anthropicToAWSBedrockTranslator) convertToolResultMessage(msg *anthropicschema.MessageParam) *awsbedrock.Message {

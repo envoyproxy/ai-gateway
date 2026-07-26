@@ -232,6 +232,9 @@ type MCPBackendAPIKey struct {
 	//
 	// Either one of Header or QueryParam can be specified to inject the API key.
 	//
+	// Note: Embedding credentials in URLs (including query parameters) is generally not recommended because URLs can be exposed in logs
+	// and intermediary systems; prefer header-based injection when possible.
+	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinLength=1
 	// +optional

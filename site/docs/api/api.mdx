@@ -481,8 +481,9 @@ MCPRouteList contains a list of MCPRoute.
 - [QuotaPolicyList](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotapolicylist)
 
 QuotaPolicy specifies token quota configuration for inference services.
-Providing a list of backends in the AIGatewayRouteRule allows failover to a different service
-if token quota for a service had been exceeded.
+Generates rate limit configuration and tracks quota usage.
+Reject requests with 429 once all related quota to that request has been exceeded.
+
 
 ##### Fields
 
@@ -633,6 +634,11 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
 
 
 <ApiField
+  name="name"
+  type="[SectionName](#sigs-k8s-io-gateway-api-apis-v1-sectionname)"
+  required="false"
+  description="Name is the name of the route rule. This name must be unique within the route.<br />When specified, it is copied to the generated HTTPRoute rule name."
+/><ApiField
   name="backendRefs"
   type="[AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulebackendref) array"
   required="false"
@@ -646,7 +652,12 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   name="timeouts"
   type="[HTTPRouteTimeouts](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httproutetimeouts)"
   required="false"
-  description="Timeouts defines the timeouts that can be configured for an HTTP request.<br />If this field is not set, or the timeout.requestTimeout is nil, Envoy AI Gateway defaults to<br />set 60s for the request timeout as opposed to 15s of the Envoy Gateway's default value.<br />For streaming responses (like chat completions with stream=true), consider setting<br />longer timeouts as the response may take time until the completion."
+  description="Timeouts defines the timeouts that can be configured for an HTTP request.<br />If this field is not set, or the timeout.requestTimeout is nil, Envoy AI Gateway defaults to<br />set 60s for the request timeout as opposed to 15s of the Envoy Gateway's default value.<br />For streaming responses (like chat completions with stream=true), consider setting<br />longer timeouts as the response may take time until the completion. Timeouts.Request<br />acts as the maximum total time the gateway will wait for the entire response,<br />including all streamed chunks."
+/><ApiField
+  name="streamIdleTimeout"
+  type="[Duration](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.Duration)"
+  required="false"
+  description="StreamIdleTimeout is the maximum time Envoy will wait without receiving any bytes from the upstream.<br />If the timer fires before the first response byte arrives, Envoy resets the upstream stream and a<br />retry policy can fall over to the next backend. If it fires mid-stream after<br />bytes have already arrived, the stream is cut and the client receives a 504.<br />The AI Gateway extension server sets route.retry_policy.per_try_idle_timeout to this value on<br />every xDS route generated from this rule before it is sent to the data plane.<br />Pair this field with Timeouts.Request, which acts as the overall deadline.<br />If this field is not set, no per-try idle timeout is applied."
 /><ApiField
   name="modelsOwnedBy"
   type="string"
@@ -2199,7 +2210,7 @@ a tool must match an include rule AND not match any exclude rule to be allowed.
   name="modelName"
   type="string"
   required="true"
-  description="Model name for which the quota is specified."
+  description="Model name for which the quota is specified.<br />This must match the ModelNameOverride set in the AIGatewayRoute's BackendRef<br />for the quota policy to apply to that backend."
 /><ApiField
   name="quota"
   type="[QuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotadefinition)"
@@ -2269,15 +2280,11 @@ QuotaBucketMode specifies whether the default and per request buckets values are
 
 
 
+
 ##### Possible Values
 
 <ApiField
   name="Shared"
-  type="enum"
-  required="false"
-  description=""
-/><ApiField
-  name="Exclusive"
   type="enum"
   required="false"
   description=""
@@ -2299,12 +2306,13 @@ QuotaDefinition specified expression for computing request cost and rules for ma
   name="costExpression"
   type="string"
   required="false"
-  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> * `input_tokens + cached_input_tokens * 0.1 + output_tokens * 6`"
+  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> `input_tokens + cached_input_tokens + output_tokens`"
 /><ApiField
   name="mode"
   type="[QuotaBucketMode](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotabucketmode)"
-  required="true"
-  description="The `Mode` determines how quota is charged to the `DefaultBucket` and matching `BucketRules`.<br />In the `exclusive` mode the quota is charged to matching BucketRules or the DefaultBucket<br />if no BucketRules match the request. The request is denied if all matching buckets are out of quota.<br />In the `shared` mode the quota is charged to all matching `BucketRules` AND the `DefaultBucket`<br />and request is allowed only if the quota is available in all matching buckets."
+  required="false"
+  defaultValue="Shared"
+  description="The `Mode` determines how quota is charged to the `DefaultBucket` and matching `BucketRules`.<br />In the `shared` mode the quota is charged to all matching `BucketRules` AND the `DefaultBucket`<br />and request is allowed only if the quota is available in at least one matching buckets.<br />Defaults to `Shared`."
 /><ApiField
   name="defaultBucket"
   type="[QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)"
@@ -2314,7 +2322,7 @@ QuotaDefinition specified expression for computing request cost and rules for ma
   name="bucketRules"
   type="[QuotaRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotarule) array"
   required="false"
-  description="BucketRules are a list of client selectors and quotas. If a request<br />matches multiple rules, each of their associated quotas get applied, so a<br />single request might burn down the quota for multiple rules."
+  description="BucketRules are a list of client selectors and quotas. If a request<br />matches multiple rules, each of their associated quotas get applied, so a<br />single request might burn down the quota for multiple rules.<br />Client selectors that match under the same model / service backend will be<br />combined with the first limit taking precedence."
 />
 
 
@@ -2340,12 +2348,12 @@ QuotaPolicySpec specifies rules for computing token based costs of requests.
   name="serviceQuota"
   type="[ServiceQuotaDefinition](#github-com-envoyproxy-ai-gateway-api-v1alpha1-servicequotadefinition)"
   required="false"
-  description="Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the `PerModelQuotas`<br />configuration."
+  description="Quota for all models served by AIServiceBackend(s). This value can be overridden for specific models using the `PerModelQuotas`<br />configuration.<br />Currently, the rate limit configuration is properly set up, but the descriptor set is not being set in the Envoy Configuration"
 /><ApiField
   name="perModelQuotas"
   type="[PerModelQuota](#github-com-envoyproxy-ai-gateway-api-v1alpha1-permodelquota) array"
   required="false"
-  description="PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this<br />policy is attached."
+  description="PerModelQuotas specifies quota for different models served by the AIServiceBackend(s) where this<br />policy is attached.<br />When multiple QuotaPolicies define the same Model for the same AIServiceBackend,<br />the policy whose namespace/name is alphabetically first takes precedence.<br />Keys are sorted to ensure deterministic snapshot generation."
 />
 
 
@@ -2387,7 +2395,7 @@ QuotaPolicyStatus contains the conditions by the reconciliation result.
   name="clientSelectors"
   type="RateLimitSelectCondition array"
   required="false"
-  description="ClientSelectors holds the list of conditions to select<br />specific clients using attributes from the traffic flow.<br />All individual select conditions must hold True for this rule<br />and its limit to be applied.<br />If no client selectors are specified, the rule applies to all traffic of<br />the targeted AIServiceBackend."
+  description="ClientSelectors holds the list of conditions to select<br />specific clients using attributes from the traffic flow.<br />All individual select conditions must hold True for this rule<br />and its limit to be applied.<br />Currently, only header types are honored.<br />If no client selectors are specified, the rule applies to all traffic of<br />the targeted AIServiceBackend."
 /><ApiField
   name="quota"
   type="[QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)"
@@ -2425,7 +2433,7 @@ QuotaValue defines the quota limits using sliding window.
   name="duration"
   type="string"
   required="true"
-  description="Time window. The suffix is used to specify units. The following<br />suffixes are supported:<br />* s - seconds (the default unit)<br />* m - minutes<br />* h - hours"
+  description="Time window. Must be exactly one of: `1s` (1 second), `1m` (1 minute), `1h` (1 hour), or `1d` (1 day)."
 />
 
 
@@ -2446,7 +2454,7 @@ QuotaValue defines the quota limits using sliding window.
   name="costExpression"
   type="string"
   required="false"
-  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> * `input_tokens + cached_input_tokens * 0.1 + output_tokens * 6`"
+  description="CostExpression specifies a CEL expression for computing the quota burndown of the LLM-related request.<br />If no expression is specified the `total_tokens` value is used.<br />For example:<br /> `input_tokens + cached_input_tokens + output_tokens`"
 /><ApiField
   name="quota"
   type="[QuotaValue](#github-com-envoyproxy-ai-gateway-api-v1alpha1-quotavalue)"
@@ -2999,11 +3007,14 @@ MCPRouteList contains a list of MCPRoute.
 - [BackendSecurityPolicyAnthropicAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyanthropicapikey)
 - [BackendSecurityPolicyAzureAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazureapikey)
 - [BackendSecurityPolicyAzureCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazurecredentials)
+- [BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)
 - [BackendSecurityPolicyGCPCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygcpcredentials)
 - [BackendSecurityPolicyOIDC](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyoidc)
 - [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
 - [BackendSecurityPolicyStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicystatus)
 - [BackendSecurityPolicyType](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicytype)
+- [CredentialOverrideFromDynamicMetadata](#github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromdynamicmetadata)
+- [CredentialOverrideFromRequestHeaders](#github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromrequestheaders)
 - [GCPCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpcredentialsfile)
 - [GCPOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpoidcexchangetoken)
 - [GCPServiceAccountImpersonationConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpserviceaccountimpersonationconfig)
@@ -3051,6 +3062,11 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
 
 
 <ApiField
+  name="name"
+  type="[SectionName](#sigs-k8s-io-gateway-api-apis-v1-sectionname)"
+  required="false"
+  description="Name is the name of the route rule. This name must be unique within the route.<br />When specified, it is copied to the generated HTTPRoute rule name."
+/><ApiField
   name="backendRefs"
   type="[AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulebackendref) array"
   required="false"
@@ -3064,7 +3080,12 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   name="timeouts"
   type="[HTTPRouteTimeouts](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httproutetimeouts)"
   required="false"
-  description="Timeouts defines the timeouts that can be configured for an HTTP request.<br />If this field is not set, or the timeout.requestTimeout is nil, Envoy AI Gateway defaults to<br />set 60s for the request timeout as opposed to 15s of the Envoy Gateway's default value.<br />For streaming responses (like chat completions with stream=true), consider setting<br />longer timeouts as the response may take time until the completion."
+  description="Timeouts defines the timeouts that can be configured for an HTTP request.<br />If this field is not set, or the timeout.requestTimeout is nil, Envoy AI Gateway defaults to<br />set 60s for the request timeout as opposed to 15s of the Envoy Gateway's default value.<br />For streaming responses (like chat completions with stream=true), consider setting<br />longer timeouts as the response may take time until the completion. Timeouts.Request<br />acts as the maximum total time the gateway will wait for the entire response,<br />including all streamed chunks."
+/><ApiField
+  name="streamIdleTimeout"
+  type="[Duration](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.Duration)"
+  required="false"
+  description="StreamIdleTimeout is the maximum time Envoy will wait without receiving any bytes from the upstream.<br />If the timer fires before the first response byte arrives, Envoy resets the upstream stream and a<br />retry policy can fall over to the next backend. If it fires mid-stream after<br />bytes have already arrived, the stream is cut and the client receives a 504.<br />The AI Gateway extension server sets route.retry_policy.per_try_idle_timeout to this value on<br />every xDS route generated from this rule before it is sent to the data plane.<br />Pair this field with Timeouts.Request, which acts as the overall deadline.<br />If this field is not set, no per-try idle timeout is applied."
 /><ApiField
   name="modelsOwnedBy"
   type="string"
@@ -3575,6 +3596,35 @@ neither are set.
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride">BackendSecurityPolicyCredentialOverride</a>
+
+
+
+**Appears in:**
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
+
+BackendSecurityPolicyCredentialOverride configures per-request credential sourcing.
+A trusted upstream filter (ext_authz or a preceding ext_proc) resolves the caller's
+credential and delivers it via one of the two sources below.
+Exactly one source must be configured.
+
+##### Fields
+
+
+
+<ApiField
+  name="fromRequestHeaders"
+  type="[CredentialOverrideFromRequestHeaders](#github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromrequestheaders)"
+  required="false"
+  description="FromRequestHeaders sources the credential from a request header injected by a trusted<br />ingress filter. The gateway strips the header before forwarding to the upstream backend.<br />Because any client can set request headers, this source is only safe when a trusted filter<br />removes any client-supplied copy and writes the canonical value."
+/><ApiField
+  name="fromDynamicMetadata"
+  type="[CredentialOverrideFromDynamicMetadata](#github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromdynamicmetadata)"
+  required="false"
+  description="FromDynamicMetadata sources the credential from Envoy dynamic metadata set by a trusted<br />filter (e.g. ext_authz). Metadata cannot be forged by the client and is the preferred source."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygcpcredentials">BackendSecurityPolicyGCPCredentials</a>
 
 
@@ -3705,6 +3755,11 @@ Only one type of BackendSecurityPolicy can be defined.
   type="[BackendSecurityPolicyAnthropicAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyanthropicapikey)"
   required="false"
   description="AnthropicAPIKey is a mechanism to access Anthropic backend(s). The API key will be injected into the `x-api-key` header.<br />https://docs.claude.com/en/api/overview#authentication"
+/><ApiField
+  name="credentialOverride"
+  type="[BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)"
+  required="false"
+  description="CredentialOverride, when set, sources the upstream credential per-request instead of using<br />the static credential configured above. Supported for all types except AWSCredentials."
 />
 
 
@@ -3773,6 +3828,66 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   required="false"
   description=""
 />
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromdynamicmetadata">CredentialOverrideFromDynamicMetadata</a>
+
+
+
+**Appears in:**
+- [BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)
+
+CredentialOverrideFromDynamicMetadata sources the per-request credential from Envoy
+dynamic metadata produced by a trusted filter running earlier in the filter chain.
+
+##### Fields
+
+
+
+<ApiField
+  name="namespace"
+  type="string"
+  required="true"
+  description="Namespace is the Envoy metadata namespace written by the trusted filter.<br />Example: `envoy.filters.http.ext_authz`"
+/><ApiField
+  name="key"
+  type="string"
+  required="false"
+  description="Key is the metadata key within the namespace. Defaults to the x-aigw-* name for the auth type."
+/><ApiField
+  name="fallbackToConfigured"
+  type="boolean"
+  required="false"
+  defaultValue="true"
+  description="FallbackToConfigured controls behaviour when the metadata key is absent.<br />true (default) falls back to the static credential configured in the policy.<br />false returns a 401 to the client without forwarding the request."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromrequestheaders">CredentialOverrideFromRequestHeaders</a>
+
+
+
+**Appears in:**
+- [BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)
+
+CredentialOverrideFromRequestHeaders sources the per-request credential from a request header.
+
+##### Fields
+
+
+
+<ApiField
+  name="header"
+  type="string"
+  required="false"
+  description="Header is the name of the request header that carries the credential.<br />Defaults to the x-aigw-* header for the configured auth type:<br />  APIKey          → x-aigw-api-key<br />  AnthropicAPIKey → x-aigw-anthropic-api-key<br />  AzureAPIKey     → x-aigw-azure-api-key<br />  AzureCredentials → x-aigw-azure-access-token<br />  GCPCredentials  → x-aigw-gcp-access-token"
+/><ApiField
+  name="fallbackToConfigured"
+  type="boolean"
+  required="false"
+  defaultValue="true"
+  description="FallbackToConfigured controls behaviour when the header is absent.<br />true (default) falls back to the static credential configured in the policy.<br />false returns a 401 to the client without forwarding the request."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gcpcredentialsfile">GCPCredentialsFile</a>
 
 
@@ -4246,7 +4361,7 @@ When both `header` and `queryParam` are unspecified, the API key will be injecte
   name="queryParam"
   type="string"
   required="false"
-  description="QueryParam is the HTTP query parameter to inject the API key into.<br />For example, if QueryParam is set to `api_key`, and the API key is `mysecretkey`, the request URL will be modified to include<br />`?api_key=mysecretkey`.<br />Either one of Header or QueryParam can be specified to inject the API key."
+  description="QueryParam is the HTTP query parameter to inject the API key into.<br />For example, if QueryParam is set to `api_key`, and the API key is `mysecretkey`, the request URL will be modified to include<br />`?api_key=mysecretkey`.<br />Either one of Header or QueryParam can be specified to inject the API key.<br />Note: Embedding credentials in URLs (including query parameters) is generally not recommended because URLs can be exposed in logs<br />and intermediary systems; prefer header-based injection when possible."
 />
 
 
