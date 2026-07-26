@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	countTokensReq = &anthropic.MessagesRequest{
+	countTokensReq = &anthropic.CountTokensRequest{
 		Model: "claude-sonnet-4-20250514",
 		Messages: []anthropic.MessageParam{
 			{

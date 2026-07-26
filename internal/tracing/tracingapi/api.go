@@ -98,7 +98,7 @@ type (
 	// ResponsesInputTokensTracer creates spans for OpenAI /v1/responses/input_tokens requests.
 	ResponsesInputTokensTracer = RequestTracer[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
 	// CountTokensTracer creates spans for Anthropic count tokens requests.
-	CountTokensTracer = RequestTracer[anthropicschema.MessagesRequest, anthropicschema.CountTokensResponse, struct{}]
+	CountTokensTracer = RequestTracer[anthropicschema.CountTokensRequest, anthropicschema.CountTokensResponse, struct{}]
 )
 
 type (
@@ -194,7 +194,7 @@ type (
 	// ResponsesInputTokensRecorder records attributes to a span according to a semantic convention.
 	ResponsesInputTokensRecorder = SpanRecorder[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
 	// CountTokensRecorder records attributes to a span according to a semantic convention.
-	CountTokensRecorder = SpanRecorder[anthropicschema.MessagesRequest, anthropicschema.CountTokensResponse, struct{}]
+	CountTokensRecorder = SpanRecorder[anthropicschema.CountTokensRequest, anthropicschema.CountTokensResponse, struct{}]
 )
 
 // NoopChunkRecorder provides a no-op RecordResponseChunks implementation for recorders that don't emit streaming chunks.
@@ -307,7 +307,7 @@ type (
 	// NoopResponsesInputTokensTracer implements ResponsesInputTokensTracer.
 	NoopResponsesInputTokensTracer = NoopTracer[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
 	// NoopCountTokensTracer implements CountTokensTracer.
-	NoopCountTokensTracer = NoopTracer[anthropicschema.MessagesRequest, anthropicschema.CountTokensResponse, struct{}]
+	NoopCountTokensTracer = NoopTracer[anthropicschema.CountTokensRequest, anthropicschema.CountTokensResponse, struct{}]
 )
 
 // StartSpanAndInjectHeaders implements RequestTracer.StartSpanAndInjectHeaders.

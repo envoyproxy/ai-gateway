@@ -20,7 +20,7 @@ func TestCountTokensToAnthropic_RequestBody(t *testing.T) {
 	for _, tc := range []struct {
 		name              string
 		original          []byte
-		body              anthropicschema.MessagesRequest
+		body              anthropicschema.CountTokensRequest
 		forceBodyMutation bool
 		modelNameOverride string
 		expNewBody        []byte
@@ -29,7 +29,7 @@ func TestCountTokensToAnthropic_RequestBody(t *testing.T) {
 		{
 			name:     "no mutation",
 			original: []byte(`{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hello"}]}`),
-			body: anthropicschema.MessagesRequest{
+			body: anthropicschema.CountTokensRequest{
 				Model: "claude-opus-4-6",
 			},
 			expNewBody: nil,
@@ -38,7 +38,7 @@ func TestCountTokensToAnthropic_RequestBody(t *testing.T) {
 		{
 			name:     "model override",
 			original: []byte(`{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hello"}]}`),
-			body: anthropicschema.MessagesRequest{
+			body: anthropicschema.CountTokensRequest{
 				Model: "claude-opus-4-6",
 			},
 			modelNameOverride: "claude-sonnet-4-20250514",
@@ -47,7 +47,7 @@ func TestCountTokensToAnthropic_RequestBody(t *testing.T) {
 		{
 			name:     "force body mutation",
 			original: []byte(`{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hello"}]}`),
-			body: anthropicschema.MessagesRequest{
+			body: anthropicschema.CountTokensRequest{
 				Model: "claude-opus-4-6",
 			},
 			forceBodyMutation: true,

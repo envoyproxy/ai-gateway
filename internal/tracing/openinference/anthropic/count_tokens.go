@@ -36,12 +36,12 @@ func NewCountTokensRecorder(config *openinference.TraceConfig) tracingapi.CountT
 }
 
 // StartParams implements the same method as defined in tracingapi.CountTokensRecorder.
-func (r *CountTokensRecorder) StartParams(*anthropic.MessagesRequest, []byte) (spanName string, opts []trace.SpanStartOption) {
+func (r *CountTokensRecorder) StartParams(*anthropic.CountTokensRequest, []byte) (spanName string, opts []trace.SpanStartOption) {
 	return "CountTokens", startOpts
 }
 
 // RecordRequest implements the same method as defined in tracingapi.CountTokensRecorder.
-func (r *CountTokensRecorder) RecordRequest(span trace.Span, req *anthropic.MessagesRequest, body []byte) {
+func (r *CountTokensRecorder) RecordRequest(span trace.Span, req *anthropic.CountTokensRequest, body []byte) {
 	attrs := []attribute.KeyValue{
 		attribute.String(openinference.SpanKind, openinference.SpanKindTokenCounter),
 		attribute.String(openinference.LLMSystem, openinference.LLMSystemAnthropic),
