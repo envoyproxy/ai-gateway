@@ -7,6 +7,7 @@ package endpointspec
 
 import (
 	"bytes"
+	"errors"
 	"mime/multipart"
 	"testing"
 
@@ -1650,4 +1651,32 @@ func mustMarshal(t *testing.T, v any) string {
 	b, err := json.Marshal(v)
 	require.NoError(t, err)
 	return string(b)
+}
+
+// errMarshaler always fails to MarshalJSON, to exercise the fail-safe error
+// branches of redactInterfaceValue and redactUnionField.
+type errMarshaler struct{}
+
+func (errMarshaler) MarshalJSON() ([]byte, error) { return nil, errors.New("marshal-unsupported") }
+
+func TestRedactInterfaceValue_MarshalError(t *testing.T) {
+	// A value that cannot be marshaled must yield a placeholder, never a panic
+	// and never the raw value.
+	out := redactInterfaceValue(errMarshaler{})
+	s, ok := out.(string)
+	require.True(t, ok, "expected a placeholder string on marshal error")
+	require.Contains(t, s, "[REDACTED")
+
+	// A func value is also unmarshalable to JSON.
+	out = redactInterfaceValue(func() {})
+	s, ok = out.(string)
+	require.True(t, ok)
+	require.Contains(t, s, "[REDACTED")
+}
+
+func TestRedactUnionField_MarshalError(t *testing.T) {
+	// A field whose MarshalJSON errors must yield the zero value of T (fail-safe),
+	// so the field logs as absent rather than leaking content.
+	out := redactUnionField(errMarshaler{})
+	require.Equal(t, errMarshaler{}, out)
 }
