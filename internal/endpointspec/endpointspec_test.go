@@ -1483,3 +1483,171 @@ func TestParseMultipartBody_RejectsJSONOnlyEndpoints(t *testing.T) {
 	_, _, _, _, err = SpeechEndpointSpec{}.ParseMultipartBody(nil, "", false)
 	require.ErrorContains(t, err, "multipart body not supported")
 }
+
+func TestCompletionsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	t.Run("string prompt", func(t *testing.T) {
+		const marker = "my-marker-completion-prompt"
+		_, req, _, _, err := CompletionsEndpointSpec{}.ParseBody([]byte(`{"model":"gpt-3.5-turbo-instruct","prompt":"`+marker+`"}`), false)
+		require.NoError(t, err)
+		redacted, err := CompletionsEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+		require.Contains(t, mustMarshal(t, req), marker, "original must not be mutated")
+	})
+
+	t.Run("array prompt", func(t *testing.T) {
+		const marker = "array-marker-prompt"
+		_, req, _, _, err := CompletionsEndpointSpec{}.ParseBody([]byte(`{"model":"m","prompt":["`+marker+`","second"]}`), false)
+		require.NoError(t, err)
+		redacted, err := CompletionsEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+	})
+}
+
+func TestEmbeddingsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	t.Run("completion input string", func(t *testing.T) {
+		const marker = "embed-this-marker"
+		_, req, _, _, err := EmbeddingsEndpointSpec{}.ParseBody([]byte(`{"model":"text-embedding-3-small","input":"`+marker+`"}`), false)
+		require.NoError(t, err)
+		redacted, err := EmbeddingsEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+		require.Contains(t, mustMarshal(t, req), marker, "original must not be mutated")
+	})
+
+	t.Run("chat messages", func(t *testing.T) {
+		const marker = "chat-embed-marker"
+		_, req, _, _, err := EmbeddingsEndpointSpec{}.ParseBody([]byte(`{"model":"m","messages":[{"role":"user","content":"`+marker+`"}]}`), false)
+		require.NoError(t, err)
+		redacted, err := EmbeddingsEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+	})
+}
+
+func TestImageGenerationEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	const marker = "draw a marker image of the plans"
+	req := &openai.ImageGenerationRequest{Model: "dall-e-3", Prompt: marker}
+	redacted, err := ImageGenerationEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Contains(t, redacted.Prompt, "[REDACTED LENGTH=")
+	require.NotEqual(t, marker, redacted.Prompt)
+	require.Equal(t, marker, req.Prompt, "original must not be mutated")
+}
+
+func TestResponsesEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	t.Run("instructions/user/string input", func(t *testing.T) {
+		const markerInstr = "marker-instructions"
+		const markerUser = "user-pii-123"
+		const markerInput = "marker-input-text"
+		body := `{"model":"gpt-4o","instructions":"` + markerInstr + `","user":"` + markerUser + `","input":"` + markerInput + `"}`
+		_, req, _, _, err := ResponsesEndpointSpec{}.ParseBody([]byte(body), false)
+		require.NoError(t, err)
+		redacted, err := ResponsesEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, markerInstr)
+		require.NotContains(t, out, markerUser)
+		require.NotContains(t, out, markerInput)
+		require.Contains(t, out, "[REDACTED")
+		require.Contains(t, mustMarshal(t, req), markerInstr, "original must not be mutated")
+	})
+
+	t.Run("input as item array", func(t *testing.T) {
+		const marker = "marker-array-input-content"
+		body := `{"model":"gpt-4o","input":[{"type":"message","role":"user","content":"` + marker + `"}]}`
+		_, req, _, _, err := ResponsesEndpointSpec{}.ParseBody([]byte(body), false)
+		require.NoError(t, err)
+		redacted, err := ResponsesEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+	})
+}
+
+func TestMessagesEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	t.Run("string content + string system", func(t *testing.T) {
+		const markerContent = "marker-user-message"
+		const markerSystem = "marker-system-prompt"
+		body := `{"model":"claude-3-5-sonnet","max_tokens":10,"messages":[{"role":"user","content":"` + markerContent + `"}],"system":"` + markerSystem + `"}`
+		_, req, _, _, err := MessagesEndpointSpec{}.ParseBody([]byte(body), false)
+		require.NoError(t, err)
+		redacted, err := MessagesEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, markerContent)
+		require.NotContains(t, out, markerSystem)
+		require.Contains(t, out, "[REDACTED")
+		require.Contains(t, mustMarshal(t, req), markerContent, "original must not be mutated")
+	})
+
+	t.Run("array content blocks", func(t *testing.T) {
+		const marker = "marker-block-text"
+		body := `{"model":"claude-3-5-sonnet","max_tokens":10,"messages":[{"role":"user","content":[{"type":"text","text":"` + marker + `"}]}]}`
+		_, req, _, _, err := MessagesEndpointSpec{}.ParseBody([]byte(body), false)
+		require.NoError(t, err)
+		redacted, err := MessagesEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+	})
+}
+
+func TestRerankEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	const markerQ = "marker-query"
+	const markerDoc = "marker-document-content"
+	req := &cohereschema.RerankV2Request{Model: "rerank-v3.5", Query: markerQ, Documents: []string{markerDoc, "another"}}
+	redacted, err := RerankEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Contains(t, redacted.Query, "[REDACTED LENGTH=")
+	require.Len(t, redacted.Documents, 2)
+	require.Contains(t, redacted.Documents[0], "[REDACTED LENGTH=")
+	require.NotEqual(t, markerQ, redacted.Query)
+	require.NotEqual(t, markerDoc, redacted.Documents[0])
+	require.Equal(t, markerQ, req.Query, "original must not be mutated")
+	require.Equal(t, markerDoc, req.Documents[0], "original must not be mutated")
+}
+
+func TestTokenizeEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	t.Run("completion prompt", func(t *testing.T) {
+		const marker = "tokenize-this-marker-prompt"
+		_, req, _, _, err := TokenizeEndpointSpec{}.ParseBody([]byte(`{"model":"m","prompt":"`+marker+`"}`), false)
+		require.NoError(t, err)
+		redacted, err := TokenizeEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+		require.Contains(t, mustMarshal(t, req), marker, "original must not be mutated")
+	})
+
+	t.Run("chat messages", func(t *testing.T) {
+		const marker = "tokenize-chat-marker"
+		_, req, _, _, err := TokenizeEndpointSpec{}.ParseBody([]byte(`{"model":"m","messages":[{"role":"user","content":"`+marker+`"}]}`), false)
+		require.NoError(t, err)
+		redacted, err := TokenizeEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+	})
+}
+
+// mustMarshal marshals v and returns its string form, failing the test on error.
+func mustMarshal(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+	return string(b)
+}

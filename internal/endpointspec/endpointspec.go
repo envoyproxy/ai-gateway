@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/tidwall/sjson"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
@@ -229,8 +230,12 @@ func (CompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (CompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.CompletionRequest) (redactedReq *openai.CompletionRequest, err error) {
-	// Placeholder if redaction is required in future
-	return req, nil
+	// The prompt is user-supplied text (string / []string / token arrays). Its value is a
+	// bare interface{} populated by a custom unmarshaler, so redact it via the generic
+	// JSON-tree redactor rather than enumerating every union variant.
+	redacted := *req
+	redacted.Prompt = openai.PromptUnion{Value: redactInterfaceValue(req.Prompt.Value)}
+	return &redacted, nil
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -268,8 +273,25 @@ func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema,
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (EmbeddingsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.EmbeddingRequest) (redactedReq *openai.EmbeddingRequest, err error) {
-	// Placeholder if redaction is required in future
-	return req, nil
+	redacted := *req
+	switch {
+	case req.OfCompletion != nil:
+		// Input is user-supplied text (string / []string / objects) in a bare-any union.
+		redactedOfCompletion := *req.OfCompletion
+		redactedOfCompletion.Input = openai.EmbeddingRequestInput{Value: redactInterfaceValue(req.OfCompletion.Input.Value)}
+		redacted.OfCompletion = &redactedOfCompletion
+		redacted.OfChat = nil
+	case req.OfChat != nil:
+		// Messages are chat content — reuse the ChatCompletions redaction helpers.
+		redactedOfChat := *req.OfChat
+		redactedOfChat.Messages = make([]openai.ChatCompletionMessageParamUnion, len(req.OfChat.Messages))
+		for i, msg := range req.OfChat.Messages {
+			redactedOfChat.Messages[i] = redactMessage(msg)
+		}
+		redacted.OfChat = &redactedOfChat
+		redacted.OfCompletion = nil
+	}
+	return &redacted, nil
 }
 
 func (ImageGenerationEndpointSpec) ParseBody(
@@ -300,8 +322,10 @@ func (ImageGenerationEndpointSpec) GetTranslator(schema filterapi.VersionedAPISc
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (ImageGenerationEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ImageGenerationRequest) (redactedReq *openai.ImageGenerationRequest, err error) {
-	// Placeholder if redaction is required in future
-	return req, nil
+	// The prompt is user-supplied text describing the desired image; redact it.
+	redacted := *req
+	redacted.Prompt = redaction.RedactString(req.Prompt)
+	return &redacted, nil
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -335,8 +359,15 @@ func (ResponsesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, 
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (ResponsesEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ResponseRequest) (redactedReq *openai.ResponseRequest, err error) {
-	// Placeholder if redaction is required in future
-	return req, nil
+	redacted := *req
+	// Instructions and User are user-supplied text / PII.
+	redacted.Instructions = redaction.RedactString(req.Instructions)
+	redacted.User = redaction.RedactString(req.User)
+	// Input and Prompt are JSON unions holding conversation items / content — redact every
+	// nested string leaf via the generic redactor so user content inside any item type is caught.
+	redacted.Input = redactUnionField(req.Input)
+	redacted.Prompt = redactUnionField(req.Prompt)
+	return &redacted, nil
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -384,8 +415,19 @@ func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (MessagesEndpointSpec) RedactSensitiveInfoFromRequest(req *anthropic.MessagesRequest) (redactedReq *anthropic.MessagesRequest, err error) {
-	// Placeholder if redaction is required in future
-	return req, nil
+	redacted := *req
+	// Message content (text or []ContentBlockParam) and the system prompt hold user/developer
+	// text. They are JSON unions, so redact every nested string leaf generically.
+	redacted.Messages = make([]anthropic.MessageParam, len(req.Messages))
+	for i, msg := range req.Messages {
+		redactedMsg := msg
+		redactedMsg.Content = redactUnionField(msg.Content)
+		redacted.Messages[i] = redactedMsg
+	}
+	if req.System != nil {
+		redacted.System = ptr.To(redactUnionField(*req.System))
+	}
+	return &redacted, nil
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -417,8 +459,14 @@ func (RerankEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, mod
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (RerankEndpointSpec) RedactSensitiveInfoFromRequest(req *cohereschema.RerankV2Request) (redactedReq *cohereschema.RerankV2Request, err error) {
-	// Placeholder if redaction is required in future
-	return req, nil
+	redacted := *req
+	// The query and the documents being ranked are user-provided content.
+	redacted.Query = redaction.RedactString(req.Query)
+	redacted.Documents = make([]string, len(req.Documents))
+	for i, doc := range req.Documents {
+		redacted.Documents[i] = redaction.RedactString(doc)
+	}
+	return &redacted, nil
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -466,8 +514,25 @@ func (TokenizeEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (TokenizeEndpointSpec) RedactSensitiveInfoFromRequest(req *tokenize.RequestUnion) (redactedReq *tokenize.RequestUnion, err error) {
-	// Placeholder if redaction is required in future
-	return req, nil
+	redacted := *req
+	switch {
+	case req.CompletionRequest != nil:
+		redactedOfCompletion := *req.CompletionRequest
+		// The prompt is user-supplied text to tokenize.
+		redactedOfCompletion.Prompt = redaction.RedactString(req.Prompt)
+		redacted.CompletionRequest = &redactedOfCompletion
+		redacted.ChatRequest = nil
+	case req.ChatRequest != nil:
+		// Messages are chat content — reuse the ChatCompletions redaction helpers.
+		redactedOfChat := *req.ChatRequest
+		redactedOfChat.Messages = make([]openai.ChatCompletionMessageParamUnion, len(req.Messages))
+		for i, msg := range req.Messages {
+			redactedOfChat.Messages[i] = redactMessage(msg)
+		}
+		redacted.ChatRequest = &redactedOfChat
+		redacted.CompletionRequest = nil
+	}
+	return &redacted, nil
 }
 
 // ParseMultipartBody implements [Spec.ParseMultipartBody].
@@ -645,6 +710,54 @@ func redactUserContentPart(part openai.ChatCompletionContentPartUserUnionParam) 
 	}
 
 	return redacted
+}
+
+// redactInterfaceValue redacts a bare interface{}/any field value (e.g.
+// PromptUnion.Value, EmbeddingRequestInput.Value) whose concrete type is
+// determined by a custom unmarshaler and may be a string, []string, [][]int,
+// or arbitrary object tree. It normalizes via a marshal→unmarshal-into-any
+// round-trip so [redaction.RedactJSONTree] sees the standard []any/map[string]any
+// shapes, then redacts every string leaf. On any error it returns a single
+// placeholder string so no raw content is ever logged.
+func redactInterfaceValue(v any) any {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return redaction.RedactString("redaction-error")
+	}
+	var generic any
+	if err := json.Unmarshal(b, &generic); err != nil {
+		return redaction.RedactString("redaction-error")
+	}
+	return redaction.RedactJSONTree(generic)
+}
+
+// redactUnionField redacts a typed-struct field whose value is a JSON union
+// (e.g. MessageContent, SystemPrompt, ResponseNewParamsInputUnion,
+// ResponsePromptParam). It marshals the field, redacts every string leaf in the
+// resulting JSON tree, and unmarshals back into a new T. On any error it returns
+// the zero value of T (nil for pointers, an empty struct otherwise) so the field
+// logs as absent rather than leaking content. These types round-trip cleanly
+// because they were just parsed from JSON, so the error path is defensive only.
+//
+// Marshaling and unmarshaling go through pointers (&in / &out) so that any
+// pointer-receiver MarshalJSON/UnmarshalJSON on T is actually invoked — passing
+// a value T to json.Marshal would skip pointer-receiver methods and fall back to
+// default struct marshaling, corrupting the union.
+func redactUnionField[T any](in T) (out T) {
+	b, err := json.Marshal(&in)
+	if err != nil {
+		return out
+	}
+	var generic any
+	if err = json.Unmarshal(b, &generic); err != nil {
+		return out
+	}
+	redacted, err := json.Marshal(redaction.RedactJSONTree(generic))
+	if err != nil {
+		return out
+	}
+	_ = json.Unmarshal(redacted, &out) // on error, out stays zero (fail-safe)
+	return out
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
