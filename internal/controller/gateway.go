@@ -428,6 +428,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				b.ModelNameOverride = backendRef.ModelNameOverride
 
 				var bsp *aigv1b1.BackendSecurityPolicy
+				var backendObj *aigv1b1.AIServiceBackend
 				backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
 
 				if backendRef.IsInferencePool() {
@@ -446,7 +447,6 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 						continue
 					}
 				} else {
-					var backendObj *aigv1b1.AIServiceBackend
 					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, backendNamespace, backendRef.Name)
 					if err != nil {
 						c.logger.Error(err, "failed to get backend or backend security policy. Skipping this backend.",
@@ -491,6 +491,18 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 							b.HeaderMutation = &filterapi.HTTPHeaderMutation{}
 						}
 						b.HeaderMutation.Remove = append(b.HeaderMutation.Remove, b.Auth.CredentialOverride.InputHeaderToRemove)
+					}
+				}
+
+				// For AWS backends, sign SigV4 over the host Envoy actually sends
+				// upstream -- the referenced Backend's FQDN (e.g. a Bedrock interface VPC
+				// endpoint) -- not the default bedrock-runtime.<region>. bspToFilterAPIBackendAuth
+				// allocates a fresh BackendAuth per backendRef, so stamping the per-backend
+				// host in place is safe; if that ever becomes a shared/cached pointer this
+				// must copy before writing.
+				if backendObj != nil && b.Auth != nil && b.Auth.AWSAuth != nil {
+					if host := c.awsBackendHostname(ctx, backendNamespace, backendObj.Spec.BackendRef); host != "" {
+						b.Auth.AWSAuth.Hostname = host
 					}
 				}
 
@@ -984,6 +996,51 @@ func (c *GatewayController) injectQuotaPolicyCostExpressions(
 // is active per request, and ext_proc filters cost entries by Model before
 // writing to this key.
 const QuotaCostMetadataKey = "quota_cost"
+
+// awsBackendHostname resolves the FQDN hostname of the Envoy Gateway Backend
+// referenced by an AIServiceBackend. It is used so AWS SigV4 is signed over the
+// actual upstream host (e.g. a Bedrock interface VPC endpoint FQDN
+// vpce-xxxx.bedrock-runtime.<region>.vpce.amazonaws.com) rather than the default
+// bedrock-runtime.<region>.amazonaws.com, matching the Host that Envoy's Backend
+// host-rewrite sends upstream. Returns "" when the Backend cannot be read or has
+// no FQDN endpoint, in which case the signer keeps its region-default host. Only
+// FQDN endpoints are meaningful for signing (IP/Service endpoints have no name to
+// sign over).
+func (c *GatewayController) awsBackendHostname(ctx context.Context, namespace string, ref gwapiv1.BackendObjectReference) string {
+	// Only an Envoy Gateway Backend carries a signable FQDN. The default
+	// BackendObjectReference kind is Service, so guard against Getting an unrelated
+	// Backend CR that merely shares the ref's name.
+	if ref.Group == nil || string(*ref.Group) != "gateway.envoyproxy.io" ||
+		ref.Kind == nil || string(*ref.Kind) != "Backend" {
+		return ""
+	}
+	name := string(ref.Name)
+	if name == "" {
+		return ""
+	}
+	ns := namespace
+	if ref.Namespace != nil {
+		ns = string(*ref.Namespace)
+	}
+	var be egv1a1.Backend
+	if err := c.client.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, &be); err != nil {
+		// Don't silently drop the signing host: config regenerated without it makes
+		// every AWS request 403. NotFound is benign -- the egv1a1.Backend watch
+		// (StartControllers) requeues the referencing AIServiceBackend when the
+		// Backend appears or its FQDN changes; log anything else so it's visible.
+		if client.IgnoreNotFound(err) != nil {
+			c.logger.Error(err, "resolving Backend FQDN for AWS signing host",
+				"backend", name, "namespace", ns)
+		}
+		return ""
+	}
+	for i := range be.Spec.Endpoints {
+		if fqdn := be.Spec.Endpoints[i].FQDN; fqdn != nil {
+			return fqdn.Hostname
+		}
+	}
+	return ""
+}
 
 // backendWithMaybeBSP retrieves the AIServiceBackend and its associated BackendSecurityPolicy if it exists.
 func (c *GatewayController) backendWithMaybeBSP(ctx context.Context, namespace, name string) (backend *aigv1b1.AIServiceBackend, bsp *aigv1b1.BackendSecurityPolicy, err error) {

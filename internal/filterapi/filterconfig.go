@@ -246,6 +246,14 @@ type AWSAuth struct {
 	// [default]\naws_access_key_id = <access-key-id>\naws_secret_access_key = <secret-access-key>\naws_session_token = <session-token>.
 	CredentialFileLiteral string `json:"credentialFileLiteral,omitempty"`
 	Region                string `json:"region"`
+	// Hostname is the upstream endpoint host that SigV4 is computed over. When set
+	// (e.g. a Bedrock interface VPC endpoint FQDN such as
+	// vpce-xxxx.bedrock-runtime.<region>.vpce.amazonaws.com), the signer signs the
+	// request over this host instead of the default
+	// bedrock-runtime.<region>.amazonaws.com, so the signature matches the Host that
+	// Envoy's Backend host-rewrite actually sends upstream. Empty preserves the
+	// region-default behavior.
+	Hostname string `json:"hostname,omitempty"`
 }
 
 // LogValue implements slog.LogValuer for AWSAuth to redact sensitive information.

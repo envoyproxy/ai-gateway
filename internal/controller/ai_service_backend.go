@@ -9,8 +9,10 @@ import (
 	"context"
 	"fmt"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -116,4 +118,43 @@ func (c *AIBackendController) updateAIServiceBackendStatus(ctx context.Context, 
 		c.logger.Error(err, "failed to update AIServiceBackend status",
 			"namespace", backend.Namespace, "name", backend.Name)
 	}
+}
+
+// backendToAIServiceBackends maps an Envoy Gateway Backend change to reconcile
+// requests for every AIServiceBackend that references it, so a Backend create or
+// FQDN edit regenerates the extproc config (the Backend FQDN is the AWS SigV4
+// signing host -- see gateway.go awsBackendHostname). Reconciling those
+// AIServiceBackends cascades to the referencing routes and gateways via the
+// existing event chain.
+func (c *AIBackendController) backendToAIServiceBackends(ctx context.Context, obj client.Object) []reconcile.Request {
+	be, ok := obj.(*egv1a1.Backend)
+	if !ok {
+		return nil
+	}
+	var list aigv1b1.AIServiceBackendList
+	if err := c.client.List(ctx, &list); err != nil {
+		c.logger.Error(err, "failed to list AIServiceBackends for Backend event",
+			"backend", be.Name, "namespace", be.Namespace)
+		return nil
+	}
+	var reqs []reconcile.Request
+	for i := range list.Items {
+		ref := list.Items[i].Spec.BackendRef
+		if ref.Kind == nil || string(*ref.Kind) != "Backend" ||
+			ref.Group == nil || string(*ref.Group) != "gateway.envoyproxy.io" ||
+			string(ref.Name) != be.Name {
+			continue
+		}
+		ns := list.Items[i].Namespace
+		if ref.Namespace != nil {
+			ns = string(*ref.Namespace)
+		}
+		if ns != be.Namespace {
+			continue
+		}
+		reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{
+			Namespace: list.Items[i].Namespace, Name: list.Items[i].Name,
+		}})
+	}
+	return reqs
 }

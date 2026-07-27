@@ -163,6 +163,11 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 			aiServiceBackendEventChan,
 			&handler.EnqueueRequestForObject{},
 		)).
+		// Watch the referenced Envoy Gateway Backends: their FQDN is baked into the
+		// AWS SigV4 signing host (see gateway.go awsBackendHostname), so a Backend
+		// create or FQDN edit must requeue the AIServiceBackends that reference it to
+		// regenerate the extproc config.
+		Watches(&egv1a1.Backend{}, handler.EnqueueRequestsFromMapFunc(backendC.backendToAIServiceBackends)).
 		Complete(backendC); err != nil {
 		return fmt.Errorf("failed to create controller for AIServiceBackend: %w", err)
 	}
