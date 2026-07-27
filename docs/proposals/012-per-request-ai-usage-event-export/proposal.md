@@ -7,11 +7,12 @@
 - [Goals](#goals)
 - [Non-goals](#non-goals)
 - [Design](#design)
-- [UsageEvent](#usageevent)
-- [HTTP implementation](#http-implementation)
-- [Configuration](#configuration)
-- [Deployment Topology](#deployment-topology)
-- [Observability](#observability)
+  - [UsageEvent](#usageevent)
+    - [Example payloads](#example-payloads)
+  - [HTTP Sink](#http-sink)
+  - [Configuration](#configuration)
+  - [Deployment Topology](#deployment-topology)
+  - [Observability](#observability)
 - [Implementation Plan](#implementation-plan)
 - [Risks](#risks)
 - [Future work](#future-work)
@@ -94,9 +95,7 @@ If publication succeeds, the event is counted as exported.
 
 If publication fails or times out, the event is counted as dropped and request processing continues normally. The gateway intentionally does not retry, buffer, or persist events after a failed publication. Event loss is surfaced through metrics so operators can detect failures and alert accordingly.
 
----
-
-# UsageEvent
+## UsageEvent
 
 A `UsageEvent` represents a single completed AI request. It is constructed from request and response metadata already available within the gateway.
 
@@ -156,7 +155,7 @@ type UsageEvent struct {
 
 The schema intentionally excludes prompt and response content.
 
-## Example payloads
+### Example payloads
 
 An OpenAI reasoning request with a cache hit. The provider's `prompt_tokens` was 130, of which 10 were cache reads, so `input_tokens` is the remaining 120 uncached input:
 
@@ -210,9 +209,7 @@ An Anthropic request that both writes and reads the prompt cache. Cache counts a
 }
 ```
 
----
-
-# HTTP implementation
+## HTTP Sink
 
 The initial implementation provides an HTTP sink.
 
@@ -224,25 +221,13 @@ Future sink implementations may use different transports while implementing the 
 
 The proposal standardizes only the gateway-facing `UsageEventSink` abstraction and the `UsageEvent` schema. The behavior of downstream systems, including durability guarantees, retries, persistence, routing, and protocol-specific semantics, is intentionally left to sink implementations.
 
----
+## Configuration
 
-# Configuration
+- `--usage-events-http-url` — Specifies the HTTP endpoint where usage events are published.
+- `--usage-events-timeout-ms` — Sets the publication timeout. Exceeding it is treated as a failed export.
+- `--usage-events-attributes` — Configures additional allowlisted key-value attributes to include with each `UsageEvent`.
 
-### `--usage-events-http-url`
-
-Specifies the HTTP endpoint where usage events are published.
-
-### `--usage-events-timeout-ms`
-
-Timeout for publishing usage events. If publication exceeds this duration, it is treated as a failed export.
-
-### `--usage-events-attributes`
-
-Configures additional allowlisted key-value attributes to include with each `UsageEvent`.
-
----
-
-# Deployment Topology
+## Deployment Topology
 
 The sink is an HTTP endpoint, so where the receiver runs is an operator decision. Two patterns are worth describing, because they trade off differently against the synchronous publish budget.
 
@@ -252,9 +237,7 @@ The sink is an HTTP endpoint, so where the receiver runs is an operator decision
 
 In either topology the receiver should acknowledge only after meeting its own durability policy. An acknowledgement returned earlier removes the only property this path has over access logs.
 
----
-
-# Observability
+## Observability
 
 The gateway exposes metrics to track event export behavior:
 
