@@ -137,13 +137,13 @@ spec:
     backendRefs: [{ name: semantic-router, port: 50051 }]
 ```
 
-Composite enabled on **all** routes of the Gateway — every catch-all **and** every
-header-keyed rule.
+Composite enabled on **all catch-all routes** of the Gateway — **not** the
+header-keyed rules.
 
 ```
 Gateway eg
-├─ chat        rule(x-ai-eg-model=gpt-4o)        [✔] composite(sr)
-├─ embeddings  rule(x-ai-eg-model=text-embed-3)  [✔] composite(sr)
+├─ chat        rule(x-ai-eg-model=gpt-4o)        [ ]
+├─ embeddings  rule(x-ai-eg-model=text-embed-3)  [ ]
 └─ CATCH-ALL (shared, first-pass landing)        [✔] composite(sr)   ← effective execution point
 ```
 
@@ -162,4 +162,4 @@ the cost of the widest scope — the honest representation of the blast radius.
 | ---------------------------- | ---------------------------------------- | ----------------- | ---------------------- | ----------------------------------------- |
 | **A — targeted + catch-alls**| chat's rules + all catch-alls            | ✔ (no-op)         | yes (via shared catch-all) | yes (runs on shared catch-all)        |
 | **B.1 — Route target**       | only chat's routes (catch-alls skipped)  | ✔                 | no                     | only if chat is first-pass matchable      |
-| **B.2 — Gateway target**     | all rules + all catch-alls               | ✔                 | yes (if header matches)| yes (runs on shared catch-all)            |
+| **B.2 — Gateway target**     | all catch-all routes only                | ✕                 | yes (if header matches)| yes (runs on shared catch-all)            |
