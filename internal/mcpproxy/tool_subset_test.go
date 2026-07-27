@@ -42,9 +42,10 @@ func TestToolSubset(t *testing.T) {
 	}
 }
 
-// TestMergeToolsList_DynamicToolSubset verifies that when the x-ai-eg-mcp-tool-subset
-// header is present it overrides static include behavior while static excludes remain
-// hard denies, and when it is absent the static selector is used.
+// TestMergeToolsList_DynamicToolSubset verifies that the x-ai-eg-mcp-tool-subset header
+// intersects with the static per-backend toolSelector: a tool must be allowed by both.
+// A backend with no static include (b2) is the fully dynamic case, where the dynamic
+// subset is the effective allow-list bounded by static excludes.
 func TestMergeToolsList_DynamicToolSubset(t *testing.T) {
 	newProxy := func(hdr string) *mcpRequestContext {
 		h := http.Header{}
@@ -92,23 +93,24 @@ func TestMergeToolsList_DynamicToolSubset(t *testing.T) {
 		// b1: only t1 (static include); t2 excluded. b2: t3 (no selector).
 		require.ElementsMatch(t, []string{"b1__t1", "b2__t3"}, names(got))
 	})
-	t.Run("header overrides static include", func(t *testing.T) {
-		// Dynamic permits b1__t2 even though b1's static include allows only t1.
+	t.Run("dynamic cannot widen beyond static include", func(t *testing.T) {
+		// b1's static include allows only t1, so dynamic b1__t2 is not surfaced.
+		// b2 has no static include, so dynamic b2__t3 is allowed.
 		got := newProxy("b1__t2,b2__t3").mergeToolsList(s, newResponses())
-		require.ElementsMatch(t, []string{"b1__t2", "b2__t3"}, names(got))
+		require.ElementsMatch(t, []string{"b2__t3"}, names(got))
 	})
-	t.Run("header narrows static include", func(t *testing.T) {
+	t.Run("dynamic narrows within static include", func(t *testing.T) {
 		got := newProxy("b1__t1").mergeToolsList(s, newResponses())
 		require.ElementsMatch(t, []string{"b1__t1"}, names(got))
 	})
-	t.Run("header cannot override static exclusion", func(t *testing.T) {
-		proxy := newProxy("b1__t2,b2__t3")
-		proxy.mcpProxyConfig.routes["r"].toolSelectors["b1"].exclude = map[string]struct{}{"t2": {}}
-		got := proxy.mergeToolsList(s, newResponses())
-		require.ElementsMatch(t, []string{"b2__t3"}, names(got))
-	})
-	t.Run("header permits only listed tools without a static selector", func(t *testing.T) {
+	t.Run("dynamic drives visibility on a backend with no static include", func(t *testing.T) {
 		got := newProxy("b2__t3").mergeToolsList(s, newResponses())
 		require.ElementsMatch(t, []string{"b2__t3"}, names(got))
+	})
+	t.Run("static exclude hard-denies even when dynamic lists it", func(t *testing.T) {
+		proxy := newProxy("b2__t3")
+		proxy.mcpProxyConfig.routes["r"].toolSelectors["b2"] = &toolSelector{exclude: map[string]struct{}{"t3": {}}}
+		got := proxy.mergeToolsList(s, newResponses())
+		require.ElementsMatch(t, []string{}, names(got))
 	})
 }

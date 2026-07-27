@@ -144,24 +144,19 @@ func (t *toolSelector) sameTools(other *toolSelector) bool {
 		})
 }
 
-func (t *toolSelector) denies(tool string) bool {
-	if len(t.exclude) > 0 {
-		if _, ok := t.exclude[tool]; ok {
-			return true
-		}
-	}
-	for _, re := range t.excludeRegexps {
-		if re.MatchString(tool) {
-			return true
-		}
-	}
-	return false
-}
-
 func (t *toolSelector) allows(tool string) bool {
 	// Check exclude filters first (deny-wins).
-	if t.denies(tool) {
-		return false
+	if len(t.exclude) > 0 {
+		if _, ok := t.exclude[tool]; ok {
+			return false
+		}
+	}
+	if len(t.excludeRegexps) > 0 {
+		for _, re := range t.excludeRegexps {
+			if re.MatchString(tool) {
+				return false
+			}
+		}
 	}
 
 	// Check include filters - if no filter, allow all; if filter exists, allow only matches.

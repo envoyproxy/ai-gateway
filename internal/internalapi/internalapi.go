@@ -49,9 +49,11 @@ const (
 	// MCPToolSubsetHeader is a comma-separated list of fully-qualified downstream tool
 	// names (in the "<backend>__<tool>" form) that this request may see. It is supplied
 	// per-request by the trusted ext-proc / shim (sourced from dynamic metadata) and is
-	// consumed only for tools/list visibility filtering. When present it overrides static
-	// include behavior while static excludes remain hard denies; when absent the proxy uses
-	// the static selector. Per-tenant tools/call rejection is enforced by the shim, not here.
+	// consumed only for tools/list visibility filtering. When present it intersects with the
+	// static per-backend toolSelector (a tool must satisfy both); a fully dynamic route leaves
+	// the static include empty so the dynamic subset becomes the effective allow-list, bounded
+	// by static excludes. When absent the proxy uses the static selector. Per-tenant tools/call
+	// rejection is enforced by the shim, not here.
 	// The value is sourced from MCPToolSubsetMetadataKey (namespace
 	// InternalEndpointMetadataNamespace), which Envoy renders into this header.
 	MCPToolSubsetHeader = EnvoyAIGatewayHeaderPrefix + "mcp-tool-subset"
