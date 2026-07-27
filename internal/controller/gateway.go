@@ -46,11 +46,13 @@ const (
 
 // NewGatewayController creates a new reconcile.TypedReconciler for gwapiv1.Gateway.
 //
-// extProcImage is the image of the external processor sidecar container which will be used
-// to check if the pods of the gateway deployment need to be rolled out.
+// The extproc builder is derived from options + extProcAsSideCar via the same
+// newExtProcBuilder the mutating webhook uses (StartControllers passes the same
+// options to both), so the config hash the webhook stamps on pods can be
+// recomputed identically here to detect drift.
 func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger, envoyGatewayNamespace string,
-	extProcImage string, extProcLogLevel string, standAlone bool, uuidFn func() string, extProcAsSideCar bool,
+	standAlone bool, uuidFn func() string, options *Options, extProcAsSideCar bool,
 ) *GatewayController {
 	uf := uuidFn
 	if uf == nil {
@@ -61,11 +63,9 @@ func NewGatewayController(
 		kube:                  kube,
 		logger:                logger,
 		envoyGatewayNamespace: envoyGatewayNamespace,
-		extProcImage:          extProcImage,
-		extProcLogLevel:       extProcLogLevel,
 		standAlone:            standAlone,
 		uuidFn:                uf,
-		extProcAsSideCar:      extProcAsSideCar,
+		extProcBuilder:        newExtProcBuilder(options, extProcAsSideCar, logger),
 	}
 }
 
@@ -75,14 +75,12 @@ type GatewayController struct {
 	kube                  kubernetes.Interface
 	logger                logr.Logger
 	envoyGatewayNamespace string // The namespace where Envoy Gateway is deployed.
-	extProcImage          string // The image of the external processor sidecar container.
-	extProcLogLevel       string // The log level for the extproc container.
 	// standAlone indicates whether the controller is running in standalone mode.
 	standAlone bool
 	uuidFn     func() string // Function to generate a new UUID for the filter config.
-	// Whether to run the extProc container as a sidecar (true) as a normal container (false).
-	// This is essentially a workaround for old k8s versions, and we can remove this in the future.
-	extProcAsSideCar bool
+	// extProcBuilder is shared with the mutating webhook so the config hash it
+	// stamps on pods can be recomputed here to detect drift and trigger rollout.
+	*extProcBuilder
 }
 
 // Reconcile implements the reconcile.Reconciler for gwapiv1.Gateway.
@@ -155,7 +153,14 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Finally, we need to annotate the pods of the gateway deployment with the new uuid to propagate the filter config Secret update faster.
 	// If the pod doesn't have the extproc container, it will roll out the deployment altogether which eventually ends up
 	// the mutation hook invoked.
-	result, err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uid, hasEffectiveRoutes, len(mcpRoutes.Items) > 0)
+	//
+	// desiredHash is the config hash the webhook would stamp on a pod created right
+	// now with the current controller flags + this Gateway's GatewayConfig + MCP
+	// state. annotateGatewayPods compares it to each pod's stamped hash to detect
+	// extproc config drift (the webhook and reconciler share one builder, so the
+	// hashes are computed identically — see extproc_builder.go).
+	desiredHash := c.extProcContainerHash(extProcContainerInput{gatewayConfig: gwConfig, needMCP: len(mcpRoutes.Items) > 0})
+	result, err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uid, hasEffectiveRoutes, len(mcpRoutes.Items) > 0, desiredHash)
 	if err != nil {
 		c.logger.Error(err, "Failed to annotate gateway pods", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, err
@@ -1058,20 +1063,36 @@ func (c *GatewayController) getBSPForInferencePool(ctx context.Context, namespac
 	return matchingBSPs[0], nil
 }
 
-// checkPodHasSideCar checks if a pod has the extproc sidecar container with correct configuration.
-func (c *GatewayController) checkPodHasSideCar(pod *corev1.Pod, needMCP bool) bool {
+// checkPodHasSideCar checks if a pod has the extproc sidecar container with the
+// currently-desired image, log level, and (when MCP is in use) -mcpAddr.
+//
+// It returns:
+//   - hasSideCar: true when the sidecar is structurally present and matches the
+//     image/logLevel/mcpAddr expectations (the legacy drift signal).
+//   - needsRollout: true when the sidecar is present *but* its
+//     extproc-config-hash annotation is present and differs from desiredHash,
+//     i.e. the injected config (env vars, imagePullSecrets, endpointPrefixes,
+//     enableRedaction, maxRecvMsgSize, header attributes, GatewayConfig
+//     resources/securityContext/volumeMounts, …) has drifted since the pod was
+//     created. This closes the class of drift bugs that the image/logLevel/mcpAddr
+//     check could not see.
+//
+// A pod created before this annotation existed has no hash; "missing" is treated
+// as "no drift signal" (not a rollout trigger) so upgrading the controller does
+// not roll every managed proxy once. Pods recreated after the upgrade carry the
+// annotation, and any subsequent config drift is then detected.
+func (c *GatewayController) checkPodHasSideCar(pod *corev1.Pod, needMCP bool, desiredHash string) (hasSideCar, needsRollout bool) {
 	podSpec := pod.Spec
-	hasSideCar := false
 
 	if c.extProcAsSideCar {
 		for i := range podSpec.InitContainers {
 			// If there's an extproc sidecar container with the current target image, we don't need to roll out the deployment.
-			if podSpec.InitContainers[i].Name == extProcContainerName && podSpec.InitContainers[i].Image == c.extProcImage {
+			if podSpec.InitContainers[i].Name == extProcContainerName && podSpec.InitContainers[i].Image == c.image {
 				hasSideCar = true
 				hasMCPAddr := false
 				for j := range podSpec.InitContainers[i].Args {
 					// logLevel arg should be indexed 2 based on gateway_mutator.go, but we check all args to be safe.
-					if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-logLevel" && podSpec.InitContainers[i].Args[j] != c.extProcLogLevel {
+					if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-logLevel" && podSpec.InitContainers[i].Args[j] != c.logLevel {
 						hasSideCar = false
 						break
 					}
@@ -1092,11 +1113,11 @@ func (c *GatewayController) checkPodHasSideCar(pod *corev1.Pod, needMCP bool) bo
 	} else {
 		for i := range podSpec.Containers {
 			// If there's an extproc container with the current target image, we don't need to roll out the deployment.
-			if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == c.extProcImage {
+			if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == c.image {
 				hasSideCar = true
 				hasMCPAddr := false
 				for j := range podSpec.Containers[i].Args {
-					if j > 0 && podSpec.Containers[i].Args[j-1] == "-logLevel" && podSpec.Containers[i].Args[j] != c.extProcLogLevel {
+					if j > 0 && podSpec.Containers[i].Args[j-1] == "-logLevel" && podSpec.Containers[i].Args[j] != c.logLevel {
 						hasSideCar = false
 						break
 					}
@@ -1116,7 +1137,19 @@ func (c *GatewayController) checkPodHasSideCar(pod *corev1.Pod, needMCP bool) bo
 		}
 	}
 
-	return hasSideCar
+	// If the sidecar is present, additionally compare the config hash the webhook
+	// stamped at pod-creation time against the currently-desired hash. A mismatch
+	// means the injected config drifted (e.g. --extProcExtraEnvVars changed) and the
+	// pod must be rolled so the webhook re-injects the current config.
+	if hasSideCar {
+		if stamped := pod.Annotations[extProcConfigHashAnnotationKey]; stamped != "" && stamped != desiredHash {
+			needsRollout = true
+			c.logger.Info("extproc config hash mismatch, triggering rollout",
+				"pod", pod.Name, "namespace", pod.Namespace)
+		}
+	}
+
+	return hasSideCar, needsRollout
 }
 
 // isRolloutInProgress checks whether any Deployment or DaemonSet is currently rolling out.
@@ -1164,6 +1197,7 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	uuid string,
 	hasEffectiveRoute bool,
 	needMCP bool,
+	desiredHash string,
 ) (ctrl.Result, error) {
 	if isRolloutInProgress(deployments, daemonSets) {
 		const requeueAfter = 5 * time.Second
@@ -1173,29 +1207,38 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 
 	// Detect sidecar state in one pass with early exit on inconsistent state (e.g., some pods have sidecar, some don't).
 	// If inconsistent state exists while rollout is not in progress, force rollout to self-heal.
+	//
+	// needsRollout is set when a pod has the sidecar but its stamped extproc-config-hash
+	// annotation mismatches the desired hash, i.e. the injected config has drifted.
 	seenWithSidecar := false
 	seenWithoutSidecar := false
+	seenNeedsRollout := false
 	for i := range pods {
 		if !pods[i].GetDeletionTimestamp().IsZero() {
 			continue
 		}
-		if c.checkPodHasSideCar(&pods[i], needMCP) {
+		hasSideCar, needsRollout := c.checkPodHasSideCar(&pods[i], needMCP, desiredHash)
+		if hasSideCar {
 			seenWithSidecar = true
 		} else {
 			seenWithoutSidecar = true
 		}
-		if seenWithSidecar && seenWithoutSidecar {
+		if needsRollout {
+			seenNeedsRollout = true
+		}
+		if seenWithSidecar && seenWithoutSidecar && seenNeedsRollout {
 			break
 		}
 	}
-	forceRollout := seenWithSidecar && seenWithoutSidecar
+	forceRollout := (seenWithSidecar && seenWithoutSidecar) || seenNeedsRollout
 	if forceRollout {
-		c.logger.Info("pods are inconsistent while rollout is stable, forcing rollout",
-			"podsWithSidecarSeen", seenWithSidecar, "podsWithoutSidecarSeen", seenWithoutSidecar)
+		c.logger.Info("forcing rollout",
+			"podsWithSidecarSeen", seenWithSidecar, "podsWithoutSidecarSeen", seenWithoutSidecar,
+			"podsNeedingRolloutSeen", seenNeedsRollout)
 	}
-	// When not mixed, "all have sidecar" is equivalent to seeing at least one pod with sidecar
-	// and none without sidecar. For zero pods this remains false.
-	hasSideCar := seenWithSidecar && !seenWithoutSidecar
+	// "all up to date": at least one pod with sidecar, none without, and none
+	// needing a config-driven rollout. For zero pods this remains false.
+	hasSideCar := seenWithSidecar && !seenWithoutSidecar && !seenNeedsRollout
 
 	for i := range pods {
 		pod := &pods[i]

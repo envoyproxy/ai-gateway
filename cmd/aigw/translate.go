@@ -248,8 +248,11 @@ func translateCustomResourceObjects(
 		make(chan event.GenericEvent, eventChanBuffer),
 	)
 	gwC := controller.NewGatewayController(fakeClient, fakeClientSet, logr.FromSlogHandler(logger.Handler()), "envoy-gateway-system",
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", "debug", true, func() string {
+		true, func() string {
 			return "aigw-translate"
+		}, &controller.Options{
+			ExtProcImage:    "docker.io/envoyproxy/ai-gateway-extproc:latest",
+			ExtProcLogLevel: "debug",
 		}, false,
 	)
 	// Pre-create Gateways (without reconciling) before reconciling resources so that

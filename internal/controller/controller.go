@@ -128,9 +128,16 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	}
 
 	gatewayEventChan := make(chan event.GenericEvent, 100)
+	// The extproc builder is shared by the mutating webhook (which injects the
+	// extproc container and stamps the config hash) and the gateway reconciler
+	// (which recomputes that hash to detect drift). The webhook uses this
+	// builder instance directly; the reconciler builds an identical one from
+	// the same options inside NewGatewayController, so both sides compute
+	// identical hashes.
+	extProcBuilder := newExtProcBuilder(options, isKubernetes133OrLater(versionInfo, logger), logger)
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
-		logger.WithName("gateway"), options.EnvoyGatewayNamespace, options.ExtProcImage, options.ExtProcLogLevel,
-		false, uuid.NewString, isKubernetes133OrLater(versionInfo, logger))
+		logger.WithName("gateway"), options.EnvoyGatewayNamespace,
+		false, uuid.NewString, options, isKubernetes133OrLater(versionInfo, logger))
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).
 		WatchesRawSource(source.Channel(
 			gatewayEventChan,
@@ -260,25 +267,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	if !options.DisableMutatingWebhook {
 		h := admission.WithCustomDefaulter(Scheme, &corev1.Pod{}, newGatewayMutator(c, mgr.GetAPIReader(), kube,
 			logger.WithName("gateway-mutator"),
-			options.ExtProcImage,
-			options.ExtProcImagePullPolicy,
-			options.ExtProcLogLevel,
-			options.ExtProcEnableRedaction,
-			options.UDSPath,
-			options.RequestHeaderAttributes,
-			options.TracingRequestHeaderAttributes,
-			options.MetricsRequestHeaderAttributes,
-			options.LogRequestHeaderAttributes,
-			options.RootPrefix,
-			options.EndpointPrefixes,
-			options.ExtProcExtraEnvVars,
-			options.ExtProcImagePullSecrets,
-			options.ExtProcMaxRecvMsgSize,
-			isKubernetes133OrLater(versionInfo, logger),
-			options.MCPSessionEncryptionSeed,
-			options.MCPSessionEncryptionIterations,
-			options.MCPFallbackSessionEncryptionSeed,
-			options.MCPFallbackSessionEncryptionIterations,
+			extProcBuilder,
 		))
 		mgr.GetWebhookServer().Register("/mutate", &webhook.Admission{Handler: h})
 	}
