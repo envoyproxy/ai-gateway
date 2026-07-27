@@ -15,6 +15,7 @@
 - [Implementation Plan](#implementation-plan)
 - [Risks](#risks)
 - [Future work](#future-work)
+- [Spend Tracking in Other Gateways](#spend-tracking-in-other-gateways)
 - [Alternatives Considered](#alternatives-considered)
 
 <!-- /toc -->
@@ -288,7 +289,7 @@ Because publication occurs on the request path, enabling this feature adds laten
 
 ## Event loss
 
-The gateway remains stateless and does not buffer or persist events. Publication failures are observable through metrics.
+The gateway remains stateless and does not buffer or persist events for now. Publication failures are observable through metrics.
 
 ## Attribution trust boundary
 
@@ -305,18 +306,22 @@ The following are natural extensions that build on the same `UsageEventSink` abs
 
 ---
 
+# Spend Tracking in Other Gateways
+
+Existing AI gateways validate both storage models. [LiteLLM](https://docs.litellm.ai/docs/proxy/db_info) and [Helicone](https://helicone-helicone.mintlify.app/self-hosting/overview) persist request-level usage in their storage stacks, while [Kong AI Gateway](https://developer.konghq.com/how-to/meter-llm-traffic/) exports LLM token-usage events to an external metering system. This proposal follows the latter separation: Envoy AI Gateway emits a normalized, acknowledged event while storage and accounting remain external.
+
+---
+
 # Alternatives Considered
 
-## Why not access logs?
+## Access logs
 
 Access logs are intentionally best-effort and provide no acknowledgement of successful delivery. This proposal addresses that specific limitation while preserving existing observability mechanisms.
 
-## Why synchronous publication?
+## Asynchronous publication
 
 Acknowledgement is only meaningful if publication completes before request processing finishes. An asynchronous export would improve latency but could not distinguish successfully exported events from events lost before transmission.
 
-## Why no retries?
+## Gateway-managed retries
 
-Retries without durable local storage increase request latency without guaranteeing delivery. Since request completion is intentionally independent of usage event export, publication failures are surfaced through metrics rather than hidden behind retries.
-
-Deploying the HTTP sink close to the gateway (for example, as a sidecar) can reduce latency and minimize transient network failures.
+To keep the initial implementation simple, the gateway neither retries nor buffers events. Operators needing durable delivery can use a durable receiver as the HTTP sink. Bounded retries, asynchronous delivery, or short-lived in-memory buffering may be considered later if needed.
