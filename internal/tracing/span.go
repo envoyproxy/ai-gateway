@@ -51,6 +51,7 @@ type (
 	completionSpan      = span[openai.CompletionResponse, openai.CompletionResponse]
 	embeddingsSpan      = span[openai.EmbeddingResponse, struct{}]
 	imageGenerationSpan = span[openai.ImageGenerationResponse, struct{}]
+	imageEditSpan       = span[openai.ImageEditResponse, struct{}]
 	responsesSpan       = span[openai.Response, openai.ResponseStreamEventUnion]
 	speechSpan          = span[[]byte, openai.SpeechStreamChunk]
 	transcriptionSpan   = span[openai.TranscriptionResponse, openai.TranscriptionStreamEvent]

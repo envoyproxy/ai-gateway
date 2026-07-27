@@ -35,6 +35,7 @@ var (
 	_ tracingapi.EmbeddingsTracer      = (*embeddingsTracer)(nil)
 	_ tracingapi.CompletionTracer      = (*completionTracer)(nil)
 	_ tracingapi.ImageGenerationTracer = (*imageGenerationTracer)(nil)
+	_ tracingapi.ImageEditTracer       = (*imageEditTracer)(nil)
 	_ tracingapi.ResponsesTracer       = (*responsesTracer)(nil)
 	_ tracingapi.SpeechTracer          = (*speechTracer)(nil)
 	_ tracingapi.TranscriptionTracer   = (*transcriptionTracer)(nil)
@@ -47,6 +48,7 @@ type (
 	embeddingsTracer      = requestTracerImpl[openai.EmbeddingRequest, openai.EmbeddingResponse, struct{}]
 	completionTracer      = requestTracerImpl[openai.CompletionRequest, openai.CompletionResponse, openai.CompletionResponse]
 	imageGenerationTracer = requestTracerImpl[openai.ImageGenerationRequest, openai.ImageGenerationResponse, struct{}]
+	imageEditTracer       = requestTracerImpl[openai.ImageEditRequest, openai.ImageEditResponse, struct{}]
 	responsesTracer       = requestTracerImpl[openai.ResponseRequest, openai.Response, openai.ResponseStreamEventUnion]
 	speechTracer          = requestTracerImpl[openai.SpeechRequest, []byte, openai.SpeechStreamChunk]
 	transcriptionTracer   = requestTracerImpl[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
@@ -152,6 +154,18 @@ func newImageGenerationTracer(tracer trace.Tracer, propagator propagation.TextMa
 		nil,
 		func(span trace.Span, recorder tracingapi.ImageGenerationRecorder) tracingapi.ImageGenerationSpan {
 			return &imageGenerationSpan{span: span, recorder: recorder}
+		},
+	)
+}
+
+func newImageEditTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.ImageEditRecorder) tracingapi.ImageEditTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		nil,
+		func(span trace.Span, recorder tracingapi.ImageEditRecorder) tracingapi.ImageEditSpan {
+			return &imageEditSpan{span: span, recorder: recorder}
 		},
 	)
 }
