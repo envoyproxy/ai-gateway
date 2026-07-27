@@ -135,8 +135,31 @@ controller:
   replicaCount: 1
   imagePullSecrets: []
   podAnnotations: {}
-  podSecurityContext: {}
-  securityContext: {}
+  podLabels: {}
+  podDisruptionBudget:
+    enabled: false
+    annotations: {}
+    # Only one of minAvailable or maxUnavailable can be set.
+    # If maxUnavailable is set, it takes precedence over minAvailable.
+    minAvailable: 1
+    # maxUnavailable: 1
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsGroup: 65532
+    runAsUser: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    privileged: false
+    runAsNonRoot: true
+    runAsGroup: 65532
+    runAsUser: 65532
+    seccompProfile:
+      type: RuntimeDefault
   # DEPRECATED: podEnv will be removed after v0.3. Use controller.extraEnvVars instead.
   # Example of a podEnv
   # AWS STS request when rotating OIDC credentials will be configured to use AI_GATEWAY_STS_PROXY_URL proxy if set.
@@ -241,6 +264,7 @@ controller:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  topologySpreadConstraints: []
 
   # maxRecvMsgSize is the maximum message size in bytes that the gRPC extension server can receive
   # from xDS (envoy-gateway).
