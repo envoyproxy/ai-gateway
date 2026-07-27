@@ -15,6 +15,7 @@ import (
 	"maps"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -43,6 +44,8 @@ type mcpRequestContext struct {
 
 // defaultMaxRequestBodySize is the default maximum allowed POST body size in bytes (4 MiB).
 const defaultMaxRequestBodySize = 4 * 1024 * 1024
+
+var errNoMatchingBackendSubset = errors.New("mcp backend subset matches no route backends")
 
 // getMaxRequestBodySize returns the configured POST body limit from the environment variable,
 // falling back to 4 MiB if the variable is unset or invalid.
@@ -205,10 +208,25 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 	selectedBackends := backends.backends
 	if subset := backendSubset(m.requestHeaders); subset != nil {
 		filtered := make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(subset))
-		for name, b := range backends.backends {
-			if _, ok := subset[name]; ok {
-				filtered[name] = b
+		unknown := make([]string, 0)
+		for name := range subset {
+			if _, ok := backends.backends[name]; !ok {
+				unknown = append(unknown, name)
 			}
+		}
+		for name, backend := range backends.backends {
+			if _, ok := subset[name]; ok {
+				filtered[name] = backend
+			}
+		}
+		if len(unknown) > 0 {
+			sort.Strings(unknown)
+			m.l.Warn("MCP backend subset contains unknown route backends",
+				slog.String("route", routeName),
+				slog.String("backends", strings.Join(unknown, ",")))
+		}
+		if len(filtered) == 0 {
+			return nil, fmt.Errorf("%w for route %s", errNoMatchingBackendSubset, routeName)
 		}
 		selectedBackends = filtered
 	}

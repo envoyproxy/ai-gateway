@@ -43,8 +43,8 @@ func TestToolSubset(t *testing.T) {
 }
 
 // TestMergeToolsList_DynamicToolSubset verifies that when the x-ai-eg-mcp-tool-subset
-// header is present it filters tools/list (taking precedence over the static per-backend
-// toolSelector), and when it is absent the static selector is used.
+// header is present it overrides static include behavior while static excludes remain
+// hard denies, and when it is absent the static selector is used.
 func TestMergeToolsList_DynamicToolSubset(t *testing.T) {
 	newProxy := func(hdr string) *mcpRequestContext {
 		h := http.Header{}
@@ -92,12 +92,22 @@ func TestMergeToolsList_DynamicToolSubset(t *testing.T) {
 		// b1: only t1 (static include); t2 excluded. b2: t3 (no selector).
 		require.ElementsMatch(t, []string{"b1__t1", "b2__t3"}, names(got))
 	})
-	t.Run("header present -> overrides static (dynamic wins)", func(t *testing.T) {
-		// Dynamic allows b1__t2 (NOT b1__t1) + b2__t3 -> the static include(t1) is ignored.
+	t.Run("header overrides static include", func(t *testing.T) {
+		// Dynamic permits b1__t2 even though b1's static include allows only t1.
 		got := newProxy("b1__t2,b2__t3").mergeToolsList(s, newResponses())
 		require.ElementsMatch(t, []string{"b1__t2", "b2__t3"}, names(got))
 	})
-	t.Run("header present -> only listed tools", func(t *testing.T) {
+	t.Run("header narrows static include", func(t *testing.T) {
+		got := newProxy("b1__t1").mergeToolsList(s, newResponses())
+		require.ElementsMatch(t, []string{"b1__t1"}, names(got))
+	})
+	t.Run("header cannot override static exclusion", func(t *testing.T) {
+		proxy := newProxy("b1__t2,b2__t3")
+		proxy.mcpProxyConfig.routes["r"].toolSelectors["b1"].exclude = map[string]struct{}{"t2": {}}
+		got := proxy.mergeToolsList(s, newResponses())
+		require.ElementsMatch(t, []string{"b2__t3"}, names(got))
+	})
+	t.Run("header permits only listed tools without a static selector", func(t *testing.T) {
 		got := newProxy("b2__t3").mergeToolsList(s, newResponses())
 		require.ElementsMatch(t, []string{"b2__t3"}, names(got))
 	})

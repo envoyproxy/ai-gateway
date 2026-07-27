@@ -112,6 +112,7 @@ func TestNewSession_BackendSubset(t *testing.T) {
 		wantCalls           map[string]int
 		wantSessionBackends []filterapi.MCPBackendName
 		wantErr             string
+		wantErrIs           error
 	}{
 		{
 			name:                "header absent initializes all route backends",
@@ -138,7 +139,8 @@ func TestNewSession_BackendSubset(t *testing.T) {
 			setHdr:    true,
 			header:    "unknown",
 			wantCalls: map[string]int{"backend1": 0, "backend2": 0, "unknown": 0},
-			wantErr:   "failed to create MCP session to any backend",
+			wantErr:   "mcp backend subset matches no route backends for route test-route",
+			wantErrIs: errNoMatchingBackendSubset,
 		},
 	}
 
@@ -157,6 +159,9 @@ func TestNewSession_BackendSubset(t *testing.T) {
 			s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil, time.Now())
 			if tc.wantErr != "" {
 				require.ErrorContains(t, err, tc.wantErr)
+				if tc.wantErrIs != nil {
+					require.ErrorIs(t, err, tc.wantErrIs)
+				}
 				require.Nil(t, s)
 			} else {
 				require.NoError(t, err)
