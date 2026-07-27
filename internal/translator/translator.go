@@ -14,6 +14,7 @@ import (
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
@@ -132,6 +133,8 @@ type (
 	OpenAIAudioTranscriptionTranslator = Translator[openai.TranscriptionRequest, tracingapi.TranscriptionSpan]
 	// OpenAIAudioTranslationTranslator translates the OpenAI's /v1/audio/translations endpoint.
 	OpenAIAudioTranslationTranslator = Translator[openai.TranslationRequest, tracingapi.TranslationSpan]
+	// TokenizeTranslator translates the tokenize endpoint.
+	TokenizeTranslator = Translator[tokenize.RequestUnion, tracingapi.TokenizeSpan]
 )
 
 var (

@@ -38,6 +38,7 @@ type tracingImpl struct {
 	translationTracer     tracingapi.TranslationTracer
 	rerankTracer          tracingapi.RerankTracer
 	messageTracer         tracingapi.MessageTracer
+	tokenizeTracer        tracingapi.TokenizeTracer
 	mcpTracer             tracingapi.MCPTracer
 	// shutdown is nil when we didn't create tp.
 	shutdown func(context.Context) error
@@ -96,6 +97,11 @@ func (t *tracingImpl) MCPTracer() tracingapi.MCPTracer {
 // MessageTracer implements the same method as documented on tracingapi.Tracing.
 func (t *tracingImpl) MessageTracer() tracingapi.MessageTracer {
 	return t.messageTracer
+}
+
+// TokenizeTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) TokenizeTracer() tracingapi.TokenizeTracer {
+	return t.tokenizeTracer
 }
 
 // Shutdown implements the same method as documented on tracingapi.Tracing.
@@ -221,6 +227,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 	translationRecorder := openai.NewTranslationRecorderFromEnv()
 	rerankRecorder := cohere.NewRerankRecorderFromEnv()
 	messageRecorder := anthropic.NewMessageRecorderFromEnv()
+	tokenizeRecorder := openai.NewTokenizeRecorderFromEnv()
 
 	tracer := tp.Tracer("envoyproxy/ai-gateway")
 	return &tracingImpl{
@@ -281,6 +288,12 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			tracer,
 			propagator,
 			messageRecorder,
+			headerAttrs,
+		),
+		tokenizeTracer: newTokenizeTracer(
+			tracer,
+			propagator,
+			tokenizeRecorder,
 			headerAttrs,
 		),
 		mcpTracer: newMCPTracer(tracer, propagator, headerAttrs),
