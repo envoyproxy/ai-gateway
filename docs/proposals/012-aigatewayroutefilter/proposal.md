@@ -24,6 +24,7 @@
   - [Composite placement vs. per-route configuration](#composite-placement-vs-per-route-configuration)
   - [Envoy version requirement (CompositePerRoute over RDS)](#envoy-version-requirement-compositeperroute-over-rds)
   - [Policy lifecycle: add, update, and remove](#policy-lifecycle-add-update-and-remove)
+  - [Alternative: EG-native re-translation via `policyResources` (no annotation hack)](#alternative-eg-native-re-translation-via-policyresources-no-annotation-hack)
 - [Code Changes](#code-changes)
   - [1. API types (`api/v1alpha1`)](#1-api-types-apiv1alpha1)
   - [2. Controller (`internal/controller`)](#2-controller-internalcontroller)
@@ -628,6 +629,95 @@ otherwise notice. Two mechanisms cover this, both already used in the codebase:
 Together these guarantee that add/update/remove of a policy deterministically
 converges the injected xDS, with the composite removed as soon as the attachment is
 gone.
+
+### Alternative: EG-native re-translation via `policyResources` (no annotation hack)
+
+Both triggering mechanisms above are _workarounds_ for the same root cause: Envoy
+Gateway does not, by default, watch `AIGatewayExtensionPolicy`, and a policy change
+does not alter the generated `HTTPRoute`, so EG never re-translates on its own. The
+controller-driven `syncGateways` and — especially — the "stamp a hash annotation on
+the targeted `HTTPRoute`s" trick (mechanism #2) exist only to _nudge_ EG into
+re-translating. The annotation approach in particular is a hack: it mutates
+`HTTPRoute`s the policy does not own purely as a change-detection side channel, and
+it couples the re-translation blast radius to how many routes we stamp.
+
+**Envoy Gateway can watch our CRD natively.** `EnvoyGateway.extensionManager`
+exposes a `policyResources` field: any GVK listed there is treated as a
+_directly-attached extension-server policy_. EG then (a) watches that GVK with a
+generation-changed predicate, (b) re-enqueues the `GatewayClass` on every
+create/update/delete, and (c) includes the policy objects in the resource tree it
+translates. That re-enqueue is a full re-translation, so `PostTranslateModify`
+re-runs and our stateless recompute picks up the change — **with no HTTPRoute
+annotation, no `syncGateways`, and no field index.**
+
+```yaml
+# Envoy Gateway config (helm values / EnvoyGateway CR)
+extensionManager:
+  policyResources:
+    - group: aigateway.envoyproxy.io
+      version: v1alpha1
+      kind: AIGatewayExtensionPolicy
+  hooks:
+    xdsTranslator:
+      post: [Translation, Cluster, Route]
+```
+
+With this in place the controller no longer stamps the `extension-policies`
+annotation and no longer resyncs gateways on policy changes; it shrinks to
+status-only (or EG owns the policy status entirely). The extension server is
+unchanged — it still lists policies via `s.k8sClient` and recomputes.
+
+**Requirements and caveats (validated on a live cluster).** This path is not free;
+EG imposes rules on `policyResources` objects:
+
+- **A `targetRef`/`targetRefs` is mandatory.** EG's `processExtensionServerPolicies`
+  rejects any object without one (`"not a policy object - no targetRef or targetRefs
+  found …"`) and drops it from the resource tree, so it never triggers re-translation.
+  This means `targetRefs` stays a required field — but now it does double duty: it is
+  both the user's declared scope _and_ the re-translation trigger. (Concretely: with
+  no `targetRefs`, editing a policy produced **no** xDS change until EG was cold-restarted;
+  adding a `targetRefs` made edits propagate to Envoy in ~seconds with no restart.)
+- **Same-namespace attachment only.** The target reference is a
+  `LocalPolicyTargetReferenceWithSectionName` (no namespace), and EG resolves it in
+  the _policy's own_ namespace (`resolveExtServerPolicyGatewayTargetRef` keys on
+  `policy.GetNamespace()`). So the policy must live in the **same namespace as the
+  target Gateway**; cross-namespace attachment is not supported today and needs an
+  upstream EG change (tracked as a separate EG issue).
+- **RBAC.** EG's ServiceAccount needs `get/list/watch` on the CRD and `update/patch`
+  on its `/status` subresource (EG writes policy status). The AI Gateway CRDs helm
+  chart must grant these to the EG SA.
+
+#### Scoped targeting: `Gateway` vs. `AIGatewayRoute`
+
+Because EG accepts any `targetRef`, we can let the **target kind** select the
+enablement scope, which resolves the "targeted policy that nevertheless lands on all
+catch-alls" awkwardness from the [`targetRefs` vs. `headers`
+table](#targetrefs-vs-headers-why-both-and-the-catch-all-caveat):
+
+| `targetRefs` kind  | Where the composite is enabled                                                                                                                                                                                                                        | Scope / intent                                                                                                                                                                                                                                        |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`Gateway`**      | **All catch-all routes served by that Gateway.**                                                                                                                                                                                                      | Gateway-wide. The composite runs (subject to `headers`) for _any_ first-pass request on the Gateway, regardless of which `AIGatewayRoute` it is ultimately destined for. This is the honest representation of the blast radius for a cross-cutting ext_proc (auth, PII redaction, semantic routing across every model on the Gateway). |
+| **`AIGatewayRoute`** | **Only the routes generated by that `AIGatewayRoute`** — _not_ every catch-all on the Gateway. Enablement can even **skip that route's own auto-generated catch-all rule**, since that rule is an internal landing route (route-not-found) and is not part of the user-authored route surface. | Route-scoped. The policy affects only the traffic belonging to the named `AIGatewayRoute`; other `AIGatewayRoute`s on the same Gateway are untouched. This gives a genuinely narrow, user-comprehensible blast radius that matches the `targetRef`. |
+
+This makes the `targetRef` semantically meaningful again: a `Gateway` target says
+"apply gateway-wide," an `AIGatewayRoute` target says "apply to just this route." It
+also lets the docs describe the effect precisely, which the annotation-hack /
+"always all catch-alls" model could not.
+
+**Router-phase caveat for `AIGatewayRoute` scope.** Router-phase mutation must run on
+the request's _first pass_, while it is still on the header-less catch-all and
+`x-ai-eg-model` does not yet exist (see [the two-route
+problem](#the-two-route--landing-route-problem-recap)); the HCM filter chain runs
+once and `ClearRouteCache` does not re-run it. So `AIGatewayRoute`-scoped enablement
+only reaches a first-pass request when that route is matchable on the first pass
+(e.g. keyed on a **client** header, or served on a distinct path/host so its
+catch-all does not collapse into the shared one). For the common single-endpoint
+setup where all routes share `/v1/chat/completions` and every catch-all collapses to
+one surviving rule, a router-phase ext_proc that must see _all_ of a route's traffic
+still needs `Gateway` scope (or enablement on the shared catch-all). `AIGatewayRoute`
+scope is therefore best for policies gated on client-supplied, route-selecting
+headers; `Gateway` scope is the safe default for true router-phase mutation. See
+Open Questions.
 
 ## Code Changes
 
@@ -1270,3 +1360,10 @@ and mutates the request; the AI Gateway `ext_proc` then derives `x-ai-eg-model` 
    `isStandAloneMode` and the offline translate flow.
 7. **Status/observability.** Conditions on `AIGatewayExtensionPolicy` (Accepted,
    ResolvedRefs) and metrics for gate hit-rate and ext_proc latency.
+8. **Triggering mechanism.** Adopt the EG-native
+   [`policyResources`](#alternative-eg-native-re-translation-via-policyresources-no-annotation-hack)
+   watch (no annotation hack, but requires a `targetRef`, same-namespace attachment,
+   and EG RBAC) versus the controller-driven annotation/`syncGateways` trigger. If
+   `policyResources` is adopted, do we scope by target kind (`Gateway` = all
+   catch-alls, `AIGatewayRoute` = that route's routes only), and how do we handle the
+   cross-namespace limitation upstream?
