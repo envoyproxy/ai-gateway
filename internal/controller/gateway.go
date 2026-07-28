@@ -837,41 +837,18 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 	case aigv1b1.BackendSecurityPolicyTypeGCPCredentials:
 		gcpCreds := spec.GCPCredentials
 
-<<<<<<< HEAD
 		// In pass-through mode, project/region come from per-request headers and no
 		// credentials are managed by the controller.
 		if gcpCreds.IsPassThrough {
 			return &filterapi.BackendAuth{
-=======
-		// If no credentials file or WIF is configured, use ADC (handled by extproc)
-		if gcpCreds.CredentialsFile == nil && gcpCreds.WorkloadIdentityFederationConfig == nil {
-			auth = &filterapi.BackendAuth{
->>>>>>> 6722cca8d33896c4464c12f2de5aaf1238a569b6
 				GCPAuth: &filterapi.GCPAuth{
 					Region:        gcpCreds.Region,
 					ProjectName:   gcpCreds.ProjectName,
 					IsPassThrough: true,
 				},
-			}
-			// No static access token, but ADC is used — the per-request override replaces the token only.
-			hasStaticCred = false
-		} else {
-			// Otherwise, fetch token from rotated secret
-			secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
-			gcpAccessToken, getErr := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
-			if getErr != nil {
-				return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
-			}
-			auth = &filterapi.BackendAuth{
-				GCPAuth: &filterapi.GCPAuth{
-					AccessToken: gcpAccessToken,
-					Region:      gcpCreds.Region,
-					ProjectName: gcpCreds.ProjectName,
-				},
-			}
-			hasStaticCred = true
+			}, nil
+			// If no credentials file or WIF is configured, use ADC (handled by extproc)
 		}
-<<<<<<< HEAD
 
 		// If no credentials file or WIF is configured, use ADC (handled by extproc)
 		if gcpCreds.CredentialsFile == nil && gcpCreds.WorkloadIdentityFederationConfig == nil {
@@ -899,8 +876,6 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			}
 			hasStaticCred = true
 		}
-=======
->>>>>>> 6722cca8d33896c4464c12f2de5aaf1238a569b6
 	default:
 		return nil, fmt.Errorf("invalid backend security type %s for policy %s", spec.Type, backendSecurityPolicy.Name)
 	}
