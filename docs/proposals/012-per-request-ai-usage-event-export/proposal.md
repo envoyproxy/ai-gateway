@@ -16,7 +16,6 @@
 - [Implementation Plan](#implementation-plan)
 - [Risks](#risks)
 - [Future work](#future-work)
-- [Spend Tracking in Other Gateways](#spend-tracking-in-other-gateways)
 - [Alternatives Considered](#alternatives-considered)
 
 <!-- /toc -->
@@ -286,12 +285,6 @@ The following are natural extensions that build on the same `UsageEventSink` abs
 
 - **Additional sink implementations** — transports such as Kafka, gRPC, or cloud pub/sub messaging, implemented against the same `UsageEventSink` interface.
 - **Alternative attribution sources** — deriving attribution from authenticated identity or policy metadata rather than request headers alone.
-
----
-
-# Spend Tracking in Other Gateways
-
-Existing AI gateways validate both storage models. [LiteLLM](https://docs.litellm.ai/docs/proxy/db_info) and [Helicone](https://helicone-helicone.mintlify.app/self-hosting/overview) persist request-level usage in their storage stacks, while [Kong AI Gateway](https://developer.konghq.com/how-to/meter-llm-traffic/) exports LLM token-usage events to an external metering system. This proposal follows the latter separation: Envoy AI Gateway emits a normalized, acknowledged event while storage and accounting remain external.
 
 ---
 
