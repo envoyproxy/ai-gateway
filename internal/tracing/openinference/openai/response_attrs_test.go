@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
@@ -1698,5 +1699,17 @@ func TestBuildResponsesResponseAttributes(t *testing.T) {
 			got := buildResponsesResponseAttributes(tt.resp, tt.config)
 			openinference.RequireAttributesEqual(t, tt.expectedAttrs, got)
 		})
+	}
+}
+
+// An empty response model must not emit llm.model_name at all — on the
+// streaming path an empty value would overwrite the request-time
+// llm.model_name attribute (OTel attributes are last-write-wins).
+func TestBuildResponseAttributesEmptyModelOmitsModelName(t *testing.T) {
+	resp := &openai.ChatCompletionResponse{}
+	attrs := buildResponseAttributes(resp, &openinference.TraceConfig{})
+	for _, attr := range attrs {
+		require.NotEqual(t, openinference.LLMModelName, string(attr.Key),
+			"llm.model_name must not be set from an empty response model")
 	}
 }
