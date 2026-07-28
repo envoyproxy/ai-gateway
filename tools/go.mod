@@ -345,11 +345,7 @@ require (
 	golang.org/x/image v0.38.0 // indirect
 	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/net v0.54.0 // indirect
-<<<<<<< HEAD
-	golang.org/x/oauth2 v0.34.0 // indirect
-=======
 	golang.org/x/oauth2 v0.36.0 // indirect
->>>>>>> 6722cca8d33896c4464c12f2de5aaf1238a569b6
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/term v0.43.0 // indirect
