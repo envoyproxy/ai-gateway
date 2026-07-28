@@ -521,7 +521,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		}
 		// Mark so the deferred handler records failure.
 		recordRequestCompletionErr = true
-		return &extprocv3.ProcessingResponse{
+		resp := &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseBody{
 				ResponseBody: &extprocv3.BodyResponse{
 					Response: &extprocv3.CommonResponse{
@@ -530,7 +530,34 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 					},
 				},
 			},
-		}, nil
+		}
+		// Emit dynamic metadata at end of stream so failed requests still carry
+		// backend_name / model_name_override / route_name / token costs (0) in the
+		// access log. backend_name and model_name_override are known from the request
+		// phase (SetBackend), so unlike token usage they do not depend on a successful
+		// response body. Token costs are 0 on errors (no tokens consumed), so the
+		// rate-limit stream-done hits_addend stays 0 — observability only, no token
+		// quota charge (verified by an e2e in tests/e2e/backend_quota_ratelimit_test.go).
+		// responseModel is empty because error responses carry no model.
+		//
+		// If a CEL cost expression fails to evaluate here, skip emitting metadata
+		// and log rather than failing the response: the access log simply stays
+		// null for this request, same as for any failed request without costs.
+		// (Note: llmcostcel.NewProgram sanity-checks each expression at all-zero
+		// token counts — the exact state of a failed request — so division-by-zero
+		// on zero tokens is already rejected at program creation; this guard is
+		// defensive against any other CEL runtime error.)
+		if body.EndOfStream && u.parent.config != nil &&
+			(len(u.parent.config.GlobalRequestCosts) > 0 || len(u.parent.config.RequestCosts) > 0) {
+			metadata, mdErr := buildDynamicMetadata(u.parent.config.GlobalRequestCosts, u.parent.config.RequestCosts, &u.costs, u.requestHeaders, u.backendName, u.routeName, internalapi.ResponseModel(""))
+			if mdErr != nil {
+				u.logger.Warn("failed to build dynamic metadata for error response, skipping access-log metadata",
+					slog.Any("error", mdErr))
+			} else {
+				resp.DynamicMetadata = metadata
+			}
+		}
+		return resp, nil
 	}
 
 	newHeaders, newBody, tokenUsage, responseModel, err := u.translator.ResponseBody(u.responseHeaders, decodingResult.reader, body.EndOfStream, u.parent.span)
@@ -816,9 +843,12 @@ func evalRuntimeRequestCost(rc *filterapi.RuntimeRequestCost, costs *metrics.Tok
 }
 
 // buildDynamicMetadata creates metadata for rate limiting and cost tracking.
-// This function is called by the upstream filter only at the end of the stream (body.EndOfStream=true)
-// when the response is successfully completed. It is not called for failed requests or partial responses.
-// The metadata includes token usage costs and model information for downstream processing.
+// This function is called by the upstream filter only at the end of the stream
+// (body.EndOfStream=true), on both successful and failed responses. For failed
+// responses (non-2xx), token costs are 0 (no tokens were consumed) and
+// responseModel is empty, but backend_name / model_name_override / route_name
+// are still emitted so the access log can attribute failed requests. The metadata
+// includes token usage costs and model information for downstream processing.
 // Two-tier precedence: for each metadataKey, check route-scoped requestCosts first (matching RouteName == routeName).
 // If found, use it. Otherwise, fall back to globalRequestCosts. If neither exists, the key is not emitted.
 func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCost, requestCosts []filterapi.RuntimeRequestCost, costs *metrics.TokenUsage, requestHeaders map[string]string, backendName, routeName, responseModel string) (*structpb.Struct, error) {
