@@ -69,7 +69,8 @@ func newGCPHandler(ctx context.Context, gcpAuth *filterapi.GCPAuth) (filterapi.B
 //
 // This method updates the request headers to:
 //  1. Prepend the GCP API prefix to the ":path" header, constructing the full endpoint URL.
-//  2. Add an "Authorization" header with the GCP access token.
+//  2. Add an "Authorization" header with the GCP access token, unless the handler is in
+//     pass-through mode, in which case the client's own "Authorization" header is used as-is.
 //
 // The ":path" header is expected to contain the API-specific suffix, which is injected by translator.requestBody.
 // The suffix is combined with the generated prefix to form the complete path for the GCP API call.
