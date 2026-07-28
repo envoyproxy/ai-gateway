@@ -717,27 +717,33 @@ func redactUserContentPart(part openai.ChatCompletionContentPartUserUnionParam) 
 // determined by a custom unmarshaler and may be a string, []string, [][]int,
 // or arbitrary object tree. It normalizes via a marshal→unmarshal-into-any
 // round-trip so [redaction.RedactJSONTree] sees the standard []any/map[string]any
-// shapes, then redacts every string leaf. On any error it returns a single
-// placeholder string so no raw content is ever logged.
+// shapes, then redacts every string leaf. On a marshal error (the only reachable
+// error path) it returns a single placeholder string so no raw content is ever
+// logged; the subsequent unmarshal-into-any cannot fail on valid JSON output.
 func redactInterfaceValue(v any) any {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return redaction.RedactString("redaction-error")
 	}
+	// b is valid JSON straight from json.Marshal and generic is *any, so this
+	// unmarshal cannot fail; discard the error and redact the generic tree.
 	var generic any
-	if err := json.Unmarshal(b, &generic); err != nil {
-		return redaction.RedactString("redaction-error")
-	}
+	_ = json.Unmarshal(b, &generic)
 	return redaction.RedactJSONTree(generic)
 }
 
 // redactUnionField redacts a typed-struct field whose value is a JSON union
 // (e.g. MessageContent, SystemPrompt, ResponseNewParamsInputUnion,
 // ResponsePromptParam). It marshals the field, redacts every string leaf in the
-// resulting JSON tree, and unmarshals back into a new T. On any error it returns
-// the zero value of T (nil for pointers, an empty struct otherwise) so the field
-// logs as absent rather than leaking content. These types round-trip cleanly
-// because they were just parsed from JSON, so the error path is defensive only.
+// resulting JSON tree, and unmarshals back into a new T. On a marshal error it
+// returns the zero value of T (nil for pointers, an empty struct otherwise) so
+// the field logs as absent rather than leaking content.
+//
+// The intermediate unmarshal-into-any and the re-marshal of the redacted tree
+// are provably infallible — b is valid JSON from json.Marshal into *any, and
+// [redaction.RedactJSONTree] yields only JSON-native types — so their errors are
+// discarded. The final unmarshal back into T is fail-safe: on the impossible
+// structural mismatch, out stays zero.
 //
 // Marshaling and unmarshaling go through pointers (&in / &out) so that any
 // pointer-receiver MarshalJSON/UnmarshalJSON on T is actually invoked — passing
@@ -748,14 +754,14 @@ func redactUnionField[T any](in T) (out T) {
 	if err != nil {
 		return out
 	}
+	// b is valid JSON from json.Marshal and generic is *any, so this unmarshal
+	// cannot fail. RedactJSONTree then redacts every string leaf, preserving
+	// "type" discriminators so the tree still round-trips into T.
 	var generic any
-	if err = json.Unmarshal(b, &generic); err != nil {
-		return out
-	}
-	redacted, err := json.Marshal(redaction.RedactJSONTree(generic))
-	if err != nil {
-		return out
-	}
+	_ = json.Unmarshal(b, &generic)
+	// RedactJSONTree yields only JSON-native types, which json.Marshal always
+	// accepts, so this re-marshal cannot fail either.
+	redacted, _ := json.Marshal(redaction.RedactJSONTree(generic))
 	_ = json.Unmarshal(redacted, &out) // on error, out stays zero (fail-safe)
 	return out
 }
