@@ -12,6 +12,7 @@
 package filterapi
 
 import (
+	"log/slog"
 	"os"
 	"time"
 
@@ -212,6 +213,31 @@ type BackendAuth struct {
 	AzureAuth *AzureAuth `json:"azure,omitempty"`
 	// GCPAuth specifies the location of GCP credential file.
 	GCPAuth *GCPAuth `json:"gcp,omitempty"`
+	// CredentialOverride, when non-nil, sources the credential per-request instead of the
+	// static credential above. nil disables per-request sourcing (the default).
+	CredentialOverride *CredentialOverride `json:"credentialOverride,omitempty"`
+}
+
+// CredentialOverride configures per-request credential sourcing for a backend.
+// Exactly one of HeaderName or DynamicMetadataNamespace is set (resolved by the controller).
+type CredentialOverride struct {
+	// HeaderName is the request header that carries the per-request credential.
+	// Set for fromRequestHeaders source; empty for fromDynamicMetadata source.
+	HeaderName string `json:"headerName,omitempty"`
+	// DynamicMetadataNamespace is the Envoy metadata namespace to read from.
+	// Set for fromDynamicMetadata source; empty for fromRequestHeaders source.
+	DynamicMetadataNamespace string `json:"dynamicMetadataNamespace,omitempty"`
+	// DynamicMetadataKey is the key within DynamicMetadataNamespace.
+	DynamicMetadataKey string `json:"dynamicMetadataKey,omitempty"`
+	// FallbackToConfigured controls behaviour when the source value is absent.
+	// true falls back to the static credential; false returns 401 to the caller.
+	FallbackToConfigured bool `json:"fallbackToConfigured"`
+	// InputHeaderToRemove is the header that should be stripped before the request
+	// reaches the upstream backend. Only set for HeaderName source.
+	// The controller adds this to the backend HeaderMutation.Remove list so the
+	// HeaderMutator tells Envoy to remove it upstream while keeping it visible
+	// in the local requestHeaders map for the handler to read.
+	InputHeaderToRemove string `json:"inputHeaderToRemove,omitempty"`
 }
 
 // AWSAuth defines the credentials needed to access AWS.
@@ -222,10 +248,23 @@ type AWSAuth struct {
 	Region                string `json:"region"`
 }
 
+// LogValue implements slog.LogValuer for AWSAuth to redact sensitive information.
+func (a AWSAuth) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("credentialFileLiteral", "[REDACTED]"),
+		slog.String("region", a.Region),
+	)
+}
+
 // APIKeyAuth defines the file that will be mounted to the external proc.
 type APIKeyAuth struct {
 	// Key is the API key as a literal string.
 	Key string `json:"key"`
+}
+
+// LogValue implements slog.LogValuer for APIKeyAuth to redact sensitive information.
+func (a APIKeyAuth) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("key", "[REDACTED]"))
 }
 
 // AzureAPIKeyAuth defines the Azure OpenAI API key.
@@ -234,16 +273,31 @@ type AzureAPIKeyAuth struct {
 	Key string `json:"key"`
 }
 
+// LogValue implements slog.LogValuer for AzureAPIKeyAuth to redact sensitive information.
+func (a AzureAPIKeyAuth) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("key", "[REDACTED]"))
+}
+
 // AnthropicAPIKeyAuth defines the Anthropic API key.
 type AnthropicAPIKeyAuth struct {
 	// Key is the Anthropic API key as a literal string.
 	Key string `json:"key"`
 }
 
+// LogValue implements slog.LogValuer for AnthropicAPIKeyAuth to redact sensitive information.
+func (a AnthropicAPIKeyAuth) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("key", "[REDACTED]"))
+}
+
 // AzureAuth defines the file containing azure access token that will be mounted to the external proc.
 type AzureAuth struct {
 	// AccessToken is the access token as a literal string.
 	AccessToken string `json:"accessToken"`
+}
+
+// LogValue implements slog.LogValuer for AzureAuth to redact sensitive information.
+func (a AzureAuth) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("accessToken", "[REDACTED]"))
 }
 
 // GCPAuth defines the GCP authentication configuration used to access Google Cloud AI services.
@@ -260,6 +314,15 @@ type GCPAuth struct {
 	// This is used in URL path templates when making requests to GCP Vertex AI endpoints.
 	// This should be the project where Vertex AI APIs are enabled.
 	ProjectName string `json:"projectName"`
+}
+
+// LogValue implements slog.LogValuer for GCPAuth to redact sensitive information.
+func (g GCPAuth) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("accessToken", "[REDACTED]"),
+		slog.String("region", g.Region),
+		slog.String("projectName", g.ProjectName),
+	)
 }
 
 // HTTPHeaderMutation defines the mutation of HTTP headers that will be applied to the request
@@ -280,6 +343,14 @@ type HTTPHeader struct {
 	Name string `json:"name"`
 	// Value is the value of HTTP Header to be matched.
 	Value string `json:"value"`
+}
+
+// LogValue implements slog.LogValuer for HTTPHeader to redact sensitive information.
+func (h HTTPHeader) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("name", h.Name),
+		slog.String("value", "[REDACTED]"),
+	)
 }
 
 // HTTPBodyMutation defines the mutation of HTTP request body JSON fields that will be applied to the request

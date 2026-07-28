@@ -270,6 +270,11 @@ func convertSSEToResponse(chunks []*anthropic.MessagesStreamChunk) *anthropic.Me
 
 		case event.ContentBlockStart != nil:
 			idx := event.ContentBlockStart.Index
+			// Guard against negative or unreasonably large indices from a hostile upstream.
+			const maxContentBlocks = 1000
+			if idx < 0 || idx >= maxContentBlocks {
+				continue
+			}
 			// Grow slice if needed.
 			if idx >= len(response.Content) {
 				newContent := make([]anthropic.MessagesContentBlock, idx+1)
