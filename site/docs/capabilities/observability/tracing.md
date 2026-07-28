@@ -133,6 +133,26 @@ extProc:
 Note: Hiding inputs/outputs prevents human or LLM-as-a-Judge evaluation of your
 LLM requests, such as done with the [Phoenix Evals library][phoenix-evals].
 
+## Recording the Caller's Trace as a Link
+
+By default, gateway spans continue the caller's propagated `traceparent`, so
+they join the calling application's trace. If a caller also instruments its own
+LLM client (e.g. with OpenInference), the same request produces two LLM spans
+in one trace — and backends that group traces into projects (such as Phoenix,
+which assigns a span to the project of the trace it joins) will double-count
+that request's token and cost rollups in the caller's project. It also means
+the gateway's own project contains no root spans for instrumented callers.
+
+Set `AI_GATEWAY_TRACING_REMOTE_PARENT_AS_LINK=true` on the ExtProc container to
+have every gateway span start its own trace as a root span instead. The
+caller's context is preserved as an OTel span link plus `caller.trace_id` and
+`caller.span_id` span attributes (useful for backends that don't ingest links).
+Propagation to the upstream provider is unchanged, except the injected
+`traceparent` carries the gateway's own trace.
+
+Unset (the default), behavior is unchanged: gateway spans join the caller's
+trace.
+
 ## Session Tracking
 
 Sessions help track and organize related traces across multi-turn conversations
