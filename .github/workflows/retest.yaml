@@ -1,26 +1,65 @@
-name: Retest Action on PR Comment
-
+name: Release
 on:
-  issue_comment:
-    types: [created]
-
-permissions:
-  contents: read
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+**" # Ex. v0.2.0 v0.2.1-rc2
 
 jobs:
-  retest:
-    if: ${{
-      github.event.issue.pull_request
-      && github.repository == 'envoyproxy/ai-gateway'
-      && github.actor != 'repokitteh-read-only[bot]'
-      && github.actor != 'dependabot[bot]'
-      }}
-    name: Retest
-    runs-on: ubuntu-22.04
+  docker_push:
+    name: Push Docker Images
+    uses: ./.github/workflows/docker_build_job.yaml
+    secrets: inherit
+
+  release:
+    needs: [docker_push]
+    name: Release
+    runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
-      actions: write
+      contents: write # gh release create requires contents:write
     steps:
-      - uses: envoyproxy/toolshed/gh-actions/retest@effeefe9b275dc8056f77c0e7b1010c252167d3e # actions-v0.0.2
+      - name: Set HELM_CHART_VERSION and TAG envs
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "HELM_CHART_VERSION=${TAG}" >> $GITHUB_ENV
+          echo "HELM_CHART_VERSION_WITHOUT_V=$(echo ${TAG#v})" >> $GITHUB_ENV
+          echo "TAG=${TAG}" >> $GITHUB_ENV
+
+      # To include the helm chart in the release artifact, we build and push it here instead of the separate job.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
+      - name: Login into DockerHub
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Push Helm chart
+        run: |
+          make helm-push HELM_CHART_VERSION=${HELM_CHART_VERSION}
+          make helm-push HELM_CHART_VERSION=${HELM_CHART_VERSION_WITHOUT_V}
+
+      - name: Build CLI release binaries
+        run: |
+          make build.aigw GOOS_LIST="linux" GOARCH_LIST="amd64 arm64"
+          # amd64 for macos is not available on archive-envoy for the last few table versions
+          # which in turn is used by EG's standalone mode used by aigw, so we skip it
+          make build.aigw GOOS_LIST="darwin" GOARCH_LIST="arm64"
+
+      - name: Create a release candidate
+        if: ${{ contains(github.ref, '-rc') }}
+        run: |
+          gh release create $TAG --prerelease --title $TAG --notes "Release candidate" \
+            ./out/ai-gateway-crds-helm-${TAG}.tgz \
+            ./out/ai-gateway-helm-${TAG}.tgz \
+            ./out/aigw-*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create a stable release
+        if: ${{ !contains(github.ref, '-rc') }}
+        run: |
+          gh release create $TAG --draft --title $TAG --notes "To be written by the release manager" \
+            ./out/ai-gateway-crds-helm-${TAG}.tgz \
+            ./out/ai-gateway-helm-${TAG}.tgz \
+            ./out/aigw-*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

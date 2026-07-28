@@ -19,7 +19,7 @@ GO_LDFLAGS += -X $(VERSION_PACKAGE).version=$(VERSION_STRING)
 OUTPUT_DIR ?= out
 
 # Arguments for docker builds.
-OCI_REGISTRY ?= docker.io/cheda94
+OCI_REGISTRY ?= docker.io/envoyproxy
 OCI_REPOSITORY_PREFIX ?= ${OCI_REGISTRY}/ai-gateway
 TAG ?= latest
 ENABLE_MULTI_PLATFORMS ?= false
@@ -340,7 +340,6 @@ docker-build.%: ## Build a docker image for a given command.
 		--build-arg VARIANT=$(VARIANT) \
 		--build-arg COMMAND_NAME=$(*) \
 		$(PLATFORMS) $(DOCKER_BUILD_ARGS)
-
 
 HELM_DIR := ./manifests/charts/ai-gateway-helm ./manifests/charts/ai-gateway-crds-helm
 
