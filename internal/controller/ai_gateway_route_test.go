@@ -230,6 +230,7 @@ func Test_newHTTPRoute(t *testing.T) {
 							},
 						},
 						{
+							Name: ptr.To[gwapiv1.SectionName]("weighted-backends"),
 							BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
 								{Name: "orange", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](0)},
 								{Name: "apple", Weight: ptr.To[int32](100), Priority: ptr.To[uint32](1)},
@@ -305,6 +306,7 @@ func Test_newHTTPRoute(t *testing.T) {
 					Filters:     rewriteFilters,
 				},
 				{
+					Name: ptr.To[gwapiv1.SectionName]("weighted-backends"),
 					Matches: []gwapiv1.HTTPRouteMatch{
 						{Headers: []gwapiv1.HTTPHeaderMatch{{Name: "x-test", Value: "rule-1"}}, Path: expPath},
 					},
