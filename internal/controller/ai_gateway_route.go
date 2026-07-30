@@ -106,10 +106,6 @@ func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	return reconcile.Result{}, nil
 }
 
-func FilterConfigSecretPerGatewayName(gwName, gwNamespace string) string {
-	return fmt.Sprintf("%s-%s", gwName, gwNamespace)
-}
-
 func getHostRewriteFilterName(baseName string) string {
 	return fmt.Sprintf("%s-%s", hostRewriteHTTPFilterName, baseName)
 }
@@ -324,6 +320,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			})
 		}
 		rules = append(rules, gwapiv1.HTTPRouteRule{
+			Name:        rule.Name,
 			BackendRefs: backendRefs,
 			Matches:     matches,
 			Filters:     rewriteFilters,

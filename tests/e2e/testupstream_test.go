@@ -310,3 +310,156 @@ func extractFilterConfigFromSecret(ctx context.Context, name string) (string, er
 	}
 	return string(decoded), nil
 }
+
+// TestPromptCacheTranslationMatrix proves OpenAI-shim cache_control markers survive
+// translation onto the AWSAnthropic InvokeModel body for the known prompt shapes.
+func TestPromptCacheTranslationMatrix(t *testing.T) {
+	const manifest = "testdata/testupstream.yaml"
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(context.Background(), manifest)
+	})
+
+	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=translation-testupstream"
+	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
+
+	const (
+		expPath    = "/model/anthropic.claude-cache-matrix/invoke"
+		expHost    = "testupstream.default.svc.cluster.local"
+		upstreamID = "primary"
+	)
+	fakeResponseBody := `{"id":"msg_cache","type":"message","role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":10,"output_tokens":1}}`
+
+	for _, tc := range []struct {
+		name           string
+		requestBody    string
+		expRequestBody string
+	}{
+		{
+			name: "plain_only",
+			requestBody: `{
+  "model":"anthropic.claude-cache-matrix",
+  "max_tokens":16,
+  "messages":[
+    {"role":"user","content":[{"type":"text","text":"plain prefix","cache_control":{"type":"ephemeral"}}]}
+  ]
+}`,
+			expRequestBody: `{"max_tokens":16,"messages":[{"content":[{"text":"plain prefix","cache_control":{"type":"ephemeral"},"type":"text"}],"role":"user"}],"anthropic_version":"bedrock-2023-05-31"}`,
+		},
+		{
+			name: "tool_defs_only",
+			requestBody: `{
+  "model":"anthropic.claude-cache-matrix",
+  "max_tokens":16,
+  "tools":[{
+    "type":"function",
+    "function":{
+      "name":"search_groups",
+      "description":"Search feedback groups",
+      "parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]},
+      "cache_control":{"type":"ephemeral"}
+    }
+  }],
+  "messages":[{"role":"user","content":"use tools"}]
+}`,
+			expRequestBody: `{"max_tokens":16,"messages":[{"content":[{"text":"use tools","type":"text"}],"role":"user"}],"tools":[{"input_schema":{"properties":{"query":{"type":"string"}},"required":["query"],"type":"object"},"name":"search_groups","description":"Search feedback groups","cache_control":{"type":"ephemeral"}}],"anthropic_version":"bedrock-2023-05-31"}`,
+		},
+		{
+			name: "tool_messages_bp_on_result",
+			requestBody: `{
+  "model":"anthropic.claude-cache-matrix",
+  "max_tokens":16,
+  "tools":[{
+    "type":"function",
+    "function":{
+      "name":"search_groups",
+      "description":"Search feedback groups",
+      "parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}
+    }
+  }],
+  "messages":[
+    {"role":"user","content":"search notifications"},
+    {"role":"assistant","tool_calls":[{"id":"toolu_1","type":"function","function":{"name":"search_groups","arguments":"{\"query\":\"notifications\"}"}}]},
+    {"role":"tool","tool_call_id":"toolu_1","content":"group results","cache_control":{"type":"ephemeral"}}
+  ]
+}`,
+			expRequestBody: `{"max_tokens":16,"messages":[{"content":[{"text":"search notifications","type":"text"}],"role":"user"},{"content":[{"id":"toolu_1","input":{"query":"notifications"},"name":"search_groups","type":"tool_use"}],"role":"assistant"},{"content":[{"tool_use_id":"toolu_1","is_error":false,"cache_control":{"type":"ephemeral"},"content":[{"text":"group results","type":"text"}],"type":"tool_result"}],"role":"user"}],"tools":[{"input_schema":{"properties":{"query":{"type":"string"}},"required":["query"],"type":"object"},"name":"search_groups","description":"Search feedback groups"}],"anthropic_version":"bedrock-2023-05-31"}`,
+		},
+		{
+			name: "tool_messages_bp_on_tool_use",
+			requestBody: `{
+  "model":"anthropic.claude-cache-matrix",
+  "max_tokens":16,
+  "tools":[{
+    "type":"function",
+    "function":{
+      "name":"search_groups",
+      "description":"Search feedback groups",
+      "parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}
+    }
+  }],
+  "messages":[
+    {"role":"user","content":"search notifications"},
+    {"role":"assistant","tool_calls":[{"id":"toolu_1","type":"function","function":{"name":"search_groups","arguments":"{\"query\":\"notifications\"}"},"cache_control":{"type":"ephemeral"}}]},
+    {"role":"tool","tool_call_id":"toolu_1","content":"group results"}
+  ]
+}`,
+			expRequestBody: `{"max_tokens":16,"messages":[{"content":[{"text":"search notifications","type":"text"}],"role":"user"},{"content":[{"id":"toolu_1","input":{"query":"notifications"},"name":"search_groups","cache_control":{"type":"ephemeral"},"type":"tool_use"}],"role":"assistant"},{"content":[{"tool_use_id":"toolu_1","is_error":false,"content":[{"text":"group results","type":"text"}],"type":"tool_result"}],"role":"user"}],"tools":[{"input_schema":{"properties":{"query":{"type":"string"}},"required":["query"],"type":"object"},"name":"search_groups","description":"Search feedback groups"}],"anthropic_version":"bedrock-2023-05-31"}`,
+		},
+		{
+			name: "tool_messages_bp_on_plain",
+			requestBody: `{
+  "model":"anthropic.claude-cache-matrix",
+  "max_tokens":16,
+  "tools":[{
+    "type":"function",
+    "function":{
+      "name":"search_groups",
+      "description":"Search feedback groups",
+      "parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}
+    }
+  }],
+  "messages":[
+    {"role":"user","content":"search notifications"},
+    {"role":"assistant","tool_calls":[{"id":"toolu_1","type":"function","function":{"name":"search_groups","arguments":"{\"query\":\"notifications\"}"}}]},
+    {"role":"tool","tool_call_id":"toolu_1","content":"group results"},
+    {"role":"user","content":[{"type":"text","text":"summarize","cache_control":{"type":"ephemeral"}}]}
+  ]
+}`,
+			expRequestBody: `{"max_tokens":16,"messages":[{"content":[{"text":"search notifications","type":"text"}],"role":"user"},{"content":[{"id":"toolu_1","input":{"query":"notifications"},"name":"search_groups","type":"tool_use"}],"role":"assistant"},{"content":[{"tool_use_id":"toolu_1","is_error":false,"content":[{"text":"group results","type":"text"}],"type":"tool_result"}],"role":"user"},{"content":[{"text":"summarize","cache_control":{"type":"ephemeral"},"type":"text"}],"role":"user"}],"tools":[{"input_schema":{"properties":{"query":{"type":"string"}},"required":["query"],"type":"object"},"name":"search_groups","description":"Search feedback groups"}],"anthropic_version":"bedrock-2023-05-31"}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Eventually(t, func() bool {
+				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+				defer fwd.Kill()
+
+				req, err := http.NewRequest(http.MethodPost, fwd.Address()+"/v1/chat/completions", strings.NewReader(tc.requestBody))
+				require.NoError(t, err)
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(fakeResponseBody)))
+				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(expPath)))
+				req.Header.Set(testupstreamlib.ExpectedHostKey, expHost)
+				req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, upstreamID)
+				req.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expRequestBody)))
+
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Logf("error: %v", err)
+					return false
+				}
+				defer func() { _ = resp.Body.Close() }()
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					t.Logf("error reading response body: %v", err)
+					return false
+				}
+				if resp.StatusCode != http.StatusOK {
+					t.Logf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+					return false
+				}
+				return true
+			}, 20*time.Second, 1*time.Second)
+		})
+	}
+}

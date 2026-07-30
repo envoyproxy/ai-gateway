@@ -94,6 +94,7 @@ type AIGatewayRouteSpec struct {
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MaxItems=15
+	// +kubebuilder:validation:XValidation:rule="self.all(r1, !has(r1.name) || self.exists_one(r2, has(r2.name) && r1.name == r2.name))", message="rule name must be unique within the route"
 	Rules []AIGatewayRouteRule `json:"rules"`
 
 	// LLMRequestCosts specifies how to capture the cost of the LLM-related request, notably the token usage.
@@ -209,9 +210,16 @@ type AIGatewayRouteSpec struct {
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
 //
+// +kubebuilder:validation:XValidation:rule="!has(self.name) || self.name != 'route-not-found'", message="rule name route-not-found is reserved"
 // +kubebuilder:validation:XValidation:rule="!has(self.backendRefs) || size(self.backendRefs) == 0 || (self.backendRefs.all(ref, !has(ref.group) && !has(ref.kind)) || self.backendRefs.all(ref, has(ref.group) && has(ref.kind)))", message="cannot mix InferencePool and AIServiceBackend references in the same rule"
 // +kubebuilder:validation:XValidation:rule="!has(self.backendRefs) || size(self.backendRefs) == 0 || !self.backendRefs.exists(ref, has(ref.group) && has(ref.kind)) || size(self.backendRefs) == 1", message="only one InferencePool backend is allowed per rule"
 type AIGatewayRouteRule struct {
+	// Name is the name of the route rule. This name must be unique within the route.
+	// When specified, it is copied to the generated HTTPRoute rule name.
+	//
+	// +optional
+	Name *gwapiv1.SectionName `json:"name,omitempty"`
+
 	// BackendRefs is the list of backends that this rule will route the traffic to.
 	// Each backend can have a weight that determines the traffic distribution.
 	//

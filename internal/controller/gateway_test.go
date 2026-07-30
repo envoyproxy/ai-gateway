@@ -6,8 +6,11 @@
 package controller
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +20,9 @@ import (
 	"go.uber.org/zap/zapcore"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	fake2 "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -25,7 +30,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
-	"sigs.k8s.io/yaml"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
 	"github.com/envoyproxy/ai-gateway/internal/controller/rotators"
@@ -47,6 +51,42 @@ func requireLLMRequestCostsEqual(t *testing.T, want, got []filterapi.LLMRequestC
 	if diff := cmp.Diff(want, got, cmpopts.SortSlices(less)); diff != "" {
 		t.Fatalf("LLMRequestCosts not equal (-want +got):\n%s", diff)
 	}
+}
+
+func requireFilterConfigFromBundle(t *testing.T, kube kubernetes.Interface, namespace, gatewayName, gatewayNamespace string) filterapi.Config {
+	t.Helper()
+
+	configName := FilterConfigBundleIndexSecretName(gatewayName, gatewayNamespace)
+	secret, err := kube.CoreV1().Secrets(namespace).Get(t.Context(), configName, metav1.GetOptions{})
+	require.NoError(t, err)
+	indexRaw := ""
+	ok := false
+	if b, exists := secret.Data[FilterConfigBundleIndexKey]; exists {
+		indexRaw = string(b)
+		ok = true
+	} else if s, exists := secret.StringData[FilterConfigBundleIndexKey]; exists {
+		indexRaw = s
+		ok = true
+	}
+	require.True(t, ok)
+	index, err := filterapi.UnmarshalConfigBundleIndex([]byte(indexRaw))
+	require.NoError(t, err)
+
+	cfg, err := filterapi.ReassembleBundleConfig(index, func(part filterapi.ConfigBundlePart) ([]byte, error) {
+		partSecret, getErr := kube.CoreV1().Secrets(namespace).Get(t.Context(), part.Name, metav1.GetOptions{})
+		if getErr != nil {
+			return nil, getErr
+		}
+		if b, exists := partSecret.Data[FilterConfigBundlePartKey]; exists {
+			return b, nil
+		}
+		if b, exists := partSecret.StringData[FilterConfigBundlePartKey]; exists {
+			return []byte(b), nil
+		}
+		return nil, fmt.Errorf("missing key %q in part secret %s", FilterConfigBundlePartKey, part.Name)
+	})
+	require.NoError(t, err)
+	return *cfg
 }
 
 func TestGatewayController_Reconcile(t *testing.T) {
@@ -166,7 +206,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ctrl.Result{}, res)
 	secret, err := fakeKube.CoreV1().Secrets(namespace).
-		Get(t.Context(), FilterConfigSecretPerGatewayName(okGwName, namespace), metav1.GetOptions{})
+		Get(t.Context(), FilterConfigBundleIndexSecretName(okGwName, namespace), metav1.GetOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, secret)
 }
@@ -274,17 +314,40 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 
 	for range 2 { // Reconcile twice to make sure the secret update path is working.
 		const someNamespace = "some-namespace"
-		configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
-		effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+		configName := FilterConfigBundleIndexSecretName("gw", gwNamespace)
+		effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
 		require.NoError(t, err)
 		require.True(t, effective, "expected filter config to be effective")
 
 		secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
 		require.NoError(t, err)
-		configStr, ok := secret.StringData[FilterConfigKeyInSecret]
+		indexRaw := ""
+		ok := false
+		if b, exists := secret.Data[FilterConfigBundleIndexKey]; exists {
+			indexRaw = string(b)
+			ok = true
+		} else if s, exists := secret.StringData[FilterConfigBundleIndexKey]; exists {
+			indexRaw = s
+			ok = true
+		}
 		require.True(t, ok)
-		var fc filterapi.Config
-		require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+		index, err := filterapi.UnmarshalConfigBundleIndex([]byte(indexRaw))
+		require.NoError(t, err)
+		cfg, err := filterapi.ReassembleBundleConfig(index, func(part filterapi.ConfigBundlePart) ([]byte, error) {
+			partSecret, getErr := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), part.Name, metav1.GetOptions{})
+			if getErr != nil {
+				return nil, getErr
+			}
+			if b, exists := partSecret.Data[FilterConfigBundlePartKey]; exists {
+				return b, nil
+			}
+			if b, exists := partSecret.StringData[FilterConfigBundlePartKey]; exists {
+				return []byte(b), nil
+			}
+			return nil, fmt.Errorf("missing key %q in part secret %s", FilterConfigBundlePartKey, part.Name)
+		})
+		require.NoError(t, err)
+		fc := *cfg
 		require.Equal(t, "dev", fc.Version)
 		wantLLMRequestCosts := []filterapi.LLMRequestCost{
 			{MetadataKey: "foo", RouteName: "ns/route1", Type: filterapi.LLMRequestCostTypeInputToken},
@@ -385,17 +448,11 @@ func TestGatewayController_reconcileFilterConfigSecret_HostnameScopedModels(t *t
 	}
 
 	const someNamespace = "some-namespace"
-	configName := FilterConfigSecretPerGatewayName("gw-hostname", gwNamespace)
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw-hostname", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
 	require.NoError(t, err)
 	require.True(t, effective, "expected filter config to be effective")
 
-	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
-	require.NoError(t, err)
-	configStr, ok := secret.StringData[FilterConfigKeyInSecret]
-	require.True(t, ok)
-	var fc filterapi.Config
-	require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+	fc := requireFilterConfigFromBundle(t, kube, someNamespace, "gw-hostname", gwNamespace)
 
 	// Global Models list still contains every model (used as fallback when no ModelsByHost is configured).
 	require.ElementsMatch(t,
@@ -455,15 +512,11 @@ func TestGatewayController_reconcileFilterConfigSecret_AllUnscopedRoutesLeaveUns
 	}))
 
 	const someNamespace = "some-namespace"
-	configName := FilterConfigSecretPerGatewayName("gw-unscoped-only", gwNamespace)
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw-unscoped-only", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
 	require.NoError(t, err)
 	require.True(t, effective)
 
-	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
-	require.NoError(t, err)
-	var fc filterapi.Config
-	require.NoError(t, yaml.Unmarshal([]byte(secret.StringData[FilterConfigKeyInSecret]), &fc))
+	fc := requireFilterConfigFromBundle(t, kube, someNamespace, "gw-unscoped-only", gwNamespace)
 
 	require.Len(t, fc.Models, 1)
 	require.Equal(t, "lone-model", fc.Models[0].Name)
@@ -532,17 +585,11 @@ func TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostA
 	}
 
 	const someNamespace = "some-namespace"
-	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
 	require.NoError(t, err)
 	require.True(t, effective, "expected filter config to be effective")
-
-	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
-	require.NoError(t, err)
-	configStr, ok := secret.StringData[FilterConfigKeyInSecret]
-	require.True(t, ok)
-	var fc filterapi.Config
-	require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+	fc := requireFilterConfigFromBundle(t, kube, someNamespace, "gw", gwNamespace)
 
 	// Verify we have two backends and one filter-config row per route (same metadataKey).
 	require.Len(t, fc.Backends, 2, "expected 2 backends")
@@ -608,17 +655,11 @@ func TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostA
 	require.NoError(t, err)
 
 	const someNamespace = "some-namespace"
-	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
 	require.NoError(t, err)
 	require.True(t, effective, "expected filter config to be effective")
 
-	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
-	require.NoError(t, err)
-	configStr, ok := secret.StringData[FilterConfigKeyInSecret]
-	require.True(t, ok)
-	var fc filterapi.Config
-	require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+	fc := requireFilterConfigFromBundle(t, kube, someNamespace, "gw", gwNamespace)
 	// Controller deduplicates same (metadataKey, routeName): last definition wins.
 	wantLLMRequestCosts := []filterapi.LLMRequestCost{
 		{
@@ -665,8 +706,7 @@ func TestGatewayController_reconcileFilterConfigSecret_InvalidCELExpression(t *t
 	require.NoError(t, err)
 
 	const someNamespace = "some-namespace"
-	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
-	_, err = c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+	_, err = c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid CEL expression")
 }
@@ -757,21 +797,43 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 	}
 
 	const someNamespace = "some-namespace"
-	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
+	configName := FilterConfigBundleIndexSecretName("gw", gwNamespace)
 
 	// Reconcile filter config secret.
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, routes, nil, "foouuid", nil)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, routes, nil, "foouuid", nil)
 	require.NoError(t, err)
 	require.True(t, effective, "expected filter config to be effective")
 
 	// Verify the secret was created and only contains data from the active route.
 	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
 	require.NoError(t, err)
-	configStr, ok := secret.StringData[FilterConfigKeyInSecret]
+	indexRaw := ""
+	ok := false
+	if b, exists := secret.Data[FilterConfigBundleIndexKey]; exists {
+		indexRaw = string(b)
+		ok = true
+	} else if s, exists := secret.StringData[FilterConfigBundleIndexKey]; exists {
+		indexRaw = s
+		ok = true
+	}
 	require.True(t, ok)
-
-	var fc filterapi.Config
-	require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+	index, err := filterapi.UnmarshalConfigBundleIndex([]byte(indexRaw))
+	require.NoError(t, err)
+	cfg, err := filterapi.ReassembleBundleConfig(index, func(part filterapi.ConfigBundlePart) ([]byte, error) {
+		partSecret, getErr := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), part.Name, metav1.GetOptions{})
+		if getErr != nil {
+			return nil, getErr
+		}
+		if b, exists := partSecret.Data[FilterConfigBundlePartKey]; exists {
+			return b, nil
+		}
+		if b, exists := partSecret.StringData[FilterConfigBundlePartKey]; exists {
+			return []byte(b), nil
+		}
+		return nil, fmt.Errorf("missing key %q in part secret %s", FilterConfigBundlePartKey, part.Name)
+	})
+	require.NoError(t, err)
+	fc := *cfg
 
 	// Should only have one model (from the active route), not two (deleted route should be skipped).
 	require.Len(t, fc.Models, 1)
@@ -2296,26 +2358,107 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 
 	// Reconcile to produce the Secret with only MCP routes.
 	const someNamespace = "some-namespace"
-	configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
+	configName := FilterConfigBundleIndexSecretName("gw", gwNamespace)
 
-	effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, nil, nil, "mcp-uuid", nil)
+	effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, nil, nil, "mcp-uuid", nil)
 	require.NoError(t, err)
 	require.False(t, effective) // No MCP routes, so not effective.
-	effective, err = c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, nil, mcpRoutes, "mcp-uuid", nil)
+	effective, err = c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, nil, mcpRoutes, "mcp-uuid", nil)
 	require.NoError(t, err)
 	require.True(t, effective)
 
-	// Read back and verify MCPConfig fields.
+	// Read back and verify MCPConfig fields from the bundle.
 	secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
 	require.NoError(t, err)
-	configStr, ok := secret.StringData[FilterConfigKeyInSecret]
+	indexRaw := ""
+	ok := false
+	if b, exists := secret.Data[FilterConfigBundleIndexKey]; exists {
+		indexRaw = string(b)
+		ok = true
+	} else if s, exists := secret.StringData[FilterConfigBundleIndexKey]; exists {
+		indexRaw = s
+		ok = true
+	}
 	require.True(t, ok)
+	index, err := filterapi.UnmarshalConfigBundleIndex([]byte(indexRaw))
+	require.NoError(t, err)
+	cfg, err := filterapi.ReassembleBundleConfig(index, func(part filterapi.ConfigBundlePart) ([]byte, error) {
+		partSecret, getErr := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), part.Name, metav1.GetOptions{})
+		if getErr != nil {
+			return nil, getErr
+		}
+		if b, exists := partSecret.Data[FilterConfigBundlePartKey]; exists {
+			return b, nil
+		}
+		if b, exists := partSecret.StringData[FilterConfigBundlePartKey]; exists {
+			return []byte(b), nil
+		}
+		return nil, fmt.Errorf("missing key %q in part secret %s", FilterConfigBundlePartKey, part.Name)
+	})
+	require.NoError(t, err)
 
-	var fc filterapi.Config
-	require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
-	require.Equal(t, "mcp-uuid", fc.UUID)
-	require.NotNil(t, fc.MCPConfig)
-	require.Equal(t, "http://127.0.0.1:"+strconv.Itoa(internalapi.MCPBackendListenerPort), fc.MCPConfig.BackendListenerAddr)
+	require.Equal(t, "mcp-uuid", cfg.UUID)
+	require.NotNil(t, cfg.MCPConfig)
+	require.Equal(t, "http://127.0.0.1:"+strconv.Itoa(internalapi.MCPBackendListenerPort), cfg.MCPConfig.BackendListenerAddr)
+}
+
+func TestGatewayController_writeFilterConfigBundleShards(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	namespace := "ns"
+	gatewayName := "cfg-gw"
+	gatewayNamespace := "cfg-ns"
+	payload := append([]byte(strings.Repeat("x", filterConfigBundlePartSizeBytes*2+10)), []byte("中文字符")...)
+	err := c.writeFilterConfigBundle(t.Context(), gatewayName, gatewayNamespace, namespace, payload, "uuid-1")
+	require.NoError(t, err)
+
+	indexSecretName := FilterConfigBundleIndexSecretName(gatewayName, gatewayNamespace)
+	indexSecret, err := kube.CoreV1().Secrets(namespace).Get(t.Context(), indexSecretName, metav1.GetOptions{})
+	require.NoError(t, err)
+	indexRaw, ok := indexSecret.StringData[FilterConfigBundleIndexKey]
+	if !ok {
+		if b, exists := indexSecret.Data[FilterConfigBundleIndexKey]; exists {
+			indexRaw = string(b)
+			ok = true
+		}
+	}
+	require.True(t, ok)
+	index, err := filterapi.UnmarshalConfigBundleIndex([]byte(indexRaw))
+	require.NoError(t, err)
+	require.Len(t, index.Parts, 3)
+
+	var reassembled bytes.Buffer
+	for _, part := range index.Parts {
+		s, getErr := kube.CoreV1().Secrets(namespace).Get(t.Context(), part.Name, metav1.GetOptions{})
+		require.NoError(t, getErr)
+		chunk, partOK := s.Data[FilterConfigBundlePartKey]
+		require.True(t, partOK)
+		_, stringDataOK := s.StringData[FilterConfigBundlePartKey]
+		require.False(t, stringDataOK)
+		reassembled.Write(chunk)
+	}
+	require.Equal(t, payload, reassembled.Bytes())
+	_, err = kube.CoreV1().Secrets(namespace).Get(t.Context(),
+		filterConfigBundlePartSecretName(gatewayName, gatewayNamespace, maxFilterConfigBundleSlots-1), metav1.GetOptions{})
+	require.True(t, apierrors.IsNotFound(err))
+	_, legacyOK := indexSecret.StringData[FilterConfigKeyInSecret]
+	require.False(t, legacyOK)
+}
+
+func TestGatewayController_writeFilterConfigBundleShards_Overflow(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	payload := []byte(strings.Repeat("x", filterConfigBundlePartSizeBytes*(maxFilterConfigBundleSlots+1)))
+	err := c.writeFilterConfigBundle(t.Context(), "cfg-gw", "cfg-ns", "ns", payload, "uuid-1")
+	require.ErrorContains(t, err, "exceeds max supported slots")
 }
 
 func Test_mcpConfig_ToolSelectorExclude(t *testing.T) {
@@ -2768,18 +2911,11 @@ func TestGatewayController_reconcileFilterConfigSecret_GlobalDefaults(t *testing
 			require.NoError(t, err)
 
 			const someNamespace = "some-namespace"
-			configName := FilterConfigSecretPerGatewayName("gw", gwNamespace)
-			effective, err := c.reconcileFilterConfigSecret(t.Context(), configName, someNamespace, tt.routes, nil, "test-uuid", tt.globalCosts)
+			effective, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, someNamespace, tt.routes, nil, "test-uuid", tt.globalCosts)
 			require.NoError(t, err)
 			require.True(t, effective)
 
-			secret, err := kube.CoreV1().Secrets(someNamespace).Get(t.Context(), configName, metav1.GetOptions{})
-			require.NoError(t, err)
-			configStr, ok := secret.StringData[FilterConfigKeyInSecret]
-			require.True(t, ok)
-
-			var fc filterapi.Config
-			require.NoError(t, yaml.Unmarshal([]byte(configStr), &fc))
+			fc := requireFilterConfigFromBundle(t, kube, someNamespace, "gw", gwNamespace)
 
 			// Compare global costs (order-agnostic)
 			if diff := cmp.Diff(tt.expectedGlobalCosts, fc.GlobalLLMRequestCosts,

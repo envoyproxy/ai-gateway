@@ -1642,3 +1642,103 @@ func splitSSEEvents(data string) []string {
 	}
 	return events
 }
+
+func TestOpenAIToAnthropicMessages_ToolResultCacheControl(t *testing.T) {
+	ephemeral := anthropic.CacheControlEphemeralParam{Type: constant.ValueOf[constant.Ephemeral]()}
+
+	t.Run("string content with message-level cache_control", func(t *testing.T) {
+		msgs, system, err := openAIToAnthropicMessages([]openai.ChatCompletionMessageParamUnion{
+			{OfTool: &openai.ChatCompletionToolMessageParam{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: "toolu_1",
+				Content:    openai.ContentUnion{Value: "search results"},
+				AnthropicContentFields: &openai.AnthropicContentFields{
+					CacheControl: ephemeral,
+				},
+			}},
+		})
+		require.NoError(t, err)
+		require.Empty(t, system)
+		require.Len(t, msgs, 1)
+		require.Len(t, msgs[0].Content, 1)
+		require.NotNil(t, msgs[0].Content[0].OfToolResult)
+		require.Equal(t, "toolu_1", msgs[0].Content[0].OfToolResult.ToolUseID)
+		require.Equal(t, ephemeral, msgs[0].Content[0].OfToolResult.CacheControl)
+	})
+
+	t.Run("multipart content with message-level cache_control", func(t *testing.T) {
+		msgs, _, err := openAIToAnthropicMessages([]openai.ChatCompletionMessageParamUnion{
+			{OfTool: &openai.ChatCompletionToolMessageParam{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: "toolu_2",
+				Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
+					{Type: "text", Text: "part one"},
+					{Type: "text", Text: "part two"},
+				}},
+				AnthropicContentFields: &openai.AnthropicContentFields{
+					CacheControl: ephemeral,
+				},
+			}},
+		})
+		require.NoError(t, err)
+		require.Len(t, msgs, 1)
+		require.NotNil(t, msgs[0].Content[0].OfToolResult)
+		require.Equal(t, ephemeral, msgs[0].Content[0].OfToolResult.CacheControl)
+		require.Len(t, msgs[0].Content[0].OfToolResult.Content, 2)
+	})
+
+	t.Run("consecutive tool results preserve per-message cache markers", func(t *testing.T) {
+		msgs, _, err := openAIToAnthropicMessages([]openai.ChatCompletionMessageParamUnion{
+			{OfTool: &openai.ChatCompletionToolMessageParam{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: "toolu_a",
+				Content:    openai.ContentUnion{Value: "first"},
+			}},
+			{OfTool: &openai.ChatCompletionToolMessageParam{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: "toolu_b",
+				Content:    openai.ContentUnion{Value: "second"},
+				AnthropicContentFields: &openai.AnthropicContentFields{
+					CacheControl: ephemeral,
+				},
+			}},
+		})
+		require.NoError(t, err)
+		require.Len(t, msgs, 1)
+		require.Len(t, msgs[0].Content, 2)
+		require.Equal(t, anthropic.CacheControlEphemeralParam{}, msgs[0].Content[0].OfToolResult.CacheControl)
+		require.Equal(t, ephemeral, msgs[0].Content[1].OfToolResult.CacheControl)
+	})
+
+	t.Run("unmarked tool result has no cache_control", func(t *testing.T) {
+		msgs, _, err := openAIToAnthropicMessages([]openai.ChatCompletionMessageParamUnion{
+			{OfTool: &openai.ChatCompletionToolMessageParam{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: "toolu_plain",
+				Content:    openai.ContentUnion{Value: "plain result"},
+			}},
+		})
+		require.NoError(t, err)
+		require.Equal(t, anthropic.CacheControlEphemeralParam{}, msgs[0].Content[0].OfToolResult.CacheControl)
+	})
+
+	t.Run("content-part cache_control still applies when message-level is absent", func(t *testing.T) {
+		msgs, _, err := openAIToAnthropicMessages([]openai.ChatCompletionMessageParamUnion{
+			{OfTool: &openai.ChatCompletionToolMessageParam{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: "toolu_part",
+				Content: openai.ContentUnion{Value: []openai.ChatCompletionContentPartTextParam{
+					{
+						Type: "text",
+						Text: "cached via content part",
+						AnthropicContentFields: &openai.AnthropicContentFields{
+							CacheControl: ephemeral,
+						},
+					},
+				}},
+			}},
+		})
+		require.NoError(t, err)
+		require.Equal(t, ephemeral, msgs[0].Content[0].OfToolResult.CacheControl)
+	})
+}
