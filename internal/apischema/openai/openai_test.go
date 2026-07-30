@@ -4572,6 +4572,20 @@ func TestResponseInputItemUnionParamMarshalJSON(t *testing.T) {
 			expRes: []byte(`{"type": "message", "role": "assistant", "status": "completed", "id": "resp-123", "content": [{"text": "Hello! How can I assist you ?", "type": "output_text"}]}`),
 		},
 		{
+			name: "marshal agent_message",
+			input: ResponseInputItemUnionParam{
+				OfAgentMessage: ptr.To(json.RawMessage(`{"type":"agent_message","role":"agent","content":[{"type":"text","text":"prior context"}]}`)),
+			},
+			expRes: []byte(`{"type":"agent_message","role":"agent","content":[{"type":"text","text":"prior context"}]}`),
+		},
+		{
+			name: "marshal agent_reasoning",
+			input: ResponseInputItemUnionParam{
+				OfAgentReasoning: ptr.To(json.RawMessage(`{"type":"agent_reasoning","summary":"prior reasoning"}`)),
+			},
+			expRes: []byte(`{"type":"agent_reasoning","summary":"prior reasoning"}`),
+		},
+		{
 			name: "marshal file_search_call",
 			input: ResponseInputItemUnionParam{
 				OfFileSearchCall: &ResponseFileSearchToolCall{
@@ -5372,6 +5386,20 @@ func TestResponseInputItemUnionParamUnmarshalJSON(t *testing.T) {
 				},
 			},
 			input: []byte(`{"type": "item_reference", "id": "id-123"}`),
+		},
+		{
+			name: "unmarshal agent_message",
+			expRes: ResponseInputItemUnionParam{
+				OfAgentMessage: ptr.To(json.RawMessage(`{"type":"agent_message","role":"agent","content":[{"type":"text","text":"prior context"}]}`)),
+			},
+			input: []byte(`{"type":"agent_message","role":"agent","content":[{"type":"text","text":"prior context"}]}`),
+		},
+		{
+			name: "unmarshal agent_reasoning",
+			expRes: ResponseInputItemUnionParam{
+				OfAgentReasoning: ptr.To(json.RawMessage(`{"type":"agent_reasoning","summary":"prior reasoning"}`)),
+			},
+			input: []byte(`{"type":"agent_reasoning","summary":"prior reasoning"}`),
 		},
 		{
 			name:   "unmarshal empty type string",
