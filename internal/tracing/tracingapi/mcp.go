@@ -38,6 +38,17 @@ type MCPSpan interface {
 	// server.address/server.port attributes. Pass an empty serverAddr and zero
 	// serverPort when the peer is unknown.
 	RecordRouteToBackend(backend string, session string, isNew bool, serverAddr string, serverPort int)
+	// AddEvent records a timestamped event (OTel annotation) on the span, giving
+	// list operations a "begin"/"end" timeline alongside their attributes.
+	AddEvent(name string)
+	// RecordListResult records the size of an aggregated list result
+	// (tools/list, resources/list, prompts/list, resources/templates/list) as a
+	// count attribute. Content is never recorded; only the count is.
+	RecordListResult(result any)
+	// RecordToolCallResult records the tools/call result payload as the
+	// gen_ai.tool.call.result attribute. The raw result JSON is recorded only
+	// when message-content capture is enabled; otherwise the call is a no-op.
+	RecordToolCallResult(resultJSON []byte)
 	// EndSpan finalizes and ends the span.
 	EndSpan()
 	// EndSpanOnError finalizes and ends the span with an error status.

@@ -33,7 +33,7 @@ func TestTracer_StartSpanAndInjectMeta(t *testing.T) {
 			"x-tracing-enrichment-user-region": "user.region",
 			"agent-session-id":                 "session.id",
 			"CustomAttr":                       "custom.attr",
-		})
+		}, false)
 
 	headers := make(http.Header)
 	headers.Add("X-Tracing-Enrichment-User-Region", "us-east-1")
@@ -90,7 +90,7 @@ func TestTracer_StartSpanAndInjectMeta_MetaAndHeaderFallback(t *testing.T) {
 			exporter := tracetest.NewInMemoryExporter()
 			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(),
-				map[string]string{"agent-session-id": "session.id"})
+				map[string]string{"agent-session-id": "session.id"}, false)
 
 			reqID, _ := jsonrpc.MakeID("id")
 			r := &jsonrpc.Request{ID: reqID, Method: "initialize"}
@@ -277,7 +277,7 @@ func Test_getMCPAttributes(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run("", func(t *testing.T) {
-			require.Equal(t, tc.expected, getMCPParamsAsAttributes(tc.p))
+			require.Equal(t, tc.expected, getMCPParamsAsAttributes(tc.p, false))
 		})
 	}
 }
@@ -366,7 +366,7 @@ func TestMCPTracer_SpanName(t *testing.T) {
 			exporter := tracetest.NewInMemoryExporter()
 			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 
-			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil)
+			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil, false)
 
 			reqID, _ := jsonrpc.MakeID("test-id")
 			req := &jsonrpc.Request{ID: reqID, Method: tt.method}
@@ -386,10 +386,14 @@ func TestMCPTracer_SpanName(t *testing.T) {
 }
 
 func newTestMCPSpan(t *testing.T, method string, params mcp.Params) (tracingapi.MCPSpan, func() tracetest.SpanStub) {
+	return newTestMCPSpanWithCapture(t, method, params, false)
+}
+
+func newTestMCPSpanWithCapture(t *testing.T, method string, params mcp.Params, captureContent bool) (tracingapi.MCPSpan, func() tracetest.SpanStub) {
 	t.Helper()
 	exporter := tracetest.NewInMemoryExporter()
 	tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
-	tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil)
+	tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil, captureContent)
 
 	reqID, _ := jsonrpc.MakeID("test-id")
 	req := &jsonrpc.Request{ID: reqID, Method: method}
@@ -460,6 +464,134 @@ func TestMCPSpan_RecordRouteToBackend(t *testing.T) {
 	require.Equal(t, "route to backend", stub.Events[0].Name)
 	require.Contains(t, stub.Events[0].Attributes, attribute.String("mcp.backend.name", "backend-a"))
 	require.Contains(t, stub.Events[0].Attributes, attribute.Bool("mcp.session.new", true))
+}
+
+func TestMCPTracer_ToolCallArguments(t *testing.T) {
+	args := map[string]any{"service": "payment-api", "duration": "1h"}
+
+	t.Run("captured when enabled", func(t *testing.T) {
+		span, exported := newTestMCPSpanWithCapture(t, "tools/call",
+			&mcp.CallToolParams{Name: "fake-tool", Arguments: args}, true)
+		span.EndSpan()
+		require.Contains(t, exported().Attributes,
+			attribute.String("gen_ai.tool.call.arguments", `{"duration":"1h","service":"payment-api"}`))
+	})
+
+	t.Run("omitted when capture disabled", func(t *testing.T) {
+		span, exported := newTestMCPSpanWithCapture(t, "tools/call",
+			&mcp.CallToolParams{Name: "fake-tool", Arguments: args}, false)
+		span.EndSpan()
+		for _, a := range exported().Attributes {
+			require.NotEqual(t, "gen_ai.tool.call.arguments", string(a.Key))
+		}
+	})
+
+	t.Run("omitted when arguments nil even if capture enabled", func(t *testing.T) {
+		span, exported := newTestMCPSpanWithCapture(t, "tools/call",
+			&mcp.CallToolParams{Name: "fake-tool"}, true)
+		span.EndSpan()
+		for _, a := range exported().Attributes {
+			require.NotEqual(t, "gen_ai.tool.call.arguments", string(a.Key))
+		}
+	})
+}
+
+func TestMCPSpan_RecordListResult(t *testing.T) {
+	cases := []struct {
+		name     string
+		method   string
+		result   any
+		wantKey  string
+		wantSize int
+	}{
+		{
+			name:     "tools",
+			method:   "tools/list",
+			result:   mcp.ListToolsResult{Tools: []*mcp.Tool{{Name: "a"}, {Name: "b"}}},
+			wantKey:  "mcp.tools.count",
+			wantSize: 2,
+		},
+		{
+			name:     "resources",
+			method:   "resources/list",
+			result:   mcp.ListResourcesResult{Resources: []*mcp.Resource{{Name: "a"}}},
+			wantKey:  "mcp.resources.count",
+			wantSize: 1,
+		},
+		{
+			name:     "resource templates",
+			method:   "resources/templates/list",
+			result:   mcp.ListResourceTemplatesResult{ResourceTemplates: []*mcp.ResourceTemplate{{Name: "a"}, {Name: "b"}, {Name: "c"}}},
+			wantKey:  "mcp.resource_templates.count",
+			wantSize: 3,
+		},
+		{
+			name:     "prompts empty",
+			method:   "prompts/list",
+			result:   mcp.ListPromptsResult{},
+			wantKey:  "mcp.prompts.count",
+			wantSize: 0,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			span, exported := newTestMCPSpan(t, tc.method, &mcp.ListToolsParams{})
+			span.RecordListResult(tc.result)
+			span.EndSpan()
+			require.Contains(t, exported().Attributes, attribute.Int(tc.wantKey, tc.wantSize))
+		})
+	}
+}
+
+func TestMCPSpan_RecordListResult_UnknownTypeIsNoop(t *testing.T) {
+	span, exported := newTestMCPSpan(t, "tools/list", &mcp.ListToolsParams{})
+	span.RecordListResult(struct{}{})
+	span.EndSpan()
+	for _, a := range exported().Attributes {
+		require.NotContains(t, string(a.Key), ".count")
+	}
+}
+
+func TestMCPSpan_RecordToolCallResult(t *testing.T) {
+	result := []byte(`{"content":[{"type":"text","text":"ok"}]}`)
+
+	t.Run("recorded when capture enabled", func(t *testing.T) {
+		span, exported := newTestMCPSpanWithCapture(t, "tools/call", &mcp.CallToolParams{Name: "fake-tool"}, true)
+		span.RecordToolCallResult(result)
+		span.EndSpan()
+		require.Contains(t, exported().Attributes, attribute.String("gen_ai.tool.call.result", string(result)))
+	})
+
+	t.Run("omitted when capture disabled", func(t *testing.T) {
+		span, exported := newTestMCPSpanWithCapture(t, "tools/call", &mcp.CallToolParams{Name: "fake-tool"}, false)
+		span.RecordToolCallResult(result)
+		span.EndSpan()
+		for _, a := range exported().Attributes {
+			require.NotEqual(t, "gen_ai.tool.call.result", string(a.Key))
+		}
+	})
+
+	t.Run("omitted for empty result even when capture enabled", func(t *testing.T) {
+		span, exported := newTestMCPSpanWithCapture(t, "tools/call", &mcp.CallToolParams{Name: "fake-tool"}, true)
+		span.RecordToolCallResult(nil)
+		span.EndSpan()
+		for _, a := range exported().Attributes {
+			require.NotEqual(t, "gen_ai.tool.call.result", string(a.Key))
+		}
+	})
+}
+
+func TestMCPSpan_AddEvent(t *testing.T) {
+	span, exported := newTestMCPSpan(t, "tools/list", &mcp.ListToolsParams{})
+	span.AddEvent("tools/list aggregation begin")
+	span.AddEvent("tools/list aggregation end")
+	span.EndSpan()
+
+	stub := exported()
+	require.Len(t, stub.Events, 2)
+	require.Equal(t, "tools/list aggregation begin", stub.Events[0].Name)
+	require.Equal(t, "tools/list aggregation end", stub.Events[1].Name)
 }
 
 func TestMCPSpan_RecordRouteToBackend_UnknownPeer(t *testing.T) {

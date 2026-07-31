@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
+	"github.com/envoyproxy/ai-gateway/internal/tracing/otelgenai"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
@@ -298,7 +299,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			recorders.responsesInputTokens,
 			headerAttrs,
 		),
-		mcpTracer: newMCPTracer(tracer, propagator, headerAttrs),
+		mcpTracer: newMCPTracer(tracer, propagator, headerAttrs, otelgenai.NewConfigFromEnv().CaptureMessageContent),
 		shutdown:  tp.Shutdown, // we have to shut down what we create.
 	}, nil
 }
