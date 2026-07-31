@@ -481,6 +481,7 @@ func TestTokenizeEndpointSpec_GetTranslator(t *testing.T) {
 		{Name: filterapi.APISchemaGCPVertexAI},
 		{Name: filterapi.APISchemaGCPAnthropic},
 		{Name: filterapi.APISchemaAWSAnthropic},
+		{Name: filterapi.APISchemaAWSBedrock},
 	}
 
 	for _, schema := range supported {
