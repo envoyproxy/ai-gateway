@@ -44,9 +44,7 @@ func (t *responsesInputTokensToOpenAITranslator) RequestBody(original []byte, _ 
 		}
 	}
 
-	if forceBodyMutation && len(newBody) == 0 {
-		newBody = original
-	}
+	newBody = forceOriginalBodyIfEmpty(forceBodyMutation, newBody, original)
 
 	newHeaders = []internalapi.Header{{pathHeaderName, t.path}}
 	if len(newBody) > 0 {

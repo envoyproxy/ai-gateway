@@ -8793,5 +8793,7 @@ type TranslationResponse struct {
 
 // ResponsesInputTokensResponse represents the response from /v1/responses/input_tokens.
 type ResponsesInputTokensResponse struct {
-	InputTokens int64 `json:"input_tokens"`
+	// Object is the object type, which is always "response.input_tokens".
+	Object      string `json:"object"`
+	InputTokens int64  `json:"input_tokens"`
 }

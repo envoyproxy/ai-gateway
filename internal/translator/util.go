@@ -49,6 +49,16 @@ func parseDataURI(uri string) (string, []byte, error) {
 	return contentType, bin, nil
 }
 
+// forceOriginalBodyIfEmpty returns original when forceBodyMutation is set and newBody
+// hasn't been populated by the caller, so that a body is always written to Envoy
+// when body mutation is forced. Otherwise, newBody is returned unchanged.
+func forceOriginalBodyIfEmpty(forceBodyMutation bool, newBody, original []byte) []byte {
+	if forceBodyMutation && len(newBody) == 0 {
+		return original
+	}
+	return newBody
+}
+
 // systemMsgToDeveloperMsg converts OpenAI system message to developer message.
 // Since systemMsg is deprecated, this function is provided to maintain backward compatibility.
 func systemMsgToDeveloperMsg(msg openai.ChatCompletionSystemMessageParam) openai.ChatCompletionDeveloperMessageParam {
