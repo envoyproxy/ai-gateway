@@ -2038,6 +2038,39 @@ func TestGatewayController_annotateGatewayPods_ConfigHashDrift(t *testing.T) {
 	require.NoError(t, err)
 	_, rolled = dep2.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
 	require.False(t, rolled, "missing hash annotation must not trigger a rollout")
+
+	podWithoutSidecar := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "pod-no-sidecar", Namespace: egNamespace, Labels: labels},
+		Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "envoy", Image: "envoyproxy/envoy"}}},
+	}
+	_, err = kube.CoreV1().Pods(egNamespace).Create(t.Context(), podWithoutSidecar, metav1.CreateOptions{})
+	require.NoError(t, err)
+	deployment3 := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "dep-mixed-drift", Namespace: egNamespace, Labels: labels},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: ptr.To(int32(1)),
+			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
+		},
+		Status: appsv1.DeploymentStatus{ObservedGeneration: 1, UpdatedReplicas: 1, ReadyReplicas: 1, AvailableReplicas: 1, Replicas: 1},
+	}
+	_, err = kube.AppsV1().Deployments(egNamespace).Create(t.Context(), deployment3, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	result, err = c.annotateGatewayPods(t.Context(),
+		[]corev1.Pod{*podNoHash, *podWithoutSidecar, *pod},
+		[]appsv1.Deployment{*deployment3},
+		nil,
+		"uuid-4",
+		true,
+		false,
+		desiredHash,
+	)
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, result)
+	dep3, err := kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "dep-mixed-drift", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "uuid-4", dep3.Spec.Template.Annotations[aigatewayUUIDAnnotationKey],
+		"mixed pod state plus hash drift must trigger rollout")
 }
 
 // newTestExtProcOptions returns the Options the gateway controller tests use to
