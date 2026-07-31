@@ -141,41 +141,57 @@ func ParseImagePullSecrets(s string) ([]corev1.LocalObjectReference, error) {
 }
 
 func (g *gatewayMutator) listAIGatewayRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1b1.AIGatewayRouteList, error) {
+	return listAIGatewayRoutesForGateway(ctx, g.c, g.noCacheReader, gatewayName, gatewayNamespace)
+}
+
+func (g *gatewayMutator) listMCPRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1b1.MCPRouteList, error) {
+	return listMCPRoutesForGateway(ctx, g.c, g.noCacheReader, gatewayName, gatewayNamespace)
+}
+
+func (c *GatewayController) listAIGatewayRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1b1.AIGatewayRouteList, error) {
+	return listAIGatewayRoutesForGateway(ctx, c.client, c.noCacheReader, gatewayName, gatewayNamespace)
+}
+
+func (c *GatewayController) listMCPRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1b1.MCPRouteList, error) {
+	return listMCPRoutesForGateway(ctx, c.client, c.noCacheReader, gatewayName, gatewayNamespace)
+}
+
+func listAIGatewayRoutesForGateway(ctx context.Context, cacheReader client.Reader, noCacheReader client.Reader, gatewayName, gatewayNamespace string) (aigv1b1.AIGatewayRouteList, error) {
 	var routes aigv1b1.AIGatewayRouteList
 	key := fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace)
-	cacheErr := g.c.List(ctx, &routes, client.MatchingFields{
+	cacheErr := cacheReader.List(ctx, &routes, client.MatchingFields{
 		k8sClientIndexAIGatewayRouteToAttachedGateway: key,
 	})
 	if cacheErr == nil && len(routes.Items) > 0 {
 		return routes, nil
 	}
-	if g.noCacheReader == nil {
+	if noCacheReader == nil {
 		return routes, cacheErr
 	}
 	// noCacheReader doesn't have access to cache indexes, so list then filter.
 	var all aigv1b1.AIGatewayRouteList
-	if err := g.noCacheReader.List(ctx, &all); err != nil {
+	if err := noCacheReader.List(ctx, &all); err != nil {
 		return routes, fmt.Errorf("failed to list routes: %w", err)
 	}
 	routes.Items = filterAIGatewayRoutesForGateway(all.Items, gatewayName, gatewayNamespace)
 	return routes, nil
 }
 
-func (g *gatewayMutator) listMCPRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1b1.MCPRouteList, error) {
+func listMCPRoutesForGateway(ctx context.Context, cacheReader client.Reader, noCacheReader client.Reader, gatewayName, gatewayNamespace string) (aigv1b1.MCPRouteList, error) {
 	var routes aigv1b1.MCPRouteList
 	key := fmt.Sprintf("%s.%s", gatewayName, gatewayNamespace)
-	cacheErr := g.c.List(ctx, &routes, client.MatchingFields{
+	cacheErr := cacheReader.List(ctx, &routes, client.MatchingFields{
 		k8sClientIndexMCPRouteToAttachedGateway: key,
 	})
 	if cacheErr == nil && len(routes.Items) > 0 {
 		return routes, nil
 	}
-	if g.noCacheReader == nil {
+	if noCacheReader == nil {
 		return routes, cacheErr
 	}
 	// noCacheReader doesn't have access to cache indexes, so list then filter.
 	var all aigv1b1.MCPRouteList
-	if err := g.noCacheReader.List(ctx, &all); err != nil {
+	if err := noCacheReader.List(ctx, &all); err != nil {
 		return routes, fmt.Errorf("failed to list MCP routes: %w", err)
 	}
 	routes.Items = filterMCPRoutesForGateway(all.Items, gatewayName, gatewayNamespace)

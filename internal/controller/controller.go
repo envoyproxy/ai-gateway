@@ -135,7 +135,7 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	// the same options inside NewGatewayController, so both sides compute
 	// identical hashes.
 	extProcBuilder := newExtProcBuilder(options, isKubernetes133OrLater(versionInfo, logger), logger)
-	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
+	gatewayC := NewGatewayControllerWithAPIReader(c, mgr.GetAPIReader(), kubernetes.NewForConfigOrDie(config),
 		logger.WithName("gateway"), options.EnvoyGatewayNamespace,
 		false, uuid.NewString, options, isKubernetes133OrLater(versionInfo, logger))
 	if err = TypedControllerBuilderForCRD(mgr, &gwapiv1.Gateway{}).

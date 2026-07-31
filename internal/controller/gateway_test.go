@@ -231,6 +231,83 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	require.NotNil(t, secret)
 }
 
+func TestGatewayController_listAIGatewayRoutesForGateway_NoCacheReaderFallback(t *testing.T) {
+	cacheClient := requireNewFakeClientWithIndexes(t)
+	noCacheReader := requireNewFakeClientWithIndexes(t)
+	c := NewGatewayControllerWithAPIReader(cacheClient, noCacheReader, fake2.NewClientset(), ctrl.Log,
+		"envoy-gateway-system", false, nil, newTestExtProcOptions("docker.io/envoyproxy/ai-gateway-extproc:latest", "info"), true)
+
+	const gwName, gwNamespace = "test-gateway", "test-namespace"
+
+	err := noCacheReader.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "route-matching", Namespace: gwNamespace},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{
+				{Name: gwapiv1.ObjectName(gwName)},
+			},
+			Rules: []aigv1b1.AIGatewayRouteRule{{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "backend"}}}},
+		},
+	})
+	require.NoError(t, err)
+
+	otherNamespace := gwapiv1.Namespace("other")
+	err = noCacheReader.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "route-non-matching", Namespace: gwNamespace},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{
+				{Name: gwapiv1.ObjectName(gwName), Namespace: &otherNamespace},
+			},
+			Rules: []aigv1b1.AIGatewayRouteRule{{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "backend"}}}},
+		},
+	})
+	require.NoError(t, err)
+
+	routes, err := c.listAIGatewayRoutesForGateway(t.Context(), gwName, gwNamespace)
+	require.NoError(t, err)
+	require.Len(t, routes.Items, 1)
+	require.Equal(t, "route-matching", routes.Items[0].Name)
+}
+
+func TestGatewayController_listMCPRoutesForGateway_NoCacheReaderFallback(t *testing.T) {
+	cacheClient := requireNewFakeClientWithIndexes(t)
+	noCacheReader := requireNewFakeClientWithIndexes(t)
+	c := NewGatewayControllerWithAPIReader(cacheClient, noCacheReader, fake2.NewClientset(), ctrl.Log,
+		"envoy-gateway-system", false, nil, newTestExtProcOptions("docker.io/envoyproxy/ai-gateway-extproc:latest", "info"), true)
+
+	const gwName, gwNamespace = "test-gateway", "test-namespace"
+
+	err := noCacheReader.Create(t.Context(), &aigv1b1.MCPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "mcp-matching", Namespace: gwNamespace},
+		Spec: aigv1b1.MCPRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{
+				{Name: gwapiv1.ObjectName(gwName)},
+			},
+			BackendRefs: []aigv1b1.MCPRouteBackendRef{
+				{BackendObjectReference: gwapiv1.BackendObjectReference{Name: gwapiv1.ObjectName("server")}},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	err = noCacheReader.Create(t.Context(), &aigv1b1.MCPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "mcp-non-matching", Namespace: gwNamespace},
+		Spec: aigv1b1.MCPRouteSpec{
+			ParentRefs: []gwapiv1.ParentReference{
+				{Name: gwapiv1.ObjectName("other-gw")},
+			},
+			BackendRefs: []aigv1b1.MCPRouteBackendRef{
+				{BackendObjectReference: gwapiv1.BackendObjectReference{Name: gwapiv1.ObjectName("other")}},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	routes, err := c.listMCPRoutesForGateway(t.Context(), gwName, gwNamespace)
+	require.NoError(t, err)
+	require.Len(t, routes.Items, 1)
+	require.Equal(t, "mcp-matching", routes.Items[0].Name)
+}
+
 func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()

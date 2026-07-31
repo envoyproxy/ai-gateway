@@ -54,12 +54,20 @@ func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger, envoyGatewayNamespace string,
 	standAlone bool, uuidFn func() string, options *Options, extProcAsSideCar bool,
 ) *GatewayController {
+	return NewGatewayControllerWithAPIReader(client, nil, kube, logger, envoyGatewayNamespace, standAlone, uuidFn, options, extProcAsSideCar)
+}
+
+func NewGatewayControllerWithAPIReader(
+	client client.Client, noCacheReader client.Reader, kube kubernetes.Interface, logger logr.Logger, envoyGatewayNamespace string,
+	standAlone bool, uuidFn func() string, options *Options, extProcAsSideCar bool,
+) *GatewayController {
 	uf := uuidFn
 	if uf == nil {
 		uf = uuid.NewString
 	}
 	return &GatewayController{
 		client:                client,
+		noCacheReader:         noCacheReader,
 		kube:                  kube,
 		logger:                logger,
 		envoyGatewayNamespace: envoyGatewayNamespace,
@@ -71,7 +79,10 @@ func NewGatewayController(
 
 // GatewayController implements reconcile.TypedReconciler for gwapiv1.Gateway.
 type GatewayController struct {
-	client                client.Client
+	client client.Client
+	// noCacheReader bypasses the informer cache to avoid cache sync races when
+	// looking up routes attached to the reconciled Gateway.
+	noCacheReader         client.Reader
 	kube                  kubernetes.Interface
 	logger                logr.Logger
 	envoyGatewayNamespace string // The namespace where Envoy Gateway is deployed.
@@ -93,18 +104,12 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	var aiRoutes aigv1b1.AIGatewayRouteList
-	err := c.client.List(ctx, &aiRoutes, client.MatchingFields{
-		k8sClientIndexAIGatewayRouteToAttachedGateway: fmt.Sprintf("%s.%s", req.Name, req.Namespace),
-	})
+	aiRoutes, err := c.listAIGatewayRoutesForGateway(ctx, req.Name, req.Namespace)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	var mcpRoutes aigv1b1.MCPRouteList
-	err = c.client.List(ctx, &mcpRoutes, client.MatchingFields{
-		k8sClientIndexMCPRouteToAttachedGateway: fmt.Sprintf("%s.%s", req.Name, req.Namespace),
-	})
+	mcpRoutes, err := c.listMCPRoutesForGateway(ctx, req.Name, req.Namespace)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
