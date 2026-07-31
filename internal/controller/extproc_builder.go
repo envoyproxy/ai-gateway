@@ -8,7 +8,7 @@ package controller
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	stdjson "encoding/json" //nolint: depguard // determinism is required: the hash must be byte-identical across the webhook and reconciler, and sonic's Marshal does not guarantee stable field order, which would risk an infinite rollout loop.
+	stdjson "encoding/json" //nolint: depguard // the webhook and reconciler need byte-stable hashing; sonic does not guarantee stable field order.
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -24,12 +24,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// extProcConfigHashAnnotationKey is stamped on each gateway pod by the mutating
-// webhook with a hash of the injected extproc container config. The gateway
-// reconciler recomputes the desired hash with the same builder and compares it
-// against this annotation to detect config drift (e.g. a changed
-// --extProcExtraEnvVars flag) and trigger a rollout. The controller only reads
-// this annotation; it never writes it, so a stale hash can never be persisted.
+// extProcConfigHashAnnotationKey stores the webhook's extproc config hash. The
+// gateway reconciler compares it with the desired hash to detect config drift.
 const extProcConfigHashAnnotationKey = "aigateway.envoyproxy.io/extproc-config-hash"
 
 // extProcAdminPort is the admin port of the extproc container.
@@ -81,17 +77,8 @@ func newExtProcBuilder(options *Options, extProcAsSideCar bool, logger logr.Logg
 	}
 }
 
-// extProcBuilder holds the controller-global extproc configuration and is the
-// single source of truth for the injected extproc container. It is constructed
-// once in StartControllers from Options and shared by the mutating webhook
-// (to inject the container and stamp the config hash) and the gateway reconciler
-// (to detect drift and trigger a rollout).
-//
-// Sharing one builder plus one build function is what prevents rollout loops:
-// both sides hash the output of the *same* function rather than maintaining two
-// parallel representations of the drift signal. If the webhook and reconciler
-// ever computed different hashes for identical state, the deployment would roll
-// forever — this structure makes that impossible by construction.
+// extProcBuilder holds the controller-global extproc configuration used by both
+// the mutating webhook and the gateway reconciler.
 type extProcBuilder struct {
 	image           string
 	imagePullPolicy corev1.PullPolicy
@@ -118,9 +105,7 @@ type extProcBuilder struct {
 	mcpFallbackSessionEncryptionIterations int
 }
 
-// extProcContainerInput is the per-gateway input the shared builder needs to
-// produce the extproc container. Everything not in this struct is global and
-// lives on the builder itself.
+// extProcContainerInput is the per-gateway input for extproc injection.
 type extProcContainerInput struct {
 	// gatewayConfig is the GatewayConfig referenced by the Gateway (nil if none).
 	gatewayConfig *aigv1b1.GatewayConfig
@@ -129,20 +114,14 @@ type extProcContainerInput struct {
 	needMCP bool
 }
 
-// buildExtProcContainer builds the extproc container *minus* the secret-presence-
-// driven parts: the -configPath / -configBundlePath args and the legacy/bundle
-// volumeMounts. Those depend on which filter-config secrets happen to exist at
-// pod-creation time, not on controller config, so they are excluded from the
-// drift signal (the UUID-annotation fast path handles filter-config content
-// updates). The mutating webhook adds them after this function returns; the
-// reconciler never adds them — it only hashes this base container.
+// buildExtProcContainer builds the extproc container without secret-presence
+// config args or mounts; those are handled by the webhook at pod creation time.
 func (b *extProcBuilder) buildExtProcContainer(input extProcContainerInput) corev1.Container {
 	var (
 		extProcSpec       *aigv1b1.GatewayConfigExtProc
 		kubernetesExtProc *egv1a1.KubernetesContainerSpec
 	)
-	if input.gatewayConfig != nil && input.gatewayConfig.Spec.ExtProc != nil {
-		extProcSpec = input.gatewayConfig.Spec.ExtProc
+	if extProcSpec = extProcSpecFromInput(input); extProcSpec != nil {
 		if extProcSpec.Kubernetes != nil {
 			kubernetesExtProc = extProcSpec.Kubernetes
 		}
@@ -155,7 +134,7 @@ func (b *extProcBuilder) buildExtProcContainer(input extProcContainerInput) core
 	}
 
 	envVars := b.mergeEnvVars(input.gatewayConfig)
-	image := b.resolveExtProcImage(extProcSpec)
+	image := b.extProcImage(input)
 
 	udsMountPath := filepath.Dir(b.udsPath)
 	securityContext := &corev1.SecurityContext{
@@ -221,39 +200,71 @@ func (b *extProcBuilder) buildExtProcContainer(input extProcContainerInput) core
 	return container
 }
 
-// extProcConfigDigest is the canonical representation of everything the webhook
-// injects that is drift-relevant: the extproc container (minus the secret-
-// presence-driven config-routing args/mounts, which buildExtProcContainer already
-// omits) plus the pod-spec-level imagePullSecrets, which are not part of the
-// container but are injected by the webhook and must also drift-trigger a rollout.
-// Hashing this struct — built by one shared function — is the drift signal both
-// the webhook and reconciler use.
+// extProcConfigDigest contains the config inputs that affect extproc injection.
+// It intentionally avoids hashing the full Kubernetes Container API object.
 type extProcConfigDigest struct {
-	Container        corev1.Container
-	ImagePullSecrets []corev1.LocalObjectReference
+	Image                                  string
+	ImagePullPolicy                        corev1.PullPolicy
+	LogLevel                               string
+	EnableRedaction                        bool
+	UDSPath                                string
+	RequestHeaderAttributes                *string
+	SpanRequestHeaderAttributes            *string
+	MetricsRequestHeaderAttributes         *string
+	LogRequestHeaderAttributes             *string
+	RootPrefix                             string
+	EndpointPrefixes                       string
+	ExtraEnvVars                           []corev1.EnvVar
+	ImagePullSecrets                       []corev1.LocalObjectReference
+	MaxRecvMsgSize                         int
+	ExtProcAsSideCar                       bool
+	MCPSessionEncryptionSeed               string
+	MCPSessionEncryptionIterations         int
+	MCPFallbackSessionEncryptionSeed       string
+	MCPFallbackSessionEncryptionIterations int
+	NeedMCP                                bool
+	GatewayConfigExtProc                   *aigv1b1.GatewayConfigExtProc
 }
 
-// extProcContainerHash returns a stable hex hash of the extproc config the
-// webhook injects for the given input. Both the webhook and the reconciler call
-// this with the same builder + input, so identical state yields identical
-// hashes. It is over the SAME object the builder injects (the container from
-// buildExtProcContainer plus pod-spec-level imagePullSecrets), so the drift
-// signal can never diverge from the injected config.
+// extProcContainerHash returns a stable hash of the extproc injection inputs.
 func (b *extProcBuilder) extProcContainerHash(input extProcContainerInput) string {
 	digest := extProcConfigDigest{
-		Container:        b.buildExtProcContainer(input),
-		ImagePullSecrets: b.imagePullSecrets,
+		Image:                                  b.extProcImage(input),
+		ImagePullPolicy:                        b.imagePullPolicy,
+		LogLevel:                               b.logLevel,
+		EnableRedaction:                        b.enableRedaction,
+		UDSPath:                                b.udsPath,
+		RequestHeaderAttributes:                b.requestHeaderAttributes,
+		SpanRequestHeaderAttributes:            b.spanRequestHeaderAttributes,
+		MetricsRequestHeaderAttributes:         b.metricsRequestHeaderAttributes,
+		LogRequestHeaderAttributes:             b.logRequestHeaderAttributes,
+		RootPrefix:                             b.rootPrefix,
+		EndpointPrefixes:                       b.endpointPrefixes,
+		ExtraEnvVars:                           b.extraEnvVars,
+		ImagePullSecrets:                       b.imagePullSecrets,
+		MaxRecvMsgSize:                         b.maxRecvMsgSize,
+		ExtProcAsSideCar:                       b.extProcAsSideCar,
+		MCPSessionEncryptionSeed:               b.mcpSessionEncryptionSeed,
+		MCPSessionEncryptionIterations:         b.mcpSessionEncryptionIterations,
+		MCPFallbackSessionEncryptionSeed:       b.mcpFallbackSessionEncryptionSeed,
+		MCPFallbackSessionEncryptionIterations: b.mcpFallbackSessionEncryptionIterations,
+		NeedMCP:                                input.needMCP,
+		GatewayConfigExtProc:                   extProcSpecFromInput(input),
 	}
-	// stdjson.Marshal of a struct is deterministic (fields in declaration
-	// order; map keys sorted). Since the builder always produces the same
-	// object for the same input, the bytes — and therefore the hash — are
-	// stable. stdlib json is used (not internal/json/sonic) because sonic
-	// does not guarantee stable field order, which would risk rollout loops.
-	// corev1.Container is a plain serializable struct, so Marshal cannot
-	// fail here; the error is ignored accordingly.
-	marshaled, _ := stdjson.Marshal(digest) // corev1.Container is serializable; see comment above
+	marshaled, _ := stdjson.Marshal(digest)
 	sum := sha256.Sum256(marshaled)
 	return hex.EncodeToString(sum[:])
+}
+
+func extProcSpecFromInput(input extProcContainerInput) *aigv1b1.GatewayConfigExtProc {
+	if input.gatewayConfig == nil {
+		return nil
+	}
+	return input.gatewayConfig.Spec.ExtProc
+}
+
+func (b *extProcBuilder) extProcImage(input extProcContainerInput) string {
+	return b.resolveExtProcImage(extProcSpecFromInput(input))
 }
 
 // buildExtProcBaseArgs builds the command line arguments for the extproc

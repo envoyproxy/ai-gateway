@@ -1976,6 +1976,19 @@ func TestGatewayController_checkPodHasSideCar(t *testing.T) {
 		require.False(t, hasSideCar, "logLevel mismatch must clear hasSideCar")
 	})
 
+	t.Run("sidecar mode: uses GatewayConfig resolved image", func(t *testing.T) {
+		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, true)
+		desiredImage := "gcr.io/custom/extproc:v2"
+		pod := &corev1.Pod{Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+			{Name: extProcContainerName, Image: desiredImage, Args: []string{"-logLevel", logLevel}},
+		}}}
+		hasSideCar, _ := c.checkPodHasSideCarWithImage(pod, false, desiredImage, "")
+		require.True(t, hasSideCar)
+
+		hasSideCar, _ = c.checkPodHasSideCarWithImage(pod, false, image, "")
+		require.False(t, hasSideCar, "global image must not be used when GatewayConfig resolves a different image")
+	})
+
 	t.Run("container mode: matches and hash drift triggers rollout", func(t *testing.T) {
 		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, false)
 		opts := newTestExtProcOptions(image, logLevel)
