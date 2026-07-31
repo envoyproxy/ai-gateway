@@ -799,6 +799,14 @@ func TestOutputConfigAvailable(t *testing.T) {
 			model:     "",
 			expected:  false,
 		},
+		// Schemas not wired up to buildAnthropicParams fail closed rather than
+		// falling back to AWS's model list.
+		{
+			name:      "unrecognized schema fails closed",
+			apiSchema: filterapi.APISchemaAnthropic,
+			model:     "claude-sonnet-4-5-20250514",
+			expected:  false,
+		},
 	}
 
 	for _, tt := range tests {

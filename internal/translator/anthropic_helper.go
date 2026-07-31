@@ -653,8 +653,10 @@ func outputConfigAvailable(apiSchema filterapi.APISchemaName, model internalapi.
 	switch apiSchema {
 	case filterapi.APISchemaGCPAnthropic:
 		return modelContainsAny(model, gcpOutputConfigModels)
-	default:
+	case filterapi.APISchemaAWSAnthropic:
 		return modelContainsAny(model, awsOutputConfigModels)
+	default:
+		return false
 	}
 }
 
