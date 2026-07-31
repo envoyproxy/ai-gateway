@@ -82,8 +82,7 @@ spec:
       group: gateway.networking.k8s.io
       kind: Gateway
   rules:
-    - name: envoy-ai-gateway-basic-rule-0
-      backendRefs:
+    - backendRefs:
         - group: gateway.envoyproxy.io
           kind: Backend
           name: envoy-ai-gateway-basic-openai
@@ -102,8 +101,7 @@ spec:
             value: "/"
       timeouts:
         request: 60s
-    - name: envoy-ai-gateway-basic-rule-1
-      backendRefs:
+    - backendRefs:
         - group: gateway.envoyproxy.io
           kind: Backend
           name: envoy-ai-gateway-basic-aws
@@ -122,8 +120,7 @@ spec:
             value: "/"
       timeouts:
         request: 60s
-    - name: envoy-ai-gateway-basic-rule-2
-      backendRefs:
+    - backendRefs:
         - kind: Service
           name: envoy-ai-gateway-basic-testupstream
           port: 80
