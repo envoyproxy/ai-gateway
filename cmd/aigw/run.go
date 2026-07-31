@@ -419,6 +419,18 @@ func (runCtx *runCmdContext) mustStartExtProc(
 		args = append(args, "-logRequestHeaderAttributes", value)
 	}
 
+	// Per-request usage event export. The feature stays disabled unless a sink
+	// URL is configured, so an unset AIGW_USAGE_EVENTS_HTTP_URL changes nothing.
+	if value, ok := os.LookupEnv("AIGW_USAGE_EVENTS_HTTP_URL"); ok {
+		args = append(args, "-usageEventsHTTPURL", value)
+	}
+	if value, ok := os.LookupEnv("AIGW_USAGE_EVENTS_TIMEOUT"); ok {
+		args = append(args, "-usageEventsTimeout", value)
+	}
+	if value, ok := os.LookupEnv("AIGW_USAGE_EVENTS_ATTRIBUTES"); ok {
+		args = append(args, "-usageEventsAttributes", value)
+	}
+
 	done := make(chan error)
 	go func() {
 		if err := runCtx.extProcLauncher(ctx, args, runCtx.stderr); err != nil {

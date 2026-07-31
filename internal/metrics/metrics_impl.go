@@ -84,25 +84,32 @@ func (b *metricsImpl) SetResponseModel(responseModel internalapi.ResponseModel) 
 // SetBackend sets the name of the backend to be reported in the metrics according to:
 // https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/
 func (b *metricsImpl) SetBackend(backend *filterapi.Backend) {
+	b.backend = ProviderName(backend)
+}
+
+// ProviderName returns the gen_ai.provider.name value for backend according to:
+// https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/
+// Schemas with no defined semantic-convention provider name fall back to the backend's own name.
+func ProviderName(backend *filterapi.Backend) string {
 	switch backend.Schema.Name {
 	case filterapi.APISchemaOpenAI:
-		b.backend = genaiProviderOpenAI
+		return genaiProviderOpenAI
 	case filterapi.APISchemaAzureOpenAI:
-		b.backend = genaiProviderAzureOpenAI
+		return genaiProviderAzureOpenAI
 	case filterapi.APISchemaAWSBedrock:
-		b.backend = genaiProviderAWSBedrock
+		return genaiProviderAWSBedrock
 	case filterapi.APISchemaAWSAnthropic:
-		b.backend = genaiProviderAWSAnthropic
+		return genaiProviderAWSAnthropic
 	case filterapi.APISchemaGCPVertexAI:
-		b.backend = genaiProviderGCPVertexAI
+		return genaiProviderGCPVertexAI
 	case filterapi.APISchemaGCPAnthropic:
-		b.backend = genaiProviderGCPAnthropic
+		return genaiProviderGCPAnthropic
 	case filterapi.APISchemaAnthropic:
-		b.backend = genaiProviderAnthropic
+		return genaiProviderAnthropic
 	case filterapi.APISchemaCohere:
-		b.backend = genaiProviderCohere
+		return genaiProviderCohere
 	default:
-		b.backend = backend.Name
+		return backend.Name
 	}
 }
 
