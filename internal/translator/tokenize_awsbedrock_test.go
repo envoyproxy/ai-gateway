@@ -851,6 +851,9 @@ func TestToAWSBedrockV1Tokenize_CRISPrefixStripping(t *testing.T) {
 		{"eu. prefix", "eu.anthropic.claude-sonnet-4-6", "/model/anthropic.claude-sonnet-4-6/count-tokens", "eu.anthropic"},
 		{"apac. prefix", "apac.anthropic.claude-sonnet-4-6", "/model/anthropic.claude-sonnet-4-6/count-tokens", "apac."},
 		{"us-gov. prefix", "us-gov.anthropic.claude-sonnet-4-6", "/model/anthropic.claude-sonnet-4-6/count-tokens", "us-gov."},
+		{"uk. prefix", "uk.anthropic.claude-sonnet-4-6", "/model/anthropic.claude-sonnet-4-6/count-tokens", "uk.anthropic"},
+		{"au. prefix", "au.anthropic.claude-sonnet-4-6", "/model/anthropic.claude-sonnet-4-6/count-tokens", "au.anthropic"},
+		{"jp. prefix", "jp.anthropic.claude-sonnet-4-6", "/model/anthropic.claude-sonnet-4-6/count-tokens", "jp.anthropic"},
 		{"global. prefix", "global.anthropic.claude-sonnet-4-6", "/model/anthropic.claude-sonnet-4-6/count-tokens", "global."},
 		{"apac. prefix on non-anthropic model", "apac.amazon.nova-pro", "/model/amazon.nova-pro/count-tokens", "apac."},
 	}

@@ -149,7 +149,7 @@ func (o *ToAWSBedrockV1Tokenize) RequestBody(_ []byte, tokenizeReq *tokenize.Req
 	// only. This is provider-agnostic (unlike the Anthropic-specific path) because the Converse
 	// translator also serves Amazon Nova, Meta Llama, etc.
 	// See: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html
-	for _, prefix := range []string{"us-gov.", "us.", "eu.", "apac.", "global."} {
+	for _, prefix := range []string{"us-gov.", "us.", "eu.", "apac.", "uk.", "au.", "jp.", "global."} {
 		if rest, ok := strings.CutPrefix(pathModel, prefix); ok {
 			pathModel = rest
 			break
