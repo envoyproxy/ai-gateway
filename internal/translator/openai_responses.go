@@ -69,7 +69,9 @@ func (o *openAIToOpenAITranslatorV1Responses) RequestBody(original []byte, req *
 	// Always set the path header to the responses endpoint so that the request is routed correctly.
 	newHeaders = []internalapi.Header{{pathHeaderName, o.path}}
 
-	newBody = forceOriginalBodyIfEmpty(forceBodyMutation, newBody, original)
+	if forceBodyMutation && len(newBody) == 0 {
+		newBody = original
+	}
 
 	if len(newBody) > 0 {
 		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
@@ -161,20 +163,18 @@ func setTokenUsageFromResponse(tokenUsage *metrics.TokenUsage, resp *openai.Resp
 // response.incomplete or response.failed events.
 func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span tracingapi.ResponsesSpan) (tokenUsage metrics.TokenUsage) {
 	for {
-		// SSE event boundary is a blank line: "data: {json}\n\n".
-		i := bytes.Index(o.buffered, []byte("\n\n"))
-		if i == -1 {
+		event, remaining, ok := nextSSEEvent(o.buffered)
+		if !ok {
 			return tokenUsage
 		}
-		event := o.buffered[:i]
-		o.buffered = o.buffered[i+2:]
+		o.buffered = remaining
 		for line := range bytes.SplitSeq(event, []byte("\n")) {
-			// Look for lines carrying the "data" field.
-			data, ok := cutSSEDataPrefix(line)
+			// Per the SSE specification, a space after the colon is optional.
+			data, ok := bytes.CutPrefix(line, []byte("data:"))
 			if !ok {
 				continue
 			}
-
+			data = bytes.TrimSpace(data)
 			if len(data) == 0 || bytes.Equal(data, sseDoneMessage) {
 				continue
 			}
@@ -208,6 +208,22 @@ func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span t
 				span.RecordResponseChunk(&eventUnion)
 			}
 		}
+	}
+}
+
+// nextSSEEvent returns the next complete SSE event and preserves partial events in buffer.
+// SSE permits either LF or CRLF line endings.
+func nextSSEEvent(buffer []byte) (event, remaining []byte, ok bool) {
+	lfEnd := bytes.Index(buffer, []byte("\n\n"))
+	crlfEnd := bytes.Index(buffer, []byte("\r\n\r\n"))
+
+	switch {
+	case crlfEnd >= 0 && (lfEnd < 0 || crlfEnd < lfEnd):
+		return buffer[:crlfEnd], buffer[crlfEnd+len("\r\n\r\n"):], true
+	case lfEnd >= 0:
+		return buffer[:lfEnd], buffer[lfEnd+len("\n\n"):], true
+	default:
+		return nil, buffer, false
 	}
 }
 
