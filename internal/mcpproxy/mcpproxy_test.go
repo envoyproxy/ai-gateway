@@ -31,13 +31,28 @@ var (
 )
 
 type fakeSpan struct {
-	backends []string
-	errType  string
-	err      error
+	backends       []string
+	events         []string
+	listResults    []any
+	toolCallResult []byte
+	errType        string
+	err            error
 }
 
 func (f *fakeSpan) RecordRouteToBackend(backend string, _ string, _ bool, _ string, _ int) {
 	f.backends = append(f.backends, backend)
+}
+
+func (f *fakeSpan) AddEvent(name string) {
+	f.events = append(f.events, name)
+}
+
+func (f *fakeSpan) RecordListResult(result any) {
+	f.listResults = append(f.listResults, result)
+}
+
+func (f *fakeSpan) RecordToolCallResult(resultJSON []byte) {
+	f.toolCallResult = resultJSON
 }
 
 func (f *fakeSpan) EndSpan() {}

@@ -7,6 +7,7 @@ package tracing
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -31,6 +32,10 @@ var _ tracingapi.MCPTracer = (*mcpTracer)(nil)
 // mcpSpan is an implementation of [tracingapi.MCPSpan].
 type mcpSpan struct {
 	span trace.Span
+	// captureContent gates recording of message content (tool call arguments and
+	// results) per the GenAI OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT
+	// opt-in.
+	captureContent bool
 }
 
 // RecordRouteToBackend implements [tracingapi.MCPSpan.RecordRouteToBackend].
@@ -53,6 +58,40 @@ func (s mcpSpan) RecordRouteToBackend(backend string, sessionID string, isNew bo
 		attribute.String("mcp.session.id", sessionID),
 		attribute.Bool("mcp.session.new", isNew),
 	))
+}
+
+// AddEvent implements [tracingapi.MCPSpan.AddEvent].
+func (s mcpSpan) AddEvent(name string) {
+	s.span.AddEvent(name)
+}
+
+// RecordListResult implements [tracingapi.MCPSpan.RecordListResult].
+//
+// Only the element count is recorded. Names and payloads are content and are
+// deliberately left off the span to keep cardinality bounded and avoid leaking
+// tool/resource inventories.
+func (s mcpSpan) RecordListResult(result any) {
+	switch v := result.(type) {
+	case mcp.ListToolsResult:
+		s.span.SetAttributes(attribute.Int("mcp.tools.count", len(v.Tools)))
+	case mcp.ListResourcesResult:
+		s.span.SetAttributes(attribute.Int("mcp.resources.count", len(v.Resources)))
+	case mcp.ListResourceTemplatesResult:
+		s.span.SetAttributes(attribute.Int("mcp.resource_templates.count", len(v.ResourceTemplates)))
+	case mcp.ListPromptsResult:
+		s.span.SetAttributes(attribute.Int("mcp.prompts.count", len(v.Prompts)))
+	}
+}
+
+// RecordToolCallResult implements [tracingapi.MCPSpan.RecordToolCallResult].
+//
+// The tool result is message content, so it follows the GenAI opt-in: it is
+// recorded only when capture is enabled.
+func (s mcpSpan) RecordToolCallResult(resultJSON []byte) {
+	if !s.captureContent || len(resultJSON) == 0 {
+		return
+	}
+	s.span.SetAttributes(attribute.String("gen_ai.tool.call.result", string(resultJSON)))
 }
 
 // EndSpanOnError implements [tracingapi.MCPSpan.EndSpanOnError].
@@ -83,13 +122,17 @@ type mcpTracer struct {
 	tracer            trace.Tracer
 	propagator        propagation.TextMapPropagator
 	attributeMappings map[string]string
+	// captureContent mirrors the GenAI message-content opt-in and is propagated
+	// to every span this tracer starts.
+	captureContent bool
 }
 
-func newMCPTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, attributeMappings map[string]string) tracingapi.MCPTracer {
+func newMCPTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, attributeMappings map[string]string, captureContent bool) tracingapi.MCPTracer {
 	return mcpTracer{
 		tracer:            tracer,
 		propagator:        propagator,
 		attributeMappings: attributeMappings,
+		captureContent:    captureContent,
 	}
 }
 
@@ -106,7 +149,7 @@ func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Requ
 		attribute.String("jsonrpc.request.id", fmt.Sprintf("%v", req.ID)),
 		attribute.String("mcp.method.name", req.Method),
 	}
-	attrs = append(attrs, getMCPParamsAsAttributes(param)...)
+	attrs = append(attrs, getMCPParamsAsAttributes(param, m.captureContent)...)
 
 	for srcName, targetName := range m.attributeMappings {
 		// Check if the attribute is present in the metadata first, as this is the common place to add custom attributes
@@ -145,13 +188,13 @@ func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Requ
 	// Only record request attributes if span is recording (sampled).
 	if span.IsRecording() {
 		span.SetAttributes(attrs...)
-		return &mcpSpan{span: span}
+		return &mcpSpan{span: span, captureContent: m.captureContent}
 	}
 
 	return nil
 }
 
-func getMCPParamsAsAttributes(p mcp.Params) []attribute.KeyValue {
+func getMCPParamsAsAttributes(p mcp.Params, captureContent bool) []attribute.KeyValue {
 	var attrs []attribute.KeyValue
 	switch params := p.(type) {
 	case *mcp.InitializeParams:
@@ -167,6 +210,13 @@ func getMCPParamsAsAttributes(p mcp.Params) []attribute.KeyValue {
 			attribute.String("gen_ai.operation.name", "execute_tool"),
 			attribute.String("gen_ai.tool.name", params.Name),
 		)
+		// Tool call arguments are message content, so they follow the GenAI
+		// opt-in rather than being recorded unconditionally.
+		if captureContent && params.Arguments != nil {
+			if raw, err := json.Marshal(params.Arguments); err == nil {
+				attrs = append(attrs, attribute.String("gen_ai.tool.call.arguments", string(raw)))
+			}
+		}
 	case *mcp.GetPromptParams:
 		attrs = append(attrs, attribute.String("gen_ai.prompt.name", params.Name))
 	case *mcp.SetLoggingLevelParams:
