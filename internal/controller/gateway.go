@@ -426,6 +426,13 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				b := filterapi.Backend{}
 				b.Name = internalapi.PerRouteRuleRefBackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, ruleIndex, backendRefIndex)
 				b.ModelNameOverride = backendRef.ModelNameOverride
+				// Carry Weight/Priority through to the ext_proc config for quota-aware
+				// routing. Envoy Gateway's own load balancing does not read these (it uses
+				// the HTTPRoute weighted clusters and the priority annotation generated
+				// elsewhere in the controller); they are consumed by the router-level
+				// ext_proc when selecting a backend with available quota.
+				b.Weight = backendRef.Weight
+				b.Priority = backendRef.Priority
 
 				var bsp *aigv1b1.BackendSecurityPolicy
 				backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
