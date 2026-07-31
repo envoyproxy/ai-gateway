@@ -130,9 +130,67 @@ func (m *mcpRequestContext) newSession(...) (*session, error) {
 }
 ```
 
-## 4. Benefits
+## 4. Dynamic Multi-Tenancy & Subsetting via CEL
+
+In enterprise architectures where client authentication and tenant-level authorization are handled by a separate, specialized process (such as a JWT Auth filter, an Envoy `ext_authz` service, or a custom External Processor), the allowed scope of backends and tools can be computed externally and passed as metadata headers to the MCP Proxy. 
+
+By leveraging the pre-check engine outlined in Section 3, the MCP Proxy can natively enforce these multi-tenant constraints dynamically using declarative, CEL-based SecurityPolicies.
+
+### 4.1. Implementation Design: Unified Fully-Qualified Tool Names (FQN)
+In this design, the trusted external orchestrator computes a list of allowed tools formatted as `backendName__toolName` and injects them into a single header: `x-ai-eg-mcp-tool-subset`.
+
+#### Example Header Value:
+```http
+x-ai-eg-mcp-tool-subset: database-mcp__read_record,email-mcp__send_alert
+```
+
+#### Declarative MCPRoute YAML Configuration:
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: MCPRoute
+metadata:
+  name: dynamic-multi-tenant-route
+spec:
+  parentRefs:
+    - name: ai-gateway
+  path: /mcp
+  backendRefs:
+    - name: database-mcp
+    - name: email-mcp
+    - name: analytics-mcp
+  securityPolicy:
+    authorization:
+      defaultAction: Deny
+      rules:
+        # Rule 1: Initialize Pre-Check (Connect only to backends that have at least one tool in the subset)
+        - name: dynamic-backend-initialize-allow
+          action: Allow
+          cel: |
+            request.mcp.method == "initialize" &&
+            has(request.headers["x-ai-eg-mcp-tool-subset"]) &&
+            ("," + request.headers["x-ai-eg-mcp-tool-subset"]).contains("," + request.mcp.backend + "__")
+
+        # Rule 2: Tools List & Call (Match exact fully-qualified tool name)
+        - name: dynamic-tool-call-and-list-allow
+          action: Allow
+          cel: |
+            request.mcp.method != "initialize" &&
+            has(request.headers["x-ai-eg-mcp-tool-subset"]) &&
+            ("," + request.headers["x-ai-eg-mcp-tool-subset"] + ",").contains("," + request.mcp.backend + "__" + request.mcp.tool + ",")
+```
+
+### 4.2. Architectural & Security Advantages
+1. **Decoupled Architecture**: All tenant-lookup and permission databases remain encapsulated within the identity management process. The AI Gateway proxy remains a high-performance, stateless data-plane.
+2. **Dynamic yet Declarative**: We avoid writing custom, rigid Go code or hardcoding proxy behavior. All multi-tenant routing decisions and scoping rules are handled elegantly through standard CEL expressions.
+3. **Multi-layer Safeguards**: Standard CEL rules can be securely locked. For instance, because Envoy is configured to strip client-supplied headers and only inject trusted headers from verified JWT claims or dynamic metadata, the client cannot bypass these rules.
+4. **Defense-in-Depth**: Because the CEL rule gates `tools/call` at runtime in addition to filtering `tools/list`, if a client attempts to forge a request to invoke an unauthorized tool, the proxy rejects the execution natively.
+
+---
+
+## 5. Benefits
 
 1. **Efficiency:** Reduces upstream connection overhead and memory usage in the proxy.
 2. **Latency:** Faster initialization for clients, especially in multi-tenant environments where routes map to dozens of backends.
 3. **Security Posture:** Enforces backend isolation earlier in the connection lifecycle (Defense in Depth).
-4. **Self-Contained:** It is a pure internal optimization in `ext_proc`.
+4. **Decoupled Control**: Perfectly supports enterprise multi-tenancy where routing and permissions are driven dynamically by separate authorization services.
+
