@@ -15,6 +15,7 @@ import (
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
@@ -40,6 +41,7 @@ var (
 	_ tracingapi.TranscriptionTracer   = (*transcriptionTracer)(nil)
 	_ tracingapi.TranslationTracer     = (*translationTracer)(nil)
 	_ tracingapi.RerankTracer          = (*rerankTracer)(nil)
+	_ tracingapi.TokenizeTracer        = (*tokenizeTracer)(nil)
 )
 
 type (
@@ -52,6 +54,7 @@ type (
 	transcriptionTracer   = requestTracerImpl[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
 	translationTracer     = requestTracerImpl[openai.TranslationRequest, openai.TranslationResponse, struct{}]
 	rerankTracer          = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
+	tokenizeTracer        = requestTracerImpl[tokenize.RequestUnion, tokenize.Response, struct{}]
 )
 
 func newRequestTracer[ReqT any, RespT any, RespChunkT any](
