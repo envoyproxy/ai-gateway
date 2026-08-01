@@ -6,7 +6,6 @@
 package filterapi_test
 
 import (
-	"encoding/json"
 	"log/slog"
 	"os"
 	"path"
@@ -16,6 +15,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestUnmarshalConfigYaml(t *testing.T) {
