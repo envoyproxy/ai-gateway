@@ -36,9 +36,8 @@ type gatewayMutator struct {
 	logger        logr.Logger
 
 	// extProcBuilder is the single source of truth for the injected extproc
-	// container. It is shared with the gateway reconciler so that the config
-	// hash stamped here can be recomputed identically by the reconciler to
-	// detect drift. See extproc_builder.go.
+	// container. It is shared with the gateway reconciler so that the desired
+	// config hash written to workload templates matches webhook injection.
 	*extProcBuilder
 }
 
@@ -364,15 +363,6 @@ func (g *gatewayMutator) mutatePod(ctx context.Context, pod *corev1.Pod, gateway
 	// creation time and must stay out of the drift hash.
 	input := extProcContainerInput{gatewayConfig: gatewayConfig, needMCP: len(mcpRoutes.Items) > 0}
 	container := g.buildExtProcContainer(input)
-
-	// Stamp the config hash so the reconciler can detect drift on later
-	// controller restarts. Computed on the base container, before the
-	// secret-presence-driven args/mounts below are added — exactly what the
-	// reconciler recomputes.
-	if pod.Annotations == nil {
-		pod.Annotations = map[string]string{}
-	}
-	pod.Annotations[extProcConfigHashAnnotationKey] = g.extProcContainerHash(input)
 
 	// Prepend the config-routing flags so the arg order matches what extproc
 	// expects (configPath/bundlePath first, then base args).

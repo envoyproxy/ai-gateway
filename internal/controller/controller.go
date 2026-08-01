@@ -128,12 +128,10 @@ func StartControllers(ctx context.Context, mgr manager.Manager, config *rest.Con
 	}
 
 	gatewayEventChan := make(chan event.GenericEvent, 100)
-	// The extproc builder is shared by the mutating webhook (which injects the
-	// extproc container and stamps the config hash) and the gateway reconciler
-	// (which recomputes that hash to detect drift). The webhook uses this
-	// builder instance directly; the reconciler builds an identical one from
-	// the same options inside NewGatewayController, so both sides compute
-	// identical hashes.
+	// The extproc builder is shared by the mutating webhook and the gateway
+	// reconciler. The webhook uses this builder instance to inject the container;
+	// the reconciler builds an identical one from the same options to write the
+	// desired config hash to workload pod templates.
 	extProcBuilder := newExtProcBuilder(options, isKubernetes133OrLater(versionInfo, logger), logger)
 	gatewayC := NewGatewayController(c, kubernetes.NewForConfigOrDie(config),
 		logger.WithName("gateway"), options.EnvoyGatewayNamespace,

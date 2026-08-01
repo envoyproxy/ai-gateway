@@ -24,8 +24,8 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// extProcConfigHashAnnotationKey stores the webhook's extproc config hash. The
-// gateway reconciler compares it with the desired hash to detect config drift.
+// extProcConfigHashAnnotationKey stores the desired extproc config hash on
+// workload pod templates so Kubernetes rolls pods when injected config changes.
 const extProcConfigHashAnnotationKey = "aigateway.envoyproxy.io/extproc-config-hash"
 
 // extProcAdminPort is the admin port of the extproc container.
@@ -34,8 +34,8 @@ const extProcAdminPort = 1064
 // newExtProcBuilder constructs the shared extproc builder from the controller
 // options plus the runtime-resolved extProcAsSideCar flag. It is called once in
 // StartControllers; the resulting builder is shared by the mutating webhook (to
-// inject the container and stamp the config hash) and the gateway reconciler (to
-// detect drift), guaranteeing the two sides compute identical hashes.
+// inject the container) and the gateway reconciler (to compute the workload
+// template hash), guaranteeing the two sides use identical extproc config.
 func newExtProcBuilder(options *Options, extProcAsSideCar bool, logger logr.Logger) *extProcBuilder {
 	var parsedEnvVars []corev1.EnvVar
 	if options.ExtProcExtraEnvVars != "" {

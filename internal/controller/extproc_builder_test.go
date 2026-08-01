@@ -38,10 +38,9 @@ func newTestBuilder() *extProcBuilder {
 }
 
 // TestExtProcContainerHash_Deterministic pins the property the whole drift
-// mechanism relies on: the hash the webhook stamps must equal the hash the
-// reconciler recomputes for identical state. Because both sides call the same
-// builder, this holds by construction — this test guards against someone
-// introducing a second, parallel hash implementation.
+// mechanism relies on: the workload template hash must be stable for identical
+// extproc config. Because both webhook injection and reconciler hashing use the
+// same builder, this guards against a second, parallel hash implementation.
 func TestExtProcContainerHash_Deterministic(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true})))
 	b := newTestBuilder()

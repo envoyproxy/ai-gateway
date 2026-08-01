@@ -995,7 +995,6 @@ func TestGatewayMutator_mutatePod_UsesNoCacheReader(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, pod.Spec.Containers, 2)
 	require.Equal(t, extProcContainerName, pod.Spec.Containers[1].Name)
-	require.Equal(t, g.extProcContainerHash(extProcContainerInput{}), pod.Annotations[extProcConfigHashAnnotationKey])
 }
 
 func TestGatewayMutator_listAIGatewayRoutesForGateway_NoCacheReaderFallback(t *testing.T) {

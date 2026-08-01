@@ -1860,16 +1860,10 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 	})
 }
 
-// TestGatewayController_annotateGatewayPods_ConfigHashDrift verifies the
-// #2395 fix: when the injected extproc config drifts (e.g. --extProcExtraEnvVars
-// changed after the pod was created), the reconciler detects the config-hash
-// mismatch and rolls the deployment so the webhook re-injects the current
-// config. A pod with a matching hash, or with no hash (pre-upgrade pod), must
-// not trigger a rollout.
 // TestGatewayController_checkPodHasSideCar exercises both the init-container
 // (extProcAsSideCar=true) and the regular-container (extProcAsSideCar=false)
 // branches of checkPodHasSideCar, plus the logLevel mismatch, missing -mcpAddr,
-// and config-hash drift signals.
+// and GatewayConfig-resolved image signals.
 func TestGatewayController_checkPodHasSideCar(t *testing.T) {
 	egNamespace := "envoy-gateway-system"
 	fakeClient := requireNewFakeClientWithIndexes(t)
@@ -1882,23 +1876,19 @@ func TestGatewayController_checkPodHasSideCar(t *testing.T) {
 		return corev1.Container{Name: extProcContainerName, Image: image, Args: args}
 	}
 
-	t.Run("sidecar mode: matches and hash matches", func(t *testing.T) {
+	t.Run("sidecar mode: matches", func(t *testing.T) {
 		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, true)
-		opts := newTestExtProcOptions(image, logLevel)
-		stamp := newExtProcBuilder(opts, true, ctrl.Log).extProcContainerHash(extProcContainerInput{})
 		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{extProcConfigHashAnnotationKey: stamp}},
-			Spec:       corev1.PodSpec{InitContainers: []corev1.Container{extProcContainer("-logLevel", logLevel)}},
+			Spec: corev1.PodSpec{InitContainers: []corev1.Container{extProcContainer("-logLevel", logLevel)}},
 		}
-		hasSideCar, needsRollout := c.checkPodHasSideCar(pod, false, c.image, stamp)
+		hasSideCar := c.checkPodHasSideCar(pod, false, c.image)
 		require.True(t, hasSideCar)
-		require.False(t, needsRollout)
 	})
 
 	t.Run("sidecar mode: logLevel mismatch triggers rollout", func(t *testing.T) {
 		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, true)
 		pod := &corev1.Pod{Spec: corev1.PodSpec{InitContainers: []corev1.Container{extProcContainer("-logLevel", "debug")}}}
-		hasSideCar, _ := c.checkPodHasSideCar(pod, false, c.image, "")
+		hasSideCar := c.checkPodHasSideCar(pod, false, c.image)
 		require.False(t, hasSideCar, "logLevel mismatch must clear hasSideCar")
 	})
 
@@ -1909,35 +1899,26 @@ func TestGatewayController_checkPodHasSideCar(t *testing.T) {
 		pod := &corev1.Pod{Spec: corev1.PodSpec{InitContainers: []corev1.Container{
 			{Name: extProcContainerName, Image: desiredImage, Args: []string{"-logLevel", logLevel}},
 		}}}
-		hasSideCar, _ := c.checkPodHasSideCar(pod, false, desiredImage, "")
+		hasSideCar := c.checkPodHasSideCar(pod, false, desiredImage)
 		require.True(t, hasSideCar)
 
-		hasSideCar, _ = c.checkPodHasSideCar(pod, false, image, "")
+		hasSideCar = c.checkPodHasSideCar(pod, false, image)
 		require.False(t, hasSideCar, "global image must not be used when GatewayConfig resolves a different image")
 	})
 
-	t.Run("container mode: matches and hash drift triggers rollout", func(t *testing.T) {
+	t.Run("container mode: matches", func(t *testing.T) {
 		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, false)
-		opts := newTestExtProcOptions(image, logLevel)
-		stamp := newExtProcBuilder(opts, false, ctrl.Log).extProcContainerHash(extProcContainerInput{})
 		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{extProcConfigHashAnnotationKey: stamp}},
-			Spec:       corev1.PodSpec{Containers: []corev1.Container{extProcContainer("-logLevel", logLevel)}},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{extProcContainer("-logLevel", logLevel)}},
 		}
-		// Matching hash: no rollout.
-		hasSideCar, needsRollout := c.checkPodHasSideCar(pod, false, c.image, stamp)
+		hasSideCar := c.checkPodHasSideCar(pod, false, c.image)
 		require.True(t, hasSideCar)
-		require.False(t, needsRollout)
-		// Drifted desired hash: rollout needed (controller side stayed; pod's stamp differs).
-		hasSideCar, needsRollout = c.checkPodHasSideCar(pod, false, c.image, "different-desired-hash")
-		require.True(t, hasSideCar)
-		require.True(t, needsRollout, "hash mismatch must flag rollout")
 	})
 
 	t.Run("container mode: needMCP without -mcpAddr triggers rollout", func(t *testing.T) {
 		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, false)
 		pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{extProcContainer("-logLevel", logLevel)}}}
-		hasSideCar, _ := c.checkPodHasSideCar(pod, true, c.image, "")
+		hasSideCar := c.checkPodHasSideCar(pod, true, c.image)
 		require.False(t, hasSideCar, "missing -mcpAddr when MCP is needed must trigger rollout")
 	})
 
@@ -1946,14 +1927,14 @@ func TestGatewayController_checkPodHasSideCar(t *testing.T) {
 		pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{
 			extProcContainer("-logLevel", logLevel, "-mcpAddr", ":808"),
 		}}}
-		hasSideCar, _ := c.checkPodHasSideCar(pod, true, c.image, "")
+		hasSideCar := c.checkPodHasSideCar(pod, true, c.image)
 		require.True(t, hasSideCar, "with -mcpAddr present the sidecar is up to date")
 	})
 
 	t.Run("container mode: logLevel mismatch triggers rollout", func(t *testing.T) {
 		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, false)
 		pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{extProcContainer("-logLevel", "debug")}}}
-		hasSideCar, _ := c.checkPodHasSideCar(pod, false, c.image, "")
+		hasSideCar := c.checkPodHasSideCar(pod, false, c.image)
 		require.False(t, hasSideCar, "logLevel mismatch must clear hasSideCar")
 	})
 }
@@ -1971,19 +1952,14 @@ func TestGatewayController_annotateGatewayPods_ConfigHashDrift(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 
 	const image = "docker.io/envoyproxy/ai-gateway-extproc:latest"
-	// The controller and the webhook share one config: the controller builds its
-	// extProcBuilder from these options inside NewGatewayController, and here we
-	// build the matching builder the webhook would use to stamp the pod.
 	opts := newTestExtProcOptions(image, "info")
-	stampBuilder := newExtProcBuilder(opts, true, ctrl.Log)
+	baseBuilder := newExtProcBuilder(opts, true, ctrl.Log)
 	c := NewGatewayController(fakeClient, kube, ctrl.Log, egNamespace, false, func() string { return "test-uuid" }, opts, true)
+	baseHash := baseBuilder.extProcContainerHash(extProcContainerInput{})
 
-	// A pod with the sidecar and a hash stamped by the webhook (current config).
-	stampedHash := stampBuilder.extProcContainerHash(extProcContainerInput{})
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "pod-current", Namespace: egNamespace, Labels: labels,
-			Annotations: map[string]string{extProcConfigHashAnnotationKey: stampedHash},
 		},
 		Spec: corev1.PodSpec{InitContainers: []corev1.Container{
 			{Name: extProcContainerName, Image: image, Args: []string{"-logLevel", "info"}},
@@ -2003,58 +1979,44 @@ func TestGatewayController_annotateGatewayPods_ConfigHashDrift(t *testing.T) {
 	_, err = kube.AppsV1().Deployments(egNamespace).Create(t.Context(), deployment, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	// desiredHash matches the pod's stamped hash ⇒ no rollout.
-	result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "uuid-1", true, false, c.image, stampedHash)
+	// The reconciler writes the desired hash to the pod template so Kubernetes
+	// rolls the workload when injected extproc config changes.
+	result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "uuid-1", true, false, c.image, baseHash)
 	require.NoError(t, err)
 	require.Equal(t, ctrl.Result{}, result)
 	dep, err := kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "dep-current", metav1.GetOptions{})
 	require.NoError(t, err)
+	require.Equal(t, baseHash, dep.Spec.Template.Annotations[extProcConfigHashAnnotationKey])
 	_, rolled := dep.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
-	require.False(t, rolled, "no rollout when hash matches")
+	require.False(t, rolled, "hash-only rollout should not update the UUID rollout trigger")
 
-	// Simulate a controller restart with a changed flag: the builder now holds a
-	// different config, so the desired hash diverges from the pod's stamped hash.
-	changedOpts := newTestExtProcOptions(image, "info")
-	changedOpts.ExtProcExtraEnvVars = "OTEL_SERVICE_NAME=ai-gateway"
-	changedBuilder := newExtProcBuilder(changedOpts, true, ctrl.Log)
-	desiredHash := changedBuilder.extProcContainerHash(extProcContainerInput{})
-	require.NotEqual(t, stampedHash, desiredHash)
-
-	result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "uuid-2", true, false, c.image, desiredHash)
+	// A current template hash should not trigger another template update.
+	result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*dep}, nil, "uuid-2", true, false, c.image, baseHash)
 	require.NoError(t, err)
 	require.Equal(t, ctrl.Result{}, result)
 	dep, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "dep-current", metav1.GetOptions{})
 	require.NoError(t, err)
-	require.Equal(t, "uuid-2", dep.Spec.Template.Annotations[aigatewayUUIDAnnotationKey],
-		"hash mismatch must trigger a rollout so the webhook re-injects the current config")
+	require.Equal(t, baseHash, dep.Spec.Template.Annotations[extProcConfigHashAnnotationKey])
+	_, rolled = dep.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
+	require.False(t, rolled, "current template hash must not trigger UUID rollout")
 
-	// A pre-upgrade pod with NO hash annotation must not be rolled by the hash
-	// signal (missing ⇒ fall back to legacy image/logLevel check).
-	podNoHash := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: "pod-legacy", Namespace: egNamespace, Labels: labels},
-		Spec: corev1.PodSpec{InitContainers: []corev1.Container{
-			{Name: extProcContainerName, Image: image, Args: []string{"-logLevel", "info"}},
-		}},
-	}
-	_, err = kube.CoreV1().Pods(egNamespace).Create(t.Context(), podNoHash, metav1.CreateOptions{})
-	require.NoError(t, err)
-	deployment2 := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "dep-legacy", Namespace: egNamespace, Labels: labels},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: ptr.To(int32(1)),
-			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
-		},
-		Status: appsv1.DeploymentStatus{ObservedGeneration: 1, UpdatedReplicas: 1, ReadyReplicas: 1, AvailableReplicas: 1, Replicas: 1},
-	}
-	_, err = kube.AppsV1().Deployments(egNamespace).Create(t.Context(), deployment2, metav1.CreateOptions{})
-	require.NoError(t, err)
-	result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*podNoHash}, []appsv1.Deployment{*deployment2}, nil, "uuid-3", true, false, c.image, desiredHash)
+	// Simulate a controller restart with a changed flag: the desired hash now
+	// differs from the workload template hash.
+	changedOpts := newTestExtProcOptions(image, "info")
+	changedOpts.ExtProcExtraEnvVars = "OTEL_SERVICE_NAME=ai-gateway"
+	changedBuilder := newExtProcBuilder(changedOpts, true, ctrl.Log)
+	desiredHash := changedBuilder.extProcContainerHash(extProcContainerInput{})
+	require.NotEqual(t, baseHash, desiredHash)
+
+	result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*dep}, nil, "uuid-3", true, false, c.image, desiredHash)
 	require.NoError(t, err)
 	require.Equal(t, ctrl.Result{}, result)
-	dep2, err := kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "dep-legacy", metav1.GetOptions{})
+	dep, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "dep-current", metav1.GetOptions{})
 	require.NoError(t, err)
-	_, rolled = dep2.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
-	require.False(t, rolled, "missing hash annotation must not trigger a rollout")
+	require.Equal(t, desiredHash, dep.Spec.Template.Annotations[extProcConfigHashAnnotationKey],
+		"hash drift must update the template hash so Kubernetes rolls the workload")
+	_, rolled = dep.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
+	require.False(t, rolled, "hash drift is handled by the template hash, not the UUID rollout trigger")
 
 	podWithoutSidecar := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "pod-no-sidecar", Namespace: egNamespace, Labels: labels},
@@ -2066,7 +2028,9 @@ func TestGatewayController_annotateGatewayPods_ConfigHashDrift(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "dep-mixed-drift", Namespace: egNamespace, Labels: labels},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: ptr.To(int32(1)),
-			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
+			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{extProcConfigHashAnnotationKey: baseHash},
+			}},
 		},
 		Status: appsv1.DeploymentStatus{ObservedGeneration: 1, UpdatedReplicas: 1, ReadyReplicas: 1, AvailableReplicas: 1, Replicas: 1},
 	}
@@ -2074,7 +2038,7 @@ func TestGatewayController_annotateGatewayPods_ConfigHashDrift(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err = c.annotateGatewayPods(t.Context(),
-		[]corev1.Pod{*podNoHash, *podWithoutSidecar, *pod},
+		[]corev1.Pod{*podWithoutSidecar, *pod},
 		[]appsv1.Deployment{*deployment3},
 		nil,
 		"uuid-4",
@@ -2088,13 +2052,14 @@ func TestGatewayController_annotateGatewayPods_ConfigHashDrift(t *testing.T) {
 	dep3, err := kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "dep-mixed-drift", metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "uuid-4", dep3.Spec.Template.Annotations[aigatewayUUIDAnnotationKey],
-		"mixed pod state plus hash drift must trigger rollout")
+		"mixed pod state must keep using the UUID rollout trigger")
+	require.Equal(t, desiredHash, dep3.Spec.Template.Annotations[extProcConfigHashAnnotationKey],
+		"mixed pod state plus hash drift should update both template rollout annotations")
 }
 
 // newTestExtProcOptions returns the Options the gateway controller tests use to
-// build a GatewayController (and, via newExtProcBuilder, the matching builder the
-// webhook would use to stamp a pod). Keeping one Options source makes the
-// controller's internal hash and the test's stamped hash identical.
+// build a GatewayController. Keeping one Options source makes the controller's
+// internal hash and the test's desired hash identical.
 func newTestExtProcOptions(image, logLevel string) *Options {
 	return &Options{
 		ExtProcImage:                           image,
