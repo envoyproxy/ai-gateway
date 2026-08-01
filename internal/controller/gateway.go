@@ -54,20 +54,12 @@ func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger, envoyGatewayNamespace string,
 	standAlone bool, uuidFn func() string, options *Options, extProcAsSideCar bool,
 ) *GatewayController {
-	return NewGatewayControllerWithAPIReader(client, nil, kube, logger, envoyGatewayNamespace, standAlone, uuidFn, options, extProcAsSideCar)
-}
-
-func NewGatewayControllerWithAPIReader(
-	client client.Client, noCacheReader client.Reader, kube kubernetes.Interface, logger logr.Logger, envoyGatewayNamespace string,
-	standAlone bool, uuidFn func() string, options *Options, extProcAsSideCar bool,
-) *GatewayController {
 	uf := uuidFn
 	if uf == nil {
 		uf = uuid.NewString
 	}
 	return &GatewayController{
 		client:                client,
-		noCacheReader:         noCacheReader,
 		kube:                  kube,
 		logger:                logger,
 		envoyGatewayNamespace: envoyGatewayNamespace,
@@ -79,10 +71,7 @@ func NewGatewayControllerWithAPIReader(
 
 // GatewayController implements reconcile.TypedReconciler for gwapiv1.Gateway.
 type GatewayController struct {
-	client client.Client
-	// noCacheReader bypasses the informer cache to avoid cache sync races when
-	// looking up routes attached to the reconciled Gateway.
-	noCacheReader         client.Reader
+	client                client.Client
 	kube                  kubernetes.Interface
 	logger                logr.Logger
 	envoyGatewayNamespace string // The namespace where Envoy Gateway is deployed.
@@ -156,7 +145,7 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	input := extProcContainerInput{gatewayConfig: gwConfig, needMCP: len(mcpRoutes.Items) > 0}
-	result, err := c.annotateGatewayPodsWithDesiredImage(ctx, pods, deployments, daemonSets, uid,
+	result, err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uid,
 		hasEffectiveRoutes, input.needMCP, c.extProcImage(input), c.extProcContainerHash(input))
 	if err != nil {
 		c.logger.Error(err, "Failed to annotate gateway pods", "namespace", gw.Namespace, "name", gw.Name)
@@ -1060,15 +1049,9 @@ func (c *GatewayController) getBSPForInferencePool(ctx context.Context, namespac
 	return matchingBSPs[0], nil
 }
 
-// checkPodHasSideCar checks the extproc container against the controller-global
-// image. It is kept for tests and legacy callers without GatewayConfig input.
-func (c *GatewayController) checkPodHasSideCar(pod *corev1.Pod, needMCP bool, desiredHash string) (hasSideCar, needsRollout bool) {
-	return c.checkPodHasSideCarWithImage(pod, needMCP, c.image, desiredHash)
-}
-
-// checkPodHasSideCarWithImage returns whether the extproc container is current,
-// and whether a stamped config hash mismatch requires a rollout.
-func (c *GatewayController) checkPodHasSideCarWithImage(pod *corev1.Pod, needMCP bool, desiredImage, desiredHash string) (hasSideCar, needsRollout bool) {
+// checkPodHasSideCar returns whether the extproc container is current, and
+// whether a stamped config hash mismatch requires a rollout.
+func (c *GatewayController) checkPodHasSideCar(pod *corev1.Pod, needMCP bool, desiredImage, desiredHash string) (hasSideCar, needsRollout bool) {
 	podSpec := pod.Spec
 
 	if c.extProcAsSideCar {
@@ -1118,10 +1101,12 @@ func (c *GatewayController) checkPodHasSideCarWithImage(pod *corev1.Pod, needMCP
 	}
 
 	if hasSideCar {
+		// Missing hash means a pre-upgrade pod. Do not roll it only because the
+		// annotation is absent; later pod recreations will be stamped by the webhook.
 		if stamped := pod.Annotations[extProcConfigHashAnnotationKey]; stamped != "" && stamped != desiredHash {
 			needsRollout = true
 			c.logger.Info("extproc config hash mismatch, triggering rollout",
-				"pod", pod.Name, "namespace", pod.Namespace)
+				"pod", pod.Name, "namespace", pod.Namespace, "stamped", stamped, "desiredHash", desiredHash)
 		}
 	}
 
@@ -1169,18 +1154,6 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	uuid string,
 	hasEffectiveRoute bool,
 	needMCP bool,
-	desiredHash string,
-) (ctrl.Result, error) {
-	return c.annotateGatewayPodsWithDesiredImage(ctx, pods, deployments, daemonSets, uuid, hasEffectiveRoute, needMCP, c.image, desiredHash)
-}
-
-func (c *GatewayController) annotateGatewayPodsWithDesiredImage(ctx context.Context,
-	pods []corev1.Pod,
-	deployments []appsv1.Deployment,
-	daemonSets []appsv1.DaemonSet,
-	uuid string,
-	hasEffectiveRoute bool,
-	needMCP bool,
 	desiredImage string,
 	desiredHash string,
 ) (ctrl.Result, error) {
@@ -1197,7 +1170,7 @@ func (c *GatewayController) annotateGatewayPodsWithDesiredImage(ctx context.Cont
 		if !pods[i].GetDeletionTimestamp().IsZero() {
 			continue
 		}
-		hasSideCar, needsRollout := c.checkPodHasSideCarWithImage(&pods[i], needMCP, desiredImage, desiredHash)
+		hasSideCar, needsRollout := c.checkPodHasSideCar(&pods[i], needMCP, desiredImage, desiredHash)
 		if hasSideCar {
 			seenWithSidecar = true
 		} else {
@@ -1234,6 +1207,10 @@ func (c *GatewayController) annotateGatewayPodsWithDesiredImage(ctx context.Cont
 		}
 	}
 
+	// Roll workload templates only when pod-template state must change:
+	// 1. effective route exists but sidecar is missing;
+	// 2. no effective route exists but sidecar remains;
+	// 3. pods are inconsistent or have stamped config-hash drift.
 	if hasEffectiveRoute != hasSideCar || forceRollout {
 		for i := range deployments {
 			dep := &deployments[i]

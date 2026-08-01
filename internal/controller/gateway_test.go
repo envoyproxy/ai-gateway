@@ -231,83 +231,6 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	require.NotNil(t, secret)
 }
 
-func TestGatewayController_listAIGatewayRoutesForGateway_NoCacheReaderFallback(t *testing.T) {
-	cacheClient := requireNewFakeClientWithIndexes(t)
-	noCacheReader := requireNewFakeClientWithIndexes(t)
-	c := NewGatewayControllerWithAPIReader(cacheClient, noCacheReader, fake2.NewClientset(), ctrl.Log,
-		"envoy-gateway-system", false, nil, newTestExtProcOptions("docker.io/envoyproxy/ai-gateway-extproc:latest", "info"), true)
-
-	const gwName, gwNamespace = "test-gateway", "test-namespace"
-
-	err := noCacheReader.Create(t.Context(), &aigv1b1.AIGatewayRoute{
-		ObjectMeta: metav1.ObjectMeta{Name: "route-matching", Namespace: gwNamespace},
-		Spec: aigv1b1.AIGatewayRouteSpec{
-			ParentRefs: []gwapiv1.ParentReference{
-				{Name: gwapiv1.ObjectName(gwName)},
-			},
-			Rules: []aigv1b1.AIGatewayRouteRule{{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "backend"}}}},
-		},
-	})
-	require.NoError(t, err)
-
-	otherNamespace := gwapiv1.Namespace("other")
-	err = noCacheReader.Create(t.Context(), &aigv1b1.AIGatewayRoute{
-		ObjectMeta: metav1.ObjectMeta{Name: "route-non-matching", Namespace: gwNamespace},
-		Spec: aigv1b1.AIGatewayRouteSpec{
-			ParentRefs: []gwapiv1.ParentReference{
-				{Name: gwapiv1.ObjectName(gwName), Namespace: &otherNamespace},
-			},
-			Rules: []aigv1b1.AIGatewayRouteRule{{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "backend"}}}},
-		},
-	})
-	require.NoError(t, err)
-
-	routes, err := c.listAIGatewayRoutesForGateway(t.Context(), gwName, gwNamespace)
-	require.NoError(t, err)
-	require.Len(t, routes.Items, 1)
-	require.Equal(t, "route-matching", routes.Items[0].Name)
-}
-
-func TestGatewayController_listMCPRoutesForGateway_NoCacheReaderFallback(t *testing.T) {
-	cacheClient := requireNewFakeClientWithIndexes(t)
-	noCacheReader := requireNewFakeClientWithIndexes(t)
-	c := NewGatewayControllerWithAPIReader(cacheClient, noCacheReader, fake2.NewClientset(), ctrl.Log,
-		"envoy-gateway-system", false, nil, newTestExtProcOptions("docker.io/envoyproxy/ai-gateway-extproc:latest", "info"), true)
-
-	const gwName, gwNamespace = "test-gateway", "test-namespace"
-
-	err := noCacheReader.Create(t.Context(), &aigv1b1.MCPRoute{
-		ObjectMeta: metav1.ObjectMeta{Name: "mcp-matching", Namespace: gwNamespace},
-		Spec: aigv1b1.MCPRouteSpec{
-			ParentRefs: []gwapiv1.ParentReference{
-				{Name: gwapiv1.ObjectName(gwName)},
-			},
-			BackendRefs: []aigv1b1.MCPRouteBackendRef{
-				{BackendObjectReference: gwapiv1.BackendObjectReference{Name: gwapiv1.ObjectName("server")}},
-			},
-		},
-	})
-	require.NoError(t, err)
-
-	err = noCacheReader.Create(t.Context(), &aigv1b1.MCPRoute{
-		ObjectMeta: metav1.ObjectMeta{Name: "mcp-non-matching", Namespace: gwNamespace},
-		Spec: aigv1b1.MCPRouteSpec{
-			ParentRefs: []gwapiv1.ParentReference{
-				{Name: gwapiv1.ObjectName("other-gw")},
-			},
-			BackendRefs: []aigv1b1.MCPRouteBackendRef{
-				{BackendObjectReference: gwapiv1.BackendObjectReference{Name: gwapiv1.ObjectName("other")}},
-			},
-		},
-	})
-	require.NoError(t, err)
-
-	routes, err := c.listMCPRoutesForGateway(t.Context(), gwName, gwNamespace)
-	require.NoError(t, err)
-	require.Len(t, routes.Items, 1)
-	require.Equal(t, "mcp-matching", routes.Items[0].Name)
-}
-
 func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
@@ -1401,7 +1324,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 		hasEffectiveRoute := true
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, nil, "some-uuid", hasEffectiveRoute, false, "")
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, nil, "some-uuid", hasEffectiveRoute, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1431,7 +1354,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 
 		// Since it has already a sidecar container, passing the hasEffectiveRoute=false should result in adding an annotation to the deployment.
 		hasEffectiveRoute = false
-		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "another-uuid", hasEffectiveRoute, false, "")
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "another-uuid", hasEffectiveRoute, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1474,7 +1397,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 
 		// When there's no effective route, this should not add the annotation to the deployment.
 		hasEffectiveRoute := false
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", hasEffectiveRoute, false, "")
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", hasEffectiveRoute, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
@@ -1484,7 +1407,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 
 		// When there's an effective route, this should add the annotation to the deployment.
 		hasEffectiveRoute = true
-		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", hasEffectiveRoute, false, "")
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", hasEffectiveRoute, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1529,7 +1452,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false, "")
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1544,7 +1467,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again but the deployment's pod template should not be updated again.
-		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false, "")
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1588,7 +1511,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false, "")
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1603,7 +1526,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again but the deployment's pod template should not be updated again.
-		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false, "")
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1646,7 +1569,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call with needMCP=true - should trigger rollout due to missing -mcpAddr
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, true, "")
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, true, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1661,7 +1584,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again - should NOT trigger another rollout
-		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "another-uuid", true, true, "")
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "another-uuid", true, true, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1727,7 +1650,8 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 			nil,
 			"some-uuid",
 			true,
-			false, "")
+			false,
+			c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{RequeueAfter: 5 * time.Second}, result)
 
@@ -1788,7 +1712,8 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 			nil,
 			"force-rollout-uuid",
 			true,
-			false, "")
+			false,
+			c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1851,7 +1776,8 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 			nil,
 			"ignore-terminating-uuid",
 			false,
-			false, "")
+			false,
+			c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1964,7 +1890,7 @@ func TestGatewayController_checkPodHasSideCar(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{extProcConfigHashAnnotationKey: stamp}},
 			Spec:       corev1.PodSpec{InitContainers: []corev1.Container{extProcContainer("-logLevel", logLevel)}},
 		}
-		hasSideCar, needsRollout := c.checkPodHasSideCar(pod, false, stamp)
+		hasSideCar, needsRollout := c.checkPodHasSideCar(pod, false, c.image, stamp)
 		require.True(t, hasSideCar)
 		require.False(t, needsRollout)
 	})
@@ -1972,20 +1898,21 @@ func TestGatewayController_checkPodHasSideCar(t *testing.T) {
 	t.Run("sidecar mode: logLevel mismatch triggers rollout", func(t *testing.T) {
 		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, true)
 		pod := &corev1.Pod{Spec: corev1.PodSpec{InitContainers: []corev1.Container{extProcContainer("-logLevel", "debug")}}}
-		hasSideCar, _ := c.checkPodHasSideCar(pod, false, "")
+		hasSideCar, _ := c.checkPodHasSideCar(pod, false, c.image, "")
 		require.False(t, hasSideCar, "logLevel mismatch must clear hasSideCar")
 	})
 
 	t.Run("sidecar mode: uses GatewayConfig resolved image", func(t *testing.T) {
 		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, true)
-		desiredImage := "gcr.io/custom/extproc:v2"
+		input := extProcContainerInput{gatewayConfig: testGatewayConfig}
+		desiredImage := c.extProcImage(input)
 		pod := &corev1.Pod{Spec: corev1.PodSpec{InitContainers: []corev1.Container{
 			{Name: extProcContainerName, Image: desiredImage, Args: []string{"-logLevel", logLevel}},
 		}}}
-		hasSideCar, _ := c.checkPodHasSideCarWithImage(pod, false, desiredImage, "")
+		hasSideCar, _ := c.checkPodHasSideCar(pod, false, desiredImage, "")
 		require.True(t, hasSideCar)
 
-		hasSideCar, _ = c.checkPodHasSideCarWithImage(pod, false, image, "")
+		hasSideCar, _ = c.checkPodHasSideCar(pod, false, image, "")
 		require.False(t, hasSideCar, "global image must not be used when GatewayConfig resolves a different image")
 	})
 
@@ -1998,11 +1925,11 @@ func TestGatewayController_checkPodHasSideCar(t *testing.T) {
 			Spec:       corev1.PodSpec{Containers: []corev1.Container{extProcContainer("-logLevel", logLevel)}},
 		}
 		// Matching hash: no rollout.
-		hasSideCar, needsRollout := c.checkPodHasSideCar(pod, false, stamp)
+		hasSideCar, needsRollout := c.checkPodHasSideCar(pod, false, c.image, stamp)
 		require.True(t, hasSideCar)
 		require.False(t, needsRollout)
 		// Drifted desired hash: rollout needed (controller side stayed; pod's stamp differs).
-		hasSideCar, needsRollout = c.checkPodHasSideCar(pod, false, "different-desired-hash")
+		hasSideCar, needsRollout = c.checkPodHasSideCar(pod, false, c.image, "different-desired-hash")
 		require.True(t, hasSideCar)
 		require.True(t, needsRollout, "hash mismatch must flag rollout")
 	})
@@ -2010,7 +1937,7 @@ func TestGatewayController_checkPodHasSideCar(t *testing.T) {
 	t.Run("container mode: needMCP without -mcpAddr triggers rollout", func(t *testing.T) {
 		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, false)
 		pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{extProcContainer("-logLevel", logLevel)}}}
-		hasSideCar, _ := c.checkPodHasSideCar(pod, true, "")
+		hasSideCar, _ := c.checkPodHasSideCar(pod, true, c.image, "")
 		require.False(t, hasSideCar, "missing -mcpAddr when MCP is needed must trigger rollout")
 	})
 
@@ -2019,14 +1946,14 @@ func TestGatewayController_checkPodHasSideCar(t *testing.T) {
 		pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{
 			extProcContainer("-logLevel", logLevel, "-mcpAddr", ":808"),
 		}}}
-		hasSideCar, _ := c.checkPodHasSideCar(pod, true, "")
+		hasSideCar, _ := c.checkPodHasSideCar(pod, true, c.image, "")
 		require.True(t, hasSideCar, "with -mcpAddr present the sidecar is up to date")
 	})
 
 	t.Run("container mode: logLevel mismatch triggers rollout", func(t *testing.T) {
 		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, false)
 		pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{extProcContainer("-logLevel", "debug")}}}
-		hasSideCar, _ := c.checkPodHasSideCar(pod, false, "")
+		hasSideCar, _ := c.checkPodHasSideCar(pod, false, c.image, "")
 		require.False(t, hasSideCar, "logLevel mismatch must clear hasSideCar")
 	})
 }
@@ -2077,7 +2004,7 @@ func TestGatewayController_annotateGatewayPods_ConfigHashDrift(t *testing.T) {
 	require.NoError(t, err)
 
 	// desiredHash matches the pod's stamped hash ⇒ no rollout.
-	result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "uuid-1", true, false, stampedHash)
+	result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "uuid-1", true, false, c.image, stampedHash)
 	require.NoError(t, err)
 	require.Equal(t, ctrl.Result{}, result)
 	dep, err := kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "dep-current", metav1.GetOptions{})
@@ -2093,7 +2020,7 @@ func TestGatewayController_annotateGatewayPods_ConfigHashDrift(t *testing.T) {
 	desiredHash := changedBuilder.extProcContainerHash(extProcContainerInput{})
 	require.NotEqual(t, stampedHash, desiredHash)
 
-	result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "uuid-2", true, false, desiredHash)
+	result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "uuid-2", true, false, c.image, desiredHash)
 	require.NoError(t, err)
 	require.Equal(t, ctrl.Result{}, result)
 	dep, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "dep-current", metav1.GetOptions{})
@@ -2121,7 +2048,7 @@ func TestGatewayController_annotateGatewayPods_ConfigHashDrift(t *testing.T) {
 	}
 	_, err = kube.AppsV1().Deployments(egNamespace).Create(t.Context(), deployment2, metav1.CreateOptions{})
 	require.NoError(t, err)
-	result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*podNoHash}, []appsv1.Deployment{*deployment2}, nil, "uuid-3", true, false, desiredHash)
+	result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*podNoHash}, []appsv1.Deployment{*deployment2}, nil, "uuid-3", true, false, c.image, desiredHash)
 	require.NoError(t, err)
 	require.Equal(t, ctrl.Result{}, result)
 	dep2, err := kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "dep-legacy", metav1.GetOptions{})
@@ -2153,6 +2080,7 @@ func TestGatewayController_annotateGatewayPods_ConfigHashDrift(t *testing.T) {
 		"uuid-4",
 		true,
 		false,
+		c.image,
 		desiredHash,
 	)
 	require.NoError(t, err)
@@ -2219,7 +2147,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, "")
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -2255,7 +2183,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, "")
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -2270,7 +2198,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again, but the deployment's pod template should not be updated again.
-		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, "")
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -2305,7 +2233,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, "")
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -2320,7 +2248,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again, but the deployment's pod template should not be updated again.
-		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, "")
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -2374,7 +2302,8 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 			[]appsv1.DaemonSet{*dss},
 			"uuid-requeue",
 			true,
-			false, "")
+			false,
+			c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{RequeueAfter: 5 * time.Second}, result)
 	})
@@ -2420,7 +2349,8 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 			[]appsv1.DaemonSet{*dss},
 			"uuid-force",
 			true,
-			false, "")
+			false,
+			c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -2472,7 +2402,8 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 			[]appsv1.DaemonSet{*dss},
 			"uuid-ignore-terminating",
 			false,
-			false, "")
+			false,
+			c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 

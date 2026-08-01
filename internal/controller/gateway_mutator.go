@@ -149,11 +149,11 @@ func (g *gatewayMutator) listMCPRoutesForGateway(ctx context.Context, gatewayNam
 }
 
 func (c *GatewayController) listAIGatewayRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1b1.AIGatewayRouteList, error) {
-	return listAIGatewayRoutesForGateway(ctx, c.client, c.noCacheReader, gatewayName, gatewayNamespace)
+	return listAIGatewayRoutesForGateway(ctx, c.client, nil, gatewayName, gatewayNamespace)
 }
 
 func (c *GatewayController) listMCPRoutesForGateway(ctx context.Context, gatewayName, gatewayNamespace string) (aigv1b1.MCPRouteList, error) {
-	return listMCPRoutesForGateway(ctx, c.client, c.noCacheReader, gatewayName, gatewayNamespace)
+	return listMCPRoutesForGateway(ctx, c.client, nil, gatewayName, gatewayNamespace)
 }
 
 func listAIGatewayRoutesForGateway(ctx context.Context, cacheReader client.Reader, noCacheReader client.Reader, gatewayName, gatewayNamespace string) (aigv1b1.AIGatewayRouteList, error) {
