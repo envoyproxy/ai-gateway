@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"regexp"
@@ -25,10 +26,30 @@ const (
 )
 
 var (
-	sseDataPrefix   = []byte("data: ")
-	sseDoneMessage  = []byte("[DONE]")
-	sseDoneFullLine = append(append(sseDataPrefix, sseDoneMessage...), '\n')
+	// sseDataPrefixSpace is the canonical form the gateway emits; reads go through
+	// cutSSEDataPrefix, which also accepts the field without the space.
+	sseDataPrefixSpace = []byte("data: ")
+	sseDataPrefix      = []byte("data:")
+	sseDoneMessage     = []byte("[DONE]")
+	sseDoneFullLine    = append(append(sseDataPrefixSpace, sseDoneMessage...), '\n')
 )
+
+// cutSSEFieldPrefix strips an SSE field-name prefix such as "data:" from a line,
+// accepting the optional space after the colon:
+// https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation
+func cutSSEFieldPrefix(line, fieldName []byte) ([]byte, bool) {
+	after, ok := bytes.CutPrefix(line, fieldName)
+	if !ok {
+		return nil, false
+	}
+	// Only one leading space belongs to the framing; anything beyond it is data.
+	return bytes.TrimPrefix(after, []byte{' '}), true
+}
+
+// cutSSEDataPrefix is cutSSEFieldPrefix for the "data" field.
+func cutSSEDataPrefix(line []byte) ([]byte, bool) {
+	return cutSSEFieldPrefix(line, sseDataPrefix)
+}
 
 // regDataURI follows the web uri regex definition.
 // https://developer.mozilla.org/en-US/docs/Web/URI/Schemes/data#syntax
@@ -77,7 +98,7 @@ func serializeOpenAIChatCompletionChunk(chunk *openai.ChatCompletionResponseChun
 	if err != nil {
 		return fmt.Errorf("failed to marshal stream chunk: %w", err)
 	}
-	*buf = append(*buf, sseDataPrefix...)
+	*buf = append(*buf, sseDataPrefixSpace...)
 	*buf = append(*buf, chunkBytes...)
 	*buf = append(*buf, '\n', '\n')
 	return nil

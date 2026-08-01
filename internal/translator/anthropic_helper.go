@@ -791,8 +791,9 @@ func anthropicToolUseToOpenAICalls(block *anthropic.ContentBlockUnion) ([]openai
 // following are streaming part
 
 var (
-	sseEventPrefix = []byte("event: ")
-	emptyStrPtr    = ptr.To("")
+	sseEventPrefixSpace = []byte("event: ")
+	sseEventPrefix      = []byte("event:")
+	emptyStrPtr         = ptr.To("")
 )
 
 // streamingToolCall holds the state for a single tool call that is being streamed.
@@ -995,7 +996,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 			}
 		}
 		// Add the final [DONE] message to indicate the end of the stream.
-		newBody = append(newBody, sseDataPrefix...)
+		newBody = append(newBody, sseDataPrefixSpace...)
 		newBody = append(newBody, sseDoneMessage...)
 		newBody = append(newBody, '\n', '\n')
 	}
@@ -1009,9 +1010,9 @@ func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock []byte) (*openai.
 
 	lines := bytes.SplitSeq(eventBlock, []byte("\n"))
 	for line := range lines {
-		if after, ok := bytes.CutPrefix(line, sseEventPrefix); ok {
+		if after, ok := cutSSEFieldPrefix(line, sseEventPrefix); ok {
 			eventType = bytes.TrimSpace(after)
-		} else if after, ok := bytes.CutPrefix(line, sseDataPrefix); ok {
+		} else if after, ok := cutSSEDataPrefix(line); ok {
 			// This handles JSON data that might be split across multiple 'data:' lines
 			// by concatenating them (Anthropic's format).
 			data := bytes.TrimSpace(after)
