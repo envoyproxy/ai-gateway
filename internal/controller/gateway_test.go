@@ -226,7 +226,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 				Rules: []aigv1b1.AIGatewayRouteRule{
 					{
 						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
-							{Name: "apple"},
+							{Name: "apple", Weight: ptr.To[int32](80), Priority: ptr.To[uint32](2)},
 							{Name: "invalid-bsp-backend"},  // This should be ignored as the BSP is invalid.
 							{Name: "non-existent-backend"}, // This should be ignored as the backend does not exist.
 						},
@@ -379,6 +379,8 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.Equal(t, "x-foo", fc.Backends[0].HeaderMutation.Set[0].Name)
 		require.Equal(t, "foo", fc.Backends[0].HeaderMutation.Set[0].Value)
 		require.Equal(t, "x-bar", fc.Backends[0].HeaderMutation.Remove[0])
+		require.Equal(t, ptr.To[int32](80), fc.Backends[0].Weight)
+		require.Equal(t, ptr.To[uint32](2), fc.Backends[0].Priority)
 	}
 }
 

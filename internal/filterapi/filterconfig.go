@@ -196,7 +196,7 @@ type Backend struct {
 	// Sensitive Headers to be removed from the request before sending to the backend. Optional.
 	HeaderMutation *HTTPHeaderMutation `json:"httpHeaderMutation,omitempty"`
 	// Body mutations to be applied to the request before sending to the backend. Optional.
-	BodyMutation *HTTPBodyMutation `json:"bodyMutation,omitempty"`
+	BodyMutation *HTTPBodyMutation `json:"httpBodyMutation,omitempty"`
 	// Weight is the traffic weight of this backend within its route rule (mirrors
 	// AIGatewayRouteRuleBackendRef.Weight; default 1). Populated by the controller for
 	// quota-aware routing; not used by Envoy Gateway's own load balancing (that path uses

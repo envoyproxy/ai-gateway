@@ -6,12 +6,14 @@
 package filterapi_test
 
 import (
+	"encoding/json"
 	"log/slog"
 	"os"
 	"path"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
@@ -61,6 +63,46 @@ func TestVersionedAPISchemaAnthropicPrefix(t *testing.T) {
 		Name:   filterapi.APISchemaAnthropic,
 		Prefix: "gateway/v1",
 	}.AnthropicPrefix())
+}
+
+func TestBackendMarshalOptionalRoutingFields(t *testing.T) {
+	cfg := filterapi.Config{
+		Backends: []filterapi.Backend{
+			{
+				Name:   "defaulted",
+				Schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+				BodyMutation: &filterapi.HTTPBodyMutation{
+					Remove: []string{"messages.0.content"},
+				},
+			},
+			{
+				Name:     "explicit-zero",
+				Schema:   filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI},
+				Weight:   ptr.To[int32](0),
+				Priority: ptr.To[uint32](0),
+			},
+		},
+	}
+
+	raw, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	backends := decoded["backends"].([]any)
+	defaulted := backends[0].(map[string]any)
+	_, ok := defaulted["weight"]
+	require.False(t, ok)
+	_, ok = defaulted["priority"]
+	require.False(t, ok)
+	_, ok = defaulted["httpBodyMutation"]
+	require.True(t, ok)
+	_, ok = defaulted["bodyMutation"]
+	require.False(t, ok)
+
+	explicitZero := backends[1].(map[string]any)
+	require.Equal(t, float64(0), explicitZero["weight"])
+	require.Equal(t, float64(0), explicitZero["priority"])
 }
 
 // logAttrs extracts the key→value map from a slog.KindGroup Value.
