@@ -67,9 +67,7 @@ func (a *anthropicToAnthropicTranslator) RequestBody(original []byte, body *anth
 		a.requestModel = a.modelNameOverride
 	}
 
-	if forceBodyMutation && len(newBody) == 0 {
-		newBody = original
-	}
+	newBody = forceOriginalBodyIfEmpty(forceBodyMutation, newBody, original)
 
 	newHeaders = []internalapi.Header{{pathHeaderName, a.path}}
 	if len(newBody) > 0 {
