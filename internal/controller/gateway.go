@@ -1207,10 +1207,12 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 		}
 	}
 
-	// Roll workload templates only when pod-template state must change:
-	// 1. effective route exists but sidecar is missing;
-	// 2. no effective route exists but sidecar remains;
-	// 3. pods are inconsistent or have stamped config-hash drift.
+	// We annotate the deployments and daemonsets under three scenarios:
+	// 1. If there's an effective route but no sidecar container, we need to add the sidecar container.
+	// 2. If there's no effective route but has sidecar container,
+	//    we need to roll out the deployment to trigger the mutation webhook to remove the sidecar container.
+	// 3. If pods are inconsistent even when rollout isn't in progress, or have stamped
+	//    config-hash drift, force rollout to self-heal.
 	if hasEffectiveRoute != hasSideCar || forceRollout {
 		for i := range deployments {
 			dep := &deployments[i]
