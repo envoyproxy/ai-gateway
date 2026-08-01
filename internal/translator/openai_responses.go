@@ -69,9 +69,7 @@ func (o *openAIToOpenAITranslatorV1Responses) RequestBody(original []byte, req *
 	// Always set the path header to the responses endpoint so that the request is routed correctly.
 	newHeaders = []internalapi.Header{{pathHeaderName, o.path}}
 
-	if forceBodyMutation && len(newBody) == 0 {
-		newBody = original
-	}
+	newBody = forceOriginalBodyIfEmpty(forceBodyMutation, newBody, original)
 
 	if len(newBody) > 0 {
 		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
