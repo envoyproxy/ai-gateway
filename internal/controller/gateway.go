@@ -1190,7 +1190,7 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 		}
 	}
 
-	// We annotate the deployments and daemonsets under three scenarios:
+	// For sidecar state changes, annotate the workloads under three scenarios:
 	// 1. If there's an effective route but no sidecar container, we need to add the sidecar container.
 	// 2. If there's no effective route but has sidecar container,
 	//    we need to roll out the deployment to trigger the mutation webhook to remove the sidecar container.
@@ -1198,6 +1198,7 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	needsStateRollout := hasEffectiveRoute != hasSideCar || forceRollout
 	for i := range deployments {
 		dep := &deployments[i]
+		// Hash changes are written to the pod template so Kubernetes owns the rollout.
 		needsHashRollout := hasEffectiveRoute && desiredHash != "" && dep.Spec.Template.Annotations[extProcConfigHashAnnotationKey] != desiredHash
 		if !needsStateRollout && !needsHashRollout {
 			continue
@@ -1213,6 +1214,7 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 
 	for i := range daemonSets {
 		daemonSet := &daemonSets[i]
+		// Hash changes are written to the pod template so Kubernetes owns the rollout.
 		needsHashRollout := hasEffectiveRoute && desiredHash != "" && daemonSet.Spec.Template.Annotations[extProcConfigHashAnnotationKey] != desiredHash
 		if !needsStateRollout && !needsHashRollout {
 			continue
