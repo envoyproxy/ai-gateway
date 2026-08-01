@@ -208,6 +208,25 @@ func TestOpenAIToOpenAITranslatorV1ChatCompletionRequestBody(t *testing.T) {
 		require.Equal(t, contentLengthHeaderName, hm[1].Key())
 		require.Equal(t, strconv.Itoa(len(body)), hm[1].Value())
 	})
+	t.Run("prompt_cache fields forwarded unchanged", func(t *testing.T) {
+		// The OpenAI→OpenAI translator passes the request body through opaquely;
+		// prompt_cache_key / prompt_cache_options / prompt_cache_breakpoint must
+		// reach the upstream byte-for-byte (no drop, no rewrite).
+		original := []byte(`{` +
+			`"model":"gpt-5.6",` +
+			`"prompt_cache_key":"tenant:acme:v1",` +
+			`"prompt_cache_options":{"mode":"explicit"},` +
+			`"messages":[{"role":"user","content":[` +
+			`{"type":"text","text":"Hello","prompt_cache_breakpoint":{"mode":"explicit"}}` +
+			`]}]}`)
+		var parsed openai.ChatCompletionRequest
+		require.NoError(t, json.Unmarshal(original, &parsed))
+		o := &openAIToOpenAITranslatorV1ChatCompletion{path: "/v1/chat/completions"}
+		_, body, err := o.RequestBody(original, &parsed, true) // force mutation → opaque passthrough
+		require.NoError(t, err)
+		require.NotNil(t, body)
+		require.True(t, bytes.Equal(original, body), "request body must be forwarded unchanged")
+	})
 }
 
 func TestOpenAIToOpenAITranslator_ResponseError(t *testing.T) {
@@ -404,6 +423,29 @@ data: [DONE]
 		require.NoError(t, err)
 		require.Equal(t, tokenUsageFrom(10, -1, -1, 20, 30, 8), usedToken)
 		require.Equal(t, &resp, s.Resp)
+	})
+	t.Run("cache_write_tokens preserved", func(t *testing.T) {
+		// OpenAI prompt_tokens_details.cache_write_tokens must reach the client
+		// unchanged (response body is opaque passthrough → no mutation) and be
+		// recognized when the response is parsed.
+		s := &testotel.MockSpan{}
+		body := []byte(`{` +
+			`"model":"gpt-5.6",` +
+			`"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150,` +
+			`"prompt_tokens_details":{"cached_tokens":40,"cache_write_tokens":60}}}`)
+		o := &openAIToOpenAITranslatorV1ChatCompletion{}
+		hm, bm, usedToken, responseModel, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, s)
+		require.NoError(t, err)
+		require.Nil(t, hm) // no header mutation
+		require.Nil(t, bm) // body untouched → cache_write_tokens reaches client
+		require.Equal(t, "gpt-5.6", responseModel)
+		require.NotNil(t, s.Resp)
+		require.NotNil(t, s.Resp.Usage.PromptTokensDetails)
+		require.Equal(t, 40, s.Resp.Usage.PromptTokensDetails.CachedTokens)
+		require.Equal(t, 60, s.Resp.Usage.PromptTokensDetails.CacheWriteTokens)
+		cached, ok := usedToken.CachedInputTokens()
+		require.True(t, ok)
+		require.Equal(t, uint32(40), cached)
 	})
 	t.Run("response reasoning content", func(t *testing.T) {
 		t.Run("valid body", func(t *testing.T) {
