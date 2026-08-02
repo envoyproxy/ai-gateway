@@ -747,10 +747,10 @@ func (a *anthropicToAWSBedrockTranslator) writeSSEEvent(eventType string, data a
 	if err != nil {
 		return
 	}
-	*out = append(*out, sseEventPrefix...)
+	*out = append(*out, sseEventPrefixSpace...)
 	*out = append(*out, eventType...)
 	*out = append(*out, '\n')
-	*out = append(*out, sseDataPrefix...)
+	*out = append(*out, sseDataPrefixSpace...)
 	*out = append(*out, jsonData...)
 	*out = append(*out, '\n', '\n')
 }

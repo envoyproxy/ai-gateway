@@ -4923,6 +4923,33 @@ func TestResponseInputItemUnionParamMarshalJSON(t *testing.T) {
 			},
 			expRes: []byte(`{"type": "item_reference", "id": "id-123"}`),
 		},
+		{
+			name: "marshal additional_tools",
+			input: ResponseInputItemUnionParam{
+				OfAdditionalTools: &ResponseInputItemAdditionalToolsParam{
+					Type: "additional_tools",
+					ID:   "tools-123",
+					Role: "developer",
+					Tools: []ResponseToolUnion{
+						{
+							OfFunction: &FunctionToolParam{
+								Type:        "function",
+								Name:        "get_weather",
+								Description: "Get weather by city",
+								Parameters: map[string]any{
+									"type": "object",
+									"properties": map[string]any{
+										"city": map[string]any{"type": "string"},
+									},
+								},
+								Strict: ptr.To(true),
+							},
+						},
+					},
+				},
+			},
+			expRes: []byte(`{"type": "additional_tools", "id": "tools-123", "role": "developer", "tools": [{"type": "function", "name": "get_weather", "description": "Get weather by city", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}, "strict": true}]}`),
+		},
 	}
 
 	for _, tc := range tests {
@@ -5400,6 +5427,33 @@ func TestResponseInputItemUnionParamUnmarshalJSON(t *testing.T) {
 				OfAgentReasoning: ptr.To(json.RawMessage(`{"type":"agent_reasoning","summary":"prior reasoning"}`)),
 			},
 			input: []byte(`{"type":"agent_reasoning","summary":"prior reasoning"}`),
+		},
+		{
+			name: "unmarshal additional_tools",
+			expRes: ResponseInputItemUnionParam{
+				OfAdditionalTools: &ResponseInputItemAdditionalToolsParam{
+					Type: "additional_tools",
+					ID:   "tools-123",
+					Role: "developer",
+					Tools: []ResponseToolUnion{
+						{
+							OfFunction: &FunctionToolParam{
+								Type:        "function",
+								Name:        "get_weather",
+								Description: "Get weather by city",
+								Parameters: map[string]any{
+									"type": "object",
+									"properties": map[string]any{
+										"city": map[string]any{"type": "string"},
+									},
+								},
+								Strict: ptr.To(true),
+							},
+						},
+					},
+				},
+			},
+			input: []byte(`{"type": "additional_tools", "id": "tools-123", "role": "developer", "tools": [{"type": "function", "name": "get_weather", "description": "Get weather by city", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}, "strict": true}]}`),
 		},
 		{
 			name:   "unmarshal empty type string",

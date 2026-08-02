@@ -3922,8 +3922,9 @@ type ResponseInputItemUnionParam struct {
 	OfItemReference        *ResponseInputItemItemReferenceParam
 	// Codex-emitted item types whose schema is not yet part of the public Responses API.
 	// Preserve their raw JSON so OpenAI-compatible backends can handle them unchanged.
-	OfAgentMessage   *json.RawMessage
-	OfAgentReasoning *json.RawMessage
+	OfAgentMessage    *json.RawMessage
+	OfAgentReasoning  *json.RawMessage
+	OfAdditionalTools *ResponseInputItemAdditionalToolsParam
 }
 
 func (r ResponseInputItemUnionParam) MarshalJSON() ([]byte, error) { // nolint:gocritic
@@ -3984,6 +3985,8 @@ func (r ResponseInputItemUnionParam) MarshalJSON() ([]byte, error) { // nolint:g
 		return json.Marshal(r.OfAgentMessage)
 	case r.OfAgentReasoning != nil:
 		return json.Marshal(r.OfAgentReasoning)
+	case r.OfAdditionalTools != nil:
+		return json.Marshal(r.OfAdditionalTools)
 	default:
 		return nil, errors.New("no input item to marshal")
 	}
@@ -4190,6 +4193,12 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 	case "agent_reasoning":
 		raw := json.RawMessage(append([]byte(nil), data...))
 		r.OfAgentReasoning = &raw
+	case "additional_tools":
+		var at ResponseInputItemAdditionalToolsParam
+		if err := json.Unmarshal(data, &at); err != nil {
+			return err
+		}
+		r.OfAdditionalTools = &at
 	// Add other cases here for different input item types as needed.
 	default:
 		return errors.New("cannot unmarshal unknown input type: " + typ.String())
@@ -5944,6 +5953,24 @@ type ResponseCustomToolCall struct {
 	// The unique ID of the custom tool call in the OpenAI platform.
 	ID string `json:"id,omitzero"`
 	// The type of the custom tool call. Always `custom_tool_call`.
+	Type string `json:"type"`
+}
+
+// A list of additional tools made available to the model at a given point in the
+// conversation.
+//
+// The properties ID, Role, Tools are required.
+type ResponseInputItemAdditionalToolsParam struct {
+	// The unique ID of the additional tools item.
+	ID string `json:"id"`
+	// The role that provided the additional tools.
+	//
+	// Any of "unknown", "user", "assistant", "system", "critic", "discriminator",
+	// "developer", "tool".
+	Role string `json:"role"`
+	// The additional tool definitions made available at this item.
+	Tools []ResponseToolUnion `json:"tools"`
+	// The type of the item. Always `additional_tools`.
 	Type string `json:"type"`
 }
 
@@ -8803,4 +8830,11 @@ const (
 // TranslationResponse represents the JSON response from /v1/audio/translations.
 type TranslationResponse struct {
 	Text string `json:"text"`
+}
+
+// ResponsesInputTokensResponse represents the response from /v1/responses/input_tokens.
+type ResponsesInputTokensResponse struct {
+	// Object is the object type, which is always "response.input_tokens".
+	Object      string `json:"object"`
+	InputTokens int64  `json:"input_tokens"`
 }
