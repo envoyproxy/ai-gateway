@@ -231,6 +231,99 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	require.NotNil(t, secret)
 }
 
+func TestGatewayController_Reconcile_GatewayConfigImageOverrideNoWorkloadPatch(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	fakeKube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+
+	const (
+		gwName      = "gc-image-gw"
+		namespace   = "ns"
+		egNamespace = "envoy-gateway-system"
+		globalImage = "docker.io/envoyproxy/ai-gateway-extproc:latest"
+	)
+	opts := newTestExtProcOptions(globalImage, "info")
+	c := NewGatewayController(fakeClient, fakeKube, ctrl.Log, egNamespace, false, func() string { return "uuid" }, opts, true)
+
+	gatewayConfig := testGatewayConfig.DeepCopy()
+	gatewayConfig.Namespace = namespace
+	require.NoError(t, fakeClient.Create(t.Context(), gatewayConfig))
+
+	require.NoError(t, fakeClient.Create(t.Context(), &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      gwName,
+			Namespace: namespace,
+			Annotations: map[string]string{
+				GatewayConfigAnnotationKey: gatewayConfig.Name,
+			},
+		},
+	}))
+
+	parentRefs := []gwapiv1a2.ParentReference{{Name: gwName}}
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: namespace},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			ParentRefs: parentRefs,
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "backend"}}},
+			},
+		},
+	}))
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: namespace},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "service", Namespace: ptr.To[gwapiv1.Namespace](namespace)},
+		},
+	}))
+
+	input := extProcContainerInput{gatewayConfig: gatewayConfig}
+	desiredImage := c.extProcImage(input)
+	desiredHash := c.extProcContainerHash(input)
+	labels := map[string]string{
+		egOwningGatewayNameLabel:      gwName,
+		egOwningGatewayNamespaceLabel: namespace,
+	}
+	_, err := fakeKube.CoreV1().Pods(egNamespace).Create(t.Context(), &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "gw-pod", Namespace: egNamespace, Labels: labels},
+		Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+			{Name: extProcContainerName, Image: desiredImage, Args: []string{"-logLevel", "info"}},
+		}},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+	_, err = fakeKube.AppsV1().Deployments(egNamespace).Create(t.Context(), &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "gw-deployment", Namespace: egNamespace, Labels: labels},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: ptr.To(int32(1)),
+			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{extProcConfigHashAnnotationKey: desiredHash},
+			}},
+		},
+		Status: appsv1.DeploymentStatus{
+			ObservedGeneration: 1,
+			Replicas:           1,
+			UpdatedReplicas:    1,
+			ReadyReplicas:      1,
+			AvailableReplicas:  1,
+		},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	beforeActions := len(fakeKube.Actions())
+	res, err := c.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKey{Name: gwName, Namespace: namespace}})
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, res)
+
+	for _, action := range fakeKube.Actions()[beforeActions:] {
+		require.Falsef(t, action.GetVerb() == "patch" && action.GetResource().Resource == "deployments",
+			"reconcile should not patch workload when GatewayConfig image and template hash are current: %#v", action)
+	}
+	deployment, err := fakeKube.AppsV1().Deployments(egNamespace).Get(t.Context(), "gw-deployment", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, desiredHash, deployment.Spec.Template.Annotations[extProcConfigHashAnnotationKey])
+	_, exists := deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
+	require.False(t, exists)
+}
+
 func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
@@ -2120,6 +2213,46 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		deployment, err := kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+	})
+
+	t.Run("current sidecar with desired hash patches daemonset template hash only", func(t *testing.T) {
+		pod, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-ds-current-hash",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+				{Name: extProcContainerName, Image: c.image, Args: []string{"-logLevel", logLevel}},
+			}},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		dss, err := kube.AppsV1().DaemonSets(egNamespace).Create(t.Context(), &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "daemonset-current-hash",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: appsv1.DaemonSetSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+			Status: appsv1.DaemonSetStatus{
+				ObservedGeneration:     1,
+				CurrentNumberScheduled: 1,
+				UpdatedNumberScheduled: 1,
+			},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		const desiredHash = "daemonset-desired-hash"
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "uuid-hash", true, false, c.image, desiredHash)
+		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
+
+		dss, err = kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "daemonset-current-hash", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, desiredHash, dss.Spec.Template.Annotations[extProcConfigHashAnnotationKey])
+		_, exists := dss.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
+		require.False(t, exists)
 	})
 
 	t.Run("pod with extproc but old version", func(t *testing.T) {

@@ -92,12 +92,12 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	aiRoutes, err := c.listAIGatewayRoutesForGateway(ctx, req.Name, req.Namespace)
+	aiRoutes, err := listAIGatewayRoutesForGateway(ctx, c.client, nil, req.Name, req.Namespace)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	mcpRoutes, err := c.listMCPRoutesForGateway(ctx, req.Name, req.Namespace)
+	mcpRoutes, err := listMCPRoutesForGateway(ctx, c.client, nil, req.Name, req.Namespace)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

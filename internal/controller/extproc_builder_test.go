@@ -6,6 +6,7 @@
 package controller
 
 import (
+	"reflect"
 	"testing"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
@@ -55,9 +56,10 @@ func TestExtProcContainerHash_Deterministic(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h1 := b.extProcContainerHash(tc.input)
-			h2 := b.extProcContainerHash(tc.input)
 			require.NotEmpty(t, h1)
-			require.Equal(t, h1, h2, "hash must be stable across recomputes")
+			for range 20 {
+				require.Equal(t, h1, b.extProcContainerHash(tc.input), "hash must be stable across recomputes")
+			}
 		})
 	}
 }
@@ -76,6 +78,8 @@ func TestExtProcContainerHash_Drift(t *testing.T) {
 	input := extProcContainerInput{}
 	baseHash := base.extProcContainerHash(input)
 	require.NotEmpty(t, baseHash)
+	require.Equal(t, 19, reflect.TypeOf(extProcBuilder{}).NumField(),
+		"update drift coverage when extProcBuilder fields change")
 
 	// Helper: mutate a copy of the builder, recompute, expect a different hash.
 	assertDrifts := func(name string, mutated *extProcBuilder) {
@@ -94,6 +98,16 @@ func TestExtProcContainerHash_Drift(t *testing.T) {
 	assertDrifts("imagePullSecrets", func() *extProcBuilder {
 		b := newTestBuilder()
 		b.imagePullSecrets = []corev1.LocalObjectReference{{Name: "reg-cred"}}
+		return b
+	}())
+	assertDrifts("imagePullPolicy", func() *extProcBuilder {
+		b := newTestBuilder()
+		b.imagePullPolicy = corev1.PullAlways
+		return b
+	}())
+	assertDrifts("udsPath", func() *extProcBuilder {
+		b := newTestBuilder()
+		b.udsPath = "/var/run/extproc.sock"
 		return b
 	}())
 	assertDrifts("endpointPrefixes", func() *extProcBuilder {
@@ -127,6 +141,34 @@ func TestExtProcContainerHash_Drift(t *testing.T) {
 		b.requestHeaderAttributes = &s
 		return b
 	}())
+	assertDrifts("spanRequestHeaderAttributes", func() *extProcBuilder {
+		b := newTestBuilder()
+		s := "x-trace-id:trace.id"
+		b.spanRequestHeaderAttributes = &s
+		return b
+	}())
+	assertDrifts("metricsRequestHeaderAttributes", func() *extProcBuilder {
+		b := newTestBuilder()
+		s := "x-metric-id:metric.id"
+		b.metricsRequestHeaderAttributes = &s
+		return b
+	}())
+	assertDrifts("logRequestHeaderAttributes", func() *extProcBuilder {
+		b := newTestBuilder()
+		s := "x-log-id:log.id"
+		b.logRequestHeaderAttributes = &s
+		return b
+	}())
+	assertDrifts("rootPrefix", func() *extProcBuilder {
+		b := newTestBuilder()
+		b.rootPrefix = "/custom"
+		return b
+	}())
+	assertDrifts("extProcAsSideCar", func() *extProcBuilder {
+		b := newTestBuilder()
+		b.extProcAsSideCar = true
+		return b
+	}())
 	// mcpSessionEncryptionSeed only enters the container args when needMCP is
 	// true, so verify drift under that input.
 	assertDriftsMCP := func(name string, mutated *extProcBuilder) {
@@ -138,6 +180,21 @@ func TestExtProcContainerHash_Drift(t *testing.T) {
 	assertDriftsMCP("mcpSessionEncryptionSeed", func() *extProcBuilder {
 		b := newTestBuilder()
 		b.mcpSessionEncryptionSeed = "different-seed"
+		return b
+	}())
+	assertDriftsMCP("mcpSessionEncryptionIterations", func() *extProcBuilder {
+		b := newTestBuilder()
+		b.mcpSessionEncryptionIterations = 101
+		return b
+	}())
+	assertDriftsMCP("mcpFallbackSessionEncryptionSeed", func() *extProcBuilder {
+		b := newTestBuilder()
+		b.mcpFallbackSessionEncryptionSeed = "different-fallback"
+		return b
+	}())
+	assertDriftsMCP("mcpFallbackSessionEncryptionIterations", func() *extProcBuilder {
+		b := newTestBuilder()
+		b.mcpFallbackSessionEncryptionIterations = 201
 		return b
 	}())
 
@@ -176,11 +233,17 @@ func TestExtProcContainerHash_Drift(t *testing.T) {
 // do not spuriously trigger rollouts.
 func TestExtProcContainerHash_ExcludesConfigRoutingArgs(t *testing.T) {
 	b := newTestBuilder()
-	container := b.buildExtProcContainer(extProcContainerInput{})
+	input := extProcContainerInput{}
+	baseHash := b.extProcContainerHash(input)
+	require.NotEmpty(t, baseHash)
+
+	container := b.buildExtProcContainer(input)
 	for _, a := range container.Args {
 		require.NotEqual(t, "-configPath", a)
 		require.NotEqual(t, "-configBundlePath", a)
 	}
+	require.Equal(t, baseHash, b.extProcContainerHash(input),
+		"secret-presence-driven config routing must not affect the workload template hash")
 }
 
 // TestNewExtProcBuilder_MalformedInput covers the defensive parse-error log
