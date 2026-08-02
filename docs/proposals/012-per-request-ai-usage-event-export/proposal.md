@@ -284,6 +284,7 @@ Header-derived attribution depends on deployment configuration. Operators should
 The following are natural extensions that build on the same `UsageEventSink` abstraction and schema without changing the gateway-facing API:
 
 - **Additional sink implementations** — transports such as Kafka, gRPC, or cloud pub/sub messaging, implemented against the same `UsageEventSink` interface.
+- **Sink circuit breaking** — fast-failing event publication after consecutive sink timeouts or failures to prevent latency degradation on the request path when a sink is unavailable.
 - **Alternative attribution sources** — deriving attribution from authenticated identity or policy metadata rather than request headers alone.
 
 ---
@@ -298,6 +299,6 @@ Access logs are intentionally best-effort and provide no acknowledgement of succ
 
 Acknowledgement is only meaningful if publication completes before request processing finishes. An asynchronous export would improve latency but could not distinguish successfully exported events from events lost before transmission.
 
-## Gateway-managed retries
+## Gateway-managed retries and failover sinks
 
-To keep the initial implementation simple, the gateway neither retries nor buffers events. Operators needing durable delivery can use a durable receiver as the HTTP sink. Bounded retries, asynchronous delivery, or short-lived in-memory buffering may be considered later if needed.
+To keep the initial implementation simple, the gateway neither retries, buffers, nor fails over to secondary sinks. Operators needing durable delivery, `zero event loss`, or dead-letter queues can use a durable receiver (such as a local sidecar collector) as the HTTP sink. Handling retries, local disk buffering, and secondary routing in the sink tier keeps the gateway proxy stateless and performant. Bounded retries, asynchronous delivery, secondary failover sinks, or short-lived in-memory buffering may be considered later if needed.
