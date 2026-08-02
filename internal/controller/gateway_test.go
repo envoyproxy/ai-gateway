@@ -263,6 +263,24 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 				},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "route3", Namespace: gwNamespace},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+							{
+								Name:     "pool",
+								Group:    ptr.To("inference.networking.k8s.io"),
+								Kind:     ptr.To("InferencePool"),
+								Weight:   ptr.To[int32](7),
+								Priority: ptr.To[uint32](3),
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 	// We also need to create corresponding AIServiceBackends.
 	for _, aigwRoute := range []*aigv1b1.AIServiceBackend{
@@ -374,6 +392,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.Len(t, fc.Models, 1)
 		require.Equal(t, "mymodel", fc.Models[0].Name)
 
+		require.Len(t, fc.Backends, 3)
 		require.Len(t, fc.Backends[0].HeaderMutation.Set, 1)
 		require.Len(t, fc.Backends[0].HeaderMutation.Remove, 1)
 		require.Equal(t, "x-foo", fc.Backends[0].HeaderMutation.Set[0].Name)
@@ -381,6 +400,10 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.Equal(t, "x-bar", fc.Backends[0].HeaderMutation.Remove[0])
 		require.Equal(t, ptr.To[int32](80), fc.Backends[0].Weight)
 		require.Equal(t, ptr.To[uint32](2), fc.Backends[0].Priority)
+		require.Equal(t, ptr.To[int32](1), fc.Backends[1].Weight)
+		require.Equal(t, ptr.To[uint32](0), fc.Backends[1].Priority)
+		require.Equal(t, ptr.To[int32](7), fc.Backends[2].Weight)
+		require.Nil(t, fc.Backends[2].Priority)
 	}
 }
 

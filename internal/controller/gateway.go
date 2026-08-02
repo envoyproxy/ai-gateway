@@ -426,8 +426,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				b := filterapi.Backend{}
 				b.Name = internalapi.PerRouteRuleRefBackendName(aiGatewayRoute.Namespace, backendRef.Name, aiGatewayRoute.Name, ruleIndex, backendRefIndex)
 				b.ModelNameOverride = backendRef.ModelNameOverride
-				b.Weight = backendRef.Weight
-				b.Priority = backendRef.Priority
+				b.Weight = ptr.To(ptr.Deref(backendRef.Weight, int32(1)))
 
 				var bsp *aigv1b1.BackendSecurityPolicy
 				backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
@@ -448,6 +447,8 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 						continue
 					}
 				} else {
+					b.Priority = ptr.To(ptr.Deref(backendRef.Priority, uint32(0)))
+
 					var backendObj *aigv1b1.AIServiceBackend
 					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, backendNamespace, backendRef.Name)
 					if err != nil {
