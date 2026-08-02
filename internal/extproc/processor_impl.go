@@ -168,7 +168,17 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespons
 	if r.upstreamFilter != nil { // See the comment on the "upstreamFilter" field.
 		return r.upstreamFilter.ProcessResponseHeaders(ctx, headerMap)
 	}
-	return r.passThroughProcessor.ProcessResponseHeaders(ctx, headerMap)
+	// No upstream filter: nothing to translate in the response body. Tell Envoy to skip the
+	// response body phase for this filter so we avoid a spurious BUFFERED body roundtrip that
+	// can race with other ext_proc filters (e.g. the EPP) consuming the response body.
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ResponseHeaders{
+			ResponseHeaders: &extprocv3.HeadersResponse{},
+		},
+		ModeOverride: &extprocv3http.ProcessingMode{
+			ResponseBodyMode: extprocv3http.ProcessingMode_NONE,
+		},
+	}, nil
 }
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
@@ -294,14 +304,46 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 		rawBody.Body,
 	)
 
+	// Early-translate the request body so the EndpointPicker (EPP), which runs in the listener
+	// filter chain before the upstream ext_proc, receives a body it can parse (OpenAI format).
+	// For most endpoint specs this is a no-op (returns nil, nil, nil).
+	earlyHeaders, earlyBody, earlyErr := r.eh.EarlyTranslate(body)
+	if earlyErr != nil {
+		r.logger.Error("failed to early-translate request for EPP", slog.String("error", earlyErr.Error()))
+	}
+	var bodyMutation *extprocv3.BodyMutation
+	if earlyBody != nil {
+		for _, h := range earlyHeaders {
+			headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+				Header:       &corev3.HeaderValue{Key: h.Key(), RawValue: []byte(h.Value())},
+			})
+		}
+		bodyMutation = &extprocv3.BodyMutation{Mutation: &extprocv3.BodyMutation_Body{Body: earlyBody}}
+		// Force the upstream translator to emit the original body bytes in its
+		// CONTINUE_AND_REPLACE response. Without this, a passthrough translator
+		// (e.g. AnthropicToAnthropic) returns nil body, leaving the EPP-facing
+		// OpenAI body buffered in Envoy instead of the original Anthropic body.
+		r.forceBodyMutation = true
+	}
+
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{
 				Response: &extprocv3.CommonResponse{
 					HeaderMutation:  headerMutation,
+					BodyMutation:    bodyMutation,
 					ClearRouteCache: true,
 				},
 			},
+		},
+		// Pre-empt the filter-level response_body_mode: BUFFERED before the response
+		// arrives. If an upstream filter exists, it will override this in
+		// ProcessResponseHeaders with BUFFERED or STREAMED as appropriate. Without this
+		// early override, Envoy begins buffering the response body as soon as the upstream
+		// responds, and our later ModeOverride in ProcessResponseHeaders arrives too late.
+		ModeOverride: &extprocv3http.ProcessingMode{
+			ResponseBodyMode: extprocv3http.ProcessingMode_NONE,
 		},
 	}, nil
 }
@@ -464,10 +506,17 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform response headers: %w", err)
 	}
+	// Always emit a ModeOverride so this upstream filter re-enables response body
+	// processing, overriding the NONE pre-emption set in ProcessRequestBody.
+	// Without this, the router-level NONE would prevent ProcessResponseBody from
+	// being called even when an upstream filter is present.
 	var mode *extprocv3http.ProcessingMode
 	if u.parent.stream && u.responseHeaders[":status"] == "200" {
-		// We only stream the response if the status code is 200 and the response is a stream.
+		// Stream the response body chunk-by-chunk for SSE.
 		mode = &extprocv3http.ProcessingMode{ResponseBodyMode: extprocv3http.ProcessingMode_STREAMED}
+	} else {
+		// Buffer the full response body for translation (token counting, error handling).
+		mode = &extprocv3http.ProcessingMode{ResponseBodyMode: extprocv3http.ProcessingMode_BUFFERED}
 	}
 	headerMutation, _ := mutationsFromTranslationResult(newHeaders, nil)
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
