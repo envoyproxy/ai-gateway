@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
+	"slices"
 	"strings"
 
 	"k8s.io/utils/ptr"
@@ -20,13 +21,23 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 )
 
+// geminiThoughtSignatureSentinel tells Gemini's OpenAI-compat endpoint to skip its
+// thought_signature validation on a function-call part. Gemini requires a signature on
+// every function-call part for multi-turn tool use (400 "Function call is missing a
+// thought_signature in functionCall parts" otherwise), but Anthropic's tool_use schema has
+// no field to carry a real one through. Google documents this exact sentinel for when no
+// signature is available: https://ai.google.dev/gemini-api/docs/thought-signatures#faqs
+// Only injected for backends that explicitly opt in via requiredFields: ["thought_signature"]
+// — other OpenAI-schema backends (real OpenAI, Azure OpenAI, vLLM) don't expect this field.
+var geminiThoughtSignatureSentinel = json.RawMessage(`{"google":{"thought_signature":"skip_thought_signature_validator"}}`)
+
 // The following are helper functions for creating an OpenAI ChatCompletionRequest from an Anthropic MessagesRequest
 
 // buildOpenAIChatCompletionRequest converts an Anthropic MessagesRequest into an OpenAI ChatCompletionRequest.
 // It handles model override, system prompts, message conversion, tools, and tool choice.
-func buildOpenAIChatCompletionRequest(body *anthropic.MessagesRequest, modelNameOverride internalapi.ModelNameOverride) *openai.ChatCompletionRequest {
+func buildOpenAIChatCompletionRequest(body *anthropic.MessagesRequest, modelNameOverride internalapi.ModelNameOverride, requiredFields []string, unsupportedFields ...string) *openai.ChatCompletionRequest {
 	model := cmp.Or(modelNameOverride, body.Model)
-	messages := anthropicMessagesToOpenAI(body)
+	messages := anthropicMessagesToOpenAI(body, requiredFields)
 	tools := anthropicToolsToOpenAI(body.Tools)
 	var toolChoiceVal anthropic.ToolChoice
 	if body.ToolChoice != nil {
@@ -53,8 +64,10 @@ func buildOpenAIChatCompletionRequest(body *anthropic.MessagesRequest, modelName
 		req.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
 	}
 
-	// Map Anthropic thinking config to OpenAI thinking config.
-	if body.Thinking != nil {
+	// Map Anthropic thinking config to OpenAI thinking config, unless this backend has
+	// declared it doesn't support the field (e.g. the real OpenAI API rejects it outright;
+	// vLLM, which this mapping was originally built for, accepts it).
+	if body.Thinking != nil && !slices.Contains(unsupportedFields, "thinking") {
 		req.Thinking = anthropicThinkingToOpenAI(body.Thinking)
 	}
 
@@ -88,7 +101,7 @@ func anthropicThinkingToOpenAI(t *anthropic.Thinking) *openai.ThinkingUnion {
 // anthropicMessagesToOpenAI converts Anthropic messages (including the system prompt) to OpenAI message format.
 // It preserves tool_use blocks in assistant messages as OpenAI tool_calls, and converts
 // tool_result blocks in user messages into separate OpenAI tool-role messages.
-func anthropicMessagesToOpenAI(body *anthropic.MessagesRequest) []openai.ChatCompletionMessageParamUnion {
+func anthropicMessagesToOpenAI(body *anthropic.MessagesRequest, requiredFields []string) []openai.ChatCompletionMessageParamUnion {
 	var messages []openai.ChatCompletionMessageParamUnion
 
 	// Prepend the system prompt as an OpenAI system message.
@@ -109,7 +122,7 @@ func anthropicMessagesToOpenAI(body *anthropic.MessagesRequest) []openai.ChatCom
 		case anthropic.MessageRoleUser:
 			messages = appendAnthropicUserMessage(messages, msg)
 		case anthropic.MessageRoleAssistant:
-			messages = appendAnthropicAssistantMessage(messages, msg)
+			messages = appendAnthropicAssistantMessage(messages, msg, requiredFields)
 		}
 	}
 
@@ -123,7 +136,7 @@ func anthropicMessagesToOpenAI(body *anthropic.MessagesRequest) []openai.ChatCom
 // When thinking or redacted_thinking blocks are present, the content is encoded as a
 // structured []ChatCompletionAssistantMessageParamContent array to preserve full fidelity.
 // Otherwise, plain string content is used for backward compatibility.
-func appendAnthropicAssistantMessage(messages []openai.ChatCompletionMessageParamUnion, msg anthropic.MessageParam) []openai.ChatCompletionMessageParamUnion {
+func appendAnthropicAssistantMessage(messages []openai.ChatCompletionMessageParamUnion, msg anthropic.MessageParam, requiredFields []string) []openai.ChatCompletionMessageParamUnion {
 	var toolCalls []openai.ChatCompletionMessageToolCallParam
 	var contentParts []openai.ChatCompletionAssistantMessageParamContent
 	hasThinking := false
@@ -157,14 +170,18 @@ func appendAnthropicAssistantMessage(messages []openai.ChatCompletionMessagePara
 				args = []byte("{}")
 			}
 			id := block.ToolUse.ID
-			toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
+			toolCall := openai.ChatCompletionMessageToolCallParam{
 				ID:   &id,
 				Type: openai.ChatCompletionMessageToolCallTypeFunction,
 				Function: openai.ChatCompletionMessageToolCallFunctionParam{
 					Name:      block.ToolUse.Name,
 					Arguments: string(args),
 				},
-			})
+			}
+			if slices.Contains(requiredFields, "thought_signature") {
+				toolCall.ExtraContent = geminiThoughtSignatureSentinel
+			}
+			toolCalls = append(toolCalls, toolCall)
 		}
 	}
 

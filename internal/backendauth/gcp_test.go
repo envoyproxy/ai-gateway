@@ -97,6 +97,16 @@ func TestGCPHandler_Do(t *testing.T) {
 			},
 			wantPathValue: "/v1/projects/test-project/locations/us-central1/publishers/google/models/gemini-pro:generateContent",
 		},
+		{
+			// OpenAI-schema translator emits a leading-slash :path (e.g. Gemini via the
+			// Vertex OpenAI-compat endpoint). The prefix join must not produce a double slash.
+			name:    "leading-slash path (openai schema) has no double slash",
+			handler: handler,
+			requestHeaders: map[string]string{
+				":path": "/endpoints/openapi/chat/completions",
+			},
+			wantPathValue: "/v1/projects/test-project/locations/us-central1/endpoints/openapi/chat/completions",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -118,6 +128,17 @@ func TestGCPHandler_Do(t *testing.T) {
 			require.Equal(t, tc.wantPathValue, pathValue, ":path header value mismatch")
 		})
 	}
+}
+
+func TestGCPHandler_Do_MissingPathHeader(t *testing.T) {
+	handler := &gcpHandler{
+		gcpAccessToken: "test-token",
+		region:         "us-central1",
+		projectName:    "test-project",
+	}
+
+	_, err := handler.Do(context.Background(), map[string]string{}, nil)
+	require.ErrorContains(t, err, "missing ':path' header in the request")
 }
 
 type mockTokenSource struct {
