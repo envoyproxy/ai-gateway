@@ -1011,10 +1011,9 @@ func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock []byte) (*openai.
 	for line := range lines {
 		if after, ok := bytes.CutPrefix(line, sseEventPrefix); ok {
 			eventType = bytes.TrimSpace(after)
-		} else if after, ok := bytes.CutPrefix(line, sseDataPrefix); ok {
+		} else if data, ok := sseData(line); ok {
 			// This handles JSON data that might be split across multiple 'data:' lines
 			// by concatenating them (Anthropic's format).
-			data := bytes.TrimSpace(after)
 			eventData = append(eventData, data...)
 		}
 	}

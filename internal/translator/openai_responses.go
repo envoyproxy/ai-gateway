@@ -169,12 +169,10 @@ func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span t
 		}
 		o.buffered = remaining
 		for line := range bytes.SplitSeq(event, []byte("\n")) {
-			// Per the SSE specification, a space after the colon is optional.
-			data, ok := bytes.CutPrefix(line, []byte("data:"))
+			data, ok := sseData(line)
 			if !ok {
 				continue
 			}
-			data = bytes.TrimSpace(data)
 			if len(data) == 0 || bytes.Equal(data, sseDoneMessage) {
 				continue
 			}
@@ -208,22 +206,6 @@ func (o *openAIToOpenAITranslatorV1Responses) extractUsageFromBufferEvent(span t
 				span.RecordResponseChunk(&eventUnion)
 			}
 		}
-	}
-}
-
-// nextSSEEvent returns the next complete SSE event and preserves partial events in buffer.
-// SSE permits either LF or CRLF line endings.
-func nextSSEEvent(buffer []byte) (event, remaining []byte, ok bool) {
-	lfEnd := bytes.Index(buffer, []byte("\n\n"))
-	crlfEnd := bytes.Index(buffer, []byte("\r\n\r\n"))
-
-	switch {
-	case crlfEnd >= 0 && (lfEnd < 0 || crlfEnd < lfEnd):
-		return buffer[:crlfEnd], buffer[crlfEnd+len("\r\n\r\n"):], true
-	case lfEnd >= 0:
-		return buffer[:lfEnd], buffer[lfEnd+len("\n\n"):], true
-	default:
-		return nil, buffer, false
 	}
 }
 

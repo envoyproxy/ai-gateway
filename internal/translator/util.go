@@ -6,6 +6,7 @@
 package translator
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"regexp"
@@ -26,9 +27,36 @@ const (
 
 var (
 	sseDataPrefix   = []byte("data: ")
+	sseDataField    = []byte("data:")
 	sseDoneMessage  = []byte("[DONE]")
 	sseDoneFullLine = append(append(sseDataPrefix, sseDoneMessage...), '\n')
 )
+
+// sseData returns the payload of an SSE data field. SSE permits the space
+// after the colon to be omitted.
+func sseData(line []byte) (data []byte, ok bool) {
+	data, ok = bytes.CutPrefix(line, sseDataField)
+	if !ok {
+		return nil, false
+	}
+	return bytes.TrimSpace(data), true
+}
+
+// nextSSEEvent returns the next complete SSE event and preserves partial events in buffer.
+// SSE permits either LF or CRLF line endings.
+func nextSSEEvent(buffer []byte) (event, remaining []byte, ok bool) {
+	lfEnd := bytes.Index(buffer, []byte("\n\n"))
+	crlfEnd := bytes.Index(buffer, []byte("\r\n\r\n"))
+
+	switch {
+	case crlfEnd >= 0 && (lfEnd < 0 || crlfEnd < lfEnd):
+		return buffer[:crlfEnd], buffer[crlfEnd+len("\r\n\r\n"):], true
+	case lfEnd >= 0:
+		return buffer[:lfEnd], buffer[lfEnd+len("\n\n"):], true
+	default:
+		return nil, buffer, false
+	}
+}
 
 // regDataURI follows the web uri regex definition.
 // https://developer.mozilla.org/en-US/docs/Web/URI/Schemes/data#syntax

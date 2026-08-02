@@ -697,8 +697,7 @@ func (s *openAIStreamToAnthropicState) processBuffer(out *[]byte, endOfStream bo
 func (s *openAIStreamToAnthropicState) processEventBlock(block []byte, out *[]byte) error {
 	var eventData []byte
 	for line := range bytes.SplitSeq(block, []byte("\n")) {
-		if after, ok := bytes.CutPrefix(line, sseDataPrefix); ok {
-			data := bytes.TrimSpace(after)
+		if data, ok := sseData(line); ok {
 			if len(data) > 0 {
 				eventData = data
 			}

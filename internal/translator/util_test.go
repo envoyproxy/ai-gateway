@@ -87,3 +87,24 @@ func TestSystemMsgToDeveloperMsg(t *testing.T) {
 	require.Equal(t, openai.ChatMessageRoleDeveloper, developerMsg.Role)
 	require.Equal(t, openai.ContentUnion{Value: "You are a helpful assistant."}, developerMsg.Content)
 }
+
+func TestSSEData(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want string
+		ok   bool
+	}{
+		{name: "with optional space", line: "data: {\"type\":\"response.completed\"}", want: `{"type":"response.completed"}`, ok: true},
+		{name: "without optional space", line: "data:{\"type\":\"response.completed\"}", want: `{"type":"response.completed"}`, ok: true},
+		{name: "non data field", line: "event: response.completed", ok: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := sseData([]byte(tt.line))
+			require.Equal(t, tt.ok, ok)
+			require.Equal(t, tt.want, string(got))
+		})
+	}
+}

@@ -314,8 +314,10 @@ func (o *openAIToGCPVertexAITranslatorV1ChatCompletion) parseGCPStreamingChunks(
 			continue
 		}
 
-		// Remove "data: " prefix from SSE format if present.
-		line := bytes.TrimPrefix(part, sseDataPrefix)
+		line, ok := sseData(part)
+		if !ok {
+			line = part
+		}
 
 		// Try to parse as JSON.
 		var chunk genai.GenerateContentResponse

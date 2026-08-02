@@ -154,10 +154,10 @@ func (o *openAIToOpenAITranslatorV1Completion) extractUsageFromBufferEvent(span 
 		}
 		line := o.buffered[:i]
 		o.buffered = o.buffered[i+1:]
-		if !bytes.HasPrefix(line, sseDataPrefix) {
+		data, ok := sseData(line)
+		if !ok {
 			continue
 		}
-		data := bytes.TrimPrefix(line, sseDataPrefix)
 		// Skip the [DONE] marker
 		if bytes.Equal(data, sseDoneMessage) {
 			continue

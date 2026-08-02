@@ -134,10 +134,10 @@ func (o *openAIToOpenAITranslatorV1Transcription) recordTranscriptionStreamChunk
 		o.sseBuffer = o.sseBuffer[i+1:]
 		// Some servers terminate SSE lines with \r\n; strip the trailing CR before JSON decode.
 		line = bytes.TrimRight(line, "\r")
-		if !bytes.HasPrefix(line, sseDataPrefix) {
+		payload, ok := sseData(line)
+		if !ok {
 			continue
 		}
-		payload := bytes.TrimPrefix(line, sseDataPrefix)
 		if len(payload) == 0 || bytes.Equal(payload, sseDoneMessage) {
 			continue
 		}
