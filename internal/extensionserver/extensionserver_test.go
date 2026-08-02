@@ -77,6 +77,37 @@ func TestNew(t *testing.T) {
 	require.NotNil(t, s)
 }
 
+func TestParseHostPort(t *testing.T) {
+	tests := []struct {
+		name     string
+		address  string
+		wantHost string
+		wantPort uint32
+		wantErr  string
+	}{
+		{name: "hostname without port", address: "ratelimit", wantHost: "ratelimit", wantPort: defaultQuotaRateLimitServicePort},
+		{name: "IPv6 without port", address: "2001:db8::1", wantHost: "2001:db8::1", wantPort: defaultQuotaRateLimitServicePort},
+		{name: "IPv6 with port", address: "[2001:db8::1]:9090", wantHost: "2001:db8::1", wantPort: 9090},
+		{name: "empty address", address: "", wantErr: "invalid host:port"},
+		{name: "missing IPv6 closing bracket", address: "[2001:db8::1", wantErr: "invalid host:port"},
+		{name: "multiple ports", address: "ratelimit:8080:9090", wantErr: "invalid host:port"},
+		{name: "empty host", address: ":8080", wantErr: "host must be non-empty"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			host, port, err := parseHostPort(tt.address)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantHost, host)
+			require.Equal(t, tt.wantPort, port)
+		})
+	}
+}
+
 func TestCheck(t *testing.T) {
 	s, err := New(newFakeClient(), logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
 	require.NoError(t, err)
