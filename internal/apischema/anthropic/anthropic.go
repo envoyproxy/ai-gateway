@@ -1033,9 +1033,12 @@ type (
 	// Tool represents a custom tool definition.
 	// https://platform.claude.com/docs/en/api/messages#tool
 	Tool struct {
-		Type         string          `json:"type"` // Always "custom".
-		Name         string          `json:"name"`
-		InputSchema  ToolInputSchema `json:"input_schema"`
+		Type string `json:"type"` // Always "custom".
+		Name string `json:"name"`
+		// InputSchema is the JSON schema of the tool input, carried as-is. Modeling its
+		// keywords would drop the ones left out, such as "additionalProperties", which
+		// backends require to enable strict schema adherence.
+		InputSchema  json.RawMessage `json:"input_schema"`
 		CacheControl *CacheControl   `json:"cache_control,omitempty"`
 		Description  string          `json:"description,omitempty"`
 	}
@@ -1092,12 +1095,6 @@ type (
 		Country  string `json:"country,omitempty"`
 		Region   string `json:"region,omitempty"`
 		Timezone string `json:"timezone,omitempty"`
-	}
-
-	ToolInputSchema struct {
-		Type       string         `json:"type"` // Always "object".
-		Properties map[string]any `json:"properties,omitempty"`
-		Required   []string       `json:"required,omitempty"`
 	}
 )
 

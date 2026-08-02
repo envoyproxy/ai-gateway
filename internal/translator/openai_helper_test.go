@@ -15,6 +15,7 @@ import (
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 // sseEvent holds parsed Anthropic SSE event data.
@@ -169,10 +170,7 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 				{Tool: &anthropic.Tool{
 					Name:        "get_weather",
 					Description: "Retrieve current weather information",
-					InputSchema: anthropic.ToolInputSchema{
-						Type:     "object",
-						Required: []string{"location"},
-					},
+					InputSchema: json.RawMessage(`{"type":"object","required":["location"]}`),
 				}},
 			},
 		}
@@ -200,7 +198,7 @@ func TestBuildOpenAIChatCompletionRequest(t *testing.T) {
 		body := &anthropic.MessagesRequest{
 			Model:      "claude-3",
 			Messages:   []anthropic.MessageParam{{Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "Hi"}}},
-			Tools:      []anthropic.ToolUnion{{Tool: &anthropic.Tool{Name: "search", InputSchema: anthropic.ToolInputSchema{Type: "object"}}}},
+			Tools:      []anthropic.ToolUnion{{Tool: &anthropic.Tool{Name: "search", InputSchema: json.RawMessage(`{"type":"object"}`)}}},
 			ToolChoice: ptr.To(anthropic.ToolChoice{Auto: &anthropic.ToolChoiceAuto{Type: "auto"}}),
 		}
 		req := buildOpenAIChatCompletionRequest(body, "")
@@ -302,11 +300,7 @@ func TestAnthropicToolsToOpenAI(t *testing.T) {
 			{Tool: &anthropic.Tool{
 				Name:        "search",
 				Description: "Search the web",
-				InputSchema: anthropic.ToolInputSchema{
-					Type:       "object",
-					Properties: map[string]any{"query": map[string]any{"type": "string"}},
-					Required:   []string{"query"},
-				},
+				InputSchema: json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}`),
 			}},
 		}
 		result := anthropicToolsToOpenAI(tools)
@@ -319,13 +313,25 @@ func TestAnthropicToolsToOpenAI(t *testing.T) {
 
 	t.Run("multiple tools all converted", func(t *testing.T) {
 		tools := []anthropic.ToolUnion{
-			{Tool: &anthropic.Tool{Name: "tool1", InputSchema: anthropic.ToolInputSchema{Type: "object"}}},
-			{Tool: &anthropic.Tool{Name: "tool2", InputSchema: anthropic.ToolInputSchema{Type: "object"}}},
+			{Tool: &anthropic.Tool{Name: "tool1", InputSchema: json.RawMessage(`{"type":"object"}`)}},
+			{Tool: &anthropic.Tool{Name: "tool2", InputSchema: json.RawMessage(`{"type":"object"}`)}},
 		}
 		result := anthropicToolsToOpenAI(tools)
 		require.Len(t, result, 2)
 		assert.Equal(t, "tool1", result[0].Function.Name)
 		assert.Equal(t, "tool2", result[1].Function.Name)
+	})
+
+	t.Run("schema reaches the backend as sent", func(t *testing.T) {
+		const inputSchema = `{"type":"object","properties":{},"additionalProperties":false,"$defs":{"unit":{"enum":["c","f"]}}}`
+		var tool anthropic.ToolUnion
+		require.NoError(t, json.Unmarshal([]byte(`{"name":"get_time","input_schema":`+inputSchema+`}`), &tool))
+
+		result := anthropicToolsToOpenAI([]anthropic.ToolUnion{tool})
+		require.Len(t, result, 1)
+		parameters, err := json.Marshal(result[0].Function.Parameters)
+		require.NoError(t, err)
+		require.JSONEq(t, inputSchema, string(parameters))
 	})
 }
 
