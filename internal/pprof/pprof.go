@@ -40,7 +40,7 @@ func run(ctx context.Context, l *log.Logger) {
 		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-		server := &http.Server{Addr: ":" + pprofPort, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+		server := &http.Server{Addr: "127.0.0.1:" + pprofPort, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 		go func() {
 			l.Printf("starting pprof server on port %s", pprofPort)
 			if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

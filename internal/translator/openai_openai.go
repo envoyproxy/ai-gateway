@@ -73,9 +73,7 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) RequestBody(original []byte, 
 	// Always set the path header to the chat completions endpoint so that the request is routed correctly.
 	newHeaders = []internalapi.Header{{pathHeaderName, o.path}}
 
-	if forceBodyMutation && len(newBody) == 0 {
-		newBody = original
-	}
+	newBody = forceOriginalBodyIfEmpty(forceBodyMutation, newBody, original)
 
 	if len(newBody) > 0 {
 		newHeaders = append(newHeaders, internalapi.Header{contentLengthHeaderName, strconv.Itoa(len(newBody))})
@@ -147,6 +145,14 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) ResponseBody(_ map[string]str
 	if err := json.NewDecoder(body).Decode(&resp); err != nil {
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
+	// A JSON `null` body decodes into a nil *resp without an error (the decode
+	// target is a **ChatCompletionResponse), which some upstreams return with a
+	// 200 status. Treat it as an empty response so we report zero usage and fall
+	// back to the request model, mirroring the streaming path, instead of
+	// dereferencing nil below.
+	if resp == nil {
+		resp = &openai.ChatCompletionResponse{}
+	}
 
 	// Redact and log response when enabled
 	if o.debugLogEnabled && o.enableRedaction && o.logger != nil {
@@ -184,11 +190,12 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(s
 		}
 		line := o.buffered[:i]
 		o.buffered = o.buffered[i+1:]
-		if !bytes.HasPrefix(line, sseDataPrefix) {
+		data, ok := cutSSEDataPrefix(line)
+		if !ok {
 			continue
 		}
 		event := &openai.ChatCompletionResponseChunk{}
-		if err := json.Unmarshal(bytes.TrimPrefix(line, sseDataPrefix), event); err != nil {
+		if err := json.Unmarshal(data, event); err != nil {
 			continue
 		}
 		if span != nil {

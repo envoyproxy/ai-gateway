@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -268,12 +269,10 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 		Header: &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
 	})
 	originalPath := r.requestHeaders[":path"]
-	if r.requestHeaders[originalPathHeader] == "" {
-		r.requestHeaders[originalPathHeader] = originalPath
-		additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
-			Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(originalPath)},
-		})
-	}
+	r.requestHeaders[originalPathHeader] = originalPath
+	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
+		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(originalPath)},
+	})
 	if r.requestHeaders[internalapi.EnvoyOriginalPathHeader] == "" {
 		r.requestHeaders[internalapi.EnvoyOriginalPathHeader] = originalPath
 		additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
@@ -394,6 +393,10 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 		var hdrs []internalapi.Header
 		hdrs, err = h.Do(ctx, u.requestHeaders, bodyMutation.GetBody())
 		if err != nil {
+			if errors.Is(err, backendauth.ErrCredentialMissing) {
+				u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
+				return createUserFacingErrorResponse(401, "Unauthorized", "missing upstream credential"), nil
+			}
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
 		}
 		for _, h := range hdrs {

@@ -280,6 +280,111 @@ func TestReferenceGrantValidator_ValidateAIServiceBackendReference(t *testing.T)
 	})
 }
 
+// TestReferenceGrantValidator_ValidateInferencePoolReference tests cross-namespace InferencePool
+// references governed by ReferenceGrant, mirroring the AIServiceBackend behavior.
+func TestReferenceGrantValidator_ValidateInferencePoolReference(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = gwapiv1b1.Install(scheme)
+	_ = aigv1a1.AddToScheme(scheme)
+
+	inferencePoolGrant := func(fromNS string, toGroup gwapiv1b1.Group, toKind gwapiv1b1.Kind) gwapiv1b1.ReferenceGrant {
+		return gwapiv1b1.ReferenceGrant{
+			ObjectMeta: metav1.ObjectMeta{Name: "grant", Namespace: "pool-ns"},
+			Spec: gwapiv1b1.ReferenceGrantSpec{
+				From: []gwapiv1b1.ReferenceGrantFrom{{
+					Group:     aiServiceBackendGroup,
+					Kind:      aiGatewayRouteKind,
+					Namespace: gwapiv1b1.Namespace(fromNS),
+				}},
+				To: []gwapiv1b1.ReferenceGrantTo{{Group: toGroup, Kind: toKind}},
+			},
+		}
+	}
+
+	tests := []struct {
+		name                string
+		routeNamespace      string
+		poolNamespace       string
+		poolName            string
+		referenceGrants     []gwapiv1b1.ReferenceGrant
+		expectedError       bool
+		expectedErrorString string
+	}{
+		{
+			name:           "Same namespace reference - should succeed",
+			routeNamespace: "default",
+			poolNamespace:  "default",
+			poolName:       "my-pool",
+		},
+		{
+			name:            "Cross-namespace with valid ReferenceGrant - should succeed",
+			routeNamespace:  "route-ns",
+			poolNamespace:   "pool-ns",
+			poolName:        "my-pool",
+			referenceGrants: []gwapiv1b1.ReferenceGrant{inferencePoolGrant("route-ns", inferencePoolGroup, inferencePoolKind)},
+		},
+		{
+			name:           "Cross-namespace without ReferenceGrant - should fail",
+			routeNamespace: "route-ns",
+			poolNamespace:  "pool-ns",
+			poolName:       "my-pool",
+			expectedError:  true,
+			expectedErrorString: "cross-namespace reference from AIGatewayRoute in namespace route-ns " +
+				"to InferencePool my-pool in namespace pool-ns is not permitted",
+		},
+		{
+			name:            "Cross-namespace with ReferenceGrant for wrong target kind - should fail",
+			routeNamespace:  "route-ns",
+			poolNamespace:   "pool-ns",
+			poolName:        "my-pool",
+			referenceGrants: []gwapiv1b1.ReferenceGrant{inferencePoolGrant("route-ns", aiServiceBackendGroup, aiServiceBackendKind)},
+			expectedError:   true,
+			// Grant targets AIServiceBackend, so the InferencePool index lookup finds no matching grant.
+			expectedErrorString: "is not permitted",
+		},
+		{
+			name:                "Cross-namespace with ReferenceGrant for wrong from namespace - should fail",
+			routeNamespace:      "route-ns",
+			poolNamespace:       "pool-ns",
+			poolName:            "my-pool",
+			referenceGrants:     []gwapiv1b1.ReferenceGrant{inferencePoolGrant("other-ns", inferencePoolGroup, inferencePoolKind)},
+			expectedError:       true,
+			expectedErrorString: "is not permitted",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			objs := make([]client.Object, len(tt.referenceGrants))
+			for i := range tt.referenceGrants {
+				objs[i] = &tt.referenceGrants[i]
+			}
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(objs...).
+				WithIndex(&gwapiv1b1.ReferenceGrant{}, k8sClientIndexReferenceGrantToTargetKind, referenceGrantToTargetKindIndexFunc).
+				Build()
+
+			validator := newReferenceGrantValidator(fakeClient)
+			err := validator.validateInferencePoolReference(
+				context.Background(),
+				tt.routeNamespace,
+				tt.poolNamespace,
+				tt.poolName,
+			)
+
+			if tt.expectedError {
+				require.Error(t, err)
+				if tt.expectedErrorString != "" {
+					require.Contains(t, err.Error(), tt.expectedErrorString)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 // TestReferenceGrantValidator_MatchesFrom_WrongGroup tests matchesFrom with wrong group
 func TestReferenceGrantValidator_MatchesFrom_WrongGroup(t *testing.T) {
 	scheme := runtime.NewScheme()
@@ -351,7 +456,7 @@ func TestReferenceGrantValidator_MatchesTo_WrongGroup(t *testing.T) {
 		Kind:  aiServiceBackendKind,
 	}
 
-	result := validator.matchesTo(to)
+	result := validator.matchesTo(to, aiServiceBackendGroup, aiServiceBackendKind)
 	require.False(t, result, "should return false for wrong group")
 }
 
@@ -369,7 +474,7 @@ func TestReferenceGrantValidator_MatchesTo_WrongKind(t *testing.T) {
 		Kind:  "WrongKind",
 	}
 
-	result := validator.matchesTo(to)
+	result := validator.matchesTo(to, aiServiceBackendGroup, aiServiceBackendKind)
 	require.False(t, result, "should return false for wrong kind")
 }
 

@@ -12,10 +12,12 @@ import v04Data from '../../data/releases/v0.4.json';
 import v05Data from '../../data/releases/v0.5.json';
 import v06Data from '../../data/releases/v0.6.json';
 import v07Data from '../../data/releases/v0.7.json';
+import v10Data from '../../data/releases/v1.0.json';
 import indexData from '../../data/releases/index.json';
 import styles from '../../components/ReleaseNotes/ReleaseNotes.module.css';
 
 export const allReleases = [
+  ...v10Data.releases,
   ...v07Data.releases,
   ...v06Data.releases,
   ...v05Data.releases,
@@ -42,14 +44,26 @@ Stay up-to-date with the latest improvements, features, and fixes in Envoy AI Ga
 
 <div className={styles.releaseNotesGrid}>
   <ReleaseCard
+    version="v1.0.x"
+    date="June 23, 2026 - Current (GA)"
+    summary={v10Data.series.subtitle}
+    tags={v10Data.releases[0].tags.slice(0, 10)}
+    linkTo="/release-notes/v1.0"
+    linkText="View Release Notes →"
+    badge={v10Data.series.badge}
+    featured={true}
+    versions={v10Data.releases.map(release => release.version).join(', ')}
+  />
+
+  <ReleaseCard
     version="v0.7.x"
-    date="June 4, 2026 - Current"
+    date="June 4, 2026 - June 23, 2026"
     summary={v07Data.series.subtitle}
     tags={v07Data.releases[0].tags.slice(0, 10)}
     linkTo="/release-notes/v0.7"
     linkText="View Release Notes →"
     badge={v07Data.series.badge}
-    featured={true}
+    featured={false}
     versions={v07Data.releases.map(release => release.version).join(', ')}
   />
 

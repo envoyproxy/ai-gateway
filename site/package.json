@@ -32,7 +32,7 @@
     "@docusaurus/tsconfig": "^3.10.1",
     "@docusaurus/types": "^3.9.1",
     "@types/glob": "^9.0.0",
-    "typescript": "~6.0.3"
+    "typescript": "~7.0.2"
   },
   "browserslist": {
     "production": [
@@ -49,5 +49,9 @@
   "engines": {
     "node": ">=22.0"
   },
-  "packageManager": "npm@10.9.0"
+  "packageManager": "npm@10.9.0",
+  "overrides": {
+    "serialize-javascript": "^7.0.5",
+    "uuid": "^11.1.1"
+  }
 }
