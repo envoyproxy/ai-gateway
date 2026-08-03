@@ -2842,6 +2842,8 @@ type ResponseToolUnion struct {
 	OfCustom           *CustomToolParam
 	OfWebSearchPreview *WebSearchPreviewToolParam
 	OfApplyPatch       *ApplyPatchToolParam
+	OfNamespace        *NamespaceToolParam
+	OfToolSearch       *ToolSearchToolParam
 }
 
 func (t ResponseToolUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
@@ -2870,6 +2872,10 @@ func (t ResponseToolUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
 		return json.Marshal(t.OfWebSearchPreview)
 	case t.OfApplyPatch != nil:
 		return json.Marshal(t.OfApplyPatch)
+	case t.OfNamespace != nil:
+		return json.Marshal(t.OfNamespace)
+	case t.OfToolSearch != nil:
+		return json.Marshal(t.OfToolSearch)
 	default:
 		return nil, errors.New("no tool to marshal in ToolUnionParam")
 	}
@@ -2950,8 +2956,20 @@ func (t *ResponseToolUnion) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		t.OfApplyPatch = &ap
+	case "namespace":
+		var ns NamespaceToolParam
+		if err := json.Unmarshal(data, &ns); err != nil {
+			return err
+		}
+		t.OfNamespace = &ns
+	case "tool_search":
+		var ts ToolSearchToolParam
+		if err := json.Unmarshal(data, &ts); err != nil {
+			return err
+		}
+		t.OfToolSearch = &ts
 	default:
-		return errors.New("unknown tool type")
+		return fmt.Errorf("unknown tool type %s", typ.String())
 	}
 	return nil
 }
@@ -3653,6 +3671,94 @@ type WebSearchPreviewToolUserLocationParam struct {
 type ApplyPatchToolParam struct {
 	// The type of the tool. Always `apply_patch`.
 	Type string `json:"type"`
+}
+
+// A namespace tool that groups function/custom tools under a named namespace.
+//
+// The properties Description, Name, Tools, Type are required.
+// https://github.com/openai/openai-go/blob/main/responses/response.go#L3391-L3403
+type NamespaceToolParam struct {
+	// A description of the namespace shown to the model.
+	Description string `json:"description"`
+	// The namespace name used in tool calls (for example, `crm`).
+	Name string `json:"name"`
+	// The function/custom tools available inside this namespace.
+	Tools []NamespaceToolToolUnionParam `json:"tools"`
+	// The type of the tool. Always `namespace`.
+	Type string `json:"type"`
+}
+
+// ToolSearchToolParam is a built-in tool that searches deferred tool metadata via BM25
+// and exposes matching tools for the next model call.
+//
+// The property Type is required.
+type ToolSearchToolParam struct {
+	// The type of the tool. Always `tool_search`.
+	Type string `json:"type"`
+	// Whether tool search is executed by the server or by the client.
+	// Any of "server", "client".
+	Execution string `json:"execution,omitempty"`
+	// Description shown to the model for a client-executed tool search tool.
+	Description string `json:"description,omitempty"`
+	// Parameter schema for a client-executed tool search tool.
+	Parameters any `json:"parameters"`
+}
+
+// NamespaceToolToolUnionParam is the request-side union for tools within a namespace.
+// Only one field can be non-nil.
+type NamespaceToolToolUnionParam struct {
+	OfFunction *NamespaceToolToolFunctionParam
+	OfCustom   *CustomToolParam
+}
+
+func (t NamespaceToolToolUnionParam) MarshalJSON() ([]byte, error) { // nolint:gocritic
+	switch {
+	case t.OfFunction != nil:
+		return json.Marshal(t.OfFunction)
+	case t.OfCustom != nil:
+		return json.Marshal(t.OfCustom)
+	default:
+		return nil, errors.New("no tool to marshal in NamespaceToolToolUnionParam")
+	}
+}
+
+func (t *NamespaceToolToolUnionParam) UnmarshalJSON(data []byte) error {
+	typ := gjson.GetBytes(data, "type")
+	switch typ.String() {
+	case "function":
+		var f NamespaceToolToolFunctionParam
+		if err := json.Unmarshal(data, &f); err != nil {
+			return err
+		}
+		t.OfFunction = &f
+	case "custom":
+		var c CustomToolParam
+		if err := json.Unmarshal(data, &c); err != nil {
+			return err
+		}
+		t.OfCustom = &c
+	default:
+		// Inner namespace tools may omit the "type" field; treat them as function tools.
+		var f NamespaceToolToolFunctionParam
+		if err := json.Unmarshal(data, &f); err != nil {
+			return fmt.Errorf("unknown tool type %q in NamespaceToolToolUnionParam", typ.String())
+		}
+		t.OfFunction = &f
+	}
+	return nil
+}
+
+// NamespaceToolToolFunctionParam is a function tool within a namespace.
+// It extends the base function tool with DeferLoading support.
+type NamespaceToolToolFunctionParam struct {
+	Name string `json:"name"`
+	// The type of the tool. Always `function`.
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
+	Parameters  any    `json:"parameters,omitempty"`
+	Strict      *bool  `json:"strict,omitempty"`
+	// Whether this function should be deferred and discovered via tool search.
+	DeferLoading *bool `json:"defer_loading,omitempty"`
 }
 
 // A text input to the model.

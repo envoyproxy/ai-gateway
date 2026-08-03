@@ -576,6 +576,88 @@ func Test_newHTTPRoute_InferencePool(t *testing.T) {
 	require.Empty(t, httpRoute.Spec.Rules[1].BackendRefs) // No backend refs for default rule.
 }
 
+func Test_newHTTPRoute_InferencePool_CrossNamespace(t *testing.T) {
+	newRoute := func(poolNamespace string) *aigv1b1.AIGatewayRoute {
+		return &aigv1b1.AIGatewayRoute{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "inference-route",
+				Namespace: "gw",
+			},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+							{
+								Name:      "my-pool",
+								Namespace: ptr.To(gwapiv1.Namespace(poolNamespace)),
+								Group:     ptr.To("inference.networking.k8s.io"),
+								Kind:      ptr.To("InferencePool"),
+								Weight:    ptr.To(int32(100)),
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	referenceGrant := &gwapiv1b1.ReferenceGrant{
+		ObjectMeta: metav1.ObjectMeta{Name: "allow-gw", Namespace: "default"},
+		Spec: gwapiv1b1.ReferenceGrantSpec{
+			From: []gwapiv1b1.ReferenceGrantFrom{{
+				Group:     aiServiceBackendGroup,
+				Kind:      aiGatewayRouteKind,
+				Namespace: "gw",
+			}},
+			To: []gwapiv1b1.ReferenceGrantTo{{
+				Group: inferencePoolGroup,
+				Kind:  inferencePoolKind,
+			}},
+		},
+	}
+
+	t.Run("cross-namespace with ReferenceGrant honors the pool namespace", func(t *testing.T) {
+		c := requireNewFakeClientWithIndexes(t)
+		require.NoError(t, c.Create(t.Context(), referenceGrant))
+
+		controller := &AIGatewayRouteController{client: c, referenceGrantValidator: newReferenceGrantValidator(c)}
+		httpRoute := &gwapiv1.HTTPRoute{}
+		require.NoError(t, controller.newHTTPRoute(t.Context(), httpRoute, newRoute("default")))
+
+		require.Len(t, httpRoute.Spec.Rules, 2)
+		require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
+		backendRef := httpRoute.Spec.Rules[0].BackendRefs[0]
+		require.Equal(t, "InferencePool", string(*backendRef.Kind))
+		require.Equal(t, "my-pool", string(backendRef.Name))
+		// The generated HTTPRoute backendRef must carry the pool's namespace, not the route's.
+		require.NotNil(t, backendRef.Namespace)
+		require.Equal(t, "default", string(*backendRef.Namespace))
+	})
+
+	t.Run("cross-namespace without ReferenceGrant is rejected", func(t *testing.T) {
+		c := requireNewFakeClientWithIndexes(t)
+
+		controller := &AIGatewayRouteController{client: c, referenceGrantValidator: newReferenceGrantValidator(c)}
+		httpRoute := &gwapiv1.HTTPRoute{}
+		err := controller.newHTTPRoute(t.Context(), httpRoute, newRoute("default"))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cross-namespace reference from AIGatewayRoute in namespace gw "+
+			"to InferencePool my-pool in namespace default is not permitted")
+	})
+
+	t.Run("same-namespace reference needs no ReferenceGrant", func(t *testing.T) {
+		c := requireNewFakeClientWithIndexes(t)
+
+		controller := &AIGatewayRouteController{client: c, referenceGrantValidator: newReferenceGrantValidator(c)}
+		httpRoute := &gwapiv1.HTTPRoute{}
+		require.NoError(t, controller.newHTTPRoute(t.Context(), httpRoute, newRoute("gw")))
+
+		backendRef := httpRoute.Spec.Rules[0].BackendRefs[0]
+		require.NotNil(t, backendRef.Namespace)
+		require.Equal(t, "gw", string(*backendRef.Namespace))
+	})
+}
+
 func Test_newHTTPRoute_LabelAndAnnotationPropagation(t *testing.T) {
 	c := requireNewFakeClientWithIndexes(t)
 
