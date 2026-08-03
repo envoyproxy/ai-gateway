@@ -212,6 +212,25 @@ func isOnlyToolResult(msg *anthropicschema.MessageParam) bool {
 	return true
 }
 
+// anthropicCachePoint returns a Bedrock cache point block when the Anthropic cache_control field
+// asks for one, otherwise nil. Bedrock only has a single ephemeral cache point type, so the
+// ephemeral TTL is not representable and is dropped.
+func anthropicCachePoint(cacheControl *anthropicschema.CacheControl) *awsbedrock.CachePointBlock {
+	if cacheControl == nil || cacheControl.Ephemeral == nil {
+		return nil
+	}
+	return &awsbedrock.CachePointBlock{Type: "default"}
+}
+
+// appendCachePoint appends a standalone cache point content block when cacheControl asks for one.
+// Bedrock's ContentBlock is a union, so the cache point cannot ride on the block it follows.
+func appendCachePoint(blocks []*awsbedrock.ContentBlock, cacheControl *anthropicschema.CacheControl) []*awsbedrock.ContentBlock {
+	if cachePoint := anthropicCachePoint(cacheControl); cachePoint != nil {
+		return append(blocks, &awsbedrock.ContentBlock{CachePoint: cachePoint})
+	}
+	return blocks
+}
+
 func (a *anthropicToAWSBedrockTranslator) convertUserMessage(msg *anthropicschema.MessageParam) (*awsbedrock.Message, error) {
 	bedrockMsg := &awsbedrock.Message{Role: awsbedrock.ConversationRoleUser}
 	if msg.Content.Text != "" {
@@ -228,14 +247,17 @@ func (a *anthropicToAWSBedrockTranslator) convertUserMessage(msg *anthropicschem
 			bedrockMsg.Content = append(bedrockMsg.Content, &awsbedrock.ContentBlock{
 				Text: ptr.To(block.Text.Text),
 			})
+			bedrockMsg.Content = appendCachePoint(bedrockMsg.Content, block.Text.CacheControl)
 		case block.Image != nil:
 			imgBlock, err := a.convertImageBlock(block.Image)
 			if err != nil {
 				return nil, err
 			}
 			bedrockMsg.Content = append(bedrockMsg.Content, imgBlock)
+			bedrockMsg.Content = appendCachePoint(bedrockMsg.Content, block.Image.CacheControl)
 		case block.ToolResult != nil:
 			bedrockMsg.Content = append(bedrockMsg.Content, a.convertToolResultBlock(block.ToolResult))
+			bedrockMsg.Content = appendCachePoint(bedrockMsg.Content, block.ToolResult.CacheControl)
 		}
 	}
 	return bedrockMsg, nil
@@ -257,6 +279,7 @@ func (a *anthropicToAWSBedrockTranslator) convertAssistantMessage(msg *anthropic
 			bedrockMsg.Content = append(bedrockMsg.Content, &awsbedrock.ContentBlock{
 				Text: ptr.To(block.Text.Text),
 			})
+			bedrockMsg.Content = appendCachePoint(bedrockMsg.Content, block.Text.CacheControl)
 		case block.Thinking != nil:
 			bedrockMsg.Content = append(bedrockMsg.Content, &awsbedrock.ContentBlock{
 				ReasoningContent: &awsbedrock.ReasoningContentBlock{
@@ -274,6 +297,7 @@ func (a *anthropicToAWSBedrockTranslator) convertAssistantMessage(msg *anthropic
 					Input:     block.ToolUse.Input,
 				},
 			})
+			bedrockMsg.Content = appendCachePoint(bedrockMsg.Content, block.ToolUse.CacheControl)
 		case block.RedactedThinking != nil:
 			bedrockMsg.Content = append(bedrockMsg.Content, &awsbedrock.ContentBlock{
 				ReasoningContent: &awsbedrock.ReasoningContentBlock{
@@ -292,6 +316,7 @@ func (a *anthropicToAWSBedrockTranslator) convertToolResultMessage(msg *anthropi
 		block := &msg.Content.Array[i]
 		if block.ToolResult != nil {
 			bedrockMsg.Content = append(bedrockMsg.Content, a.convertToolResultBlock(block.ToolResult))
+			bedrockMsg.Content = appendCachePoint(bedrockMsg.Content, block.ToolResult.CacheControl)
 		}
 	}
 	return bedrockMsg
@@ -365,6 +390,9 @@ func (a *anthropicToAWSBedrockTranslator) convertSystemPrompt(system *anthropics
 	for i := range system.Texts {
 		text := system.Texts[i].Text
 		blocks = append(blocks, &awsbedrock.SystemContentBlock{Text: &text})
+		if cachePoint := anthropicCachePoint(system.Texts[i].CacheControl); cachePoint != nil {
+			blocks = append(blocks, &awsbedrock.SystemContentBlock{CachePoint: cachePoint})
+		}
 	}
 	return blocks
 }
@@ -390,6 +418,10 @@ func (a *anthropicToAWSBedrockTranslator) convertTools(body *anthropicschema.Mes
 				},
 			}
 			tools = append(tools, tool)
+			// Bedrock's Tool is a union: an element sets either toolSpec or cachePoint, never both.
+			if cachePoint := anthropicCachePoint(tu.Tool.CacheControl); cachePoint != nil {
+				tools = append(tools, &awsbedrock.Tool{CachePoint: cachePoint})
+			}
 		}
 	}
 	bedrockReq.ToolConfig.Tools = tools
