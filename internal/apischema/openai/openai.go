@@ -3920,7 +3920,11 @@ type ResponseInputItemUnionParam struct {
 	OfCustomToolCallOutput *ResponseCustomToolCallOutputParam
 	OfCustomToolCall       *ResponseCustomToolCall
 	OfItemReference        *ResponseInputItemItemReferenceParam
-	OfAdditionalTools      *ResponseInputItemAdditionalToolsParam
+	// Codex-emitted item types whose schema is not yet part of the public Responses API.
+	// Preserve their raw JSON so OpenAI-compatible backends can handle them unchanged.
+	OfAgentMessage    *json.RawMessage
+	OfAgentReasoning  *json.RawMessage
+	OfAdditionalTools *ResponseInputItemAdditionalToolsParam
 }
 
 func (r ResponseInputItemUnionParam) MarshalJSON() ([]byte, error) { // nolint:gocritic
@@ -3977,6 +3981,10 @@ func (r ResponseInputItemUnionParam) MarshalJSON() ([]byte, error) { // nolint:g
 		return json.Marshal(r.OfCustomToolCall)
 	case r.OfItemReference != nil:
 		return json.Marshal(r.OfItemReference)
+	case r.OfAgentMessage != nil:
+		return json.Marshal(r.OfAgentMessage)
+	case r.OfAgentReasoning != nil:
+		return json.Marshal(r.OfAgentReasoning)
 	case r.OfAdditionalTools != nil:
 		return json.Marshal(r.OfAdditionalTools)
 	default:
@@ -4179,6 +4187,12 @@ func (r *ResponseInputItemUnionParam) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		r.OfItemReference = &ir
+	case "agent_message":
+		raw := json.RawMessage(append([]byte(nil), data...))
+		r.OfAgentMessage = &raw
+	case "agent_reasoning":
+		raw := json.RawMessage(append([]byte(nil), data...))
+		r.OfAgentReasoning = &raw
 	case "additional_tools":
 		var at ResponseInputItemAdditionalToolsParam
 		if err := json.Unmarshal(data, &at); err != nil {
@@ -8816,4 +8830,11 @@ const (
 // TranslationResponse represents the JSON response from /v1/audio/translations.
 type TranslationResponse struct {
 	Text string `json:"text"`
+}
+
+// ResponsesInputTokensResponse represents the response from /v1/responses/input_tokens.
+type ResponsesInputTokensResponse struct {
+	// Object is the object type, which is always "response.input_tokens".
+	Object      string `json:"object"`
+	InputTokens int64  `json:"input_tokens"`
 }
