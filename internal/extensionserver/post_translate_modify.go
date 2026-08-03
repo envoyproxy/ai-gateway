@@ -372,6 +372,25 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				if backendRef.Weight != nil && *backendRef.Weight == 0 {
 					continue
 				}
+				if lbEndpointIndex >= len(cluster.LoadAssignment.Endpoints) {
+					// The active (non-zero-weight) BackendRefs come from the AIGatewayRoute we
+					// just fetched from Kubernetes, while LoadAssignment.Endpoints comes from an
+					// earlier envoy-gateway translation. These two snapshots normally agree 1:1
+					// but can briefly diverge when backend resources (Backend,
+					// BackendSecurityPolicy, etc.) are patched in rapid succession (e.g. by an
+					// external controller), making EG re-translate continuously: we then observe
+					// an intermediate cluster with fewer Endpoints than active BackendRefs.
+					// Indexing here would panic; the mismatch is self-healing on the next
+					// translation, so we skip the remaining backendRefs instead.
+					s.log.Info("LoadAssignment has fewer Endpoints than active BackendRefs; skipping remaining",
+						"cluster_name", cluster.Name,
+						"namespace", aigwRoute.Namespace,
+						"name", aigwRoute.Name,
+						"endpoints_len", len(cluster.LoadAssignment.Endpoints),
+						"lb_endpoint_index", lbEndpointIndex,
+						"backend_ref_index", i)
+					break
+				}
 				endpoints := cluster.LoadAssignment.Endpoints[lbEndpointIndex]
 				lbEndpointIndex++
 				name := backendRef.Name
