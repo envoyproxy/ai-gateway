@@ -1742,3 +1742,31 @@ func TestOpenAIToAnthropicMessages_ToolResultCacheControl(t *testing.T) {
 		require.Equal(t, ephemeral, msgs[0].Content[0].OfToolResult.CacheControl)
 	})
 }
+
+// The space after the SSE field colon is optional per the specification, and some
+// Anthropic-compatible backends omit it on both "event:" and "data:" lines. The
+// parser must still recognize the events and yield usage.
+func TestAnthropicStreamParser_NoSpaceAfterColon(t *testing.T) {
+	p := newAnthropicStreamParser("claude-sonnet-4-5")
+
+	const stream = `event:message_start
+data:{"type":"message_start","message":{"id":"msg_01","type":"message","role":"assistant","model":"claude-sonnet-4-5","content":[],"usage":{"input_tokens":9,"cache_read_input_tokens":1,"cache_creation_input_tokens":0,"output_tokens":0}}}
+
+event:message_delta
+data:{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":16}}
+
+event:message_stop
+data:{"type":"message_stop"}
+
+`
+
+	_, _, tokenUsage, _, err := p.Process(strings.NewReader(stream), true, nil)
+	require.NoError(t, err)
+
+	input, ok := tokenUsage.InputTokens()
+	require.True(t, ok, "input tokens were not extracted")
+	require.Equal(t, uint32(10), input)
+	output, ok := tokenUsage.OutputTokens()
+	require.True(t, ok, "output tokens were not extracted")
+	require.Equal(t, uint32(16), output)
+}
