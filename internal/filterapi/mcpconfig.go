@@ -31,6 +31,12 @@ type MCPRoute struct {
 	// Authorization is the authorization configuration for this route.
 	Authorization *MCPRouteAuthorization `json:"authorization,omitempty"`
 
+	// BackendSelector restricts which of this route's backends a given request may fan out to.
+	// It reuses the same MCPRouteAuthorization shape and CEL engine as Authorization above,
+	// evaluated once per candidate backend at session-initialize time instead of per JSON-RPC
+	// method call. Source and Target are not meaningful here and left unset.
+	BackendSelector *MCPRouteAuthorization `json:"backendSelector,omitempty"`
+
 	// ForwardHeaders specifies HTTP headers to extract from the incoming request and forward to backend MCP servers.
 	ForwardHeaders []string `json:"forwardHeaders,omitempty"`
 }

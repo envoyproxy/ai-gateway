@@ -12,8 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -38,109 +40,78 @@ func newFanoutSubsetTestServer() (*httptest.Server, *perBackendCallCount) {
 	return server, callCount
 }
 
-func TestBackendSubset(t *testing.T) {
-	tests := []struct {
-		name   string
-		setHdr bool
-		value  string
-		want   map[filterapi.MCPBackendName]struct{}
-	}{
-		{
-			name:   "header absent -> nil (no subsetting, fan out to all)",
-			setHdr: false,
-			want:   nil,
-		},
-		{
-			name:   "empty value -> nil",
-			setHdr: true,
-			value:  "",
-			want:   nil,
-		},
-		{
-			name:   "whitespace only -> nil",
-			setHdr: true,
-			value:  "   ",
-			want:   nil,
-		},
-		{
-			name:   "single backend",
-			setHdr: true,
-			value:  "slack",
-			want:   map[filterapi.MCPBackendName]struct{}{"slack": {}},
-		},
-		{
-			name:   "multiple backends",
-			setHdr: true,
-			value:  "slack,github",
-			want:   map[filterapi.MCPBackendName]struct{}{"slack": {}, "github": {}},
-		},
-		{
-			name:   "trims surrounding whitespace",
-			setHdr: true,
-			value:  " slack , github ",
-			want:   map[filterapi.MCPBackendName]struct{}{"slack": {}, "github": {}},
-		},
-		{
-			name:   "skips empty entries from stray commas",
-			setHdr: true,
-			value:  "slack,,github,",
-			want:   map[filterapi.MCPBackendName]struct{}{"slack": {}, "github": {}},
-		},
-		{
-			name:   "deduplicates repeated names",
-			setHdr: true,
-			value:  "slack,slack",
-			want:   map[filterapi.MCPBackendName]struct{}{"slack": {}},
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			h := http.Header{}
-			if tc.setHdr {
-				h.Set(internalapi.MCPBackendSubsetHeader, tc.value)
-			}
-			require.Equal(t, tc.want, backendSubset(h))
-		})
-	}
+func mustCompileBackendSelector(t *testing.T, sel *filterapi.MCPRouteAuthorization) *compiledAuthorization {
+	t.Helper()
+	compiled, err := compileAuthorization(sel)
+	require.NoError(t, err)
+	return compiled
 }
 
-func TestNewSession_BackendSubset(t *testing.T) {
+func bearerTokenWithClaims(claims jwt.MapClaims) string {
+	token := jwt.NewWithClaims(jwt.SigningMethodNone, claims)
+	signed, _ := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
+	return signed
+}
+
+func TestNewSession_BackendSelector(t *testing.T) {
 	tests := []struct {
 		name                string
-		setHdr              bool
-		header              string
+		backendSelector     *filterapi.MCPRouteAuthorization
+		setHeaders          func(h http.Header)
 		wantCalls           map[string]int
 		wantSessionBackends []filterapi.MCPBackendName
 		wantErr             string
 		wantErrIs           error
 	}{
 		{
-			name:                "header absent initializes all route backends",
-			setHdr:              false,
+			name:                "no selector configured initializes all route backends",
+			backendSelector:     nil,
 			wantCalls:           map[string]int{"backend1": 2, "backend2": 2},
 			wantSessionBackends: []filterapi.MCPBackendName{"backend1", "backend2"},
 		},
 		{
-			name:                "header subset initializes selected route backend only",
-			setHdr:              true,
-			header:              "backend2",
+			name: "JWT claims rule selects a single backend (no shim required)",
+			backendSelector: &filterapi.MCPRouteAuthorization{
+				DefaultAction: filterapi.AuthorizationActionDeny,
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: filterapi.AuthorizationActionAllow,
+						CEL:    ptr.To(`request.mcp.backend in request.auth.jwt.claims.mcp_backends`),
+					},
+				},
+			},
+			setHeaders: func(h http.Header) {
+				token := bearerTokenWithClaims(jwt.MapClaims{"mcp_backends": []string{"backend2"}})
+				h.Set("Authorization", "Bearer "+token)
+			},
 			wantCalls:           map[string]int{"backend1": 0, "backend2": 2},
 			wantSessionBackends: []filterapi.MCPBackendName{"backend2"},
 		},
 		{
-			name:                "header with known and unknown backend initializes known backend only",
-			setHdr:              true,
-			header:              "unknown,backend1",
-			wantCalls:           map[string]int{"backend1": 2, "backend2": 0, "unknown": 0},
+			name: "header-based rule selects a single backend (shim-backed)",
+			backendSelector: &filterapi.MCPRouteAuthorization{
+				DefaultAction: filterapi.AuthorizationActionDeny,
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: filterapi.AuthorizationActionAllow,
+						CEL:    ptr.To(`("," + request.headers["x-ai-eg-mcp-backend-subset"] + ",").contains("," + request.mcp.backend + ",")`),
+					},
+				},
+			},
+			setHeaders: func(h http.Header) {
+				h.Set(internalapi.MCPBackendSubsetHeader, "backend1")
+			},
+			wantCalls:           map[string]int{"backend1": 2, "backend2": 0},
 			wantSessionBackends: []filterapi.MCPBackendName{"backend1"},
 		},
 		{
-			name:      "header with only unknown backend fails without initializing",
-			setHdr:    true,
-			header:    "unknown",
-			wantCalls: map[string]int{"backend1": 0, "backend2": 0, "unknown": 0},
-			wantErr:   "mcp backend subset matches no route backends for route test-route",
-			wantErrIs: errNoMatchingBackendSubset,
+			name: "no rule matches and default is deny fails without initializing",
+			backendSelector: &filterapi.MCPRouteAuthorization{
+				DefaultAction: filterapi.AuthorizationActionDeny,
+			},
+			wantCalls: map[string]int{"backend1": 0, "backend2": 0},
+			wantErr:   "backendSelector matches no route backends for route test-route",
+			wantErrIs: errNoMatchingBackendSelector,
 		},
 	}
 
@@ -152,9 +123,10 @@ func TestNewSession_BackendSubset(t *testing.T) {
 			proxy := newTestMCPProxy()
 			proxy.backendListenerAddr = server.URL
 			proxy.requestHeaders = http.Header{}
-			if tc.setHdr {
-				proxy.requestHeaders.Set(internalapi.MCPBackendSubsetHeader, tc.header)
+			if tc.setHeaders != nil {
+				tc.setHeaders(proxy.requestHeaders)
 			}
+			proxy.routes["test-route"].backendSelector = mustCompileBackendSelector(t, tc.backendSelector)
 
 			s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil, time.Now())
 			if tc.wantErr != "" {

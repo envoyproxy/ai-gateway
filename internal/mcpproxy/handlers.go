@@ -724,10 +724,7 @@ func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *sessio
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("route not found: %s", s.route))
 		return result, fmt.Errorf("route not found: %s", s.route)
 	}
-	// Validate the tool against the static per-backend toolSelector. The dynamic
-	// per-request tool subset (x-ai-eg-mcp-tool-subset) is consumed only for tools/list
-	// visibility; per-tenant tools/call rejection is enforced by the trusted shim
-	// (ext_authz-style) upstream, so it is intentionally not gated here.
+	// Validate the tool against the static per-backend toolSelector.
 	if selector := route.toolSelectors[backendName]; selector != nil && !selector.allows(toolName) {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid tool name: %s", toolName))
 		return result, fmt.Errorf("%w: %s", errInvalidToolName, toolName)
@@ -1685,12 +1682,9 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 	// A backend specific prefix is added to the tool name to avoid name collision.
 	// The tools are filtered based on the toolFilters configured for each backend,
 	// and additionally by authorization rules so callers only see tools they can invoke.
-	// Dynamic per-request tool filter (x-ai-eg-mcp-tool-subset), supplied by the trusted
-	// shim, intersects with the static per-backend toolSelector: a tool must satisfy both.
-	// A fully dynamic (multi-tenant) route leaves the static include empty so the selector
-	// allows everything except static excludes, and the dynamic subset becomes the effective
-	// per-request allow-list. When no dynamic subset is present, the static selector is used.
-	dynamicTools := toolSubset(m.requestHeaders)
+	// Per-request, per-tenant narrowing (e.g. against the trusted x-ai-eg-mcp-tool-subset
+	// header) is expressed declaratively as a route.authorization CEL rule below, rather
+	// than a bespoke Go-side filter — the same rule engine already governs tools/call.
 	for _, r := range responses {
 		selector := route.toolSelectors[r.backendName]
 		for _, tool := range r.res.Tools {
@@ -1698,11 +1692,6 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 				continue
 			}
 			full := downstreamResourceName(tool.Name, r.backendName)
-			if dynamicTools != nil {
-				if _, ok := dynamicTools[full]; !ok {
-					continue
-				}
-			}
 			if route.authorization != nil {
 				allowed, _ := m.authorizeRequest(route.authorization, &authorizationRequest{
 					Headers:   m.requestHeaders,

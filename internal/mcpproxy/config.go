@@ -40,10 +40,14 @@ type (
 	}
 
 	mcpProxyConfigRoute struct {
-		backends       map[filterapi.MCPBackendName]filterapi.MCPBackend
-		toolSelectors  map[filterapi.MCPBackendName]*toolSelector
-		authorization  *compiledAuthorization
-		forwardHeaders []string
+		backends      map[filterapi.MCPBackendName]filterapi.MCPBackend
+		toolSelectors map[filterapi.MCPBackendName]*toolSelector
+		authorization *compiledAuthorization
+		// backendSelector reuses the same compiledAuthorization/authorizeRequest machinery as
+		// authorization above; it is evaluated once per candidate backend in newSession()
+		// instead of per JSON-RPC method call.
+		backendSelector *compiledAuthorization
+		forwardHeaders  []string
 	}
 
 	// toolSelector filters tools using include and exclude patterns with exact matches or regular expressions.
@@ -198,12 +202,17 @@ func (p *ProxyConfig) LoadConfig(_ context.Context, config *filterapi.Config) er
 		if err != nil {
 			return fmt.Errorf("failed to compile authorization rules for route %s: %w", route.Name, err)
 		}
+		compiledBackendSel, err := compileAuthorization(route.BackendSelector)
+		if err != nil {
+			return fmt.Errorf("failed to compile backend selector rules for route %s: %w", route.Name, err)
+		}
 
 		r := &mcpProxyConfigRoute{
-			backends:       make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(route.Backends)),
-			toolSelectors:  make(map[filterapi.MCPBackendName]*toolSelector, len(route.Backends)),
-			authorization:  compiledAuth,
-			forwardHeaders: route.ForwardHeaders,
+			backends:        make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(route.Backends)),
+			toolSelectors:   make(map[filterapi.MCPBackendName]*toolSelector, len(route.Backends)),
+			authorization:   compiledAuth,
+			backendSelector: compiledBackendSel,
+			forwardHeaders:  route.ForwardHeaders,
 		}
 		for _, backend := range route.Backends {
 			r.backends[backend.Name] = backend

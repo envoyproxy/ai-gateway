@@ -306,6 +306,61 @@ spec:
                 x-kubernetes-validations:
                 - message: all backendRefs names must be unique
                   rule: self.all(i, self.exists_one(j, j.name == i.name))
+              backendSelector:
+                description: |-
+                  BackendSelector restricts which of this route's backends a given request may
+                  fan out to. It is evaluated once per candidate backend when a client session is
+                  initialized. If unspecified, all backends on the route are considered (today's
+                  behavior, unchanged).
+                properties:
+                  defaultAction:
+                    default: Deny
+                    description: DefaultAction is the action to take when no rules
+                      match. If unspecified, defaults to Deny.
+                    enum:
+                    - Allow
+                    - Deny
+                    type: string
+                  rules:
+                    description: |-
+                      Rules defines a list of backend selection rules.
+                      These rules are evaluated in order, the first matching rule will be applied,
+                      and the rest will be skipped.
+
+                      If no rules are defined, the default action will be applied to all backends.
+                    items:
+                      description: MCPBackendSelectorRule defines a single backend
+                        selection rule.
+                      properties:
+                        action:
+                          default: Allow
+                          description: Action is the decision for matching backends.
+                            If unspecified, defaults to Allow.
+                          enum:
+                          - Allow
+                          - Deny
+                          type: string
+                        cel:
+                          description: "CEL specifies a Common Expression Language
+                            (CEL) expression evaluated once per\ncandidate backend.
+                            The expression must return a boolean; evaluation errors
+                            or\nnon-boolean results are treated as \"no match\".\n\nExample
+                            CEL expressions:\n\t* `request.mcp.backend in request.auth.jwt.claims.mcp_backends`\n\t*
+                            `(\",\" + request.headers[\"x-ai-eg-mcp-backend-subset\"]
+                            + \",\").contains(\",\" + request.mcp.backend + \",\")`\n\nAvailable
+                            attributes in the CEL expression are the same as documented
+                            on\nMCPRouteAuthorizationRule.CEL, except request.mcp.method,
+                            request.mcp.tool, and\nrequest.mcp.params are not populated
+                            (no MCP method has been selected yet at\nbackend-selection
+                            time).\n\nNote: The CEL expression support is experimental,
+                            and the attributes\navailable to the expression may change
+                            in future releases."
+                          maxLength: 4096
+                          type: string
+                      type: object
+                    maxItems: 32
+                    type: array
+                type: object
               headers:
                 description: |-
                   Headers are HTTP headers that must match for this route to be selected.
@@ -5859,6 +5914,61 @@ spec:
                 x-kubernetes-validations:
                 - message: all backendRefs names must be unique
                   rule: self.all(i, self.exists_one(j, j.name == i.name))
+              backendSelector:
+                description: |-
+                  BackendSelector restricts which of this route's backends a given request may
+                  fan out to. It is evaluated once per candidate backend when a client session is
+                  initialized. If unspecified, all backends on the route are considered (today's
+                  behavior, unchanged).
+                properties:
+                  defaultAction:
+                    default: Deny
+                    description: DefaultAction is the action to take when no rules
+                      match. If unspecified, defaults to Deny.
+                    enum:
+                    - Allow
+                    - Deny
+                    type: string
+                  rules:
+                    description: |-
+                      Rules defines a list of backend selection rules.
+                      These rules are evaluated in order, the first matching rule will be applied,
+                      and the rest will be skipped.
+
+                      If no rules are defined, the default action will be applied to all backends.
+                    items:
+                      description: MCPBackendSelectorRule defines a single backend
+                        selection rule.
+                      properties:
+                        action:
+                          default: Allow
+                          description: Action is the decision for matching backends.
+                            If unspecified, defaults to Allow.
+                          enum:
+                          - Allow
+                          - Deny
+                          type: string
+                        cel:
+                          description: "CEL specifies a Common Expression Language
+                            (CEL) expression evaluated once per\ncandidate backend.
+                            The expression must return a boolean; evaluation errors
+                            or\nnon-boolean results are treated as \"no match\".\n\nExample
+                            CEL expressions:\n\t* `request.mcp.backend in request.auth.jwt.claims.mcp_backends`\n\t*
+                            `(\",\" + request.headers[\"x-ai-eg-mcp-backend-subset\"]
+                            + \",\").contains(\",\" + request.mcp.backend + \",\")`\n\nAvailable
+                            attributes in the CEL expression are the same as documented
+                            on\nMCPRouteAuthorizationRule.CEL, except request.mcp.method,
+                            request.mcp.tool, and\nrequest.mcp.params are not populated
+                            (no MCP method has been selected yet at\nbackend-selection
+                            time).\n\nNote: The CEL expression support is experimental,
+                            and the attributes\navailable to the expression may change
+                            in future releases."
+                          maxLength: 4096
+                          type: string
+                      type: object
+                    maxItems: 32
+                    type: array
+                type: object
               headers:
                 description: |-
                   Headers are HTTP headers that must match for this route to be selected.
