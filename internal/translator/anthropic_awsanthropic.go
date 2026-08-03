@@ -168,10 +168,10 @@ func (a *anthropicToAWSAnthropicTranslator) convertMessagesEventWrappedInAmazonE
 		}
 
 		a.reflectStreamingEvent(&event)
-		*out = append(*out, sseEventPrefix...)
+		*out = append(*out, sseEventPrefixSpace...)
 		*out = append(*out, event.Type...)
 		*out = append(*out, '\n')
-		*out = append(*out, sseDataPrefix...)
+		*out = append(*out, sseDataPrefixSpace...)
 		*out = append(*out, rawEvent.Bytes...)
 		*out = append(*out, '\n', '\n')
 		lastRead = r.Size() - int64(r.Len())
