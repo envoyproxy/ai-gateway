@@ -48,7 +48,7 @@ Kubernetes setup:
 OPENAI_API_KEY=... aigw run --admin-port=1064
 
 # 2. Point a local Prometheus at the admin metrics endpoint.
-cat <<'EOF' > prometheus.yml
+cat << 'EOF' > prometheus.yml
 global:
   scrape_interval: 3s
 scrape_configs:
