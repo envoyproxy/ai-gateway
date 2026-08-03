@@ -294,6 +294,30 @@ func TestServePOST_InitializeRequest(t *testing.T) {
 	require.Equal(t, 1, int(capaCount))
 }
 
+// TestServePOST_InitializeRequest_BackendSelectorDenied verifies that a backendSelector denying
+// every route backend is treated as an authorization decision (403), not a system failure (500).
+func TestServePOST_InitializeRequest_BackendSelectorDenied(t *testing.T) {
+	proxy := newTestMCPProxy()
+	proxy.routes["test-route"].backendSelector = mustCompileBackendSelector(t, &filterapi.MCPRouteAuthorization{
+		DefaultAction: filterapi.AuthorizationActionDeny,
+	})
+
+	id, err := jsonrpc.MakeID("test-1")
+	require.NoError(t, err)
+	initReq := &jsonrpc.Request{Method: "initialize", ID: id, Params: []byte(`{"protocolVersion": "2024-11-05"}`)}
+	body, err := jsonrpc.EncodeMessage(initReq)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(internalapi.MCPRouteHeader, "test-route")
+	rr := httptest.NewRecorder()
+
+	proxy.servePOST(rr, req)
+
+	require.Equal(t, http.StatusForbidden, rr.Code)
+}
+
 // TestServePOST_JSONRPCRequest tests various jsonrpc.Request body, not jsonrpc.Response.
 func TestServePOST_JSONRPCRequest(t *testing.T) {
 	tests := []struct {

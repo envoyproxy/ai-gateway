@@ -567,7 +567,12 @@ func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.
 	s, err := m.newSession(ctx, p, route, subject, span, startAt)
 	if err != nil {
 		m.l.Error("failed to create new session", slog.String("error", err.Error()))
-		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to create new session: %v", err))
+		if errors.Is(err, errNoMatchingBackendSelector) {
+			// This is an authorization decision, not a system failure.
+			onErrorResponse(w, http.StatusForbidden, "access denied")
+		} else {
+			onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to create new session: %v", err))
+		}
 		return err
 	}
 
