@@ -103,14 +103,14 @@ func TestWithRealProviders(t *testing.T) {
 	t.Run("health-checking", func(t *testing.T) {
 		t.Run("chat/completions", func(t *testing.T) {
 			for _, tc := range []realProvidersTestCase{
-				{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
-				{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
-				{name: "azure-openai", modelName: "o1", required: internaltesting.RequiredCredentialAzure},
-				{name: "gemini", modelName: "gemini-3.1-flash-lite", required: internaltesting.RequiredCredentialGemini},
-				{name: "groq", modelName: "llama-3.1-8b-instant", required: internaltesting.RequiredCredentialGroq},
-				{name: "grok", modelName: "grok-3", required: internaltesting.RequiredCredentialGrok},
-				{name: "sambanova", modelName: "Meta-Llama-3.1-8B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
-				{name: "deepinfra", modelName: "meta-llama/Meta-Llama-3-8B-Instruct", required: internaltesting.RequiredCredentialDeepInfra},
+				{name: "openai", modelName: internaltesting.OpenAIModelName, required: internaltesting.RequiredCredentialOpenAI},
+				{name: "aws-bedrock", modelName: internaltesting.AWSBedrockModelName, required: internaltesting.RequiredCredentialAWS},
+				{name: "azure-openai", modelName: internaltesting.AzureOpenAIModelName, required: internaltesting.RequiredCredentialAzure},
+				{name: "gemini", modelName: internaltesting.GeminiModelName, required: internaltesting.RequiredCredentialGemini},
+				{name: "groq", modelName: internaltesting.GroqModelName, required: internaltesting.RequiredCredentialGroq},
+				{name: "grok", modelName: internaltesting.GrokModelName, required: internaltesting.RequiredCredentialGrok},
+				{name: "sambanova", modelName: internaltesting.SambaNovaModelName, required: internaltesting.RequiredCredentialSambaNova},
+				{name: "deepinfra", modelName: internaltesting.DeepInfraModelName, required: internaltesting.RequiredCredentialDeepInfra},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					cc.MaybeSkip(t, tc.required)
@@ -120,11 +120,11 @@ func TestWithRealProviders(t *testing.T) {
 		})
 		t.Run("embeddings", func(t *testing.T) {
 			for _, tc := range []realProvidersTestCase{
-				{name: "openai", modelName: "text-embedding-3-small", required: internaltesting.RequiredCredentialOpenAI},
-				{name: "aws-bedrock", modelName: "amazon.titan-embed-text-v2:0", required: internaltesting.RequiredCredentialAWS},
-				{name: "gemini", modelName: "gemini-embedding-001", required: internaltesting.RequiredCredentialGemini},
-				{name: "sambanova", modelName: "E5-Mistral-7B-Instruct", required: internaltesting.RequiredCredentialSambaNova},
-				{name: "deepinfra", modelName: "BAAI/bge-base-en-v1.5", required: internaltesting.RequiredCredentialDeepInfra},
+				{name: "openai", modelName: internaltesting.OpenAIEmbeddingsModelName, required: internaltesting.RequiredCredentialOpenAI},
+				{name: "aws-bedrock", modelName: internaltesting.AWSBedrockEmbeddingsModelName, required: internaltesting.RequiredCredentialAWS},
+				{name: "gemini", modelName: internaltesting.GeminiEmbeddingsModelName, required: internaltesting.RequiredCredentialGemini},
+				{name: "sambanova", modelName: internaltesting.SambaNovaEmbeddingsModelName, required: internaltesting.RequiredCredentialSambaNova},
+				{name: "deepinfra", modelName: internaltesting.DeepInfraEmbeddingsModelName, required: internaltesting.RequiredCredentialDeepInfra},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					cc.MaybeSkip(t, tc.required)
@@ -134,8 +134,8 @@ func TestWithRealProviders(t *testing.T) {
 		})
 		t.Run("messages", func(t *testing.T) {
 			for _, tc := range []realProvidersTestCase{
-				{name: "anthropic", modelName: "claude-sonnet-4-5", required: internaltesting.RequiredCredentialAnthropic},
-				{name: "anthropic-aws-bedrock", modelName: "global.anthropic.claude-sonnet-4-5-20250929-v1:0", required: internaltesting.RequiredCredentialAWS},
+				{name: "anthropic", modelName: internaltesting.AnthropicModelName, required: internaltesting.RequiredCredentialAnthropic},
+				{name: "anthropic-aws-bedrock", modelName: internaltesting.AWSBedrockAnthropicGlobalModelName, required: internaltesting.RequiredCredentialAWS},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					cc.MaybeSkip(t, tc.required)
@@ -189,8 +189,8 @@ func TestWithRealProviders(t *testing.T) {
 	t.Run("streaming", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress + "/v1/"))
 		for _, tc := range []realProvidersTestCase{
-			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
-			{name: "aws-bedrock", modelName: "us.meta.llama3-2-1b-instruct-v1:0", required: internaltesting.RequiredCredentialAWS},
+			{name: "openai", modelName: internaltesting.OpenAIModelName, required: internaltesting.RequiredCredentialOpenAI},
+			{name: "aws-bedrock", modelName: internaltesting.AWSBedrockModelName, required: internaltesting.RequiredCredentialAWS},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
@@ -240,9 +240,9 @@ func TestWithRealProviders(t *testing.T) {
 	t.Run("uses tool in response", func(t *testing.T) {
 		client := openai.NewClient(option.WithBaseURL(listenerAddress+"/v1/"), option.WithMaxRetries(0))
 		for _, tc := range []realProvidersTestCase{
-			{name: "openai", modelName: "gpt-4o-mini", required: internaltesting.RequiredCredentialOpenAI},
-			{name: "aws-bedrock", modelName: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", required: internaltesting.RequiredCredentialAWS},
-			{name: "gemini", modelName: "gemini-3.1-flash-lite", required: internaltesting.RequiredCredentialGemini},
+			{name: "openai", modelName: internaltesting.OpenAIModelName, required: internaltesting.RequiredCredentialOpenAI},
+			{name: "aws-bedrock", modelName: internaltesting.AWSBedrockAnthropicUSModelName, required: internaltesting.RequiredCredentialAWS},
+			{name: "gemini", modelName: internaltesting.GeminiModelName, required: internaltesting.RequiredCredentialGemini},
 		} {
 			t.Run(tc.modelName, func(t *testing.T) {
 				cc.MaybeSkip(t, tc.required)
