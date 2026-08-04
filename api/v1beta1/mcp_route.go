@@ -108,9 +108,9 @@ type MCPRouteSpec struct {
 	// If unspecified, all backends on the route are considered.
 	//
 	// Why: on a route with many backends serving different callers, fanning out to
-	// every backend on every session wastes connections and is also unnecessarily cause
-	// 403 in MCP server acess logs. BackendSelector lets a route declare that decision
-	// with a CEL rule instead of requiring an ext-proc shim to do it out of band
+	// every backend on every session wastes connections and MCP handshakes on backends
+	// a given caller has no use for. BackendSelector lets a route declare that decision
+	// with a CEL rule instead of requiring an ext-proc shim to do it out of band.
 	//
 	// +kubebuilder:validation:Optional
 	// +optional
@@ -429,19 +429,24 @@ type MCPBackendSelector struct {
 	Rules []MCPBackendSelectorRule `json:"rules,omitempty"`
 }
 
-// MCPBackendSelectorRule defines a single backend selection rule or single CEL rule.
+// MCPBackendSelectorRule defines a single backend selection rule.
 type MCPBackendSelectorRule struct {
-	// CEL Evaluated once per candidate backend.  The expression must return a boolean;
-	// evaluation errors or non-boolean results are treated as "no match".
+	// CEL specifies a Common Expression Language (CEL) expression, evaluated once for
+	// each backend already listed in backendRefs — it does not parse a list of backends
+	// out of the request. Each evaluation binds request.mcp.backend to the name of the
+	// one candidate backend under test, so the expression should answer "is this backend
+	// allowed", not "which backends should be used". The expression must return a
+	// boolean; evaluation errors or non-boolean results are treated as "no match". A
+	// match means the rule applies, and Action below decides whether that's an Allow or
+	// a Deny for that backend.
 	//
 	// Example CEL expressions:
 	//	* `request.mcp.backend in request.auth.jwt.claims.mcp_backends`
 	//	* `("," + request.headers["x-ai-eg-mcp-backend-subset"] + ",").contains("," + request.mcp.backend + ",")`
 	//
-	// Available attributes in the CEL expression are the same as documented on
-	// MCPRouteAuthorizationRule.CEL, except request.mcp.method, request.mcp.tool, and
-	// request.mcp.params are not populated (no MCP method has been selected yet at
-	// backend-selection time).
+	// Available attributes are the same as documented on MCPRouteAuthorizationRule.CEL,
+	// except request.mcp.method, request.mcp.tool, and request.mcp.params are not
+	// populated (no MCP method has been selected yet at backend-selection time).
 	//
 	// Note: The CEL expression support is experimental, and the attributes
 	// available to the expression may change in future releases.

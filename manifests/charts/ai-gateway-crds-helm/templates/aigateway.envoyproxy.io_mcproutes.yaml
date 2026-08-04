@@ -313,8 +313,8 @@ spec:
                   If unspecified, all backends on the route are considered.
 
                   Why: on a route with many backends serving different callers, fanning out to
-                  every backend on every session wastes connections or gives unneccessary 403
-                  codes on backend logs, BackendSelector lets a route declare that decision
+                  every backend on every session wastes connections and MCP handshakes on backends
+                  a given caller has no use for. BackendSelector lets a route declare that decision
                   with a CEL rule instead of requiring an ext-proc shim to do it out of band.
                 properties:
                   defaultAction:
@@ -346,19 +346,25 @@ spec:
                           type: string
                         cel:
                           description: "CEL specifies a Common Expression Language
-                            (CEL) expression evaluated once per\ncandidate backend.
-                            The expression must return a boolean; evaluation errors
-                            or\nnon-boolean results are treated as \"no match\".\n\nExample
-                            CEL expressions:\n\t* `request.mcp.backend in request.auth.jwt.claims.mcp_backends`\n\t*
+                            (CEL) expression, evaluated once for\neach backend already
+                            listed in backendRefs — it does not parse a list of backends\nout
+                            of the request. Each evaluation binds request.mcp.backend
+                            to the name of the\none candidate backend under test,
+                            so the expression should answer \"is this backend\nallowed\",
+                            not \"which backends should be used\". The expression
+                            must return a\nboolean; evaluation errors or non-boolean
+                            results are treated as \"no match\". A\nmatch means the
+                            rule applies, and Action below decides whether that's
+                            an Allow or\na Deny for that backend.\n\nExample CEL expressions:\n\t*
+                            `request.mcp.backend in request.auth.jwt.claims.mcp_backends`\n\t*
                             `(\",\" + request.headers[\"x-ai-eg-mcp-backend-subset\"]
                             + \",\").contains(\",\" + request.mcp.backend + \",\")`\n\nAvailable
-                            attributes in the CEL expression are the same as documented
-                            on\nMCPRouteAuthorizationRule.CEL, except request.mcp.method,
-                            request.mcp.tool, and\nrequest.mcp.params are not populated
-                            (no MCP method has been selected yet at\nbackend-selection
-                            time).\n\nNote: The CEL expression support is experimental,
-                            and the attributes\navailable to the expression may change
-                            in future releases."
+                            attributes are the same as documented on MCPRouteAuthorizationRule.CEL,\nexcept
+                            request.mcp.method, request.mcp.tool, and request.mcp.params
+                            are not\npopulated (no MCP method has been selected yet
+                            at backend-selection time).\n\nNote: The CEL expression
+                            support is experimental, and the attributes\navailable
+                            to the expression may change in future releases."
                           maxLength: 4096
                           type: string
                       type: object
@@ -5988,19 +5994,25 @@ spec:
                           type: string
                         cel:
                           description: "CEL specifies a Common Expression Language
-                            (CEL) expression evaluated once per\ncandidate backend.
-                            The expression must return a boolean; evaluation errors
-                            or\nnon-boolean results are treated as \"no match\".\n\nExample
-                            CEL expressions:\n\t* `request.mcp.backend in request.auth.jwt.claims.mcp_backends`\n\t*
+                            (CEL) expression, evaluated once for\neach backend already
+                            listed in backendRefs — it does not parse a list of backends\nout
+                            of the request. Each evaluation binds request.mcp.backend
+                            to the name of the\none candidate backend under test,
+                            so the expression should answer \"is this backend\nallowed\",
+                            not \"which backends should be used\". The expression
+                            must return a\nboolean; evaluation errors or non-boolean
+                            results are treated as \"no match\". A\nmatch means the
+                            rule applies, and Action below decides whether that's
+                            an Allow or\na Deny for that backend.\n\nExample CEL expressions:\n\t*
+                            `request.mcp.backend in request.auth.jwt.claims.mcp_backends`\n\t*
                             `(\",\" + request.headers[\"x-ai-eg-mcp-backend-subset\"]
                             + \",\").contains(\",\" + request.mcp.backend + \",\")`\n\nAvailable
-                            attributes in the CEL expression are the same as documented
-                            on\nMCPRouteAuthorizationRule.CEL, except request.mcp.method,
-                            request.mcp.tool, and\nrequest.mcp.params are not populated
-                            (no MCP method has been selected yet at\nbackend-selection
-                            time).\n\nNote: The CEL expression support is experimental,
-                            and the attributes\navailable to the expression may change
-                            in future releases."
+                            attributes are the same as documented on MCPRouteAuthorizationRule.CEL,\nexcept
+                            request.mcp.method, request.mcp.tool, and request.mcp.params
+                            are not\npopulated (no MCP method has been selected yet
+                            at backend-selection time).\n\nNote: The CEL expression
+                            support is experimental, and the attributes\navailable
+                            to the expression may change in future releases."
                           maxLength: 4096
                           type: string
                       type: object

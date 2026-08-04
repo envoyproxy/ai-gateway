@@ -43,9 +43,9 @@ type (
 		backends      map[filterapi.MCPBackendName]filterapi.MCPBackend
 		toolSelectors map[filterapi.MCPBackendName]*toolSelector
 		authorization *compiledAuthorization
-		// backendSelector reuses the same compiledAuthorization/authorizeRequest machinery as
-		// authorization above; it is evaluated once per candidate backend in newSession()
-		// instead of per JSON-RPC method call.
+		// backendSelector reuses the same compiledAuthorization machinery as authorization
+		// above, but is evaluated once per candidate backend in newSession() instead of
+		// per JSON-RPC method call.
 		backendSelector *compiledAuthorization
 		forwardHeaders  []string
 	}

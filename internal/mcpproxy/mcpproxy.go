@@ -165,11 +165,9 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 
 	forwardHeaders := extractForwardHeaders(m.requestHeaders, backends.forwardHeaders)
 
-	// Optional declarative backend selector (spec.backendSelector), evaluated once per candidate
-	// backend at session-initialize time — never re-evaluated for the lifetime of the session.
-	// If the route doesn't configure one, all backends are considered (original behavior, backward
-	// compatible). A route owner without a trusted shim can write a rule against JWT claims or headers;
-	// A shim-backed route can write a rule against the trusted x-ai-eg-mcp-backend-subset header instead.
+	// spec.backendSelector, if configured, is evaluated once per candidate backend here,
+	// at session-initialize time, rather than on every subsequent call in the session.
+	// With no selector configured, all backends are considered (unchanged behavior).
 	selectedBackends := backends.backends
 	if backends.backendSelector != nil {
 		filtered := make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(backends.backends))

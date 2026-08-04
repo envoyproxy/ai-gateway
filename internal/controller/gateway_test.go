@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -2906,6 +2907,71 @@ func Test_mcpConfig_ForwardHeaders(t *testing.T) {
 	backendB := mc.Routes[0].Backends[1]
 	require.Equal(t, "backendB", backendB.Name)
 	require.Empty(t, backendB.ForwardHeaders)
+}
+
+func Test_mcpConfig_BackendSelector(t *testing.T) {
+	t.Run("unset means no selector", func(t *testing.T) {
+		mcpRoutes := []aigv1b1.MCPRoute{
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "ns"},
+				Spec: aigv1b1.MCPRouteSpec{
+					BackendRefs: []aigv1b1.MCPRouteBackendRef{{
+						BackendObjectReference: gwapiv1.BackendObjectReference{Name: gwapiv1.ObjectName("backend")},
+					}},
+				},
+			},
+		}
+
+		mc, effective := mcpConfig(mcpRoutes)
+		require.True(t, effective)
+		require.Nil(t, mc.Routes[0].BackendSelector)
+	})
+
+	t.Run("rules and default action are translated", func(t *testing.T) {
+		mcpRoutes := []aigv1b1.MCPRoute{
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "ns"},
+				Spec: aigv1b1.MCPRouteSpec{
+					BackendRefs: []aigv1b1.MCPRouteBackendRef{{
+						BackendObjectReference: gwapiv1.BackendObjectReference{Name: gwapiv1.ObjectName("backend")},
+					}},
+					BackendSelector: &aigv1b1.MCPBackendSelector{
+						DefaultAction: ptr.To(egv1a1.AuthorizationActionDeny),
+						Rules: []aigv1b1.MCPBackendSelectorRule{
+							{CEL: ptr.To(`request.mcp.backend in request.auth.jwt.claims.mcp_backends`)},
+						},
+					},
+				},
+			},
+		}
+
+		mc, effective := mcpConfig(mcpRoutes)
+		require.True(t, effective)
+		sel := mc.Routes[0].BackendSelector
+		require.NotNil(t, sel)
+		require.Equal(t, filterapi.AuthorizationActionDeny, sel.DefaultAction)
+		require.Len(t, sel.Rules, 1)
+		require.Equal(t, filterapi.AuthorizationActionAllow, sel.Rules[0].Action) // Action defaults to Allow.
+		require.Equal(t, `request.mcp.backend in request.auth.jwt.claims.mcp_backends`, *sel.Rules[0].CEL)
+	})
+
+	t.Run("defaultAction defaults to deny when unset", func(t *testing.T) {
+		mcpRoutes := []aigv1b1.MCPRoute{
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: "ns"},
+				Spec: aigv1b1.MCPRouteSpec{
+					BackendRefs: []aigv1b1.MCPRouteBackendRef{{
+						BackendObjectReference: gwapiv1.BackendObjectReference{Name: gwapiv1.ObjectName("backend")},
+					}},
+					BackendSelector: &aigv1b1.MCPBackendSelector{},
+				},
+			},
+		}
+
+		mc, _ := mcpConfig(mcpRoutes)
+		require.Equal(t, filterapi.AuthorizationActionDeny, mc.Routes[0].BackendSelector.DefaultAction)
+		require.Empty(t, mc.Routes[0].BackendSelector.Rules)
+	})
 }
 
 func Test_mergeHeaderMutations(t *testing.T) {

@@ -94,6 +94,40 @@ func TestMCP(t *testing.T) {
 				internalapi.MCPBackendSubsetHeader: "mcp-backend-0",
 			}}, true, true)
 	})
+	t.Run("backendSelector denies fan-out by default when the header is absent", func(t *testing.T) {
+		sess, err := client.Connect(
+			t.Context(),
+			&mcp.StreamableClientTransport{
+				Endpoint: fmt.Sprintf("%s/mcp/backend-selector", fwd.Address()),
+			}, nil)
+		require.Error(t, err)
+		require.Nil(t, sess)
+	})
+	t.Run("backendSelector allows only the backend named in the header", func(t *testing.T) {
+		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/backend-selector", testMCPServerAllToolNames("mcp-backend__"),
+			&http.Client{Transport: mcpRequestHeaderInjector{
+				internalapi.MCPBackendSubsetHeader: "mcp-backend",
+			}}, true, true)
+	})
+	t.Run("backendSelector allows every backend named in the header", func(t *testing.T) {
+		expectedTools := append(testMCPServerAllToolNames("mcp-backend__"), testMCPServerAllToolNames("mcp-backend-query-api-key__")...)
+		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/backend-selector", expectedTools,
+			&http.Client{Transport: mcpRequestHeaderInjector{
+				internalapi.MCPBackendSubsetHeader: "mcp-backend,mcp-backend-query-api-key",
+			}}, true, true)
+	})
+	t.Run("client cannot spoof the header to bypass a default-deny backendSelector", func(t *testing.T) {
+		sess, err := client.Connect(
+			t.Context(),
+			&mcp.StreamableClientTransport{
+				Endpoint: fmt.Sprintf("%s/mcp/backend-selector", fwd.Address()),
+				HTTPClient: &http.Client{Transport: mcpRequestHeaderInjector{
+					internalapi.MCPBackendSubsetHeader: "mcp-backend,mcp-backend-query-api-key",
+				}},
+			}, nil)
+		require.Error(t, err)
+		require.Nil(t, sess)
+	})
 }
 
 func testMCPRouteTools(ctx context.Context, t *testing.T, client *mcp.Client, fwdAddress, routePath string, expectedTools []string, mcpRouteTenantHeaderClient *http.Client, requireEcho, requireSum bool) {
