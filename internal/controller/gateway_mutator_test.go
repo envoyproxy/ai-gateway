@@ -589,11 +589,47 @@ func strPtr(value string) *string {
 
 func newTestGatewayMutator(fakeClient client.Client, fakeKube *fake2.Clientset, requestHeaderAttributes, spanRequestHeaderAttributes, metricsRequestHeaderAttributes, logRequestHeaderAttributes *string, endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets string, sidecar bool) *gatewayMutator {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	return newGatewayMutator(
-		fakeClient, fakeClient, fakeKube, ctrl.Log, "docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
-		"info", false, "/tmp/extproc.sock", requestHeaderAttributes, spanRequestHeaderAttributes, metricsRequestHeaderAttributes, logRequestHeaderAttributes, "/v1", endpointPrefixes, extProcExtraEnvVars, extProcImagePullSecrets, 512*1024*1024,
-		sidecar, "seed", 100, "fallback", 200,
-	)
+	opts := &Options{
+		ExtProcImage:                           "docker.io/envoyproxy/ai-gateway-extproc:latest",
+		ExtProcImagePullPolicy:                 corev1.PullIfNotPresent,
+		ExtProcLogLevel:                        "info",
+		ExtProcEnableRedaction:                 false,
+		UDSPath:                                "/tmp/extproc.sock",
+		RequestHeaderAttributes:                requestHeaderAttributes,
+		TracingRequestHeaderAttributes:         spanRequestHeaderAttributes,
+		MetricsRequestHeaderAttributes:         metricsRequestHeaderAttributes,
+		LogRequestHeaderAttributes:             logRequestHeaderAttributes,
+		RootPrefix:                             "/v1",
+		EndpointPrefixes:                       endpointPrefixes,
+		ExtProcExtraEnvVars:                    extProcExtraEnvVars,
+		ExtProcImagePullSecrets:                extProcImagePullSecrets,
+		ExtProcMaxRecvMsgSize:                  512 * 1024 * 1024,
+		MCPSessionEncryptionSeed:               "seed",
+		MCPSessionEncryptionIterations:         100,
+		MCPFallbackSessionEncryptionSeed:       "fallback",
+		MCPFallbackSessionEncryptionIterations: 200,
+	}
+	return newGatewayMutator(fakeClient, fakeClient, fakeKube, ctrl.Log, newExtProcBuilder(opts, sidecar, ctrl.Log))
+}
+
+// defaultTestExtProcBuilder returns an extProcBuilder with the standard test
+// defaults used by the no-cache-reader mutator tests (which need a distinct
+// noCacheReader and therefore call newGatewayMutator directly).
+func defaultTestExtProcBuilder() *extProcBuilder {
+	opts := &Options{
+		ExtProcImage:                           "docker.io/envoyproxy/ai-gateway-extproc:latest",
+		ExtProcImagePullPolicy:                 corev1.PullIfNotPresent,
+		ExtProcLogLevel:                        "info",
+		ExtProcEnableRedaction:                 false,
+		UDSPath:                                "/tmp/extproc.sock",
+		RootPrefix:                             "/v1",
+		ExtProcMaxRecvMsgSize:                  512 * 1024 * 1024,
+		MCPSessionEncryptionSeed:               "seed",
+		MCPSessionEncryptionIterations:         100,
+		MCPFallbackSessionEncryptionSeed:       "fallback",
+		MCPFallbackSessionEncryptionIterations: 200,
+	}
+	return newExtProcBuilder(opts, false, ctrl.Log)
 }
 
 func TestParseExtraEnvVars(t *testing.T) {
@@ -910,7 +946,7 @@ func TestGatewayMutator_resolveExtProcImage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := &gatewayMutator{extProcImage: tt.base}
+			g := &gatewayMutator{extProcBuilder: &extProcBuilder{image: tt.base}}
 			require.Equal(t, tt.expected, g.resolveExtProcImage(tt.extProc))
 		})
 	}
@@ -920,12 +956,7 @@ func TestGatewayMutator_mutatePod_UsesNoCacheReader(t *testing.T) {
 	cacheClient := requireNewFakeClientWithIndexes(t)
 	noCacheReader := requireNewFakeClientWithIndexes(t)
 	fakeKube := fake2.NewClientset()
-	g := newGatewayMutator(
-		cacheClient, noCacheReader, fakeKube, ctrl.Log,
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
-		"info", false, "/tmp/extproc.sock", nil, nil, nil, nil, "/v1", "", "", "", 512*1024*1024,
-		false, "seed", 100, "fallback", 200,
-	)
+	g := newGatewayMutator(cacheClient, noCacheReader, fakeKube, ctrl.Log, defaultTestExtProcBuilder())
 
 	const gwName, gwNamespace = "test-gateway", "test-namespace"
 	// Route only in noCacheReader, not in cacheClient — simulates cache not yet synced.
@@ -970,12 +1001,7 @@ func TestGatewayMutator_listAIGatewayRoutesForGateway_NoCacheReaderFallback(t *t
 	cacheClient := requireNewFakeClientWithIndexes(t)
 	noCacheReader := requireNewFakeClientWithIndexes(t)
 	fakeKube := fake2.NewClientset()
-	g := newGatewayMutator(
-		cacheClient, noCacheReader, fakeKube, ctrl.Log,
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
-		"info", false, "/tmp/extproc.sock", nil, nil, nil, nil, "/v1", "", "", "", 512*1024*1024,
-		false, "seed", 100, "fallback", 200,
-	)
+	g := newGatewayMutator(cacheClient, noCacheReader, fakeKube, ctrl.Log, defaultTestExtProcBuilder())
 
 	const gwName, gwNamespace = "test-gateway", "test-namespace"
 
@@ -1014,12 +1040,7 @@ func TestGatewayMutator_listMCPRoutesForGateway_NoCacheReaderFallback(t *testing
 	cacheClient := requireNewFakeClientWithIndexes(t)
 	noCacheReader := requireNewFakeClientWithIndexes(t)
 	fakeKube := fake2.NewClientset()
-	g := newGatewayMutator(
-		cacheClient, noCacheReader, fakeKube, ctrl.Log,
-		"docker.io/envoyproxy/ai-gateway-extproc:latest", corev1.PullIfNotPresent,
-		"info", false, "/tmp/extproc.sock", nil, nil, nil, nil, "/v1", "", "", "", 512*1024*1024,
-		false, "seed", 100, "fallback", 200,
-	)
+	g := newGatewayMutator(cacheClient, noCacheReader, fakeKube, ctrl.Log, defaultTestExtProcBuilder())
 
 	const gwName, gwNamespace = "test-gateway", "test-namespace"
 
