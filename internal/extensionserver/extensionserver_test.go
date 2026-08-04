@@ -243,7 +243,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 											internalapi.XDSUpstreamHostMetadataBackendNamePath,
 											internalapi.XDSClusterMetadataBackendNamePath,
 											internalapi.XDSUpstreamHostMetadataAWSSigningHostPath,
-											internalapi.XDSClusterMetadataAWSSigningHostPath,
+											internalapi.XDSUpstreamHostMetadataAWSSigningRegionPath,
 											internalapi.XDSRouteMetadataRouteNamePath,
 										},
 										ProcessingMode: &extprocv3.ProcessingMode{
@@ -342,6 +342,9 @@ func Test_maybeModifyCluster(t *testing.T) {
 													internalapi.InternalMetadataAWSSigningHostKey: structpb.NewStringValue(
 														"aaa.bedrock-runtime.us-east-1.amazonaws.com",
 													),
+													internalapi.InternalMetadataAWSSigningRegionKey: structpb.NewStringValue(
+														"us-east-1",
+													),
 												},
 											},
 										},
@@ -365,6 +368,9 @@ func Test_maybeModifyCluster(t *testing.T) {
 													),
 													internalapi.InternalMetadataAWSSigningHostKey: structpb.NewStringValue(
 														"bbb.bedrock-runtime.us-east-1.amazonaws.com",
+													),
+													internalapi.InternalMetadataAWSSigningRegionKey: structpb.NewStringValue(
+														"us-east-1",
 													),
 												},
 											},
@@ -395,7 +401,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 											internalapi.XDSUpstreamHostMetadataBackendNamePath,
 											internalapi.XDSClusterMetadataBackendNamePath,
 											internalapi.XDSUpstreamHostMetadataAWSSigningHostPath,
-											internalapi.XDSClusterMetadataAWSSigningHostPath,
+											internalapi.XDSUpstreamHostMetadataAWSSigningRegionPath,
 											internalapi.XDSRouteMetadataRouteNamePath,
 										},
 										ProcessingMode: &extprocv3.ProcessingMode{
@@ -2504,7 +2510,7 @@ func TestEndpointAWSSigningHost(t *testing.T) {
 			want:     "",
 		},
 		{
-			name: "hostname wins over address",
+			name: "hostname is used even when a socket address is present",
 			endpoint: &endpointv3.LbEndpoint{
 				HostIdentifier: &endpointv3.LbEndpoint_Endpoint{
 					Endpoint: &endpointv3.Endpoint{
@@ -2518,7 +2524,7 @@ func TestEndpointAWSSigningHost(t *testing.T) {
 			want: "bedrock-runtime.us-east-1.amazonaws.com",
 		},
 		{
-			name: "socket address fallback",
+			name: "socket address is not used as a fallback",
 			endpoint: &endpointv3.LbEndpoint{
 				HostIdentifier: &endpointv3.LbEndpoint_Endpoint{
 					Endpoint: &endpointv3.Endpoint{
@@ -2528,7 +2534,7 @@ func TestEndpointAWSSigningHost(t *testing.T) {
 					},
 				},
 			},
-			want: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
+			want: "",
 		},
 		{
 			name: "no hostname and no address",
@@ -2540,6 +2546,24 @@ func TestEndpointAWSSigningHost(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, endpointAWSSigningHost(tc.endpoint))
+		})
+	}
+}
+
+func TestAWSSigningRegionFromHost(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		host string
+		want string
+	}{
+		{"public bedrock host", "bedrock-runtime.us-east-1.amazonaws.com", "us-east-1"},
+		{"vpce host", "vpce-123.bedrock-runtime.us-west-2.vpce.amazonaws.com", "us-west-2"},
+		{"prefixed hostname", "aaa.bedrock-runtime.eu-central-1.amazonaws.com", "eu-central-1"},
+		{"non-bedrock host", "gateway.example.com", ""},
+		{"empty", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, awsSigningRegionFromHost(tc.host))
 		})
 	}
 }

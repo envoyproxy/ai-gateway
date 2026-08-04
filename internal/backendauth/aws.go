@@ -87,6 +87,7 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 	method := requestHeaders[":method"]
 	path := requestHeaders[":path"]
 	host := a.signingHost(requestHeaders)
+	region := a.signingRegion(requestHeaders)
 
 	var body []byte
 	if len(mutatedBody) > 0 {
@@ -116,7 +117,7 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 	}
 
 	err = a.signer.SignHTTP(ctx, credentials, req,
-		hex.EncodeToString(payloadHash[:]), "bedrock", a.region, time.Now())
+		hex.EncodeToString(payloadHash[:]), "bedrock", region, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("cannot sign request: %w", err)
 	}
@@ -131,18 +132,30 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 	return headers, nil
 }
 
+// signingHost resolves the host used to compute the SigV4 signature. It prefers the host resolved at
+// config-translation time and forwarded by the upstream ext_proc filter via
+// [internalapi.AWSSigningHostHeader], and falls back to the region-based default Bedrock host when that
+// metadata is absent. It deliberately does not fall back to :authority or the host header: at signing
+// time those carry the downstream gateway authority, not the upstream endpoint, so signing over them
+// produces a silent 403.
 func (a *awsHandler) signingHost(requestHeaders map[string]string) string {
 	host := requestHeaders[internalapi.AWSSigningHostHeader]
-	if host == "" {
-		host = requestHeaders[":authority"]
-	}
-	if host == "" {
-		host = requestHeaders["host"]
-	}
 	if host == "" {
 		host = fmt.Sprintf("bedrock-runtime.%s.amazonaws.com", a.region)
 	}
 	return normalizeAWSSigningHost(host)
+}
+
+// signingRegion resolves the region used for the SigV4 credential scope. It prefers the region resolved
+// at config-translation time and forwarded by the upstream ext_proc filter via
+// [internalapi.AWSSigningRegionHeader], and falls back to the configured region otherwise. Resolving the
+// host and region from the same authoritative source keeps them in agreement, so a region/endpoint
+// mismatch (e.g. a us-east-1 VPCE under a us-west-2 configured region) cannot produce a 403.
+func (a *awsHandler) signingRegion(requestHeaders map[string]string) string {
+	if region := requestHeaders[internalapi.AWSSigningRegionHeader]; region != "" {
+		return region
+	}
+	return a.region
 }
 
 func normalizeAWSSigningHost(host string) string {

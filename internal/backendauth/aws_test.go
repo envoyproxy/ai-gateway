@@ -6,9 +6,17 @@
 package backendauth
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"maps"
+	"net/http"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -111,25 +119,20 @@ func TestAWSHandler_SigningHost(t *testing.T) {
 		want    string
 	}{
 		{
-			name: "upstream metadata wins over authority",
+			name:    "signing host header is used",
+			headers: map[string]string{internalapi.AWSSigningHostHeader: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com:443"},
+			want:    "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
+		},
+		{
+			name: "authority and host are ignored, falls to region default",
 			headers: map[string]string{
-				internalapi.AWSSigningHostHeader: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com:443",
-				":authority":                     "gateway.example.com",
+				":authority": "gateway.example.com",
+				"host":       "gateway.example.com",
 			},
-			want: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
+			want: "bedrock-runtime.us-east-1.amazonaws.com",
 		},
 		{
-			name:    "authority fallback",
-			headers: map[string]string{":authority": "custom-bedrock.example.com"},
-			want:    "custom-bedrock.example.com",
-		},
-		{
-			name:    "host fallback",
-			headers: map[string]string{"host": "bedrock-runtime.us-west-2.amazonaws.com"},
-			want:    "bedrock-runtime.us-west-2.amazonaws.com",
-		},
-		{
-			name:    "default host fallback",
+			name:    "default host when no metadata",
 			headers: map[string]string{},
 			want:    "bedrock-runtime.us-east-1.amazonaws.com",
 		},
@@ -153,6 +156,99 @@ func TestAWSHandler_SigningHost(t *testing.T) {
 			require.Equal(t, tc.want, handler.signingHost(tc.headers))
 		})
 	}
+}
+
+func TestAWSHandler_SigningRegion(t *testing.T) {
+	handler := &awsHandler{region: "us-east-1"}
+	for _, tc := range []struct {
+		name    string
+		headers map[string]string
+		want    string
+	}{
+		{
+			name:    "signing region header is used",
+			headers: map[string]string{internalapi.AWSSigningRegionHeader: "us-west-2"},
+			want:    "us-west-2",
+		},
+		{
+			name:    "falls back to configured region",
+			headers: map[string]string{},
+			want:    "us-east-1",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, handler.signingRegion(tc.headers))
+		})
+	}
+}
+
+// TestAWSHandler_Do_SignsOverResolvedHost asserts the SigV4 signature is actually computed over the
+// resolved signing host (and region), by independently recomputing the Authorization header and asserting
+// byte-equality. It is credential-free (static keys), so fork CI can run it.
+func TestAWSHandler_Do_SignsOverResolvedHost(t *testing.T) {
+	const awsFileBody = "[default]\naws_access_key_id=test\naws_secret_access_key=secret\n"
+	// The independent recompute must use the same static credentials the handler loads from the file.
+	refCreds := aws.Credentials{AccessKeyID: "test", SecretAccessKey: "secret"}
+	body := []byte(`{"messages":[{"role":"user","content":[{"text":"hi"}]}]}`)
+	const path = "/model/anthropic.claude-v2/converse"
+
+	newHandler := func(t *testing.T) *awsHandler {
+		h, err := newAWSHandler(t.Context(), &filterapi.AWSAuth{CredentialFileLiteral: awsFileBody, Region: "us-east-1"})
+		require.NoError(t, err)
+		return h.(*awsHandler)
+	}
+
+	// recompute reproduces the handler's request construction and signing for a known host/region using
+	// the timestamp the handler actually used (its X-Amz-Date), and returns the Authorization header.
+	recompute := func(t *testing.T, host, region, amzDate string) string {
+		ts, err := time.Parse("20060102T150405Z", amzDate)
+		require.NoError(t, err)
+		payloadHash := sha256.Sum256(body)
+		req, err := http.NewRequest(http.MethodPost, "https://"+host+path, bytes.NewReader(body))
+		require.NoError(t, err)
+		req.Host = host
+		req.ContentLength = -1
+		require.NoError(t, v4.NewSigner().SignHTTP(t.Context(), refCreds, req,
+			hex.EncodeToString(payloadHash[:]), "bedrock", region, ts))
+		return req.Header.Get("Authorization")
+	}
+
+	// sign runs the real handler path and returns the resulting Authorization + X-Amz-Date.
+	sign := func(t *testing.T, extra map[string]string) (auth, amzDate string) {
+		headers := map[string]string{":method": http.MethodPost, ":path": path}
+		maps.Copy(headers, extra)
+		_, err := newHandler(t).Do(t.Context(), headers, body)
+		require.NoError(t, err)
+		return headers["Authorization"], headers["X-Amz-Date"]
+	}
+
+	t.Run("signs over the VPCE host from metadata", func(t *testing.T) {
+		const vpce = "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"
+		auth, amzDate := sign(t, map[string]string{internalapi.AWSSigningHostHeader: vpce})
+		require.Equal(t, recompute(t, vpce, "us-east-1", amzDate), auth)
+	})
+
+	t.Run("signs over the region default when metadata absent", func(t *testing.T) {
+		auth, amzDate := sign(t, nil)
+		require.Equal(t, recompute(t, "bedrock-runtime.us-east-1.amazonaws.com", "us-east-1", amzDate), auth)
+	})
+
+	t.Run("resolved host changes the signature", func(t *testing.T) {
+		vpceAuth, _ := sign(t, map[string]string{internalapi.AWSSigningHostHeader: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"})
+		defaultAuth, _ := sign(t, nil)
+		require.NotEqual(t, defaultAuth, vpceAuth)
+	})
+
+	t.Run("region self-corrects from the signing region header", func(t *testing.T) {
+		const vpce = "vpce-123.bedrock-runtime.us-west-2.vpce.amazonaws.com"
+		auth, amzDate := sign(t, map[string]string{
+			internalapi.AWSSigningHostHeader:   vpce,
+			internalapi.AWSSigningRegionHeader: "us-west-2",
+		})
+		// Credential scope uses us-west-2 (from metadata), not the configured us-east-1.
+		require.Contains(t, auth, "/us-west-2/bedrock/aws4_request")
+		require.Equal(t, recompute(t, vpce, "us-west-2", amzDate), auth)
+	})
 }
 
 func TestAWSHandler_Do(t *testing.T) {

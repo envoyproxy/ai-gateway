@@ -415,26 +415,35 @@ func TestResolveRouteName(t *testing.T) {
 	require.Empty(t, actual)
 }
 
-func TestSetAWSSigningHost(t *testing.T) {
+func TestSetAWSSigningAttributes(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		attributes *structpb.Struct
-		want       string
+		wantHost   string
+		wantRegion string
 	}{
 		{
-			name: "upstream host metadata",
+			name: "host and region",
 			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{
-				internalapi.XDSUpstreamHostMetadataAWSSigningHostPath: structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
-				internalapi.XDSClusterMetadataAWSSigningHostPath:      structpb.NewStringValue("cluster.example.com"),
+				internalapi.XDSUpstreamHostMetadataAWSSigningHostPath:   structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
+				internalapi.XDSUpstreamHostMetadataAWSSigningRegionPath: structpb.NewStringValue("us-east-1"),
 			}},
-			want: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
+			wantHost:   "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
+			wantRegion: "us-east-1",
 		},
 		{
-			name: "cluster metadata fallback",
+			name: "host only",
 			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{
-				internalapi.XDSClusterMetadataAWSSigningHostPath: structpb.NewStringValue("cluster.example.com"),
+				internalapi.XDSUpstreamHostMetadataAWSSigningHostPath: structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
 			}},
-			want: "cluster.example.com",
+			wantHost: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
+		},
+		{
+			name: "region only",
+			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{
+				internalapi.XDSUpstreamHostMetadataAWSSigningRegionPath: structpb.NewStringValue("us-west-2"),
+			}},
+			wantRegion: "us-west-2",
 		},
 		{
 			name:       "missing metadata",
@@ -446,12 +455,17 @@ func TestSetAWSSigningHost(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			headers := map[string]string{}
-			setAWSSigningHost(headers, tc.attributes)
-			if tc.want == "" {
+			setAWSSigningAttributes(headers, tc.attributes)
+			if tc.wantHost == "" {
 				require.NotContains(t, headers, internalapi.AWSSigningHostHeader)
-				return
+			} else {
+				require.Equal(t, tc.wantHost, headers[internalapi.AWSSigningHostHeader])
 			}
-			require.Equal(t, tc.want, headers[internalapi.AWSSigningHostHeader])
+			if tc.wantRegion == "" {
+				require.NotContains(t, headers, internalapi.AWSSigningRegionHeader)
+			} else {
+				require.Equal(t, tc.wantRegion, headers[internalapi.AWSSigningRegionHeader])
+			}
 		})
 	}
 }

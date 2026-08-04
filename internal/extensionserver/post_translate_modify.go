@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -50,6 +51,11 @@ type aiGatewayClusterName struct {
 	ruleIndex       int
 	backendRefIndex int
 }
+
+// awsBedrockRegionRegexp extracts the region from a Bedrock runtime host, including the PrivateLink
+// (VPCE) form. Both bedrock-runtime.us-east-1.amazonaws.com and
+// vpce-<id>.bedrock-runtime.us-east-1.vpce.amazonaws.com yield "us-east-1".
+var awsBedrockRegionRegexp = regexp.MustCompile(`bedrock-runtime\.([a-z0-9-]+)\.(?:vpce\.)?amazonaws\.com`)
 
 // parseAIGatewayClusterName parses the cluster names generated for AIGatewayRoute rules.
 // Envoy Gateway uses a route-level cluster name unless it creates a cluster for each backend.
@@ -341,9 +347,23 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 	if pool == nil {
 		switch {
 		case cluster.LoadAssignment == nil:
-			// When LoadAssignment is nil (e.g. EDS-managed endpoints in standalone mode),
-			// set backend name on cluster-level metadata so the upstream ext_proc filter
-			// can resolve the backend via XDSClusterMetadataBackendNamePath fallback.
+			// LoadAssignment is nil when the cluster's endpoints are EDS-managed: delivered out of band
+			// (e.g. standalone mode), not inlined at translate time. There is no LbEndpoint here, so we
+			// only set the backend name on cluster-level metadata; the upstream ext_proc filter resolves
+			// the backend via XDSClusterMetadataBackendNamePath.
+			//
+			// TODO(aws-signing): the signing host/region cannot be stamped on this path. In the Backend
+			// CR (gateway.envoyproxy.io/v1alpha1) an endpoint is a one-of {fqdn | ip | unix}, and only
+			// `fqdn` surfaces a hostname into the xDS endpoint (STRICT_DNS) — that case is stamped in the
+			// inline branches below. This EDS branch is the future K8s Service backendRef (currently
+			// CEL-blocked, ai-gateway#902): its endpoints are pod IPs, which SigV4 cannot sign. (The `ip`
+			// Backend variant, ai-gateway#950, is the sibling no-hostname case, but it yields a STATIC
+			// cluster with an inline load_assignment, so it is handled in the inline branches where an
+			// empty host is skipped — it does not reach here.) Both fall back to the region-based default
+			// host at signing time. The real fix resolves the hostname from the Backend CR
+			// (spec.endpoints[].fqdn.hostname) via the backendRef rather than the translated endpoint;
+			// feeding EDS endpoints to the extension server would need envoyproxy/gateway#8150
+			// (PostEndpointsModify).
 			s.log.Info("LoadAssignment is nil, setting cluster-level metadata", "cluster_name", cluster.Name)
 			if len(httpRouteRule.BackendRefs) > 0 {
 				backendRefIndex := 0
@@ -361,6 +381,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				}
 				for _, endpoint := range endpoints.LbEndpoints {
 					setEndpointMetadataBackendName(endpoint, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, clusterName.backendRefIndex)
+					stampAWSSigningMetadata(endpoint)
 				}
 			}
 		default:
@@ -381,9 +402,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				}
 				for _, endpoint := range endpoints.LbEndpoints {
 					setEndpointMetadataBackendName(endpoint, namespace, name, aigwRoute.Name, httpRouteRuleIndex, i)
-					if host := endpointAWSSigningHost(endpoint); host != "" {
-						setEndpointMetadataAWSSigningHost(endpoint, host)
-					}
+					stampAWSSigningMetadata(endpoint)
 				}
 			}
 		}
@@ -443,7 +462,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
 		internalapi.XDSClusterMetadataBackendNamePath,
 		internalapi.XDSUpstreamHostMetadataAWSSigningHostPath,
-		internalapi.XDSClusterMetadataAWSSigningHostPath,
+		internalapi.XDSUpstreamHostMetadataAWSSigningRegionPath,
 		internalapi.XDSRouteMetadataRouteNamePath,
 	}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
@@ -944,18 +963,36 @@ func routeNameFromEnvoyGatewayMetadata(route *routev3.Route) string {
 	return ""
 }
 
+// endpointAWSSigningHost returns the hostname to sign SigV4 requests against for the given endpoint.
+// It uses only the endpoint hostname, which is present for STRICT_DNS/FQDN clusters such as AWS Bedrock.
+// A bare socket address is intentionally not used: signing over an IP matches no AWS endpoint, so an
+// endpoint without a hostname yields no stamp and the signer falls back to the region-based default host.
 func endpointAWSSigningHost(lbEndpoint *endpointv3.LbEndpoint) string {
-	endpoint := lbEndpoint.GetEndpoint()
-	if endpoint == nil {
-		return ""
-	}
-	if hostname := endpoint.GetHostname(); hostname != "" {
-		return hostname
-	}
-	if socketAddress := endpoint.GetAddress().GetSocketAddress(); socketAddress != nil {
-		return socketAddress.GetAddress()
+	return lbEndpoint.GetEndpoint().GetHostname()
+}
+
+// awsSigningRegionFromHost derives the SigV4 region from a resolved Bedrock signing host so the
+// credential scope self-corrects to the endpoint's region. It returns "" for non-Bedrock hosts, leaving
+// the configured region in effect at signing time.
+func awsSigningRegionFromHost(host string) string {
+	if m := awsBedrockRegionRegexp.FindStringSubmatch(host); m != nil {
+		return m[1]
 	}
 	return ""
+}
+
+// stampAWSSigningMetadata resolves and stamps the SigV4 signing host (and, when derivable, the region)
+// on the endpoint's metadata at config-translation time, so the data plane signs over the real upstream
+// endpoint instead of re-deriving it at request time.
+func stampAWSSigningMetadata(endpoint *endpointv3.LbEndpoint) {
+	host := endpointAWSSigningHost(endpoint)
+	if host == "" {
+		return
+	}
+	setEndpointMetadataAWSSigningHost(endpoint, host)
+	if region := awsSigningRegionFromHost(host); region != "" {
+		setEndpointMetadataAWSSigningRegion(endpoint, region)
+	}
 }
 
 func ensureRouteInternalMetadata(route *routev3.Route) *structpb.Struct {
@@ -999,7 +1036,9 @@ func setClusterMetadataBackendName(cluster *clusterv3.Cluster, namespace, name, 
 	)
 }
 
-func setEndpointMetadataBackendName(endpoint *endpointv3.LbEndpoint, namespace, name, routeName string, routeRuleIndex, refIndex int) {
+// ensureEndpointAIGatewayMetadata returns the AI Gateway filter-metadata struct for the endpoint,
+// creating the metadata containers as needed.
+func ensureEndpointAIGatewayMetadata(endpoint *endpointv3.LbEndpoint) *structpb.Struct {
 	if endpoint.Metadata == nil {
 		endpoint.Metadata = &corev3.Metadata{}
 	}
@@ -1014,7 +1053,11 @@ func setEndpointMetadataBackendName(endpoint *endpointv3.LbEndpoint, namespace, 
 	if m.Fields == nil {
 		m.Fields = make(map[string]*structpb.Value)
 	}
-	m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
+	return m
+}
+
+func setEndpointMetadataBackendName(endpoint *endpointv3.LbEndpoint, namespace, name, routeName string, routeRuleIndex, refIndex int) {
+	ensureEndpointAIGatewayMetadata(endpoint).Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
 		internalapi.PerRouteRuleRefBackendName(namespace, name, routeName, routeRuleIndex, refIndex),
 	)
 }
@@ -1022,21 +1065,11 @@ func setEndpointMetadataBackendName(endpoint *endpointv3.LbEndpoint, namespace, 
 // setEndpointMetadataAWSSigningHost stores the AWS signing host on endpoint-level metadata
 // so the upstream ext_proc filter can forward it to the AWS backend auth handler for SigV4 signing.
 func setEndpointMetadataAWSSigningHost(endpoint *endpointv3.LbEndpoint, host string) {
-	if endpoint.Metadata == nil {
-		endpoint.Metadata = &corev3.Metadata{}
-	}
-	if endpoint.Metadata.FilterMetadata == nil {
-		endpoint.Metadata.FilterMetadata = make(map[string]*structpb.Struct)
-	}
-	m, ok := endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
-	if !ok {
-		m = &structpb.Struct{}
-		endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace] = m
-	}
-	if m.Fields == nil {
-		m.Fields = make(map[string]*structpb.Value)
-	}
-	m.Fields[internalapi.InternalMetadataAWSSigningHostKey] = structpb.NewStringValue(host)
+	ensureEndpointAIGatewayMetadata(endpoint).Fields[internalapi.InternalMetadataAWSSigningHostKey] = structpb.NewStringValue(host)
+}
+
+func setEndpointMetadataAWSSigningRegion(endpoint *endpointv3.LbEndpoint, region string) {
+	ensureEndpointAIGatewayMetadata(endpoint).Fields[internalapi.InternalMetadataAWSSigningRegionKey] = structpb.NewStringValue(region)
 }
 
 func shouldAIGatewayExtProcBeInserted(filters []*httpconnectionmanagerv3.HttpFilter) bool {
