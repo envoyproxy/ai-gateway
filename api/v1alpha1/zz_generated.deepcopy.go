@@ -1437,6 +1437,11 @@ func (in *MCPRouteSpec) DeepCopyInto(out *MCPRouteSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.Hostnames != nil {
+		in, out := &in.Hostnames, &out.Hostnames
+		*out = make([]v1.Hostname, len(*in))
+		copy(*out, *in)
+	}
 	if in.BackendRefs != nil {
 		in, out := &in.BackendRefs, &out.BackendRefs
 		*out = make([]MCPRouteBackendRef, len(*in))
