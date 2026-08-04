@@ -2593,7 +2593,7 @@ func TestOpenAIToAWSBedrockTranslator_CacheControl(t *testing.T) {
 					},
 				},
 			},
-			expectedJSON: `{"inferenceConfig":{},"messages":[{"content":[{"text":"Test message"}],"role":"user"}],"toolConfig":{"tools":[{"toolSpec":{"description":"Get weather information","inputSchema":{"json":{"type":"object"}},"name":"get_weather"},"cachePoint":{"type":"default"}}]}}`,
+			expectedJSON: `{"inferenceConfig":{},"messages":[{"content":[{"text":"Test message"}],"role":"user"}],"toolConfig":{"tools":[{"toolSpec":{"description":"Get weather information","inputSchema":{"json":{"type":"object"}},"name":"get_weather"}},{"cachePoint":{"type":"default"}}]}}`,
 		},
 		{
 			name: "no cache control",
