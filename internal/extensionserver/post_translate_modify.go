@@ -372,6 +372,25 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				if backendRef.Weight != nil && *backendRef.Weight == 0 {
 					continue
 				}
+				// EG drops backends during translation (the Service does not exist, it has no ready
+				// endpoints, a cross-namespace reference has no ReferenceGrant, or backend validation
+				// failed), so the LoadAssignment can have fewer entries than the rule has backend refs.
+				// Skip the backend instead of indexing past the end. The route still works; the skipped
+				// backend has no metadata, which surfaces as a missing backend name in response headers.
+				if lbEndpointIndex >= len(cluster.LoadAssignment.Endpoints) {
+					s.log.Info("LoadAssignment endpoint count mismatch, backend will not have metadata populated",
+						"cluster_name", cluster.Name,
+						"endpoint_index", lbEndpointIndex,
+						"endpoints_len", len(cluster.LoadAssignment.Endpoints),
+						"backend_refs_len", len(httpRouteRule.BackendRefs),
+						"backend_index", i,
+						"backend_name", backendRef.Name,
+						"route_name", aigwRoute.Name,
+						"route_namespace", aigwRoute.Namespace,
+						"route_rule_index", httpRouteRuleIndex,
+						"guidance", "check AIGatewayRoute status for backend validation errors")
+					continue
+				}
 				endpoints := cluster.LoadAssignment.Endpoints[lbEndpointIndex]
 				lbEndpointIndex++
 				name := backendRef.Name

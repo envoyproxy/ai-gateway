@@ -544,6 +544,49 @@ func TestMaybeModifyClusterPerBackendClusterName(t *testing.T) {
 	})
 }
 
+// TestMaybeModifyClusterFewerEndpointsThanBackendRefs covers the case where Envoy Gateway dropped a
+// backend during translation, so the LoadAssignment has fewer entries than the rule has backend refs.
+func TestMaybeModifyClusterFewerEndpointsThanBackendRefs(t *testing.T) {
+	c := newFakeClient()
+	require.NoError(t, c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
+		Spec: aigv1b1.AIGatewayRouteSpec{Rules: []aigv1b1.AIGatewayRouteRule{{
+			BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+				{Name: "healthy"},
+				{Name: "dropped-by-eg"},
+			},
+		}}},
+	}))
+
+	var buf bytes.Buffer
+	s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil,
+		"envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+	require.NoError(t, err)
+
+	// Two backend refs, but EG only emitted an endpoint for the first one.
+	cluster := &clusterv3.Cluster{
+		Name: "httproute/ns/myroute/rule/0",
+		LoadAssignment: &endpointv3.ClusterLoadAssignment{Endpoints: []*endpointv3.LocalityLbEndpoints{{
+			LbEndpoints: []*endpointv3.LbEndpoint{{}},
+		}}},
+	}
+	var modifyErr error
+	require.NotPanics(t, func() { modifyErr = s.maybeModifyCluster(t.Context(), cluster) })
+	require.NoError(t, modifyErr)
+
+	// The backend that does have an endpoint is still populated.
+	metadata := cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata
+	require.NotNil(t, metadata)
+	require.Equal(t,
+		internalapi.PerRouteRuleRefBackendName("ns", "healthy", "myroute", 0, 0),
+		metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace].
+			Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue())
+
+	// The one without an endpoint is skipped and logged.
+	require.Contains(t, buf.String(), "LoadAssignment endpoint count mismatch")
+	require.Contains(t, buf.String(), "backend_name=dropped-by-eg")
+}
+
 // Helper function to create an InferencePool ExtensionResource.
 func createInferencePoolExtensionResource(name, namespace string) *egextension.ExtensionResource {
 	unstructuredObj := &unstructured.Unstructured{
