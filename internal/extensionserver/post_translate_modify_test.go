@@ -438,3 +438,79 @@ func Test_findListenerRouteConfigs(t *testing.T) {
 	names := findListenerRouteConfigs(l)
 	require.ElementsMatch(t, []string{"foo", "bar"}, names)
 }
+
+func TestServer_maybeInjectSharedCatchAllRoutes(t *testing.T) {
+	buildAIGatewayRoute := func(name string) *routev3.Route {
+		meta, err := structpb.NewStruct(map[string]any{
+			"resources": []any{
+				map[string]any{
+					"annotations": map[string]any{
+						internalapi.AIGatewayGeneratedHTTPRouteAnnotation: "true",
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+		return &routev3.Route{
+			Name: name,
+			Metadata: &corev3.Metadata{
+				FilterMetadata: map[string]*structpb.Struct{
+					"envoy-gateway": meta,
+				},
+			},
+		}
+	}
+
+	t.Run("injects catch-all when AIGateway route exists", func(t *testing.T) {
+		rc := &routev3.RouteConfiguration{
+			Name: "rc1",
+			VirtualHosts: []*routev3.VirtualHost{
+				{
+					Name:   "vh1",
+					Routes: []*routev3.Route{buildAIGatewayRoute("route-a")},
+				},
+			},
+		}
+		s := &Server{log: zap.New()}
+		s.maybeInjectSharedCatchAllRoutes([]*routev3.RouteConfiguration{rc})
+		require.Len(t, rc.VirtualHosts[0].Routes, 2)
+		catchAll := rc.VirtualHosts[0].Routes[1]
+		require.Equal(t, catchAllRouteName, catchAll.Name)
+		require.Equal(t, "/", catchAll.GetMatch().GetPrefix())
+		require.Equal(t, uint32(404), catchAll.GetDirectResponse().GetStatus())
+		require.Equal(t, catchAllResponseBody, catchAll.GetDirectResponse().GetBody().GetInlineString())
+	})
+
+	t.Run("does not inject when no AIGateway routes", func(t *testing.T) {
+		rc := &routev3.RouteConfiguration{
+			Name: "rc1",
+			VirtualHosts: []*routev3.VirtualHost{
+				{
+					Name:   "vh1",
+					Routes: []*routev3.Route{{Name: "other-route"}},
+				},
+			},
+		}
+		s := &Server{log: zap.New()}
+		s.maybeInjectSharedCatchAllRoutes([]*routev3.RouteConfiguration{rc})
+		require.Len(t, rc.VirtualHosts[0].Routes, 1)
+	})
+
+	t.Run("does not duplicate existing injected catch-all", func(t *testing.T) {
+		rc := &routev3.RouteConfiguration{
+			Name: "rc1",
+			VirtualHosts: []*routev3.VirtualHost{
+				{
+					Name: "vh1",
+					Routes: []*routev3.Route{
+						buildAIGatewayRoute("route-a"),
+						{Name: catchAllRouteName},
+					},
+				},
+			},
+		}
+		s := &Server{log: zap.New()}
+		s.maybeInjectSharedCatchAllRoutes([]*routev3.RouteConfiguration{rc})
+		require.Len(t, rc.VirtualHosts[0].Routes, 2)
+	})
+}

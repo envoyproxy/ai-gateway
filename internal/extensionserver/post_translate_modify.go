@@ -42,6 +42,8 @@ const (
 	extProcUDSClusterName = "ai-gateway-extproc-uds"
 	aiGatewayExtProcName  = "envoy.filters.http.ext_proc/aigateway"
 	noBackendRefIndex     = -1
+	catchAllRouteName     = "aigateway-shared-route-not-found"
+	catchAllResponseBody  = "No matching route found. It is likely because the model specified in your request is not configured in the Gateway."
 )
 
 type aiGatewayClusterName struct {
@@ -117,6 +119,7 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	if err = s.maybeModifyListenerAndRoutes(req.Listeners, req.Routes); err != nil {
 		return nil, fmt.Errorf("failed to modify listeners and routes for InferencePool support: %w", err)
 	}
+	s.maybeInjectSharedCatchAllRoutes(req.Routes)
 
 	// Apply the per-rule stream idle timeout to the generated routes.
 	if err = s.applyStreamIdleTimeouts(ctx, req.Routes); err != nil {
@@ -937,6 +940,47 @@ func routeNameFromEnvoyGatewayMetadata(route *routev3.Route) string {
 		}
 	}
 	return ""
+}
+
+// maybeInjectSharedCatchAllRoutes injects one direct-response catch-all route per virtual host
+// when there is at least one AIGateway-generated route present in that virtual host.
+// The route is synthesized in xDS only and disappears automatically when no AIGateway routes exist.
+func (s *Server) maybeInjectSharedCatchAllRoutes(routeConfigs []*routev3.RouteConfiguration) {
+	for _, routeConfig := range routeConfigs {
+		for _, vh := range routeConfig.VirtualHosts {
+			var (
+				hasAIGatewayRoute bool
+				withoutCatchAll   []*routev3.Route
+			)
+			for _, route := range vh.Routes {
+				if route.Name == catchAllRouteName {
+					continue
+				}
+				withoutCatchAll = append(withoutCatchAll, route)
+				if s.isRouteGeneratedByAIGateway(route) {
+					hasAIGatewayRoute = true
+				}
+			}
+			vh.Routes = withoutCatchAll
+			if !hasAIGatewayRoute {
+				continue
+			}
+			vh.Routes = append(vh.Routes, &routev3.Route{
+				Name: catchAllRouteName,
+				Match: &routev3.RouteMatch{
+					PathSpecifier: &routev3.RouteMatch_Prefix{Prefix: "/"},
+				},
+				Action: &routev3.Route_DirectResponse{
+					DirectResponse: &routev3.DirectResponseAction{
+						Status: 404,
+						Body: &corev3.DataSource{
+							Specifier: &corev3.DataSource_InlineString{InlineString: catchAllResponseBody},
+						},
+					},
+				},
+			})
+		}
+	}
 }
 
 func ensureRouteInternalMetadata(route *routev3.Route) *structpb.Struct {

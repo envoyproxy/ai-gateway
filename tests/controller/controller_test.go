@@ -166,14 +166,14 @@ func TestStartControllers(t *testing.T) {
 					t.Logf("failed to get http route %s: %v", route, err)
 					return false
 				}
-				require.Len(t, httpRoute.Spec.Rules, 2) // 1 for rule, 1 for the default rule.
+				require.Len(t, httpRoute.Spec.Rules, 1)
 				require.Len(t, httpRoute.Spec.Rules[0].Matches, 1)
 				require.Len(t, httpRoute.Spec.Rules[0].Matches[0].Headers, 1)
 				require.Equal(t, internalapi.ModelNameHeaderKeyDefault, string(httpRoute.Spec.Rules[0].Matches[0].Headers[0].Name))
 				require.Equal(t, "foo", httpRoute.Spec.Rules[0].Matches[0].Headers[0].Value)
 
-				// Check all rule has the host rewrite filter except for the last rule.
-				for _, rule := range httpRoute.Spec.Rules[:len(httpRoute.Spec.Rules)-1] {
+				// Check all rules have the host rewrite filter.
+				for _, rule := range httpRoute.Spec.Rules {
 					require.Len(t, rule.Filters, 1)
 					require.NotNil(t, rule.Filters[0].ExtensionRef)
 					require.Equal(t, fmt.Sprintf("ai-eg-host-rewrite-%s", route), string(rule.Filters[0].ExtensionRef.Name))
@@ -356,21 +356,6 @@ func TestAIGatewayRouteController(t *testing.T) {
 			}
 			ok, _ := ctrlutil.HasOwnerReference(f.OwnerReferences, origin, c.Scheme())
 			require.True(t, ok, "expected hostRewriteFilter to have owner reference to AIGatewayRoute")
-			return true
-		}, 10*time.Second, 200*time.Millisecond)
-		notFoundKey := client.ObjectKey{
-			Name:      "ai-eg-route-not-found-response-myroute",
-			Namespace: "default",
-		}
-		require.Eventually(t, func() bool {
-			var f egv1a1.HTTPRouteFilter
-			err = c.Get(t.Context(), notFoundKey, &f)
-			if err != nil {
-				t.Logf("expected to get notFoundFilter %s, but got error: %v", notFoundKey.Name, err)
-				return false
-			}
-			ok, _ := ctrlutil.HasOwnerReference(f.OwnerReferences, origin, c.Scheme())
-			require.True(t, ok, "expected notFoundFilter to have owner reference to AIGatewayRoute")
 			return true
 		}, 10*time.Second, 200*time.Millisecond)
 	})
