@@ -88,13 +88,6 @@ func TestMCP(t *testing.T) {
 		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/many", manyBackendsRouteToolNames,
 			nil, true, true)
 	})
-	t.Run("client cannot override static tool selector when metadata is absent", func(t *testing.T) {
-		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/another", []string{
-			"mcp-backend-query-api-key__sum",
-		}, &http.Client{Transport: mcpRequestHeaderInjector{
-			internalapi.MCPToolSubsetHeader: "mcp-backend-query-api-key__echo",
-		}}, false, true)
-	})
 	t.Run("client cannot override backend fanout when metadata is absent", func(t *testing.T) {
 		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/many", manyBackendsRouteToolNames,
 			&http.Client{Transport: mcpRequestHeaderInjector{

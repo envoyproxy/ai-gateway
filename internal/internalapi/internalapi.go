@@ -37,10 +37,6 @@ const (
 	MCPBackendSubsetHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend-subset"
 	// MCPBackendSubsetMetadataKey is the dynamic metadata key the shim sets; Envoy renders it into MCPBackendSubsetHeader.
 	MCPBackendSubsetMetadataKey = "mcp_backend_subset"
-	// MCPToolSubsetHeader is the trusted, shim-supplied comma-separated "<backend>__<tool>" subset a request may see.
-	MCPToolSubsetHeader = EnvoyAIGatewayHeaderPrefix + "mcp-tool-subset"
-	// MCPToolSubsetMetadataKey is the dynamic metadata key the shim sets; Envoy renders it into MCPToolSubsetHeader.
-	MCPToolSubsetMetadataKey = "mcp_tool_subset"
 	// MCPBackendListenerPort is the port for the MCP backend listener.
 	MCPBackendListenerPort = 10088
 	// MCPProxyPort is the port where the MCP proxy listens.

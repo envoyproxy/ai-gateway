@@ -198,7 +198,6 @@ func (s *Server) maybeUpdateMCPRoutes(routes []*routev3.RouteConfiguration) {
 func mcpProxyDynamicMetadataHeaders() []*corev3.HeaderValueOption {
 	return []*corev3.HeaderValueOption{
 		dynamicMetadataHeader(internalapi.MCPBackendSubsetHeader, internalapi.MCPBackendSubsetMetadataKey),
-		dynamicMetadataHeader(internalapi.MCPToolSubsetHeader, internalapi.MCPToolSubsetMetadataKey),
 	}
 }
 
