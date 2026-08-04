@@ -259,6 +259,7 @@ func (NoopTracing) RerankTracer() RerankTracer {
 func (NoopTracing) EmbedTracer() EmbedTracer {
 	return NoopEmbedTracer{}
 }
+
 func (NoopTracing) MessageTracer() MessageTracer {
 	return NoopMessageTracer{}
 }
