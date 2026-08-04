@@ -223,7 +223,7 @@ func testListTools(t *testing.T, m *mcpEnv) {
 	for _, tool := range tools.Tools {
 		names = append(names, tool.Name)
 	}
-	requireMCPSpan(t, m.collector.TakeSpan(), "tools/list", map[string]string{
+	requireMCPSpan(t, m.collector.TakeSpan(), "ListTools", map[string]string{
 		"mcp.method.name": "tools/list",
 	})
 
@@ -380,7 +380,7 @@ func testToolCountDown(t *testing.T, m *mcpEnv) {
 		Level: "error",
 	})
 	require.NoError(t, err)
-	requireMCPSpan(t, m.collector.TakeSpan(), "logging/setLevel", map[string]string{
+	requireMCPSpan(t, m.collector.TakeSpan(), "SetLoggingLevel", map[string]string{
 		"mcp.method.name":   "logging/setLevel",
 		"mcp.logging.level": "error",
 	})
@@ -473,7 +473,7 @@ func testLoggingSetLevel(t *testing.T, m *mcpEnv) {
 	require.NoError(t, err)
 
 	span := m.collector.TakeSpan()
-	requireMCPSpan(t, span, "logging/setLevel", map[string]string{
+	requireMCPSpan(t, span, "SetLoggingLevel", map[string]string{
 		"mcp.method.name":   "logging/setLevel",
 		"mcp.logging.level": "debug",
 	})
@@ -490,7 +490,7 @@ func testListPrompts(t *testing.T, m *mcpEnv) {
 	require.Len(t, list.Prompts, 1)
 	require.Equal(t, defaultMCPBackendResourcePrefix+testmcp.CodeReviewPrompt.Name, list.Prompts[0].Name)
 	require.Equal(t, testmcp.CodeReviewPrompt.Description, list.Prompts[0].Description)
-	requireMCPSpan(t, m.collector.TakeSpan(), "prompts/list", map[string]string{
+	requireMCPSpan(t, m.collector.TakeSpan(), "ListPrompts", map[string]string{
 		"mcp.method.name": "prompts/list",
 	})
 }
@@ -507,9 +507,9 @@ func testCodeReviewPrompts(t *testing.T, m *mcpEnv) {
 	require.Equal(t, mcp.Role("user"), resp.Messages[0].Role)
 	require.IsType(t, &mcp.TextContent{}, resp.Messages[0].Content)
 	require.Contains(t, resp.Messages[0].Content.(*mcp.TextContent).Text, "Please review the following code: 1+1")
-	requireMCPSpan(t, m.collector.TakeSpan(), "prompts/get "+defaultMCPBackendResourcePrefix+"code_review", map[string]string{
-		"mcp.method.name":    "prompts/get",
-		"gen_ai.prompt.name": defaultMCPBackendResourcePrefix + "code_review",
+	requireMCPSpan(t, m.collector.TakeSpan(), "GetPrompt", map[string]string{
+		"mcp.method.name": "prompts/get",
+		"mcp.prompt.name": defaultMCPBackendResourcePrefix + "code_review",
 	})
 }
 
@@ -518,7 +518,7 @@ func testPromptChangeNotifications(t *testing.T, m *mcpEnv) {
 	list, err := s.session.ListPrompts(t.Context(), &mcp.ListPromptsParams{})
 	require.NoError(t, err)
 	require.Len(t, list.Prompts, 1)
-	requireMCPSpan(t, m.collector.TakeSpan(), "prompts/list", map[string]string{
+	requireMCPSpan(t, m.collector.TakeSpan(), "ListPrompts", map[string]string{
 		"mcp.method.name": "prompts/list",
 	})
 
@@ -544,7 +544,7 @@ func testPromptChangeNotifications(t *testing.T, m *mcpEnv) {
 	list, err = s.session.ListPrompts(t.Context(), &mcp.ListPromptsParams{})
 	require.NoError(t, err)
 	require.Len(t, list.Prompts, 2)
-	requireMCPSpan(t, m.collector.TakeSpan(), "prompts/list", map[string]string{
+	requireMCPSpan(t, m.collector.TakeSpan(), "ListPrompts", map[string]string{
 		"mcp.method.name": "prompts/list",
 	})
 }
@@ -557,7 +557,7 @@ func testListResources(t *testing.T, m *mcpEnv) {
 	require.Equal(t, defaultMCPBackendResourcePrefix+testmcp.DummyResource.Name, list.Resources[0].Name)
 	require.Equal(t, defaultMCPBackendResourceURIPrefix+testmcp.DummyResource.URI, list.Resources[0].URI)
 	require.Equal(t, testmcp.DummyResource.Description, list.Resources[0].Description)
-	requireMCPSpan(t, m.collector.TakeSpan(), "resources/list", map[string]string{
+	requireMCPSpan(t, m.collector.TakeSpan(), "ListResources", map[string]string{
 		"mcp.method.name": "resources/list",
 	})
 }
@@ -572,7 +572,7 @@ func testReadResource(t *testing.T, m *mcpEnv) {
 	require.Equal(t, defaultMCPBackendResourceURIPrefix+testmcp.DummyResource.URI, r.Contents[0].URI)
 	require.Equal(t, testmcp.DummyResource.MIMEType, r.Contents[0].MIMEType)
 	require.Equal(t, "dummy", string(r.Contents[0].Blob))
-	requireMCPSpan(t, m.collector.TakeSpan(), "resources/read", map[string]string{
+	requireMCPSpan(t, m.collector.TakeSpan(), "ReadResource", map[string]string{
 		"mcp.method.name":  "resources/read",
 		"mcp.resource.uri": defaultMCPBackendResourceURIPrefix + "file:///dummy.txt",
 	})
@@ -586,7 +586,7 @@ func testReadResourceNotFound(t *testing.T, m *mcpEnv) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Resource not found")
 	require.Nil(t, r)
-	requireMCPSpanWithException(t, m.collector.TakeSpan(), "resources/read", map[string]string{
+	requireMCPSpanWithException(t, m.collector.TakeSpan(), "ReadResource", map[string]string{
 		"mcp.method.name":  "resources/read",
 		"mcp.resource.uri": defaultMCPBackendResourceURIPrefix + "file:///notfound.txt",
 	}, "Resource not found")
@@ -600,7 +600,7 @@ func testListResourceTemplates(t *testing.T, m *mcpEnv) {
 	require.Equal(t, defaultMCPBackendResourcePrefix+testmcp.DummyResourceTemplate.Name, list.ResourceTemplates[0].Name)
 	require.Equal(t, defaultMCPBackendResourceURIPrefix+testmcp.DummyResourceTemplate.URITemplate, list.ResourceTemplates[0].URITemplate)
 	require.Equal(t, testmcp.DummyResourceTemplate.Description, list.ResourceTemplates[0].Description)
-	requireMCPSpan(t, m.collector.TakeSpan(), "resources/templates/list", map[string]string{
+	requireMCPSpan(t, m.collector.TakeSpan(), "ListResourceTemplates", map[string]string{
 		"mcp.method.name": "resources/templates/list",
 	})
 }
@@ -613,7 +613,7 @@ func testResourceSubscribe(t *testing.T, m *mcpEnv) {
 	require.Equal(t, defaultMCPBackendResourcePrefix+testmcp.DummyResource.Name, list.Resources[0].Name)
 	require.Equal(t, defaultMCPBackendResourceURIPrefix+testmcp.DummyResource.URI, list.Resources[0].URI)
 	require.Equal(t, testmcp.DummyResource.Description, list.Resources[0].Description)
-	requireMCPSpan(t, m.collector.TakeSpan(), "resources/list", map[string]string{
+	requireMCPSpan(t, m.collector.TakeSpan(), "ListResources", map[string]string{
 		"mcp.method.name": "resources/list",
 	})
 
@@ -623,7 +623,7 @@ func testResourceSubscribe(t *testing.T, m *mcpEnv) {
 		URI: list.Resources[0].URI,
 	})
 	require.NoError(t, err)
-	requireMCPSpan(t, m.collector.TakeSpan(), "resources/subscribe", map[string]string{
+	requireMCPSpan(t, m.collector.TakeSpan(), "Subscribe", map[string]string{
 		"mcp.method.name":  "resources/subscribe",
 		"mcp.resource.uri": list.Resources[0].URI,
 	})
@@ -658,7 +658,7 @@ func testResourceSubscribe(t *testing.T, m *mcpEnv) {
 		URI: list.Resources[0].URI,
 	})
 	require.NoError(t, err)
-	requireMCPSpan(t, m.collector.TakeSpan(), "resources/unsubscribe", map[string]string{
+	requireMCPSpan(t, m.collector.TakeSpan(), "Unsubscribe", map[string]string{
 		"mcp.method.name":  "resources/unsubscribe",
 		"mcp.resource.uri": list.Resources[0].URI,
 	})
@@ -688,7 +688,7 @@ func testResourceListChangeNotifications(t *testing.T, m *mcpEnv) {
 	list, err := s.session.ListResources(t.Context(), &mcp.ListResourcesParams{})
 	require.NoError(t, err)
 	require.Len(t, list.Resources, 1)
-	requireMCPSpan(t, m.collector.TakeSpan(), "resources/list", map[string]string{
+	requireMCPSpan(t, m.collector.TakeSpan(), "ListResources", map[string]string{
 		"mcp.method.name": "resources/list",
 	})
 
@@ -727,7 +727,7 @@ func testResourceListChangeNotifications(t *testing.T, m *mcpEnv) {
 	list, err = s.session.ListResources(t.Context(), &mcp.ListResourcesParams{})
 	require.NoError(t, err)
 	require.Len(t, list.Resources, 2)
-	requireMCPSpan(t, m.collector.TakeSpan(), "resources/list", map[string]string{
+	requireMCPSpan(t, m.collector.TakeSpan(), "ListResources", map[string]string{
 		"mcp.method.name": "resources/list",
 	})
 }
@@ -892,7 +892,7 @@ func testComplete(t *testing.T, m *mcpEnv) {
 		require.NoError(t, err)
 		completionValues := []string{"python", "pytorch", "pyside"}
 		require.Equal(t, completionValues, result.Completion.Values)
-		requireMCPSpan(t, m.collector.TakeSpan(), "completion/complete", map[string]string{
+		requireMCPSpan(t, m.collector.TakeSpan(), "Complete", map[string]string{
 			"mcp.method.name":             "completion/complete",
 			"mcp.complete.argument.name":  "language",
 			"mcp.complete.argument.value": "py",
@@ -913,7 +913,7 @@ func testComplete(t *testing.T, m *mcpEnv) {
 		require.NoError(t, err)
 		completionValues := []string{"file://results-23.txt"}
 		require.Equal(t, completionValues, result.Completion.Values)
-		requireMCPSpan(t, m.collector.TakeSpan(), "completion/complete", map[string]string{
+		requireMCPSpan(t, m.collector.TakeSpan(), "Complete", map[string]string{
 			"mcp.method.name":             "completion/complete",
 			"mcp.complete.argument.name":  "id",
 			"mcp.complete.argument.value": "23",
@@ -1047,10 +1047,9 @@ func requireToolSpan(t *testing.T, span *tracev1.Span, backendName string, toolN
 func requireToolSpanWithExceptionType(t *testing.T, span *tracev1.Span, backendName string, toolName string, isNew bool, exceptionMessage string, exceptionType string) {
 	t.Helper()
 
-	requireMCPSpan(t, span, "tools/call "+backendName+"__"+toolName, map[string]string{
-		"mcp.method.name":       "tools/call",
-		"gen_ai.operation.name": "execute_tool",
-		"gen_ai.tool.name":      backendName + "__" + toolName,
+	requireMCPSpan(t, span, "CallTool", map[string]string{
+		"mcp.method.name": "tools/call",
+		"mcp.tool.name":   backendName + "__" + toolName,
 	})
 	// Verify the "route to backend" event and optionally exception event
 	expectedEvents := []*tracev1.Span_Event{

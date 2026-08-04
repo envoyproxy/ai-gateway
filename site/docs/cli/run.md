@@ -294,6 +294,9 @@ focused on retrieval and semantic analysis.
   - `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`: Capture message content
     when `gen_ai` is selected (default: `false`). The GenAI conventions treat
     content as opt-in, unlike OpenInference.
+  - This also selects the vocabulary for MCP spans: the default keeps the
+    gateway-specific `mcp.*` attributes, `gen_ai` opts into the OpenTelemetry MCP
+    conventions.
 
 - **[OpenInference][openinference-config]**: Control sensitive data redaction,
   such as below. These apply only when `AI_GATEWAY_TRACING_SEMCONV` is

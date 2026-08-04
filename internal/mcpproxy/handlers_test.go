@@ -1172,6 +1172,32 @@ func TestServePOST_PromptsGet(t *testing.T) {
 	require.NotNil(t, tracer.span)
 }
 
+// TestServePOST_RecordsClientSession pins that the span carries the
+// client-facing session, i.e. the one the MCP client sees in the session header,
+// rather than a gateway-to-backend session. Broadcast methods route to several
+// backends, each with its own upstream session, so recording a per-backend one
+// on the span would be last-writer-wins.
+func TestServePOST_RecordsClientSession(t *testing.T) {
+	tracer := &fakeTracer{}
+	proxy := newTestMCPProxyWithTracer(tracer)
+
+	sessionID := secureID(t, proxy, "@@default-backend:"+base64.StdEncoding.EncodeToString([]byte("test-session")))
+
+	params := &mcp.GetPromptParams{Name: "somebackend__test-prompt"}
+	paramsData, err := json.Marshal(params)
+	require.NoError(t, err)
+	req := &jsonrpc.Request{Method: "prompts/get", Params: paramsData}
+	body, err := jsonrpc.EncodeMessage(req)
+	require.NoError(t, err)
+
+	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	httpReq.Header.Set(sessionIDHeader, sessionID)
+	proxy.servePOST(httptest.NewRecorder(), httpReq)
+
+	require.NotNil(t, tracer.span)
+	require.Equal(t, sessionID, tracer.span.clientSessionID)
+}
+
 func TestServePOST_InvalidToolCallParams(t *testing.T) {
 	tracer := &fakeTracer{}
 	proxy := newTestMCPProxyWithTracer(tracer)

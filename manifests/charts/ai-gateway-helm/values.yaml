@@ -66,7 +66,8 @@ extProc:
   ##   - name: AI_GATEWAY_GCP_AUTH_PROXY_URL
   ##     value: "http://proxy.example.com:8080"
   ##   # Emit OpenTelemetry GenAI span attributes instead of the default
-  ##   # OpenInference ones. An unrecognized value fails startup.
+  ##   # OpenInference ones, and the OpenTelemetry MCP attributes instead of the
+  ##   # gateway-specific mcp.* ones. An unrecognized value fails startup.
   ##   - name: AI_GATEWAY_TRACING_SEMCONV
   ##     value: "gen_ai"
   ##   # The GenAI conventions treat message content as opt-in.

@@ -9,6 +9,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
 	internaltesting "github.com/envoyproxy/ai-gateway/internal/testing"
@@ -164,4 +165,73 @@ func requireAllRecordersSet(t *testing.T, r *recorderSet) {
 	require.NotNil(t, r.message, "message")
 	require.NotNil(t, r.tokenize, "tokenize")
 	require.NotNil(t, r.responsesInputTokens, "responsesInputTokens")
+
+	// The MCP vocabulary is a struct of function fields rather than a recorder
+	// interface, so "supplied" means every field is populated. A nil field would
+	// panic on the first MCP request under that convention.
+	require.NotEmpty(t, r.mcp.name, "mcp.name")
+	require.NotNil(t, r.mcp.spanName, "mcp.spanName")
+	require.NotNil(t, r.mcp.requestAttributes, "mcp.requestAttributes")
+	require.NotNil(t, r.mcp.routeToBackend, "mcp.routeToBackend")
+	require.NotNil(t, r.mcp.clientSession, "mcp.clientSession")
+	require.NotNil(t, r.mcp.event, "mcp.event")
+	require.NotNil(t, r.mcp.listResult, "mcp.listResult")
+	require.NotNil(t, r.mcp.toolCallResult, "mcp.toolCallResult")
+	require.NotNil(t, r.mcp.requestError, "mcp.requestError")
+}
+
+// TestNewRecordersFromEnv_mcpVocabulary pins which MCP vocabulary each
+// convention selects. The default must stay on the legacy one: its attribute
+// keys and span names are what existing dashboards query, and changing them
+// without the user opting in is a breaking change.
+func TestNewRecordersFromEnv_mcpVocabulary(t *testing.T) {
+	tests := []struct {
+		name string
+		set  bool
+		env  string
+		want string
+	}{
+		{name: "unset keeps the legacy vocabulary", set: false, want: "openinference"},
+		{name: "empty keeps the legacy vocabulary", set: true, env: "", want: "openinference"},
+		{name: "openinference keeps the legacy vocabulary", set: true, env: "openinference", want: "openinference"},
+		{name: "gen_ai opts into the OTel vocabulary", set: true, env: "gen_ai", want: "gen_ai"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			internaltesting.ClearTestEnv(t)
+			if tc.set {
+				t.Setenv(EnvTracingSemConv, tc.env)
+			}
+
+			recorders, err := newRecordersFromEnv()
+			require.NoError(t, err)
+			require.Equal(t, tc.want, recorders.mcp.name)
+		})
+	}
+}
+
+// TestMCPVocabulary_contentCaptureFollowsConvention pins that MCP tool call
+// content is gated by the convention's own opt-in. The legacy vocabulary never
+// recorded content, so it must not start doing so because a GenAI variable is
+// set for the LLM endpoints.
+func TestMCPVocabulary_contentCaptureFollowsConvention(t *testing.T) {
+	internaltesting.ClearTestEnv(t)
+	t.Setenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "true")
+
+	recorders, err := newRecordersFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, "openinference", recorders.mcp.name)
+
+	span, exported := newTestLegacyMCPSpan(t, "tools/call", &mcp.CallToolParams{
+		Name:      "fake-tool",
+		Arguments: map[string]any{"service": "payment-api"},
+	})
+	span.RecordToolCallResult([]byte(`{"status":200}`))
+	span.EndSpan()
+
+	for _, a := range exported().Attributes {
+		require.NotEqual(t, "gen_ai.tool.call.arguments", string(a.Key))
+		require.NotEqual(t, "gen_ai.tool.call.result", string(a.Key))
+	}
 }

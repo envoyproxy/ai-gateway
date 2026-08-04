@@ -7,8 +7,6 @@ package tracing
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -29,80 +27,72 @@ var _ tracingapi.MCPSpan = (*mcpSpan)(nil)
 // Ensure mcpTracer implements [tracingapi.MCPTracer].
 var _ tracingapi.MCPTracer = (*mcpTracer)(nil)
 
+// mcpVocabulary is the set of span names, attribute keys and events that one
+// semantic convention emits for MCP requests. The two implementations
+// (mcpVocabularyLegacy and mcpVocabularyOTel) are meant to be read side by side:
+// everything that differs between conventions lives here, and everything that
+// does not - trace context propagation, sampling, custom attribute mappings -
+// lives in mcpTracer and is shared.
+//
+// Every field is non-nil in both vocabularies. A convention that does not record
+// a signal supplies a no-op rather than a nil, so mcpSpan never has to branch.
+type mcpVocabulary struct {
+	// name identifies the convention, matching the semConvs entry it belongs to.
+	name string
+	// spanName derives the span name from the JSON-RPC method and its params.
+	spanName func(method string, p mcp.Params) string
+	// requestAttributes returns the attributes recorded when the span starts.
+	requestAttributes func(req *jsonrpc.Request, p mcp.Params) []attribute.KeyValue
+	// routeToBackend records the backend a request was routed to.
+	routeToBackend func(span trace.Span, backend, sessionID string, isNew bool)
+	// clientSession records the client-facing MCP session.
+	clientSession func(span trace.Span, sessionID string)
+	// event records a timestamped event, e.g. the list aggregation timeline.
+	event func(span trace.Span, name string)
+	// listResult records the size of an aggregated list result.
+	listResult func(span trace.Span, result any)
+	// toolCallResult records the tools/call result payload.
+	toolCallResult func(span trace.Span, resultJSON []byte)
+	// requestError records the failure class of a failed request. The span
+	// status and the exception event are the same under both conventions, so
+	// this covers only the convention-specific attributes.
+	requestError func(span trace.Span, errType string, err error)
+}
+
 // mcpSpan is an implementation of [tracingapi.MCPSpan].
 type mcpSpan struct {
-	span trace.Span
-	// captureContent gates recording of message content (tool call arguments and
-	// results) per the GenAI OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT
-	// opt-in.
-	captureContent bool
+	span  trace.Span
+	vocab *mcpVocabulary
 }
 
 // RecordRouteToBackend implements [tracingapi.MCPSpan.RecordRouteToBackend].
-func (s mcpSpan) RecordRouteToBackend(backend string, sessionID string, isNew bool, serverAddr string, serverPort int) {
-	// The resolved backend, session, and server peer are only known after
-	// routing. Record them as span attributes for the OTel conventions
-	// (mcp.session.id, server.address, server.port) in addition to the
-	// gateway-specific "route to backend" event.
-	attrs := []attribute.KeyValue{attribute.String("mcp.session.id", sessionID)}
-	if serverAddr != "" {
-		attrs = append(attrs, attribute.String("server.address", serverAddr))
-	}
-	if serverPort != 0 {
-		attrs = append(attrs, attribute.Int("server.port", serverPort))
-	}
-	s.span.SetAttributes(attrs...)
+func (s mcpSpan) RecordRouteToBackend(backend string, sessionID string, isNew bool) {
+	s.vocab.routeToBackend(s.span, backend, sessionID, isNew)
+}
 
-	s.span.AddEvent("route to backend", trace.WithAttributes(
-		attribute.String("mcp.backend.name", backend),
-		attribute.String("mcp.session.id", sessionID),
-		attribute.Bool("mcp.session.new", isNew),
-	))
+// RecordClientSession implements [tracingapi.MCPSpan.RecordClientSession].
+func (s mcpSpan) RecordClientSession(sessionID string) {
+	s.vocab.clientSession(s.span, sessionID)
 }
 
 // AddEvent implements [tracingapi.MCPSpan.AddEvent].
 func (s mcpSpan) AddEvent(name string) {
-	s.span.AddEvent(name)
+	s.vocab.event(s.span, name)
 }
 
 // RecordListResult implements [tracingapi.MCPSpan.RecordListResult].
-//
-// Only the element count is recorded. Names and payloads are content and are
-// deliberately left off the span to keep cardinality bounded and avoid leaking
-// tool/resource inventories.
 func (s mcpSpan) RecordListResult(result any) {
-	switch v := result.(type) {
-	case mcp.ListToolsResult:
-		s.span.SetAttributes(attribute.Int("mcp.tools.count", len(v.Tools)))
-	case mcp.ListResourcesResult:
-		s.span.SetAttributes(attribute.Int("mcp.resources.count", len(v.Resources)))
-	case mcp.ListResourceTemplatesResult:
-		s.span.SetAttributes(attribute.Int("mcp.resource_templates.count", len(v.ResourceTemplates)))
-	case mcp.ListPromptsResult:
-		s.span.SetAttributes(attribute.Int("mcp.prompts.count", len(v.Prompts)))
-	}
+	s.vocab.listResult(s.span, result)
 }
 
 // RecordToolCallResult implements [tracingapi.MCPSpan.RecordToolCallResult].
-//
-// The tool result is message content, so it follows the GenAI opt-in: it is
-// recorded only when capture is enabled.
 func (s mcpSpan) RecordToolCallResult(resultJSON []byte) {
-	if !s.captureContent || len(resultJSON) == 0 {
-		return
-	}
-	s.span.SetAttributes(attribute.String("gen_ai.tool.call.result", string(resultJSON)))
+	s.vocab.toolCallResult(s.span, resultJSON)
 }
 
 // EndSpanOnError implements [tracingapi.MCPSpan.EndSpanOnError].
 func (s mcpSpan) EndSpanOnError(errType string, err error) {
-	// error.type is the OTel span attribute for the failure class; the JSON-RPC
-	// numeric code, when present, is recorded as rpc.response.status_code.
-	s.span.SetAttributes(attribute.String("error.type", errType))
-	var jsonrpcErr *jsonrpc.Error
-	if errors.As(err, &jsonrpcErr) {
-		s.span.SetAttributes(attribute.Int64("rpc.response.status_code", jsonrpcErr.Code))
-	}
+	s.vocab.requestError(s.span, errType, err)
 	s.span.AddEvent("exception", trace.WithAttributes(
 		attribute.String("exception.type", errType),
 		attribute.String("exception.message", err.Error()),
@@ -122,34 +112,26 @@ type mcpTracer struct {
 	tracer            trace.Tracer
 	propagator        propagation.TextMapPropagator
 	attributeMappings map[string]string
-	// captureContent mirrors the GenAI message-content opt-in and is propagated
-	// to every span this tracer starts.
-	captureContent bool
+	vocab             *mcpVocabulary
 }
 
-func newMCPTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, attributeMappings map[string]string, captureContent bool) tracingapi.MCPTracer {
+func newMCPTracer(
+	tracer trace.Tracer,
+	propagator propagation.TextMapPropagator,
+	attributeMappings map[string]string,
+	vocab *mcpVocabulary,
+) tracingapi.MCPTracer {
 	return mcpTracer{
 		tracer:            tracer,
 		propagator:        propagator,
 		attributeMappings: attributeMappings,
-		captureContent:    captureContent,
+		vocab:             vocab,
 	}
 }
 
 // StartSpanAndInjectMeta implements [tracingapi.MCPTracer.StartSpanAndInjectMeta].
 func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Request, param mcp.Params, headers http.Header) tracingapi.MCPSpan {
-	attrs := []attribute.KeyValue{
-		attribute.String("mcp.protocol.version", "2025-06-18"),
-		// network.transport is the OSI transport ("tcp"); network.protocol.* the
-		// application protocol. The gateway forwards to a local plain-HTTP/1.1
-		// listener, so the version is fixed.
-		attribute.String("network.transport", "tcp"),
-		attribute.String("network.protocol.name", "http"),
-		attribute.String("network.protocol.version", "1.1"),
-		attribute.String("jsonrpc.request.id", fmt.Sprintf("%v", req.ID)),
-		attribute.String("mcp.method.name", req.Method),
-	}
-	attrs = append(attrs, getMCPParamsAsAttributes(param, m.captureContent)...)
+	attrs := m.vocab.requestAttributes(req, param)
 
 	for srcName, targetName := range m.attributeMappings {
 		// Check if the attribute is present in the metadata first, as this is the common place to add custom attributes
@@ -175,9 +157,7 @@ func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Requ
 	parentCtx = m.propagator.Extract(parentCtx, mc)
 
 	// Start the span with options appropriate for the semantic convention.
-	// Span name follows the OTel MCP convention: the raw method name, with the
-	// tool or prompt name appended for the high-value targeted operations.
-	spanName := mcpSpanName(req.Method, param)
+	spanName := m.vocab.spanName(req.Method, param)
 	newCtx, span := m.tracer.Start(parentCtx, spanName, trace.WithSpanKind(trace.SpanKindClient))
 
 	// Always inject trace context into the header mutation if provided.
@@ -188,67 +168,10 @@ func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Requ
 	// Only record request attributes if span is recording (sampled).
 	if span.IsRecording() {
 		span.SetAttributes(attrs...)
-		return &mcpSpan{span: span, captureContent: m.captureContent}
+		return &mcpSpan{span: span, vocab: m.vocab}
 	}
 
 	return nil
-}
-
-func getMCPParamsAsAttributes(p mcp.Params, captureContent bool) []attribute.KeyValue {
-	var attrs []attribute.KeyValue
-	switch params := p.(type) {
-	case *mcp.InitializeParams:
-		if params.ClientInfo != nil {
-			attrs = append(attrs,
-				attribute.String("mcp.client.name", params.ClientInfo.Name),
-				attribute.String("mcp.client.title", params.ClientInfo.Title),
-				attribute.String("mcp.client.version", params.ClientInfo.Version),
-			)
-		}
-	case *mcp.CallToolParams:
-		attrs = append(attrs,
-			attribute.String("gen_ai.operation.name", "execute_tool"),
-			attribute.String("gen_ai.tool.name", params.Name),
-		)
-		// Tool call arguments are message content, so they follow the GenAI
-		// opt-in rather than being recorded unconditionally.
-		if captureContent && params.Arguments != nil {
-			if raw, err := json.Marshal(params.Arguments); err == nil {
-				attrs = append(attrs, attribute.String("gen_ai.tool.call.arguments", string(raw)))
-			}
-		}
-	case *mcp.GetPromptParams:
-		attrs = append(attrs, attribute.String("gen_ai.prompt.name", params.Name))
-	case *mcp.SetLoggingLevelParams:
-		attrs = append(attrs, attribute.String("mcp.logging.level", string(params.Level)))
-	case *mcp.ListResourcesParams:
-	case *mcp.ReadResourceParams:
-		attrs = append(attrs, attribute.String("mcp.resource.uri", params.URI))
-	case *mcp.SubscribeParams:
-		attrs = append(attrs, attribute.String("mcp.resource.uri", params.URI))
-	case *mcp.UnsubscribeParams:
-		attrs = append(attrs, attribute.String("mcp.resource.uri", params.URI))
-	case *mcp.ProgressNotificationParams:
-		if params.Progress != 0 {
-			attrs = append(attrs, attribute.Float64("mcp.notifications.progress", params.Progress))
-		}
-		if params.ProgressToken != nil {
-			attrs = append(attrs, attribute.String("mcp.notifications.progress.token", fmt.Sprintf("%v", params.ProgressToken)))
-		}
-		if len(params.Message) > 0 {
-			attrs = append(attrs, attribute.String("mcp.notifications.progress.message", params.Message))
-		}
-	case *mcp.CompleteParams:
-		if len(params.Argument.Name) > 0 {
-			attrs = append(attrs, attribute.String("mcp.complete.argument.name", params.Argument.Name))
-		}
-		if len(params.Argument.Value) > 0 {
-			attrs = append(attrs, attribute.String("mcp.complete.argument.value", params.Argument.Value))
-		}
-
-	}
-
-	return attrs
 }
 
 // Ensure metaMapCarrier implements the [propagation.TextMapCarrier] interface.
@@ -279,20 +202,11 @@ func (c metaMapCarrier) Keys() []string {
 	return keys
 }
 
-// mcpSpanName derives the span name following the OTel MCP convention: the raw
-// method name, with the target appended for tools/call and prompts/get. The
-// resource URI is deliberately omitted from resources/* names to keep span name
-// cardinality bounded.
-func mcpSpanName(method string, p mcp.Params) string {
-	switch params := p.(type) {
-	case *mcp.CallToolParams:
-		if params.Name != "" {
-			return method + " " + params.Name
-		}
-	case *mcp.GetPromptParams:
-		if params.Name != "" {
-			return method + " " + params.Name
-		}
-	}
-	return method
-}
+// The noop* functions below are the "this convention does not record that
+// signal" implementations of the mcpVocabulary function fields.
+
+func noopSpanSession(trace.Span, string)      {}
+func noopSpanEvent(trace.Span, string)        {}
+func noopSpanListResult(trace.Span, any)      {}
+func noopSpanPayload(trace.Span, []byte)      {}
+func noopSpanError(trace.Span, string, error) {}
