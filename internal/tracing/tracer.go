@@ -40,6 +40,7 @@ var (
 	_ tracingapi.TranscriptionTracer        = (*transcriptionTracer)(nil)
 	_ tracingapi.TranslationTracer          = (*translationTracer)(nil)
 	_ tracingapi.RerankTracer               = (*rerankTracer)(nil)
+	_ tracingapi.EmbedTracer                = (*embedTracer)(nil)
 	_ tracingapi.ResponsesInputTokensTracer = (*responsesInputTokensTracer)(nil)
 )
 
@@ -53,6 +54,7 @@ type (
 	transcriptionTracer        = requestTracerImpl[openai.TranscriptionRequest, openai.TranscriptionResponse, openai.TranscriptionStreamEvent]
 	translationTracer          = requestTracerImpl[openai.TranslationRequest, openai.TranslationResponse, struct{}]
 	rerankTracer               = requestTracerImpl[cohereschema.RerankV2Request, cohereschema.RerankV2Response, struct{}]
+	embedTracer                = requestTracerImpl[cohereschema.EmbedV2Request, cohereschema.EmbedV2Response, struct{}]
 	responsesInputTokensTracer = requestTracerImpl[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
 )
 
@@ -214,6 +216,18 @@ func newRerankTracer(tracer trace.Tracer, propagator propagation.TextMapPropagat
 		headerAttributes,
 		func(span trace.Span, recorder tracingapi.RerankRecorder) tracingapi.RerankSpan {
 			return &rerankSpan{span: span, recorder: recorder}
+		},
+	)
+}
+
+func newEmbedTracer(tracer trace.Tracer, propagator propagation.TextMapPropagator, recorder tracingapi.EmbedRecorder, headerAttributes map[string]string) tracingapi.EmbedTracer {
+	return newRequestTracer(
+		tracer,
+		propagator,
+		recorder,
+		headerAttributes,
+		func(span trace.Span, recorder tracingapi.EmbedRecorder) tracingapi.EmbedSpan {
+			return &embedSpan{span: span, recorder: recorder}
 		},
 	)
 }
