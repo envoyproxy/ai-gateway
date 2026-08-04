@@ -108,6 +108,32 @@ spec:
 
 If not specified, Kubernetes default resource allocations are used.
 
+### Forward Proxy (Egress)
+
+The `spec.forwardProxy` field routes all upstream AI/LLM traffic from Gateways referencing this `GatewayConfig` through an HTTP CONNECT forward proxy. This is intended for data planes deployed in locked-down networks that have no direct outbound access to providers and require all egress to traverse a proxy.
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: GatewayConfig
+metadata:
+  name: my-gateway-config
+  namespace: default
+spec:
+  forwardProxy:
+    # host:port of the HTTP CONNECT proxy (host may be a hostname or IP; port is required).
+    address: proxy.corp:3128
+```
+
+Under the hood, each upstream cluster's transport socket is wrapped in Envoy's `http_11_proxy` transport socket, which opens an HTTP/1.1 `CONNECT` tunnel to the proxy and then establishes the upstream connection through it. The upstream TLS session is preserved end-to-end inside the tunnel, so the proxy sees only the `CONNECT` and the encrypted bytes — not the request contents.
+
+:::note
+The forward proxy applies to all AI Gateway upstream (LLM) clusters for Gateways that reference this `GatewayConfig`. InferencePool backends, which use in-cluster endpoints, are not proxied.
+:::
+
+:::warning
+Proxy authentication (for example, `Proxy-Authorization`) and a TLS connection to the proxy itself are not currently supported. The proxy is expected to be reachable over plaintext HTTP and to authorize the gateway by network policy (for example, an IP allowlist).
+:::
+
 ## Environment Variable Precedence
 
 Environment variables can be configured at multiple levels. The precedence order is (highest to lowest):
