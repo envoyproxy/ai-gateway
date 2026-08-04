@@ -59,14 +59,22 @@ const (
 	MCPMetadataHeaderMethod = MCPMetadataHeaderPrefix + "method"
 	// MCPMetadataHeaderToolName is the special header key used to pass the MCP tool name in the filter metadata.
 	MCPMetadataHeaderToolName = MCPMetadataHeaderPrefix + "tool-name"
+	// MCPMetadataHeaderResourceURI is the special header key used to pass the MCP resource URI in the filter metadata.
+	MCPMetadataHeaderResourceURI = MCPMetadataHeaderPrefix + "resource-uri"
 )
 
 // MCPInternalHeadersToMetadata maps special MCP headers to metadata keys.
+//
+// Only headers that do not survive to the router belong here. Headers the MCP proxy sets and leaves
+// on the request - mcp-session-id, x-ai-eg-mcp-route - are already readable from an access log with
+// %REQ(...)%, on both the MCP proxy listener and the backend listener, so mapping them would only add
+// a second name for the same value.
 var MCPInternalHeadersToMetadata = map[string]string{
-	MCPBackendHeader:           "mcp_backend",
-	MCPMetadataHeaderMethod:    "mcp_method",
-	MCPMetadataHeaderRequestID: "mcp_request_id",
-	MCPMetadataHeaderToolName:  "mcp_tool_name",
+	MCPBackendHeader:             "mcp_backend",
+	MCPMetadataHeaderMethod:      "mcp_method",
+	MCPMetadataHeaderRequestID:   "mcp_request_id",
+	MCPMetadataHeaderToolName:    "mcp_tool_name",
+	MCPMetadataHeaderResourceURI: "mcp_resource_uri",
 }
 
 const (
