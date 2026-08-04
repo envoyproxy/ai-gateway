@@ -12,15 +12,18 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 )
 
-// This file pins the MCP span attribute names emitted by mcp.go against the
-// versioned semconv package. Production code hardcodes the names (see mcp.go) so
-// a dependency bump cannot silently rename what we emit and break users'
-// dashboards; the literals below mirror those, so an upstream rename surfaces
-// here as a failure that names the change. This mirrors
-// otelgenai/semconv_vocabulary_test.go for the LLM-endpoint attributes.
+// This file pins the MCP span attribute names emitted by mcp_otel.go against the
+// versioned semconv package. Production code hardcodes the names so a dependency
+// bump cannot silently rename what we emit and break users' dashboards; the
+// literals below mirror those, so an upstream rename surfaces here as a failure
+// that names the change. This mirrors otelgenai/semconv_vocabulary_test.go for
+// the LLM-endpoint attributes.
+//
+// Only the OTel vocabulary is pinned here. The legacy vocabulary predates these
+// conventions and is pinned by mcp_legacy_test.go against its own frozen names.
 
 // TestMCPAttributeNames_matchSemconv pins every MCP attribute name we emit that
-// has a semconv equivalent. The left column is the literal emitted by mcp.go.
+// has a semconv equivalent. The left column is the literal emitted by mcp_otel.go.
 func TestMCPAttributeNames_matchSemconv(t *testing.T) {
 	tests := []struct {
 		ours     string
@@ -43,8 +46,6 @@ func TestMCPAttributeNames_matchSemconv(t *testing.T) {
 		{ours: "error.type", expected: string(semconv.ErrorTypeKey)},
 		{ours: "rpc.response.status_code", expected: string(semconv.RPCResponseStatusCodeKey)},
 
-		{ours: "server.address", expected: string(semconv.ServerAddressKey)},
-		{ours: "server.port", expected: string(semconv.ServerPortKey)},
 		{ours: "network.transport", expected: string(semconv.NetworkTransportKey)},
 		{ours: "network.protocol.name", expected: string(semconv.NetworkProtocolNameKey)},
 		{ours: "network.protocol.version", expected: string(semconv.NetworkProtocolVersionKey)},

@@ -232,7 +232,7 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 				m.l.Debug("created MCP session", slog.String("backend", backend.Name), slog.String("session_id", string(initResult.sessionID)))
 			}
 			if span != nil {
-				span.RecordRouteToBackend(backend.Name, string(initResult.sessionID), true, m.backendListenerHost, m.backendListenerPort)
+				span.RecordRouteToBackend(backend.Name, string(initResult.sessionID), true)
 			}
 			entries[entryIndex] = compositeSessionEntry{
 				sessionID:    initResult.sessionID,

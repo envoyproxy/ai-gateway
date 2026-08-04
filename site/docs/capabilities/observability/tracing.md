@@ -171,6 +171,36 @@ rerank — have no content attributes defined by the conventions at all.
 The `OPENINFERENCE_HIDE_*` variables described below apply only to the
 OpenInference convention. They have no effect when `gen_ai` is selected.
 
+### MCP spans
+
+`AI_GATEWAY_TRACING_SEMCONV` selects the vocabulary for MCP spans as well as for
+the LLM endpoints. OpenInference defines no MCP conventions, so the default keeps
+the gateway-specific attributes MCP spans have always used; `gen_ai` opts into
+the [OpenTelemetry MCP semantic conventions][otel-mcp].
+
+|               | default (`openinference`) | `gen_ai`                                       |
+| ------------- | ------------------------- | ---------------------------------------------- |
+| Span name     | `CallTool`, `ListTools`   | `tools/call {tool}`, `tools/list`              |
+| Tool name     | `mcp.tool.name`           | `gen_ai.tool.name` + `gen_ai.operation.name`   |
+| Prompt name   | `mcp.prompt.name`         | `gen_ai.prompt.name`                           |
+| Request ID    | `mcp.request.id`          | `jsonrpc.request.id`                           |
+| Transport     | `mcp.transport`           | `network.transport`, `network.protocol.*`      |
+| Errors        | `exception` event         | `error.type`, `rpc.response.status_code`       |
+| Session       | on the per-backend event  | also `mcp.session.id` on the span              |
+| List sizes    | not recorded              | `mcp.tools.count`, `mcp.resources.count`, ...  |
+| Tool call I/O | not recorded              | `gen_ai.tool.call.arguments`/`.result`, opt-in |
+
+Tool call arguments and results are message content, so under `gen_ai` they
+follow the same `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` opt-in as
+the LLM endpoints. The default convention never records them.
+
+:::note Deprecation
+The gateway-specific MCP attributes are deprecated in favor of the OpenTelemetry
+MCP conventions. They remain the default for now; a future release will announce
+a version in which the default flips. Migrate by setting
+`AI_GATEWAY_TRACING_SEMCONV=gen_ai` once your dashboards query the new names.
+:::
+
 ## Privacy Configuration
 
 :::note
@@ -326,6 +356,7 @@ on `GatewayConfig` usage, including environment variable precedence and shared c
 
 [openinference]: https://github.com/Arize-ai/openinference/tree/main/spec
 [otel-genai]: https://github.com/open-telemetry/semantic-conventions-genai
+[otel-mcp]: https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/mcp.md
 [openinference-config]: https://github.com/Arize-ai/openinference/blob/main/spec/configuration.md
 [openinference-embeddings]: https://github.com/Arize-ai/openinference/blob/main/spec/embedding_spans.md
 [otel-config]: https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/

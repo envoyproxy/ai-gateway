@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
 
@@ -33,7 +34,7 @@ func TestTracer_StartSpanAndInjectMeta(t *testing.T) {
 			"x-tracing-enrichment-user-region": "user.region",
 			"agent-session-id":                 "session.id",
 			"CustomAttr":                       "custom.attr",
-		}, false)
+		}, mcpVocabularyOTel(false))
 
 	headers := make(http.Header)
 	headers.Add("X-Tracing-Enrichment-User-Region", "us-east-1")
@@ -90,7 +91,7 @@ func TestTracer_StartSpanAndInjectMeta_MetaAndHeaderFallback(t *testing.T) {
 			exporter := tracetest.NewInMemoryExporter()
 			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(),
-				map[string]string{"agent-session-id": "session.id"}, false)
+				map[string]string{"agent-session-id": "session.id"}, mcpVocabularyOTel(false))
 
 			reqID, _ := jsonrpc.MakeID("id")
 			r := &jsonrpc.Request{ID: reqID, Method: "initialize"}
@@ -159,7 +160,7 @@ func TestTracer_StartSpanAndInjectMeta_ParentTraceContext(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			exporter := tracetest.NewInMemoryExporter()
 			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
-			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil, false)
+			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil, mcpVocabularyOTel(false))
 
 			reqID, _ := jsonrpc.MakeID("id")
 			span := tracer.StartSpanAndInjectMeta(t.Context(),
@@ -180,7 +181,7 @@ func TestTracer_StartSpanAndInjectMeta_ParentTraceContext(t *testing.T) {
 	}
 }
 
-func Test_getMCPAttributes(t *testing.T) {
+func Test_otelMCPParamsAttributes(t *testing.T) {
 	cases := []struct {
 		p        mcp.Params
 		expected []attribute.KeyValue
@@ -277,12 +278,12 @@ func Test_getMCPAttributes(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run("", func(t *testing.T) {
-			require.Equal(t, tc.expected, getMCPParamsAsAttributes(tc.p, false))
+			require.Equal(t, tc.expected, otelMCPParamsAttributes(tc.p, false))
 		})
 	}
 }
 
-func Test_mcpSpanName(t *testing.T) {
+func Test_otelMCPSpanName(t *testing.T) {
 	tests := []struct {
 		name     string
 		method   string
@@ -304,7 +305,7 @@ func Test_mcpSpanName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual := mcpSpanName(tt.method, tt.params)
+			actual := otelMCPSpanName(tt.method, tt.params)
 			require.Equal(t, tt.expected, actual)
 		})
 	}
@@ -366,7 +367,7 @@ func TestMCPTracer_SpanName(t *testing.T) {
 			exporter := tracetest.NewInMemoryExporter()
 			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 
-			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil, false)
+			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil, mcpVocabularyOTel(false))
 
 			reqID, _ := jsonrpc.MakeID("test-id")
 			req := &jsonrpc.Request{ID: reqID, Method: tt.method}
@@ -393,7 +394,7 @@ func newTestMCPSpanWithCapture(t *testing.T, method string, params mcp.Params, c
 	t.Helper()
 	exporter := tracetest.NewInMemoryExporter()
 	tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
-	tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil, captureContent)
+	tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil, mcpVocabularyOTel(captureContent))
 
 	reqID, _ := jsonrpc.MakeID("test-id")
 	req := &jsonrpc.Request{ID: reqID, Method: method}
@@ -451,19 +452,48 @@ func TestMCPSpan_EndSpanOnError(t *testing.T) {
 
 func TestMCPSpan_RecordRouteToBackend(t *testing.T) {
 	span, exported := newTestMCPSpan(t, "tools/call", &mcp.CallToolParams{Name: "fake-tool"})
-	span.RecordRouteToBackend("backend-a", "sess-1234", true, "127.0.0.1", 9999)
+	span.RecordRouteToBackend("backend-a", "backend-sess-1234", true)
 	span.EndSpan()
 
 	stub := exported()
-	require.Contains(t, stub.Attributes, attribute.String("mcp.session.id", "sess-1234"))
-	require.Contains(t, stub.Attributes, attribute.String("server.address", "127.0.0.1"))
-	require.Contains(t, stub.Attributes, attribute.Int("server.port", 9999))
-
-	// The gateway-specific event is still emitted.
 	require.Len(t, stub.Events, 1)
 	require.Equal(t, "route to backend", stub.Events[0].Name)
 	require.Contains(t, stub.Events[0].Attributes, attribute.String("mcp.backend.name", "backend-a"))
+	require.Contains(t, stub.Events[0].Attributes, attribute.String("mcp.session.id", "backend-sess-1234"))
 	require.Contains(t, stub.Events[0].Attributes, attribute.Bool("mcp.session.new", true))
+
+	// The per-backend session belongs on the event only. Promoting it to a span
+	// attribute would make it last-writer-wins across the backends a broadcast
+	// method fans out to; the span attribute is the client-facing session.
+	for _, a := range stub.Attributes {
+		require.NotEqual(t, "mcp.session.id", string(a.Key))
+	}
+}
+
+func TestMCPSpan_RecordClientSession(t *testing.T) {
+	t.Run("recorded once per request", func(t *testing.T) {
+		span, exported := newTestMCPSpan(t, "tools/list", &mcp.ListToolsParams{})
+		// A broadcast method routes to several backends, each with its own
+		// upstream session, but there is exactly one client-facing session.
+		span.RecordRouteToBackend("backend-a", "backend-sess-a", false)
+		span.RecordRouteToBackend("backend-b", "backend-sess-b", false)
+		span.RecordClientSession("client-sess-1234")
+		span.EndSpan()
+
+		stub := exported()
+		require.Contains(t, stub.Attributes, attribute.String("mcp.session.id", "client-sess-1234"))
+		require.Len(t, stub.Events, 2)
+	})
+
+	t.Run("empty session id is not recorded", func(t *testing.T) {
+		span, exported := newTestMCPSpan(t, "initialize", &mcp.InitializeParams{})
+		span.RecordClientSession("")
+		span.EndSpan()
+
+		for _, a := range exported().Attributes {
+			require.NotEqual(t, "mcp.session.id", string(a.Key))
+		}
+	})
 }
 
 func TestMCPTracer_ToolCallArguments(t *testing.T) {
@@ -473,8 +503,20 @@ func TestMCPTracer_ToolCallArguments(t *testing.T) {
 		span, exported := newTestMCPSpanWithCapture(t, "tools/call",
 			&mcp.CallToolParams{Name: "fake-tool", Arguments: args}, true)
 		span.EndSpan()
-		require.Contains(t, exported().Attributes,
-			attribute.String("gen_ai.tool.call.arguments", `{"duration":"1h","service":"payment-api"}`))
+
+		var recorded string
+		for _, a := range exported().Attributes {
+			if string(a.Key) == "gen_ai.tool.call.arguments" {
+				recorded = a.Value.AsString()
+			}
+		}
+		require.NotEmpty(t, recorded, "gen_ai.tool.call.arguments not recorded")
+
+		// Compare the decoded value rather than the serialization: the JSON
+		// encoder does not guarantee map key order.
+		var decoded map[string]any
+		require.NoError(t, json.Unmarshal([]byte(recorded), &decoded))
+		require.Equal(t, args, decoded)
 	})
 
 	t.Run("omitted when capture disabled", func(t *testing.T) {
@@ -594,12 +636,15 @@ func TestMCPSpan_AddEvent(t *testing.T) {
 	require.Equal(t, "tools/list aggregation end", stub.Events[1].Name)
 }
 
-func TestMCPSpan_RecordRouteToBackend_UnknownPeer(t *testing.T) {
+// TestMCPSpan_NoServerPeer pins the absence of server.address/server.port. The
+// proxy forwards to a fixed loopback listener on the local Envoy instance, not
+// to the MCP server, so the value would be the same constant on every span
+// regardless of the backend that served the request.
+func TestMCPSpan_NoServerPeer(t *testing.T) {
 	span, exported := newTestMCPSpan(t, "tools/call", &mcp.CallToolParams{Name: "fake-tool"})
-	span.RecordRouteToBackend("backend-a", "sess-1234", false, "", 0)
+	span.RecordRouteToBackend("backend-a", "sess-1234", false)
 	span.EndSpan()
 
-	// An unknown peer leaves server.address/server.port unrecorded.
 	for _, a := range exported().Attributes {
 		require.NotEqual(t, "server.address", string(a.Key))
 		require.NotEqual(t, "server.port", string(a.Key))

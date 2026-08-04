@@ -220,6 +220,14 @@ func (m *mcpRequestContext) servePOST(w http.ResponseWriter, r *http.Request) {
 				slog.String("duration", time.Since(startAt).String()))
 		}
 
+		// The client-facing session is known for every method except initialize,
+		// which creates it and records it in handleInitializeRequest instead.
+		// Attributes may be set any time before the span ends, so recording it
+		// here covers every method from one place.
+		if span != nil && s != nil {
+			span.RecordClientSession(string(s.clientGatewaySessionID()))
+		}
+
 		// Some request methods (e.g. notifications/initialized, tools/list) record per-backend
 		// metrics inside their own handlers, or don't involve backends at all. In those cases,
 		// perBackendMetricsRecorded is set to true and we skip the generic metrics recording
@@ -576,6 +584,12 @@ func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.
 		}
 		return err
 	}
+	// initialize is the one method that creates the client-facing session rather
+	// than being handed one, so it records it here; every other method is covered
+	// by the deferred block in servePOST.
+	if span != nil {
+		span.RecordClientSession(string(s.clientGatewaySessionID()))
+	}
 
 	result := mcp.InitializeResult{ProtocolVersion: protocolVersion20250618, ServerInfo: &mcp.Implementation{}}
 	result.ServerInfo.Name = "envoy-ai-gateway"
@@ -783,7 +797,7 @@ func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *sessio
 		logger.Debug("Routing to backend")
 	}
 	if span != nil {
-		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false, m.backendListenerHost, m.backendListenerPort)
+		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false)
 	}
 	req.Params = param
 	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req, p, span)
@@ -1225,7 +1239,7 @@ func (m *mcpRequestContext) handleResourcesSubscriptionRequest(ctx context.Conte
 		logger.Debug("Routing to backend")
 	}
 	if span != nil {
-		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false, m.backendListenerHost, m.backendListenerPort)
+		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false)
 	}
 	req.Params = param
 	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req, p, nil)
@@ -1487,7 +1501,7 @@ func (m *mcpRequestContext) handleCompletionComplete(ctx context.Context, s *ses
 
 	// Send the request to the MCP backend listener.
 	if span != nil {
-		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false, m.backendListenerHost, m.backendListenerPort)
+		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false)
 	}
 	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req, param, nil)
 }
@@ -1569,7 +1583,7 @@ func (m *mcpRequestContext) handleClientToServerNotificationsProgress(ctx contex
 		logger.Debug("Routing to backend")
 	}
 	if span != nil {
-		span.RecordRouteToBackend(backendName, string(cse.sessionID), false, m.backendListenerHost, m.backendListenerPort)
+		span.RecordRouteToBackend(backendName, string(cse.sessionID), false)
 	}
 	return result, m.invokeAndProxyResponse(ctx, s, w, backend, cse, req, p, nil)
 }

@@ -44,6 +44,12 @@ type recorderSet struct {
 	responsesInputTokens tracingapi.ResponsesInputTokensRecorder
 	countTokens          tracingapi.CountTokensRecorder
 
+	// mcp is the vocabulary used for MCP spans. MCP is not an LLM endpoint and
+	// has no recorder, but it is convention-scoped for the same reason the
+	// endpoints are: the attribute keys and span names a user's dashboards query
+	// must not change unless the user asks for it.
+	mcp *mcpVocabulary
+
 	// unboundedAttributeCount reports whether this convention emits indexed
 	// per-message attributes. Those scale with conversation length and exceed
 	// OTEL's default cap of 128, silently truncating spans. Only conventions
@@ -112,6 +118,10 @@ func newOpenInferenceRecorders() recorderSet {
 		responsesInputTokens: openai.NewResponsesInputTokensRecorder(cfg),
 		countTokens:          anthropic.NewCountTokensRecorder(cfg),
 
+		// OpenInference defines no MCP conventions, so MCP spans keep the
+		// gateway-specific vocabulary they have always emitted.
+		mcp: mcpVocabularyLegacy(),
+
 		// OpenInference emits llm.input_messages.N.* per message.
 		unboundedAttributeCount: cfg.CapturesMessages(),
 	}
@@ -135,6 +145,8 @@ func newOTelGenAIRecorders() recorderSet {
 
 		responsesInputTokens: otelgenai.NewResponsesInputTokensRecorder(cfg),
 		countTokens:          otelgenai.NewCountTokensRecorder(cfg),
+
+		mcp: mcpVocabularyOTel(cfg.CaptureMessageContent),
 
 		// GenAI puts message content in a single JSON attribute per direction
 		// rather than one attribute per message, so the default cap is enough.

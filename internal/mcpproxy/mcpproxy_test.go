@@ -31,16 +31,21 @@ var (
 )
 
 type fakeSpan struct {
-	backends       []string
-	events         []string
-	listResults    []any
-	toolCallResult []byte
-	errType        string
-	err            error
+	backends        []string
+	clientSessionID string
+	events          []string
+	listResults     []any
+	toolCallResult  []byte
+	errType         string
+	err             error
 }
 
-func (f *fakeSpan) RecordRouteToBackend(backend string, _ string, _ bool, _ string, _ int) {
+func (f *fakeSpan) RecordRouteToBackend(backend string, _ string, _ bool) {
 	f.backends = append(f.backends, backend)
+}
+
+func (f *fakeSpan) RecordClientSession(sessionID string) {
+	f.clientSessionID = sessionID
 }
 
 func (f *fakeSpan) AddEvent(name string) {
