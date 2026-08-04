@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"testing"
 	"time"
 
@@ -418,6 +419,7 @@ func TestResolveRouteName(t *testing.T) {
 func TestSetAWSSigningAttributes(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
+		seed       map[string]string // headers already present (e.g. spoofed by a downstream client)
 		attributes *structpb.Struct
 		wantHost   string
 		wantRegion string
@@ -452,9 +454,33 @@ func TestSetAWSSigningAttributes(t *testing.T) {
 		{
 			name: "nil metadata",
 		},
+		{
+			// Client-spoofed headers must not survive when xDS supplies no metadata.
+			name: "client-supplied headers are cleared when no xDS metadata",
+			seed: map[string]string{
+				internalapi.AWSSigningHostHeader:   "attacker.example.com",
+				internalapi.AWSSigningRegionHeader: "eu-west-1",
+			},
+			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{}},
+		},
+		{
+			// Trusted xDS metadata must overwrite any client-supplied values.
+			name: "xDS metadata overrides client-supplied headers",
+			seed: map[string]string{
+				internalapi.AWSSigningHostHeader:   "attacker.example.com",
+				internalapi.AWSSigningRegionHeader: "eu-west-1",
+			},
+			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{
+				internalapi.XDSUpstreamHostMetadataAWSSigningHostPath:   structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
+				internalapi.XDSUpstreamHostMetadataAWSSigningRegionPath: structpb.NewStringValue("us-east-1"),
+			}},
+			wantHost:   "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
+			wantRegion: "us-east-1",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			headers := map[string]string{}
+			maps.Copy(headers, tc.seed)
 			setAWSSigningAttributes(headers, tc.attributes)
 			if tc.wantHost == "" {
 				require.NotContains(t, headers, internalapi.AWSSigningHostHeader)

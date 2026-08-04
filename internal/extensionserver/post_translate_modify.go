@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"regexp"
 	"strconv"
 	"strings"
@@ -964,11 +965,27 @@ func routeNameFromEnvoyGatewayMetadata(route *routev3.Route) string {
 }
 
 // endpointAWSSigningHost returns the hostname to sign SigV4 requests against for the given endpoint.
-// It uses only the endpoint hostname, which is present for STRICT_DNS/FQDN clusters such as AWS Bedrock.
-// A bare socket address is intentionally not used: signing over an IP matches no AWS endpoint, so an
-// endpoint without a hostname yields no stamp and the signer falls back to the region-based default host.
+//
+// Envoy Gateway translates a Backend `fqdn` endpoint so that the FQDN lands in
+// Endpoint.Address.SocketAddress.Address, while Endpoint.Hostname is populated only from the Backend's
+// optional top-level `hostname` field (EG NewDestEndpoint takes the FQDN as `host` and bep.Hostname as
+// `hostname`). So for a normal Bedrock/VPCE backend Endpoint.Hostname is empty and the signable name is
+// the socket address. We therefore resolve in order: Endpoint.Hostname if set, otherwise the socket
+// address when it is a DNS name. An IP-literal socket address is rejected — signing over an IP matches no
+// AWS endpoint — so such an endpoint yields no stamp and the signer falls back to the region default.
 func endpointAWSSigningHost(lbEndpoint *endpointv3.LbEndpoint) string {
-	return lbEndpoint.GetEndpoint().GetHostname()
+	endpoint := lbEndpoint.GetEndpoint()
+	if endpoint == nil {
+		return ""
+	}
+	if hostname := endpoint.GetHostname(); hostname != "" {
+		return hostname
+	}
+	// An IP-literal socket address is rejected
+	if addr := endpoint.GetAddress().GetSocketAddress().GetAddress(); addr != "" && net.ParseIP(addr) == nil {
+		return addr
+	}
+	return ""
 }
 
 // awsSigningRegionFromHost derives the SigV4 region from a resolved Bedrock signing host so the

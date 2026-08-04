@@ -437,6 +437,13 @@ func resolveRouteName(attributes *structpb.Struct) string {
 }
 
 func setAWSSigningAttributes(headers map[string]string, attributes *structpb.Struct) {
+	// The signing host/region headers are internal, controller-derived values. A downstream client
+	// could also send them, so drop any inbound copy before overlaying trusted xDS metadata — otherwise,
+	// for an endpoint with no derivable metadata (non-Bedrock host, custom/FIPS endpoint, EDS), the
+	// client-supplied value would survive and drive the SigV4 host/region scope.
+	delete(headers, internalapi.AWSSigningHostHeader)
+	delete(headers, internalapi.AWSSigningRegionHeader)
+
 	if attributes == nil {
 		return
 	}
@@ -452,7 +459,6 @@ func setAWSSigningAttributes(headers map[string]string, attributes *structpb.Str
 			headers[internalapi.AWSSigningRegionHeader] = region
 		}
 	}
-
 }
 
 // Check implements [grpc_health_v1.HealthServer].

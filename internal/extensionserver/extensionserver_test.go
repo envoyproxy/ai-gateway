@@ -306,14 +306,18 @@ func Test_maybeModifyCluster(t *testing.T) {
 						{
 							LbEndpoints: []*endpointv3.LbEndpoint{
 								{HostIdentifier: &endpointv3.LbEndpoint_Endpoint{Endpoint: &endpointv3.Endpoint{
-									Hostname: "aaa.bedrock-runtime.us-east-1.amazonaws.com",
+									Address: &corev3.Address{Address: &corev3.Address_SocketAddress{
+										SocketAddress: &corev3.SocketAddress{Address: "aaa.bedrock-runtime.us-east-1.amazonaws.com"},
+									}},
 								}}},
 							},
 						},
 						{
 							LbEndpoints: []*endpointv3.LbEndpoint{
 								{HostIdentifier: &endpointv3.LbEndpoint_Endpoint{Endpoint: &endpointv3.Endpoint{
-									Hostname: "bbb.bedrock-runtime.us-east-1.amazonaws.com",
+									Address: &corev3.Address{Address: &corev3.Address_SocketAddress{
+										SocketAddress: &corev3.SocketAddress{Address: "bbb.bedrock-runtime.us-east-1.amazonaws.com"},
+									}},
 								}}},
 							},
 						},
@@ -330,7 +334,9 @@ func Test_maybeModifyCluster(t *testing.T) {
 							LbEndpoints: []*endpointv3.LbEndpoint{
 								{
 									HostIdentifier: &endpointv3.LbEndpoint_Endpoint{Endpoint: &endpointv3.Endpoint{
-										Hostname: "aaa.bedrock-runtime.us-east-1.amazonaws.com",
+										Address: &corev3.Address{Address: &corev3.Address_SocketAddress{
+											SocketAddress: &corev3.SocketAddress{Address: "aaa.bedrock-runtime.us-east-1.amazonaws.com"},
+										}},
 									}},
 									Metadata: &corev3.Metadata{
 										FilterMetadata: map[string]*structpb.Struct{
@@ -357,7 +363,9 @@ func Test_maybeModifyCluster(t *testing.T) {
 							LbEndpoints: []*endpointv3.LbEndpoint{
 								{
 									HostIdentifier: &endpointv3.LbEndpoint_Endpoint{Endpoint: &endpointv3.Endpoint{
-										Hostname: "bbb.bedrock-runtime.us-east-1.amazonaws.com",
+										Address: &corev3.Address{Address: &corev3.Address_SocketAddress{
+											SocketAddress: &corev3.SocketAddress{Address: "bbb.bedrock-runtime.us-east-1.amazonaws.com"},
+										}},
 									}},
 									Metadata: &corev3.Metadata{
 										FilterMetadata: map[string]*structpb.Struct{
@@ -2510,26 +2518,53 @@ func TestEndpointAWSSigningHost(t *testing.T) {
 			want:     "",
 		},
 		{
-			name: "hostname is used even when a socket address is present",
+			name: "explicit endpoint hostname wins over socket address",
 			endpoint: &endpointv3.LbEndpoint{
 				HostIdentifier: &endpointv3.LbEndpoint_Endpoint{
 					Endpoint: &endpointv3.Endpoint{
-						Hostname: "bedrock-runtime.us-east-1.amazonaws.com",
+						Hostname: "override.example.com",
+						Address: &corev3.Address{Address: &corev3.Address_SocketAddress{
+							SocketAddress: &corev3.SocketAddress{Address: "bedrock-runtime.us-east-1.amazonaws.com"},
+						}},
+					},
+				},
+			},
+			want: "override.example.com",
+		},
+		{
+			// Normal EG fqdn Backend: Endpoint.Hostname is empty, the FQDN is in the socket address.
+			name: "DNS socket address is used when endpoint hostname is empty",
+			endpoint: &endpointv3.LbEndpoint{
+				HostIdentifier: &endpointv3.LbEndpoint_Endpoint{
+					Endpoint: &endpointv3.Endpoint{
+						Address: &corev3.Address{Address: &corev3.Address_SocketAddress{
+							SocketAddress: &corev3.SocketAddress{Address: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"},
+						}},
+					},
+				},
+			},
+			want: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
+		},
+		{
+			name: "IPv4 socket address is rejected",
+			endpoint: &endpointv3.LbEndpoint{
+				HostIdentifier: &endpointv3.LbEndpoint_Endpoint{
+					Endpoint: &endpointv3.Endpoint{
 						Address: &corev3.Address{Address: &corev3.Address_SocketAddress{
 							SocketAddress: &corev3.SocketAddress{Address: "10.0.0.1"},
 						}},
 					},
 				},
 			},
-			want: "bedrock-runtime.us-east-1.amazonaws.com",
+			want: "",
 		},
 		{
-			name: "socket address is not used as a fallback",
+			name: "IPv6 socket address is rejected",
 			endpoint: &endpointv3.LbEndpoint{
 				HostIdentifier: &endpointv3.LbEndpoint_Endpoint{
 					Endpoint: &endpointv3.Endpoint{
 						Address: &corev3.Address{Address: &corev3.Address_SocketAddress{
-							SocketAddress: &corev3.SocketAddress{Address: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"},
+							SocketAddress: &corev3.SocketAddress{Address: "2001:db8::1"},
 						}},
 					},
 				},

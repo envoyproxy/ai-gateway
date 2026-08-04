@@ -43,6 +43,9 @@ site/temp
 # auto generated conformance report
 inference-extension-conformance-test-report.yaml
 
+# e2e debug log export (kind/pod logs dumped on failure)
+tests/e2e/logs-export/
+
 # Claude Code settings and generated files
 .claude/
 .env
