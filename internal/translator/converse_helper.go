@@ -46,9 +46,12 @@ func openAIToolsToBedrockToolConfig(tools []openai.Tool, toolChoice *openai.Chat
 						JSON: toolDefinition.Function.Parameters,
 					},
 				},
-				CachePoint: getCachePoint(toolDefinition.Function.AnthropicContentFields),
 			}
 			bedrockTools = append(bedrockTools, tool)
+			// Bedrock's Tool is a union: an element sets either toolSpec or cachePoint, never both.
+			if cachePointBlock := getCachePoint(toolDefinition.Function.AnthropicContentFields); cachePointBlock != nil {
+				bedrockTools = append(bedrockTools, &awsbedrock.Tool{CachePoint: cachePointBlock})
+			}
 		}
 	}
 	toolConfig.Tools = bedrockTools
