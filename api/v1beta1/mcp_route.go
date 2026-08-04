@@ -92,10 +92,14 @@ type MCPRouteSpec struct {
 	// +optional
 	SecurityPolicy *MCPRouteSecurityPolicy `json:"securityPolicy,omitempty"`
 
-	// BackendSelector restricts which of this route's backends a given request may
-	// fan out to. It is evaluated once per candidate backend when a client session is
-	// initialized. If unspecified, all backends on the route are considered (today's
-	// behavior, unchanged).
+	// BackendSelector restricts which of this route's backends a given request may fan
+	// out to, evaluated once per candidate backend when a client session is initialized.
+	// If unspecified, all backends on the route are considered.
+	//
+	// Why: on a route with many backends serving different callers, fanning out to
+	// every backend on every session wastes connections and is also unnecessarily cause
+	// 403 in MCP server acess logs. BackendSelector lets a route declare that decision
+	// with a CEL rule instead of requiring an ext-proc shim to do it out of band
 	//
 	// +kubebuilder:validation:Optional
 	// +optional
@@ -414,11 +418,10 @@ type MCPBackendSelector struct {
 	Rules []MCPBackendSelectorRule `json:"rules,omitempty"`
 }
 
-// MCPBackendSelectorRule defines a single backend selection rule.
+// MCPBackendSelectorRule defines a single backend selection rule or single CEL rule.
 type MCPBackendSelectorRule struct {
-	// CEL specifies a Common Expression Language (CEL) expression evaluated once per
-	// candidate backend. The expression must return a boolean; evaluation errors or
-	// non-boolean results are treated as "no match".
+	// CEL Evaluated once per candidate backend.  The expression must return a boolean;
+	// evaluation errors or non-boolean results are treated as "no match".
 	//
 	// Example CEL expressions:
 	//	* `request.mcp.backend in request.auth.jwt.claims.mcp_backends`

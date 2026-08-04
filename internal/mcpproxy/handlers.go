@@ -729,8 +729,8 @@ func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *sessio
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("route not found: %s", s.route))
 		return result, fmt.Errorf("route not found: %s", s.route)
 	}
-	// Validate the tool against the static per-backend toolSelector.
-	if selector := route.toolSelectors[backendName]; selector != nil && !selector.allows(toolName) {
+	selector := route.toolSelectors[backendName]
+	if selector != nil && !selector.allows(toolName) {
 		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid tool name: %s", toolName))
 		return result, fmt.Errorf("%w: %s", errInvalidToolName, toolName)
 	}
@@ -1687,16 +1687,12 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 	// A backend specific prefix is added to the tool name to avoid name collision.
 	// The tools are filtered based on the toolFilters configured for each backend,
 	// and additionally by authorization rules so callers only see tools they can invoke.
-	// Per-request, per-tenant narrowing (e.g. against the trusted x-ai-eg-mcp-tool-subset
-	// header) is expressed declaratively as a route.authorization CEL rule below, rather
-	// than a bespoke Go-side filter — the same rule engine already governs tools/call.
 	for _, r := range responses {
 		selector := route.toolSelectors[r.backendName]
 		for _, tool := range r.res.Tools {
 			if selector != nil && !selector.allows(tool.Name) {
 				continue
 			}
-			full := downstreamResourceName(tool.Name, r.backendName)
 			if route.authorization != nil {
 				allowed, _ := m.authorizeRequest(route.authorization, &authorizationRequest{
 					Headers:   m.requestHeaders,
@@ -1708,7 +1704,7 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 					continue
 				}
 			}
-			tool.Name = full
+			tool.Name = downstreamResourceName(tool.Name, r.backendName)
 			resp.Tools = append(resp.Tools, tool)
 		}
 	}

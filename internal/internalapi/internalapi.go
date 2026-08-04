@@ -33,34 +33,13 @@ const (
 	MCPBackendHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend"
 	// MCPRouteHeader is the special header key used to identify the mcp route.
 	MCPRouteHeader = EnvoyAIGatewayHeaderPrefix + "mcp-route"
-	// MCPBackendSubsetHeader is a comma-separated list of backend names that the
-	// request should fan out to (set by the trusted ext-proc / shim). When present,
-	// the MCP proxy initializes sessions ONLY to this subset of the route's backends.
-	// When absent, the proxy falls back to all backends on the route (original behavior).
-	// This controls fan-out scope only; it is not an authorization decision.
-	// The value is sourced from the dynamic metadata key MCPBackendSubsetMetadataKey
-	// (namespace InternalEndpointMetadataNamespace), which Envoy renders into this header
-	// on the route into the MCP proxy.
+	// MCPBackendSubsetHeader is the trusted, shim-supplied comma-separated backend subset a request may fan out to.
 	MCPBackendSubsetHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend-subset"
-	// MCPBackendSubsetMetadataKey is the dynamic metadata key (under
-	// InternalEndpointMetadataNamespace) that the trusted shim sets with the
-	// comma-separated backend subset. Envoy renders it into MCPBackendSubsetHeader.
+	// MCPBackendSubsetMetadataKey is the dynamic metadata key the shim sets; Envoy renders it into MCPBackendSubsetHeader.
 	MCPBackendSubsetMetadataKey = "mcp_backend_subset"
-	// MCPToolSubsetHeader is a comma-separated list of fully-qualified downstream tool
-	// names (in the "<backend>__<tool>" form) that this request may see. It is supplied
-	// per-request by the trusted ext-proc / shim (sourced from dynamic metadata). Because
-	// this header is always present (see MCPToolSubsetMetadataKey below), route owners
-	// consume it declaratively via a route.securityPolicy.authorization CEL rule (e.g.
-	// `request.headers["x-ai-eg-mcp-tool-subset"] == "" || ("," + request.headers[...] +
-	// ",").contains("," + request.mcp.backend + "__" + request.mcp.tool + ",")`), which the
-	// MCP proxy already evaluates per tool during both tools/list and tools/call — no
-	// dedicated Go-side parsing exists for this header.
-	// The value is sourced from MCPToolSubsetMetadataKey (namespace
-	// InternalEndpointMetadataNamespace), which Envoy renders into this header.
+	// MCPToolSubsetHeader is the trusted, shim-supplied comma-separated "<backend>__<tool>" subset a request may see.
 	MCPToolSubsetHeader = EnvoyAIGatewayHeaderPrefix + "mcp-tool-subset"
-	// MCPToolSubsetMetadataKey is the dynamic metadata key (under
-	// InternalEndpointMetadataNamespace) that the trusted shim sets with the
-	// comma-separated tool subset for tools/list. Envoy renders it into MCPToolSubsetHeader.
+	// MCPToolSubsetMetadataKey is the dynamic metadata key the shim sets; Envoy renders it into MCPToolSubsetHeader.
 	MCPToolSubsetMetadataKey = "mcp_tool_subset"
 	// MCPBackendListenerPort is the port for the MCP backend listener.
 	MCPBackendListenerPort = 10088

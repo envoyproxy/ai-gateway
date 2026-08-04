@@ -682,9 +682,16 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 				mcpRoute.Authorization.Rules = append(mcpRoute.Authorization.Rules, mcpRule)
 			}
 		}
-		// Add backend selector configuration for the route. This reuses the same
-		// filterapi.MCPRouteAuthorization shape (and downstream CEL engine) as Authorization
-		// above; Source and Target are not meaningful for backend selection and are left unset.
+		// Add backend selector configuration for the route. BackendSelector runs through the
+		// same filterapi.MCPRouteAuthorization struct and CEL engine as Authorization above,
+		// just evaluated once per candidate backend, before any session is opened - not per
+		// tools/call.
+		//
+		// Source and Target are left unset (Go zero value) below on purpose: the CRD's
+		// MCPBackendSelectorRule only exposes "cel" and "action", so there's nothing to copy
+		// them from. Because neither field means anything at this point - there's
+		// no tool yet to target, and no client-facing OAuth scope-challenge to build for an
+		// internal "which backend do we fan out to" decision.
 		if route.Spec.BackendSelector != nil {
 			selector := route.Spec.BackendSelector
 			mcpRoute.BackendSelector = &filterapi.MCPRouteAuthorization{
