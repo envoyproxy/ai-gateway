@@ -126,16 +126,7 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 			{Tool: &anthropic.Tool{
 				Name:        "get_weather",
 				Description: "Get current weather information",
-				InputSchema: anthropic.ToolInputSchema{
-					Type: "object",
-					Properties: map[string]any{
-						"location": map[string]any{
-							"type":        "string",
-							"description": "City name",
-						},
-					},
-					Required: []string{"location"},
-				},
+				InputSchema: json.RawMessage(`{"type":"object","properties":{"location":{"type":"string","description":"City name"}},"required":["location"]}`),
 			}},
 		},
 		ToolChoice: &anthropic.ToolChoice{Auto: &anthropic.ToolChoiceAuto{Type: "auto"}},
@@ -350,12 +341,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_FieldPassthrough(t *testi
 			{Tool: &anthropic.Tool{
 				Name:        "get_weather",
 				Description: "Get weather info",
-				InputSchema: anthropic.ToolInputSchema{
-					Type: "object",
-					Properties: map[string]any{
-						"location": map[string]any{"type": "string"},
-					},
-				},
+				InputSchema: json.RawMessage(`{"type":"object","properties":{"location":{"type":"string"}}}`),
 			}},
 		},
 		ToolChoice: &anthropic.ToolChoice{Auto: &anthropic.ToolChoiceAuto{Type: "auto"}},
