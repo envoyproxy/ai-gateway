@@ -373,6 +373,36 @@ spec:
                 x-kubernetes-list-map-keys:
                 - name
                 x-kubernetes-list-type: map
+              hostnames:
+                description: |-
+                  Hostnames is a list of hostnames matched against the HTTP Host header to select this MCPRoute.
+                  This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec. When specified, the
+                  generated HTTPRoute includes these hostnames, so the MCP route lands in the per-host virtual host
+                  instead of the wildcard vhost (the same scoping AIGatewayRoute.Hostnames provides).
+                  See https://gateway-api.sigs.k8s.io/reference/api-types/httproute/#hostnames
+                  for the details of the Hostnames field in the Gateway API.
+                items:
+                  description: |-
+                    Hostname is the fully qualified domain name of a network host. This matches
+                    the RFC 1123 definition of a hostname with 2 notable exceptions:
+
+                     1. IPs are not allowed.
+                     2. A hostname may be prefixed with a wildcard label (`*.`). The wildcard
+                        label must appear by itself as the first label.
+
+                    Hostname can be "precise" which is a domain name without the terminating
+                    dot of a network host (e.g. "foo.example.com") or "wildcard", which is a
+                    domain name prefixed with a single wildcard label (e.g. `*.example.com`).
+
+                    Note that as per RFC1035 and RFC1123, a *label* must consist of lower case
+                    alphanumeric characters or '-', and must start and end with an alphanumeric
+                    character. No other punctuation is allowed.
+                  maxLength: 253
+                  minLength: 1
+                  pattern: ^(\*\.)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                  type: string
+                maxItems: 16
+                type: array
               parentRefs:
                 description: |-
                   ParentRefs are the names of the Gateway resources this MCPRoute is being attached to.
@@ -5926,6 +5956,36 @@ spec:
                 x-kubernetes-list-map-keys:
                 - name
                 x-kubernetes-list-type: map
+              hostnames:
+                description: |-
+                  Hostnames is a list of hostnames matched against the HTTP Host header to select this MCPRoute.
+                  This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec. When specified, the
+                  generated HTTPRoute includes these hostnames, so the MCP route lands in the per-host virtual host
+                  instead of the wildcard vhost (the same scoping AIGatewayRoute.Hostnames provides).
+                  See https://gateway-api.sigs.k8s.io/reference/api-types/httproute/#hostnames
+                  for the details of the Hostnames field in the Gateway API.
+                items:
+                  description: |-
+                    Hostname is the fully qualified domain name of a network host. This matches
+                    the RFC 1123 definition of a hostname with 2 notable exceptions:
+
+                     1. IPs are not allowed.
+                     2. A hostname may be prefixed with a wildcard label (`*.`). The wildcard
+                        label must appear by itself as the first label.
+
+                    Hostname can be "precise" which is a domain name without the terminating
+                    dot of a network host (e.g. "foo.example.com") or "wildcard", which is a
+                    domain name prefixed with a single wildcard label (e.g. `*.example.com`).
+
+                    Note that as per RFC1035 and RFC1123, a *label* must consist of lower case
+                    alphanumeric characters or '-', and must start and end with an alphanumeric
+                    character. No other punctuation is allowed.
+                  maxLength: 253
+                  minLength: 1
+                  pattern: ^(\*\.)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                  type: string
+                maxItems: 16
+                type: array
               parentRefs:
                 description: |-
                   ParentRefs are the names of the Gateway resources this MCPRoute is being attached to.
