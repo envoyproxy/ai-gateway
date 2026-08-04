@@ -2122,6 +2122,11 @@ MCPRouteSpec details the MCPRoute configuration.
   required="false"
   description="Headers are HTTP headers that must match for this route to be selected.<br />Multiple match values are ANDed together, meaning, a request must match all the specified headers to select the route."
 /><ApiField
+  name="hostnames"
+  type="Hostname array"
+  required="false"
+  description="Hostnames is a list of hostnames matched against the HTTP Host header to select this MCPRoute.<br />This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec. When specified, the<br />generated HTTPRoute includes these hostnames, so the MCP route lands in the per-host virtual host<br />instead of the wildcard vhost (the same scoping AIGatewayRoute.Hostnames provides).<br />See https://gateway-api.sigs.k8s.io/reference/api-types/httproute/#hostnames<br />for the details of the Hostnames field in the Gateway API."
+/><ApiField
   name="backendRefs"
   type="[MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutebackendref) array"
   required="true"
@@ -4647,6 +4652,11 @@ MCPRouteSpec details the MCPRoute configuration.
   type="[HTTPHeaderMatch](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httpheadermatch) array"
   required="false"
   description="Headers are HTTP headers that must match for this route to be selected.<br />Multiple match values are ANDed together, meaning, a request must match all the specified headers to select the route."
+/><ApiField
+  name="hostnames"
+  type="Hostname array"
+  required="false"
+  description="Hostnames is a list of hostnames matched against the HTTP Host header to select this MCPRoute.<br />This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec. When specified, the<br />generated HTTPRoute includes these hostnames, so the MCP route lands in the per-host virtual host<br />instead of the wildcard vhost (the same scoping AIGatewayRoute.Hostnames provides).<br />See https://gateway-api.sigs.k8s.io/reference/api-types/httproute/#hostnames<br />for the details of the Hostnames field in the Gateway API."
 /><ApiField
   name="backendRefs"
   type="[MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutebackendref) array"
