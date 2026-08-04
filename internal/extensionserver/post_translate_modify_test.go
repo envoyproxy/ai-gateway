@@ -453,6 +453,11 @@ func TestServer_maybeInjectSharedCatchAllRoutes(t *testing.T) {
 		require.NoError(t, err)
 		return &routev3.Route{
 			Name: name,
+			Action: &routev3.Route_Route{
+				Route: &routev3.RouteAction{
+					ClusterSpecifier: &routev3.RouteAction_Cluster{Cluster: "test-cluster"},
+				},
+			},
 			Metadata: &corev3.Metadata{
 				FilterMetadata: map[string]*structpb.Struct{
 					"envoy-gateway": meta,
@@ -475,10 +480,13 @@ func TestServer_maybeInjectSharedCatchAllRoutes(t *testing.T) {
 		s.maybeInjectSharedCatchAllRoutes([]*routev3.RouteConfiguration{rc})
 		require.Len(t, rc.VirtualHosts[0].Routes, 2)
 		catchAll := rc.VirtualHosts[0].Routes[1]
-		require.Equal(t, catchAllRouteName, catchAll.Name)
+		require.Equal(t, catchAllRouteNamePrefix+"/vh1", catchAll.Name)
 		require.Equal(t, "/", catchAll.GetMatch().GetPrefix())
 		require.Equal(t, uint32(404), catchAll.GetDirectResponse().GetStatus())
 		require.Equal(t, catchAllResponseBody, catchAll.GetDirectResponse().GetBody().GetInlineString())
+		require.Equal(t, "route-a",
+			catchAll.GetMetadata().GetFilterMetadata()[internalapi.InternalEndpointMetadataNamespace].
+				GetFields()[internalapi.InternalMetadataRouteNameKey].GetStringValue())
 	})
 
 	t.Run("does not inject when no AIGateway routes", func(t *testing.T) {
@@ -504,7 +512,7 @@ func TestServer_maybeInjectSharedCatchAllRoutes(t *testing.T) {
 					Name: "vh1",
 					Routes: []*routev3.Route{
 						buildAIGatewayRoute("route-a"),
-						{Name: catchAllRouteName},
+						{Name: catchAllRouteNamePrefix + "/vh1"},
 					},
 				},
 			},
@@ -513,4 +521,50 @@ func TestServer_maybeInjectSharedCatchAllRoutes(t *testing.T) {
 		s.maybeInjectSharedCatchAllRoutes([]*routev3.RouteConfiguration{rc})
 		require.Len(t, rc.VirtualHosts[0].Routes, 2)
 	})
+
+	t.Run("does not inject when only direct-response AIGateway route exists", func(t *testing.T) {
+		route := buildAIGatewayRoute("route-a")
+		route.Action = &routev3.Route_DirectResponse{DirectResponse: &routev3.DirectResponseAction{Status: 404}}
+		rc := &routev3.RouteConfiguration{
+			Name: "rc1",
+			VirtualHosts: []*routev3.VirtualHost{
+				{
+					Name:   "vh1",
+					Routes: []*routev3.Route{route},
+				},
+			},
+		}
+		s := &Server{log: zap.New()}
+		s.maybeInjectSharedCatchAllRoutes([]*routev3.RouteConfiguration{rc})
+		require.Len(t, rc.VirtualHosts[0].Routes, 1)
+	})
+}
+
+func TestServer_enableRouterLevelAIGatewayExtProcOnRoute_sharedCatchAll(t *testing.T) {
+	rc := &routev3.RouteConfiguration{
+		Name: "rc1",
+		VirtualHosts: []*routev3.VirtualHost{
+			{
+				Name: "vh1",
+				Routes: []*routev3.Route{
+					{
+						Name: catchAllRouteNamePrefix + "/vh1",
+						Match: &routev3.RouteMatch{
+							PathSpecifier: &routev3.RouteMatch_Prefix{Prefix: "/"},
+						},
+						Action: &routev3.Route_DirectResponse{
+							DirectResponse: &routev3.DirectResponseAction{
+								Status: 404,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	s := &Server{log: zap.New()}
+	enabled, err := s.enableRouterLevelAIGatewayExtProcOnRoute(rc)
+	require.NoError(t, err)
+	require.True(t, enabled)
+	require.Contains(t, rc.VirtualHosts[0].Routes[0].TypedPerFilterConfig, aiGatewayExtProcName)
 }
