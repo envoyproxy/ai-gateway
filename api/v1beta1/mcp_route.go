@@ -107,11 +107,6 @@ type MCPRouteSpec struct {
 	// out to, evaluated once per candidate backend when a client session is initialized.
 	// If unspecified, all backends on the route are considered.
 	//
-	// Why: on a route with many backends serving different callers, fanning out to
-	// every backend on every session wastes connections and MCP handshakes on backends
-	// a given caller has no use for. BackendSelector lets a route declare that decision
-	// with a CEL rule instead of requiring an ext-proc shim to do it out of band.
-	//
 	// +kubebuilder:validation:Optional
 	// +optional
 	BackendSelector *MCPBackendSelector `json:"backendSelector,omitempty"`
@@ -422,7 +417,8 @@ type MCPBackendSelector struct {
 	// These rules are evaluated in order, the first matching rule will be applied,
 	// and the rest will be skipped.
 	//
-	// If no rules are defined, the default action will be applied to all backends.
+	// If no rules are defined, DefaultAction is applied to every candidate backend
+	// (defaults to Deny).
 	//
 	// +kubebuilder:validation:MaxItems=32
 	// +optional
@@ -432,7 +428,7 @@ type MCPBackendSelector struct {
 // MCPBackendSelectorRule defines a single backend selection rule.
 type MCPBackendSelectorRule struct {
 	// CEL specifies a Common Expression Language (CEL) expression, evaluated once for
-	// each backend already listed in backendRefs — it does not parse a list of backends
+	// each backend already listed in backendRefs. It does not parse a list of backends
 	// out of the request. Each evaluation binds request.mcp.backend to the name of the
 	// one candidate backend under test, so the expression should answer "is this backend
 	// allowed", not "which backends should be used". The expression must return a
