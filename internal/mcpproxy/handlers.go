@@ -684,18 +684,18 @@ func (m *mcpRequestContext) handleClientToServerResponse(ctx context.Context, s 
 	}
 	res.ID = id
 
+	backend, err := m.getBackendForRoute(s.route, backendName)
+	if err != nil {
+		onErrorResponse(w, http.StatusNotFound, fmt.Sprintf("unknown backend %s", backendName))
+		return result, fmt.Errorf("%w: unknown backend %s", errBackendNotFound, backendName)
+	}
+
 	cse := s.getCompositeSessionEntry(backendName)
 	if cse == nil {
 		// No session for this backend usually means backendSelector excluded it for this
 		// session; treat it as an authorization decision rather than a malformed request.
 		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
 		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
-	}
-
-	backend, err := m.getBackendForRoute(s.route, backendName)
-	if err != nil {
-		onErrorResponse(w, http.StatusNotFound, fmt.Sprintf("unknown backend %s", backendName))
-		return result, fmt.Errorf("%w: unknown backend %s", errBackendNotFound, backendName)
 	}
 	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, cse, res, nil)
 	if err != nil {

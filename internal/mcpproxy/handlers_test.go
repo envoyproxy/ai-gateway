@@ -2077,6 +2077,8 @@ func TestMCPProxy_handleClientToServerResponse(t *testing.T) {
 
 	unknownBackendID, err := jsonrpc.MakeID("aWQ=__s__unknownbackend") // aWQK is the base64 encoded "id".
 	require.NoError(t, err)
+	excludedBackendID, err := jsonrpc.MakeID("aWQ=__s__backend2") // backend2 is configured on test-route but has no session here.
+	require.NoError(t, err)
 	intID, err := jsonrpc.MakeID("1__i__backend1")
 	require.NoError(t, err)
 	strID, err := jsonrpc.MakeID("aWQ=__s__backend1") // aWQK is the base64 encoded "id".
@@ -2084,15 +2086,26 @@ func TestMCPProxy_handleClientToServerResponse(t *testing.T) {
 	f64ID, err := jsonrpc.MakeID("9a9999999999f13f__f__backend1")
 	require.NoError(t, err)
 	for _, tc := range []struct {
-		name   string
-		msg    *jsonrpc.Response
-		expErr string
-		verify func(t *testing.T, modified *jsonrpc.Response)
+		name    string
+		msg     *jsonrpc.Response
+		expErr  string
+		expCode int
+		verify  func(t *testing.T, modified *jsonrpc.Response)
 	}{
 		{
-			name:   "no backend",
-			msg:    &jsonrpc.Response{ID: unknownBackendID},
-			expErr: `no MCP session found for backend unknownbackend`,
+			// Backend not configured on the route at all: unknown backend, 404.
+			name:    "unknown backend",
+			msg:     &jsonrpc.Response{ID: unknownBackendID},
+			expErr:  `unknown backend unknownbackend`,
+			expCode: http.StatusNotFound,
+		},
+		{
+			// Backend configured on the route but excluded by backendSelector (no session):
+			// authorization decision, 403.
+			name:    "no session for known backend",
+			msg:     &jsonrpc.Response{ID: excludedBackendID},
+			expErr:  `no MCP session found for backend backend2`,
+			expCode: http.StatusForbidden,
 		},
 		{
 			name: "str id",
@@ -2147,7 +2160,7 @@ func TestMCPProxy_handleClientToServerResponse(t *testing.T) {
 			}, rr, tc.msg)
 			if tc.expErr != "" {
 				require.ErrorContains(t, err, tc.expErr)
-				require.Equal(t, http.StatusForbidden, rr.Code)
+				require.Equal(t, tc.expCode, rr.Code)
 				require.Contains(t, rr.Body.String(), tc.expErr)
 				return
 			}
