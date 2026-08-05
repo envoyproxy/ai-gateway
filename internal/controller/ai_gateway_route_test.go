@@ -111,7 +111,9 @@ func TestAIGatewayRouteController_Reconcile_UnresolvedBackendRef(t *testing.T) {
 	placeholder := httpRoute.Spec.Rules[0].BackendRefs[0]
 	require.Contains(t, string(placeholder.Name), unresolvedBackendPlaceholderPrefix)
 	require.Equal(t, "default", string(*placeholder.Namespace))
-	require.Equal(t, int32(1), *placeholder.Weight)
+	// Zero weight keeps it out of the traffic split, which is what stops it from changing the
+	// cluster shape of the rest of the rule. See TestNewHTTPRoutePlaceholderWeightIsZero.
+	require.Equal(t, int32(0), *placeholder.Weight)
 
 	// The route is accepted, with the unresolved reference reported separately.
 	var updatedRoute aigv1b1.AIGatewayRoute

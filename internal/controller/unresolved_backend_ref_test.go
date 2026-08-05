@@ -74,9 +74,46 @@ func TestNewHTTPRouteUnresolvedRefKeepsPosition(t *testing.T) {
 	require.Contains(t, string(refs[1].Name), unresolvedBackendPlaceholderPrefix)
 	require.Equal(t, "cherry-backend", string(refs[2].Name))
 
-	// The weight travels with the placeholder, so the share of traffic that fails is the share
-	// that was configured for the backend that is missing, not all of it and not none of it.
-	require.Equal(t, int32(2), *refs[1].Weight)
+	// The backends that do resolve keep the weights they were given.
+	require.Equal(t, int32(1), *refs[0].Weight)
+	require.Equal(t, int32(3), *refs[2].Weight)
+}
+
+// TestNewHTTPRoutePlaceholderWeightIsZero pins the weight, which is load-bearing rather than
+// cosmetic.
+//
+// Envoy Gateway skips zero-weight backendRefs before building destination settings, so the
+// placeholder produces no DestinationSetting and the rule does not count as having an invalid
+// backend. Give it a non-zero weight and NeedsClusterPerSetting flips, Envoy Gateway emits one
+// cluster per backend rather than one cluster with a locality each, and backendRef.Priority stops
+// meaning anything because it orders localities within a single cluster. Provider fallback is
+// built on that structure: with the split, a request to a failing primary exhausts its retries on
+// that backend instead of moving to the next priority.
+func TestNewHTTPRoutePlaceholderWeightIsZero(t *testing.T) {
+	c := requireNewFakeClientWithIndexes(t)
+	require.NoError(t, c.Create(t.Context(), aiServiceBackend("primary")))
+
+	controller := &AIGatewayRouteController{client: c, referenceGrantValidator: newReferenceGrantValidator(c)}
+	route := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "fallbackroute", Namespace: "default"},
+		Spec: aigv1b1.AIGatewayRouteSpec{Rules: []aigv1b1.AIGatewayRouteRule{{
+			BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+				{Name: "primary", Priority: ptr.To[uint32](0)},
+				{Name: "gone", Priority: ptr.To[uint32](1)},
+			},
+		}}},
+	}
+
+	httpRoute := &gwapiv1.HTTPRoute{}
+	unresolved, err := controller.newHTTPRoute(t.Context(), httpRoute, route)
+	require.NoError(t, err)
+	require.Len(t, unresolved, 1)
+
+	refs := httpRoute.Spec.Rules[0].BackendRefs
+	require.Len(t, refs, 2)
+	require.NotNil(t, refs[1].Weight)
+	require.Equal(t, int32(0), *refs[1].Weight,
+		"a non-zero weight here splits the rule into one cluster per backend and breaks priority failover")
 }
 
 // TestNewHTTPRouteUnresolvedRefHeals checks that creating the missing AIServiceBackend replaces the
@@ -130,7 +167,7 @@ func TestNewHTTPRouteAllRefsUnresolved(t *testing.T) {
 // collide with a Backend someone actually created.
 func TestUnresolvedBackendRefPlaceholderNaming(t *testing.T) {
 	name := func(ns, route string, rule, ref int) string {
-		return string(unresolvedBackendRefPlaceholder(ns, route, rule, ref, nil).Name)
+		return string(unresolvedBackendRefPlaceholder(ns, route, rule, ref).Name)
 	}
 
 	require.Equal(t, name("ns", "route", 0, 1), name("ns", "route", 0, 1), "stable across calls")

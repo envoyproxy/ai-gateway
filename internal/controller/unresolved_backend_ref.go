@@ -88,11 +88,24 @@ const unresolvedBackendPlaceholderPrefix = "ai-eg-unresolved"
 // declining to write the HTTPRoute at all, shifts every reference after it.
 //
 // It deliberately names a Backend that does not exist, in the AIGatewayRoute's own namespace so
-// that Envoy Gateway reports it as BackendNotFound rather than RefNotPermitted. Envoy Gateway then
-// keeps the rule, gives this reference no endpoints, and sends its share of the traffic to the
-// invalid-backend-cluster, which is a 500. The name is derived from the route so a real Backend
-// cannot plausibly collide with it.
-func unresolvedBackendRefPlaceholder(routeNamespace, routeName string, ruleIndex, backendRefIndex int, weight *int32) gwapiv1.HTTPBackendRef {
+// that Envoy Gateway reports it as BackendNotFound rather than RefNotPermitted. The name is derived
+// from the route so a real Backend cannot plausibly collide with it.
+//
+// The weight is zero, which keeps the reference out of the traffic split entirely. Carrying the
+// original weight would be the more literal translation, and would return 500 for that share, but
+// Envoy Gateway skips zero-weight backendRefs before building destination settings, and that is
+// what stops an unresolvable reference from changing the shape of the rest of the rule. With a
+// non-zero weight the rule counts as having an invalid backend, NeedsClusterPerSetting becomes
+// true, and Envoy Gateway emits one cluster per backend instead of one cluster with a locality
+// each. backendRef.Priority is applied to localities within a single cluster, so that split turns
+// priority failover into a weighted split: a request to a failing primary would exhaust its
+// retries on that backend rather than moving to the next priority. See the provider fallback guide
+// in site/docs/capabilities/traffic/provider-fallback.md, whose numAttemptsPerPriority setting
+// depends on exactly that structure.
+//
+// The reference is still reported through the AIGatewayRoute's ResolvedRefs condition, so it is
+// visible without being able to break routing for the backends around it.
+func unresolvedBackendRefPlaceholder(routeNamespace, routeName string, ruleIndex, backendRefIndex int) gwapiv1.HTTPBackendRef {
 	// Hash the route name rather than embed it, since a route name can be up to 253 characters and
 	// the placeholder still has to be a valid object name.
 	sum := sha256.Sum256([]byte(routeNamespace + "/" + routeName))
@@ -106,8 +119,6 @@ func unresolvedBackendRefPlaceholder(routeNamespace, routeName string, ruleIndex
 			Name:      gwapiv1.ObjectName(name),
 			Namespace: &ns,
 		},
-		// Keep the original weight so the share of traffic that fails is the share that was
-		// configured for this backend.
-		Weight: weight,
+		Weight: ptr.To[int32](0),
 	}}
 }

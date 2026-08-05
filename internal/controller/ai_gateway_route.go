@@ -305,7 +305,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 							Message: err.Error(),
 						})
 						backendRefs = append(backendRefs,
-							unresolvedBackendRefPlaceholder(aiGatewayRoute.Namespace, aiGatewayRoute.Name, i, j, br.Weight))
+							unresolvedBackendRefPlaceholder(aiGatewayRoute.Namespace, aiGatewayRoute.Name, i, j))
 						continue
 					}
 				}
@@ -337,7 +337,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 						Message: err.Error(),
 					})
 					backendRefs = append(backendRefs,
-						unresolvedBackendRefPlaceholder(aiGatewayRoute.Namespace, aiGatewayRoute.Name, i, j, br.Weight))
+						unresolvedBackendRefPlaceholder(aiGatewayRoute.Namespace, aiGatewayRoute.Name, i, j))
 					continue
 				}
 
@@ -535,7 +535,8 @@ func (c *AIGatewayRouteController) updateAIGatewayRouteStatusUnresolvedRefs(
 		}
 	}
 	message := fmt.Sprintf(
-		"%d backend reference(s) could not be resolved and will return 500 for their share of the traffic: %s",
+		"%d backend reference(s) could not be resolved and will not receive traffic; "+
+			"the remaining backends in the rule are serving: %s",
 		len(unresolved), strings.Join(messages, "; "))
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
