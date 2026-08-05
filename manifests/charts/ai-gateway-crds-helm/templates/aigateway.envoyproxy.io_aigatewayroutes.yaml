@@ -768,6 +768,29 @@ spec:
 
                         Default to "Envoy AI Gateway" if not set.
                       type: string
+                    name:
+                      description: |-
+                        Name is the name of the route rule. This name must be unique within the route.
+                        When specified, it is copied to the generated HTTPRoute rule name.
+                      maxLength: 253
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                      type: string
+                    streamIdleTimeout:
+                      description: |-
+                        StreamIdleTimeout is the maximum time Envoy will wait without receiving any bytes from the upstream.
+                        If the timer fires before the first response byte arrives, Envoy resets the upstream stream and a
+                        retry policy can fall over to the next backend. If it fires mid-stream after
+                        bytes have already arrived, the stream is cut and the client receives a 504.
+
+                        The AI Gateway extension server sets route.retry_policy.per_try_idle_timeout to this value on
+                        every xDS route generated from this rule before it is sent to the data plane.
+
+                        Pair this field with Timeouts.Request, which acts as the overall deadline.
+
+                        If this field is not set, no per-try idle timeout is applied.
+                      pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                      type: string
                     timeouts:
                       description: |-
                         Timeouts defines the timeouts that can be configured for an HTTP request.
@@ -776,7 +799,9 @@ spec:
                         set 60s for the request timeout as opposed to 15s of the Envoy Gateway's default value.
 
                         For streaming responses (like chat completions with stream=true), consider setting
-                        longer timeouts as the response may take time until the completion.
+                        longer timeouts as the response may take time until the completion. Timeouts.Request
+                        acts as the maximum total time the gateway will wait for the entire response,
+                        including all streamed chunks.
                       properties:
                         backendRequest:
                           description: |-
@@ -836,6 +861,8 @@ spec:
                           > duration(self.request))'
                   type: object
                   x-kubernetes-validations:
+                  - message: rule name route-not-found is reserved
+                    rule: '!has(self.name) || self.name != ''route-not-found'''
                   - message: cannot mix InferencePool and AIServiceBackend references
                       in the same rule
                     rule: '!has(self.backendRefs) || size(self.backendRefs) == 0 ||
@@ -847,6 +874,10 @@ spec:
                       || size(self.backendRefs) == 1'
                 maxItems: 15
                 type: array
+                x-kubernetes-validations:
+                - message: rule name must be unique within the route
+                  rule: self.all(r1, !has(r1.name) || self.exists_one(r2, has(r2.name)
+                    && r1.name == r2.name))
             required:
             - rules
             type: object
@@ -1666,6 +1697,29 @@ spec:
 
                         Default to "Envoy AI Gateway" if not set.
                       type: string
+                    name:
+                      description: |-
+                        Name is the name of the route rule. This name must be unique within the route.
+                        When specified, it is copied to the generated HTTPRoute rule name.
+                      maxLength: 253
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                      type: string
+                    streamIdleTimeout:
+                      description: |-
+                        StreamIdleTimeout is the maximum time Envoy will wait without receiving any bytes from the upstream.
+                        If the timer fires before the first response byte arrives, Envoy resets the upstream stream and a
+                        retry policy can fall over to the next backend. If it fires mid-stream after
+                        bytes have already arrived, the stream is cut and the client receives a 504.
+
+                        The AI Gateway extension server sets route.retry_policy.per_try_idle_timeout to this value on
+                        every xDS route generated from this rule before it is sent to the data plane.
+
+                        Pair this field with Timeouts.Request, which acts as the overall deadline.
+
+                        If this field is not set, no per-try idle timeout is applied.
+                      pattern: ^([0-9]{1,5}(h|m|s|ms)){1,4}$
+                      type: string
                     timeouts:
                       description: |-
                         Timeouts defines the timeouts that can be configured for an HTTP request.
@@ -1674,7 +1728,9 @@ spec:
                         set 60s for the request timeout as opposed to 15s of the Envoy Gateway's default value.
 
                         For streaming responses (like chat completions with stream=true), consider setting
-                        longer timeouts as the response may take time until the completion.
+                        longer timeouts as the response may take time until the completion. Timeouts.Request
+                        acts as the maximum total time the gateway will wait for the entire response,
+                        including all streamed chunks.
                       properties:
                         backendRequest:
                           description: |-
@@ -1734,6 +1790,8 @@ spec:
                           > duration(self.request))'
                   type: object
                   x-kubernetes-validations:
+                  - message: rule name route-not-found is reserved
+                    rule: '!has(self.name) || self.name != ''route-not-found'''
                   - message: cannot mix InferencePool and AIServiceBackend references
                       in the same rule
                     rule: '!has(self.backendRefs) || size(self.backendRefs) == 0 ||
@@ -1745,6 +1803,10 @@ spec:
                       || size(self.backendRefs) == 1'
                 maxItems: 15
                 type: array
+                x-kubernetes-validations:
+                - message: rule name must be unique within the route
+                  rule: self.all(r1, !has(r1.name) || self.exists_one(r2, has(r2.name)
+                    && r1.name == r2.name))
             required:
             - rules
             type: object

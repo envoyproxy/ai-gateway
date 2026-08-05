@@ -106,6 +106,11 @@ func (s *sseEventParser) parseEvent(chunk []byte) (*sseEvent, error) {
 			ret.id = string(bytes.TrimSpace(line[len(sseIDPrefix):]))
 		case bytes.HasPrefix(line, sseDataPrefix):
 			data := bytes.TrimSpace(line[len(sseDataPrefix):])
+			if len(data) == 0 {
+				// Empty data line (e.g. a keep-alive/heartbeat event). There is
+				// nothing to decode, so skip it rather than failing the event.
+				continue
+			}
 			msg, err := jsonrpc.DecodeMessage(data)
 			if err != nil {
 				return nil, fmt.Errorf("failed to decode jsonrpc message from sse data: %w", err)
