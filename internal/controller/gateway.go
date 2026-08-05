@@ -46,11 +46,12 @@ const (
 
 // NewGatewayController creates a new reconcile.TypedReconciler for gwapiv1.Gateway.
 //
-// extProcImage is the image of the external processor sidecar container which will be used
-// to check if the pods of the gateway deployment need to be rolled out.
+// The extproc builder is derived from options + extProcAsSideCar via the same
+// newExtProcBuilder the mutating webhook uses (StartControllers passes the same
+// options to both), so the workload template hash matches webhook injection.
 func NewGatewayController(
 	client client.Client, kube kubernetes.Interface, logger logr.Logger, envoyGatewayNamespace string,
-	extProcImage string, extProcLogLevel string, standAlone bool, uuidFn func() string, extProcAsSideCar bool,
+	standAlone bool, uuidFn func() string, options *Options, extProcAsSideCar bool,
 ) *GatewayController {
 	uf := uuidFn
 	if uf == nil {
@@ -61,11 +62,9 @@ func NewGatewayController(
 		kube:                  kube,
 		logger:                logger,
 		envoyGatewayNamespace: envoyGatewayNamespace,
-		extProcImage:          extProcImage,
-		extProcLogLevel:       extProcLogLevel,
 		standAlone:            standAlone,
 		uuidFn:                uf,
-		extProcAsSideCar:      extProcAsSideCar,
+		extProcBuilder:        newExtProcBuilder(options, extProcAsSideCar, logger),
 	}
 }
 
@@ -75,14 +74,12 @@ type GatewayController struct {
 	kube                  kubernetes.Interface
 	logger                logr.Logger
 	envoyGatewayNamespace string // The namespace where Envoy Gateway is deployed.
-	extProcImage          string // The image of the external processor sidecar container.
-	extProcLogLevel       string // The log level for the extproc container.
 	// standAlone indicates whether the controller is running in standalone mode.
 	standAlone bool
 	uuidFn     func() string // Function to generate a new UUID for the filter config.
-	// Whether to run the extProc container as a sidecar (true) as a normal container (false).
-	// This is essentially a workaround for old k8s versions, and we can remove this in the future.
-	extProcAsSideCar bool
+	// extProcBuilder is shared with the mutating webhook so the template hash
+	// computed here matches the extproc container injected by the webhook.
+	*extProcBuilder
 }
 
 // Reconcile implements the reconcile.Reconciler for gwapiv1.Gateway.
@@ -95,18 +92,12 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	var aiRoutes aigv1b1.AIGatewayRouteList
-	err := c.client.List(ctx, &aiRoutes, client.MatchingFields{
-		k8sClientIndexAIGatewayRouteToAttachedGateway: fmt.Sprintf("%s.%s", req.Name, req.Namespace),
-	})
+	aiRoutes, err := listAIGatewayRoutesForGateway(ctx, c.client, nil, req.Name, req.Namespace)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	var mcpRoutes aigv1b1.MCPRouteList
-	err = c.client.List(ctx, &mcpRoutes, client.MatchingFields{
-		k8sClientIndexMCPRouteToAttachedGateway: fmt.Sprintf("%s.%s", req.Name, req.Namespace),
-	})
+	mcpRoutes, err := listMCPRoutesForGateway(ctx, c.client, nil, req.Name, req.Namespace)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -152,10 +143,9 @@ func (c *GatewayController) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	// Finally, we need to annotate the pods of the gateway deployment with the new uuid to propagate the filter config Secret update faster.
-	// If the pod doesn't have the extproc container, it will roll out the deployment altogether which eventually ends up
-	// the mutation hook invoked.
-	result, err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uid, hasEffectiveRoutes, len(mcpRoutes.Items) > 0)
+	input := extProcContainerInput{gatewayConfig: gwConfig, needMCP: len(mcpRoutes.Items) > 0}
+	result, err := c.annotateGatewayPods(ctx, pods, deployments, daemonSets, uid,
+		hasEffectiveRoutes, input.needMCP, c.extProcImage(input), c.extProcContainerHash(input))
 	if err != nil {
 		c.logger.Error(err, "Failed to annotate gateway pods", "namespace", gw.Namespace, "name", gw.Name)
 		return ctrl.Result{}, err
@@ -1058,29 +1048,24 @@ func (c *GatewayController) getBSPForInferencePool(ctx context.Context, namespac
 	return matchingBSPs[0], nil
 }
 
-// checkPodHasSideCar checks if a pod has the extproc sidecar container with correct configuration.
-func (c *GatewayController) checkPodHasSideCar(pod *corev1.Pod, needMCP bool) bool {
+// checkPodHasSideCar returns whether the extproc container is current.
+func (c *GatewayController) checkPodHasSideCar(pod *corev1.Pod, needMCP bool, desiredImage string) (hasSideCar bool) {
 	podSpec := pod.Spec
-	hasSideCar := false
 
 	if c.extProcAsSideCar {
 		for i := range podSpec.InitContainers {
-			// If there's an extproc sidecar container with the current target image, we don't need to roll out the deployment.
-			if podSpec.InitContainers[i].Name == extProcContainerName && podSpec.InitContainers[i].Image == c.extProcImage {
+			if podSpec.InitContainers[i].Name == extProcContainerName && podSpec.InitContainers[i].Image == desiredImage {
 				hasSideCar = true
 				hasMCPAddr := false
 				for j := range podSpec.InitContainers[i].Args {
-					// logLevel arg should be indexed 2 based on gateway_mutator.go, but we check all args to be safe.
-					if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-logLevel" && podSpec.InitContainers[i].Args[j] != c.extProcLogLevel {
+					if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-logLevel" && podSpec.InitContainers[i].Args[j] != c.logLevel {
 						hasSideCar = false
 						break
 					}
-					// Check if the -mcpAddr argument is present
 					if j > 0 && podSpec.InitContainers[i].Args[j-1] == "-mcpAddr" {
 						hasMCPAddr = true
 					}
 				}
-				// If MCPRoutes exist but the sidecar doesn't have -mcpAddr, we need to roll out
 				if needMCP && !hasMCPAddr {
 					c.logger.Info("MCPRoutes exist but sidecar is missing -mcpAddr argument, triggering rollout",
 						"pod", pod.Name, "namespace", pod.Namespace)
@@ -1091,21 +1076,18 @@ func (c *GatewayController) checkPodHasSideCar(pod *corev1.Pod, needMCP bool) bo
 		}
 	} else {
 		for i := range podSpec.Containers {
-			// If there's an extproc container with the current target image, we don't need to roll out the deployment.
-			if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == c.extProcImage {
+			if podSpec.Containers[i].Name == extProcContainerName && podSpec.Containers[i].Image == desiredImage {
 				hasSideCar = true
 				hasMCPAddr := false
 				for j := range podSpec.Containers[i].Args {
-					if j > 0 && podSpec.Containers[i].Args[j-1] == "-logLevel" && podSpec.Containers[i].Args[j] != c.extProcLogLevel {
+					if j > 0 && podSpec.Containers[i].Args[j-1] == "-logLevel" && podSpec.Containers[i].Args[j] != c.logLevel {
 						hasSideCar = false
 						break
 					}
-					// Check if the -mcpAddr argument is present
 					if j > 0 && podSpec.Containers[i].Args[j-1] == "-mcpAddr" {
 						hasMCPAddr = true
 					}
 				}
-				// If MCPRoutes exist but the sidecar doesn't have -mcpAddr, we need to roll out
 				if needMCP && !hasMCPAddr {
 					c.logger.Info("MCPRoutes exist but sidecar is missing -mcpAddr argument, triggering rollout",
 						"pod", pod.Name, "namespace", pod.Namespace)
@@ -1150,12 +1132,8 @@ func isRolloutInProgress(deployments []appsv1.Deployment, daemonSets []appsv1.Da
 	return false
 }
 
-// annotateGatewayPods annotates the pods of GW with the new uuid to propagate the filter config Secret update faster.
-// If the pod doesn't have the extproc container, it will roll out the deployment altogether, which eventually ends up
-// the mutation hook invoked.
-//
-// Returns a ctrl.Result that may indicate requeue is needed (e.g., when rollout is in progress).
-//
+// annotateGatewayPods annotates pods to speed filter config Secret refresh and
+// rolls workload templates only when pod template state must change.
 // See https://neonmirrors.net/post/2022-12/reducing-pod-volume-update-times/ for explanation.
 func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	pods []corev1.Pod,
@@ -1164,6 +1142,8 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	uuid string,
 	hasEffectiveRoute bool,
 	needMCP bool,
+	desiredImage string,
+	desiredHash string,
 ) (ctrl.Result, error) {
 	if isRolloutInProgress(deployments, daemonSets) {
 		const requeueAfter = 5 * time.Second
@@ -1171,15 +1151,14 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}
 
-	// Detect sidecar state in one pass with early exit on inconsistent state (e.g., some pods have sidecar, some don't).
-	// If inconsistent state exists while rollout is not in progress, force rollout to self-heal.
 	seenWithSidecar := false
 	seenWithoutSidecar := false
 	for i := range pods {
 		if !pods[i].GetDeletionTimestamp().IsZero() {
 			continue
 		}
-		if c.checkPodHasSideCar(&pods[i], needMCP) {
+		hasSideCar := c.checkPodHasSideCar(&pods[i], needMCP, desiredImage)
+		if hasSideCar {
 			seenWithSidecar = true
 		} else {
 			seenWithoutSidecar = true
@@ -1190,11 +1169,9 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 	}
 	forceRollout := seenWithSidecar && seenWithoutSidecar
 	if forceRollout {
-		c.logger.Info("pods are inconsistent while rollout is stable, forcing rollout",
+		c.logger.Info("forcing rollout",
 			"podsWithSidecarSeen", seenWithSidecar, "podsWithoutSidecarSeen", seenWithoutSidecar)
 	}
-	// When not mixed, "all have sidecar" is equivalent to seeing at least one pod with sidecar
-	// and none without sidecar. For zero pods this remains false.
 	hasSideCar := seenWithSidecar && !seenWithoutSidecar
 
 	for i := range pods {
@@ -1213,37 +1190,55 @@ func (c *GatewayController) annotateGatewayPods(ctx context.Context,
 		}
 	}
 
-	// We annotate the deployments and daemonsets under three scenarios:
+	// For sidecar state changes, annotate the workloads under three scenarios:
 	// 1. If there's an effective route but no sidecar container, we need to add the sidecar container.
 	// 2. If there's no effective route but has sidecar container,
 	//    we need to roll out the deployment to trigger the mutation webhook to remove the sidecar container.
 	// 3. If pods are inconsistent even when rollout isn't in progress, force rollout to self-heal.
-	if hasEffectiveRoute != hasSideCar || forceRollout {
-		for i := range deployments {
-			dep := &deployments[i]
-			c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name)
-			_, err := c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
-				fmt.Appendf(nil,
-					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
-				metav1.PatchOptions{})
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to patch deployment %s: %w", dep.Name, err)
-			}
+	needsStateRollout := hasEffectiveRoute != hasSideCar || forceRollout
+	for i := range deployments {
+		dep := &deployments[i]
+		// Hash changes are written to the pod template so Kubernetes owns the rollout.
+		needsHashRollout := hasEffectiveRoute && desiredHash != "" && dep.Spec.Template.Annotations[extProcConfigHashAnnotationKey] != desiredHash
+		if !needsStateRollout && !needsHashRollout {
+			continue
 		}
+		c.logger.Info("rolling out deployment", "namespace", dep.Namespace, "name", dep.Name, "desiredHash", desiredHash)
+		_, err := c.kube.AppsV1().Deployments(dep.Namespace).Patch(ctx, dep.Name, types.MergePatchType,
+			workloadTemplateAnnotationPatch(uuid, desiredHash, needsStateRollout, needsHashRollout),
+			metav1.PatchOptions{})
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to patch deployment %s: %w", dep.Name, err)
+		}
+	}
 
-		for i := range daemonSets {
-			daemonSet := &daemonSets[i]
-			c.logger.Info("rolling out daemonSet", "namespace", daemonSet.Namespace, "name", daemonSet.Name)
-			_, err := c.kube.AppsV1().DaemonSets(daemonSet.Namespace).Patch(ctx, daemonSet.Name, types.MergePatchType,
-				fmt.Appendf(nil,
-					`{"spec":{"template":{"metadata":{"annotations":{"%s":"%s"}}}}}`, aigatewayUUIDAnnotationKey, uuid),
-				metav1.PatchOptions{})
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to patch daemonset %s: %w", daemonSet.Name, err)
-			}
+	for i := range daemonSets {
+		daemonSet := &daemonSets[i]
+		// Hash changes are written to the pod template so Kubernetes owns the rollout.
+		needsHashRollout := hasEffectiveRoute && desiredHash != "" && daemonSet.Spec.Template.Annotations[extProcConfigHashAnnotationKey] != desiredHash
+		if !needsStateRollout && !needsHashRollout {
+			continue
+		}
+		c.logger.Info("rolling out daemonSet", "namespace", daemonSet.Namespace, "name", daemonSet.Name, "desiredHash", desiredHash)
+		_, err := c.kube.AppsV1().DaemonSets(daemonSet.Namespace).Patch(ctx, daemonSet.Name, types.MergePatchType,
+			workloadTemplateAnnotationPatch(uuid, desiredHash, needsStateRollout, needsHashRollout),
+			metav1.PatchOptions{})
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to patch daemonset %s: %w", daemonSet.Name, err)
 		}
 	}
 	return ctrl.Result{}, nil
+}
+
+func workloadTemplateAnnotationPatch(uuid, desiredHash string, includeUUID, includeHash bool) []byte {
+	annotations := make([]string, 0, 2)
+	if includeUUID {
+		annotations = append(annotations, fmt.Sprintf(`"%s":"%s"`, aigatewayUUIDAnnotationKey, uuid))
+	}
+	if includeHash {
+		annotations = append(annotations, fmt.Sprintf(`"%s":"%s"`, extProcConfigHashAnnotationKey, desiredHash))
+	}
+	return []byte(fmt.Sprintf(`{"spec":{"template":{"metadata":{"annotations":{%s}}}}}`, strings.Join(annotations, ",")))
 }
 
 // getObjectsForGateway retrieves the pods, deployments, and daemonsets for a given Gateway.
