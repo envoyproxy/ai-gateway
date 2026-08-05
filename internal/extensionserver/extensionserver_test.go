@@ -202,27 +202,20 @@ func Test_maybeModifyCluster(t *testing.T) {
 		expected    *clusterv3.Cluster
 	}{
 		{
-			name: "nil LoadAssignment sets cluster metadata",
-			// In standalone mode (aigw run), EDS-managed endpoints have LoadAssignment=nil.
-			// The extension server must set cluster-level metadata so the upstream ext_proc
-			// filter can resolve the backend name via the cluster metadata fallback path.
+			name: "nil LoadAssignment on a multi-backend rule sets no metadata",
+			// Cluster-level metadata can only name one backend, so for a rule with several there
+			// is no correct value. Naming the first would silently attribute every other backend's
+			// traffic, and therefore its translation, credentials and token costs, to it.
+			// See Test_maybeModifyCluster_NilLoadAssignmentSingleBackend for the case that does
+			// resolve: standalone mode (aigw run), where EDS-managed endpoints leave
+			// LoadAssignment nil and the rule has exactly one backend.
 			cluster: &clusterv3.Cluster{
 				Name: "httproute/ns/myroute/rule/0",
 			},
-			expectedLog: "msg=\"LoadAssignment is nil, setting cluster-level metadata\" logger=envoy-gateway-extension-server cluster_name=httproute/ns/myroute/rule/0\n",
+			expectedLog: "msg=\"LoadAssignment is nil, setting cluster-level metadata\" logger=envoy-gateway-extension-server cluster_name=httproute/ns/myroute/rule/0\n" +
+				"msg=\"cluster has no LoadAssignment but the rule has several backends, backend name metadata will not be populated\" logger=envoy-gateway-extension-server cluster_name=httproute/ns/myroute/rule/0 backend_refs_len=3 route_name=myroute route_namespace=ns route_rule_index=0\n",
 			expected: &clusterv3.Cluster{
 				Name: "httproute/ns/myroute/rule/0",
-				Metadata: &corev3.Metadata{
-					FilterMetadata: map[string]*structpb.Struct{
-						internalapi.InternalEndpointMetadataNamespace: {
-							Fields: map[string]*structpb.Value{
-								internalapi.InternalMetadataBackendNameKey: structpb.NewStringValue(
-									internalapi.PerRouteRuleRefBackendName("ns", "aaa", "myroute", 0, 0),
-								),
-							},
-						},
-					},
-				},
 				TypedExtensionProtocolOptions: map[string]*anypb.Any{
 					"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, &httpv3.HttpProtocolOptions{
 						UpstreamProtocolOptions: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_{ExplicitHttpConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig{
@@ -542,49 +535,6 @@ func TestMaybeModifyClusterPerBackendClusterName(t *testing.T) {
 			internalapi.PerRouteRuleRefBackendName("ns", "primary", "myroute", 0, 0))
 		require.Contains(t, cluster.TypedExtensionProtocolOptions, "envoy.extensions.upstreams.http.v3.HttpProtocolOptions")
 	})
-}
-
-// TestMaybeModifyClusterFewerEndpointsThanBackendRefs covers the case where Envoy Gateway dropped a
-// backend during translation, so the LoadAssignment has fewer entries than the rule has backend refs.
-func TestMaybeModifyClusterFewerEndpointsThanBackendRefs(t *testing.T) {
-	c := newFakeClient()
-	require.NoError(t, c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
-		ObjectMeta: metav1.ObjectMeta{Name: "myroute", Namespace: "ns"},
-		Spec: aigv1b1.AIGatewayRouteSpec{Rules: []aigv1b1.AIGatewayRouteRule{{
-			BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
-				{Name: "healthy"},
-				{Name: "dropped-by-eg"},
-			},
-		}}},
-	}))
-
-	var buf bytes.Buffer
-	s, err := New(c, logr.FromSlogHandler(slog.NewTextHandler(&buf, &slog.HandlerOptions{})), udsPath, false, nil, nil,
-		"envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
-	require.NoError(t, err)
-
-	// Two backend refs, but EG only emitted an endpoint for the first one.
-	cluster := &clusterv3.Cluster{
-		Name: "httproute/ns/myroute/rule/0",
-		LoadAssignment: &endpointv3.ClusterLoadAssignment{Endpoints: []*endpointv3.LocalityLbEndpoints{{
-			LbEndpoints: []*endpointv3.LbEndpoint{{}},
-		}}},
-	}
-	var modifyErr error
-	require.NotPanics(t, func() { modifyErr = s.maybeModifyCluster(t.Context(), cluster) })
-	require.NoError(t, modifyErr)
-
-	// The backend that does have an endpoint is still populated.
-	metadata := cluster.LoadAssignment.Endpoints[0].LbEndpoints[0].Metadata
-	require.NotNil(t, metadata)
-	require.Equal(t,
-		internalapi.PerRouteRuleRefBackendName("ns", "healthy", "myroute", 0, 0),
-		metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace].
-			Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue())
-
-	// The one without an endpoint is skipped and logged.
-	require.Contains(t, buf.String(), "LoadAssignment endpoint count mismatch")
-	require.Contains(t, buf.String(), "backend_name=dropped-by-eg")
 }
 
 // Helper function to create an InferencePool ExtensionResource.

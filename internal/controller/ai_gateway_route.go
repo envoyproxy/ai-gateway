@@ -7,12 +7,14 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
@@ -97,12 +99,24 @@ func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 		return ctrl.Result{}, err
 	}
 
-	if err := c.syncAIGatewayRoute(ctx, &aiGatewayRoute); err != nil {
+	err := c.syncAIGatewayRoute(ctx, &aiGatewayRoute)
+	var unresolvedErr *unresolvedBackendRefsError
+	switch {
+	case err == nil:
+		c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, aigv1b1.ConditionTypeAccepted, "AI Gateway Route reconciled successfully")
+	case errors.As(err, &unresolvedErr):
+		// The route was programmed and the backends that resolved are serving, so this is not a
+		// failed reconcile. Requeuing would rewrite the identical HTTPRoute on every backoff tick
+		// and re-trigger translation for as long as the reference stays broken; the AIServiceBackend
+		// and ReferenceGrant watches already bring us back when it is fixed.
+		c.logger.Info("AIGatewayRoute has unresolved backend references",
+			"namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name, "detail", unresolvedErr.Error())
+		c.updateAIGatewayRouteStatusUnresolvedRefs(ctx, &aiGatewayRoute, unresolvedErr.refs)
+	default:
 		c.logger.Error(err, "failed to sync AIGatewayRoute")
 		c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, aigv1b1.ConditionTypeNotAccepted, err.Error())
 		return ctrl.Result{}, err
 	}
-	c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, aigv1b1.ConditionTypeAccepted, "AI Gateway Route reconciled successfully")
 	return reconcile.Result{}, nil
 }
 
@@ -217,7 +231,8 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 	}
 
 	// Update the HTTPRoute with the new AIGatewayRoute.
-	if err = c.newHTTPRoute(ctx, &httpRoute, aiGatewayRoute); err != nil {
+	unresolved, err := c.newHTTPRoute(ctx, &httpRoute, aiGatewayRoute)
+	if err != nil {
 		return fmt.Errorf("failed to construct a new HTTPRoute: %w", err)
 	}
 
@@ -233,15 +248,29 @@ func (c *AIGatewayRouteController) syncAIGatewayRoute(ctx context.Context, aiGat
 		}
 	}
 
+	// Rebuild the external processor config after the route, so that it describes the backends the
+	// route was just programmed with rather than the previous ones.
 	err = c.syncGateways(ctx, aiGatewayRoute)
 	if err != nil {
 		return fmt.Errorf("failed to sync gw pods: %w", err)
+	}
+	if len(unresolved) > 0 {
+		return &unresolvedBackendRefsError{refs: unresolved}
 	}
 	return nil
 }
 
 // newHTTPRoute updates the HTTPRoute with the new AIGatewayRoute.
-func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1b1.AIGatewayRoute) error {
+//
+// A backendRef that cannot be resolved does not stop the rest of the route from being programmed.
+// It is replaced in place by a placeholder reference and returned in the first result, so that the
+// backends around it keep serving and keep their indices. See unresolvedBackendRefPlaceholder.
+//
+// The error result is reserved for failures that say nothing about the spec, such as an API server
+// error while reading an AIServiceBackend. Those must not be mistaken for a missing backend: doing
+// so would swap a healthy backend out of the data plane because a read happened to fail.
+func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv1.HTTPRoute, aiGatewayRoute *aigv1b1.AIGatewayRoute) ([]UnresolvedBackendRef, error) {
+	var unresolved []UnresolvedBackendRef
 	rewriteFilters := []gwapiv1.HTTPRouteFilter{{
 		Type: gwapiv1.HTTPRouteFilterExtensionRef,
 		ExtensionRef: &gwapiv1.LocalObjectReference{
@@ -269,7 +298,15 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 						backendNamespace,
 						br.Name,
 					); err != nil {
-						return err
+						unresolved = append(unresolved, UnresolvedBackendRef{
+							RuleIndex: i, BackendRefIndex: j,
+							Namespace: backendNamespace, Name: br.Name,
+							Reason:  UnresolvedBackendRefNotPermitted,
+							Message: err.Error(),
+						})
+						backendRefs = append(backendRefs,
+							unresolvedBackendRefPlaceholder(aiGatewayRoute.Namespace, aiGatewayRoute.Name, i, j, br.Weight))
+						continue
 					}
 				}
 				ns := gwapiv1.Namespace(backendNamespace)
@@ -286,9 +323,22 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 				)
 			} else {
 				// Handle AIServiceBackend reference with cross-namespace validation.
-				backend, err := c.validateAndGetBackend(ctx, aiGatewayRoute, br)
+				backend, reason, err := c.validateAndGetBackend(ctx, aiGatewayRoute, br)
 				if err != nil {
-					return fmt.Errorf("failed to get AIServiceBackend %s: %w", dstName, err)
+					if reason == "" {
+						// Nothing was learned about the reference itself, so do not conclude that
+						// it is bad. Fail the sync and leave the HTTPRoute as it is.
+						return nil, fmt.Errorf("failed to get AIServiceBackend %s: %w", dstName, err)
+					}
+					unresolved = append(unresolved, UnresolvedBackendRef{
+						RuleIndex: i, BackendRefIndex: j,
+						Namespace: backendNamespace, Name: br.Name,
+						Reason:  reason,
+						Message: err.Error(),
+					})
+					backendRefs = append(backendRefs,
+						unresolvedBackendRefPlaceholder(aiGatewayRoute.Namespace, aiGatewayRoute.Name, i, j, br.Weight))
+					continue
 				}
 
 				// Copy the BackendObjectReference from the AIServiceBackend.
@@ -368,7 +418,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 	dst.Spec.ParentRefs = aiGatewayRoute.Spec.ParentRefs
 
 	dst.Spec.Hostnames = aiGatewayRoute.Spec.Hostnames
-	return nil
+	return unresolved, nil
 }
 
 // syncGateways synchronizes the gateways referenced by the AIGatewayRoute by sending events to the gateway controller.
@@ -414,11 +464,15 @@ func (c *AIGatewayRouteController) backend(ctx context.Context, namespace, name 
 
 // validateAndGetBackend validates a backend reference (including cross-namespace ReferenceGrant check)
 // and returns the AIServiceBackend if valid.
+//
+// A non-empty reason means the reference itself is the problem and the caller can act on it. An
+// empty reason with a non-nil error means the reference could not be judged at all, typically an
+// API server error, and the caller must not treat it as a bad reference.
 func (c *AIGatewayRouteController) validateAndGetBackend(
 	ctx context.Context,
 	aiGatewayRoute *aigv1b1.AIGatewayRoute,
 	backendRef *aigv1b1.AIGatewayRouteRuleBackendRef,
-) (*aigv1b1.AIServiceBackend, error) {
+) (*aigv1b1.AIServiceBackend, UnresolvedBackendRefReason, error) {
 	backendNamespace := backendRef.GetNamespace(aiGatewayRoute.Namespace)
 
 	// Validate cross-namespace reference if applicable
@@ -429,17 +483,21 @@ func (c *AIGatewayRouteController) validateAndGetBackend(
 			backendNamespace,
 			backendRef.Name,
 		); err != nil {
-			return nil, err
+			return nil, UnresolvedBackendRefNotPermitted, err
 		}
 	}
 
 	// Get the backend
 	backend, err := c.backend(ctx, backendNamespace, backendRef.Name)
 	if err != nil {
-		return nil, fmt.Errorf("AIServiceBackend %s.%s not found", backendRef.Name, backendNamespace)
+		if apierrors.IsNotFound(err) {
+			return nil, UnresolvedBackendRefNotFound,
+				fmt.Errorf("AIServiceBackend %s.%s not found", backendRef.Name, backendNamespace)
+		}
+		return nil, "", fmt.Errorf("failed to read AIServiceBackend %s.%s: %w", backendRef.Name, backendNamespace, err)
 	}
 
-	return backend, nil
+	return backend, "", nil
 }
 
 // updateAIGatewayRouteStatus updates the status of the AIGatewayRoute.
@@ -453,6 +511,49 @@ func (c *AIGatewayRouteController) updateAIGatewayRouteStatus(ctx context.Contex
 		}
 
 		route.Status.Conditions = newConditions(conditionType, message)
+		return c.client.Status().Update(ctx, route)
+	})
+	if err != nil {
+		c.logger.Error(err, "failed to update AIGatewayRoute status")
+	}
+}
+
+// updateAIGatewayRouteStatusUnresolvedRefs marks the route as accepted, because it was programmed
+// and the backends that resolved are serving, while reporting the references that were not through
+// a ResolvedRefs condition.
+func (c *AIGatewayRouteController) updateAIGatewayRouteStatusUnresolvedRefs(
+	ctx context.Context, route *aigv1b1.AIGatewayRoute, unresolved []UnresolvedBackendRef,
+) {
+	// A single reason has to stand for all of them, so prefer the one an operator can act on
+	// without first checking whether a ReferenceGrant is involved.
+	reason := aigv1b1.ConditionReasonBackendNotFound
+	messages := make([]string, len(unresolved))
+	for i, u := range unresolved {
+		messages[i] = u.String()
+		if u.Reason == UnresolvedBackendRefNotPermitted {
+			reason = aigv1b1.ConditionReasonRefNotPermitted
+		}
+	}
+	message := fmt.Sprintf(
+		"%d backend reference(s) could not be resolved and will return 500 for their share of the traffic: %s",
+		len(unresolved), strings.Join(messages, "; "))
+
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := c.client.Get(ctx, client.ObjectKey{Name: route.Name, Namespace: route.Namespace}, route); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		conditions := newConditions(aigv1b1.ConditionTypeAccepted, "AI Gateway Route reconciled successfully")
+		apimeta.SetStatusCondition(&conditions, metav1.Condition{
+			Type:               aigv1b1.ConditionTypeResolvedRefs,
+			Status:             metav1.ConditionFalse,
+			Reason:             reason,
+			Message:            message,
+			ObservedGeneration: route.Generation,
+		})
+		route.Status.Conditions = conditions
 		return c.client.Status().Update(ctx, route)
 	})
 	if err != nil {

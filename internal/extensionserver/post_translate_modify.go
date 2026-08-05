@@ -345,13 +345,24 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 			// set backend name on cluster-level metadata so the upstream ext_proc filter
 			// can resolve the backend via XDSClusterMetadataBackendNamePath fallback.
 			s.log.Info("LoadAssignment is nil, setting cluster-level metadata", "cluster_name", cluster.Name)
-			if len(httpRouteRule.BackendRefs) > 0 {
-				backendRefIndex := 0
-				if clusterName.backendRefIndex != noBackendRefIndex {
-					backendRefIndex = clusterName.backendRefIndex
-				}
-				backendRef := httpRouteRule.BackendRefs[backendRefIndex]
-				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, backendRefIndex)
+			switch {
+			case clusterName.backendRefIndex != noBackendRefIndex:
+				backendRef := httpRouteRule.BackendRefs[clusterName.backendRefIndex]
+				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, clusterName.backendRefIndex)
+			case len(httpRouteRule.BackendRefs) == 1:
+				backendRef := httpRouteRule.BackendRefs[0]
+				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, 0)
+			case len(httpRouteRule.BackendRefs) > 1:
+				// Cluster-level metadata can only name one backend, so there is no correct answer
+				// here. Naming the first would silently attribute every other backend's traffic to
+				// it, so leave the metadata unset and let the upstream filter fail loudly instead.
+				s.log.Info("cluster has no LoadAssignment but the rule has several backends, "+
+					"backend name metadata will not be populated",
+					"cluster_name", cluster.Name,
+					"backend_refs_len", len(httpRouteRule.BackendRefs),
+					"route_name", aigwRoute.Name,
+					"route_namespace", aigwRoute.Namespace,
+					"route_rule_index", httpRouteRuleIndex)
 			}
 		case clusterName.backendRefIndex != noBackendRefIndex:
 			backendRef := httpRouteRule.BackendRefs[clusterName.backendRefIndex]
@@ -365,45 +376,32 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 			}
 		default:
 			// Populate the metadata for each endpoint in the LoadAssignment.
-			var lbEndpointIndex int
-			for i, backendRef := range httpRouteRule.BackendRefs {
-				// The weight of 0 means this backend is disabled and is not included in the LoadAssignment by EG,
-				// so we skip it here.
-				if backendRef.Weight != nil && *backendRef.Weight == 0 {
-					continue
+			//
+			// The localities come from the HTTPRoute the controller generates, while the backend
+			// names come from the AIGatewayRoute. Those are separate objects reconciled
+			// independently, so the two lists can differ in length at any moment. Walking them in
+			// lockstep therefore both runs off the end of the shorter one and, whenever the
+			// difference is not at the tail, pairs a backend with another backend's endpoints.
+			//
+			// Envoy Gateway records which backendRef each locality was built from in
+			// locality.region, formatted exactly like a per-backend cluster name, so pair on that
+			// instead of counting. See irDestinationSettingName in Envoy Gateway's
+			// internal/gatewayapi/helpers.go.
+			for _, refIndex := range s.backendRefIndicesForLocalities(cluster, clusterName, httpRouteRule.BackendRefs, httpRouteRuleIndex) {
+				endpoints, i := refIndex.locality, refIndex.backendRefIndex
+				if i == noBackendRefIndex {
+					continue // Already logged.
 				}
-				// EG drops backends during translation (the Service does not exist, it has no ready
-				// endpoints, a cross-namespace reference has no ReferenceGrant, or backend validation
-				// failed), so the LoadAssignment can have fewer entries than the rule has backend refs.
-				// Skip the backend instead of indexing past the end. The route still works; the skipped
-				// backend has no metadata, which surfaces as a missing backend name in response headers.
-				if lbEndpointIndex >= len(cluster.LoadAssignment.Endpoints) {
-					s.log.Info("LoadAssignment endpoint count mismatch, backend will not have metadata populated",
-						"cluster_name", cluster.Name,
-						"endpoint_index", lbEndpointIndex,
-						"endpoints_len", len(cluster.LoadAssignment.Endpoints),
-						"backend_refs_len", len(httpRouteRule.BackendRefs),
-						"backend_index", i,
-						"backend_name", backendRef.Name,
-						"route_name", aigwRoute.Name,
-						"route_namespace", aigwRoute.Namespace,
-						"route_rule_index", httpRouteRuleIndex,
-						"guidance", "check AIGatewayRoute status for backend validation errors")
-					continue
-				}
-				endpoints := cluster.LoadAssignment.Endpoints[lbEndpointIndex]
-				lbEndpointIndex++
-				name := backendRef.Name
-				namespace := aigwRoute.Namespace
+				backendRef := &httpRouteRule.BackendRefs[i]
 				if backendRef.Priority != nil {
 					endpoints.Priority = *backendRef.Priority
 				}
 				for _, endpoint := range endpoints.LbEndpoints {
-					setEndpointMetadataBackendName(endpoint, namespace, name, aigwRoute.Name, httpRouteRuleIndex, i)
+					setEndpointMetadataBackendName(endpoint, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, i)
 				}
 			}
 		}
-	} else {
+	} else if len(httpRouteRule.BackendRefs) > 0 {
 		// we can only specify one backend in a rule for InferencePool.
 		backendRefIndex := 0
 		if clusterName.backendRefIndex != noBackendRefIndex {
