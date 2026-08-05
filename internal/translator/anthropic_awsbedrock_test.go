@@ -1201,11 +1201,13 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_ToolResultMessagesWithSyste
 	assert.Equal(t, "error", *toolResultMsg.Content[1].ToolResult.Status)
 	assert.Equal(t, "Error: city not found", *toolResultMsg.Content[1].ToolResult.Content[0].Text)
 
-	// Verify system prompt was promoted.
+	// Verify system prompts were promoted. Each promoted message is its own Bedrock system block;
+	// they used to be flattened into one block joined with "\n", which cannot carry per-block
+	// cache_control.
 	require.NotNil(t, bedrockReq.System)
-	require.Len(t, bedrockReq.System, 1)
-	assert.Contains(t, *bedrockReq.System[0].Text, "You are a helpful assistant.")
-	assert.Contains(t, *bedrockReq.System[0].Text, "Always be concise.")
+	require.Len(t, bedrockReq.System, 2)
+	assert.Equal(t, "You are a helpful assistant.", *bedrockReq.System[0].Text)
+	assert.Equal(t, "Always be concise.", *bedrockReq.System[1].Text)
 }
 
 func TestAnthropicToAWSBedrockTranslator_RequestBody_SingleToolResultNotCoalesced(t *testing.T) {
@@ -1515,7 +1517,7 @@ func TestPromoteAnthropicSystemMessagesToParam(t *testing.T) {
 		require.Len(t, result, 1)
 		require.Equal(t, "user", string(result[0].Role))
 		require.NotNil(t, body.System)
-		require.Equal(t, "You are helpful.", body.System.Text)
+		require.Equal(t, []anthropicschema.TextBlockParam{{Type: "text", Text: "You are helpful."}}, body.System.Texts)
 	})
 
 	t.Run("system message with content blocks is promoted", func(t *testing.T) {
@@ -1535,10 +1537,10 @@ func TestPromoteAnthropicSystemMessagesToParam(t *testing.T) {
 		result := promoteAnthropicSystemMessagesToParam(body)
 		require.Len(t, result, 1)
 		require.NotNil(t, body.System)
-		require.Equal(t, "You are Claude.", body.System.Text)
+		require.Equal(t, []anthropicschema.TextBlockParam{{Text: "You are Claude."}}, body.System.Texts)
 	})
 
-	t.Run("multiple system messages are joined", func(t *testing.T) {
+	t.Run("multiple system messages each become a block", func(t *testing.T) {
 		body := &anthropicschema.MessagesRequest{
 			Messages: []anthropicschema.MessageParam{
 				{Role: "system", Content: anthropicschema.MessageContent{Text: "Be concise."}},
@@ -1549,10 +1551,13 @@ func TestPromoteAnthropicSystemMessagesToParam(t *testing.T) {
 		result := promoteAnthropicSystemMessagesToParam(body)
 		require.Len(t, result, 1)
 		require.NotNil(t, body.System)
-		require.Equal(t, "Be concise.\nBe accurate.", body.System.Text)
+		require.Equal(t, []anthropicschema.TextBlockParam{
+			{Type: "text", Text: "Be concise."},
+			{Type: "text", Text: "Be accurate."},
+		}, body.System.Texts)
 	})
 
-	t.Run("system message is added to existing system param", func(t *testing.T) {
+	t.Run("system message is added to existing string system param", func(t *testing.T) {
 		body := &anthropicschema.MessagesRequest{
 			System: &anthropicschema.SystemPrompt{Text: "You are Claude."},
 			Messages: []anthropicschema.MessageParam{
@@ -1563,8 +1568,55 @@ func TestPromoteAnthropicSystemMessagesToParam(t *testing.T) {
 		result := promoteAnthropicSystemMessagesToParam(body)
 		require.Len(t, result, 1)
 		require.NotNil(t, body.System)
-		// The existing system param is overwritten by the promoted messages.
-		require.Equal(t, "Be concise.", body.System.Text)
+		// Both survive, top-level first. Previously the promoted message replaced it outright.
+		require.Equal(t, []anthropicschema.TextBlockParam{
+			{Type: "text", Text: "You are Claude."},
+			{Type: "text", Text: "Be concise."},
+		}, body.System.Texts)
+		require.Empty(t, body.System.Text, "the string form must be cleared, convertSystemPrompt returns early on it")
+	})
+
+	t.Run("system message is added to existing system block array", func(t *testing.T) {
+		body := &anthropicschema.MessagesRequest{
+			System: &anthropicschema.SystemPrompt{Texts: []anthropicschema.TextBlockParam{
+				{Type: "text", Text: "TOP LEVEL SYSTEM"},
+			}},
+			Messages: []anthropicschema.MessageParam{
+				{Role: "system", Content: anthropicschema.MessageContent{Text: "MID CONVERSATION SYSTEM"}},
+				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hi"}},
+			},
+		}
+		result := promoteAnthropicSystemMessagesToParam(body)
+		require.Len(t, result, 1)
+		require.NotNil(t, body.System)
+		require.Equal(t, []anthropicschema.TextBlockParam{
+			{Type: "text", Text: "TOP LEVEL SYSTEM"},
+			{Type: "text", Text: "MID CONVERSATION SYSTEM"},
+		}, body.System.Texts)
+	})
+
+	t.Run("cache_control survives promotion", func(t *testing.T) {
+		ephemeral := &anthropicschema.CacheControl{
+			Ephemeral: &anthropicschema.CacheControlEphemeral{Type: "ephemeral"},
+		}
+		body := &anthropicschema.MessagesRequest{
+			Messages: []anthropicschema.MessageParam{
+				{
+					Role: "system",
+					Content: anthropicschema.MessageContent{
+						Array: []anthropicschema.ContentBlockParam{
+							{Text: &anthropicschema.TextBlockParam{Type: "text", Text: "cached sys prompt", CacheControl: ephemeral}},
+						},
+					},
+				},
+				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hi"}},
+			},
+		}
+		promoteAnthropicSystemMessagesToParam(body)
+		require.NotNil(t, body.System)
+		require.Len(t, body.System.Texts, 1)
+		require.Equal(t, ephemeral, body.System.Texts[0].CacheControl,
+			"a joined string cannot carry per-block cache control, which is why blocks are kept as blocks")
 	})
 
 	t.Run("integration with full request", func(t *testing.T) {

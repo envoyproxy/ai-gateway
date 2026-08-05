@@ -165,25 +165,40 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 // This handles clients (e.g. Claude Code with mid-conversation-system beta) that send
 // system prompts as messages rather than the top-level parameter.
 func promoteAnthropicSystemMessagesToParam(body *anthropicschema.MessagesRequest) []anthropicschema.MessageParam {
-	var systemTexts []string
+	var promoted []anthropicschema.TextBlockParam
 	var filtered []anthropicschema.MessageParam
 	for _, msg := range body.Messages {
 		if msg.Role == "system" {
 			if msg.Content.Text != "" {
-				systemTexts = append(systemTexts, msg.Content.Text)
+				promoted = append(promoted, anthropicschema.TextBlockParam{Type: "text", Text: msg.Content.Text})
 			}
 			for i := range msg.Content.Array {
-				if msg.Content.Array[i].Text != nil && msg.Content.Array[i].Text.Text != "" {
-					systemTexts = append(systemTexts, msg.Content.Array[i].Text.Text)
+				// Copy the whole block rather than just its text so cache_control survives the
+				// promotion; a joined string cannot carry per-block cache control.
+				if t := msg.Content.Array[i].Text; t != nil && t.Text != "" {
+					promoted = append(promoted, *t)
 				}
 			}
 		} else {
 			filtered = append(filtered, msg)
 		}
 	}
-	if len(systemTexts) > 0 {
-		systemText := strings.Join(systemTexts, "\n")
-		body.System = &anthropicschema.SystemPrompt{Text: systemText}
+	if len(promoted) == 0 {
+		return filtered
+	}
+
+	// Append to whatever system prompt the request already carried instead of replacing it: a
+	// request may legitimately set both the top-level system parameter and role:"system" messages.
+	switch {
+	case body.System == nil:
+		body.System = &anthropicschema.SystemPrompt{Texts: promoted}
+	case body.System.Text != "":
+		// convertSystemPrompt returns early on the string form, so fold it into the block list
+		// and clear it, otherwise the promoted blocks would be ignored.
+		body.System.Texts = append([]anthropicschema.TextBlockParam{{Type: "text", Text: body.System.Text}}, promoted...)
+		body.System.Text = ""
+	default:
+		body.System.Texts = append(body.System.Texts, promoted...)
 	}
 	return filtered
 }
