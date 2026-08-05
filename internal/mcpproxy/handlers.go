@@ -647,6 +647,10 @@ func (m *mcpRequestContext) handleClientToServerResponse(ctx context.Context, s 
 			onErrorResponse(w, http.StatusBadRequest, "invalid response ID format")
 			return result, fmt.Errorf("invalid response ID format: %w: %s", err, originalIDRaw)
 		}
+		if len(b) != 8 {
+			onErrorResponse(w, http.StatusBadRequest, "invalid response ID format")
+			return result, fmt.Errorf("invalid response ID format: float64 ID requires 8 bytes, got %d", len(b))
+		}
 		id, err = jsonrpc.MakeID(math.Float64frombits(binary.LittleEndian.Uint64(b)))
 		if err != nil {
 			onErrorResponse(w, http.StatusBadRequest, "invalid response ID format")

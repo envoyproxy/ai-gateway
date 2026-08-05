@@ -87,3 +87,31 @@ func TestSystemMsgToDeveloperMsg(t *testing.T) {
 	require.Equal(t, openai.ChatMessageRoleDeveloper, developerMsg.Role)
 	require.Equal(t, openai.ContentUnion{Value: "You are a helpful assistant."}, developerMsg.Content)
 }
+
+func TestCutSSEDataPrefix(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		line     string
+		expected string
+		ok       bool
+	}{
+		{name: "space after colon", line: `data: {"a":1}`, expected: `{"a":1}`, ok: true},
+		{name: "no space after colon", line: `data:{"a":1}`, expected: `{"a":1}`, ok: true},
+		{name: "only the first space is framing", line: `data:  {"a":1}`, expected: ` {"a":1}`, ok: true},
+		{name: "empty value", line: "data:", expected: "", ok: true},
+		{name: "empty value with space", line: "data: ", expected: "", ok: true},
+		{name: "done marker without space", line: "data:[DONE]", expected: "[DONE]", ok: true},
+		{name: "other field", line: "event: message_start", ok: false},
+		{name: "comment", line: ": keep-alive", ok: false},
+		{name: "not a field", line: `{"a":1}`, ok: false},
+		{name: "empty line", line: "", ok: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, ok := cutSSEDataPrefix([]byte(tc.line))
+			require.Equal(t, tc.ok, ok)
+			if tc.ok {
+				require.Equal(t, tc.expected, string(data))
+			}
+		})
+	}
+}
