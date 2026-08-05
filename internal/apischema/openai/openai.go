@@ -2850,6 +2850,10 @@ type ResponseToolUnion struct {
 	OfApplyPatch       *ApplyPatchToolParam
 	OfNamespace        *NamespaceToolParam
 	OfToolSearch       *ToolSearchToolParam
+	// OfUnknown holds the raw JSON of a tool whose "type" is not one of the above. The Responses
+	// body is forwarded to the upstream as received, so an unrecognized tool is preserved rather
+	// than failing the whole request.
+	OfUnknown json.RawMessage
 }
 
 func (t ResponseToolUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
@@ -2882,6 +2886,8 @@ func (t ResponseToolUnion) MarshalJSON() ([]byte, error) { // nolint:gocritic
 		return json.Marshal(t.OfNamespace)
 	case t.OfToolSearch != nil:
 		return json.Marshal(t.OfToolSearch)
+	case t.OfUnknown != nil:
+		return t.OfUnknown, nil
 	default:
 		return nil, errors.New("no tool to marshal in ToolUnionParam")
 	}
@@ -2975,7 +2981,9 @@ func (t *ResponseToolUnion) UnmarshalJSON(data []byte) error {
 		}
 		t.OfToolSearch = &ts
 	default:
-		return fmt.Errorf("unknown tool type %s", typ.String())
+		// Copy: json.RawMessage is sonic's NoCopyRawMessage, so retaining data would alias the
+		// caller's buffer.
+		t.OfUnknown = append(json.RawMessage(nil), data...)
 	}
 	return nil
 }
