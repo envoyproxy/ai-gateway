@@ -3,7 +3,7 @@ slug: multi-user-mcp-header-forwarding
 title: "Multi-User MCP in Production: Per-User Identity at the Gateway Layer"
 authors: [mohitgurnani]
 tags: [features]
-description: How Envoy AI Gateway's per-backend header forwarding brings per-user identity to MCP tool calls — no OAuth infrastructure required — and when to reach for OAuth or token exchange instead.
+description: How Envoy AI Gateway's header forwarding gives MCP tool calls per-user identity without OAuth infrastructure — and when you need OAuth instead.
 image: /img/blog/multi-user-mcp-feature.png
 ---
 
@@ -39,12 +39,14 @@ The second question is where multi-user identity lives. Once a request is inside
 
 There is also the full OAuth authorization code flow with browser consent, which the MCP specification mandates for interactive clients talking to external servers. It is the right answer when a human is present — and architecturally impossible for a headless agent firing at 3am with no browser.
 
-| Pattern                   | Headless? | Per-user RBAC?   | New infrastructure? | Right when                                 |
-| ------------------------- | --------- | ---------------- | ------------------- | ------------------------------------------ |
-| OAuth auth code + PKCE    | ❌        | ✅               | OAuth AS per tool   | Interactive clients, external SaaS         |
-| Client credentials        | ✅        | Fixed scope only | App registration    | Agent acts as itself                       |
-| Token exchange (RFC 8693) | ✅        | ✅               | STS + trust config  | Cross-IdP boundary                         |
-| **Header forwarding**     | ✅        | ✅               | **None**            | User's credential already works downstream |
+Lined up side by side, here is how the three headless per-user options compare against the interactive OAuth flow above — the shared service account is left out since it does not carry user identity at all:
+
+| Pattern                   | Headless? | Per-user RBAC?   | New infrastructure?                         | Right when                                 |
+| ------------------------- | --------- | ---------------- | ------------------------------------------- | ------------------------------------------ |
+| OAuth auth code + PKCE    | ❌        | ✅               | OAuth Authorization Server (AS) per tool    | Interactive clients, external SaaS         |
+| Client credentials        | ✅        | Fixed scope only | App registration                            | Agent acts as itself                       |
+| Token exchange (RFC 8693) | ✅        | ✅               | Security Token Service (STS) + trust config | Cross-IdP boundary                         |
+| **Header forwarding**     | ✅        | ✅               | **None**                                    | User's credential already works downstream |
 
 ![Decision path for choosing a downstream identity pattern](/img/blog/multi-user-mcp-decision.png)
 
@@ -54,13 +56,13 @@ The key design property is what _doesn't_ happen: Envoy AI Gateway's MCP proxy b
 
 ![Fan-out with per-backend header scoping](/img/blog/multi-user-mcp-fanout.png)
 
-This matters most during fan-out. A single `tools/list` call fans out to every backend in the route, but each backend receives only the headers it explicitly opted into. A per-user Atlassian token configured for the Atlassian backend is never seen by the nine other backends in the same route. The absence of `forwardHeaders` on a backend means no identity propagation to that service, full stop.
+This matters most during fan-out. A single `tools/list` call fans out to every backend in the route, but each backend receives only the headers it explicitly opted into. A per-user Atlassian token configured for the Atlassian backend is never seen by any other backend in the same route. The absence of `forwardHeaders` on a backend means no identity propagation to that service, full stop.
 
 Each entry can also rename the header on the way through: `name` selects the inbound header, and an optional `backendHeader` sets the name used toward the backend — useful when a backend expects a vendor-specific header.
 
 ## Level 1: PAT Passthrough — Zero Infrastructure
 
-This is the simplest production-ready configuration. Many enterprise MCP servers — Atlassian, Glean, Sourcegraph — accept per-user authentication via custom HTTP headers carrying a personal access token (PAT). Every engineer already has one. The gateway just needs to deliver it to the right backend and no other:
+This is the simplest production-ready configuration. Many enterprise MCP servers — Atlassian, Glean, Sourcegraph — accept per-user authentication via custom HTTP headers carrying a personal access token (PAT). Every engineer already has one. The gateway just needs to deliver it to the right backend, and only that one:
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1beta1
@@ -109,7 +111,7 @@ The rename is also how per-user identity and a service-account credential coexis
 
 Two honest caveats. First, in this mode the gateway is not validating the PATs — the backend is. Keep inbound authentication at the front door (an `MCPRoute` security policy, or OIDC at the gateway) so the gateway itself is never an open proxy. Second, forward identity headers only to backends inside your trust perimeter; if a backend cannot validate the credential, it has no business receiving it.
 
-## Level 2: OIDC + JWT Forwarding — the Same-IdP Pattern
+## Level 2: OIDC + JWT Forwarding — The Same-IdP Pattern
 
 PAT passthrough needs no identity provider at all, which is exactly why it is the easiest place to start. Once your platform has corporate SSO wired up, the same `forwardHeaders` mechanism supports a stronger variant: validate the user's corporate JWT at the perimeter, then forward it to internal tools that already trust the same IdP.
 
@@ -132,7 +134,7 @@ spec:
       issuer: "https://company.okta.com"
 ```
 
-With this in place, the gateway rejects unauthenticated requests at the door, and a backend opting into `forwardHeaders: [{name: Authorization}]` receives the same corporate JWT the internal tool already accepts through SSO — short-lived, validated at the perimeter, revocable at the IdP, with zero configuration in the downstream tool. This is the natural hardening step for internal tools that natively validate your corporate identity, and it is where our own deployment is headed.
+With this in place, the gateway rejects unauthenticated requests at the door, and a backend opting into `forwardHeaders: [{name: Authorization}]` receives the same corporate JWT the internal tool already accepts through SSO — short-lived, validated at the perimeter, revocable at the IdP, with zero configuration in the downstream tool. This is the natural hardening step for internal tools that natively validate your corporate identity.
 
 ## Stateless Passthrough vs. Token Broker
 
