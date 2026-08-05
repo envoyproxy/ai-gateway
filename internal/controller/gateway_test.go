@@ -2959,6 +2959,20 @@ func Test_mcpConfig_APIKeyForwardClientIDHeader(t *testing.T) {
 		require.Len(t, mc.Routes, 1)
 		require.Empty(t, mc.Routes[0].ForwardHeaders)
 	})
+
+	t.Run("oauth and api-key both configured with the same header are not duplicated", func(t *testing.T) {
+		mc, effective := mcpConfig(newRoute(&aigv1b1.MCPRouteSecurityPolicy{
+			OAuth: &aigv1b1.MCPRouteOAuth{
+				ClaimToHeaders: []egv1a1.ClaimToHeader{
+					{Claim: "sub", Header: "x-mcp-client-id"},
+				},
+			},
+			APIKeyAuth: &egv1a1.APIKeyAuth{ForwardClientIDHeader: ptr.To("x-mcp-client-id")},
+		}))
+		require.True(t, effective)
+		require.Len(t, mc.Routes, 1)
+		require.Equal(t, []string{"x-mcp-client-id"}, mc.Routes[0].ForwardHeaders)
+	})
 }
 
 func Test_mergeHeaderMutations(t *testing.T) {
