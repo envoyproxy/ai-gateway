@@ -686,8 +686,10 @@ func (m *mcpRequestContext) handleClientToServerResponse(ctx context.Context, s 
 
 	cse := s.getCompositeSessionEntry(backendName)
 	if cse == nil {
-		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("no MCP session found for backend %s", backendName))
-		return result, fmt.Errorf("no MCP session found for backend %s", backendName)
+		// No session for this backend usually means backendSelector excluded it for this
+		// session; treat it as an authorization decision rather than a malformed request.
+		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
+		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
 	}
 
 	backend, err := m.getBackendForRoute(s.route, backendName)
@@ -766,7 +768,9 @@ func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *sessio
 
 	cse := s.getCompositeSessionEntry(backendName)
 	if cse == nil {
-		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("no MCP session found for backend %s", backendName))
+		// No session for this backend usually means backendSelector excluded it for this
+		// session; treat it as an authorization decision rather than a malformed request.
+		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
 		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
 	}
 
@@ -1118,7 +1122,9 @@ func (m *mcpRequestContext) handleResourceReadRequest(ctx context.Context, s *se
 	}
 	sess := s.getCompositeSessionEntry(backendName)
 	if sess == nil {
-		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("no MCP session found for backend %s", backendName))
+		// No session for this backend usually means backendSelector excluded it for this
+		// session; treat it as an authorization decision rather than a malformed request.
+		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
 		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
 	}
 	// Send the request to the MCP backend listener.
@@ -1169,7 +1175,9 @@ func (m *mcpRequestContext) handleResourcesSubscriptionRequest(ctx context.Conte
 	}
 	cse := s.getCompositeSessionEntry(backendName)
 	if cse == nil {
-		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("no MCP session found for backend %s", backendName))
+		// No session for this backend usually means backendSelector excluded it for this
+		// session; treat it as an authorization decision rather than a malformed request.
+		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
 		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
 	}
 
@@ -1326,7 +1334,9 @@ func (m *mcpRequestContext) handlePromptGetRequest(ctx context.Context, s *sessi
 	}
 	cse := s.getCompositeSessionEntry(backendName)
 	if cse == nil {
-		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("no MCP session found for backend %s", backendName))
+		// No session for this backend usually means backendSelector excluded it for this
+		// session; treat it as an authorization decision rather than a malformed request.
+		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
 		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
 	}
 	// Send the request to the MCP backend listener.
@@ -1369,8 +1379,15 @@ func (m *mcpRequestContext) handleCompletionComplete(ctx context.Context, s *ses
 		return result, fmt.Errorf("%w: unknown backend %s in resource name %s", errBackendNotFound, backendName, cmp.Or(param.Ref.Name, param.Ref.URI))
 	}
 
-	// Send the request to the MCP backend listener.
 	cse := s.getCompositeSessionEntry(backend.Name)
+	if cse == nil {
+		// No session for this backend usually means backendSelector excluded it for this
+		// session; treat it as an authorization decision rather than a malformed request.
+		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
+		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
+	}
+
+	// Send the request to the MCP backend listener.
 	if span != nil {
 		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false)
 	}
@@ -1438,6 +1455,13 @@ func (m *mcpRequestContext) handleClientToServerNotificationsProgress(ctx contex
 		return result, fmt.Errorf("%w: unknown backend %s in progressToken %s", errBackendNotFound, backendName, pt)
 	}
 	cse := s.getCompositeSessionEntry(backend.Name)
+	if cse == nil {
+		// No session for this backend usually means backendSelector excluded it for this
+		// session; treat it as an authorization decision rather than a malformed request.
+		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
+		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
+	}
+
 	// Send the request to the MCP backend listener.
 	param, _ := json.Marshal(p)
 	req.Params = param

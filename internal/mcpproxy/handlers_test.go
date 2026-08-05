@@ -831,6 +831,28 @@ func TestHandleToolCallRequest_UnknownBackend(t *testing.T) {
 	require.Contains(t, rr.Body.String(), "unknown backend unknown-backend")
 }
 
+// TestHandleToolCallRequest_NoSession covers a backend that is configured on the route
+// (getBackendForRoute succeeds) but has no session in this particular session (e.g.
+// excluded by backendSelector). This should be 403 instead of 400 or other error codes.
+func TestHandleToolCallRequest_NoSession(t *testing.T) {
+	proxy := newTestMCPProxy()
+	s := &session{
+		reqCtx:             proxy,
+		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "test-session"}},
+		route:              "test-route",
+	}
+
+	params := &mcp.CallToolParams{Name: "backend2__some-tool"}
+	httpReq := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	rr := httptest.NewRecorder()
+
+	_, err := proxy.handleToolCallRequest(t.Context(), s, rr, &jsonrpc.Request{}, params, nil, httpReq)
+	require.ErrorIs(t, err, errSessionNotFound)
+
+	require.Equal(t, http.StatusForbidden, rr.Code)
+	require.Contains(t, rr.Body.String(), "no MCP session found for backend backend2")
+}
+
 func TestHandleToolCallRequest_BackendError(t *testing.T) {
 	// Mock backend server that returns error.
 	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -1185,6 +1207,23 @@ func TestServePOST_PromptsGet(t *testing.T) {
 
 	// EndSpanOnError called.
 	require.NotNil(t, tracer.span)
+}
+
+// TestHandlePromptGetRequest_NoSession covers a backend that is configured on the route
+// (getBackendForRoute succeeds) but has no session here, e.g. excluded by backendSelector.
+// This should be 403 instead of 400 or other error codes.
+func TestHandlePromptGetRequest_NoSession(t *testing.T) {
+	proxy := newTestMCPProxy()
+	rr := httptest.NewRecorder()
+	s := &session{
+		reqCtx:             proxy,
+		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "test-session"}},
+		route:              "test-route",
+	}
+	_, err := proxy.handlePromptGetRequest(t.Context(), s, rr, &jsonrpc.Request{}, &mcp.GetPromptParams{Name: "backend2__test-prompt"})
+	require.ErrorIs(t, err, errSessionNotFound)
+	require.Equal(t, http.StatusForbidden, rr.Code)
+	require.Contains(t, rr.Body.String(), "no MCP session found for backend backend2")
 }
 
 func TestServePOST_InvalidToolCallParams(t *testing.T) {
@@ -1643,6 +1682,34 @@ func TestMCPProxy_handleCompletionComplete(t *testing.T) {
 	}
 }
 
+// TestMCPProxy_handleCompletionComplete_NoSession covers a backend that is configured on
+// the route (getBackendForRoute succeeds) but has no session in this particular session
+// (e.g. excluded by backendSelector). Passing a non-nil span reproduces the case that used
+// to panic on a nil *compositeSessionEntry before the session was ever checked for nil.
+func TestMCPProxy_handleCompletionComplete_NoSession(t *testing.T) {
+	reqID, _ := jsonrpc.MakeID("id")
+	proxy := newTestMCPProxy()
+
+	rr := httptest.NewRecorder()
+	span := &fakeSpan{}
+	var err error
+	require.NotPanics(t, func() {
+		_, err = proxy.handleCompletionComplete(t.Context(), &session{
+			reqCtx: proxy,
+			perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{
+				"backend1": {sessionID: "test-session"},
+			},
+			route: "test-route",
+		}, rr, &jsonrpc.Request{ID: reqID, Method: "completion/complete"}, &mcp.CompleteParams{
+			Ref: &mcp.CompleteReference{Type: "ref/prompt", Name: "backend2__my-prompt"},
+		}, span)
+	})
+	require.ErrorIs(t, err, errSessionNotFound)
+	require.Equal(t, http.StatusForbidden, rr.Code)
+	require.Contains(t, rr.Body.String(), "no MCP session found for backend backend2")
+	require.Empty(t, span.backends, "must not record a route-to-backend span for a backend with no session")
+}
+
 func TestMCPProxy_handlePing(t *testing.T) {
 	reqID, _ := jsonrpc.MakeID("id")
 
@@ -1758,6 +1825,24 @@ func TestMCPPRoxy_handleResourceReadRequest(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.Contains(t, rr.Body.String(), `{"jsonrpc":"2.0","id":"id","result":{"contents":[]}}`)
+
+	t.Run("no session for known backend", func(t *testing.T) {
+		// backend2 is configured on test-route (getBackendForRoute succeeds) but has no
+		// session here, e.g. excluded by backendSelector. This should be 403 instead of
+		// 400 or other error codes.
+		rr := httptest.NewRecorder()
+		s := &session{
+			reqCtx:             proxy,
+			perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "test-session"}},
+			route:              "test-route",
+		}
+		_, err := proxy.handleResourceReadRequest(t.Context(), s, rr, &jsonrpc.Request{ID: reqID, Method: "resources/read"}, &mcp.ReadResourceParams{
+			URI: downstreamResourceURI("file://foo-resource", "backend2"),
+		})
+		require.ErrorIs(t, err, errSessionNotFound)
+		require.Equal(t, http.StatusForbidden, rr.Code)
+		require.Contains(t, rr.Body.String(), "no MCP session found for backend backend2")
+	})
 }
 
 func TestMCPProxy_maybeUpdateProgressTokenMetadata(t *testing.T) {
@@ -1849,6 +1934,31 @@ func TestMCPProxy_handleClientToServerNotificationsProgress(t *testing.T) {
 			require.Contains(t, rr.Body.String(), tc.expResponseBody)
 		})
 	}
+}
+
+// TestMCPProxy_handleClientToServerNotificationsProgress_NoSession covers a backend that is
+// configured on the route (getBackendForRoute succeeds) but has no session in this particular
+// session (e.g. excluded by backendSelector). Passing a non-nil span reproduces the case that
+// used to panic on a nil *compositeSessionEntry before the session was ever checked for nil.
+func TestMCPProxy_handleClientToServerNotificationsProgress_NoSession(t *testing.T) {
+	proxy := newTestMCPProxy()
+	rr := httptest.NewRecorder()
+	s := &session{
+		reqCtx:             proxy,
+		perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "test-session"}},
+		route:              "test-route",
+	}
+	params := &mcp.ProgressNotificationParams{ProgressToken: "YWJjZA==__s__backend2"}
+	span := &fakeSpan{}
+	var err error
+	require.NotPanics(t, func() {
+		_, err = proxy.handleClientToServerNotificationsProgress(t.Context(), s, rr,
+			&jsonrpc.Request{Method: "notifications/progress"}, params, span)
+	})
+	require.ErrorIs(t, err, errSessionNotFound)
+	require.Equal(t, http.StatusForbidden, rr.Code)
+	require.Contains(t, rr.Body.String(), "no MCP session found for backend backend2")
+	require.Empty(t, span.backends, "must not record a route-to-backend span for a backend with no session")
 }
 
 func TestMCPProxy_maybeServerToClientRequestModify(t *testing.T) {
@@ -2037,7 +2147,7 @@ func TestMCPProxy_handleClientToServerResponse(t *testing.T) {
 			}, rr, tc.msg)
 			if tc.expErr != "" {
 				require.ErrorContains(t, err, tc.expErr)
-				require.Equal(t, http.StatusBadRequest, rr.Code)
+				require.Equal(t, http.StatusForbidden, rr.Code)
 				require.Contains(t, rr.Body.String(), tc.expErr)
 				return
 			}
@@ -2137,6 +2247,24 @@ func TestMCPServer_handleResourcesSubscriptionRequest(t *testing.T) {
 			require.Equal(t, http.StatusOK, rr.Code)
 		})
 	}
+
+	t.Run("no session for known backend", func(t *testing.T) {
+		// backend2 is configured on test-route (getBackendForRoute succeeds) but has no
+		// session here, e.g. excluded by backendSelector. This should be 403 instead of
+		// 400 or other error codes.
+		proxy := newTestMCPProxy()
+		rr := httptest.NewRecorder()
+		s := &session{
+			reqCtx:             proxy,
+			perBackendSessions: map[filterapi.MCPBackendName]*compositeSessionEntry{"backend1": {sessionID: "a"}},
+			route:              "test-route",
+		}
+		_, err := proxy.handleResourcesSubscribeRequest(t.Context(), s, rr,
+			&jsonrpc.Request{ID: reqID, Method: "resources/subscribe"}, &mcp.SubscribeParams{URI: "backend2+file://foo"}, nil)
+		require.ErrorIs(t, err, errSessionNotFound)
+		require.Equal(t, http.StatusForbidden, rr.Code)
+		require.Contains(t, rr.Body.String(), "no MCP session found for backend backend2")
+	})
 }
 
 func Test_sendToAllBackendsAndAggregateResponsesImpl(t *testing.T) {

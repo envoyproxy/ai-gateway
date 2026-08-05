@@ -171,11 +171,15 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 	selectedBackends := backends.backends
 	if backends.backendSelector != nil {
 		filtered := make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(backends.backends))
+		// The JWT and CEL headers are identical for every candidate backend in this loop --
+		// only request.mcp.backend changes -- so parse/build them once and reuse across
+		// all candidates instead of redoing it per backend.
+		authzCtx := m.newAuthzContext(&authorizationRequest{Headers: m.requestHeaders})
 		for name, backend := range backends.backends {
-			allowed, _ := m.authorizeRequest(backends.backendSelector, &authorizationRequest{
+			allowed, _ := m.authorizeRequestWith(backends.backendSelector, &authorizationRequest{
 				Headers: m.requestHeaders,
 				Backend: name,
-			})
+			}, authzCtx)
 			if allowed {
 				filtered[name] = backend
 			}
