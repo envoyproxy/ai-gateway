@@ -305,6 +305,7 @@ func (runCtx *runCmdContext) writeEnvoyResourcesAndRunExtProc(ctx context.Contex
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("error translating: %w", err)
 	}
+	warnUnresolvedBackendRefs(ctx, fakeClient, runCtx.stderr)
 	runCtx.fakeClientSet = _fakeClientSet
 
 	for i := range httpRouteFilters.Items {

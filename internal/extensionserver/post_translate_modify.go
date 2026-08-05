@@ -353,13 +353,10 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				backendRef := httpRouteRule.BackendRefs[backendRefIndex]
 				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, backendRefIndex)
 				if clusterName.backendRefIndex == noBackendRefIndex && len(httpRouteRule.BackendRefs) > 1 {
-					// Cluster metadata holds one name for the whole cluster, so a rule whose
-					// backends share one cluster cannot be told apart here and every backend's
-					// traffic is attributed to the first. Endpoint metadata is what distinguishes
-					// them, and there is none to attach when the endpoints come from EDS. Naming
-					// the first backend is what this has always done; leaving the metadata unset
-					// instead would make every request through the cluster fail to resolve a
-					// backend at all.
+					// Cluster metadata holds one name for the whole cluster, so backends sharing a
+					// cluster cannot be told apart and all traffic is attributed to the first.
+					// Endpoint metadata distinguishes them, but there is none to attach when the
+					// endpoints come from EDS. Leaving it unset would resolve no backend at all.
 					s.log.Info("cluster has no LoadAssignment and the rule has several backends, "+
 						"their traffic will all be attributed to the first",
 						"cluster_name", cluster.Name,
@@ -383,11 +380,9 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		default:
 			// Populate the metadata for each endpoint in the LoadAssignment.
 			//
-			// The localities come from the HTTPRoute the controller generates, while the backend
-			// names come from the AIGatewayRoute. Those are separate objects reconciled
-			// independently, so the two lists can differ in length at any moment. Walking them in
-			// lockstep therefore both runs off the end of the shorter one and, whenever the
-			// difference is not at the tail, pairs a backend with another backend's endpoints.
+			// Localities come from the generated HTTPRoute, backend names from the AIGatewayRoute.
+			// Those reconcile independently, so the lists can differ in length: walking them in
+			// lockstep runs off the shorter one and mispairs whenever the gap is not at the tail.
 			//
 			// Envoy Gateway records which backendRef each locality was built from in
 			// locality.region, formatted exactly like a per-backend cluster name, so pair on that

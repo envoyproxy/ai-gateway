@@ -51,11 +51,10 @@ func (s *Server) backendRefIndicesForLocalities(
 		if err != nil || regionName.backendRefIndex == noBackendRefIndex {
 			continue
 		}
-		// The region parsed, so this cluster does come from Envoy Gateway's route translation and
+		// The region parsed, so this cluster came from Envoy Gateway's route translation and
 		// pairing by order would only paper over whatever is wrong with it.
 		anyRegion = true
-		// A region naming a different route or rule means this locality did not come from the rule
-		// being processed, so its index would be meaningless here.
+		// A region naming a different route or rule did not come from the rule being processed.
 		if regionName.namespace != clusterName.namespace ||
 			regionName.routeName != clusterName.routeName ||
 			regionName.ruleIndex != clusterName.ruleIndex {
@@ -93,6 +92,14 @@ func (s *Server) backendRefIndicesForLocalities(
 // pairByOrder assigns backendRefs to localities positionally, skipping the zero-weight backendRefs
 // that Envoy Gateway leaves out of the LoadAssignment. Unlike a running counter it stops at the end
 // of the locality list rather than indexing past it.
+//
+// Order is only sound when each destination setting produced exactly one locality, which is what
+// buildWeightedLocalities does — and that is also the path setting locality.region, so a cluster
+// reaching this fallback usually did not come from Envoy Gateway's route translation. The
+// exceptions are the zone-aware paths (buildZonalLocalities, buildWeightedZonalLocalities in Envoy
+// Gateway internal/xds/translator/cluster.go), which emit one locality per zone per backend and
+// drop ds.Name. There the originating backendRef is unrecoverable, so surplus localities stay
+// unpaired and are logged rather than given a name belonging to another backend.
 func (s *Server) pairByOrder(paired []localityBackendRef, backendRefs []aigv1b1.AIGatewayRouteRuleBackendRef) {
 	var next int
 	for i := range backendRefs {

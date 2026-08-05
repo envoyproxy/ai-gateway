@@ -200,10 +200,13 @@ type Backend struct {
 	// Unresolved, when non-empty, explains why this backend could not be configured, and the
 	// external processor rejects requests routed to it with that explanation.
 	//
-	// The controller emits an entry for every backendRef of every route rule, including the ones it
-	// could not resolve, so that the name a request arrives under is always known. Leaving a gap
-	// instead would surface a misconfigured backend as an unknown one, which reads like a bug in
-	// the gateway rather than something to fix in the AIGatewayRoute. Optional.
+	// The controller emits an entry for every backendRef, including unresolved ones, so the name a
+	// request arrives under is always known. Optional.
+	//
+	// An unresolved entry must be rejected before use: when the backend resolved but its
+	// BackendSecurityPolicy did not, it carries a valid Schema and a nil Auth, so nothing about its
+	// shape marks it unusable and dispatching would send an unauthenticated request upstream.
+	// extproc's setBackend is the only thing preventing that, so new readers must check too.
 	Unresolved string `json:"unresolved,omitempty"`
 }
 

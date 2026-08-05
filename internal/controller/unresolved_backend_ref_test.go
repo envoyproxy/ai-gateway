@@ -35,6 +35,7 @@ func aiServiceBackend(name string) *aigv1b1.AIServiceBackend {
 func routeWithBackends(name string, backendNames ...string) *aigv1b1.AIGatewayRoute {
 	refs := make([]aigv1b1.AIGatewayRouteRuleBackendRef, len(backendNames))
 	for i, n := range backendNames {
+		//nolint:gosec // i is a variadic argument count in a test, nowhere near int32.
 		refs[i] = aigv1b1.AIGatewayRouteRuleBackendRef{Name: n, Weight: ptr.To[int32](int32(i + 1))}
 	}
 	return &aigv1b1.AIGatewayRoute{
@@ -43,11 +44,9 @@ func routeWithBackends(name string, backendNames ...string) *aigv1b1.AIGatewayRo
 	}
 }
 
-// TestNewHTTPRouteUnresolvedRefKeepsPosition is the core of the fix. Three components index a rule's
-// backendRefs independently: this controller, the Gateway controller that writes the external
-// processor config, and the extension server that labels the endpoints Envoy Gateway generates.
-// They only agree while index j means the same backend to all of them, so an unresolvable reference
-// has to keep its slot rather than be dropped or take the whole HTTPRoute down with it.
+// TestNewHTTPRouteUnresolvedRefKeepsPosition is the core of the fix: an unresolvable reference keeps
+// its slot rather than being dropped or taking the whole HTTPRoute down with it. The three
+// independent indexers are described on unresolvedBackendRefPlaceholder.
 func TestNewHTTPRouteUnresolvedRefKeepsPosition(t *testing.T) {
 	c := requireNewFakeClientWithIndexes(t)
 	require.NoError(t, c.Create(t.Context(), aiServiceBackend("apple")))
@@ -80,15 +79,9 @@ func TestNewHTTPRouteUnresolvedRefKeepsPosition(t *testing.T) {
 }
 
 // TestNewHTTPRoutePlaceholderWeightIsZero pins the weight, which is load-bearing rather than
-// cosmetic.
-//
-// Envoy Gateway skips zero-weight backendRefs before building destination settings, so the
-// placeholder produces no DestinationSetting and the rule does not count as having an invalid
-// backend. Give it a non-zero weight and NeedsClusterPerSetting flips, Envoy Gateway emits one
-// cluster per backend rather than one cluster with a locality each, and backendRef.Priority stops
-// meaning anything because it orders localities within a single cluster. Provider fallback is
-// built on that structure: with the split, a request to a failing primary exhausts its retries on
-// that backend instead of moving to the next priority.
+// cosmetic: Envoy Gateway skips zero-weight backendRefs before building destination settings, so a
+// non-zero weight would flip NeedsClusterPerSetting and break backendRef.Priority failover. The
+// full chain is on unresolvedBackendRefPlaceholder.
 func TestNewHTTPRoutePlaceholderWeightIsZero(t *testing.T) {
 	c := requireNewFakeClientWithIndexes(t)
 	require.NoError(t, c.Create(t.Context(), aiServiceBackend("primary")))
@@ -170,7 +163,10 @@ func TestUnresolvedBackendRefPlaceholderNaming(t *testing.T) {
 		return string(unresolvedBackendRefPlaceholder(ns, route, rule, ref).Name)
 	}
 
-	require.Equal(t, name("ns", "route", 0, 1), name("ns", "route", 0, 1), "stable across calls")
+	// Stability across reconciles is what keeps the generated HTTPRoute from churning, so compare a
+	// name built earlier rather than two calls in one expression.
+	stable := name("ns", "route", 0, 1)
+	require.Equal(t, stable, name("ns", "route", 0, 1), "stable across calls")
 	require.NotEqual(t, name("ns", "route", 0, 1), name("ns", "route", 0, 2), "distinct per backendRef")
 	require.NotEqual(t, name("ns", "route", 0, 1), name("ns", "route", 1, 1), "distinct per rule")
 	require.NotEqual(t, name("ns", "a", 0, 0), name("ns", "b", 0, 0), "distinct per route")
@@ -185,6 +181,10 @@ func TestUnresolvedBackendRefPlaceholderNaming(t *testing.T) {
 // TestReconcileUnresolvedRefDoesNotRequeue checks that a route with an unresolvable reference is not
 // retried on a backoff. The write succeeded, so requeuing would rewrite the identical HTTPRoute for
 // as long as the reference stays broken, re-triggering translation each time.
+//
+// Not requeuing is only half of it: reconcile still writes unconditionally, so the second pass must
+// rebuild the same rule rather than append another placeholder to what it read back. Watches keep
+// firing this route while the reference stays broken, so a non-idempotent pass would grow the rule.
 func TestReconcileUnresolvedRefDoesNotRequeue(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	require.NoError(t, fakeClient.Create(t.Context(), aiServiceBackend("apple")))
@@ -192,11 +192,28 @@ func TestReconcileUnresolvedRefDoesNotRequeue(t *testing.T) {
 
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
+	req := reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"}}
 
-	res, err := c.Reconcile(t.Context(), reconcile.Request{
-		NamespacedName: types.NamespacedName{Namespace: "default", Name: "myroute"},
-	})
+	res, err := c.Reconcile(t.Context(), req)
 	require.NoError(t, err)
 	require.Zero(t, res.RequeueAfter)
 	require.False(t, res.Requeue) //nolint:staticcheck // asserting the deprecated field stays unset.
+
+	var first gwapiv1.HTTPRoute
+	require.NoError(t, fakeClient.Get(t.Context(), req.NamespacedName, &first))
+	require.Len(t, first.Spec.Rules[0].BackendRefs, 2)
+
+	res, err = c.Reconcile(t.Context(), req)
+	require.NoError(t, err)
+	require.Zero(t, res.RequeueAfter)
+
+	var second gwapiv1.HTTPRoute
+	require.NoError(t, fakeClient.Get(t.Context(), req.NamespacedName, &second))
+	require.Equal(t, first.Spec, second.Spec, "reconciling again must rebuild the same rule, not extend it")
+
+	// And the condition is not duplicated onto the status either.
+	var route aigv1b1.AIGatewayRoute
+	require.NoError(t, fakeClient.Get(t.Context(), req.NamespacedName, &route))
+	require.Len(t, route.Status.Conditions, 2)
+	require.Equal(t, aigv1b1.ConditionTypeResolvedRefs, route.Status.Conditions[1].Type)
 }

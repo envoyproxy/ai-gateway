@@ -14,9 +14,9 @@ const (
 	// ConditionTypeNotAccepted is a condition type for the reconciliation result
 	// where resources are not accepted.
 	ConditionTypeNotAccepted = "NotAccepted"
-	// ConditionTypeResolvedRefs is a condition type reporting whether every backend reference of an
-	// AIGatewayRoute could be resolved. It is set to False, alongside an Accepted condition, when
-	// the route was programmed but some of its references were not.
+	// ConditionTypeResolvedRefs reports backend references of an AIGatewayRoute that could not be
+	// resolved. It is only ever set to False, alongside an Accepted condition, and is absent
+	// entirely when every reference resolved.
 	ConditionTypeResolvedRefs = "ResolvedRefs"
 )
 
@@ -27,16 +27,14 @@ const (
 	// ConditionReasonRefNotPermitted is the reason for ConditionTypeResolvedRefs when a
 	// cross-namespace reference is not permitted by any ReferenceGrant.
 	ConditionReasonRefNotPermitted = "RefNotPermitted"
-	// ConditionReasonResolvedRefs is the reason for ConditionTypeResolvedRefs when every reference
-	// resolved.
-	ConditionReasonResolvedRefs = "ResolvedRefs"
 )
 
 // AIGatewayRouteStatus contains the conditions by the reconciliation result.
 type AIGatewayRouteStatus struct {
 	// Conditions is the list of conditions by the reconciliation result.
 	// The first condition is always "Accepted" or "NotAccepted". A "ResolvedRefs" condition
-	// follows it when the route was programmed with backend references that could not be resolved.
+	// follows it only when the route was programmed with backend references that could not be
+	// resolved, so a fully resolved route carries just the one condition.
 	//
 	// Known .status.conditions.type are: "Accepted", "NotAccepted", "ResolvedRefs".
 	Conditions []metav1.Condition `json:"conditions,omitempty"`

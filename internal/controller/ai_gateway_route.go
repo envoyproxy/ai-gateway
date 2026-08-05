@@ -105,10 +105,9 @@ func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	case err == nil:
 		c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, aigv1b1.ConditionTypeAccepted, "AI Gateway Route reconciled successfully")
 	case errors.As(err, &unresolvedErr):
-		// The route was programmed and the backends that resolved are serving, so this is not a
-		// failed reconcile. Requeuing would rewrite the identical HTTPRoute on every backoff tick
-		// and re-trigger translation for as long as the reference stays broken; the AIServiceBackend
-		// and ReferenceGrant watches already bring us back when it is fixed.
+		// Not a failed reconcile: the route was programmed and the resolved backends are serving.
+		// Requeuing would rewrite the identical HTTPRoute on every backoff tick, and the
+		// AIServiceBackend and ReferenceGrant watches already bring us back when it is fixed.
 		c.logger.Info("AIGatewayRoute has unresolved backend references",
 			"namespace", aiGatewayRoute.Namespace, "name", aiGatewayRoute.Name, "detail", unresolvedErr.Error())
 		c.updateAIGatewayRouteStatusUnresolvedRefs(ctx, &aiGatewayRoute, unresolvedErr.refs)

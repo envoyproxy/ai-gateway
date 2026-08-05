@@ -64,15 +64,17 @@ func readFilterConfig(t *testing.T, kube kubernetes.Interface, namespace, gatewa
 	return cfg
 }
 
-// clustersForHTTPRoute models how Envoy Gateway translates one HTTPRoute rule into clusters, which
-// is what the seam test needs in order to feed the extension server something shaped like the real
-// thing.
+// clustersForHTTPRoute models how Envoy Gateway translates one HTTPRoute rule into clusters, so the
+// seam test can feed the extension server something shaped like the real thing.
 //
-// Envoy Gateway emits a single cluster per rule and distinguishes the backends inside it by
-// locality, unless any of them is invalid or has no endpoints, in which case it emits one cluster
-// per backend instead (NeedsClusterPerSetting in its internal/ir/xds.go). Either way it records
-// which backendRef a set of endpoints came from: in locality.region for the shared cluster, and in
-// the cluster name itself for the per-backend ones.
+// Envoy Gateway emits one cluster per rule and distinguishes backends by locality, unless any is
+// invalid or has no endpoints, in which case it emits one cluster per backend
+// (NeedsClusterPerSetting in internal/ir/xds.go). Either way it records which backendRef the
+// endpoints came from: in locality.region for the shared cluster, in the cluster name otherwise.
+//
+// Mirrors Envoy Gateway v1.8.1 (the go.mod version), non-zonal path only. If a bump changes
+// internal/ir/xds.go, internal/gatewayapi/route.go, or buildWeightedLocalities, this stops
+// resembling what the extension server receives and the test passes while the real thing breaks.
 func clustersForHTTPRoute(t *testing.T, httpRoute *gwapiv1.HTTPRoute, ruleIndex int, invalid map[int]bool) []*clusterv3.Cluster {
 	t.Helper()
 	rule := httpRoute.Spec.Rules[ruleIndex]
@@ -144,17 +146,12 @@ func labelledBackendNames(clusters []*clusterv3.Cluster) []string {
 	return names
 }
 
-// TestBackendRefIndexSeam pins the contract that ties the three components together.
-//
-// The Gateway controller names each external processor backend after its position in the
-// AIGatewayRoute. The AIGatewayRoute controller generates the HTTPRoute that Envoy Gateway turns
-// into clusters. The extension server labels the endpoints of those clusters with a name it derives
-// the same way. At request time the external processor looks the label up in the config, so a name
-// the extension server can produce but the config does not contain is a request that fails.
-//
-// Nothing else in the tree exercises both halves, which is how they were able to disagree: one
-// unresolvable backendRef used to make the AIGatewayRoute controller abandon the HTTPRoute entirely
-// while the Gateway controller silently skipped just that one entry.
+// TestBackendRefIndexSeam pins the contract tying the three components together: the Gateway
+// controller names each external processor backend after its position in the AIGatewayRoute, the
+// AIGatewayRoute controller generates the HTTPRoute that becomes clusters, and the extension server
+// labels those endpoints deriving the name the same way. At request time the external processor
+// looks that label up, so a name the extension server produces but the config lacks is a failed
+// request. Nothing else exercises both halves, which is how they were able to disagree.
 func TestBackendRefIndexSeam(t *testing.T) {
 	const ns = "ns"
 	fakeClient := requireNewFakeClientWithIndexes(t)
