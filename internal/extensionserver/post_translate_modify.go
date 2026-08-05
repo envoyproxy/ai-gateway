@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -52,11 +51,6 @@ type aiGatewayClusterName struct {
 	ruleIndex       int
 	backendRefIndex int
 }
-
-// awsBedrockRegionRegexp extracts the region from a Bedrock runtime host, including the PrivateLink
-// (VPCE) form. Both bedrock-runtime.us-east-1.amazonaws.com and
-// vpce-<id>.bedrock-runtime.us-east-1.vpce.amazonaws.com yield "us-east-1".
-var awsBedrockRegionRegexp = regexp.MustCompile(`bedrock-runtime\.([a-z0-9-]+)\.(?:vpce\.)?amazonaws\.com`)
 
 // parseAIGatewayClusterName parses the cluster names generated for AIGatewayRoute rules.
 // Envoy Gateway uses a route-level cluster name unless it creates a cluster for each backend.
@@ -353,18 +347,8 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 			// only set the backend name on cluster-level metadata; the upstream ext_proc filter resolves
 			// the backend via XDSClusterMetadataBackendNamePath.
 			//
-			// TODO(aws-signing): the signing host/region cannot be stamped on this path. In the Backend
-			// CR (gateway.envoyproxy.io/v1alpha1) an endpoint is a one-of {fqdn | ip | unix}, and only
-			// `fqdn` surfaces a hostname into the xDS endpoint (STRICT_DNS) — that case is stamped in the
-			// inline branches below. This EDS branch is the future K8s Service backendRef (currently
-			// CEL-blocked, ai-gateway#902): its endpoints are pod IPs, which SigV4 cannot sign. (The `ip`
-			// Backend variant, ai-gateway#950, is the sibling no-hostname case, but it yields a STATIC
-			// cluster with an inline load_assignment, so it is handled in the inline branches where an
-			// empty host is skipped — it does not reach here.) Both fall back to the region-based default
-			// host at signing time. The real fix resolves the hostname from the Backend CR
-			// (spec.endpoints[].fqdn.hostname) via the backendRef rather than the translated endpoint;
-			// feeding EDS endpoints to the extension server would need envoyproxy/gateway#8150
-			// (PostEndpointsModify).
+			// TODO(aws-signing): no LbEndpoint to stamp here, so an AWS backend on an EDS cluster falls
+			// back to the region-based default signing host and a VPCE host is lost. See ai-gateway#902 / #950.
 			s.log.Info("LoadAssignment is nil, setting cluster-level metadata", "cluster_name", cluster.Name)
 			if len(httpRouteRule.BackendRefs) > 0 {
 				backendRefIndex := 0
@@ -463,7 +447,6 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
 		internalapi.XDSClusterMetadataBackendNamePath,
 		internalapi.XDSUpstreamHostMetadataAWSSigningHostPath,
-		internalapi.XDSUpstreamHostMetadataAWSSigningRegionPath,
 		internalapi.XDSRouteMetadataRouteNamePath,
 	}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
@@ -988,27 +971,12 @@ func endpointAWSSigningHost(lbEndpoint *endpointv3.LbEndpoint) string {
 	return ""
 }
 
-// awsSigningRegionFromHost derives the SigV4 region from a resolved Bedrock signing host so the
-// credential scope self-corrects to the endpoint's region. It returns "" for non-Bedrock hosts, leaving
-// the configured region in effect at signing time.
-func awsSigningRegionFromHost(host string) string {
-	if m := awsBedrockRegionRegexp.FindStringSubmatch(host); m != nil {
-		return m[1]
-	}
-	return ""
-}
-
-// stampAWSSigningMetadata resolves and stamps the SigV4 signing host (and, when derivable, the region)
-// on the endpoint's metadata at config-translation time, so the data plane signs over the real upstream
-// endpoint instead of re-deriving it at request time.
+// stampAWSSigningMetadata stamps the SigV4 signing host on the endpoint's metadata at config-translation
+// time, so the data plane signs over the real upstream endpoint instead of re-deriving it at request
+// time. The signing region is derived from this host later, in the AWS backend auth handler.
 func stampAWSSigningMetadata(endpoint *endpointv3.LbEndpoint) {
-	host := endpointAWSSigningHost(endpoint)
-	if host == "" {
-		return
-	}
-	setEndpointMetadataAWSSigningHost(endpoint, host)
-	if region := awsSigningRegionFromHost(host); region != "" {
-		setEndpointMetadataAWSSigningRegion(endpoint, region)
+	if host := endpointAWSSigningHost(endpoint); host != "" {
+		setEndpointMetadataAWSSigningHost(endpoint, host)
 	}
 }
 
@@ -1083,10 +1051,6 @@ func setEndpointMetadataBackendName(endpoint *endpointv3.LbEndpoint, namespace, 
 // so the upstream ext_proc filter can forward it to the AWS backend auth handler for SigV4 signing.
 func setEndpointMetadataAWSSigningHost(endpoint *endpointv3.LbEndpoint, host string) {
 	ensureEndpointAIGatewayMetadata(endpoint).Fields[internalapi.InternalMetadataAWSSigningHostKey] = structpb.NewStringValue(host)
-}
-
-func setEndpointMetadataAWSSigningRegion(endpoint *endpointv3.LbEndpoint, region string) {
-	ensureEndpointAIGatewayMetadata(endpoint).Fields[internalapi.InternalMetadataAWSSigningRegionKey] = structpb.NewStringValue(region)
 }
 
 func shouldAIGatewayExtProcBeInserted(filters []*httpconnectionmanagerv3.HttpFilter) bool {

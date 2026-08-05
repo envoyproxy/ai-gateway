@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -87,7 +88,13 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 	method := requestHeaders[":method"]
 	path := requestHeaders[":path"]
 	host := a.signingHost(requestHeaders)
-	region := a.signingRegion(requestHeaders)
+	// Derive the SigV4 region from the resolved Bedrock host so the credential scope self-corrects to
+	// the endpoint's region (e.g. a us-east-1 VPCE under a us-west-2 configured region). Non-Bedrock
+	// hosts keep the configured region.
+	region := a.region
+	if r := regionFromBedrockHost(host); r != "" {
+		region = r
+	}
 
 	var body []byte
 	if len(mutatedBody) > 0 {
@@ -146,16 +153,19 @@ func (a *awsHandler) signingHost(requestHeaders map[string]string) string {
 	return normalizeAWSSigningHost(host)
 }
 
-// signingRegion resolves the region used for the SigV4 credential scope. It prefers the region resolved
-// at config-translation time and forwarded by the upstream ext_proc filter via
-// [internalapi.AWSSigningRegionHeader], and falls back to the configured region otherwise. Resolving the
-// host and region from the same authoritative source keeps them in agreement, so a region/endpoint
-// mismatch (e.g. a us-east-1 VPCE under a us-west-2 configured region) cannot produce a 403.
-func (a *awsHandler) signingRegion(requestHeaders map[string]string) string {
-	if region := requestHeaders[internalapi.AWSSigningRegionHeader]; region != "" {
-		return region
+// bedrockHostRE extracts the region from a Bedrock runtime host, including the PrivateLink (VPCE) form.
+// Both bedrock-runtime.us-east-1.amazonaws.com and vpce-<id>.bedrock-runtime.us-east-1.vpce.amazonaws.com
+// yield "us-east-1". The anchors keep it from matching a spoofed suffix like
+// bedrock-runtime.us-east-1.amazonaws.com.evil.com.
+var bedrockHostRE = regexp.MustCompile(`(?:^|\.)bedrock-runtime\.([a-z0-9-]+)\.(?:vpce\.)?amazonaws\.com$`)
+
+// regionFromBedrockHost returns the AWS region encoded in a Bedrock signing host, or "" for a
+// non-Bedrock host (in which case the caller keeps the configured region).
+func regionFromBedrockHost(hostname string) string {
+	if m := bedrockHostRE.FindStringSubmatch(hostname); m != nil {
+		return m[1]
 	}
-	return a.region
+	return ""
 }
 
 func normalizeAWSSigningHost(host string) string {

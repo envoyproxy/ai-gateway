@@ -437,12 +437,11 @@ func resolveRouteName(attributes *structpb.Struct) string {
 }
 
 func setAWSSigningAttributes(headers map[string]string, attributes *structpb.Struct) {
-	// The signing host/region headers are internal, controller-derived values. A downstream client
-	// could also send them, so drop any inbound copy before overlaying trusted xDS metadata — otherwise,
-	// for an endpoint with no derivable metadata (non-Bedrock host, custom/FIPS endpoint, EDS), the
-	// client-supplied value would survive and drive the SigV4 host/region scope.
+	// The signing host header is an internal, controller-derived value. A downstream client could also
+	// send it, so drop any inbound copy before overlaying trusted xDS metadata — otherwise, for an
+	// endpoint with no derivable metadata (non-Bedrock host, EDS), the client-supplied value would
+	// survive and drive the SigV4 host. The region is derived from this host in the AWS handler.
 	delete(headers, internalapi.AWSSigningHostHeader)
-	delete(headers, internalapi.AWSSigningRegionHeader)
 
 	if attributes == nil {
 		return
@@ -451,12 +450,6 @@ func setAWSSigningAttributes(headers map[string]string, attributes *structpb.Str
 	if v, ok := attributes.Fields[internalapi.XDSUpstreamHostMetadataAWSSigningHostPath]; ok {
 		if host := v.GetStringValue(); host != "" {
 			headers[internalapi.AWSSigningHostHeader] = host
-		}
-	}
-
-	if v, ok := attributes.Fields[internalapi.XDSUpstreamHostMetadataAWSSigningRegionPath]; ok {
-		if region := v.GetStringValue(); region != "" {
-			headers[internalapi.AWSSigningRegionHeader] = region
 		}
 	}
 }

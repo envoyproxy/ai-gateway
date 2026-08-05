@@ -158,26 +158,20 @@ func TestAWSHandler_SigningHost(t *testing.T) {
 	}
 }
 
-func TestAWSHandler_SigningRegion(t *testing.T) {
-	handler := &awsHandler{region: "us-east-1"}
+func TestRegionFromBedrockHost(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		headers map[string]string
-		want    string
+		name string
+		host string
+		want string
 	}{
-		{
-			name:    "signing region header is used",
-			headers: map[string]string{internalapi.AWSSigningRegionHeader: "us-west-2"},
-			want:    "us-west-2",
-		},
-		{
-			name:    "falls back to configured region",
-			headers: map[string]string{},
-			want:    "us-east-1",
-		},
+		{"public bedrock host", "bedrock-runtime.us-east-1.amazonaws.com", "us-east-1"},
+		{"vpce host", "vpce-123.bedrock-runtime.us-west-2.vpce.amazonaws.com", "us-west-2"},
+		{"non-bedrock host", "gateway.example.com", ""},
+		{"spoofed suffix is rejected", "bedrock-runtime.us-east-1.amazonaws.com.evil.com", ""},
+		{"empty", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, handler.signingRegion(tc.headers))
+			require.Equal(t, tc.want, regionFromBedrockHost(tc.host))
 		})
 	}
 }
@@ -239,13 +233,10 @@ func TestAWSHandler_Do_SignsOverResolvedHost(t *testing.T) {
 		require.NotEqual(t, defaultAuth, vpceAuth)
 	})
 
-	t.Run("region self-corrects from the signing region header", func(t *testing.T) {
+	t.Run("region self-corrects from the resolved host", func(t *testing.T) {
 		const vpce = "vpce-123.bedrock-runtime.us-west-2.vpce.amazonaws.com"
-		auth, amzDate := sign(t, map[string]string{
-			internalapi.AWSSigningHostHeader:   vpce,
-			internalapi.AWSSigningRegionHeader: "us-west-2",
-		})
-		// Credential scope uses us-west-2 (from metadata), not the configured us-east-1.
+		auth, amzDate := sign(t, map[string]string{internalapi.AWSSigningHostHeader: vpce})
+		// Credential scope uses us-west-2 (derived from the host), not the configured us-east-1.
 		require.Contains(t, auth, "/us-west-2/bedrock/aws4_request")
 		require.Equal(t, recompute(t, vpce, "us-west-2", amzDate), auth)
 	})

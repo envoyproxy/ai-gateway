@@ -754,7 +754,6 @@ static_resources:
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['aws_signing_host']
-                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['aws_signing_region']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -809,7 +808,6 @@ static_resources:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "aws-bedrock"
                       aws_signing_host: "bedrock-runtime.us-east-1.amazonaws.com"
-                      aws_signing_region: "us-east-1"
       transport_socket:
         name: envoy.transport_sockets.tls
         typed_config:
@@ -837,7 +835,6 @@ static_resources:
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['aws_signing_host']
-                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['aws_signing_region']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -880,7 +877,6 @@ static_resources:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "anthropic-aws-bedrock"
                       aws_signing_host: "bedrock-runtime.us-east-1.amazonaws.com"
-                      aws_signing_region: "us-east-1"
       transport_socket:
         name: envoy.transport_sockets.tls
         typed_config:

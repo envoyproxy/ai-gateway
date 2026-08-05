@@ -422,30 +422,13 @@ func TestSetAWSSigningAttributes(t *testing.T) {
 		seed       map[string]string // headers already present (e.g. spoofed by a downstream client)
 		attributes *structpb.Struct
 		wantHost   string
-		wantRegion string
 	}{
 		{
-			name: "host and region",
-			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{
-				internalapi.XDSUpstreamHostMetadataAWSSigningHostPath:   structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
-				internalapi.XDSUpstreamHostMetadataAWSSigningRegionPath: structpb.NewStringValue("us-east-1"),
-			}},
-			wantHost:   "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
-			wantRegion: "us-east-1",
-		},
-		{
-			name: "host only",
+			name: "host from metadata",
 			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{
 				internalapi.XDSUpstreamHostMetadataAWSSigningHostPath: structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
 			}},
 			wantHost: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
-		},
-		{
-			name: "region only",
-			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{
-				internalapi.XDSUpstreamHostMetadataAWSSigningRegionPath: structpb.NewStringValue("us-west-2"),
-			}},
-			wantRegion: "us-west-2",
 		},
 		{
 			name:       "missing metadata",
@@ -455,27 +438,19 @@ func TestSetAWSSigningAttributes(t *testing.T) {
 			name: "nil metadata",
 		},
 		{
-			// Client-spoofed headers must not survive when xDS supplies no metadata.
-			name: "client-supplied headers are cleared when no xDS metadata",
-			seed: map[string]string{
-				internalapi.AWSSigningHostHeader:   "attacker.example.com",
-				internalapi.AWSSigningRegionHeader: "eu-west-1",
-			},
+			// Client-spoofed header must not survive when xDS supplies no metadata.
+			name:       "client-supplied host is cleared when no xDS metadata",
+			seed:       map[string]string{internalapi.AWSSigningHostHeader: "attacker.example.com"},
 			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{}},
 		},
 		{
-			// Trusted xDS metadata must overwrite any client-supplied values.
-			name: "xDS metadata overrides client-supplied headers",
-			seed: map[string]string{
-				internalapi.AWSSigningHostHeader:   "attacker.example.com",
-				internalapi.AWSSigningRegionHeader: "eu-west-1",
-			},
+			// Trusted xDS metadata must overwrite any client-supplied value.
+			name: "xDS metadata overrides client-supplied host",
+			seed: map[string]string{internalapi.AWSSigningHostHeader: "attacker.example.com"},
 			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{
-				internalapi.XDSUpstreamHostMetadataAWSSigningHostPath:   structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
-				internalapi.XDSUpstreamHostMetadataAWSSigningRegionPath: structpb.NewStringValue("us-east-1"),
+				internalapi.XDSUpstreamHostMetadataAWSSigningHostPath: structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
 			}},
-			wantHost:   "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
-			wantRegion: "us-east-1",
+			wantHost: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -486,11 +461,6 @@ func TestSetAWSSigningAttributes(t *testing.T) {
 				require.NotContains(t, headers, internalapi.AWSSigningHostHeader)
 			} else {
 				require.Equal(t, tc.wantHost, headers[internalapi.AWSSigningHostHeader])
-			}
-			if tc.wantRegion == "" {
-				require.NotContains(t, headers, internalapi.AWSSigningRegionHeader)
-			} else {
-				require.Equal(t, tc.wantRegion, headers[internalapi.AWSSigningRegionHeader])
 			}
 		})
 	}
