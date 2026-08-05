@@ -69,7 +69,7 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 	// Promote any role: "system" messages from the messages array to the top-level system field.
 	// This handles clients (e.g. Claude Code with mid-conversation-system beta) that send
 	// system prompts as messages rather than the top-level parameter.
-	messages := promoteAnthropicSystemMessagesToParam(body)
+	messages, systemPrompt := promoteAnthropicSystemMessagesToParam(body)
 
 	// Convert messages.
 	bedrockReq.Messages = make([]*awsbedrock.Message, 0, len(messages))
@@ -105,8 +105,8 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 	}
 
 	// Convert system prompt.
-	if body.System != nil {
-		bedrockReq.System = a.convertSystemPrompt(body.System)
+	if systemPrompt != nil {
+		bedrockReq.System = a.convertSystemPrompt(systemPrompt)
 	}
 
 	// Convert inference configuration.
@@ -161,10 +161,15 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 }
 
 // promoteAnthropicSystemMessagesToParam promotes role: "system" messages from the messages
-// array to the top-level system parameter. Returns the filtered messages (without system messages).
+// array to the top-level system parameter. It returns the filtered messages (without the system
+// messages) and the effective system prompt, which is nil when the request had none.
 // This handles clients (e.g. Claude Code with mid-conversation-system beta) that send
 // system prompts as messages rather than the top-level parameter.
-func promoteAnthropicSystemMessagesToParam(body *anthropicschema.MessagesRequest) []anthropicschema.MessageParam {
+//
+// Neither body.Messages nor body.System is mutated: the same parsed body is translated again on
+// every retry or backend fallback, so merging in place would re-append the promoted blocks. The
+// returned prompt aliases body.System when there is nothing to promote, so treat it as read-only.
+func promoteAnthropicSystemMessagesToParam(body *anthropicschema.MessagesRequest) ([]anthropicschema.MessageParam, *anthropicschema.SystemPrompt) {
 	var promoted []anthropicschema.TextBlockParam
 	var filtered []anthropicschema.MessageParam
 	for _, msg := range body.Messages {
@@ -173,8 +178,7 @@ func promoteAnthropicSystemMessagesToParam(body *anthropicschema.MessagesRequest
 				promoted = append(promoted, anthropicschema.TextBlockParam{Type: "text", Text: msg.Content.Text})
 			}
 			for i := range msg.Content.Array {
-				// Copy the whole block rather than just its text so cache_control survives the
-				// promotion; a joined string cannot carry per-block cache control.
+				// Copy the whole block, not just its text, so cache_control survives.
 				if t := msg.Content.Array[i].Text; t != nil && t.Text != "" {
 					promoted = append(promoted, *t)
 				}
@@ -184,23 +188,22 @@ func promoteAnthropicSystemMessagesToParam(body *anthropicschema.MessagesRequest
 		}
 	}
 	if len(promoted) == 0 {
-		return filtered
+		return filtered, body.System
 	}
 
-	// Append to whatever system prompt the request already carried instead of replacing it: a
-	// request may legitimately set both the top-level system parameter and role:"system" messages.
-	switch {
-	case body.System == nil:
-		body.System = &anthropicschema.SystemPrompt{Texts: promoted}
-	case body.System.Text != "":
-		// convertSystemPrompt returns early on the string form, so fold it into the block list
-		// and clear it, otherwise the promoted blocks would be ignored.
-		body.System.Texts = append([]anthropicschema.TextBlockParam{{Type: "text", Text: body.System.Text}}, promoted...)
-		body.System.Text = ""
-	default:
-		body.System.Texts = append(body.System.Texts, promoted...)
+	// Keep any existing system prompt rather than replacing it: a request may legitimately set both.
+	// Top-level blocks come first, then the promoted messages in conversation order.
+	merged := &anthropicschema.SystemPrompt{}
+	if body.System != nil {
+		// The string form is folded into the block list because convertSystemPrompt returns early
+		// on it, which would otherwise drop the promoted blocks.
+		if body.System.Text != "" {
+			merged.Texts = append(merged.Texts, anthropicschema.TextBlockParam{Type: "text", Text: body.System.Text})
+		}
+		merged.Texts = append(merged.Texts, body.System.Texts...)
 	}
-	return filtered
+	merged.Texts = append(merged.Texts, promoted...)
+	return filtered, merged
 }
 
 // isOnlyToolResult returns true if the message is a user message whose content
