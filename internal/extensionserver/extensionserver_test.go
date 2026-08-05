@@ -202,20 +202,30 @@ func Test_maybeModifyCluster(t *testing.T) {
 		expected    *clusterv3.Cluster
 	}{
 		{
-			name: "nil LoadAssignment on a multi-backend rule sets no metadata",
-			// Cluster-level metadata can only name one backend, so for a rule with several there
-			// is no correct value. Naming the first would silently attribute every other backend's
-			// traffic, and therefore its translation, credentials and token costs, to it.
-			// See Test_maybeModifyCluster_NilLoadAssignmentSingleBackend for the case that does
-			// resolve: standalone mode (aigw run), where EDS-managed endpoints leave
-			// LoadAssignment nil and the rule has exactly one backend.
+			name: "nil LoadAssignment sets cluster metadata",
+			// In standalone mode (aigw run), EDS-managed endpoints have LoadAssignment=nil.
+			// The extension server must set cluster-level metadata so the upstream ext_proc
+			// filter can resolve the backend name via the cluster metadata fallback path.
+			// Cluster metadata holds one name for the whole cluster, so a rule with several
+			// backends attributes all of their traffic to the first and now says so in the log.
 			cluster: &clusterv3.Cluster{
 				Name: "httproute/ns/myroute/rule/0",
 			},
 			expectedLog: "msg=\"LoadAssignment is nil, setting cluster-level metadata\" logger=envoy-gateway-extension-server cluster_name=httproute/ns/myroute/rule/0\n" +
-				"msg=\"cluster has no LoadAssignment but the rule has several backends, backend name metadata will not be populated\" logger=envoy-gateway-extension-server cluster_name=httproute/ns/myroute/rule/0 backend_refs_len=3 route_name=myroute route_namespace=ns route_rule_index=0\n",
+				"msg=\"cluster has no LoadAssignment and the rule has several backends, their traffic will all be attributed to the first\" logger=envoy-gateway-extension-server cluster_name=httproute/ns/myroute/rule/0 backend_refs_len=3 backend_name=aaa route_name=myroute route_namespace=ns route_rule_index=0\n",
 			expected: &clusterv3.Cluster{
 				Name: "httproute/ns/myroute/rule/0",
+				Metadata: &corev3.Metadata{
+					FilterMetadata: map[string]*structpb.Struct{
+						internalapi.InternalEndpointMetadataNamespace: {
+							Fields: map[string]*structpb.Value{
+								internalapi.InternalMetadataBackendNameKey: structpb.NewStringValue(
+									internalapi.PerRouteRuleRefBackendName("ns", "aaa", "myroute", 0, 0),
+								),
+							},
+						},
+					},
+				},
 				TypedExtensionProtocolOptions: map[string]*anypb.Any{
 					"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": mustToAny(t, &httpv3.HttpProtocolOptions{
 						UpstreamProtocolOptions: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_{ExplicitHttpConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig{

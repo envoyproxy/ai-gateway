@@ -345,24 +345,30 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 			// set backend name on cluster-level metadata so the upstream ext_proc filter
 			// can resolve the backend via XDSClusterMetadataBackendNamePath fallback.
 			s.log.Info("LoadAssignment is nil, setting cluster-level metadata", "cluster_name", cluster.Name)
-			switch {
-			case clusterName.backendRefIndex != noBackendRefIndex:
-				backendRef := httpRouteRule.BackendRefs[clusterName.backendRefIndex]
-				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, clusterName.backendRefIndex)
-			case len(httpRouteRule.BackendRefs) == 1:
-				backendRef := httpRouteRule.BackendRefs[0]
-				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, 0)
-			case len(httpRouteRule.BackendRefs) > 1:
-				// Cluster-level metadata can only name one backend, so there is no correct answer
-				// here. Naming the first would silently attribute every other backend's traffic to
-				// it, so leave the metadata unset and let the upstream filter fail loudly instead.
-				s.log.Info("cluster has no LoadAssignment but the rule has several backends, "+
-					"backend name metadata will not be populated",
-					"cluster_name", cluster.Name,
-					"backend_refs_len", len(httpRouteRule.BackendRefs),
-					"route_name", aigwRoute.Name,
-					"route_namespace", aigwRoute.Namespace,
-					"route_rule_index", httpRouteRuleIndex)
+			if len(httpRouteRule.BackendRefs) > 0 {
+				backendRefIndex := 0
+				if clusterName.backendRefIndex != noBackendRefIndex {
+					backendRefIndex = clusterName.backendRefIndex
+				}
+				backendRef := httpRouteRule.BackendRefs[backendRefIndex]
+				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, backendRefIndex)
+				if clusterName.backendRefIndex == noBackendRefIndex && len(httpRouteRule.BackendRefs) > 1 {
+					// Cluster metadata holds one name for the whole cluster, so a rule whose
+					// backends share one cluster cannot be told apart here and every backend's
+					// traffic is attributed to the first. Endpoint metadata is what distinguishes
+					// them, and there is none to attach when the endpoints come from EDS. Naming
+					// the first backend is what this has always done; leaving the metadata unset
+					// instead would make every request through the cluster fail to resolve a
+					// backend at all.
+					s.log.Info("cluster has no LoadAssignment and the rule has several backends, "+
+						"their traffic will all be attributed to the first",
+						"cluster_name", cluster.Name,
+						"backend_refs_len", len(httpRouteRule.BackendRefs),
+						"backend_name", backendRef.Name,
+						"route_name", aigwRoute.Name,
+						"route_namespace", aigwRoute.Namespace,
+						"route_rule_index", httpRouteRuleIndex)
+				}
 			}
 		case clusterName.backendRefIndex != noBackendRefIndex:
 			backendRef := httpRouteRule.BackendRefs[clusterName.backendRefIndex]
