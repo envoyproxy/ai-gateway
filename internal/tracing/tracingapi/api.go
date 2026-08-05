@@ -16,6 +16,7 @@ import (
 	anthropicschema "github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai/tokenize"
 )
 
 type (
@@ -42,6 +43,10 @@ type (
 		RerankTracer() RerankTracer
 		// MessageTracer creates spans for Anthropic messages requests.
 		MessageTracer() MessageTracer
+		// TokenizeTracer creates spans for tokenize requests.
+		TokenizeTracer() TokenizeTracer
+		// ResponsesInputTokensTracer creates spans for OpenAI /v1/responses/input_tokens requests.
+		ResponsesInputTokensTracer() ResponsesInputTokensTracer
 		// MCPTracer creates spans for MCP requests.
 		MCPTracer() MCPTracer
 		// Shutdown shuts down the tracer, flushing any buffered spans.
@@ -86,6 +91,10 @@ type (
 	RerankTracer = RequestTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageTracer creates spans for Anthropic messages requests.
 	MessageTracer = RequestTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// TokenizeTracer creates spans for tokenize requests.
+	TokenizeTracer = RequestTracer[tokenize.RequestUnion, tokenize.Response, struct{}]
+	// ResponsesInputTokensTracer creates spans for OpenAI /v1/responses/input_tokens requests.
+	ResponsesInputTokensTracer = RequestTracer[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
 )
 
 type (
@@ -121,6 +130,10 @@ type (
 	RerankSpan = Span[cohere.RerankV2Response, struct{}]
 	// MessageSpan represents an Anthropic messages request span.
 	MessageSpan = Span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// TokenizeSpan represents a tokenize request span. The chunk type is unused and therefore set to struct{}.
+	TokenizeSpan = Span[tokenize.Response, struct{}]
+	// ResponsesInputTokensSpan represents an OpenAI /v1/responses/input_tokens request span.
+	ResponsesInputTokensSpan = Span[openai.ResponsesInputTokensResponse, struct{}]
 )
 
 type (
@@ -170,6 +183,10 @@ type (
 	RerankRecorder = SpanRecorder[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// MessageRecorder records attributes to a span according to a semantic convention.
 	MessageRecorder = SpanRecorder[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// TokenizeRecorder records attributes to a span according to a semantic convention.
+	TokenizeRecorder = SpanRecorder[tokenize.RequestUnion, tokenize.Response, struct{}]
+	// ResponsesInputTokensRecorder records attributes to a span according to a semantic convention.
+	ResponsesInputTokensRecorder = SpanRecorder[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
 )
 
 // NoopChunkRecorder provides a no-op RecordResponseChunks implementation for recorders that don't emit streaming chunks.
@@ -234,6 +251,16 @@ func (NoopTracing) MessageTracer() MessageTracer {
 	return NoopMessageTracer{}
 }
 
+// TokenizeTracer implements Tracing.TokenizeTracer.
+func (NoopTracing) TokenizeTracer() TokenizeTracer {
+	return NoopTokenizeTracer{}
+}
+
+// ResponsesInputTokensTracer implements Tracing.ResponsesInputTokensTracer.
+func (NoopTracing) ResponsesInputTokensTracer() ResponsesInputTokensTracer {
+	return NoopResponsesInputTokensTracer{}
+}
+
 // Shutdown implements Tracing.Shutdown.
 func (NoopTracing) Shutdown(context.Context) error {
 	return nil
@@ -262,6 +289,10 @@ type (
 	NoopRerankTracer = NoopTracer[cohere.RerankV2Request, cohere.RerankV2Response, struct{}]
 	// NoopMessageTracer implements MessageTracer.
 	NoopMessageTracer = NoopTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
+	// NoopTokenizeTracer implements TokenizeTracer.
+	NoopTokenizeTracer = NoopTracer[tokenize.RequestUnion, tokenize.Response, struct{}]
+	// NoopResponsesInputTokensTracer implements ResponsesInputTokensTracer.
+	NoopResponsesInputTokensTracer = NoopTracer[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
 )
 
 // StartSpanAndInjectHeaders implements RequestTracer.StartSpanAndInjectHeaders.

@@ -13,21 +13,49 @@ import (
 )
 
 // NewHandler returns a new implementation of [filterapi.BackendAuthHandler] based on the configuration.
+// When config.CredentialOverride is set, the returned handler sources the upstream credential
+// per-request and falls back to the static credential (or returns 401) as configured.
+// AWS is not supported with CredentialOverride (SigV4 requires three inputs, not one).
 func NewHandler(ctx context.Context, config *filterapi.BackendAuth) (filterapi.BackendAuthHandler, error) {
+	var (
+		inner   filterapi.BackendAuthHandler
+		applyFn applyCredentialFn
+		err     error
+	)
+
 	switch {
 	case config.AWSAuth != nil:
+		// AWS uses SigV4 signing; CredentialOverride is not supported.
 		return newAWSHandler(ctx, config.AWSAuth)
 	case config.APIKey != nil:
-		return newAPIKeyHandler(config.APIKey)
+		inner, err = newAPIKeyHandler(config.APIKey)
+		applyFn = applyBearerCredential
 	case config.AzureAPIKey != nil:
-		return newAzureAPIKeyHandler(config.AzureAPIKey)
+		inner, err = newAzureAPIKeyHandler(config.AzureAPIKey)
+		applyFn = applyAzureAPIKeyCredential
 	case config.AzureAuth != nil:
-		return newAzureHandler(config.AzureAuth)
+		inner, err = newAzureHandler(config.AzureAuth)
+		applyFn = applyBearerCredential
 	case config.GCPAuth != nil:
-		return newGCPHandler(ctx, config.GCPAuth)
+		inner, err = newGCPHandler(ctx, config.GCPAuth)
+		applyFn = makeGCPApplyFn(config.GCPAuth.Region, config.GCPAuth.ProjectName)
 	case config.AnthropicAPIKey != nil:
-		return newAnthropicAPIKeyHandler(config.AnthropicAPIKey)
+		inner, err = newAnthropicAPIKeyHandler(config.AnthropicAPIKey)
+		applyFn = applyAnthropicCredential
 	default:
 		return nil, errors.New("no backend auth handler found")
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	if config.CredentialOverride != nil {
+		return &credentialOverrideHandler{
+			inner:   inner,
+			config:  config.CredentialOverride,
+			applyFn: applyFn,
+		}, nil
+	}
+	return inner, nil
 }

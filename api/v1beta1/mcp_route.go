@@ -71,6 +71,17 @@ type MCPRouteSpec struct {
 	// +kubebuilder:validation:MaxItems=16
 	Headers []gwapiv1.HTTPHeaderMatch `json:"headers,omitempty"`
 
+	// Hostnames is a list of hostnames matched against the HTTP Host header to select this MCPRoute.
+	// This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec. When specified, the
+	// generated HTTPRoute includes these hostnames, so the MCP route lands in the per-host virtual host
+	// instead of the wildcard vhost (the same scoping AIGatewayRoute.Hostnames provides).
+	// See https://gateway-api.sigs.k8s.io/reference/api-types/httproute/#hostnames
+	// for the details of the Hostnames field in the Gateway API.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	Hostnames []gwapiv1.Hostname `json:"hostnames,omitempty"`
+
 	// BackendRefs is a list of backend references to the MCP servers.
 	// These MCP servers will be aggregated and exposed as a single MCP endpoint to the clients.
 	// From the client's perspective, they only need to configure a single MCP server URL, e.g. "https://api.example.com/mcp",

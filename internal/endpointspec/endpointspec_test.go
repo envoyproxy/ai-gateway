@@ -15,7 +15,9 @@ import (
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/redaction"
 )
@@ -382,6 +384,120 @@ func TestResponsesEndpointSpec_GetTranslator(t *testing.T) {
 
 	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
 	require.NoError(t, err)
+}
+
+func TestTokenizeEndpointSpec_ParseBody(t *testing.T) {
+	spec := TokenizeEndpointSpec{}
+
+	t.Run("invalid json", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte("not-json"), false)
+		require.ErrorIs(t, err, internalapi.ErrMalformedRequest)
+		require.ErrorContains(t, err, "failed to parse JSON for /tokenize")
+	})
+
+	t.Run("chat request", func(t *testing.T) {
+		chatReq := tokenize.ChatRequest{
+			Model: "gpt-4o",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfUser: &openai.ChatCompletionUserMessageParam{
+					Role:    openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+				}},
+			},
+		}
+		body, err := json.Marshal(chatReq)
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o", model)
+		require.False(t, stream)
+		require.NotNil(t, parsed.ChatRequest)
+		require.Nil(t, parsed.CompletionRequest)
+		require.Nil(t, mutated)
+	})
+
+	t.Run("completion request", func(t *testing.T) {
+		compReq := tokenize.CompletionRequest{
+			Model:  "gpt-4o",
+			Prompt: "Hello world",
+		}
+		body, err := json.Marshal(compReq)
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o", model)
+		require.False(t, stream)
+		require.NotNil(t, parsed.CompletionRequest)
+		require.Nil(t, parsed.ChatRequest)
+		require.Nil(t, mutated)
+	})
+
+	t.Run("chat request with conflicting flags", func(t *testing.T) {
+		chatReq := tokenize.ChatRequest{
+			Model: "gpt-4o",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfUser: &openai.ChatCompletionUserMessageParam{
+					Role:    openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+				}},
+			},
+			AddGenerationPrompt:  ptr.To(true),
+			ContinueFinalMessage: true,
+		}
+		body, err := json.Marshal(chatReq)
+		require.NoError(t, err)
+
+		_, _, _, _, err = spec.ParseBody(body, false)
+		require.ErrorIs(t, err, internalapi.ErrMalformedRequest)
+		require.ErrorContains(t, err, "continue_final_message")
+	})
+
+	t.Run("empty object rejected - model required", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte("{}"), false)
+		require.ErrorIs(t, err, internalapi.ErrMalformedRequest)
+		require.ErrorContains(t, err, "model is required")
+	})
+
+	t.Run("never streaming", func(t *testing.T) {
+		compReq := tokenize.CompletionRequest{
+			Model:  "gpt-4o",
+			Prompt: "Hello",
+		}
+		body, err := json.Marshal(compReq)
+		require.NoError(t, err)
+
+		_, _, stream, _, err := spec.ParseBody(body, true)
+		require.NoError(t, err)
+		require.False(t, stream)
+	})
+}
+
+func TestTokenizeEndpointSpec_GetTranslator(t *testing.T) {
+	spec := TokenizeEndpointSpec{}
+	supported := []filterapi.VersionedAPISchema{
+		{Name: filterapi.APISchemaOpenAI},
+		{Name: filterapi.APISchemaGCPVertexAI},
+		{Name: filterapi.APISchemaGCPAnthropic},
+		{Name: filterapi.APISchemaAWSAnthropic},
+		{Name: filterapi.APISchemaAWSBedrock},
+	}
+
+	for _, schema := range supported {
+		s := schema
+		t.Run("supported_"+string(s.Name), func(t *testing.T) {
+			t.Parallel()
+			translator, err := spec.GetTranslator(s, "override")
+			require.NoError(t, err)
+			require.NotNil(t, translator)
+		})
+	}
+
+	t.Run("unsupported", func(t *testing.T) {
+		_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: "Unknown"}, "override")
+		require.ErrorContains(t, err, "unsupported API schema for tokenize endpoint")
+	})
 }
 
 func TestChatCompletionsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
@@ -1367,4 +1483,47 @@ func TestParseMultipartBody_RejectsJSONOnlyEndpoints(t *testing.T) {
 
 	_, _, _, _, err = SpeechEndpointSpec{}.ParseMultipartBody(nil, "", false)
 	require.ErrorContains(t, err, "multipart body not supported")
+
+	_, _, _, _, err = ResponsesInputTokensEndpointSpec{}.ParseMultipartBody(nil, "", false)
+	require.ErrorContains(t, err, "multipart body not supported")
+}
+
+func TestResponsesInputTokensEndpointSpec_ParseBody(t *testing.T) {
+	spec := ResponsesInputTokensEndpointSpec{}
+
+	t.Run("invalid json", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
+		require.ErrorContains(t, err, "malformed request")
+	})
+
+	t.Run("empty model allowed", func(t *testing.T) {
+		model, parsed, stream, _, err := spec.ParseBody([]byte(`{"input":"hello"}`), false)
+		require.NoError(t, err)
+		require.Empty(t, model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
+	})
+
+	t.Run("success", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-4.1","input":"Count these tokens please"}`)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4.1", model)
+		require.False(t, stream)
+		require.NotNil(t, parsed)
+		require.Nil(t, mutated)
+	})
+}
+
+func TestResponsesInputTokensEndpointSpec_GetTranslator(t *testing.T) {
+	spec := ResponsesInputTokensEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}, "override")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}, "override")
+	require.ErrorContains(t, err, "unsupported API schema")
 }

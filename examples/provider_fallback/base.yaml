@@ -42,7 +42,7 @@ spec:
         - headers:
             - type: Exact
               name: x-ai-eg-model
-              value: us.meta.llama3-2-1b-instruct-v1:0
+              value: us.amazon.nova-micro-v1:0
       backendRefs:
         - name: provider-fallback-always-failing-upstream # This is the primary backend and trying to speak TLS, which always fails.
           priority: 0

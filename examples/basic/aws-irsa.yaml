@@ -105,7 +105,7 @@ spec:
         - headers:
             - type: Exact
               name: x-ai-eg-model
-              value: us.meta.llama3-2-1b-instruct-v1:0
+              value: us.amazon.nova-micro-v1:0
       backendRefs:
         - name: envoy-ai-gateway-basic-aws
 ---
