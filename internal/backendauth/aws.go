@@ -11,10 +11,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -88,11 +86,12 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 	method := requestHeaders[":method"]
 	path := requestHeaders[":path"]
 	host := a.signingHost(requestHeaders)
-	// Derive the SigV4 region from the resolved Bedrock host so the credential scope self-corrects to
-	// the endpoint's region (e.g. a us-east-1 VPCE under a us-west-2 configured region). Non-Bedrock
-	// hosts keep the configured region.
+	// Derive the SigV4 signing region from the resolved Bedrock host so a region/endpoint mismatch
+	// (e.g. a us-east-1 VPCE under a us-west-2 configured region) self-corrects; non-Bedrock hosts keep
+	// the configured region. This self-corrects only the signing scope — credential retrieval still uses
+	// the region the handler was built with, which is fine for Bedrock (SigV4 credentials are global).
 	region := a.region
-	if r := regionFromBedrockHost(host); r != "" {
+	if r := internalapi.AWSBedrockRegionFromHost(host); r != "" {
 		region = r
 	}
 
@@ -146,35 +145,8 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 // time those carry the downstream gateway authority, not the upstream endpoint, so signing over them
 // produces a silent 403.
 func (a *awsHandler) signingHost(requestHeaders map[string]string) string {
-	host := requestHeaders[internalapi.AWSSigningHostHeader]
-	if host == "" {
-		host = fmt.Sprintf("bedrock-runtime.%s.amazonaws.com", a.region)
-	}
-	return normalizeAWSSigningHost(host)
-}
-
-// bedrockHostRE extracts the region from a Bedrock runtime host, including the PrivateLink (VPCE) form.
-// Both bedrock-runtime.us-east-1.amazonaws.com and vpce-<id>.bedrock-runtime.us-east-1.vpce.amazonaws.com
-// yield "us-east-1". The anchors keep it from matching a spoofed suffix like
-// bedrock-runtime.us-east-1.amazonaws.com.evil.com.
-var bedrockHostRE = regexp.MustCompile(`(?:^|\.)bedrock-runtime\.([a-z0-9-]+)\.(?:vpce\.)?amazonaws\.com$`)
-
-// regionFromBedrockHost returns the AWS region encoded in a Bedrock signing host, or "" for a
-// non-Bedrock host (in which case the caller keeps the configured region).
-func regionFromBedrockHost(hostname string) string {
-	if m := bedrockHostRE.FindStringSubmatch(hostname); m != nil {
-		return m[1]
-	}
-	return ""
-}
-
-func normalizeAWSSigningHost(host string) string {
-	hostname, port, err := net.SplitHostPort(host)
-	if err != nil || port != "443" {
+	if host := requestHeaders[internalapi.AWSSigningHostHeader]; host != "" {
 		return host
 	}
-	if strings.Contains(hostname, ":") && !strings.HasPrefix(hostname, "[") {
-		return "[" + hostname + "]"
-	}
-	return hostname
+	return fmt.Sprintf("bedrock-runtime.%s.amazonaws.com", a.region)
 }

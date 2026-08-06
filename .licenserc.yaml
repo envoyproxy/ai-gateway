@@ -25,7 +25,6 @@ header:
     - "**/*.md"
     - "**/*.json"
     - "**/*.txt"
-    - "**/*.log"
     - "**/*.hcl"
     - "**/.gitignore"
     - "**/.helmignore"

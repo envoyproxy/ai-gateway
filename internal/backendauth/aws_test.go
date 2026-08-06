@@ -120,7 +120,7 @@ func TestAWSHandler_SigningHost(t *testing.T) {
 	}{
 		{
 			name:    "signing host header is used",
-			headers: map[string]string{internalapi.AWSSigningHostHeader: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com:443"},
+			headers: map[string]string{internalapi.AWSSigningHostHeader: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"},
 			want:    "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
 		},
 		{
@@ -136,42 +136,9 @@ func TestAWSHandler_SigningHost(t *testing.T) {
 			headers: map[string]string{},
 			want:    "bedrock-runtime.us-east-1.amazonaws.com",
 		},
-		{
-			name:    "non default port preserved",
-			headers: map[string]string{internalapi.AWSSigningHostHeader: "custom-bedrock.example.com:8443"},
-			want:    "custom-bedrock.example.com:8443",
-		},
-		{
-			name:    "ipv6 default port is rebracketed",
-			headers: map[string]string{internalapi.AWSSigningHostHeader: "[2001:db8::1]:443"},
-			want:    "[2001:db8::1]",
-		},
-		{
-			name:    "ipv6 non default port preserved",
-			headers: map[string]string{internalapi.AWSSigningHostHeader: "[2001:db8::1]:8443"},
-			want:    "[2001:db8::1]:8443",
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, handler.signingHost(tc.headers))
-		})
-	}
-}
-
-func TestRegionFromBedrockHost(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		host string
-		want string
-	}{
-		{"public bedrock host", "bedrock-runtime.us-east-1.amazonaws.com", "us-east-1"},
-		{"vpce host", "vpce-123.bedrock-runtime.us-west-2.vpce.amazonaws.com", "us-west-2"},
-		{"non-bedrock host", "gateway.example.com", ""},
-		{"spoofed suffix is rejected", "bedrock-runtime.us-east-1.amazonaws.com.evil.com", ""},
-		{"empty", "", ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, regionFromBedrockHost(tc.host))
 		})
 	}
 }
@@ -233,10 +200,10 @@ func TestAWSHandler_Do_SignsOverResolvedHost(t *testing.T) {
 		require.NotEqual(t, defaultAuth, vpceAuth)
 	})
 
-	t.Run("region self-corrects from the resolved host", func(t *testing.T) {
+	t.Run("signing region self-corrects from the resolved host", func(t *testing.T) {
+		// Credential scope uses us-west-2 (derived from the host), not the configured us-east-1.
 		const vpce = "vpce-123.bedrock-runtime.us-west-2.vpce.amazonaws.com"
 		auth, amzDate := sign(t, map[string]string{internalapi.AWSSigningHostHeader: vpce})
-		// Credential scope uses us-west-2 (derived from the host), not the configured us-east-1.
 		require.Contains(t, auth, "/us-west-2/bedrock/aws4_request")
 		require.Equal(t, recompute(t, vpce, "us-west-2", amzDate), auth)
 	})

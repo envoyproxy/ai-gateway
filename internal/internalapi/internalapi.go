@@ -10,6 +10,7 @@ package internalapi
 import (
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -98,6 +99,23 @@ const (
 // route rule in a specific AIGatewayRoute.
 func PerRouteRuleRefBackendName(namespace, name, routeName string, routeRuleIndex, refIndex int) string {
 	return fmt.Sprintf("%s/%s/route/%s/rule/%d/ref/%d", namespace, name, routeName, routeRuleIndex, refIndex)
+}
+
+// awsBedrockHostRE matches an AWS Bedrock runtime host, including the PrivateLink (VPCE) form, and
+// captures the region — e.g. bedrock-runtime.us-east-1.amazonaws.com and
+// vpce-<id>.bedrock-runtime.us-east-1.vpce.amazonaws.com both yield "us-east-1". The anchors reject a
+// spoofed suffix such as bedrock-runtime.us-east-1.amazonaws.com.evil.com.
+var awsBedrockHostRE = regexp.MustCompile(`(?:^|\.)bedrock-runtime\.([a-z0-9-]+)\.(?:vpce\.)?amazonaws\.com$`)
+
+// AWSBedrockRegionFromHost returns the AWS region encoded in a Bedrock signing host (public or VPCE
+// form), or "" if host is not an AWS Bedrock host. It serves two purposes: deriving the SigV4 signing
+// region from the resolved host, and — via a non-empty result — signaling "this endpoint is AWS
+// Bedrock" so the signing host is stamped only on Bedrock endpoints, not on every backend.
+func AWSBedrockRegionFromHost(host string) string {
+	if m := awsBedrockHostRE.FindStringSubmatch(host); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 const (

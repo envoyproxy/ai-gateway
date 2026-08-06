@@ -2577,6 +2577,46 @@ func TestEndpointAWSSigningHost(t *testing.T) {
 	}
 }
 
+func TestStampAWSSigningMetadata(t *testing.T) {
+	socketEndpoint := func(addr string) *endpointv3.LbEndpoint {
+		return &endpointv3.LbEndpoint{HostIdentifier: &endpointv3.LbEndpoint_Endpoint{Endpoint: &endpointv3.Endpoint{
+			Address: &corev3.Address{Address: &corev3.Address_SocketAddress{
+				SocketAddress: &corev3.SocketAddress{Address: addr},
+			}},
+		}}}
+	}
+	signingHost := func(ep *endpointv3.LbEndpoint) (string, bool) {
+		m := ep.GetMetadata().GetFilterMetadata()[internalapi.InternalEndpointMetadataNamespace]
+		if m == nil {
+			return "", false
+		}
+		v, ok := m.Fields[internalapi.InternalMetadataAWSSigningHostKey]
+		return v.GetStringValue(), ok
+	}
+	for _, tc := range []struct {
+		name string
+		addr string
+		want string // "" means not stamped
+	}{
+		{"public bedrock host is stamped", "bedrock-runtime.us-east-1.amazonaws.com", "bedrock-runtime.us-east-1.amazonaws.com"},
+		{"vpce host is stamped", "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com", "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"},
+		{"non-aws host is not stamped", "api.openai.com", ""},
+		{"ip host is not stamped", "10.0.0.1", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ep := socketEndpoint(tc.addr)
+			stampAWSSigningMetadata(ep)
+			got, ok := signingHost(ep)
+			if tc.want == "" {
+				require.False(t, ok, "expected no aws_signing_host stamp")
+				return
+			}
+			require.True(t, ok)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
 func TestSetEndpointMetadataAWSSigningHost(t *testing.T) {
 	t.Run("initializes metadata from nil", func(t *testing.T) {
 		endpoint := &endpointv3.LbEndpoint{}

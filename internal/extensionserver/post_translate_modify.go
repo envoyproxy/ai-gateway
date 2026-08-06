@@ -973,9 +973,10 @@ func endpointAWSSigningHost(lbEndpoint *endpointv3.LbEndpoint) string {
 
 // stampAWSSigningMetadata stamps the SigV4 signing host on the endpoint's metadata at config-translation
 // time, so the data plane signs over the real upstream endpoint instead of re-deriving it at request
-// time. The signing region is derived from this host later, in the AWS backend auth handler.
+// time. It only stamps AWS Bedrock endpoints (public or VPCE hosts); other backends (e.g. api.openai.com)
+// do not need a signing host and must not carry a misleading aws_signing_host on every endpoint.
 func stampAWSSigningMetadata(endpoint *endpointv3.LbEndpoint) {
-	if host := endpointAWSSigningHost(endpoint); host != "" {
+	if host := endpointAWSSigningHost(endpoint); internalapi.AWSBedrockRegionFromHost(host) != "" {
 		setEndpointMetadataAWSSigningHost(endpoint, host)
 	}
 }
