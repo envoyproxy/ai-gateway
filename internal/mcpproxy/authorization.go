@@ -34,13 +34,22 @@ type compiledAuthorizationRule struct {
 	Source *filterapi.MCPAuthorizationSource
 	Target []filterapi.ToolCall
 	Action filterapi.AuthorizationAction
-	// CEL expression compiled for request-level evaluation.
+	// CEL expression compiled for request-level evaluation (with tool constraints).
 	celExpression string
 	celProgram    cel.Program
+	// Backend-only CEL program: same expression as celProgram, but compiled with
+	// cel.OptPartialEval so authorizeBackendOnly can mark request.mcp.tool as an
+	// unknown attribute during the initialize-phase pre-check. This lets CEL
+	// correctly decide any part of the expression that doesn't depend on the tool
+	// (e.g. a backend or header check) while reporting Unknown only for the part
+	// that genuinely does.
+	// Pre-compiled to avoid repeated compilation during request handling.
+	backendOnlyProgram cel.Program
 }
 
 // same reports whether two compiledAuthorization values are semantically equivalent.
-// celProgram is excluded because it is derived from celExpression and is not comparable.
+// celProgram and backendOnlyProgram are excluded because they are derived from
+// celExpression and are not comparable.
 func (a *compiledAuthorization) same(other *compiledAuthorization) bool {
 	if a == nil || other == nil {
 		return a == other
@@ -67,6 +76,11 @@ type authorizationRequest struct {
 	Tool       string
 	Params     mcp.Params
 }
+
+// authorizationCELCostLimit is the per-evaluation cost budget for compiled
+// authorization CEL expressions. It applies to both request-time and
+// backend-only evaluations.
+const authorizationCELCostLimit = 10000
 
 // compileAuthorization compiles the MCPRouteAuthorization into a compiledAuthorization for efficient CEL evaluation.
 func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAuthorization, error) {
@@ -101,17 +115,49 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 			if issues != nil && issues.Err() != nil {
 				return nil, fmt.Errorf("failed to compile rule CEL: %w", issues.Err())
 			}
-			program, err := env.Program(ast, cel.CostLimit(10000), cel.EvalOptions(cel.OptOptimize))
+			program, err := env.Program(ast, cel.CostLimit(authorizationCELCostLimit), cel.EvalOptions(cel.OptOptimize))
 			if err != nil {
 				return nil, fmt.Errorf("failed to build rule CEL program: %w", err)
 			}
+			// Requires cel.OptPartialEval, which authorizeBackendOnly relies on to mark
+			// request.mcp.tool as unknown during the initialize-phase pre-check.
+			// See the field doc on backendOnlyProgram.
+			backendOnlyProgram, err := env.Program(ast, cel.CostLimit(authorizationCELCostLimit), cel.EvalOptions(cel.OptOptimize, cel.OptPartialEval))
+			if err != nil {
+				return nil, fmt.Errorf("failed to build backend-only CEL program: %w", err)
+			}
 			cr.celExpression = expr
 			cr.celProgram = program
+			cr.backendOnlyProgram = backendOnlyProgram
 		}
 		compiled.Rules = append(compiled.Rules, cr)
 	}
 
 	return compiled, nil
+}
+
+// extractClaimsAndScopes parses JWT from headers and extracts claims and scopes.
+// Used by both authorizeRequest and authorizeBackendOnly to avoid duplication.
+func (m *mcpRequestContext) extractClaimsAndScopes(headers http.Header, logContext string) (jwt.MapClaims, sets.Set[string]) {
+	scopeSet := sets.New[string]()
+	claims := jwt.MapClaims{}
+
+	token, err := bearerToken(headers.Get("Authorization"))
+	if err != nil {
+		m.l.Info("missing or invalid bearer token", slog.String("context", logContext), slog.String("error", err.Error()))
+	} else {
+		// JWT verification is performed by Envoy before reaching here. So we only need to parse the token without verification.
+		if _, _, err := jwt.NewParser().ParseUnverified(token, claims); err != nil {
+			m.l.Info("failed to parse JWT token", slog.String("context", logContext), slog.String("error", err.Error()))
+		} else {
+			scopeSet = sets.New(extractScopes(claims)...)
+			// Scopes are handled separately, remove them from the claims map to avoid interference.
+			// "scp" is also removed as it is a common alias for "scope" (e.g. Azure AD, Okta).
+			delete(claims, "scope")
+			delete(claims, "scp")
+		}
+	}
+	return claims, scopeSet
 }
 
 // authorizeRequest authorizes the request based on the given MCPRouteAuthorization configuration.
@@ -127,26 +173,7 @@ func (m *mcpRequestContext) authorizeRequest(authorization *compiledAuthorizatio
 		return defaultAction, nil
 	}
 
-	scopeSet := sets.New[string]()
-	claims := jwt.MapClaims{}
-
-	token, err := bearerToken(req.Headers.Get("Authorization"))
-	// This is just a sanity check. The actual JWT verification is performed by Envoy before reaching here, and the token
-	// should always be present and valid.
-	if err != nil {
-		m.l.Info("missing or invalid bearer token", slog.String("error", err.Error()))
-	} else {
-		// JWT verification is performed by Envoy before reaching here. So we only need to parse the token without verification.
-		if _, _, err := jwt.NewParser().ParseUnverified(token, claims); err != nil {
-			m.l.Info("failed to parse JWT token", slog.String("error", err.Error()))
-		} else {
-			scopeSet = sets.New(extractScopes(claims)...)
-			// Scopes are handled separately, remove them from the claims map to avoid interference.
-			// "scp" is also removed as it is a common alias for "scope" (e.g. Azure AD, Okta).
-			delete(claims, "scope")
-			delete(claims, "scp")
-		}
-	}
+	claims, scopeSet := m.extractClaimsAndScopes(req.Headers, "authorizeRequest")
 
 	var requiredScopesForChallenge []string
 	var celActivation map[string]any
@@ -418,6 +445,191 @@ func claimHasAllowedString(value any, allowed []string) bool {
 		return slices.Contains(allowed, v)
 	}
 	return false
+}
+
+// backendMatches checks if the backend is in the target tools list (ignoring tool constraints).
+// Used for backend-only authorization pre-checks during the initialize phase.
+func (m *mcpRequestContext) backendMatches(backend string, tools []filterapi.ToolCall) bool {
+	// Empty tools means all backends match.
+	if len(tools) == 0 {
+		return true
+	}
+
+	for _, t := range tools {
+		if t.Backend == backend || t.Backend == "*" {
+			return true
+		}
+	}
+	// If no matching backend entry, fail.
+	return false
+}
+
+// toolUnknownAttr marks request.mcp.tool as an unknown CEL attribute for the
+// initialize-phase backend-only pre-check (see evalBackendOnlyCEL). This lets
+// cel-go's partial evaluation correctly decide any part of a rule's expression
+// that doesn't depend on the tool (e.g. a backend or header check), while
+// reporting the tool-dependent part as undecidable rather than resolving it to
+// a concrete value.
+var toolUnknownAttr = cel.AttributePattern("request").QualString("mcp").QualString("tool")
+
+// evalBackendOnlyCEL evaluates a rule's backend-only CEL program against a partial
+// activation with request.mcp.tool marked unknown via toolUnknownAttr. ambiguous is
+// true whenever the result can't be resolved to a concrete boolean without knowing
+// the tool - this includes cel-go reporting Unknown, but also a program error or a
+// non-boolean result, which are treated the same as ambiguous (never as a definite
+// non-match) so that any CEL construct fails safe. See authorizeBackendOnly for how
+// Allow vs Deny rules use the ambiguous flag to stay on the permissive side of
+// "never skip a backend that should have been attempted."
+func (m *mcpRequestContext) evalBackendOnlyCEL(rule *compiledAuthorizationRule, partial cel.PartialActivation) (match, ambiguous bool) {
+	result, _, err := rule.backendOnlyProgram.Eval(partial)
+	if err != nil {
+		m.l.Debug("backend-only CEL evaluation error, treating as ambiguous", slog.String("error", err.Error()), slog.String("expression", rule.celExpression))
+		return false, true
+	}
+	if types.IsUnknown(result) {
+		return false, true
+	}
+
+	b, ok := result.Value().(bool)
+	if !ok {
+		m.l.Debug("backend-only CEL did not return a boolean, treating as ambiguous", slog.String("expression", rule.celExpression))
+		return false, true
+	}
+	return b, false
+}
+
+// authorizeBackendOnly evaluates whether the client has potential access to a backend,
+// ignoring specific tool constraints. Evaluates the same authorization rules as authorizeRequest,
+// but with request.mcp.tool marked unknown for CEL evaluation (see evalBackendOnlyCEL), so CEL
+// rules that reference the backend, headers, or JWT claims are still decided correctly while
+// tool-specific constraints come back ambiguous.
+// Used during initialize phase to avoid unnecessary connections to denied backends.
+func (m *mcpRequestContext) authorizeBackendOnly(authorization *compiledAuthorization, backend string, headers http.Header, claims jwt.MapClaims, scopeSet sets.Set[string]) bool {
+	if authorization == nil {
+		return true
+	}
+
+	defaultAction := authorization.DefaultAction == filterapi.AuthorizationActionAllow
+
+	// If no rules are defined, return the default action.
+	if len(authorization.Rules) == 0 {
+		return defaultAction
+	}
+
+	// celActivation and partialActivation are built once per backend (not per rule)
+	// the first time a CEL-bearing rule needs them, and reused across the remaining
+	// rules for this backend.
+	var celActivation map[string]any
+	var partialActivation cel.PartialActivation
+
+	for i := range authorization.Rules {
+		rule := &authorization.Rules[i]
+		action := rule.Action == filterapi.AuthorizationActionAllow
+
+		// Evaluate backend-only CEL program if present. Build full activation structure
+		// (same as authorizeRequest) but with request.mcp.tool marked unknown for CEL
+		// (see evalBackendOnlyCEL). This ensures all other CEL field references work
+		// (request.mcp.backend, auth.jwt.claims, request.headers, etc.) while tool-specific
+		// conditions come back ambiguous.
+		if rule.backendOnlyProgram != nil {
+			if celActivation == nil {
+				// Create authorizationRequest with backend and available headers.
+				// Other fields (HTTPMethod, Host, HTTPPath, MCPMethod, Params, Tool) are
+				// unavailable during initialize phase and left unset; evalBackendOnlyCEL
+				// marks Tool unknown via toolUnknownAttr, which intercepts attribute
+				// resolution before it would reach this map.
+				req := &authorizationRequest{
+					Headers: headers,
+					Backend: backend,
+				}
+
+				// Build full activation structure using existing function.
+				celActivation = buildCELActivation(req, claims, scopeSet)
+
+				var err error
+				partialActivation, err = cel.PartialVars(celActivation, toolUnknownAttr)
+				if err != nil {
+					m.l.Debug("failed to build partial CEL activation for backend-only pre-check", slog.String("error", err.Error()), slog.String("backend", backend))
+				}
+			}
+
+			// If the partial activation couldn't be built, there's nothing to evaluate
+			// against - treat it the same as evalBackendOnlyCEL treats an evaluation
+			// error: ambiguous, never a definite non-match.
+			var match, ambiguous bool
+			if partialActivation == nil {
+				ambiguous = true
+			} else {
+				match, ambiguous = m.evalBackendOnlyCEL(rule, partialActivation)
+			}
+			if ambiguous {
+				// The expression's truth value depends on request.mcp.tool, which isn't
+				// known yet at this phase. A Deny rule can't be proven to fire for
+				// whichever tool is eventually requested, so it must not block the
+				// backend here - defer to the real per-tool check in authorizeRequest.
+				// An Allow rule can't be ruled out either: don't treat the CEL gate as
+				// failed, fall through and let Target/Source decide instead.
+				if !action {
+					continue
+				}
+			} else if !match {
+				continue
+			}
+		}
+
+		// Check if backend is in the target list (without tool constraints).
+		if rule.Target != nil {
+			if !m.backendMatches(backend, rule.Target) {
+				continue
+			}
+
+			// A Deny rule with a specific (tool-scoped) target and no CEL can't be
+			// evaluated at the backend level at all: backendMatches ignores the Tool
+			// field entirely (it can't know which tool will be called yet), so a rule
+			// meant to deny ONE tool on this backend would otherwise be indistinguishable
+			// here from a rule meant to deny the WHOLE backend, and this pre-check would
+			// incorrectly reject every other tool on the backend along with it.
+			//
+			// Skip it instead: defer to later rules / DefaultAction, and let the real
+			// per-call authorizeRequest (which does check Tool, via toolMatches) make the
+			// actual, correctly-scoped decision once a specific tool is known. This can
+			// only ever make the pre-check MORE permissive for this rule (attempt a
+			// session that authorizeRequest may still deny per-tool) — it can never make
+			// it reject a backend that would otherwise have been let through, since
+			// returning here was already the most restrictive possible outcome.
+			//
+			// CEL-bearing rules are NOT skipped by this check: a CEL condition that doesn't
+			// reference request.mcp.tool is fully decidable here regardless of the unknown
+			// Tool attribute, and a CEL condition that DOES reference request.mcp.tool comes
+			// back Unknown via partial evaluation - which the ambiguous-handling above this
+			// Target check already resolved: an ambiguous Deny rule was skipped before ever
+			// reaching here, and an ambiguous Allow rule already fell through knowing it
+			// can't be ruled out. Either way, this check has nothing left to do for
+			// CEL-bearing rules; it only matters for the no-CEL, tool-scoped-target case
+			// described above.
+			if !action && rule.backendOnlyProgram == nil {
+				continue
+			}
+		}
+
+		// If no source is specified, the rule matches.
+		if rule.Source == nil {
+			return action
+		}
+
+		// Check source if specified.
+		if !claimsSatisfied(claims, rule.Source.JWT.Claims) {
+			continue
+		}
+
+		// Scopes check.
+		requiredScopes := rule.Source.JWT.Scopes
+		if scopesSatisfied(scopeSet, requiredScopes) {
+			return action
+		}
+	}
+
+	return defaultAction
 }
 
 // buildInsufficientScopeHeader builds the WWW-Authenticate header value for insufficient scope errors.
