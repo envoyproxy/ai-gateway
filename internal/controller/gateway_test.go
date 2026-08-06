@@ -23,11 +23,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	fake2 "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
@@ -1387,6 +1390,99 @@ func TestGatewayController_GetSecretData_ErrorCases(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "secrets \"missing-secret\" not found")
 	require.Empty(t, result)
+}
+
+// TestGatewayController_reconcileFilterConfigSecret_BailsOnContextCanceled pins that a cancelled
+// context aborts the reconcile instead of publishing a filter config in which the backend has no
+// credentials. Skipping the backend, as an unresolvable policy does, would look identical on the wire
+// but silently strip auth from live traffic until something triggers another reconcile.
+func TestGatewayController_reconcileFilterConfigSecret_BailsOnContextCanceled(t *testing.T) {
+	const gwNamespace, configNamespace = "ns", "some-namespace"
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	// Fail only the credential read. Failing every Secret Get would also break the config-bundle
+	// write and the reconcile would error regardless, which would make this test pass vacuously.
+	kube.PrependReactor("get", "secrets", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		if get, ok := a.(k8stesting.GetAction); ok && get.GetName() == "api-key" {
+			return true, nil, context.Canceled
+		}
+		return false, nil, nil
+	})
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: gwNamespace},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+		},
+	}))
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "bsp", Namespace: gwNamespace},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type:   aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			APIKey: &aigv1b1.BackendSecurityPolicyAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "api-key"}},
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+				{Kind: "AIServiceBackend", Group: "aigateway.envoyproxy.io", Name: "apple"},
+			},
+		},
+	}))
+
+	routes := []aigv1b1.AIGatewayRoute{{
+		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: gwNamespace},
+		Spec: aigv1b1.AIGatewayRouteSpec{Rules: []aigv1b1.AIGatewayRouteRule{
+			{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+		}},
+	}}
+
+	_, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, configNamespace, routes, nil, "uuid", nil)
+	require.ErrorIs(t, err, context.Canceled)
+
+	_, getErr := kube.CoreV1().Secrets(configNamespace).Get(t.Context(),
+		FilterConfigBundleIndexSecretName("gw", gwNamespace), metav1.GetOptions{})
+	require.Error(t, getErr, "no filter config may be published when the credential could not be read")
+}
+
+// TestGatewayController_reconcileFilterConfigSecret_BailsOnContextDeadlineReadingBackend is the same
+// invariant one step earlier: an interrupted read of the AIServiceBackend must not publish a config
+// with that backend silently missing. Reads of AIServiceBackend go through the cached client, so this
+// is the rare unsynced-informer case rather than a network call, hence the interceptor.
+func TestGatewayController_reconcileFilterConfigSecret_BailsOnContextDeadlineReadingBackend(t *testing.T) {
+	const gwNamespace, configNamespace = "ns", "some-namespace"
+	inner, ok := requireNewFakeClientWithIndexes(t).(client.WithWatch)
+	require.True(t, ok)
+	fakeClient := interceptor.NewClient(inner, interceptor.Funcs{
+		Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, isBackend := obj.(*aigv1b1.AIServiceBackend); isBackend {
+				return context.DeadlineExceeded
+			}
+			return cl.Get(ctx, key, obj, opts...)
+		},
+	})
+	kube := fake2.NewClientset()
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	require.NoError(t, inner.Create(t.Context(), &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: gwNamespace},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+		},
+	}))
+
+	routes := []aigv1b1.AIGatewayRoute{{
+		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: gwNamespace},
+		Spec: aigv1b1.AIGatewayRouteSpec{Rules: []aigv1b1.AIGatewayRouteRule{
+			{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+		}},
+	}}
+
+	_, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, configNamespace, routes, nil, "uuid", nil)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	_, getErr := kube.CoreV1().Secrets(configNamespace).Get(t.Context(),
+		FilterConfigBundleIndexSecretName("gw", gwNamespace), metav1.GetOptions{})
+	require.Error(t, getErr, "no filter config may be published when the backend could not be read")
 }
 
 func TestGatewayController_annotateGatewayPods(t *testing.T) {
