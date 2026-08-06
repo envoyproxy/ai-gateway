@@ -37,6 +37,7 @@ type tracingImpl struct {
 	transcriptionTracer        tracingapi.TranscriptionTracer
 	translationTracer          tracingapi.TranslationTracer
 	rerankTracer               tracingapi.RerankTracer
+	embedTracer                tracingapi.EmbedTracer
 	messageTracer              tracingapi.MessageTracer
 	tokenizeTracer             tracingapi.TokenizeTracer
 	responsesInputTokensTracer tracingapi.ResponsesInputTokensTracer
@@ -88,6 +89,11 @@ func (t *tracingImpl) TranslationTracer() tracingapi.TranslationTracer {
 // RerankTracer implements the same method as documented on tracingapi.Tracing.
 func (t *tracingImpl) RerankTracer() tracingapi.RerankTracer {
 	return t.rerankTracer
+}
+
+// EmbedTracer implements the same method as documented on tracingapi.Tracing.
+func (t *tracingImpl) EmbedTracer() tracingapi.EmbedTracer {
+	return t.embedTracer
 }
 
 // MCPTracer implements the same method as documented on tracingapi.Tracing.
@@ -232,6 +238,7 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 	transcriptionRecorder := openai.NewTranscriptionRecorderFromEnv()
 	translationRecorder := openai.NewTranslationRecorderFromEnv()
 	rerankRecorder := cohere.NewRerankRecorderFromEnv()
+	embedRecorder := cohere.NewEmbedRecorderFromEnv()
 	messageRecorder := anthropic.NewMessageRecorderFromEnv()
 	tokenizeRecorder := openai.NewTokenizeRecorderFromEnv()
 	responsesInputTokensRecorder := openai.NewResponsesInputTokensRecorderFromEnv()
@@ -289,6 +296,12 @@ func NewTracingFromEnv(ctx context.Context, stdout io.Writer, headerAttributeMap
 			tracer,
 			propagator,
 			rerankRecorder,
+			headerAttrs,
+		),
+		embedTracer: newEmbedTracer(
+			tracer,
+			propagator,
+			embedRecorder,
 			headerAttrs,
 		),
 		messageTracer: newMessageTracer(
