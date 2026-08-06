@@ -16,11 +16,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 )
 
-// aiAttributeBackend is the AIServiceBackend that served the request, as "namespace/name".
-// It is not part of the GenAI semantic conventions: gen_ai.provider.name only carries the
-// API schema, so backends sharing one are otherwise indistinguishable.
-const aiAttributeBackend = "ai.backend"
-
 // metricsImplFactory implements the Factory interface for creating metricsImpl instances.
 type metricsImplFactory struct {
 	metrics                       *genAI
@@ -121,7 +116,7 @@ func (b *metricsImpl) buildBaseAttributes(headers map[string]string) attribute.S
 	origModel := attribute.Key(genaiAttributeOriginalModel).String(b.originalModel)
 	reqModel := attribute.Key(genaiAttributeRequestModel).String(b.requestModel)
 	respModel := attribute.Key(genaiAttributeResponseModel).String(b.responseModel)
-	backend := attribute.Key(aiAttributeBackend).String(b.aiServiceBackend)
+	backend := attribute.Key(genaiAttributeBackend).String(b.aiServiceBackend)
 	if len(b.requestHeaderAttributeMapping) == 0 {
 		return attribute.NewSet(opt, provider, origModel, reqModel, respModel, backend)
 	}

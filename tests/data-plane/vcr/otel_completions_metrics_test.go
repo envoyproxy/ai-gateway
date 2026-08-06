@@ -148,7 +148,7 @@ func verifyCompletionTimeToFirstTokenMetrics(t *testing.T, metrics *metricsv1.Sc
 	expectedAttrs := map[string]string{
 		"gen_ai.operation.name": "completion",
 		"gen_ai.provider.name":  "openai",
-		"ai.backend":            "openai",
+		"gen_ai.backend":        "openai",
 		"gen_ai.original.model": originalModel,
 		"gen_ai.request.model":  requestModel,
 		"gen_ai.response.model": responseModel,
@@ -173,7 +173,7 @@ func verifyCompletionTimePerOutputTokenMetrics(t *testing.T, metrics *metricsv1.
 	expectedAttrs := map[string]string{
 		"gen_ai.operation.name": "completion",
 		"gen_ai.provider.name":  "openai",
-		"ai.backend":            "openai",
+		"gen_ai.backend":        "openai",
 		"gen_ai.original.model": originalModel,
 		"gen_ai.request.model":  requestModel,
 		"gen_ai.response.model": responseModel,
