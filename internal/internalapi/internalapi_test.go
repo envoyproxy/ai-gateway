@@ -265,3 +265,22 @@ func TestFormatRequestHeaderAttributeMapping(t *testing.T) {
 		})
 	}
 }
+
+func TestAWSBedrockRegionFromHost(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		host string
+		want string
+	}{
+		{"public bedrock host", "bedrock-runtime.us-east-1.amazonaws.com", "us-east-1"},
+		{"vpce host", "vpce-123.bedrock-runtime.us-west-2.vpce.amazonaws.com", "us-west-2"},
+		{"prefixed bedrock host", "aaa.bedrock-runtime.eu-central-1.amazonaws.com", "eu-central-1"},
+		{"non-bedrock host", "api.openai.com", ""},
+		{"spoofed suffix is rejected", "bedrock-runtime.us-east-1.amazonaws.com.evil.com", ""},
+		{"empty", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, AWSBedrockRegionFromHost(tc.host))
+		})
+	}
+}

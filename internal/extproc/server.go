@@ -185,6 +185,8 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 				if internalReqID == "" {
 					return status.Errorf(codes.Internal, "missing internal request ID header from router filter")
 				}
+				awsSigningAttrs := req.GetAttributes()["envoy.filters.http.ext_proc"]
+				setAWSSigningAttributes(headersMap, awsSigningAttrs)
 			} else {
 				// For router filter, create a unique internal request ID to avoid race conditions
 				// with duplicate x-request-id values by appending a UUID suffix to the original request ID
@@ -432,6 +434,24 @@ func resolveRouteName(attributes *structpb.Struct) string {
 	// Keep request processing working and let CEL expressions decide behavior
 	// when route_name is empty.
 	return ""
+}
+
+func setAWSSigningAttributes(headers map[string]string, attributes *structpb.Struct) {
+	// The signing host header is an internal, controller-derived value. A downstream client could also
+	// send it, so drop any inbound copy before overlaying trusted xDS metadata — otherwise, for an
+	// endpoint with no derivable metadata (non-Bedrock host, EDS), the client-supplied value would
+	// survive and drive the SigV4 host. The region is derived from this host in the AWS handler.
+	delete(headers, internalapi.AWSSigningHostHeader)
+
+	if attributes == nil {
+		return
+	}
+
+	if v, ok := attributes.Fields[internalapi.XDSUpstreamHostMetadataAWSSigningHostPath]; ok {
+		if host := v.GetStringValue(); host != "" {
+			headers[internalapi.AWSSigningHostHeader] = host
+		}
+	}
 }
 
 // Check implements [grpc_health_v1.HealthServer].

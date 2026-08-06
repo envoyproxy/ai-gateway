@@ -10,6 +10,7 @@ package internalapi
 import (
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -27,8 +28,14 @@ const (
 	InternalEndpointMetadataNamespace = "aigateway.envoy.io"
 	// InternalMetadataBackendNameKey is the key used to store the backend name
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
+	// InternalMetadataAWSSigningHostKey is the key used to store the AWS SigV4 signing host on endpoint metadata.
+	InternalMetadataAWSSigningHostKey = "aws_signing_host"
 	// InternalMetadataRouteNameKey is the key used to store the route name.
 	InternalMetadataRouteNameKey = "aigw_route_name"
+	// AWSSigningHostHeader carries the SigV4 signing host resolved at config time from the upstream
+	// ext_proc filter to the AWS backend auth handler. The signing region is derived from this host in
+	// the handler, so there is no separate region header.
+	AWSSigningHostHeader = EnvoyAIGatewayHeaderPrefix + "aws-signing-host"
 	// MCPBackendHeader is the special header key used to specify the target backend name.
 	MCPBackendHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend"
 	// MCPRouteHeader is the special header key used to identify the mcp route.
@@ -105,6 +112,8 @@ const (
 	XDSClusterMetadataBackendNamePath = "xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
 	// XDSUpstreamHostMetadataBackendNamePath is the full attribute path to access the backend name in upstream host metadata in xDS attributes.
 	XDSUpstreamHostMetadataBackendNamePath = "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
+	// XDSUpstreamHostMetadataAWSSigningHostPath is the full attribute path to access the AWS signing host in upstream host metadata in xDS attributes.
+	XDSUpstreamHostMetadataAWSSigningHostPath = "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['aws_signing_host']"
 	// XDSRouteMetadataRouteNamePath is the full attribute path to access the route name in route metadata in xDS attributes.
 	XDSRouteMetadataRouteNamePath = "xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']"
 )
@@ -114,6 +123,23 @@ const (
 // route rule in a specific AIGatewayRoute.
 func PerRouteRuleRefBackendName(namespace, name, routeName string, routeRuleIndex, refIndex int) string {
 	return fmt.Sprintf("%s/%s/route/%s/rule/%d/ref/%d", namespace, name, routeName, routeRuleIndex, refIndex)
+}
+
+// awsBedrockHostRE matches an AWS Bedrock runtime host, including the PrivateLink (VPCE) form, and
+// captures the region — e.g. bedrock-runtime.us-east-1.amazonaws.com and
+// vpce-<id>.bedrock-runtime.us-east-1.vpce.amazonaws.com both yield "us-east-1". The anchors reject a
+// spoofed suffix such as bedrock-runtime.us-east-1.amazonaws.com.evil.com.
+var awsBedrockHostRE = regexp.MustCompile(`(?:^|\.)bedrock-runtime\.([a-z0-9-]+)\.(?:vpce\.)?amazonaws\.com$`)
+
+// AWSBedrockRegionFromHost returns the AWS region encoded in a Bedrock signing host (public or VPCE
+// form), or "" if host is not an AWS Bedrock host. It serves two purposes: deriving the SigV4 signing
+// region from the resolved host, and — via a non-empty result — signaling "this endpoint is AWS
+// Bedrock" so the signing host is stamped only on Bedrock endpoints, not on every backend.
+func AWSBedrockRegionFromHost(host string) string {
+	if m := awsBedrockHostRE.FindStringSubmatch(host); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 const (

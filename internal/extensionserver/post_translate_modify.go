@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -341,9 +342,13 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 	if pool == nil {
 		switch {
 		case cluster.LoadAssignment == nil:
-			// When LoadAssignment is nil (e.g. EDS-managed endpoints in standalone mode),
-			// set backend name on cluster-level metadata so the upstream ext_proc filter
-			// can resolve the backend via XDSClusterMetadataBackendNamePath fallback.
+			// LoadAssignment is nil when the cluster's endpoints are EDS-managed: delivered out of band
+			// (e.g. standalone mode), not inlined at translate time. There is no LbEndpoint here, so we
+			// only set the backend name on cluster-level metadata; the upstream ext_proc filter resolves
+			// the backend via XDSClusterMetadataBackendNamePath.
+			//
+			// TODO(aws-signing): no LbEndpoint to stamp here, so an AWS backend on an EDS cluster falls
+			// back to the region-based default signing host and a VPCE host is lost. See ai-gateway#902 / #950.
 			s.log.Info("LoadAssignment is nil, setting cluster-level metadata", "cluster_name", cluster.Name)
 			if len(httpRouteRule.BackendRefs) > 0 {
 				backendRefIndex := 0
@@ -361,6 +366,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				}
 				for _, endpoint := range endpoints.LbEndpoints {
 					setEndpointMetadataBackendName(endpoint, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, clusterName.backendRefIndex)
+					stampAWSSigningMetadata(endpoint)
 				}
 			}
 		default:
@@ -381,6 +387,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				}
 				for _, endpoint := range endpoints.LbEndpoints {
 					setEndpointMetadataBackendName(endpoint, namespace, name, aigwRoute.Name, httpRouteRuleIndex, i)
+					stampAWSSigningMetadata(endpoint)
 				}
 			}
 		}
@@ -439,6 +446,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 	extProcConfig.RequestAttributes = []string{
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
 		internalapi.XDSClusterMetadataBackendNamePath,
+		internalapi.XDSUpstreamHostMetadataAWSSigningHostPath,
 		internalapi.XDSRouteMetadataRouteNamePath,
 	}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
@@ -939,6 +947,40 @@ func routeNameFromEnvoyGatewayMetadata(route *routev3.Route) string {
 	return ""
 }
 
+// endpointAWSSigningHost returns the hostname to sign SigV4 requests against for the given endpoint.
+//
+// Envoy Gateway translates a Backend `fqdn` endpoint so that the FQDN lands in
+// Endpoint.Address.SocketAddress.Address, while Endpoint.Hostname is populated only from the Backend's
+// optional top-level `hostname` field (EG NewDestEndpoint takes the FQDN as `host` and bep.Hostname as
+// `hostname`). So for a normal Bedrock/VPCE backend Endpoint.Hostname is empty and the signable name is
+// the socket address. We therefore resolve in order: Endpoint.Hostname if set, otherwise the socket
+// address when it is a DNS name. An IP-literal socket address is rejected — signing over an IP matches no
+// AWS endpoint — so such an endpoint yields no stamp and the signer falls back to the region default.
+func endpointAWSSigningHost(lbEndpoint *endpointv3.LbEndpoint) string {
+	endpoint := lbEndpoint.GetEndpoint()
+	if endpoint == nil {
+		return ""
+	}
+	if hostname := endpoint.GetHostname(); hostname != "" {
+		return hostname
+	}
+	// An IP-literal socket address is rejected
+	if addr := endpoint.GetAddress().GetSocketAddress().GetAddress(); addr != "" && net.ParseIP(addr) == nil {
+		return addr
+	}
+	return ""
+}
+
+// stampAWSSigningMetadata stamps the SigV4 signing host on the endpoint's metadata at config-translation
+// time, so the data plane signs over the real upstream endpoint instead of re-deriving it at request
+// time. It only stamps AWS Bedrock endpoints (public or VPCE hosts); other backends (e.g. api.openai.com)
+// do not need a signing host and must not carry a misleading aws_signing_host on every endpoint.
+func stampAWSSigningMetadata(endpoint *endpointv3.LbEndpoint) {
+	if host := endpointAWSSigningHost(endpoint); internalapi.AWSBedrockRegionFromHost(host) != "" {
+		setEndpointMetadataAWSSigningHost(endpoint, host)
+	}
+}
+
 func ensureRouteInternalMetadata(route *routev3.Route) *structpb.Struct {
 	if route.Metadata == nil {
 		route.Metadata = &corev3.Metadata{}
@@ -980,7 +1022,9 @@ func setClusterMetadataBackendName(cluster *clusterv3.Cluster, namespace, name, 
 	)
 }
 
-func setEndpointMetadataBackendName(endpoint *endpointv3.LbEndpoint, namespace, name, routeName string, routeRuleIndex, refIndex int) {
+// ensureEndpointAIGatewayMetadata returns the AI Gateway filter-metadata struct for the endpoint,
+// creating the metadata containers as needed.
+func ensureEndpointAIGatewayMetadata(endpoint *endpointv3.LbEndpoint) *structpb.Struct {
 	if endpoint.Metadata == nil {
 		endpoint.Metadata = &corev3.Metadata{}
 	}
@@ -995,9 +1039,19 @@ func setEndpointMetadataBackendName(endpoint *endpointv3.LbEndpoint, namespace, 
 	if m.Fields == nil {
 		m.Fields = make(map[string]*structpb.Value)
 	}
-	m.Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
+	return m
+}
+
+func setEndpointMetadataBackendName(endpoint *endpointv3.LbEndpoint, namespace, name, routeName string, routeRuleIndex, refIndex int) {
+	ensureEndpointAIGatewayMetadata(endpoint).Fields[internalapi.InternalMetadataBackendNameKey] = structpb.NewStringValue(
 		internalapi.PerRouteRuleRefBackendName(namespace, name, routeName, routeRuleIndex, refIndex),
 	)
+}
+
+// setEndpointMetadataAWSSigningHost stores the AWS signing host on endpoint-level metadata
+// so the upstream ext_proc filter can forward it to the AWS backend auth handler for SigV4 signing.
+func setEndpointMetadataAWSSigningHost(endpoint *endpointv3.LbEndpoint, host string) {
+	ensureEndpointAIGatewayMetadata(endpoint).Fields[internalapi.InternalMetadataAWSSigningHostKey] = structpb.NewStringValue(host)
 }
 
 func shouldAIGatewayExtProcBeInserted(filters []*httpconnectionmanagerv3.HttpFilter) bool {
