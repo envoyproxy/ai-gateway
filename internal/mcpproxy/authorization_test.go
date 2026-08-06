@@ -20,24 +20,25 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 )
 
+// makeTokenWithClaims and makeToken are shared by TestAuthorizeRequest and TestAuthorizeBackendOnly.
+func makeTokenWithClaims(extraClaims jwt.MapClaims, scopes ...string) string {
+	claims := jwt.MapClaims{}
+	for k, v := range extraClaims {
+		claims[k] = v
+	}
+	if len(scopes) > 0 {
+		claims["scope"] = scopes
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodNone, claims)
+	signed, _ := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
+	return signed
+}
+
+func makeToken(scopes ...string) string {
+	return makeTokenWithClaims(jwt.MapClaims{}, scopes...)
+}
+
 func TestAuthorizeRequest(t *testing.T) {
-	makeTokenWithClaims := func(extraClaims jwt.MapClaims, scopes ...string) string {
-		claims := jwt.MapClaims{}
-		for k, v := range extraClaims {
-			claims[k] = v
-		}
-		if len(scopes) > 0 {
-			claims["scope"] = scopes
-		}
-		token := jwt.NewWithClaims(jwt.SigningMethodNone, claims)
-		signed, _ := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
-		return signed
-	}
-
-	makeToken := func(scopes ...string) string {
-		return makeTokenWithClaims(jwt.MapClaims{}, scopes...)
-	}
-
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{l: logger}}
 
@@ -1134,9 +1135,10 @@ func TestAuthorizeBackendOnly(t *testing.T) {
 		},
 		{
 			// Regression guard: a Deny rule whose CEL explicitly references
-			// request.mcp.tool is designed to evaluate false when Tool is
-			// blanked out during this phase — it must keep NOT matching
-			// here (existing mechanism, unaffected by the fix).
+			// request.mcp.tool comes back Unknown via partial evaluation at
+			// this phase, since the tool isn't known yet. That's treated as
+			// ambiguous, and an ambiguous Deny rule must be skipped rather
+			// than matched, so it must keep NOT blocking the backend here.
 			name: "deny rule with tool-referencing CEL does not match during backend-only pre-check",
 			auth: &filterapi.MCPRouteAuthorization{
 				DefaultAction: "Allow",
@@ -1184,6 +1186,246 @@ func TestAuthorizeBackendOnly(t *testing.T) {
 						Target: &filterapi.MCPAuthorizationTarget{
 							Tools: []filterapi.ToolCall{{Backend: "other-backend", Tool: "denyme"}},
 						},
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			// An Allow rule whose CEL references request.mcp.tool is the ONLY
+			// path granting access, under DefaultAction: Deny. request.mcp.tool
+			// is unknown at this phase, so this rule's truth value can't be
+			// decided - it must be treated as ambiguous, not as "no match",
+			// or the backend would be wrongly pruned even though tools/call
+			// would have allowed "tool1".
+			name: "allow rule with tool-referencing CEL and no other grant path still attempts the backend",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`request.mcp.tool == "tool1"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			// A Deny rule using != (rather than ==) against the tool: this
+			// only means to deny tools other than "safe_tool", which should
+			// let the backend through so "safe_tool" itself can still be
+			// reached. Since the tool is unknown at this phase, the rule is
+			// ambiguous and must be skipped, not treated as a match against
+			// the whole backend.
+			name: "deny rule using != against the tool does not wrongly block the backend",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Allow",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Deny",
+						CEL:    ptr.To(`request.mcp.tool != "safe_tool"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			// Comprehension macros (already used elsewhere in this file for
+			// JWT claims, e.g. `.exists()` on org.departments) must propagate
+			// the unknown tool attribute as ambiguous too.
+			name: "allow rule with tool-referencing CEL comprehension still attempts the backend",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`["tool1", "tool2"].exists(t, t == request.mcp.tool)`),
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			// Precision check: an Allow rule whose CEL ANDs a tool check with a
+			// backend check must still be correctly pruned when the backend
+			// clause alone already decides it - the unknown tool must not make
+			// this look ambiguous. CEL's AND short-circuits on a concrete
+			// false term regardless of the other (unknown) term.
+			name: "allow rule CEL AND is decided false by a mismatched backend despite unknown tool",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`request.mcp.backend == "backend2" && request.mcp.tool == "tool1"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: false,
+		},
+		{
+			// Mirror of the above with OR: a matching backend alone already
+			// decides the expression true, regardless of the unknown tool.
+			name: "allow rule CEL OR is decided true by a matching backend despite unknown tool",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`request.mcp.backend == "backend1" || request.mcp.tool == "tool1"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			// An ambiguous CEL Allow rule falling through must still respect a
+			// Target on the same rule: it's a pass on the CEL gate, not a
+			// blanket permit for every backend.
+			name: "ambiguous allow rule CEL still respects a matching Target backend",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
+						},
+						CEL: ptr.To(`request.mcp.tool == "tool1"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			// Same rule, different backend: the Target doesn't match, so the
+			// ambiguous CEL pass-through must not permit this backend.
+			name: "ambiguous allow rule CEL does not bypass a non-matching Target backend",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "backend1", Tool: "tool1"}},
+						},
+						CEL: ptr.To(`request.mcp.tool == "tool1"`),
+					},
+				},
+			},
+			backend:       "backend2",
+			expectAllowed: false,
+		},
+		{
+			// An ambiguous CEL Allow rule falling through must still respect a
+			// Source (JWT scope) requirement on the same rule: without a token
+			// satisfying it, the rule must not grant access.
+			name: "ambiguous allow rule CEL does not bypass an unsatisfied Source scope",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{Scopes: []string{"admin"}},
+						},
+						CEL: ptr.To(`request.mcp.tool == "tool1"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: false,
+		},
+		{
+			// Same rule, with a token satisfying the Source scope: the
+			// ambiguous CEL no longer blocks it, and the Source requirement is
+			// met, so the rule grants access.
+			name: "ambiguous allow rule CEL grants access once Source scope is satisfied",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						Source: &filterapi.MCPAuthorizationSource{
+							JWT: filterapi.JWTSource{Scopes: []string{"admin"}},
+						},
+						CEL: ptr.To(`request.mcp.tool == "tool1"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			headers:       http.Header{"Authorization": []string{"Bearer " + makeToken("admin")}},
+			expectAllowed: true,
+		},
+		{
+			// Defensive path in evalBackendOnlyCEL: a CEL expression that
+			// evaluates to a non-boolean concrete value (not Unknown - it
+			// doesn't reference the tool at all) must be treated as ambiguous,
+			// not as a definite non-match, for an Allow rule.
+			name: "allow rule with non-boolean CEL result is treated as ambiguous",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`10`),
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			// Mirror of the above for Deny: a non-boolean result must be
+			// treated as ambiguous, not as a definite match.
+			name: "deny rule with non-boolean CEL result is treated as ambiguous",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Allow",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Deny",
+						CEL:    ptr.To(`10`),
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			// Defensive path in evalBackendOnlyCEL: a genuine CEL runtime
+			// error (distinct from Unknown - this errors regardless of the
+			// tool) must be treated as ambiguous, not as a definite non-match,
+			// for an Allow rule.
+			name: "allow rule with CEL runtime error is treated as ambiguous",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`[1, 2][5]`),
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			// Mirror of the above for Deny: a runtime error must be treated
+			// as ambiguous, not as a definite match.
+			name: "deny rule with CEL runtime error is treated as ambiguous",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Allow",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Deny",
+						CEL:    ptr.To(`[1, 2][5]`),
 					},
 				},
 			},

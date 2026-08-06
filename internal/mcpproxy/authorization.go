@@ -37,13 +37,19 @@ type compiledAuthorizationRule struct {
 	// CEL expression compiled for request-level evaluation (with tool constraints).
 	celExpression string
 	celProgram    cel.Program
-	// Backend-only CEL program (same expression, evaluated without Tool field during initialize phase).
+	// Backend-only CEL program: same expression as celProgram, but compiled with
+	// cel.OptPartialEval so authorizeBackendOnly can mark request.mcp.tool as an
+	// unknown attribute during the initialize-phase pre-check. This lets CEL
+	// correctly decide any part of the expression that doesn't depend on the tool
+	// (e.g. a backend or header check) while reporting Unknown only for the part
+	// that genuinely does.
 	// Pre-compiled to avoid repeated compilation during request handling.
 	backendOnlyProgram cel.Program
 }
 
 // same reports whether two compiledAuthorization values are semantically equivalent.
-// celProgram is excluded because it is derived from celExpression and is not comparable.
+// celProgram and backendOnlyProgram are excluded because they are derived from
+// celExpression and are not comparable.
 func (a *compiledAuthorization) same(other *compiledAuthorization) bool {
 	if a == nil || other == nil {
 		return a == other
@@ -70,6 +76,11 @@ type authorizationRequest struct {
 	Tool       string
 	Params     mcp.Params
 }
+
+// authorizationCELCostLimit is the per-evaluation cost budget for compiled
+// authorization CEL expressions. It applies to both request-time and
+// backend-only evaluations.
+const authorizationCELCostLimit = 10000
 
 // compileAuthorization compiles the MCPRouteAuthorization into a compiledAuthorization for efficient CEL evaluation.
 func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAuthorization, error) {
@@ -104,15 +115,20 @@ func compileAuthorization(auth *filterapi.MCPRouteAuthorization) (*compiledAutho
 			if issues != nil && issues.Err() != nil {
 				return nil, fmt.Errorf("failed to compile rule CEL: %w", issues.Err())
 			}
-			program, err := env.Program(ast, cel.CostLimit(10000), cel.EvalOptions(cel.OptOptimize))
+			program, err := env.Program(ast, cel.CostLimit(authorizationCELCostLimit), cel.EvalOptions(cel.OptOptimize))
 			if err != nil {
 				return nil, fmt.Errorf("failed to build rule CEL program: %w", err)
 			}
+			// Requires cel.OptPartialEval, which authorizeBackendOnly relies on to mark
+			// request.mcp.tool as unknown during the initialize-phase pre-check.
+			// See the field doc on backendOnlyProgram.
+			backendOnlyProgram, err := env.Program(ast, cel.CostLimit(authorizationCELCostLimit), cel.EvalOptions(cel.OptOptimize, cel.OptPartialEval))
+			if err != nil {
+				return nil, fmt.Errorf("failed to build backend-only CEL program: %w", err)
+			}
 			cr.celExpression = expr
 			cr.celProgram = program
-			// Also compile the same expression as backend-only program (for initialize-phase pre-check).
-			// The expression is the same; it will be evaluated with an activation that omits the Tool field.
-			cr.backendOnlyProgram = program
+			cr.backendOnlyProgram = backendOnlyProgram
 		}
 		compiled.Rules = append(compiled.Rules, cr)
 	}
@@ -448,10 +464,45 @@ func (m *mcpRequestContext) backendMatches(backend string, tools []filterapi.Too
 	return false
 }
 
+// toolUnknownAttr marks request.mcp.tool as an unknown CEL attribute for the
+// initialize-phase backend-only pre-check (see evalBackendOnlyCEL). This lets
+// cel-go's partial evaluation correctly decide any part of a rule's expression
+// that doesn't depend on the tool (e.g. a backend or header check), while
+// reporting the tool-dependent part as undecidable rather than resolving it to
+// a concrete value.
+var toolUnknownAttr = cel.AttributePattern("request").QualString("mcp").QualString("tool")
+
+// evalBackendOnlyCEL evaluates a rule's backend-only CEL program against a partial
+// activation with request.mcp.tool marked unknown via toolUnknownAttr. ambiguous is
+// true whenever the result can't be resolved to a concrete boolean without knowing
+// the tool - this includes cel-go reporting Unknown, but also a program error or a
+// non-boolean result, which are treated the same as ambiguous (never as a definite
+// non-match) so that any CEL construct fails safe. See authorizeBackendOnly for how
+// Allow vs Deny rules use the ambiguous flag to stay on the permissive side of
+// "never skip a backend that should have been attempted."
+func (m *mcpRequestContext) evalBackendOnlyCEL(rule *compiledAuthorizationRule, partial cel.PartialActivation) (match, ambiguous bool) {
+	result, _, err := rule.backendOnlyProgram.Eval(partial)
+	if err != nil {
+		m.l.Debug("backend-only CEL evaluation error, treating as ambiguous", slog.String("error", err.Error()), slog.String("expression", rule.celExpression))
+		return false, true
+	}
+	if types.IsUnknown(result) {
+		return false, true
+	}
+
+	b, ok := result.Value().(bool)
+	if !ok {
+		m.l.Debug("backend-only CEL did not return a boolean, treating as ambiguous", slog.String("expression", rule.celExpression))
+		return false, true
+	}
+	return b, false
+}
+
 // authorizeBackendOnly evaluates whether the client has potential access to a backend,
 // ignoring specific tool constraints. Evaluates the same authorization rules as authorizeRequest,
-// but with an activation where the Tool field is empty. This allows CEL rules to work correctly
-// (e.g., request.mcp.backend =~ "^prod-.*") while preventing tool-specific constraints from matching.
+// but with request.mcp.tool marked unknown for CEL evaluation (see evalBackendOnlyCEL), so CEL
+// rules that reference the backend, headers, or JWT claims are still decided correctly while
+// tool-specific constraints come back ambiguous.
 // Used during initialize phase to avoid unnecessary connections to denied backends.
 func (m *mcpRequestContext) authorizeBackendOnly(authorization *compiledAuthorization, backend string, headers http.Header, claims jwt.MapClaims, scopeSet sets.Set[string]) bool {
 	if authorization == nil {
@@ -465,39 +516,63 @@ func (m *mcpRequestContext) authorizeBackendOnly(authorization *compiledAuthoriz
 		return defaultAction
 	}
 
+	// celActivation and partialActivation are built once per backend (not per rule)
+	// the first time a CEL-bearing rule needs them, and reused across the remaining
+	// rules for this backend.
 	var celActivation map[string]any
+	var partialActivation cel.PartialActivation
 
 	for i := range authorization.Rules {
 		rule := &authorization.Rules[i]
 		action := rule.Action == filterapi.AuthorizationActionAllow
 
 		// Evaluate backend-only CEL program if present. Build full activation structure
-		// (same as authorizeRequest) but with Tool field empty. This ensures all CEL field
-		// references work (request.mcp.backend, auth.jwt.claims, request.headers, etc.)
-		// but tool-specific rules won't match because Tool is empty.
+		// (same as authorizeRequest) but with request.mcp.tool marked unknown for CEL
+		// (see evalBackendOnlyCEL). This ensures all other CEL field references work
+		// (request.mcp.backend, auth.jwt.claims, request.headers, etc.) while tool-specific
+		// conditions come back ambiguous.
 		if rule.backendOnlyProgram != nil {
 			if celActivation == nil {
-				// Create authorizationRequest with backend, empty tool, and available headers.
-				// Other fields (HTTPMethod, Host, HTTPPath, MCPMethod, Params) are unavailable
-				// during initialize phase but left empty for CEL evaluation.
+				// Create authorizationRequest with backend and available headers.
+				// Other fields (HTTPMethod, Host, HTTPPath, MCPMethod, Params, Tool) are
+				// unavailable during initialize phase and left unset; evalBackendOnlyCEL
+				// marks Tool unknown via toolUnknownAttr, which intercepts attribute
+				// resolution before it would reach this map.
 				req := &authorizationRequest{
 					Headers: headers,
 					Backend: backend,
-					// Tool intentionally empty - won't match tool-specific rules
 				}
 
 				// Build full activation structure using existing function.
-				// The CEL activation will have all fields (request.headers, request.mcp.backend,
-				// auth.jwt.claims, etc.) but request.mcp.tool will be empty.
 				celActivation = buildCELActivation(req, claims, scopeSet)
+
+				var err error
+				partialActivation, err = cel.PartialVars(celActivation, toolUnknownAttr)
+				if err != nil {
+					m.l.Debug("failed to build partial CEL activation for backend-only pre-check", slog.String("error", err.Error()), slog.String("backend", backend))
+				}
 			}
 
-			match, err := m.evalRuleCELForActivation(rule.backendOnlyProgram, celActivation)
-			if err != nil {
-				m.l.Debug("failed to evaluate backend-only CEL", slog.String("error", err.Error()), slog.String("backend", backend), slog.String("expression", rule.celExpression))
-				continue
+			// If the partial activation couldn't be built, there's nothing to evaluate
+			// against - treat it the same as evalBackendOnlyCEL treats an evaluation
+			// error: ambiguous, never a definite non-match.
+			var match, ambiguous bool
+			if partialActivation == nil {
+				ambiguous = true
+			} else {
+				match, ambiguous = m.evalBackendOnlyCEL(rule, partialActivation)
 			}
-			if !match {
+			if ambiguous {
+				// The expression's truth value depends on request.mcp.tool, which isn't
+				// known yet at this phase. A Deny rule can't be proven to fire for
+				// whichever tool is eventually requested, so it must not block the
+				// backend here - defer to the real per-tool check in authorizeRequest.
+				// An Allow rule can't be ruled out either: don't treat the CEL gate as
+				// failed, fall through and let Target/Source decide instead.
+				if !action {
+					continue
+				}
+			} else if !match {
 				continue
 			}
 		}
@@ -523,11 +598,15 @@ func (m *mcpRequestContext) authorizeBackendOnly(authorization *compiledAuthoriz
 			// it reject a backend that would otherwise have been let through, since
 			// returning here was already the most restrictive possible outcome.
 			//
-			// CEL-bearing rules are NOT skipped: a CEL condition that doesn't reference
-			// request.mcp.tool evaluates identically regardless of the (intentionally
-			// blank) Tool field and is fully decidable here, and a CEL condition that DOES
-			// reference request.mcp.tool is designed to evaluate false during this
-			// pre-check by construction — both cases already produce the correct answer.
+			// CEL-bearing rules are NOT skipped by this check: a CEL condition that doesn't
+			// reference request.mcp.tool is fully decidable here regardless of the unknown
+			// Tool attribute, and a CEL condition that DOES reference request.mcp.tool comes
+			// back Unknown via partial evaluation - which the ambiguous-handling above this
+			// Target check already resolved: an ambiguous Deny rule was skipped before ever
+			// reaching here, and an ambiguous Allow rule already fell through knowing it
+			// can't be ruled out. Either way, this check has nothing left to do for
+			// CEL-bearing rules; it only matters for the no-CEL, tool-scoped-target case
+			// described above.
 			if !action && rule.backendOnlyProgram == nil {
 				continue
 			}
@@ -551,19 +630,6 @@ func (m *mcpRequestContext) authorizeBackendOnly(authorization *compiledAuthoriz
 	}
 
 	return defaultAction
-}
-
-// evalRuleCELForActivation evaluates a CEL program with the given activation.
-func (m *mcpRequestContext) evalRuleCELForActivation(program cel.Program, activation map[string]any) (bool, error) {
-	result, _, err := program.Eval(activation)
-	if err != nil {
-		return false, err
-	}
-	match, ok := result.Value().(bool)
-	if !ok {
-		return false, fmt.Errorf("CEL expression did not evaluate to a boolean: %T", result.Value())
-	}
-	return match, nil
 }
 
 // buildInsufficientScopeHeader builds the WWW-Authenticate header value for insufficient scope errors.
