@@ -8,6 +8,7 @@ package controller
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -335,6 +336,19 @@ func mergeHeaderMutations(routeLevel, backendLevel *aigv1b1.HTTPHeaderMutation) 
 	return result
 }
 
+// isCtxErr reports whether err is the reconcile's context being cancelled or timing out, rather than
+// a problem with the object being read.
+//
+// The distinction matters everywhere reconcileFilterConfigSecret skips a backend on error. Skipping
+// is right when the backend or its policy cannot be resolved — a missing object, a bad ref — because
+// the resulting config reflects the cluster. It is wrong when the read was interrupted, because then
+// the reconcile carries on and publishes a config in which the backend is missing, or present without
+// its credentials, until something triggers another reconcile. Returning instead lets
+// controller-runtime requeue with a fresh context.
+func isCtxErr(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
 // reconcileFilterConfigSecret updates the filter config secret for the external processor.
 func (c *GatewayController) reconcileFilterConfigSecret(
 	ctx context.Context,
@@ -431,6 +445,9 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 
 					bsp, err = c.getBSPForInferencePool(ctx, backendNamespace, backendRef.Name)
 					if err != nil {
+						if isCtxErr(err) {
+							return false, fmt.Errorf("reconcile interrupted while reading backend security policy for inference pool %s: %w", backendRef.Name, err)
+						}
 						c.logger.Error(err, "failed to get backend security policy for inference pool",
 							"backend_name", backendRef.Name, "aigatewayroute", aiGatewayRoute.Name,
 							"namespace", backendNamespace)
@@ -440,6 +457,9 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					var backendObj *aigv1b1.AIServiceBackend
 					backendObj, bsp, err = c.backendWithMaybeBSP(ctx, backendNamespace, backendRef.Name)
 					if err != nil {
+						if isCtxErr(err) {
+							return false, fmt.Errorf("reconcile interrupted while reading backend %s: %w", backendRef.Name, err)
+						}
 						c.logger.Error(err, "failed to get backend or backend security policy. Skipping this backend.",
 							"backend_name", backendRef.Name, "aigatewayroute", aiGatewayRoute.Name,
 							"namespace", backendNamespace)
@@ -468,6 +488,9 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				if bsp != nil {
 					b.Auth, err = c.bspToFilterAPIBackendAuth(ctx, bsp)
 					if err != nil {
+						if isCtxErr(err) {
+							return false, fmt.Errorf("reconcile interrupted while reading auth for backend security policy %s: %w", bsp.Name, err)
+						}
 						c.logger.Error(err, "failed to get backend auth from backend security policy. Skipping this backend.",
 							"backend_name", backendRef.Name, "backend_security_policy", bsp.Name,
 							"aigatewayroute", aiGatewayRoute.Name, "namespace", aiGatewayRoute.Namespace)
@@ -784,7 +807,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		secretName := string(spec.APIKey.SecretRef.Name)
 		apiKey, getErr := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
 		if getErr != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+			return nil, getErr
 		}
 		auth = &filterapi.BackendAuth{APIKey: &filterapi.APIKeyAuth{Key: apiKey}}
 		hasStaticCred = true
@@ -792,7 +815,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		secretName := string(spec.AzureAPIKey.SecretRef.Name)
 		apiKey, getErr := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
 		if getErr != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+			return nil, getErr
 		}
 		auth = &filterapi.BackendAuth{AzureAPIKey: &filterapi.AzureAPIKeyAuth{Key: apiKey}}
 		hasStaticCred = true
@@ -800,7 +823,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		secretName := string(spec.AnthropicAPIKey.SecretRef.Name)
 		apiKey, getErr := c.getSecretData(ctx, namespace, secretName, apiKeyInSecret)
 		if getErr != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+			return nil, getErr
 		}
 		auth = &filterapi.BackendAuth{AnthropicAPIKey: &filterapi.AnthropicAPIKeyAuth{Key: apiKey}}
 		hasStaticCred = true
@@ -826,7 +849,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		}
 		credentialsLiteral, getErr := c.getSecretData(ctx, namespace, secretName, rotators.AwsCredentialsKey)
 		if getErr != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+			return nil, getErr
 		}
 		// AWS returns early; CredentialOverride is blocked at the API validation layer.
 		return &filterapi.BackendAuth{
@@ -839,7 +862,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 		azureAccessToken, getErr := c.getSecretData(ctx, namespace, secretName, rotators.AzureAccessTokenKey)
 		if getErr != nil {
-			return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+			return nil, getErr
 		}
 		auth = &filterapi.BackendAuth{AzureAuth: &filterapi.AzureAuth{AccessToken: azureAccessToken}}
 		hasStaticCred = true
@@ -861,7 +884,7 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 			secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)
 			gcpAccessToken, getErr := c.getSecretData(ctx, namespace, secretName, rotators.GCPAccessTokenKey)
 			if getErr != nil {
-				return nil, fmt.Errorf("failed to get secret %s: %w", secretName, getErr)
+				return nil, getErr
 			}
 			auth = &filterapi.BackendAuth{
 				GCPAuth: &filterapi.GCPAuth{
