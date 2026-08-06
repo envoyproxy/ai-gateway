@@ -93,7 +93,8 @@ func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Requ
 		}
 	}
 
-	// Extract trace context from incoming meta.
+	// Extract trace context: headers first, then _meta on top. Extract returns the context it was
+	// given when a carrier holds none, so either source alone works.
 	mutableMeta := param.GetMeta()
 	if mutableMeta == nil {
 		mutableMeta = make(map[string]any)
@@ -101,7 +102,8 @@ func (m mcpTracer) StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Requ
 	mc := metaMapCarrier{
 		m: mutableMeta,
 	}
-	parentCtx := m.propagator.Extract(ctx, mc)
+	parentCtx := m.propagator.Extract(ctx, propagation.HeaderCarrier(headers))
+	parentCtx = m.propagator.Extract(parentCtx, mc)
 
 	// Start the span with options appropriate for the semantic convention.
 	// Convert method name to span name following mcp-go SDK patterns
