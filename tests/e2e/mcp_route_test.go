@@ -16,6 +16,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
 )
@@ -27,6 +28,16 @@ type mcpTenantRequestHeaderInjector struct{}
 // RoundTrip implements [http.RoundTripper.RoundTrip].
 func (h mcpTenantRequestHeaderInjector) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.Header.Set("x-tenant-id", "tenant-a")
+	return http.DefaultTransport.RoundTrip(req)
+}
+
+type mcpRequestHeaderInjector map[string]string
+
+// RoundTrip implements [http.RoundTripper.RoundTrip].
+func (h mcpRequestHeaderInjector) RoundTrip(req *http.Request) (*http.Response, error) {
+	for key, value := range h {
+		req.Header.Set(key, value)
+	}
 	return http.DefaultTransport.RoundTrip(req)
 }
 
@@ -76,6 +87,46 @@ func TestMCP(t *testing.T) {
 	t.Run("many backends route", func(t *testing.T) {
 		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/many", manyBackendsRouteToolNames,
 			nil, true, true)
+	})
+	t.Run("client cannot override backend fanout when metadata is absent", func(t *testing.T) {
+		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/many", manyBackendsRouteToolNames,
+			&http.Client{Transport: mcpRequestHeaderInjector{
+				internalapi.MCPBackendSubsetHeader: "mcp-backend-0",
+			}}, true, true)
+	})
+	t.Run("backendSelector denies fan-out by default when the header is absent", func(t *testing.T) {
+		sess, err := client.Connect(
+			t.Context(),
+			&mcp.StreamableClientTransport{
+				Endpoint: fmt.Sprintf("%s/mcp/backend-selector", fwd.Address()),
+			}, nil)
+		require.Error(t, err)
+		require.Nil(t, sess)
+	})
+	t.Run("backendSelector allows only the backend named in the header", func(t *testing.T) {
+		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/backend-selector", testMCPServerAllToolNames("mcp-backend__"),
+			&http.Client{Transport: mcpRequestHeaderInjector{
+				internalapi.MCPBackendSubsetHeader: "mcp-backend",
+			}}, true, true)
+	})
+	t.Run("backendSelector allows every backend named in the header", func(t *testing.T) {
+		expectedTools := append(testMCPServerAllToolNames("mcp-backend__"), testMCPServerAllToolNames("mcp-backend-query-api-key__")...)
+		testMCPRouteTools(t.Context(), t, client, fwd.Address(), "/mcp/backend-selector", expectedTools,
+			&http.Client{Transport: mcpRequestHeaderInjector{
+				internalapi.MCPBackendSubsetHeader: "mcp-backend,mcp-backend-query-api-key",
+			}}, true, true)
+	})
+	t.Run("client cannot spoof the header to bypass a default-deny backendSelector", func(t *testing.T) {
+		sess, err := client.Connect(
+			t.Context(),
+			&mcp.StreamableClientTransport{
+				Endpoint: fmt.Sprintf("%s/mcp/backend-selector", fwd.Address()),
+				HTTPClient: &http.Client{Transport: mcpRequestHeaderInjector{
+					internalapi.MCPBackendSubsetHeader: "mcp-backend,mcp-backend-query-api-key",
+				}},
+			}, nil)
+		require.Error(t, err)
+		require.Nil(t, sess)
 	})
 }
 
