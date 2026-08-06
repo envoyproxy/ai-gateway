@@ -1202,7 +1202,8 @@ func TestAuthorizeBackendOnly(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected compile error: %v", err)
 			}
-			allowed := proxy.authorizeBackendOnly(compiled, tt.backend, headers)
+			claims, scopeSet := proxy.extractClaimsAndScopes(headers, "authorizeBackendOnly")
+			allowed := proxy.authorizeBackendOnly(compiled, tt.backend, headers, claims, scopeSet)
 			if allowed != tt.expectAllowed {
 				t.Fatalf("expected %v, got %v", tt.expectAllowed, allowed)
 			}

@@ -20,9 +20,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -183,10 +185,18 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 	if m.l.Enabled(ctx, slog.LevelDebug) {
 		m.l.Debug("initializing MCP sessions to backends", slog.String("route", routeName), slog.Any("backends", backends))
 	}
+
+	// Extract JWT claims and scopes once per request; they are identical for every backend.
+	var claims jwt.MapClaims
+	var scopeSet sets.Set[string]
+	if backends.authorization != nil && len(backends.authorization.Rules) > 0 {
+		claims, scopeSet = m.extractClaimsAndScopes(m.requestHeaders, "authorizeBackendOnly")
+	}
+
 	for _, backend := range backends.backends {
 		// Pre-check backend authorization during initialize phase to avoid unnecessary connections.
 		if backends.authorization != nil {
-			if !m.authorizeBackendOnly(backends.authorization, backend.Name, m.requestHeaders) {
+			if !m.authorizeBackendOnly(backends.authorization, backend.Name, m.requestHeaders, claims, scopeSet) {
 				m.l.Debug("skipping backend connection due to authorization rules", slog.String("backend", backend.Name), slog.String("route", routeName))
 				continue
 			}

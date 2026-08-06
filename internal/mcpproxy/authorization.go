@@ -453,7 +453,7 @@ func (m *mcpRequestContext) backendMatches(backend string, tools []filterapi.Too
 // but with an activation where the Tool field is empty. This allows CEL rules to work correctly
 // (e.g., request.mcp.backend =~ "^prod-.*") while preventing tool-specific constraints from matching.
 // Used during initialize phase to avoid unnecessary connections to denied backends.
-func (m *mcpRequestContext) authorizeBackendOnly(authorization *compiledAuthorization, backend string, headers http.Header) bool {
+func (m *mcpRequestContext) authorizeBackendOnly(authorization *compiledAuthorization, backend string, headers http.Header, claims jwt.MapClaims, scopeSet sets.Set[string]) bool {
 	if authorization == nil {
 		return true
 	}
@@ -464,8 +464,6 @@ func (m *mcpRequestContext) authorizeBackendOnly(authorization *compiledAuthoriz
 	if len(authorization.Rules) == 0 {
 		return defaultAction
 	}
-
-	claims, scopeSet := m.extractClaimsAndScopes(headers, "authorizeBackendOnly")
 
 	var celActivation map[string]any
 
