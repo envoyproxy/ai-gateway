@@ -765,6 +765,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.Equal(t, []byte("b"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
 				require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[1].Header.Key)
 				require.Equal(t, "mock-auth-handler", string(commonRes.HeaderMutation.SetHeaders[1].Header.RawValue))
+				// The internal AWS signing-host header is stripped before egress so a client can't spoof it.
+				require.Contains(t, commonRes.HeaderMutation.RemoveHeaders, internalapi.AWSSigningHostHeader)
 
 				md := resp.DynamicMetadata
 				require.NotNil(t, md)
@@ -1151,7 +1153,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 
 		headerMutation := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response.HeaderMutation
 		require.NotNil(t, headerMutation)
-		require.ElementsMatch(t, []string{"authorization", "x-api-key"}, headerMutation.RemoveHeaders)
+		require.ElementsMatch(t, []string{"authorization", "x-api-key", internalapi.AWSSigningHostHeader}, headerMutation.RemoveHeaders)
 		// Sensitive headers remain locally for metrics, but will be stripped upstream by Envoy.
 		require.Equal(t, "secret", p.requestHeaders["authorization"])
 		require.Equal(t, "key123", p.requestHeaders["x-api-key"])
