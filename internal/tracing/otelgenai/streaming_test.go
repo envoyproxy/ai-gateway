@@ -232,6 +232,44 @@ func TestAnthropicStreamingMatchesUnary(t *testing.T) {
 	testotel.RequireAttributesEqual(t, unarySpan.Attributes, streamSpan.Attributes)
 }
 
+// TestChatCompletionChunkAttrs_emptyModel pins that an empty model in a chunk
+// never reaches the span. Azure OpenAI opens a stream with a content-filter
+// chunk carrying model:"", so taking the model from the first chunk records an
+// empty gen_ai.response.model.
+func TestChatCompletionChunkAttrs_emptyModel(t *testing.T) {
+	responseModel := func(chunks []*openai.ChatCompletionResponseChunk) (string, bool) {
+		for _, attr := range chatCompletionChunkAttrs(chunks) {
+			if string(attr.Key) == ResponseModel {
+				return attr.Value.AsString(), true
+			}
+		}
+		return "", false
+	}
+
+	t.Run("content-filter prologue does not win", func(t *testing.T) {
+		model, ok := responseModel([]*openai.ChatCompletionResponseChunk{
+			{ID: "chatcmpl-1"},
+			{ID: "chatcmpl-1", Model: "gpt-5-nano"},
+		})
+		require.True(t, ok)
+		require.Equal(t, "gpt-5-nano", model)
+	})
+
+	t.Run("trailing empty model does not clear it", func(t *testing.T) {
+		model, ok := responseModel([]*openai.ChatCompletionResponseChunk{
+			{ID: "chatcmpl-1", Model: "gpt-5-nano"},
+			{ID: "chatcmpl-1", Usage: &openai.Usage{PromptTokens: 1}},
+		})
+		require.True(t, ok)
+		require.Equal(t, "gpt-5-nano", model)
+	})
+
+	t.Run("no model anywhere omits the attribute", func(t *testing.T) {
+		_, ok := responseModel([]*openai.ChatCompletionResponseChunk{{ID: "chatcmpl-1"}})
+		require.False(t, ok)
+	})
+}
+
 func TestChunkRecording_boundaries(t *testing.T) {
 	cfg := &Config{CaptureMessageContent: true}
 
