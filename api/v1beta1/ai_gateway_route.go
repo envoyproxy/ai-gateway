@@ -43,6 +43,7 @@ type AIGatewayRoute struct {
 	Status AIGatewayRouteStatus `json:"status,omitempty"`
 }
 
+
 // AIGatewayRouteList contains a list of AIGatewayRoute.
 //
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

@@ -95,7 +95,7 @@ func (o *openAIToGCPAnthropicTranslatorV1ChatCompletion) RequestBody(_ []byte, o
 		return
 	}
 	newBody = body
-	newHeaders = []internalapi.Header{{pathHeaderName, path}, {contentLengthHeaderName, strconv.Itoa(len(newBody))}}
+	newHeaders = []internalapi.Header{{gcpPathHeaderName, path}, {contentLengthHeaderName, strconv.Itoa(len(newBody))}}
 	return
 }
 

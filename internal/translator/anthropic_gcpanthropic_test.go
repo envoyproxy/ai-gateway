@@ -74,7 +74,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_ModelNameOverride(t *test
 
 			// Check path header contains expected model.
 			pathHeader := headerMutation[0]
-			require.Equal(t, pathHeaderName, pathHeader.Key())
+			require.Equal(t, gcpPathHeaderName, pathHeader.Key())
 			expectedPath := "publishers/anthropic/models/" + tt.expectedInPath + ":rawPredict"
 			assert.Equal(t, expectedPath, pathHeader.Value())
 
@@ -176,7 +176,7 @@ func TestAnthropicToGCPAnthropicTranslator_ComprehensiveMarshalling(t *testing.T
 	require.NotEmpty(t, toolChoice)
 
 	pathHeader := headerMutation[0]
-	require.Equal(t, ":path", pathHeader.Key())
+	require.Equal(t, gcpPathHeaderName, pathHeader.Key())
 	expectedPath := "publishers/anthropic/models/claude-3-opus-20240229:rawPredict"
 	require.Equal(t, expectedPath, pathHeader.Value())
 }
@@ -302,7 +302,7 @@ func TestAnthropicToGCPAnthropicTranslator_RequestBody_StreamingPaths(t *testing
 			// Check path contains expected specifier.
 			pathHeader := headerMutation[0]
 			expectedPath := "publishers/anthropic/models/claude-3-sonnet-20240229:" + tt.expectedSpecifier
-			assert.Equal(t, pathHeaderName, pathHeader.Key())
+			assert.Equal(t, gcpPathHeaderName, pathHeader.Key())
 			assert.Equal(t, expectedPath, pathHeader.Value())
 		})
 	}
