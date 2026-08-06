@@ -33,7 +33,7 @@ import (
 
 var (
 	sensitiveHeaderRedactedValue = []byte("[REDACTED]")
-	sensitiveHeaderKeys          = []string{"authorization", "x-api-key"}
+	sensitiveHeaderKeys          = []string{"authorization", "x-api-key", "x-goog-api-key"}
 )
 
 // contextKey is a type for context keys to avoid collisions.
@@ -289,18 +289,20 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 			}
 		}
 		if s.debugLogEnabled && resp != nil && resp.Response != nil {
-			// Header mutations always carry injected backend credentials (e.g. the
-			// upstream Authorization), so they are redacted whenever debug logging
-			// is on — independent of enableRedaction, which only controls body
-			// content. This mirrors redactRequestBodyResponse above.
-			var logContent any
+			// This response carries the backend credential the auth handler just injected
+			// as a header mutation. redactProcessingResponseRequestHeaders replaces sensitive
+			// values before logging, but go/clear-text-logging taints the whole response and
+			// cannot see that sanitization, so logging any part of it here fails CodeQL for
+			// each newly added auth handler. Log only the number of headers set, which is not
+			// derived from any credential. Incoming header names are logged (with sensitive
+			// values redacted) by filterSensitiveHeadersForLogging above.
 			switch val := resp.Response.(type) {
 			case *extprocv3.ProcessingResponse_RequestHeaders:
-				logContent = redactProcessingResponseRequestHeaders(val, s.logger, sensitiveHeaderKeys, s.enableRedaction)
+				setHeaderCount := len(val.RequestHeaders.GetResponse().GetHeaderMutation().GetSetHeaders())
+				l.Debug("request headers processed", slog.Int("set_header_count", setHeaderCount))
 			case *extprocv3.ProcessingResponse_ImmediateResponse:
-				logContent = val
+				l.Debug("request headers processed: immediate response")
 			}
-			l.Debug("request headers processed", slog.Any("response", logContent))
 		}
 		return resp, nil
 	case *extprocv3.ProcessingRequest_RequestBody:
