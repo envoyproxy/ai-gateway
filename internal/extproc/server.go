@@ -386,6 +386,11 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	if !ok {
 		return status.Errorf(codes.Internal, "unknown backend: %s", backendName)
 	}
+	if backend.Backend.Unresolved != "" {
+		// The controller knows this backend but could not configure it. Say so, rather than let it
+		// look like the gateway lost track of a backend it should have had.
+		return status.Errorf(codes.Internal, "backend %s is not configured: %s", backendName, backend.Backend.Unresolved)
+	}
 
 	s.routerProcessorsPerReqIDMutex.RLock()
 	defer s.routerProcessorsPerReqIDMutex.RUnlock()

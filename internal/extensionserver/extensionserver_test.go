@@ -206,10 +206,13 @@ func Test_maybeModifyCluster(t *testing.T) {
 			// In standalone mode (aigw run), EDS-managed endpoints have LoadAssignment=nil.
 			// The extension server must set cluster-level metadata so the upstream ext_proc
 			// filter can resolve the backend name via the cluster metadata fallback path.
+			// Cluster metadata holds one name for the whole cluster, so a rule with several
+			// backends attributes all of their traffic to the first and now says so in the log.
 			cluster: &clusterv3.Cluster{
 				Name: "httproute/ns/myroute/rule/0",
 			},
-			expectedLog: "msg=\"LoadAssignment is nil, setting cluster-level metadata\" logger=envoy-gateway-extension-server cluster_name=httproute/ns/myroute/rule/0\n",
+			expectedLog: "msg=\"LoadAssignment is nil, setting cluster-level metadata\" logger=envoy-gateway-extension-server cluster_name=httproute/ns/myroute/rule/0\n" +
+				"msg=\"cluster has no LoadAssignment and the rule has several backends, their traffic will all be attributed to the first\" logger=envoy-gateway-extension-server cluster_name=httproute/ns/myroute/rule/0 backend_refs_len=3 backend_name=aaa route_name=myroute route_namespace=ns route_rule_index=0\n",
 			expected: &clusterv3.Cluster{
 				Name: "httproute/ns/myroute/rule/0",
 				Metadata: &corev3.Metadata{

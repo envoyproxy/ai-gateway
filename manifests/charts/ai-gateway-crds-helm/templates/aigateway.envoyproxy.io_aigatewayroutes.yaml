@@ -1816,9 +1816,11 @@ spec:
               conditions:
                 description: |-
                   Conditions is the list of conditions by the reconciliation result.
-                  Currently, at most one condition is set.
+                  The first condition is always "Accepted" or "NotAccepted". A "ResolvedRefs" condition
+                  follows it only when the route was programmed with backend references that could not be
+                  resolved, so a fully resolved route carries just the one condition.
 
-                  Known .status.conditions.type are: "Accepted", "NotAccepted".
+                  Known .status.conditions.type are: "Accepted", "NotAccepted", "ResolvedRefs".
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

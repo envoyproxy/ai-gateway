@@ -197,6 +197,17 @@ type Backend struct {
 	HeaderMutation *HTTPHeaderMutation `json:"httpHeaderMutation,omitempty"`
 	// Body mutations to be applied to the request before sending to the backend. Optional.
 	BodyMutation *HTTPBodyMutation `json:"httpBodyMutation,omitempty"`
+	// Unresolved, when non-empty, explains why this backend could not be configured, and the
+	// external processor rejects requests routed to it with that explanation.
+	//
+	// The controller emits an entry for every backendRef, including unresolved ones, so the name a
+	// request arrives under is always known. Optional.
+	//
+	// An unresolved entry must be rejected before use: when the backend resolved but its
+	// BackendSecurityPolicy did not, it carries a valid Schema and a nil Auth, so nothing about its
+	// shape marks it unusable and dispatching would send an unauthenticated request upstream.
+	// extproc's setBackend is the only thing preventing that, so new readers must check too.
+	Unresolved string `json:"unresolved,omitempty"`
 }
 
 // BackendAuth corresponds partially to BackendSecurityPolicy in api/v1alpha1/api.go.

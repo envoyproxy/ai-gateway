@@ -77,6 +77,29 @@ func Test_translate(t *testing.T) {
 	}
 }
 
+// Test_translate_unresolvedBackendRef covers a rule naming an AIServiceBackend that does not exist.
+// The route is programmed anyway so the backends around it keep serving, and translation warns
+// rather than failing. See warnUnresolvedBackendRefs.
+func Test_translate_unresolvedBackendRef(t *testing.T) {
+	out, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	require.NoError(t, translate(t.Context(),
+		[]string{"testdata/translate_unresolved_backend.in.yaml"}, out, stderr))
+
+	require.Contains(t, stderr.String(), "warning: AIGatewayRoute default/envoy-ai-gateway-unresolved")
+	require.Contains(t, stderr.String(), "rules[0].backendRefs[1] (default/typo-backend)")
+	require.Contains(t, stderr.String(), "BackendNotFound")
+
+	// The route was still emitted, with the backend that does resolve intact and the unresolvable
+	// one holding its index so it cannot shift the one beside it.
+	httpRoutes, _, _, _, _, _, _, _, _, _, _, _, _, _ := requireCollectTranslatedObjects(t, out.String())
+	require.Len(t, httpRoutes, 1)
+	refs := httpRoutes[0].Spec.Rules[0].BackendRefs
+	require.Len(t, refs, 2)
+	require.Equal(t, "envoy-ai-gateway-unresolved-openai", string(refs[0].Name))
+	require.Contains(t, string(refs[1].Name), "ai-eg-unresolved")
+	require.Equal(t, int32(0), *refs[1].Weight)
+}
+
 func requireCollectTranslatedObjects(t *testing.T, yamlInput string) (
 	outHTTPRoutes []gwapiv1.HTTPRoute,
 	outEnvoyExtensionPolicy []egv1a1.EnvoyExtensionPolicy,

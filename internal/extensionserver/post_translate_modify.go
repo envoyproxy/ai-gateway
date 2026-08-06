@@ -352,6 +352,20 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				}
 				backendRef := httpRouteRule.BackendRefs[backendRefIndex]
 				setClusterMetadataBackendName(cluster, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, backendRefIndex)
+				if clusterName.backendRefIndex == noBackendRefIndex && len(httpRouteRule.BackendRefs) > 1 {
+					// Cluster metadata holds one name for the whole cluster, so backends sharing a
+					// cluster cannot be told apart and all traffic is attributed to the first.
+					// Endpoint metadata distinguishes them, but there is none to attach when the
+					// endpoints come from EDS. Leaving it unset would resolve no backend at all.
+					s.log.Info("cluster has no LoadAssignment and the rule has several backends, "+
+						"their traffic will all be attributed to the first",
+						"cluster_name", cluster.Name,
+						"backend_refs_len", len(httpRouteRule.BackendRefs),
+						"backend_name", backendRef.Name,
+						"route_name", aigwRoute.Name,
+						"route_namespace", aigwRoute.Namespace,
+						"route_rule_index", httpRouteRuleIndex)
+				}
 			}
 		case clusterName.backendRefIndex != noBackendRefIndex:
 			backendRef := httpRouteRule.BackendRefs[clusterName.backendRefIndex]
@@ -365,26 +379,30 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 			}
 		default:
 			// Populate the metadata for each endpoint in the LoadAssignment.
-			var lbEndpointIndex int
-			for i, backendRef := range httpRouteRule.BackendRefs {
-				// The weight of 0 means this backend is disabled and is not included in the LoadAssignment by EG,
-				// so we skip it here.
-				if backendRef.Weight != nil && *backendRef.Weight == 0 {
-					continue
+			//
+			// Localities come from the generated HTTPRoute, backend names from the AIGatewayRoute.
+			// Those reconcile independently, so the lists can differ in length: walking them in
+			// lockstep runs off the shorter one and mispairs whenever the gap is not at the tail.
+			//
+			// Envoy Gateway records which backendRef each locality was built from in
+			// locality.region, formatted exactly like a per-backend cluster name, so pair on that
+			// instead of counting. See irDestinationSettingName in Envoy Gateway's
+			// internal/gatewayapi/helpers.go.
+			for _, refIndex := range s.backendRefIndicesForLocalities(cluster, clusterName, httpRouteRule.BackendRefs, httpRouteRuleIndex) {
+				endpoints, i := refIndex.locality, refIndex.backendRefIndex
+				if i == noBackendRefIndex {
+					continue // Already logged.
 				}
-				endpoints := cluster.LoadAssignment.Endpoints[lbEndpointIndex]
-				lbEndpointIndex++
-				name := backendRef.Name
-				namespace := aigwRoute.Namespace
+				backendRef := &httpRouteRule.BackendRefs[i]
 				if backendRef.Priority != nil {
 					endpoints.Priority = *backendRef.Priority
 				}
 				for _, endpoint := range endpoints.LbEndpoints {
-					setEndpointMetadataBackendName(endpoint, namespace, name, aigwRoute.Name, httpRouteRuleIndex, i)
+					setEndpointMetadataBackendName(endpoint, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, i)
 				}
 			}
 		}
-	} else {
+	} else if len(httpRouteRule.BackendRefs) > 0 {
 		// we can only specify one backend in a rule for InferencePool.
 		backendRefIndex := 0
 		if clusterName.backendRefIndex != noBackendRefIndex {

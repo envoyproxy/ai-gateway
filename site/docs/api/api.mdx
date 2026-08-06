@@ -3271,7 +3271,7 @@ AIGatewayRouteStatus contains the conditions by the reconciliation result.
   name="conditions"
   type="[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#condition-v1-meta) array"
   required="true"
-  description="Conditions is the list of conditions by the reconciliation result.<br />Currently, at most one condition is set.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`."
+  description="Conditions is the list of conditions by the reconciliation result.<br />The first condition is always `Accepted` or `NotAccepted`. A `ResolvedRefs` condition<br />follows it only when the route was programmed with backend references that could not be<br />resolved, so a fully resolved route carries just the one condition.<br />Known .status.conditions.type are: `Accepted`, `NotAccepted`, `ResolvedRefs`."
 />
 
 

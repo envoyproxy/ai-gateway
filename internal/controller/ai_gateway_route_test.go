@@ -7,6 +7,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -21,6 +22,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -71,8 +73,11 @@ func TestAIGatewayRouteController_Reconcile(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestAIGatewayRouteController_Reconcile_SyncError(t *testing.T) {
-	// Test error path where syncAIGatewayRoute fails.
+// TestAIGatewayRouteController_Reconcile_UnresolvedBackendRef covers a route whose only backendRef
+// names an AIServiceBackend that does not exist. The route is still programmed, with that reference
+// replaced by a placeholder so the ones around it keep their positions, and the reference is
+// reported through a ResolvedRefs condition rather than by failing the reconcile.
+func TestAIGatewayRouteController_Reconcile_UnresolvedBackendRef(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
 	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
@@ -93,14 +98,81 @@ func TestAIGatewayRouteController_Reconcile_SyncError(t *testing.T) {
 	err := fakeClient.Create(t.Context(), route)
 	require.NoError(t, err)
 
-	// This should fail during sync because backend doesn't exist.
+	// The reference is bad, not the reconcile: requeuing would rewrite the same HTTPRoute forever,
+	// and the AIServiceBackend watch already brings us back when the backend is created.
 	_, err = c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "errorroute"}})
-	require.Error(t, err)
+	require.NoError(t, err)
 
-	// Check that status was updated to NotAccepted.
+	// The route is programmed. The unresolvable reference keeps its index, pointing at a Backend
+	// that does not exist, so Envoy Gateway gives it no endpoints and 500s its share of traffic.
+	var httpRoute gwapiv1.HTTPRoute
+	require.NoError(t, fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "errorroute"}, &httpRoute))
+	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
+	placeholder := httpRoute.Spec.Rules[0].BackendRefs[0]
+	require.Contains(t, string(placeholder.Name), unresolvedBackendPlaceholderPrefix)
+	require.Equal(t, "default", string(*placeholder.Namespace))
+	// Zero weight keeps it out of the traffic split, which is what stops it from changing the
+	// cluster shape of the rest of the rule. See TestNewHTTPRoutePlaceholderWeightIsZero.
+	require.Equal(t, int32(0), *placeholder.Weight)
+
+	// The route is accepted, with the unresolved reference reported separately.
 	var updatedRoute aigv1b1.AIGatewayRoute
 	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "errorroute"}, &updatedRoute)
 	require.NoError(t, err)
+	require.Len(t, updatedRoute.Status.Conditions, 2)
+	require.Equal(t, aigv1b1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
+	resolvedRefs := updatedRoute.Status.Conditions[1]
+	require.Equal(t, aigv1b1.ConditionTypeResolvedRefs, resolvedRefs.Type)
+	require.Equal(t, metav1.ConditionFalse, resolvedRefs.Status)
+	require.Equal(t, aigv1b1.ConditionReasonBackendNotFound, resolvedRefs.Reason)
+	require.Contains(t, resolvedRefs.Message, "rules[0].backendRefs[0]")
+	require.Contains(t, resolvedRefs.Message, "nonexistent")
+}
+
+// TestAIGatewayRouteController_Reconcile_TransientBackendReadError checks that a reference is only
+// treated as bad when something was actually learned about it. An API server error says nothing
+// about the reference, so the sync must fail and leave the existing HTTPRoute alone rather than
+// swap a healthy backend out of the data plane because a read happened to fail.
+func TestAIGatewayRouteController_Reconcile_TransientBackendReadError(t *testing.T) {
+	route := &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "flakyroute", Namespace: "default"},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{{
+				BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "apple", Weight: ptr.To[int32](1)}},
+			}},
+		},
+	}
+	backend := &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: "default"},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "apple-backend"},
+		},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(Scheme).
+		WithStatusSubresource(&aigv1b1.AIGatewayRoute{}).
+		WithObjects(route, backend).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				if _, ok := obj.(*aigv1b1.AIServiceBackend); ok {
+					return apierrors.NewInternalError(errors.New("etcd is having a moment"))
+				}
+				return cl.Get(ctx, key, obj, opts...)
+			},
+		}).Build()
+
+	eventCh := internaltesting.NewControllerEventChan[*gwapiv1.Gateway]()
+	c := NewAIGatewayRouteController(fakeClient, fake2.NewClientset(), ctrl.Log, eventCh.Ch, "/v1")
+
+	_, err := c.Reconcile(t.Context(), reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "flakyroute"}})
+	require.Error(t, err)
+
+	// No HTTPRoute was written, so nothing was degraded on the strength of a failed read.
+	var httpRoute gwapiv1.HTTPRoute
+	err = fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "flakyroute"}, &httpRoute)
+	require.True(t, apierrors.IsNotFound(err))
+
+	var updatedRoute aigv1b1.AIGatewayRoute
+	require.NoError(t, fakeClient.Get(t.Context(), types.NamespacedName{Namespace: "default", Name: "flakyroute"}, &updatedRoute))
 	require.Len(t, updatedRoute.Status.Conditions, 1)
 	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
 }
@@ -284,7 +356,7 @@ func Test_newHTTPRoute(t *testing.T) {
 				err := s.client.Create(t.Context(), backend, &client.CreateOptions{})
 				require.NoError(t, err)
 			}
-			err := s.newHTTPRoute(t.Context(), httpRoute, aiGatewayRoute)
+			_, err := s.newHTTPRoute(t.Context(), httpRoute, aiGatewayRoute)
 			require.NoError(t, err)
 
 			rewriteFilters := []gwapiv1.HTTPRouteFilter{{
@@ -557,7 +629,7 @@ func Test_newHTTPRoute_InferencePool(t *testing.T) {
 	controller := &AIGatewayRouteController{client: c}
 	httpRoute := &gwapiv1.HTTPRoute{}
 
-	err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
+	_, err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
 	require.NoError(t, err)
 
 	// Verify HTTPRoute has correct backend reference for InferencePool.
@@ -624,7 +696,8 @@ func Test_newHTTPRoute_InferencePool_CrossNamespace(t *testing.T) {
 
 		controller := &AIGatewayRouteController{client: c, referenceGrantValidator: newReferenceGrantValidator(c)}
 		httpRoute := &gwapiv1.HTTPRoute{}
-		require.NoError(t, controller.newHTTPRoute(t.Context(), httpRoute, newRoute("default")))
+		_, newRouteErrDefault := controller.newHTTPRoute(t.Context(), httpRoute, newRoute("default"))
+		require.NoError(t, newRouteErrDefault)
 
 		require.Len(t, httpRoute.Spec.Rules, 2)
 		require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
@@ -636,15 +709,27 @@ func Test_newHTTPRoute_InferencePool_CrossNamespace(t *testing.T) {
 		require.Equal(t, "default", string(*backendRef.Namespace))
 	})
 
-	t.Run("cross-namespace without ReferenceGrant is rejected", func(t *testing.T) {
+	t.Run("cross-namespace without ReferenceGrant becomes a placeholder", func(t *testing.T) {
 		c := requireNewFakeClientWithIndexes(t)
 
 		controller := &AIGatewayRouteController{client: c, referenceGrantValidator: newReferenceGrantValidator(c)}
 		httpRoute := &gwapiv1.HTTPRoute{}
-		err := controller.newHTTPRoute(t.Context(), httpRoute, newRoute("default"))
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "cross-namespace reference from AIGatewayRoute in namespace gw "+
+		unresolved, err := controller.newHTTPRoute(t.Context(), httpRoute, newRoute("default"))
+		require.NoError(t, err)
+
+		require.Len(t, unresolved, 1)
+		require.Equal(t, UnresolvedBackendRefNotPermitted, unresolved[0].Reason)
+		require.Equal(t, 0, unresolved[0].RuleIndex)
+		require.Equal(t, 0, unresolved[0].BackendRefIndex)
+		require.Contains(t, unresolved[0].Message, "cross-namespace reference from AIGatewayRoute in namespace gw "+
 			"to InferencePool my-pool in namespace default is not permitted")
+
+		// The reference keeps its position so the backends around it keep their indices.
+		backendRef := httpRoute.Spec.Rules[0].BackendRefs[0]
+		require.Contains(t, string(backendRef.Name), unresolvedBackendPlaceholderPrefix)
+		// Same namespace as the route, so Envoy Gateway reports BackendNotFound rather than
+		// RefNotPermitted, which would be a second failure to chase.
+		require.Equal(t, "gw", string(*backendRef.Namespace))
 	})
 
 	t.Run("same-namespace reference needs no ReferenceGrant", func(t *testing.T) {
@@ -652,7 +737,8 @@ func Test_newHTTPRoute_InferencePool_CrossNamespace(t *testing.T) {
 
 		controller := &AIGatewayRouteController{client: c, referenceGrantValidator: newReferenceGrantValidator(c)}
 		httpRoute := &gwapiv1.HTTPRoute{}
-		require.NoError(t, controller.newHTTPRoute(t.Context(), httpRoute, newRoute("gw")))
+		_, newRouteErrGw := controller.newHTTPRoute(t.Context(), httpRoute, newRoute("gw"))
+		require.NoError(t, newRouteErrGw)
 
 		backendRef := httpRoute.Spec.Rules[0].BackendRefs[0]
 		require.NotNil(t, backendRef.Namespace)
@@ -707,7 +793,7 @@ func Test_newHTTPRoute_LabelAndAnnotationPropagation(t *testing.T) {
 		},
 	}
 
-	err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
+	_, err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
 	require.NoError(t, err)
 
 	// Verify that all labels from AIGatewayRoute are copied to HTTPRoute.
@@ -729,7 +815,7 @@ func Test_newHTTPRoute_LabelAndAnnotationPropagation(t *testing.T) {
 	aiGatewayRoute.Annotations["new-annotation"] = "new-ann-value"
 	aiGatewayRoute.Annotations["custom-annotation-1"] = "new-ann-value-1"
 
-	err = controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
+	_, err = controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
 	require.NoError(t, err)
 
 	// Verify new labels and annotations are propagated.
@@ -778,7 +864,7 @@ func Test_newHTTPRoute_Hostnames_NotSet(t *testing.T) {
 		},
 	}
 
-	err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
+	_, err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
 	require.NoError(t, err)
 
 	require.Empty(t, httpRoute.Spec.Hostnames)
@@ -820,7 +906,7 @@ func Test_newHTTPRoute_Hostnames_Set(t *testing.T) {
 		},
 	}
 
-	err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
+	_, err := controller.newHTTPRoute(context.Background(), httpRoute, aiGatewayRoute)
 	require.NoError(t, err)
 
 	expected := []gwapiv1.Hostname{"api.example.com", "*.example.net", "sub.example.com"}
@@ -1038,23 +1124,34 @@ func TestAIGatewayRouteController_CrossNamespaceBackend_WithoutReferenceGrant(t 
 	err = fakeClient.Create(t.Context(), route)
 	require.NoError(t, err)
 
-	// Reconcile should fail without ReferenceGrant
+	// The reference is not permitted, but that is a fact about the reference rather than a failure
+	// to reconcile, so the route is still programmed with a placeholder in its place.
 	_, err = c.Reconcile(t.Context(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Namespace: "route-ns", Name: "cross-ns-route"},
 	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "is not permitted")
-	require.Contains(t, err.Error(), "no valid ReferenceGrant found")
+	require.NoError(t, err)
 
-	// Verify the status is NotAccepted
+	var httpRoute gwapiv1.HTTPRoute
+	require.NoError(t, fakeClient.Get(t.Context(), types.NamespacedName{
+		Namespace: "route-ns", Name: "cross-ns-route",
+	}, &httpRoute))
+	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
+	require.Contains(t, string(httpRoute.Spec.Rules[0].BackendRefs[0].Name), unresolvedBackendPlaceholderPrefix)
+
+	// Verify the reference is reported as unresolved, with the reason that names the fix.
 	var updatedRoute aigv1b1.AIGatewayRoute
 	err = fakeClient.Get(t.Context(), types.NamespacedName{
 		Namespace: "route-ns",
 		Name:      "cross-ns-route",
 	}, &updatedRoute)
 	require.NoError(t, err)
-	require.Len(t, updatedRoute.Status.Conditions, 1)
-	require.Equal(t, aigv1b1.ConditionTypeNotAccepted, updatedRoute.Status.Conditions[0].Type)
+	require.Len(t, updatedRoute.Status.Conditions, 2)
+	require.Equal(t, aigv1b1.ConditionTypeAccepted, updatedRoute.Status.Conditions[0].Type)
+	resolvedRefs := updatedRoute.Status.Conditions[1]
+	require.Equal(t, aigv1b1.ConditionTypeResolvedRefs, resolvedRefs.Type)
+	require.Equal(t, aigv1b1.ConditionReasonRefNotPermitted, resolvedRefs.Reason)
+	require.Contains(t, resolvedRefs.Message, "is not permitted")
+	require.Contains(t, resolvedRefs.Message, "no valid ReferenceGrant found")
 }
 
 func TestAIGatewayRouteController_SameNamespaceBackend_NoReferenceGrantNeeded(t *testing.T) {
