@@ -18,11 +18,14 @@ type MCPTracer interface {
 	// StartSpanAndInjectMeta starts a span and injects trace context into
 	// the _meta mutation.
 	//
+	// The parent trace context is taken from the HTTP headers first, then the JSON-RPC _meta on
+	// top, so _meta wins when a client propagates in both. Either source alone works.
+	//
 	// Parameters:
 	//   - ctx: might include a parent span context.
 	//   - req: Incoming MCP request message.
 	//   - param: Incoming MCP parameter used to extract parent trace context.
-	//   - headers: Request HTTP request headers.
+	//   - headers: Request HTTP request headers, also used to extract parent trace context.
 	//
 	// Returns nil unless the span is sampled.
 	StartSpanAndInjectMeta(ctx context.Context, req *jsonrpc.Request, param mcp.Params, headers http.Header) MCPSpan
