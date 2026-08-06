@@ -43,6 +43,7 @@ type extProcFlags struct {
 	configBundlePath                       string        // path to the sharded configuration bundle directory.
 	extProcAddr                            string        // gRPC address for the external processor.
 	logLevel                               slog.Level    // log level for the external processor.
+	logFormat                              string        // log output format for the external processor, "text" or "json".
 	enableRedaction                        bool          // enable redaction of sensitive information in debug logs.
 	adminPort                              int           // HTTP port for the admin server (metrics and health).
 	requestHeaderAttributes                *string       // comma-separated key-value pairs for mapping HTTP request headers to otel attributes shared across metrics, spans, and access logs.
@@ -61,6 +62,16 @@ type extProcFlags struct {
 	maxRecvMsgSize int
 	// endpointPrefixes is the comma-separated key-value pairs for endpoint prefixes.
 	endpointPrefixes string
+}
+
+// newLogHandler returns the slog handler for the requested output format. Anything other than
+// json gets the text handler, which is what the external processor has always emitted.
+func newLogHandler(w io.Writer, level slog.Level, format string) slog.Handler {
+	opts := &slog.HandlerOptions{Level: level}
+	if format == internalapi.LogFormatJSON {
+		return slog.NewJSONHandler(w, opts)
+	}
+	return slog.NewTextHandler(w, opts)
 }
 
 func setOptionalString(dst **string) func(string) error {
@@ -98,6 +109,11 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 		"logLevel",
 		"info",
 		"log level for the external processor. One of 'debug', 'info', 'warn', or 'error'.",
+	)
+	fs.StringVar(&flags.logFormat,
+		"logFormat",
+		internalapi.LogFormatText,
+		"log output format for the external processor. One of 'text' or 'json'.",
 	)
 	fs.BoolVar(&flags.enableRedaction, "enableRedaction", false,
 		"Enable redaction of sensitive information in debug logs.")
@@ -155,6 +171,9 @@ func parseAndValidateFlags(args []string) (extProcFlags, error) {
 	if err := flags.logLevel.UnmarshalText([]byte(*logLevelPtr)); err != nil {
 		errs = append(errs, fmt.Errorf("failed to unmarshal log level: %w", err))
 	}
+	if err := internalapi.ValidateLogFormat(flags.logFormat); err != nil {
+		errs = append(errs, err)
+	}
 	if flags.requestHeaderAttributes != nil && *flags.requestHeaderAttributes != "" {
 		if _, err := internalapi.ParseRequestHeaderAttributeMapping(*flags.requestHeaderAttributes); err != nil {
 			errs = append(errs, fmt.Errorf("failed to parse request header mapping: %w", err))
@@ -205,7 +224,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		return fmt.Errorf("failed to parse and validate extProcFlags: %w", err)
 	}
 
-	l := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: flags.logLevel}))
+	l := slog.New(newLogHandler(stderr, flags.logLevel, flags.logFormat))
 
 	l.Info("starting external processor",
 		slog.String("version", version.Parse()),
@@ -294,6 +313,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	translationMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationTranslation)
 	rerankMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationRerank)
 	tokenizeMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationTokenize)
+	responsesInputTokensMetricsFactory := metrics.NewMetricsFactory(meter, metricsRequestHeaderAttributes, metrics.GenAIOperationResponsesInputTokens)
 	mcpMetrics := metrics.NewMCP(meter, metricsRequestHeaderAttributes)
 
 	extproc.LogRequestHeaderAttributes = logRequestHeaderAttributes
@@ -310,6 +330,8 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 		embeddingsMetricsFactory, tracing.EmbeddingsTracer(), endpointspec.EmbeddingsEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/responses"), extproc.NewFactory(
 		responsesMetricsFactory, tracing.ResponsesTracer(), endpointspec.ResponsesEndpointSpec{}))
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/responses/input_tokens"), extproc.NewFactory(
+		responsesInputTokensMetricsFactory, tracing.ResponsesInputTokensTracer(), endpointspec.ResponsesInputTokensEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/speech"), extproc.NewFactory(
 		speechMetricsFactory, tracing.SpeechTracer(), endpointspec.SpeechEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/audio/transcriptions"), extproc.NewFactory(
@@ -321,6 +343,7 @@ func Main(ctx context.Context, args []string, stderr io.Writer) (err error) {
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Cohere, "/v2/rerank"), extproc.NewFactory(
 		rerankMetricsFactory, tracing.RerankTracer(), endpointspec.RerankEndpointSpec{}))
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.OpenAI, "/v1/models"), extproc.NewModelsProcessor)
+	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/models"), extproc.NewAnthropicModelsProcessor)
 	server.Register(path.Join(flags.rootPrefix, endpointPrefixes.Anthropic, "/v1/messages"), extproc.NewFactory(
 		messagesMetricsFactory, tracing.MessageTracer(), endpointspec.MessagesEndpointSpec{}))
 	// Use /tokenize to be consistent with vLLM: https://github.com/vllm-project/vllm/blob/344b50d5258d7cf3f136416e1dbcd9b5ee99bb00/vllm/entrypoints/serve/tokenize/api_router.py#L37

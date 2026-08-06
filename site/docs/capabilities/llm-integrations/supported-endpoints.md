@@ -306,6 +306,46 @@ curl -H "Content-Type: application/json" \
   $GATEWAY_URL/v1/responses
 ```
 
+### Responses Input Tokens
+
+**Endpoint:** `POST /v1/responses/input_tokens`
+
+**Status:** ✅ Supported
+
+**Description:** Count the number of input tokens for a Responses API request without generating a response. Accepts the same request body as `/v1/responses` and returns the input token count. This is useful for validating context window fit and estimating cost before making an inference call.
+
+**Features:**
+
+- ✅ Same request body format as `/v1/responses`
+- ✅ Model selection via request body or `x-ai-eg-model` header
+- ✅ Token usage tracking
+- ✅ Provider fallback and load balancing
+
+**Supported Providers:**
+
+- OpenAI
+- Azure OpenAI (with automatic `api-version` injection)
+
+**Example:**
+
+```bash
+curl -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4.1",
+    "input": "Hello, how are you?",
+    "instructions": "You are a helpful assistant."
+  }' \
+  $GATEWAY_URL/v1/responses/input_tokens
+```
+
+**Response Format:**
+
+```json
+{
+  "input_tokens": 15
+}
+```
+
 ### Rerank
 
 **Endpoint:** `POST /cohere/v2/rerank`
@@ -365,6 +405,7 @@ curl -H "Content-Type: application/json" \
 | OpenAI-compatible (e.g., vLLM)      | `OpenAI`       | Passthrough                                                                                                                  | vLLM natively supports `/tokenize`. OpenAI itself does not offer a tokenize REST API. |
 | GCP Vertex AI (Gemini)              | `GCPVertexAI`  | [Gemini CountTokens API](https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/count-tokens)                 | Supports `media_resolution` parameter.                                                |
 | GCP Anthropic (Claude on Vertex AI) | `GCPAnthropic` | [Anthropic MessageCountTokens API](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude/count-tokens) | Uses `rawPredict` method with `count-tokens` virtual model.                           |
+| AWS Bedrock                         | `AWSBedrock`   | [AWS Bedrock CountTokens API](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html)          | Supports models that implement the Converse API.                                      |
 | AWS Bedrock (Anthropic)             | `AWSAnthropic` | [AWS Bedrock CountTokens API](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html)          | Uses the InvokeModel-style CountTokens API with the Anthropic Messages body.          |
 
 **Chat Message Example:**
@@ -400,7 +441,7 @@ curl -H "Content-Type: application/json" \
 
 **Response Format:**
 
-For translated backends (GCP Vertex AI, GCP Anthropic, AWS Bedrock Anthropic), the response contains only the token count:
+For translated backends (GCP Vertex AI, GCP Anthropic, AWS Bedrock, AWS Bedrock Anthropic), the response contains only the token count:
 
 ```json
 {
@@ -424,6 +465,7 @@ For OpenAI-compatible backends that natively support tokenization (e.g., vLLM), 
 - For **vLLM backends**: Configure with `OpenAI` schema. vLLM natively provides `/tokenize` and the gateway passes the request through.
 - For **GCP Vertex AI**: Configure with `GCPVertexAI` schema. Requests are automatically translated to the Gemini CountTokens API. Completion prompts are automatically converted to chat messages.
 - For **GCP Anthropic**: Configure with `GCPAnthropic` schema. Requests are translated to the Anthropic MessageCountTokens API via `rawPredict`. Completion prompts are automatically converted to chat messages. Model version suffixes (`@default`, `@latest`) are automatically stripped.
+- For **AWS Bedrock**: Configure with `AWSBedrock` schema. Requests are translated to the AWS Bedrock CountTokens API using the Converse-style input. Completion prompts are automatically converted to chat messages. Cross-region inference (CRIS) model ID prefixes are automatically stripped.
 - For **AWS Bedrock (Anthropic)**: Configure with `AWSAnthropic` schema. Requests are translated to the AWS Bedrock CountTokens API using the InvokeModel-style Anthropic Messages body. Completion prompts are automatically converted to chat messages. Cross-region inference (CRIS) model ID prefixes are automatically stripped.
 
 ### Models
@@ -467,7 +509,7 @@ The following table summarizes which providers support which endpoints:
 | Provider                                                                                              | Chat Completions | Completions | Embeddings | Image Generation | Anthropic Messages | Rerank | Tokenize | Notes                                                                                                                |
 | ----------------------------------------------------------------------------------------------------- | :--------------: | :---------: | :--------: | :--------------: | :----------------: | :----: | :------: | -------------------------------------------------------------------------------------------------------------------- |
 | [OpenAI](https://platform.openai.com/docs/api-reference)                                              |        ✅        |     ✅      |     ✅     |        ❌        |         ✅         |   ❌   |    ❌    | OpenAI does not offer a tokenize REST API                                                                            |
-| [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |        ✅        |     🚧      |     ✅     |        ❌        |         ❌         |   ❌   |    ❌    | Via API translation (embeddings: Titan models only)                                                                  |
+| [AWS Bedrock](https://docs.aws.amazon.com/bedrock/latest/APIReference/)                               |        ✅        |     🚧      |     ✅     |        ❌        |         ❌         |   ❌   |    ✅    | Via API translation (embeddings: Titan models only)                                                                  |
 | [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)                  |        ✅        |     🚧      |     ✅     |        ❌        |         ⚠️         |   ❌   |    ❌    | Via API translation or via [OpenAI-compatible API](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/latest) |
 | [Google Gemini](https://ai.google.dev/gemini-api/docs/openai)                                         |        ✅        |     ⚠️      |     ✅     |        ⚠️        |         ❌         |   ❌   |    ❌    | Via OpenAI-compatible API                                                                                            |
 | [Groq](https://console.groq.com/docs/openai)                                                          |        ✅        |     ❌      |     ❌     |        ❌        |         ❌         |   ❌   |    ❌    | Via OpenAI-compatible API                                                                                            |
