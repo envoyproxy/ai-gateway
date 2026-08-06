@@ -66,14 +66,38 @@ const (
 	MCPMetadataHeaderMethod = MCPMetadataHeaderPrefix + "method"
 	// MCPMetadataHeaderToolName is the special header key used to pass the MCP tool name in the filter metadata.
 	MCPMetadataHeaderToolName = MCPMetadataHeaderPrefix + "tool-name"
+	// MCPMetadataHeaderResourceURI is the special header key used to pass the MCP resource URI in the filter metadata.
+	MCPMetadataHeaderResourceURI = MCPMetadataHeaderPrefix + "resource-uri"
 )
 
 // MCPInternalHeadersToMetadata maps special MCP headers to metadata keys.
+//
+// Only headers that do not survive to the router belong here. Headers the MCP proxy sets and leaves
+// on the request - mcp-session-id, x-ai-eg-mcp-route - are already readable from an access log with
+// %REQ(...)%, on both the MCP proxy listener and the backend listener, so mapping them would only add
+// a second name for the same value.
 var MCPInternalHeadersToMetadata = map[string]string{
-	MCPBackendHeader:           "mcp_backend",
-	MCPMetadataHeaderMethod:    "mcp_method",
-	MCPMetadataHeaderRequestID: "mcp_request_id",
-	MCPMetadataHeaderToolName:  "mcp_tool_name",
+	MCPBackendHeader:             "mcp_backend",
+	MCPMetadataHeaderMethod:      "mcp_method",
+	MCPMetadataHeaderRequestID:   "mcp_request_id",
+	MCPMetadataHeaderToolName:    "mcp_tool_name",
+	MCPMetadataHeaderResourceURI: "mcp_resource_uri",
+}
+
+const (
+	// LogFormatText selects human-readable log output. This is the default for every binary.
+	LogFormatText = "text"
+	// LogFormatJSON selects JSON log output, for log pipelines that parse structured records.
+	LogFormatJSON = "json"
+)
+
+// ValidateLogFormat checks that format is one of the supported log output formats. Callers that
+// validate another binary's format wrap the error to say whose it is.
+func ValidateLogFormat(format string) error {
+	if format != LogFormatText && format != LogFormatJSON {
+		return fmt.Errorf("invalid log format: %q, must be %q or %q", format, LogFormatText, LogFormatJSON)
+	}
+	return nil
 }
 
 const (
