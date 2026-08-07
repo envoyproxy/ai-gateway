@@ -164,26 +164,27 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 // array to the top-level system parameter. Returns the filtered messages (without system messages).
 // This handles clients (e.g. Claude Code with mid-conversation-system beta) that send
 // system prompts as messages rather than the top-level parameter.
+// Each system message becomes its own text block so per-block fields like cache_control survive
+// promotion and convertSystemPrompt can emit the corresponding cache points.
 func promoteAnthropicSystemMessagesToParam(body *anthropicschema.MessagesRequest) []anthropicschema.MessageParam {
-	var systemTexts []string
+	var systemBlocks []anthropicschema.TextBlockParam
 	var filtered []anthropicschema.MessageParam
 	for _, msg := range body.Messages {
 		if msg.Role == "system" {
 			if msg.Content.Text != "" {
-				systemTexts = append(systemTexts, msg.Content.Text)
+				systemBlocks = append(systemBlocks, anthropicschema.TextBlockParam{Type: "text", Text: msg.Content.Text})
 			}
 			for i := range msg.Content.Array {
-				if msg.Content.Array[i].Text != nil && msg.Content.Array[i].Text.Text != "" {
-					systemTexts = append(systemTexts, msg.Content.Array[i].Text.Text)
+				if block := msg.Content.Array[i].Text; block != nil && block.Text != "" {
+					systemBlocks = append(systemBlocks, *block)
 				}
 			}
 		} else {
 			filtered = append(filtered, msg)
 		}
 	}
-	if len(systemTexts) > 0 {
-		systemText := strings.Join(systemTexts, "\n")
-		body.System = &anthropicschema.SystemPrompt{Text: systemText}
+	if len(systemBlocks) > 0 {
+		body.System = &anthropicschema.SystemPrompt{Texts: systemBlocks}
 	}
 	return filtered
 }
