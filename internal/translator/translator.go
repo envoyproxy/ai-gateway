@@ -90,6 +90,13 @@ type RequestHeadersSetter interface {
 	SetRequestHeaders(headers map[string]string)
 }
 
+// AnthropicBetaFilterSetter is an optional interface for Anthropic translators that can filter
+// values out of the anthropic-beta request header before forwarding upstream. mode is either
+// "denylist" (drop values) or "allowlist" (keep only values); an empty mode or values disables it.
+type AnthropicBetaFilterSetter interface {
+	SetAnthropicBetaFilter(mode string, values []string)
+}
+
 // ResponseRedactor is an optional interface that translators can implement
 // to support response body redaction for debug logging.
 type ResponseRedactor interface {

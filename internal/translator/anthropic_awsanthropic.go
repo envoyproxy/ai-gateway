@@ -37,21 +37,21 @@ func NewAnthropicToAWSAnthropicTranslator(apiVersion string, modelNameOverride i
 
 type anthropicToAWSAnthropicTranslator struct {
 	anthropicToAnthropicTranslator
-	apiVersion     string
-	anthropicBetas []string
+	apiVersion       string
+	anthropicBetas   []string
+	betaFilterMode   string
+	betaFilterValues []string
 }
 
 // SetRequestHeaders implements [RequestHeadersSetter].
 func (a *anthropicToAWSAnthropicTranslator) SetRequestHeaders(headers map[string]string) {
-	var anthropicBetas []string
-	if betaHeader := headers["anthropic-beta"]; betaHeader != "" {
-		for _, beta := range strings.Split(betaHeader, ",") {
-			if beta = strings.TrimSpace(beta); beta != "" {
-				anthropicBetas = append(anthropicBetas, beta)
-			}
-		}
-	}
-	a.anthropicBetas = anthropicBetas
+	a.anthropicBetas = parseAnthropicBetaHeader(headers)
+}
+
+// SetAnthropicBetaFilter implements [AnthropicBetaFilterSetter].
+func (a *anthropicToAWSAnthropicTranslator) SetAnthropicBetaFilter(mode string, values []string) {
+	a.betaFilterMode = mode
+	a.betaFilterValues = values
 }
 
 // ResponseHeaders implements [AnthropicMessagesTranslator.ResponseHeaders].
@@ -88,8 +88,9 @@ func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *an
 	newBody, _ = sjson.DeleteBytesOptions(newBody, "model", sjsonOptionsInPlace)
 	newBody, _ = sjson.DeleteBytesOptions(newBody, "stream", sjsonOptionsInPlace)
 
-	if len(a.anthropicBetas) > 0 {
-		newBody, err = sjson.SetBytesOptions(newBody, "anthropic_beta", a.anthropicBetas, sjsonOptionsInPlace)
+	betas, betasChanged := filterAnthropicBetas(a.anthropicBetas, a.betaFilterMode, a.betaFilterValues)
+	if len(betas) > 0 {
+		newBody, err = sjson.SetBytesOptions(newBody, "anthropic_beta", betas, sjsonOptionsInPlace)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to set anthropic_beta field: %w", err)
 		}
@@ -110,6 +111,11 @@ func (a *anthropicToAWSAnthropicTranslator) RequestBody(rawBody []byte, body *an
 	path := fmt.Sprintf(pathTemplate, encodedModelID)
 
 	newHeaders = []internalapi.Header{{pathHeaderName, path}, {contentLengthHeaderName, strconv.Itoa(len(newBody))}}
+	// When the beta filter dropped a value, overwrite the forwarded anthropic-beta header to match the
+	// filtered set (Bedrock reads the body anthropic_beta field, but keep the header consistent).
+	if betasChanged {
+		newHeaders = append(newHeaders, internalapi.Header{anthropicBetaHeaderName, strings.Join(betas, ",")})
+	}
 	return
 }
 

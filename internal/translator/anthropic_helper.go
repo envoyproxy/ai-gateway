@@ -32,7 +32,61 @@ import (
 const (
 	anthropicVersionKey   = "anthropic_version"
 	tempNotSupportedError = "temperature %.2f is not supported by Anthropic (must be between 0.0 and 1.0)"
+
+	anthropicBetaHeaderName      = "anthropic-beta"
+	anthropicBetaFilterModeDeny  = "denylist"
+	anthropicBetaFilterModeAllow = "allowlist"
 )
+
+// parseAnthropicBetaHeader splits the comma-separated anthropic-beta request header into a slice of
+// trimmed, non-empty values. It returns nil when the header is absent or empty.
+func parseAnthropicBetaHeader(headers map[string]string) []string {
+	betaHeader := headers[anthropicBetaHeaderName]
+	if betaHeader == "" {
+		return nil
+	}
+	var betas []string
+	for _, beta := range strings.Split(betaHeader, ",") {
+		if beta = strings.TrimSpace(beta); beta != "" {
+			betas = append(betas, beta)
+		}
+	}
+	return betas
+}
+
+// filterAnthropicBetas applies a denylist/allowlist filter to a list of anthropic-beta values.
+// It returns the filtered list and whether any value was removed. An empty betas/values list, or a
+// mode other than "denylist"/"allowlist", leaves the input unchanged.
+func filterAnthropicBetas(betas []string, mode string, values []string) (filtered []string, changed bool) {
+	if len(betas) == 0 || len(values) == 0 {
+		return betas, false
+	}
+	var deny bool
+	switch mode {
+	case anthropicBetaFilterModeDeny:
+		deny = true
+	case anthropicBetaFilterModeAllow:
+		deny = false
+	default:
+		return betas, false
+	}
+	set := make(map[string]struct{}, len(values))
+	for _, v := range values {
+		set[v] = struct{}{}
+	}
+	filtered = make([]string, 0, len(betas))
+	for _, b := range betas {
+		_, listed := set[b]
+		keep := listed
+		if deny {
+			keep = !listed
+		}
+		if keep {
+			filtered = append(filtered, b)
+		}
+	}
+	return filtered, len(filtered) != len(betas)
+}
 
 // anthropicInputSchemaKeysToSkip defines the keys from an OpenAI function parameter map
 // that are handled explicitly and should not go into the ExtraFields map.

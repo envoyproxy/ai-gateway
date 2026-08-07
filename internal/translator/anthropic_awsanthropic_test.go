@@ -313,6 +313,93 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_AnthropicBetaHeader(t *te
 	}
 }
 
+func TestAnthropicToAWSAnthropicTranslator_RequestBody_AnthropicBetaFilter(t *testing.T) {
+	tests := []struct {
+		name             string
+		requestHeaders   map[string]string
+		filterMode       string
+		filterValues     []string
+		wantBody         []string
+		wantBetaHeader   string
+		wantHeaderChange bool
+	}{
+		{
+			name:           "no filter configured forwards all betas unchanged",
+			requestHeaders: map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,thinking-token-count-2026-05-13"},
+			wantBody:       []string{"advanced-tool-use-2025-11-20", "thinking-token-count-2026-05-13"},
+		},
+		{
+			name:             "denylist drops the unsupported value from body and header",
+			requestHeaders:   map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,thinking-token-count-2026-05-13"},
+			filterMode:       "denylist",
+			filterValues:     []string{"thinking-token-count-2026-05-13"},
+			wantBody:         []string{"advanced-tool-use-2025-11-20"},
+			wantBetaHeader:   "advanced-tool-use-2025-11-20",
+			wantHeaderChange: true,
+		},
+		{
+			name:             "allowlist keeps only the sanctioned value",
+			requestHeaders:   map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,thinking-token-count-2026-05-13"},
+			filterMode:       "allowlist",
+			filterValues:     []string{"advanced-tool-use-2025-11-20"},
+			wantBody:         []string{"advanced-tool-use-2025-11-20"},
+			wantBetaHeader:   "advanced-tool-use-2025-11-20",
+			wantHeaderChange: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			translator := NewAnthropicToAWSAnthropicTranslator("bedrock-2023-05-31", "")
+			translator.(RequestHeadersSetter).SetRequestHeaders(tt.requestHeaders)
+			if tt.filterMode != "" || tt.filterValues != nil {
+				translator.(AnthropicBetaFilterSetter).SetAnthropicBetaFilter(tt.filterMode, tt.filterValues)
+			}
+
+			originalReq := &anthropicschema.MessagesRequest{
+				Model: "anthropic.claude-3-sonnet-20240229-v1:0",
+				Messages: []anthropicschema.MessageParam{
+					{
+						Role: anthropicschema.MessageRoleUser,
+						Content: anthropicschema.MessageContent{
+							Array: []anthropicschema.ContentBlockParam{
+								{Text: &anthropicschema.TextBlockParam{Text: "Hello"}},
+							},
+						},
+					},
+				},
+			}
+			rawBody, err := json.Marshal(originalReq)
+			require.NoError(t, err)
+
+			headerMutation, bodyMutation, err := translator.RequestBody(rawBody, originalReq, false)
+			require.NoError(t, err)
+
+			var modifiedReq map[string]any
+			require.NoError(t, json.Unmarshal(bodyMutation, &modifiedReq))
+			betaValues, ok := modifiedReq["anthropic_beta"].([]any)
+			require.True(t, ok)
+			require.Len(t, betaValues, len(tt.wantBody))
+			for i, expected := range tt.wantBody {
+				require.Equal(t, expected, betaValues[i])
+			}
+
+			var betaHeader *internalapi.Header
+			for i := range headerMutation {
+				if headerMutation[i].Key() == anthropicBetaHeaderName {
+					betaHeader = &headerMutation[i]
+				}
+			}
+			if tt.wantHeaderChange {
+				require.NotNil(t, betaHeader, "expected anthropic-beta header to be overwritten")
+				assert.Equal(t, tt.wantBetaHeader, betaHeader.Value())
+			} else {
+				require.Nil(t, betaHeader, "anthropic-beta header should not be overwritten")
+			}
+		})
+	}
+}
+
 func TestAnthropicToAWSAnthropicTranslator_ResponseBody(t *testing.T) {
 	t.Run("non-streaming response", func(t *testing.T) {
 		// This is mostly for the coverage as it's the same as AnthropicToAnthropicTranslator.ResponseBody.

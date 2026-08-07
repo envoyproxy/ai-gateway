@@ -474,6 +474,31 @@ spec:
           spec:
             description: Spec defines the details of AIServiceBackend.
             properties:
+              anthropicBetaFilter:
+                description: |-
+                  AnthropicBetaFilter filters values from the `anthropic-beta` request header before sending the
+                  request to this backend. Only applies to Anthropic backends (GCP Vertex and AWS Bedrock).
+                properties:
+                  mode:
+                    description: |-
+                      Mode selects the filtering semantics:
+                        - "denylist": drop the values listed in Values, keep everything else.
+                        - "allowlist": keep only the values listed in Values, drop everything else.
+                    enum:
+                    - denylist
+                    - allowlist
+                    type: string
+                  values:
+                    description: Values is the list of `anthropic-beta` values to
+                      drop (denylist) or keep (allowlist).
+                    items:
+                      type: string
+                    maxItems: 64
+                    type: array
+                    x-kubernetes-list-type: set
+                required:
+                - mode
+                type: object
               backendRef:
                 description: |-
                   BackendRef is the reference to the Backend resource that this AIServiceBackend corresponds to.
