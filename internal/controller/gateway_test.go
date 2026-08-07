@@ -342,7 +342,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 				Rules: []aigv1b1.AIGatewayRouteRule{
 					{
 						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
-							{Name: "apple"},
+							{Name: "apple", Weight: ptr.To[int32](80), Priority: ptr.To[uint32](2)},
 							{Name: "invalid-bsp-backend"},  // This should be ignored as the BSP is invalid.
 							{Name: "non-existent-backend"}, // This should be ignored as the backend does not exist.
 						},
@@ -376,6 +376,24 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 				LLMRequestCosts: []aigv1b1.LLMRequestCost{
 					{MetadataKey: "foo", Type: aigv1b1.LLMRequestCostTypeInputToken}, // Same metadataKey as route1; scoped to this route in filter config.
 					{MetadataKey: "cat", Type: aigv1b1.LLMRequestCostTypeCEL, CEL: ptr.To(`backend == 'foo.default' ?  input_tokens + output_tokens : total_tokens`)},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "route3", Namespace: gwNamespace},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+							{
+								Name:     "pool",
+								Group:    ptr.To("inference.networking.k8s.io"),
+								Kind:     ptr.To("InferencePool"),
+								Weight:   ptr.To[int32](7),
+								Priority: ptr.To[uint32](3),
+							},
+						},
+					},
 				},
 			},
 		},
@@ -490,11 +508,18 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.Len(t, fc.Models, 1)
 		require.Equal(t, "mymodel", fc.Models[0].Name)
 
+		require.Len(t, fc.Backends, 3)
 		require.Len(t, fc.Backends[0].HeaderMutation.Set, 1)
 		require.Len(t, fc.Backends[0].HeaderMutation.Remove, 1)
 		require.Equal(t, "x-foo", fc.Backends[0].HeaderMutation.Set[0].Name)
 		require.Equal(t, "foo", fc.Backends[0].HeaderMutation.Set[0].Value)
 		require.Equal(t, "x-bar", fc.Backends[0].HeaderMutation.Remove[0])
+		require.Equal(t, ptr.To[int32](80), fc.Backends[0].Weight)
+		require.Equal(t, ptr.To[uint32](2), fc.Backends[0].Priority)
+		require.Equal(t, ptr.To[int32](1), fc.Backends[1].Weight)
+		require.Equal(t, ptr.To[uint32](0), fc.Backends[1].Priority)
+		require.Nil(t, fc.Backends[2].Weight)
+		require.Nil(t, fc.Backends[2].Priority)
 	}
 }
 
