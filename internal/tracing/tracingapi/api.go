@@ -45,6 +45,8 @@ type (
 		MessageTracer() MessageTracer
 		// TokenizeTracer creates spans for tokenize requests.
 		TokenizeTracer() TokenizeTracer
+		// ResponsesInputTokensTracer creates spans for OpenAI /v1/responses/input_tokens requests.
+		ResponsesInputTokensTracer() ResponsesInputTokensTracer
 		// MCPTracer creates spans for MCP requests.
 		MCPTracer() MCPTracer
 		// Shutdown shuts down the tracer, flushing any buffered spans.
@@ -91,6 +93,8 @@ type (
 	MessageTracer = RequestTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// TokenizeTracer creates spans for tokenize requests.
 	TokenizeTracer = RequestTracer[tokenize.RequestUnion, tokenize.Response, struct{}]
+	// ResponsesInputTokensTracer creates spans for OpenAI /v1/responses/input_tokens requests.
+	ResponsesInputTokensTracer = RequestTracer[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
 )
 
 type (
@@ -128,6 +132,8 @@ type (
 	MessageSpan = Span[anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// TokenizeSpan represents a tokenize request span. The chunk type is unused and therefore set to struct{}.
 	TokenizeSpan = Span[tokenize.Response, struct{}]
+	// ResponsesInputTokensSpan represents an OpenAI /v1/responses/input_tokens request span.
+	ResponsesInputTokensSpan = Span[openai.ResponsesInputTokensResponse, struct{}]
 )
 
 type (
@@ -179,6 +185,8 @@ type (
 	MessageRecorder = SpanRecorder[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// TokenizeRecorder records attributes to a span according to a semantic convention.
 	TokenizeRecorder = SpanRecorder[tokenize.RequestUnion, tokenize.Response, struct{}]
+	// ResponsesInputTokensRecorder records attributes to a span according to a semantic convention.
+	ResponsesInputTokensRecorder = SpanRecorder[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
 )
 
 // NoopChunkRecorder provides a no-op RecordResponseChunks implementation for recorders that don't emit streaming chunks.
@@ -248,6 +256,11 @@ func (NoopTracing) TokenizeTracer() TokenizeTracer {
 	return NoopTokenizeTracer{}
 }
 
+// ResponsesInputTokensTracer implements Tracing.ResponsesInputTokensTracer.
+func (NoopTracing) ResponsesInputTokensTracer() ResponsesInputTokensTracer {
+	return NoopResponsesInputTokensTracer{}
+}
+
 // Shutdown implements Tracing.Shutdown.
 func (NoopTracing) Shutdown(context.Context) error {
 	return nil
@@ -278,6 +291,8 @@ type (
 	NoopMessageTracer = NoopTracer[anthropicschema.MessagesRequest, anthropicschema.MessagesResponse, anthropicschema.MessagesStreamChunk]
 	// NoopTokenizeTracer implements TokenizeTracer.
 	NoopTokenizeTracer = NoopTracer[tokenize.RequestUnion, tokenize.Response, struct{}]
+	// NoopResponsesInputTokensTracer implements ResponsesInputTokensTracer.
+	NoopResponsesInputTokensTracer = NoopTracer[openai.ResponseRequest, openai.ResponsesInputTokensResponse, struct{}]
 )
 
 // StartSpanAndInjectHeaders implements RequestTracer.StartSpanAndInjectHeaders.

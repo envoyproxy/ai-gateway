@@ -675,7 +675,16 @@ func TestServePOST_ToolsCallRequest(t *testing.T) {
 				require.Equal(t, tt.wantBackend, r.Header.Get(internalapi.MCPBackendHeader))
 				require.Equal(t, "tools/call", r.Header.Get(internalapi.MCPMetadataHeaderMethod))
 				require.Equal(t, tt.tool, r.Header.Get(internalapi.MCPMetadataHeaderRequestID))
-				for h := range internalapi.MCPInternalHeadersToMetadata {
+				// The headers a tools/call populates. Resource-scoped headers are asserted in the
+				// resources/read and resources/subscribe tests instead, since a tools/call leaves them unset.
+				for _, h := range []string{
+					internalapi.MCPBackendHeader,
+					internalapi.MCPRouteHeader,
+					sessionIDHeader,
+					internalapi.MCPMetadataHeaderMethod,
+					internalapi.MCPMetadataHeaderRequestID,
+					internalapi.MCPMetadataHeaderToolName,
+				} {
 					require.NotEmpty(t, r.Header.Get(h))
 				}
 
@@ -1708,6 +1717,10 @@ func TestMCPPRoxy_handleResourceReadRequest(t *testing.T) {
 
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "backend1", r.Header.Get(internalapi.MCPBackendHeader))
+		// The URI has already been rewritten from the client-facing composite form to the upstream one
+		// by this point, so that is what the metadata header carries. Same as mcp_tool_name, which
+		// records the tool name after the backend prefix is stripped.
+		require.Equal(t, "file://foo-resource", r.Header.Get(internalapi.MCPMetadataHeaderResourceURI))
 		body, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
 		require.Contains(t, string(body), `"uri":"file://foo-resource"`)
@@ -2081,10 +2094,12 @@ func TestMCPServer_handleResourcesSubscriptionRequest(t *testing.T) {
 					var params mcp.SubscribeParams
 					require.NoError(t, json.Unmarshal(req.Params, &params))
 					require.Equal(t, "file://foo", params.URI)
+					require.Equal(t, "file://foo", r.Header.Get(internalapi.MCPMetadataHeaderResourceURI))
 				case *mcp.UnsubscribeParams:
 					var params mcp.UnsubscribeParams
 					require.NoError(t, json.Unmarshal(req.Params, &params))
 					require.Equal(t, "file://bar", params.URI)
+					require.Equal(t, "file://bar", r.Header.Get(internalapi.MCPMetadataHeaderResourceURI))
 				default:
 					t.Fatalf("unexpected params type: %T", tc.p)
 				}
@@ -2395,6 +2410,79 @@ func Test_checkToolCallError(t *testing.T) {
 				require.Equal(t, tt.backendName, toolErr.backend)
 			} else {
 				require.Nil(t, toolErr)
+			}
+		})
+	}
+}
+
+func TestAddMCPHeaders_MetadataValueGuard(t *testing.T) {
+	longURI := "file://" + strings.Repeat("a", maxMCPMetadataHeaderValueLen)
+
+	tests := []struct {
+		name    string
+		id      string
+		uri     string
+		wantID  string
+		wantURI string
+	}{
+		{
+			name:    "plain values are set",
+			id:      "req-1",
+			uri:     "file://config.yaml",
+			wantID:  "req-1",
+			wantURI: "file://config.yaml",
+		},
+		{
+			name:    "non-ascii is allowed, http.Transport accepts it",
+			id:      "req-2",
+			uri:     "file://café/résumé.txt",
+			wantID:  "req-2",
+			wantURI: "file://café/résumé.txt",
+		},
+		{
+			name:    "control characters are dropped, not forwarded",
+			id:      "req-3",
+			uri:     "file://a\nb",
+			wantID:  "req-3",
+			wantURI: "",
+		},
+		{
+			name:    "a control character in the JSON-RPC ID drops only that header",
+			id:      "req\r\n4",
+			uri:     "file://config.yaml",
+			wantID:  "",
+			wantURI: "file://config.yaml",
+		},
+		{
+			name:    "oversized values are dropped rather than truncated",
+			id:      "req-5",
+			uri:     longURI,
+			wantID:  "req-5",
+			wantURI: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodPost, "http://backend", nil)
+			require.NoError(t, err)
+			id, err := jsonrpc.MakeID(tt.id)
+			require.NoError(t, err)
+			addMCPHeaders(req,
+				&jsonrpc.Request{ID: id, Method: "resources/read"},
+				&mcp.ReadResourceParams{URI: tt.uri},
+				"route1", "backend1")
+
+			require.Equal(t, tt.wantID, req.Header.Get(internalapi.MCPMetadataHeaderRequestID))
+			require.Equal(t, tt.wantURI, req.Header.Get(internalapi.MCPMetadataHeaderResourceURI))
+			// Whatever was dropped, the request must still be sendable: the headers exist only for
+			// access logging, so they must never be what makes a proxied call fail.
+			require.NoError(t, req.Header.Write(io.Discard))
+			for _, vs := range req.Header {
+				for _, v := range vs {
+					require.NotContains(t, v, "\n")
+					require.NotContains(t, v, "\r")
+				}
 			}
 		})
 	}
