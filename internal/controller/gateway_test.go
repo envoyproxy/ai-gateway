@@ -402,7 +402,7 @@ func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 		require.Equal(t, ptr.To[uint32](2), fc.Backends[0].Priority)
 		require.Equal(t, ptr.To[int32](1), fc.Backends[1].Weight)
 		require.Equal(t, ptr.To[uint32](0), fc.Backends[1].Priority)
-		require.Equal(t, ptr.To[int32](7), fc.Backends[2].Weight)
+		require.Nil(t, fc.Backends[2].Weight)
 		require.Nil(t, fc.Backends[2].Priority)
 	}
 }
