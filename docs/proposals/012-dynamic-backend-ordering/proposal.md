@@ -1,5 +1,33 @@
 # Dynamic Per-Request LLM Backend Ordering Proposal
 
+## Problem
+
+Envoy Gateway's `AIGatewayRoute` can already configure multiple `AIServiceBackend` refs with
+`Priority` tiers, which gives native failover: every request starts at priority `0` and only
+advances to a higher-numbered tier when the current one is unhealthy. This is useful for static
+failover, but it is not flexible enough for routing decisions that should differ per request.
+
+For example, an AI gateway may want to:
+
+- Pin a client session or conversation to the Azure OpenAI PTU endpoint that last served it,
+  to save cost by reusing cached tokens, falling back to a different PTU endpoint and then a
+  pay-as-you-go provider only if necessary.
+- Route a request to a cheaper or lower-latency provider first based on request metadata,
+  budget, or observed backend load, e.g., in multi-tenant deployments where each tenant may
+  have different preferred providers or cost/latency rules.
+- Avoid a backend that is known to be rate-limited or overloaded for this specific request.
+
+None of these can be expressed with static priorities. The `Priority` field is fixed at config
+load time, and Envoy's native priority load always starts at `0` for the initial attempt. Existing
+`RetryPriority` extensions only affect retries, not the first attempt, so they cannot steer the
+first hop to a different backend either.
+
+What's needed, independent of any particular mechanism, is for the backend attempted on a given
+request — and on every retry of that request — to be selectable by logic that lives outside
+static Envoy config and can vary from one request to the next, without that logic having to be
+re-expressed as a combinatorial set of static Envoy routing rules, and with a safe, well-defined
+fallback for requests that logic has no opinion about.
+
 ## Overview
 
 This proposal describes a mechanism for dynamically ordering LLM backends on a **per-request**
