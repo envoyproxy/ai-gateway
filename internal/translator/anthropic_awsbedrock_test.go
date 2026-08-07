@@ -1799,7 +1799,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_CacheControl(t *testing.T) 
 					Type:         "custom",
 					Name:         "get_weather",
 					Description:  "Get the weather",
-					InputSchema:  anthropicschema.ToolInputSchema{Type: "object"},
+					InputSchema:  json.RawMessage(`{"type":"object"}`),
 					CacheControl: ephemeral(),
 				},
 			},
@@ -1884,7 +1884,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_NoCacheControl(t *testing.T
 			Texts: []anthropicschema.TextBlockParam{{Type: "text", Text: "You are a helpful assistant"}},
 		},
 		Tools: []anthropicschema.ToolUnion{
-			{Tool: &anthropicschema.Tool{Type: "custom", Name: "get_weather", InputSchema: anthropicschema.ToolInputSchema{Type: "object"}}},
+			{Tool: &anthropicschema.Tool{Type: "custom", Name: "get_weather", InputSchema: json.RawMessage(`{"type":"object"}`)}},
 		},
 		Messages: []anthropicschema.MessageParam{
 			{
