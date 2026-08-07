@@ -201,16 +201,12 @@ spec:
       kind: HTTPRoute
       name: my-route
   retry:
-    numRetries: 2
-    retryOn:
-      triggers:
-        - connect-failure
-        - retriable-status-codes
+    numRetries: 2 # unaffected by this feature; shown only to match the xDS example below
 ```
 
 Today, without this feature, every request against this route — and every retry — starts at
 Priority tier `0` (`backend-a`) and only advances to tier `1`/`2` if a tier is unhealthy. With
-this feature, an ext_proc that, say, tracks which Azure OpenAI PTU endpoint a session was last
+this feature, an ext_proc that, say, tracks which Azure OpenAI PTU endpoint a client was last
 pinned to can instead emit, as dynamic metadata, a per-request override of that order:
 
 ```yaml
