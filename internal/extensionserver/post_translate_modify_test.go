@@ -438,3 +438,30 @@ func Test_findListenerRouteConfigs(t *testing.T) {
 	names := findListenerRouteConfigs(l)
 	require.ElementsMatch(t, []string{"foo", "bar"}, names)
 }
+
+// routeWithLuaMetadata builds a routev3.Route that carries Envoy Gateway metadata.
+func routeWithLuaMetadata(t *testing.T, namespace, name string, luaSlots []string) *routev3.Route {
+	t.Helper()
+	resources, err := structpb.NewStruct(map[string]any{
+		"resources": []any{
+			map[string]any{
+				"namespace": namespace,
+				"name":      name,
+			},
+		},
+	})
+	require.NoError(t, err)
+	route := &routev3.Route{
+		Metadata: &corev3.Metadata{
+			FilterMetadata: map[string]*structpb.Struct{
+				"envoy-gateway": resources,
+			},
+		},
+		TypedPerFilterConfig: make(map[string]*anypb.Any),
+	}
+	for _, slot := range luaSlots {
+		route.TypedPerFilterConfig[slot] = &anypb.Any{}
+	}
+	return route
+}
+
