@@ -127,13 +127,111 @@ reorder, since no single `PrioritySet` spans the backends — the `ai-gateway` w
 skips this case rather than silently misbehaving. This is an accepted constraint, not a blocker:
 it matches the same merge precondition that today's `Priority`-based failover already requires.
 
+## Example: user-facing configuration
+
+Nothing changes in how a user authors `AIGatewayRoute`/`AIServiceBackend`/`BackendTrafficPolicy`
+config — this feature reuses the existing `Priority` field as-is. What changes is *runtime
+behavior*: the order in which priority tiers are tried per request is no longer Envoy's fixed
+native fallback (always tier `0` first, advancing only on unhealthy tiers) but whatever an
+upstream ext_proc decides for that specific request.
+
+Given a route with three backends already configured at distinct priorities:
+
+```yaml
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: my-route
+  namespace: ns
+spec:
+  parentRefs:
+    - name: my-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gpt-4o
+      backendRefs:
+        - name: backend-a   # Priority tier 0
+          priority: 0
+        - name: backend-b   # Priority tier 1
+          priority: 1
+        - name: backend-c   # Priority tier 2
+          priority: 2
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: backend-a
+  namespace: ns
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: backend-a
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: backend-a
+  namespace: ns
+spec:
+  endpoints:
+    - fqdn:
+        hostname: backend-a.example.com
+        port: 443
+# backend-b (Priority 1, backend-b.example.com) and backend-c (Priority 2,
+# backend-c.example.com) follow the same AIServiceBackend + Backend shape, omitted for brevity.
+```
+
+```yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: my-route
+  namespace: ns
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: my-route
+  retry:
+    numRetries: 2
+    retryOn:
+      triggers:
+        - connect-failure
+        - retriable-status-codes
+```
+
+Today, without this feature, every request against this route — and every retry — starts at
+Priority tier `0` (`backend-a`) and only advances to tier `1`/`2` if a tier is unhealthy. With
+this feature, an ext_proc that, say, tracks which Azure OpenAI PTU endpoint a session was last
+pinned to can instead emit, as dynamic metadata, a per-request override of that order:
+
+```yaml
+envoy.ai_gateway.endpoint_order:
+  order: [2, 0, 1]   # this request: try backend-c first, then backend-a, then backend-b
+```
+
+Envoy then honors that exact order for this request's initial attempt and both retries — `backend-c`
+on the initial attempt, `backend-a` on the 1st retry, `backend-b` on the 2nd — without any change
+to the `AIGatewayRoute`/`AIServiceBackend`/`BackendTrafficPolicy` config above. A different
+request on the same route can get a different `order` (or none at all, which falls back to the
+native `[0, 1, 2]` behavior) purely based on what the ext_proc decides — no redeploy or route
+change involved.
+
 ## Example: generated route and cluster
 
-Illustrative, hand-abbreviated xDS (irrelevant fields like timeouts/health checks omitted) for
-a rule with three `AIServiceBackend` refs at `Priority` `0`, `1`, and `2`, with a
-`BackendTrafficPolicy` configuring 2 retries. Route matching/config is **unchanged** by this
-feature — the only diff from what Envoy Gateway would generate today is the cluster's
-`load_balancing_policy`.
+Continuing the example above: illustrative, hand-abbreviated xDS (irrelevant fields like
+timeouts/health checks omitted) for the rule and `BackendTrafficPolicy` shown above — three
+`AIServiceBackend` refs at `Priority` `0`, `1`, and `2`, with 2 retries configured. Route
+matching/config is **unchanged** by this feature — the only diff from what Envoy Gateway would
+generate today is the cluster's `load_balancing_policy`.
 
 **Route** (unaffected — shown for context only):
 
