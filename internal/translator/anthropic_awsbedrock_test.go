@@ -700,13 +700,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_Tools(t *testing.T) {
 					Type:        "custom",
 					Name:        "get_weather",
 					Description: "Get the weather",
-					InputSchema: anthropicschema.ToolInputSchema{
-						Type: "object",
-						Properties: map[string]any{
-							"location": map[string]any{"type": "string"},
-						},
-						Required: []string{"location"},
-					},
+					InputSchema: json.RawMessage(`{"type":"object","properties":{"location":{"type":"string"}},"required":["location"]}`),
 				},
 			},
 		},
@@ -998,7 +992,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_ToolResultMessages(t *testi
 				Type:        "custom",
 				Name:        "get_weather",
 				Description: "Get weather",
-				InputSchema: anthropicschema.ToolInputSchema{Type: "object"},
+				InputSchema: json.RawMessage(`{"type":"object"}`),
 			}},
 		},
 		ToolChoice: &anthropicschema.ToolChoice{
@@ -1107,7 +1101,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_ToolResultMessagesWithSyste
 				Type:        "custom",
 				Name:        "get_weather",
 				Description: "Get weather",
-				InputSchema: anthropicschema.ToolInputSchema{Type: "object"},
+				InputSchema: json.RawMessage(`{"type":"object"}`),
 			}},
 		},
 		Messages: []anthropicschema.MessageParam{
@@ -1226,7 +1220,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_SingleToolResultNotCoalesce
 				Type:        "custom",
 				Name:        "get_weather",
 				Description: "Get weather",
-				InputSchema: anthropicschema.ToolInputSchema{Type: "object"},
+				InputSchema: json.RawMessage(`{"type":"object"}`),
 			}},
 		},
 		Messages: []anthropicschema.MessageParam{

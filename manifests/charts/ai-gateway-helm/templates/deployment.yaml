@@ -50,9 +50,11 @@ spec:
             {{- end }}
           args:
             - -logLevel={{ .Values.controller.logLevel }}
+            - -logFormat={{ .Values.controller.logFormat }}
             - --extProcImage={{ .Values.extProc.image.repository }}:{{ .Values.extProc.image.tag | default .Chart.AppVersion }}
             - --extProcImagePullPolicy={{ .Values.extProc.imagePullPolicy }}
             - --extProcLogLevel={{ .Values.extProc.logLevel }}
+            - --extProcLogFormat={{ .Values.extProc.logFormat }}
             - --envoyGatewayNamespace={{ .Values.envoyGateway.namespace }}
             {{- if .Values.extProc.enableRedaction }}
             - --extProcEnableRedaction=true
