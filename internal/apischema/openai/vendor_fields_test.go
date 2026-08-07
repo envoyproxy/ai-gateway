@@ -231,3 +231,46 @@ func TestChatCompletionToolMessageParam_CacheControl(t *testing.T) {
 	require.Equal(t, "toolu_1", msg.OfTool.ToolCallID)
 	require.Equal(t, "search results", msg.OfTool.Content.Value)
 }
+
+func TestChatCompletionRequest_PromptCacheFields(t *testing.T) {
+	// OpenAI explicit prompt-cache fields must survive decoding (and re-encoding,
+	// e.g. the redaction/debug-log path) so the gateway does not drop or rewrite
+	// them when forwarding to an OpenAI upstream.
+	raw := []byte(`{
+		"model": "gpt-5.6",
+		"prompt_cache_key": "tenant:acme:v1",
+		"prompt_cache_options": {"mode": "explicit"},
+		"messages": [
+			{
+				"role": "user",
+				"content": [
+					{"type": "text", "text": "Hello", "prompt_cache_breakpoint": {"mode": "explicit"}}
+				]
+			}
+		]
+	}`)
+
+	var req ChatCompletionRequest
+	require.NoError(t, json.Unmarshal(raw, &req))
+	require.Equal(t, "gpt-5.6", req.Model)
+	require.Equal(t, "tenant:acme:v1", req.PromptCacheKey)
+	require.NotNil(t, req.PromptCacheOptions)
+	require.Equal(t, "explicit", req.PromptCacheOptions.Mode)
+
+	require.Len(t, req.Messages, 1)
+	require.NotNil(t, req.Messages[0].OfUser)
+	parts, ok := req.Messages[0].OfUser.Content.Value.([]ChatCompletionContentPartUserUnionParam)
+	require.True(t, ok)
+	require.Len(t, parts, 1)
+	require.NotNil(t, parts[0].OfText)
+	require.NotNil(t, parts[0].OfText.PromptCacheBreakpoint)
+	require.Equal(t, "explicit", parts[0].OfText.PromptCacheBreakpoint.Mode)
+
+	// Re-marshalling must preserve every field (no drop/rewrite).
+	out, err := json.Marshal(req)
+	require.NoError(t, err)
+	outStr := string(out)
+	require.Contains(t, outStr, `"prompt_cache_key":"tenant:acme:v1"`)
+	require.Contains(t, outStr, `"prompt_cache_options":{"mode":"explicit"}`)
+	require.Contains(t, outStr, `"prompt_cache_breakpoint":{"mode":"explicit"}`)
+}

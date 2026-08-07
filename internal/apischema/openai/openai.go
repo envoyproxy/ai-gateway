@@ -103,6 +103,18 @@ type ChatCompletionContentPartTextParam struct {
 	// The type of the content part.
 	Type                    string `json:"type"`
 	*AnthropicContentFields `json:",inline,omitempty"`
+	// PromptCacheBreakpoint marks an explicit prompt cache breakpoint at this
+	// content block for GPT-5.6 and later model families, e.g. {"mode":"explicit"}.
+	// Forwarded as-is to OpenAI upstreams.
+	// Docs: https://platform.openai.com/docs/guides/prompt-caching
+	PromptCacheBreakpoint *ChatCompletionPromptCacheBreakpoint `json:"prompt_cache_breakpoint,omitempty"` //nolint:tagliatelle //follow openai api
+}
+
+// ChatCompletionPromptCacheBreakpoint marks an explicit prompt cache breakpoint
+// on a content block.
+type ChatCompletionPromptCacheBreakpoint struct {
+	// Mode selects the breakpoint mode, e.g. "explicit".
+	Mode string `json:"mode,omitempty"`
 }
 
 type ChatCompletionContentPartRefusalParam struct {
@@ -1210,6 +1222,21 @@ type ChatCompletionRequest struct {
 
 	// Thinking: The thinking config for reasoning models
 	Thinking *ThinkingUnion `json:"thinking,omitzero"`
+
+	// PromptCacheKey is an optional key used to partition the prompt cache. Requests
+	// with the same key share cached prefixes. Forwarded as-is to OpenAI upstreams.
+	// Docs: https://platform.openai.com/docs/guides/prompt-caching
+	PromptCacheKey string `json:"prompt_cache_key,omitempty"` //nolint:tagliatelle //follow openai api
+
+	// PromptCacheOptions controls explicit prompt caching behavior, e.g. {"mode":"explicit"}.
+	// Forwarded as-is to OpenAI upstreams.
+	PromptCacheOptions *ChatCompletionPromptCacheOptions `json:"prompt_cache_options,omitempty"` //nolint:tagliatelle //follow openai api
+}
+
+// ChatCompletionPromptCacheOptions configures request-level prompt caching.
+type ChatCompletionPromptCacheOptions struct {
+	// Mode selects the caching mode, e.g. "explicit".
+	Mode string `json:"mode,omitempty"`
 }
 
 type StreamOptions struct {
@@ -1572,6 +1599,11 @@ type PromptTokensDetails struct {
 	CachedTokens int `json:"cached_tokens,omitzero"`
 	// Tokens written to the cache.
 	CacheCreationTokens int `json:"cache_creation_input_tokens,omitzero"`
+	// CacheWriteTokens is the number of tokens written to the prompt cache
+	// (OpenAI naming for cache-write tokens on GPT-5.6 and later). The response
+	// body is forwarded opaquely so this reaches the client regardless; modeled
+	// here so it is recognized when the response is parsed.
+	CacheWriteTokens int `json:"cache_write_tokens,omitzero"`
 }
 
 // ChatCompletionResponseChunk is described in the OpenAI API documentation:
