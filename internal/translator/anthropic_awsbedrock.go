@@ -164,26 +164,27 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 // array to the top-level system parameter. Returns the filtered messages (without system messages).
 // This handles clients (e.g. Claude Code with mid-conversation-system beta) that send
 // system prompts as messages rather than the top-level parameter.
+// Each system message becomes its own text block so per-block fields like cache_control survive
+// promotion and convertSystemPrompt can emit the corresponding cache points.
 func promoteAnthropicSystemMessagesToParam(body *anthropicschema.MessagesRequest) []anthropicschema.MessageParam {
-	var systemTexts []string
+	var systemBlocks []anthropicschema.TextBlockParam
 	var filtered []anthropicschema.MessageParam
 	for _, msg := range body.Messages {
 		if msg.Role == "system" {
 			if msg.Content.Text != "" {
-				systemTexts = append(systemTexts, msg.Content.Text)
+				systemBlocks = append(systemBlocks, anthropicschema.TextBlockParam{Type: "text", Text: msg.Content.Text})
 			}
 			for i := range msg.Content.Array {
-				if msg.Content.Array[i].Text != nil && msg.Content.Array[i].Text.Text != "" {
-					systemTexts = append(systemTexts, msg.Content.Array[i].Text.Text)
+				if block := msg.Content.Array[i].Text; block != nil && block.Text != "" {
+					systemBlocks = append(systemBlocks, *block)
 				}
 			}
 		} else {
 			filtered = append(filtered, msg)
 		}
 	}
-	if len(systemTexts) > 0 {
-		systemText := strings.Join(systemTexts, "\n")
-		body.System = &anthropicschema.SystemPrompt{Text: systemText}
+	if len(systemBlocks) > 0 {
+		body.System = &anthropicschema.SystemPrompt{Texts: systemBlocks}
 	}
 	return filtered
 }
@@ -212,6 +213,25 @@ func isOnlyToolResult(msg *anthropicschema.MessageParam) bool {
 	return true
 }
 
+// anthropicCachePoint returns a Bedrock cache point block when the Anthropic cache_control field
+// asks for one, otherwise nil. Bedrock only has a single ephemeral cache point type, so the
+// ephemeral TTL is not representable and is dropped.
+func anthropicCachePoint(cacheControl *anthropicschema.CacheControl) *awsbedrock.CachePointBlock {
+	if cacheControl == nil || cacheControl.Ephemeral == nil {
+		return nil
+	}
+	return &awsbedrock.CachePointBlock{Type: "default"}
+}
+
+// appendCachePoint appends a standalone cache point content block when cacheControl asks for one.
+// Bedrock's ContentBlock is a union, so the cache point cannot ride on the block it follows.
+func appendCachePoint(blocks []*awsbedrock.ContentBlock, cacheControl *anthropicschema.CacheControl) []*awsbedrock.ContentBlock {
+	if cachePoint := anthropicCachePoint(cacheControl); cachePoint != nil {
+		return append(blocks, &awsbedrock.ContentBlock{CachePoint: cachePoint})
+	}
+	return blocks
+}
+
 func (a *anthropicToAWSBedrockTranslator) convertUserMessage(msg *anthropicschema.MessageParam) (*awsbedrock.Message, error) {
 	bedrockMsg := &awsbedrock.Message{Role: awsbedrock.ConversationRoleUser}
 	if msg.Content.Text != "" {
@@ -228,14 +248,17 @@ func (a *anthropicToAWSBedrockTranslator) convertUserMessage(msg *anthropicschem
 			bedrockMsg.Content = append(bedrockMsg.Content, &awsbedrock.ContentBlock{
 				Text: ptr.To(block.Text.Text),
 			})
+			bedrockMsg.Content = appendCachePoint(bedrockMsg.Content, block.Text.CacheControl)
 		case block.Image != nil:
 			imgBlock, err := a.convertImageBlock(block.Image)
 			if err != nil {
 				return nil, err
 			}
 			bedrockMsg.Content = append(bedrockMsg.Content, imgBlock)
+			bedrockMsg.Content = appendCachePoint(bedrockMsg.Content, block.Image.CacheControl)
 		case block.ToolResult != nil:
 			bedrockMsg.Content = append(bedrockMsg.Content, a.convertToolResultBlock(block.ToolResult))
+			bedrockMsg.Content = appendCachePoint(bedrockMsg.Content, block.ToolResult.CacheControl)
 		}
 	}
 	return bedrockMsg, nil
@@ -257,6 +280,7 @@ func (a *anthropicToAWSBedrockTranslator) convertAssistantMessage(msg *anthropic
 			bedrockMsg.Content = append(bedrockMsg.Content, &awsbedrock.ContentBlock{
 				Text: ptr.To(block.Text.Text),
 			})
+			bedrockMsg.Content = appendCachePoint(bedrockMsg.Content, block.Text.CacheControl)
 		case block.Thinking != nil:
 			bedrockMsg.Content = append(bedrockMsg.Content, &awsbedrock.ContentBlock{
 				ReasoningContent: &awsbedrock.ReasoningContentBlock{
@@ -274,6 +298,7 @@ func (a *anthropicToAWSBedrockTranslator) convertAssistantMessage(msg *anthropic
 					Input:     block.ToolUse.Input,
 				},
 			})
+			bedrockMsg.Content = appendCachePoint(bedrockMsg.Content, block.ToolUse.CacheControl)
 		case block.RedactedThinking != nil:
 			bedrockMsg.Content = append(bedrockMsg.Content, &awsbedrock.ContentBlock{
 				ReasoningContent: &awsbedrock.ReasoningContentBlock{
@@ -292,6 +317,7 @@ func (a *anthropicToAWSBedrockTranslator) convertToolResultMessage(msg *anthropi
 		block := &msg.Content.Array[i]
 		if block.ToolResult != nil {
 			bedrockMsg.Content = append(bedrockMsg.Content, a.convertToolResultBlock(block.ToolResult))
+			bedrockMsg.Content = appendCachePoint(bedrockMsg.Content, block.ToolResult.CacheControl)
 		}
 	}
 	return bedrockMsg
@@ -365,6 +391,9 @@ func (a *anthropicToAWSBedrockTranslator) convertSystemPrompt(system *anthropics
 	for i := range system.Texts {
 		text := system.Texts[i].Text
 		blocks = append(blocks, &awsbedrock.SystemContentBlock{Text: &text})
+		if cachePoint := anthropicCachePoint(system.Texts[i].CacheControl); cachePoint != nil {
+			blocks = append(blocks, &awsbedrock.SystemContentBlock{CachePoint: cachePoint})
+		}
 	}
 	return blocks
 }
@@ -390,6 +419,10 @@ func (a *anthropicToAWSBedrockTranslator) convertTools(body *anthropicschema.Mes
 				},
 			}
 			tools = append(tools, tool)
+			// Bedrock's Tool is a union: an element sets either toolSpec or cachePoint, never both.
+			if cachePoint := anthropicCachePoint(tu.Tool.CacheControl); cachePoint != nil {
+				tools = append(tools, &awsbedrock.Tool{CachePoint: cachePoint})
+			}
 		}
 	}
 	bedrockReq.ToolConfig.Tools = tools
