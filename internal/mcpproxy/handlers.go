@@ -26,6 +26,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"golang.org/x/net/http/httpguts"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -1479,15 +1480,43 @@ func addMCPHeaders(httpReq *http.Request, msg jsonrpc.Message, params mcp.Params
 	httpReq.Header.Set(internalapi.MCPRouteHeader, routeName)
 	if mcpReq, ok := msg.(*jsonrpc.Request); ok && mcpReq != nil {
 		// MCP request headers are used to populate information in the envoy filter metadata.
-		httpReq.Header.Set(internalapi.MCPMetadataHeaderRequestID, fmt.Sprintf("%v", mcpReq.ID.Raw()))
-		httpReq.Header.Set(internalapi.MCPMetadataHeaderMethod, mcpReq.Method)
+		setMCPMetadataHeader(httpReq, internalapi.MCPMetadataHeaderRequestID, fmt.Sprintf("%v", mcpReq.ID.Raw()))
+		setMCPMetadataHeader(httpReq, internalapi.MCPMetadataHeaderMethod, mcpReq.Method)
 
 		if params != nil {
-			if p, ok := params.(*mcp.CallToolParams); ok {
-				httpReq.Header.Set(internalapi.MCPMetadataHeaderToolName, p.Name)
+			// Mirrors the span attributes set in getMCPParamsAsAttributes, so the same information is
+			// available in the access logs as well as in the traces.
+			switch p := params.(type) {
+			case *mcp.CallToolParams:
+				setMCPMetadataHeader(httpReq, internalapi.MCPMetadataHeaderToolName, p.Name)
+			case *mcp.ReadResourceParams:
+				setMCPMetadataHeader(httpReq, internalapi.MCPMetadataHeaderResourceURI, p.URI)
+			case *mcp.SubscribeParams:
+				setMCPMetadataHeader(httpReq, internalapi.MCPMetadataHeaderResourceURI, p.URI)
+			case *mcp.UnsubscribeParams:
+				setMCPMetadataHeader(httpReq, internalapi.MCPMetadataHeaderResourceURI, p.URI)
 			}
 		}
 	}
+}
+
+// maxMCPMetadataHeaderValueLen bounds a metadata header value. Resource URIs, tool names and JSON-RPC
+// IDs all come from the client unvalidated, and these headers exist only so the access log can see
+// them, so dropping an outsized value beats pushing the request over Envoy's max_request_headers_kb.
+const maxMCPMetadataHeaderValueLen = 1024
+
+// setMCPMetadataHeader sets an observability-only metadata header, skipping values that would make the
+// request unsendable. [http.Transport] rejects header values containing control characters, so a
+// resource URI or JSON-RPC ID holding one - trivially expressible as a JSON escape - would otherwise
+// fail the whole proxied request, rather than reaching the backend in the body where it is legal.
+//
+// Dropped rather than truncated or escaped: an absent log field is honest, a mangled one is not.
+func setMCPMetadataHeader(httpReq *http.Request, key, value string) {
+	// httpguts is the same check [http.Transport] applies, so this cannot drift from what it rejects.
+	if len(value) > maxMCPMetadataHeaderValueLen || !httpguts.ValidHeaderFieldValue(value) {
+		return
+	}
+	httpReq.Header.Set(key, value)
 }
 
 type (
