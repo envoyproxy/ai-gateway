@@ -29,7 +29,9 @@ import (
 )
 
 const (
-	managedByLabel                      = "app.kubernetes.io/managed-by"
+	managedByLabel = "app.kubernetes.io/managed-by"
+	// managedByValue is the value stamped on the managedByLabel of resources created by this operator.
+	managedByValue                      = "envoy-ai-gateway"
 	hostRewriteHTTPFilterName           = "ai-eg-host-rewrite"
 	routeNotFoundResponseHTTPFilterName = "ai-eg-route-not-found-response"
 	aigatewayUUIDAnnotationKey          = "aigateway.envoyproxy.io/uuid"
@@ -102,10 +104,6 @@ func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	}
 	c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, aigv1b1.ConditionTypeAccepted, "AI Gateway Route reconciled successfully")
 	return reconcile.Result{}, nil
-}
-
-func FilterConfigSecretPerGatewayName(gwName, gwNamespace string) string {
-	return fmt.Sprintf("%s-%s", gwName, gwNamespace)
 }
 
 func getHostRewriteFilterName(baseName string) string {
@@ -322,6 +320,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			})
 		}
 		rules = append(rules, gwapiv1.HTTPRouteRule{
+			Name:        rule.Name,
 			BackendRefs: backendRefs,
 			Matches:     matches,
 			Filters:     rewriteFilters,

@@ -7,6 +7,7 @@ package mainlib
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"io"
 	"log/slog"
@@ -18,18 +19,55 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
+
+func Test_newLogHandler(t *testing.T) {
+	t.Run("json emits parseable records", func(t *testing.T) {
+		var buf bytes.Buffer
+		slog.New(newLogHandler(&buf, slog.LevelInfo, internalapi.LogFormatJSON)).
+			Info("starting external processor", slog.String("address", ":1063"))
+
+		var record map[string]any
+		require.NoError(t, json.Unmarshal(buf.Bytes(), &record))
+		require.Equal(t, "starting external processor", record["msg"])
+		require.Equal(t, ":1063", record["address"])
+		require.Equal(t, "INFO", record["level"])
+	})
+
+	t.Run("text is unchanged and is the fallback", func(t *testing.T) {
+		for _, format := range []string{internalapi.LogFormatText, ""} {
+			var buf bytes.Buffer
+			slog.New(newLogHandler(&buf, slog.LevelInfo, format)).
+				Info("starting external processor", slog.String("address", ":1063"))
+
+			require.Contains(t, buf.String(), `msg="starting external processor" address=:1063`)
+			var record map[string]any
+			require.Error(t, json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &record), "text output must not be JSON")
+		}
+	})
+
+	t.Run("level is honored", func(t *testing.T) {
+		var buf bytes.Buffer
+		slog.New(newLogHandler(&buf, slog.LevelWarn, internalapi.LogFormatJSON)).Info("filtered out")
+		require.Empty(t, buf.String())
+	})
+}
 
 func Test_parseAndValidateFlags(t *testing.T) {
 	t.Run("ok extProcFlags", func(t *testing.T) {
 		for _, tc := range []struct {
-			name            string
-			args            []string
-			configPath      string
-			addr            string
-			rootPrefix      string
-			logLevel        slog.Level
-			enableRedaction bool
+			name             string
+			args             []string
+			configPath       string
+			configBundlePath string
+			addr             string
+			rootPrefix       string
+			logLevel         slog.Level
+			logFormat        string
+			enableRedaction  bool
 		}{
 			{
 				name:            "minimal extProcFlags",
@@ -38,6 +76,17 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				addr:            ":1063",
 				rootPrefix:      "/",
 				logLevel:        slog.LevelInfo,
+				logFormat:       "text",
+				enableRedaction: false,
+			},
+			{
+				name:            "log format json",
+				args:            []string{"-configPath", "/path/to/config.yaml", "-logFormat", "json"},
+				configPath:      "/path/to/config.yaml",
+				addr:            ":1063",
+				rootPrefix:      "/",
+				logLevel:        slog.LevelInfo,
+				logFormat:       "json",
 				enableRedaction: false,
 			},
 			{
@@ -157,13 +206,29 @@ func Test_parseAndValidateFlags(t *testing.T) {
 				logLevel:        slog.LevelInfo,
 				enableRedaction: false,
 			},
+			{
+				name:             "bundle path only",
+				args:             []string{"-configBundlePath", "/path/to/config-bundle"},
+				configBundlePath: "/path/to/config-bundle",
+				rootPrefix:       "/",
+				addr:             ":1063",
+				logLevel:         slog.LevelInfo,
+				enableRedaction:  false,
+			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				flags, err := parseAndValidateFlags(tc.args)
 				require.NoError(t, err)
 				require.Equal(t, tc.configPath, flags.configPath)
+				require.Equal(t, tc.configBundlePath, flags.configBundlePath)
 				require.Equal(t, tc.addr, flags.extProcAddr)
 				require.Equal(t, tc.logLevel, flags.logLevel)
+				// Cases that do not care about the format expect the default.
+				wantLogFormat := tc.logFormat
+				if wantLogFormat == "" {
+					wantLogFormat = "text"
+				}
+				require.Equal(t, wantLogFormat, flags.logFormat)
 				require.Equal(t, tc.enableRedaction, flags.enableRedaction)
 				require.Equal(t, tc.rootPrefix, flags.rootPrefix)
 			})
@@ -179,7 +244,12 @@ func Test_parseAndValidateFlags(t *testing.T) {
 			{
 				name:          "invalid log level",
 				args:          []string{"-logLevel", "invalid"},
-				expectedError: "configPath must be provided\nfailed to unmarshal log level: slog: level string \"invalid\": unknown name",
+				expectedError: "either configPath or configBundlePath must be provided\nfailed to unmarshal log level: slog: level string \"invalid\": unknown name",
+			},
+			{
+				name:          "invalid log format",
+				args:          []string{"-configPath", "/path/to/config.yaml", "-logFormat", "yaml"},
+				expectedError: `invalid log format: "yaml", must be "text" or "json"`,
 			},
 			{
 				name:          "invalid endpoint prefixes - unknown key",

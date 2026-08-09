@@ -253,6 +253,9 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 			filteredHdrs := filterSensitiveHeadersForLogging(requestHdrs, sensitiveHeaderKeys)
 			l.Debug("request headers processing", slog.Any("request_headers", filteredHdrs))
 		}
+		// Thread Envoy dynamic metadata into context so credential override handlers
+		// can read it without changing the BackendAuthHandler interface.
+		ctx = backendauth.WithEnvoyMetadata(ctx, req.GetMetadataContext())
 		resp, err := p.ProcessRequestHeaders(ctx, requestHdrs)
 		if err != nil {
 			return nil, fmt.Errorf("cannot process request headers: %w", err)
@@ -286,16 +289,16 @@ func (s *Server) processMsg(ctx context.Context, p Processor, req *extprocv3.Pro
 			}
 		}
 		if s.debugLogEnabled && resp != nil && resp.Response != nil {
+			// Header mutations always carry injected backend credentials (e.g. the
+			// upstream Authorization), so they are redacted whenever debug logging
+			// is on — independent of enableRedaction, which only controls body
+			// content. This mirrors redactRequestBodyResponse above.
 			var logContent any
-			if s.enableRedaction {
-				switch val := resp.Response.(type) {
-				case *extprocv3.ProcessingResponse_RequestHeaders:
-					logContent = redactProcessingResponseRequestHeaders(val, s.logger, sensitiveHeaderKeys)
-				case *extprocv3.ProcessingResponse_ImmediateResponse:
-					logContent = val
-				}
-			} else {
-				logContent = resp
+			switch val := resp.Response.(type) {
+			case *extprocv3.ProcessingResponse_RequestHeaders:
+				logContent = redactProcessingResponseRequestHeaders(val, s.logger, sensitiveHeaderKeys, s.enableRedaction)
+			case *extprocv3.ProcessingResponse_ImmediateResponse:
+				logContent = val
 			}
 			l.Debug("request headers processed", slog.Any("response", logContent))
 		}
@@ -448,6 +451,14 @@ func (s *Server) List(context.Context, *grpc_health_v1.HealthListRequest) (*grpc
 	}}, nil
 }
 
+// isSensitiveHeader reports whether the header name should be redacted in logs.
+// In addition to the static sensitiveHeaderKeys list, any header with the "x-aigw-"
+// prefix is treated as sensitive because it carries per-request credential overrides.
+func isSensitiveHeader(key string, sensitiveKeys []string) bool {
+	lower := strings.ToLower(key)
+	return slices.Contains(sensitiveKeys, lower) || strings.HasPrefix(lower, "x-aigw-")
+}
+
 // filterSensitiveHeadersForLogging filters out sensitive headers from the provided HeaderMap for logging.
 // Specifically, it redacts the value of the "authorization" header and logs this action.
 // This returns a slice of [slog.Attr] of headers, where the value of sensitive headers is redacted.
@@ -458,7 +469,7 @@ func filterSensitiveHeadersForLogging(headers *corev3.HeaderMap, sensitiveKeys [
 	filteredHeaders := make([]slog.Attr, len(headers.Headers))
 	for i, header := range headers.Headers {
 		// We convert the header key to lowercase to make the comparison case-insensitive but we don't modify the original header.
-		if slices.Contains(sensitiveKeys, strings.ToLower(header.GetKey())) {
+		if isSensitiveHeader(header.GetKey(), sensitiveKeys) {
 			filteredHeaders[i] = slog.String(header.GetKey(), string(sensitiveHeaderRedactedValue))
 		} else {
 			if len(header.Value) > 0 {
@@ -473,15 +484,29 @@ func filterSensitiveHeadersForLogging(headers *corev3.HeaderMap, sensitiveKeys [
 
 // redactProcessingResponseRequestHeaders creates a safe-to-log copy of the request headers processing response.
 // Used exclusively for debug logging without modifying the actual response sent to Envoy.
-// Redacts sensitive header values (API keys, authorization tokens) while preserving header names for debugging.
-func redactProcessingResponseRequestHeaders(resp *extprocv3.ProcessingResponse_RequestHeaders, logger *slog.Logger, sensitiveKeys []string) *extprocv3.ProcessingResponse_RequestHeaders {
+//
+// Header mutations are always redacted (API keys, authorization tokens) — a backend
+// credential injected here must never reach the debug log, regardless of the
+// [Server.enableRedaction] flag, which only governs the more expensive body-content
+// redaction. When redactBody is false, the body mutation is logged as-is (mirroring
+// [redactRequestBodyResponse]); when true, it is redacted too.
+func redactProcessingResponseRequestHeaders(resp *extprocv3.ProcessingResponse_RequestHeaders, logger *slog.Logger, sensitiveKeys []string, redactBody bool) *extprocv3.ProcessingResponse_RequestHeaders {
+	if resp == nil || resp.RequestHeaders == nil || resp.RequestHeaders.Response == nil {
+		return &extprocv3.ProcessingResponse_RequestHeaders{}
+	}
 	originalHeaderMutation := resp.RequestHeaders.GetResponse().GetHeaderMutation()
+	var bodyMutation *extprocv3.BodyMutation
+	if redactBody {
+		bodyMutation = redactBodyMutation(resp.RequestHeaders.Response.GetBodyMutation())
+	} else {
+		bodyMutation = resp.RequestHeaders.Response.GetBodyMutation()
+	}
 
 	return &extprocv3.ProcessingResponse_RequestHeaders{
 		RequestHeaders: &extprocv3.HeadersResponse{
 			Response: &extprocv3.CommonResponse{
 				HeaderMutation:  redactHeaderMutation(originalHeaderMutation, logger, sensitiveKeys),
-				BodyMutation:    redactBodyMutation(resp.RequestHeaders.Response.GetBodyMutation()),
+				BodyMutation:    bodyMutation,
 				ClearRouteCache: resp.RequestHeaders.Response.GetClearRouteCache(),
 			},
 		},
@@ -502,7 +527,7 @@ func redactHeaderMutation(originalHeaderMutation *extprocv3.HeaderMutation, logg
 	for _, setHeader := range originalHeaderMutation.GetSetHeaders() {
 		// Convert header key to lowercase for case-insensitive matching (HTTP headers are case-insensitive)
 		// but preserve the original casing in the redacted output for debugging
-		if slices.Contains(sensitiveKeys, strings.ToLower(setHeader.Header.GetKey())) {
+		if isSensitiveHeader(setHeader.Header.GetKey(), sensitiveKeys) {
 			logger.Debug("filtering sensitive header", slog.String("header_key", setHeader.Header.Key))
 			redactedHeaderMutation.SetHeaders = append(redactedHeaderMutation.SetHeaders, &corev3.HeaderValueOption{
 				Header: &corev3.HeaderValue{

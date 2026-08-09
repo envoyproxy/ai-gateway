@@ -7,6 +7,7 @@ package endpointspec
 
 import (
 	"bytes"
+	"errors"
 	"mime/multipart"
 	"testing"
 
@@ -15,7 +16,9 @@ import (
 
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/internal/redaction"
 )
@@ -382,6 +385,120 @@ func TestResponsesEndpointSpec_GetTranslator(t *testing.T) {
 
 	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
 	require.NoError(t, err)
+}
+
+func TestTokenizeEndpointSpec_ParseBody(t *testing.T) {
+	spec := TokenizeEndpointSpec{}
+
+	t.Run("invalid json", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte("not-json"), false)
+		require.ErrorIs(t, err, internalapi.ErrMalformedRequest)
+		require.ErrorContains(t, err, "failed to parse JSON for /tokenize")
+	})
+
+	t.Run("chat request", func(t *testing.T) {
+		chatReq := tokenize.ChatRequest{
+			Model: "gpt-4o",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfUser: &openai.ChatCompletionUserMessageParam{
+					Role:    openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+				}},
+			},
+		}
+		body, err := json.Marshal(chatReq)
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o", model)
+		require.False(t, stream)
+		require.NotNil(t, parsed.ChatRequest)
+		require.Nil(t, parsed.CompletionRequest)
+		require.Nil(t, mutated)
+	})
+
+	t.Run("completion request", func(t *testing.T) {
+		compReq := tokenize.CompletionRequest{
+			Model:  "gpt-4o",
+			Prompt: "Hello world",
+		}
+		body, err := json.Marshal(compReq)
+		require.NoError(t, err)
+
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4o", model)
+		require.False(t, stream)
+		require.NotNil(t, parsed.CompletionRequest)
+		require.Nil(t, parsed.ChatRequest)
+		require.Nil(t, mutated)
+	})
+
+	t.Run("chat request with conflicting flags", func(t *testing.T) {
+		chatReq := tokenize.ChatRequest{
+			Model: "gpt-4o",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{OfUser: &openai.ChatCompletionUserMessageParam{
+					Role:    openai.ChatMessageRoleUser,
+					Content: openai.StringOrUserRoleContentUnion{Value: "Hello"},
+				}},
+			},
+			AddGenerationPrompt:  ptr.To(true),
+			ContinueFinalMessage: true,
+		}
+		body, err := json.Marshal(chatReq)
+		require.NoError(t, err)
+
+		_, _, _, _, err = spec.ParseBody(body, false)
+		require.ErrorIs(t, err, internalapi.ErrMalformedRequest)
+		require.ErrorContains(t, err, "continue_final_message")
+	})
+
+	t.Run("empty object rejected - model required", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte("{}"), false)
+		require.ErrorIs(t, err, internalapi.ErrMalformedRequest)
+		require.ErrorContains(t, err, "model is required")
+	})
+
+	t.Run("never streaming", func(t *testing.T) {
+		compReq := tokenize.CompletionRequest{
+			Model:  "gpt-4o",
+			Prompt: "Hello",
+		}
+		body, err := json.Marshal(compReq)
+		require.NoError(t, err)
+
+		_, _, stream, _, err := spec.ParseBody(body, true)
+		require.NoError(t, err)
+		require.False(t, stream)
+	})
+}
+
+func TestTokenizeEndpointSpec_GetTranslator(t *testing.T) {
+	spec := TokenizeEndpointSpec{}
+	supported := []filterapi.VersionedAPISchema{
+		{Name: filterapi.APISchemaOpenAI},
+		{Name: filterapi.APISchemaGCPVertexAI},
+		{Name: filterapi.APISchemaGCPAnthropic},
+		{Name: filterapi.APISchemaAWSAnthropic},
+		{Name: filterapi.APISchemaAWSBedrock},
+	}
+
+	for _, schema := range supported {
+		s := schema
+		t.Run("supported_"+string(s.Name), func(t *testing.T) {
+			t.Parallel()
+			translator, err := spec.GetTranslator(s, "override")
+			require.NoError(t, err)
+			require.NotNil(t, translator)
+		})
+	}
+
+	t.Run("unsupported", func(t *testing.T) {
+		_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: "Unknown"}, "override")
+		require.ErrorContains(t, err, "unsupported API schema for tokenize endpoint")
+	})
 }
 
 func TestChatCompletionsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
@@ -1367,4 +1484,243 @@ func TestParseMultipartBody_RejectsJSONOnlyEndpoints(t *testing.T) {
 
 	_, _, _, _, err = SpeechEndpointSpec{}.ParseMultipartBody(nil, "", false)
 	require.ErrorContains(t, err, "multipart body not supported")
+
+	_, _, _, _, err = ResponsesInputTokensEndpointSpec{}.ParseMultipartBody(nil, "", false)
+	require.ErrorContains(t, err, "multipart body not supported")
+}
+
+func TestResponsesInputTokensEndpointSpec_ParseBody(t *testing.T) {
+	spec := ResponsesInputTokensEndpointSpec{}
+
+	t.Run("invalid json", func(t *testing.T) {
+		_, _, _, _, err := spec.ParseBody([]byte("{"), false)
+		require.ErrorContains(t, err, "malformed request")
+	})
+
+	t.Run("empty model allowed", func(t *testing.T) {
+		model, parsed, stream, _, err := spec.ParseBody([]byte(`{"input":"hello"}`), false)
+		require.NoError(t, err)
+		require.Empty(t, model)
+		require.NotNil(t, parsed)
+		require.False(t, stream)
+	})
+
+	t.Run("success", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-4.1","input":"Count these tokens please"}`)
+		model, parsed, stream, mutated, err := spec.ParseBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-4.1", model)
+		require.False(t, stream)
+		require.NotNil(t, parsed)
+		require.Nil(t, mutated)
+	})
+}
+
+func TestResponsesInputTokensEndpointSpec_GetTranslator(t *testing.T) {
+	spec := ResponsesInputTokensEndpointSpec{}
+
+	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI}, "override")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI, Version: "2025-01-01-preview"}, "override")
+	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}, "override")
+	require.ErrorContains(t, err, "unsupported API schema")
+}
+
+func TestCompletionsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	t.Run("string prompt", func(t *testing.T) {
+		const marker = "my-marker-completion-prompt"
+		_, req, _, _, err := CompletionsEndpointSpec{}.ParseBody([]byte(`{"model":"gpt-3.5-turbo-instruct","prompt":"`+marker+`"}`), false)
+		require.NoError(t, err)
+		redacted, err := CompletionsEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+		require.Contains(t, mustMarshal(t, req), marker, "original must not be mutated")
+	})
+
+	t.Run("array prompt", func(t *testing.T) {
+		const marker = "array-marker-prompt"
+		_, req, _, _, err := CompletionsEndpointSpec{}.ParseBody([]byte(`{"model":"m","prompt":["`+marker+`","second"]}`), false)
+		require.NoError(t, err)
+		redacted, err := CompletionsEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+	})
+}
+
+func TestEmbeddingsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	t.Run("completion input string", func(t *testing.T) {
+		const marker = "embed-this-marker"
+		_, req, _, _, err := EmbeddingsEndpointSpec{}.ParseBody([]byte(`{"model":"text-embedding-3-small","input":"`+marker+`"}`), false)
+		require.NoError(t, err)
+		redacted, err := EmbeddingsEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+		require.Contains(t, mustMarshal(t, req), marker, "original must not be mutated")
+	})
+
+	t.Run("chat messages", func(t *testing.T) {
+		const marker = "chat-embed-marker"
+		_, req, _, _, err := EmbeddingsEndpointSpec{}.ParseBody([]byte(`{"model":"m","messages":[{"role":"user","content":"`+marker+`"}]}`), false)
+		require.NoError(t, err)
+		redacted, err := EmbeddingsEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+	})
+}
+
+func TestImageGenerationEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	const marker = "draw a marker image of the plans"
+	req := &openai.ImageGenerationRequest{Model: "dall-e-3", Prompt: marker}
+	redacted, err := ImageGenerationEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Contains(t, redacted.Prompt, "[REDACTED LENGTH=")
+	require.NotEqual(t, marker, redacted.Prompt)
+	require.Equal(t, marker, req.Prompt, "original must not be mutated")
+}
+
+func TestResponsesEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	t.Run("instructions/user/string input", func(t *testing.T) {
+		const markerInstr = "marker-instructions"
+		const markerUser = "user-pii-123"
+		const markerInput = "marker-input-text"
+		body := `{"model":"gpt-4o","instructions":"` + markerInstr + `","user":"` + markerUser + `","input":"` + markerInput + `"}`
+		_, req, _, _, err := ResponsesEndpointSpec{}.ParseBody([]byte(body), false)
+		require.NoError(t, err)
+		redacted, err := ResponsesEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, markerInstr)
+		require.NotContains(t, out, markerUser)
+		require.NotContains(t, out, markerInput)
+		require.Contains(t, out, "[REDACTED")
+		require.Contains(t, mustMarshal(t, req), markerInstr, "original must not be mutated")
+	})
+
+	t.Run("input as item array", func(t *testing.T) {
+		const marker = "marker-array-input-content"
+		body := `{"model":"gpt-4o","input":[{"type":"message","role":"user","content":"` + marker + `"}]}`
+		_, req, _, _, err := ResponsesEndpointSpec{}.ParseBody([]byte(body), false)
+		require.NoError(t, err)
+		redacted, err := ResponsesEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+	})
+}
+
+func TestMessagesEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	t.Run("string content + string system", func(t *testing.T) {
+		const markerContent = "marker-user-message"
+		const markerSystem = "marker-system-prompt"
+		body := `{"model":"claude-3-5-sonnet","max_tokens":10,"messages":[{"role":"user","content":"` + markerContent + `"}],"system":"` + markerSystem + `"}`
+		_, req, _, _, err := MessagesEndpointSpec{}.ParseBody([]byte(body), false)
+		require.NoError(t, err)
+		redacted, err := MessagesEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, markerContent)
+		require.NotContains(t, out, markerSystem)
+		require.Contains(t, out, "[REDACTED")
+		require.Contains(t, mustMarshal(t, req), markerContent, "original must not be mutated")
+	})
+
+	t.Run("array content blocks", func(t *testing.T) {
+		const marker = "marker-block-text"
+		body := `{"model":"claude-3-5-sonnet","max_tokens":10,"messages":[{"role":"user","content":[{"type":"text","text":"` + marker + `"}]}]}`
+		_, req, _, _, err := MessagesEndpointSpec{}.ParseBody([]byte(body), false)
+		require.NoError(t, err)
+		redacted, err := MessagesEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+	})
+}
+
+func TestRerankEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	const markerQ = "marker-query"
+	const markerDoc = "marker-document-content"
+	req := &cohereschema.RerankV2Request{Model: "rerank-v3.5", Query: markerQ, Documents: []string{markerDoc, "another"}}
+	redacted, err := RerankEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+	require.NoError(t, err)
+	require.Contains(t, redacted.Query, "[REDACTED LENGTH=")
+	require.Len(t, redacted.Documents, 2)
+	require.Contains(t, redacted.Documents[0], "[REDACTED LENGTH=")
+	require.NotEqual(t, markerQ, redacted.Query)
+	require.NotEqual(t, markerDoc, redacted.Documents[0])
+	require.Equal(t, markerQ, req.Query, "original must not be mutated")
+	require.Equal(t, markerDoc, req.Documents[0], "original must not be mutated")
+}
+
+func TestTokenizeEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T) {
+	t.Run("completion prompt", func(t *testing.T) {
+		const marker = "tokenize-this-marker-prompt"
+		_, req, _, _, err := TokenizeEndpointSpec{}.ParseBody([]byte(`{"model":"m","prompt":"`+marker+`"}`), false)
+		require.NoError(t, err)
+		redacted, err := TokenizeEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+		require.Contains(t, mustMarshal(t, req), marker, "original must not be mutated")
+	})
+
+	t.Run("chat messages", func(t *testing.T) {
+		const marker = "tokenize-chat-marker"
+		_, req, _, _, err := TokenizeEndpointSpec{}.ParseBody([]byte(`{"model":"m","messages":[{"role":"user","content":"`+marker+`"}]}`), false)
+		require.NoError(t, err)
+		redacted, err := TokenizeEndpointSpec{}.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		out := mustMarshal(t, redacted)
+		require.NotContains(t, out, marker)
+		require.Contains(t, out, "[REDACTED")
+	})
+}
+
+// mustMarshal marshals v and returns its string form, failing the test on error.
+func mustMarshal(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+	return string(b)
+}
+
+// errMarshaler always fails to MarshalJSON, to exercise the fail-safe error
+// branches of redactInterfaceValue and redactUnionField.
+type errMarshaler struct{}
+
+func (errMarshaler) MarshalJSON() ([]byte, error) { return nil, errors.New("marshal-unsupported") }
+
+func TestRedactInterfaceValue_MarshalError(t *testing.T) {
+	// A value that cannot be marshaled must yield a placeholder, never a panic
+	// and never the raw value.
+	out := redactInterfaceValue(errMarshaler{})
+	s, ok := out.(string)
+	require.True(t, ok, "expected a placeholder string on marshal error")
+	require.Contains(t, s, "[REDACTED")
+
+	// A func value is also unmarshalable to JSON.
+	out = redactInterfaceValue(func() {})
+	s, ok = out.(string)
+	require.True(t, ok)
+	require.Contains(t, s, "[REDACTED")
+}
+
+func TestRedactUnionField_MarshalError(t *testing.T) {
+	// A field whose MarshalJSON errors must yield the zero value of T (fail-safe),
+	// so the field logs as absent rather than leaking content.
+	out := redactUnionField(errMarshaler{})
+	require.Equal(t, errMarshaler{}, out)
 }
