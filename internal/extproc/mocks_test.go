@@ -303,6 +303,28 @@ func (m *mockMetrics) RequireRequestSuccess(t *testing.T) {
 
 var _ metrics.Metrics = &mockMetrics{}
 
+// mockChatCompletionSpan implements [tracingapi.ChatCompletionSpan], recording how the span ended.
+type mockChatCompletionSpan struct {
+	endedOnErrorCount int
+	endedCount        int
+	errorStatusCode   int
+	errorBody         []byte
+}
+
+func (m *mockChatCompletionSpan) RecordResponseChunk(*openai.ChatCompletionResponseChunk) {}
+
+func (m *mockChatCompletionSpan) RecordResponse(*openai.ChatCompletionResponse) {}
+
+func (m *mockChatCompletionSpan) EndSpanOnError(statusCode int, body []byte) {
+	m.endedOnErrorCount++
+	m.errorStatusCode = statusCode
+	m.errorBody = body
+}
+
+func (m *mockChatCompletionSpan) EndSpan() { m.endedCount++ }
+
+var _ tracingapi.ChatCompletionSpan = &mockChatCompletionSpan{}
+
 // mockBackendAuthHandler implements [filterapi.BackendAuthHandler] for testing.
 type mockBackendAuthHandler struct{}
 

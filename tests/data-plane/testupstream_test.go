@@ -1761,3 +1761,98 @@ data: [DONE]
 		})
 	}
 }
+
+// TestLocalReplyIsNotReprocessedAsUpstreamResponse tests that an error the gateway answers itself
+// reaches the client intact and is counted once, since Envoy sends such a local reply back through
+// the response path.
+func TestLocalReplyIsNotReprocessedAsUpstreamResponse(t *testing.T) {
+	config := &filterapi.Config{
+		Version: version.Parse(),
+		Backends: []filterapi.Backend{
+			testUpstreamAWSAnthropicBackend,
+			testUpstreamOpenAIRequiringPerRequestCredential,
+			alwaysFailingBackend, // a fallback endpoint of the openai cluster.
+		},
+	}
+	configBytes, err := yaml.Marshal(config)
+	require.NoError(t, err)
+	env := startTestEnvironment(t, string(configBytes), true, false)
+
+	for _, tc := range []struct {
+		name       string
+		backend    string
+		body       string
+		expStatus  int
+		expMessage string
+	}{
+		{
+			// Cross-schema: the error body would be re-translated on the way back.
+			name:       "translation rejects the request body",
+			backend:    "aws-anthropic",
+			body:       `{"model":"anthropic.claude-3-sonnet-20240229-v1:0","temperature":2.0,"messages":[{"role":"user","content":"hi"}]}`,
+			expStatus:  http.StatusUnprocessableEntity,
+			expMessage: "temperature 2.00 is not supported by Anthropic",
+		},
+		{
+			// "something" matches no x-ai-eg-model route, so x-test-backend selects the route.
+			name:       "the per-request credential is missing",
+			backend:    "openai",
+			body:       `{"model":"something","messages":[{"role":"user","content":"hi"}]}`,
+			expStatus:  http.StatusUnauthorized,
+			expMessage: "missing upstream credential",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const requests = 2
+			for range requests {
+				req, rerr := http.NewRequest(http.MethodPost,
+					fmt.Sprintf("http://localhost:%d/v1/chat/completions", env.EnvoyListenerPort()),
+					strings.NewReader(tc.body))
+				require.NoError(t, rerr)
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("x-test-backend", tc.backend)
+
+				resp, rerr := http.DefaultClient.Do(req)
+				require.NoError(t, rerr)
+				respBody, rerr := io.ReadAll(resp.Body)
+				require.NoError(t, rerr)
+				_ = resp.Body.Close()
+
+				require.Equal(t, tc.expStatus, resp.StatusCode)
+				require.Contains(t, string(respBody), tc.expMessage)
+			}
+
+			// One completion per request, not one per response-path pass.
+			require.Equal(t, requests, requestCompletionCount(t, env.ExtProcAdminPort(), tc.backend))
+		})
+	}
+}
+
+// requestCompletionCount returns how many request completions extproc recorded for the backend,
+// read from its Prometheus endpoint.
+func requestCompletionCount(t *testing.T, adminPort int, backend string) int {
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/metrics", adminPort))
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	// The provider name is what keeps the two backends' series apart.
+	provider := map[string]string{"aws-anthropic": "aws.anthropic", "openai": "openai"}[backend]
+	require.NotEmpty(t, provider, "unmapped backend %q", backend)
+
+	total := 0
+	for _, line := range strings.Split(string(body), "\n") {
+		if !strings.HasPrefix(line, "gen_ai_server_request_duration_seconds_count") {
+			continue
+		}
+		if !strings.Contains(line, `gen_ai_provider_name="`+provider+`"`) {
+			continue
+		}
+		fields := strings.Fields(line)
+		count, err := strconv.Atoi(fields[len(fields)-1])
+		require.NoError(t, err, "parsing %q", line)
+		total += count
+	}
+	return total
+}

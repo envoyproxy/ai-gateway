@@ -283,6 +283,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseHeaders(t *testin
 		p := &chatCompletionProcessorUpstreamFilter{
 			translator: mt,
 			metrics:    mm,
+			parent:     &chatCompletionProcessorRouterFilter{},
 		}
 		mt.retErr = errors.New("test error")
 		_, err := p.ProcessResponseHeaders(t.Context(), nil)
@@ -647,6 +648,61 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.Equal(t, "some-model", mm.originalModel)
 				require.Equal(t, "some-model", mm.requestModel)
 			})
+			t.Run("local reply is not reprocessed as an upstream response", func(t *testing.T) {
+				headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
+				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
+				var body openai.ChatCompletionRequest
+				require.NoError(t, json.Unmarshal(someBody, &body))
+				// retErr doubles as a probe: if the response path translated this local reply,
+				// ResponseError would return it and ProcessResponseBody would fail.
+				tr := &mockTranslator{t: t, retErr: fmt.Errorf("%w: missing required field", internalapi.ErrInvalidRequestBody), expRequestBody: &body}
+				mm := &mockMetrics{}
+				span := &mockChatCompletionSpan{}
+				p := &chatCompletionProcessorUpstreamFilter{
+					parent: &chatCompletionProcessorRouterFilter{
+						config:                 &filterapi.RuntimeConfig{},
+						logger:                 slog.Default(),
+						originalRequestBodyRaw: someBody,
+						originalRequestBody:    &body,
+						originalModel:          "some-model",
+						stream:                 tc.stream,
+						span:                   span,
+					},
+					requestHeaders: headers,
+					metrics:        mm,
+					translator:     tr,
+					logger:         slog.Default(),
+				}
+
+				resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+				require.NoError(t, err)
+				immediateResp, ok := resp.Response.(*extprocv3.ProcessingResponse_ImmediateResponse)
+				require.True(t, ok)
+				require.Equal(t, typev3.StatusCode(422), immediateResp.ImmediateResponse.Status.Code)
+				require.True(t, p.parent.localReplyEmitted, "the gateway answered the request itself")
+
+				// The span is ended where the local reply is produced, since the response path skips it.
+				require.Equal(t, 1, span.endedOnErrorCount)
+				require.Equal(t, 422, span.errorStatusCode)
+				require.Equal(t, immediateResp.ImmediateResponse.Body, span.errorBody)
+
+				// Envoy delivers the local reply back through the response path.
+				headersResp, err := p.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{
+					Headers: []*corev3.HeaderValue{{Key: ":status", RawValue: []byte("422")}},
+				})
+				require.NoError(t, err)
+				require.Nil(t, headersResp.GetResponseHeaders().GetResponse(), "the headers of the local reply must be left untouched")
+
+				bodyResp, err := p.ProcessResponseBody(t.Context(),
+					&extprocv3.HttpBody{Body: immediateResp.ImmediateResponse.Body, EndOfStream: true})
+				require.NoError(t, err, "the local reply must not be translated as an upstream error")
+				require.Nil(t, bodyResp.GetResponseBody().GetResponse(), "the body written by the gateway must be left untouched")
+
+				// Completion was already recorded when the local reply was produced.
+				mm.RequireRequestFailure(t)
+				require.Equal(t, 1, span.endedOnErrorCount, "the span must not be ended twice")
+				require.Zero(t, span.endedCount)
+			})
 			t.Run("auth handler error", func(t *testing.T) {
 				headers := map[string]string{":path": "/foo", internalapi.ModelNameHeaderKeyDefault: "some-model"}
 				someBody := bodyFromModel(t, "some-model", tc.stream, nil)
@@ -711,7 +767,20 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.True(t, ok, "response should be an ImmediateResponse")
 				require.Equal(t, typev3.StatusCode(401), immediateResp.ImmediateResponse.Status.Code)
 				require.Contains(t, string(immediateResp.ImmediateResponse.Body), "missing upstream credential")
+				require.True(t, p.parent.localReplyEmitted)
 
+				// Envoy delivers the local reply back through the response path.
+				headersResp, err := p.ProcessResponseHeaders(t.Context(), &corev3.HeaderMap{
+					Headers: []*corev3.HeaderValue{{Key: ":status", RawValue: []byte("401")}},
+				})
+				require.NoError(t, err)
+				require.Nil(t, headersResp.GetResponseHeaders().GetResponse())
+				bodyResp, err := p.ProcessResponseBody(t.Context(),
+					&extprocv3.HttpBody{Body: immediateResp.ImmediateResponse.Body, EndOfStream: true})
+				require.NoError(t, err)
+				require.Nil(t, bodyResp.GetResponseBody().GetResponse())
+
+				// The completion recorded below stays at one despite that second pass.
 				mm.RequireRequestFailure(t)
 				require.Equal(t, "some-model", mm.originalModel)
 				require.Equal(t, "some-model", mm.requestModel)
