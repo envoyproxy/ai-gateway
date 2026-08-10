@@ -14,9 +14,8 @@
 - [Proposal](#proposal)
   - [Overview](#overview)
   - [The `AIGatewayExtensionPolicy` CRD](#the-aigatewayextensionpolicy-crd)
-  - [Attaching a policy via `targetRefs`](#attaching-a-policy-via-targetrefs)
-  - [`headers`: gating the composite](#headers-gating-the-composite)
-  - [`targetRefs` vs. `headers`: why both, and the catch-all caveat](#targetrefs-vs-headers-why-both-and-the-catch-all-caveat)
+  - [Attaching a policy via `targetRef`](#attaching-a-policy-via-targetref)
+  - [`attachmentMode`: where the policy is enabled](#attachmentmode-where-the-policy-is-enabled)
   - [Request flow](#request-flow)
   - [How the ext_proc is added at `PostTranslateModify`](#how-the-ext_proc-is-added-at-posttranslatemodify)
   - [Building the policy → route mapping (code)](#building-the-policy--route-mapping-code)
@@ -43,12 +42,13 @@
 
 This proposal introduces a new CRD, **`AIGatewayExtensionPolicy`**, that describes a
 router-phase `ext_proc` (modeled on the `extProc` field of Envoy Gateway's
-`EnvoyExtensionPolicy`) and **attaches to one or more `AIGatewayRoute`s via
-`targetRefs`** (the Gateway API policy-attachment pattern, like `QuotaPolicy` /
-`EnvoyExtensionPolicy`). The policy carries its own **`headers`** list (header
-name + value); those header values gate the wrapped ext_proc. (See
-[`targetRefs` vs. `headers`](#targetrefs-vs-headers-why-both-and-the-catch-all-caveat)
-for why both exist and the catch-all caveat that comes with `targetRefs`.)
+`EnvoyExtensionPolicy`) and **attaches to a single `AIGatewayRoute` via
+`targetRef`**. The policy also includes **`attachmentMode`** that decides where the
+extension is enabled:
+
+- `FallbackOnly`: catch-alls only
+- `RouteOnly`: route rules only
+- `All`: both catch-alls and route rules.
 
 The AI Gateway extension server, during its existing `PostTranslateModify` phase,
 inserts a composite filter — named with its canonical registered name
@@ -138,10 +138,10 @@ before the AI Gateway makes its routing decision, that:
 
 **Goals**
 
-- A CRD describing a router-phase `ext_proc`, attached to `AIGatewayRoute`(s) via
-  `targetRefs`.
-- Header-gated execution using the policy's own `headers` list, evaluated once on
-  the request's first pass (the catch-all, or a client-header rule matched directly).
+- A CRD describing a router-phase `ext_proc`, attached to one
+  `AIGatewayRoute` via `targetRef`.
+- Route enablement selection via `attachmentMode`:
+  `FallbackOnly`, `RouteOnly`, `All`.
 - Reuse the existing catch-all / `ClearRouteCache` routing mechanics unchanged.
 
 **Non-Goals**
@@ -156,25 +156,22 @@ before the AI Gateway makes its routing decision, that:
 
 ### Overview
 
-Add an `AIGatewayExtensionPolicy` CRD (an `ext_proc` description + `headers` gate +
-`targetRefs`). It attaches to `AIGatewayRoute`(s) via `targetRefs`. At
-`PostTranslateModify`, the extension server resolves the mapping and injects a
-**header-gated composite `ext_proc`** into the listener (added disabled, ordered
-before the AI Gateway `ext_proc`), then enables it on the targeted routes' rule
-routes and on all catch-all routes.
+Add an `AIGatewayExtensionPolicy` CRD (an `ext_proc` description +
+`targetRef` + `attachmentMode`). At `PostTranslateModify`, the extension server
+resolves the mapping and injects a composite `ext_proc` into the listener (added
+disabled, ordered before the AI Gateway `ext_proc`), then enables it according to
+`attachmentMode`.
 
 ```
   AIGatewayExtensionPolicy "sr"                         AIGatewayRoute "chat"
   ┌────────────────────────────────┐                    ┌──────────────────────┐
-  │ spec.targetRefs:                │  targets           │ rules:               │
-  │   - kind: AIGatewayRoute        │ ─────────────────► │   - matches: [...]    │
-  │     name: chat                  │                    │     backendRefs:[...] │
-  │ spec.headers:                   │                    │   - ...               │
-  │   - name: x-tenant-id           │                    └──────────────────────┘
-  │     value: premium              │
-  │ spec.extProc:                   │   headers gate the composite ext_proc that
-  │   backendRefs: [sr-svc]         │   is enabled on chat's rule routes + all
-  │   processingMode: {...}         │   catch-all routes.
+  │ spec.targetRef:                 │  targets           │ rules:               │
+  │   kind: AIGatewayRoute          │ ─────────────────► │   - matches: [...]    │
+  │   name: chat                    │                    │     backendRefs:[...] │
+  │ spec.attachmentMode: All        │                    │   - ...               │
+  │ spec.extProc:                   │   enabled by mode: catch-all only,
+  │   backendRefs: [sr-svc]         │   route rules only, or both.
+  │   processingMode: {...}         │
   └────────────────────────────────┘
 ```
 
@@ -182,8 +179,8 @@ routes and on all catch-all routes.
 
 A new namespaced CRD in `api/v1alpha1`. Its spec reuses Envoy Gateway's `ExtProc`
 type (so ext_proc semantics — backend refs, processing mode, timeouts, metadata
-options — match `EnvoyExtensionPolicy` 1:1), adds a `targetRefs` list (policy
-attachment) and a `headers` gate:
+options — match `EnvoyExtensionPolicy` 1:1), adds a single `targetRef` (policy
+attachment) and an `attachmentMode` selector:
 
 ```yaml
 apiVersion: aigateway.envoyproxy.io/v1alpha1
@@ -192,15 +189,17 @@ metadata:
   name: semantic-router
   namespace: default
 spec:
-  # Policy attachment: which AIGatewayRoute(s) this applies to.
-  targetRefs:
-    - group: aigateway.envoyproxy.io
-      kind: AIGatewayRoute
-      name: chat
-  # Gate: the wrapped ext_proc runs only when ALL these request headers match.
-  headers:
-    - name: x-tenant-id
-      value: premium
+  # Policy attachment: which AIGatewayRoute this applies to.
+  targetRef:
+    group: aigateway.envoyproxy.io
+    kind: AIGatewayRoute
+    name: chat
+  # AttachmentMode determines which underlying routes receive this policy.
+  # Defaults to "All" to guarantee the extension is executed for all targeted traffic.
+  #
+  # +optional
+  # +kubebuilder:default=All
+  attachmentMode: All
   # The ext_proc to run (same shape as EnvoyExtensionPolicy.spec.extProc).
   extProc:
     backendRefs:
@@ -212,41 +211,22 @@ spec:
     messageTimeout: 250ms
 ```
 
-### Attaching a policy via `targetRefs`
+### Attaching a policy via `targetRef`
 
-Attachment is expressed on the **policy** (not the route): `spec.targetRefs` selects
-one or more `AIGatewayRoute`s, following the Gateway API policy-attachment pattern
-used by `QuotaPolicy` and `EnvoyExtensionPolicy`. `AIGatewayRoute` and its rules are
-**unchanged** — no `filterRefs` field is added. A policy applies to _all_ rules of
-each targeted route; there is no per-rule attachment.
+Attachment is expressed on the **policy** (not the route): `spec.targetRef` selects
+exactly one `AIGatewayRoute`. `AIGatewayRoute` and its rules are **unchanged** — no
+`filterRefs` field is added.
 
-### `headers`: gating the composite
+### `attachmentMode`: where the policy is enabled
 
-The gate is the policy's explicit `headers` list (each a `name` + `value`). The
-composite runs the wrapped ext_proc only when **all** listed request headers match.
-Because these are ordinary client-supplied request headers, they are evaluable on
-the **first pass**, while the request is still on the catch-all and `x-ai-eg-model`
-does not yet exist — which is exactly the window a router-phase mutation needs.
+`attachmentMode` determines where the generated `CompositePerRoute` is attached for
+the targeted `AIGatewayRoute`:
 
-An **empty `headers`** list means "no gate" — the ext proc runs for \_all\* first-pass
-traffic on the catch-all. This is allowed (useful for policies meant to apply to
-every request, e.g. auth or PII redaction), but on the shared catch-all it re-widens
-the blast radius to all traffic, so validation should warn/require an explicit opt-in
-(see Open Questions).
-
-### `targetRefs` vs. `headers`: why both, and the catch-all caveat
-
-The policy carries **both** a `targetRefs` (which `AIGatewayRoute` it is _for_) and a
-`headers` gate (when the ext*proc actually \_runs*). They are not redundant, and the
-`targetRefs`-based attachment has a real caveat that follows directly from the
-catch-all mechanics. The table lays out the reasoning reviewers most often ask about.
-
-| Topic                                                                                                                     | Detail                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Why is a `headers` gate required — can't we just reuse the targeted route's own match headers (e.g. `x-ai-eg-model`)?** | No. `x-ai-eg-model` is produced **server-side** by the AI Gateway router ext*proc and does **not exist on the first pass**, when the request is still on the catch-all. A composite gated on `x-ai-eg-model` would never match there, so the router-phase ext_proc — which must run \_before* the model is derived — would **never fire**. `headers` are ordinary **client-supplied** request headers, present on the first pass, so they give the user an explicit gate that actually evaluates on the catch-all. That is why the gate is a first-class field and not inferred from the route. |
-| **What does `targetRefs` express, then?**                                                                                 | The user's _intent_ — "this ext_proc is meant for the `chat` route" — plus the hooks for status/validation (`ResolvedRefs`, `Accepted`) and for choosing which routes' `HTTPRoute`s to touch when triggering re-translation.                                                                                                                                                                                                                                                                                                                                                                    |
-| **Drawback: enablement still lands on _all_ catch-all routes.**                                                           | Because a first-pass request always lands on the header-less catch-all, and all catch-alls on a Gateway collapse to a single surviving rule (Gateway-API conflict resolution), the composite must be enabled on **every** catch-all route to be reachable at all — even though the policy names a single `AIGatewayRoute`. Enabling it only on the targeted route's rules would miss the first pass entirely. So the injected xDS ends up on catch-all routes the `targetRef` did **not** name, which is unconventional for a "targeted" policy.                                                |
-| **Drawback: execution can spill onto traffic the user did not intend.**                                                   | Since the composite sits on the shared catch-all, a request destined for a _different_ `AIGatewayRoute` also traverses it on its first pass. If that request happens to carry the policy's `headers`, the ext_proc runs for it too — even though only one route was targeted. The **`headers` gate is the only thing that confines execution**; `targetRefs` does **not** restrict where the ext_proc actually runs. Choose `headers` specific enough (e.g. a tenant/feature header) to avoid unintended fan-out.                                                                               |
+| `attachmentMode` | Behavior                                                                                                 |
+| ---------------- | -------------------------------------------------------------------------------------------------------- |
+| `FallbackOnly`   | Enable only on catch-all (`route-not-found`) routes.                                                     |
+| `RouteOnly`      | Enable only on `x-ai-eg-model` or header-based route rules generated from the targeted `AIGatewayRoute`. |
+| `All`            | Enable on both catch-all and route rules.                                                                |
 
 ### Request flow
 
@@ -382,8 +362,7 @@ policies, and (b) **every catch-all (`route-not-found`) route** with **all** pol
 attached to _any_ `AIGatewayRoute` — because on the first pass a request funnels
 through whatever single catch-all survives Gateway-API conflict resolution,
 regardless of which route eventually owns it (this is the catch-all caveat from the
-[`targetRefs` vs. `headers`](#targetrefs-vs-headers-why-both-and-the-catch-all-caveat)
-table):
+`attachmentMode` discussion above):
 
 ```go
 // allEntries is the union of every policy attachment across all routes, deduped by
@@ -586,7 +565,7 @@ below.
 
 ### Policy lifecycle: add, update, and remove
 
-**Q: When an `AIGatewayExtensionPolicy` is deleted (or its `targetRefs` change),
+**Q: When an `AIGatewayExtensionPolicy` is deleted (or its `targetRef` / `attachmentMode` changes),
 will the extension server remove the composite-wrapped `ext_proc`?**
 
 **Yes — automatically, with no explicit teardown code.** `PostTranslateModify` is a
@@ -670,13 +649,11 @@ unchanged — it still lists policies via `s.k8sClient` and recomputes.
 **Requirements and caveats (validated on a live cluster).** This path is not free;
 EG imposes rules on `policyResources` objects:
 
-- **A `targetRef`/`targetRefs` is mandatory.** EG's `processExtensionServerPolicies`
+- **A `targetRef` is mandatory.** EG's `processExtensionServerPolicies`
   rejects any object without one (`"not a policy object - no targetRef or targetRefs
 found …"`) and drops it from the resource tree, so it never triggers re-translation.
-  This means `targetRefs` stays a required field — but now it does double duty: it is
-  both the user's declared scope _and_ the re-translation trigger. (Concretely: with
-  no `targetRefs`, editing a policy produced **no** xDS change until EG was cold-restarted;
-  adding a `targetRefs` made edits propagate to Envoy in ~seconds with no restart.)
+  This means `targetRef` does double duty: it is both the user's declared scope and
+  the re-translation trigger.
 - **Same-namespace attachment only.** The target reference is a
   `LocalPolicyTargetReferenceWithSectionName` (no namespace), and EG resolves it in
   the _policy's own_ namespace (`resolveExtServerPolicyGatewayTargetRef` keys on
@@ -687,22 +664,16 @@ found …"`) and drops it from the resource tree, so it never triggers re-transl
   on its `/status` subresource (EG writes policy status). The AI Gateway CRDs helm
   chart must grant these to the EG SA.
 
-#### Scoped targeting: `Gateway` vs. `AIGatewayRoute`
+#### Scoped enablement via `attachmentMode`
 
-Because EG accepts any `targetRef`, we can let the **target kind** select the
-enablement scope, which resolves the "targeted policy that nevertheless lands on all
-catch-alls" awkwardness from the [`targetRefs` vs. `headers`
-table](#targetrefs-vs-headers-why-both-and-the-catch-all-caveat):
+`targetRef` is always a single `AIGatewayRoute`. Scope is controlled by
+`attachmentMode`:
 
-| `targetRefs` kind    | Where the composite is enabled                                                                                                                                                                                                                                                                 | Scope / intent                                                                                                                                                                                                                                                                                                                         |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`Gateway`**        | **All catch-all routes served by that Gateway.**                                                                                                                                                                                                                                               | Gateway-wide. The composite runs (subject to `headers`) for _any_ first-pass request on the Gateway, regardless of which `AIGatewayRoute` it is ultimately destined for. This is the honest representation of the blast radius for a cross-cutting ext_proc (auth, PII redaction, semantic routing across every model on the Gateway). |
-| **`AIGatewayRoute`** | **Only the routes generated by that `AIGatewayRoute`** — _not_ every catch-all on the Gateway. Enablement can even **skip that route's own auto-generated catch-all rule**, since that rule is an internal landing route (route-not-found) and is not part of the user-authored route surface. | Route-scoped. The policy affects only the traffic belonging to the named `AIGatewayRoute`; other `AIGatewayRoute`s on the same Gateway are untouched. This gives a genuinely narrow, user-comprehensible blast radius that matches the `targetRef`.                                                                                    |
-
-This makes the `targetRef` semantically meaningful again: a `Gateway` target says
-"apply gateway-wide," an `AIGatewayRoute` target says "apply to just this route." It
-also lets the docs describe the effect precisely, which the annotation-hack /
-"always all catch-alls" model could not.
+| `attachmentMode` | Where the composite is enabled                                                                       |
+| ---------------- | ---------------------------------------------------------------------------------------------------- |
+| `FallbackOnly`   | Only catch-all (`route-not-found`) routes generated for the targeted `AIGatewayRoute`.               |
+| `RouteOnly`      | Only `x-ai-eg-model` or other header-based rule routes generated from the targeted `AIGatewayRoute`. |
+| `All`            | Both catch-all and rule routes generated from the targeted `AIGatewayRoute`.                         |
 
 **Router-phase caveat for `AIGatewayRoute` scope.** Router-phase mutation must run on
 the request's _first pass_, while it is still on the header-less catch-all and
@@ -713,11 +684,9 @@ only reaches a first-pass request when that route is matchable on the first pass
 (e.g. keyed on a **client** header, or served on a distinct path/host so its
 catch-all does not collapse into the shared one). For the common single-endpoint
 setup where all routes share `/v1/chat/completions` and every catch-all collapses to
-one surviving rule, a router-phase ext*proc that must see \_all* of a route's traffic
-still needs `Gateway` scope (or enablement on the shared catch-all). `AIGatewayRoute`
-scope is therefore best for policies gated on client-supplied, route-selecting
-headers; `Gateway` scope is the safe default for true router-phase mutation. See
-Open Questions.
+one surviving rule, use `attachmentMode: All` to guarantee first-pass coverage for
+that route's traffic; use `FallbackOnly` or `RouteOnly` only when that narrower
+attachment behavior is explicitly desired.
 
 ## Code Changes
 
@@ -728,8 +697,8 @@ injection, quota rate-limit injection) rather than introduce new machinery.
 
 - **`api/v1alpha1/ai_gateway_extension_policy.go`** (new): `AIGatewayExtensionPolicy`,
   `AIGatewayExtensionPolicyList`, `AIGatewayExtensionPolicySpec` (embedding
-  `egv1a1.ExtProc`, plus `TargetRefs` and `Headers`), the
-  `AIGatewayExtensionPolicyHeaderMatch` type, and `AIGatewayExtensionPolicyStatus`.
+  `egv1a1.ExtProc`, plus `TargetRef` and `AttachmentMode`), and
+  `AIGatewayExtensionPolicyStatus`.
   Kubebuilder markers copied from `AIGatewayRoute` / `QuotaPolicy`.
 - **`api/v1alpha1/ai_gateway_route.go`**: **unchanged** (no `filterRefs`; attachment
   lives on the policy).
@@ -739,36 +708,26 @@ injection, quota rate-limit injection) rather than introduce new machinery.
 ```go
 // api/v1alpha1/ai_gateway_extension_policy.go
 type AIGatewayExtensionPolicySpec struct {
-	// TargetRefs select the AIGatewayRoute(s) this policy attaches to
-	// (Gateway API policy attachment, like QuotaPolicy / EnvoyExtensionPolicy).
-	//
-	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=16
-	TargetRefs []gwapiv1a2.LocalPolicyTargetReference `json:"targetRefs"`
+	// TargetRef selects the AIGatewayRoute this policy attaches to.
+	TargetRef gwapiv1a2.LocalPolicyTargetReference `json:"targetRef"`
 
-	// Headers gate the composite: the wrapped ext_proc runs only when ALL listed
-	// request headers match. Evaluable on the first (catch-all) pass. Empty means
-	// "no gate" (runs for all first-pass traffic on the catch-all).
+	// AttachmentMode determines which underlying routes receive this policy.
+	// Defaults to "All" to guarantee the extension is executed for all targeted traffic.
 	//
 	// +optional
-	// +kubebuilder:validation:MaxItems=16
-	Headers []AIGatewayExtensionPolicyHeaderMatch `json:"headers,omitempty"`
+	// +kubebuilder:default=All
+	AttachmentMode *RouteAttachmentMode `json:"attachmentMode,omitempty"`
 
 	// ExtProc mirrors EnvoyExtensionPolicy's extProc so semantics match EG.
 	ExtProc egv1a1.ExtProc `json:"extProc"`
 }
 
-type AIGatewayExtensionPolicyHeaderMatch struct {
-	// Name is the request header name to match.
-	Name string `json:"name"`
-	// Value is the exact value the header must have.
-	Value string `json:"value"`
-}
+type RouteAttachmentMode string
 ```
 
 ### 2. Controller (`internal/controller`)
 
-- Watch `AIGatewayExtensionPolicy`; on change, resolve `targetRefs` and resync the
+- Watch `AIGatewayExtensionPolicy`; on change, resolve `targetRef` and resync the
   owning gateways of the targeted `AIGatewayRoute`s (reuse `syncGateways`) so
   `PostTranslateModify` re-runs.
 - Stamp the attached-policy annotation on each targeted route's generated
@@ -1026,7 +985,7 @@ the `EnvoyPatchPolicy` workaround had to assert by hand.
   inserted (disabled) before `ai-gateway-extproc`, gated by the right header
   matchers, the ext_proc cluster exists, and it's enabled on the targeted rule routes
   and on `route-not-found`.
-- Controller tests for `targetRefs` resolution/status and the attached-policy
+- Controller tests for `targetRef` resolution/status and the attached-policy
   annotation.
 - `api/v1alpha1` deepcopy/registry tests.
 - `cmd/aigw` translate golden files if an example is added.
@@ -1039,20 +998,18 @@ CRDs to the xDS that Envoy runs, so the whole path can be reviewed at once.
 ### Step 0 — user-authored CRDs
 
 ```yaml
-# The extension policy (semantic router): targetRefs + headers gate + extProc.
+# The extension policy (semantic router): targetRef + attachmentMode + extProc.
 apiVersion: aigateway.envoyproxy.io/v1alpha1
 kind: AIGatewayExtensionPolicy
 metadata:
   name: semantic-router
   namespace: default
 spec:
-  targetRefs:
-    - group: aigateway.envoyproxy.io
-      kind: AIGatewayRoute
-      name: chat
-  headers:
-    - name: x-tenant-id
-      value: premium
+  targetRef:
+    group: aigateway.envoyproxy.io
+    kind: AIGatewayRoute
+    name: chat
+  attachmentMode: All
   extProc:
     backendRefs:
       - name: semantic-router-svc # a Service (or EG Backend) in the namespace
@@ -1351,11 +1308,9 @@ and mutates the request; the AI Gateway `ext_proc` then derives `x-ai-eg-model` 
    common `x-ai-eg-model`-keyed rules it is a pure no-op (the request always runs the
    composite on the catch-all). Is it worth enabling on rule routes at all, or should
    enablement be catch-all-only to keep the injected xDS minimal?
-5. **Cross-route catch-all fan-out.** Enabling _all_ policies on _every_ catch-all
-   means a policy targeting route A also evaluates on route B's surviving catch-all
-   (the catch-all caveat from the `targetRefs` vs. `headers` table). The `headers`
-   gate limits actual execution, but confirm this is acceptable for multi-tenant
-   gateways (and how it interacts with namespaces).
+5. **Cross-route catch-all fan-out.** In `All` / `FallbackOnly` mode, validate that
+   enablement still scopes correctly to generated routes for the targeted
+   `AIGatewayRoute`, especially when multiple routes share one surviving catch-all.
 6. **Standalone mode / `cmd/aigw`.** Ensure the injection path honors
    `isStandAloneMode` and the offline translate flow.
 7. **Status/observability.** Conditions on `AIGatewayExtensionPolicy` (Accepted,
