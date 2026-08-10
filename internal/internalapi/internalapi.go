@@ -69,7 +69,26 @@ const (
 	MCPMetadataHeaderToolName = MCPMetadataHeaderPrefix + "tool-name"
 	// MCPMetadataHeaderResourceURI is the special header key used to pass the MCP resource URI in the filter metadata.
 	MCPMetadataHeaderResourceURI = MCPMetadataHeaderPrefix + "resource-uri"
+
+	// AWSCredentialOverrideHeaderPrefix is the default prefix for the three request headers that
+	// carry a per-request AWS SigV4 credential injected by a trusted filter. SigV4 needs three
+	// inputs, so unlike every other auth type the AWS header source is a prefix rather than a
+	// complete header name. The x-aigw- prefix keeps these clear of real provider headers and
+	// makes them redacted in debug logs by isSensitiveHeader.
+	AWSCredentialOverrideHeaderPrefix = "x-aigw-aws-" //nolint:gosec // G101: a header name prefix, not a credential.
+	// AWSCredentialOverrideMetadataKey is the default dynamic metadata key holding a per-request
+	// AWS credential. Unlike the header source the value is a single struct carrying all three
+	// SigV4 inputs, so it is one key rather than a prefix.
+	AWSCredentialOverrideMetadataKey = "x-aigw-aws-credentials" //nolint:gosec // G101: a metadata key name, not a credential.
 )
+
+// AWSCredentialOverrideHeaderNames derives the three SigV4 credential header names from a prefix.
+// The controller uses it to build the list of headers to strip before the request reaches the
+// backend; the extproc backendauth handler uses it to read them. Both sides must agree, which is
+// why the derivation lives here rather than in either package.
+func AWSCredentialOverrideHeaderNames(prefix string) (accessKeyID, secretAccessKey, sessionToken string) {
+	return prefix + "access-key-id", prefix + "secret-access-key", prefix + "session-token"
+}
 
 // MCPInternalHeadersToMetadata maps special MCP headers to metadata keys.
 //

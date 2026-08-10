@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -114,19 +116,111 @@ func (h *credentialOverrideHandler) resolveCredential(ctx context.Context, reque
 		return strings.TrimSpace(requestHeaders[o.HeaderName])
 	}
 	if o.DynamicMetadataNamespace != "" {
-		md := envoyMetadataFromContext(ctx)
-		if md == nil {
-			return ""
-		}
-		ns, ok := md.GetFilterMetadata()[o.DynamicMetadataNamespace]
-		if !ok || ns == nil {
-			return ""
-		}
-		val, ok := ns.GetFields()[o.DynamicMetadataKey]
-		if !ok || val == nil {
-			return ""
-		}
-		return strings.TrimSpace(val.GetStringValue())
+		return strings.TrimSpace(lookupMetadataValue(ctx, o).GetStringValue())
 	}
 	return ""
+}
+
+// lookupMetadataValue returns the Envoy dynamic metadata value at the configured
+// namespace/key, or nil when Envoy sent no metadata or the key is absent.
+// The returned *structpb.Value is safe to call getters on when nil.
+func lookupMetadataValue(ctx context.Context, o *filterapi.CredentialOverride) *structpb.Value {
+	md := envoyMetadataFromContext(ctx)
+	if md == nil {
+		return nil
+	}
+	ns, ok := md.GetFilterMetadata()[o.DynamicMetadataNamespace]
+	if !ok || ns == nil {
+		return nil
+	}
+	val, ok := ns.GetFields()[o.DynamicMetadataKey]
+	if !ok {
+		return nil
+	}
+	return val
+}
+
+// Field names of the struct that carries an AWS credential in Envoy dynamic metadata.
+// These are fixed rather than configurable — the value shape is part of the contract with
+// whatever trusted filter produces it.
+const (
+	awsMetadataAccessKeyIDField     = "accessKeyId"
+	awsMetadataSecretAccessKeyField = "secretAccessKey"
+	awsMetadataSessionTokenField    = "sessionToken"
+)
+
+// awsCredentialSource labels credentials that came from a per-request source rather than from
+// the handler's own provider. It surfaces in AWS SDK errors and aids debugging.
+const awsCredentialSource = "AIGatewayCredentialOverride"
+
+// ErrIncompleteAWSCredential is returned when a per-request AWS credential source carries some
+// but not all of the values SigV4 requires. This is deliberately a hard failure rather than a
+// fallback: a half-populated source means the trusted filter upstream is misconfigured, and
+// silently signing with the gateway's own identity would attribute the request to the wrong
+// principal — exactly what per-request credentials exist to prevent.
+var ErrIncompleteAWSCredential = errors.New("incomplete per-request AWS credential: access key ID and secret access key must both be present")
+
+// awsCredentialOverrideHandler is the AWS counterpart to credentialOverrideHandler. AWS needs its
+// own type because SigV4 consumes three values and then signs, rather than writing one credential
+// into a header, so it cannot be expressed as an applyCredentialFn.
+type awsCredentialOverrideHandler struct {
+	inner  *awsHandler
+	config *filterapi.CredentialOverride
+}
+
+// Do implements filterapi.BackendAuthHandler.
+func (h *awsCredentialOverrideHandler) Do(ctx context.Context, requestHeaders map[string]string, mutatedBody []byte) ([]internalapi.Header, error) {
+	credentials, err := h.resolveAWSCredentials(ctx, requestHeaders)
+	if err != nil {
+		return nil, err
+	}
+	if credentials == nil {
+		if !h.config.FallbackToConfigured {
+			return nil, ErrCredentialMissing
+		}
+		// Falls back to the configured AWS credential chain (credentials file, IRSA,
+		// EKS Pod Identity, instance role, ...).
+		return h.inner.Do(ctx, requestHeaders, mutatedBody)
+	}
+	return h.inner.signWith(ctx, credentials, requestHeaders, mutatedBody)
+}
+
+// resolveAWSCredentials reads the three-part SigV4 credential from the configured source.
+// It returns nil, nil when the source is entirely absent, which selects the fallback path.
+func (h *awsCredentialOverrideHandler) resolveAWSCredentials(ctx context.Context, requestHeaders map[string]string) (*aws.Credentials, error) {
+	var accessKeyID, secretAccessKey, sessionToken string
+
+	o := h.config
+	switch {
+	case o.HeaderName != "":
+		// HeaderName is a prefix for AWS, not a complete header name. The controller derives the
+		// strip list from the same function, so both sides stay in step.
+		accessKeyIDHeader, secretAccessKeyHeader, sessionTokenHeader := internalapi.AWSCredentialOverrideHeaderNames(o.HeaderName)
+		accessKeyID = strings.TrimSpace(requestHeaders[accessKeyIDHeader])
+		secretAccessKey = strings.TrimSpace(requestHeaders[secretAccessKeyHeader])
+		sessionToken = strings.TrimSpace(requestHeaders[sessionTokenHeader])
+	case o.DynamicMetadataNamespace != "":
+		fields := lookupMetadataValue(ctx, o).GetStructValue().GetFields()
+		accessKeyID = strings.TrimSpace(fields[awsMetadataAccessKeyIDField].GetStringValue())
+		secretAccessKey = strings.TrimSpace(fields[awsMetadataSecretAccessKeyField].GetStringValue())
+		sessionToken = strings.TrimSpace(fields[awsMetadataSessionTokenField].GetStringValue())
+	default:
+		return nil, nil
+	}
+
+	// Nothing at all from the source: fall back (or 401) as configured.
+	if accessKeyID == "" && secretAccessKey == "" && sessionToken == "" {
+		return nil, nil
+	}
+	// Something, but not enough to sign with. A session token on its own counts as partial.
+	if accessKeyID == "" || secretAccessKey == "" {
+		return nil, ErrIncompleteAWSCredential
+	}
+
+	return &aws.Credentials{
+		AccessKeyID:     accessKeyID,
+		SecretAccessKey: secretAccessKey,
+		SessionToken:    sessionToken,
+		Source:          awsCredentialSource,
+	}, nil
 }

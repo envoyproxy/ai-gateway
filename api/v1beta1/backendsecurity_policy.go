@@ -53,7 +53,6 @@ type BackendSecurityPolicy struct {
 // +kubebuilder:validation:XValidation:rule="self.type == 'AzureCredentials' ? (has(self.azureCredentials) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.gcpCredentials) && !has(self.anthropicAPIKey)) : true",message="When type is AzureCredentials, only azureCredentials field should be set"
 // +kubebuilder:validation:XValidation:rule="self.type == 'GCPCredentials' ? (has(self.gcpCredentials) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.azureCredentials) && !has(self.anthropicAPIKey)) : true",message="When type is GCPCredentials, only gcpCredentials field should be set"
 // +kubebuilder:validation:XValidation:rule="self.type == 'AnthropicAPIKey' ? (has(self.anthropicAPIKey) && !has(self.apiKey) && !has(self.awsCredentials) && !has(self.azureAPIKey) && !has(self.azureCredentials) && !has(self.gcpCredentials)) : true",message="When type is AnthropicAPIKey, only anthropicAPIKey field should be set"
-// +kubebuilder:validation:XValidation:rule="!has(self.credentialOverride) || self.type != 'AWSCredentials'",message="credentialOverride is not supported for AWSCredentials"
 type BackendSecurityPolicySpec struct {
 	// TargetRefs are the names of the AIServiceBackend or InferencePool resources this BackendSecurityPolicy is being attached to.
 	// Attaching multiple BackendSecurityPolicies to the same resource is invalid and will result in an error
@@ -101,7 +100,11 @@ type BackendSecurityPolicySpec struct {
 	AnthropicAPIKey *BackendSecurityPolicyAnthropicAPIKey `json:"anthropicAPIKey,omitempty"`
 
 	// CredentialOverride, when set, sources the upstream credential per-request instead of using
-	// the static credential configured above. Supported for all types except AWSCredentials.
+	// the static credential configured above.
+	//
+	// For AWSCredentials the per-request credential is the three-part SigV4 input
+	// (access key ID, secret access key, and optionally a session token) rather than a single
+	// string; see the source types for how each one carries it.
 	//
 	// +optional
 	CredentialOverride *BackendSecurityPolicyCredentialOverride `json:"credentialOverride,omitempty"`
@@ -395,6 +398,17 @@ type CredentialOverrideFromRequestHeaders struct {
 	//   AzureCredentials → x-aigw-azure-access-token
 	//   GCPCredentials  → x-aigw-gcp-access-token
 	//
+	// For AWSCredentials this is a prefix rather than a single header name, because SigV4
+	// needs three inputs. It defaults to "x-aigw-aws-", yielding:
+	//   x-aigw-aws-access-key-id
+	//   x-aigw-aws-secret-access-key
+	//   x-aigw-aws-session-token     (optional; omit for long-lived credentials)
+	// All three are stripped before the request reaches the backend. Supplying an access key ID
+	// without a secret access key (or the reverse) fails the request rather than falling back.
+	//
+	// Prefer FromDynamicMetadata for AWSCredentials: a secret access key travelling in a request
+	// header is a materially worse leak than an API key, and headers are client-settable.
+	//
 	// +optional
 	Header string `json:"header,omitempty"`
 
@@ -418,6 +432,15 @@ type CredentialOverrideFromDynamicMetadata struct {
 	Namespace string `json:"namespace"`
 
 	// Key is the metadata key within the namespace. Defaults to the x-aigw-* name for the auth type.
+	//
+	// For every type except AWSCredentials the value at this key must be a string holding the
+	// credential. For AWSCredentials it must be a struct with these fields, because SigV4 needs
+	// three inputs:
+	//   accessKeyId
+	//   secretAccessKey
+	//   sessionToken     (optional; omit for long-lived credentials)
+	// The field names are fixed. Supplying accessKeyId without secretAccessKey (or the reverse)
+	// fails the request rather than falling back. Defaults to "x-aigw-aws-credentials".
 	//
 	// +optional
 	Key string `json:"key,omitempty"`

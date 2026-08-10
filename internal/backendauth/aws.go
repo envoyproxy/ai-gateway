@@ -31,7 +31,9 @@ type awsHandler struct {
 	region              string
 }
 
-func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (filterapi.BackendAuthHandler, error) {
+// newAWSHandler returns the concrete *awsHandler rather than the interface so that
+// awsCredentialOverrideHandler can reach signWith to sign with per-request credentials.
+func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (*awsHandler, error) {
 	if awsAuth == nil {
 		return nil, fmt.Errorf("aws auth configuration is required")
 	}
@@ -83,6 +85,21 @@ func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (filterapi.B
 // This assumes that during the transformation, the path is set in the header mutation as well as
 // the body in the body mutation.
 func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, mutatedBody []byte) ([]internalapi.Header, error) {
+	credentials, err := a.credentialsProvider.Retrieve(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("cannot retrieve AWS credentials: %w", err)
+	}
+	return a.signWith(ctx, &credentials, requestHeaders, mutatedBody)
+}
+
+// signWith performs the SigV4 signing with the supplied credentials, which come either from the
+// handler's own provider (the default credential chain, IRSA, a credentials file) or, when a
+// CredentialOverride is configured, from a trusted per-request source.
+//
+// Only the credentials vary by source. The signing host and region are resolved the same way on
+// both paths — from the upstream host the ext_proc filter forwarded — so a per-request credential
+// composes with VPC endpoints and region self-correction rather than bypassing them.
+func (a *awsHandler) signWith(ctx context.Context, credentials *aws.Credentials, requestHeaders map[string]string, mutatedBody []byte) ([]internalapi.Header, error) {
 	method := requestHeaders[":method"]
 	path := requestHeaders[":path"]
 	host := a.signingHost(requestHeaders)
@@ -117,12 +134,7 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 	// https://github.com/envoyproxy/envoy/blob/60b2b5187cf99db79ecfc54675354997af4765ea/source/extensions/filters/http/ext_proc/processor_state.cc#L180-L183
 	req.ContentLength = -1
 
-	credentials, err := a.credentialsProvider.Retrieve(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve AWS credentials: %w", err)
-	}
-
-	err = a.signer.SignHTTP(ctx, credentials, req,
+	err = a.signer.SignHTTP(ctx, *credentials, req,
 		hex.EncodeToString(payloadHash[:]), "bedrock", region, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("cannot sign request: %w", err)
