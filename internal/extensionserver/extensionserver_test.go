@@ -243,6 +243,8 @@ func Test_maybeModifyCluster(t *testing.T) {
 											internalapi.XDSUpstreamHostMetadataBackendNamePath,
 											internalapi.XDSClusterMetadataBackendNamePath,
 											internalapi.XDSRouteMetadataRouteNamePath,
+											internalapi.XDSRouteMetadataMergedBackendNamesPath,
+											internalapi.XDSClusterNamePath,
 										},
 										ProcessingMode: &extprocv3.ProcessingMode{
 											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,
@@ -377,6 +379,8 @@ func Test_maybeModifyCluster(t *testing.T) {
 											internalapi.XDSUpstreamHostMetadataBackendNamePath,
 											internalapi.XDSClusterMetadataBackendNamePath,
 											internalapi.XDSRouteMetadataRouteNamePath,
+											internalapi.XDSRouteMetadataMergedBackendNamesPath,
+											internalapi.XDSClusterNamePath,
 										},
 										ProcessingMode: &extprocv3.ProcessingMode{
 											RequestHeaderMode:  extprocv3.ProcessingMode_SEND,

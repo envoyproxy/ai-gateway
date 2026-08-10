@@ -385,6 +385,55 @@ func TestResolveBackendName(t *testing.T) {
 			isEndpointPicker: true,
 			expectedErr:      "rpc error: code = Internal desc = missing backend name in attributes at path: xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']",
 		},
+		{
+			name: "merged backend cluster resolves via the route mapping",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSClusterNamePath: structpb.NewStringValue("backend/default/openai-backend/0"),
+				internalapi.XDSRouteMetadataMergedBackendNamesPath: structpb.NewStringValue(
+					internalapi.EncodeMergedBackendNames(map[string]string{
+						"backend/default/openai-backend/0":    backendName,
+						"backend/default/anthropic-backend/0": "default/anthropic/route/aigw-run/rule/0/ref/1",
+					})),
+			},
+			expected: backendName,
+		},
+		{
+			name: "merged mapping without the serving cluster falls through",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSClusterNamePath: structpb.NewStringValue("backend/default/unmapped/0"),
+				internalapi.XDSRouteMetadataMergedBackendNamesPath: structpb.NewStringValue(
+					internalapi.EncodeMergedBackendNames(map[string]string{
+						"backend/default/openai-backend/0": backendName,
+					})),
+			},
+			expectedErr: "rpc error: code = Internal desc = missing backend name in attributes at path: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']",
+		},
+		{
+			// Envoy delivers a struct-valued attribute as the literal "CelMap value".
+			name: "struct-valued mapping does not resolve",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSClusterNamePath: structpb.NewStringValue("backend/default/openai-backend/0"),
+				internalapi.XDSRouteMetadataMergedBackendNamesPath: structpb.NewStructValue(&structpb.Struct{
+					Fields: map[string]*structpb.Value{
+						"backend/default/openai-backend/0": structpb.NewStringValue(backendName),
+					},
+				}),
+			},
+			expectedErr: "rpc error: code = Internal desc = missing backend name in attributes at path: xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']",
+		},
+		{
+			// The endpoint picker reads cluster metadata directly.
+			name: "merged mapping is ignored for the endpoint picker",
+			attributes: map[string]*structpb.Value{
+				internalapi.XDSClusterNamePath: structpb.NewStringValue("backend/default/openai-backend/0"),
+				internalapi.XDSRouteMetadataMergedBackendNamesPath: structpb.NewStringValue(
+					internalapi.EncodeMergedBackendNames(map[string]string{
+						"backend/default/openai-backend/0": backendName,
+					})),
+			},
+			isEndpointPicker: true,
+			expectedErr:      "rpc error: code = Internal desc = missing backend name in attributes at path: xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			actual, err := resolveBackendName(

@@ -51,7 +51,10 @@ var (
 	deepInfraSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1/openai"}
 	anthropicSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}
 
-	testUpstreamOpenAIBackend      = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
+	testUpstreamOpenAIBackend = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
+	// Reached through a MergeBackends cluster, so its name resolves from the route's mapping
+	// rather than endpoint metadata. Named in the internalapi.PerRouteRuleRefBackendName form.
+	testUpstreamMergedBackend      = filterapi.Backend{Name: "test-ns/merged/route/merged-route/rule/0/ref/0", Schema: openAISchema}
 	testUpstreamModelNameOverride  = filterapi.Backend{Name: "testupstream-modelname-override", ModelNameOverride: "override-model", Schema: openAISchema}
 	testUpstreamAAWSBackend        = filterapi.Backend{Name: "testupstream-aws", Schema: awsBedrockSchema}
 	testUpstreamAzureBackend       = filterapi.Backend{Name: "testupstream-azure", Schema: azureOpenAISchema}

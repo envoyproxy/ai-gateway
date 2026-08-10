@@ -60,6 +60,7 @@ func TestWithTestUpstream(t *testing.T) {
 		Backends: []filterapi.Backend{
 			alwaysFailingBackend,
 			testUpstreamOpenAIBackend,
+			testUpstreamMergedBackend,
 			testUpstreamModelNameOverride,
 			testUpstreamAAWSBackend,
 			testUpstreamAzureBackend,
@@ -236,6 +237,19 @@ func TestWithTestUpstream(t *testing.T) {
 		{
 			name:            "openai - /v1/chat/completions",
 			backend:         "openai",
+			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:         "/v1/chat/completions",
+			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:       http.StatusOK,
+			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+		},
+		{
+			// The cluster carries no per_route_rule_backend_name, so this only passes if the
+			// extproc resolved the name from the route's mapping via xds.cluster_name.
+			name:            "mergeBackends - /v1/chat/completions resolves via route metadata",
+			backend:         "merged",
 			path:            "/v1/chat/completions",
 			method:          http.MethodPost,
 			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,

@@ -419,9 +419,28 @@ func resolveBackendName(isEndpointPicker bool, attributes *structpb.Struct) (str
 		if b, ok := attributes.Fields[internalapi.XDSClusterMetadataBackendNamePath]; ok {
 			return b.GetStringValue(), nil
 		}
+		// MergeBackends: the shared cluster carries no rule-scoped name, so the route's mapping
+		// does, selected by the serving cluster.
+		if b, ok := mergedBackendName(attributes); ok {
+			return b, nil
+		}
 	}
 
 	return "", status.Errorf(codes.Internal, "missing backend name in attributes at path: %s", backendNamePath)
+}
+
+// mergedBackendName resolves a MergeBackends cluster's backend name from the route rule's
+// mapping. The mapping is a flat string, not a struct: see internalapi.EncodeMergedBackendNames.
+func mergedBackendName(attributes *structpb.Struct) (string, bool) {
+	mapping, ok := attributes.Fields[internalapi.XDSRouteMetadataMergedBackendNamesPath]
+	if !ok {
+		return "", false
+	}
+	clusterName, ok := attributes.Fields[internalapi.XDSClusterNamePath]
+	if !ok {
+		return "", false
+	}
+	return internalapi.LookupMergedBackendName(mapping.GetStringValue(), clusterName.GetStringValue())
 }
 
 func resolveRouteName(attributes *structpb.Struct) string {

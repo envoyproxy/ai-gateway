@@ -265,3 +265,63 @@ func TestFormatRequestHeaderAttributeMapping(t *testing.T) {
 		})
 	}
 }
+
+func TestEncodeMergedBackendNames(t *testing.T) {
+	t.Run("orders by cluster name so translation is stable", func(t *testing.T) {
+		mapping := map[string]string{
+			"service/ns/svc/8080":              "ns/svc-backend/route/r/rule/0/ref/1",
+			"backend/default/openai-backend/0": "default/openai/route/r/rule/0/ref/0",
+		}
+		const want = "backend/default/openai-backend/0=default/openai/route/r/rule/0/ref/0;" +
+			"service/ns/svc/8080=ns/svc-backend/route/r/rule/0/ref/1"
+		// Map iteration is randomized, so an unordered build would differ across calls and make
+		// Envoy drain the route on every translation.
+		for range 20 {
+			require.Equal(t, want, EncodeMergedBackendNames(mapping))
+		}
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		require.Empty(t, EncodeMergedBackendNames(nil))
+		require.Empty(t, EncodeMergedBackendNames(map[string]string{}))
+	})
+
+	t.Run("drops entries containing a separator rather than corrupting neighbours", func(t *testing.T) {
+		require.Equal(t, "ok=fine", EncodeMergedBackendNames(map[string]string{
+			"ok":       "fine",
+			"bad;name": "x",
+			"bad=name": "y",
+			"z":        "bad;value",
+		}))
+	})
+}
+
+func TestLookupMergedBackendName(t *testing.T) {
+	encoded := EncodeMergedBackendNames(map[string]string{
+		"backend/default/openai-backend/0":    "default/openai/route/r/rule/0/ref/0",
+		"backend/default/anthropic-backend/0": "default/anthropic/route/r/rule/0/ref/1",
+	})
+
+	for _, tc := range []struct {
+		name     string
+		encoded  string
+		cluster  string
+		expected string
+		found    bool
+	}{
+		{name: "first entry", encoded: encoded, cluster: "backend/default/anthropic-backend/0", expected: "default/anthropic/route/r/rule/0/ref/1", found: true},
+		{name: "last entry", encoded: encoded, cluster: "backend/default/openai-backend/0", expected: "default/openai/route/r/rule/0/ref/0", found: true},
+		{name: "unknown cluster", encoded: encoded, cluster: "backend/default/other/0"},
+		{name: "empty mapping", encoded: "", cluster: "backend/default/openai-backend/0"},
+		{name: "empty cluster", encoded: encoded, cluster: ""},
+		// Envoy hands us "CelMap value" when the metadata is a struct rather than a string.
+		{name: "non-encoded value", encoded: "CelMap value", cluster: "backend/default/openai-backend/0"},
+		{name: "entry without a value", encoded: "backend/default/openai-backend/0=", cluster: "backend/default/openai-backend/0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, found := LookupMergedBackendName(tc.encoded, tc.cluster)
+			require.Equal(t, tc.found, found)
+			require.Equal(t, tc.expected, got)
+		})
+	}
+}

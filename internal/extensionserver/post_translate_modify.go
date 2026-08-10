@@ -97,9 +97,23 @@ func parseAIGatewayClusterName(name string) (aiGatewayClusterName, error) {
 func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostTranslateModifyRequest) (*egextension.PostTranslateModifyResponse, error) {
 	var extProcUDSExist bool
 
+	// Resolve which MergeBackends clusters AIGatewayRoutes use before the cluster loop decides
+	// where to attach the upstream external processor. Empty unless MergeBackends is enabled.
+	mergedBackendClusters, err := s.applyMergedBackendRouting(ctx, req.Clusters, req.Routes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve merged backend clusters: %w", err)
+	}
+
 	// Process existing clusters - may add metadata or modify configurations.
 	for _, cluster := range req.Clusters {
-		if err := s.maybeModifyCluster(ctx, cluster); err != nil {
+		if _, merged := mergedBackendClusters[cluster.Name]; merged {
+			// Shared cluster: none of maybeModifyCluster's per-rule work applies. The backend name
+			// comes from the route's mapping, and forward-proxy wrapping is skipped because its
+			// per-Gateway configuration would leak across the routes sharing the cluster.
+			if err = s.insertUpstreamAIGatewayFilters(cluster); err != nil {
+				return nil, fmt.Errorf("failed to modify merged backend cluster %s: %w", cluster.Name, err)
+			}
+		} else if err = s.maybeModifyCluster(ctx, cluster); err != nil {
 			return nil, fmt.Errorf("failed to modify cluster %s: %w", cluster.Name, err)
 		}
 		extProcUDSExist = extProcUDSExist || cluster.Name == extProcUDSClusterName
@@ -227,17 +241,12 @@ func (s *Server) maybeSetStreamIdleTimeout(ctx context.Context, route *routev3.R
 		return nil
 	}
 
-	// Route name format: "httproute/<namespace>/<name>/rule/<index>/match/<...>".
-	parts := strings.Split(route.Name, "/")
-	if len(parts) < 5 || parts[0] != "httproute" || parts[3] != "rule" || parts[1] == "" || parts[2] == "" {
-		return nil
-	}
-	ruleIndex, err := strconv.Atoi(parts[4])
-	if err != nil {
+	namespace, name, ruleIndex, ok := parseAIGatewayRouteName(route.Name)
+	if !ok {
 		return nil
 	}
 
-	aigwRoute, err := s.retrieveAndCacheAIGatewayRoute(ctx, cache, client.ObjectKey{Namespace: parts[1], Name: parts[2]})
+	aigwRoute, err := s.retrieveAndCacheAIGatewayRoute(ctx, cache, client.ObjectKey{Namespace: namespace, Name: name})
 	if err != nil {
 		return err
 	}
@@ -404,6 +413,13 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		}
 	}
 
+	return s.insertUpstreamAIGatewayFilters(cluster)
+}
+
+// insertUpstreamAIGatewayFilters installs the AI Gateway upstream external processor and header
+// mutation filter into the cluster's upstream filter chain, skipping clusters that already have it.
+func (s *Server) insertUpstreamAIGatewayFilters(cluster *clusterv3.Cluster) error {
+	var err error
 	if cluster.TypedExtensionProtocolOptions == nil {
 		cluster.TypedExtensionProtocolOptions = make(map[string]*anypb.Any)
 	}
@@ -440,6 +456,9 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
 		internalapi.XDSClusterMetadataBackendNamePath,
 		internalapi.XDSRouteMetadataRouteNamePath,
+		// Present only on rules MergeBackends put on a shared cluster; harmless otherwise.
+		internalapi.XDSRouteMetadataMergedBackendNamesPath,
+		internalapi.XDSClusterNamePath,
 	}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
 		RequestHeaderMode: extprocv3.ProcessingMode_SEND,
