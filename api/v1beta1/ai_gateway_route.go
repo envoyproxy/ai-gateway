@@ -88,12 +88,12 @@ type AIGatewayRouteSpec struct {
 	// How multiple rules are matched is the same as the Gateway API. See for the details:
 	// https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.HTTPRoute
 	//
-	// At most 15 rules are allowed per AIGatewayRoute, corresponding to the Gateway API's limit on
-	// HTTPRoute.spec.rules (one slot is reserved for a controller-injected catch-all rule). To
-	// configure more rules on the same Gateway, split them across multiple AIGatewayRoute resources.
+	// At most 16 rules are allowed per AIGatewayRoute, corresponding to the Gateway API's limit on
+	// HTTPRoute.spec.rules. To configure more rules on the same Gateway, split them across multiple
+	// AIGatewayRoute resources.
 	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MaxItems=15
+	// +kubebuilder:validation:MaxItems=16
 	// +kubebuilder:validation:XValidation:rule="self.all(r1, !has(r1.name) || self.exists_one(r2, has(r2.name) && r1.name == r2.name))", message="rule name must be unique within the route"
 	Rules []AIGatewayRouteRule `json:"rules"`
 
@@ -210,7 +210,6 @@ type AIGatewayRouteSpec struct {
 
 // AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayRoute.
 //
-// +kubebuilder:validation:XValidation:rule="!has(self.name) || self.name != 'route-not-found'", message="rule name route-not-found is reserved"
 // +kubebuilder:validation:XValidation:rule="!has(self.backendRefs) || size(self.backendRefs) == 0 || (self.backendRefs.all(ref, !has(ref.group) && !has(ref.kind)) || self.backendRefs.all(ref, has(ref.group) && has(ref.kind)))", message="cannot mix InferencePool and AIServiceBackend references in the same rule"
 // +kubebuilder:validation:XValidation:rule="!has(self.backendRefs) || size(self.backendRefs) == 0 || !self.backendRefs.exists(ref, has(ref.group) && has(ref.kind)) || size(self.backendRefs) == 1", message="only one InferencePool backend is allowed per rule"
 type AIGatewayRouteRule struct {

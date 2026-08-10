@@ -162,13 +162,10 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		var updatedHTTPRoute gwapiv1.HTTPRoute
 		err = fakeClient.Get(t.Context(), client.ObjectKey{Name: "myroute", Namespace: "ns1"}, &updatedHTTPRoute)
 		require.NoError(t, err)
-		require.Len(t, updatedHTTPRoute.Spec.Rules, 2) // 1 rule + 1 for the default rule.
+		require.Len(t, updatedHTTPRoute.Spec.Rules, 1)
 		require.Len(t, updatedHTTPRoute.Spec.Rules[0].BackendRefs, 2)
 		require.Equal(t, "some-backend1", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[0].Name))
 		require.Equal(t, "some-backend2", string(updatedHTTPRoute.Spec.Rules[0].BackendRefs[1].Name))
-		// Defaulting to the empty path, which shouldn't reach in practice.
-		require.Empty(t, updatedHTTPRoute.Spec.Rules[1].BackendRefs)
-		require.Equal(t, "/", *updatedHTTPRoute.Spec.Rules[1].Matches[0].Path.Value)
 
 		// Check per AIGatewayRoute has the default host rewrite filter.
 		var f egv1a1.HTTPRouteFilter
@@ -178,15 +175,6 @@ func TestAIGatewayRouterController_syncAIGatewayRoute(t *testing.T) {
 		require.Equal(t, hostRewriteName, f.Name)
 		ok, _ := ctrlutil.HasOwnerReference(f.OwnerReferences, route, fakeClient.Scheme())
 		require.True(t, ok, "expected hostRewriteFilter to have owner reference to AIGatewayRoute")
-
-		// Also check per AIGatewayRoute has default route not found response filter.
-		var notFoundFilter egv1a1.HTTPRouteFilter
-		notFoundName := fmt.Sprintf("%s-%s", routeNotFoundResponseHTTPFilterName, route.Name)
-		err = s.client.Get(t.Context(), client.ObjectKey{Name: notFoundName, Namespace: "ns1"}, &notFoundFilter)
-		require.NoError(t, err)
-		require.Equal(t, notFoundName, notFoundFilter.Name)
-		ok, _ = ctrlutil.HasOwnerReference(notFoundFilter.OwnerReferences, route, fakeClient.Scheme())
-		require.True(t, ok, "expected notFoundFilter to have owner reference to AIGatewayRoute")
 	})
 }
 
@@ -325,21 +313,6 @@ func Test_newHTTPRoute(t *testing.T) {
 					BackendRefs: []gwapiv1.HTTPBackendRef{{BackendRef: gwapiv1.BackendRef{BackendObjectReference: gwapiv1.BackendObjectReference{Name: "some-backend4", Namespace: refNs}, Weight: ptr.To[int32](1)}}},
 					Timeouts:    &gwapiv1.HTTPRouteTimeouts{Request: &timeout1, BackendRequest: &timeout2},
 					Filters:     rewriteFilters,
-				},
-				{
-					// The default rule.
-					Name:    ptr.To[gwapiv1.SectionName]("route-not-found"),
-					Matches: []gwapiv1.HTTPRouteMatch{{Path: &gwapiv1.HTTPPathMatch{Value: ptr.To("/")}}},
-					Filters: []gwapiv1.HTTPRouteFilter{
-						{
-							Type: gwapiv1.HTTPRouteFilterExtensionRef,
-							ExtensionRef: &gwapiv1.LocalObjectReference{
-								Group: "gateway.envoyproxy.io",
-								Kind:  "HTTPRouteFilter",
-								Name:  gwapiv1.ObjectName(getRouteNotFoundFilterName("myroute")),
-							},
-						},
-					},
 				},
 			}
 			require.Equal(t, expRules, httpRoute.Spec.Rules)
@@ -561,8 +534,7 @@ func Test_newHTTPRoute_InferencePool(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify HTTPRoute has correct backend reference for InferencePool.
-	// Note: newHTTPRoute always adds a default "unreachable" rule, so we expect 2 rules total.
-	require.Len(t, httpRoute.Spec.Rules, 2)
+	require.Len(t, httpRoute.Spec.Rules, 1)
 	require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
 
 	// Check the first rule (our InferencePool rule).
@@ -572,10 +544,6 @@ func Test_newHTTPRoute_InferencePool(t *testing.T) {
 	require.Equal(t, "test-inference-pool", string(backendRef.Name))
 	require.Equal(t, "test-ns", string(*backendRef.Namespace))
 	require.Equal(t, int32(100), *backendRef.Weight)
-
-	// Check the second rule is the default "route-not-found" rule.
-	require.Equal(t, "route-not-found", string(*httpRoute.Spec.Rules[1].Name))
-	require.Empty(t, httpRoute.Spec.Rules[1].BackendRefs) // No backend refs for default rule.
 }
 
 func Test_newHTTPRoute_InferencePool_CrossNamespace(t *testing.T) {
@@ -626,7 +594,7 @@ func Test_newHTTPRoute_InferencePool_CrossNamespace(t *testing.T) {
 		httpRoute := &gwapiv1.HTTPRoute{}
 		require.NoError(t, controller.newHTTPRoute(t.Context(), httpRoute, newRoute("default")))
 
-		require.Len(t, httpRoute.Spec.Rules, 2)
+		require.Len(t, httpRoute.Spec.Rules, 1)
 		require.Len(t, httpRoute.Spec.Rules[0].BackendRefs, 1)
 		backendRef := httpRoute.Spec.Rules[0].BackendRefs[0]
 		require.Equal(t, "InferencePool", string(*backendRef.Kind))

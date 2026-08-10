@@ -3,7 +3,7 @@
 # The full text of the Apache license is available in the LICENSE file at
 # the root of the repo.
 
-# This fixture has 16 rules, exceeding the per-AIGatewayRoute limit of 15 which
+# This fixture has 17 rules, exceeding the per-AIGatewayRoute limit of 16 which
 # corresponds to the Gateway API's HTTPRoute.spec.rules limit.
 # See https://github.com/envoyproxy/ai-gateway/issues/2120.
 apiVersion: aigateway.envoyproxy.io/v1beta1
@@ -129,3 +129,10 @@ spec:
               value: model-16
       backendRefs:
         - name: backend-16
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: model-17
+      backendRefs:
+        - name: backend-17

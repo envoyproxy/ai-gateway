@@ -34,10 +34,6 @@ func TestAIGatewayRoutes(t *testing.T) {
 			name:   "duplicate_rule_names.yaml",
 			expErr: "spec.rules: Invalid value: \"array\": rule name must be unique within the route",
 		},
-		{
-			name:   "reserved_rule_name.yaml",
-			expErr: "spec.rules[0]: Invalid value: \"object\": rule name route-not-found is reserved",
-		},
 		{name: "llmcosts.yaml"},
 		{name: "parent_refs.yaml"},
 		{name: "parent_refs_default_kind.yaml"},
@@ -64,7 +60,7 @@ func TestAIGatewayRoutes(t *testing.T) {
 		},
 		{
 			name:   "too_many_rules.yaml",
-			expErr: "spec.rules: Too many: 16: must have at most 15 items",
+			expErr: "spec.rules: Too many: 17: must have at most 16 items",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
