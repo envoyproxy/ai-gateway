@@ -333,8 +333,8 @@ func TestErrCredentialMissing_IsSentinel(t *testing.T) {
 	require.ErrorIs(t, wrapped, ErrCredentialMissing)
 }
 
-// awsMetadataContext builds an Envoy MetadataContext holding a struct-valued AWS credential.
-// A sessionToken of "" is omitted entirely, matching a producer that has long-lived credentials.
+// awsMetadataContext builds metadata holding a struct-valued AWS credential. An empty
+// sessionToken is omitted, matching a producer with long-lived credentials.
 func awsMetadataContext(namespace, key, accessKeyID, secretAccessKey, sessionToken string) *corev3.Metadata {
 	fields := map[string]*structpb.Value{}
 	if accessKeyID != "" {
@@ -353,8 +353,8 @@ func awsMetadataContext(namespace, key, accessKeyID, secretAccessKey, sessionTok
 	}
 }
 
-// newAWSOverrideHandler builds an AWS handler whose own credential chain resolves to the static
-// values below, so tests can tell an override apart from the fallback by the signed key ID.
+// newAWSOverrideHandler builds a handler whose own chain resolves to the static values below, so
+// tests tell override from fallback by the signed key ID.
 func newAWSOverrideHandler(t *testing.T, config *filterapi.CredentialOverride) *awsCredentialOverrideHandler {
 	t.Helper()
 	t.Setenv("AWS_ACCESS_KEY_ID", "AKIASTATICFALLBACK")
@@ -364,7 +364,7 @@ func newAWSOverrideHandler(t *testing.T, config *filterapi.CredentialOverride) *
 	return &awsCredentialOverrideHandler{inner: inner, config: config}
 }
 
-// awsRequestHeaders returns the minimal headers awsHandler.signWith needs.
+// awsRequestHeaders returns the minimum signWith needs.
 func awsRequestHeaders() map[string]string {
 	return map[string]string{":method": "POST", ":path": "/model/anthropic.claude-v2/converse"}
 }
@@ -417,9 +417,8 @@ func TestAWSCredentialOverrideHandler_FromRequestHeaders(t *testing.T) {
 		require.Contains(t, stringPairsToMap(hdrs)["Authorization"], "Credential=ASIACUSTOMPREFIX")
 	})
 
-	// A partial credential means the trusted filter upstream is misconfigured. Signing with the
-	// gateway's own identity would attribute the request to the wrong principal, so these fail
-	// hard rather than falling back — even with fallbackToConfigured=true.
+	// A partial credential means the filter upstream is misconfigured. These fail hard rather than
+	// falling back, even with fallbackToConfigured=true.
 	for _, tc := range []struct {
 		name    string
 		headers map[string]string
@@ -531,10 +530,9 @@ func TestAWSCredentialOverrideHandler_FromDynamicMetadata(t *testing.T) {
 		require.Contains(t, stringPairsToMap(hdrs)["Authorization"], "Credential=AKIASTATICFALLBACK")
 	})
 
-	// A string where a struct is expected is a producer bug, but it is indistinguishable from an
-	// absent value without adding a type check that would have to fail somewhere. It takes the
-	// absent path, so fallbackToConfigured decides — set it false to surface the misconfiguration
-	// as a 401 rather than silently signing with the gateway's identity.
+	// A string where a struct belongs is a producer bug, but indistinguishable from an absent
+	// value without a type check that would have to fail somewhere. It takes the absent path, so
+	// fallbackToConfigured decides: set it false to surface the misconfiguration as a 401.
 	t.Run("string value instead of struct takes the absent path", func(t *testing.T) {
 		h := newAWSOverrideHandler(t, makeMetadataOverride(namespace, key, false))
 		ctx := WithEnvoyMetadata(t.Context(), metadataContext(namespace, key, "not-a-struct"))
@@ -544,7 +542,7 @@ func TestAWSCredentialOverrideHandler_FromDynamicMetadata(t *testing.T) {
 	})
 
 	t.Run("metadata source strips no headers", func(t *testing.T) {
-		// The credential never touches the request, so there is nothing to remove.
+		// The credential never touches the request, so nothing to remove.
 		require.Empty(t, makeMetadataOverride(namespace, key, true).InputHeadersToRemove)
 	})
 }

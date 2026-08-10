@@ -31,8 +31,7 @@ type awsHandler struct {
 	region              string
 }
 
-// newAWSHandler returns the concrete *awsHandler rather than the interface so that
-// awsCredentialOverrideHandler can reach signWith to sign with per-request credentials.
+// newAWSHandler returns the concrete type so awsCredentialOverrideHandler can reach signWith.
 func newAWSHandler(ctx context.Context, awsAuth *filterapi.AWSAuth) (*awsHandler, error) {
 	if awsAuth == nil {
 		return nil, fmt.Errorf("aws auth configuration is required")
@@ -92,13 +91,9 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 	return a.signWith(ctx, &credentials, requestHeaders, mutatedBody)
 }
 
-// signWith performs the SigV4 signing with the supplied credentials, which come either from the
-// handler's own provider (the default credential chain, IRSA, a credentials file) or, when a
-// CredentialOverride is configured, from a trusted per-request source.
-//
-// Only the credentials vary by source. The signing host and region are resolved the same way on
-// both paths — from the upstream host the ext_proc filter forwarded — so a per-request credential
-// composes with VPC endpoints and region self-correction rather than bypassing them.
+// signWith signs with the given credentials, from either the handler's own provider or a
+// per-request source. Only the credentials vary: host and region are resolved identically on both
+// paths, so a per-request credential still gets VPC endpoint and region self-correction.
 func (a *awsHandler) signWith(ctx context.Context, credentials *aws.Credentials, requestHeaders map[string]string, mutatedBody []byte) ([]internalapi.Header, error) {
 	method := requestHeaders[":method"]
 	path := requestHeaders[":path"]

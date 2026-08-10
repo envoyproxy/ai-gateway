@@ -24,8 +24,7 @@ func NewHandler(ctx context.Context, config *filterapi.BackendAuth) (filterapi.B
 
 	switch {
 	case config.AWSAuth != nil:
-		// AWS takes its own path: SigV4 consumes three values and signs, so the per-request
-		// credential cannot be expressed as an applyCredentialFn.
+		// AWS has its own handler: SigV4 takes three values, not one, so applyCredentialFn does not fit.
 		awsInner, awsErr := newAWSHandler(ctx, config.AWSAuth)
 		if awsErr != nil {
 			return nil, awsErr

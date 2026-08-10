@@ -580,11 +580,11 @@ func Test_isSensitiveHeader(t *testing.T) {
 		{"authorization", true},
 		{"Authorization", true},
 		{"x-api-key", true},
-		// Any x-aigw- header carries a per-request credential override.
+		// x-aigw- headers carry per-request credential overrides.
 		{"x-aigw-api-key", true},
 		{"x-aigw-aws-secret-access-key", true},
-		// The AWS credential header prefix is configurable, so an operator keeping an existing
-		// injector's names must not lose redaction. Match on the credential-part suffix.
+		// The prefix is configurable, so keeping an existing injector's names must not lose
+		// redaction. Match on the credential-part suffix.
 		{"x-aws-secret-access-key", true},
 		{"x-aws-access-key-id", true},
 		{"x-aws-session-token", true},

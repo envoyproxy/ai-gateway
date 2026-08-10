@@ -707,15 +707,13 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 	return mc, hasEffectiveRoute
 }
 
-// stripCredentialOverrideInputHeaders adds the header-source credential input header(s) to the
-// backend's remove list, so Envoy drops them before the request reaches the upstream backend.
-// HeaderMutator.Mutate() keeps them visible in the extproc's local requestHeaders map, which is
-// how the handler still reads the credential in Do().
+// stripCredentialOverrideInputHeaders puts the credential input header(s) on the backend's remove
+// list so Envoy drops them before the backend sees them. HeaderMutator.Mutate keeps them in the
+// extproc's local map, so the handler can still read them in Do().
 //
-// This is what actually prevents the caller's credential from being forwarded to the provider —
-// deleting the entry from the requestHeaders map would not, because only headers the handler
-// returns become Envoy header mutations. AWS contributes three headers here, every other auth
-// type one. No-op for the dynamic metadata source, where the credential never touches the request.
+// This is what keeps the credential off the wire. Deleting it from the requestHeaders map would
+// not: only headers a handler returns become Envoy mutations. AWS has three, others one. No-op for
+// the metadata source, where the credential never touches the request.
 func stripCredentialOverrideInputHeaders(b *filterapi.Backend) {
 	if b.Auth == nil || b.Auth.CredentialOverride == nil || len(b.Auth.CredentialOverride.InputHeadersToRemove) == 0 {
 		return
@@ -729,8 +727,8 @@ func stripCredentialOverrideInputHeaders(b *filterapi.Backend) {
 // defaultOverrideHeaderName returns the default x-aigw-* header name for the given auth type.
 // These headers carry the per-request credential injected by a trusted ingress filter.
 //
-// For AWSCredentials the value is a prefix rather than a complete header name: SigV4 needs three
-// inputs, so three header names are derived from it. See internalapi.AWSCredentialOverrideHeaderNames.
+// For AWSCredentials this is a prefix, not a full header name: three names are derived from it.
+// See internalapi.AWSCredentialOverrideHeaderNames.
 func defaultOverrideHeaderName(t aigv1b1.BackendSecurityPolicyType) string {
 	switch t {
 	case aigv1b1.BackendSecurityPolicyTypeAPIKey:
@@ -750,9 +748,8 @@ func defaultOverrideHeaderName(t aigv1b1.BackendSecurityPolicyType) string {
 	}
 }
 
-// defaultOverrideMetadataKey returns the default dynamic metadata key for the given auth type.
-// It matches the header name except for AWSCredentials, whose header name is a prefix and whose
-// metadata value is a single struct holding all three SigV4 inputs.
+// defaultOverrideMetadataKey returns the default metadata key for the given auth type. Same as the
+// header name except for AWSCredentials, whose metadata value is one struct holding all three inputs.
 func defaultOverrideMetadataKey(t aigv1b1.BackendSecurityPolicyType) string {
 	if t == aigv1b1.BackendSecurityPolicyTypeAWSCredentials {
 		return internalapi.AWSCredentialOverrideMetadataKey
@@ -761,7 +758,7 @@ func defaultOverrideMetadataKey(t aigv1b1.BackendSecurityPolicyType) string {
 }
 
 // overrideInputHeaders returns the headers a trusted filter injects for this auth type, which are
-// also the headers to strip before the request reaches the backend. AWS carries three; the rest one.
+// also the ones to strip. Three for AWS, one for the rest.
 func overrideInputHeaders(t aigv1b1.BackendSecurityPolicyType, headerName string) []string {
 	if t == aigv1b1.BackendSecurityPolicyTypeAWSCredentials {
 		accessKeyID, secretAccessKey, sessionToken := internalapi.AWSCredentialOverrideHeaderNames(headerName)
@@ -867,10 +864,9 @@ func (c *GatewayController) bspToFilterAPIBackendAuth(ctx context.Context, backe
 				Region:                awsCred.Region,
 			}}
 		}
-		// True for both branches: the handler can sign without the per-request source, either from
-		// the credentials file or from the default chain. The default chain is not guaranteed to
-		// resolve at request time, but rejecting fallbackToConfigured here would break the common
-		// IRSA deployment, where there is deliberately no secret for the controller to see.
+		// True for both branches: the handler can sign without the per-request source. The default
+		// chain may still fail at request time, but rejecting fallbackToConfigured here would break
+		// IRSA, where there is deliberately no secret for the controller to see.
 		hasStaticCred = true
 	case aigv1b1.BackendSecurityPolicyTypeAzureCredentials:
 		secretName := rotators.GetBSPSecretName(backendSecurityPolicy.Name)

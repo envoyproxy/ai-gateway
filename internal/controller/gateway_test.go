@@ -1317,7 +1317,7 @@ func TestResolveCredentialOverride(t *testing.T) {
 			true,
 		)
 		require.NoError(t, err)
-		// HeaderName is the prefix; backendauth derives the same three names when reading.
+		// HeaderName is the prefix; backendauth derives the same three names.
 		require.Equal(t, "x-aigw-aws-", result.HeaderName)
 		require.Equal(t, []string{
 			"x-aigw-aws-access-key-id",
@@ -1479,8 +1479,7 @@ func TestStripCredentialOverrideInputHeaders(t *testing.T) {
 	})
 
 	t.Run("metadata source strips nothing", func(t *testing.T) {
-		// The credential arrives out of band, so there is no request header to remove and no
-		// reason to materialize a HeaderMutation.
+		// Out-of-band credential: no header to remove, no HeaderMutation to materialize.
 		b := &filterapi.Backend{Auth: &filterapi.BackendAuth{
 			AWSAuth: &filterapi.AWSAuth{Region: "us-east-1"},
 			CredentialOverride: &filterapi.CredentialOverride{
@@ -1511,9 +1510,9 @@ func TestGatewayController_bspToFilterAPIBackendAuth_AWSWithOverride(t *testing.
 
 	const namespace = "ns"
 
-	// No credentialsFile and no OIDC: the extproc uses the AWS default credential chain. This is
-	// the common IRSA shape, and there is deliberately no Secret for the controller to read — so
-	// it also covers that fallbackToConfigured defaults to true without one.
+	// No credentialsFile and no OIDC: the extproc uses the default credential chain. This is the
+	// IRSA shape, with no Secret for the controller to read, so it also covers fallbackToConfigured
+	// defaulting to true without one.
 	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.BackendSecurityPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "aws-irsa-with-override", Namespace: namespace},
 		Spec: aigv1b1.BackendSecurityPolicySpec{

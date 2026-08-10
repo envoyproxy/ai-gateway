@@ -9827,9 +9827,8 @@ spec:
                   CredentialOverride, when set, sources the upstream credential per-request instead of using
                   the static credential configured above.
 
-                  For AWSCredentials the per-request credential is the three-part SigV4 input
-                  (access key ID, secret access key, and optionally a session token) rather than a single
-                  string; see the source types for how each one carries it.
+                  For AWSCredentials the credential is the three-part SigV4 input rather than a single string;
+                  see the source types for how each carries it.
                 maxProperties: 1
                 minProperties: 1
                 properties:
@@ -9849,14 +9848,13 @@ spec:
                         description: |-
                           Key is the metadata key within the namespace. Defaults to the x-aigw-* name for the auth type.
 
-                          For every type except AWSCredentials the value at this key must be a string holding the
-                          credential. For AWSCredentials it must be a struct with these fields, because SigV4 needs
-                          three inputs:
+                          For every type except AWSCredentials the value must be a string holding the credential.
+                          For AWSCredentials it must be a struct, since SigV4 needs three inputs:
                             accessKeyId
                             secretAccessKey
                             sessionToken     (optional; omit for long-lived credentials)
-                          The field names are fixed. Supplying accessKeyId without secretAccessKey (or the reverse)
-                          fails the request rather than falling back. Defaults to "x-aigw-aws-credentials".
+                          Field names are fixed. accessKeyId without secretAccessKey, or the reverse, fails the
+                          request instead of falling back. Defaults to "x-aigw-aws-credentials".
                         type: string
                       namespace:
                         description: |-
@@ -9891,16 +9889,16 @@ spec:
                             AzureCredentials → x-aigw-azure-access-token
                             GCPCredentials  → x-aigw-gcp-access-token
 
-                          For AWSCredentials this is a prefix rather than a single header name, because SigV4
-                          needs three inputs. It defaults to "x-aigw-aws-", yielding:
+                          For AWSCredentials this is a prefix, not a single header name, since SigV4 needs three
+                          inputs. Defaults to "x-aigw-aws-", yielding:
                             x-aigw-aws-access-key-id
                             x-aigw-aws-secret-access-key
                             x-aigw-aws-session-token     (optional; omit for long-lived credentials)
-                          All three are stripped before the request reaches the backend. Supplying an access key ID
-                          without a secret access key (or the reverse) fails the request rather than falling back.
+                          All three are stripped before the backend sees them. An access key ID without a secret
+                          access key, or the reverse, fails the request instead of falling back.
 
-                          Prefer FromDynamicMetadata for AWSCredentials: a secret access key travelling in a request
-                          header is a materially worse leak than an API key, and headers are client-settable.
+                          Prefer FromDynamicMetadata for AWSCredentials. Headers are client-settable, and a secret
+                          access key on the wire is a worse leak than an API key.
                         type: string
                     type: object
                 type: object

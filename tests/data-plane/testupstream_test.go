@@ -257,10 +257,9 @@ func TestWithTestUpstream(t *testing.T) {
 			nonExpectedRequestHeaders: []string{"x-ai-eg-upstream-host"},
 		},
 		{
-			// A trusted filter injects a per-request SigV4 credential. The upstream must see a
-			// signature carrying that session token, and must not see the credential headers
-			// themselves. Only Envoy can prove the second half: dropping the headers from the
-			// extproc's local map would not remove them from the wire.
+			// A trusted filter injects a per-request credential. The upstream must see a signature
+			// carrying that session token and none of the credential headers. Only Envoy can prove
+			// the second half: dropping them from the extproc's local map leaves them on the wire.
 			name:            "aws-bedrock - per-request credential signs and is stripped before upstream",
 			backend:         "aws-bedrock",
 			path:            "/v1/chat/completions",
@@ -277,14 +276,13 @@ func TestWithTestUpstream(t *testing.T) {
 				"x-aigw-aws-secret-access-key": "per-request-secret",
 				"x-aigw-aws-session-token":     fakeAWSPerRequestSessionToken,
 			},
-			// The static fallback credential has no session token, so this header can only come
-			// from the per-request credential.
+			// The static fallback has no session token, so this can only be the per-request one.
 			expRequestHeaders:         map[string]string{"X-Amz-Security-Token": fakeAWSPerRequestSessionToken},
 			nonExpectedRequestHeaders: awsCredentialOverrideHeaders,
 		},
 		{
-			// No per-request credential: falls back to the configured credential file, which has no
-			// session token, so no X-Amz-Security-Token reaches the upstream.
+			// Falls back to the configured credential file, which has no session token, so no
+			// X-Amz-Security-Token reaches the upstream.
 			name:                      "aws-bedrock - no per-request credential falls back to the configured one",
 			backend:                   "aws-bedrock",
 			path:                      "/v1/chat/completions",
