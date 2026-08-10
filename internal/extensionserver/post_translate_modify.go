@@ -366,7 +366,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				}
 				for _, endpoint := range endpoints.LbEndpoints {
 					setEndpointMetadataBackendName(endpoint, aigwRoute.Namespace, backendRef.Name, aigwRoute.Name, httpRouteRuleIndex, clusterName.backendRefIndex)
-					stampAWSSigningMetadata(endpoint)
+					stampUpstreamHostMetadata(endpoint)
 				}
 			}
 		default:
@@ -387,7 +387,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				}
 				for _, endpoint := range endpoints.LbEndpoints {
 					setEndpointMetadataBackendName(endpoint, namespace, name, aigwRoute.Name, httpRouteRuleIndex, i)
-					stampAWSSigningMetadata(endpoint)
+					stampUpstreamHostMetadata(endpoint)
 				}
 			}
 		}
@@ -446,7 +446,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 	extProcConfig.RequestAttributes = []string{
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
 		internalapi.XDSClusterMetadataBackendNamePath,
-		internalapi.XDSUpstreamHostMetadataAWSSigningHostPath,
+		internalapi.XDSUpstreamHostMetadataUpstreamHostPath,
 		internalapi.XDSRouteMetadataRouteNamePath,
 	}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
@@ -947,16 +947,16 @@ func routeNameFromEnvoyGatewayMetadata(route *routev3.Route) string {
 	return ""
 }
 
-// endpointAWSSigningHost returns the hostname to sign SigV4 requests against for the given endpoint.
+// endpointUpstreamHost returns the DNS hostname of the given endpoint, or "" if it has none.
 //
 // Envoy Gateway translates a Backend `fqdn` endpoint so that the FQDN lands in
 // Endpoint.Address.SocketAddress.Address, while Endpoint.Hostname is populated only from the Backend's
 // optional top-level `hostname` field (EG NewDestEndpoint takes the FQDN as `host` and bep.Hostname as
-// `hostname`). So for a normal Bedrock/VPCE backend Endpoint.Hostname is empty and the signable name is
+// `hostname`). So for a normal Bedrock/VPCE backend Endpoint.Hostname is empty and the resolvable name is
 // the socket address. We therefore resolve in order: Endpoint.Hostname if set, otherwise the socket
 // address when it is a DNS name. An IP-literal socket address is rejected — signing over an IP matches no
 // AWS endpoint — so such an endpoint yields no stamp and the signer falls back to the region default.
-func endpointAWSSigningHost(lbEndpoint *endpointv3.LbEndpoint) string {
+func endpointUpstreamHost(lbEndpoint *endpointv3.LbEndpoint) string {
 	endpoint := lbEndpoint.GetEndpoint()
 	if endpoint == nil {
 		return ""
@@ -971,13 +971,15 @@ func endpointAWSSigningHost(lbEndpoint *endpointv3.LbEndpoint) string {
 	return ""
 }
 
-// stampAWSSigningMetadata stamps the SigV4 signing host on the endpoint's metadata at config-translation
-// time, so the data plane signs over the real upstream endpoint instead of re-deriving it at request
-// time. It only stamps AWS Bedrock endpoints (public or VPCE hosts); other backends (e.g. api.openai.com)
-// do not need a signing host and must not carry a misleading aws_signing_host on every endpoint.
-func stampAWSSigningMetadata(endpoint *endpointv3.LbEndpoint) {
-	if host := endpointAWSSigningHost(endpoint); internalapi.AWSBedrockRegionFromHost(host) != "" {
-		setEndpointMetadataAWSSigningHost(endpoint, host)
+// stampUpstreamHostMetadata stamps the resolved upstream host on the endpoint's metadata at
+// config-translation time, so the data plane (e.g. the AWS backend auth handler, for SigV4 signing)
+// uses the real upstream endpoint instead of re-deriving it at request time. It stamps every endpoint
+// with a resolvable hostname regardless of provider: unused by non-AWS backends, but harmless — unlike
+// gating on an AWS-Bedrock hostname pattern, it doesn't silently drop custom/VPCE hosts that don't match
+// a known AWS naming convention (e.g. bedrock.corp.internal, bedrock-runtime-fips.<region>.amazonaws.com).
+func stampUpstreamHostMetadata(endpoint *endpointv3.LbEndpoint) {
+	if host := endpointUpstreamHost(endpoint); host != "" {
+		setEndpointMetadataUpstreamHost(endpoint, host)
 	}
 }
 
@@ -1048,10 +1050,10 @@ func setEndpointMetadataBackendName(endpoint *endpointv3.LbEndpoint, namespace, 
 	)
 }
 
-// setEndpointMetadataAWSSigningHost stores the AWS signing host on endpoint-level metadata
-// so the upstream ext_proc filter can forward it to the AWS backend auth handler for SigV4 signing.
-func setEndpointMetadataAWSSigningHost(endpoint *endpointv3.LbEndpoint, host string) {
-	ensureEndpointAIGatewayMetadata(endpoint).Fields[internalapi.InternalMetadataAWSSigningHostKey] = structpb.NewStringValue(host)
+// setEndpointMetadataUpstreamHost stores the resolved upstream host on endpoint-level metadata so the
+// upstream ext_proc filter can forward it to backend auth handlers that need it (e.g. AWS SigV4 signing).
+func setEndpointMetadataUpstreamHost(endpoint *endpointv3.LbEndpoint, host string) {
+	ensureEndpointAIGatewayMetadata(endpoint).Fields[internalapi.InternalMetadataUpstreamHostKey] = structpb.NewStringValue(host)
 }
 
 func shouldAIGatewayExtProcBeInserted(filters []*httpconnectionmanagerv3.HttpFilter) bool {

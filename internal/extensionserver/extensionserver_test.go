@@ -242,7 +242,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 										RequestAttributes: []string{
 											internalapi.XDSUpstreamHostMetadataBackendNamePath,
 											internalapi.XDSClusterMetadataBackendNamePath,
-											internalapi.XDSUpstreamHostMetadataAWSSigningHostPath,
+											internalapi.XDSUpstreamHostMetadataUpstreamHostPath,
 											internalapi.XDSRouteMetadataRouteNamePath,
 										},
 										ProcessingMode: &extprocv3.ProcessingMode{
@@ -344,7 +344,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 													internalapi.InternalMetadataBackendNameKey: structpb.NewStringValue(
 														internalapi.PerRouteRuleRefBackendName("ns", "aaa", "myroute", 0, 0),
 													),
-													internalapi.InternalMetadataAWSSigningHostKey: structpb.NewStringValue(
+													internalapi.InternalMetadataUpstreamHostKey: structpb.NewStringValue(
 														"aaa.bedrock-runtime.us-east-1.amazonaws.com",
 													),
 												},
@@ -370,7 +370,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 													internalapi.InternalMetadataBackendNameKey: structpb.NewStringValue(
 														internalapi.PerRouteRuleRefBackendName("ns", "bbb", "myroute", 0, 2),
 													),
-													internalapi.InternalMetadataAWSSigningHostKey: structpb.NewStringValue(
+													internalapi.InternalMetadataUpstreamHostKey: structpb.NewStringValue(
 														"bbb.bedrock-runtime.us-east-1.amazonaws.com",
 													),
 												},
@@ -401,7 +401,7 @@ func Test_maybeModifyCluster(t *testing.T) {
 										RequestAttributes: []string{
 											internalapi.XDSUpstreamHostMetadataBackendNamePath,
 											internalapi.XDSClusterMetadataBackendNamePath,
-											internalapi.XDSUpstreamHostMetadataAWSSigningHostPath,
+											internalapi.XDSUpstreamHostMetadataUpstreamHostPath,
 											internalapi.XDSRouteMetadataRouteNamePath,
 										},
 										ProcessingMode: &extprocv3.ProcessingMode{
@@ -2498,7 +2498,7 @@ func TestRouteNameFromEnvoyGatewayMetadata(t *testing.T) {
 	})
 }
 
-func TestEndpointAWSSigningHost(t *testing.T) {
+func TestEndpointUpstreamHost(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		endpoint *endpointv3.LbEndpoint
@@ -2572,12 +2572,12 @@ func TestEndpointAWSSigningHost(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, endpointAWSSigningHost(tc.endpoint))
+			require.Equal(t, tc.want, endpointUpstreamHost(tc.endpoint))
 		})
 	}
 }
 
-func TestStampAWSSigningMetadata(t *testing.T) {
+func TestStampUpstreamHostMetadata(t *testing.T) {
 	socketEndpoint := func(addr string) *endpointv3.LbEndpoint {
 		return &endpointv3.LbEndpoint{HostIdentifier: &endpointv3.LbEndpoint_Endpoint{Endpoint: &endpointv3.Endpoint{
 			Address: &corev3.Address{Address: &corev3.Address_SocketAddress{
@@ -2585,12 +2585,12 @@ func TestStampAWSSigningMetadata(t *testing.T) {
 			}},
 		}}}
 	}
-	signingHost := func(ep *endpointv3.LbEndpoint) (string, bool) {
+	upstreamHost := func(ep *endpointv3.LbEndpoint) (string, bool) {
 		m := ep.GetMetadata().GetFilterMetadata()[internalapi.InternalEndpointMetadataNamespace]
 		if m == nil {
 			return "", false
 		}
-		v, ok := m.Fields[internalapi.InternalMetadataAWSSigningHostKey]
+		v, ok := m.Fields[internalapi.InternalMetadataUpstreamHostKey]
 		return v.GetStringValue(), ok
 	}
 	for _, tc := range []struct {
@@ -2600,15 +2600,16 @@ func TestStampAWSSigningMetadata(t *testing.T) {
 	}{
 		{"public bedrock host is stamped", "bedrock-runtime.us-east-1.amazonaws.com", "bedrock-runtime.us-east-1.amazonaws.com"},
 		{"vpce host is stamped", "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com", "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"},
-		{"non-aws host is not stamped", "api.openai.com", ""},
+		{"custom vpc host is stamped", "bedrock.corp.internal", "bedrock.corp.internal"},
+		{"non-aws host is stamped too (harmless, unused by non-AWS handlers)", "api.openai.com", "api.openai.com"},
 		{"ip host is not stamped", "10.0.0.1", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ep := socketEndpoint(tc.addr)
-			stampAWSSigningMetadata(ep)
-			got, ok := signingHost(ep)
+			stampUpstreamHostMetadata(ep)
+			got, ok := upstreamHost(ep)
 			if tc.want == "" {
-				require.False(t, ok, "expected no aws_signing_host stamp")
+				require.False(t, ok, "expected no upstream_host stamp")
 				return
 			}
 			require.True(t, ok)
@@ -2617,13 +2618,13 @@ func TestStampAWSSigningMetadata(t *testing.T) {
 	}
 }
 
-func TestSetEndpointMetadataAWSSigningHost(t *testing.T) {
+func TestSetEndpointMetadataUpstreamHost(t *testing.T) {
 	t.Run("initializes metadata from nil", func(t *testing.T) {
 		endpoint := &endpointv3.LbEndpoint{}
-		setEndpointMetadataAWSSigningHost(endpoint, "bedrock-runtime.us-east-1.amazonaws.com")
+		setEndpointMetadataUpstreamHost(endpoint, "bedrock-runtime.us-east-1.amazonaws.com")
 		m := endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
 		require.Equal(t, "bedrock-runtime.us-east-1.amazonaws.com",
-			m.Fields[internalapi.InternalMetadataAWSSigningHostKey].GetStringValue())
+			m.Fields[internalapi.InternalMetadataUpstreamHostKey].GetStringValue())
 	})
 
 	t.Run("preserves existing fields", func(t *testing.T) {
@@ -2638,10 +2639,10 @@ func TestSetEndpointMetadataAWSSigningHost(t *testing.T) {
 				},
 			},
 		}
-		setEndpointMetadataAWSSigningHost(endpoint, "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com")
+		setEndpointMetadataUpstreamHost(endpoint, "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com")
 		m := endpoint.Metadata.FilterMetadata[internalapi.InternalEndpointMetadataNamespace]
 		require.Equal(t, "aws-bedrock", m.Fields[internalapi.InternalMetadataBackendNameKey].GetStringValue())
 		require.Equal(t, "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
-			m.Fields[internalapi.InternalMetadataAWSSigningHostKey].GetStringValue())
+			m.Fields[internalapi.InternalMetadataUpstreamHostKey].GetStringValue())
 	})
 }

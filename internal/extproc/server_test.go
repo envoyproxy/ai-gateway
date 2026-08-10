@@ -426,7 +426,7 @@ func TestSetAWSSigningAttributes(t *testing.T) {
 		{
 			name: "host from metadata",
 			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{
-				internalapi.XDSUpstreamHostMetadataAWSSigningHostPath: structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
+				internalapi.XDSUpstreamHostMetadataUpstreamHostPath: structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
 			}},
 			wantHost: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
 		},
@@ -440,15 +440,15 @@ func TestSetAWSSigningAttributes(t *testing.T) {
 		{
 			// Client-spoofed header must not survive when xDS supplies no metadata.
 			name:       "client-supplied host is cleared when no xDS metadata",
-			seed:       map[string]string{internalapi.AWSSigningHostHeader: "attacker.example.com"},
+			seed:       map[string]string{internalapi.UpstreamHostHeader: "attacker.example.com"},
 			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{}},
 		},
 		{
 			// Trusted xDS metadata must overwrite any client-supplied value.
 			name: "xDS metadata overrides client-supplied host",
-			seed: map[string]string{internalapi.AWSSigningHostHeader: "attacker.example.com"},
+			seed: map[string]string{internalapi.UpstreamHostHeader: "attacker.example.com"},
 			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{
-				internalapi.XDSUpstreamHostMetadataAWSSigningHostPath: structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
+				internalapi.XDSUpstreamHostMetadataUpstreamHostPath: structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
 			}},
 			wantHost: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
 		},
@@ -456,11 +456,11 @@ func TestSetAWSSigningAttributes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			headers := map[string]string{}
 			maps.Copy(headers, tc.seed)
-			setAWSSigningAttributes(headers, tc.attributes)
+			setUpstreamHostAttributes(headers, tc.attributes)
 			if tc.wantHost == "" {
-				require.NotContains(t, headers, internalapi.AWSSigningHostHeader)
+				require.NotContains(t, headers, internalapi.UpstreamHostHeader)
 			} else {
-				require.Equal(t, tc.wantHost, headers[internalapi.AWSSigningHostHeader])
+				require.Equal(t, tc.wantHost, headers[internalapi.UpstreamHostHeader])
 			}
 		})
 	}

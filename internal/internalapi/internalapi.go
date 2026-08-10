@@ -28,14 +28,15 @@ const (
 	InternalEndpointMetadataNamespace = "aigateway.envoy.io"
 	// InternalMetadataBackendNameKey is the key used to store the backend name
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
-	// InternalMetadataAWSSigningHostKey is the key used to store the AWS SigV4 signing host on endpoint metadata.
-	InternalMetadataAWSSigningHostKey = "aws_signing_host"
+	// InternalMetadataUpstreamHostKey is the key used to store the resolved upstream host on endpoint
+	// metadata (e.g. consumed by the AWS backend auth handler for SigV4 signing).
+	InternalMetadataUpstreamHostKey = "upstream_host"
 	// InternalMetadataRouteNameKey is the key used to store the route name.
 	InternalMetadataRouteNameKey = "aigw_route_name"
-	// AWSSigningHostHeader carries the SigV4 signing host resolved at config time from the upstream
-	// ext_proc filter to the AWS backend auth handler. The signing region is derived from this host in
-	// the handler, so there is no separate region header.
-	AWSSigningHostHeader = EnvoyAIGatewayHeaderPrefix + "aws-signing-host"
+	// UpstreamHostHeader carries the upstream host resolved at config time from the upstream ext_proc
+	// filter to backend auth handlers. The AWS handler derives its SigV4 signing region from this host,
+	// so there is no separate region header.
+	UpstreamHostHeader = EnvoyAIGatewayHeaderPrefix + "upstream-host"
 	// MCPBackendHeader is the special header key used to specify the target backend name.
 	MCPBackendHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend"
 	// MCPRouteHeader is the special header key used to identify the mcp route.
@@ -112,8 +113,8 @@ const (
 	XDSClusterMetadataBackendNamePath = "xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
 	// XDSUpstreamHostMetadataBackendNamePath is the full attribute path to access the backend name in upstream host metadata in xDS attributes.
 	XDSUpstreamHostMetadataBackendNamePath = "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
-	// XDSUpstreamHostMetadataAWSSigningHostPath is the full attribute path to access the AWS signing host in upstream host metadata in xDS attributes.
-	XDSUpstreamHostMetadataAWSSigningHostPath = "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['aws_signing_host']"
+	// XDSUpstreamHostMetadataUpstreamHostPath is the full attribute path to access the resolved upstream host in upstream host metadata in xDS attributes.
+	XDSUpstreamHostMetadataUpstreamHostPath = "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['upstream_host']"
 	// XDSRouteMetadataRouteNamePath is the full attribute path to access the route name in route metadata in xDS attributes.
 	XDSRouteMetadataRouteNamePath = "xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']"
 )

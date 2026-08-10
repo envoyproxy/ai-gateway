@@ -394,10 +394,10 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 		u.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
 	}
 
-	// x-ai-eg-aws-signing-host is an internal, controller-derived value consumed by the AWS backend
-	// auth handler (via the upstream-host metadata attribute). Strip any copy — including one a
+	// x-ai-eg-upstream-host is an internal, controller-derived value consumed by backend auth handlers
+	// (e.g. the AWS handler, via the upstream-host metadata attribute). Strip any copy — including one a
 	// downstream client spoofed — so it never egresses to the upstream provider.
-	headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, internalapi.AWSSigningHostHeader)
+	headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, internalapi.UpstreamHostHeader)
 
 	if h := u.handler; h != nil {
 		var hdrs []internalapi.Header

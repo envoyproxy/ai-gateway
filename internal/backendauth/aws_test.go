@@ -120,7 +120,7 @@ func TestAWSHandler_SigningHost(t *testing.T) {
 	}{
 		{
 			name:    "signing host header is used",
-			headers: map[string]string{internalapi.AWSSigningHostHeader: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"},
+			headers: map[string]string{internalapi.UpstreamHostHeader: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"},
 			want:    "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
 		},
 		{
@@ -185,7 +185,7 @@ func TestAWSHandler_Do_SignsOverResolvedHost(t *testing.T) {
 
 	t.Run("signs over the VPCE host from metadata", func(t *testing.T) {
 		const vpce = "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"
-		auth, amzDate := sign(t, map[string]string{internalapi.AWSSigningHostHeader: vpce})
+		auth, amzDate := sign(t, map[string]string{internalapi.UpstreamHostHeader: vpce})
 		require.Equal(t, recompute(t, vpce, "us-east-1", amzDate), auth)
 	})
 
@@ -195,7 +195,7 @@ func TestAWSHandler_Do_SignsOverResolvedHost(t *testing.T) {
 	})
 
 	t.Run("resolved host changes the signature", func(t *testing.T) {
-		vpceAuth, _ := sign(t, map[string]string{internalapi.AWSSigningHostHeader: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"})
+		vpceAuth, _ := sign(t, map[string]string{internalapi.UpstreamHostHeader: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"})
 		defaultAuth, _ := sign(t, nil)
 		require.NotEqual(t, defaultAuth, vpceAuth)
 	})
@@ -203,7 +203,7 @@ func TestAWSHandler_Do_SignsOverResolvedHost(t *testing.T) {
 	t.Run("signing region self-corrects from the resolved host", func(t *testing.T) {
 		// Credential scope uses us-west-2 (derived from the host), not the configured us-east-1.
 		const vpce = "vpce-123.bedrock-runtime.us-west-2.vpce.amazonaws.com"
-		auth, amzDate := sign(t, map[string]string{internalapi.AWSSigningHostHeader: vpce})
+		auth, amzDate := sign(t, map[string]string{internalapi.UpstreamHostHeader: vpce})
 		require.Contains(t, auth, "/us-west-2/bedrock/aws4_request")
 		require.Equal(t, recompute(t, vpce, "us-west-2", amzDate), auth)
 	})

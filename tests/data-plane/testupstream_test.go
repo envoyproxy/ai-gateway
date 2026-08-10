@@ -253,8 +253,8 @@ func TestWithTestUpstream(t *testing.T) {
 			expStatus:                 http.StatusOK,
 			responseHeaders:           "x-amzn-requestid:2bc5b090-a26c-4007-9467-ce5adc4ffa1d",
 			expResponseBody:           `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant"}}],"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","created":123,"model":"something","object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
-			requestHeaders:            map[string]string{"x-ai-eg-aws-signing-host": "attacker.example.com"},
-			nonExpectedRequestHeaders: []string{"x-ai-eg-aws-signing-host"},
+			requestHeaders:            map[string]string{"x-ai-eg-upstream-host": "attacker.example.com"},
+			nonExpectedRequestHeaders: []string{"x-ai-eg-upstream-host"},
 		},
 		{
 			name:            "openai - /v1/chat/completions",

@@ -140,12 +140,12 @@ func (a *awsHandler) Do(ctx context.Context, requestHeaders map[string]string, m
 
 // signingHost resolves the host used to compute the SigV4 signature. It prefers the host resolved at
 // config-translation time and forwarded by the upstream ext_proc filter via
-// [internalapi.AWSSigningHostHeader], and falls back to the region-based default Bedrock host when that
+// [internalapi.UpstreamHostHeader], and falls back to the region-based default Bedrock host when that
 // metadata is absent. It deliberately does not fall back to :authority or the host header: at signing
 // time those carry the downstream gateway authority, not the upstream endpoint, so signing over them
 // produces a silent 403.
 func (a *awsHandler) signingHost(requestHeaders map[string]string) string {
-	if host := requestHeaders[internalapi.AWSSigningHostHeader]; host != "" {
+	if host := requestHeaders[internalapi.UpstreamHostHeader]; host != "" {
 		return host
 	}
 	return fmt.Sprintf("bedrock-runtime.%s.amazonaws.com", a.region)
