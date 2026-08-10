@@ -65,6 +65,9 @@ var Scheme = runtime.NewScheme()
 type Options struct {
 	// ExtProcLogLevel is the log level for the external processor, e.g., debug, info, warn, or error.
 	ExtProcLogLevel string
+	// ExtProcLogFormat is the log output format for the external processor, "text" or "json".
+	// Empty means the extproc default, which is text.
+	ExtProcLogFormat string
 	// ExtProcEnableRedaction enables redaction of sensitive information in debug logs for the external processor.
 	ExtProcEnableRedaction bool
 	// ExtProcImage is the image for the external processor set on Deployment.

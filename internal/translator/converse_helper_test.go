@@ -8,12 +8,15 @@ package translator
 import (
 	"testing"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/awsbedrock"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 )
 
 func TestOpenAIToolsToBedrockToolConfig(t *testing.T) {
@@ -159,6 +162,36 @@ func TestOpenAIToolsToBedrockToolConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "cache control on a tool appends a separate cache point element",
+			tools: []openai.Tool{
+				{
+					Type: openai.ToolTypeFunction,
+					Function: &openai.FunctionDefinition{
+						Name:        "get_current_weather",
+						Description: "Get the current weather in a given location",
+						Parameters:  map[string]any{"type": "object"},
+						AnthropicContentFields: &openai.AnthropicContentFields{
+							CacheControl: anthropic.CacheControlEphemeralParam{
+								Type: constant.ValueOf[constant.Ephemeral](),
+							},
+						},
+					},
+				},
+			},
+			expected: &awsbedrock.ToolConfiguration{
+				Tools: []*awsbedrock.Tool{
+					{
+						ToolSpec: &awsbedrock.ToolSpecification{
+							Name:        ptr.To("get_current_weather"),
+							Description: ptr.To("Get the current weather in a given location"),
+							InputSchema: &awsbedrock.ToolInputSchema{JSON: map[string]any{"type": "object"}},
+						},
+					},
+					{CachePoint: &awsbedrock.CachePointBlock{Type: "default"}},
+				},
+			},
+		},
+		{
 			name:  "unsupported tool_choice type returns an error",
 			tools: []openai.Tool{weatherTool},
 			toolChoice: &openai.ChatCompletionToolChoiceUnion{
@@ -178,6 +211,16 @@ func TestOpenAIToolsToBedrockToolConfig(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, got)
+			// Bedrock rejects a tools[] element that sets more than one of the union's members,
+			// and it rejects an explicit "toolSpec":null alongside a cache point.
+			for i, tool := range got.Tools {
+				require.False(t, tool.ToolSpec != nil && tool.CachePoint != nil, "tools[%d] sets both toolSpec and cachePoint", i)
+				raw, err := json.Marshal(tool)
+				require.NoError(t, err)
+				if tool.ToolSpec == nil {
+					require.NotContains(t, string(raw), "toolSpec", "tools[%d] marshals a toolSpec key without a spec", i)
+				}
+			}
 		})
 	}
 }
