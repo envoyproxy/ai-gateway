@@ -19,6 +19,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -75,6 +76,31 @@ func TestGetMaxRequestBodySize(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("MCP_PROXY_MAX_REQUEST_BODY_SIZE", tc.envValue)
 			require.Equal(t, tc.want, getMaxRequestBodySize())
+		})
+	}
+}
+
+func TestBackendFilterEnabled(t *testing.T) {
+	t.Run("disabled when unset", func(t *testing.T) {
+		require.False(t, backendFilterEnabled())
+	})
+
+	for _, tc := range []struct {
+		name     string
+		envValue string
+		want     bool
+	}{
+		{name: "true", envValue: "true", want: true},
+		{name: "mixed case True", envValue: "True", want: true},
+		{name: "numeric 1", envValue: "1", want: true},
+		{name: "false", envValue: "false", want: false},
+		{name: "numeric 0", envValue: "0", want: false},
+		{name: "empty string", envValue: "", want: false},
+		{name: "not a boolean", envValue: "enabled", want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(enableBackendFilterEnvVar, tc.envValue)
+			require.Equal(t, tc.want, backendFilterEnabled())
 		})
 	}
 }
@@ -296,6 +322,133 @@ func TestNewSession_NoBackend(t *testing.T) {
 	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil, time.Now())
 	require.ErrorContains(t, err, `failed to create MCP session to any backend`)
 	require.Nil(t, s)
+}
+
+// TestNewSession_AllBackendsUnauthorized covers the case where authorizeBackendOnly
+// prunes every backend in the route before any connection is even attempted - this
+// must surface as errNoAuthorizedBackend (handled as a 403 by handleInitializeRequest),
+// not the generic connectivity-failure error (handled as a 500).
+func TestNewSession_AllBackendsUnauthorized(t *testing.T) {
+	proxy := newTestMCPProxy()
+	compiled, err := compileAuthorization(&filterapi.MCPRouteAuthorization{DefaultAction: "Deny"})
+	require.NoError(t, err)
+	proxy.routes["test-route"].authorization = compiled
+
+	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil, time.Now())
+	require.Nil(t, s)
+
+	var noAuthorizedBackend *errNoAuthorizedBackend
+	require.ErrorAs(t, err, &noAuthorizedBackend)
+	require.Empty(t, noAuthorizedBackend.requiredScopes)
+}
+
+// TestNewSession_AllBackendsUnauthorized_ScopeChallenge covers the same total-denial
+// case as above, but where every backend was denied by an Allow rule whose scope
+// requirement wasn't met - the smallest such scope set must be carried through to
+// errNoAuthorizedBackend so handleInitializeRequest can build a WWW-Authenticate
+// challenge, same as authorizeRequest already does for the real per-tool check.
+func TestNewSession_AllBackendsUnauthorized_ScopeChallenge(t *testing.T) {
+	proxy := newTestMCPProxy()
+	compiled, err := compileAuthorization(&filterapi.MCPRouteAuthorization{
+		DefaultAction:       "Deny",
+		ResourceMetadataURL: "https://example.com/.well-known/oauth-protected-resource",
+		Rules: []filterapi.MCPRouteAuthorizationRule{
+			{
+				Action: "Allow",
+				Source: &filterapi.MCPAuthorizationSource{
+					JWT: filterapi.JWTSource{Scopes: []string{"admin"}},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	proxy.routes["test-route"].authorization = compiled
+
+	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil, time.Now())
+	require.Nil(t, s)
+
+	var noAuthorizedBackend *errNoAuthorizedBackend
+	require.ErrorAs(t, err, &noAuthorizedBackend)
+	require.Equal(t, []string{"admin"}, noAuthorizedBackend.requiredScopes)
+	require.Equal(t, "https://example.com/.well-known/oauth-protected-resource", noAuthorizedBackend.resourceMetadataURL)
+}
+
+// TestNewSession_AllBackendsUnauthorized_MixedDenialReasons covers backends pruned for
+// two DIFFERENT reasons: backend1 is denied outright by a Deny rule (authorizeBackendOnly
+// returns no scope info at all - nil), while backend2 is denied only because an Allow
+// rule's scope requirement wasn't met (authorizeBackendOnly returns ["admin"]). The
+// aggregation across backends in newSession must still surface ["admin"] regardless of
+// which backend is processed first - backends is a map, so iteration order is randomized
+// per run; this pins down that the nil result from backend1 can never overwrite the real
+// scope hint from backend2 (see preferSmallerScopeChallenge).
+func TestNewSession_AllBackendsUnauthorized_MixedDenialReasons(t *testing.T) {
+	proxy := newTestMCPProxy()
+	compiled, err := compileAuthorization(&filterapi.MCPRouteAuthorization{
+		DefaultAction: "Deny",
+		Rules: []filterapi.MCPRouteAuthorizationRule{
+			{
+				Action: "Deny",
+				CEL:    ptr.To(`request.mcp.backend == "backend1"`),
+			},
+			{
+				Action: "Allow",
+				Source: &filterapi.MCPAuthorizationSource{
+					JWT: filterapi.JWTSource{Scopes: []string{"admin"}},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	proxy.routes["test-route"].authorization = compiled
+
+	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil, time.Now())
+	require.Nil(t, s)
+
+	var noAuthorizedBackend *errNoAuthorizedBackend
+	require.ErrorAs(t, err, &noAuthorizedBackend)
+	require.Equal(t, []string{"admin"}, noAuthorizedBackend.requiredScopes)
+}
+
+// TestNewSession_BackendFilterDisabled_AuthorizationIgnored covers the default
+// (disabled) state of MCP_PROXY_ENABLE_BACKEND_FILTER: with enableBackendFiltering
+// false, authorizeBackendOnly must never be consulted, so a backend that a
+// DefaultAction: Deny authorization config would otherwise have pruned still gets
+// connected to - identical to behavior from before this pre-check feature existed.
+// This is the core backward-compatibility guarantee the flag exists to provide for
+// existing users whose authorization rules aren't set up for backend-level pruning.
+func TestNewSession_BackendFilterDisabled_AuthorizationIgnored(t *testing.T) {
+	var callCount perBackendCallCount
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backend := r.Header.Get(internalapi.MCPBackendHeader)
+		if callCount.inc(backend)%2 == 1 {
+			// Initialize requests.
+			w.Header().Set(sessionIDHeader, "test-session-123")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(validInitializeResponse))
+		} else {
+			// notifications/initialized requests.
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	defer backendServer.Close()
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = backendServer.URL
+	proxy.enableBackendFiltering = false // explicitly exercising the disabled (default) state.
+
+	compiled, err := compileAuthorization(&filterapi.MCPRouteAuthorization{DefaultAction: "Deny"})
+	require.NoError(t, err)
+	proxy.routes["test-route"].authorization = compiled
+
+	s, err := proxy.newSession(t.Context(), &mcp.InitializeParams{}, "test-route", "", nil, time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, s)
+
+	// Both backends must have been connected to despite DefaultAction: Deny denying
+	// everything - proof authorizeBackendOnly was never consulted.
+	require.Len(t, s.perBackendSessions, 2)
+	require.Contains(t, s.perBackendSessions, filterapi.MCPBackendName("backend1"))
+	require.Contains(t, s.perBackendSessions, filterapi.MCPBackendName("backend2"))
 }
 
 func TestNewSession_SSE(t *testing.T) {

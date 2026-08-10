@@ -537,6 +537,12 @@ func errorType(err error) metrics.MCPErrorType {
 	if errors.Is(err, errBackendNotFound) || errors.Is(err, errSessionNotFound) || errors.Is(err, errInvalidToolName) {
 		return metrics.MCPErrorInvalidParam
 	}
+	var noAuthorizedBackend *errNoAuthorizedBackend
+	if errors.As(err, &noAuthorizedBackend) {
+		// A 403 authorization denial, not a server-side failure - classify like the other
+		// client-caused errors above rather than falling through to MCPErrorInternal below.
+		return metrics.MCPErrorInvalidParam
+	}
 	var toolCallValidaitonError *errToolCall
 	if errors.As(err, &toolCallValidaitonError) && toolCallValidaitonError.validationError {
 		return metrics.MCPErrorInvalidParam
@@ -567,6 +573,17 @@ func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.
 	m.metrics.RecordClientCapabilities(ctx, p.Capabilities, p)
 	s, err := m.newSession(ctx, p, route, subject, span, startAt)
 	if err != nil {
+		var noAuthorizedBackend *errNoAuthorizedBackend
+		if errors.As(err, &noAuthorizedBackend) {
+			m.l.Info("no backend in the route authorized this request", slog.String("error", err.Error()))
+			if len(noAuthorizedBackend.requiredScopes) > 0 {
+				if challenge := buildInsufficientScopeHeader(noAuthorizedBackend.requiredScopes, noAuthorizedBackend.resourceMetadataURL); challenge != "" {
+					w.Header().Set("WWW-Authenticate", challenge)
+				}
+			}
+			onErrorResponse(w, http.StatusForbidden, "access denied")
+			return err
+		}
 		m.l.Error("failed to create new session", slog.String("error", err.Error()))
 		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to create new session: %v", err))
 		return err
@@ -733,15 +750,11 @@ func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *sessio
 
 	// Enforce authentication if required by the route.
 	if route.authorization != nil {
-		httpPath := ""
-		if r.URL != nil {
-			httpPath = r.URL.Path
-		}
 		allowed, requiredScopes := m.authorizeRequest(route.authorization, &authorizationRequest{
 			Headers:    r.Header,
 			HTTPMethod: r.Method,
 			Host:       r.Host,
-			HTTPPath:   httpPath,
+			HTTPPath:   httpPathForRequest(r),
 			MCPMethod:  req.Method,
 			Backend:    backendName,
 			Tool:       toolName,

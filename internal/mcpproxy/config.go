@@ -32,6 +32,7 @@ type (
 		client                     http.Client
 		logRequestHeaderAttributes map[string]string
 		maxRequestBodySize         int64 // maximum allowed POST body size in bytes
+		enableBackendFiltering     bool  // controls whether backend authorization pre-check is performed.
 	}
 
 	mcpProxyConfig struct {

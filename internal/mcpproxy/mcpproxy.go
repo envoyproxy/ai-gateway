@@ -40,6 +40,9 @@ type mcpRequestContext struct {
 	metrics                   metrics.MCPMetrics
 	requestHeaders            http.Header
 	originalPath              string
+	httpMethod                string
+	host                      string
+	httpPath                  string
 	perBackendMetricsRecorded bool
 }
 
@@ -57,6 +60,22 @@ func getMaxRequestBodySize() int64 {
 	return defaultMaxRequestBodySize
 }
 
+// enableBackendFilterEnvVar is the environment variable that enables the backend authorization
+// pre-check during MCP session initialization. When unset or not a truthy value, the pre-check
+// is skipped so existing users whose authorization rules aren't set up for it are unaffected.
+const enableBackendFilterEnvVar = "MCP_PROXY_ENABLE_BACKEND_FILTER"
+
+// backendFilterEnabled returns whether the backend authorization pre-check is enabled,
+// defaulting to false (disabled) when the variable is unset or not a valid boolean.
+func backendFilterEnabled() bool {
+	v, ok := os.LookupEnv(enableBackendFilterEnvVar)
+	if !ok {
+		return false
+	}
+	enabled, err := strconv.ParseBool(v)
+	return err == nil && enabled
+}
+
 // NewMCPProxy creates a new MCPProxy instance.
 func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingapi.MCPTracer, sessionCrypto SessionCrypto, logRequestHeaderAttributes map[string]string) (*ProxyConfig, *http.ServeMux, error) {
 	toolChangeSignaler := newMultiWatcherSignaler() // used to signal changes to all active sessions.
@@ -68,6 +87,7 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingap
 		client:                     http.Client{}, // No timeout as it's enforced at Envoy level.
 		logRequestHeaderAttributes: maps.Clone(logRequestHeaderAttributes),
 		maxRequestBodySize:         getMaxRequestBodySize(),
+		enableBackendFiltering:     backendFilterEnabled(),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc(
@@ -82,6 +102,9 @@ func NewMCPProxy(l *slog.Logger, mcpMetrics metrics.MCPMetrics, tracer tracingap
 				ProxyConfig:    cfg,
 				requestHeaders: r.Header,
 				originalPath:   originalPathForRequest(r),
+				httpMethod:     r.Method,
+				host:           r.Host,
+				httpPath:       httpPathForRequest(r),
 			}
 			switch r.Method {
 			case http.MethodGet:
@@ -105,6 +128,15 @@ func originalPathForRequest(r *http.Request) string {
 		return ""
 	}
 	return r.URL.RequestURI()
+}
+
+// httpPathForRequest returns the request's URL path (no query string), or "" if the
+// request has no URL. Used as request.path for authorization CEL evaluation.
+func httpPathForRequest(r *http.Request) string {
+	if r.URL == nil {
+		return ""
+	}
+	return r.URL.Path
 }
 
 func setHeaderIfMissing(h http.Header, key, value string) {
@@ -152,6 +184,19 @@ func extractMetaFromJSONRPCMessage(msg jsonrpc.Message) map[string]any {
 	return params.Meta
 }
 
+// errNoAuthorizedBackend indicates every backend in the route was pruned by the
+// initialize-phase authorization pre-check (authorizeBackendOnly) before any connection
+// was even attempted - as opposed to backends being attempted and failing to connect.
+// Callers use this to return 403 (with a scope challenge, if any) instead of 500.
+type errNoAuthorizedBackend struct {
+	requiredScopes      []string
+	resourceMetadataURL string
+}
+
+func (e *errNoAuthorizedBackend) Error() string {
+	return "no backend in the route authorized this request"
+}
+
 // newSession creates a new session for a downstream client.
 // It multiplexes the initialize request to all backends defined in the MCPRoute associated with the downstream request.
 // startAt is the time when the overall HTTP request started, used for recording request duration metrics.
@@ -189,15 +234,21 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 	// Extract JWT claims and scopes once per request; they are identical for every backend.
 	var claims jwt.MapClaims
 	var scopeSet sets.Set[string]
-	if backends.authorization != nil && len(backends.authorization.Rules) > 0 {
+	if m.enableBackendFiltering && backends.authorization != nil && len(backends.authorization.Rules) > 0 {
 		claims, scopeSet = m.extractClaimsAndScopes(m.requestHeaders, "authorizeBackendOnly")
 	}
 
+	// Smallest set of scopes across all pruned backends that would have granted access via
+	// an Allow rule - used to build a WWW-Authenticate challenge if every backend ends up
+	// pruned and session creation fails as a result (see the len(finalEntries) == 0 check below).
+	var requiredScopesForChallenge []string
 	for _, backend := range backends.backends {
 		// Pre-check backend authorization during initialize phase to avoid unnecessary connections.
-		if backends.authorization != nil {
-			if !m.authorizeBackendOnly(backends.authorization, backend.Name, m.requestHeaders, claims, scopeSet) {
+		if m.enableBackendFiltering && backends.authorization != nil {
+			allowed, requiredScopes := m.authorizeBackendOnly(backends.authorization, backend.Name, m.requestHeaders, m.httpMethod, m.host, m.httpPath, claims, scopeSet)
+			if !allowed {
 				m.l.Debug("skipping backend connection due to authorization rules", slog.String("backend", backend.Name), slog.String("route", routeName))
+				requiredScopesForChallenge = preferSmallerScopeChallenge(requiredScopesForChallenge, requiredScopes)
 				continue
 			}
 		}
@@ -243,7 +294,16 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 		}
 	}
 	if len(finalEntries) == 0 {
-		// All initializations failed, which means we cannot provide any meaningful operation so we fail the session creation.
+		// counter == 0 means every backend was pruned by authorizeBackendOnly before any
+		// connection was even attempted - a client authorization problem, not a server
+		// error, so it's reported as 403 (with a scope challenge, if any) rather than 500.
+		if m.enableBackendFiltering && counter == 0 && backends.authorization != nil {
+			return nil, &errNoAuthorizedBackend{
+				requiredScopes:      requiredScopesForChallenge,
+				resourceMetadataURL: backends.authorization.ResourceMetadataURL,
+			}
+		}
+		// All attempted initializations failed, which means we cannot provide any meaningful operation so we fail the session creation.
 		return nil, errors.New("failed to create MCP session to any backend")
 	}
 

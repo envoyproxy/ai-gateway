@@ -1000,23 +1000,30 @@ func TestAuthorizeRequest(t *testing.T) {
 // (authorizeBackendOnly), used by newSession to decide whether to even attempt
 // connecting to a backend before any specific tool is known.
 //
-// The key invariant under test: a Deny rule with a tool-specific target and no
-// CEL is ambiguous at this phase (backendMatches ignores the Tool field, since
-// no tool is known yet), so it must never cause this pre-check to reject a
-// backend outright — doing so would incorrectly block every OTHER tool on that
-// backend too, not just the one the rule actually names. It's fine for the
-// pre-check to be overly permissive (attempt a session that authorizeRequest
-// later denies per-tool); it must never be overly restrictive.
+// The key invariant under test: a Deny rule with a tool-specific target is
+// ambiguous at this phase regardless of whether it also has CEL
+// (backendMatches ignores the Tool field, since no tool is known yet), so it
+// must never cause this pre-check to reject a backend outright — doing so
+// would incorrectly block every OTHER tool on that backend too, not just the
+// one the rule actually names. A decided CEL result narrows nothing here: the
+// Target's tool-scoping is a separate source of ambiguity that a concrete CEL
+// value doesn't resolve. It's fine for the pre-check to be overly permissive
+// (attempt a session that authorizeRequest later denies per-tool); it must
+// never be overly restrictive.
 func TestAuthorizeBackendOnly(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	proxy := &mcpRequestContext{ProxyConfig: &ProxyConfig{l: logger}}
 
 	tests := []struct {
-		name          string
-		auth          *filterapi.MCPRouteAuthorization
-		backend       string
-		headers       http.Header
-		expectAllowed bool
+		name                 string
+		auth                 *filterapi.MCPRouteAuthorization
+		backend              string
+		headers              http.Header
+		httpMethod           string
+		host                 string
+		httpPath             string
+		expectAllowed        bool
+		expectRequiredScopes []string
 	}{
 		{
 			name:          "nil authorization always allows",
@@ -1111,12 +1118,35 @@ func TestAuthorizeBackendOnly(t *testing.T) {
 		},
 		{
 			// Regression guard: a Deny rule with CEL that doesn't reference
-			// the tool is fully decidable at this phase (same result
-			// regardless of which tool ends up being called) and must keep
-			// being enforced here — this is the useful part of the
-			// optimization (reject early, no wasted connection) and the fix
-			// must not weaken it.
-			name: "deny rule with tool-independent CEL still blocks backend when CEL matches",
+			// the tool, and no Target at all (so there's no separate
+			// tool-scoping ambiguity either), is fully decidable at this
+			// phase and must keep being enforced here — this is the useful
+			// part of the optimization (reject early, no wasted connection)
+			// and the fix must not weaken it.
+			name: "deny rule with tool-independent CEL and no target still blocks backend when CEL matches",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Allow",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Deny",
+						CEL:    ptr.To(`request.headers["x-scope"] != "admin"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			headers:       http.Header{"X-Scope": []string{"viewer"}},
+			expectAllowed: false,
+		},
+		{
+			// The bug: a Deny rule's CEL being fully decidable does NOT make
+			// the rule as a whole decidable when it also carries a
+			// tool-scoped Target - backendMatches ignores Tool, so this rule
+			// only ever meant to deny "denyme", not the whole backend. Before
+			// the fix, a decided (concrete-true) CEL result let this fall
+			// through the Target's tool-scoping guard entirely, wrongly
+			// blocking the whole backend even though authorizeRequest would
+			// allow every tool except "denyme".
+			name: "deny rule with tool-independent CEL but a tool-scoped target does not block the backend",
 			auth: &filterapi.MCPRouteAuthorization{
 				DefaultAction: "Allow",
 				Rules: []filterapi.MCPRouteAuthorizationRule{
@@ -1131,7 +1161,7 @@ func TestAuthorizeBackendOnly(t *testing.T) {
 			},
 			backend:       "backend1",
 			headers:       http.Header{"X-Scope": []string{"viewer"}},
-			expectAllowed: false,
+			expectAllowed: true,
 		},
 		{
 			// Regression guard: a Deny rule whose CEL explicitly references
@@ -1340,8 +1370,9 @@ func TestAuthorizeBackendOnly(t *testing.T) {
 					},
 				},
 			},
-			backend:       "backend1",
-			expectAllowed: false,
+			backend:              "backend1",
+			expectAllowed:        false,
+			expectRequiredScopes: []string{"admin"},
 		},
 		{
 			// Same rule, with a token satisfying the Source scope: the
@@ -1432,6 +1463,115 @@ func TestAuthorizeBackendOnly(t *testing.T) {
 			backend:       "backend1",
 			expectAllowed: true,
 		},
+		{
+			// request.method/host/path belong to the current HTTP request and are
+			// available at initialize time - unlike request.mcp.tool, they must be
+			// evaluated against their real values, not "". Before the fix, this Allow
+			// rule (the only grant path, under DefaultAction: Deny) was concretely
+			// false during the pre-check because httpMethod was left as "", wrongly
+			// pruning a backend that tools/call would have allowed.
+			name: "allow rule on request.method is decided true using the real HTTP method",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`request.method == "POST"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			httpMethod:    http.MethodPost,
+			expectAllowed: true,
+		},
+		{
+			// Mirror of the above for request.host.
+			name: "allow rule on request.host is decided true using the real host",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`request.host == "example.com"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			host:          "example.com",
+			expectAllowed: true,
+		},
+		{
+			// Mirror of the above for request.path.
+			name: "allow rule on request.path is decided true using the real path",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`request.path == "/mcp"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			httpPath:      "/mcp",
+			expectAllowed: true,
+		},
+		{
+			// Using the real HTTP method must not make an unrelated backend match:
+			// a mismatched request.host still decides the AND concretely false, even
+			// though request.mcp.tool in the same expression is unknown.
+			name: "allow rule ANDing a real request field with the unknown tool is decided false by a mismatched host",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Deny",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Allow",
+						CEL:    ptr.To(`request.host == "example.com" && request.mcp.tool == "tool1"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			host:          "other.com",
+			expectAllowed: false,
+		},
+		{
+			// request.mcp.method describes whichever future tools/call or
+			// tools/list request eventually happens - it must be treated as unknown,
+			// not resolved against "", or a Deny rule using != against it would
+			// wrongly block the backend for every method it doesn't happen to
+			// concretely mismatch on.
+			name: "deny rule using != against request.mcp.method does not wrongly block the backend",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Allow",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Deny",
+						CEL:    ptr.To(`request.mcp.method != "tools/call"`),
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
+		{
+			// backendMatches has no wildcard: "*" is treated as a literal backend
+			// name, same as toolMatches. A Target naming "*" must not match every
+			// real backend.
+			name: "target backend literally named * does not match other backends as a wildcard",
+			auth: &filterapi.MCPRouteAuthorization{
+				DefaultAction: "Allow",
+				Rules: []filterapi.MCPRouteAuthorizationRule{
+					{
+						Action: "Deny",
+						Target: &filterapi.MCPAuthorizationTarget{
+							Tools: []filterapi.ToolCall{{Backend: "*", Tool: "denyme"}},
+						},
+					},
+				},
+			},
+			backend:       "backend1",
+			expectAllowed: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1445,9 +1585,40 @@ func TestAuthorizeBackendOnly(t *testing.T) {
 				t.Fatalf("unexpected compile error: %v", err)
 			}
 			claims, scopeSet := proxy.extractClaimsAndScopes(headers, "authorizeBackendOnly")
-			allowed := proxy.authorizeBackendOnly(compiled, tt.backend, headers, claims, scopeSet)
+			allowed, requiredScopes := proxy.authorizeBackendOnly(compiled, tt.backend, headers, tt.httpMethod, tt.host, tt.httpPath, claims, scopeSet)
 			if allowed != tt.expectAllowed {
 				t.Fatalf("expected %v, got %v", tt.expectAllowed, allowed)
+			}
+			if !reflect.DeepEqual(requiredScopes, tt.expectRequiredScopes) {
+				t.Fatalf("expected required scopes %v, got %v", tt.expectRequiredScopes, requiredScopes)
+			}
+		})
+	}
+}
+
+// TestPreferSmallerScopeChallenge covers the cross-call aggregation case (used by
+// newSession across backends) where, unlike a single rule loop, either side can
+// legitimately be nil - e.g. one backend denied by a Deny rule (no scope info) and
+// another denied by an unmet Allow-rule scope. nil/empty must never look "smaller"
+// and win over a real candidate, regardless of which order they're combined in.
+func TestPreferSmallerScopeChallenge(t *testing.T) {
+	tests := []struct {
+		name      string
+		current   []string
+		candidate []string
+		want      []string
+	}{
+		{name: "both nil", current: nil, candidate: nil, want: nil},
+		{name: "nil current, real candidate", current: nil, candidate: []string{"admin"}, want: []string{"admin"}},
+		{name: "real current, nil candidate does not win", current: []string{"admin"}, candidate: nil, want: []string{"admin"}},
+		{name: "smaller candidate wins", current: []string{"admin", "write"}, candidate: []string{"read"}, want: []string{"read"}},
+		{name: "larger candidate does not win", current: []string{"read"}, candidate: []string{"admin", "write"}, want: []string{"read"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := preferSmallerScopeChallenge(tt.current, tt.candidate)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("expected %v, got %v", tt.want, got)
 			}
 		})
 	}

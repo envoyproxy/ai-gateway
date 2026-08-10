@@ -53,8 +53,9 @@ func newTestMCPProxyWithTracer(t tracingapi.MCPTracer) *mcpRequestContext {
 	return &mcpRequestContext{
 		metrics: stubMetrics{},
 		ProxyConfig: &ProxyConfig{
-			sessionCrypto:      sessionCrypto,
-			toolChangeSignaler: newMultiWatcherSignaler(),
+			sessionCrypto:          sessionCrypto,
+			toolChangeSignaler:     newMultiWatcherSignaler(),
+			enableBackendFiltering: true,
 			mcpProxyConfig: &mcpProxyConfig{
 				backendListenerAddr: "http://test-backend",
 				routes: map[filterapi.MCPRouteName]*mcpProxyConfigRoute{
@@ -292,6 +293,50 @@ func TestServePOST_InitializeRequest(t *testing.T) {
 		attribute.String("capability.type", "roots"),
 		attribute.String("capability.side", "client")))
 	require.Equal(t, 1, int(capaCount))
+}
+
+// TestServePOST_InitializeRequest_AllBackendsUnauthorized covers the initialize-phase
+// authorization pre-check pruning every backend in the route: this must surface as a
+// 403 with a WWW-Authenticate scope challenge, not the generic 500 used for real
+// connectivity failures (see TestServePOST_InitializeRequest above, where only one
+// backend fails and the session still succeeds with the other).
+func TestServePOST_InitializeRequest_AllBackendsUnauthorized(t *testing.T) {
+	proxy := newTestMCPProxy()
+	compiled, err := compileAuthorization(&filterapi.MCPRouteAuthorization{
+		DefaultAction:       "Deny",
+		ResourceMetadataURL: "https://example.com/.well-known/oauth-protected-resource",
+		Rules: []filterapi.MCPRouteAuthorizationRule{
+			{
+				Action: "Allow",
+				Source: &filterapi.MCPAuthorizationSource{
+					JWT: filterapi.JWTSource{Scopes: []string{"admin"}},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	proxy.routes["test-route"].authorization = compiled
+
+	id, err := jsonrpc.MakeID("test-1")
+	require.NoError(t, err)
+	initReq := &jsonrpc.Request{
+		Method: "initialize",
+		ID:     id,
+		Params: []byte(`{"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "ExampleClient", "version": "1.0.0"}}`),
+	}
+	body, err := jsonrpc.EncodeMessage(initReq)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(internalapi.MCPRouteHeader, "test-route")
+	rr := httptest.NewRecorder()
+
+	proxy.servePOST(rr, req)
+
+	require.Equal(t, http.StatusForbidden, rr.Code)
+	require.Contains(t, rr.Header().Get("WWW-Authenticate"), `scope="admin"`)
+	require.Contains(t, rr.Header().Get("WWW-Authenticate"), `resource_metadata="https://example.com/.well-known/oauth-protected-resource"`)
 }
 
 // TestServePOST_JSONRPCRequest tests various jsonrpc.Request body, not jsonrpc.Response.
