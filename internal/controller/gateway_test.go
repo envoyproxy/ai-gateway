@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/require"
@@ -22,11 +23,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	fake2 "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwapiv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
@@ -51,6 +55,25 @@ func requireLLMRequestCostsEqual(t *testing.T, want, got []filterapi.LLMRequestC
 	if diff := cmp.Diff(want, got, cmpopts.SortSlices(less)); diff != "" {
 		t.Fatalf("LLMRequestCosts not equal (-want +got):\n%s", diff)
 	}
+}
+
+// newTestGatewayController builds a GatewayController for tests, deriving the
+// extproc builder from the given image/logLevel/sidecar via the same
+// newExtProcBuilder NewGatewayController uses. It mirrors the pre-refactor
+// NewGatewayController signature so existing tests read cleanly.
+func newTestGatewayController(c client.Client, kube kubernetes.Interface, logger logr.Logger, ns, extProcImage, extProcLogLevel string, standAlone bool, uuidFn func() string, extProcAsSideCar bool) *GatewayController {
+	opts := &Options{
+		ExtProcImage:                           extProcImage,
+		ExtProcLogLevel:                        extProcLogLevel,
+		UDSPath:                                "/tmp/extproc.sock",
+		RootPrefix:                             "/",
+		ExtProcMaxRecvMsgSize:                  512 * 1024 * 1024,
+		MCPSessionEncryptionSeed:               "seed",
+		MCPSessionEncryptionIterations:         100,
+		MCPFallbackSessionEncryptionSeed:       "fallback",
+		MCPFallbackSessionEncryptionIterations: 200,
+	}
+	return NewGatewayController(c, kube, logger, ns, standAlone, uuidFn, opts, extProcAsSideCar)
 }
 
 func requireFilterConfigFromBundle(t *testing.T, kube kubernetes.Interface, namespace, gatewayName, gatewayNamespace string) filterapi.Config {
@@ -93,7 +116,7 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	fakeKube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	c := NewGatewayController(fakeClient, fakeKube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, fakeKube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const namespace = "ns"
@@ -211,11 +234,104 @@ func TestGatewayController_Reconcile(t *testing.T) {
 	require.NotNil(t, secret)
 }
 
+func TestGatewayController_Reconcile_GatewayConfigImageOverrideNoWorkloadPatch(t *testing.T) {
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	fakeKube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+
+	const (
+		gwName      = "gc-image-gw"
+		namespace   = "ns"
+		egNamespace = "envoy-gateway-system"
+		globalImage = "docker.io/envoyproxy/ai-gateway-extproc:latest"
+	)
+	opts := newTestExtProcOptions(globalImage, "info")
+	c := NewGatewayController(fakeClient, fakeKube, ctrl.Log, egNamespace, false, func() string { return "uuid" }, opts, true)
+
+	gatewayConfig := testGatewayConfig.DeepCopy()
+	gatewayConfig.Namespace = namespace
+	require.NoError(t, fakeClient.Create(t.Context(), gatewayConfig))
+
+	require.NoError(t, fakeClient.Create(t.Context(), &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      gwName,
+			Namespace: namespace,
+			Annotations: map[string]string{
+				GatewayConfigAnnotationKey: gatewayConfig.Name,
+			},
+		},
+	}))
+
+	parentRefs := []gwapiv1a2.ParentReference{{Name: gwName}}
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "route", Namespace: namespace},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			ParentRefs: parentRefs,
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "backend"}}},
+			},
+		},
+	}))
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: namespace},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "service", Namespace: ptr.To[gwapiv1.Namespace](namespace)},
+		},
+	}))
+
+	input := extProcContainerInput{gatewayConfig: gatewayConfig}
+	desiredImage := c.extProcImage(input)
+	desiredHash := c.extProcContainerHash(input)
+	labels := map[string]string{
+		egOwningGatewayNameLabel:      gwName,
+		egOwningGatewayNamespaceLabel: namespace,
+	}
+	_, err := fakeKube.CoreV1().Pods(egNamespace).Create(t.Context(), &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "gw-pod", Namespace: egNamespace, Labels: labels},
+		Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+			{Name: extProcContainerName, Image: desiredImage, Args: []string{"-logLevel", "info"}},
+		}},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+	_, err = fakeKube.AppsV1().Deployments(egNamespace).Create(t.Context(), &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "gw-deployment", Namespace: egNamespace, Labels: labels},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: ptr.To(int32(1)),
+			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{extProcConfigHashAnnotationKey: desiredHash},
+			}},
+		},
+		Status: appsv1.DeploymentStatus{
+			ObservedGeneration: 1,
+			Replicas:           1,
+			UpdatedReplicas:    1,
+			ReadyReplicas:      1,
+			AvailableReplicas:  1,
+		},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	beforeActions := len(fakeKube.Actions())
+	res, err := c.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKey{Name: gwName, Namespace: namespace}})
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, res)
+
+	for _, action := range fakeKube.Actions()[beforeActions:] {
+		require.Falsef(t, action.GetVerb() == "patch" && action.GetResource().Resource == "deployments",
+			"reconcile should not patch workload when GatewayConfig image and template hash are current: %#v", action)
+	}
+	deployment, err := fakeKube.AppsV1().Deployments(egNamespace).Get(t.Context(), "gw-deployment", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, desiredHash, deployment.Spec.Template.Annotations[extProcConfigHashAnnotationKey])
+	_, exists := deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
+	require.False(t, exists)
+}
+
 func TestGatewayController_reconcileFilterConfigSecret(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const gwNamespace = "ns"
@@ -392,7 +508,7 @@ func TestGatewayController_reconcileFilterConfigSecret_HostnameScopedModels(t *t
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const gwNamespace = "ns"
@@ -482,7 +598,7 @@ func TestGatewayController_reconcileFilterConfigSecret_AllUnscopedRoutesLeaveUns
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const gwNamespace = "ns"
@@ -532,7 +648,7 @@ func TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostA
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const gwNamespace = "ns"
@@ -627,7 +743,7 @@ func TestGatewayController_reconcileFilterConfigSecret_RouteLevelLLMRequestCostA
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const gwNamespace = "ns"
@@ -677,7 +793,7 @@ func TestGatewayController_reconcileFilterConfigSecret_InvalidCELExpression(t *t
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const gwNamespace = "ns"
@@ -715,7 +831,7 @@ func TestGatewayController_reconcileFilterConfigSecret_SkipsDeletedRoutes(t *tes
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const gwNamespace = "ns"
@@ -848,7 +964,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const namespace = "ns"
@@ -1048,7 +1164,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth(t *testing.T) {
 
 func TestGatewayController_bspToFilterAPIBackendAuth_ErrorCases(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	ctx := context.Background()
@@ -1225,7 +1341,7 @@ func TestResolveCredentialOverride(t *testing.T) {
 func TestGatewayController_bspToFilterAPIBackendAuth_WithOverride(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const namespace = "ns"
@@ -1263,7 +1379,7 @@ func TestGatewayController_bspToFilterAPIBackendAuth_WithOverride(t *testing.T) 
 
 func TestGatewayController_GetSecretData_ErrorCases(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
-	c := NewGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, fake2.NewClientset(), ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	ctx := context.Background()
@@ -1274,6 +1390,99 @@ func TestGatewayController_GetSecretData_ErrorCases(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "secrets \"missing-secret\" not found")
 	require.Empty(t, result)
+}
+
+// TestGatewayController_reconcileFilterConfigSecret_BailsOnContextCanceled pins that a cancelled
+// context aborts the reconcile instead of publishing a filter config in which the backend has no
+// credentials. Skipping the backend, as an unresolvable policy does, would look identical on the wire
+// but silently strip auth from live traffic until something triggers another reconcile.
+func TestGatewayController_reconcileFilterConfigSecret_BailsOnContextCanceled(t *testing.T) {
+	const gwNamespace, configNamespace = "ns", "some-namespace"
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	// Fail only the credential read. Failing every Secret Get would also break the config-bundle
+	// write and the reconcile would error regardless, which would make this test pass vacuously.
+	kube.PrependReactor("get", "secrets", func(a k8stesting.Action) (bool, runtime.Object, error) {
+		if get, ok := a.(k8stesting.GetAction); ok && get.GetName() == "api-key" {
+			return true, nil, context.Canceled
+		}
+		return false, nil, nil
+	})
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: gwNamespace},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+		},
+	}))
+	require.NoError(t, fakeClient.Create(t.Context(), &aigv1b1.BackendSecurityPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "bsp", Namespace: gwNamespace},
+		Spec: aigv1b1.BackendSecurityPolicySpec{
+			Type:   aigv1b1.BackendSecurityPolicyTypeAPIKey,
+			APIKey: &aigv1b1.BackendSecurityPolicyAPIKey{SecretRef: &gwapiv1.SecretObjectReference{Name: "api-key"}},
+			TargetRefs: []gwapiv1a2.LocalPolicyTargetReference{
+				{Kind: "AIServiceBackend", Group: "aigateway.envoyproxy.io", Name: "apple"},
+			},
+		},
+	}))
+
+	routes := []aigv1b1.AIGatewayRoute{{
+		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: gwNamespace},
+		Spec: aigv1b1.AIGatewayRouteSpec{Rules: []aigv1b1.AIGatewayRouteRule{
+			{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+		}},
+	}}
+
+	_, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, configNamespace, routes, nil, "uuid", nil)
+	require.ErrorIs(t, err, context.Canceled)
+
+	_, getErr := kube.CoreV1().Secrets(configNamespace).Get(t.Context(),
+		FilterConfigBundleIndexSecretName("gw", gwNamespace), metav1.GetOptions{})
+	require.Error(t, getErr, "no filter config may be published when the credential could not be read")
+}
+
+// TestGatewayController_reconcileFilterConfigSecret_BailsOnContextDeadlineReadingBackend is the same
+// invariant one step earlier: an interrupted read of the AIServiceBackend must not publish a config
+// with that backend silently missing. Reads of AIServiceBackend go through the cached client, so this
+// is the rare unsynced-informer case rather than a network call, hence the interceptor.
+func TestGatewayController_reconcileFilterConfigSecret_BailsOnContextDeadlineReadingBackend(t *testing.T) {
+	const gwNamespace, configNamespace = "ns", "some-namespace"
+	inner, ok := requireNewFakeClientWithIndexes(t).(client.WithWatch)
+	require.True(t, ok)
+	fakeClient := interceptor.NewClient(inner, interceptor.Funcs{
+		Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, isBackend := obj.(*aigv1b1.AIServiceBackend); isBackend {
+				return context.DeadlineExceeded
+			}
+			return cl.Get(ctx, key, obj, opts...)
+		},
+	})
+	kube := fake2.NewClientset()
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
+
+	require.NoError(t, inner.Create(t.Context(), &aigv1b1.AIServiceBackend{
+		ObjectMeta: metav1.ObjectMeta{Name: "apple", Namespace: gwNamespace},
+		Spec: aigv1b1.AIServiceBackendSpec{
+			BackendRef: gwapiv1.BackendObjectReference{Name: "some-backend1", Namespace: ptr.To[gwapiv1.Namespace](gwNamespace)},
+		},
+	}))
+
+	routes := []aigv1b1.AIGatewayRoute{{
+		ObjectMeta: metav1.ObjectMeta{Name: "route1", Namespace: gwNamespace},
+		Spec: aigv1b1.AIGatewayRouteSpec{Rules: []aigv1b1.AIGatewayRouteRule{
+			{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{{Name: "apple"}}},
+		}},
+	}}
+
+	_, err := c.reconcileFilterConfigSecret(t.Context(), "gw", gwNamespace, configNamespace, routes, nil, "uuid", nil)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	_, getErr := kube.CoreV1().Secrets(configNamespace).Get(t.Context(),
+		FilterConfigBundleIndexSecretName("gw", gwNamespace), metav1.GetOptions{})
+	require.Error(t, getErr, "no filter config may be published when the backend could not be read")
 }
 
 func TestGatewayController_annotateGatewayPods(t *testing.T) {
@@ -1289,7 +1498,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	const v2Container = "ai-gateway-extproc:v2"
 	const logLevel = "info"
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		v2Container, logLevel, false, nil, true)
 	t.Run("pod with extproc", func(t *testing.T) {
 		pod, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), &corev1.Pod{
@@ -1299,12 +1508,12 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 				Labels:    labels,
 			},
 			Spec: corev1.PodSpec{InitContainers: []corev1.Container{
-				{Name: extProcContainerName, Image: c.extProcImage},
+				{Name: extProcContainerName, Image: c.image},
 			}},
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 		hasEffectiveRoute := true
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, nil, "some-uuid", hasEffectiveRoute, false)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, nil, "some-uuid", hasEffectiveRoute, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1334,7 +1543,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 
 		// Since it has already a sidecar container, passing the hasEffectiveRoute=false should result in adding an annotation to the deployment.
 		hasEffectiveRoute = false
-		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "another-uuid", hasEffectiveRoute, false)
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "another-uuid", hasEffectiveRoute, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1377,7 +1586,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 
 		// When there's no effective route, this should not add the annotation to the deployment.
 		hasEffectiveRoute := false
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", hasEffectiveRoute, false)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", hasEffectiveRoute, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 		deployment, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
@@ -1387,7 +1596,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 
 		// When there's an effective route, this should add the annotation to the deployment.
 		hasEffectiveRoute = true
-		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", hasEffectiveRoute, false)
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", hasEffectiveRoute, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1432,7 +1641,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1447,7 +1656,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again but the deployment's pod template should not be updated again.
-		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false)
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1491,7 +1700,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1506,7 +1715,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again but the deployment's pod template should not be updated again.
-		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false)
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1549,7 +1758,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call with needMCP=true - should trigger rollout due to missing -mcpAddr
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, true)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "some-uuid", true, true, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1564,7 +1773,7 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again - should NOT trigger another rollout
-		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "another-uuid", true, true)
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "another-uuid", true, true, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1630,7 +1839,8 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 			nil,
 			"some-uuid",
 			true,
-			false)
+			false,
+			c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{RequeueAfter: 5 * time.Second}, result)
 
@@ -1691,7 +1901,8 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 			nil,
 			"force-rollout-uuid",
 			true,
-			false)
+			false,
+			c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1754,7 +1965,8 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 			nil,
 			"ignore-terminating-uuid",
 			false,
-			false)
+			false,
+			c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1837,6 +2049,220 @@ func TestGatewayController_annotateGatewayPods(t *testing.T) {
 	})
 }
 
+// TestGatewayController_checkPodHasSideCar exercises both the init-container
+// (extProcAsSideCar=true) and the regular-container (extProcAsSideCar=false)
+// branches of checkPodHasSideCar, plus the logLevel mismatch, missing -mcpAddr,
+// and GatewayConfig-resolved image signals.
+func TestGatewayController_checkPodHasSideCar(t *testing.T) {
+	egNamespace := "envoy-gateway-system"
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+
+	const image = "docker.io/envoyproxy/ai-gateway-extproc:latest"
+	const logLevel = "info"
+
+	extProcContainer := func(args ...string) corev1.Container {
+		return corev1.Container{Name: extProcContainerName, Image: image, Args: args}
+	}
+
+	t.Run("sidecar mode: matches", func(t *testing.T) {
+		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, true)
+		pod := &corev1.Pod{
+			Spec: corev1.PodSpec{InitContainers: []corev1.Container{extProcContainer("-logLevel", logLevel)}},
+		}
+		hasSideCar := c.checkPodHasSideCar(pod, false, c.image)
+		require.True(t, hasSideCar)
+	})
+
+	t.Run("sidecar mode: logLevel mismatch triggers rollout", func(t *testing.T) {
+		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, true)
+		pod := &corev1.Pod{Spec: corev1.PodSpec{InitContainers: []corev1.Container{extProcContainer("-logLevel", "debug")}}}
+		hasSideCar := c.checkPodHasSideCar(pod, false, c.image)
+		require.False(t, hasSideCar, "logLevel mismatch must clear hasSideCar")
+	})
+
+	t.Run("sidecar mode: uses GatewayConfig resolved image", func(t *testing.T) {
+		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, true)
+		input := extProcContainerInput{gatewayConfig: testGatewayConfig}
+		desiredImage := c.extProcImage(input)
+		pod := &corev1.Pod{Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+			{Name: extProcContainerName, Image: desiredImage, Args: []string{"-logLevel", logLevel}},
+		}}}
+		hasSideCar := c.checkPodHasSideCar(pod, false, desiredImage)
+		require.True(t, hasSideCar)
+
+		hasSideCar = c.checkPodHasSideCar(pod, false, image)
+		require.False(t, hasSideCar, "global image must not be used when GatewayConfig resolves a different image")
+	})
+
+	t.Run("container mode: matches", func(t *testing.T) {
+		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, false)
+		pod := &corev1.Pod{
+			Spec: corev1.PodSpec{Containers: []corev1.Container{extProcContainer("-logLevel", logLevel)}},
+		}
+		hasSideCar := c.checkPodHasSideCar(pod, false, c.image)
+		require.True(t, hasSideCar)
+	})
+
+	t.Run("container mode: needMCP without -mcpAddr triggers rollout", func(t *testing.T) {
+		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, false)
+		pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{extProcContainer("-logLevel", logLevel)}}}
+		hasSideCar := c.checkPodHasSideCar(pod, true, c.image)
+		require.False(t, hasSideCar, "missing -mcpAddr when MCP is needed must trigger rollout")
+	})
+
+	t.Run("container mode: needMCP with -mcpAddr keeps sidecar", func(t *testing.T) {
+		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, false)
+		pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{
+			extProcContainer("-logLevel", logLevel, "-mcpAddr", ":808"),
+		}}}
+		hasSideCar := c.checkPodHasSideCar(pod, true, c.image)
+		require.True(t, hasSideCar, "with -mcpAddr present the sidecar is up to date")
+	})
+
+	t.Run("container mode: logLevel mismatch triggers rollout", func(t *testing.T) {
+		c := newTestGatewayController(fakeClient, kube, ctrl.Log, egNamespace, image, logLevel, false, nil, false)
+		pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{extProcContainer("-logLevel", "debug")}}}
+		hasSideCar := c.checkPodHasSideCar(pod, false, c.image)
+		require.False(t, hasSideCar, "logLevel mismatch must clear hasSideCar")
+	})
+}
+
+func TestGatewayController_annotateGatewayPods_ConfigHashDrift(t *testing.T) {
+	egNamespace := "envoy-gateway-system"
+	gwName, gwNamespace := "gw", "ns"
+	labels := map[string]string{
+		egOwningGatewayNameLabel:      gwName,
+		egOwningGatewayNamespaceLabel: gwNamespace,
+	}
+
+	fakeClient := requireNewFakeClientWithIndexes(t)
+	kube := fake2.NewClientset()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
+
+	const image = "docker.io/envoyproxy/ai-gateway-extproc:latest"
+	opts := newTestExtProcOptions(image, "info")
+	baseBuilder := newExtProcBuilder(opts, true, ctrl.Log)
+	c := NewGatewayController(fakeClient, kube, ctrl.Log, egNamespace, false, func() string { return "test-uuid" }, opts, true)
+	baseHash := baseBuilder.extProcContainerHash(extProcContainerInput{})
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "pod-current", Namespace: egNamespace, Labels: labels,
+		},
+		Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+			{Name: extProcContainerName, Image: image, Args: []string{"-logLevel", "info"}},
+		}},
+	}
+	_, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), pod, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "dep-current", Namespace: egNamespace, Labels: labels},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: ptr.To(int32(1)),
+			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}},
+		},
+		Status: appsv1.DeploymentStatus{ObservedGeneration: 1, UpdatedReplicas: 1, ReadyReplicas: 1, AvailableReplicas: 1, Replicas: 1},
+	}
+	_, err = kube.AppsV1().Deployments(egNamespace).Create(t.Context(), deployment, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	// The reconciler writes the desired hash to the pod template so Kubernetes
+	// rolls the workload when injected extproc config changes.
+	result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*deployment}, nil, "uuid-1", true, false, c.image, baseHash)
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, result)
+	dep, err := kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "dep-current", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, baseHash, dep.Spec.Template.Annotations[extProcConfigHashAnnotationKey])
+	_, rolled := dep.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
+	require.False(t, rolled, "hash-only rollout should not update the UUID rollout trigger")
+
+	// A current template hash should not trigger another template update.
+	result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*dep}, nil, "uuid-2", true, false, c.image, baseHash)
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, result)
+	dep, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "dep-current", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, baseHash, dep.Spec.Template.Annotations[extProcConfigHashAnnotationKey])
+	_, rolled = dep.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
+	require.False(t, rolled, "current template hash must not trigger UUID rollout")
+
+	// Simulate a controller restart with a changed flag: the desired hash now
+	// differs from the workload template hash.
+	changedOpts := newTestExtProcOptions(image, "info")
+	changedOpts.ExtProcExtraEnvVars = "OTEL_SERVICE_NAME=ai-gateway"
+	changedBuilder := newExtProcBuilder(changedOpts, true, ctrl.Log)
+	desiredHash := changedBuilder.extProcContainerHash(extProcContainerInput{})
+	require.NotEqual(t, baseHash, desiredHash)
+
+	result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, []appsv1.Deployment{*dep}, nil, "uuid-3", true, false, c.image, desiredHash)
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, result)
+	dep, err = kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "dep-current", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, desiredHash, dep.Spec.Template.Annotations[extProcConfigHashAnnotationKey],
+		"hash drift must update the template hash so Kubernetes rolls the workload")
+	_, rolled = dep.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
+	require.False(t, rolled, "hash drift is handled by the template hash, not the UUID rollout trigger")
+
+	podWithoutSidecar := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "pod-no-sidecar", Namespace: egNamespace, Labels: labels},
+		Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "envoy", Image: "envoyproxy/envoy"}}},
+	}
+	_, err = kube.CoreV1().Pods(egNamespace).Create(t.Context(), podWithoutSidecar, metav1.CreateOptions{})
+	require.NoError(t, err)
+	deployment3 := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "dep-mixed-drift", Namespace: egNamespace, Labels: labels},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: ptr.To(int32(1)),
+			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{extProcConfigHashAnnotationKey: baseHash},
+			}},
+		},
+		Status: appsv1.DeploymentStatus{ObservedGeneration: 1, UpdatedReplicas: 1, ReadyReplicas: 1, AvailableReplicas: 1, Replicas: 1},
+	}
+	_, err = kube.AppsV1().Deployments(egNamespace).Create(t.Context(), deployment3, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	result, err = c.annotateGatewayPods(t.Context(),
+		[]corev1.Pod{*podWithoutSidecar, *pod},
+		[]appsv1.Deployment{*deployment3},
+		nil,
+		"uuid-4",
+		true,
+		false,
+		c.image,
+		desiredHash,
+	)
+	require.NoError(t, err)
+	require.Equal(t, ctrl.Result{}, result)
+	dep3, err := kube.AppsV1().Deployments(egNamespace).Get(t.Context(), "dep-mixed-drift", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "uuid-4", dep3.Spec.Template.Annotations[aigatewayUUIDAnnotationKey],
+		"mixed pod state must keep using the UUID rollout trigger")
+	require.Equal(t, desiredHash, dep3.Spec.Template.Annotations[extProcConfigHashAnnotationKey],
+		"mixed pod state plus hash drift should update both template rollout annotations")
+}
+
+// newTestExtProcOptions returns the Options the gateway controller tests use to
+// build a GatewayController. Keeping one Options source makes the controller's
+// internal hash and the test's desired hash identical.
+func newTestExtProcOptions(image, logLevel string) *Options {
+	return &Options{
+		ExtProcImage:                           image,
+		ExtProcLogLevel:                        logLevel,
+		UDSPath:                                "/tmp/extproc.sock",
+		RootPrefix:                             "/",
+		ExtProcMaxRecvMsgSize:                  512 * 1024 * 1024,
+		MCPSessionEncryptionSeed:               "seed",
+		MCPSessionEncryptionIterations:         100,
+		MCPFallbackSessionEncryptionSeed:       "fallback",
+		MCPFallbackSessionEncryptionIterations: 200,
+	}
+}
+
 func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 	egNamespace := "envoy-gateway-system"
 	gwName, gwNamepsace := "gw", "ns"
@@ -1850,7 +2276,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	const v2Container = "ai-gateway-extproc:v2"
 	const logLevel = "info"
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		v2Container, logLevel, false, nil, true)
 
 	t.Run("pod without extproc", func(t *testing.T) {
@@ -1875,7 +2301,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1883,6 +2309,46 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		deployment, err := kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "deployment1", metav1.GetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, "some-uuid", deployment.Spec.Template.Annotations[aigatewayUUIDAnnotationKey])
+	})
+
+	t.Run("current sidecar with desired hash patches daemonset template hash only", func(t *testing.T) {
+		pod, err := kube.CoreV1().Pods(egNamespace).Create(t.Context(), &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-ds-current-hash",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PodSpec{InitContainers: []corev1.Container{
+				{Name: extProcContainerName, Image: c.image, Args: []string{"-logLevel", logLevel}},
+			}},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		dss, err := kube.AppsV1().DaemonSets(egNamespace).Create(t.Context(), &appsv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "daemonset-current-hash",
+				Namespace: egNamespace,
+				Labels:    labels,
+			},
+			Spec: appsv1.DaemonSetSpec{Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{}}},
+			Status: appsv1.DaemonSetStatus{
+				ObservedGeneration:     1,
+				CurrentNumberScheduled: 1,
+				UpdatedNumberScheduled: 1,
+			},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		const desiredHash = "daemonset-desired-hash"
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "uuid-hash", true, false, c.image, desiredHash)
+		require.NoError(t, err)
+		require.Equal(t, ctrl.Result{}, result)
+
+		dss, err = kube.AppsV1().DaemonSets(egNamespace).Get(t.Context(), "daemonset-current-hash", metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, desiredHash, dss.Spec.Template.Annotations[extProcConfigHashAnnotationKey])
+		_, exists := dss.Spec.Template.Annotations[aigatewayUUIDAnnotationKey]
+		require.False(t, exists)
 	})
 
 	t.Run("pod with extproc but old version", func(t *testing.T) {
@@ -1911,7 +2377,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1926,7 +2392,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again, but the deployment's pod template should not be updated again.
-		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1961,7 +2427,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 
-		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
+		result, err := c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -1976,7 +2442,7 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 		require.NoError(t, err)
 
 		// Call annotateGatewayPods again, but the deployment's pod template should not be updated again.
-		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false)
+		result, err = c.annotateGatewayPods(t.Context(), []corev1.Pod{*pod}, nil, []appsv1.DaemonSet{*dss}, "some-uuid", true, false, c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -2030,7 +2496,8 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 			[]appsv1.DaemonSet{*dss},
 			"uuid-requeue",
 			true,
-			false)
+			false,
+			c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{RequeueAfter: 5 * time.Second}, result)
 	})
@@ -2076,7 +2543,8 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 			[]appsv1.DaemonSet{*dss},
 			"uuid-force",
 			true,
-			false)
+			false,
+			c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -2128,7 +2596,8 @@ func TestGatewayController_annotateDaemonSetGatewayPods(t *testing.T) {
 			[]appsv1.DaemonSet{*dss},
 			"uuid-ignore-terminating",
 			false,
-			false)
+			false,
+			c.image, "")
 		require.NoError(t, err)
 		require.Equal(t, ctrl.Result{}, result)
 
@@ -2263,7 +2732,7 @@ func TestGatewayController_backendWithMaybeBSP(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
 	const v2Container = "ai-gateway-extproc:v2"
 	const logLevel = "info"
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system", v2Container, logLevel, false, nil, true)
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system", v2Container, logLevel, false, nil, true)
 
 	_, _, err := c.backendWithMaybeBSP(t.Context(), "foo", "bar")
 	require.ErrorContains(t, err, `aiservicebackends.aigateway.envoyproxy.io "bar" not found`)
@@ -2322,7 +2791,7 @@ func TestGatewayController_reconcileFilterMCPConfigSecret(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	const gwNamespace = "ns"
@@ -2406,7 +2875,7 @@ func TestGatewayController_writeFilterConfigBundleShards(t *testing.T) {
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	namespace := "ns"
@@ -2453,7 +2922,7 @@ func TestGatewayController_writeFilterConfigBundleShards_Overflow(t *testing.T) 
 	fakeClient := requireNewFakeClientWithIndexes(t)
 	kube := fake2.NewClientset()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-	c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+	c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	payload := []byte(strings.Repeat("x", filterConfigBundlePartSizeBytes*(maxFilterConfigBundleSlots+1)))
@@ -2895,7 +3364,7 @@ func TestGatewayController_reconcileFilterConfigSecret_GlobalDefaults(t *testing
 			fakeClient := requireNewFakeClientWithIndexes(t)
 			kube := fake2.NewClientset()
 			ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zap.Options{Development: true, Level: zapcore.DebugLevel})))
-			c := NewGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
+			c := newTestGatewayController(fakeClient, kube, ctrl.Log, "envoy-gateway-system",
 				"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 			const gwNamespace = "ns"
@@ -3111,7 +3580,7 @@ func TestGatewayController_getObjectsForGatewayNamespaceInconsistency(t *testing
 	gw := &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: gwNamespace}}
 
 	kube := fake2.NewClientset()
-	c := NewGatewayController(requireNewFakeClientWithIndexes(t), kube, ctrl.Log, egNamespace,
+	c := newTestGatewayController(requireNewFakeClientWithIndexes(t), kube, ctrl.Log, egNamespace,
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	// Place a pod in the gateway namespace and a pod in the envoy-gateway namespace so that
@@ -3137,7 +3606,7 @@ func TestGatewayController_getObjectsForGatewaySameNamespace(t *testing.T) {
 	gw := &gwapiv1.Gateway{ObjectMeta: metav1.ObjectMeta{Name: gwName, Namespace: ns}}
 
 	kube := fake2.NewClientset()
-	c := NewGatewayController(requireNewFakeClientWithIndexes(t), kube, ctrl.Log, ns,
+	c := newTestGatewayController(requireNewFakeClientWithIndexes(t), kube, ctrl.Log, ns,
 		"docker.io/envoyproxy/ai-gateway-extproc:latest", "info", false, nil, true)
 
 	_, err := kube.CoreV1().Pods(ns).Create(t.Context(), &corev1.Pod{
