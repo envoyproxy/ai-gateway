@@ -693,6 +693,11 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   required="true"
   description="Name is the name of the backend resource.<br />When Group and Kind are not specified, this refers to an AIServiceBackend.<br />When Group and Kind are specified, this refers to the resource of the specified type."
 /><ApiField
+  name="alias"
+  type="string"
+  required="false"
+  description="Alias is an optional published name for this backend within the rule. It decouples the<br />externally visible vocabulary (for example, the per-request fallback chain that names the<br />backends to try in order) from the Kubernetes resource name, so backends can be renamed<br />without breaking clients or tenant configuration. When unset, the resource name is used.<br />Aliases must be unique among the rule's backendRefs."
+/><ApiField
   name="namespace"
   type="[Namespace](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#namespace)"
   required="false"
@@ -3152,6 +3157,11 @@ It can reference either an AIServiceBackend or an InferencePool resource.
   type="string"
   required="true"
   description="Name is the name of the backend resource.<br />When Group and Kind are not specified, this refers to an AIServiceBackend.<br />When Group and Kind are specified, this refers to the resource of the specified type."
+/><ApiField
+  name="alias"
+  type="string"
+  required="false"
+  description="Alias is an optional published name for this backend within the rule. It decouples the<br />externally visible vocabulary (for example, the per-request fallback chain that names the<br />backends to try in order) from the Kubernetes resource name, so backends can be renamed<br />without breaking clients or tenant configuration. When unset, the resource name is used.<br />Aliases must be unique among the rule's backendRefs."
 /><ApiField
   name="namespace"
   type="[Namespace](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#namespace)"

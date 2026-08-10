@@ -29,6 +29,24 @@ const (
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
 	// InternalMetadataRouteNameKey is the key used to store the route name.
 	InternalMetadataRouteNameKey = "aigw_route_name"
+	// DynamicFallbackAnnotationKey opts an AIGatewayRoute into the dynamic per-request fallback
+	// topology: per-provider clusters selected per attempt by a matcher cluster specifier with
+	// refresh_cluster_on_retry. Requires the data plane to run Envoy >= 1.39.
+	DynamicFallbackAnnotationKey = "aigateway.envoyproxy.io/dynamic-fallback"
+	// DynamicFallbackSlotHeaderPrefix prefixes the gateway-owned headers carrying the resolved
+	// fallback chain: x-aigw-try-<k> names the backend serving attempt k+1. Trusted matcher
+	// input, overwritten or removed by the extproc on every request.
+	DynamicFallbackSlotHeaderPrefix = "x-aigw-try-"
+	// EnvoyAttemptCountHeader is Envoy's x-envoy-attempt-count request header. The fallback
+	// matcher keys on it; the gateway injects "0" so that attempt k+1 observes k.
+	EnvoyAttemptCountHeader = "x-envoy-attempt-count"
+	// FallbackChainHeader carries the fallback chain as a comma-separated list of backend
+	// names, set by a trusted party (ext_authz, JWT claimToHeaders) and resolved by the
+	// router-level extproc into slot headers; removed before the request leaves the router.
+	FallbackChainHeader = EnvoyAIGatewayHeaderPrefix + "fallback-chain"
+	// DynamicFallbackMaxSlots caps how many chain entries the extproc materializes as slot
+	// headers, and therefore how many x-aigw-try-<k> headers it sanitizes on every request.
+	DynamicFallbackMaxSlots = 16
 	// MCPBackendHeader is the special header key used to specify the target backend name.
 	MCPBackendHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend"
 	// MCPRouteHeader is the special header key used to identify the mcp route.
@@ -107,6 +125,12 @@ const (
 	XDSUpstreamHostMetadataBackendNamePath = "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
 	// XDSRouteMetadataRouteNamePath is the full attribute path to access the route name in route metadata in xDS attributes.
 	XDSRouteMetadataRouteNamePath = "xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']"
+	// InternalMetadataDynamicFallbackRuleKey is the route metadata key carrying the
+	// DynamicFallbackRuleKey on routes rewritten for dynamic fallback.
+	InternalMetadataDynamicFallbackRuleKey = "dynfb_rule_key"
+	// XDSRouteMetadataDynamicFallbackRuleKeyPath is the full attribute path to the dynamic
+	// fallback rule key in route metadata in xDS attributes.
+	XDSRouteMetadataDynamicFallbackRuleKeyPath = "xds.route_metadata.filter_metadata['aigateway.envoy.io']['dynfb_rule_key']"
 )
 
 // PerRouteRuleRefBackendName generates a unique backend name for a per-route rule,
@@ -114,6 +138,27 @@ const (
 // route rule in a specific AIGatewayRoute.
 func PerRouteRuleRefBackendName(namespace, name, routeName string, routeRuleIndex, refIndex int) string {
 	return fmt.Sprintf("%s/%s/route/%s/rule/%d/ref/%d", namespace, name, routeName, routeRuleIndex, refIndex)
+}
+
+// DynamicFallbackRuleKey identifies a specific rule of an AIGatewayRoute; stamped as the
+// `dynfb_rule_key` route metadata on rewritten routes and composed with the backend key into
+// the extproc's config lookup name.
+func DynamicFallbackRuleKey(routeNamespace, routeName string, routeRuleIndex int) string {
+	return fmt.Sprintf("%s/route/%s/rule/%d", routeNamespace, routeName, routeRuleIndex)
+}
+
+// DynamicFallbackBackendKey identifies a distinct backend independent of any rule. Stamped as
+// the endpoint metadata value on shared dynamic-fallback clusters (under the usual
+// per_route_rule_backend_name key, so the existing upstream extproc attribute carries it).
+func DynamicFallbackBackendKey(backendNamespace, backendName string) string {
+	return fmt.Sprintf("backend/%s/%s", backendNamespace, backendName)
+}
+
+// DynamicFallbackFilterBackendName is the filterapi.Backend name for a backend used by a
+// dynamic-fallback rule: the rule key joined with the backend key. The controller emits entries
+// under this name and the extproc reassembles it from the two metadata attributes.
+func DynamicFallbackFilterBackendName(ruleKey, backendKey string) string {
+	return ruleKey + "/" + backendKey
 }
 
 const (

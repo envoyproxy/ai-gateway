@@ -113,8 +113,14 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	}
 	req.Clusters = append(req.Clusters, cs...)
 
+	// Gates the router-level extproc's permission to mutate x-envoy-* headers.
+	allowEnvoyHeaderMutations, err := s.hasDynamicFallbackRoutes(ctx, req.Routes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to detect dynamic fallback routes: %w", err)
+	}
+
 	// Modify listeners and routes to support InferencePool backends.
-	if err = s.maybeModifyListenerAndRoutes(req.Listeners, req.Routes); err != nil {
+	if err = s.maybeModifyListenerAndRoutes(req.Listeners, req.Routes, allowEnvoyHeaderMutations); err != nil {
 		return nil, fmt.Errorf("failed to modify listeners and routes for InferencePool support: %w", err)
 	}
 
@@ -193,6 +199,14 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	req.Clusters, err = s.maybeInjectQuotaRateLimiting(ctx, req.Clusters, req.Listeners, req.Routes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to inject quota rate limiting: %w", err)
+	}
+
+	// MUST run after maybeInjectQuotaRateLimiting: quota patching resolves a route's backends
+	// through routeAction.GetCluster(), which this rewrite replaces with an inline cluster
+	// specifier plugin (the quota rate-limit actions live in TypedPerFilterConfig and survive).
+	req.Clusters, err = s.applyDynamicFallback(ctx, req.Clusters, req.Routes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply dynamic fallback: %w", err)
 	}
 
 	response := &egextension.PostTranslateModifyResponse{Clusters: req.Clusters, Secrets: req.Secrets, Listeners: req.Listeners, Routes: req.Routes}
@@ -440,6 +454,8 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 		internalapi.XDSUpstreamHostMetadataBackendNamePath,
 		internalapi.XDSClusterMetadataBackendNamePath,
 		internalapi.XDSRouteMetadataRouteNamePath,
+		// Present only on routes rewritten for dynamic fallback; harmless elsewhere.
+		internalapi.XDSRouteMetadataDynamicFallbackRuleKeyPath,
 	}
 	extProcConfig.ProcessingMode = &extprocv3.ProcessingMode{
 		RequestHeaderMode: extprocv3.ProcessingMode_SEND,
@@ -531,7 +547,7 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 // 2. Adds endpoint picker (EPP) external processor filters to relevant listeners
 // 3. Configures per-route filters to disable EPP processing for non-InferencePool routes
 // This ensures that only routes targeting InferencePool backends go through the endpoint picker.
-func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, routes []*routev3.RouteConfiguration) error {
+func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, routes []*routev3.RouteConfiguration, allowEnvoyHeaderMutations bool) error {
 	listenerNameToRouteNames := make(map[string][]string)
 	listenerNameToListener := make(map[string]*listenerv3.Listener)
 	for _, listener := range listeners {
@@ -620,7 +636,7 @@ func (s *Server) maybeModifyListenerAndRoutes(listeners []*listenerv3.Listener, 
 		}
 		if enabled {
 			s.log.Info("inserting AI Gateway extproc filter into listener", "listener", ln.Name)
-			if err := s.insertRouterLevelAIGatewayExtProc(ln); err != nil {
+			if err := s.insertRouterLevelAIGatewayExtProc(ln, allowEnvoyHeaderMutations); err != nil {
 				return fmt.Errorf("failed to insert AI Gateway extproc filter into listener %s: %w", ln.Name, err)
 			}
 		}
@@ -757,7 +773,7 @@ func (s *Server) enableRouterLevelAIGatewayExtProcOnRoute(routeConfig *routev3.R
 }
 
 // insertRouterLevelAIGatewayExtProcExtProc inserts the AI Gateway external processor filter into the listener's filter chains.
-func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener) error {
+func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener, allowEnvoyHeaderMutations bool) error {
 	// First, get the filter chains from the listener.
 	filterChains := listener.GetFilterChains()
 	defaultFC := listener.DefaultFilterChain
@@ -774,7 +790,7 @@ func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener
 		if !shouldAIGatewayExtProcBeInserted(httpConManager.HttpFilters) {
 			return nil // The filter is already present, nothing to do.
 		}
-		epAny, err := toAny(&extprocv3.ExternalProcessor{
+		extProcCfg := &extprocv3.ExternalProcessor{
 			GrpcService: &corev3.GrpcService{
 				TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
 					EnvoyGrpc: &corev3.GrpcService_EnvoyGrpc{
@@ -798,7 +814,16 @@ func (s *Server) insertRouterLevelAIGatewayExtProc(listener *listenerv3.Listener
 			MessageTimeout:    durationpb.New(10 * time.Second),
 			FailureModeAllow:  false,
 			AllowModeOverride: true,
-		})
+		}
+		// Without this grant ext_proc silently drops any x-envoy-* mutation — both the
+		// dynamic-fallback attempt-count injection and the security-relevant scrubbing of
+		// forged values. Granted only on gateways where some route opts in.
+		if allowEnvoyHeaderMutations {
+			extProcCfg.MutationRules = &mutation_rulesv3.HeaderMutationRules{
+				AllowEnvoy: wrapperspb.Bool(true),
+			}
+		}
+		epAny, err := toAny(extProcCfg)
 		if err != nil {
 			return fmt.Errorf("failed to marshal ExternalProcessor to Any: %w", err)
 		}

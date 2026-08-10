@@ -213,6 +213,7 @@ type AIGatewayRouteSpec struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.name) || self.name != 'route-not-found'", message="rule name route-not-found is reserved"
 // +kubebuilder:validation:XValidation:rule="!has(self.backendRefs) || size(self.backendRefs) == 0 || (self.backendRefs.all(ref, !has(ref.group) && !has(ref.kind)) || self.backendRefs.all(ref, has(ref.group) && has(ref.kind)))", message="cannot mix InferencePool and AIServiceBackend references in the same rule"
 // +kubebuilder:validation:XValidation:rule="!has(self.backendRefs) || size(self.backendRefs) == 0 || !self.backendRefs.exists(ref, has(ref.group) && has(ref.kind)) || size(self.backendRefs) == 1", message="only one InferencePool backend is allowed per rule"
+// +kubebuilder:validation:XValidation:rule="!has(self.backendRefs) || self.backendRefs.all(r1, !has(r1.alias) || size(self.backendRefs.filter(r2, has(r2.alias) && r2.alias == r1.alias)) == 1)", message="alias must be unique among the rule's backendRefs"
 type AIGatewayRouteRule struct {
 	// Name is the name of the route rule. This name must be unique within the route.
 	// When specified, it is copied to the generated HTTPRoute rule name.
@@ -321,6 +322,18 @@ type AIGatewayRouteRuleBackendRef struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
+
+	// Alias is an optional published name for this backend within the rule. It decouples the
+	// externally visible vocabulary (for example, the per-request fallback chain that names the
+	// backends to try in order) from the Kubernetes resource name, so backends can be renamed
+	// without breaking clients or tenant configuration. When unset, the resource name is used.
+	//
+	// Aliases must be unique among the rule's backendRefs.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxLength=32
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	Alias string `json:"alias,omitempty"`
 
 	// Namespace is the namespace of the backend resource.
 	// When unspecified (or empty string), this refers to the local namespace of the AIGatewayRoute.

@@ -1729,6 +1729,10 @@ type Model struct {
 	Object string `json:"object"`
 	// OwnedBy is the organization that owns the model.
 	OwnedBy string `json:"owned_by"`
+	// FallbackCandidates is an Envoy AI Gateway extension field: the published backend names a
+	// per-request fallback chain may order for this model. Empty for models whose routes do not
+	// enable dynamic fallback.
+	FallbackCandidates []string `json:"fallback_candidates,omitempty"`
 }
 
 // EmbeddingBaseRequest holds fields shared by both embedding request variants.

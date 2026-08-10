@@ -52,10 +52,11 @@ func NewModelsProcessor(config *filterapi.RuntimeConfig, requestHeaders map[stri
 	}
 	for _, m := range selectedModels {
 		modelList.Data = append(modelList.Data, openai.Model{
-			ID:      m.Name,
-			Object:  "model",
-			OwnedBy: m.OwnedBy,
-			Created: openai.JSONUNIXTime(m.CreatedAt),
+			ID:                 m.Name,
+			Object:             "model",
+			OwnedBy:            m.OwnedBy,
+			Created:            openai.JSONUNIXTime(m.CreatedAt),
+			FallbackCandidates: m.FallbackCandidates,
 		})
 	}
 	return &modelsProcessor{logger: logger.With("host", host), models: modelList}, nil

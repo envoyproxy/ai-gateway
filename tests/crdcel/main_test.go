@@ -38,6 +38,11 @@ func TestAIGatewayRoutes(t *testing.T) {
 			name:   "reserved_rule_name.yaml",
 			expErr: "spec.rules[0]: Invalid value: \"object\": rule name route-not-found is reserved",
 		},
+		{name: "backend_alias.yaml"},
+		{
+			name:   "backend_alias_duplicate.yaml",
+			expErr: "alias must be unique among the rule's backendRefs",
+		},
 		{name: "llmcosts.yaml"},
 		{name: "parent_refs.yaml"},
 		{name: "parent_refs_default_kind.yaml"},
