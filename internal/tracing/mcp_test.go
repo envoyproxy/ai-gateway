@@ -102,6 +102,80 @@ func TestTracer_StartSpanAndInjectMeta_MetaAndHeaderFallback(t *testing.T) {
 	}
 }
 
+func TestTracer_StartSpanAndInjectMeta_ParentTraceContext(t *testing.T) {
+	const (
+		headerTraceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+		headerSpanID  = "00f067aa0ba902b7"
+		metaTraceID   = "0af7651916cd43dd8448eb211c80319c"
+		metaSpanID    = "b7ad6b7169203331"
+	)
+	traceparent := func(traceID, spanID string) string {
+		return "00-" + traceID + "-" + spanID + "-01"
+	}
+	meta := func(traceID, spanID string) map[string]any {
+		return map[string]any{"traceparent": traceparent(traceID, spanID)}
+	}
+
+	cases := []struct {
+		name            string
+		headers         http.Header
+		meta            map[string]any
+		expectedTraceID string
+		expectedSpanID  string
+	}{
+		{
+			name:            "header only becomes the parent",
+			headers:         http.Header{"Traceparent": []string{traceparent(headerTraceID, headerSpanID)}},
+			expectedTraceID: headerTraceID,
+			expectedSpanID:  headerSpanID,
+		},
+		{
+			name:            "meta only becomes the parent",
+			meta:            meta(metaTraceID, metaSpanID),
+			expectedTraceID: metaTraceID,
+			expectedSpanID:  metaSpanID,
+		},
+		{
+			name:            "meta wins when both are present",
+			headers:         http.Header{"Traceparent": []string{traceparent(headerTraceID, headerSpanID)}},
+			meta:            meta(metaTraceID, metaSpanID),
+			expectedTraceID: metaTraceID,
+			expectedSpanID:  metaSpanID,
+		},
+		{
+			name:    "invalid header traceparent is ignored",
+			headers: http.Header{"Traceparent": []string{"not-a-traceparent"}},
+		},
+		{
+			name: "no trace context anywhere starts a root span",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			exporter := tracetest.NewInMemoryExporter()
+			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
+			tracer := newMCPTracer(tp.Tracer("test"), autoprop.NewTextMapPropagator(), nil)
+
+			reqID, _ := jsonrpc.MakeID("id")
+			span := tracer.StartSpanAndInjectMeta(t.Context(),
+				&jsonrpc.Request{ID: reqID, Method: "initialize"},
+				&mcp.InitializeParams{Meta: tc.meta}, tc.headers)
+			require.NotNil(t, span)
+			span.EndSpan()
+
+			spans := exporter.GetSpans()
+			require.Len(t, spans, 1)
+			if tc.expectedTraceID == "" {
+				require.False(t, spans[0].Parent.IsValid(), "span must be a trace root")
+				return
+			}
+			require.Equal(t, tc.expectedTraceID, spans[0].SpanContext.TraceID().String())
+			require.Equal(t, tc.expectedSpanID, spans[0].Parent.SpanID().String())
+		})
+	}
+}
+
 func Test_getMCPAttributes(t *testing.T) {
 	cases := []struct {
 		p        mcp.Params
