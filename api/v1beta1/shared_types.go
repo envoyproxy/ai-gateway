@@ -19,7 +19,7 @@ import (
 type VersionedAPISchema struct {
 	// Name is the name of the API schema of the AIGatewayRoute or AIServiceBackend.
 	//
-	// +kubebuilder:validation:Enum=OpenAI;Cohere;AWSBedrock;AzureOpenAI;GCPVertexAI;GCPAnthropic;Anthropic;AWSAnthropic
+	// +kubebuilder:validation:Enum=OpenAI;Cohere;AWSBedrock;AzureOpenAI;GCPVertexAI;GCPAnthropic;Anthropic;AWSAnthropic;HuggingFaceTEI
 	Name APISchema `json:"name"`
 
 	// Version is the version of the API schema.
@@ -93,6 +93,12 @@ const (
 	// https://aws.amazon.com/bedrock/anthropic/
 	// https://docs.claude.com/en/api/claude-on-amazon-bedrock
 	APISchemaAWSAnthropic APISchema = "AWSAnthropic"
+	// APISchemaHuggingFaceTEI is the schema for HuggingFace Text Embeddings Inference (TEI) servers.
+	// Currently only supported for the rerank endpoint: requests to /cohere/v2/rerank are
+	// translated to TEI's native /rerank API.
+	//
+	// https://huggingface.co/docs/text-embeddings-inference
+	APISchemaHuggingFaceTEI APISchema = "HuggingFaceTEI"
 )
 
 const (
