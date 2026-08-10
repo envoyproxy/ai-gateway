@@ -136,12 +136,7 @@ var awsBedrockHostRE = regexp.MustCompile(`(?:^|\.)bedrock-runtime(?:-fips)?\.([
 // AWSBedrockRegionFromHost returns the AWS region encoded in a Bedrock signing host, or "" if no region
 // can be derived from host. It is used to self-correct the SigV4 signing region when the resolved
 // upstream host disagrees with the handler's configured region (e.g. a VPCE in a different region than
-// the gateway was configured for). Recognized forms, all case-sensitive lowercase:
-//   - Public: bedrock-runtime.<region>.amazonaws.com
-//   - Public FIPS: bedrock-runtime-fips.<region>.amazonaws.com
-//   - PrivateLink (VPCE): <vpce-id>.bedrock-runtime.<region>.vpce.amazonaws.com
-//   - PrivateLink FIPS: <vpce-id>.bedrock-runtime-fips.<region>.vpce.amazonaws.com
-//   - Newer API domain: bedrock-runtime.<region>.api.aws
+// the gateway was configured for).
 //
 // Any other host — including a custom/internal hostname such as bedrock.corp.internal, which encodes no
 // region at all — yields "", and the caller falls back to its statically configured region. That

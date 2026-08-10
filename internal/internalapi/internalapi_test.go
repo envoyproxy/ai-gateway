@@ -266,6 +266,12 @@ func TestFormatRequestHeaderAttributeMapping(t *testing.T) {
 	}
 }
 
+// Recognized forms, all case-sensitive lowercase:
+//   - Public: bedrock-runtime.<region>.amazonaws.com
+//   - Public FIPS: bedrock-runtime-fips.<region>.amazonaws.com
+//   - PrivateLink (VPCE): <vpce-id>.bedrock-runtime.<region>.vpce.amazonaws.com
+//   - PrivateLink FIPS: <vpce-id>.bedrock-runtime-fips.<region>.vpce.amazonaws.com
+//   - Newer API domain: bedrock-runtime.<region>.api.aws
 func TestAWSBedrockRegionFromHost(t *testing.T) {
 	for _, tc := range []struct {
 		name string
