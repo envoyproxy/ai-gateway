@@ -37,6 +37,10 @@ static_resources:
                 route_config:
                   virtual_hosts:
                     - name: local_route
+                      # Keeps x-envoy-attempt-count updated on the request per upstream attempt so the
+                      # dynamic-fallback matcher cluster specifier can key on it (see the
+                      # dynamic-fallback routes below).
+                      include_request_attempt_count: true
                       # TODO: move this at route level to match the behavior of EG.
                       retry_policy:
                         retry_on: "5xx,gateway-error,reset,rest-before-request,connect-failure,envoy-ratelimited,retriable-4xx,refused-stream,retriable-status-codes,retriable-headers"
@@ -293,11 +297,341 @@ static_resources:
                                   exact: body-mutation-anthropic
                           route:
                             cluster: testupstream-body-mutation-anthropic
+                        # Dynamic per-request fallback: slot k serves attempt k+1 because the
+                        # attempt-count header observed at refresh time is the one stamped during
+                        # the previous attempt's upstream send.
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-test-backend
+                                string_match:
+                                  exact: dynamic-fallback
+                          metadata:
+                            filter_metadata:
+                              aigateway.envoy.io:
+                                dynfb_rule_key: "default/route/dyn/rule/0"
+                          route:
+                            retry_policy:
+                              retry_on: "5xx"
+                              num_retries: 2
+                              refresh_cluster_on_retry: true
+                              retry_back_off:
+                                base_interval: "0.05s"
+                                max_interval: "0.2s"
+                            inline_cluster_specifier_plugin:
+                              extension:
+                                name: envoy.router.cluster_specifier_plugin.matcher
+                                typed_config:
+                                  "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.MatcherClusterSpecifier
+                                  cluster_matcher:
+                                    matcher_tree:
+                                      input:
+                                        name: attempt-count
+                                        typed_config:
+                                          "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
+                                          header_name: x-envoy-attempt-count
+                                      exact_match_map:
+                                        map:
+                                          "0":
+                                            matcher:
+                                              matcher_tree:
+                                                input:
+                                                  name: try0
+                                                  typed_config:
+                                                    "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
+                                                    header_name: x-aigw-try-0
+                                                exact_match_map:
+                                                  map:
+                                                    "primary":
+                                                      action:
+                                                        name: cluster
+                                                        typed_config:
+                                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                          cluster: testupstream-dynamic-a5xx
+                                                    "secondary":
+                                                      action:
+                                                        name: cluster
+                                                        typed_config:
+                                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                          cluster: testupstream-dynamic-aws
+                                              on_no_match:
+                                                action:
+                                                  name: cluster
+                                                  typed_config:
+                                                    "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                    cluster: testupstream-dynamic-a5xx
+                                          "1":
+                                            matcher:
+                                              matcher_tree:
+                                                input:
+                                                  name: try1
+                                                  typed_config:
+                                                    "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
+                                                    header_name: x-aigw-try-1
+                                                exact_match_map:
+                                                  map:
+                                                    "primary":
+                                                      action:
+                                                        name: cluster
+                                                        typed_config:
+                                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                          cluster: testupstream-dynamic-a5xx
+                                                    "secondary":
+                                                      action:
+                                                        name: cluster
+                                                        typed_config:
+                                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                          cluster: testupstream-dynamic-aws
+                                              on_no_match:
+                                                action:
+                                                  name: cluster
+                                                  typed_config:
+                                                    "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                    cluster: testupstream-dynamic-aws
+                                          "2":
+                                            matcher:
+                                              matcher_tree:
+                                                input:
+                                                  name: try2
+                                                  typed_config:
+                                                    "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
+                                                    header_name: x-aigw-try-2
+                                                exact_match_map:
+                                                  map:
+                                                    "primary":
+                                                      action:
+                                                        name: cluster
+                                                        typed_config:
+                                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                          cluster: testupstream-dynamic-a5xx
+                                                    "secondary":
+                                                      action:
+                                                        name: cluster
+                                                        typed_config:
+                                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                          cluster: testupstream-dynamic-aws
+                                              on_no_match:
+                                                action:
+                                                  name: cluster
+                                                  typed_config:
+                                                    "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                    cluster: testupstream-dynamic-aws
+                                    on_no_match:
+                                      action:
+                                        name: cluster
+                                        typed_config:
+                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                          cluster: testupstream-dynamic-a5xx
+                        # Same mechanism, but the primary is a healthy openai-schema backend whose
+                        # request will 400 on the testupstream's expectation checks (expectations
+                        # target the secondary's AWS translation). retriable-status-codes: 400 makes
+                        # that mismatch drive the walk, which lets the test assert the exact
+                        # translated path/body that the secondary received.
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-test-backend
+                                string_match:
+                                  exact: dynamic-fallback-strict
+                          metadata:
+                            filter_metadata:
+                              aigateway.envoy.io:
+                                dynfb_rule_key: "default/route/dyn/rule/0"
+                          route:
+                            retry_policy:
+                              retry_on: "5xx,retriable-status-codes"
+                              retriable_status_codes:
+                                - 400
+                              num_retries: 2
+                              refresh_cluster_on_retry: true
+                              retry_back_off:
+                                base_interval: "0.05s"
+                                max_interval: "0.2s"
+                            inline_cluster_specifier_plugin:
+                              extension:
+                                name: envoy.router.cluster_specifier_plugin.matcher
+                                typed_config:
+                                  "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.MatcherClusterSpecifier
+                                  cluster_matcher:
+                                    matcher_tree:
+                                      input:
+                                        name: attempt-count
+                                        typed_config:
+                                          "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
+                                          header_name: x-envoy-attempt-count
+                                      exact_match_map:
+                                        map:
+                                          "0":
+                                            matcher:
+                                              matcher_tree:
+                                                input:
+                                                  name: try0
+                                                  typed_config:
+                                                    "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
+                                                    header_name: x-aigw-try-0
+                                                exact_match_map:
+                                                  map:
+                                                    "primary":
+                                                      action:
+                                                        name: cluster
+                                                        typed_config:
+                                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                          cluster: testupstream-dynamic-openai
+                                                    "secondary":
+                                                      action:
+                                                        name: cluster
+                                                        typed_config:
+                                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                          cluster: testupstream-dynamic-aws
+                                              on_no_match:
+                                                action:
+                                                  name: cluster
+                                                  typed_config:
+                                                    "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                    cluster: testupstream-dynamic-openai
+                                          "1":
+                                            matcher:
+                                              matcher_tree:
+                                                input:
+                                                  name: try1
+                                                  typed_config:
+                                                    "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
+                                                    header_name: x-aigw-try-1
+                                                exact_match_map:
+                                                  map:
+                                                    "primary":
+                                                      action:
+                                                        name: cluster
+                                                        typed_config:
+                                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                          cluster: testupstream-dynamic-openai
+                                                    "secondary":
+                                                      action:
+                                                        name: cluster
+                                                        typed_config:
+                                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                          cluster: testupstream-dynamic-aws
+                                              on_no_match:
+                                                action:
+                                                  name: cluster
+                                                  typed_config:
+                                                    "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                    cluster: testupstream-dynamic-aws
+                                    on_no_match:
+                                      action:
+                                        name: cluster
+                                        typed_config:
+                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                          cluster: testupstream-dynamic-openai
+                        # Same shared clusters as -strict, but a different rule key: the extproc must whose
+                        # resolve rule-scoped backend config (modelNameOverride) via (rule key, backend
+                        # key) composition, proving per-rule config over shared clusters.
+                        - match:
+                            prefix: "/"
+                            headers:
+                              - name: x-test-backend
+                                string_match:
+                                  exact: dynamic-fallback-alt
+                          metadata:
+                            filter_metadata:
+                              aigateway.envoy.io:
+                                dynfb_rule_key: "default/route/dyn/rule/1"
+                          route:
+                            retry_policy:
+                              retry_on: "5xx,retriable-status-codes"
+                              retriable_status_codes:
+                                - 400
+                              num_retries: 2
+                              refresh_cluster_on_retry: true
+                              retry_back_off:
+                                base_interval: "0.05s"
+                                max_interval: "0.2s"
+                            inline_cluster_specifier_plugin:
+                              extension:
+                                name: envoy.router.cluster_specifier_plugin.matcher
+                                typed_config:
+                                  "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.MatcherClusterSpecifier
+                                  cluster_matcher:
+                                    matcher_tree:
+                                      input:
+                                        name: attempt-count
+                                        typed_config:
+                                          "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
+                                          header_name: x-envoy-attempt-count
+                                      exact_match_map:
+                                        map:
+                                          "0":
+                                            matcher:
+                                              matcher_tree:
+                                                input:
+                                                  name: try0
+                                                  typed_config:
+                                                    "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
+                                                    header_name: x-aigw-try-0
+                                                exact_match_map:
+                                                  map:
+                                                    "primary":
+                                                      action:
+                                                        name: cluster
+                                                        typed_config:
+                                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                          cluster: testupstream-dynamic-openai
+                                                    "secondary":
+                                                      action:
+                                                        name: cluster
+                                                        typed_config:
+                                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                          cluster: testupstream-dynamic-aws
+                                              on_no_match:
+                                                action:
+                                                  name: cluster
+                                                  typed_config:
+                                                    "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                    cluster: testupstream-dynamic-openai
+                                          "1":
+                                            matcher:
+                                              matcher_tree:
+                                                input:
+                                                  name: try1
+                                                  typed_config:
+                                                    "@type": type.googleapis.com/envoy.type.matcher.v3.HttpRequestHeaderMatchInput
+                                                    header_name: x-aigw-try-1
+                                                exact_match_map:
+                                                  map:
+                                                    "primary":
+                                                      action:
+                                                        name: cluster
+                                                        typed_config:
+                                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                          cluster: testupstream-dynamic-openai
+                                                    "secondary":
+                                                      action:
+                                                        name: cluster
+                                                        typed_config:
+                                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                          cluster: testupstream-dynamic-aws
+                                              on_no_match:
+                                                action:
+                                                  name: cluster
+                                                  typed_config:
+                                                    "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                                    cluster: testupstream-dynamic-aws
+                                    on_no_match:
+                                      action:
+                                        name: cluster
+                                        typed_config:
+                                          "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.matcher.v3.ClusterAction
+                                          cluster: testupstream-dynamic-openai
                 http_filters:
                   - name: envoy.filters.http.ext_proc
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                       allow_mode_override: true
+                      # The router-level extproc owns the dynamic-fallback matcher inputs,
+                      # including x-envoy-attempt-count; without this, ext_proc silently drops
+                      # any x-envoy-* header mutation (injection and forged-value scrubbing).
+                      mutation_rules:
+                        allow_envoy: true
                       processing_mode:
                         request_header_mode: "SEND"
                         request_body_mode: "BUFFERED"
@@ -1743,6 +2077,182 @@ static_resources:
                   filter_metadata:
                     aigateway.envoy.io:
                       per_route_rule_backend_name: "testupstream-body-mutation-anthropic"
+    # Per-provider clusters for the dynamic-fallback matcher scenario: one cluster per backend — the
+    # shared-cluster-per-provider topology — each carrying its own upstream extproc filter and
+    # endpoint identity metadata, so a refreshed-cluster retry must re-run per-backend
+    # translation/auth against the new cluster's identity. No outlier detection on purpose:
+    # attempts must deterministically reach the upstream.
+    - name: testupstream-dynamic-a5xx
+      connect_timeout: 0.25s
+      type: STATIC
+      per_connection_buffer_limit_bytes: 52428800
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          http_filters:
+            - name: upstream_extproc
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                request_attributes:
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['dynfb_rule_key']
+                processing_mode:
+                  request_header_mode: "SEND"
+                  request_body_mode: "NONE"
+                  response_header_mode: "SKIP"
+                  response_body_mode: "NONE"
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - io.envoy.ai_gateway
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
+            - name: envoy.filters.http.upstream_codec
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
+      load_assignment:
+        cluster_name: testupstream-dynamic-a5xx
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 8080
+                metadata:
+                  filter_metadata:
+                    aigateway.envoy.io:
+                      per_route_rule_backend_name: "backend/default/openai-5xx"
+    - name: testupstream-dynamic-openai
+      connect_timeout: 0.25s
+      type: STATIC
+      per_connection_buffer_limit_bytes: 52428800
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          http_filters:
+            - name: upstream_extproc
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                request_attributes:
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['dynfb_rule_key']
+                processing_mode:
+                  request_header_mode: "SEND"
+                  request_body_mode: "NONE"
+                  response_header_mode: "SKIP"
+                  response_body_mode: "NONE"
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - io.envoy.ai_gateway
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
+            - name: envoy.filters.http.upstream_codec
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
+      load_assignment:
+        cluster_name: testupstream-dynamic-openai
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 8080
+                metadata:
+                  filter_metadata:
+                    aigateway.envoy.io:
+                      per_route_rule_backend_name: "backend/default/openai"
+    - name: testupstream-dynamic-aws
+      connect_timeout: 0.25s
+      type: STATIC
+      per_connection_buffer_limit_bytes: 52428800
+      lb_policy: ROUND_ROBIN
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          http_filters:
+            - name: upstream_extproc
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                request_attributes:
+                  - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['dynfb_rule_key']
+                processing_mode:
+                  request_header_mode: "SEND"
+                  request_body_mode: "NONE"
+                  response_header_mode: "SKIP"
+                  response_body_mode: "NONE"
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: extproc_cluster
+                  timeout: 30s
+                message_timeout: 60s
+                metadataOptions:
+                  receivingNamespaces:
+                    untyped:
+                      - io.envoy.ai_gateway
+            - name: envoy.filters.http.header_mutation
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                mutations:
+                  request_mutations:
+                    - append:
+                        append_action: ADD_IF_ABSENT
+                        header:
+                          key: content-length
+                          value: "%DYNAMIC_METADATA(io.envoy.ai_gateway:content_length)%"
+            - name: envoy.filters.http.upstream_codec
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
+      load_assignment:
+        cluster_name: testupstream-dynamic-aws
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 8080
+                metadata:
+                  filter_metadata:
+                    aigateway.envoy.io:
+                      per_route_rule_backend_name: "backend/default/aws"
 
 overload_manager:
   refresh_interval: 0.25s

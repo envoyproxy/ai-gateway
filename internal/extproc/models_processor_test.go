@@ -7,6 +7,7 @@ package extproc
 
 import (
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +29,8 @@ func TestModels_ProcessRequestHeaders(t *testing.T) {
 			Name:      "openai",
 			OwnedBy:   "openai",
 			CreatedAt: now,
+			// Surfaced as the fallback_candidates extension field in the listing.
+			FallbackCandidates: []string{"azure", "openai"},
 		},
 		{
 			Name:      "aws-bedrock",
@@ -59,7 +62,11 @@ func TestModels_ProcessRequestHeaders(t *testing.T) {
 		require.Equal(t, m.Name, models.Data[i].ID)
 		require.Equal(t, now.Unix(), time.Time(models.Data[i].Created).Unix())
 		require.Equal(t, m.OwnedBy, models.Data[i].OwnedBy)
+		require.Equal(t, m.FallbackCandidates, models.Data[i].FallbackCandidates)
 	}
+	// The raw JSON carries the extension field only where populated.
+	require.Contains(t, string(ir.ImmediateResponse.Body), `"fallback_candidates":["azure","openai"]`)
+	require.Equal(t, 1, strings.Count(string(ir.ImmediateResponse.Body), "fallback_candidates"))
 }
 
 func TestAnthropicModels_ProcessRequestHeaders(t *testing.T) {

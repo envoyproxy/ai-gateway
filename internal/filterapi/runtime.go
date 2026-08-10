@@ -45,6 +45,13 @@ type RuntimeConfig struct {
 	UnscopedModels []Model
 	// Backends is the map of backends by name.
 	Backends map[string]*RuntimeBackend
+	// DynamicFallbackEnabled gates the extproc's dynamic-fallback chain resolution and header
+	// sanitization; inherited from filterapi.Config.
+	DynamicFallbackEnabled bool
+	// DynamicFallbackCandidates maps a model name to the set of published backend names its
+	// fallback chain may order, merged across the global, host-scoped, and unscoped model
+	// lists. Slot headers are injected only for models present here.
+	DynamicFallbackCandidates map[string]map[string]struct{}
 }
 
 // RuntimeBackend is a filter backend with its auth handler that is derived from the filterapi.Backend configuration.
@@ -123,13 +130,41 @@ func NewRuntimeConfig(ctx context.Context, config *Config, fn NewBackendAuthHand
 		costs = append(costs, RuntimeRequestCost{LLMRequestCost: c, CELProg: prog})
 	}
 
+	var fallbackCandidates map[string]map[string]struct{}
+	if config.DynamicFallbackEnabled {
+		fallbackCandidates = map[string]map[string]struct{}{}
+		addCandidates := func(models []Model) {
+			for i := range models {
+				m := &models[i]
+				if len(m.FallbackCandidates) == 0 {
+					continue
+				}
+				set := fallbackCandidates[m.Name]
+				if set == nil {
+					set = make(map[string]struct{}, len(m.FallbackCandidates))
+					fallbackCandidates[m.Name] = set
+				}
+				for _, c := range m.FallbackCandidates {
+					set[c] = struct{}{}
+				}
+			}
+		}
+		addCandidates(config.Models)
+		addCandidates(config.UnscopedModels)
+		for _, models := range config.ModelsByHost {
+			addCandidates(models)
+		}
+	}
+
 	return &RuntimeConfig{
-		UUID:               config.UUID,
-		Backends:           backends,
-		GlobalRequestCosts: globalCosts,
-		RequestCosts:       costs,
-		DeclaredModels:     config.Models,
-		ModelsByHost:       config.ModelsByHost,
-		UnscopedModels:     config.UnscopedModels,
+		UUID:                      config.UUID,
+		Backends:                  backends,
+		GlobalRequestCosts:        globalCosts,
+		RequestCosts:              costs,
+		DeclaredModels:            config.Models,
+		ModelsByHost:              config.ModelsByHost,
+		UnscopedModels:            config.UnscopedModels,
+		DynamicFallbackEnabled:    config.DynamicFallbackEnabled,
+		DynamicFallbackCandidates: fallbackCandidates,
 	}, nil
 }

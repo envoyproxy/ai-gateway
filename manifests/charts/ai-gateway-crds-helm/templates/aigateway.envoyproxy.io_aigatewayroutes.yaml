@@ -414,6 +414,17 @@ spec:
                           AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
                           It can reference either an AIServiceBackend or an InferencePool resource.
                         properties:
+                          alias:
+                            description: |-
+                              Alias is an optional published name for this backend within the rule. It decouples the
+                              externally visible vocabulary (for example, the per-request fallback chain that names the
+                              backends to try in order) from the Kubernetes resource name, so backends can be renamed
+                              without breaking clients or tenant configuration. When unset, the resource name is used.
+
+                              Aliases must be unique among the rule's backendRefs.
+                            maxLength: 32
+                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                            type: string
                           bodyMutation:
                             description: |-
                               BodyMutation defines the request body mutation to be applied to this backend.
@@ -872,6 +883,10 @@ spec:
                     rule: '!has(self.backendRefs) || size(self.backendRefs) == 0 ||
                       !self.backendRefs.exists(ref, has(ref.group) && has(ref.kind))
                       || size(self.backendRefs) == 1'
+                  - message: alias must be unique among the rule's backendRefs
+                    rule: '!has(self.backendRefs) || self.backendRefs.all(r1, !has(r1.alias)
+                      || size(self.backendRefs.filter(r2, has(r2.alias) && r2.alias
+                      == r1.alias)) == 1)'
                 maxItems: 15
                 type: array
                 x-kubernetes-validations:
@@ -1343,6 +1358,17 @@ spec:
                           AIGatewayRouteRuleBackendRef is a reference to a backend with a weight.
                           It can reference either an AIServiceBackend or an InferencePool resource.
                         properties:
+                          alias:
+                            description: |-
+                              Alias is an optional published name for this backend within the rule. It decouples the
+                              externally visible vocabulary (for example, the per-request fallback chain that names the
+                              backends to try in order) from the Kubernetes resource name, so backends can be renamed
+                              without breaking clients or tenant configuration. When unset, the resource name is used.
+
+                              Aliases must be unique among the rule's backendRefs.
+                            maxLength: 32
+                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                            type: string
                           bodyMutation:
                             description: |-
                               BodyMutation defines the request body mutation to be applied to this backend.
@@ -1801,6 +1827,10 @@ spec:
                     rule: '!has(self.backendRefs) || size(self.backendRefs) == 0 ||
                       !self.backendRefs.exists(ref, has(ref.group) && has(ref.kind))
                       || size(self.backendRefs) == 1'
+                  - message: alias must be unique among the rule's backendRefs
+                    rule: '!has(self.backendRefs) || self.backendRefs.all(r1, !has(r1.alias)
+                      || size(self.backendRefs.filter(r2, has(r2.alias) && r2.alias
+                      == r1.alias)) == 1)'
                 maxItems: 15
                 type: array
                 x-kubernetes-validations:

@@ -40,6 +40,10 @@ type Config struct {
 	LLMRequestCosts []LLMRequestCost `json:"llmRequestCosts,omitempty"`
 	// Backends is the list of backends that this listener can route to.
 	Backends []Backend `json:"backends,omitempty"`
+	// DynamicFallbackEnabled is true when at least one AIGatewayRoute on this gateway opts into
+	// dynamic per-request fallback; gates the extproc's chain-header handling and sanitization
+	// of the gateway-owned matcher inputs.
+	DynamicFallbackEnabled bool `json:"dynamicFallbackEnabled,omitempty"`
 	// Models is the list of models that this route is aware of. Used to populate the "/models" endpoint in OpenAI-compatible APIs.
 	Models []Model `json:"models,omitempty"`
 	// ModelsByHost is the list of models keyed by hostname. When present, the extproc "/v1/models" processor will prefer
@@ -63,6 +67,10 @@ type Model struct {
 	OwnedBy string
 	// createdAt will be exported as the field of "Created" in OpenAI-compatible API "/models".
 	CreatedAt time.Time
+	// FallbackCandidates is exported as the "fallback_candidates" extension field in the
+	// "/models" listing: the published backend names a fallback chain may order for this model.
+	// Populated only for rules that enable dynamic fallback.
+	FallbackCandidates []string `json:"fallbackCandidates,omitempty"`
 }
 
 // GlobalLLMRequestCost specifies gateway-level default request cost configuration.

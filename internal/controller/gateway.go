@@ -387,6 +387,11 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			continue
 		}
 		hasEffectiveRoute = true
+		// A single opted-in route enables the extproc's chain resolution and header
+		// sanitization for the whole gateway.
+		if aiGatewayRoute.Annotations[internalapi.DynamicFallbackAnnotationKey] == "true" {
+			ec.DynamicFallbackEnabled = true
+		}
 		routeName := fmt.Sprintf("%s/%s", aiGatewayRoute.Namespace, aiGatewayRoute.Name)
 		hostnames := aiGatewayRoute.Spec.Hostnames
 		spec := aiGatewayRoute.Spec
@@ -395,6 +400,13 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 		injectedQuotaCosts := make(map[string]struct{})
 		for ruleIndex := range spec.Rules {
 			rule := &spec.Rules[ruleIndex]
+			// The rule's published fallback vocabulary for the "/models" listing; nil when the
+			// rule is ineligible for the rewrite, which also gates the composed backend
+			// entries below.
+			var fallbackCandidates []string
+			if aiGatewayRoute.Annotations[internalapi.DynamicFallbackAnnotationKey] == "true" {
+				fallbackCandidates = dynamicFallbackRuleCandidates(rule, aiGatewayRoute.Namespace)
+			}
 			for _, m := range rule.Matches {
 				for _, h := range m.Headers {
 					// If explicitly set to something that is not an exact match, skip.
@@ -405,9 +417,10 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 						continue
 					}
 					model := filterapi.Model{
-						Name:      h.Value,
-						CreatedAt: ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).UTC(),
-						OwnedBy:   ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy),
+						Name:               h.Value,
+						CreatedAt:          ptr.Deref[metav1.Time](rule.ModelsCreatedAt, aiGatewayRoute.CreationTimestamp).UTC(),
+						OwnedBy:            ptr.Deref(rule.ModelsOwnedBy, defaultOwnedBy),
+						FallbackCandidates: fallbackCandidates,
 					}
 					ec.Models = append(ec.Models, model)
 					if len(hostnames) > 0 {
@@ -511,6 +524,19 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 				if _, exists := routeBackendNamesSet[b.Name]; !exists {
 					routeBackendNamesSet[b.Name] = struct{}{}
 					routeBackendNames = append(routeBackendNames, b.Name)
+				}
+				// Dynamic-fallback rules resolve backend config under the composed
+				// (rule key, backend key) name; emit the same config there. The per-rule-ref
+				// entry above is kept for the retained folded cluster, and the
+				// fallbackCandidates gate keeps ineligible rules from emitting composed entries.
+				if ec.DynamicFallbackEnabled && fallbackCandidates != nil &&
+					!backendRef.IsInferencePool() {
+					db := b
+					db.Name = internalapi.DynamicFallbackFilterBackendName(
+						internalapi.DynamicFallbackRuleKey(aiGatewayRoute.Namespace, aiGatewayRoute.Name, ruleIndex),
+						internalapi.DynamicFallbackBackendKey(backendNamespace, backendRef.Name),
+					)
+					ec.Backends = append(ec.Backends, db)
 				}
 			}
 		}

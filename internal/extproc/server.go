@@ -382,6 +382,14 @@ func (s *Server) setBackend(ctx context.Context, p Processor, internalReqID stri
 	}
 	routeName := resolveRouteName(attributes)
 
+	// Shared dynamic-fallback clusters carry only the backend identity in endpoint metadata;
+	// compose it with the rule key from route metadata to resolve the rule-scoped config.
+	if ruleKey, ok := attributes.Fields[internalapi.XDSRouteMetadataDynamicFallbackRuleKeyPath]; ok {
+		if rk := ruleKey.GetStringValue(); rk != "" {
+			backendName = internalapi.DynamicFallbackFilterBackendName(rk, backendName)
+		}
+	}
+
 	backend, ok := s.config.Backends[backendName]
 	if !ok {
 		return status.Errorf(codes.Internal, "unknown backend: %s", backendName)

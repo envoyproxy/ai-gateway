@@ -288,9 +288,21 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 	r.originalRequestBody = body
 	r.stream = stream
 
+	// Resolve the trusted chain header into the x-aigw-try-<k> slot headers and sanitize the
+	// gateway-owned matcher inputs. Must be in the same mutation batch as the model header: the
+	// matcher cluster specifier evaluates these headers at the post-ClearRouteCache re-match.
+	var dynamicFallbackRemoves []string
+	if r.config.DynamicFallbackEnabled {
+		var dynamicFallbackSets []*corev3.HeaderValueOption
+		dynamicFallbackSets, dynamicFallbackRemoves = dynamicFallbackHeaderMutations(
+			r.requestHeaders, r.config.DynamicFallbackCandidates[originalModel], r.logger)
+		additionalHeaders = append(additionalHeaders, dynamicFallbackSets...)
+	}
+
 	// Tracing may need to inject headers, so create a header mutation here.
 	headerMutation := &extprocv3.HeaderMutation{
-		SetHeaders: additionalHeaders,
+		SetHeaders:    additionalHeaders,
+		RemoveHeaders: dynamicFallbackRemoves,
 	}
 	r.span = r.tracer.StartSpanAndInjectHeaders(
 		ctx,

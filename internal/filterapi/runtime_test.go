@@ -131,4 +131,52 @@ func TestServer_LoadConfig(t *testing.T) {
 		require.Contains(t, err.Error(), "must have non-empty RouteName")
 		require.Contains(t, err.Error(), "missing_route")
 	})
+
+	t.Run("error - backend auth handler", func(t *testing.T) {
+		config := &Config{
+			Backends: []Backend{
+				{Name: "openai", Auth: &BackendAuth{APIKey: &APIKeyAuth{Key: "dummy"}}},
+			},
+		}
+		_, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
+			return nil, context.DeadlineExceeded
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cannot create backend auth handler")
+	})
+
+	t.Run("dynamic fallback candidates", func(t *testing.T) {
+		config := &Config{
+			DynamicFallbackEnabled: true,
+			Models: []Model{
+				{Name: "m1", FallbackCandidates: []string{"alpha", "beta"}},
+				{Name: "no-candidates"},
+			},
+			UnscopedModels: []Model{
+				{Name: "m2", FallbackCandidates: []string{"gamma"}},
+			},
+			ModelsByHost: map[string][]Model{
+				// m1 declared under a host merges into the same set.
+				"example.com": {{Name: "m1", FallbackCandidates: []string{"delta"}}},
+			},
+		}
+		cfg, err := NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
+			return nil, nil
+		})
+		require.NoError(t, err)
+		require.True(t, cfg.DynamicFallbackEnabled)
+		require.Equal(t, map[string]map[string]struct{}{
+			"m1": {"alpha": {}, "beta": {}, "delta": {}},
+			"m2": {"gamma": {}},
+		}, cfg.DynamicFallbackCandidates)
+
+		// Disabled: no candidate map at all, regardless of model config.
+		config.DynamicFallbackEnabled = false
+		cfg, err = NewRuntimeConfig(t.Context(), config, func(_ context.Context, _ *BackendAuth) (BackendAuthHandler, error) {
+			return nil, nil
+		})
+		require.NoError(t, err)
+		require.False(t, cfg.DynamicFallbackEnabled)
+		require.Nil(t, cfg.DynamicFallbackCandidates)
+	})
 }
