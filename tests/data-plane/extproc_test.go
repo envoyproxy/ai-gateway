@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/tests/internal/dataplaneenv"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testupstreamlib"
 )
@@ -32,6 +33,13 @@ const (
 	eventuallyTimeout         = 20 * time.Second
 	eventuallyInterval        = 10 * time.Millisecond
 	fakeGCPAuthToken          = "fake-gcp-auth-token" //nolint:gosec
+	// fakeAWSCredentialFile is the static credential the AWS backend falls back to when a request
+	// carries no per-request credential. It deliberately has no session token, so the presence of
+	// X-Amz-Security-Token upstream is unambiguous proof that a per-request credential was used.
+	fakeAWSCredentialFile = "[default]\naws_access_key_id=AKIASTATICFALLBACK\naws_secret_access_key=static-fallback-secret\n" //nolint:gosec
+	// fakeAWSPerRequestSessionToken is injected by the client in the per-request credential test and
+	// must appear verbatim as X-Amz-Security-Token on the signed upstream request.
+	fakeAWSPerRequestSessionToken = "per-request-session-token" //nolint:gosec
 )
 
 var (
@@ -51,9 +59,32 @@ var (
 	deepInfraSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1/openai"}
 	anthropicSchema      = filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}
 
-	testUpstreamOpenAIBackend      = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
-	testUpstreamModelNameOverride  = filterapi.Backend{Name: "testupstream-modelname-override", ModelNameOverride: "override-model", Schema: openAISchema}
-	testUpstreamAAWSBackend        = filterapi.Backend{Name: "testupstream-aws", Schema: awsBedrockSchema}
+	// awsCredentialOverrideHeaders are the three headers carrying a per-request SigV4 credential,
+	// derived from the default prefix exactly as the controller derives them.
+	awsCredentialOverrideHeaders = func() []string {
+		accessKeyID, secretAccessKey, sessionToken := internalapi.AWSCredentialOverrideHeaderNames(
+			internalapi.AWSCredentialOverrideHeaderPrefix)
+		return []string{accessKeyID, secretAccessKey, sessionToken}
+	}()
+
+	testUpstreamOpenAIBackend     = filterapi.Backend{Name: "testupstream-openai", Schema: openAISchema}
+	testUpstreamModelNameOverride = filterapi.Backend{Name: "testupstream-modelname-override", ModelNameOverride: "override-model", Schema: openAISchema}
+	// testUpstreamAAWSBackend signs with SigV4 using a static credential file, and accepts a
+	// per-request credential from the x-aigw-aws-* headers. The HeaderMutation mirrors what the
+	// controller emits for a header-source credentialOverride, so the strip is exercised through
+	// the real Envoy rather than asserted in a unit test.
+	testUpstreamAAWSBackend = filterapi.Backend{
+		Name: "testupstream-aws", Schema: awsBedrockSchema,
+		Auth: &filterapi.BackendAuth{
+			AWSAuth: &filterapi.AWSAuth{CredentialFileLiteral: fakeAWSCredentialFile, Region: "us-east-1"},
+			CredentialOverride: &filterapi.CredentialOverride{
+				HeaderName:           internalapi.AWSCredentialOverrideHeaderPrefix,
+				FallbackToConfigured: true,
+				InputHeadersToRemove: awsCredentialOverrideHeaders,
+			},
+		},
+		HeaderMutation: &filterapi.HTTPHeaderMutation{Remove: awsCredentialOverrideHeaders},
+	}
 	testUpstreamAzureBackend       = filterapi.Backend{Name: "testupstream-azure", Schema: azureOpenAISchema}
 	testUpstreamGCPVertexAIBackend = filterapi.Backend{Name: "testupstream-gcp-vertexai", Schema: gcpVertexAISchema, Auth: &filterapi.BackendAuth{GCPAuth: &filterapi.GCPAuth{
 		AccessToken: fakeGCPAuthToken,

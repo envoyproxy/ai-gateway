@@ -257,6 +257,48 @@ func TestWithTestUpstream(t *testing.T) {
 			nonExpectedRequestHeaders: []string{"x-ai-eg-upstream-host"},
 		},
 		{
+			// A trusted filter injects a per-request SigV4 credential. The upstream must see a
+			// signature carrying that session token, and must not see the credential headers
+			// themselves. Only Envoy can prove the second half: dropping the headers from the
+			// extproc's local map would not remove them from the wire.
+			name:            "aws-bedrock - per-request credential signs and is stripped before upstream",
+			backend:         "aws-bedrock",
+			path:            "/v1/chat/completions",
+			method:          http.MethodPost,
+			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:         "/model/something/converse",
+			responseBody:    `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
+			expRequestBody:  `{"inferenceConfig":{},"messages":[],"system":[{"text":"You are a chatbot."}]}`,
+			expStatus:       http.StatusOK,
+			responseHeaders: "x-amzn-requestid:2bc5b090-a26c-4007-9467-ce5adc4ffa1d",
+			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant"}}],"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","created":123,"model":"something","object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
+			requestHeaders: map[string]string{
+				"x-aigw-aws-access-key-id":     "ASIAPERREQUEST",
+				"x-aigw-aws-secret-access-key": "per-request-secret",
+				"x-aigw-aws-session-token":     fakeAWSPerRequestSessionToken,
+			},
+			// The static fallback credential has no session token, so this header can only come
+			// from the per-request credential.
+			expRequestHeaders:         map[string]string{"X-Amz-Security-Token": fakeAWSPerRequestSessionToken},
+			nonExpectedRequestHeaders: awsCredentialOverrideHeaders,
+		},
+		{
+			// No per-request credential: falls back to the configured credential file, which has no
+			// session token, so no X-Amz-Security-Token reaches the upstream.
+			name:                      "aws-bedrock - no per-request credential falls back to the configured one",
+			backend:                   "aws-bedrock",
+			path:                      "/v1/chat/completions",
+			method:                    http.MethodPost,
+			requestBody:               `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:                   "/model/something/converse",
+			responseBody:              `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
+			expRequestBody:            `{"inferenceConfig":{},"messages":[],"system":[{"text":"You are a chatbot."}]}`,
+			expStatus:                 http.StatusOK,
+			responseHeaders:           "x-amzn-requestid:2bc5b090-a26c-4007-9467-ce5adc4ffa1d",
+			expResponseBody:           `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant"}}],"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","created":123,"model":"something","object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
+			nonExpectedRequestHeaders: []string{"X-Amz-Security-Token"},
+		},
+		{
 			name:            "openai - /v1/chat/completions",
 			backend:         "openai",
 			path:            "/v1/chat/completions",

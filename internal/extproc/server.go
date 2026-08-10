@@ -471,12 +471,27 @@ func (s *Server) List(context.Context, *grpc_health_v1.HealthListRequest) (*grpc
 	}}, nil
 }
 
+// awsCredentialHeaderSuffixes are the tails of the three request headers carrying a per-request
+// AWS SigV4 credential. The prefix in front of them is configurable, so matching on the suffix is
+// what keeps the secret access key out of debug logs when an operator picks a prefix outside the
+// x-aigw- namespace — for example "x-aws-", to keep an existing injector unchanged.
+var awsCredentialHeaderSuffixes = []string{"-access-key-id", "-secret-access-key", "-session-token"}
+
 // isSensitiveHeader reports whether the header name should be redacted in logs.
 // In addition to the static sensitiveHeaderKeys list, any header with the "x-aigw-"
-// prefix is treated as sensitive because it carries per-request credential overrides.
+// prefix is treated as sensitive because it carries per-request credential overrides,
+// as is any header naming one of the three AWS SigV4 credential parts under any prefix.
 func isSensitiveHeader(key string, sensitiveKeys []string) bool {
 	lower := strings.ToLower(key)
-	return slices.Contains(sensitiveKeys, lower) || strings.HasPrefix(lower, "x-aigw-")
+	if slices.Contains(sensitiveKeys, lower) || strings.HasPrefix(lower, "x-aigw-") {
+		return true
+	}
+	for _, suffix := range awsCredentialHeaderSuffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 // filterSensitiveHeadersForLogging filters out sensitive headers from the provided HeaderMap for logging.
