@@ -38,6 +38,7 @@ type accessLogLine struct {
 	MCPProviderName  any    `json:"mcp.provider.name"`
 	MCPMethodName    any    `json:"mcp.method.name"`
 	MCPToolName      any    `json:"mcp.tool.name"`
+	MCPResourceURI   any    `json:"mcp.resource.uri"`
 	JSONRPCRequestID any    `json:"jsonrpc.request.id"`
 }
 
@@ -147,6 +148,37 @@ func TestMCPAccessLogMetadata(t *testing.T) {
 				return false
 			}
 			return line.JSONRPCRequestID != nil
+		})
+	}, 15*time.Second, 500*time.Millisecond)
+}
+
+// TestMCPAccessLogResourceURI covers the one MCP metadata header the access log cannot get any other
+// way: x-ai-eg-mcp-metadata-resource-uri is consumed and removed by header_to_metadata, so %REQ(...)%
+// cannot see it.
+//
+// The logged value is the upstream URI, not the client-facing composite one the client sent, because
+// addMCPHeaders runs after the backend prefix is stripped. That matches mcp.tool.name, which
+// TestMCPAccessLogMetadata asserts is the bare tool name. The composite form stays available on the
+// span - see the mcp.resource.uri assertion in testReadResource - and is recoverable from the log by
+// pairing this with mcp.provider.name.
+func TestMCPAccessLogResourceURI(t *testing.T) {
+	env := requireNewMCPEnv(t, false, 1200*time.Second, defaultMCPPath)
+	session := env.newSession(t)
+
+	_, err := session.session.ReadResource(t.Context(), &mcp.ReadResourceParams{
+		URI: defaultMCPBackendResourceURIPrefix + testmcp.DummyResource.URI,
+	})
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return accessLogHasLine(env.env.EnvoyStdout(), func(line accessLogLine) bool {
+			if line.MCPMethodName != "resources/read" {
+				return false
+			}
+			if line.MCPProviderName != defaultMCPBackend {
+				return false
+			}
+			return line.MCPResourceURI == testmcp.DummyResource.URI
 		})
 	}, 15*time.Second, 500*time.Millisecond)
 }

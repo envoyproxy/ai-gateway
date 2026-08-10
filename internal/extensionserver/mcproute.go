@@ -7,6 +7,8 @@ package extensionserver
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	egextension "github.com/envoyproxy/gateway/proto/extension"
@@ -99,13 +101,17 @@ func (s *Server) createBackendListener(mcpHTTPFilters []*httpconnectionmanagerv3
 	// Here we configure the header-to-metadata filter to extract those headers, populate the filter metadata, and clean
 	// the headers up from the request before sending it upstream.
 	headersToMetadata := &htomv3.Config{}
-	for h, m := range internalapi.MCPInternalHeadersToMetadata {
+	// Sorted, because ranging a map emits the rules in a different order every time. That changes the
+	// serialized listener, which bumps the xDS version and makes Envoy replace and drain this listener
+	// on every translation, even when no MCP config changed. buildHeaderToMetadataFilter sorts for the
+	// same reason.
+	for _, h := range slices.Sorted(maps.Keys(internalapi.MCPInternalHeadersToMetadata)) {
 		headersToMetadata.RequestRules = append(headersToMetadata.RequestRules,
 			&htomv3.Config_Rule{
 				Header: h,
 				OnHeaderPresent: &htomv3.Config_KeyValuePair{
 					MetadataNamespace: aigv1b1.AIGatewayFilterMetadataNamespace,
-					Key:               m,
+					Key:               internalapi.MCPInternalHeadersToMetadata[h],
 					Type:              htomv3.Config_STRING,
 				},
 				// If the header was an internal MCP header, we remove it before sending the request upstream.
