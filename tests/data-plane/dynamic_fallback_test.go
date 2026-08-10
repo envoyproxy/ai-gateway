@@ -78,7 +78,7 @@ func TestDynamicFallback(t *testing.T) {
 		expOpenAIAltModelResponse = `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant"}}],"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","created":123,"model":"alt-model","object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`
 	)
 
-	const openAIPassthroughResponse = `{"choices":[{"message":{"content":"This is a test."}}]}`
+	const openAIEchoResponse = `{"choices":[{"message":{"content":"This is a test."}}]}`
 
 	for _, tc := range []struct {
 		name, backend  string
@@ -135,8 +135,8 @@ func TestDynamicFallback(t *testing.T) {
 				internalapi.EnvoyAttemptCountHeader:               "1",
 				internalapi.DynamicFallbackSlotHeaderPrefix + "1": "secondary",
 			},
-			responseBody: openAIPassthroughResponse,
-			expResponse:  openAIPassthroughResponse,
+			responseBody: openAIEchoResponse,
+			expResponse:  openAIEchoResponse,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

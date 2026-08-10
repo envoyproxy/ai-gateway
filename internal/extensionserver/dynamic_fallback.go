@@ -208,8 +208,7 @@ func (s *Server) maybeApplyDynamicFallbackToRoute(
 		},
 	}
 	// Composes with the shared cluster's backend key in the extproc's config lookup.
-	ensureRouteInternalMetadata(route).Fields[internalapi.InternalMetadataDynamicFallbackRuleKey] =
-		structpb.NewStringValue(ruleKey)
+	ensureRouteInternalMetadata(route).Fields[internalapi.InternalMetadataDynamicFallbackRuleKey] = structpb.NewStringValue(ruleKey)
 	if action.RetryPolicy == nil {
 		action.RetryPolicy = &routev3.RetryPolicy{}
 	}

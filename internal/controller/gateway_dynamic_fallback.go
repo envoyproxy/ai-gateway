@@ -37,7 +37,7 @@ func dynamicFallbackRuleCandidates(rule *aigv1b1.AIGatewayRouteRule, routeNamesp
 		if ref.Alias != "" {
 			name = ref.Alias
 		}
-		backendKey := string(ref.GetNamespace(routeNamespace)) + "/" + ref.Name
+		backendKey := ref.GetNamespace(routeNamespace) + "/" + ref.Name
 		if _, dup := seenBackends[backendKey]; dup {
 			return nil
 		}
