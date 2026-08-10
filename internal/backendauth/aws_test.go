@@ -207,6 +207,27 @@ func TestAWSHandler_Do_SignsOverResolvedHost(t *testing.T) {
 		require.Contains(t, auth, "/us-west-2/bedrock/aws4_request")
 		require.Equal(t, recompute(t, vpce, "us-west-2", amzDate), auth)
 	})
+
+	t.Run("signing region self-corrects from a FIPS resolved host", func(t *testing.T) {
+		const fips = "bedrock-runtime-fips.us-west-2.amazonaws.com"
+		auth, amzDate := sign(t, map[string]string{internalapi.UpstreamHostHeader: fips})
+		require.Contains(t, auth, "/us-west-2/bedrock/aws4_request")
+		require.Equal(t, recompute(t, fips, "us-west-2", amzDate), auth)
+	})
+
+	t.Run("signing region self-corrects from an api.aws resolved host", func(t *testing.T) {
+		const apiAWS = "bedrock-runtime.us-west-2.api.aws"
+		auth, amzDate := sign(t, map[string]string{internalapi.UpstreamHostHeader: apiAWS})
+		require.Contains(t, auth, "/us-west-2/bedrock/aws4_request")
+		require.Equal(t, recompute(t, apiAWS, "us-west-2", amzDate), auth)
+	})
+
+	t.Run("configured region is kept for a custom host with no derivable region", func(t *testing.T) {
+		const custom = "bedrock.corp.internal"
+		auth, amzDate := sign(t, map[string]string{internalapi.UpstreamHostHeader: custom})
+		require.Contains(t, auth, "/us-east-1/bedrock/aws4_request")
+		require.Equal(t, recompute(t, custom, "us-east-1", amzDate), auth)
+	})
 }
 
 func TestAWSHandler_Do(t *testing.T) {

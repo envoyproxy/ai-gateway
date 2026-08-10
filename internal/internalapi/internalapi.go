@@ -126,16 +126,26 @@ func PerRouteRuleRefBackendName(namespace, name, routeName string, routeRuleInde
 	return fmt.Sprintf("%s/%s/route/%s/rule/%d/ref/%d", namespace, name, routeName, routeRuleIndex, refIndex)
 }
 
-// awsBedrockHostRE matches an AWS Bedrock runtime host, including the PrivateLink (VPCE) form, and
-// captures the region — e.g. bedrock-runtime.us-east-1.amazonaws.com and
-// vpce-<id>.bedrock-runtime.us-east-1.vpce.amazonaws.com both yield "us-east-1". The anchors reject a
-// spoofed suffix such as bedrock-runtime.us-east-1.amazonaws.com.evil.com.
-var awsBedrockHostRE = regexp.MustCompile(`(?:^|\.)bedrock-runtime\.([a-z0-9-]+)\.(?:vpce\.)?amazonaws\.com$`)
+// awsBedrockHostRE matches an AWS Bedrock runtime host — public, FIPS, PrivateLink (VPCE), or the
+// newer api.aws domain — and captures the region, e.g. bedrock-runtime.us-east-1.amazonaws.com,
+// bedrock-runtime-fips.us-east-1.amazonaws.com, vpce-<id>.bedrock-runtime.us-east-1.vpce.amazonaws.com,
+// and bedrock-runtime.us-east-1.api.aws all yield "us-east-1". The anchors reject a spoofed suffix such
+// as bedrock-runtime.us-east-1.amazonaws.com.evil.com.
+var awsBedrockHostRE = regexp.MustCompile(`(?:^|\.)bedrock-runtime(?:-fips)?\.([a-z0-9-]+)\.(?:vpce\.amazonaws\.com|amazonaws\.com|api\.aws)$`)
 
-// AWSBedrockRegionFromHost returns the AWS region encoded in a Bedrock signing host (public or VPCE
-// form), or "" if host is not an AWS Bedrock host. It serves two purposes: deriving the SigV4 signing
-// region from the resolved host, and — via a non-empty result — signaling "this endpoint is AWS
-// Bedrock" so the signing host is stamped only on Bedrock endpoints, not on every backend.
+// AWSBedrockRegionFromHost returns the AWS region encoded in a Bedrock signing host, or "" if no region
+// can be derived from host. It is used to self-correct the SigV4 signing region when the resolved
+// upstream host disagrees with the handler's configured region (e.g. a VPCE in a different region than
+// the gateway was configured for). Recognized forms, all case-sensitive lowercase:
+//   - Public: bedrock-runtime.<region>.amazonaws.com
+//   - Public FIPS: bedrock-runtime-fips.<region>.amazonaws.com
+//   - PrivateLink (VPCE): <vpce-id>.bedrock-runtime.<region>.vpce.amazonaws.com
+//   - PrivateLink FIPS: <vpce-id>.bedrock-runtime-fips.<region>.vpce.amazonaws.com
+//   - Newer API domain: bedrock-runtime.<region>.api.aws
+//
+// Any other host — including a custom/internal hostname such as bedrock.corp.internal, which encodes no
+// region at all — yields "", and the caller falls back to its statically configured region. That
+// fallback is correct in that case, not a bug: there is no region to extract from an arbitrary hostname.
 func AWSBedrockRegionFromHost(host string) string {
 	if m := awsBedrockHostRE.FindStringSubmatch(host); m != nil {
 		return m[1]

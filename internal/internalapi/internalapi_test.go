@@ -275,8 +275,13 @@ func TestAWSBedrockRegionFromHost(t *testing.T) {
 		{"public bedrock host", "bedrock-runtime.us-east-1.amazonaws.com", "us-east-1"},
 		{"vpce host", "vpce-123.bedrock-runtime.us-west-2.vpce.amazonaws.com", "us-west-2"},
 		{"prefixed bedrock host", "aaa.bedrock-runtime.eu-central-1.amazonaws.com", "eu-central-1"},
+		{"fips public bedrock host", "bedrock-runtime-fips.us-east-1.amazonaws.com", "us-east-1"},
+		{"fips vpce host", "vpce-123.bedrock-runtime-fips.us-west-2.vpce.amazonaws.com", "us-west-2"},
+		{"api.aws domain host", "bedrock-runtime.ap-southeast-2.api.aws", "ap-southeast-2"},
 		{"non-bedrock host", "api.openai.com", ""},
+		{"custom internal host has no derivable region", "bedrock.corp.internal", ""},
 		{"spoofed suffix is rejected", "bedrock-runtime.us-east-1.amazonaws.com.evil.com", ""},
+		{"spoofed api.aws suffix is rejected", "bedrock-runtime.us-east-1.api.aws.evil.com", ""},
 		{"empty", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
