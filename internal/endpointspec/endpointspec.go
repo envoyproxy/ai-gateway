@@ -194,6 +194,14 @@ func (ChatCompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Ch
 		redactedPrediction.Content = redactContentUnion(req.PredictionContent.Content)
 		redacted.PredictionContent = &redactedPrediction
 	}
+	if req.PromptCacheKey != "" {
+		redacted.PromptCacheKey = redaction.RedactString(req.PromptCacheKey)
+	}
+	if req.PromptCacheOptions != nil {
+		redactedOptions := *req.PromptCacheOptions
+		redactedOptions.Mode = redaction.RedactString(req.PromptCacheOptions.Mode)
+		redacted.PromptCacheOptions = &redactedOptions
+	}
 
 	// Tool definitions (name, description, parameters) are developer-authored schema metadata,
 	// not user data — kept as-is.
@@ -553,6 +561,7 @@ func redactContentUnion(content openai.ContentUnion) openai.ContentUnion {
 		for i, part := range v {
 			redactedPart := part
 			redactedPart.Text = redaction.RedactString(part.Text)
+			redactedPart.PromptCacheBreakpoint = redactPromptCacheBreakpoint(part.PromptCacheBreakpoint)
 			redactedParts[i] = redactedPart
 		}
 		return openai.ContentUnion{Value: redactedParts}
@@ -622,6 +631,7 @@ func redactUserContentPart(part openai.ChatCompletionContentPartUserUnionParam) 
 	if part.OfText != nil {
 		redactedText := *part.OfText
 		redactedText.Text = redaction.RedactString(part.OfText.Text)
+		redactedText.PromptCacheBreakpoint = redactPromptCacheBreakpoint(part.OfText.PromptCacheBreakpoint)
 		redacted.OfText = &redactedText
 	}
 
@@ -649,6 +659,15 @@ func redactUserContentPart(part openai.ChatCompletionContentPartUserUnionParam) 
 	}
 
 	return redacted
+}
+
+func redactPromptCacheBreakpoint(breakpoint *openai.ChatCompletionPromptCacheBreakpoint) *openai.ChatCompletionPromptCacheBreakpoint {
+	if breakpoint == nil {
+		return nil
+	}
+	redacted := *breakpoint
+	redacted.Mode = redaction.RedactString(breakpoint.Mode)
+	return &redacted
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].

@@ -579,6 +579,56 @@ func TestChatCompletionsEndpointSpec_RedactSensitiveInfoFromRequest(t *testing.T
 		require.Contains(t, parts[1].OfImageURL.ImageURL.URL, "[REDACTED LENGTH=")
 	})
 
+	t.Run("redact_prompt_cache_fields", func(t *testing.T) {
+		req := &openai.ChatCompletionRequest{
+			Model: "gpt-4o",
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				{
+					OfUser: &openai.ChatCompletionUserMessageParam{
+						Role: "user",
+						Content: openai.StringOrUserRoleContentUnion{
+							Value: []openai.ChatCompletionContentPartUserUnionParam{
+								{
+									OfText: &openai.ChatCompletionContentPartTextParam{
+										Text: "stable sensitive prefix",
+										Type: "text",
+										PromptCacheBreakpoint: &openai.ChatCompletionPromptCacheBreakpoint{
+											Mode: "tenant-breakpoint-mode",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			PromptCacheKey: "tenant:acme:v1",
+			PromptCacheOptions: &openai.ChatCompletionPromptCacheOptions{
+				Mode: "tenant-cache-mode",
+			},
+		}
+
+		redacted, err := spec.RedactSensitiveInfoFromRequest(req)
+		require.NoError(t, err)
+		require.NotNil(t, redacted)
+
+		require.Contains(t, redacted.PromptCacheKey, "[REDACTED LENGTH=")
+		require.NotContains(t, redacted.PromptCacheKey, "tenant:acme:v1")
+		require.NotNil(t, redacted.PromptCacheOptions)
+		require.Contains(t, redacted.PromptCacheOptions.Mode, "[REDACTED LENGTH=")
+		require.NotContains(t, redacted.PromptCacheOptions.Mode, "tenant-cache-mode")
+
+		parts := redacted.Messages[0].OfUser.Content.Value.([]openai.ChatCompletionContentPartUserUnionParam)
+		require.NotNil(t, parts[0].OfText.PromptCacheBreakpoint)
+		require.Contains(t, parts[0].OfText.PromptCacheBreakpoint.Mode, "[REDACTED LENGTH=")
+		require.NotContains(t, parts[0].OfText.PromptCacheBreakpoint.Mode, "tenant-breakpoint-mode")
+
+		originalParts := req.Messages[0].OfUser.Content.Value.([]openai.ChatCompletionContentPartUserUnionParam)
+		require.Equal(t, "tenant:acme:v1", req.PromptCacheKey)
+		require.Equal(t, "tenant-cache-mode", req.PromptCacheOptions.Mode)
+		require.Equal(t, "tenant-breakpoint-mode", originalParts[0].OfText.PromptCacheBreakpoint.Mode)
+	})
+
 	t.Run("redact_assistant_message_with_tool_calls", func(t *testing.T) {
 		req := &openai.ChatCompletionRequest{
 			Model: "gpt-4o",
