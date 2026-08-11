@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -708,7 +709,25 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 		// Forward OAuth claim-to-header mappings to all backends in this route.
 		if route.Spec.SecurityPolicy != nil && route.Spec.SecurityPolicy.OAuth != nil {
 			for _, ctoh := range route.Spec.SecurityPolicy.OAuth.ClaimToHeaders {
-				mcpRoute.ForwardHeaders = append(mcpRoute.ForwardHeaders, ctoh.Header)
+				if !slices.Contains(mcpRoute.ForwardHeaders, ctoh.Header) {
+					mcpRoute.ForwardHeaders = append(mcpRoute.ForwardHeaders, ctoh.Header)
+				}
+			}
+		}
+		// Forward the api-key-auth client-identity header to all backends in this
+		// route, mirroring the OAuth claim-to-header bridge above. Without this the
+		// caller id injected by apiKeyAuth.forwardClientIDHeader has no path to the
+		// MCP proxy request, so it never reaches the backends nor the MCP
+		// request-attribute plumbing (metrics/spans/logs). See #2422.
+		//
+		// Dedup against ForwardHeaders: OAuth and API-key auth can both be configured on
+		// the same route, and pointing both at the same header name is how you get a
+		// single unified caller-attribution label regardless of which method authenticated.
+		if route.Spec.SecurityPolicy != nil && route.Spec.SecurityPolicy.APIKeyAuth != nil {
+			if h := route.Spec.SecurityPolicy.APIKeyAuth.ForwardClientIDHeader; h != nil && *h != "" {
+				if !slices.Contains(mcpRoute.ForwardHeaders, *h) {
+					mcpRoute.ForwardHeaders = append(mcpRoute.ForwardHeaders, *h)
+				}
 			}
 		}
 		mc.Routes = append(mc.Routes, mcpRoute)
