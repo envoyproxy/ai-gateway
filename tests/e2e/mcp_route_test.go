@@ -10,7 +10,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -22,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
+	"github.com/envoyproxy/ai-gateway/internal/json"
 	"github.com/envoyproxy/ai-gateway/tests/internal/e2elib"
 	"github.com/envoyproxy/ai-gateway/tests/internal/testmcp"
 )
@@ -294,7 +294,7 @@ func requireCreateMCPBackendSelectorJWTRoute(t *testing.T) (routePath string, pr
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	n := base64.RawURLEncoding.EncodeToString(priv.PublicKey.N.Bytes())
+	n := base64.RawURLEncoding.EncodeToString(priv.N.Bytes())
 	jwks := fmt.Sprintf(`{"keys":[{"kty":"RSA","n":"%s","e":"AQAB","alg":"RS256","use":"sig","kid":"%s"}]}`,
 		n, mcpBackendSelectorJWTKeyID)
 	// Marshal the JWKS blob through encoding/json so it comes out as a properly quoted and
