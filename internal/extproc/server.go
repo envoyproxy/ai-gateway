@@ -217,6 +217,8 @@ func (s *Server) Process(stream extprocv3.ExternalProcessor_ProcessServer) error
 				if internalReqID == "" {
 					return status.Errorf(codes.Internal, "missing internal request ID header from router filter")
 				}
+				upstreamHostAttrs := req.GetAttributes()["envoy.filters.http.ext_proc"]
+				setUpstreamHostAttributes(headersMap, upstreamHostAttrs)
 			} else {
 				// For router filter, create a unique internal request ID to avoid race conditions
 				// with duplicate x-request-id values by appending a UUID suffix to the original request ID
@@ -464,6 +466,24 @@ func resolveRouteName(attributes *structpb.Struct) string {
 	// Keep request processing working and let CEL expressions decide behavior
 	// when route_name is empty.
 	return ""
+}
+
+func setUpstreamHostAttributes(headers map[string]string, attributes *structpb.Struct) {
+	// The upstream-host header is an internal, controller-derived value. A downstream client could also
+	// send it, so drop any inbound copy before overlaying trusted xDS metadata — otherwise, for an
+	// endpoint with no derivable metadata (e.g. EDS), the client-supplied value would survive and drive
+	// the AWS handler's SigV4 host.
+	delete(headers, internalapi.UpstreamHostHeader)
+
+	if attributes == nil {
+		return
+	}
+
+	if v, ok := attributes.Fields[internalapi.XDSUpstreamHostMetadataUpstreamHostPath]; ok {
+		if host := v.GetStringValue(); host != "" {
+			headers[internalapi.UpstreamHostHeader] = host
+		}
+	}
 }
 
 // Check implements [grpc_health_v1.HealthServer].

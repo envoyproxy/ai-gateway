@@ -10,6 +10,7 @@ package internalapi
 import (
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -27,6 +28,9 @@ const (
 	InternalEndpointMetadataNamespace = "aigateway.envoy.io"
 	// InternalMetadataBackendNameKey is the key used to store the backend name
 	InternalMetadataBackendNameKey = "per_route_rule_backend_name"
+	// InternalMetadataUpstreamHostKey is the key used to store the resolved upstream host on endpoint
+	// metadata (e.g. consumed by the AWS backend auth handler for SigV4 signing).
+	InternalMetadataUpstreamHostKey = "upstream_host"
 	// InternalMetadataRouteNameKey is the key used to store the route name.
 	InternalMetadataRouteNameKey = "aigw_route_name"
 	// EnvoyLbMetadataNamespace is the well-known Envoy namespace for load-balancing
@@ -41,6 +45,10 @@ const (
 	//   3. As a route's MetadataMatch under EnvoyLbMetadataNamespace, on synthesized sticky routes.
 	// The subset load balancer uses (2)+(3) to pin the request to the selected backend's endpoints.
 	AIGatewaySelectedBackendMetadataKey = "selected_backend"
+	// UpstreamHostHeader carries the upstream host resolved at config time from the upstream ext_proc
+	// filter to backend auth handlers. The AWS handler derives its SigV4 signing region from this host,
+	// so there is no separate region header.
+	UpstreamHostHeader = EnvoyAIGatewayHeaderPrefix + "upstream-host"
 	// MCPBackendHeader is the special header key used to specify the target backend name.
 	MCPBackendHeader = EnvoyAIGatewayHeaderPrefix + "mcp-backend"
 	// MCPRouteHeader is the special header key used to identify the mcp route.
@@ -71,14 +79,38 @@ const (
 	MCPMetadataHeaderMethod = MCPMetadataHeaderPrefix + "method"
 	// MCPMetadataHeaderToolName is the special header key used to pass the MCP tool name in the filter metadata.
 	MCPMetadataHeaderToolName = MCPMetadataHeaderPrefix + "tool-name"
+	// MCPMetadataHeaderResourceURI is the special header key used to pass the MCP resource URI in the filter metadata.
+	MCPMetadataHeaderResourceURI = MCPMetadataHeaderPrefix + "resource-uri"
 )
 
 // MCPInternalHeadersToMetadata maps special MCP headers to metadata keys.
+//
+// Only headers that do not survive to the router belong here. Headers the MCP proxy sets and leaves
+// on the request - mcp-session-id, x-ai-eg-mcp-route - are already readable from an access log with
+// %REQ(...)%, on both the MCP proxy listener and the backend listener, so mapping them would only add
+// a second name for the same value.
 var MCPInternalHeadersToMetadata = map[string]string{
-	MCPBackendHeader:           "mcp_backend",
-	MCPMetadataHeaderMethod:    "mcp_method",
-	MCPMetadataHeaderRequestID: "mcp_request_id",
-	MCPMetadataHeaderToolName:  "mcp_tool_name",
+	MCPBackendHeader:             "mcp_backend",
+	MCPMetadataHeaderMethod:      "mcp_method",
+	MCPMetadataHeaderRequestID:   "mcp_request_id",
+	MCPMetadataHeaderToolName:    "mcp_tool_name",
+	MCPMetadataHeaderResourceURI: "mcp_resource_uri",
+}
+
+const (
+	// LogFormatText selects human-readable log output. This is the default for every binary.
+	LogFormatText = "text"
+	// LogFormatJSON selects JSON log output, for log pipelines that parse structured records.
+	LogFormatJSON = "json"
+)
+
+// ValidateLogFormat checks that format is one of the supported log output formats. Callers that
+// validate another binary's format wrap the error to say whose it is.
+func ValidateLogFormat(format string) error {
+	if format != LogFormatText && format != LogFormatJSON {
+		return fmt.Errorf("invalid log format: %q, must be %q or %q", format, LogFormatText, LogFormatJSON)
+	}
+	return nil
 }
 
 const (
@@ -93,6 +125,8 @@ const (
 	XDSClusterMetadataBackendNamePath = "xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
 	// XDSUpstreamHostMetadataBackendNamePath is the full attribute path to access the backend name in upstream host metadata in xDS attributes.
 	XDSUpstreamHostMetadataBackendNamePath = "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']"
+	// XDSUpstreamHostMetadataUpstreamHostPath is the full attribute path to access the resolved upstream host in upstream host metadata in xDS attributes.
+	XDSUpstreamHostMetadataUpstreamHostPath = "xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['upstream_host']"
 	// XDSRouteMetadataRouteNamePath is the full attribute path to access the route name in route metadata in xDS attributes.
 	XDSRouteMetadataRouteNamePath = "xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']"
 )
@@ -121,6 +155,28 @@ func NamespaceAndNameFromBackendName(backendName string) (namespace, name string
 // ".", so the composed value is unambiguous.
 func SelectedBackendMetadataValue(namespace, name string) string {
 	return namespace + "." + name
+}
+
+// awsBedrockHostRE matches an AWS Bedrock runtime host — public, FIPS, PrivateLink (VPCE), or the
+// newer api.aws domain — and captures the region, e.g. bedrock-runtime.us-east-1.amazonaws.com,
+// bedrock-runtime-fips.us-east-1.amazonaws.com, vpce-<id>.bedrock-runtime.us-east-1.vpce.amazonaws.com,
+// and bedrock-runtime.us-east-1.api.aws all yield "us-east-1". The anchors reject a spoofed suffix such
+// as bedrock-runtime.us-east-1.amazonaws.com.evil.com.
+var awsBedrockHostRE = regexp.MustCompile(`(?:^|\.)bedrock-runtime(?:-fips)?\.([a-z0-9-]+)\.(?:vpce\.amazonaws\.com|amazonaws\.com|api\.aws)$`)
+
+// AWSBedrockRegionFromHost returns the AWS region encoded in a Bedrock signing host, or "" if no region
+// can be derived from host. It is used to self-correct the SigV4 signing region when the resolved
+// upstream host disagrees with the handler's configured region (e.g. a VPCE in a different region than
+// the gateway was configured for).
+//
+// Any other host — including a custom/internal hostname such as bedrock.corp.internal, which encodes no
+// region at all — yields "", and the caller falls back to its statically configured region. That
+// fallback is correct in that case, not a bug: there is no region to extract from an arbitrary hostname.
+func AWSBedrockRegionFromHost(host string) string {
+	if m := awsBedrockHostRE.FindStringSubmatch(host); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 const (

@@ -26,6 +26,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"golang.org/x/net/http/httpguts"
 
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
@@ -961,19 +962,30 @@ func (m *mcpRequestContext) maybeUpdateProgressTokenMetadata(ctx context.Context
 
 // maybeResponseModify modifies the client->server response to include the backend name where needed.
 func (m *mcpRequestContext) maybeResponseModify(_ context.Context, req *jsonrpc.Request, msg *jsonrpc.Response, backend filterapi.MCPBackendName) error {
-	if req.Method != "resources/read" || msg.Result == nil {
+	if msg.Result == nil {
 		return nil
 	}
-
-	result := &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{}}
-	if err := json.Unmarshal(msg.Result, result); err != nil {
-		return fmt.Errorf("failed to unmarshal resources/read result: %w", err)
+	switch req.Method {
+	case "resources/read":
+		result := &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{}}
+		if err := json.Unmarshal(msg.Result, result); err != nil {
+			return fmt.Errorf("failed to unmarshal resources/read result: %w", err)
+		}
+		for _, res := range result.Contents {
+			res.URI = downstreamResourceURI(res.URI, backend)
+		}
+		msg.Result, _ = json.Marshal(result) // Already decoded result, so ignore error.
+	case "tools/call":
+		result := &mcp.CallToolResult{}
+		if err := json.Unmarshal(msg.Result, result); err != nil {
+			// Non-standard result shape: pass through unchanged since the backend owns this payload.
+			m.l.Debug("tools/call result is not a standard CallToolResult, skipping URI rewrite", slog.String("error", err.Error()))
+			return nil
+		}
+		if rewriteToolResultURIs(result, backend) {
+			msg.Result, _ = json.Marshal(result) // Already decoded result, so ignore error.
+		}
 	}
-	for _, res := range result.Contents {
-		res.URI = downstreamResourceURI(res.URI, backend)
-	}
-	msg.Result, _ = json.Marshal(result) // Already decoded result, so ignore error.
-
 	return nil
 }
 
@@ -1228,22 +1240,95 @@ func upstreamResourceName(fullName string) (backendName, name string, err error)
 	return fullName[:index], fullName[index+len(nameSeparator):], nil
 }
 
+// uiSchemePrefix is the URI scheme the MCP Apps extension mandates for UI resources.
+// Hosts only render resources whose scheme is exactly "ui", so the backend name must be
+// encoded inside the URI rather than prepended to the scheme.
+const uiSchemePrefix = "ui://"
+
 // downstreamResourceURI converts the upstream resource URI to the downstream resource URI by
 // encoding the URL. The URL will be in the form: <backend>+<scheme>://<path>
 // We need to encode URLs in a way that the "path" part remains unchanged so that the Resource Templates
 // can still match the resource URIs.
+//
+// ui:// URIs are the exception: the scheme must survive the rewrite, so the backend name is
+// inserted as the leading path segment instead: ui://<backend>/<rest>.
 func downstreamResourceURI(uri string, backendName string) string {
+	if rest, ok := strings.CutPrefix(uri, uiSchemePrefix); ok {
+		return uiSchemePrefix + backendName + "/" + rest
+	}
 	return fmt.Sprintf("%s+%s", backendName, uri)
 }
 
-// upstreamResourceURI converts the downstream resource URI to the upstream resource URI by
-// decoding the URL. The URL will be in the form: <backend>+<scheme>://<path>
+// upstreamResourceURI converts the downstream resource URI to the upstream resource URI,
+// the inverse of downstreamResourceURI: ui://<backend>/<rest> for UI resources and
+// <backend>+<scheme>://<path> for everything else.
 func upstreamResourceURI(fullURI string) (backendName, uri string, err error) {
+	if rest, ok := strings.CutPrefix(fullURI, uiSchemePrefix); ok {
+		backendName, rest, ok = strings.Cut(rest, "/")
+		if !ok || backendName == "" {
+			return "", "", fmt.Errorf("invalid resource URI: %s", fullURI)
+		}
+		return backendName, uiSchemePrefix + rest, nil
+	}
 	parts := strings.SplitN(fullURI, "+", 2)
 	if len(parts) != 2 {
 		return "", "", fmt.Errorf("invalid resource URI: %s", fullURI)
 	}
 	return parts[0], parts[1], nil
+}
+
+// metaResourceURIPaths lists the _meta key paths whose leaf value is a resource URI that
+// must be namespaced with the backend name in multiplexing mode so that a later
+// resources/read on it routes back to the originating backend.
+var metaResourceURIPaths = [][]string{
+	{"ui", "resourceUri"}, // MCP Apps (_meta.ui.resourceUri).
+	{"ui/resourceUri"},    // MCP Apps SDK flat form (_meta["ui/resourceUri"]).
+}
+
+// rewriteMetaResourceURIs namespaces every known resource URI in meta with the backend name.
+// Returns true if anything was changed. No-ops on absent or unexpected shapes.
+// Not idempotent: it must be applied exactly once per upstream payload.
+func rewriteMetaResourceURIs(meta mcp.Meta, backendName filterapi.MCPBackendName) bool {
+	changed := false
+	for _, path := range metaResourceURIPaths {
+		node := map[string]any(meta)
+		for _, key := range path[:len(path)-1] {
+			if node, _ = node[key].(map[string]any); node == nil {
+				break
+			}
+		}
+		if node == nil {
+			continue
+		}
+		leaf := path[len(path)-1]
+		if uri, ok := node[leaf].(string); ok && uri != "" {
+			node[leaf] = downstreamResourceURI(uri, backendName)
+			changed = true
+		}
+	}
+	return changed
+}
+
+// rewriteToolResultURIs namespaces all resource URIs in a tools/call result: _meta fields
+// (via rewriteMetaResourceURIs) and any ResourceLink / EmbeddedResource entries in Content.
+// Returns true if anything was changed.
+func rewriteToolResultURIs(result *mcp.CallToolResult, backendName filterapi.MCPBackendName) bool {
+	changed := rewriteMetaResourceURIs(result.Meta, backendName)
+	for _, c := range result.Content {
+		switch v := c.(type) {
+		case *mcp.ResourceLink:
+			if v.URI != "" {
+				v.URI = downstreamResourceURI(v.URI, backendName)
+				changed = true
+			}
+		case *mcp.EmbeddedResource:
+			if v.Resource != nil && v.Resource.URI != "" {
+				v.Resource.URI = downstreamResourceURI(v.Resource.URI, backendName)
+				changed = true
+			}
+		}
+	}
+	return changed
 }
 
 // extractSubject extracts the "sub" claim from the JWT in the Authorization header.
@@ -1479,15 +1564,43 @@ func addMCPHeaders(httpReq *http.Request, msg jsonrpc.Message, params mcp.Params
 	httpReq.Header.Set(internalapi.MCPRouteHeader, routeName)
 	if mcpReq, ok := msg.(*jsonrpc.Request); ok && mcpReq != nil {
 		// MCP request headers are used to populate information in the envoy filter metadata.
-		httpReq.Header.Set(internalapi.MCPMetadataHeaderRequestID, fmt.Sprintf("%v", mcpReq.ID.Raw()))
-		httpReq.Header.Set(internalapi.MCPMetadataHeaderMethod, mcpReq.Method)
+		setMCPMetadataHeader(httpReq, internalapi.MCPMetadataHeaderRequestID, fmt.Sprintf("%v", mcpReq.ID.Raw()))
+		setMCPMetadataHeader(httpReq, internalapi.MCPMetadataHeaderMethod, mcpReq.Method)
 
 		if params != nil {
-			if p, ok := params.(*mcp.CallToolParams); ok {
-				httpReq.Header.Set(internalapi.MCPMetadataHeaderToolName, p.Name)
+			// Mirrors the span attributes set in getMCPParamsAsAttributes, so the same information is
+			// available in the access logs as well as in the traces.
+			switch p := params.(type) {
+			case *mcp.CallToolParams:
+				setMCPMetadataHeader(httpReq, internalapi.MCPMetadataHeaderToolName, p.Name)
+			case *mcp.ReadResourceParams:
+				setMCPMetadataHeader(httpReq, internalapi.MCPMetadataHeaderResourceURI, p.URI)
+			case *mcp.SubscribeParams:
+				setMCPMetadataHeader(httpReq, internalapi.MCPMetadataHeaderResourceURI, p.URI)
+			case *mcp.UnsubscribeParams:
+				setMCPMetadataHeader(httpReq, internalapi.MCPMetadataHeaderResourceURI, p.URI)
 			}
 		}
 	}
+}
+
+// maxMCPMetadataHeaderValueLen bounds a metadata header value. Resource URIs, tool names and JSON-RPC
+// IDs all come from the client unvalidated, and these headers exist only so the access log can see
+// them, so dropping an outsized value beats pushing the request over Envoy's max_request_headers_kb.
+const maxMCPMetadataHeaderValueLen = 1024
+
+// setMCPMetadataHeader sets an observability-only metadata header, skipping values that would make the
+// request unsendable. [http.Transport] rejects header values containing control characters, so a
+// resource URI or JSON-RPC ID holding one - trivially expressible as a JSON escape - would otherwise
+// fail the whole proxied request, rather than reaching the backend in the body where it is legal.
+//
+// Dropped rather than truncated or escaped: an absent log field is honest, a mangled one is not.
+func setMCPMetadataHeader(httpReq *http.Request, key, value string) {
+	// httpguts is the same check [http.Transport] applies, so this cannot drift from what it rejects.
+	if len(value) > maxMCPMetadataHeaderValueLen || !httpguts.ValidHeaderFieldValue(value) {
+		return
+	}
+	httpReq.Header.Set(key, value)
 }
 
 type (
@@ -1700,6 +1813,7 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 				}
 			}
 			tool.Name = downstreamResourceName(tool.Name, r.backendName)
+			rewriteMetaResourceURIs(tool.Meta, r.backendName)
 			resp.Tools = append(resp.Tools, tool)
 		}
 	}
