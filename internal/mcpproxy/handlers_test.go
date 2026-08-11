@@ -652,6 +652,40 @@ func TestMergeToolsList_AuthorizationFiltering(t *testing.T) {
 	}
 }
 
+func TestMergeToolsList_MetaResourceURIRewrite(t *testing.T) {
+	responses := []broadCastResponse[mcp.ListToolsResult]{
+		{
+			backendName: "backend1",
+			res: mcp.ListToolsResult{Tools: []*mcp.Tool{
+				{
+					Name: "ui-tool",
+					Meta: mcp.Meta{"ui": map[string]any{"resourceUri": "ui://prefab/tool/renderer.html"}},
+				},
+				{Name: "plain-tool"},
+			}},
+		},
+	}
+	proxy := newTestMCPProxy()
+	proxy.routes["test-route"].toolSelectors = nil
+	proxy.requestHeaders = http.Header{}
+	session := &session{route: "test-route"}
+
+	result := proxy.mergeToolsList(session, responses)
+	require.Len(t, result.Tools, 2)
+	byName := map[string]*mcp.Tool{}
+	for _, tool := range result.Tools {
+		byName[tool.Name] = tool
+	}
+
+	uiTool := byName["backend1__ui-tool"]
+	require.NotNil(t, uiTool)
+	require.Equal(t, "ui://backend1/prefab/tool/renderer.html", uiTool.Meta["ui"].(map[string]any)["resourceUri"])
+
+	plainTool := byName["backend1__plain-tool"]
+	require.NotNil(t, plainTool)
+	require.Nil(t, plainTool.Meta)
+}
+
 func TestServePOST_ToolsCallRequest(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -675,7 +709,16 @@ func TestServePOST_ToolsCallRequest(t *testing.T) {
 				require.Equal(t, tt.wantBackend, r.Header.Get(internalapi.MCPBackendHeader))
 				require.Equal(t, "tools/call", r.Header.Get(internalapi.MCPMetadataHeaderMethod))
 				require.Equal(t, tt.tool, r.Header.Get(internalapi.MCPMetadataHeaderRequestID))
-				for h := range internalapi.MCPInternalHeadersToMetadata {
+				// The headers a tools/call populates. Resource-scoped headers are asserted in the
+				// resources/read and resources/subscribe tests instead, since a tools/call leaves them unset.
+				for _, h := range []string{
+					internalapi.MCPBackendHeader,
+					internalapi.MCPRouteHeader,
+					sessionIDHeader,
+					internalapi.MCPMetadataHeaderMethod,
+					internalapi.MCPMetadataHeaderRequestID,
+					internalapi.MCPMetadataHeaderToolName,
+				} {
 					require.NotEmpty(t, r.Header.Get(h))
 				}
 
@@ -1270,6 +1313,16 @@ func Test_downstreamResourceURI(t *testing.T) {
 		require.Equal(t, "local+file", parsed.Scheme)
 		require.Equal(t, "/tmp/{file}", parsed.Path)
 	})
+
+	t.Run("downstream ui resource keeps the ui scheme", func(t *testing.T) {
+		downstream := downstreamResourceURI("ui://prefab/tool/renderer.html", "local")
+		require.Equal(t, "ui://local/prefab/tool/renderer.html", downstream)
+		parsed, err := url.Parse(downstream)
+		require.NoError(t, err)
+		require.Equal(t, "ui", parsed.Scheme)
+		require.Equal(t, "local", parsed.Host)
+		require.Equal(t, "/prefab/tool/renderer.html", parsed.Path)
+	})
 }
 
 func Test_upstreamResourceURI(t *testing.T) {
@@ -1298,6 +1351,31 @@ func Test_upstreamResourceURI(t *testing.T) {
 			input:       "file:///tmp/file.txt",
 			expectedErr: "invalid resource URI: file:///tmp/file.txt",
 		},
+		{
+			input:           "ui://local/prefab/tool/renderer.html",
+			expectedBackend: "local",
+			expectedURI:     "ui://prefab/tool/renderer.html",
+		},
+		{
+			input:           "ui://local/renderer.html",
+			expectedBackend: "local",
+			expectedURI:     "ui://renderer.html",
+		},
+		{
+			// The first path segment coinciding with the backend name decodes unambiguously.
+			input:           "ui://local/local/renderer.html",
+			expectedBackend: "local",
+			expectedURI:     "ui://local/renderer.html",
+		},
+		{
+			// A bare ui:// URI that was never namespaced.
+			input:       "ui://renderer.html",
+			expectedErr: "invalid resource URI: ui://renderer.html",
+		},
+		{
+			input:       "ui://",
+			expectedErr: "invalid resource URI: ui://",
+		},
 	}
 
 	for _, tc := range cases {
@@ -1312,6 +1390,196 @@ func Test_upstreamResourceURI(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("round trip", func(t *testing.T) {
+		for _, uri := range []string{
+			"file:///tmp/file.txt",
+			"file:///tmp/{file}",
+			"ui://prefab/tool/renderer.html",
+			"ui://renderer.html",
+			"ui://local/renderer.html", // First segment equal to the backend name must survive.
+		} {
+			backend, upstream, err := upstreamResourceURI(downstreamResourceURI(uri, "local"))
+			require.NoError(t, err)
+			require.Equal(t, "local", backend)
+			require.Equal(t, uri, upstream)
+		}
+	})
+}
+
+func Test_rewriteMetaResourceURIs(t *testing.T) {
+	cases := []struct {
+		name    string
+		meta    mcp.Meta
+		want    mcp.Meta
+		changed bool
+	}{
+		{
+			name:    "rewrites _meta.ui.resourceUri",
+			meta:    mcp.Meta{"ui": map[string]any{"resourceUri": "ui://prefab/tool/renderer.html"}},
+			want:    mcp.Meta{"ui": map[string]any{"resourceUri": "ui://backend1/prefab/tool/renderer.html"}},
+			changed: true,
+		},
+		{
+			name:    "rewrites flat _meta[ui/resourceUri]",
+			meta:    mcp.Meta{"ui/resourceUri": "ui://prefab/tool/renderer.html"},
+			want:    mcp.Meta{"ui/resourceUri": "ui://backend1/prefab/tool/renderer.html"},
+			changed: true,
+		},
+		{
+			name: "rewrites both conventions when present",
+			meta: mcp.Meta{
+				"ui":             map[string]any{"resourceUri": "ui://prefab/tool/renderer.html"},
+				"ui/resourceUri": "ui://prefab/tool/renderer.html",
+			},
+			want: mcp.Meta{
+				"ui":             map[string]any{"resourceUri": "ui://backend1/prefab/tool/renderer.html"},
+				"ui/resourceUri": "ui://backend1/prefab/tool/renderer.html",
+			},
+			changed: true,
+		},
+		{
+			name:    "nil meta",
+			meta:    nil,
+			want:    nil,
+			changed: false,
+		},
+		{
+			name:    "empty meta",
+			meta:    mcp.Meta{},
+			want:    mcp.Meta{},
+			changed: false,
+		},
+		{
+			name:    "ui present but resourceUri missing",
+			meta:    mcp.Meta{"ui": map[string]any{"other": "val"}},
+			want:    mcp.Meta{"ui": map[string]any{"other": "val"}},
+			changed: false,
+		},
+		{
+			name:    "resourceUri is not a string",
+			meta:    mcp.Meta{"ui": map[string]any{"resourceUri": 42}},
+			want:    mcp.Meta{"ui": map[string]any{"resourceUri": 42}},
+			changed: false,
+		},
+		{
+			name:    "ui value is not a map",
+			meta:    mcp.Meta{"ui": "not-a-map"},
+			want:    mcp.Meta{"ui": "not-a-map"},
+			changed: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			changed := rewriteMetaResourceURIs(tc.meta, "backend1")
+			require.Equal(t, tc.changed, changed)
+			require.Equal(t, tc.want, tc.meta)
+		})
+	}
+}
+
+func Test_rewriteToolResultURIs(t *testing.T) {
+	backend := filterapi.MCPBackendName("backend1")
+
+	t.Run("rewrites ResourceLink URI", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.ResourceLink{URI: "ui://prefab/link.html"}},
+		}
+		require.True(t, rewriteToolResultURIs(result, backend))
+		require.Equal(t, "ui://backend1/prefab/link.html", result.Content[0].(*mcp.ResourceLink).URI)
+	})
+
+	t.Run("rewrites EmbeddedResource URI", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.EmbeddedResource{Resource: &mcp.ResourceContents{URI: "ui://prefab/embed.html"}}},
+		}
+		require.True(t, rewriteToolResultURIs(result, backend))
+		require.Equal(t, "ui://backend1/prefab/embed.html", result.Content[0].(*mcp.EmbeddedResource).Resource.URI)
+	})
+
+	t.Run("nil EmbeddedResource.Resource", func(t *testing.T) {
+		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.EmbeddedResource{Resource: nil}}}
+		require.False(t, rewriteToolResultURIs(result, backend))
+	})
+
+	t.Run("rewrites _meta.ui.resourceUri", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Meta: mcp.Meta{"ui": map[string]any{"resourceUri": "ui://meta/renderer.html"}},
+		}
+		require.True(t, rewriteToolResultURIs(result, backend))
+		require.Equal(t, "ui://backend1/meta/renderer.html", result.Meta["ui"].(map[string]any)["resourceUri"])
+	})
+
+	t.Run("non-ui URIs are namespaced with the scheme prefix form", func(t *testing.T) {
+		result := &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.ResourceLink{URI: "file:///tmp/file.txt"}},
+		}
+		require.True(t, rewriteToolResultURIs(result, backend))
+		require.Equal(t, "backend1+file:///tmp/file.txt", result.Content[0].(*mcp.ResourceLink).URI)
+	})
+
+	t.Run("no resource URIs", func(t *testing.T) {
+		result := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "hi"}}}
+		require.False(t, rewriteToolResultURIs(result, backend))
+	})
+}
+
+func Test_maybeResponseModify(t *testing.T) {
+	ctx := t.Context()
+	m := newTestMCPProxy()
+	backend := filterapi.MCPBackendName("backend1")
+
+	t.Run("rewrites _meta.ui.resourceUri", func(t *testing.T) {
+		raw, err := json.Marshal(&mcp.CallToolResult{
+			Meta: mcp.Meta{"ui": map[string]any{"resourceUri": "ui://prefab/renderer.html"}},
+		})
+		require.NoError(t, err)
+		msg := &jsonrpc.Response{Result: raw}
+		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "tools/call"}, msg, backend))
+		var got mcp.CallToolResult
+		require.NoError(t, json.Unmarshal(msg.Result, &got))
+		require.Equal(t, "ui://backend1/prefab/renderer.html", got.Meta["ui"].(map[string]any)["resourceUri"])
+	})
+
+	t.Run("rewrites ResourceLink in Content", func(t *testing.T) {
+		raw, err := json.Marshal(&mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.ResourceLink{URI: "ui://prefab/link.html"}},
+		})
+		require.NoError(t, err)
+		msg := &jsonrpc.Response{Result: raw}
+		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "tools/call"}, msg, backend))
+		var got mcp.CallToolResult
+		require.NoError(t, json.Unmarshal(msg.Result, &got))
+		require.Equal(t, "ui://backend1/prefab/link.html", got.Content[0].(*mcp.ResourceLink).URI)
+	})
+
+	t.Run("no resource URIs leaves result bytes unchanged", func(t *testing.T) {
+		raw, err := json.Marshal(&mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "hi"}}})
+		require.NoError(t, err)
+		before := append([]byte(nil), raw...)
+		msg := &jsonrpc.Response{Result: raw}
+		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "tools/call"}, msg, backend))
+		require.Equal(t, before, []byte(msg.Result))
+	})
+
+	t.Run("non-standard result shape passes through", func(t *testing.T) {
+		raw := []byte(`{"content":"not-an-array"}`)
+		msg := &jsonrpc.Response{Result: raw}
+		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "tools/call"}, msg, backend))
+		require.Equal(t, raw, []byte(msg.Result))
+	})
+
+	t.Run("resources/read rewrites ui Contents URIs keeping the scheme", func(t *testing.T) {
+		raw, err := json.Marshal(&mcp.ReadResourceResult{
+			Contents: []*mcp.ResourceContents{{URI: "ui://prefab/renderer.html"}},
+		})
+		require.NoError(t, err)
+		msg := &jsonrpc.Response{Result: raw}
+		require.NoError(t, m.maybeResponseModify(ctx, &jsonrpc.Request{Method: "resources/read"}, msg, backend))
+		var got mcp.ReadResourceResult
+		require.NoError(t, json.Unmarshal(msg.Result, &got))
+		require.Equal(t, "ui://backend1/prefab/renderer.html", got.Contents[0].URI)
+	})
 }
 
 func TestExtractSubject(t *testing.T) {
@@ -1708,6 +1976,10 @@ func TestMCPPRoxy_handleResourceReadRequest(t *testing.T) {
 
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "backend1", r.Header.Get(internalapi.MCPBackendHeader))
+		// The URI has already been rewritten from the client-facing composite form to the upstream one
+		// by this point, so that is what the metadata header carries. Same as mcp_tool_name, which
+		// records the tool name after the backend prefix is stripped.
+		require.Equal(t, "file://foo-resource", r.Header.Get(internalapi.MCPMetadataHeaderResourceURI))
 		body, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
 		require.Contains(t, string(body), `"uri":"file://foo-resource"`)
@@ -2081,10 +2353,12 @@ func TestMCPServer_handleResourcesSubscriptionRequest(t *testing.T) {
 					var params mcp.SubscribeParams
 					require.NoError(t, json.Unmarshal(req.Params, &params))
 					require.Equal(t, "file://foo", params.URI)
+					require.Equal(t, "file://foo", r.Header.Get(internalapi.MCPMetadataHeaderResourceURI))
 				case *mcp.UnsubscribeParams:
 					var params mcp.UnsubscribeParams
 					require.NoError(t, json.Unmarshal(req.Params, &params))
 					require.Equal(t, "file://bar", params.URI)
+					require.Equal(t, "file://bar", r.Header.Get(internalapi.MCPMetadataHeaderResourceURI))
 				default:
 					t.Fatalf("unexpected params type: %T", tc.p)
 				}
@@ -2395,6 +2669,79 @@ func Test_checkToolCallError(t *testing.T) {
 				require.Equal(t, tt.backendName, toolErr.backend)
 			} else {
 				require.Nil(t, toolErr)
+			}
+		})
+	}
+}
+
+func TestAddMCPHeaders_MetadataValueGuard(t *testing.T) {
+	longURI := "file://" + strings.Repeat("a", maxMCPMetadataHeaderValueLen)
+
+	tests := []struct {
+		name    string
+		id      string
+		uri     string
+		wantID  string
+		wantURI string
+	}{
+		{
+			name:    "plain values are set",
+			id:      "req-1",
+			uri:     "file://config.yaml",
+			wantID:  "req-1",
+			wantURI: "file://config.yaml",
+		},
+		{
+			name:    "non-ascii is allowed, http.Transport accepts it",
+			id:      "req-2",
+			uri:     "file://café/résumé.txt",
+			wantID:  "req-2",
+			wantURI: "file://café/résumé.txt",
+		},
+		{
+			name:    "control characters are dropped, not forwarded",
+			id:      "req-3",
+			uri:     "file://a\nb",
+			wantID:  "req-3",
+			wantURI: "",
+		},
+		{
+			name:    "a control character in the JSON-RPC ID drops only that header",
+			id:      "req\r\n4",
+			uri:     "file://config.yaml",
+			wantID:  "",
+			wantURI: "file://config.yaml",
+		},
+		{
+			name:    "oversized values are dropped rather than truncated",
+			id:      "req-5",
+			uri:     longURI,
+			wantID:  "req-5",
+			wantURI: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodPost, "http://backend", nil)
+			require.NoError(t, err)
+			id, err := jsonrpc.MakeID(tt.id)
+			require.NoError(t, err)
+			addMCPHeaders(req,
+				&jsonrpc.Request{ID: id, Method: "resources/read"},
+				&mcp.ReadResourceParams{URI: tt.uri},
+				"route1", "backend1")
+
+			require.Equal(t, tt.wantID, req.Header.Get(internalapi.MCPMetadataHeaderRequestID))
+			require.Equal(t, tt.wantURI, req.Header.Get(internalapi.MCPMetadataHeaderResourceURI))
+			// Whatever was dropped, the request must still be sendable: the headers exist only for
+			// access logging, so they must never be what makes a proxied call fail.
+			require.NoError(t, req.Header.Write(io.Discard))
+			for _, vs := range req.Header {
+				for _, v := range vs {
+					require.NotContains(t, v, "\n")
+					require.NotContains(t, v, "\r")
+				}
 			}
 		})
 	}
