@@ -1220,6 +1220,8 @@ type ChatCompletionRequest struct {
 // StructuredOutputs mirrors vLLM's StructuredOutputsParams (v0.12.0+). Only JSON, Regex,
 // and Choice are translatable to GCP/Gemini; Grammar, StructuralTag, and WhitespacePattern
 // have no Gemini equivalent and are rejected on that path.
+//
+// Following vLLM convention: https://github.com/vllm-project/vllm/blob/v0.12.0/vllm/sampling_params.py#L33
 type StructuredOutputs struct {
 	// JSON: The output will follow the JSON schema.
 	JSON json.RawMessage `json:"json,omitzero"`
