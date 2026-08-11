@@ -148,12 +148,12 @@ func (o *openAIToOpenAITranslatorV1Speech) recordSSEChunksToSpan(span tracingapi
 		event := o.buffered[:i]
 		o.buffered = o.buffered[i+2:]
 		for line := range bytes.SplitSeq(event, []byte("\n")) {
-			// Look for lines starting with "data: "
-			if !bytes.HasPrefix(line, sseDataPrefix) {
+			// Look for lines carrying the "data" field.
+			data, ok := cutSSEDataPrefix(line)
+			if !ok {
 				continue
 			}
 
-			data := bytes.TrimPrefix(line, sseDataPrefix)
 			if len(data) == 0 || bytes.Equal(data, sseDoneMessage) {
 				continue
 			}

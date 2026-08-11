@@ -32,6 +32,7 @@ static_resources:
                           mcp.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
                           mcp.method.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
                           mcp.tool.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_tool_name)%"
+                          mcp.resource.uri: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_resource_uri)%"
                           jsonrpc.request.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
                           method: "%REQ(:METHOD)%"
                           request.path: "%REQ(:PATH)%"
@@ -103,6 +104,7 @@ static_resources:
                           mcp.provider.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
                           mcp.method.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
                           mcp.tool.name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_tool_name)%"
+                          mcp.resource.uri: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_resource_uri)%"
                           jsonrpc.request.id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
                           method: "%REQ(:METHOD)%"
                           request.path: "%REQ(:PATH)%"
@@ -209,6 +211,12 @@ static_resources:
                           on_header_present:
                             metadata_namespace: io.envoy.ai_gateway
                             key: mcp_request_id
+                            type: STRING
+                          remove: true
+                        - header: x-ai-eg-mcp-metadata-resource-uri
+                          on_header_present:
+                            metadata_namespace: io.envoy.ai_gateway
+                            key: mcp_resource_uri
                             type: STRING
                           remove: true
                         - header: agent-session-id

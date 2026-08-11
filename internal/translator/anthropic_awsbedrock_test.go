@@ -700,13 +700,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_Tools(t *testing.T) {
 					Type:        "custom",
 					Name:        "get_weather",
 					Description: "Get the weather",
-					InputSchema: anthropicschema.ToolInputSchema{
-						Type: "object",
-						Properties: map[string]any{
-							"location": map[string]any{"type": "string"},
-						},
-						Required: []string{"location"},
-					},
+					InputSchema: json.RawMessage(`{"type":"object","properties":{"location":{"type":"string"}},"required":["location"]}`),
 				},
 			},
 		},
@@ -998,7 +992,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_ToolResultMessages(t *testi
 				Type:        "custom",
 				Name:        "get_weather",
 				Description: "Get weather",
-				InputSchema: anthropicschema.ToolInputSchema{Type: "object"},
+				InputSchema: json.RawMessage(`{"type":"object"}`),
 			}},
 		},
 		ToolChoice: &anthropicschema.ToolChoice{
@@ -1107,7 +1101,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_ToolResultMessagesWithSyste
 				Type:        "custom",
 				Name:        "get_weather",
 				Description: "Get weather",
-				InputSchema: anthropicschema.ToolInputSchema{Type: "object"},
+				InputSchema: json.RawMessage(`{"type":"object"}`),
 			}},
 		},
 		Messages: []anthropicschema.MessageParam{
@@ -1207,11 +1201,11 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_ToolResultMessagesWithSyste
 	assert.Equal(t, "error", *toolResultMsg.Content[1].ToolResult.Status)
 	assert.Equal(t, "Error: city not found", *toolResultMsg.Content[1].ToolResult.Content[0].Text)
 
-	// Verify system prompt was promoted.
+	// Verify system prompts were promoted, each as its own block.
 	require.NotNil(t, bedrockReq.System)
-	require.Len(t, bedrockReq.System, 1)
-	assert.Contains(t, *bedrockReq.System[0].Text, "You are a helpful assistant.")
-	assert.Contains(t, *bedrockReq.System[0].Text, "Always be concise.")
+	require.Len(t, bedrockReq.System, 2)
+	assert.Equal(t, "You are a helpful assistant.", *bedrockReq.System[0].Text)
+	assert.Equal(t, "Always be concise.", *bedrockReq.System[1].Text)
 }
 
 func TestAnthropicToAWSBedrockTranslator_RequestBody_SingleToolResultNotCoalesced(t *testing.T) {
@@ -1226,7 +1220,7 @@ func TestAnthropicToAWSBedrockTranslator_RequestBody_SingleToolResultNotCoalesce
 				Type:        "custom",
 				Name:        "get_weather",
 				Description: "Get weather",
-				InputSchema: anthropicschema.ToolInputSchema{Type: "object"},
+				InputSchema: json.RawMessage(`{"type":"object"}`),
 			}},
 		},
 		Messages: []anthropicschema.MessageParam{
@@ -1505,8 +1499,9 @@ func TestPromoteAnthropicSystemMessagesToParam(t *testing.T) {
 				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hello"}},
 			},
 		}
-		result := promoteAnthropicSystemMessagesToParam(body)
+		result, system := promoteAnthropicSystemMessagesToParam(body)
 		require.Len(t, result, 1)
+		require.Nil(t, system)
 		require.Nil(t, body.System)
 	})
 
@@ -1517,11 +1512,12 @@ func TestPromoteAnthropicSystemMessagesToParam(t *testing.T) {
 				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hi"}},
 			},
 		}
-		result := promoteAnthropicSystemMessagesToParam(body)
+		result, system := promoteAnthropicSystemMessagesToParam(body)
 		require.Len(t, result, 1)
 		require.Equal(t, "user", string(result[0].Role))
-		require.NotNil(t, body.System)
-		require.Equal(t, "You are helpful.", body.System.Text)
+		require.NotNil(t, system)
+		require.Equal(t, []anthropicschema.TextBlockParam{{Type: "text", Text: "You are helpful."}}, system.Texts)
+		require.Nil(t, body.System, "the shared request body must not be mutated")
 	})
 
 	t.Run("system message with content blocks is promoted", func(t *testing.T) {
@@ -1538,13 +1534,13 @@ func TestPromoteAnthropicSystemMessagesToParam(t *testing.T) {
 				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hi"}},
 			},
 		}
-		result := promoteAnthropicSystemMessagesToParam(body)
+		result, system := promoteAnthropicSystemMessagesToParam(body)
 		require.Len(t, result, 1)
-		require.NotNil(t, body.System)
-		require.Equal(t, "You are Claude.", body.System.Text)
+		require.NotNil(t, system)
+		require.Equal(t, []anthropicschema.TextBlockParam{{Text: "You are Claude."}}, system.Texts)
 	})
 
-	t.Run("multiple system messages are joined", func(t *testing.T) {
+	t.Run("multiple system messages each become a block", func(t *testing.T) {
 		body := &anthropicschema.MessagesRequest{
 			Messages: []anthropicschema.MessageParam{
 				{Role: "system", Content: anthropicschema.MessageContent{Text: "Be concise."}},
@@ -1552,13 +1548,16 @@ func TestPromoteAnthropicSystemMessagesToParam(t *testing.T) {
 				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hello"}},
 			},
 		}
-		result := promoteAnthropicSystemMessagesToParam(body)
+		result, system := promoteAnthropicSystemMessagesToParam(body)
 		require.Len(t, result, 1)
-		require.NotNil(t, body.System)
-		require.Equal(t, "Be concise.\nBe accurate.", body.System.Text)
+		require.NotNil(t, system)
+		require.Equal(t, []anthropicschema.TextBlockParam{
+			{Type: "text", Text: "Be concise."},
+			{Type: "text", Text: "Be accurate."},
+		}, system.Texts)
 	})
 
-	t.Run("system message is added to existing system param", func(t *testing.T) {
+	t.Run("system message is added to existing string system param", func(t *testing.T) {
 		body := &anthropicschema.MessagesRequest{
 			System: &anthropicschema.SystemPrompt{Text: "You are Claude."},
 			Messages: []anthropicschema.MessageParam{
@@ -1566,11 +1565,77 @@ func TestPromoteAnthropicSystemMessagesToParam(t *testing.T) {
 				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hi"}},
 			},
 		}
-		result := promoteAnthropicSystemMessagesToParam(body)
+		result, system := promoteAnthropicSystemMessagesToParam(body)
 		require.Len(t, result, 1)
-		require.NotNil(t, body.System)
-		// The existing system param is overwritten by the promoted messages.
-		require.Equal(t, "Be concise.", body.System.Text)
+		require.NotNil(t, system)
+		// Both survive, top-level first.
+		require.Equal(t, []anthropicschema.TextBlockParam{
+			{Type: "text", Text: "You are Claude."},
+			{Type: "text", Text: "Be concise."},
+		}, system.Texts)
+		require.Empty(t, system.Text, "the string form must be folded into the blocks, convertSystemPrompt returns early on it")
+		require.Equal(t, "You are Claude.", body.System.Text, "the shared request body must not be mutated")
+	})
+
+	t.Run("system message is added to existing system block array", func(t *testing.T) {
+		body := &anthropicschema.MessagesRequest{
+			System: &anthropicschema.SystemPrompt{Texts: []anthropicschema.TextBlockParam{
+				{Type: "text", Text: "TOP LEVEL SYSTEM"},
+			}},
+			Messages: []anthropicschema.MessageParam{
+				{Role: "system", Content: anthropicschema.MessageContent{Text: "MID CONVERSATION SYSTEM"}},
+				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hi"}},
+			},
+		}
+		result, system := promoteAnthropicSystemMessagesToParam(body)
+		require.Len(t, result, 1)
+		require.NotNil(t, system)
+		require.Equal(t, []anthropicschema.TextBlockParam{
+			{Type: "text", Text: "TOP LEVEL SYSTEM"},
+			{Type: "text", Text: "MID CONVERSATION SYSTEM"},
+		}, system.Texts)
+		require.Equal(t, []anthropicschema.TextBlockParam{{Type: "text", Text: "TOP LEVEL SYSTEM"}}, body.System.Texts,
+			"the shared request body must not be mutated")
+	})
+
+	t.Run("cache_control survives promotion", func(t *testing.T) {
+		ephemeral := &anthropicschema.CacheControl{
+			Ephemeral: &anthropicschema.CacheControlEphemeral{Type: "ephemeral"},
+		}
+		body := &anthropicschema.MessagesRequest{
+			Messages: []anthropicschema.MessageParam{
+				{
+					Role: "system",
+					Content: anthropicschema.MessageContent{
+						Array: []anthropicschema.ContentBlockParam{
+							{Text: &anthropicschema.TextBlockParam{Type: "text", Text: "cached sys prompt", CacheControl: ephemeral}},
+						},
+					},
+				},
+				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hi"}},
+			},
+		}
+		_, system := promoteAnthropicSystemMessagesToParam(body)
+		require.NotNil(t, system)
+		require.Len(t, system.Texts, 1)
+		require.Equal(t, ephemeral, system.Texts[0].CacheControl,
+			"a joined string cannot carry per-block cache control")
+	})
+
+	t.Run("repeated promotion yields the same system prompt", func(t *testing.T) {
+		body := &anthropicschema.MessagesRequest{
+			System: &anthropicschema.SystemPrompt{Texts: []anthropicschema.TextBlockParam{
+				{Type: "text", Text: "TOP LEVEL SYSTEM"},
+			}},
+			Messages: []anthropicschema.MessageParam{
+				{Role: "system", Content: anthropicschema.MessageContent{Text: "MID CONVERSATION SYSTEM"}},
+				{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hi"}},
+			},
+		}
+		_, first := promoteAnthropicSystemMessagesToParam(body)
+		_, second := promoteAnthropicSystemMessagesToParam(body)
+		require.Equal(t, first, second,
+			"promotion must not accumulate across attempts")
 	})
 
 	t.Run("integration with full request", func(t *testing.T) {
@@ -1599,6 +1664,42 @@ func TestPromoteAnthropicSystemMessagesToParam(t *testing.T) {
 		require.Len(t, bedrockReq.System, 1)
 		assert.Equal(t, "You are helpful.", *bedrockReq.System[0].Text)
 	})
+}
+
+// A retry or backend fallback translates the very same parsed struct again: processor_impl.go
+// passes routerProcessor.originalRequestBody to RequestBody on every upstream attempt.
+func TestAnthropicToAWSBedrockTranslator_RequestBody_SystemPromotionSurvivesRetry(t *testing.T) {
+	body := &anthropicschema.MessagesRequest{
+		Model:     "anthropic.claude-3-sonnet-20240229-v1:0",
+		MaxTokens: 1024,
+		System: &anthropicschema.SystemPrompt{Texts: []anthropicschema.TextBlockParam{
+			{Type: "text", Text: "TOP LEVEL SYSTEM"},
+		}},
+		Messages: []anthropicschema.MessageParam{
+			{Role: "system", Content: anthropicschema.MessageContent{Text: "MID CONVERSATION SYSTEM"}},
+			{Role: anthropicschema.MessageRoleUser, Content: anthropicschema.MessageContent{Text: "Hi"}},
+		},
+	}
+	rawBody, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	systemTexts := func(t *testing.T) []string {
+		// A fresh translator per attempt, matching SetBackend creating one per upstream filter.
+		_, newBody, err := NewAnthropicToAWSBedrockTranslator("").RequestBody(rawBody, body, true)
+		require.NoError(t, err)
+		var bedrockReq awsbedrock.ConverseInput
+		require.NoError(t, json.Unmarshal(newBody, &bedrockReq))
+		texts := make([]string, 0, len(bedrockReq.System))
+		for _, block := range bedrockReq.System {
+			texts = append(texts, *block.Text)
+		}
+		return texts
+	}
+
+	want := []string{"TOP LEVEL SYSTEM", "MID CONVERSATION SYSTEM"}
+	require.Equal(t, want, systemTexts(t))
+	require.Equal(t, want, systemTexts(t), "a retry must not append the promoted blocks a second time")
+	require.Equal(t, want, systemTexts(t))
 }
 
 func TestIsOnlyToolResult(t *testing.T) {
