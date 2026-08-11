@@ -568,7 +568,12 @@ func (m *mcpRequestContext) handleInitializeRequest(ctx context.Context, w http.
 	s, err := m.newSession(ctx, p, route, subject, span, startAt)
 	if err != nil {
 		m.l.Error("failed to create new session", slog.String("error", err.Error()))
-		onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to create new session: %v", err))
+		if errors.Is(err, errNoMatchingBackendSelector) {
+			// This is an authorization decision, not a system failure.
+			onErrorResponse(w, http.StatusForbidden, "access denied")
+		} else {
+			onErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to create new session: %v", err))
+		}
 		return err
 	}
 
@@ -680,16 +685,18 @@ func (m *mcpRequestContext) handleClientToServerResponse(ctx context.Context, s 
 	}
 	res.ID = id
 
-	cse := s.getCompositeSessionEntry(backendName)
-	if cse == nil {
-		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("no MCP session found for backend %s", backendName))
-		return result, fmt.Errorf("no MCP session found for backend %s", backendName)
-	}
-
 	backend, err := m.getBackendForRoute(s.route, backendName)
 	if err != nil {
 		onErrorResponse(w, http.StatusNotFound, fmt.Sprintf("unknown backend %s", backendName))
 		return result, fmt.Errorf("%w: unknown backend %s", errBackendNotFound, backendName)
+	}
+
+	cse := s.getCompositeSessionEntry(backendName)
+	if cse == nil {
+		// No session for this backend usually means backendSelector excluded it for this
+		// session; treat it as an authorization decision rather than a malformed request.
+		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
+		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
 	}
 	resp, err := m.invokeJSONRPCRequest(ctx, s.route, backend, cse, res, nil)
 	if err != nil {
@@ -762,7 +769,9 @@ func (m *mcpRequestContext) handleToolCallRequest(ctx context.Context, s *sessio
 
 	cse := s.getCompositeSessionEntry(backendName)
 	if cse == nil {
-		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("no MCP session found for backend %s", backendName))
+		// No session for this backend usually means backendSelector excluded it for this
+		// session; treat it as an authorization decision rather than a malformed request.
+		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
 		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
 	}
 
@@ -962,19 +971,30 @@ func (m *mcpRequestContext) maybeUpdateProgressTokenMetadata(ctx context.Context
 
 // maybeResponseModify modifies the client->server response to include the backend name where needed.
 func (m *mcpRequestContext) maybeResponseModify(_ context.Context, req *jsonrpc.Request, msg *jsonrpc.Response, backend filterapi.MCPBackendName) error {
-	if req.Method != "resources/read" || msg.Result == nil {
+	if msg.Result == nil {
 		return nil
 	}
-
-	result := &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{}}
-	if err := json.Unmarshal(msg.Result, result); err != nil {
-		return fmt.Errorf("failed to unmarshal resources/read result: %w", err)
+	switch req.Method {
+	case "resources/read":
+		result := &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{}}
+		if err := json.Unmarshal(msg.Result, result); err != nil {
+			return fmt.Errorf("failed to unmarshal resources/read result: %w", err)
+		}
+		for _, res := range result.Contents {
+			res.URI = downstreamResourceURI(res.URI, backend)
+		}
+		msg.Result, _ = json.Marshal(result) // Already decoded result, so ignore error.
+	case "tools/call":
+		result := &mcp.CallToolResult{}
+		if err := json.Unmarshal(msg.Result, result); err != nil {
+			// Non-standard result shape: pass through unchanged since the backend owns this payload.
+			m.l.Debug("tools/call result is not a standard CallToolResult, skipping URI rewrite", slog.String("error", err.Error()))
+			return nil
+		}
+		if rewriteToolResultURIs(result, backend) {
+			msg.Result, _ = json.Marshal(result) // Already decoded result, so ignore error.
+		}
 	}
-	for _, res := range result.Contents {
-		res.URI = downstreamResourceURI(res.URI, backend)
-	}
-	msg.Result, _ = json.Marshal(result) // Already decoded result, so ignore error.
-
 	return nil
 }
 
@@ -1114,7 +1134,9 @@ func (m *mcpRequestContext) handleResourceReadRequest(ctx context.Context, s *se
 	}
 	sess := s.getCompositeSessionEntry(backendName)
 	if sess == nil {
-		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("no MCP session found for backend %s", backendName))
+		// No session for this backend usually means backendSelector excluded it for this
+		// session; treat it as an authorization decision rather than a malformed request.
+		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
 		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
 	}
 	// Send the request to the MCP backend listener.
@@ -1165,7 +1187,9 @@ func (m *mcpRequestContext) handleResourcesSubscriptionRequest(ctx context.Conte
 	}
 	cse := s.getCompositeSessionEntry(backendName)
 	if cse == nil {
-		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("no MCP session found for backend %s", backendName))
+		// No session for this backend usually means backendSelector excluded it for this
+		// session; treat it as an authorization decision rather than a malformed request.
+		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
 		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
 	}
 
@@ -1229,22 +1253,95 @@ func upstreamResourceName(fullName string) (backendName, name string, err error)
 	return fullName[:index], fullName[index+len(nameSeparator):], nil
 }
 
+// uiSchemePrefix is the URI scheme the MCP Apps extension mandates for UI resources.
+// Hosts only render resources whose scheme is exactly "ui", so the backend name must be
+// encoded inside the URI rather than prepended to the scheme.
+const uiSchemePrefix = "ui://"
+
 // downstreamResourceURI converts the upstream resource URI to the downstream resource URI by
 // encoding the URL. The URL will be in the form: <backend>+<scheme>://<path>
 // We need to encode URLs in a way that the "path" part remains unchanged so that the Resource Templates
 // can still match the resource URIs.
+//
+// ui:// URIs are the exception: the scheme must survive the rewrite, so the backend name is
+// inserted as the leading path segment instead: ui://<backend>/<rest>.
 func downstreamResourceURI(uri string, backendName string) string {
+	if rest, ok := strings.CutPrefix(uri, uiSchemePrefix); ok {
+		return uiSchemePrefix + backendName + "/" + rest
+	}
 	return fmt.Sprintf("%s+%s", backendName, uri)
 }
 
-// upstreamResourceURI converts the downstream resource URI to the upstream resource URI by
-// decoding the URL. The URL will be in the form: <backend>+<scheme>://<path>
+// upstreamResourceURI converts the downstream resource URI to the upstream resource URI,
+// the inverse of downstreamResourceURI: ui://<backend>/<rest> for UI resources and
+// <backend>+<scheme>://<path> for everything else.
 func upstreamResourceURI(fullURI string) (backendName, uri string, err error) {
+	if rest, ok := strings.CutPrefix(fullURI, uiSchemePrefix); ok {
+		backendName, rest, ok = strings.Cut(rest, "/")
+		if !ok || backendName == "" {
+			return "", "", fmt.Errorf("invalid resource URI: %s", fullURI)
+		}
+		return backendName, uiSchemePrefix + rest, nil
+	}
 	parts := strings.SplitN(fullURI, "+", 2)
 	if len(parts) != 2 {
 		return "", "", fmt.Errorf("invalid resource URI: %s", fullURI)
 	}
 	return parts[0], parts[1], nil
+}
+
+// metaResourceURIPaths lists the _meta key paths whose leaf value is a resource URI that
+// must be namespaced with the backend name in multiplexing mode so that a later
+// resources/read on it routes back to the originating backend.
+var metaResourceURIPaths = [][]string{
+	{"ui", "resourceUri"}, // MCP Apps (_meta.ui.resourceUri).
+	{"ui/resourceUri"},    // MCP Apps SDK flat form (_meta["ui/resourceUri"]).
+}
+
+// rewriteMetaResourceURIs namespaces every known resource URI in meta with the backend name.
+// Returns true if anything was changed. No-ops on absent or unexpected shapes.
+// Not idempotent: it must be applied exactly once per upstream payload.
+func rewriteMetaResourceURIs(meta mcp.Meta, backendName filterapi.MCPBackendName) bool {
+	changed := false
+	for _, path := range metaResourceURIPaths {
+		node := map[string]any(meta)
+		for _, key := range path[:len(path)-1] {
+			if node, _ = node[key].(map[string]any); node == nil {
+				break
+			}
+		}
+		if node == nil {
+			continue
+		}
+		leaf := path[len(path)-1]
+		if uri, ok := node[leaf].(string); ok && uri != "" {
+			node[leaf] = downstreamResourceURI(uri, backendName)
+			changed = true
+		}
+	}
+	return changed
+}
+
+// rewriteToolResultURIs namespaces all resource URIs in a tools/call result: _meta fields
+// (via rewriteMetaResourceURIs) and any ResourceLink / EmbeddedResource entries in Content.
+// Returns true if anything was changed.
+func rewriteToolResultURIs(result *mcp.CallToolResult, backendName filterapi.MCPBackendName) bool {
+	changed := rewriteMetaResourceURIs(result.Meta, backendName)
+	for _, c := range result.Content {
+		switch v := c.(type) {
+		case *mcp.ResourceLink:
+			if v.URI != "" {
+				v.URI = downstreamResourceURI(v.URI, backendName)
+				changed = true
+			}
+		case *mcp.EmbeddedResource:
+			if v.Resource != nil && v.Resource.URI != "" {
+				v.Resource.URI = downstreamResourceURI(v.Resource.URI, backendName)
+				changed = true
+			}
+		}
+	}
+	return changed
 }
 
 // extractSubject extracts the "sub" claim from the JWT in the Authorization header.
@@ -1322,7 +1419,9 @@ func (m *mcpRequestContext) handlePromptGetRequest(ctx context.Context, s *sessi
 	}
 	cse := s.getCompositeSessionEntry(backendName)
 	if cse == nil {
-		onErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("no MCP session found for backend %s", backendName))
+		// No session for this backend usually means backendSelector excluded it for this
+		// session; treat it as an authorization decision rather than a malformed request.
+		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
 		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
 	}
 	// Send the request to the MCP backend listener.
@@ -1365,8 +1464,15 @@ func (m *mcpRequestContext) handleCompletionComplete(ctx context.Context, s *ses
 		return result, fmt.Errorf("%w: unknown backend %s in resource name %s", errBackendNotFound, backendName, cmp.Or(param.Ref.Name, param.Ref.URI))
 	}
 
-	// Send the request to the MCP backend listener.
 	cse := s.getCompositeSessionEntry(backend.Name)
+	if cse == nil {
+		// No session for this backend usually means backendSelector excluded it for this
+		// session; treat it as an authorization decision rather than a malformed request.
+		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
+		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
+	}
+
+	// Send the request to the MCP backend listener.
 	if span != nil {
 		span.RecordRouteToBackend(backend.Name, string(cse.sessionID), false)
 	}
@@ -1434,6 +1540,13 @@ func (m *mcpRequestContext) handleClientToServerNotificationsProgress(ctx contex
 		return result, fmt.Errorf("%w: unknown backend %s in progressToken %s", errBackendNotFound, backendName, pt)
 	}
 	cse := s.getCompositeSessionEntry(backend.Name)
+	if cse == nil {
+		// No session for this backend usually means backendSelector excluded it for this
+		// session; treat it as an authorization decision rather than a malformed request.
+		onErrorResponse(w, http.StatusForbidden, fmt.Sprintf("no MCP session found for backend %s", backendName))
+		return result, fmt.Errorf("%w: no MCP session found for backend %s", errSessionNotFound, backendName)
+	}
+
 	// Send the request to the MCP backend listener.
 	param, _ := json.Marshal(p)
 	req.Params = param
@@ -1729,6 +1842,7 @@ func (m *mcpRequestContext) mergeToolsList(s *session, responses []broadCastResp
 				}
 			}
 			tool.Name = downstreamResourceName(tool.Name, r.backendName)
+			rewriteMetaResourceURIs(tool.Meta, r.backendName)
 			resp.Tools = append(resp.Tools, tool)
 		}
 	}
