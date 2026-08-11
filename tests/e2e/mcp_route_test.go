@@ -326,6 +326,7 @@ spec:
       securityPolicy:
         apiKey:
           inline: "test-api-key"
+          queryParam: "api_key"
   securityPolicy:
     oauth:
       issuer: "https://example.com"

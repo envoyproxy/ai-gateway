@@ -3067,6 +3067,9 @@ func Test_mcpConfig_BackendSelector(t *testing.T) {
 		mc, _ := mcpConfig(mcpRoutes)
 		require.Equal(t, filterapi.AuthorizationActionDeny, mc.Routes[0].BackendSelector.DefaultAction)
 		require.Empty(t, mc.Routes[0].BackendSelector.Rules)
+	})
+}
+
 func Test_mcpConfig_APIKeyForwardClientIDHeader(t *testing.T) {
 	newRoute := func(sp *aigv1b1.MCPRouteSecurityPolicy) []aigv1b1.MCPRoute {
 		return []aigv1b1.MCPRoute{
