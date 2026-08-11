@@ -39,11 +39,12 @@ const (
 )
 
 // applyDynamicFallback rewrites the routes of annotated AIGatewayRoutes to the dynamic
-// per-request fallback topology: one cluster per distinct backend, shared across rules and
-// routes, selected per attempt by a matcher cluster specifier keyed on x-envoy-attempt-count
-// plus x-aigw-try-<k> slot headers, with refresh_cluster_on_retry re-running the selection on
-// every retry. Shared-cluster endpoint metadata carries only the backend key; the rule key
-// travels as route metadata, and the extproc composes the two to resolve rule-scoped config.
+// per-request fallback topology: one cluster per orderable entry (a distinct backend, or a
+// same-backend ref distinguished by alias), shared across rules and routes, selected per
+// attempt by a matcher cluster specifier keyed on x-envoy-attempt-count plus x-aigw-try-<k>
+// slot headers, with refresh_cluster_on_retry re-running the selection on every retry.
+// Shared-cluster endpoint metadata carries only the entry key; the rule key travels as route
+// metadata, and the extproc composes the two to resolve rule-scoped config.
 //
 // Ineligible rules are skipped with a log and keep their existing behavior; the folded clusters
 // stay in the snapshot so in-flight streams are not reset.
@@ -170,7 +171,7 @@ func (s *Server) maybeApplyDynamicFallbackToRoute(
 	ruleKey := internalapi.DynamicFallbackRuleKey(parts[1], parts[2], ruleIndex)
 	for i := range refs {
 		ref := &refs[i]
-		sharedName := dynamicFallbackSharedClusterName(ref.backendKey)
+		sharedName := dynamicFallbackSharedClusterName(ref.entryKey)
 		candidate := buildSharedDynamicFallbackCluster(folded, *ref, sharedName)
 		existing, exists := synthesized[sharedName]
 		switch {
@@ -183,9 +184,9 @@ func (s *Server) maybeApplyDynamicFallbackToRoute(
 			// This rule's cluster-level settings (typically its own BackendTrafficPolicy)
 			// diverge from the already-shared cluster; sharing would silently drop one side,
 			// so the rule gets its own cluster instead.
-			scopedName := dynamicFallbackRuleScopedClusterName(ruleKey, ref.backendKey)
+			scopedName := dynamicFallbackRuleScopedClusterName(ruleKey, ref.entryKey)
 			s.log.Info("dynamic fallback: cluster settings diverge from the shared cluster, using a rule-scoped one",
-				"route", route.Name, "backend", ref.backendKey, "cluster", scopedName)
+				"route", route.Name, "backend", ref.entryKey, "cluster", scopedName)
 			ref.clusterName = scopedName
 			if _, done := synthesized[scopedName]; !done {
 				candidate.Name = scopedName
@@ -231,8 +232,9 @@ func (s *Server) maybeApplyDynamicFallbackToRoute(
 type dynamicFallbackRef struct {
 	// name is the published vocabulary in the matcher maps: alias when set, else resource name.
 	name string
-	// backendKey identifies the distinct backend (internalapi.DynamicFallbackBackendKey).
-	backendKey    string
+	// entryKey identifies the orderable entry (internalapi.DynamicFallbackEntryKey): the backend,
+	// plus the published name when refs share a backend.
+	entryKey      string
 	localityIndex int
 	priority      uint32
 	// clusterName is filled in during synthesis: the shared per-backend cluster normally, or a
@@ -249,7 +251,6 @@ type dynamicFallbackRef struct {
 // reproduced). The controller mirrors these checks when publishing candidates.
 func activeDynamicFallbackRefs(rule *aigv1b1.AIGatewayRouteRule, routeNamespace string) (refs []dynamicFallbackRef, reason string) {
 	refs = make([]dynamicFallbackRef, 0, len(rule.BackendRefs))
-	seenBackends := make(map[string]struct{}, len(rule.BackendRefs))
 	seenNames := make(map[string]struct{}, len(rule.BackendRefs))
 	seenPriorities := make(map[uint32]struct{}, len(rule.BackendRefs))
 	localityIndex := 0
@@ -270,22 +271,20 @@ func activeDynamicFallbackRefs(rule *aigv1b1.AIGatewayRouteRule, routeNamespace 
 		if ref.Alias != "" {
 			name = ref.Alias
 		}
-		backendKey := internalapi.DynamicFallbackBackendKey(ref.GetNamespace(routeNamespace), ref.Name)
-		if _, dup := seenBackends[backendKey]; dup {
-			return nil, "two backendRefs reference the same backend " + backendKey
-		}
+		// Distinct published names also cover same-backend refs (e.g. per-model refs via
+		// modelNameOverride): without aliases they collide on the backend name and the rule
+		// stays ineligible; with aliases each ref gets its own entry key and cluster.
 		if _, dup := seenNames[name]; dup {
 			return nil, "published name collision on " + name
 		}
 		if _, dup := seenPriorities[priority]; dup {
 			return nil, "backendRefs share a priority; a weighted split cannot be preserved"
 		}
-		seenBackends[backendKey] = struct{}{}
 		seenNames[name] = struct{}{}
 		seenPriorities[priority] = struct{}{}
 		refs = append(refs, dynamicFallbackRef{
 			name:          name,
-			backendKey:    backendKey,
+			entryKey:      internalapi.DynamicFallbackEntryKey(ref.GetNamespace(routeNamespace), ref.Name, name),
 			localityIndex: localityIndex,
 			priority:      priority,
 		})
@@ -304,16 +303,16 @@ func defaultOrder(refs []dynamicFallbackRef) []dynamicFallbackRef {
 }
 
 // dynamicFallbackSharedClusterName names the shared per-backend cluster. The name is derived
-// from the backend identity alone, which is what makes the cluster shareable;
+// from the entry identity alone, which is what makes the cluster shareable;
 // parseAIGatewayClusterName rejects the prefix, so maybeModifyCluster never re-processes it.
-func dynamicFallbackSharedClusterName(backendKey string) string {
-	return "aigw-dynfb/" + backendKey
+func dynamicFallbackSharedClusterName(entryKey string) string {
+	return "aigw-dynfb/" + entryKey
 }
 
 // dynamicFallbackRuleScopedClusterName names the cluster used when a rule's cluster-level
 // settings diverge from the shared cluster's.
-func dynamicFallbackRuleScopedClusterName(ruleKey, backendKey string) string {
-	return "aigw-dynfb/rule/" + ruleKey + "/" + backendKey
+func dynamicFallbackRuleScopedClusterName(ruleKey, entryKey string) string {
+	return "aigw-dynfb/rule/" + ruleKey + "/" + entryKey
 }
 
 // dynamicFallbackClusterShapeEqual reports whether two candidate clusters for the same backend
@@ -340,7 +339,7 @@ func dynamicFallbackClusterShapeEqual(a, b *clusterv3.Cluster) bool {
 // into a dedicated cluster: the clone keeps all cluster-level settings (protocol options
 // including the upstream extproc filter, timeouts, outlier detection), the backend's matched
 // transport socket becomes the plain transport socket, and the endpoint identity is replaced
-// with the rule-independent backend key.
+// with the rule-independent entry key.
 func buildSharedDynamicFallbackCluster(folded *clusterv3.Cluster, ref dynamicFallbackRef, name string) *clusterv3.Cluster {
 	c, ok := proto.Clone(folded).(*clusterv3.Cluster)
 	if !ok {
@@ -354,7 +353,7 @@ func buildSharedDynamicFallbackCluster(folded *clusterv3.Cluster, ref dynamicFal
 	c.AltStatName = ""
 
 	for _, ep := range locality.LbEndpoints {
-		setEndpointBackendIdentity(ep, ref.backendKey)
+		setEndpointBackendIdentity(ep, ref.entryKey)
 	}
 
 	if matchName := transportSocketMatchName(locality); matchName != "" {

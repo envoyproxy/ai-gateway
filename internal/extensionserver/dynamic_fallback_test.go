@@ -135,7 +135,7 @@ func TestApplyDynamicFallback(t *testing.T) {
 		foldedName  = "httproute/ns/dynroute/rule/0"
 		folded2Name = "httproute/ns/dynroute2/rule/0"
 		sharedAAA   = "aigw-dynfb/backend/ns/aaa"
-		sharedBBB   = "aigw-dynfb/backend/ns/bbb-resource"
+		sharedBBB   = "aigw-dynfb/backend/ns/bbb-resource/bbb"
 		sharedCCC   = "aigw-dynfb/backend/ns/ccc"
 	)
 	folded := dynFallbackTestFoldedCluster(foldedName, "aaa-identity", "bbb-identity")
@@ -201,7 +201,7 @@ func TestApplyDynamicFallback(t *testing.T) {
 		require.Empty(t, dyn.TransportSocketMatches, dyn.Name)
 	}
 	requireEndpointIdentity(t, dynAAA, "backend/ns/aaa")
-	requireEndpointIdentity(t, dynBBB, "backend/ns/bbb-resource")
+	requireEndpointIdentity(t, dynBBB, "backend/ns/bbb-resource/bbb")
 	requireEndpointIdentity(t, dynCCC, "backend/ns/ccc")
 	// First-seen rule shaped aaa's cluster: dynroute's locality (no TLS), not dynroute2's.
 	require.Nil(t, dynAAA.TransportSocket)
@@ -336,6 +336,74 @@ func TestApplyDynamicFallback_skips(t *testing.T) {
 	}
 }
 
+// TestApplyDynamicFallback_sameBackendModelRefs: two refs to the SAME backend distinguished by
+// alias (the per-model modelNameOverride pattern) are eligible and get distinct entry-keyed
+// clusters, so a chain can order "opus,sonnet". Without aliases the published names collide and
+// the rule keeps static behavior.
+func TestApplyDynamicFallback_sameBackendModelRefs(t *testing.T) {
+	c := newFakeClient()
+	require.NoError(t, c.Create(t.Context(), &aigv1b1.AIGatewayRoute{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "modelroute",
+			Namespace:   "ns",
+			Annotations: map[string]string{internalapi.DynamicFallbackAnnotationKey: "true"},
+		},
+		Spec: aigv1b1.AIGatewayRouteSpec{
+			Rules: []aigv1b1.AIGatewayRouteRule{
+				{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+					{Name: "anthropic", Alias: "opus"},
+					{Name: "anthropic", Alias: "sonnet", Priority: ptr.To[uint32](1)},
+				}},
+				// Same shape without aliases: published names collide on "anthropic";
+				// must keep static behavior.
+				{BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+					{Name: "anthropic"},
+					{Name: "anthropic", Priority: ptr.To[uint32](1)},
+				}},
+			},
+		},
+	}))
+	s, err := New(c, logr.Discard(), udsPath, false, nil, nil, "envoy-ai-gateway-ratelimit.envoy-gateway-system", 5, false)
+	require.NoError(t, err)
+
+	folded := dynFallbackTestFoldedCluster("httproute/ns/modelroute/rule/0", "opus-identity", "sonnet-identity")
+	foldedNoAlias := dynFallbackTestFoldedCluster("httproute/ns/modelroute/rule/1", "a-identity", "b-identity")
+	newRoute := func(name, cluster string) *routev3.Route {
+		return &routev3.Route{
+			Name: name,
+			Action: &routev3.Route_Route{Route: &routev3.RouteAction{
+				ClusterSpecifier: &routev3.RouteAction_Cluster{Cluster: cluster},
+			}},
+		}
+	}
+	route := newRoute("httproute/ns/modelroute/rule/0/match/0", folded.Name)
+	routeNoAlias := newRoute("httproute/ns/modelroute/rule/1/match/0", foldedNoAlias.Name)
+	vh := &routev3.VirtualHost{Routes: []*routev3.Route{route, routeNoAlias}}
+	clusters, err := s.applyDynamicFallback(t.Context(),
+		[]*clusterv3.Cluster{folded, foldedNoAlias},
+		[]*routev3.RouteConfiguration{{VirtualHosts: []*routev3.VirtualHost{vh}}})
+	require.NoError(t, err)
+
+	// 2 folded (retained) + 2 entry clusters for the aliased rule; the alias-less rule
+	// synthesizes nothing.
+	require.Len(t, clusters, 4)
+	opus := requireClusterByName(t, clusters, "aigw-dynfb/backend/ns/anthropic/opus")
+	sonnet := requireClusterByName(t, clusters, "aigw-dynfb/backend/ns/anthropic/sonnet")
+	requireEndpointIdentity(t, opus, "backend/ns/anthropic/opus")
+	requireEndpointIdentity(t, sonnet, "backend/ns/anthropic/sonnet")
+
+	specifier := &clusterspecifierv3.MatcherClusterSpecifier{}
+	require.NoError(t, route.GetRoute().GetInlineClusterSpecifierPlugin().Extension.TypedConfig.UnmarshalTo(specifier))
+	byName := specifier.ClusterMatcher.GetMatcherTree().GetExactMatchMap().Map["0"].GetMatcher().GetMatcherTree().GetExactMatchMap().Map
+	require.Equal(t, opus.Name, onMatchCluster(t, byName["opus"]))
+	require.Equal(t, sonnet.Name, onMatchCluster(t, byName["sonnet"]))
+	requireRouteRuleKey(t, route, "ns/route/modelroute/rule/0")
+
+	// The alias-less rule keeps its original cluster reference untouched.
+	require.Equal(t, foldedNoAlias.Name, routeNoAlias.GetRoute().GetCluster())
+	require.Nil(t, routeNoAlias.GetRoute().GetInlineClusterSpecifierPlugin())
+}
+
 // TestApplyDynamicFallback_shapeDivergence: a rule whose folded cluster carries different
 // cluster-level settings (the shape a per-route BackendTrafficPolicy produces) must not inherit
 // the shared clusters — it gets rule-scoped ones preserving its own settings.
@@ -365,9 +433,9 @@ func TestApplyDynamicFallback_shapeDivergence(t *testing.T) {
 		folded1Name = "httproute/ns/divroute/rule/0"
 		folded2Name = "httproute/ns/divroute2/rule/0"
 		sharedAAA   = "aigw-dynfb/backend/ns/aaa"
-		sharedBBB   = "aigw-dynfb/backend/ns/bbb-resource"
+		sharedBBB   = "aigw-dynfb/backend/ns/bbb-resource/bbb"
 		scopedAAA   = "aigw-dynfb/rule/ns/route/divroute2/rule/0/backend/ns/aaa"
-		scopedBBB   = "aigw-dynfb/rule/ns/route/divroute2/rule/0/backend/ns/bbb-resource"
+		scopedBBB   = "aigw-dynfb/rule/ns/route/divroute2/rule/0/backend/ns/bbb-resource/bbb"
 	)
 	folded1 := dynFallbackTestFoldedCluster(folded1Name, "aaa-identity", "bbb-identity")
 	// Same backends, different cluster-level shaping; ConnectTimeout is the only real
@@ -476,7 +544,7 @@ func TestApplyDynamicFallback_tlsSharingAcrossRoutes(t *testing.T) {
 	// transport_socket_matches names differ per route) must not register as divergence.
 	require.Len(t, clusters, 4)
 	requireClusterByName(t, clusters, "aigw-dynfb/backend/ns/aaa")
-	bbb := requireClusterByName(t, clusters, "aigw-dynfb/backend/ns/bbb-resource")
+	bbb := requireClusterByName(t, clusters, "aigw-dynfb/backend/ns/bbb-resource/bbb")
 	require.NotNil(t, bbb.TransportSocket)
 	for _, cl := range clusters {
 		require.NotContains(t, cl.Name, "aigw-dynfb/rule/", "no rule-scoped cluster expected: %s", cl.Name)

@@ -110,12 +110,14 @@ func TestGatewayController_reconcileFilterConfigSecret_DynamicFallback(t *testin
 		require.Contains(t, names, internalapi.PerRouteRuleRefBackendName(ns, "apple", "dynroute", 0, 0))
 		require.Contains(t, names, internalapi.PerRouteRuleRefBackendName(ns, "orange", "dynroute", 0, 1))
 		// ...and the composed entries serve the shared per-backend clusters.
+		// The aliased ref's entry key carries the published name; the alias-less one equals
+		// the plain backend key.
 		appleKey := internalapi.DynamicFallbackFilterBackendName(
 			internalapi.DynamicFallbackRuleKey(ns, "dynroute", 0),
-			internalapi.DynamicFallbackBackendKey(ns, "apple"))
+			internalapi.DynamicFallbackEntryKey(ns, "apple", "apple-alias"))
 		orangeKey := internalapi.DynamicFallbackFilterBackendName(
 			internalapi.DynamicFallbackRuleKey(ns, "dynroute", 0),
-			internalapi.DynamicFallbackBackendKey(ns, "orange"))
+			internalapi.DynamicFallbackEntryKey(ns, "orange", "orange"))
 		require.Contains(t, names, appleKey)
 		require.Contains(t, names, orangeKey)
 		// The composed entry carries the rule-scoped config.
@@ -127,6 +129,41 @@ func TestGatewayController_reconcileFilterConfigSecret_DynamicFallback(t *testin
 		// The model surfaces the published vocabulary (alias preferred over resource name).
 		require.Len(t, cfg.Models, 1)
 		require.Equal(t, []string{"apple-alias", "orange"}, cfg.Models[0].FallbackCandidates)
+	})
+
+	t.Run("same-backend model refs emit per-entry composed configs", func(t *testing.T) {
+		route := aigv1b1.AIGatewayRoute{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        "modelroute",
+				Namespace:   ns,
+				Annotations: map[string]string{internalapi.DynamicFallbackAnnotationKey: "true"},
+			},
+			Spec: aigv1b1.AIGatewayRouteSpec{
+				Rules: []aigv1b1.AIGatewayRouteRule{
+					{
+						BackendRefs: []aigv1b1.AIGatewayRouteRuleBackendRef{
+							{Name: "apple", Alias: "opus", ModelNameOverride: "claude-opus-4"},
+							{Name: "apple", Alias: "sonnet", ModelNameOverride: "claude-sonnet-4", Priority: ptr.To[uint32](1)},
+						},
+						Matches: []aigv1b1.AIGatewayRouteRuleMatch{
+							{Headers: []gwapiv1.HTTPHeaderMatch{{Name: internalapi.ModelNameHeaderKeyDefault, Value: "claude"}}},
+						},
+					},
+				},
+			},
+		}
+		cfg := reconcile(t, "gw-model", []aigv1b1.AIGatewayRoute{route})
+		require.Equal(t, []string{"opus", "sonnet"}, cfg.Models[0].FallbackCandidates)
+		ruleKey := internalapi.DynamicFallbackRuleKey(ns, "modelroute", 0)
+		overridesByName := map[string]string{}
+		for _, b := range cfg.Backends {
+			overridesByName[b.Name] = b.ModelNameOverride
+		}
+		// Each entry resolves its own model override despite sharing the backend.
+		require.Equal(t, "claude-opus-4",
+			overridesByName[internalapi.DynamicFallbackFilterBackendName(ruleKey, internalapi.DynamicFallbackEntryKey(ns, "apple", "opus"))])
+		require.Equal(t, "claude-sonnet-4",
+			overridesByName[internalapi.DynamicFallbackFilterBackendName(ruleKey, internalapi.DynamicFallbackEntryKey(ns, "apple", "sonnet"))])
 	})
 
 	t.Run("non-annotated route emits neither flag nor composed entries", func(t *testing.T) {

@@ -141,7 +141,7 @@ func PerRouteRuleRefBackendName(namespace, name, routeName string, routeRuleInde
 }
 
 // DynamicFallbackRuleKey identifies a specific rule of an AIGatewayRoute; stamped as the
-// `dynfb_rule_key` route metadata on rewritten routes and composed with the backend key into
+// `dynfb_rule_key` route metadata on rewritten routes and composed with the entry key into
 // the extproc's config lookup name.
 func DynamicFallbackRuleKey(routeNamespace, routeName string, routeRuleIndex int) string {
 	return fmt.Sprintf("%s/route/%s/rule/%d", routeNamespace, routeName, routeRuleIndex)
@@ -154,8 +154,21 @@ func DynamicFallbackBackendKey(backendNamespace, backendName string) string {
 	return fmt.Sprintf("backend/%s/%s", backendNamespace, backendName)
 }
 
+// DynamicFallbackEntryKey identifies an orderable entry of a rule: the backend, plus the
+// published name when it differs from the backend name — so two refs to the same backend
+// (distinguished by alias, e.g. per-model refs via modelNameOverride) get distinct identities
+// and distinct clusters. When no alias is set the key equals DynamicFallbackBackendKey,
+// keeping single-ref-per-backend rules on the same keys as before.
+func DynamicFallbackEntryKey(backendNamespace, backendName, publishedName string) string {
+	key := DynamicFallbackBackendKey(backendNamespace, backendName)
+	if publishedName != backendName {
+		key += "/" + publishedName
+	}
+	return key
+}
+
 // DynamicFallbackFilterBackendName is the filterapi.Backend name for a backend used by a
-// dynamic-fallback rule: the rule key joined with the backend key. The controller emits entries
+// dynamic-fallback rule: the rule key joined with the entry key. The controller emits entries
 // under this name and the extproc reassembles it from the two metadata attributes.
 func DynamicFallbackFilterBackendName(ruleKey, backendKey string) string {
 	return ruleKey + "/" + backendKey

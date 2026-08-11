@@ -405,7 +405,7 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 			// entries below.
 			var fallbackCandidates []string
 			if aiGatewayRoute.Annotations[internalapi.DynamicFallbackAnnotationKey] == "true" {
-				fallbackCandidates = dynamicFallbackRuleCandidates(rule, aiGatewayRoute.Namespace)
+				fallbackCandidates = dynamicFallbackRuleCandidates(rule)
 			}
 			for _, m := range rule.Matches {
 				for _, h := range m.Headers {
@@ -526,15 +526,19 @@ func (c *GatewayController) reconcileFilterConfigSecret(
 					routeBackendNames = append(routeBackendNames, b.Name)
 				}
 				// Dynamic-fallback rules resolve backend config under the composed
-				// (rule key, backend key) name; emit the same config there. The per-rule-ref
+				// (rule key, entry key) name; emit the same config there. The per-rule-ref
 				// entry above is kept for the retained folded cluster, and the
 				// fallbackCandidates gate keeps ineligible rules from emitting composed entries.
 				if ec.DynamicFallbackEnabled && fallbackCandidates != nil &&
 					!backendRef.IsInferencePool() {
+					publishedName := backendRef.Name
+					if backendRef.Alias != "" {
+						publishedName = backendRef.Alias
+					}
 					db := b
 					db.Name = internalapi.DynamicFallbackFilterBackendName(
 						internalapi.DynamicFallbackRuleKey(aiGatewayRoute.Namespace, aiGatewayRoute.Name, ruleIndex),
-						internalapi.DynamicFallbackBackendKey(backendNamespace, backendRef.Name),
+						internalapi.DynamicFallbackEntryKey(backendNamespace, backendRef.Name, publishedName),
 					)
 					ec.Backends = append(ec.Backends, db)
 				}

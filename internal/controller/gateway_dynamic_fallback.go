@@ -16,9 +16,8 @@ import (
 // are only published for rules the extension server actually rewrites. Envoy Gateway may still
 // split a rule into weighted per-ref clusters for reasons only visible at translation time;
 // such rules' candidates are inert (documented in the proposal's limitations).
-func dynamicFallbackRuleCandidates(rule *aigv1b1.AIGatewayRouteRule, routeNamespace string) []string {
+func dynamicFallbackRuleCandidates(rule *aigv1b1.AIGatewayRouteRule) []string {
 	candidates := make([]string, 0, len(rule.BackendRefs))
-	seenBackends := make(map[string]struct{}, len(rule.BackendRefs))
 	seenNames := make(map[string]struct{}, len(rule.BackendRefs))
 	seenPriorities := make(map[uint32]struct{}, len(rule.BackendRefs))
 	for i := range rule.BackendRefs {
@@ -37,17 +36,14 @@ func dynamicFallbackRuleCandidates(rule *aigv1b1.AIGatewayRouteRule, routeNamesp
 		if ref.Alias != "" {
 			name = ref.Alias
 		}
-		backendKey := ref.GetNamespace(routeNamespace) + "/" + ref.Name
-		if _, dup := seenBackends[backendKey]; dup {
-			return nil
-		}
+		// Distinct published names also cover same-backend refs: without aliases they
+		// collide on the backend name and the rule stays ineligible.
 		if _, dup := seenNames[name]; dup {
 			return nil
 		}
 		if _, dup := seenPriorities[priority]; dup {
 			return nil
 		}
-		seenBackends[backendKey] = struct{}{}
 		seenNames[name] = struct{}{}
 		seenPriorities[priority] = struct{}{}
 		candidates = append(candidates, name)
