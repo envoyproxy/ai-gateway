@@ -41,12 +41,42 @@ type anthropicToAWSAnthropicTranslator struct {
 	anthropicBetas []string
 }
 
+// awsBedrockSupportedAnthropicBetas is the allowlist of anthropic-beta flags that AWS Bedrock
+// accepts in the anthropic_beta request field. Bedrock rejects the entire request with a 400
+// "invalid beta flag" error if any unrecognized flag is present, so unsupported flags (e.g.
+// ones only the Anthropic API knows) must be stripped rather than forwarded.
+//
+// Every entry was confirmed accepted (HTTP 200) by live probes against Bedrock. Notably,
+// prompt-caching-2024-07-31, extended-cache-ttl-2025-04-11, files-api-2025-04-14,
+// code-execution-2025-05-22, memory-2025-08-18 and thinking-token-count-2026-05-13 were
+// probed and rejected. Extend this set only with flags verified against Bedrock.
+var awsBedrockSupportedAnthropicBetas = map[string]struct{}{
+	"computer-use-2024-10-22":                  {},
+	"computer-use-2025-01-24":                  {},
+	"context-1m-2025-08-07":                    {},
+	"context-management-2025-06-27":            {},
+	"dev-full-thinking-2025-05-14":             {},
+	"fine-grained-tool-streaming-2025-05-14":   {},
+	"interleaved-thinking-2025-05-14":          {},
+	"mcp-client-2025-04-04":                    {},
+	"mcp-client-2025-11-20":                    {},
+	"model-context-window-exceeded-2025-08-26": {},
+	"output-128k-2025-02-19":                   {},
+	"pdfs-2024-09-25":                          {},
+	"search-results-2025-06-09":                {},
+	"token-counting-2024-11-01":                {},
+	"token-efficient-tools-2025-02-19":         {},
+	"tool-search-tool-2025-10-19":              {},
+	"web-search-2025-03-05":                    {},
+}
+
 // SetRequestHeaders implements [RequestHeadersSetter].
 func (a *anthropicToAWSAnthropicTranslator) SetRequestHeaders(headers map[string]string) {
 	var anthropicBetas []string
 	if betaHeader := headers["anthropic-beta"]; betaHeader != "" {
 		for _, beta := range strings.Split(betaHeader, ",") {
-			if beta = strings.TrimSpace(beta); beta != "" {
+			beta = strings.TrimSpace(beta)
+			if _, ok := awsBedrockSupportedAnthropicBetas[beta]; ok {
 				anthropicBetas = append(anthropicBetas, beta)
 			}
 		}
