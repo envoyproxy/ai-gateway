@@ -190,11 +190,12 @@ func (o *openAIToOpenAITranslatorV1ChatCompletion) extractUsageFromBufferEvent(s
 		}
 		line := o.buffered[:i]
 		o.buffered = o.buffered[i+1:]
-		if !bytes.HasPrefix(line, sseDataPrefix) {
+		data, ok := cutSSEDataPrefix(line)
+		if !ok {
 			continue
 		}
 		event := &openai.ChatCompletionResponseChunk{}
-		if err := json.Unmarshal(bytes.TrimPrefix(line, sseDataPrefix), event); err != nil {
+		if err := json.Unmarshal(data, event); err != nil {
 			continue
 		}
 		if span != nil {

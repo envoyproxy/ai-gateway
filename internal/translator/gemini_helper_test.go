@@ -2643,6 +2643,24 @@ func TestExtractTextAndThoughtSummaryFromGeminiParts(t *testing.T) {
 			expectedText:           `He said \"hello\" to me`,
 		},
 		{
+			name: "enum mode trims surrounding whitespace",
+			parts: []*genai.Part{
+				{Text: " negative"},
+			},
+			responseMode:           responseModeEnum,
+			expectedThoughtSummary: "",
+			expectedText:           "negative",
+		},
+		{
+			name: "non-enum mode preserves surrounding whitespace",
+			parts: []*genai.Part{
+				{Text: " negative"},
+			},
+			responseMode:           responseModeJSON,
+			expectedThoughtSummary: "",
+			expectedText:           " negative",
+		},
+		{
 			name: "test thought summary",
 			parts: []*genai.Part{
 				{Text: "Let me think step by step", Thought: true},

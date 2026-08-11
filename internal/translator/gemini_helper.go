@@ -933,6 +933,13 @@ func extractTextAndThoughtSummaryFromGeminiParts(parts []*genai.Part, responseMo
 					part.Text = strings.TrimPrefix(part.Text, "\"")
 					part.Text = strings.TrimSuffix(part.Text, "\"")
 				}
+				if responseMode == responseModeEnum {
+					// GCP's ENUM response mode is expected to return  exactly one of the provided enum values.
+					//  However, sometimes, gemini models can emit surrounding whitespace (e.g. ` negative`
+					// instead of `negative`), which breaks exact-match consumers. Trim it so the
+					// output matches the requested choices verbatim.
+					part.Text = strings.TrimSpace(part.Text)
+				}
 				// ThoughtSignature is only appended with Thought as False
 				if part.ThoughtSignature != nil {
 					signatureBuilder.WriteString(base64.StdEncoding.EncodeToString(part.ThoughtSignature))

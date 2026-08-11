@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -791,8 +792,9 @@ func anthropicToolUseToOpenAICalls(block *anthropic.ContentBlockUnion) ([]openai
 // following are streaming part
 
 var (
-	sseEventPrefix = []byte("event: ")
-	emptyStrPtr    = ptr.To("")
+	sseEventPrefixSpace = []byte("event: ")
+	sseEventPrefix      = []byte("event:")
+	emptyStrPtr         = ptr.To("")
 )
 
 // streamingToolCall holds the state for a single tool call that is being streamed.
@@ -995,7 +997,7 @@ func (p *anthropicStreamParser) Process(body io.Reader, endOfStream bool, span t
 			}
 		}
 		// Add the final [DONE] message to indicate the end of the stream.
-		newBody = append(newBody, sseDataPrefix...)
+		newBody = append(newBody, sseDataPrefixSpace...)
 		newBody = append(newBody, sseDoneMessage...)
 		newBody = append(newBody, '\n', '\n')
 	}
@@ -1009,9 +1011,9 @@ func (p *anthropicStreamParser) parseAndHandleEvent(eventBlock []byte) (*openai.
 
 	lines := bytes.SplitSeq(eventBlock, []byte("\n"))
 	for line := range lines {
-		if after, ok := bytes.CutPrefix(line, sseEventPrefix); ok {
+		if after, ok := cutSSEFieldPrefix(line, sseEventPrefix); ok {
 			eventType = bytes.TrimSpace(after)
-		} else if after, ok := bytes.CutPrefix(line, sseDataPrefix); ok {
+		} else if after, ok := cutSSEDataPrefix(line); ok {
 			// This handles JSON data that might be split across multiple 'data:' lines
 			// by concatenating them (Anthropic's format).
 			data := bytes.TrimSpace(after)
@@ -1345,6 +1347,25 @@ func messageToChatCompletion(anthropicResp *anthropic.Message, responseModel int
 	}
 	openAIResp.Choices = append(openAIResp.Choices, choice)
 	return openAIResp, tokenUsage, nil
+}
+
+// awsAnthropicCountTokensPath builds the AWS Bedrock CountTokens request path
+// (POST /model/{modelId}/count-tokens) for an Anthropic (Claude) model.
+//
+// This is Anthropic-specific, not generic Bedrock: CountTokens does not accept
+// cross-region inference (CRIS) model IDs (e.g. "us.anthropic.claude-sonnet-4-6"
+// returns "The provided model doesn't support counting tokens"). A CRIS ID prepends
+// a geography prefix (e.g. "us.", "eu.", "apac.", "us-gov.") to the base model ID;
+// anchor on the "anthropic." provider segment and drop anything before it, so every
+// geography prefix is handled regardless of length. A bare base ID
+// ("anthropic.claude-...") has the segment at index 0 and is left as-is. The base
+// model ID is then URL-escaped so ARNs and special characters are safe in the path.
+// See: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html
+func awsAnthropicCountTokensPath(model string) string {
+	if i := strings.Index(model, "anthropic."); i > 0 {
+		model = model[i:]
+	}
+	return fmt.Sprintf(awsBedrockCountTokensPathFormat, url.PathEscape(model))
 }
 
 // openAIToAnthropicCountTokensParams builds the Anthropic MessageCountTokensParams
