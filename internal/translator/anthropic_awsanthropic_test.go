@@ -266,6 +266,26 @@ func TestAnthropicToAWSAnthropicTranslator_RequestBody_AnthropicBetaHeader(t *te
 			expected: []string{"interleaved-thinking-2025-05-14", "tool-search-tool-2025-10-19"},
 		},
 		{
+			name:     "Anthropic API umbrella flag is rewritten to the Bedrock tool search flag",
+			headers:  map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20"},
+			expected: []string{"tool-search-tool-2025-10-19"},
+		},
+		{
+			name:     "umbrella flag deduplicated with the explicitly sent Bedrock flag",
+			headers:  map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,tool-search-tool-2025-10-19"},
+			expected: []string{"tool-search-tool-2025-10-19"},
+		},
+		{
+			name:     "umbrella flag combined with other supported flags",
+			headers:  map[string]string{"anthropic-beta": "interleaved-thinking-2025-05-14,advanced-tool-use-2025-11-20"},
+			expected: []string{"interleaved-thinking-2025-05-14", "tool-search-tool-2025-10-19"},
+		},
+		{
+			name:     "umbrella flag with unsupported siblings only forwards the mapped flag",
+			headers:  map[string]string{"anthropic-beta": "advanced-tool-use-2025-11-20,code-execution-2025-08-25,files-api-2025-04-14"},
+			expected: []string{"tool-search-tool-2025-10-19"},
+		},
+		{
 			name:    "only unsupported flags results in no anthropic_beta",
 			headers: map[string]string{"anthropic-beta": "prompt-caching-2024-07-31,memory-2025-08-18"},
 		},

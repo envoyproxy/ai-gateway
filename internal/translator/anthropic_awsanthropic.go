@@ -70,13 +70,43 @@ var awsBedrockSupportedAnthropicBetas = map[string]struct{}{
 	"web-search-2025-03-05":                    {},
 }
 
+// anthropicAPIToBedrockBetaAliases maps anthropic-beta flag names that only the Anthropic API
+// accepts onto the equivalent Bedrock flag name. The same feature is often exposed under
+// different flag names depending on the backend, and clients speaking the Anthropic API
+// dialect (e.g. Claude Code) send the Anthropic API name, which would otherwise be stripped
+// by the allowlist above, silently disabling the gated feature.
+//
+// advanced-tool-use-2025-11-20 is the Anthropic API umbrella flag for Tool Search,
+// Programmatic Tool Calling and Tool Use Examples. Bedrock supports only Tool Search,
+// exposed under the older-dated tool-search-tool-2025-10-19; the tool type strings
+// (tool_search_tool_regex_20251119 / tool_search_tool_bm25_20251119) are identical on both.
+// The umbrella flag's non-Bedrock-supported siblings are dropped by the allowlist as usual.
+//
+// Aliases are applied before the allowlist check in SetRequestHeaders.
+var anthropicAPIToBedrockBetaAliases = map[string]string{
+	"advanced-tool-use-2025-11-20": "tool-search-tool-2025-10-19",
+}
+
 // SetRequestHeaders implements [RequestHeadersSetter].
 func (a *anthropicToAWSAnthropicTranslator) SetRequestHeaders(headers map[string]string) {
 	var anthropicBetas []string
+	seen := map[string]struct{}{}
 	if betaHeader := headers["anthropic-beta"]; betaHeader != "" {
 		for _, beta := range strings.Split(betaHeader, ",") {
 			beta = strings.TrimSpace(beta)
+			// Translate Anthropic-API-only flag names to their Bedrock equivalents
+			// before the allowlist check.
+			if alias, ok := anthropicAPIToBedrockBetaAliases[beta]; ok {
+				beta = alias
+			}
 			if _, ok := awsBedrockSupportedAnthropicBetas[beta]; ok {
+				// An alias can collide with an explicitly sent flag (e.g. both
+				// advanced-tool-use-2025-11-20 and tool-search-tool-2025-10-19);
+				// forward each Bedrock flag only once.
+				if _, dup := seen[beta]; dup {
+					continue
+				}
+				seen[beta] = struct{}{}
 				anthropicBetas = append(anthropicBetas, beta)
 			}
 		}
