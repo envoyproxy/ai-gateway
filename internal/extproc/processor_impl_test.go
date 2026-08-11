@@ -834,6 +834,8 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders(t *testing
 				require.Equal(t, []byte("b"), commonRes.HeaderMutation.SetHeaders[0].Header.RawValue)
 				require.Equal(t, "foo", commonRes.HeaderMutation.SetHeaders[1].Header.Key)
 				require.Equal(t, "mock-auth-handler", string(commonRes.HeaderMutation.SetHeaders[1].Header.RawValue))
+				// The internal AWS signing-host header is stripped before egress so a client can't spoof it.
+				require.Contains(t, commonRes.HeaderMutation.RemoveHeaders, internalapi.UpstreamHostHeader)
 
 				md := resp.DynamicMetadata
 				require.NotNil(t, md)
@@ -1220,7 +1222,7 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 
 		headerMutation := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response.HeaderMutation
 		require.NotNil(t, headerMutation)
-		require.ElementsMatch(t, []string{"authorization", "x-api-key"}, headerMutation.RemoveHeaders)
+		require.ElementsMatch(t, []string{"authorization", "x-api-key", internalapi.UpstreamHostHeader}, headerMutation.RemoveHeaders)
 		// Sensitive headers remain locally for metrics, but will be stripped upstream by Envoy.
 		require.Equal(t, "secret", p.requestHeaders["authorization"])
 		require.Equal(t, "key123", p.requestHeaders["x-api-key"])
@@ -1281,6 +1283,37 @@ func Test_chatCompletionProcessorUpstreamFilter_SensitiveHeaders_RemoveAndRestor
 		require.Equal(t, "key123", p.requestHeaders["x-api-key"])
 		require.Equal(t, "value", p.requestHeaders["other"])
 	})
+}
+
+func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_SpoofedUpstreamHostStrippedOnRetry(t *testing.T) {
+	body := openai.ChatCompletionRequest{Model: "test-model"}
+	raw := []byte(`{"model":"test-model"}`)
+
+	p := &chatCompletionProcessorUpstreamFilter{
+		// A downstream client spoofed the internal upstream-host header; it must never reach the
+		// upstream provider, on a retry same as on the initial request.
+		requestHeaders: map[string]string{internalapi.UpstreamHostHeader: "attacker.example.com"},
+		metrics:        &mockMetrics{},
+		translator:     &mockTranslator{t: t, expForceRequestBodyMutation: true, expRequestBody: &body},
+		handler:        &mockBackendAuthHandler{},
+		parent: &chatCompletionProcessorRouterFilter{
+			upstreamFilterCount:    2, // simulate retry scenario
+			originalRequestBody:    &body,
+			originalRequestBodyRaw: raw,
+			logger:                 slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+			config:                 &filterapi.RuntimeConfig{},
+		},
+	}
+	require.True(t, p.onRetry())
+
+	resp, err := p.ProcessRequestHeaders(context.Background(), nil)
+	require.NoError(t, err)
+
+	headerMutation := resp.Response.(*extprocv3.ProcessingResponse_RequestHeaders).RequestHeaders.Response.HeaderMutation
+	require.Contains(t, headerMutation.RemoveHeaders, internalapi.UpstreamHostHeader)
+	for _, h := range headerMutation.SetHeaders {
+		require.NotEqual(t, internalapi.UpstreamHostHeader, h.Header.Key, "spoofed upstream-host header must not be re-set")
+	}
 }
 
 func Test_ProcessRequestHeaders_SetsRequestModel(t *testing.T) {
