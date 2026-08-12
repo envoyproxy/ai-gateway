@@ -374,7 +374,6 @@ func TestValidateModernRequest(t *testing.T) {
 		require.Nil(t, got.err)
 		require.Equal(t, eraModern, got.era)
 	})
-
 }
 
 // TestDetectClientEra_ModernEndToEnd exercises the full detectClientEra path
