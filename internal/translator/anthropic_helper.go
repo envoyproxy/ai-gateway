@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -169,9 +170,13 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 	if len(openAITools) > 0 {
 		anthropicTools := make([]anthropic.ToolUnionParam, 0, len(openAITools))
 		for _, openAITool := range openAITools {
-			if openAITool.Type != openai.ToolTypeFunction || openAITool.Function == nil {
-				// Anthropic only supports 'function' tools, so we skip others.
-				continue
+			if openAITool.Type != openai.ToolTypeFunction {
+				err = fmt.Errorf("%w: unsupported tool type: %s", internalapi.ErrInvalidRequestBody, openAITool.Type)
+				return
+			}
+			if openAITool.Function == nil {
+				err = fmt.Errorf("%w: tool of type 'function' is missing function definition", internalapi.ErrInvalidRequestBody)
+				return
 			}
 			toolParam := anthropic.ToolParam{
 				Name:        openAITool.Function.Name,
@@ -1370,6 +1375,25 @@ func messageToChatCompletion(anthropicResp *anthropic.Message, responseModel int
 	}
 	openAIResp.Choices = append(openAIResp.Choices, choice)
 	return openAIResp, tokenUsage, nil
+}
+
+// awsAnthropicCountTokensPath builds the AWS Bedrock CountTokens request path
+// (POST /model/{modelId}/count-tokens) for an Anthropic (Claude) model.
+//
+// This is Anthropic-specific, not generic Bedrock: CountTokens does not accept
+// cross-region inference (CRIS) model IDs (e.g. "us.anthropic.claude-sonnet-4-6"
+// returns "The provided model doesn't support counting tokens"). A CRIS ID prepends
+// a geography prefix (e.g. "us.", "eu.", "apac.", "us-gov.") to the base model ID;
+// anchor on the "anthropic." provider segment and drop anything before it, so every
+// geography prefix is handled regardless of length. A bare base ID
+// ("anthropic.claude-...") has the segment at index 0 and is left as-is. The base
+// model ID is then URL-escaped so ARNs and special characters are safe in the path.
+// See: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html
+func awsAnthropicCountTokensPath(model string) string {
+	if i := strings.Index(model, "anthropic."); i > 0 {
+		model = model[i:]
+	}
+	return fmt.Sprintf(awsBedrockCountTokensPathFormat, url.PathEscape(model))
 }
 
 // openAIToAnthropicCountTokensParams builds the Anthropic MessageCountTokensParams
