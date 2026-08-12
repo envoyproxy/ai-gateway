@@ -846,6 +846,8 @@ func (SpeechEndpointSpec) GetTranslator(
 			schema.OpenAIPrefix(),
 			modelNameOverride,
 		), nil
+	case filterapi.APISchemaMiniMax:
+		return translator.NewSpeechOpenAIToMiniMaxTranslator(modelNameOverride), nil
 	default:
 		return nil, fmt.Errorf("unsupported API schema for speech: backend=%s", schema)
 	}

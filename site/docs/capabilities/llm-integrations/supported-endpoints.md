@@ -12,6 +12,23 @@ The Envoy AI Gateway acts as a proxy that accepts OpenAI-compatible and Anthropi
 
 ## Supported Endpoints
 
+### Speech
+
+**Endpoint:** `POST /v1/audio/speech`
+
+**Status:** ✅ Supported
+
+OpenAI-compatible speech requests can be routed to a native MiniMax backend by
+setting the `AIServiceBackend` schema to `{"name":"MiniMax"}`. The translator
+maps the model, input text, voice, speed, stream mode, and `mp3`, `wav`, `flac`,
+or `pcm` response format to `/v1/t2a_v2`, then decodes `data.audio` into the
+binary audio response. Supported models are `speech-2.8-hd`,
+`speech-2.8-turbo`, `speech-2.6-hd`, `speech-2.6-turbo`, `speech-02-hd`,
+`speech-02-turbo`, `speech-01-hd`, and `speech-01-turbo`.
+
+Use `https://api.minimax.io` for the global service or
+`https://api.minimaxi.com` for the mainland China service.
+
 ### Chat Completions
 
 **Endpoint:** `POST /v1/chat/completions`

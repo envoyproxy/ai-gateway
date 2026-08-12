@@ -178,6 +178,8 @@ const (
 	// Used for Claude models hosted on AWS Bedrock. Supports both OpenAI and Anthropic input formats
 	// depending on the endpoint path, similar to APISchemaGCPAnthropic.
 	APISchemaAWSAnthropic APISchemaName = "AWSAnthropic"
+	// APISchemaMiniMax represents the native MiniMax API schema.
+	APISchemaMiniMax APISchemaName = "MiniMax"
 )
 
 // RouteRuleName is the name of the route rule.
