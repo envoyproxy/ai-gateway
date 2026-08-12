@@ -590,11 +590,32 @@ func TestResponseToolUnion_ToolSearch_MarshalJSON(t *testing.T) {
 	}
 }
 
+func TestResponseRequest_UnmarshalJSON_UnknownToolType(t *testing.T) {
+	const body = `{"model":"gpt-5","input":"hi","tools":[` +
+		`{"type":"function","name":"get_weather","parameters":{},"strict":true},` +
+		`{"type":"some_future_tool","execution":"client"}` +
+		`]}`
+
+	var req ResponseRequest
+	require.NoError(t, json.Unmarshal([]byte(body), &req))
+	require.Len(t, req.Tools, 2)
+
+	require.NotNil(t, req.Tools[0].OfFunction)
+	require.Equal(t, "get_weather", req.Tools[0].OfFunction.Name)
+
+	require.Nil(t, req.Tools[1].OfFunction)
+	require.JSONEq(t, `{"type":"some_future_tool","execution":"client"}`, string(req.Tools[1].OfUnknown))
+}
+
 func TestResponseToolUnion_UnmarshalJSON_UnknownType(t *testing.T) {
+	const raw = `{"type":"unknown_tool","execution":"client"}`
 	var got ResponseToolUnion
-	err := json.Unmarshal([]byte(`{"type":"unknown_tool"}`), &got)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "unknown_tool")
+	require.NoError(t, json.Unmarshal([]byte(raw), &got))
+	require.Equal(t, json.RawMessage(raw), got.OfUnknown)
+
+	out, err := json.Marshal(got)
+	require.NoError(t, err)
+	require.JSONEq(t, raw, string(out))
 }
 
 func TestThinkingUnion_MarshalJSON(t *testing.T) {
