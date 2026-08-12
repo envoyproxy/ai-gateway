@@ -419,16 +419,16 @@ Each phase is independently shippable and leaves prior behavior intact. Phases a
 
 **Estimated effort:** 1–2 days. Single PR.
 
-| Item | Description                                                                                                      | Files                                |
-| ---- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| P0.1 | Version constants and supported set                                                                              | `session.go`                         |
-| P0.2 | Header constants: `Mcp-Method`, `Mcp-Name`                                                                       | `session.go`                         |
-| P0.3 | `_meta` key constants: `io.modelcontextprotocol/protocolVersion`, `clientInfo`, `clientCapabilities`, `logLevel` | new `meta.go` or `session.go`        |
-| P0.4 | `era` type + `detectClientEra(r, msg)` helper                                                                    | new `era.go`                         |
-| P0.5 | MCP error codes (`-32020`, `-32021`, `-32022`) + constructors                                                    | `handlers.go`                        |
-| P0.6 | `onJSONRPCError(w, status, jsonrpcErr)` writer                                                                   | `handlers.go`                        |
-| P0.7 | `Mcp-Name` base64-sentinel encode/decode helpers                                                                 | new `mcpname.go`                     |
-| P0.8 | Verify `x-ai-eg-mcp-route` header is set on all requests (not just `initialize`) by the Envoy `HTTPRouteFilter`  | `internal/controller/`, Envoy config |
+| Item  | Description                                                                                                      | Files                                |
+| ----- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| P0.1  | Version constants and supported set                                                                              | `session.go`                         |
+| P0.2  | Header constants: `Mcp-Method`, `Mcp-Name`                                                                       | `session.go`                         |
+| P0.3  | `_meta` key constants: `io.modelcontextprotocol/protocolVersion`, `clientInfo`, `clientCapabilities`, `logLevel` | new `meta.go` or `session.go`        |
+| P0.4  | `era` type + `detectClientEra(r, msg)` helper                                                                    | new `era.go`                         |
+| P0.5  | MCP error codes (`-32020`, `-32021`, `-32022`) + constructors                                                    | `handlers.go`                        |
+| P0.6  | `onJSONRPCError(w, status, jsonrpcErr)` writer                                                                   | `handlers.go`                        |
+| P0.7  | `Mcp-Name` base64-sentinel encode/decode helpers                                                                 | new `mcpname.go`                     |
+| P0.8  | Verify `x-ai-eg-mcp-route` header is set on all requests (not just `initialize`) by the Envoy `HTTPRouteFilter`  | `internal/controller/`, Envoy config |
 | P0.9  | Add a thin request dispatcher and `serveLegacyPOST` entrypoint                                                   | `handlers.go`                        |
 | P0.10 | Move legacy-only HTTP handlers into `legacy.go`                                                                  | new `legacy.go`, `handlers.go`       |
 | P0.11 | Keep cross-era/shared helpers in `handlers.go`                                                                   | `handlers.go`                        |
