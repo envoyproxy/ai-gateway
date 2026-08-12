@@ -377,8 +377,6 @@ func TestWriteConfig(t *testing.T) {
 				EnvoyVersion: "1.35.0",
 				OTELLog:      &otelLogConfig{Exporter: "console"},
 			},
-			// TODO: raise issue in EG to allow doing effectively this:
-			// "--component-log-level ext_proc:trace,http:debug,connection:debug"
 			expected: debugYAML,
 		},
 		{
