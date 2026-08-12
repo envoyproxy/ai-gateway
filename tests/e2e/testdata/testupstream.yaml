@@ -84,6 +84,13 @@ spec:
         - name: translation-testupstream-cool-model-backend
         - name: translation-testupstream-another-cool-model-backend
           weight: 0
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: anthropic.claude-cache-matrix
+      backendRefs:
+        - name: translation-testupstream-aws-anthropic-backend
 ---
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
@@ -111,6 +118,20 @@ spec:
     name: AWSBedrock
   backendRef:
     name: testupstream-canary
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: translation-testupstream-aws-anthropic-backend
+  namespace: default
+spec:
+  schema:
+    name: AWSAnthropic
+    version: bedrock-2023-05-31
+  backendRef:
+    name: testupstream
     kind: Backend
     group: gateway.envoyproxy.io
 ---

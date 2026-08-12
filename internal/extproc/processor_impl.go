@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/envoyproxy/ai-gateway/internal/backendauth"
 	"github.com/envoyproxy/ai-gateway/internal/bodymutator"
 	"github.com/envoyproxy/ai-gateway/internal/endpointspec"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
@@ -264,19 +265,25 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRequest
 	var additionalHeaders []*corev3.HeaderValueOption
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
 		// Set the original model to the request header with the key `x-ai-eg-model`.
-		Header: &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
+		// This header is owned by the gateway, so overwrite any client-supplied value instead of appending.
+		AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+		Header:       &corev3.HeaderValue{Key: internalapi.ModelNameHeaderKeyDefault, RawValue: []byte(originalModel)},
 	})
 	originalPath := r.requestHeaders[":path"]
+	// These original-path headers are owned by extproc, so set them unconditionally.
+	// A client-supplied or pre-existing value must not shadow the gateway's own value,
+	// as downstream logic (e.g. processor lookup on retry) keys off it.
 	r.requestHeaders[originalPathHeader] = originalPath
 	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
-		Header: &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(originalPath)},
+		// Overwrite unconditionally so a client-supplied or pre-existing value is replaced, not appended.
+		AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+		Header:       &corev3.HeaderValue{Key: originalPathHeader, RawValue: []byte(originalPath)},
 	})
-	if r.requestHeaders[internalapi.EnvoyOriginalPathHeader] == "" {
-		r.requestHeaders[internalapi.EnvoyOriginalPathHeader] = originalPath
-		additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
-			Header: &corev3.HeaderValue{Key: internalapi.EnvoyOriginalPathHeader, RawValue: []byte(originalPath)},
-		})
-	}
+	r.requestHeaders[internalapi.EnvoyOriginalPathHeader] = originalPath
+	additionalHeaders = append(additionalHeaders, &corev3.HeaderValueOption{
+		AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+		Header:       &corev3.HeaderValue{Key: internalapi.EnvoyOriginalPathHeader, RawValue: []byte(originalPath)},
+	})
 	r.originalModel = originalModel
 	r.originalRequestBody = body
 	r.stream = stream
@@ -387,10 +394,19 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 		u.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
 	}
 
+	// x-ai-eg-upstream-host is an internal, controller-derived value consumed by backend auth handlers
+	// (e.g. the AWS handler, via the upstream-host metadata attribute). Strip any copy — including one a
+	// downstream client spoofed — so it never egresses to the upstream provider.
+	headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, internalapi.UpstreamHostHeader)
+
 	if h := u.handler; h != nil {
 		var hdrs []internalapi.Header
 		hdrs, err = h.Do(ctx, u.requestHeaders, bodyMutation.GetBody())
 		if err != nil {
+			if errors.Is(err, backendauth.ErrCredentialMissing) {
+				u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
+				return createUserFacingErrorResponse(401, "Unauthorized", "missing upstream credential"), nil
+			}
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
 		}
 		for _, h := range hdrs {
@@ -465,6 +481,14 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 		mode = &extprocv3http.ProcessingMode{ResponseBodyMode: extprocv3http.ProcessingMode_STREAMED}
 	}
 	headerMutation, _ := mutationsFromTranslationResult(newHeaders, nil)
+	// When switching to streamed mode, remove content-length so Envoy does
+	// not truncate the response to the first body chunk. The upstream may
+	// include content-length (e.g. computed by a prior hop's HTTP/2 codec
+	// when transfer-encoding: chunked was copied by an EPP ext_proc), which
+	// is invalid for a streaming SSE response.
+	if mode != nil {
+		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, "content-length")
+	}
 	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 		ResponseHeaders: &extprocv3.HeadersResponse{
 			Response: &extprocv3.CommonResponse{HeaderMutation: headerMutation},

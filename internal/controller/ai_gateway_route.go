@@ -29,7 +29,9 @@ import (
 )
 
 const (
-	managedByLabel                      = "app.kubernetes.io/managed-by"
+	managedByLabel = "app.kubernetes.io/managed-by"
+	// managedByValue is the value stamped on the managedByLabel of resources created by this operator.
+	managedByValue                      = "envoy-ai-gateway"
 	hostRewriteHTTPFilterName           = "ai-eg-host-rewrite"
 	routeNotFoundResponseHTTPFilterName = "ai-eg-route-not-found-response"
 	aigatewayUUIDAnnotationKey          = "aigateway.envoyproxy.io/uuid"
@@ -102,10 +104,6 @@ func (c *AIGatewayRouteController) Reconcile(ctx context.Context, req reconcile.
 	}
 	c.updateAIGatewayRouteStatus(ctx, &aiGatewayRoute, aigv1b1.ConditionTypeAccepted, "AI Gateway Route reconciled successfully")
 	return reconcile.Result{}, nil
-}
-
-func FilterConfigSecretPerGatewayName(gwName, gwNamespace string) string {
-	return fmt.Sprintf("%s-%s", gwName, gwNamespace)
 }
 
 func getHostRewriteFilterName(baseName string) string {
@@ -262,14 +260,26 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			dstName := fmt.Sprintf("%s.%s", br.Name, backendNamespace)
 
 			if br.IsInferencePool() {
-				// Handle InferencePool backend reference.
+				// Handle InferencePool backend reference, honoring the (optionally cross-namespace)
+				// namespace specified on the backendRef.
+				if br.IsCrossNamespace(aiGatewayRoute.Namespace) {
+					if err := c.referenceGrantValidator.validateInferencePoolReference(
+						ctx,
+						aiGatewayRoute.Namespace,
+						backendNamespace,
+						br.Name,
+					); err != nil {
+						return err
+					}
+				}
+				ns := gwapiv1.Namespace(backendNamespace)
 				backendRefs = append(backendRefs,
 					gwapiv1.HTTPBackendRef{BackendRef: gwapiv1.BackendRef{
 						BackendObjectReference: gwapiv1.BackendObjectReference{
 							Group:     (*gwapiv1.Group)(br.Group),
 							Kind:      (*gwapiv1.Kind)(br.Kind),
 							Name:      gwapiv1.ObjectName(br.Name),
-							Namespace: (*gwapiv1.Namespace)(&aiGatewayRoute.Namespace),
+							Namespace: &ns,
 						},
 						Weight: br.Weight,
 					}},
@@ -310,6 +320,7 @@ func (c *AIGatewayRouteController) newHTTPRoute(ctx context.Context, dst *gwapiv
 			})
 		}
 		rules = append(rules, gwapiv1.HTTPRouteRule{
+			Name:        rule.Name,
 			BackendRefs: backendRefs,
 			Matches:     matches,
 			Filters:     rewriteFilters,

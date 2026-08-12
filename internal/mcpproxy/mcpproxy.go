@@ -44,6 +44,8 @@ type mcpRequestContext struct {
 // defaultMaxRequestBodySize is the default maximum allowed POST body size in bytes (4 MiB).
 const defaultMaxRequestBodySize = 4 * 1024 * 1024
 
+var errNoMatchingBackendSelector = errors.New("backendSelector matches no route backends")
+
 // getMaxRequestBodySize returns the configured POST body limit from the environment variable,
 // falling back to 4 MiB if the variable is unset or invalid.
 func getMaxRequestBodySize() int64 {
@@ -163,9 +165,34 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 
 	forwardHeaders := extractForwardHeaders(m.requestHeaders, backends.forwardHeaders)
 
+	// spec.backendSelector, if configured, is evaluated once per candidate backend here,
+	// at session-initialize time, rather than on every subsequent call in the session.
+	// With no selector configured, all backends are considered (unchanged behavior).
+	selectedBackends := backends.backends
+	if backends.backendSelector != nil {
+		filtered := make(map[filterapi.MCPBackendName]filterapi.MCPBackend, len(backends.backends))
+		// The JWT and CEL headers are identical for every candidate backend in this loop --
+		// only request.mcp.backend changes -- so parse/build them once and reuse across
+		// all candidates instead of redoing it per backend.
+		authzCtx := m.newAuthzContext(&authorizationRequest{Headers: m.requestHeaders})
+		for name, backend := range backends.backends {
+			allowed, _ := m.authorizeRequestWith(backends.backendSelector, &authorizationRequest{
+				Headers: m.requestHeaders,
+				Backend: name,
+			}, authzCtx)
+			if allowed {
+				filtered[name] = backend
+			}
+		}
+		if len(filtered) == 0 {
+			return nil, fmt.Errorf("%w for route %s", errNoMatchingBackendSelector, routeName)
+		}
+		selectedBackends = filtered
+	}
+
 	// Extract per-backend forward headers.
 	perBackendHeaders := make(map[filterapi.MCPBackendName]map[string]string)
-	for _, backend := range backends.backends {
+	for _, backend := range selectedBackends {
 		if len(backend.ForwardHeaders) > 0 {
 			if h := extractPerBackendForwardHeaders(m.requestHeaders, backend.ForwardHeaders); h != nil {
 				perBackendHeaders[backend.Name] = h
@@ -178,12 +205,12 @@ func (m *mcpRequestContext) newSession(ctx context.Context, p *mcp.InitializePar
 		entries []compositeSessionEntry
 		counter int
 	)
-	entries = make([]compositeSessionEntry, len(backends.backends))
+	entries = make([]compositeSessionEntry, len(selectedBackends))
 
 	if m.l.Enabled(ctx, slog.LevelDebug) {
 		m.l.Debug("initializing MCP sessions to backends", slog.String("route", routeName), slog.Any("backends", backends))
 	}
-	for _, backend := range backends.backends {
+	for _, backend := range selectedBackends {
 		entryIndex := counter
 		counter++
 		// Initialize sessions to all backends in parallel to reduce the overall latency of session creation.
@@ -352,25 +379,41 @@ func (m *mcpRequestContext) initializeSession(ctx context.Context, routeName fil
 		}
 		if rawMsg == nil {
 			parser := newSSEEventParser(sseReader, backend.Name)
-			for {
+			var readErr error
+			for rawMsg == nil {
 				event, parseErr := parser.next()
 				// TODO: handle reconnect. We need to re-arrange the event ID so that it will also contain the backend name and the original session ID.
 				// 	Since event ID can be arbitrary string, we can shove each backend's last even ID into the event ID just like the session ID.
 				if event != nil {
-					// TODO: there's no session here what should we do?
-					if len(event.messages) < 1 {
-						return nil, errors.New("failed to get message from MCP sse event")
+					// Some backends emit non-response events (keep-alives with an
+					// empty data line, notifications) before the initialize result.
+					// Skip those and keep reading until we find the JSON-RPC response.
+					for _, msg := range event.messages {
+						if _, ok := msg.(*jsonrpc.Response); ok {
+							rawMsg = msg
+						}
 					}
-					// Last event is the actual response.
-					rawMsg = event.messages[len(event.messages)-1]
 				}
-				if parseErr != nil {
-					if errors.Is(parseErr, io.EOF) || strings.Contains(parseErr.Error(), "context deadline exceeded") {
-						break
-					}
-					m.l.Error("failed to read MCP GET response body", slog.String("error", parseErr.Error()))
+				if rawMsg != nil {
+					// Found the response; a trailing EOF on this same event is not a failure.
 					break
 				}
+				if parseErr != nil {
+					readErr = parseErr
+					if !errors.Is(parseErr, io.EOF) && !strings.Contains(parseErr.Error(), "context deadline exceeded") {
+						m.l.Error("failed to read MCP GET response body", slog.String("error", parseErr.Error()))
+					}
+					break
+				}
+			}
+			if rawMsg == nil {
+				// The SSE stream ended (EOF/deadline) or errored before any JSON-RPC
+				// response arrived. Surface a clear error instead of falling through to
+				// the misleading "MCP message is not a response: <nil>".
+				if readErr != nil && !errors.Is(readErr, io.EOF) && !strings.Contains(readErr.Error(), "context deadline exceeded") {
+					return nil, fmt.Errorf("failed to read MCP initialize response from backend %q: %w", backend.Name, readErr)
+				}
+				return nil, fmt.Errorf("MCP initialize stream from backend %q ended before a JSON-RPC response was received", backend.Name)
 			}
 		}
 

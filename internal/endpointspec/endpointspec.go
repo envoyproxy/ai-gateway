@@ -18,10 +18,12 @@ import (
 	"strings"
 
 	"github.com/tidwall/sjson"
+	"k8s.io/utils/ptr"
 
 	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
+	"github.com/envoyproxy/ai-gateway/internal/apischema/openai/tokenize"
 	"github.com/envoyproxy/ai-gateway/internal/filterapi"
 	"github.com/envoyproxy/ai-gateway/internal/internalapi"
 	"github.com/envoyproxy/ai-gateway/internal/json"
@@ -113,6 +115,12 @@ type (
 	TranscriptionEndpointSpec struct{}
 	// TranslationEndpointSpec implements EndpointSpec for /v1/audio/translations.
 	TranslationEndpointSpec struct{}
+	// TokenizeEndpointSpec implements EndpointSpec for /tokenize.
+	TokenizeEndpointSpec struct{}
+	// ResponsesInputTokensEndpointSpec implements EndpointSpec for /v1/responses/input_tokens.
+	ResponsesInputTokensEndpointSpec struct{}
+	// MessagesCountTokensEndpointSpec implements EndpointSpec for /v1/messages/count_tokens.
+	MessagesCountTokensEndpointSpec struct{}
 )
 
 var errMultipartNotSupported = fmt.Errorf("%w: multipart body not supported for this endpoint", internalapi.ErrMalformedRequest)
@@ -226,8 +234,12 @@ func (CompletionsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (CompletionsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.CompletionRequest) (redactedReq *openai.CompletionRequest, err error) {
-	// Placeholder if redaction is required in future
-	return req, nil
+	// The prompt is user-supplied text (string / []string / token arrays). Its value is a
+	// bare interface{} populated by a custom unmarshaler, so redact it via the generic
+	// JSON-tree redactor rather than enumerating every union variant.
+	redacted := *req
+	redacted.Prompt = openai.PromptUnion{Value: redactInterfaceValue(req.Prompt.Value)}
+	return &redacted, nil
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -265,8 +277,25 @@ func (EmbeddingsEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema,
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (EmbeddingsEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.EmbeddingRequest) (redactedReq *openai.EmbeddingRequest, err error) {
-	// Placeholder if redaction is required in future
-	return req, nil
+	redacted := *req
+	switch {
+	case req.OfCompletion != nil:
+		// Input is user-supplied text (string / []string / objects) in a bare-any union.
+		redactedOfCompletion := *req.OfCompletion
+		redactedOfCompletion.Input = openai.EmbeddingRequestInput{Value: redactInterfaceValue(req.OfCompletion.Input.Value)}
+		redacted.OfCompletion = &redactedOfCompletion
+		redacted.OfChat = nil
+	case req.OfChat != nil:
+		// Messages are chat content — reuse the ChatCompletions redaction helpers.
+		redactedOfChat := *req.OfChat
+		redactedOfChat.Messages = make([]openai.ChatCompletionMessageParamUnion, len(req.OfChat.Messages))
+		for i, msg := range req.OfChat.Messages {
+			redactedOfChat.Messages[i] = redactMessage(msg)
+		}
+		redacted.OfChat = &redactedOfChat
+		redacted.OfCompletion = nil
+	}
+	return &redacted, nil
 }
 
 func (ImageGenerationEndpointSpec) ParseBody(
@@ -297,8 +326,10 @@ func (ImageGenerationEndpointSpec) GetTranslator(schema filterapi.VersionedAPISc
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (ImageGenerationEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ImageGenerationRequest) (redactedReq *openai.ImageGenerationRequest, err error) {
-	// Placeholder if redaction is required in future
-	return req, nil
+	// The prompt is user-supplied text describing the desired image; redact it.
+	redacted := *req
+	redacted.Prompt = redaction.RedactString(req.Prompt)
+	return &redacted, nil
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -332,8 +363,15 @@ func (ResponsesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, 
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (ResponsesEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ResponseRequest) (redactedReq *openai.ResponseRequest, err error) {
-	// Placeholder if redaction is required in future
-	return req, nil
+	redacted := *req
+	// Instructions and User are user-supplied text / PII.
+	redacted.Instructions = redaction.RedactString(req.Instructions)
+	redacted.User = redaction.RedactString(req.User)
+	// Input and Prompt are JSON unions holding conversation items / content — redact every
+	// nested string leaf via the generic redactor so user content inside any item type is caught.
+	redacted.Input = redactUnionField(req.Input)
+	redacted.Prompt = redactUnionField(req.Prompt)
+	return &redacted, nil
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -381,7 +419,60 @@ func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (MessagesEndpointSpec) RedactSensitiveInfoFromRequest(req *anthropic.MessagesRequest) (redactedReq *anthropic.MessagesRequest, err error) {
-	// Placeholder if redaction is required in future
+	redacted := *req
+	// Message content (text or []ContentBlockParam) and the system prompt hold user/developer
+	// text. They are JSON unions, so redact every nested string leaf generically.
+	redacted.Messages = make([]anthropic.MessageParam, len(req.Messages))
+	for i, msg := range req.Messages {
+		redactedMsg := msg
+		redactedMsg.Content = redactUnionField(msg.Content)
+		redacted.Messages[i] = redactedMsg
+	}
+	if req.System != nil {
+		redacted.System = ptr.To(redactUnionField(*req.System))
+	}
+	return &redacted, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (MessagesCountTokensEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+) (internalapi.OriginalModel, *anthropic.CountTokensRequest, bool, []byte, error) {
+	var req anthropic.CountTokensRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/messages/count_tokens: %w", internalapi.ErrMalformedRequest, err)
+	}
+
+	model := req.Model
+	if model == "" {
+		return "", nil, false, nil, fmt.Errorf("%w: model field is required", internalapi.ErrInvalidRequestBody)
+	}
+
+	return model, &req, false, nil, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (MessagesCountTokensEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.AnthropicCountTokensTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaGCPAnthropic:
+		return translator.NewCountTokensToGCPAnthropicTranslator(schema.Version, modelNameOverride), nil
+	case filterapi.APISchemaAWSAnthropic, filterapi.APISchemaAWSBedrock:
+		return translator.NewCountTokensToAWSAnthropicTranslator(schema.Version, modelNameOverride), nil
+	case filterapi.APISchemaAnthropic:
+		return translator.NewCountTokensToAnthropicTranslator(modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema for /v1/messages/count_tokens: backend=%s", schema)
+	}
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (MessagesCountTokensEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *anthropic.CountTokensRequest, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (MessagesCountTokensEndpointSpec) RedactSensitiveInfoFromRequest(req *anthropic.CountTokensRequest) (redactedReq *anthropic.CountTokensRequest, err error) {
 	return req, nil
 }
 
@@ -414,8 +505,87 @@ func (RerankEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, mod
 
 // RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
 func (RerankEndpointSpec) RedactSensitiveInfoFromRequest(req *cohereschema.RerankV2Request) (redactedReq *cohereschema.RerankV2Request, err error) {
-	// Placeholder if redaction is required in future
-	return req, nil
+	redacted := *req
+	// The query and the documents being ranked are user-provided content.
+	redacted.Query = redaction.RedactString(req.Query)
+	redacted.Documents = make([]string, len(req.Documents))
+	for i, doc := range req.Documents {
+		redacted.Documents[i] = redaction.RedactString(doc)
+	}
+	return &redacted, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (TokenizeEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+) (internalapi.OriginalModel, *tokenize.RequestUnion, bool, []byte, error) {
+	// RequestUnion.UnmarshalJSON discriminates chat vs completion by the presence
+	// of a "messages" field, so a single unmarshal is enough here.
+	var req tokenize.RequestUnion
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /tokenize: %w", internalapi.ErrMalformedRequest, err)
+	}
+
+	if err := req.Validate(); err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: invalid tokenize request: %w", internalapi.ErrMalformedRequest, err)
+	}
+
+	var model string
+	if req.CompletionRequest != nil {
+		model = req.CompletionRequest.Model
+	} else if req.ChatRequest != nil {
+		model = req.ChatRequest.Model
+	}
+
+	// Tokenize requests are never streaming
+	return model, &req, false, nil, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (TokenizeEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, modelNameOverride string) (translator.TokenizeTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewTokenizeTranslator(modelNameOverride), nil
+	case filterapi.APISchemaGCPVertexAI:
+		return translator.NewTokenizeToGCPVertexAITranslator(modelNameOverride), nil
+	case filterapi.APISchemaGCPAnthropic:
+		return translator.NewTokenizeToGCPAnthropicTranslator(schema.Version, modelNameOverride), nil
+	case filterapi.APISchemaAWSAnthropic:
+		return translator.NewTokenizeToAWSAnthropicTranslator(schema.Version, modelNameOverride), nil
+	case filterapi.APISchemaAWSBedrock:
+		return translator.NewTokenizeToAWSBedrockTranslator(modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema for tokenize endpoint: backend=%s", schema.Name)
+	}
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (TokenizeEndpointSpec) RedactSensitiveInfoFromRequest(req *tokenize.RequestUnion) (redactedReq *tokenize.RequestUnion, err error) {
+	redacted := *req
+	switch {
+	case req.CompletionRequest != nil:
+		redactedOfCompletion := *req.CompletionRequest
+		// The prompt is user-supplied text to tokenize.
+		redactedOfCompletion.Prompt = redaction.RedactString(req.Prompt)
+		redacted.CompletionRequest = &redactedOfCompletion
+		redacted.ChatRequest = nil
+	case req.ChatRequest != nil:
+		// Messages are chat content — reuse the ChatCompletions redaction helpers.
+		redactedOfChat := *req.ChatRequest
+		redactedOfChat.Messages = make([]openai.ChatCompletionMessageParamUnion, len(req.Messages))
+		for i, msg := range req.Messages {
+			redactedOfChat.Messages[i] = redactMessage(msg)
+		}
+		redacted.ChatRequest = &redactedOfChat
+		redacted.CompletionRequest = nil
+	}
+	return &redacted, nil
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (TokenizeEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *tokenize.RequestUnion, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
 }
 
 // redactMessage redacts sensitive content from a chat message while preserving its type and structure.
@@ -588,6 +758,60 @@ func redactUserContentPart(part openai.ChatCompletionContentPartUserUnionParam) 
 	}
 
 	return redacted
+}
+
+// redactInterfaceValue redacts a bare interface{}/any field value (e.g.
+// PromptUnion.Value, EmbeddingRequestInput.Value) whose concrete type is
+// determined by a custom unmarshaler and may be a string, []string, [][]int,
+// or arbitrary object tree. It normalizes via a marshal→unmarshal-into-any
+// round-trip so [redaction.RedactJSONTree] sees the standard []any/map[string]any
+// shapes, then redacts every string leaf. On a marshal error (the only reachable
+// error path) it returns a single placeholder string so no raw content is ever
+// logged; the subsequent unmarshal-into-any cannot fail on valid JSON output.
+func redactInterfaceValue(v any) any {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return redaction.RedactString("redaction-error")
+	}
+	// b is valid JSON straight from json.Marshal and generic is *any, so this
+	// unmarshal cannot fail; discard the error and redact the generic tree.
+	var generic any
+	_ = json.Unmarshal(b, &generic)
+	return redaction.RedactJSONTree(generic)
+}
+
+// redactUnionField redacts a typed-struct field whose value is a JSON union
+// (e.g. MessageContent, SystemPrompt, ResponseNewParamsInputUnion,
+// ResponsePromptParam). It marshals the field, redacts every string leaf in the
+// resulting JSON tree, and unmarshals back into a new T. On a marshal error it
+// returns the zero value of T (nil for pointers, an empty struct otherwise) so
+// the field logs as absent rather than leaking content.
+//
+// The intermediate unmarshal-into-any and the re-marshal of the redacted tree
+// are provably infallible — b is valid JSON from json.Marshal into *any, and
+// [redaction.RedactJSONTree] yields only JSON-native types — so their errors are
+// discarded. The final unmarshal back into T is fail-safe: on the impossible
+// structural mismatch, out stays zero.
+//
+// Marshaling and unmarshaling go through pointers (&in / &out) so that any
+// pointer-receiver MarshalJSON/UnmarshalJSON on T is actually invoked — passing
+// a value T to json.Marshal would skip pointer-receiver methods and fall back to
+// default struct marshaling, corrupting the union.
+func redactUnionField[T any](in T) (out T) {
+	b, err := json.Marshal(&in)
+	if err != nil {
+		return out
+	}
+	// b is valid JSON from json.Marshal and generic is *any, so this unmarshal
+	// cannot fail. RedactJSONTree then redacts every string leaf, preserving
+	// "type" discriminators so the tree still round-trips into T.
+	var generic any
+	_ = json.Unmarshal(b, &generic)
+	// RedactJSONTree yields only JSON-native types, which json.Marshal always
+	// accepts, so this re-marshal cannot fail either.
+	redacted, _ := json.Marshal(redaction.RedactJSONTree(generic))
+	_ = json.Unmarshal(redacted, &out) // on error, out stays zero (fail-safe)
+	return out
 }
 
 // ParseBody implements [EndpointSpec.ParseBody].
@@ -868,6 +1092,43 @@ func (TranslationEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.Transl
 	redacted := *req
 	redacted.Prompt = redaction.RedactString(req.Prompt)
 	return &redacted, nil
+}
+
+// ParseBody implements [EndpointSpec.ParseBody].
+func (ResponsesInputTokensEndpointSpec) ParseBody(
+	body []byte,
+	_ bool,
+) (internalapi.OriginalModel, *openai.ResponseRequest, bool, []byte, error) {
+	var req openai.ResponseRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "", nil, false, nil, fmt.Errorf("%w: failed to parse JSON for /v1/responses/input_tokens: %w", internalapi.ErrMalformedRequest, err)
+	}
+
+	return req.Model, &req, false, nil, nil
+}
+
+// GetTranslator implements [EndpointSpec.GetTranslator].
+func (ResponsesInputTokensEndpointSpec) GetTranslator(
+	schema filterapi.VersionedAPISchema, modelNameOverride string,
+) (translator.OpenAIResponsesInputTokensTranslator, error) {
+	switch schema.Name {
+	case filterapi.APISchemaOpenAI:
+		return translator.NewResponsesInputTokensOpenAIToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+	case filterapi.APISchemaAzureOpenAI:
+		return translator.NewResponsesInputTokensOpenAIToAzureOpenAITranslator(schema.Version, modelNameOverride), nil
+	default:
+		return nil, fmt.Errorf("unsupported API schema for /v1/responses/input_tokens: backend=%s", schema)
+	}
+}
+
+// ParseMultipartBody implements [Spec.ParseMultipartBody].
+func (ResponsesInputTokensEndpointSpec) ParseMultipartBody([]byte, string, bool) (internalapi.OriginalModel, *openai.ResponseRequest, bool, []byte, error) {
+	return "", nil, false, nil, errMultipartNotSupported
+}
+
+// RedactSensitiveInfoFromRequest implements [EndpointSpec.RedactSensitiveInfoFromRequest].
+func (ResponsesInputTokensEndpointSpec) RedactSensitiveInfoFromRequest(req *openai.ResponseRequest) (*openai.ResponseRequest, error) {
+	return req, nil
 }
 
 // readFormField reads the entire value of a multipart form field as a string.

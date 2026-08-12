@@ -585,6 +585,7 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [GCPWorkloadIdentityFederationConfig](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpworkloadidentityfederationconfig)
 - [GCPWorkloadIdentityProvider](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gcpworkloadidentityprovider)
 - [GatewayConfigExtProc](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigextproc)
+- [GatewayConfigForwardProxy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigforwardproxy)
 - [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigspec)
 - [GatewayConfigStatus](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigstatus)
 - [HTTPBodyField](#github-com-envoyproxy-ai-gateway-api-v1alpha1-httpbodyfield)
@@ -598,6 +599,8 @@ QuotaPolicyList contains a list of QuotaPolicy
 - [MCPAuthorizationTarget](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpauthorizationtarget)
 - [MCPBackendAPIKey](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendapikey)
 - [MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendsecuritypolicy)
+- [MCPBackendSelector](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendselector)
+- [MCPBackendSelectorRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendselectorrule)
 - [MCPHeaderForward](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpheaderforward)
 - [MCPRouteAuthorization](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteauthorization)
 - [MCPRouteAuthorizationRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcprouteauthorizationrule)
@@ -634,6 +637,11 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
 
 
 <ApiField
+  name="name"
+  type="[SectionName](#sigs-k8s-io-gateway-api-apis-v1-sectionname)"
+  required="false"
+  description="Name is the name of the route rule. This name must be unique within the route.<br />When specified, it is copied to the generated HTTPRoute rule name."
+/><ApiField
   name="backendRefs"
   type="[AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-aigatewayrouterulebackendref) array"
   required="false"
@@ -647,7 +655,12 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   name="timeouts"
   type="[HTTPRouteTimeouts](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httproutetimeouts)"
   required="false"
-  description="Timeouts defines the timeouts that can be configured for an HTTP request.<br />If this field is not set, or the timeout.requestTimeout is nil, Envoy AI Gateway defaults to<br />set 60s for the request timeout as opposed to 15s of the Envoy Gateway's default value.<br />For streaming responses (like chat completions with stream=true), consider setting<br />longer timeouts as the response may take time until the completion."
+  description="Timeouts defines the timeouts that can be configured for an HTTP request.<br />If this field is not set, or the timeout.requestTimeout is nil, Envoy AI Gateway defaults to<br />set 60s for the request timeout as opposed to 15s of the Envoy Gateway's default value.<br />For streaming responses (like chat completions with stream=true), consider setting<br />longer timeouts as the response may take time until the completion. Timeouts.Request<br />acts as the maximum total time the gateway will wait for the entire response,<br />including all streamed chunks."
+/><ApiField
+  name="streamIdleTimeout"
+  type="[Duration](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.Duration)"
+  required="false"
+  description="StreamIdleTimeout is the maximum time Envoy will wait without receiving any bytes from the upstream.<br />If the timer fires before the first response byte arrives, Envoy resets the upstream stream and a<br />retry policy can fall over to the next backend. If it fires mid-stream after<br />bytes have already arrived, the stream is cut and the client receives a 504.<br />The AI Gateway extension server sets route.retry_policy.per_try_idle_timeout to this value on<br />every xDS route generated from this rule before it is sent to the data plane.<br />Pair this field with Timeouts.Request, which acts as the overall deadline.<br />If this field is not set, no per-try idle timeout is applied."
 /><ApiField
   name="modelsOwnedBy"
   type="string"
@@ -1488,6 +1501,27 @@ GatewayConfigExtProc holds runtime-specific configuration for the external proce
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigforwardproxy">GatewayConfigForwardProxy</a>
+
+
+
+**Appears in:**
+- [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigspec)
+
+GatewayConfigForwardProxy configures an HTTP CONNECT forward proxy for upstream egress.
+
+##### Fields
+
+
+
+<ApiField
+  name="address"
+  type="string"
+  required="true"
+  description="Address is the `host:port` of the HTTP CONNECT proxy. The host may be a hostname or an<br />IP address; the port is required. Upstream connections are tunnelled through this proxy<br />via Envoy's http_11_proxy transport socket, preserving the upstream TLS session."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigspec">GatewayConfigSpec</a>
 
 
@@ -1511,6 +1545,11 @@ GatewayConfigSpec defines the configuration for the AI Gateway.
   type="[LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1alpha1-llmrequestcost) array"
   required="false"
   description="GlobalLLMRequestCosts defines default LLM request costs that apply to all<br />routes referencing this GatewayConfig. These costs can be overridden on a<br />per-route basis via AIGatewayRoute.Spec.LLMRequestCosts.<br />When a request matches a route, the cost calculation proceeds as follows:<br /> 1. If the route defines LLMRequestCosts with a matching metadataKey, use that.<br /> 2. Otherwise, fall back to the global cost with that metadataKey (if defined here).<br /> 3. If neither exists, the cost is not calculated for that metadataKey.<br />This allows you to define common cost formulas once at the gateway level<br />(e.g., billing_charges = input_tokens + output_tokens) and only override<br />them in specific routes when needed (e.g., premium routes with different pricing)."
+/><ApiField
+  name="forwardProxy"
+  type="[GatewayConfigForwardProxy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-gatewayconfigforwardproxy)"
+  required="false"
+  description="ForwardProxy routes all upstream AI/LLM traffic from Gateways referencing this<br />GatewayConfig through an HTTP CONNECT forward proxy. This is intended for data planes<br />in locked-down networks where direct egress to providers is not permitted and all<br />outbound traffic must traverse a proxy."
 />
 
 
@@ -1850,6 +1889,60 @@ MCPBackendSecurityPolicy defines the security policy for a backend MCP server.
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendselector">MCPBackendSelector</a>
+
+
+
+**Appears in:**
+- [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutespec)
+
+MCPBackendSelector defines which of a MCPRoute's backends a request may fan out to.
+
+##### Fields
+
+
+
+<ApiField
+  name="defaultAction"
+  type="[AuthorizationAction](#github-com-envoyproxy-gateway-api-v1alpha1-authorizationaction)"
+  required="false"
+  defaultValue="Deny"
+  description="DefaultAction is the action to take when no rules match. If unspecified, defaults to Deny."
+/><ApiField
+  name="rules"
+  type="[MCPBackendSelectorRule](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendselectorrule) array"
+  required="false"
+  description="Rules defines a list of backend selection rules.<br />These rules are evaluated in order, the first matching rule will be applied,<br />and the rest will be skipped.<br />If no rules are defined, DefaultAction is applied to every candidate backend<br />(defaults to Deny)."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendselectorrule">MCPBackendSelectorRule</a>
+
+
+
+**Appears in:**
+- [MCPBackendSelector](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendselector)
+
+MCPBackendSelectorRule defines a single backend selection rule.
+
+##### Fields
+
+
+
+<ApiField
+  name="cel"
+  type="string"
+  required="false"
+  description="CEL specifies a Common Expression Language (CEL) expression, evaluated once for<br />each backend already listed in backendRefs. It does not parse a list of backends<br />out of the request. Each evaluation binds request.mcp.backend to the name of the<br />one candidate backend under test, so the expression should answer `is this backend<br />allowed`, not `which backends should be used`. The expression must return a<br />boolean; evaluation errors or non-boolean results are treated as `no match`. A<br />match means the rule applies, and Action below decides whether that's an Allow or<br />a Deny for that backend.<br />Example CEL expressions:<br />	* `request.mcp.backend in request.auth.jwt.claims.mcp_backends`<br />	* `(`,` + request.headers[`x-ai-eg-mcp-backend-subset`] + `,`).contains(`,` + request.mcp.backend + `,`)`<br />Available attributes are the same as documented on MCPRouteAuthorizationRule.CEL,<br />except request.mcp.method, request.mcp.tool, and request.mcp.params are not<br />populated (no MCP method has been selected yet at backend-selection time).<br />Note: The CEL expression support is experimental, and the attributes<br />available to the expression may change in future releases."
+/><ApiField
+  name="action"
+  type="[AuthorizationAction](#github-com-envoyproxy-gateway-api-v1alpha1-authorizationaction)"
+  required="false"
+  defaultValue="Allow"
+  description="Action is the decision for matching backends. If unspecified, defaults to Allow."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpheaderforward">MCPHeaderForward</a>
 
 
@@ -2112,6 +2205,11 @@ MCPRouteSpec details the MCPRoute configuration.
   required="false"
   description="Headers are HTTP headers that must match for this route to be selected.<br />Multiple match values are ANDed together, meaning, a request must match all the specified headers to select the route."
 /><ApiField
+  name="hostnames"
+  type="Hostname array"
+  required="false"
+  description="Hostnames is a list of hostnames matched against the HTTP Host header to select this MCPRoute.<br />This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec. When specified, the<br />generated HTTPRoute includes these hostnames, so the MCP route lands in the per-host virtual host<br />instead of the wildcard vhost (the same scoping AIGatewayRoute.Hostnames provides).<br />See https://gateway-api.sigs.k8s.io/reference/api-types/httproute/#hostnames<br />for the details of the Hostnames field in the Gateway API."
+/><ApiField
   name="backendRefs"
   type="[MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutebackendref) array"
   required="true"
@@ -2121,6 +2219,11 @@ MCPRouteSpec details the MCPRoute configuration.
   type="[MCPRouteSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcproutesecuritypolicy)"
   required="false"
   description="SecurityPolicy defines the security policy for this MCPRoute."
+/><ApiField
+  name="backendSelector"
+  type="[MCPBackendSelector](#github-com-envoyproxy-ai-gateway-api-v1alpha1-mcpbackendselector)"
+  required="false"
+  description="BackendSelector restricts which of this route's backends a given request may fan<br />out to, evaluated once per candidate backend when a client session is initialized.<br />If unspecified, all backends on the route are considered."
 />
 
 
@@ -2997,17 +3100,21 @@ MCPRouteList contains a list of MCPRoute.
 - [BackendSecurityPolicyAnthropicAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyanthropicapikey)
 - [BackendSecurityPolicyAzureAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazureapikey)
 - [BackendSecurityPolicyAzureCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyazurecredentials)
+- [BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)
 - [BackendSecurityPolicyGCPCredentials](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygcpcredentials)
 - [BackendSecurityPolicyOIDC](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyoidc)
 - [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
 - [BackendSecurityPolicyStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicystatus)
 - [BackendSecurityPolicyType](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicytype)
+- [CredentialOverrideFromDynamicMetadata](#github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromdynamicmetadata)
+- [CredentialOverrideFromRequestHeaders](#github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromrequestheaders)
 - [GCPCredentialsFile](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpcredentialsfile)
 - [GCPOIDCExchangeToken](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpoidcexchangetoken)
 - [GCPServiceAccountImpersonationConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpserviceaccountimpersonationconfig)
 - [GCPWorkloadIdentityFederationConfig](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpworkloadidentityfederationconfig)
 - [GCPWorkloadIdentityProvider](#github-com-envoyproxy-ai-gateway-api-v1beta1-gcpworkloadidentityprovider)
 - [GatewayConfigExtProc](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigextproc)
+- [GatewayConfigForwardProxy](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigforwardproxy)
 - [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigspec)
 - [GatewayConfigStatus](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigstatus)
 - [HTTPBodyField](#github-com-envoyproxy-ai-gateway-api-v1beta1-httpbodyfield)
@@ -3021,6 +3128,8 @@ MCPRouteList contains a list of MCPRoute.
 - [MCPAuthorizationTarget](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpauthorizationtarget)
 - [MCPBackendAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendapikey)
 - [MCPBackendSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendsecuritypolicy)
+- [MCPBackendSelector](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendselector)
+- [MCPBackendSelectorRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendselectorrule)
 - [MCPHeaderForward](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpheaderforward)
 - [MCPRouteAuthorization](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorization)
 - [MCPRouteAuthorizationRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcprouteauthorizationrule)
@@ -3049,6 +3158,11 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
 
 
 <ApiField
+  name="name"
+  type="[SectionName](#sigs-k8s-io-gateway-api-apis-v1-sectionname)"
+  required="false"
+  description="Name is the name of the route rule. This name must be unique within the route.<br />When specified, it is copied to the generated HTTPRoute rule name."
+/><ApiField
   name="backendRefs"
   type="[AIGatewayRouteRuleBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-aigatewayrouterulebackendref) array"
   required="false"
@@ -3062,7 +3176,12 @@ AIGatewayRouteRule is a rule that defines the routing behavior of the AIGatewayR
   name="timeouts"
   type="[HTTPRouteTimeouts](https://gateway-api.sigs.k8s.io/reference/spec/?h=httproutetimeouts#httproutetimeouts)"
   required="false"
-  description="Timeouts defines the timeouts that can be configured for an HTTP request.<br />If this field is not set, or the timeout.requestTimeout is nil, Envoy AI Gateway defaults to<br />set 60s for the request timeout as opposed to 15s of the Envoy Gateway's default value.<br />For streaming responses (like chat completions with stream=true), consider setting<br />longer timeouts as the response may take time until the completion."
+  description="Timeouts defines the timeouts that can be configured for an HTTP request.<br />If this field is not set, or the timeout.requestTimeout is nil, Envoy AI Gateway defaults to<br />set 60s for the request timeout as opposed to 15s of the Envoy Gateway's default value.<br />For streaming responses (like chat completions with stream=true), consider setting<br />longer timeouts as the response may take time until the completion. Timeouts.Request<br />acts as the maximum total time the gateway will wait for the entire response,<br />including all streamed chunks."
+/><ApiField
+  name="streamIdleTimeout"
+  type="[Duration](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.Duration)"
+  required="false"
+  description="StreamIdleTimeout is the maximum time Envoy will wait without receiving any bytes from the upstream.<br />If the timer fires before the first response byte arrives, Envoy resets the upstream stream and a<br />retry policy can fall over to the next backend. If it fires mid-stream after<br />bytes have already arrived, the stream is cut and the client receives a 504.<br />The AI Gateway extension server sets route.retry_policy.per_try_idle_timeout to this value on<br />every xDS route generated from this rule before it is sent to the data plane.<br />Pair this field with Timeouts.Request, which acts as the overall deadline.<br />If this field is not set, no per-try idle timeout is applied."
 /><ApiField
   name="modelsOwnedBy"
   type="string"
@@ -3573,6 +3692,35 @@ neither are set.
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride">BackendSecurityPolicyCredentialOverride</a>
+
+
+
+**Appears in:**
+- [BackendSecurityPolicySpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyspec)
+
+BackendSecurityPolicyCredentialOverride configures per-request credential sourcing.
+A trusted upstream filter (ext_authz or a preceding ext_proc) resolves the caller's
+credential and delivers it via one of the two sources below.
+Exactly one source must be configured.
+
+##### Fields
+
+
+
+<ApiField
+  name="fromRequestHeaders"
+  type="[CredentialOverrideFromRequestHeaders](#github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromrequestheaders)"
+  required="false"
+  description="FromRequestHeaders sources the credential from a request header injected by a trusted<br />ingress filter. The gateway strips the header before forwarding to the upstream backend.<br />Because any client can set request headers, this source is only safe when a trusted filter<br />removes any client-supplied copy and writes the canonical value."
+/><ApiField
+  name="fromDynamicMetadata"
+  type="[CredentialOverrideFromDynamicMetadata](#github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromdynamicmetadata)"
+  required="false"
+  description="FromDynamicMetadata sources the credential from Envoy dynamic metadata set by a trusted<br />filter (e.g. ext_authz). Metadata cannot be forged by the client and is the preferred source."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicygcpcredentials">BackendSecurityPolicyGCPCredentials</a>
 
 
@@ -3703,6 +3851,11 @@ Only one type of BackendSecurityPolicy can be defined.
   type="[BackendSecurityPolicyAnthropicAPIKey](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicyanthropicapikey)"
   required="false"
   description="AnthropicAPIKey is a mechanism to access Anthropic backend(s). The API key will be injected into the `x-api-key` header.<br />https://docs.claude.com/en/api/overview#authentication"
+/><ApiField
+  name="credentialOverride"
+  type="[BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)"
+  required="false"
+  description="CredentialOverride, when set, sources the upstream credential per-request instead of using<br />the static credential configured above. Supported for all types except AWSCredentials."
 />
 
 
@@ -3771,6 +3924,66 @@ BackendSecurityPolicyType specifies the type of auth mechanism used to access a 
   required="false"
   description=""
 />
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromdynamicmetadata">CredentialOverrideFromDynamicMetadata</a>
+
+
+
+**Appears in:**
+- [BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)
+
+CredentialOverrideFromDynamicMetadata sources the per-request credential from Envoy
+dynamic metadata produced by a trusted filter running earlier in the filter chain.
+
+##### Fields
+
+
+
+<ApiField
+  name="namespace"
+  type="string"
+  required="true"
+  description="Namespace is the Envoy metadata namespace written by the trusted filter.<br />Example: `envoy.filters.http.ext_authz`"
+/><ApiField
+  name="key"
+  type="string"
+  required="false"
+  description="Key is the metadata key within the namespace. Defaults to the x-aigw-* name for the auth type."
+/><ApiField
+  name="fallbackToConfigured"
+  type="boolean"
+  required="false"
+  defaultValue="true"
+  description="FallbackToConfigured controls behaviour when the metadata key is absent.<br />true (default) falls back to the static credential configured in the policy.<br />false returns a 401 to the client without forwarding the request."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-credentialoverridefromrequestheaders">CredentialOverrideFromRequestHeaders</a>
+
+
+
+**Appears in:**
+- [BackendSecurityPolicyCredentialOverride](#github-com-envoyproxy-ai-gateway-api-v1beta1-backendsecuritypolicycredentialoverride)
+
+CredentialOverrideFromRequestHeaders sources the per-request credential from a request header.
+
+##### Fields
+
+
+
+<ApiField
+  name="header"
+  type="string"
+  required="false"
+  description="Header is the name of the request header that carries the credential.<br />Defaults to the x-aigw-* header for the configured auth type:<br />  APIKey          → x-aigw-api-key<br />  AnthropicAPIKey → x-aigw-anthropic-api-key<br />  AzureAPIKey     → x-aigw-azure-api-key<br />  AzureCredentials → x-aigw-azure-access-token<br />  GCPCredentials  → x-aigw-gcp-access-token"
+/><ApiField
+  name="fallbackToConfigured"
+  type="boolean"
+  required="false"
+  defaultValue="true"
+  description="FallbackToConfigured controls behaviour when the header is absent.<br />true (default) falls back to the static credential configured in the policy.<br />false returns a 401 to the client without forwarding the request."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gcpcredentialsfile">GCPCredentialsFile</a>
 
 
@@ -3907,6 +4120,27 @@ GatewayConfigExtProc holds runtime-specific configuration for the external proce
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigforwardproxy">GatewayConfigForwardProxy</a>
+
+
+
+**Appears in:**
+- [GatewayConfigSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigspec)
+
+GatewayConfigForwardProxy configures an HTTP CONNECT forward proxy for upstream egress.
+
+##### Fields
+
+
+
+<ApiField
+  name="address"
+  type="string"
+  required="true"
+  description="Address is the `host:port` of the HTTP CONNECT proxy. The host may be a hostname or an<br />IP address; the port is required. Upstream connections are tunnelled through this proxy<br />via Envoy's http_11_proxy transport socket, preserving the upstream TLS session."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigspec">GatewayConfigSpec</a>
 
 
@@ -3930,6 +4164,11 @@ GatewayConfigSpec defines the configuration for the AI Gateway.
   type="[LLMRequestCost](#github-com-envoyproxy-ai-gateway-api-v1beta1-llmrequestcost) array"
   required="false"
   description="GlobalLLMRequestCosts defines default LLM request costs that apply to all<br />routes referencing this GatewayConfig. These costs can be overridden on a<br />per-route basis via AIGatewayRoute.Spec.LLMRequestCosts.<br />When a request matches a route, the cost calculation proceeds as follows:<br /> 1. If the route defines LLMRequestCosts with a matching metadataKey, use that.<br /> 2. Otherwise, fall back to the global cost with that metadataKey (if defined here).<br /> 3. If neither exists, the cost is not calculated for that metadataKey.<br />This allows you to define common cost formulas once at the gateway level<br />(e.g., billing_charges = input_tokens + output_tokens) and only override<br />them in specific routes when needed (e.g., premium routes with different pricing)."
+/><ApiField
+  name="forwardProxy"
+  type="[GatewayConfigForwardProxy](#github-com-envoyproxy-ai-gateway-api-v1beta1-gatewayconfigforwardproxy)"
+  required="false"
+  description="ForwardProxy routes all upstream AI/LLM traffic from Gateways referencing this<br />GatewayConfig through an HTTP CONNECT forward proxy. This is intended for data planes<br />in locked-down networks where direct egress to providers is not permitted and all<br />outbound traffic must traverse a proxy."
 />
 
 
@@ -4269,6 +4508,60 @@ MCPBackendSecurityPolicy defines the security policy for a backend MCP server.
 />
 
 
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendselector">MCPBackendSelector</a>
+
+
+
+**Appears in:**
+- [MCPRouteSpec](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutespec)
+
+MCPBackendSelector defines which of a MCPRoute's backends a request may fan out to.
+
+##### Fields
+
+
+
+<ApiField
+  name="defaultAction"
+  type="[AuthorizationAction](#github-com-envoyproxy-gateway-api-v1alpha1-authorizationaction)"
+  required="false"
+  defaultValue="Deny"
+  description="DefaultAction is the action to take when no rules match. If unspecified, defaults to Deny."
+/><ApiField
+  name="rules"
+  type="[MCPBackendSelectorRule](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendselectorrule) array"
+  required="false"
+  description="Rules defines a list of backend selection rules.<br />These rules are evaluated in order, the first matching rule will be applied,<br />and the rest will be skipped.<br />If no rules are defined, DefaultAction is applied to every candidate backend<br />(defaults to Deny)."
+/>
+
+
+#### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendselectorrule">MCPBackendSelectorRule</a>
+
+
+
+**Appears in:**
+- [MCPBackendSelector](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendselector)
+
+MCPBackendSelectorRule defines a single backend selection rule.
+
+##### Fields
+
+
+
+<ApiField
+  name="cel"
+  type="string"
+  required="false"
+  description="CEL specifies a Common Expression Language (CEL) expression, evaluated once for<br />each backend already listed in backendRefs. It does not parse a list of backends<br />out of the request. Each evaluation binds request.mcp.backend to the name of the<br />one candidate backend under test, so the expression should answer `is this backend<br />allowed`, not `which backends should be used`. The expression must return a<br />boolean; evaluation errors or non-boolean results are treated as `no match`. A<br />match means the rule applies, and Action below decides whether that's an Allow or<br />a Deny for that backend.<br />Example CEL expressions:<br />	* `request.mcp.backend in request.auth.jwt.claims.mcp_backends`<br />	* `(`,` + request.headers[`x-ai-eg-mcp-backend-subset`] + `,`).contains(`,` + request.mcp.backend + `,`)`<br />Available attributes are the same as documented on MCPRouteAuthorizationRule.CEL,<br />except request.mcp.method, request.mcp.tool, and request.mcp.params are not<br />populated (no MCP method has been selected yet at backend-selection time).<br />Note: The CEL expression support is experimental, and the attributes<br />available to the expression may change in future releases."
+/><ApiField
+  name="action"
+  type="[AuthorizationAction](#github-com-envoyproxy-gateway-api-v1alpha1-authorizationaction)"
+  required="false"
+  defaultValue="Allow"
+  description="Action is the decision for matching backends. If unspecified, defaults to Allow."
+/>
+
+
 #### <a id="github-com-envoyproxy-ai-gateway-api-v1beta1-mcpheaderforward">MCPHeaderForward</a>
 
 
@@ -4531,6 +4824,11 @@ MCPRouteSpec details the MCPRoute configuration.
   required="false"
   description="Headers are HTTP headers that must match for this route to be selected.<br />Multiple match values are ANDed together, meaning, a request must match all the specified headers to select the route."
 /><ApiField
+  name="hostnames"
+  type="Hostname array"
+  required="false"
+  description="Hostnames is a list of hostnames matched against the HTTP Host header to select this MCPRoute.<br />This is equivalent to the Hostnames field in the Gateway API HTTPRouteSpec. When specified, the<br />generated HTTPRoute includes these hostnames, so the MCP route lands in the per-host virtual host<br />instead of the wildcard vhost (the same scoping AIGatewayRoute.Hostnames provides).<br />See https://gateway-api.sigs.k8s.io/reference/api-types/httproute/#hostnames<br />for the details of the Hostnames field in the Gateway API."
+/><ApiField
   name="backendRefs"
   type="[MCPRouteBackendRef](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutebackendref) array"
   required="true"
@@ -4540,6 +4838,11 @@ MCPRouteSpec details the MCPRoute configuration.
   type="[MCPRouteSecurityPolicy](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcproutesecuritypolicy)"
   required="false"
   description="SecurityPolicy defines the security policy for this MCPRoute."
+/><ApiField
+  name="backendSelector"
+  type="[MCPBackendSelector](#github-com-envoyproxy-ai-gateway-api-v1beta1-mcpbackendselector)"
+  required="false"
+  description="BackendSelector restricts which of this route's backends a given request may fan<br />out to, evaluated once per candidate backend when a client session is initialized.<br />If unspecified, all backends on the route are considered."
 />
 
 
