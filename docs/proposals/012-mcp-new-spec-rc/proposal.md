@@ -429,6 +429,9 @@ Each phase is independently shippable and leaves prior behavior intact. Phases a
 | P0.6 | `onJSONRPCError(w, status, jsonrpcErr)` writer                                                                   | `handlers.go`                        |
 | P0.7 | `Mcp-Name` base64-sentinel encode/decode helpers                                                                 | new `mcpname.go`                     |
 | P0.8 | Verify `x-ai-eg-mcp-route` header is set on all requests (not just `initialize`) by the Envoy `HTTPRouteFilter`  | `internal/controller/`, Envoy config |
+| P0.9  | Add a thin request dispatcher and `serveLegacyPOST` entrypoint                                                   | `handlers.go`                        |
+| P0.10 | Move legacy-only HTTP handlers into `legacy.go`                                                                  | new `legacy.go`, `handlers.go`       |
+| P0.11 | Keep cross-era/shared helpers in `handlers.go`                                                                   | `handlers.go`                        |
 
 **Acceptance criteria:**
 
