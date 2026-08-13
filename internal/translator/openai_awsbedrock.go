@@ -471,10 +471,18 @@ func (o *openAIToAWSBedrockTranslatorV1ChatCompletion) ResponseBody(_ map[string
 			// redacted content go to thinking_blocks (they cannot be represented in a
 			// plain string). This mirrors the streaming path and the Gemini helper.
 			if rt := output.ReasoningContent.ReasoningText; rt != nil {
-				choice.Message.ReasoningContent = &openai.ReasoningContentUnion{Value: rt.Text}
-				choice.Message.ThinkingBlocks = append(choice.Message.ThinkingBlocks, openai.ThinkingBlock{
-					Type: "thinking", Thinking: rt.Text, Signature: rt.Signature,
-				})
+				// Only set reasoning_content when there is actual text; a
+				// signature-only block must not emit an empty string.
+				if rt.Text != "" {
+					choice.Message.ReasoningContent = &openai.ReasoningContentUnion{Value: rt.Text}
+				}
+				// Surface the block (text and/or signature) so a signature still
+				// round-trips even without accompanying text.
+				if rt.Text != "" || rt.Signature != "" {
+					choice.Message.ThinkingBlocks = append(choice.Message.ThinkingBlocks, openai.ThinkingBlock{
+						Type: "thinking", Thinking: rt.Text, Signature: rt.Signature,
+					})
+				}
 			}
 			if rc := output.ReasoningContent.RedactedContent; rc != nil {
 				choice.Message.ThinkingBlocks = append(choice.Message.ThinkingBlocks, openai.ThinkingBlock{

@@ -2436,6 +2436,58 @@ func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody_WithReasoning
 	require.Equal(t, base64.StdEncoding.EncodeToString(redactedBytes), message.ThinkingBlocks[1].Data)
 }
 
+func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_ResponseBody_WithReasoningSignatureOnly(t *testing.T) {
+	// A reasoning block carrying only a signature (no text) must not emit an empty
+	// reasoning_content string; the signature still round-trips via thinking_blocks.
+	mockBedrockResponse := awsbedrock.ConverseResponse{
+		Output: &awsbedrock.ConverseOutput{
+			Message: awsbedrock.Message{
+				Role: awsbedrock.ConversationRoleAssistant,
+				Content: []*awsbedrock.ContentBlock{
+					{
+						ReasoningContent: &awsbedrock.ReasoningContentBlock{
+							ReasoningText: &awsbedrock.ReasoningTextBlock{
+								Signature: "sig_only",
+							},
+						},
+					},
+					{
+						Text: ptr.To("The answer is 42."),
+					},
+				},
+			},
+		},
+		StopReason: ptr.To(awsbedrock.StopReasonEndTurn),
+	}
+
+	body, err := json.Marshal(mockBedrockResponse)
+	require.NoError(t, err)
+
+	o := &openAIToAWSBedrockTranslatorV1ChatCompletion{}
+	_, outputBody, _, _, err := o.ResponseBody(nil, bytes.NewBuffer(body), false, nil)
+	require.NoError(t, err)
+	require.NotNil(t, outputBody)
+
+	var openAIResponse openai.ChatCompletionResponse
+	require.NoError(t, json.Unmarshal(outputBody, &openAIResponse))
+	require.Len(t, openAIResponse.Choices, 1)
+	message := openAIResponse.Choices[0].Message
+
+	require.Nil(t, message.ReasoningContent, "reasoning_content must be absent when there is no reasoning text")
+	require.Len(t, message.ThinkingBlocks, 1)
+	require.Equal(t, "thinking", message.ThinkingBlocks[0].Type)
+	require.Empty(t, message.ThinkingBlocks[0].Thinking)
+	require.Equal(t, "sig_only", message.ThinkingBlocks[0].Signature)
+
+	// reasoning_content must not appear on the wire at all.
+	var untypedResponse map[string]interface{}
+	require.NoError(t, json.Unmarshal(outputBody, &untypedResponse))
+	choices := untypedResponse["choices"].([]interface{})
+	messageMap := choices[0].(map[string]interface{})["message"].(map[string]interface{})
+	_, hasReasoning := messageMap["reasoning_content"]
+	require.False(t, hasReasoning, "reasoning_content key must be omitted for a signature-only block")
+}
+
 func TestOpenAIToAWSBedrockTranslatorV1ChatCompletion_Streaming_WithRedactedContent(t *testing.T) {
 	redactedBytes := []byte("a redacted thought")
 	inputEvents := []awsbedrock.ConverseStreamEvent{
