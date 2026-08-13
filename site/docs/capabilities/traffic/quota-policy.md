@@ -34,14 +34,14 @@ Both policies use Envoy's rate limit protocol and Redis-backed counters, but `Qu
 by a dedicated AI Gateway rate limit service. Usage-based rate limiting uses Envoy Gateway's global
 rate limit service. Choose between them based on the budget's intent and scope:
 
-| | `QuotaPolicy` | Usage-based rate limiting |
-| --- | --- | --- |
-| Configuration | One AI Gateway policy containing the token cost and quota buckets | `llmRequestCosts` on an `AIGatewayRoute`, plus an Envoy Gateway `BackendTrafficPolicy` |
-| Scope | Backend- and model-scoped - the budget follows an `AIServiceBackend` across every route that sends traffic to it | Route/Gateway-scoped - budgets are keyed by client descriptors on a route |
-| Token accounting | One default or custom CEL cost per model | Multiple metadata keys can track and limit input, output, total, or custom token costs separately |
-| Client budgets | Default and header-selected buckets, with optional shadow mode | Envoy Gateway client selectors and rate limit rules |
-| Enforcement | In `Shared` mode, a request is denied only when all applicable quota buckets are exhausted; the quota is evaluated for the selected backend | A request is denied when any matched rate limit is exceeded; limits are evaluated from the route's client descriptors |
-| Time windows | Exactly one second, minute, hour, or day | One second, minute, hour, day, month, or year |
+|                  | `QuotaPolicy`                                                                                                                               | Usage-based rate limiting                                                                                             |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Configuration    | One AI Gateway policy containing the token cost and quota buckets                                                                           | `llmRequestCosts` on an `AIGatewayRoute`, plus an Envoy Gateway `BackendTrafficPolicy`                                |
+| Scope            | Backend- and model-scoped - the budget follows an `AIServiceBackend` across every route that sends traffic to it                            | Route/Gateway-scoped - budgets are keyed by client descriptors on a route                                             |
+| Token accounting | One default or custom CEL cost per model                                                                                                    | Multiple metadata keys can track and limit input, output, total, or custom token costs separately                     |
+| Client budgets   | Default and header-selected buckets, with optional shadow mode                                                                              | Envoy Gateway client selectors and rate limit rules                                                                   |
+| Enforcement      | In `Shared` mode, a request is denied only when all applicable quota buckets are exhausted; the quota is evaluated for the selected backend | A request is denied when any matched rate limit is exceeded; limits are evaluated from the route's client descriptors |
+| Time windows     | Exactly one second, minute, hour, or day                                                                                                    | One second, minute, hour, day, month, or year                                                                         |
 
 Use `QuotaPolicy` when the platform needs to protect its provider budget for a backend and model.
 For example, a platform team can give every tenant a separate daily budget for an expensive model,
