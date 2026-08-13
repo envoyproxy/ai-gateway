@@ -69,7 +69,7 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 	// Promote any role: "system" messages from the messages array to the top-level system field.
 	// This handles clients (e.g. Claude Code with mid-conversation-system beta) that send
 	// system prompts as messages rather than the top-level parameter.
-	messages := promoteAnthropicSystemMessagesToParam(body)
+	messages, systemPrompt := promoteAnthropicSystemMessagesToParam(body)
 
 	// Convert messages.
 	bedrockReq.Messages = make([]*awsbedrock.Message, 0, len(messages))
@@ -105,8 +105,8 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 	}
 
 	// Convert system prompt.
-	if body.System != nil {
-		bedrockReq.System = a.convertSystemPrompt(body.System)
+	if systemPrompt != nil {
+		bedrockReq.System = a.convertSystemPrompt(systemPrompt)
 	}
 
 	// Convert inference configuration.
@@ -161,32 +161,52 @@ func (a *anthropicToAWSBedrockTranslator) RequestBody(_ []byte, body *anthropics
 }
 
 // promoteAnthropicSystemMessagesToParam promotes role: "system" messages from the messages
-// array to the top-level system parameter. Returns the filtered messages (without system messages).
+// array to the top-level system parameter. It returns the filtered messages (without the system
+// messages) and the effective system prompt, which is nil when the request had none.
 // This handles clients (e.g. Claude Code with mid-conversation-system beta) that send
 // system prompts as messages rather than the top-level parameter.
+//
+// Neither body.Messages nor body.System is mutated: the same parsed body is translated again on
+// every retry or backend fallback, so merging in place would re-append the promoted blocks. The
+// returned prompt aliases body.System when there is nothing to promote, so treat it as read-only.
+//
 // Each system message becomes its own text block so per-block fields like cache_control survive
 // promotion and convertSystemPrompt can emit the corresponding cache points.
-func promoteAnthropicSystemMessagesToParam(body *anthropicschema.MessagesRequest) []anthropicschema.MessageParam {
-	var systemBlocks []anthropicschema.TextBlockParam
+func promoteAnthropicSystemMessagesToParam(body *anthropicschema.MessagesRequest) ([]anthropicschema.MessageParam, *anthropicschema.SystemPrompt) {
+	var promoted []anthropicschema.TextBlockParam
 	var filtered []anthropicschema.MessageParam
 	for _, msg := range body.Messages {
 		if msg.Role == "system" {
 			if msg.Content.Text != "" {
-				systemBlocks = append(systemBlocks, anthropicschema.TextBlockParam{Type: "text", Text: msg.Content.Text})
+				promoted = append(promoted, anthropicschema.TextBlockParam{Type: "text", Text: msg.Content.Text})
 			}
 			for i := range msg.Content.Array {
-				if block := msg.Content.Array[i].Text; block != nil && block.Text != "" {
-					systemBlocks = append(systemBlocks, *block)
+				// Copy the whole block, not just its text, so cache_control survives.
+				if t := msg.Content.Array[i].Text; t != nil && t.Text != "" {
+					promoted = append(promoted, *t)
 				}
 			}
 		} else {
 			filtered = append(filtered, msg)
 		}
 	}
-	if len(systemBlocks) > 0 {
-		body.System = &anthropicschema.SystemPrompt{Texts: systemBlocks}
+	if len(promoted) == 0 {
+		return filtered, body.System
 	}
-	return filtered
+
+	// Keep any existing system prompt rather than replacing it: a request may legitimately set both.
+	// Top-level blocks come first, then the promoted messages in conversation order.
+	merged := &anthropicschema.SystemPrompt{}
+	if body.System != nil {
+		// The string form is folded into the block list because convertSystemPrompt returns early
+		// on it, which would otherwise drop the promoted blocks.
+		if body.System.Text != "" {
+			merged.Texts = append(merged.Texts, anthropicschema.TextBlockParam{Type: "text", Text: body.System.Text})
+		}
+		merged.Texts = append(merged.Texts, body.System.Texts...)
+	}
+	merged.Texts = append(merged.Texts, promoted...)
+	return filtered, merged
 }
 
 // isOnlyToolResult returns true if the message is a user message whose content
