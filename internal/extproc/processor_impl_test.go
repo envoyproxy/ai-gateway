@@ -425,7 +425,7 @@ func Test_chatCompletionProcessorUpstreamFilter_ProcessResponseBody(t *testing.T
 		require.Equal(t, float64(9999), md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
 			GetStructValue().Fields["cel_uint"].GetNumberValue())
 		require.Equal(t, "ai_gateway_llm", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["model_name_override"].GetStringValue())
-		require.Equal(t, "some_backend", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["backend_name"].GetStringValue())
+		require.Equal(t, "some_backend", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["ai_service_backend_name"].GetStringValue())
 		require.Equal(t, "some_route", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["route_name"].GetStringValue())
 		require.Equal(t, "some_model", md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue().Fields["response_model"].GetStringValue())
 	})
@@ -1773,7 +1773,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		require.Equal(t, "us.anthropic.claude-sonnet-4.5-v2", inner.Fields["model_name_override"].GetStringValue())
 	})
 
-	t.Run("sets backend_name when provided", func(t *testing.T) {
+	t.Run("sets ai_service_backend_name when provided", func(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
 
@@ -1782,10 +1782,11 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		require.NotNil(t, md)
 
 		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
-		require.Equal(t, "ns/backend-a", inner.Fields["backend_name"].GetStringValue())
+		require.Equal(t, "ns/backend-a", inner.Fields["ai_service_backend_name"].GetStringValue())
+		require.Nil(t, inner.Fields["backend_name"], "emitted in the request headers phase instead")
 	})
 
-	t.Run("omits backend_name when empty", func(t *testing.T) {
+	t.Run("omits ai_service_backend_name when empty", func(t *testing.T) {
 		costs := &metrics.TokenUsage{}
 		headers := map[string]string{internalapi.ModelNameHeaderKeyDefault: "gpt-4"}
 
@@ -1794,7 +1795,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		require.NotNil(t, md)
 
 		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
-		require.Nil(t, inner.Fields["backend_name"])
+		require.Nil(t, inner.Fields["ai_service_backend_name"])
 	})
 
 	t.Run("includes token usage costs alongside model_name_override", func(t *testing.T) {
@@ -1815,7 +1816,7 @@ func Test_buildDynamicMetadata(t *testing.T) {
 
 		inner := md.Fields[internalapi.AIGatewayFilterMetadataNamespace].GetStructValue()
 		require.Equal(t, "claude-sonnet", inner.Fields["model_name_override"].GetStringValue())
-		require.Equal(t, "default/backend", inner.Fields["backend_name"].GetStringValue())
+		require.Equal(t, "default/backend", inner.Fields["ai_service_backend_name"].GetStringValue())
 		require.Equal(t, float64(100), inner.Fields["output_tokens"].GetNumberValue())
 		require.Equal(t, float64(50), inner.Fields["input_tokens"].GetNumberValue())
 	})
@@ -1832,6 +1833,59 @@ func Test_buildDynamicMetadata(t *testing.T) {
 		// model_name_override should still be present, just with empty value.
 		require.Empty(t, inner.Fields["model_name_override"].GetStringValue())
 	})
+}
+
+func Test_buildBackendDynamicMetadata(t *testing.T) {
+	t.Run("empty backend name yields no metadata", func(t *testing.T) {
+		require.Nil(t, buildBackendDynamicMetadata(""))
+	})
+
+	t.Run("emits the full per-route rule ref name", func(t *testing.T) {
+		name := internalapi.PerRouteRuleRefBackendName("ns", "backend", "route", 0, 1)
+		md := buildBackendDynamicMetadata(name)
+		require.NotNil(t, md)
+		require.Equal(t, name, md.Fields[internalapi.AIGatewayFilterMetadataNamespace].
+			GetStructValue().Fields["backend_name"].GetStringValue())
+	})
+}
+
+func Test_chatCompletionProcessorUpstreamFilter_ProcessRequestHeaders_backendMetadata(t *testing.T) {
+	const backendName = "ns/backend/route/route-a/rule/0/ref/1"
+
+	for _, tc := range []struct {
+		name            string
+		retBodyMutation []byte // drives the CONTINUE vs CONTINUE_AND_REPLACE branch.
+	}{
+		{name: "body replaced", retBodyMutation: []byte("some body")},
+		{name: "body untouched", retBodyMutation: nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := bodyFromModel(t, "some-model", false, nil)
+			var expBody openai.ChatCompletionRequest
+			require.NoError(t, json.Unmarshal(body, &expBody))
+
+			p := &chatCompletionProcessorUpstreamFilter{
+				parent: &chatCompletionProcessorRouterFilter{
+					config:                 &filterapi.RuntimeConfig{},
+					logger:                 slog.Default(),
+					originalRequestBodyRaw: body,
+					originalRequestBody:    &expBody,
+					originalModel:          "some-model",
+				},
+				requestHeaders: map[string]string{internalapi.ModelNameHeaderKeyDefault: "some-model"},
+				metrics:        &mockMetrics{},
+				translator:     &mockTranslator{t: t, expRequestBody: &expBody, retBodyMutation: tc.retBodyMutation},
+				backendName:    backendName,
+			}
+
+			resp, err := p.ProcessRequestHeaders(t.Context(), nil)
+			require.NoError(t, err)
+			require.NotNil(t, resp.DynamicMetadata)
+			require.Equal(t, backendName, resp.DynamicMetadata.
+				Fields[internalapi.AIGatewayFilterMetadataNamespace].
+				GetStructValue().Fields["backend_name"].GetStringValue())
+		})
+	}
 }
 
 func Test_mergeDynamicMetadata(t *testing.T) {
