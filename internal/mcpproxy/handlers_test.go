@@ -710,6 +710,29 @@ func TestMergeToolsList_MetaResourceURIRewrite(t *testing.T) {
 	require.Nil(t, plainTool.Meta)
 }
 
+func TestMergeToolsList_PreservesExplicitFalseToolHints(t *testing.T) {
+	responses := []broadCastResponse[mcp.ListToolsResult]{
+		{
+			backendName: "backend1",
+			res: mcp.ListToolsResult{Tools: []*mcp.Tool{
+				{
+					Name:        "write-tool",
+					Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, IdempotentHint: false},
+				},
+			}},
+		},
+	}
+	proxy := newTestMCPProxy()
+	proxy.routes["test-route"].toolSelectors = nil
+	proxy.requestHeaders = http.Header{}
+
+	result := proxy.mergeToolsList(&session{route: "test-route"}, responses)
+	encoded, err := json.Marshal(result)
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), `"readOnlyHint":false`)
+	require.Contains(t, string(encoded), `"idempotentHint":false`)
+}
+
 func TestServePOST_ToolsCallRequest(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -2096,7 +2119,13 @@ func TestMCPPRoxy_handleResourceReadRequest(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	require.Contains(t, rr.Body.String(), `{"jsonrpc":"2.0","id":"id","result":{"contents":[]}}`)
+	var response struct {
+		Result struct {
+			Contents []*mcp.ResourceContents `json:"contents"`
+		} `json:"result"`
+	}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &response))
+	require.Empty(t, response.Result.Contents)
 
 	t.Run("no session for known backend", func(t *testing.T) {
 		// backend2 is configured on test-route (getBackendForRoute succeeds) but has no
