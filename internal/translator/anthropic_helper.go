@@ -169,9 +169,13 @@ func translateOpenAItoAnthropicTools(openAITools []openai.Tool, openAIToolChoice
 	if len(openAITools) > 0 {
 		anthropicTools := make([]anthropic.ToolUnionParam, 0, len(openAITools))
 		for _, openAITool := range openAITools {
-			if openAITool.Type != openai.ToolTypeFunction || openAITool.Function == nil {
-				// Anthropic only supports 'function' tools, so we skip others.
-				continue
+			if openAITool.Type != openai.ToolTypeFunction {
+				err = fmt.Errorf("%w: unsupported tool type: %s", internalapi.ErrInvalidRequestBody, openAITool.Type)
+				return
+			}
+			if openAITool.Function == nil {
+				err = fmt.Errorf("%w: tool of type 'function' is missing function definition", internalapi.ErrInvalidRequestBody)
+				return
 			}
 			toolParam := anthropic.ToolParam{
 				Name:        openAITool.Function.Name,
@@ -1109,11 +1113,11 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 					},
 				},
 			}
-			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
+			return p.constructOpenAIChatCompletionChunk(&delta, ""), nil
 		}
 		if event.ContentBlock.Type == string(constant.ValueOf[constant.Thinking]()) {
 			delta := openai.ChatCompletionResponseChunkChoiceDelta{Content: emptyStrPtr}
-			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
+			return p.constructOpenAIChatCompletionChunk(&delta, ""), nil
 		}
 
 		if event.ContentBlock.Type == string(constant.ValueOf[constant.RedactedThinking]()) {
@@ -1167,7 +1171,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		case string(constant.ValueOf[constant.TextDelta]()), string(constant.ValueOf[constant.ThinkingDelta]()):
 			// Treat thinking_delta just like a text_delta.
 			delta := openai.ChatCompletionResponseChunkChoiceDelta{Content: &event.Delta.Text}
-			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
+			return p.constructOpenAIChatCompletionChunk(&delta, ""), nil
 		case string(constant.ValueOf[constant.InputJSONDelta]()):
 			tool, ok := p.activeToolCalls[p.toolIndex]
 			if !ok {
@@ -1184,7 +1188,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 				},
 			}
 			tool.inputJSON += event.Delta.PartialJSON
-			return p.constructOpenAIChatCompletionChunk(delta, ""), nil
+			return p.constructOpenAIChatCompletionChunk(&delta, ""), nil
 		}
 
 	case string(constant.ValueOf[constant.ContentBlockStop]()):
@@ -1210,7 +1214,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 		if err != nil {
 			return nil, err
 		}
-		return p.constructOpenAIChatCompletionChunk(openai.ChatCompletionResponseChunkChoiceDelta{}, finishReason), nil
+		return p.constructOpenAIChatCompletionChunk(&openai.ChatCompletionResponseChunkChoiceDelta{}, finishReason), nil
 
 	case string(constant.ValueOf[constant.Error]()):
 		var errEvent anthropic.ErrorResponse
@@ -1227,7 +1231,7 @@ func (p *anthropicStreamParser) handleAnthropicStreamEvent(eventType []byte, dat
 }
 
 // constructOpenAIChatCompletionChunk builds the stream chunk.
-func (p *anthropicStreamParser) constructOpenAIChatCompletionChunk(delta openai.ChatCompletionResponseChunkChoiceDelta, finishReason openai.ChatCompletionChoicesFinishReason) *openai.ChatCompletionResponseChunk {
+func (p *anthropicStreamParser) constructOpenAIChatCompletionChunk(delta *openai.ChatCompletionResponseChunkChoiceDelta, finishReason openai.ChatCompletionChoicesFinishReason) *openai.ChatCompletionResponseChunk {
 	// Add the 'assistant' role to the very first chunk of the response.
 	if !p.sentFirstChunk {
 		// Only add the role if the delta actually contains content or a tool call.
@@ -1243,7 +1247,7 @@ func (p *anthropicStreamParser) constructOpenAIChatCompletionChunk(delta openai.
 		Object:  "chat.completion.chunk",
 		Choices: []openai.ChatCompletionResponseChunkChoice{
 			{
-				Delta:        &delta,
+				Delta:        delta,
 				FinishReason: finishReason,
 			},
 		},
