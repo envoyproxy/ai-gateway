@@ -62,12 +62,24 @@ metadata, separate limits for input and output tokens, or a monthly or yearly wi
 4. When all related quota buckets for that model are exceeded, subsequent matching requests receive `429 Too Many Requests`.
 
 :::tip Prerequisites
-Quota enforcement uses the same infrastructure as usage-based rate limiting:
+Quota enforcement requires two components that are not deployed by the AI Gateway Helm chart today:
 
-1. **Redis Deployment**: A Redis instance for storing quota counters. See the [redis.yaml example](https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/redis.yaml) for a simple deployment.
-2. **Envoy Gateway Configuration**: Envoy Gateway must be configured at installation time to enable rate limiting and point to your Redis instance. See the [Envoy Gateway Installation Guide](../../getting-started/prerequisites.md#additional-features-rate-limiting-inferencepool-etc).
+1. **Redis** stores quota counters. See the
+   [redis.yaml example](https://github.com/envoyproxy/ai-gateway/blob/main/examples/token_ratelimit/redis.yaml)
+   for a simple deployment.
+2. **A dedicated rate limit service** evaluates the `ai-gateway-quota` domain. It must use the AI
+   Gateway controller's xDS server for configuration, with node ID `envoy-ai-gateway-ratelimit`, and
+   listen at the controller's `quotaRateLimitServiceAddr`. The
+   [quota E2E manifest](https://github.com/envoyproxy/ai-gateway/blob/main/tests/e2e/testdata/backend_quota_ratelimit.yaml)
+   provides a deployment example; Helm support is tracked in
+   [#2214](https://github.com/envoyproxy/ai-gateway/pull/2214).
 
-See [Usage-based Rate Limiting](./usage-based-ratelimiting.md) for more detail on the rate limit infrastructure that QuotaPolicy builds on.
+Envoy Gateway's rate-limit addon is a separate service used by usage-based rate limiting. It is not
+required for a QuotaPolicy-only deployment, although both services can use the same Redis instance.
+
+By default, `controller.quotaRateLimitFailureModeDeny` is `false`. If the dedicated service is absent
+or unreachable, quota checks fail open and requests continue without enforcement. Set it to `true`
+if unavailable quota enforcement should reject requests instead.
 :::
 
 ## Configuration
