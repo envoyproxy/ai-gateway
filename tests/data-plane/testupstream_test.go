@@ -492,7 +492,7 @@ data: [DONE]
 			responseHeaders: "x-amzn-requestid:2bc5b090-a26c-4007-9467-ce5adc4ffa1d",
 			expResponseBody: `data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"content":"","role":"assistant"}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":{"text":"First, I'll start by acknowledging the user..."}}}],"created":123,"model":"something","object":"chat.completion.chunk"}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"First, I'll start by acknowledging the user..."}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
 data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"content":"Hello!","role":"assistant"}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
