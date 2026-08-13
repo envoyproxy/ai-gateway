@@ -39,7 +39,7 @@ func modernMeta(protocolVersion string, capabilities []byte) []byte {
 }
 
 // newRequestMsg builds a JSON-RPC request. A nil id produces a notification
-// (invalid ID, so isCall is false); a non-nil id produces a call.
+// (invalid ID, so expectsResponse is false); a non-nil id produces a call.
 func newRequestMsg(t *testing.T, method string, id any, params []byte) *jsonrpc.Request {
 	t.Helper()
 	req := &jsonrpc.Request{Method: method, Params: params}
@@ -195,7 +195,7 @@ func TestDetectClientEra_NoVersionHeader(t *testing.T) {
 func TestValidateLegacyRequest(t *testing.T) {
 	t.Run("modern-only method is rejected even on legacy", func(t *testing.T) {
 		for method := range modernOnlyMethods {
-			got := validateLegacyRequest(&requestDetails{isRequest: true, method: method})
+			got := validateLegacyRequest(&requestDetails{hasMethod: true, method: method})
 			require.NotNil(t, got.err, "method %q", method)
 			require.Equal(t, errCodeMethodNotFound, got.err.Code)
 			// Legacy carries JSON-RPC failures inside a 200 body.
@@ -205,7 +205,7 @@ func TestValidateLegacyRequest(t *testing.T) {
 
 	t.Run("ordinary legacy request passes and preserves version", func(t *testing.T) {
 		got := validateLegacyRequest(&requestDetails{
-			isRequest:     true,
+			hasMethod:     true,
 			method:        "tools/list",
 			headerVersion: protocolVersion20250618,
 		})
@@ -223,8 +223,8 @@ func TestValidateModernRequest(t *testing.T) {
 			headerVersion: protocolVersion20260728,
 			headerMethod:  "tools/call",
 			method:        "tools/call",
-			isRequest:     true,
-			isCall:        true,
+			hasMethod:     true,
+			expectsResponse: true,
 			params:        modernMeta(protocolVersion20260728, caps),
 		})
 		require.Nil(t, got.err)
@@ -236,8 +236,8 @@ func TestValidateModernRequest(t *testing.T) {
 		got := validateModernRequest(&requestDetails{
 			headerVersion: protocolVersion20260728,
 			method:        "tools/call",
-			isRequest:     true,
-			isCall:        true,
+			hasMethod:     true,
+			expectsResponse: true,
 			params:        modernMeta(protocolVersion20260728, caps),
 		})
 		require.NotNil(t, got.err)
@@ -251,8 +251,8 @@ func TestValidateModernRequest(t *testing.T) {
 			headerVersion: protocolVersion20260728,
 			headerMethod:  "tools/list",
 			method:        "tools/call",
-			isRequest:     true,
-			isCall:        true,
+			hasMethod:     true,
+			expectsResponse: true,
 			params:        modernMeta(protocolVersion20260728, caps),
 		})
 		require.NotNil(t, got.err)
@@ -266,8 +266,8 @@ func TestValidateModernRequest(t *testing.T) {
 			headerMethod:  "tools/call",
 			method:        "tools/call",
 			sessionID:     "sess",
-			isRequest:     true,
-			isCall:        true,
+			hasMethod:     true,
+			expectsResponse: true,
 			params:        modernMeta(protocolVersion20260728, caps),
 		})
 		require.NotNil(t, got.err)
@@ -281,8 +281,8 @@ func TestValidateModernRequest(t *testing.T) {
 				headerVersion: protocolVersion20260728,
 				headerMethod:  method,
 				method:        method,
-				isRequest:     true,
-				isCall:        true,
+			hasMethod:     true,
+			expectsResponse: true,
 				params:        modernMeta(protocolVersion20260728, caps),
 			})
 			require.NotNil(t, got.err, "method %q", method)
@@ -296,8 +296,8 @@ func TestValidateModernRequest(t *testing.T) {
 			headerVersion: protocolVersion20260728,
 			headerMethod:  "tools/call",
 			method:        "tools/call",
-			isRequest:     true,
-			isCall:        true,
+			hasMethod:     true,
+			expectsResponse: true,
 			params:        []byte(`{"_meta":123}`),
 		})
 		require.NotNil(t, got.err)
@@ -310,8 +310,8 @@ func TestValidateModernRequest(t *testing.T) {
 			headerVersion: protocolVersion20260728,
 			headerMethod:  "tools/call",
 			method:        "tools/call",
-			isRequest:     true,
-			isCall:        true,
+			hasMethod:     true,
+			expectsResponse: true,
 			params:        modernMeta("", caps),
 		})
 		require.NotNil(t, got.err)
@@ -324,8 +324,8 @@ func TestValidateModernRequest(t *testing.T) {
 			headerVersion: protocolVersion20260728,
 			headerMethod:  "tools/call",
 			method:        "tools/call",
-			isRequest:     true,
-			isCall:        true,
+			hasMethod:     true,
+			expectsResponse: true,
 			params:        modernMeta(protocolVersion20251125, caps),
 		})
 		require.NotNil(t, got.err)
@@ -338,8 +338,8 @@ func TestValidateModernRequest(t *testing.T) {
 			headerVersion: protocolVersion20260728,
 			headerMethod:  "tools/call",
 			method:        "tools/call",
-			isRequest:     true,
-			isCall:        true,
+			hasMethod:     true,
+			expectsResponse: true,
 			params:        modernMeta(protocolVersion20260728, nil),
 		})
 		require.NotNil(t, got.err)
@@ -353,8 +353,8 @@ func TestValidateModernRequest(t *testing.T) {
 			headerVersion: protocolVersion20260728,
 			headerMethod:  "tools/call",
 			method:        "tools/call",
-			isRequest:     true,
-			isCall:        true,
+			hasMethod:     true,
+			expectsResponse: true,
 			params:        params,
 		})
 		require.NotNil(t, got.err)
@@ -367,8 +367,8 @@ func TestValidateModernRequest(t *testing.T) {
 			headerVersion: protocolVersion20260728,
 			headerMethod:  "notifications/progress",
 			method:        "notifications/progress",
-			isRequest:     true,
-			isCall:        false,
+			hasMethod:     true,
+			expectsResponse: false,
 			params:        modernMeta(protocolVersion20260728, nil),
 		})
 		require.Nil(t, got.err)

@@ -175,10 +175,10 @@ type requestDetails struct {
 	method string
 	// params is the raw params object from the body.
 	params json.RawMessage
-	// isRequest is false for responses, which carry no method.
-	isRequest bool
-	// isCall is true for requests expecting a result, false for notifications.
-	isCall bool
+	// hasMethod is true for JSON-RPC requests/notifications, false for responses.
+	hasMethod bool
+	// expectsResponse is true for requests with a valid id (calls), false for notifications.
+	expectsResponse bool
 }
 
 // requestMetaEnvelope pulls _meta out of a params object without decoding the
@@ -200,18 +200,18 @@ type modernRequestMeta struct {
 
 // getRequestDetails reads the headers and body once into a single value.
 func getRequestDetails(r *http.Request, msg jsonrpc.Message) requestDetails {
-	facts := requestDetails{
+	reqDetails := requestDetails{
 		headerVersion: r.Header.Get(mcpProtocolVersionHeader),
 		headerMethod:  r.Header.Get(mcpMethodHeader),
 		sessionID:     r.Header.Get(sessionIDHeader),
 	}
 	if req, ok := msg.(*jsonrpc.Request); ok && req != nil {
-		facts.method = req.Method
-		facts.params = json.RawMessage(req.Params)
-		facts.isRequest = true
-		facts.isCall = req.ID.IsValid()
+		reqDetails.method = req.Method
+		reqDetails.params = json.RawMessage(req.Params)
+		reqDetails.hasMethod = true
+		reqDetails.expectsResponse = req.ID.IsValid()
 	}
-	return facts
+	return reqDetails
 }
 
 // parseModernMeta decodes the per-request _meta block. A params object that is
@@ -286,7 +286,7 @@ func detectClientEra(r *http.Request, msg jsonrpc.Message) eraDetection {
 	}
 
 	// When there is no header version and if the method is modern, we reject it.
-	if reqDetails.isRequest {
+	if reqDetails.hasMethod {
 		if _, modernOnly := modernOnlyMethods[reqDetails.method]; modernOnly {
 			return eraDetection{err: missingVersionHeader(fmt.Sprintf("%q requires a %s header", reqDetails.method, mcpProtocolVersionHeader))}
 		}
@@ -298,7 +298,7 @@ func detectClientEra(r *http.Request, msg jsonrpc.Message) eraDetection {
 	}
 
 	// If there is no session ID, and it has a legacy only method, we validate the request as legacy.
-	if reqDetails.isRequest {
+	if reqDetails.hasMethod {
 		if _, legacyOnly := legacyOnlyMethods[reqDetails.method]; legacyOnly {
 			return validateLegacyRequest(&reqDetails)
 		}
@@ -322,7 +322,7 @@ func detectClientEra(r *http.Request, msg jsonrpc.Message) eraDetection {
 // authoritative. Errors ride a 200 response body, which is how legacy
 // Streamable HTTP carries JSON-RPC failures.
 func validateLegacyRequest(requestDetails *requestDetails) eraDetection {
-	if requestDetails.isRequest {
+	if requestDetails.hasMethod {
 		// this rejects modern methods even on legacy requests, so we can return early
 		if _, modernOnly := modernOnlyMethods[requestDetails.method]; modernOnly {
 			return eraDetection{err: &protocolError{
@@ -346,7 +346,7 @@ func validateModernRequest(requestDetails *requestDetails) eraDetection {
 	// on one operation while the server executes another. Both a missing header
 	// and a mismatched one are validation failures. Reject before anything
 	// downstream reads either source.
-	if requestDetails.isRequest {
+	if requestDetails.hasMethod {
 		if requestDetails.headerMethod == "" {
 			return eraDetection{err: &protocolError{
 				Code:       errCodeHeaderMismatch,
@@ -374,7 +374,7 @@ func validateModernRequest(requestDetails *requestDetails) eraDetection {
 		}}
 	}
 
-	if requestDetails.isRequest {
+	if requestDetails.hasMethod {
 		if _, legacyOnly := legacyOnlyMethods[requestDetails.method]; legacyOnly {
 			return eraDetection{err: &protocolError{
 				Code:       errCodeMethodNotFound,
@@ -412,7 +412,7 @@ func validateModernRequest(requestDetails *requestDetails) eraDetection {
 	// response stream, so it is required for calls and meaningless for
 	// notifications. An absent block is not an empty block: capabilities MUST
 	// NOT be inferred from earlier requests, so it cannot be defaulted.
-	if requestDetails.isCall && !jsonPresent(meta.ClientCapabilities) {
+	if requestDetails.expectsResponse && !jsonPresent(meta.ClientCapabilities) {
 		return eraDetection{err: &protocolError{
 			Code:       errCodeInvalidParams,
 			Message:    fmt.Sprintf("Invalid params: %q is required", metaClientCapabilities),
