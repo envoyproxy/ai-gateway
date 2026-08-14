@@ -62,6 +62,42 @@ func TestOpenAIToGoogleAIStudioImageTranslator_RequestBody(t *testing.T) {
 		require.Equal(t, "/v1beta/models/gemini-2.5-flash-image:generateContent", hm[0].Value())
 	})
 
+	t.Run("rejects a model that would escape the path segment", func(t *testing.T) {
+		// The model is client controlled and lands in the upstream path. Percent-encoding it is
+		// not enough, since Envoy unescapes %2F before forwarding, so these are refused outright.
+		for _, model := range []string{
+			"../../v1beta/files",
+			"gemini-2.5-flash-image?key=leaked",
+			"files/abc",
+			"gemini-2.5-flash-image:streamGenerateContent",
+			"gemini 2.5",
+			"",
+		} {
+			tr := NewImageGenerationOpenAIToGoogleAIStudioTranslator("v1beta", "")
+			req := &openai.ImageGenerationRequest{Model: model, Prompt: "a cat"}
+
+			_, _, err := tr.RequestBody(nil, req, false)
+			require.ErrorIs(t, err, internalapi.ErrInvalidRequestBody, "model=%q", model)
+			require.Contains(t, err.Error(), "invalid model name")
+		}
+	})
+
+	t.Run("accepts the model id shapes Google actually publishes", func(t *testing.T) {
+		for _, model := range []string{
+			"gemini-2.5-flash-image",
+			"gemini-2.0-flash-001",
+			"imagen-3.0-generate-002",
+			"veo_2",
+		} {
+			tr := NewImageGenerationOpenAIToGoogleAIStudioTranslator("v1beta", "")
+			req := &openai.ImageGenerationRequest{Model: model, Prompt: "a cat"}
+
+			hm, _, err := tr.RequestBody(nil, req, false)
+			require.NoError(t, err, "model=%q", model)
+			require.Equal(t, "/v1beta/models/"+model+":generateContent", hm[0].Value())
+		}
+	})
+
 	t.Run("maps n to candidateCount", func(t *testing.T) {
 		tr := NewImageGenerationOpenAIToGoogleAIStudioTranslator("v1beta", "")
 		req := &openai.ImageGenerationRequest{Model: "gemini-2.5-flash-image", Prompt: "a cat", N: 3}

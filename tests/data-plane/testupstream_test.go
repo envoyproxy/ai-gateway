@@ -218,6 +218,21 @@ func TestWithTestUpstream(t *testing.T) {
 			expResponseBody: `{"error":{"type":"GoogleAIStudioBackendError","message":"backend timeout","code":"503"},"type":"error"}`,
 		},
 		{
+			// The model is client controlled, so it must not be able to steer the request at a
+			// different endpoint on the same host while the API key is still attached. Encoding
+			// it is not enough here: Envoy unescapes %2F before forwarding, so the traversal
+			// would reach the upstream intact. The gateway rejects it instead.
+			name:        "google-ai-studio - /v1/images/generations - path traversal in model rejected",
+			backend:     "google-ai-studio",
+			path:        "/v1/images/generations",
+			method:      http.MethodPost,
+			requestBody: `{"model":"../../v1beta/files","prompt":"a cat"}`,
+			expStatus:   http.StatusUnprocessableEntity,
+			expResponseBodyFunc: func(t require.TestingT, body []byte) {
+				require.Contains(t, string(body), "invalid model name")
+			},
+		},
+		{
 			// Google's error envelope has a numeric "code" and no "type", so it has to be
 			// converted rather than passed through to an OpenAI client.
 			name:            "google-ai-studio - /v1/images/generations - google error envelope mapped to OpenAI",

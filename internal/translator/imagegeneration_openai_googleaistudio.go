@@ -78,6 +78,13 @@ func (t *openAIToGoogleAIStudioImageGenerationTranslator) RequestBody(
 		return nil, nil, fmt.Errorf("%w: n must be between 1 and %d, got %d",
 			internalapi.ErrInvalidRequestBody, maxImageGenerationCandidates, req.N)
 	}
+	// The model is interpolated into the upstream path below, and it comes from the client
+	// request body. Reject anything that is not a bare path segment rather than percent-encoding
+	// it: Envoy unescapes %2F before forwarding, so an encoded model would still reach the
+	// upstream as a traversal and aim the configured API key at another endpoint on the host.
+	if !validGoogleAIStudioModel(t.requestModel) {
+		return nil, nil, fmt.Errorf("%w: invalid model name: %q", internalapi.ErrInvalidRequestBody, t.requestModel)
+	}
 
 	modelPath := fmt.Sprintf("/%s/models/%s:%s", t.schemaVersion, t.requestModel, gcpMethodGenerateContent)
 
@@ -201,6 +208,25 @@ func (t *openAIToGoogleAIStudioImageGenerationTranslator) ResponseBody(
 	}
 	newHeaders = []internalapi.Header{{contentLengthHeaderName, strconv.Itoa(len(newBody))}}
 	return
+}
+
+// validGoogleAIStudioModel reports whether model is safe to interpolate into the generateContent
+// path. Gemini model ids are lowercase alphanumerics with dots, dashes and underscores; anything
+// else — a slash, a query, a colon that would forge a second method — is refused rather than
+// encoded, since the encoding does not survive the proxy.
+func validGoogleAIStudioModel(model string) bool {
+	if model == "" {
+		return false
+	}
+	for _, r := range model {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '-', r == '.', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // inputTokensDetails maps Gemini's per-modality prompt breakdown onto the text/image split that
