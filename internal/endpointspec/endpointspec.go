@@ -409,7 +409,7 @@ func (MessagesEndpointSpec) GetTranslator(schema filterapi.VersionedAPISchema, m
 	case filterapi.APISchemaAnthropic:
 		return translator.NewAnthropicToAnthropicTranslator(schema.AnthropicPrefix(), modelNameOverride), nil
 	case filterapi.APISchemaOpenAI:
-		return translator.NewAnthropicToChatCompletionOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
+		return translator.NewAnthropicToOpenAITranslator(schema.OpenAIPrefix(), modelNameOverride), nil
 	case filterapi.APISchemaAWSBedrock:
 		return translator.NewAnthropicToAWSBedrockTranslator(modelNameOverride), nil
 	default:
