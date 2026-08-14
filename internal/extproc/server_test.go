@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"testing"
 	"time"
 
@@ -413,6 +414,56 @@ func TestResolveRouteName(t *testing.T) {
 
 	actual = resolveRouteName(&structpb.Struct{Fields: map[string]*structpb.Value{}})
 	require.Empty(t, actual)
+}
+
+func TestSetAWSSigningAttributes(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		seed       map[string]string // headers already present (e.g. spoofed by a downstream client)
+		attributes *structpb.Struct
+		wantHost   string
+	}{
+		{
+			name: "host from metadata",
+			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{
+				internalapi.XDSUpstreamHostMetadataUpstreamHostPath: structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
+			}},
+			wantHost: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
+		},
+		{
+			name:       "missing metadata",
+			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{}},
+		},
+		{
+			name: "nil metadata",
+		},
+		{
+			// Client-spoofed header must not survive when xDS supplies no metadata.
+			name:       "client-supplied host is cleared when no xDS metadata",
+			seed:       map[string]string{internalapi.UpstreamHostHeader: "attacker.example.com"},
+			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{}},
+		},
+		{
+			// Trusted xDS metadata must overwrite any client-supplied value.
+			name: "xDS metadata overrides client-supplied host",
+			seed: map[string]string{internalapi.UpstreamHostHeader: "attacker.example.com"},
+			attributes: &structpb.Struct{Fields: map[string]*structpb.Value{
+				internalapi.XDSUpstreamHostMetadataUpstreamHostPath: structpb.NewStringValue("vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com"),
+			}},
+			wantHost: "vpce-123.bedrock-runtime.us-east-1.vpce.amazonaws.com",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			headers := map[string]string{}
+			maps.Copy(headers, tc.seed)
+			setUpstreamHostAttributes(headers, tc.attributes)
+			if tc.wantHost == "" {
+				require.NotContains(t, headers, internalapi.UpstreamHostHeader)
+			} else {
+				require.Equal(t, tc.wantHost, headers[internalapi.UpstreamHostHeader])
+			}
+		})
+	}
 }
 
 func TestServer_ProcessorSelection(t *testing.T) {

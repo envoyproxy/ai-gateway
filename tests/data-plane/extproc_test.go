@@ -73,6 +73,20 @@ var (
 	testUpstreamAWSAnthropicBackend = filterapi.Backend{Name: "testupstream-aws-anthropic", Schema: awsAnthropicSchema}
 	alwaysFailingBackend            = filterapi.Backend{Name: "always-failing-backend", Schema: openAISchema}
 
+	// testUpstreamOpenAIRequiringPerRequestCredential reuses the "openai" route but requires a
+	// per-request credential, so a request without it is answered with a 401 by the gateway itself.
+	testUpstreamOpenAIRequiringPerRequestCredential = filterapi.Backend{
+		Name:   "testupstream-openai",
+		Schema: openAISchema,
+		Auth: &filterapi.BackendAuth{
+			APIKey: &filterapi.APIKeyAuth{Key: "dummy-configured-key"},
+			CredentialOverride: &filterapi.CredentialOverride{
+				HeaderName:           "x-per-request-cred",
+				FallbackToConfigured: false,
+			},
+		},
+	}
+
 	testUpstreamBodyMutationBackend = filterapi.Backend{
 		Name:   "testupstream-body-mutation",
 		Schema: openAISchema,

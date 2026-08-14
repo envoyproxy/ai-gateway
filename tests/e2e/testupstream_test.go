@@ -463,3 +463,113 @@ func TestPromptCacheTranslationMatrix(t *testing.T) {
 		})
 	}
 }
+
+// TestAnthropicBetaHeaderTranslationMatrix proves anthropic-beta header flags survive
+// translation onto the AWSAnthropic InvokeModel body's anthropic_beta field, including
+// the rewrite of Anthropic-API-only flag names to their Bedrock equivalents.
+//
+// The matrix is derived from the "bedrock" column of litellm's beta header mapping
+// (https://github.com/BerriAI/litellm/blob/main/litellm/anthropic_beta_headers_config.json):
+//   - advanced-tool-use-2025-11-20 -> tool-search-tool-2025-10-19 (Anthropic API umbrella
+//     flag for Tool Search; Bedrock exposes the same tool_search_tool_*_20251119 tool types
+//     under the older-dated flag). This is the flag Claude Code sends.
+//   - tool-search-tool-2025-10-19 -> tool-search-tool-2025-10-19 (native Bedrock spelling).
+//   - code-execution-2025-08-25, files-api-2025-04-14 -> null (unsupported, must be dropped;
+//     Bedrock rejects the whole request with a 400 on unrecognized flags).
+func TestAnthropicBetaHeaderTranslationMatrix(t *testing.T) {
+	const manifest = "testdata/testupstream.yaml"
+	require.NoError(t, e2elib.KubectlApplyManifest(t.Context(), manifest))
+	t.Cleanup(func() {
+		_ = e2elib.KubectlDeleteManifest(context.Background(), manifest)
+	})
+
+	const egSelector = "gateway.envoyproxy.io/owning-gateway-name=translation-testupstream"
+	e2elib.RequireWaitForGatewayPodReady(t, egSelector)
+
+	const (
+		expPath    = "/model/anthropic.claude-cache-matrix/invoke"
+		expHost    = "testupstream.default.svc.cluster.local"
+		upstreamID = "primary"
+	)
+	fakeResponseBody := `{"id":"msg_beta","type":"message","role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":10,"output_tokens":1}}`
+
+	// The request carries a tool_search_tool_regex_20251119 tool definition, the real
+	// Claude Code request shape: the tool type string is identical on the Anthropic API
+	// and Bedrock, only the enabling beta flag name differs.
+	const requestBody = `{"model":"anthropic.claude-cache-matrix","max_tokens":16,"tools":[{"type":"tool_search_tool_regex_20251119","name":"tool_search_tool_regex"}],"messages":[{"role":"user","content":"hi"}]}`
+	const translatedBodyPrefix = `{"max_tokens":16,"tools":[{"type":"tool_search_tool_regex_20251119","name":"tool_search_tool_regex"}],"messages":[{"role":"user","content":"hi"}],"anthropic_version":"bedrock-2023-05-31"`
+
+	for _, tc := range []struct {
+		name string
+		// betaHeader is the anthropic-beta header value sent by the client.
+		betaHeader string
+		// expRequestBody is the exact AWSAnthropic InvokeModel body the testupstream
+		// server must receive (asserted byte-for-byte by the testupstream server).
+		expRequestBody string
+	}{
+		{
+			name:           "anthropic_api_umbrella_flag_rewritten",
+			betaHeader:     "advanced-tool-use-2025-11-20",
+			expRequestBody: translatedBodyPrefix + `,"anthropic_beta":["tool-search-tool-2025-10-19"]}`,
+		},
+		{
+			name:           "native_bedrock_flag_passthrough",
+			betaHeader:     "tool-search-tool-2025-10-19",
+			expRequestBody: translatedBodyPrefix + `,"anthropic_beta":["tool-search-tool-2025-10-19"]}`,
+		},
+		{
+			name:           "umbrella_and_native_flag_deduplicated",
+			betaHeader:     "advanced-tool-use-2025-11-20,tool-search-tool-2025-10-19",
+			expRequestBody: translatedBodyPrefix + `,"anthropic_beta":["tool-search-tool-2025-10-19"]}`,
+		},
+		{
+			name:           "umbrella_flag_with_other_supported_flags",
+			betaHeader:     "advanced-tool-use-2025-11-20,interleaved-thinking-2025-05-14",
+			expRequestBody: translatedBodyPrefix + `,"anthropic_beta":["tool-search-tool-2025-10-19","interleaved-thinking-2025-05-14"]}`,
+		},
+		{
+			name:           "unsupported_siblings_dropped",
+			betaHeader:     "advanced-tool-use-2025-11-20,code-execution-2025-08-25,files-api-2025-04-14",
+			expRequestBody: translatedBodyPrefix + `,"anthropic_beta":["tool-search-tool-2025-10-19"]}`,
+		},
+		{
+			name:           "only_unsupported_flags_no_anthropic_beta",
+			betaHeader:     "code-execution-2025-08-25",
+			expRequestBody: translatedBodyPrefix + `}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Eventually(t, func() bool {
+				fwd := e2elib.RequireNewHTTPPortForwarder(t, e2elib.EnvoyGatewayNamespace, egSelector, e2elib.EnvoyGatewayDefaultServicePort)
+				defer fwd.Kill()
+
+				req, err := http.NewRequest(http.MethodPost, fwd.Address()+"/anthropic/v1/messages", strings.NewReader(requestBody))
+				require.NoError(t, err)
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("anthropic-beta", tc.betaHeader)
+				req.Header.Set(testupstreamlib.ResponseBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(fakeResponseBody)))
+				req.Header.Set(testupstreamlib.ExpectedPathHeaderKey, base64.StdEncoding.EncodeToString([]byte(expPath)))
+				req.Header.Set(testupstreamlib.ExpectedHostKey, expHost)
+				req.Header.Set(testupstreamlib.ExpectedTestUpstreamIDKey, upstreamID)
+				req.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expRequestBody)))
+
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Logf("error: %v", err)
+					return false
+				}
+				defer func() { _ = resp.Body.Close() }()
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					t.Logf("error reading response body: %v", err)
+					return false
+				}
+				if resp.StatusCode != http.StatusOK {
+					t.Logf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+					return false
+				}
+				return true
+			}, 20*time.Second, 1*time.Second)
+		})
+	}
+}
