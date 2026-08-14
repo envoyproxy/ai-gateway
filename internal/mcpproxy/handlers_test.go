@@ -2911,3 +2911,60 @@ func TestAddMCPHeaders_MetadataValueGuard(t *testing.T) {
 		})
 	}
 }
+
+// TestServePOST_InitializeRequest_ForwardsExtensions asserts a backend's extensions capability
+// reaches the client. Without it a backend that advertises an extension, e.g. MCP Apps
+// (io.modelcontextprotocol/ui), appears to support none once it is behind the proxy, so the client
+// never negotiates it and ignores the ui metadata the backend puts on its tools.
+func TestServePOST_InitializeRequest_ForwardsExtensions(t *testing.T) {
+	const initializeWithExtensions = `{
+"jsonrpc": "2.0",
+"id": 1,
+"result": {
+"protocolVersion": "2025-06-18",
+"capabilities": {
+"tools": {"listChanged": true},
+"extensions": {"io.modelcontextprotocol/ui": {}}
+},
+"serverInfo": {"name": "ui-backend", "version": "1.0.0"}
+}
+}`
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(sessionIDHeader) == "" {
+			w.Header().Set(sessionIDHeader, "test-session-123")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(initializeWithExtensions))
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	t.Cleanup(testServer.Close)
+
+	proxy := newTestMCPProxy()
+	proxy.backendListenerAddr = testServer.URL
+
+	id, err := jsonrpc.MakeID("test-1")
+	require.NoError(t, err)
+	initReq := &jsonrpc.Request{Method: "initialize", ID: id, Params: []byte(`{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"c","version":"1"}}`)}
+	body, err := jsonrpc.EncodeMessage(initReq)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(internalapi.MCPRouteHeader, "test-route")
+	rr := httptest.NewRecorder()
+
+	proxy.servePOST(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+
+	var resp struct {
+		Result struct {
+			Capabilities struct {
+				Extensions map[string]any `json:"extensions"`
+			} `json:"capabilities"`
+		} `json:"result"`
+	}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Contains(t, resp.Result.Capabilities.Extensions, "io.modelcontextprotocol/ui")
+}
