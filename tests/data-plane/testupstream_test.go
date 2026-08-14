@@ -148,6 +148,10 @@ func TestWithTestUpstream(t *testing.T) {
 		expResponseBody string
 		// expResponseBodyFunc is a function to check the response body. This can be used instead of the expResponseBody field.
 		expResponseBodyFunc func(require.TestingT, []byte)
+		// expAccessLogRouteName asserts the route name the external processor resolved, read back
+		// from Envoy's access log. Set it only for clusters whose ext_proc requests the route-name
+		// attribute; elsewhere the processor resolves "" and emits no route_name at all.
+		expAccessLogRouteName string
 	}{
 		{
 			name:            "openai - /v1/images/generations",
@@ -247,16 +251,18 @@ func TestWithTestUpstream(t *testing.T) {
 		},
 		{
 			// The cluster carries no per_route_rule_backend_name, so this only passes if the
-			// extproc resolved the name from the route's mapping via xds.cluster_name.
-			name:            "mergeBackends - /v1/chat/completions resolves via route metadata",
-			backend:         "merged",
-			path:            "/v1/chat/completions",
-			method:          http.MethodPost,
-			requestBody:     `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
-			expPath:         "/v1/chat/completions",
-			responseBody:    `{"choices":[{"message":{"content":"This is a test."}}]}`,
-			expStatus:       http.StatusOK,
-			expResponseBody: `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			// extproc resolved the name from the route's mapping via xds.cluster_name. The route
+			// name is asserted separately: a 200 alone would also pass if it never resolved.
+			name:                  "mergeBackends - /v1/chat/completions resolves via route metadata",
+			backend:               "merged",
+			path:                  "/v1/chat/completions",
+			method:                http.MethodPost,
+			requestBody:           `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:               "/v1/chat/completions",
+			responseBody:          `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expStatus:             http.StatusOK,
+			expResponseBody:       `{"choices":[{"message":{"content":"This is a test."}}]}`,
+			expAccessLogRouteName: "test-ns/merged-route",
 		},
 		{
 			name:            "openai - /v1/chat/completions - gzip",
@@ -1510,6 +1516,15 @@ data: {"type":"message_stop"}`,
 
 			for k, v := range tc.expResponseHeaders {
 				require.Equal(t, v, lastHeaders.Get(k), "Header %s mismatch", k)
+			}
+
+			if tc.expAccessLogRouteName != "" {
+				// Envoy writes the access log after the response, so give it a moment to land.
+				require.Eventually(t, func() bool {
+					return strings.Contains(env.EnvoyStdout(), fmt.Sprintf(`"route_name":"%s"`, tc.expAccessLogRouteName))
+				}, 10*time.Second, 100*time.Millisecond,
+					"route name %q never reached the access log; the external processor did not resolve it",
+					tc.expAccessLogRouteName)
 			}
 		})
 	}

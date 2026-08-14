@@ -9,8 +9,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strconv"
-	"strings"
 
 	egv1a1 "github.com/envoyproxy/gateway/api/v1alpha1"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
@@ -61,6 +59,7 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 	clusters []*clusterv3.Cluster,
 	listeners []*listenerv3.Listener,
 	routes []*routev3.RouteConfiguration,
+	cache map[client.ObjectKey]*aigv1b1.AIGatewayRoute,
 ) ([]*clusterv3.Cluster, error) {
 	// Find all QuotaPolicies and their target backends.
 	quotaPolicies, err := s.listQuotaPolicies(ctx)
@@ -97,7 +96,7 @@ func (s *Server) maybeInjectQuotaRateLimiting(
 	// Patch routes and track which route configs had quota backends enabled.
 	quotaEnabledRoutes := make(map[string]bool)
 	for _, routeConfig := range routes {
-		if s.patchRoutesWithQuotaRateLimits(ctx, routeConfig, quotaBackendPolicies) {
+		if s.patchRoutesWithQuotaRateLimits(ctx, routeConfig, quotaBackendPolicies, cache) {
 			quotaEnabledRoutes[routeConfig.Name] = true
 		}
 	}
@@ -286,6 +285,7 @@ func (s *Server) patchRoutesWithQuotaRateLimits(
 	ctx context.Context,
 	routeConfig *routev3.RouteConfiguration,
 	quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy,
+	cache map[client.ObjectKey]*aigv1b1.AIGatewayRoute,
 ) bool {
 	patched := false
 	for _, vh := range routeConfig.VirtualHosts {
@@ -296,35 +296,23 @@ func (s *Server) patchRoutesWithQuotaRateLimits(
 			if route.GetRoute() == nil {
 				continue
 			}
-			// Resolve the AIGatewayRoute rule once; the three lookups below all key on it.
-			info := s.resolveRouteRule(ctx, route.Name)
-			if info == nil || !routeRuleHasQuotaBackend(info, quotaBackendPolicies) {
+			// Resolve the AIGatewayRoute rule once; both lookups below key on it.
+			info := s.resolveRouteRule(ctx, route.Name, cache)
+			// A rule with no quota-carrying backend needs no patching. buildQuotaBackendPolicies
+			// only ever appends, so a present key always holds a non-empty slice and this is
+			// exactly the "has a quota backend" test — no separate pre-check can disagree with it.
+			policies := policiesForRouteRule(info, quotaBackendPolicies)
+			if len(policies) == 0 {
 				continue
 			}
 
-			policies := policiesForRouteRule(info, quotaBackendPolicies)
-			modelInfo := routeRuleModelInfo(info)
-
-			if err := enableQuotaRateLimitOnRoute(s.log, route, policies, modelInfo); err != nil {
+			if err := enableQuotaRateLimitOnRoute(s.log, route, policies, routeRuleModelInfo(info)); err != nil {
 				s.log.Error(err, "failed to enable quota rate limit on route", "route", route.Name)
 			}
 			patched = true
 		}
 	}
 	return patched
-}
-
-// routeRuleHasQuotaBackend reports whether any backend of the resolved rule has a QuotaPolicy.
-func routeRuleHasQuotaBackend(info *routeRuleInfo, quotaBackendPolicies map[string][]aigv1a1.QuotaPolicy) bool {
-	if info == nil {
-		return false
-	}
-	for _, backendRef := range info.rule.BackendRefs {
-		if _, ok := quotaBackendPolicies[info.namespace+"/"+backendRef.Name]; ok {
-			return true
-		}
-	}
-	return false
 }
 
 // routeRuleInfo contains the resolved AIGatewayRoute rule for an Envoy route.
@@ -334,28 +322,20 @@ type routeRuleInfo struct {
 }
 
 // resolveRouteRule parses an Envoy route name and fetches the corresponding AIGatewayRoute rule.
-// Route name shape: "httproute/{namespace}/{name}/rule/{ruleIndex}/match/{matchIndex}[/...]".
 //
 // It keys on the route name, not the cluster name: Envoy Gateway MergeBackends renames clusters
-// ("<kind>/<ns>/<name>/<port>") but leaves route names intact, so a cluster-name key would miss a
+// ("backend/<ns>/<name>/<port>") but leaves route names intact, so a cluster-name key would miss a
 // merged cluster and skip quota enforcement for that route.
-func (s *Server) resolveRouteRule(ctx context.Context, routeName string) *routeRuleInfo {
-	parts := strings.Split(routeName, "/")
-	if len(parts) < 5 || parts[0] != "httproute" || parts[3] != "rule" {
-		return nil
-	}
-	namespace := parts[1]
-	name := parts[2]
-	ruleIndex, err := strconv.Atoi(parts[4])
-	if err != nil || ruleIndex < 0 {
+func (s *Server) resolveRouteRule(ctx context.Context, routeName string, cache map[client.ObjectKey]*aigv1b1.AIGatewayRoute) *routeRuleInfo {
+	namespace, name, ruleIndex, ok := parseAIGatewayRouteName(routeName)
+	if !ok {
 		return nil
 	}
 
-	var aigwRoute aigv1b1.AIGatewayRoute
-	if err := s.k8sClient.Get(ctx, client.ObjectKey{
-		Namespace: namespace,
-		Name:      name,
-	}, &aigwRoute); err != nil {
+	// Envoy Gateway emits one route per rule x match, so the same AIGatewayRoute is resolved many
+	// times per translation; the cache is shared with the other route walks in PostTranslateModify.
+	aigwRoute, err := s.retrieveAndCacheAIGatewayRoute(ctx, cache, client.ObjectKey{Namespace: namespace, Name: name})
+	if err != nil || aigwRoute == nil {
 		return nil
 	}
 
@@ -379,7 +359,10 @@ func policiesForRouteRule(info *routeRuleInfo, quotaBackendPolicies map[string][
 	seen := make(map[string]struct{})
 	var result []aigv1a1.QuotaPolicy
 	for _, backendRef := range info.rule.BackendRefs {
-		policies, ok := quotaBackendPolicies[info.namespace+"/"+backendRef.Name]
+		// A backendRef may name an AIServiceBackend in another namespace, and QuotaPolicies are
+		// keyed by the namespace of the backend they target. Keying on the route's namespace would
+		// silently find nothing and leave the tenant's quota unenforced.
+		policies, ok := quotaBackendPolicies[backendRef.GetNamespace(info.namespace)+"/"+backendRef.Name]
 		if !ok {
 			continue
 		}

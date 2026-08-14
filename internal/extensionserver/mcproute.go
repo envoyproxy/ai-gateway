@@ -313,9 +313,11 @@ func mcpProxyClusterNames(routes []*routev3.RouteConfiguration) map[string]bool 
 				if !strings.Contains(route.Name, internalapi.MCPMainHTTPRoutePrefix) || !strings.Contains(route.Name, "/rule/0/") {
 					continue
 				}
-				// The MCP proxy front-end route has exactly one backendRef, so it always resolves to a
-				// single cluster (never weighted).
-				if cluster := route.GetRoute().GetCluster(); cluster != "" {
+				// The front-end route has one backendRef, but Envoy Gateway still emits a weighted
+				// cluster specifier whenever the destination needs a cluster per setting (filters,
+				// mixed address types, prefer-local zone) — and MergeBackends forces that shape. So
+				// both specifiers must be read, or the placeholder cluster is silently left in place.
+				for _, cluster := range routeActionClusterNames(route.GetRoute()) {
 					names[cluster] = true
 				}
 			}

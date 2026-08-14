@@ -1688,51 +1688,51 @@ func TestResolveRouteRule(t *testing.T) {
 	}
 
 	t.Run("full route name resolves rule 0", func(t *testing.T) {
-		info := s.resolveRouteRule(context.Background(), "httproute/default/myroute/rule/0/match/0")
+		info := s.resolveRouteRule(context.Background(), "httproute/default/myroute/rule/0/match/0", nil)
 		require.Equal(t, []string{"default/backend-a", "default/backend-b"}, backendKeys(info))
 	})
 
 	t.Run("cluster-style 5-part name also resolves", func(t *testing.T) {
-		info := s.resolveRouteRule(context.Background(), "httproute/default/myroute/rule/0")
+		info := s.resolveRouteRule(context.Background(), "httproute/default/myroute/rule/0", nil)
 		require.Equal(t, []string{"default/backend-a", "default/backend-b"}, backendKeys(info))
 	})
 
 	t.Run("second rule index", func(t *testing.T) {
-		info := s.resolveRouteRule(context.Background(), "httproute/default/myroute/rule/1/match/0")
+		info := s.resolveRouteRule(context.Background(), "httproute/default/myroute/rule/1/match/0", nil)
 		require.Equal(t, []string{"default/backend-c"}, backendKeys(info))
 	})
 
 	t.Run("extra trailing segments (per-host fan-out) still resolve", func(t *testing.T) {
-		info := s.resolveRouteRule(context.Background(), "httproute/default/myroute/rule/0/match/0/example.com")
+		info := s.resolveRouteRule(context.Background(), "httproute/default/myroute/rule/0/match/0/example.com", nil)
 		require.Equal(t, []string{"default/backend-a", "default/backend-b"}, backendKeys(info))
 	})
 
 	t.Run("too few parts returns nil", func(t *testing.T) {
-		require.Nil(t, s.resolveRouteRule(context.Background(), "too/few/parts"))
+		require.Nil(t, s.resolveRouteRule(context.Background(), "too/few/parts", nil))
 	})
 
 	t.Run("not starting with httproute returns nil", func(t *testing.T) {
-		require.Nil(t, s.resolveRouteRule(context.Background(), "tcproute/default/myroute/rule/0/match/0"))
+		require.Nil(t, s.resolveRouteRule(context.Background(), "tcproute/default/myroute/rule/0/match/0", nil))
 	})
 
 	t.Run("missing rule segment returns nil", func(t *testing.T) {
-		require.Nil(t, s.resolveRouteRule(context.Background(), "httproute/default/myroute/xxxx/0/match/0"))
+		require.Nil(t, s.resolveRouteRule(context.Background(), "httproute/default/myroute/xxxx/0/match/0", nil))
 	})
 
 	t.Run("non-numeric rule index returns nil", func(t *testing.T) {
-		require.Nil(t, s.resolveRouteRule(context.Background(), "httproute/default/myroute/rule/abc/match/0"))
+		require.Nil(t, s.resolveRouteRule(context.Background(), "httproute/default/myroute/rule/abc/match/0", nil))
 	})
 
 	t.Run("negative rule index returns nil", func(t *testing.T) {
-		require.Nil(t, s.resolveRouteRule(context.Background(), "httproute/default/myroute/rule/-1/match/0"))
+		require.Nil(t, s.resolveRouteRule(context.Background(), "httproute/default/myroute/rule/-1/match/0", nil))
 	})
 
 	t.Run("route not found returns nil", func(t *testing.T) {
-		require.Nil(t, s.resolveRouteRule(context.Background(), "httproute/default/nonexistent/rule/0/match/0"))
+		require.Nil(t, s.resolveRouteRule(context.Background(), "httproute/default/nonexistent/rule/0/match/0", nil))
 	})
 
 	t.Run("rule index out of bounds returns nil", func(t *testing.T) {
-		require.Nil(t, s.resolveRouteRule(context.Background(), "httproute/default/myroute/rule/99/match/0"))
+		require.Nil(t, s.resolveRouteRule(context.Background(), "httproute/default/myroute/rule/99/match/0", nil))
 	})
 }
 
@@ -1773,25 +1773,27 @@ func ruleInfo(backendNames ...string) *routeRuleInfo {
 	return &routeRuleInfo{namespace: "default", rule: &aigv1b1.AIGatewayRouteRule{BackendRefs: refs}}
 }
 
-func TestRouteRuleHasQuotaBackend(t *testing.T) {
+// TestPoliciesForRouteRuleIsTheQuotaGate pins that policiesForRouteRule alone decides whether a
+// route carries quota, so no separate pre-check can drift out of agreement with it.
+func TestPoliciesForRouteRuleIsTheQuotaGate(t *testing.T) {
 	quotaBackendPolicies := map[string][]aigv1a1.QuotaPolicy{
 		"default/backend-a": {{Spec: aigv1a1.QuotaPolicySpec{}}},
 	}
 
-	t.Run("nil info returns false", func(t *testing.T) {
-		require.False(t, routeRuleHasQuotaBackend(nil, quotaBackendPolicies))
+	t.Run("nil info yields no policies", func(t *testing.T) {
+		require.Empty(t, policiesForRouteRule(nil, quotaBackendPolicies))
 	})
 
-	t.Run("rule with quota backend returns true", func(t *testing.T) {
-		require.True(t, routeRuleHasQuotaBackend(ruleInfo("backend-a"), quotaBackendPolicies))
+	t.Run("rule with quota backend yields policies", func(t *testing.T) {
+		require.NotEmpty(t, policiesForRouteRule(ruleInfo("backend-a"), quotaBackendPolicies))
 	})
 
-	t.Run("rule without quota backend returns false", func(t *testing.T) {
-		require.False(t, routeRuleHasQuotaBackend(ruleInfo("backend-z"), quotaBackendPolicies))
+	t.Run("rule without quota backend yields none", func(t *testing.T) {
+		require.Empty(t, policiesForRouteRule(ruleInfo("backend-z"), quotaBackendPolicies))
 	})
 
-	t.Run("one of several backendRefs matches returns true", func(t *testing.T) {
-		require.True(t, routeRuleHasQuotaBackend(ruleInfo("backend-x", "backend-a"), quotaBackendPolicies))
+	t.Run("one of several backendRefs matches", func(t *testing.T) {
+		require.NotEmpty(t, policiesForRouteRule(ruleInfo("backend-x", "backend-a"), quotaBackendPolicies))
 	})
 }
 
@@ -1891,7 +1893,7 @@ func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
 			},
 		}
 
-		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies)
+		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies, nil)
 
 		route := routeConfig.VirtualHosts[0].Routes[0]
 		require.NotNil(t, route.TypedPerFilterConfig)
@@ -1921,7 +1923,7 @@ func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
 			},
 		}
 
-		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies)
+		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies, nil)
 
 		route := routeConfig.VirtualHosts[0].Routes[0]
 		require.NotNil(t, route.TypedPerFilterConfig)
@@ -1948,7 +1950,7 @@ func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
 			},
 		}
 
-		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies)
+		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies, nil)
 
 		route := routeConfig.VirtualHosts[0].Routes[0]
 		require.Nil(t, route.TypedPerFilterConfig)
@@ -1971,7 +1973,7 @@ func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
 			},
 		}
 
-		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies)
+		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies, nil)
 
 		route := routeConfig.VirtualHosts[0].Routes[0]
 		require.Nil(t, route.TypedPerFilterConfig)
@@ -1998,7 +2000,7 @@ func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
 			},
 		}
 
-		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies)
+		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies, nil)
 
 		route := routeConfig.VirtualHosts[0].Routes[0]
 		require.Nil(t, route.TypedPerFilterConfig)
@@ -2040,7 +2042,7 @@ func TestPatchRoutesWithQuotaRateLimits(t *testing.T) {
 			},
 		}
 
-		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies)
+		s.patchRoutesWithQuotaRateLimits(context.Background(), routeConfig, quotaBackendPolicies, nil)
 
 		require.Contains(t, routeConfig.VirtualHosts[0].Routes[0].TypedPerFilterConfig, quotaRateLimitFilterName)
 		require.Contains(t, routeConfig.VirtualHosts[1].Routes[0].TypedPerFilterConfig, quotaRateLimitFilterName)
@@ -2083,7 +2085,7 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 		clusters := []*clusterv3.Cluster{{Name: "existing"}}
 		routes := []*routev3.RouteConfiguration{}
 
-		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, nil, routes)
+		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, nil, routes, nil)
 		require.NoError(t, err)
 		require.Len(t, result, 1)
 		require.Equal(t, "existing", result[0].Name)
@@ -2099,7 +2101,7 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 		s := newTestServerWithRoute(t, nil, qp)
 		clusters := []*clusterv3.Cluster{{Name: "existing"}}
 
-		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, nil, nil)
+		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, nil, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, result, 1)
 	})
@@ -2165,7 +2167,7 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 		ln := buildTestListenerWithRDS(t, "test-route-config")
 		listeners := []*listenerv3.Listener{ln}
 
-		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, listeners, routes)
+		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, listeners, routes, nil)
 		require.NoError(t, err)
 
 		// Should have original cluster + rate limit cluster.
@@ -2229,7 +2231,7 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 			},
 		}
 
-		_, err := s.maybeInjectQuotaRateLimiting(t.Context(), nil, []*listenerv3.Listener{ln}, []*routev3.RouteConfiguration{routeConfig})
+		_, err := s.maybeInjectQuotaRateLimiting(t.Context(), nil, []*listenerv3.Listener{ln}, []*routev3.RouteConfiguration{routeConfig}, nil)
 		require.NoError(t, err)
 
 		// Verify filter was NOT injected into the listener.
@@ -2265,7 +2267,7 @@ func TestMaybeInjectQuotaRateLimiting(t *testing.T) {
 		existingRLCluster := s.buildQuotaRateLimitCluster()
 		clusters := []*clusterv3.Cluster{existingRLCluster}
 
-		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, nil, nil)
+		result, err := s.maybeInjectQuotaRateLimiting(t.Context(), clusters, nil, nil, nil)
 		require.NoError(t, err)
 		// Should not add another rate limit cluster.
 		rlCount := 0

@@ -6,6 +6,7 @@
 package extensionserver
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -19,6 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aigv1b1 "github.com/envoyproxy/ai-gateway/api/v1beta1"
@@ -64,14 +66,16 @@ func TestMergedClusterBackendKey(t *testing.T) {
 			// carry no port section.
 			name:    "Backend",
 			cluster: egResourceCluster("backend/default/openai/0", "Backend", "default", "openai", ""),
-			want:    mergedBackendKey{kind: "Backend", namespace: "default", name: "openai"},
+			want:    mergedBackendKey{namespace: "default", name: "openai"},
 			merged:  true,
 		},
 		{
-			name:    "Service carries its port as sectionName",
+			// Envoy Gateway emits a Service-kind cluster for its own per-Gateway proxy service on
+			// every translation, MergeBackends or not. Treating it as merged would make the index
+			// non-empty when the feature is off and pull every AI route through the mapping path.
+			name:    "Service is never an AIServiceBackend target",
 			cluster: egResourceCluster("service/ns/svc/8080", "Service", "ns", "svc", "8080"),
-			want:    mergedBackendKey{kind: "Service", namespace: "ns", name: "svc", port: "8080"},
-			merged:  true,
+			merged:  false,
 		},
 		{
 			name:    "route cluster is not merged",
@@ -243,6 +247,17 @@ func mergedBackendNamesOf(t *testing.T, route *routev3.Route) map[string]string 
 	return out
 }
 
+// mergedClusterNames returns the sorted names of the merged clusters applyMergedBackendRouting
+// reported as reachable from an AIGatewayRoute.
+func mergedClusterNames(used map[string]*mergedClusterUse) []string {
+	names := make([]string, 0, len(used))
+	for name := range used {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
+}
+
 func newMergeTestServer(t *testing.T) *Server {
 	t.Helper()
 	s, err := New(newFakeClient(), testr.New(t), udsPath, false, nil, nil,
@@ -259,7 +274,7 @@ func TestApplyMergedBackendRouting(t *testing.T) {
 		route := aiGeneratedRoute("httproute/default/myroute/rule/0/match/0", "httproute/default/myroute/rule/0")
 		referenced, err := s.applyMergedBackendRouting(t.Context(),
 			[]*clusterv3.Cluster{egResourceCluster("httproute/default/myroute/rule/0", "HTTPRoute", "default", "myroute", "")},
-			routeConfigOf(route))
+			routeConfigOf(route), nil)
 		require.NoError(t, err)
 		require.Empty(t, referenced)
 		require.Nil(t, mergedBackendNamesOf(t, route), "route metadata must be untouched when MergeBackends is off")
@@ -273,10 +288,10 @@ func TestApplyMergedBackendRouting(t *testing.T) {
 		route := aiGeneratedRoute("httproute/default/myroute/rule/0/match/0", merged)
 		referenced, err := s.applyMergedBackendRouting(t.Context(),
 			[]*clusterv3.Cluster{egResourceCluster(merged, "Backend", "default", "openai-backend", "")},
-			routeConfigOf(route))
+			routeConfigOf(route), nil)
 		require.NoError(t, err)
 
-		require.Equal(t, map[string]struct{}{merged: {}}, referenced)
+		require.Equal(t, []string{merged}, mergedClusterNames(referenced))
 		require.Equal(t, map[string]string{
 			merged: internalapi.PerRouteRuleRefBackendName("default", "openai", "myroute", 0, 0),
 		}, mergedBackendNamesOf(t, route))
@@ -299,7 +314,7 @@ func TestApplyMergedBackendRouting(t *testing.T) {
 		referenced, err := s.applyMergedBackendRouting(t.Context(), []*clusterv3.Cluster{
 			egResourceCluster(mergedOpenAI, "Backend", "default", "openai-backend", ""),
 			egResourceCluster(mergedAnthropic, "Backend", "default", "anthropic-backend", ""),
-		}, routeConfigOf(route))
+		}, routeConfigOf(route), nil)
 		require.NoError(t, err)
 
 		require.Len(t, referenced, 2)
@@ -325,17 +340,17 @@ func TestApplyMergedBackendRouting(t *testing.T) {
 		referenced, err := s.applyMergedBackendRouting(t.Context(), []*clusterv3.Cluster{
 			egResourceCluster(routeScoped, "HTTPRoute", "default", "myroute", ""),
 			egResourceCluster(merged, "Backend", "default", "openai-backend", ""),
-		}, routeConfigOf(route))
+		}, routeConfigOf(route), nil)
 		require.NoError(t, err)
 
-		require.Equal(t, map[string]struct{}{merged: {}}, referenced)
+		require.Equal(t, []string{merged}, mergedClusterNames(referenced))
 		// The route-scoped cluster resolves via endpoint metadata, so it is not mapped.
 		require.Equal(t, map[string]string{
 			merged: internalapi.PerRouteRuleRefBackendName("default", "openai", "myroute", 0, 1),
 		}, mergedBackendNamesOf(t, route))
 	})
 
-	t.Run("two AIServiceBackends on one Backend are left unmapped", func(t *testing.T) {
+	t.Run("two AIServiceBackends on one Backend are left unmapped but still claimed", func(t *testing.T) {
 		s := newMergeTestServer(t)
 		// One cluster, and no way to tell which one's schema or credentials to apply.
 		aigwRouteWithBackends(t, s, "default", "myroute", map[string]string{
@@ -347,11 +362,114 @@ func TestApplyMergedBackendRouting(t *testing.T) {
 		route := aiGeneratedRoute("httproute/default/myroute/rule/0/match/0", merged)
 		referenced, err := s.applyMergedBackendRouting(t.Context(),
 			[]*clusterv3.Cluster{egResourceCluster(merged, "Backend", "default", "shared-backend", "")},
-			routeConfigOf(route))
+			routeConfigOf(route), nil)
 		require.NoError(t, err)
 
-		require.Empty(t, referenced)
+		// No mapping can be written, but the cluster is still claimed so the upstream filters are
+		// installed and the request fails in the external processor. Leaving it unclaimed would
+		// send it to the provider with neither credentials nor schema translation.
+		require.Equal(t, []string{merged}, mergedClusterNames(referenced))
 		require.Nil(t, mergedBackendNamesOf(t, route))
+	})
+
+	t.Run("a weight-0 duplicate does not make the rule ambiguous", func(t *testing.T) {
+		s := newMergeTestServer(t)
+		aigwRouteWithBackends(t, s, "default", "myroute", map[string]string{
+			"openai-a": "shared-backend",
+			"openai-b": "shared-backend",
+		})
+		// Envoy Gateway drops a weight-0 destination entirely, so only openai-b can be behind the
+		// cluster and the mapping is unambiguous.
+		var fetched aigv1b1.AIGatewayRoute
+		require.NoError(t, s.k8sClient.Get(t.Context(), client.ObjectKey{Namespace: "default", Name: "myroute"}, &fetched))
+		fetched.Spec.Rules[0].BackendRefs[0].Weight = ptr.To[int32](0)
+		require.NoError(t, s.k8sClient.Update(t.Context(), &fetched))
+
+		const merged = "backend/default/shared-backend/0"
+		route := aiGeneratedRoute("httproute/default/myroute/rule/0/match/0", merged)
+		referenced, err := s.applyMergedBackendRouting(t.Context(),
+			[]*clusterv3.Cluster{egResourceCluster(merged, "Backend", "default", "shared-backend", "")},
+			routeConfigOf(route), nil)
+		require.NoError(t, err)
+
+		require.Equal(t, []string{merged}, mergedClusterNames(referenced))
+		require.Equal(t, map[string]string{
+			merged: internalapi.PerRouteRuleRefBackendName("default", "openai-b", "myroute", 0, 1),
+		}, mergedBackendNamesOf(t, route))
+	})
+
+	t.Run("a repeated backendRef maps to the first ref", func(t *testing.T) {
+		s := newMergeTestServer(t)
+		// The documented same-provider model fallback: one AIServiceBackend listed twice, the
+		// second only overriding the model. Credentials and schema are identical, so the first ref
+		// is a safe answer and the rule keeps working.
+		aigwRouteWithBackends(t, s, "default", "myroute", map[string]string{"openai": "openai-backend"})
+		var fetched aigv1b1.AIGatewayRoute
+		require.NoError(t, s.k8sClient.Get(t.Context(), client.ObjectKey{Namespace: "default", Name: "myroute"}, &fetched))
+		fetched.Spec.Rules[0].BackendRefs = append(fetched.Spec.Rules[0].BackendRefs,
+			aigv1b1.AIGatewayRouteRuleBackendRef{Name: "openai", ModelNameOverride: "gpt-5-nano-mini"})
+		require.NoError(t, s.k8sClient.Update(t.Context(), &fetched))
+
+		const merged = "backend/default/openai-backend/0"
+		route := aiGeneratedRoute("httproute/default/myroute/rule/0/match/0", merged)
+		referenced, err := s.applyMergedBackendRouting(t.Context(),
+			[]*clusterv3.Cluster{egResourceCluster(merged, "Backend", "default", "openai-backend", "")},
+			routeConfigOf(route), nil)
+		require.NoError(t, err)
+
+		require.Equal(t, []string{merged}, mergedClusterNames(referenced))
+		require.Equal(t, map[string]string{
+			merged: internalapi.PerRouteRuleRefBackendName("default", "openai", "myroute", 0, 0),
+		}, mergedBackendNamesOf(t, route))
+	})
+
+	t.Run("two clusters claiming one backend object resolve neither", func(t *testing.T) {
+		s := newMergeTestServer(t)
+		aigwRouteWithBackends(t, s, "default", "myroute", map[string]string{"openai": "openai-backend"})
+
+		// Envoy Gateway keys clusters on port and protocol too, but records neither on a Backend's
+		// metadata, so two clusters for one Backend are indistinguishable here.
+		const (
+			onPort443  = "backend/default/openai-backend/443"
+			onPort8443 = "backend/default/openai-backend/8443"
+		)
+		route := aiGeneratedRoute("httproute/default/myroute/rule/0/match/0", onPort443, onPort8443)
+		referenced, err := s.applyMergedBackendRouting(t.Context(), []*clusterv3.Cluster{
+			egResourceCluster(onPort443, "Backend", "default", "openai-backend", ""),
+			egResourceCluster(onPort8443, "Backend", "default", "openai-backend", ""),
+		}, routeConfigOf(route), nil)
+		require.NoError(t, err)
+
+		// Both claimed so the filters go on and requests fail closed, but neither is mapped:
+		// guessing would send one port's traffic under the other's identity.
+		require.Equal(t, []string{onPort443, onPort8443}, mergedClusterNames(referenced))
+		require.Nil(t, mergedBackendNamesOf(t, route))
+	})
+
+	t.Run("an ambiguous backend does not drop the rule's other clusters", func(t *testing.T) {
+		s := newMergeTestServer(t)
+		aigwRouteWithBackends(t, s, "default", "myroute", map[string]string{
+			"openai-a":  "shared-backend",
+			"openai-b":  "shared-backend",
+			"anthropic": "anthropic-backend",
+		})
+
+		const (
+			ambiguous = "backend/default/shared-backend/0"
+			resolved  = "backend/default/anthropic-backend/0"
+		)
+		route := aiGeneratedRoute("httproute/default/myroute/rule/0/match/0", ambiguous, resolved)
+		referenced, err := s.applyMergedBackendRouting(t.Context(), []*clusterv3.Cluster{
+			egResourceCluster(ambiguous, "Backend", "default", "shared-backend", ""),
+			egResourceCluster(resolved, "Backend", "default", "anthropic-backend", ""),
+		}, routeConfigOf(route), nil)
+		require.NoError(t, err)
+
+		require.Equal(t, []string{resolved, ambiguous}, mergedClusterNames(referenced))
+		// anthropic is backendRef 0; only the shared pair is unresolvable.
+		require.Equal(t, map[string]string{
+			resolved: internalapi.PerRouteRuleRefBackendName("default", "anthropic", "myroute", 0, 0),
+		}, mergedBackendNamesOf(t, route))
 	})
 
 	t.Run("merged cluster used only by a non-AIGatewayRoute is not claimed", func(t *testing.T) {
@@ -365,7 +483,7 @@ func TestApplyMergedBackendRouting(t *testing.T) {
 		}
 		referenced, err := s.applyMergedBackendRouting(t.Context(),
 			[]*clusterv3.Cluster{egResourceCluster(merged, "Backend", "default", "shared-backend", "")},
-			routeConfigOf(plain))
+			routeConfigOf(plain), nil)
 		require.NoError(t, err)
 		require.Empty(t, referenced, "a cluster no AIGatewayRoute uses must not be modified")
 	})
@@ -383,9 +501,12 @@ func TestApplyMergedBackendRouting(t *testing.T) {
 		route := aiGeneratedRoute("httproute/default/myroute/rule/0/match/0", merged)
 		referenced, err := s.applyMergedBackendRouting(t.Context(),
 			[]*clusterv3.Cluster{egResourceCluster(merged, "Backend", "default", "openai-backend", "")},
-			routeConfigOf(route))
+			routeConfigOf(route), nil)
 		require.NoError(t, err)
-		require.Empty(t, referenced)
+		// Claimed without a mapping: the rule is an AIGatewayRoute's, so its traffic must fail in
+		// the external processor rather than reach the provider unprocessed.
+		require.Equal(t, []string{merged}, mergedClusterNames(referenced))
+		require.Nil(t, mergedBackendNamesOf(t, route))
 	})
 
 	t.Run("rule index beyond the current spec is skipped", func(t *testing.T) {
@@ -396,9 +517,13 @@ func TestApplyMergedBackendRouting(t *testing.T) {
 		route := aiGeneratedRoute("httproute/default/myroute/rule/7/match/0", merged)
 		referenced, err := s.applyMergedBackendRouting(t.Context(),
 			[]*clusterv3.Cluster{egResourceCluster(merged, "Backend", "default", "openai-backend", "")},
-			routeConfigOf(route))
+			routeConfigOf(route), nil)
 		require.NoError(t, err)
-		require.Empty(t, referenced)
+		// The rule is gone from the spec but the Envoy route is still an AIGatewayRoute's, so the
+		// cluster is claimed and the filters installed: its traffic must fail in the external
+		// processor, not reach the provider unprocessed.
+		require.Equal(t, []string{merged}, mergedClusterNames(referenced))
+		require.Nil(t, mergedBackendNamesOf(t, route))
 	})
 }
 
@@ -436,6 +561,87 @@ func TestPostTranslateModify_MergedBackendCluster(t *testing.T) {
 		"a merged cluster an AIGatewayRoute routes to must get the upstream external processor")
 	require.False(t, hasUpstreamExtProc(t, byName[plainMerged]),
 		"a merged cluster only a plain HTTPRoute uses must be left alone")
+}
+
+// TestPostTranslateModify_MergedBackendClusterSharedWithPlainRoute covers the case MergeBackends
+// exists to produce: one cluster reached by both an AIGatewayRoute and a plain HTTPRoute. The
+// filter is installed cluster-wide and cannot be disabled per route, so the plain route's requests
+// reach the external processor too — they carry no route metadata and are passed through there.
+func TestPostTranslateModify_MergedBackendClusterSharedWithPlainRoute(t *testing.T) {
+	s := newMergeTestServer(t)
+	aigwRouteWithBackends(t, s, "default", "myroute", map[string]string{"openai": "openai-backend"})
+
+	const shared = "backend/default/openai-backend/0"
+	aiRoute := aiGeneratedRoute("httproute/default/myroute/rule/0/match/0", shared)
+	plainRoute := &routev3.Route{
+		Name:   "httproute/default/plain/rule/0/match/0",
+		Action: &routev3.Route_Route{Route: &routev3.RouteAction{ClusterSpecifier: &routev3.RouteAction_Cluster{Cluster: shared}}},
+	}
+
+	resp, err := s.PostTranslateModify(t.Context(), &egextension.PostTranslateModifyRequest{
+		Clusters: []*clusterv3.Cluster{egResourceCluster(shared, "Backend", "default", "openai-backend", "")},
+		Routes:   routeConfigOf(aiRoute, plainRoute),
+	})
+	require.NoError(t, err)
+	require.True(t, hasUpstreamExtProc(t, resp.Clusters[0]))
+
+	// Only the AI route carries the mapping; the plain route is left untouched, which is what the
+	// external processor keys on to pass its traffic through.
+	require.Equal(t, map[string]string{
+		shared: internalapi.PerRouteRuleRefBackendName("default", "openai", "myroute", 0, 0),
+	}, mergedBackendNamesOf(t, aiRoute))
+	require.Nil(t, mergedBackendNamesOf(t, plainRoute))
+	require.Nil(t, plainRoute.Metadata, "a route AI Gateway does not own must not be annotated")
+}
+
+// TestPostTranslateModify_MergedBackendClusterForwardProxy pins that a merged cluster still gets
+// the GatewayConfig forward proxy. Skipping it would silently route provider egress around a proxy
+// the operator mandated.
+func TestPostTranslateModify_MergedBackendClusterForwardProxy(t *testing.T) {
+	s := newMergeTestServer(t)
+	aigwRouteWithBackends(t, s, "default", "myroute", map[string]string{"openai": "openai-backend"})
+
+	// Point the route at a Gateway whose GatewayConfig configures a forward proxy.
+	var route aigv1b1.AIGatewayRoute
+	require.NoError(t, s.k8sClient.Get(t.Context(), client.ObjectKey{Namespace: "default", Name: "myroute"}, &route))
+	route.Spec.ParentRefs = []gwapiv1.ParentReference{{Name: "gw"}}
+	require.NoError(t, s.k8sClient.Update(t.Context(), &route))
+	require.NoError(t, s.k8sClient.Create(t.Context(), &gwapiv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "gw", Namespace: "default",
+			Annotations: map[string]string{gatewayConfigAnnotationKey: "gwconfig"},
+		},
+	}))
+	require.NoError(t, s.k8sClient.Create(t.Context(), &aigv1b1.GatewayConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: "gwconfig", Namespace: "default"},
+		Spec: aigv1b1.GatewayConfigSpec{
+			ForwardProxy: &aigv1b1.GatewayConfigForwardProxy{Address: "proxy.example.com:3128"},
+		},
+	}))
+
+	const merged = "backend/default/openai-backend/0"
+	resp, err := s.PostTranslateModify(t.Context(), &egextension.PostTranslateModifyRequest{
+		Clusters: []*clusterv3.Cluster{egResourceCluster(merged, "Backend", "default", "openai-backend", "")},
+		Routes:   routeConfigOf(aiGeneratedRoute("httproute/default/myroute/rule/0/match/0", merged)),
+	})
+	require.NoError(t, err)
+	require.Equal(t, http11ProxyTransportSocketName, resp.Clusters[0].TransportSocket.GetName())
+
+	// A route AI Gateway does not own shares the cluster: the transport socket is cluster-wide, so
+	// applying the proxy would tunnel that route's egress through a proxy it never configured.
+	plain := &routev3.Route{
+		Name:   "httproute/default/plain/rule/0/match/0",
+		Action: &routev3.Route_Route{Route: &routev3.RouteAction{ClusterSpecifier: &routev3.RouteAction_Cluster{Cluster: merged}}},
+	}
+	shared, err := s.PostTranslateModify(t.Context(), &egextension.PostTranslateModifyRequest{
+		Clusters: []*clusterv3.Cluster{egResourceCluster(merged, "Backend", "default", "openai-backend", "")},
+		Routes:   routeConfigOf(aiGeneratedRoute("httproute/default/myroute/rule/0/match/0", merged), plain),
+	})
+	require.NoError(t, err)
+	require.Nil(t, shared.Clusters[0].TransportSocket,
+		"a cluster shared with a route AI Gateway does not own must not be wrapped")
+	require.True(t, hasUpstreamExtProc(t, shared.Clusters[0]),
+		"the AI route still needs the filters even when the proxy is withheld")
 }
 
 // hasUpstreamExtProc reports whether the cluster's upstream filter chain has the external processor.

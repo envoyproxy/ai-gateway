@@ -31,6 +31,9 @@ static_resources:
                         json_format:
                           used_token: "%DYNAMIC_METADATA(io.envoy.ai_gateway:used_token)%"
                           some_cel: "%DYNAMIC_METADATA(io.envoy.ai_gateway:some_cel)%"
+                          # The external processor only emits this once it resolved a route name,
+                          # which is how a test can tell route-name resolution actually happened.
+                          route_name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:route_name)%"
                   - name: default
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StderrAccessLog
@@ -208,7 +211,7 @@ static_resources:
                           metadata:
                             filter_metadata:
                               aigateway.envoy.io:
-                                route_name: "test-ns/openai-route"
+                                aigw_route_name: "test-ns/openai-route"
                         # MergeBackends: the cluster is shared, so the route carries the backend
                         # mapping and the upstream extproc selects an entry by xds.cluster_name.
                         - match:
@@ -222,7 +225,7 @@ static_resources:
                           metadata:
                             filter_metadata:
                               aigateway.envoy.io:
-                                route_name: "test-ns/merged-route"
+                                aigw_route_name: "test-ns/merged-route"
                                 merged_backend_names: "backend/test-ns/testupstream-merged/0=test-ns/merged/route/merged-route/rule/0/ref/0"
                         - match:
                             prefix: "/"
@@ -243,7 +246,7 @@ static_resources:
                           metadata:
                             filter_metadata:
                               aigateway.envoy.io:
-                                route_name: "test-ns/modelname-override-route"
+                                aigw_route_name: "test-ns/modelname-override-route"
                         - match:
                             prefix: "/"
                             headers:
@@ -375,8 +378,11 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 allow_mode_override: true
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -434,8 +440,13 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 allow_mode_override: true
+                # Must mirror insertUpstreamAIGatewayFilters for a merged cluster: Envoy only
+                # surfaces attributes the filter asks for, so omitting one silently stops the
+                # corresponding resolution from being exercised here.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                   - xds.route_metadata.filter_metadata['aigateway.envoy.io']['merged_backend_names']
                   - xds.cluster_name
                 processing_mode:
@@ -494,8 +505,11 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 allow_mode_override: true
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -555,8 +569,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -628,8 +645,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -689,8 +709,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -750,8 +773,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -823,8 +849,11 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 allow_mode_override: true
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -902,8 +931,11 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
                 allow_mode_override: true
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -969,8 +1001,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1031,8 +1066,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1093,8 +1131,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1154,8 +1195,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1232,8 +1276,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1298,8 +1345,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1377,8 +1427,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1444,8 +1497,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1511,8 +1567,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1578,8 +1637,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
@@ -1645,8 +1707,11 @@ static_resources:
             - name: upstream_extproc
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor
+                # Mirrors insertUpstreamAIGatewayFilters for a non-merged cluster.
                 request_attributes:
                   - xds.upstream_host_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.cluster_metadata.filter_metadata['aigateway.envoy.io']['per_route_rule_backend_name']
+                  - xds.route_metadata.filter_metadata['aigateway.envoy.io']['aigw_route_name']
                 processing_mode:
                   request_header_mode: "SEND"
                   request_body_mode: "NONE"
