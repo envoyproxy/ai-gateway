@@ -135,6 +135,12 @@ func TestWithTestUpstream(t *testing.T) {
 		// The value is a base64 encoded string of comma separated key-value pairs.
 		// E.g. "key1:value1,key2:value2".
 		expRequestHeaders map[string]string
+		// requestHeaders are extra headers set on the client request to the gateway, e.g. to simulate a
+		// downstream client spoofing an internal header.
+		requestHeaders map[string]string
+		// nonExpectedRequestHeaders are header names that must NOT be present on the request the test
+		// upstream receives (the test upstream returns 400 if any are present).
+		nonExpectedRequestHeaders []string
 		// expRequestBody is the expected body to be sent to the test upstream.
 		// This can be used to test the request body translation.
 		expRequestBody string
@@ -232,6 +238,23 @@ func TestWithTestUpstream(t *testing.T) {
 			expStatus:       http.StatusOK,
 			responseHeaders: "x-amzn-requestid:2bc5b090-a26c-4007-9467-ce5adc4ffa1d",
 			expResponseBody: `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant"}}],"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","created":123,"model":"something","object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
+		},
+		{
+			// A downstream client spoofs the internal AWS signing-host header. It must be stripped before
+			// egress so it never reaches the upstream and cannot influence SigV4 signing.
+			name:                      "aws-bedrock - spoofed signing-host header is stripped before upstream",
+			backend:                   "aws-bedrock",
+			path:                      "/v1/chat/completions",
+			method:                    http.MethodPost,
+			requestBody:               `{"model":"something","messages":[{"role":"system","content":"You are a chatbot."}]}`,
+			expPath:                   "/model/something/converse",
+			responseBody:              `{"output":{"message":{"content":[{"text":"response"},{"text":"from"},{"text":"assistant"}],"role":"assistant"}},"stopReason":null,"usage":{"inputTokens":10,"outputTokens":20,"totalTokens":30}}`,
+			expRequestBody:            `{"inferenceConfig":{},"messages":[],"system":[{"text":"You are a chatbot."}]}`,
+			expStatus:                 http.StatusOK,
+			responseHeaders:           "x-amzn-requestid:2bc5b090-a26c-4007-9467-ce5adc4ffa1d",
+			expResponseBody:           `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"response","role":"assistant"}}],"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","created":123,"model":"something","object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":10,"total_tokens":30}}`,
+			requestHeaders:            map[string]string{"x-ai-eg-upstream-host": "attacker.example.com"},
+			nonExpectedRequestHeaders: []string{"x-ai-eg-upstream-host"},
 		},
 		{
 			name:            "openai - /v1/chat/completions",
@@ -469,7 +492,7 @@ data: [DONE]
 			responseHeaders: "x-amzn-requestid:2bc5b090-a26c-4007-9467-ce5adc4ffa1d",
 			expResponseBody: `data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"content":"","role":"assistant"}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
-data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":{"text":"First, I'll start by acknowledging the user..."}}}],"created":123,"model":"something","object":"chat.completion.chunk"}
+data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"First, I'll start by acknowledging the user..."}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
 data: {"id":"2bc5b090-a26c-4007-9467-ce5adc4ffa1d","choices":[{"index":0,"delta":{"content":"Hello!","role":"assistant"}}],"created":123,"model":"something","object":"chat.completion.chunk"}
 
@@ -1433,6 +1456,15 @@ data: {"type":"message_stop"}`,
 			}
 			if tc.expRequestBody != "" {
 				req.Header.Set(testupstreamlib.ExpectedRequestBodyHeaderKey, base64.StdEncoding.EncodeToString([]byte(tc.expRequestBody)))
+			}
+			for k, v := range tc.requestHeaders {
+				req.Header.Set(k, v)
+			}
+			if len(tc.nonExpectedRequestHeaders) > 0 {
+				req.Header.Set(
+					testupstreamlib.NonExpectedRequestHeadersKey,
+					base64.StdEncoding.EncodeToString([]byte(strings.Join(tc.nonExpectedRequestHeaders, ","))),
+				)
 			}
 
 			var lastErr error

@@ -394,6 +394,11 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 		u.requestHeaders[h.Header.Key] = string(h.Header.RawValue)
 	}
 
+	// x-ai-eg-upstream-host is an internal, controller-derived value consumed by backend auth handlers
+	// (e.g. the AWS handler, via the upstream-host metadata attribute). Strip any copy — including one a
+	// downstream client spoofed — so it never egresses to the upstream provider.
+	headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, internalapi.UpstreamHostHeader)
+
 	if h := u.handler; h != nil {
 		var hdrs []internalapi.Header
 		hdrs, err = h.Do(ctx, u.requestHeaders, bodyMutation.GetBody())
@@ -424,7 +429,10 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 					},
 				},
 			},
-			DynamicMetadata: buildRequestHeaderDynamicMetadata(u.requestHeaders),
+			DynamicMetadata: mergeDynamicMetadata(
+				buildBackendDynamicMetadata(u.backendName),
+				buildRequestHeaderDynamicMetadata(u.requestHeaders),
+			),
 		}, nil
 	}
 
@@ -432,6 +440,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 	if bm := bodyMutation.GetBody(); bm != nil {
 		dm = buildContentLengthDynamicMetadataOnRequest(len(bm))
 	}
+	dm = mergeDynamicMetadata(dm, buildBackendDynamicMetadata(u.backendName))
 	dm = mergeDynamicMetadata(dm, buildRequestHeaderDynamicMetadata(u.requestHeaders))
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -719,6 +728,29 @@ func buildContentLengthDynamicMetadataOnRequest(contentLength int) *structpb.Str
 	return metadata
 }
 
+// buildBackendDynamicMetadata emits the backend resolved for this request by
+// [upstreamProcessor.SetBackend]. Emitting it during decode is what makes it readable on
+// the response path: Envoy applies route-level response header mutations in the router
+// filter, which runs before this filter when encoding.
+func buildBackendDynamicMetadata(backendName string) *structpb.Struct {
+	if backendName == "" {
+		return nil
+	}
+	return &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			internalapi.AIGatewayFilterMetadataNamespace: {
+				Kind: &structpb.Value_StructValue{
+					StructValue: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							"backend_name": structpb.NewStringValue(backendName),
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func buildRequestHeaderDynamicMetadata(requestHeaders map[string]string) *structpb.Struct {
 	if len(LogRequestHeaderAttributes) == 0 {
 		return nil
@@ -885,7 +917,9 @@ func buildDynamicMetadata(globalRequestCosts []filterapi.RuntimeGlobalRequestCos
 	metadata["model_name_override"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: actualModel}}
 
 	if backendName != "" {
-		metadata["backend_name"] = &structpb.Value{Kind: &structpb.Value_StringValue{StringValue: backendName}}
+		// backend_name itself is emitted by buildBackendDynamicMetadata in the request
+		// headers phase, so it is already on the stream by the time this runs.
+		//
 		// ai_service_backend_name stores the short "namespace/name" format extracted
 		// from the full PerRouteRuleRefBackendName ("{namespace}/{name}/route/...").
 		// This is used by the quota rate limit descriptor actions to match the
