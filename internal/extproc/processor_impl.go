@@ -101,9 +101,13 @@ type (
 		// upstreamFilterCount is the number of upstream filters that have been processed.
 		// This is used to determine if the request is a retry request.
 		upstreamFilterCount int
-		stream              bool
-		debugLogEnabled     bool
-		enableRedaction     bool
+		// localReplyEmitted records that the gateway answered the request itself with an
+		// ImmediateResponse. Envoy sends that local reply back through the response path,
+		// where it would otherwise be handled as if it came from the upstream.
+		localReplyEmitted bool
+		stream            bool
+		debugLogEnabled   bool
+		enableRedaction   bool
 	}
 	// upstreamProcessor implements [Processor] for the upstream filter for the standard LLM endpoints.
 	//
@@ -188,6 +192,21 @@ func (r *routerProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespons
 func formatUserFacingErrorJSON(errorType string, statusCode int, message string) []byte {
 	return fmt.Appendf(nil, `{"type":"error","error":{"type":"%s","code":"%d","message":"%s"}}`,
 		errorType, statusCode, message)
+}
+
+// respondLocally answers the request from the gateway itself instead of dispatching it upstream.
+//
+// The immediate response is delivered as an Envoy local reply, which travels back through the
+// response path. It records that on the parent so [upstreamProcessor.ProcessResponseBody] can
+// skip it, and ends the span here because the response path no longer will.
+func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) respondLocally(ctx context.Context, statusCode int, errorType, message string) *extprocv3.ProcessingResponse {
+	u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
+	resp := createUserFacingErrorResponse(statusCode, errorType, message)
+	u.parent.localReplyEmitted = true
+	if u.parent.span != nil {
+		u.parent.span.EndSpanOnError(statusCode, resp.GetImmediateResponse().GetBody())
+	}
+	return resp
 }
 
 // createUserFacingErrorResponse creates an ImmediateResponse for user-facing errors with JSON body.
@@ -347,9 +366,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 		if userFacingErr := internalapi.GetUserFacingError(err); userFacingErr != nil {
 			// return to user as 422 -  e.g., "invalid request body: tool_choice type not supported"
 			u.logger.Info("returning user-facing error for invalid request", slog.String("error", err.Error()))
-			// Record this as a failed request in metrics
-			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
-			return createUserFacingErrorResponse(422, "UnprocessableEntity", userFacingErr.Error()), nil
+			return u.respondLocally(ctx, 422, "UnprocessableEntity", userFacingErr.Error()), nil
 		}
 		return nil, fmt.Errorf("failed to transform request: %w", err)
 	}
@@ -404,8 +421,7 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 		hdrs, err = h.Do(ctx, u.requestHeaders, bodyMutation.GetBody())
 		if err != nil {
 			if errors.Is(err, backendauth.ErrCredentialMissing) {
-				u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
-				return createUserFacingErrorResponse(401, "Unauthorized", "missing upstream credential"), nil
+				return u.respondLocally(ctx, 401, "Unauthorized", "missing upstream credential"), nil
 			}
 			return nil, fmt.Errorf("failed to do auth request: %w", err)
 		}
@@ -462,6 +478,16 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessReque
 
 // ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessResponseHeaders(ctx context.Context, headers *corev3.HeaderMap) (res *extprocv3.ProcessingResponse, err error) {
+	// See the same check in ProcessResponseBody: the headers of a local reply are ours as well,
+	// so they are passed through untouched.
+	if u.parent.localReplyEmitted {
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ResponseHeaders{
+				ResponseHeaders: &extprocv3.HeadersResponse{},
+			},
+		}, nil
+	}
+
 	defer func() {
 		if err != nil {
 			u.metrics.RecordRequestCompletion(ctx, false, u.requestHeaders)
@@ -502,6 +528,17 @@ func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessRespo
 
 // ProcessResponseBody implements [Processor.ProcessResponseBody].
 func (u *upstreamProcessor[ReqT, RespT, RespChunkT, EndpointSpecT]) ProcessResponseBody(ctx context.Context, body *extprocv3.HttpBody) (res *extprocv3.ProcessingResponse, err error) {
+	// A local reply the gateway produced itself is not an upstream response: translating it would
+	// rewrite the body we just wrote, and completion was already recorded when it was produced.
+	// This returns before the deferred recording below is registered.
+	if u.parent.localReplyEmitted {
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ResponseBody{
+				ResponseBody: &extprocv3.BodyResponse{},
+			},
+		}, nil
+	}
+
 	recordRequestCompletionErr := false
 	defer func() {
 		if err != nil || recordRequestCompletionErr {
