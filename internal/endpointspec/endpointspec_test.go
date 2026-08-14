@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 
+	"github.com/envoyproxy/ai-gateway/internal/apischema/anthropic"
 	cohereschema "github.com/envoyproxy/ai-gateway/internal/apischema/cohere"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai"
 	"github.com/envoyproxy/ai-gateway/internal/apischema/openai/tokenize"
@@ -280,6 +281,40 @@ func TestMessagesEndpointSpec_GetTranslator(t *testing.T) {
 
 	_, err := spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaCohere}, "override")
 	require.ErrorContains(t, err, "only supports")
+
+	request := &anthropic.MessagesRequest{
+		Model: "model", MaxTokens: 32,
+		Messages: []anthropic.MessageParam{{
+			Role: anthropic.MessageRoleUser, Content: anthropic.MessageContent{Text: "hello"},
+		}},
+	}
+	for _, tc := range []struct {
+		name, expectedPath string
+		schema             filterapi.VersionedAPISchema
+	}{
+		{
+			name: "Chat Completions by default", expectedPath: "/v1/chat/completions",
+			schema: filterapi.VersionedAPISchema{Name: filterapi.APISchemaOpenAI, Prefix: "v1"},
+		},
+		{
+			name: "Responses when configured", expectedPath: "/v1/responses",
+			schema: filterapi.VersionedAPISchema{
+				Name: filterapi.APISchemaOpenAI, Prefix: "v1",
+				Capabilities: &filterapi.APISchemaCapabilities{
+					MessagesTranslation: filterapi.OpenAIMessagesTranslationResponses,
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			messagesTranslator, translatorErr := spec.GetTranslator(tc.schema, "")
+			require.NoError(t, translatorErr)
+			headers, _, requestErr := messagesTranslator.RequestBody(nil, request, false)
+			require.NoError(t, requestErr)
+			require.NotEmpty(t, headers)
+			require.Equal(t, tc.expectedPath, headers[0].Value())
+		})
+	}
 }
 
 func TestRerankEndpointSpec_ParseBody(t *testing.T) {

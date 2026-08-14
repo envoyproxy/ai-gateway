@@ -8,6 +8,7 @@ package translator
 import (
 	"bytes"
 	"cmp"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log/slog"
@@ -22,71 +23,6 @@ import (
 	"github.com/envoyproxy/ai-gateway/internal/metrics"
 	"github.com/envoyproxy/ai-gateway/internal/tracing/tracingapi"
 )
-
-// NewAnthropicToOpenAITranslator returns an Anthropic Messages translator for
-// an OpenAI backend. GPT-5.6 requests that include function tools use the
-// Responses API because those models reject function tools on Chat
-// Completions unless reasoning is disabled. Other requests retain the existing
-// Chat Completions path for compatibility with older OpenAI models.
-func NewAnthropicToOpenAITranslator(prefix string, modelNameOverride internalapi.ModelNameOverride) AnthropicMessagesTranslator {
-	return &anthropicToOpenAIDispatchTranslator{
-		chat:              NewAnthropicToChatCompletionOpenAITranslator(prefix, modelNameOverride),
-		responses:         NewAnthropicToResponsesOpenAITranslator(prefix, modelNameOverride),
-		modelNameOverride: modelNameOverride,
-	}
-}
-
-type anthropicToOpenAIDispatchTranslator struct {
-	chat, responses   AnthropicMessagesTranslator
-	active            AnthropicMessagesTranslator
-	modelNameOverride internalapi.ModelNameOverride
-}
-
-func (a *anthropicToOpenAIDispatchTranslator) RequestBody(original []byte, body *anthropic.MessagesRequest, forceBodyMutation bool) ([]internalapi.Header, []byte, error) {
-	model := cmp.Or(a.modelNameOverride, body.Model)
-	if len(body.Tools) > 0 && strings.HasPrefix(model, "gpt-5.6") {
-		a.active = a.responses
-	} else {
-		a.active = a.chat
-	}
-	return a.active.RequestBody(original, body, forceBodyMutation)
-}
-
-func (a *anthropicToOpenAIDispatchTranslator) ResponseHeaders(headers map[string]string) ([]internalapi.Header, error) {
-	if a.active == nil {
-		return nil, fmt.Errorf("request body must be translated before response headers")
-	}
-	return a.active.ResponseHeaders(headers)
-}
-
-func (a *anthropicToOpenAIDispatchTranslator) ResponseBody(headers map[string]string, body io.Reader, endOfStream bool, span tracingapi.MessageSpan) ([]internalapi.Header, []byte, metrics.TokenUsage, string, error) {
-	if a.active == nil {
-		return nil, nil, metrics.TokenUsage{}, "", fmt.Errorf("request body must be translated before response body")
-	}
-	return a.active.ResponseBody(headers, body, endOfStream, span)
-}
-
-func (a *anthropicToOpenAIDispatchTranslator) ResponseError(headers map[string]string, body io.Reader) ([]internalapi.Header, []byte, error) {
-	if a.active == nil {
-		return nil, nil, fmt.Errorf("request body must be translated before response error")
-	}
-	return a.active.ResponseError(headers, body)
-}
-
-func (a *anthropicToOpenAIDispatchTranslator) SetRedactionConfig(debugLogEnabled, enableRedaction bool, logger *slog.Logger) {
-	for _, candidate := range []AnthropicMessagesTranslator{a.chat, a.responses} {
-		if redactor, ok := candidate.(AnthropicResponseRedactor); ok {
-			redactor.SetRedactionConfig(debugLogEnabled, enableRedaction, logger)
-		}
-	}
-}
-
-func (a *anthropicToOpenAIDispatchTranslator) RedactAnthropicBody(resp *anthropic.MessagesResponse) *anthropic.MessagesResponse {
-	if redactor, ok := a.active.(AnthropicResponseRedactor); ok {
-		return redactor.RedactAnthropicBody(resp)
-	}
-	return redactAnthropicMessagesResponse(resp)
-}
 
 // NewAnthropicToResponsesOpenAITranslator translates Anthropic Messages
 // requests and OpenAI Responses output in both streaming and non-streaming
@@ -107,6 +43,7 @@ type anthropicToOpenAIResponsesTranslator struct {
 	streamBuffer      bytes.Buffer
 	streamState       *openAIStreamToAnthropicState
 	streamedArguments map[string]bool
+	streamedReasoning map[string]bool
 	errorTranslator   AnthropicMessagesTranslator
 	debugLogEnabled   bool
 	enableRedaction   bool
@@ -127,6 +64,7 @@ func (a *anthropicToOpenAIResponsesTranslator) RequestBody(_ []byte, body *anthr
 			requestModel: a.requestModel,
 		}
 		a.streamedArguments = make(map[string]bool)
+		a.streamedReasoning = make(map[string]bool)
 	}
 	return []internalapi.Header{
 		{pathHeaderName, a.path},
@@ -152,6 +90,7 @@ func buildOpenAIResponsesRequest(body *anthropic.MessagesRequest, modelNameOverr
 	request := map[string]any{
 		"model":             cmp.Or(modelNameOverride, body.Model),
 		"input":             input,
+		"include":           []string{"reasoning.encrypted_content"},
 		"max_output_tokens": body.MaxTokens,
 		"store":             false,
 	}
@@ -214,7 +153,14 @@ func chatMessagesToResponsesInput(value any) ([]any, error) {
 			continue
 		}
 		if content, present := message["content"]; present && content != nil {
-			converted := chatContentToResponsesContent(content)
+			var converted any
+			if role == "assistant" {
+				var reasoning []any
+				reasoning, converted = chatAssistantContentToResponsesContent(content)
+				input = append(input, reasoning...)
+			} else {
+				converted = chatContentToResponsesContent(content)
+			}
 			if !emptyResponseContent(converted) {
 				input = append(input, map[string]any{"role": role, "content": converted})
 			}
@@ -233,6 +179,75 @@ func chatMessagesToResponsesInput(value any) ([]any, error) {
 		}
 	}
 	return input, nil
+}
+
+const openAIReasoningEnvelopePrefix = "openai-reasoning-v1:"
+
+func encodeOpenAIReasoningItem(item *openai.ResponseReasoningItem) (string, error) {
+	reasoning := map[string]any{
+		"id": item.ID, "type": cmp.Or(item.Type, "reasoning"), "summary": item.Summary,
+	}
+	if item.EncryptedContent != "" {
+		reasoning["encrypted_content"] = item.EncryptedContent
+	}
+	if item.Content != nil {
+		reasoning["content"] = item.Content
+	}
+	if item.Status != "" {
+		reasoning["status"] = item.Status
+	}
+	encoded, err := json.Marshal(reasoning)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal OpenAI reasoning item: %w", err)
+	}
+	payload := append([]byte(openAIReasoningEnvelopePrefix), encoded...)
+	return base64.RawStdEncoding.EncodeToString(payload), nil
+}
+
+func decodeOpenAIReasoningItem(value any) (map[string]any, bool) {
+	encoded, ok := value.(string)
+	if !ok {
+		return nil, false
+	}
+	raw, err := base64.RawStdEncoding.DecodeString(encoded)
+	prefix := []byte(openAIReasoningEnvelopePrefix)
+	if err != nil || !bytes.HasPrefix(raw, prefix) {
+		return nil, false
+	}
+	var item map[string]any
+	if err = json.Unmarshal(raw[len(prefix):], &item); err != nil || item["type"] != "reasoning" {
+		return nil, false
+	}
+	return item, true
+}
+
+func chatAssistantContentToResponsesContent(content any) (reasoning []any, visible any) {
+	parts, ok := content.([]any)
+	if !ok {
+		return nil, content
+	}
+	visibleParts := make([]any, 0, len(parts))
+	for _, raw := range parts {
+		part, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		var envelope any
+		switch part["type"] {
+		case "thinking":
+			envelope = part["signature"]
+		case "redacted_thinking":
+			envelope = part["redactedContent"]
+		}
+		if item, decoded := decodeOpenAIReasoningItem(envelope); decoded {
+			reasoning = append(reasoning, item)
+			continue
+		}
+		if part["type"] == "text" {
+			visibleParts = append(visibleParts, map[string]any{"type": "input_text", "text": part["text"]})
+		}
+	}
+	return reasoning, visibleParts
 }
 
 func chatContentToResponsesContent(content any) any {
@@ -343,12 +358,15 @@ func (a *anthropicToOpenAIResponsesTranslator) responseBodyNonStreaming(body io.
 		return nil, nil, tokenUsage, responseModel, fmt.Errorf("failed to unmarshal OpenAI Responses response: %w", err)
 	}
 	responseModel = cmp.Or(response.Model, a.requestModel)
-	chatResponse := openAIResponsesToChatCompletion(&response, responseModel)
+	chatResponse, err := openAIResponsesToChatCompletion(&response, responseModel)
+	if err != nil {
+		return nil, nil, tokenUsage, responseModel, err
+	}
 	anthropicResponse := openAIResponseToAnthropic(chatResponse, responseModel)
 	setAnthropicUsageFromOpenAIResponse(anthropicResponse, &response, &tokenUsage)
 
 	if a.debugLogEnabled && a.enableRedaction && a.logger != nil {
-		if encoded, err := json.Marshal(a.RedactAnthropicBody(anthropicResponse)); err == nil {
+		if encoded, marshalErr := json.Marshal(a.RedactAnthropicBody(anthropicResponse)); marshalErr == nil {
 			a.logger.Debug("response body processing", slog.Any("response", string(encoded)))
 		}
 	}
@@ -362,12 +380,21 @@ func (a *anthropicToOpenAIResponsesTranslator) responseBodyNonStreaming(body io.
 	return []internalapi.Header{{contentLengthHeaderName, strconv.Itoa(len(newBody))}}, newBody, tokenUsage, responseModel, nil
 }
 
-func openAIResponsesToChatCompletion(response *openai.Response, model string) *openai.ChatCompletionResponse {
+func openAIResponsesToChatCompletion(response *openai.Response, model string) (*openai.ChatCompletionResponse, error) {
 	message := openai.ChatCompletionResponseChoiceMessage{Role: "assistant"}
 	var text strings.Builder
 	finishReason := openai.ChatCompletionChoicesFinishReasonStop
-	for _, item := range response.Output {
+	for i := range response.Output {
+		item := &response.Output[i]
 		switch {
+		case item.OfReasoning != nil:
+			envelope, err := encodeOpenAIReasoningItem(item.OfReasoning)
+			if err != nil {
+				return nil, err
+			}
+			message.ThinkingBlocks = append(message.ThinkingBlocks, openai.ThinkingBlock{
+				Type: "redacted_thinking", Data: envelope,
+			})
 		case item.OfOutputMessage != nil:
 			content := item.OfOutputMessage.Content
 			if content.OfString != nil {
@@ -396,9 +423,10 @@ func openAIResponsesToChatCompletion(response *openai.Response, model string) *o
 		value := text.String()
 		message.Content = &value
 	}
-	if response.IncompleteDetails.Reason == "max_output_tokens" {
+	switch response.IncompleteDetails.Reason {
+	case "max_output_tokens":
 		finishReason = openai.ChatCompletionChoicesFinishReasonLength
-	} else if response.IncompleteDetails.Reason == "content_filter" {
+	case "content_filter":
 		finishReason = openai.ChatCompletionChoicesFinishReasonContentFilter
 	}
 	usage := openai.Usage{}
@@ -410,7 +438,7 @@ func openAIResponsesToChatCompletion(response *openai.Response, model string) *o
 	return &openai.ChatCompletionResponse{
 		ID: response.ID, Model: model, Usage: usage,
 		Choices: []openai.ChatCompletionResponseChoice{{Message: message, FinishReason: finishReason}},
-	}
+	}, nil
 }
 
 func setAnthropicUsageFromOpenAIResponse(anthropicResponse *anthropic.MessagesResponse, response *openai.Response, tokenUsage *metrics.TokenUsage) {
@@ -418,16 +446,28 @@ func setAnthropicUsageFromOpenAIResponse(anthropicResponse *anthropic.MessagesRe
 		return
 	}
 	usage := response.Usage
+	cacheCreationTokens := responseCacheCreationTokens(usage)
+	uncachedInputTokens := usage.InputTokens - usage.InputTokensDetails.CachedTokens - cacheCreationTokens
+	if uncachedInputTokens < 0 {
+		uncachedInputTokens = 0
+	}
 	anthropicResponse.Usage = &anthropic.Usage{
-		InputTokens:              float64(usage.InputTokens),
+		InputTokens:              float64(uncachedInputTokens),
 		OutputTokens:             float64(usage.OutputTokens),
 		CacheReadInputTokens:     float64(usage.InputTokensDetails.CachedTokens),
-		CacheCreationInputTokens: float64(usage.InputTokensDetails.CacheCreationTokens),
+		CacheCreationInputTokens: float64(cacheCreationTokens),
 	}
 	setTokenUsageFromResponse(tokenUsage, response)
-	if usage.InputTokensDetails.CacheCreationTokens > 0 {
-		tokenUsage.SetCacheCreationInputTokens(uint32(usage.InputTokensDetails.CacheCreationTokens)) // #nosec G115
+	if cacheCreationTokens > 0 {
+		tokenUsage.SetCacheCreationInputTokens(uint32(cacheCreationTokens)) // #nosec G115
 	}
+}
+
+func responseCacheCreationTokens(usage *openai.ResponseUsage) int64 {
+	if usage.InputTokensDetails.CacheCreationTokens != 0 {
+		return usage.InputTokensDetails.CacheCreationTokens
+	}
+	return usage.InputTokensDetails.CacheWriteTokens
 }
 
 func (a *anthropicToOpenAIResponsesTranslator) responseBodyStreaming(body io.Reader, endOfStream bool) ([]internalapi.Header, []byte, metrics.TokenUsage, string, error) {
@@ -525,6 +565,8 @@ func (a *anthropicToOpenAIResponsesTranslator) handleResponsesEvent(event *opena
 			return nil
 		}
 		return a.streamState.handleChunk(responsesToolCallChunk(done.OutputIndex, nil, done.Name, done.Arguments), out)
+	case event.OfResponseOutputItemDone != nil && event.OfResponseOutputItemDone.Item.OfReasoning != nil:
+		return a.emitResponsesReasoningItem(event.OfResponseOutputItemDone.Item.OfReasoning, out)
 	case event.OfResponseCompleted != nil:
 		return a.completeResponsesStream(&event.OfResponseCompleted.Response, out)
 	case event.OfResponseIncomplete != nil:
@@ -543,6 +585,25 @@ func (a *anthropicToOpenAIResponsesTranslator) handleResponsesEvent(event *opena
 	return nil
 }
 
+func (a *anthropicToOpenAIResponsesTranslator) emitResponsesReasoningItem(item *openai.ResponseReasoningItem, out *[]byte) error {
+	envelope, err := encodeOpenAIReasoningItem(item)
+	if err != nil {
+		return err
+	}
+	key := cmp.Or(item.ID, envelope)
+	if a.streamedReasoning[key] {
+		return nil
+	}
+	a.streamedReasoning[key] = true
+	return a.streamState.handleChunk(&openai.ChatCompletionResponseChunk{
+		Choices: []openai.ChatCompletionResponseChunkChoice{{
+			Delta: &openai.ChatCompletionResponseChunkChoiceDelta{
+				ThinkingBlocks: []openai.ThinkingBlock{{Type: "redacted_thinking", Data: envelope}},
+			},
+		}},
+	}, out)
+}
+
 func responsesToolCallChunk(index int64, id *string, name, arguments string) *openai.ChatCompletionResponseChunk {
 	return &openai.ChatCompletionResponseChunk{Choices: []openai.ChatCompletionResponseChunkChoice{{
 		Delta: &openai.ChatCompletionResponseChunkChoiceDelta{ToolCalls: []openai.ChatCompletionChunkChoiceDeltaToolCall{{
@@ -553,13 +614,23 @@ func responsesToolCallChunk(index int64, id *string, name, arguments string) *op
 }
 
 func (a *anthropicToOpenAIResponsesTranslator) completeResponsesStream(response *openai.Response, out *[]byte) error {
+	for i := range response.Output {
+		if response.Output[i].OfReasoning != nil {
+			if err := a.emitResponsesReasoningItem(response.Output[i].OfReasoning, out); err != nil {
+				return err
+			}
+		}
+	}
 	finishReason := openai.ChatCompletionChoicesFinishReasonStop
-	if response.IncompleteDetails.Reason == "max_output_tokens" {
+	switch response.IncompleteDetails.Reason {
+	case "max_output_tokens":
 		finishReason = openai.ChatCompletionChoicesFinishReasonLength
-	} else if response.IncompleteDetails.Reason == "content_filter" {
+	case "content_filter":
 		finishReason = openai.ChatCompletionChoicesFinishReasonContentFilter
-	} else if len(a.streamState.activeTools) > 0 {
-		finishReason = openai.ChatCompletionChoicesFinishReasonToolCalls
+	default:
+		if len(a.streamState.activeTools) > 0 {
+			finishReason = openai.ChatCompletionChoicesFinishReasonToolCalls
+		}
 	}
 	if err := a.streamState.handleChunk(&openai.ChatCompletionResponseChunk{
 		ID: response.ID, Model: response.Model,
@@ -577,8 +648,10 @@ func (a *anthropicToOpenAIResponsesTranslator) completeResponsesStream(response 
 		return err
 	}
 	setTokenUsageFromResponse(&a.streamState.tokenUsage, response)
-	if response.Usage != nil && response.Usage.InputTokensDetails.CacheCreationTokens > 0 {
-		a.streamState.tokenUsage.SetCacheCreationInputTokens(uint32(response.Usage.InputTokensDetails.CacheCreationTokens)) // #nosec G115
+	if response.Usage != nil {
+		if cacheCreationTokens := responseCacheCreationTokens(response.Usage); cacheCreationTokens > 0 {
+			a.streamState.tokenUsage.SetCacheCreationInputTokens(uint32(cacheCreationTokens)) // #nosec G115
+		}
 	}
 	return nil
 }

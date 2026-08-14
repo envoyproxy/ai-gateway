@@ -90,13 +90,24 @@ func TestAIServiceBackends(t *testing.T) {
 	ctx := t.Context()
 
 	for _, tc := range []struct {
-		name   string
-		expErr string
+		name                string
+		expErr              string
+		expectedTranslation aigv1b1.OpenAIMessagesTranslation
 	}{
 		{name: "basic.yaml"},
 		{name: "anthropic-schema.yaml"},
 		{name: "basic-eg-backend-aws.yaml"},
 		{name: "basic-eg-backend-azure.yaml"},
+		{name: "openai-responses.yaml", expectedTranslation: aigv1b1.OpenAIMessagesTranslationResponses},
+		{name: "openai-capabilities-default.yaml", expectedTranslation: aigv1b1.OpenAIMessagesTranslationChatCompletions},
+		{
+			name:   "capabilities-non-openai.yaml",
+			expErr: "capabilities is only supported for the OpenAI schema",
+		},
+		{
+			name:   "unknown-messages-translation.yaml",
+			expErr: "spec.schema.capabilities.messagesTranslation: Unsupported value",
+		},
 		{
 			name:   "unknown_schema.yaml",
 			expErr: "spec.schema.name: Unsupported value: \"SomeRandomVendor\": supported values: \"OpenAI\", \"Cohere\", \"AWSBedrock\", \"AzureOpenAI\", \"GCPVertexAI\", \"GCPAnthropic\", \"Anthropic\"",
@@ -115,6 +126,10 @@ func TestAIServiceBackends(t *testing.T) {
 				require.ErrorContains(t, c.Create(ctx, aiBackend), tc.expErr)
 			} else {
 				require.NoError(t, c.Create(ctx, aiBackend))
+				if tc.expectedTranslation != "" {
+					require.NotNil(t, aiBackend.Spec.APISchema.Capabilities)
+					require.Equal(t, tc.expectedTranslation, aiBackend.Spec.APISchema.Capabilities.MessagesTranslation)
+				}
 				require.NoError(t, c.Delete(ctx, aiBackend))
 			}
 		})
