@@ -101,10 +101,11 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 	// One AIGatewayRoute cache for every route walk below: Envoy Gateway emits a route per rule x
 	// match, so the same object is otherwise fetched many times per translation.
 	routeCache := make(map[client.ObjectKey]*aigv1b1.AIGatewayRoute)
+	backendCache := make(map[client.ObjectKey]*aigv1b1.AIServiceBackend)
 
 	// Resolve which MergeBackends clusters AIGatewayRoutes use before the cluster loop decides
 	// where to attach the upstream external processor. Empty unless MergeBackends is enabled.
-	mergedBackendClusters, err := s.applyMergedBackendRouting(ctx, req.Clusters, req.Routes, routeCache)
+	mergedBackendClusters, mergedKeys, err := s.applyMergedBackendRouting(ctx, req.Clusters, req.Routes, routeCache, backendCache)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve merged backend clusters: %w", err)
 	}
@@ -117,7 +118,7 @@ func (s *Server) PostTranslateModify(ctx context.Context, req *egextension.PostT
 			if err = s.modifyMergedBackendCluster(ctx, cluster, use); err != nil {
 				return nil, fmt.Errorf("failed to modify merged backend cluster %s: %w", cluster.Name, err)
 			}
-		} else if err = s.maybeModifyCluster(ctx, cluster, routeCache); err != nil {
+		} else if err = s.maybeModifyCluster(ctx, cluster, routeCache, mergedKeys, backendCache); err != nil {
 			return nil, fmt.Errorf("failed to modify cluster %s: %w", cluster.Name, err)
 		}
 		extProcUDSExist = extProcUDSExist || cluster.Name == extProcUDSClusterName
@@ -315,7 +316,13 @@ func (s *Server) retrieveAndCacheAIGatewayRoute(ctx context.Context, cache map[c
 //
 // The resulting configuration is similar to the envoy.yaml files in tests/data-plane/.
 // Only clusters with names matching the AIGatewayRoute pattern are modified.
-func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Cluster, routeCache map[client.ObjectKey]*aigv1b1.AIGatewayRoute) error {
+func (s *Server) maybeModifyCluster(
+	ctx context.Context,
+	cluster *clusterv3.Cluster,
+	routeCache map[client.ObjectKey]*aigv1b1.AIGatewayRoute,
+	mergedKeys map[mergedBackendKey]struct{},
+	backendCache map[client.ObjectKey]*aigv1b1.AIServiceBackend,
+) error {
 	clusterName, err := parseAIGatewayClusterName(cluster.Name)
 	if err != nil {
 		s.log.Info("non-ai-gateway cluster name", "cluster_name", cluster.Name, "error", err)
@@ -396,6 +403,25 @@ func (s *Server) maybeModifyCluster(ctx context.Context, cluster *clusterv3.Clus
 				// so we skip it here.
 				if backendRef.Weight != nil && *backendRef.Weight == 0 {
 					continue
+				}
+				// Likewise for a backend MergeBackends moved onto its own shared cluster: this
+				// cluster's LoadAssignment holds a locality only for the refs that were not merged,
+				// so counting a merged ref here would shift every later ref onto the wrong locality.
+				merged, mergedErr := s.backendRefIsMerged(ctx, mergedKeys, backendCache, aigwRoute.Namespace, &httpRouteRule.BackendRefs[i])
+				if mergedErr != nil {
+					return mergedErr
+				}
+				if merged {
+					continue
+				}
+				if lbEndpointIndex >= len(cluster.LoadAssignment.Endpoints) {
+					// Envoy Gateway emitted fewer localities than the rule has backendRefs for a
+					// reason not accounted for above. Stop rather than index out of range, which
+					// would take the extension server down and stall the Gateway's config.
+					s.log.Error(errEndpointBackendRefMismatch, "leaving the remaining endpoints unlabelled",
+						"cluster_name", cluster.Name, "backend_refs", len(httpRouteRule.BackendRefs),
+						"localities", len(cluster.LoadAssignment.Endpoints))
+					break
 				}
 				endpoints := cluster.LoadAssignment.Endpoints[lbEndpointIndex]
 				lbEndpointIndex++
@@ -500,6 +526,30 @@ var errMergedClusterForwardProxyConflict = errors.New("routes sharing a MergeBac
 // errMergedClusterPriorityUnsupported reports that backendRef.Priority cannot be honoured on a
 // cluster Envoy Gateway deduplicated across backends.
 var errMergedClusterPriorityUnsupported = errors.New("backendRef.Priority is not supported on a MergeBackends cluster")
+
+// backendRefIsMerged reports whether Envoy Gateway put this backendRef's backend object on its own
+// MergeBackends cluster. It is a no-op, and costs no API reads, when MergeBackends is off.
+func (s *Server) backendRefIsMerged(
+	ctx context.Context,
+	mergedKeys map[mergedBackendKey]struct{},
+	backendCache map[client.ObjectKey]*aigv1b1.AIServiceBackend,
+	routeNamespace string,
+	ref *aigv1b1.AIGatewayRouteRuleBackendRef,
+) (bool, error) {
+	if len(mergedKeys) == 0 || ref.IsInferencePool() {
+		return false, nil
+	}
+	key, err := s.backendKeyForRef(ctx, backendCache, routeNamespace, ref)
+	if err != nil || key == nil {
+		return false, err
+	}
+	_, merged := mergedKeys[*key]
+	return merged, nil
+}
+
+// errEndpointBackendRefMismatch reports that a cluster has fewer localities than its rule has
+// backendRefs, so the remaining backendRefs cannot be tied to an endpoint.
+var errEndpointBackendRefMismatch = errors.New("cluster has fewer localities than the rule has backendRefs")
 
 // insertUpstreamAIGatewayFilters installs the AI Gateway upstream external processor and header
 // mutation filter into the cluster's upstream filter chain, skipping clusters that already have it.

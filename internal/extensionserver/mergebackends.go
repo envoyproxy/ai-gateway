@@ -209,16 +209,24 @@ func (s *Server) applyMergedBackendRouting(
 	clusters []*clusterv3.Cluster,
 	routeConfigs []*routev3.RouteConfiguration,
 	routeCache map[client.ObjectKey]*aigv1b1.AIGatewayRoute,
-) (map[string]*mergedClusterUse, error) {
+	backendCache map[client.ObjectKey]*aigv1b1.AIServiceBackend,
+) (map[string]*mergedClusterUse, map[mergedBackendKey]struct{}, error) {
 	index, ambiguousKeys := mergedClusterIndex(clusters)
 	if len(index) == 0 {
 		// MergeBackends is off, or nothing eligible merged. Nothing to do.
-		return nil, nil
+		return nil, nil, nil
+	}
+
+	// The backend objects Envoy Gateway moved onto their own clusters. maybeModifyCluster needs
+	// them: a route-scoped cluster's LoadAssignment no longer holds a locality for those
+	// backendRefs, so walking the rule's refs positionally would run off the end of it.
+	mergedKeys := make(map[mergedBackendKey]struct{}, len(index))
+	for _, key := range index {
+		mergedKeys[key] = struct{}{}
 	}
 
 	var (
-		used         = make(map[string]*mergedClusterUse)
-		backendCache = make(map[client.ObjectKey]*aigv1b1.AIServiceBackend)
+		used = make(map[string]*mergedClusterUse)
 		// Envoy Gateway emits one route per rule x match, so the same rule is visited many times
 		// per translation. Report each unresolvable (rule, cluster) once instead of once per match.
 		reported = make(map[string]struct{})
@@ -249,7 +257,7 @@ func (s *Server) applyMergedBackendRouting(
 
 				aigwRoute, mapping, err := s.mergedBackendNamesForRoute(ctx, route.Name, names, index, ambiguousKeys, routeCache, backendCache, reported, ignoredPriorities)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				for _, clusterName := range names {
 					if _, merged := index[clusterName]; !merged {
@@ -295,7 +303,7 @@ func (s *Server) applyMergedBackendRouting(
 			delete(used, clusterName)
 		}
 	}
-	return used, nil
+	return used, mergedKeys, nil
 }
 
 // useFor returns the record for clusterName, creating it on first use.
@@ -437,6 +445,10 @@ func (s *Server) backendKeyForRef(
 	routeNamespace string,
 	ref *aigv1b1.AIGatewayRouteRuleBackendRef,
 ) (*mergedBackendKey, error) {
+	if cache == nil {
+		// Callers that resolve a single ref (tests, one-shot lookups) may omit the cache.
+		cache = make(map[client.ObjectKey]*aigv1b1.AIServiceBackend, 1)
+	}
 	backendNamespace := ref.GetNamespace(routeNamespace)
 	key := client.ObjectKey{Namespace: backendNamespace, Name: ref.Name}
 	backend, ok := cache[key]
