@@ -697,6 +697,24 @@ func mcpConfig(mcpRoutes []aigv1b1.MCPRoute) (_ *filterapi.MCPConfig, hasEffecti
 				mcpRoute.Authorization.Rules = append(mcpRoute.Authorization.Rules, mcpRule)
 			}
 		}
+		// BackendSelector reuses the same filterapi.MCPRouteAuthorization struct and CEL
+		// engine as Authorization above, evaluated once per candidate backend before a
+		// session is opened. Source/Target aren't set here since MCPBackendSelectorRule
+		// only has cel and action.
+		if route.Spec.BackendSelector != nil {
+			selector := route.Spec.BackendSelector
+			mcpRoute.BackendSelector = &filterapi.MCPRouteAuthorization{
+				DefaultAction: filterapi.AuthorizationAction(ptr.Deref(selector.DefaultAction, egv1a1.AuthorizationActionDeny)),
+			}
+
+			for _, rule := range selector.Rules {
+				action := ptr.Deref(rule.Action, egv1a1.AuthorizationActionAllow)
+				mcpRoute.BackendSelector.Rules = append(mcpRoute.BackendSelector.Rules, filterapi.MCPRouteAuthorizationRule{
+					Action: filterapi.AuthorizationAction(action),
+					CEL:    rule.CEL,
+				})
+			}
+		}
 		// Forward OAuth claim-to-header mappings to all backends in this route.
 		if route.Spec.SecurityPolicy != nil && route.Spec.SecurityPolicy.OAuth != nil {
 			for _, ctoh := range route.Spec.SecurityPolicy.OAuth.ClaimToHeaders {

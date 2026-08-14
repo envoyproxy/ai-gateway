@@ -28,10 +28,10 @@ AI Gateway has specific behavior for token tracking and rate limiting:
 
 1. **Token Extraction**: AI Gateway automatically extracts token usage from LLM responses that follow the OpenAI schema format. The token counts are stored in the metadata specified in your `llmRequestCosts` configuration.
 
-2. **Rate Limit Timing**: The check for whether the total count has reached the limit happens during each request. When a request is received:
-   - AI Gateway checks if processing this request would exceed the configured token limit
-   - If the limit would be exceeded, the request is rejected with a 429 status code
-   - If within the limit, the request is processed and its token usage is counted towards the total
+2. **Rate Limit Timing**: Token usage is charged after the response completes. When a request is received:
+   - Envoy checks the token budget using usage that has already been charged
+   - If the existing charged usage is over the limit, the request is rejected with a 429 status code
+   - If the request is admitted, AI Gateway extracts token usage from the completed response and charges it towards the total
 
 3. **Token Types**:
    - `InputToken`: Counts tokens in the request prompt
@@ -52,6 +52,18 @@ To map the request to the correct calculation, the AI Gateway parses the route f
 :::note
 For model providers with OpenAI schema transformations (like AWS Bedrock), AI Gateway automatically captures token usage through its request/response transformer. This enables consistent token tracking and rate limiting across different AI services using a unified OpenAI-compatible format.
 :::
+
+### Streaming responses
+
+For streaming responses, token usage is only known after the stream completes and the final usage
+data has been observed. AI Gateway does not interrupt an already admitted stream if that stream
+pushes the token count over the configured limit. Instead, the stream completes, its token usage is
+charged at stream end, and later matching requests are rejected with `429 Too Many Requests` until
+enough usage expires from the rate-limit window.
+
+For example, with a 1,000-token hourly limit, a request that is admitted while the bucket is empty
+can stream 1,200 tokens successfully. The bucket is then 200 tokens over the limit, and subsequent
+matching requests are limited until the window has enough capacity again.
 
 ## Configuration
 
