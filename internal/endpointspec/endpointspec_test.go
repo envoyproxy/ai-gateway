@@ -420,6 +420,9 @@ func TestResponsesEndpointSpec_GetTranslator(t *testing.T) {
 
 	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAzureOpenAI}, "override")
 	require.NoError(t, err)
+
+	_, err = spec.GetTranslator(filterapi.VersionedAPISchema{Name: filterapi.APISchemaAnthropic}, "override")
+	require.EqualError(t, err, "unsupported API schema: backend=Anthropic")
 }
 
 func TestTokenizeEndpointSpec_ParseBody(t *testing.T) {
